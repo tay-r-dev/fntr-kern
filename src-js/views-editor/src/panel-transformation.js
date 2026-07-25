@@ -940,8 +940,12 @@ export default class TransformationPanel extends Panel {
 
   async doHarmonize() {
     const settings = applicationSettingsController.model;
+    // Read the bias off the slider itself, not off the setting. The setting is
+    // for persistence; the slider is what the user is looking at, and the two
+    // can disagree if a change event is missed. What you see is what applies.
+    const shownBias = this.infoForm.getValue("harmonizeHandleBias");
     const options = {
-      handleBias: settings.harmonizeHandleBias,
+      handleBias: Number(shownBias ?? settings.harmonizeHandleBias),
       applyToOtherSources: settings.harmonizeOtherSources,
       equalizeTension: settings.harmonizeEqualizeTension,
     };

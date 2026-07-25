@@ -319,7 +319,7 @@ export function harmonizePath(path, pointIndices, options = {}) {
 //
 export function harmonizePathInPlace(path, pointIndices, options = {}) {
   const {
-    handleBias,
+    handleBias: rawHandleBias,
     cuspSafetyMargin,
     toleranceUnits,
     maxIterations,
@@ -328,6 +328,15 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     ...HARMONIZE_DEFAULTS,
     ...options,
   };
+
+  // The bias decides which points move at all, so a value that is a string, out
+  // of range, or NaN must not silently land in the middle and move everything.
+  // null and undefined mean "not set", not zero — Number(null) is 0, which
+  // would silently select the point-moves-instead mode.
+  const numericBias = rawHandleBias == null ? NaN : Number(rawHandleBias);
+  const handleBias = Number.isFinite(numericBias)
+    ? Math.min(1, Math.max(0, numericBias))
+    : HARMONIZE_DEFAULTS.handleBias;
 
   const candidates = pointIndices?.length
     ? [...new Set(pointIndices)].sort((a, b) => a - b)

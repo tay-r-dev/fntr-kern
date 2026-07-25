@@ -499,6 +499,17 @@ describe("harmonization: harmonizePath", () => {
     expect(changes.hasChange).to.equal(false);
   });
 
+  it("does not land mid-range on a junk bias", () => {
+    // a bias of 0.2 moves the point AND the handles; that must never be what a
+    // string, an out-of-range number or a NaN quietly turns into
+    for (const handleBias of ["1", 1.4, undefined, NaN, null]) {
+      const result = harmonizePath(asymmetricPath(), [NODE], { handleBias });
+      expect(result.path.getPointPosition(NODE), `bias ${handleBias}`).to.deep.equal([
+        110, 100,
+      ]);
+    }
+  });
+
   it("never moves the outer handles without tension equalization", () => {
     // PP and NN are inputs to the curvature at the joint, not outputs: the G2
     // construction reads them and leaves them alone. Both donors agree
