@@ -31,6 +31,7 @@ import {
   parseSkeletonPointKey,
   parseSkeletonRibKey,
   setSkeletonData,
+  setSkeletonHandleOffset,
 } from "@fontra/core/skeleton-model.js";
 import { isObjectEmpty, parseSelection, range } from "@fontra/core/utils.ts";
 import { VarPackedPath } from "@fontra/core/var-path.js";
