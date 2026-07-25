@@ -91,6 +91,61 @@ correctness guard.
 
 ---
 
+## 3.5 First-round bug: the write path (fixed)
+
+First hands-on test produced four symptoms at once: both bias modes appeared to
+move nodes *and* handles, results were usually `partial`, unselected points
+seemed to move, multi-source did nothing, and the console showed
+`this.coordinates.addItemwise is not a function`.
+
+All of it came from one line. The original `doHarmonize` did
+
+```js
+const { path, report } = harmonizePath(layerGlyph.path, ...);
+layerGlyph.path = path;   // ← wrong
+```
+
+inside `editLayersAndRecordChanges`. Two things break:
+
+1. `layerGlyph` is a **change-recorder Proxy**. `path.copy()` inside
+   `harmonizePath` therefore ran against a proxied `VarPackedPath`, hitting the
+   fork's `typeof this.coordinates.copy === 'function' ? … : this.coordinates.slice()`
+   fallback in `var-path.js` — the branch that exists *because* the proxy does
+   not forward `copy()`.
+2. Assigning the whole path records `{f: "=", a: ["path", <live VarPackedPath>]}`.
+   A class instance in a change payload does not survive the round trip; what
+   comes back is a plain object with plain arrays, so the next interpolation
+   calls `coordinates.addItemwise` on an `Array` and throws. From there the glyph
+   controller cannot build an instance and the canvas shows nonsense — which is
+   what "both modes move everything" and "unselected points moved" actually
+   were.
+
+Fix: `harmonizePathInPlace(path, …)` writes each correction through
+`setPointPosition`, which the recorder explicitly proxies into an `=xy` change
+with a matching rollback (`change-recorder.js:69`). `harmonizePath` survives as a
+pure wrapper for the tests. Undo granularity improves as a side effect: the
+change is now a handful of coordinate edits rather than a whole-path swap.
+
+Two guards added at the same time:
+
+- `maxIterations` 10 → **50**. A ring of coupled joints (an `o`) needs ~8 sweeps;
+  10 left no headroom for longer chains, which would surface as
+  `partial / not-converged`.
+- Clamp floors are captured for **all** candidates before the first sweep. They
+  were previously captured lazily on each point's first visit, by which time
+  earlier points in the same sweep had already moved its handles.
+
+Regression test: `records a change the editor can round-trip` runs
+`harmonizePathInPlace` inside `recordChanges` and asserts the recorded ops are
+exactly `["=xy", "=xy"]` at bias 1 (the two handles, nothing else), that
+`coordinates` is still a `VarArray`, that replaying the change reproduces the
+result, and that the rollback restores the original.
+
+**`doAddOverlap` has the same `layerGlyph.path = newPath` shape and is presumably
+broken the same way.** Not touched here.
+
+---
+
 ## 4. Decisions taken during implementation
 
 Numbered `I*`. Each row says where to change it.
@@ -104,7 +159,7 @@ Numbered `I*`. Each row says where to change it.
 | I5 | Two `reason` values the spec did not list: `clamped` and `not-converged`, both under `status: "partial"`. A partial result with no reason is not actionable. | `harmonizePath` |
 | I6 | `expandToJoints` is **exported and called by the caller**, not folded into `harmonizePath`. The generated-contour guard has to run between expansion and harmonizing, and it belongs in the editor (it needs `sceneModel`), not in a pure core module. | `harmonization.js` / `doHarmonize` |
 | I7 | `harmonizePath` reads an **empty** `pointIndices` as "whole path". `doHarmonize` therefore returns early when the generated-contour guard empties the candidate set — otherwise refusing every selected point would silently harmonize the entire glyph. | `doHarmonize`, the `if (!pointIndices.length)` guard |
-| I8 | A layer's path is assigned **only if** that layer's report has a non-skipped entry. The change recorder records assignment, not difference, so writing an identical path would create an empty undo step. | `doHarmonize`, the `report.some(...)` guard |
+| I8 | The editor writes **in place** via `harmonizePathInPlace`, never `layerGlyph.path = newPath`. See §3.5 — this was the first-round bug. Nothing is written when nothing is harmonizable, so no empty undo step is possible. | `doHarmonize`, `harmonizePathInPlace` |
 | I9 | Candidate expansion and the generated-contour exclusion are computed **once**, from the glyph on screen, and reused for every layer. Sound because multi-source editing already requires structurally compatible layers. | `doHarmonize` |
 | I10 | `action.harmonize` gets a glyph-edit context-menu entry, **no** default shortcut (nothing free that both donors use), and **no** enabled-predicate — an empty selection is valid input, meaning the whole layer. | `scene-controller.js` `getContextMenuItems` |
 | I11 | Settings live in `applicationSettingsController` and are read there by `doHarmonize` itself, so the action and the panel button behave identically. | `application-settings.js`, `doHarmonize` defaults |
@@ -181,6 +236,8 @@ refusal (which needs a glyph with a skeleton).
 | To change… | Go to |
 | --- | --- |
 | the algorithm itself | `harmonization.js` `calculateHarmonicTarget` |
+| which points get written | `applyFixup` (bias 1 = the two flanking off-curves, matching `SuperTool+Harmonize.m:52-54`) |
+| how changes reach the document | `harmonizePathInPlace` — `setPointPosition` only, never a path assignment (§3.5) |
 | what counts as a harmonizable joint | `getJointContext` (I3, I4) |
 | the 15% safety floor | `HARMONIZE_DEFAULTS.cuspSafetyMargin` |
 | convergence tolerance / sweep budget | `HARMONIZE_DEFAULTS.toleranceUnits`, `.maxIterations` |
@@ -196,7 +253,10 @@ refusal (which needs a glyph with a skeleton).
 
 ## 9. Still open
 
-- **Manual test matrix** (design §8) — not run.
+- **Manual test matrix** (design §8) — the first round surfaced §3.5; needs a
+  full re-run now that the write path is fixed.
+- **`doAddOverlap` writes a whole path object** the same way F9 did. Same bug,
+  out of scope here.
 - **Curvature visualization** (H10) — still deferred. `measureG2Discontinuity`
   is exported and tested, so this stays a rendering change.
 - **Skeleton centerlines** and **generated geometry** (design §9) — untouched.

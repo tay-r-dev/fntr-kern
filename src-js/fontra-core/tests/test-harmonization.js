@@ -1,11 +1,15 @@
+import { recordChanges } from "@fontra/core/change-recorder.js";
+import { applyChange } from "@fontra/core/changes.js";
 import {
   HARMONIZE_DEFAULTS,
   calculateHarmonicTarget,
   expandToJoints,
   getJointContext,
   harmonizePath,
+  harmonizePathInPlace,
   measureG2Discontinuity,
 } from "@fontra/core/harmonization.js";
+import VarArray from "@fontra/core/var-array.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { distance } from "@fontra/core/vector.js";
 import { expect } from "chai";
@@ -457,6 +461,42 @@ describe("harmonization: harmonizePath", () => {
         measureG2Discontinuity(getJointContext(result.path, pointIndex))
       ).to.be.closeTo(0, 1e-4);
     }
+  });
+
+  it("records a change the editor can round-trip", () => {
+    // The editor harmonizes inside recordChanges, so the path it hands us is a
+    // Proxy. Writing a whole new path object into layerGlyph.path puts a live
+    // VarPackedPath in the change payload, which does not survive; per-point
+    // writes must come out as `=xy` operations instead.
+    const layerGlyph = { path: asymmetricPath() };
+    const changes = recordChanges(layerGlyph, (proxy) =>
+      harmonizePathInPlace(proxy.path, [NODE], { handleBias: 1 })
+    );
+
+    const ops = changes.change.c.map((c) => c.f);
+    expect(ops).to.deep.equal(["=xy", "=xy"]); // the two handles, nothing else
+    expect(layerGlyph.path.coordinates).to.be.an.instanceOf(VarArray);
+
+    // replaying the change onto the untouched original reproduces it exactly
+    const replayed = { path: asymmetricPath() };
+    applyChange(replayed, changes.change);
+    expect(Array.from(replayed.path.coordinates)).to.deep.equal(
+      Array.from(layerGlyph.path.coordinates)
+    );
+
+    // and rolling back returns to the original
+    applyChange(layerGlyph, changes.rollbackChange);
+    expect(Array.from(layerGlyph.path.coordinates)).to.deep.equal(
+      Array.from(asymmetricPath().coordinates)
+    );
+  });
+
+  it("records nothing when there is nothing to harmonize", () => {
+    const layerGlyph = { path: symmetricPath() };
+    const changes = recordChanges(layerGlyph, (proxy) =>
+      harmonizePathInPlace(proxy.path, [NODE], { handleBias: 1 })
+    );
+    expect(changes.hasChange).to.equal(false);
   });
 
   it("reports not-converged when the iteration budget runs out", () => {

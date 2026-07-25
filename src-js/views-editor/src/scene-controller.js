@@ -25,7 +25,7 @@ import {
   getMyGlyphSets,
   readProjectGlyphSets,
 } from "@fontra/core/glyphsets-controller.js";
-import { expandToJoints, harmonizePath } from "@fontra/core/harmonization.js";
+import { expandToJoints, harmonizePathInPlace } from "@fontra/core/harmonization.js";
 import { translate, translatePlural } from "@fontra/core/localization.js";
 import { MouseTracker } from "@fontra/core/mouse-tracker.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
@@ -2058,13 +2058,15 @@ export class SceneController {
         }
         // Recompute per layer rather than propagating one layer's correction:
         // the other sources have different handles, hence a different target.
-        const { path, report } = harmonizePath(layerGlyph.path, pointIndices, {
+        //
+        // In place, not `layerGlyph.path = newPath`: the recorder turns each
+        // setPointPosition into an `=xy` change, whereas a whole-path
+        // assignment smuggles a live VarPackedPath into the change payload and
+        // it does not survive the round trip.
+        const report = harmonizePathInPlace(layerGlyph.path, pointIndices, {
           handleBias,
         });
         reports.set(layerName, [...report, ...refused]);
-        if (report.some(({ status }) => status !== "skipped")) {
-          layerGlyph.path = path;
-        }
       }
 
       return translate("action.harmonize");

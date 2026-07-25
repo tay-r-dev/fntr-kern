@@ -38,7 +38,10 @@ export const HARMONIZE_DEFAULTS = {
   handleBias: 1.0, //     0 = move the node, 1 = move the handles
   cuspSafetyMargin: 0.85, // never shrink a handle below 15% of its length
   toleranceUnits: 0.01, // convergence threshold, in font units
-  maxIterations: 10,
+  // Sweeps over the whole candidate set, not passes per point. An isolated
+  // joint is solved in one; a ring of coupled joints (an 'o') takes ~8. The
+  // math is a handful of square roots, so the budget is generous on purpose.
+  maxIterations: 50,
 };
 
 function crossProduct(vectorA, vectorB) {
@@ -219,28 +222,57 @@ function applyFixup(path, ctx, fixup, handleBias) {
 //
 // Total: no geometric situation throws.
 //
+// Pure wrapper around `harmonizePathInPlace` — see there for why the editor
+// uses the in-place form instead.
+//
 export function harmonizePath(path, pointIndices, options = {}) {
+  const newPath = path.copy();
+  return {
+    path: newPath,
+    report: harmonizePathInPlace(newPath, pointIndices, options),
+  };
+}
+
+//
+// Same, but writes into `path` and returns only the report.
+//
+// This is what the editor calls. Every write goes through `setPointPosition`,
+// which the change recorder proxies into a fine-grained `=xy` change with a
+// matching rollback. Building a new path and assigning it to `layerGlyph.path`
+// instead would put a live VarPackedPath into the change payload, and what
+// comes back out the other side is a plain object with plain arrays — which
+// then fails interpolation with `coordinates.addItemwise is not a function`.
+//
+export function harmonizePathInPlace(path, pointIndices, options = {}) {
   const { handleBias, cuspSafetyMargin, toleranceUnits, maxIterations } = {
     ...HARMONIZE_DEFAULTS,
     ...options,
   };
 
-  const newPath = path.copy();
   const candidates = pointIndices?.length
     ? [...new Set(pointIndices)].sort((a, b) => a - b)
-    : expandToJoints(newPath, undefined);
+    : expandToJoints(path, undefined);
 
-  const states = candidates.map((pointIndex) => ({
-    pointIndex,
-    contourIndex: newPath.getContourIndex(pointIndex),
-    status: undefined,
-    reason: undefined,
-    iterations: 0,
-    // lower bounds on the two handle lengths, captured from the geometry as it
-    // was before the first pass, so repeated passes cannot nibble a handle away
-    floors: undefined,
-    done: false,
-  }));
+  const states = candidates.map((pointIndex) => {
+    // Floors are captured up front, from the untouched geometry: a handle may
+    // never end up shorter than this, however many passes it takes.
+    const ctx = getJointContext(path, pointIndex);
+    const floors = ctx.reason
+      ? undefined
+      : {
+          P: (1 - cuspSafetyMargin) * distance(ctx.node, ctx.P),
+          N: (1 - cuspSafetyMargin) * distance(ctx.node, ctx.N),
+        };
+    return {
+      pointIndex,
+      contourIndex: path.getContourIndex(pointIndex),
+      status: undefined,
+      reason: undefined,
+      iterations: 0,
+      floors,
+      done: false,
+    };
+  });
 
   function settle(state, status, reason) {
     state.status = status;
@@ -256,7 +288,7 @@ export function harmonizePath(path, pointIndices, options = {}) {
         continue;
       }
 
-      const ctx = getJointContext(newPath, state.pointIndex);
+      const ctx = getJointContext(path, state.pointIndex);
       if (ctx.reason) {
         settle(state, "skipped", ctx.reason);
         continue;
@@ -278,31 +310,23 @@ export function harmonizePath(path, pointIndices, options = {}) {
         continue;
       }
 
-      const lengths = {
-        P: distance(ctx.node, ctx.P),
-        N: distance(ctx.node, ctx.N),
-      };
-      state.floors ??= {
-        P: (1 - cuspSafetyMargin) * lengths.P,
-        N: (1 - cuspSafetyMargin) * lengths.N,
-      };
-
       // The node and the handles always end up `fixup` apart no matter how the
       // bias splits the motion, so one handle grows and the other shrinks by
       // exactly |fixup|. Scale the whole step back if that would take the
       // shrinking one past its floor.
       let scale = 1;
       for (const name of ["P", "N"]) {
+        const length = distance(ctx.node, ctx[name]);
         const shrunk = distance(ctx.node, addVectors(ctx[name], solution.fixup));
         if (shrunk < state.floors[name]) {
-          scale = Math.min(scale, (lengths[name] - state.floors[name]) / fixupLength);
+          scale = Math.min(scale, (length - state.floors[name]) / fixupLength);
         }
       }
       const clamped = scale < 1;
       scale = Math.max(scale, 0);
 
       if (scale > 0) {
-        applyFixup(newPath, ctx, mulVectorScalar(solution.fixup, scale), handleBias);
+        applyFixup(path, ctx, mulVectorScalar(solution.fixup, scale), handleBias);
         state.iterations += 1;
         anyMoved = true;
       }
@@ -322,14 +346,11 @@ export function harmonizePath(path, pointIndices, options = {}) {
     }
   }
 
-  return {
-    path: newPath,
-    report: states.map(({ pointIndex, contourIndex, status, reason, iterations }) => ({
-      pointIndex,
-      contourIndex,
-      status,
-      reason,
-      iterations,
-    })),
-  };
+  return states.map(({ pointIndex, contourIndex, status, reason, iterations }) => ({
+    pointIndex,
+    contourIndex,
+    status,
+    reason,
+    iterations,
+  }));
 }
