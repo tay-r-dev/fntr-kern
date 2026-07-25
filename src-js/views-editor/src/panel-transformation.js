@@ -788,6 +788,9 @@ export default class TransformationPanel extends Panel {
         defaultValue: 1,
         maxValue: 1,
         step: 0.05,
+        // the number box is not decoration: it is the only way to see that the
+        // bias being applied is the bias the slider shows
+        displayValue: true,
       },
       field3: {
         type: "auxiliaryElement",
@@ -839,6 +842,16 @@ export default class TransformationPanel extends Panel {
     this.infoForm.setFieldDescriptions(formContents);
 
     this.infoForm.onFieldChange = async (fieldItem, value, valueStream) => {
+      // A dragged slider calls this once, at drag start, with the value it had
+      // *before* the drag; every value after that arrives on valueStream
+      // (ui-form.js:545-567). Ignoring the stream stores a value one drag
+      // behind whatever the slider shows.
+      if (valueStream) {
+        for await (const streamedValue of valueStream) {
+          value = streamedValue;
+        }
+      }
+
       this.transformParameters[fieldItem.key] = value;
 
       // Handle Tunni visibility parameters
@@ -936,9 +949,6 @@ export default class TransformationPanel extends Panel {
       equalizeTension: settings.harmonizeEqualizeTension,
     };
     const reports = await this.sceneController.doHarmonize(options);
-    // TEMPORARY, remove once the bias question is settled: the panel state and
-    // what actually ran, side by side, in a form that can be pasted.
-    console.log("[harmonize] options", options, "reports", [...reports]);
     this.setHarmonizeReport(
       formatHarmonizeReport(reports),
       detailHarmonizeReport(reports, options)
