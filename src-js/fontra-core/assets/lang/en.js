@@ -575,6 +575,17 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.node": "node",
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
   "sidebar.selection-transformation.harmonize.other-sources": "Other sources",
+  "sidebar.selection-transformation.harmonize.reason.already-harmonic":
+    "already harmonic",
+  "sidebar.selection-transformation.harmonize.reason.clamped": "clamped",
+  "sidebar.selection-transformation.harmonize.reason.degenerate":
+    "handles are parallel",
+  "sidebar.selection-transformation.harmonize.reason.generated-contour":
+    "generated contour",
+  "sidebar.selection-transformation.harmonize.reason.not-converged": "did not converge",
+  "sidebar.selection-transformation.harmonize.reason.not-curve-joint":
+    "not between two curves",
+  "sidebar.selection-transformation.harmonize.reason.not-smooth": "not a smooth point",
   "sidebar.selection-transformation.harmonize.status.harmonized": "%0 harmonized",
   "sidebar.selection-transformation.harmonize.status.partial": "%0 partial",
   "sidebar.selection-transformation.harmonize.status.skipped": "%0 skipped",

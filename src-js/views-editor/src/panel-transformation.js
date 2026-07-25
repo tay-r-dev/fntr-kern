@@ -822,7 +822,7 @@ export default class TransformationPanel extends Panel {
       field2: {
         type: "auxiliaryElement",
         auxiliaryElement: (this.harmonizeReportElement = html.span(
-          { class: "harmonize-report" },
+          { class: "harmonize-report", title: this.harmonizeReportDetail || "" },
           [this.harmonizeReportText || ""]
         )),
       },
@@ -916,14 +916,20 @@ export default class TransformationPanel extends Panel {
   }
 
   async doHarmonize() {
-    const reports = await this.sceneController.doHarmonize();
-    this.setHarmonizeReport(formatHarmonizeReport(reports));
+    const handleBias = applicationSettingsController.model.harmonizeHandleBias;
+    const reports = await this.sceneController.doHarmonize({ handleBias });
+    this.setHarmonizeReport(
+      formatHarmonizeReport(reports),
+      detailHarmonizeReport(reports, handleBias)
+    );
   }
 
-  setHarmonizeReport(text) {
+  setHarmonizeReport(text, detail = "") {
     this.harmonizeReportText = text;
+    this.harmonizeReportDetail = detail;
     if (this.harmonizeReportElement) {
       this.harmonizeReportElement.innerText = text;
+      this.harmonizeReportElement.title = detail;
     }
   }
 
@@ -1586,32 +1592,63 @@ const distributeHorizontally = new DistributeObjectsDescriptor("horizontally", "
 const distributeVertically = new DistributeObjectsDescriptor("vertically", "y");
 
 function summarizeHarmonizeReport(report) {
-  const counts = { harmonized: 0, partial: 0, skipped: 0 };
-  for (const { status } of report) {
-    counts[status] = (counts[status] || 0) + 1;
+  // Group by status, and within a status by reason. "2 skipped" on its own is
+  // not answerable; "2 skipped (not a smooth point)" is.
+  const byStatus = new Map();
+  for (const { status, reason } of report) {
+    if (!byStatus.has(status)) {
+      byStatus.set(status, { total: 0, reasons: new Map() });
+    }
+    const entry = byStatus.get(status);
+    entry.total += 1;
+    if (reason) {
+      entry.reasons.set(reason, (entry.reasons.get(reason) || 0) + 1);
+    }
   }
+
   const parts = [];
-  for (const status of ["harmonized", "partial"]) {
-    if (counts[status]) {
-      parts.push(
-        translate(
-          `sidebar.selection-transformation.harmonize.status.${status}`,
-          counts[status]
-        )
+  for (const status of ["harmonized", "partial", "skipped"]) {
+    const entry = byStatus.get(status);
+    if (!entry) {
+      continue;
+    }
+    let part = translate(
+      `sidebar.selection-transformation.harmonize.status.${status}`,
+      entry.total
+    );
+    if (entry.reasons.size) {
+      const reasons = [...entry.reasons]
+        .sort((a, b) => b[1] - a[1])
+        .map(([reason, count]) =>
+          entry.reasons.size === 1 && count === entry.total
+            ? translate(`sidebar.selection-transformation.harmonize.reason.${reason}`)
+            : `${count} ${translate(
+                `sidebar.selection-transformation.harmonize.reason.${reason}`
+              )}`
+        );
+      part += ` (${reasons.join(", ")})`;
+    }
+    parts.push(part);
+  }
+  return parts.join(" · ");
+}
+
+// Hover detail: the bias that actually ran, plus one line per candidate point.
+// The summary says what happened; this says which point and why.
+function detailHarmonizeReport(reports, handleBias) {
+  const lines = [`bias ${Number(handleBias).toFixed(2)} (0 = node, 1 = handles)`];
+  for (const [layerName, report] of reports) {
+    lines.push(`${layerName}:`);
+    for (const entry of report) {
+      const reason = entry.reason ? ` / ${entry.reason}` : "";
+      const sweeps = entry.iterations ? ` after ${entry.iterations}` : "";
+      lines.push(
+        `  point ${entry.pointIndex} (contour ${entry.contourIndex}): ` +
+          `${entry.status}${reason}${sweeps}`
       );
     }
   }
-  if (!parts.length) {
-    // nothing changed: say how many points were looked at and rejected, so an
-    // apply that appears to do nothing is still answerable
-    parts.push(
-      translate(
-        "sidebar.selection-transformation.harmonize.status.skipped",
-        counts.skipped
-      )
-    );
-  }
-  return parts.join(" · ");
+  return lines.join("\n");
 }
 
 function formatHarmonizeReport(reports) {
