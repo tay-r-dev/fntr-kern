@@ -799,6 +799,13 @@ export default class TransformationPanel extends Panel {
 
     formContents.push({
       type: "checkbox",
+      key: "harmonizeEqualizeTension",
+      label: translate("sidebar.selection-transformation.harmonize.equalize-tension"),
+      value: applicationSettingsController.model.harmonizeEqualizeTension,
+    });
+
+    formContents.push({
+      type: "checkbox",
       key: "harmonizeOtherSources",
       label: translate("sidebar.selection-transformation.harmonize.other-sources"),
       value: applicationSettingsController.model.harmonizeOtherSources,
@@ -844,7 +851,13 @@ export default class TransformationPanel extends Panel {
         this.sceneController.sceneSettingsController.setItem(fieldItem.key, value);
       }
 
-      if (["harmonizeHandleBias", "harmonizeOtherSources"].includes(fieldItem.key)) {
+      if (
+        [
+          "harmonizeHandleBias",
+          "harmonizeOtherSources",
+          "harmonizeEqualizeTension",
+        ].includes(fieldItem.key)
+      ) {
         applicationSettingsController.model[fieldItem.key] = value;
       }
 
@@ -916,11 +929,19 @@ export default class TransformationPanel extends Panel {
   }
 
   async doHarmonize() {
-    const handleBias = applicationSettingsController.model.harmonizeHandleBias;
-    const reports = await this.sceneController.doHarmonize({ handleBias });
+    const settings = applicationSettingsController.model;
+    const options = {
+      handleBias: settings.harmonizeHandleBias,
+      applyToOtherSources: settings.harmonizeOtherSources,
+      equalizeTension: settings.harmonizeEqualizeTension,
+    };
+    const reports = await this.sceneController.doHarmonize(options);
+    // TEMPORARY, remove once the bias question is settled: the panel state and
+    // what actually ran, side by side, in a form that can be pasted.
+    console.log("[harmonize] options", options, "reports", [...reports]);
     this.setHarmonizeReport(
       formatHarmonizeReport(reports),
-      detailHarmonizeReport(reports, handleBias)
+      detailHarmonizeReport(reports, options)
     );
   }
 
@@ -1635,8 +1656,12 @@ function summarizeHarmonizeReport(report) {
 
 // Hover detail: the bias that actually ran, plus one line per candidate point.
 // The summary says what happened; this says which point and why.
-function detailHarmonizeReport(reports, handleBias) {
-  const lines = [`bias ${Number(handleBias).toFixed(2)} (0 = node, 1 = handles)`];
+function detailHarmonizeReport(reports, options) {
+  const lines = [
+    `bias ${Number(options.handleBias).toFixed(2)} (0 = node, 1 = handles)` +
+      `, equalize tension: ${options.equalizeTension ? "on" : "off"}` +
+      `, other sources: ${options.applyToOtherSources ? "on" : "off"}`,
+  ];
   for (const [layerName, report] of reports) {
     lines.push(`${layerName}:`);
     for (const entry of report) {

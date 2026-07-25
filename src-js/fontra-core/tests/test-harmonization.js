@@ -499,6 +499,47 @@ describe("harmonization: harmonizePath", () => {
     expect(changes.hasChange).to.equal(false);
   });
 
+  it("never moves the outer handles without tension equalization", () => {
+    // PP and NN are inputs to the curvature at the joint, not outputs: the G2
+    // construction reads them and leaves them alone. Both donors agree
+    // (SuperTool+Harmonize.m:55-56 moves prevNode and nextNode only).
+    for (const handleBias of [0, 0.5, 1]) {
+      const path = asymmetricPath();
+      const result = harmonizePath(path, [NODE], { handleBias });
+      expect(result.path.getPointPosition(1), `bias ${handleBias}`).to.deep.equal([
+        0, 20,
+      ]);
+      expect(result.path.getPointPosition(5), `bias ${handleBias}`).to.deep.equal([
+        200, 50,
+      ]);
+    }
+  });
+
+  it("moves the outer handles when tension equalization is on", () => {
+    const result = harmonizePath(asymmetricPath(), [NODE], {
+      handleBias: 1,
+      equalizeTension: true,
+    });
+    expect(result.path.getPointPosition(1)).to.not.deep.equal([0, 20]);
+    expect(result.path.getPointPosition(5)).to.not.deep.equal([200, 50]);
+  });
+
+  it("tension equalization costs exactness at the joint", () => {
+    // the donor's trailing balance changes handle lengths after the fact, which
+    // perturbs the curvature match harmonization just established
+    const exact = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
+    const equalized = harmonizePath(asymmetricPath(), [NODE], {
+      handleBias: 1,
+      equalizeTension: true,
+    });
+    const exactError = measureG2Discontinuity(getJointContext(exact.path, NODE));
+    const equalizedError = measureG2Discontinuity(
+      getJointContext(equalized.path, NODE)
+    );
+    expect(exactError).to.be.lessThan(1e-9);
+    expect(equalizedError).to.be.greaterThan(exactError);
+  });
+
   it("reports not-converged when the iteration budget runs out", () => {
     const result = harmonizePath(coupledPath(), [3, 6], {
       handleBias: 1,

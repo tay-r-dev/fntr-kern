@@ -574,6 +574,9 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.handles": "handles",
   "sidebar.selection-transformation.harmonize.node": "node",
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
+  "sidebar.selection-transformation.harmonize.equalize-tension": "Equalize tension",
+  "sidebar.selection-transformation.harmonize.equalize-tension.tooltip":
+    "Also even out the two segments at each joint, which moves the outer handles. Matches SuperTool’s Harmonize command, but trades away an exact curvature match.",
   "sidebar.selection-transformation.harmonize.other-sources": "Other sources",
   "sidebar.selection-transformation.harmonize.reason.already-harmonic":
     "already harmonic",

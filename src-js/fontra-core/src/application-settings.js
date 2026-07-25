@@ -20,6 +20,7 @@ export const applicationSettingsController = new ObservableController({
   // fork: harmonize panel settings (app-level, per D9 — not written to project files)
   harmonizeHandleBias: 1,
   harmonizeOtherSources: true,
+  harmonizeEqualizeTension: false,
 });
 
 applicationSettingsController.synchronizeWithLocalStorage(

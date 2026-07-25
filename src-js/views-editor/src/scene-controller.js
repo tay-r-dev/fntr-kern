@@ -2000,6 +2000,7 @@ export class SceneController {
     const {
       handleBias = applicationSettingsController.model.harmonizeHandleBias,
       applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
+      equalizeTension = applicationSettingsController.model.harmonizeEqualizeTension,
     } = options;
 
     const reports = new Map();
@@ -2065,6 +2066,7 @@ export class SceneController {
         // it does not survive the round trip.
         const report = harmonizePathInPlace(layerGlyph.path, pointIndices, {
           handleBias,
+          equalizeTension,
         });
         reports.set(layerName, [...report, ...refused]);
       }

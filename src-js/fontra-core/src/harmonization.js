@@ -23,6 +23,7 @@
 // two ways, which is what `handleBias` blends between.
 //
 
+import { balanceSegment, calculateTunniPoint } from "./tunni-calculations.js";
 import { POINT_TYPE_OFF_CURVE_CUBIC } from "./var-path.js";
 import {
   addVectors,
@@ -42,6 +43,10 @@ export const HARMONIZE_DEFAULTS = {
   // joint is solved in one; a ring of coupled joints (an 'o') takes ~8. The
   // math is a handful of square roots, so the budget is generous on purpose.
   maxIterations: 50,
+  // Tunni-equalize the two segments at each joint, before and after — the pass
+  // SuperTool's Harmonize command wraps around the same math. It is what moves
+  // the outer handles PP and NN. Costs exactness: see equalizeJointSegments.
+  equalizeTension: false,
 };
 
 function crossProduct(vectorA, vectorB) {
@@ -190,6 +195,75 @@ export function expandToJoints(path, pointIndices) {
   return [...joints].sort((a, b) => a - b);
 }
 
+//
+// Tunni-equalize the two segments meeting at a joint.
+//
+// This is the one thing that moves the *outer* handles, PP and NN, which belong
+// to the neighbouring segments. The G2 construction itself never does: PP and NN
+// are inputs to the curvature at the joint, not outputs.
+//
+// SuperTool's Harmonize menu command brackets its per-node harmonize with
+// `[self balance]` (SuperTool+Harmonize.m:61,75), so this is donor behaviour —
+// but note the donor's trailing balance changes handle lengths after the fact,
+// which perturbs the very curvature match harmonization just established. Off
+// by default for that reason; see HARMONIZE_DEFAULTS.equalizeTension.
+//
+function equalizeJointSegments(path, ctx) {
+  const [contourIndex, contourPointIndex] = path.getContourAndPointIndex(
+    ctx.pointIndex
+  );
+  const segments = [
+    [
+      neighborIndex(path, contourIndex, contourPointIndex, -3),
+      ctx.indices.PP,
+      ctx.indices.P,
+      ctx.pointIndex,
+    ],
+    [
+      ctx.pointIndex,
+      ctx.indices.N,
+      ctx.indices.NN,
+      neighborIndex(path, contourIndex, contourPointIndex, 3),
+    ],
+  ];
+
+  for (const indices of segments) {
+    if (indices.some((index) => index === undefined)) {
+      continue; // open contour runs out before the segment does
+    }
+    // the far end must be a real on-curve point, not another handle
+    if (path.getPoint(indices[0]).type || path.getPoint(indices[3]).type) {
+      continue;
+    }
+
+    const points = indices.map((index) => {
+      const [x, y] = path.getPointPosition(index);
+      return { x, y };
+    });
+
+    // The donor skips inflected segments, where equalizing would fight the
+    // shape rather than tidy it (SuperTool+TunniEditing.m:198-199).
+    const tunniPoint = calculateTunniPoint(points);
+    if (!tunniPoint) {
+      continue;
+    }
+    const startPercent =
+      distance(points[0], points[1]) / distance(points[0], tunniPoint);
+    const endPercent = distance(points[2], points[3]) / distance(points[3], tunniPoint);
+    if (startPercent > 1 && endPercent > 1) {
+      continue;
+    }
+    if (startPercent < 0.01 && endPercent < 0.01) {
+      continue;
+    }
+
+    const balanced = balanceSegment(points);
+    for (const i of [1, 2]) {
+      path.setPointPosition(indices[i], balanced[i].x, balanced[i].y);
+    }
+  }
+}
+
 function applyFixup(path, ctx, fixup, handleBias) {
   if (handleBias < 1) {
     const delta = mulVectorScalar(fixup, -(1 - handleBias));
@@ -244,7 +318,13 @@ export function harmonizePath(path, pointIndices, options = {}) {
 // then fails interpolation with `coordinates.addItemwise is not a function`.
 //
 export function harmonizePathInPlace(path, pointIndices, options = {}) {
-  const { handleBias, cuspSafetyMargin, toleranceUnits, maxIterations } = {
+  const {
+    handleBias,
+    cuspSafetyMargin,
+    toleranceUnits,
+    maxIterations,
+    equalizeTension,
+  } = {
     ...HARMONIZE_DEFAULTS,
     ...options,
   };
@@ -252,6 +332,16 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   const candidates = pointIndices?.length
     ? [...new Set(pointIndices)].sort((a, b) => a - b)
     : expandToJoints(path, undefined);
+
+  if (equalizeTension) {
+    // donor order: balance, harmonize, balance (SuperTool+Harmonize.m:61,75)
+    for (const pointIndex of candidates) {
+      const ctx = getJointContext(path, pointIndex);
+      if (!ctx.reason) {
+        equalizeJointSegments(path, ctx);
+      }
+    }
+  }
 
   const states = candidates.map((pointIndex) => {
     // Floors are captured up front, from the untouched geometry: a handle may
@@ -343,6 +433,18 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   for (const state of states) {
     if (!state.done) {
       settle(state, "partial", "not-converged");
+    }
+  }
+
+  if (equalizeTension) {
+    for (const state of states) {
+      if (state.status === "skipped") {
+        continue;
+      }
+      const ctx = getJointContext(path, state.pointIndex);
+      if (!ctx.reason) {
+        equalizeJointSegments(path, ctx);
+      }
     }
   }
 
