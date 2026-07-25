@@ -589,6 +589,8 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.reason.not-curve-joint":
     "not between two curves",
   "sidebar.selection-transformation.harmonize.reason.not-smooth": "not a smooth point",
+  "sidebar.selection-transformation.harmonize.reason.tension-limited":
+    "would cross its handles",
   "sidebar.selection-transformation.harmonize.status.harmonized": "%0 harmonized",
   "sidebar.selection-transformation.harmonize.status.partial": "%0 partial",
   "sidebar.selection-transformation.harmonize.status.skipped": "%0 skipped",

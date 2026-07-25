@@ -9,6 +9,7 @@ import {
   harmonizePathInPlace,
   measureG2Discontinuity,
 } from "@fontra/core/harmonization.js";
+import { calculateTunniPoint } from "@fontra/core/tunni-calculations.js";
 import VarArray from "@fontra/core/var-array.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { distance } from "@fontra/core/vector.js";
@@ -84,6 +85,35 @@ function coupledPath() {
     cubic(250, 0),
     cubic(200, -40),
   ]);
+}
+
+// the joint sits far along the tangent and the incoming outer handle is nearly
+// flat, so harmonization wants to grow the incoming handle straight past its
+// segment's Tunni point -- the handle lines cross and the curve doubles back
+function overshootPath() {
+  return makeContour([
+    { x: 0, y: 0 },
+    cubic(6, 60),
+    cubic(40, 100),
+    { x: 60, y: 100, smooth: true },
+    cubic(300, 100),
+    cubic(360, 60),
+    { x: 380, y: 0 },
+  ]);
+}
+
+// How far the joint's own handle on each side reaches toward that segment's
+// Tunni point. 1 lands on it; past 1 the segment's handle lines have crossed.
+function jointHandleTensions(path) {
+  const ctx = getJointContext(path, NODE);
+  const first = path.getPoint(0);
+  const last = path.getPoint(6);
+  const tunniIn = calculateTunniPoint([first, ctx.PP, ctx.P, ctx.node]);
+  const tunniOut = calculateTunniPoint([ctx.node, ctx.N, ctx.NN, last]);
+  return [
+    tunniIn ? distance(ctx.node, ctx.P) / distance(ctx.node, tunniIn) : 0,
+    tunniOut ? distance(ctx.node, ctx.N) / distance(ctx.node, tunniOut) : 0,
+  ];
 }
 
 // the two outer handle lines are parallel -> no intersection
@@ -497,6 +527,48 @@ describe("harmonization: harmonizePath", () => {
       harmonizePathInPlace(proxy.path, [NODE], { handleBias: 1 })
     );
     expect(changes.hasChange).to.equal(false);
+  });
+
+  it("never drives a handle past its Tunni point", () => {
+    // unlimited, this joint sends the incoming handle to tension 2.6: it
+    // overshoots the Tunni point, the segment's two handle lines cross, and the
+    // curve doubles back on itself
+    const unlimited = harmonizePath(overshootPath(), [NODE], {
+      handleBias: 1,
+      maxHandleTension: Infinity,
+    });
+    expect(Math.max(...jointHandleTensions(unlimited.path))).to.be.greaterThan(2);
+
+    const limited = harmonizePath(overshootPath(), [NODE], { handleBias: 1 });
+    expect(Math.max(...jointHandleTensions(limited.path))).to.be.closeTo(1, 1e-6);
+    expect(limited.report[0]).to.include({
+      status: "partial",
+      reason: "tension-limited",
+    });
+  });
+
+  it("limits tension at any bias", () => {
+    for (const handleBias of [0, 0.5, 1]) {
+      const result = harmonizePath(overshootPath(), [NODE], { handleBias });
+      expect(
+        Math.max(...jointHandleTensions(result.path)),
+        `bias ${handleBias}`
+      ).to.be.at.most(1 + 1e-6);
+    }
+  });
+
+  it("still harmonizes a joint whose handle is already over the limit", () => {
+    // the ceiling is "no worse than it already is", not "refuse to touch it"
+    const path = overshootPath();
+    // the incoming segment's Tunni point sits at x=10 on the tangent, so an
+    // incoming handle at x=5 already reaches past it
+    path.setPointPosition(2, 5, 100);
+    const before = Math.max(...jointHandleTensions(path));
+    expect(before).to.be.greaterThan(1);
+
+    const result = harmonizePath(path, [NODE], { handleBias: 1 });
+    expect(Math.max(...jointHandleTensions(result.path))).to.be.at.most(before + 1e-6);
+    expect(result.report[0].status).to.not.equal("skipped");
   });
 
   it("does not land mid-range on a junk bias", () => {

@@ -47,7 +47,13 @@ export const HARMONIZE_DEFAULTS = {
   // SuperTool's Harmonize command wraps around the same math. It is what moves
   // the outer handles PP and NN. Costs exactness: see equalizeJointSegments.
   equalizeTension: false,
+  // Ceiling on how far a handle may reach toward its segment's Tunni point.
+  // At 1 it lands exactly on it; past 1 the segment's two handle lines cross
+  // each other and the curve doubles back.
+  maxHandleTension: 1,
 };
+
+const ZERO_VECTOR = { x: 0, y: 0 };
 
 function crossProduct(vectorA, vectorB) {
   return vectorA.x * vectorB.y - vectorA.y * vectorB.x;
@@ -196,6 +202,95 @@ export function expandToJoints(path, pointIndices) {
 }
 
 //
+// The two cubic segments meeting at the joint, as index quadruples
+// [onCurve, handle, handle, onCurve]. `nearSide` says which end of the
+// quadruple the joint itself sits at, so callers know which handle is its own.
+//
+// A segment is absent when an open contour runs out before it does, or when
+// the far end is not a real on-curve point.
+//
+function jointSegments(path, ctx) {
+  const [contourIndex, contourPointIndex] = path.getContourAndPointIndex(
+    ctx.pointIndex
+  );
+  const candidates = [
+    {
+      nearSide: "end",
+      indices: [
+        neighborIndex(path, contourIndex, contourPointIndex, -3),
+        ctx.indices.PP,
+        ctx.indices.P,
+        ctx.pointIndex,
+      ],
+    },
+    {
+      nearSide: "start",
+      indices: [
+        ctx.pointIndex,
+        ctx.indices.N,
+        ctx.indices.NN,
+        neighborIndex(path, contourIndex, contourPointIndex, 3),
+      ],
+    },
+  ];
+
+  return candidates.filter(
+    ({ indices }) =>
+      !indices.some((index) => index === undefined) &&
+      !path.getPoint(indices[0]).type &&
+      !path.getPoint(indices[3]).type
+  );
+}
+
+function segmentPositions(path, indices) {
+  return indices.map((index) => {
+    const [x, y] = path.getPointPosition(index);
+    return { x, y };
+  });
+}
+
+//
+// How far one handle reaches toward its segment's Tunni point: at 1 it lands
+// exactly on it, and past 1 the segment's two handle lines have crossed. This
+// is the donor's xPercent/yPercent (SuperTool+TunniEditing.m:196-197).
+//
+function handleTension(points, nearSide) {
+  const tunniPoint = calculateTunniPoint(points);
+  if (!tunniPoint) {
+    return 0; // parallel handles: they never cross, so nothing to limit
+  }
+  const [onCurve, handle] =
+    nearSide === "start" ? [points[0], points[1]] : [points[3], points[2]];
+  const reach = distance(onCurve, tunniPoint);
+  return reach ? distance(onCurve, handle) / reach : Infinity;
+}
+
+//
+// The worst tension either of the joint's own handles would reach after a
+// step, computed without touching the path.
+//
+function tensionAfterStep(path, ctx, segments, fixup, handleBias) {
+  const nodeDelta = mulVectorScalar(fixup, -(1 - handleBias));
+  const handleDelta = mulVectorScalar(fixup, handleBias);
+
+  let worst = 0;
+  for (const { nearSide, indices } of segments) {
+    const points = segmentPositions(path, indices).map((point, i) => {
+      const index = indices[i];
+      if (index === ctx.pointIndex) {
+        return addVectors(point, nodeDelta);
+      }
+      if (index === ctx.indices.P || index === ctx.indices.N) {
+        return addVectors(point, handleDelta);
+      }
+      return point;
+    });
+    worst = Math.max(worst, handleTension(points, nearSide));
+  }
+  return worst;
+}
+
+//
 // Tunni-equalize the two segments meeting at a joint.
 //
 // This is the one thing that moves the *outer* handles, PP and NN, which belong
@@ -209,51 +304,20 @@ export function expandToJoints(path, pointIndices) {
 // by default for that reason; see HARMONIZE_DEFAULTS.equalizeTension.
 //
 function equalizeJointSegments(path, ctx) {
-  const [contourIndex, contourPointIndex] = path.getContourAndPointIndex(
-    ctx.pointIndex
-  );
-  const segments = [
-    [
-      neighborIndex(path, contourIndex, contourPointIndex, -3),
-      ctx.indices.PP,
-      ctx.indices.P,
-      ctx.pointIndex,
-    ],
-    [
-      ctx.pointIndex,
-      ctx.indices.N,
-      ctx.indices.NN,
-      neighborIndex(path, contourIndex, contourPointIndex, 3),
-    ],
-  ];
-
-  for (const indices of segments) {
-    if (indices.some((index) => index === undefined)) {
-      continue; // open contour runs out before the segment does
-    }
-    // the far end must be a real on-curve point, not another handle
-    if (path.getPoint(indices[0]).type || path.getPoint(indices[3]).type) {
-      continue;
-    }
-
-    const points = indices.map((index) => {
-      const [x, y] = path.getPointPosition(index);
-      return { x, y };
-    });
+  for (const { indices } of jointSegments(path, ctx)) {
+    const points = segmentPositions(path, indices);
 
     // The donor skips inflected segments, where equalizing would fight the
     // shape rather than tidy it (SuperTool+TunniEditing.m:198-199).
-    const tunniPoint = calculateTunniPoint(points);
-    if (!tunniPoint) {
+    const startTension = handleTension(points, "start");
+    const endTension = handleTension(points, "end");
+    if (!startTension && !endTension) {
       continue;
     }
-    const startPercent =
-      distance(points[0], points[1]) / distance(points[0], tunniPoint);
-    const endPercent = distance(points[2], points[3]) / distance(points[3], tunniPoint);
-    if (startPercent > 1 && endPercent > 1) {
+    if (startTension > 1 && endTension > 1) {
       continue;
     }
-    if (startPercent < 0.01 && endPercent < 0.01) {
+    if (startTension < 0.01 && endTension < 0.01) {
       continue;
     }
 
@@ -324,6 +388,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     toleranceUnits,
     maxIterations,
     equalizeTension,
+    maxHandleTension,
   } = {
     ...HARMONIZE_DEFAULTS,
     ...options,
@@ -362,6 +427,15 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
           P: (1 - cuspSafetyMargin) * distance(ctx.node, ctx.P),
           N: (1 - cuspSafetyMargin) * distance(ctx.node, ctx.N),
         };
+    // A handle already over the ceiling is not made worse, but neither is it
+    // held hostage: the joint still harmonizes as far as it can.
+    const segments = ctx.reason ? [] : jointSegments(path, ctx);
+    const ceiling = segments.length
+      ? Math.max(
+          maxHandleTension,
+          tensionAfterStep(path, ctx, segments, ZERO_VECTOR, handleBias)
+        )
+      : Infinity;
     return {
       pointIndex,
       contourIndex: path.getContourIndex(pointIndex),
@@ -369,6 +443,8 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       reason: undefined,
       iterations: 0,
       floors,
+      segments,
+      ceiling,
       done: false,
     };
   });
@@ -424,12 +500,50 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       const clamped = scale < 1;
       scale = Math.max(scale, 0);
 
+      // Second limit, on the handle that *grows*: never let it reach past its
+      // segment's Tunni point, where the segment's two handle lines cross each
+      // other. The tension is monotone in the step size, so bisect for the
+      // largest admissible step rather than case-analysing the sign.
+      let tensionLimited = false;
+      if (
+        scale > 0 &&
+        tensionAfterStep(
+          path,
+          ctx,
+          state.segments,
+          mulVectorScalar(solution.fixup, scale),
+          handleBias
+        ) > state.ceiling
+      ) {
+        let low = 0;
+        let high = scale;
+        for (let step = 0; step < 24; step++) {
+          const mid = (low + high) / 2;
+          const tension = tensionAfterStep(
+            path,
+            ctx,
+            state.segments,
+            mulVectorScalar(solution.fixup, mid),
+            handleBias
+          );
+          if (tension > state.ceiling) {
+            high = mid;
+          } else {
+            low = mid;
+          }
+        }
+        scale = low;
+        tensionLimited = true;
+      }
+
       if (scale > 0) {
         applyFixup(path, ctx, mulVectorScalar(solution.fixup, scale), handleBias);
         state.iterations += 1;
         anyMoved = true;
       }
-      if (clamped) {
+      if (tensionLimited) {
+        settle(state, "partial", "tension-limited");
+      } else if (clamped) {
         settle(state, "partial", "clamped");
       }
     }
