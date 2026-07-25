@@ -73,7 +73,7 @@ which this doc also cites.
 | H1 | Default `handleBias = 1.0` — **node never moves** | Preserves extrema, metric-line alignment and start points. Costs iteration. |
 | H2 | Bias is **user-exposed** as a slider, 0…1 | Both donor behaviours reachable; named in forkra's own terms, not the donors'. |
 | H3 | v1 harmonizes **ordinary contours only** | One write path, one test surface. Skeleton centerlines are a clean follow-up. |
-| H4 | Generated contours are **refused** | R-D: derived geometry, regenerated on every edit. Guarded by `isGeneratedPathContour`. |
+| H4 | Generated contours are **refused** | R-D: derived geometry, regenerated on every edit. Guarded by `isGeneratedPathContour`. A v1 boundary, not a permanent verdict — see §9. |
 | H5 | Selection **widens** to touched smooth points | Handles map to their parent on-curve, so marquee-over-a-curve works. Empty selection = whole layer (both donors). |
 | H6 | Over-limit points are **clamped and reported `partial`** | Never produces a cusp, never silently does nothing. |
 | H7 | Multi-source is **recompute per layer**, gated by a panel flag | Blind delta propagation is geometrically meaningless here. See §5. |
@@ -196,8 +196,8 @@ every target layer. Excluded points are dropped before `harmonizePath` is called
 and reported as `skipped / generated-contour`.
 
 This keeps `harmonization.js` **completely skeleton-agnostic** — it never learns
-what a skeleton is, which makes the H3 follow-up a call-site change rather than a
-math change.
+what a skeleton is. Both deferred skeleton items (§9) then remain open: the core
+presumes nothing about how they will eventually work.
 
 *Cross-source assumption:* the current layer's excluded set is reused for all
 layers. Sound because multi-source editing already requires structurally
@@ -360,9 +360,17 @@ Nearly all the risk lives here and all of it is reachable.
 
 ## 9. Deferred
 
-- **Skeleton centerline harmonization** (H3). Centerlines are paths (C1) and the
-  same math applies verbatim; the write path must route through `editSkeleton`
-  (R-C). A call-site change, not a math change.
+- **Skeleton centerline harmonization** (H3). Centerlines join the harmonization
+  pool later. They are paths (C1), so the same math applies; the write path must
+  route through `editSkeleton` (R-C). Out of scope for this plan.
+- **Harmonization of generated geometry** (H4). Skeleton-generated outline
+  contours will eventually be harmonizable too, but **through a different
+  interaction model than base points** — direct path editing of generated
+  contours is precluded by R-D, so it cannot simply reuse this feature's
+  selection-and-apply flow. The form it takes is undecided and deliberately not
+  designed here. What matters for F9: the v1 refusal is a scope boundary, and
+  `harmonization.js` stays skeleton-agnostic so it presumes nothing about the
+  eventual interaction.
 - **Discontinuity visualization** (H10). Reconsider once there is real usage data
   on whether SpeedPunk's curvature comb is sufficient feedback.
 - **`harmonic-move`** — curvature-preserving drag. Separate feature, separate
