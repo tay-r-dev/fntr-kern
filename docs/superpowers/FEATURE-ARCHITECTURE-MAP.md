@@ -19,7 +19,7 @@ One companion document remains:
 
 | Doc                         | Answers                                                                  |
 | --------------------------- | ------------------------------------------------------------------------ |
-| `SKELETON-FEATURE-MODEL.md` | What the **donor's** skeleton code does (reading material, not our code) |
+| `SKELETON-FEATURE-MODEL.md` | The conceptual **mental model** of forkra's skeleton: what the feature is, how the generation pipeline works, what to preserve |
 | **this doc**                | Where everything **is**, who owns it, and (§9) why the skeleton is built this way |
 
 ---
