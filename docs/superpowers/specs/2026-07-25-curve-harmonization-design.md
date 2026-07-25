@@ -1,7 +1,9 @@
 # Curve Harmonization (F9) — Design
 
 **Date:** 2026-07-25
-**Status:** approved, not yet implemented
+**Status:** implemented — `2026-07-25-curve-harmonization-implementation.md` records
+what landed, the decisions taken while building it, and the two places this
+document was corrected afterwards (§1 consequence 2, §4 clamping)
 **Donors:** `_external/supertool` (`SuperTool+Harmonize.m`), `_external/green-harmony`
 **Companion docs:** `FEATURE-ARCHITECTURE-MAP.md` (§2 rails, §3 file maps), `SKELETON-FEATURE-MODEL.md`
 
@@ -43,12 +45,14 @@ Three consequences:
 1. There is no second algorithm to escalate to. A two-stage
    "SuperTool then Green Harmony" pipeline would run the same math twice.
 2. **Node-move is exact in one pass** — the target does not depend on the node
-   position. **Handle-move is not**: sliding the handles moves `D`, which moves
-   the target. Iteration belongs to the handle mode.
+   position. Handle-move was expected to need iteration, since sliding the
+   handles moves `D` and therefore the target. **Implementation proved otherwise:
+   it is exact in one pass too, at every bias** — see the implementation doc §2
+   for the proof. Iteration is still needed, but for coupled joints, not for the
+   bias.
 3. The natural failure limit is **geometric, not a percentage**. When `|fixup|`
-   approaches the shrinking handle's length, that handle collapses onto the node
-   and then past it, producing a cusp. A fixed "delta > 40% of handle length"
-   threshold measures the wrong thing.
+   approaches the shrinking handle's length, that handle shrinks toward nothing.
+   A fixed "delta > 40% of handle length" threshold measures the wrong thing.
 
 **Not ported:** SuperTool's `balance` (Tunni tension equalization). forkra
 already has it — `balanceSegment` and `calculateEqualizedControlPoints` in
@@ -116,15 +120,18 @@ export const HARMONIZE_DEFAULTS = {
   maxIterations: 10,
 };
 
-getJointContext(path, contourIndex, pointIndex)  // → {PP, P, node, N, NN} | null
+getJointContext(path, pointIndex)                // → {…stencil} | {reason}
 calculateHarmonicTarget(ctx)                     // → {target, fixup} | null
 measureG2Discontinuity(ctx)                      // → number (curvature jump)
+expandToJoints(path, pointIndices)               // → on-curve point indices
 harmonizePath(path, pointIndices, options)       // → {path, report}
 ```
 
 `measureG2Discontinuity` is public and tested even though nothing renders it in
-v1 — it is needed internally for the convergence check, and exposing it makes
-H10's reversal a rendering change rather than a math change.
+v1 — it is the definition harmonize is written against, so the tests measure
+results with it instead of re-deriving the algorithm, and exposing it makes
+H10's reversal a rendering change rather than a math change. Convergence itself
+is checked on `|fixup|` in font units, per H9.
 
 ### How the bias blends
 
@@ -137,27 +144,33 @@ P, N    +=      b   * fixup
 ```
 
 The relative displacement between node and handles is always exactly `fixup`,
-which is what makes the joint G2 at that instant. At `b = 0` the target does not
-depend on the node, so one pass is exact. At `b > 0` the handles move, which
-moves `D`, which moves the target — iterate until `|fixup| < toleranceUnits` or
-`maxIterations`.
+which is what makes the joint G2 at that instant. One pass is exact at **every**
+bias (implementation doc §2). Iteration exists for a different reason: adjacent
+smooth joints share handles, so correcting one perturbs its neighbour's stencil.
+Sweep the whole candidate set until every `|fixup| < toleranceUnits`, or
+`maxIterations` passes.
 
 ### Clamping
 
-Only one handle shrinks. Let `L` be its length and `F = b·|fixup|`:
+Only one handle shrinks, and it shrinks by exactly `|fixup|` — the bias splits
+*who moves*, not *how far apart they end up*. Let `L` be the shrinking handle's
+length **as it was before the first pass**, so repeated passes cannot nibble it
+away:
 
 ```
-F ≤ cuspSafetyMargin · L  → apply fully, status "harmonized"
-F > cuspSafetyMargin · L  → apply cuspSafetyMargin · L, status "partial"
+resulting length ≥ (1 − cuspSafetyMargin) · L  → apply fully, "harmonized"
+otherwise                                      → scale the step back to that
+                                                 floor, "partial"
 ```
 
 ### Report
 
-Entries are `{contourIndex, pointIndex, status, reason}`:
+Entries are `{pointIndex, contourIndex, status, reason, iterations}`:
 
 - `status` ∈ `harmonized` | `partial` | `skipped`
-- `reason` ∈ `not-smooth` | `not-curve-joint` | `degenerate` |
-  `generated-contour` | `already-harmonic`
+- `reason` ∈ `clamped` | `not-converged` (partial) |
+  `not-smooth` | `not-curve-joint` | `degenerate` | `already-harmonic` |
+  `generated-contour` (skipped)
 
 `degenerate` covers parallel outer handle lines, which `vector.js:intersect`
 already signals by returning `undefined`.

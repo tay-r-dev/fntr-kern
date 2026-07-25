@@ -17,6 +17,9 @@ export const applicationSettingsController = new ObservableController({
   speedPunkPeakHeightUpm: 24,
   speedPunkSharpness: 1,
   speedPunkOpacity: 0.5,
+  // fork: harmonize panel settings (app-level, per D9 — not written to project files)
+  harmonizeHandleBias: 1,
+  harmonizeOtherSources: true,
 });
 
 applicationSettingsController.synchronizeWithLocalStorage(

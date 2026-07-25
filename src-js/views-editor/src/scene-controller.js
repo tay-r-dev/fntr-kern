@@ -1,4 +1,5 @@
 import { registerAction } from "@fontra/core/actions.js";
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import {
   ShowLocationSettings,
   setShowEffectiveLocationDefaults,
@@ -24,6 +25,7 @@ import {
   getMyGlyphSets,
   readProjectGlyphSets,
 } from "@fontra/core/glyphsets-controller.js";
+import { expandToJoints, harmonizePath } from "@fontra/core/harmonization.js";
 import { translate, translatePlural } from "@fontra/core/localization.js";
 import { MouseTracker } from "@fontra/core/mouse-tracker.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
@@ -78,19 +80,17 @@ import { SceneModel } from "./scene-model.js";
 import {
   applyGeneratedContourRemap,
   computeGeneratedContourRemap,
+  createEditableGeneratedHandleTargetEntries,
+  createEditableGeneratedPointTargetEntries,
   createSkeletonRibTargetEntries,
   getSelectionTargetKinds,
   getSkeletonModifierBehaviorName,
+  getSkeletonRibBehaviorName,
   makeSkeletonModifierOptions,
   makeSkeletonPointTargetEntry,
   parseSkeletonPointKey,
   recordSkeletonContourIndexShift,
 } from "./skeleton-editing.js";
-import {
-  createEditableGeneratedHandleTargetEntries,
-  createEditableGeneratedPointTargetEntries,
-} from "./skeleton-editing.js";
-import { getSkeletonRibBehaviorName } from "./skeleton-editing.js";
 //// grid
 import { toggleMagneticSnap } from "./edit-behavior.js";
 
@@ -774,6 +774,8 @@ export class SceneController {
       () => this.doAddOverlap(),
       () => this.contextMenuState.pointSelection?.length
     );
+
+    registerAction("action.harmonize", { topic }, () => this.doHarmonize());
   }
 
   setAutoViewBox() {
@@ -1174,6 +1176,7 @@ export class SceneController {
       { actionIdentifier: "action.break-contour" },
       { actionIdentifier: "action.reverse-contour" },
       { actionIdentifier: "action.set-contour-start" },
+      { actionIdentifier: "action.harmonize" },
       { actionIdentifier: "action.realize-skeleton-contours" },
       {
         title: translate("action.glyph.convert-curves"),
@@ -1982,6 +1985,92 @@ export class SceneController {
       this.selection = new Set();
       return translate("action.add-overlap");
     });
+  }
+
+  //
+  // G2-harmonize the smooth joints implied by the current point selection.
+  // An empty selection means the whole layer, matching both donors.
+  //
+  // Returns a Map of layer name -> report entries (see harmonization.js), so the
+  // caller can tell the user what happened per source. No change is recorded
+  // when nothing is harmonizable: a no-op that eats an undo step is worse than
+  // no undo step at all.
+  //
+  async doHarmonize(options = {}) {
+    const {
+      handleBias = applicationSettingsController.model.harmonizeHandleBias,
+      applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
+    } = options;
+
+    const reports = new Map();
+
+    const path = this.sceneModel.getSelectedPositionedGlyph()?.glyph?.path;
+    if (!path) {
+      return reports;
+    }
+
+    // Structure (point count, point types, contour layout) is shared by all
+    // compatible layers, so the candidate set and the generated-contour
+    // exclusion can both be derived from the layer on screen.
+    const { point: pointSelection } = parseSelection(this.selection);
+    const candidates = expandToJoints(path, pointSelection);
+
+    const refused = [];
+    const pointIndices = [];
+    for (const pointIndex of candidates) {
+      const contourIndex = path.getContourIndex(pointIndex);
+      if (this.sceneModel.isGeneratedPathContour(contourIndex)) {
+        // R-D: generated geometry is regenerated on every edit, so editing it
+        // directly would be thrown away.
+        refused.push({
+          pointIndex,
+          contourIndex,
+          status: "skipped",
+          reason: "generated-contour",
+          iterations: 0,
+        });
+      } else {
+        pointIndices.push(pointIndex);
+      }
+    }
+
+    if (!pointIndices.length) {
+      if (refused.length) {
+        reports.set(this.sceneSettings.editLayerName, refused);
+      }
+      return reports;
+    }
+
+    await this.editLayersAndRecordChanges((layerGlyphs) => {
+      const editLayerName = this.sceneSettings.editLayerName;
+      const targets = applyToOtherSources
+        ? Object.entries(layerGlyphs)
+        : [
+            [
+              editLayerName,
+              layerGlyphs[editLayerName] || Object.values(layerGlyphs)[0],
+            ],
+          ];
+
+      for (const [layerName, layerGlyph] of targets) {
+        if (!layerGlyph) {
+          continue;
+        }
+        // Recompute per layer rather than propagating one layer's correction:
+        // the other sources have different handles, hence a different target.
+        const { path, report } = harmonizePath(layerGlyph.path, pointIndices, {
+          handleBias,
+        });
+        reports.set(layerName, [...report, ...refused]);
+        if (report.some(({ status }) => status !== "skipped")) {
+          layerGlyph.path = path;
+        }
+      }
+
+      return translate("action.harmonize");
+    });
+
+    return reports;
   }
 
   getPathConnectDetector(path) {
