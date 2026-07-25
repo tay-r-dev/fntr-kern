@@ -572,7 +572,7 @@ export const strings = {
   "sidebar.selection-transformation.harmonize": "Harmonize",
   "sidebar.selection-transformation.harmonize.apply": "Harmonize",
   "sidebar.selection-transformation.harmonize.handles": "handles",
-  "sidebar.selection-transformation.harmonize.node": "node",
+  "sidebar.selection-transformation.harmonize.point": "point",
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
   "sidebar.selection-transformation.harmonize.equalize-tension": "Equalize tension",
   "sidebar.selection-transformation.harmonize.equalize-tension.tooltip":
@@ -593,7 +593,7 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.status.partial": "%0 partial",
   "sidebar.selection-transformation.harmonize.status.skipped": "%0 skipped",
   "sidebar.selection-transformation.harmonize.tooltip":
-    "Which side absorbs the correction: the on-curve point, or its two handles",
+    "What absorbs the correction. At “handles” the on-curve point never moves, so extrema and metric alignment survive; at “point” the handles keep the positions you gave them. The curvature result is the same either way.",
   "sidebar.selection-transformation.move": "Move",
   "sidebar.selection-transformation.origin": "Origin",
   "sidebar.selection-transformation.origin.bottom.center": "Origin bottom center",

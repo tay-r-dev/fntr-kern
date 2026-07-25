@@ -777,7 +777,7 @@ export default class TransformationPanel extends Panel {
             class: "harmonize-slider-end",
             title: translate("sidebar.selection-transformation.harmonize.tooltip"),
           },
-          [translate("sidebar.selection-transformation.harmonize.node")]
+          [translate("sidebar.selection-transformation.harmonize.point")]
         ),
       },
       field2: {
@@ -788,9 +788,6 @@ export default class TransformationPanel extends Panel {
         defaultValue: 1,
         maxValue: 1,
         step: 0.05,
-        // the number box is not decoration: it is the only way to see that the
-        // bias being applied is the bias the slider shows
-        displayValue: true,
       },
       field3: {
         type: "auxiliaryElement",
