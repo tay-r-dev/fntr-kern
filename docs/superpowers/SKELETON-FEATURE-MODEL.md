@@ -113,9 +113,11 @@ change to outline geometry must preserve it (arch map §8 delegation recipe).
 
 ## 4. How forkra differs from the donor (the redesign)
 
-forkra re-integrated the feature; it did **not** merge the donor's plumbing.
-Three differences are load-bearing and must not be undone (full rationale: arch
-map §9):
+forkra re-integrated the feature; it did **not** merge the donor's plumbing. The
+donor still sits read-only at **`_external/skeleton`** (pinned at `fd76d3abe`,
+gitignored) as a behavioral reference — `git -C _external/skeleton …` — never a
+source to copy plumbing from. Three differences are load-bearing and must not be
+undone (full rationale: arch map §9):
 
 - **One write path.** All editing-side mutation flows through `editSkeleton`
   (`skeleton-editing.js`), the only caller of the generator on the edit side.

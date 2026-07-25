@@ -522,8 +522,11 @@ afterthought.
 
 Donor pinned at `fd76d3abe` (last pre-refactor commit, 2026-02-20) as the behavioral ground
 truth; three generator bug-fixes from its later refactor branch were cherry-picked as semantics.
-Built across WS-6…WS-16, with WS-17 the parity pass. The donor checkout and the porting rules
-that governed it are gone — this doc, verified against the code, is the reference now.
+Built across WS-6…WS-16, with WS-17 the parity pass. The donor checkout still exists, read-only
+and gitignored, at **`_external/skeleton`** (pinned at `fd76d3abe`) — a behavioral reference for
+parity questions, reachable via `git -C _external/skeleton …`; never a source to port plumbing
+from. The porting rules that governed the integration are retired — this doc, verified against
+the code, is the reference now.
 
 ---
 
