@@ -8,15 +8,19 @@ This is the **inventory and ownership map**. It answers "what did we build, wher
 and what may I touch?" — so a fresh session or a delegated agent can start work without
 re-deriving the architecture.
 
-Companion documents, each with a different job:
+The skeleton was **re-integrated** from an older fork (the "donor") between
+2026-07 and now — the geometry math ported, all plumbing redesigned. That work is
+finished; the forward-looking integration roadmap that planned it has been retired
+and its durable content folded into **§9 (skeleton design rationale)** of this doc.
+So this file is now self-contained: what everything is, where it lives, and why the
+skeleton is shaped the way it is.
 
-| Doc                                                              | Answers                                                                  |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `plans/2026-07-02-skeleton-integration-roadmap.md`               | _Why_ the skeleton is built this way; the C1–C4 rails; donor rules       |
-| `SKELETON-FEATURE-MODEL.md`                                      | What the **donor's** skeleton code does (reading material, not our code) |
-| `notes/2026-07-06-parity-bugs.md`                                | Live bug/parity registry — the working queue                             |
-| `_tmp/IMPLEMENTATION_PLAN.md`, `_tmp/PRE_IMPLEMENTATION_PLAN.md` | Historical: the WS-1…WS-5 program plan and its audit                     |
-| **this doc**                                                     | Where everything **is**, and who owns it                                 |
+One companion document remains:
+
+| Doc                         | Answers                                                                  |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `SKELETON-FEATURE-MODEL.md` | What the **donor's** skeleton code does (reading material, not our code) |
+| **this doc**                | Where everything **is**, who owns it, and (§9) why the skeleton is built this way |
 
 ---
 
@@ -65,8 +69,9 @@ Coarse grid   ▏                                             ~66
 
 ## 2. The rails (constraints every feature obeys)
 
-These come from the roadmap's §4 and the program plan's §4/§5. They are the reason the file
-layout looks the way it does — violating one is how you get a regression that tests can't catch.
+These operationalize the skeleton design model (§9); a few predate the skeleton, from the
+WS-1…5 program. They are the reason the file layout looks the way it does — violating one is
+how you get a regression that tests can't catch.
 
 **R-A — Layer placement is fixed.**
 Pure geometry/math → `fontra-core/src/` (mocha-tested). Hit-testing → `scene-model.js` as
@@ -203,8 +208,8 @@ Persists through the `fontra.internal` customData section `letterspacer` at thre
 `area`/`depth`/`overshoot` per source, `enabled` per font, `referenceGlyphName` per glyph.
 
 **The one skeleton coupling that was deliberately kept out at port time is now back in scope:**
-sidebearing changes should move skeleton data with them. That is roadmap WS-16's
-"letterspacer ↔ skeleton coupling" line — verify before assuming it is wired.
+sidebearing changes should move skeleton data with them (the "letterspacer ↔ skeleton coupling").
+Verify before assuming it is wired — see §7 residue #2.
 
 ### F7 — Skeleton
 
@@ -393,7 +398,8 @@ convention. That is why every editor-side plan carries an explicit manual test m
 
 ## 7. Known gaps and residue
 
-**Live queue:** `notes/2026-07-06-parity-bugs.md` is authoritative. Open at time of writing:
+**Bug snapshot** (the standalone parity-bugs registry is no longer kept; this is what was open
+when the doc was last verified, 2026-07-22 — re-check against the code before relying on it):
 
 | Item               | Summary                                                                              |
 | ------------------ | ------------------------------------------------------------------------------------ |
@@ -405,10 +411,11 @@ convention. That is why every editor-side plan carries an explicit manual test m
 
 1. **Rib and editable-generated entries do not implement `makeChangeForTransformation`** — they
    return `null`. A rib-only marquee selection draws a transform box that does nothing.
-2. **Letterspacer ↔ skeleton coupling** (roadmap WS-16) — verify whether sidebearing changes
-   move skeleton data before assuming it works.
+2. **Letterspacer ↔ skeleton coupling** — verify whether sidebearing changes move skeleton
+   data before assuming it works. (This is the coupling the sidebearing-variables work must
+   route through — it is not yet in the base margin-set path.)
 3. **`skeleton-generator.js` is 5,168 lines.** Justified by the port, but it is the single
-   largest file in the fork and the roadmap's own P6 warns about monoliths.
+   largest file in the fork — the one place defect **P6** (§9, monoliths) still bites.
 
 ---
 
@@ -443,10 +450,87 @@ New draw in the feature's `visualization-layer-*.js`; register in
 
 ---
 
+## 9. Skeleton design rationale
+
+The durable "why" behind the skeleton, folded in from the retired integration roadmap and
+reframed as it now stands. The skeleton was **re-integrated, not merged**: the donor's proven
+geometry math was ported; every piece of plumbing was redesigned around four concepts. This
+section explains the rails in §2 and — just as important — names what must never creep back.
+
+### The four concepts (C1–C4)
+
+Everything in the skeleton is an instance of one of these.
+
+- **C1 — A skeleton is a path.** Skeleton geometry uses the same point representation as glyph
+  paths (x, y, on/off-curve type, smooth flag) plus per-point attributes (widths, nudges, flags,
+  handle offsets). So the existing point-editing machinery — behavior rules, executors,
+  hit-testing, selection — applies verbatim, parameterized only by *which* path is edited and
+  *where* the change is recorded. On-curve points and handles are **one** selection kind
+  (`skeletonPoint/contour/point`), never split. → rail R-A.
+- **C2 — One write path.** `editSkeleton` (`skeleton-editing.js`) is the only caller of the
+  generator on the editing side: apply `mutate()` to a working copy → regenerate → update
+  provenance → return one combined change (customData + path) with rollback. Undo, incremental
+  sync and multi-layer editing then come from the existing change system for free. → rail R-C.
+- **C3 — Provenance forward, never recovered.** The generator emits the mapping (generated point
+  → skeleton point / side / role) at generation time; stable ids make it survive edits. Every
+  "which skeleton point owns this generated point?" is a map lookup. No geometric matching, no
+  tolerance-based inverse projection anywhere. → rail R-D.
+- **C4 — Derived handles are gizmos with one contract.** Rib endpoints, editable generated
+  handles and Tunni points all share: `position(source)` for render/hit-test, `applyDrag(delta)
+  → source mutation` for editing. Tunni is written once against "a path + an edit sink"; the
+  skeleton sink is `editSkeleton`.
+
+### The defects it answers (P1–P7)
+
+The donor's structural defects — what the design deliberately avoids, and what a change must not
+reintroduce:
+
+- **P1 — Derived data with no link to its source.** Donor matched generated contours back to
+  skeletons by geometry (inverse projection, a "recovery" routine). → answered by C3 + stable ids.
+- **P2 — Selection kinds multiplied beyond the concepts.** Five kinds for ~three semantics, two
+  existing only to reverse-map path-point indices. → C1/C3 dissolve the surplus.
+- **P3 — No single write path.** Mutations from drag, nudge, transform and a ~7,000-line panel,
+  each re-implementing regeneration/undo/bookkeeping until they drift. → C2.
+- **P4 — Duplicated geometry.** Donor had `projectRibPoint` twice, `DEFAULT_SKELETON_WIDTH` five
+  times; drift makes the outline and the edit targets disagree. → rail R-B (one copy of every
+  constant and geometry fn).
+- **P5 — Features bolted outside the behavior model.** X-equalize as a side channel regressed
+  five times; interpolation, expressed *inside* the rules, never did. → rail R-F (modifiers are
+  behavior names + executor variants, not bypass flags).
+- **P6 — Monolith files.** Donor pointer was 7,496 lines. The fork keeps the pointer thin, but
+  `skeleton-generator.js` (~5,200 lines) is the one place this weight still lives (§7 residue #3).
+- **P7 — In-place rearchitecting.** Four months of refactoring a live donor feature produced two
+  successive architectures and a long regression tail with no new capability — the reason this
+  was a clean re-integration, not a refactor.
+
+### Schema — stable ids are the load-bearing choice
+
+`customData["fontra.internal"].skeleton`; the full field list lives in `skeleton-model.js`.
+Skeleton contours and points carry stable, **never-reused ids**. Selection, provenance and undo
+reference those ids, not array indices, so structural edits can't silently retarget them — this
+is what makes C3 cheap. Generated contours are tracked by `generatedContourIndices` plus a
+per-point provenance map keyed by skeleton id.
+
+The one seam outside `editSkeleton`: **path** contours have no id facility in Fontra, so a
+generated contour's *index* can still be invalidated when a non-skeleton contour is inserted or
+deleted. Every editor operation that restructures the contour list must update the mapping in the
+same change — the knife/pen bookkeeping in §3 F7 is that hook. The donor hit this exact bug
+twice; ids + one write path are the structural answer, but the enumeration is real work, not an
+afterthought.
+
+### History (for archaeology)
+
+Donor pinned at `fd76d3abe` (last pre-refactor commit, 2026-02-20) as the behavioral ground
+truth; three generator bug-fixes from its later refactor branch were cherry-picked as semantics.
+Built across WS-6…WS-16, with WS-17 the parity pass. The donor checkout and the porting rules
+that governed it are gone — this doc, verified against the code, is the reference now.
+
+---
+
 ## Maintaining this doc
 
 Update it when a feature gains or loses a file, when a selection kind changes, or when a rail
 gets an exception. It is verified by construction — every path, count and export above came from
 `git diff upstream/main...HEAD` and greps against the tree on 2026-07-22, not from the older
-planning docs. Re-verify the same way rather than trusting this text; per the roadmap's own rule,
-never trust a document over the code.
+planning docs. Re-verify the same way rather than trusting this text: never trust a document
+over the code (§9's own rule, inherited from the retired roadmap).
