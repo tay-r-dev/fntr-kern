@@ -210,13 +210,28 @@ threshold.
 Smooth floor, C^∞ and monotone in λ:
 
 ```
-λ_safe = ½(λ + √(λ² + 4c²))     c = 0.02
+λ_safe = smoothMax(λ, c, w)      c = 0.02, w = 0.1
 ```
 
-`c = 0.02`, not 0.05. The floor is never *exactly* inert — it shifts `λ` by
-`c²/λ` — and at 0.05 that is 0.14 units on a 55-unit handle, which the emission
-rounding would not absorb. At 0.02 it is 0.006 units. Set from that requirement,
-not from taste.
+using the same polynomial form as the tension bound below, mirrored.
+
+**Not the sqrt form** `½(λ + √(λ² + 4c²))`, which an earlier draft specified.
+That form is never *exactly* inert: it shifts `λ` by `c²/λ`, and that shift is
+multiplied by the handle length. On a 55-unit handle at `c = 0.02` it is **0.022
+units** — an earlier draft of this section miscalculated it as 0.006 — and it
+grows with the handle, so no fixed test tolerance survives it. It also
+contradicts §4.5.1's invariant that no saturation fires on ordinary input.
+
+The polynomial form returns `λ` **exactly** once `λ − c > w`, i.e. above 0.12,
+where ordinary configurations sit (`λ ≈ 1`). Below that it blends to `c` and
+stays there — flat rather than asymptotic, so a handle far past the cusp keeps a
+fixed small fraction of its length instead of collapsing toward zero. C¹
+throughout.
+
+Use one smooth-min/smooth-max pair everywhere in the module — cusp floor,
+tension ceiling, chord backstop, length floor and the correction band. Mixing an
+exactly-inert form with a never-inert one is what produced the miscalculation
+above.
 
 **Outer side — tension ceiling.** Where the offset is on the outside of a turn,
 `λ > 1` and handles lengthen. Bound them so they cannot overshoot the tangent-ray

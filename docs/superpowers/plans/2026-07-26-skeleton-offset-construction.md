@@ -478,11 +478,16 @@ Expected: FAIL — cannot resolve `@fontra/core/offset-cubic.js`.
 Create `src-js/fontra-core/src/offset-cubic.js`:
 
 ```js
-// Softness of the cusp floor, as a fraction of the un-offset handle length.
-// The floor is never exactly inert - it shifts lambda by c^2/lambda - so this is
-// set from the requirement that the residual stay well under half a unit on a
-// normal handle: 0.02 leaves 0.006 units on a 55-unit handle, 0.05 leaves 0.14.
+// Floor on the offset speed factor lambda, as a fraction of the un-offset
+// handle length. A handle far past the cusp keeps this fraction rather than
+// collapsing.
 const CUSP_FLOOR = 0.02;
+
+// Blend window for every smooth min/max in this module, so each bound is
+// EXACTLY inert outside its window. Do not substitute a sqrt-based soft floor:
+// that form is never exactly inert, shifts lambda by c^2/lambda, and the shift
+// scales with handle length - 0.022 units on a 55-unit handle at c = 0.02.
+const CUSP_FLOOR_WINDOW = 0.1;
 
 const EPSILON = 1e-9;
 
@@ -490,11 +495,23 @@ function cross(a, b) {
   return a.x * b.y - a.y * b.x;
 }
 
-// Smooth floor at zero: equals `value` for value >> softness, equals `softness`
-// at zero, approaches zero from above as value goes negative. C-infinity and
-// monotone, so it can never introduce a jump.
-function softPositive(value, softness) {
-  return 0.5 * (value + Math.sqrt(value * value + 4 * softness * softness));
+// Polynomial smooth minimum: exactly min(a, b) when they differ by more than
+// `window`, blending quadratically inside it. C1 at the join.
+function smoothMin(a, b, window) {
+  if (!(window > EPSILON) || !Number.isFinite(b)) {
+    return Math.min(a, b);
+  }
+  const h = Math.max(window - Math.abs(a - b), 0) / window;
+  return Math.min(a, b) - h * h * window * 0.25;
+}
+
+// Mirror of smoothMin: exactly max(a, b) outside the window.
+function smoothMax(a, b, window) {
+  if (!(window > EPSILON) || !Number.isFinite(b)) {
+    return Math.max(a, b);
+  }
+  const h = Math.max(window - Math.abs(a - b), 0) / window;
+  return Math.max(a, b) + h * h * window * 0.25;
 }
 
 function endDerivatives(p0, p1, p2, p3, atEnd) {
@@ -535,13 +552,15 @@ export function offsetCubicSide({ p0, p1, p2, p3, d0, d3, q0, q3, u0, u1 }) {
   const startHandle = Math.hypot(p1.x - p0.x, p1.y - p0.y);
   const endHandle = Math.hypot(p3.x - p2.x, p3.y - p2.y);
 
-  const startLambda = softPositive(
+  const startLambda = smoothMax(
     1 + d0 * endpointCurvature(p0, p1, p2, p3, false),
-    CUSP_FLOOR
+    CUSP_FLOOR,
+    CUSP_FLOOR_WINDOW
   );
-  const endLambda = softPositive(
+  const endLambda = smoothMax(
     1 + d3 * endpointCurvature(p0, p1, p2, p3, true),
-    CUSP_FLOOR
+    CUSP_FLOOR,
+    CUSP_FLOOR_WINDOW
   );
 
   return {
@@ -715,7 +734,7 @@ const MAX_HANDLE_TO_CHORD_RATIO = 2.0;
 // gives the identical guarantee: some component is always >= 0.71, so it always
 // survives rounding on some axis - without quantizing the direction.
 const MIN_HANDLE_LENGTH = 1;
-const MIN_HANDLE_SOFTNESS = 0.1;
+const MIN_HANDLE_WINDOW = 0.5;
 
 /**
  * Activation counter for the tension bound. The bound is a guard, not a shaper:
@@ -731,20 +750,9 @@ export function resetTensionBoundStats() {
 }
 ```
 
-Add after `softPositive`:
+Add after `smoothMax` (both smooth helpers already exist from Task 3 — do not redefine them):
 
 ```js
-// Polynomial smooth minimum: exactly min(a, b) when they differ by more than
-// `window`, blending quadratically inside it. C1 at the join. The p-norm form
-// returns a/2^(1/n) at a == b, so it is never inert - this one is.
-function smoothMin(a, b, window) {
-  if (!(window > EPSILON) || !Number.isFinite(b)) {
-    return Math.min(a, b);
-  }
-  const h = Math.max(window - Math.abs(a - b), 0) / window;
-  return Math.min(a, b) - h * h * window * 0.25;
-}
-
 // Distance from each endpoint to the intersection of the two handle rays.
 // Infinity means no bound: parallel rays, or an intersection behind the
 // endpoint.
@@ -778,9 +786,7 @@ function boundLength(length, limit, chord) {
   }
   const chordCap = Math.max(chord * MAX_HANDLE_TO_CHORD_RATIO, EPSILON);
   bounded = smoothMin(bounded, chordCap, SMOOTH_MIN_WINDOW * chordCap);
-  return (
-    MIN_HANDLE_LENGTH + softPositive(bounded - MIN_HANDLE_LENGTH, MIN_HANDLE_SOFTNESS)
-  );
+  return smoothMax(bounded, MIN_HANDLE_LENGTH, MIN_HANDLE_WINDOW);
 }
 ```
 
@@ -939,12 +945,12 @@ Add after `MIN_HANDLE_SOFTNESS`:
 const CORRECTION_SAMPLE_TS = [0.125, 0.25, 0.5, 0.75, 0.875];
 
 // The solve is trusted only within this multiplicative band around the analytic
-// length, eased in rather than clamped. Softness is 0.005, not 0.05: the eased
-// band carries a systematic bias of softness^2/analytic, which at 0.05 is
-// 0.0025 of the length - half a unit on a 200-unit handle.
+// length, eased in rather than clamped. The band uses the same exactly-inert
+// smooth min/max as every other bound, so a solve comfortably inside the band
+// passes through untouched - no systematic bias.
 const CORRECTION_BAND_LOW = 0.25;
 const CORRECTION_BAND_HIGH = 4;
-const CORRECTION_BAND_SOFTNESS = 0.005;
+const CORRECTION_BAND_WINDOW = 0.05;
 ```
 
 Add after `boundLength`:
@@ -977,17 +983,17 @@ function offsetPointAt(p0, p1, p2, p3, d0, d3, t) {
 }
 
 // Ease a solved length into a multiplicative band around the analytic length.
-// Both edges use the same smooth floor as the cusp bound, so a solve that runs
-// negative is absorbed continuously instead of snapping to a default.
+// Both edges use the module's smooth min/max, so a solve inside the band passes
+// through exactly and one that runs negative is absorbed continuously instead of
+// snapping to a default.
 function easeIntoBand(solved, analytic) {
   if (!Number.isFinite(solved) || !(analytic > EPSILON)) {
     return analytic;
   }
-  const softness = CORRECTION_BAND_SOFTNESS * analytic;
+  const window = CORRECTION_BAND_WINDOW * analytic;
   const low = CORRECTION_BAND_LOW * analytic;
   const high = CORRECTION_BAND_HIGH * analytic;
-  const floored = low + softPositive(solved - low, softness);
-  return high - softPositive(high - floored, softness);
+  return smoothMin(smoothMax(solved, low, window), high, window);
 }
 ```
 
@@ -1012,7 +1018,15 @@ and change the return to bound `correctedStart` / `correctedEnd` instead of the 
 - [ ] **Step 4: Run the full suite**
 
 Run: `cd src-js/fontra-core && npm test`
-Expected: PASS. Task 3's analytic cases have a 0.01 tolerance and a circular arc's true offset is another arc, so the correction must agree with the analytic value well inside that. If they now fail, the sample targets use the wrong normal sign.
+
+Task 3's analytic cases assert the closed-form length to ±0.01. **The correction pass is expected to move those values** — that is its whole purpose: the true offset of a Bézier quarter-circle is not itself a Bézier arc, so the best-fit lengths differ slightly from the closed form. A shift there is correct behavior, not a regression.
+
+So: if those three cases now fail, read the actual numbers before changing anything.
+
+- **Shift under ~0.5 units, same sign, outward still longer than inward** — expected. Retarget those three assertions to the post-correction values, and add a comment saying the closed form is asserted at Task 3's stage and the correction refines it. Keep the tolerance tight.
+- **Outward and inward swapped, or a shift of several units** — the sample targets are using the wrong normal sign. Fix that, do not retarget.
+
+The `endpointCurvature` and degenerate-input cases must pass unchanged either way.
 
 - [ ] **Step 5: Commit**
 
