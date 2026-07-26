@@ -1,0 +1,279 @@
+# Skeleton offset: constructed, not fitted
+
+**Date:** 2026-07-26
+**Status:** design, approved
+**Scope:** the cubic-segment branch of outline generation in
+`fontra-core/src/skeleton-generator.js`. Line segments, caps, corner rounding
+and assembly are untouched.
+
+---
+
+## 1. The problem
+
+Generated outline handles are not a continuous function of the skeleton.
+
+Regeneration runs every frame during a drag. Moving a skeleton point by one
+unit can flip the adjacent generated segments into a completely different
+handle configuration — one that fits the curve equally well but looks nothing
+like the previous frame's. The result is unusable for planning geometry: a
+designer cannot predict where a generated handle will land.
+
+It shows up at small scale specifically:
+
+- when the distance between skeleton points is small relative to the rib width
+- when the generated segment is small relative to the skeleton's handles
+
+Both are the same condition in disguise: **offset distance approaching the
+radius of curvature**, `w·κ → 1`. That is the cusp condition for an offset
+curve, and it is where the current pipeline is worst conditioned.
+
+This is a stability problem, not an accuracy problem. Each frame's output is
+geometrically fine. It just isn't continuous in the input.
+
+## 2. Why the current pipeline jumps
+
+The cubic path is a stack of step functions. Every one of these makes a
+discrete decision inside a continuous drag.
+
+| # | Location | Discontinuity |
+|---|----------|---------------|
+| a | `fit-cubic.js:55` | When a solved handle length comes out ≤ ~0, **both** handles are discarded and replaced with `segLength/3` along the tangents. Negative alpha is common on short or shallow sample sets. This is the visible "handles snapped to a generic shape" jump. |
+| b | `bezier.js:572` `reduce()` | Subcurve count changes discontinuously — extrema entering/leaving [0,1] (`:582`), the S-shape test in `simple()` (`:559-561`). The second pass walks t in **0.01 steps** (`:604`), so split points are quantized: continuous input, staircase output. And `return []` at `:610` returns from the `forEach` callback rather than from `reduce`, so a span that cannot be made simple is **silently dropped** — the offset path loses a piece. Fires when curvature is high relative to length. |
+| c | `skeleton-generator.js:2313-2315` | The fit's sample set is 5 samples per subcurve at uniform *local* t. When the `reduce()` partition changes, every sample moves. Chord-length parameterization (`:2327`) then compounds it. |
+| d | `fit-cubic.js:110-121` | Branch on `maxError < error*1000`, then up to 20 Newton reparameterizations with break conditions `maxError < error` and `prevMaxError - maxError < 0.5`. The number of iterations actually run is an integer function of the input; output jumps when it changes. |
+| e | `skeleton-generator.js:2334-2352` | Adaptive threshold loop returns the first of ~7 thresholds (2%…15% of halfWidth) that passes. Which one passes is a step function; each yields a different curve. |
+| f | `:2630-2633`, `:2788-2800` | Offset is computed at the **average** half-width, then endpoints are swapped for the true rib points and the handles **rigidly translated** by the delta. On a short segment that translation is a large fraction of the handle length. |
+| g | `:2466-2467`, `:2893-2900`, `:2258` | Grid rounding at multiple stages. `lockNearZeroHandleDirection` snaps sub-1.25-unit handles via `getMinimumGridStepFromDirection`, which has only **8 possible directions**. |
+
+Note also a dimensional inconsistency: `computeMaxError` returns **squared**
+distance (`fit-cubic.js:148`) but is compared against a linear tolerance at
+`skeleton-generator.js:2341` and `fit-cubic.js:105`. The debug field is already
+named `actualErrorSq`. The effective tolerance is therefore sqrt-distorted and
+scale-dependent, which is part of why behavior differs by size.
+
+## 3. Rejected: porting to `outline()` / graduated outline
+
+`offset()` (`_external/bezierjs/src/bezier.js:520`) is `reduce()` → `scale(d)`
+per subcurve (`:549-554`). `outline()` (`:723`) is `reduce()` → `scale(d1)` /
+`scale(-d2)` per subcurve (`:756`, `:787-788`). **Same core.** Porting to
+`outline()` inherits discontinuity (b) unchanged.
+
+`outline()` additionally returns a closed `PolyBezier` with line endcaps
+(`:806-813`), which this codebase would have to tear apart — it builds its own
+caps and corner rounding.
+
+Graduated outline (`d3,d4`) is worse. It routes through the `scale(distanceFn)`
+branch (`:703-719`), which places control points radially from the
+normal-intersection point `o` and applies `if (distanceFn && !clockwise)
+rc = -rc;` (`:711`). `clockwise` is a boolean from the sign of one angle
+(`computedirection`, `:209-212`) that flips when P1 crosses the chord — a fresh
+discontinuity, in exactly the regime this design targets.
+
+The one idea worth taking from graduated outline is **per-endpoint distances**,
+replacing the average-width hack (f). This design implements that directly in
+closed form. It does not call `outline()`.
+
+## 4. The construction
+
+Offsetting a cubic preserves the tangent **direction** exactly:
+
+```
+O(t)  = P(t) + d·N(t)
+O'(t) = P'(t)·(1 − d·κ(t))
+```
+
+Direction identical, speed scaled by `(1 − d·κ)`. For one-cubic-per-side output
+— already the topology contract — endpoints and tangent directions are therefore
+known exactly, and the only free parameters are two handle lengths. Those have a
+closed form too.
+
+The rule a designer can hold: **the generated handle is the skeleton handle
+scaled by (1 − width × curvature).**
+
+### 4.1 New module
+
+`fontra-core/src/offset-cubic.js`. One pure function. No state, no `Bezier`
+object construction, no history:
+
+```js
+offsetCubicSide({ p0, p1, p2, p3, w0, w3, n0, n3, q0, q3 }) → { h1, h2 }
+```
+
+- `p0..p3` — the skeleton cubic's control points
+- `w0`, `w3` — half-widths at each end, for this side
+- `n0`, `n3` — corner-aware rib normals, already through `getEffectiveNormal`
+- `q0`, `q3` — the projected rib endpoints, **unrounded**, already through
+  `applyNudgeToRibPoint`
+- returns the two generated handles, **unrounded**
+
+Same inputs produce byte-identical output, every frame. Nearby inputs produce
+nearby output. That is the entire point.
+
+### 4.2 Endpoint curvature
+
+Direct from the derivative control points, avoiding reversal-sign ambiguity:
+
+```
+B'(0) = 3(P1−P0)      B''(0) = 6(P2 − 2P1 + P0)
+B'(1) = 3(P3−P2)      B''(1) = 6(P3 − 2P2 + P1)
+κ(t)  = cross(B'(t), B''(t)) / |B'(t)|³
+```
+
+### 4.3 End tangents, with the width gradient
+
+With `w(t)` linear between `w0` and `w3`:
+
+```
+O(t)  = P(t) + w(t)·N(t)
+O'(t) = P'(t)·(1 − w(t)·κ(t)) + w'(t)·N(t)
+```
+
+The `w'·N` term tilts the end tangent when the widths differ. This is the
+correct treatment of variable width, and it retires (f) entirely — widths enter
+exactly, per endpoint, instead of as an average plus a rigid correction.
+
+### 4.4 Handle lengths
+
+`L = |O'|/3` at each end, along the normalized `O'`. Fully determined. No
+fitting, no free parameters.
+
+### 4.5 Saturation
+
+`λ = 1 − w·κ` crosses zero exactly at the cusp. Smooth floor — C^∞ and monotone
+in λ:
+
+```
+λ_safe = ½(λ + √(λ² + 4c²))     c ≈ 0.05
+```
+
+Plus a smooth ceiling against `k·chord` for the retracted-handle case, where κ
+diverges as `1/|P1−P0|²`. Start `k` at 2.0, the value the existing
+`MAX_HANDLE_TO_CHORD_RATIO` already uses, but applied as a smooth min rather
+than a hard clamp. Together these replace `lockNearZeroHandleDirection`'s
+8-direction snap and `stabilizeSingleCubicHandles`' hard clamps.
+
+The constants `c` and `k` are the only tunables in the design. Both are
+dimensionless and both act smoothly, so neither can introduce a jump.
+
+### 4.6 The one correction pass
+
+The closed form has G2 contact at the endpoints but drifts mid-segment when
+`w·κ` is large — precisely the regime this design targets. One fixed correction
+pass pins it down without reintroducing any adaptive machinery.
+
+Sample the true offset at five **fixed** source parameters
+`t ∈ {⅛, ¼, ½, ¾, ⅞}`. Solve the two handle lengths along the already-fixed
+directions from §4.3 by least squares, parameterized by the **source t** — not
+by chord length of the sample set. Fixed sample count, fixed single pass, fixed
+parameterization: continuous.
+
+This is the linear algebra `generateBezier` already performs. But
+`generateBezier` embeds fallback (a). So:
+
+- Extract `solveHandleLengths(points, parameters, leftTangent, rightTangent)
+  → {alphaL, alphaR}` from `fit-cubic.js`, containing the 2×2 solve and nothing
+  else.
+- `generateBezier` calls it and keeps its existing `segLength/3` fallback, so
+  its current callers are unaffected.
+- `offsetCubicSide` calls it and applies its **own** smooth fallback: a
+  multiplicative band around the analytic value from §4.4, which is already
+  correct to first order.
+
+One copy of the geometry function (rail R-B).
+
+## 5. Rounding
+
+`offsetCubicSide` works entirely in float. It receives unrounded rib endpoints
+and returns unrounded handles; the caller rounds once, at emission, exactly
+where it does today.
+
+This is required for the continuity property to be *visible*: a perfectly
+continuous algorithm fed rounded endpoints still steps by one unit, and at the
+scale in question that step is the jump.
+
+Concretely: the local `projectPoint` helper (`:2461-2469`) must yield an
+unrounded rib position for the offset math. Rounding moves to the point where
+the on-curve is pushed onto the side array, so the emitted coordinates are
+identical in kind to today's — only the handle computation sees the extra
+precision.
+
+Blast radius stays inside the cubic path. The emitted on-curve points are
+rounded as today, so corner rounding and caps see exactly what they see now.
+Pipeline-wide round-once (caps, corner rounding, `outlineContourToPackedPath`)
+remains the separate task already listed in `SKELETON-FEATURE-MODEL.md` §6.
+
+## 6. Deletions
+
+All in the cubic path, all superseded:
+
+- `simplifyOffsetCurves` and its constants — `SIMPLIFY_OFFSET_CURVES`,
+  `SAMPLES_PER_CURVE`, `MIN_ERROR_PERCENT`, `MAX_ERROR_PERCENT`,
+  `ERROR_STEP_PERCENT`
+- both `bezier.offset()` calls (`:2632-2633`)
+- `stabilizeSingleCubicHandles` and `ENABLE_EXPERIMENTAL_HANDLE_STABILIZATION`
+  — dead since the port, now superseded
+- `lockNearZeroHandleDirection` and `getMinimumGridStepFromDirection`, **if** the
+  cubic path is their only caller. Verify before removing.
+- `alignHandleDirections` — dead since the port (both call sites commented out),
+  and sits in this exact path. `SKELETON-FEATURE-MODEL.md` §6 already flags it.
+
+`createBezierFromPoints` stays — other callers use it.
+
+Removing `reduce()` (up to ~100 splits with a `simple()` test each, per curve per
+side) and `fitCubic`'s up-to-7×20 Newton iterations is also a substantial
+per-frame speedup.
+
+## 7. Tests
+
+### New — `fontra-core/tests/test-offset-cubic.js`
+
+- **Circular-arc exactness.** Offsetting a Bézier quarter-circle by `d` yields
+  the `r±d` arc. The construction is exact here; the current fit is not. Doubles
+  as the sign-convention oracle — this code uses CW normals
+  (`rotateVector90CW`), bezier-js uses CCW.
+- **Lipschitz continuity.** The property that is missing today. Over a grid of
+  configurations including the pathological regime — short segments, `w·κ` near
+  1, retracted handles — perturb each input coordinate by ε and assert every
+  output coordinate moves by less than K·ε. **This test fails against the
+  current code.** It is the acceptance criterion for the whole change.
+- **Monotonicity sweep.** March a skeleton point 200 steps along a line; assert
+  no handle-length jump above threshold.
+- **Cusp regime.** `w·κ > 1` produces finite, bounded, non-flipped handles.
+- **Degenerates.** Zero-length handles, collinear control points, zero width,
+  coincident endpoints.
+
+### Existing
+
+- `tests/data/skeleton-generator/fixtures.json` regenerates via
+  `tests/scripts/make-skeleton-generator-fixtures.js`.
+- **The golden-master suite is currently titled "matches donor output". After
+  this change it no longer does.** Retitle it and record the divergence in
+  `SKELETON-FEATURE-MODEL.md`. The donor at `_external/skeleton` stays the
+  behavioral reference for everything else; offset construction is now
+  deliberately forkra's own.
+- `test-skeleton-interpolation.js` must still pass. Point-count stability is
+  preserved trivially — still exactly one cubic per side per segment.
+
+### Expected output change
+
+One-time, at the change. Not ongoing.
+
+Endpoints do not move: both old and new pin them to the exact rib positions.
+Only handles change, so mid-segment deviation lands within the range the current
+fit already tolerates — roughly 1–3 units at mid-segment for a 60-unit stroke,
+zero at the ends.
+
+Locality is unchanged from today. Moving skeleton point B affects segments A–B
+and B–C and nothing beyond. Within A–B it does move the generated handle at the
+A end, because endpoint curvature depends on the whole control polygon — but
+proportionally and smoothly, which is the entire difference.
+
+## 8. What is not in scope
+
+- Line segments, caps (butt/round/square/drop), corner rounding, assembly,
+  `enforceSmoothColinearity`
+- Pipeline-wide round-once
+- Splitting the `skeleton-generator.js` monolith (defect P6)
+- Any editor-side change. This is `fontra-core` only, so the mocha harness
+  covers it and no manual test matrix is owed — though a visual check against
+  `test-py/data/fonts/SkeletonRendering.fontra/` is worth doing.
