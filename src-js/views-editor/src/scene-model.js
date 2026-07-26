@@ -730,7 +730,7 @@ export class SceneModel {
     // mirroring how regular segment clicks select the two parent points.
     const skeletonSegmentSelection = this.skeletonSegmentSelectionAtPoint(point, size);
     if (skeletonSegmentSelection.size) {
-      return { selection: skeletonSegmentSelection };
+      return { selection: skeletonSegmentSelection, isSegment: true };
     }
 
     selection = this.segmentSelectionAtPoint(point, size);
@@ -1379,7 +1379,7 @@ d ${measure.distance.toFixed(1)}`,
         return { selection: new Set() };
       }
       const selection = new Set(pointIndices.map((i) => `point/${i}`));
-      return { selection, pathHit };
+      return { selection, pathHit, isSegment: true };
     }
     return { selection: new Set() };
   }
