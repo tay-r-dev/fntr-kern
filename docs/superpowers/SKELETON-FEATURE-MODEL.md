@@ -82,10 +82,10 @@ pure and independent (contour *i*'s output depends only on contour *i*):
    on-curve→on-curve segments carrying their off-curve controls.
 2. **Per-segment offsetting** — each side's outline is offset by its half-width.
    Line segments project endpoints along the rib normal (`applyNudgeToRibPoint`
-   applies nudges). Cubic segments are offset with bezier-js at the *average*
-   half-width, re-fit to one cubic (`simplifyOffsetCurves`, an adaptive-tolerance
-   `fitCubic` loop), then endpoints are pinned to the exact rib positions and the
-   handles translated to match; user handle offsets apply via
+   applies nudges). Cubic segments keep skeleton handle directions and construct
+   handle lengths with `λ = 1 + d·κ` in `offset-cubic.js`, followed by one fixed
+   least-squares correction pass; endpoints remain the exact rib positions; user
+   handle offsets apply via
    `applyHandleOffsetToControlPoint`. A side under ~0.5 units ("collapsed") skips
    all of this and copies the skeleton verbatim — this is what makes single-sided
    contours exact.
@@ -155,13 +155,6 @@ Losing any of these regresses the product:
 Not bugs — carried-over cruft and structural weight. Each is verified present
 today; treat as opportunities, not mandates, and confirm before acting.
 
-- **Disabled `alignHandleDirections`** — defined (`:777`) but commented out at
-  both call sites as "DISABLED for performance testing — O(n³)"
-  (`~:1444`, `~:1882`). Either it matters (needs an O(n) rewrite) or it doesn't
-  (delete it and the function). It has been off since the port.
-- **Gated `stabilizeSingleCubicHandles`** — behind
-  `ENABLE_EXPERIMENTAL_HANDLE_STABILIZATION = false` (`:567`); the function
-  (`:2091`) and its call (`~:2871`) are dead while the flag is off.
 - **Round-once opportunity.** Grid quantization at every pipeline stage (§3) is
   the reason `lockNearZeroHandleDirection`, the `NEAR_ZERO_*` constants and the
   rotation clamp exist. Keeping interior handles in floats and rounding once at
