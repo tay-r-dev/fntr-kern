@@ -1,5 +1,6 @@
 import { Bezier } from "bezier-js";
 import { chordLengthParameterize, computeMaxError, fitCubic } from "./fit-cubic.js";
+import { offsetCubicSide } from "./offset-cubic.js";
 import {
   CAP_POINT_FIELDS,
   CORNER_POINT_FIELDS,
@@ -2727,6 +2728,98 @@ function generateOffsetPointsForSegment(
         return;
       }
 
+      const controls = segment.controlPoints;
+      const sideSign = isLeftSide ? 1 : -1;
+      const startTangentFallback = getSegmentTangent(segment, "start");
+      const endTangentFallback = getSegmentTangent(segment, "end");
+      const startHandleDir = getSkeletonHandleDirection(segment, "start", "out");
+      const endHandleDir = getSkeletonHandleDirection(segment, "end", "in");
+      const startDir = startHandleDir ?? startTangentFallback;
+      const endDir = endHandleDir ?? {
+        x: -endTangentFallback.x,
+        y: -endTangentFallback.y,
+      };
+      const { startLength, endLength } = offsetCubicSide({
+        p0: segment.startPoint,
+        p1: controls[0],
+        p2: controls[controls.length - 1],
+        p3: segment.endPoint,
+        d0: sideSign * startHalfWidth,
+        d3: sideSign * endHalfWidth,
+        q0: fixedStart,
+        q3: fixedEnd,
+        u0: startDir,
+        u1: endDir,
+      });
+      if (shouldAddStart)
+        output.push(
+          buildGeneratedOnCurve(
+            fixedStart,
+            smoothStart,
+            segment.startPoint,
+            startHalfWidth,
+            startRoundBase,
+            side
+          )
+        );
+      let adjustedHandle1 = {
+        x: fixedStart.x + startDir.x * startLength,
+        y: fixedStart.y + startDir.y * startLength,
+      };
+      let adjustedHandle2 = {
+        x: fixedEnd.x + endDir.x * endLength,
+        y: fixedEnd.y + endDir.y * endLength,
+      };
+      if (startHandleDir)
+        adjustedHandle1 = applyHandleOffsetToControlPoint(
+          adjustedHandle1,
+          segment.startPoint,
+          startHandleDir,
+          side,
+          "out",
+          fixedStart
+        );
+      if (endHandleDir)
+        adjustedHandle2 = applyHandleOffsetToControlPoint(
+          adjustedHandle2,
+          segment.endPoint,
+          endHandleDir,
+          side,
+          "in",
+          fixedEnd
+        );
+      adjustedHandle1 = projectHandleOntoDirection(
+        fixedStart,
+        adjustedHandle1,
+        startDir
+      );
+      adjustedHandle2 = projectHandleOntoDirection(fixedEnd, adjustedHandle2, endDir);
+      for (const [point, owner, role] of [
+        [adjustedHandle1, segment.startPoint, "out"],
+        [adjustedHandle2, segment.endPoint, "in"],
+      ]) {
+        const generated = {
+          x: Math.round(point.x),
+          y: Math.round(point.y),
+          type: "cubic",
+        };
+        const provenance = pointProvenance(owner, side, role);
+        if (provenance) generated._provenance = provenance;
+        output.push(generated);
+      }
+      if (shouldAddEnd)
+        output.push(
+          buildGeneratedOnCurve(
+            fixedEnd,
+            smoothEnd,
+            segment.endPoint,
+            endHalfWidth,
+            endRoundBase,
+            side
+          )
+        );
+      return;
+
       // Fallback: if bezier.offset() returns empty result, add straight line
       if (!curves || curves.length === 0) {
         if (shouldAddStart) {
@@ -3328,6 +3421,13 @@ function getSegmentTangent(segment, position) {
   const t = position === "start" ? 0 : 1;
   const deriv = bezier.derivative(t);
   return vector.normalizeVector({ x: deriv.x, y: deriv.y });
+}
+
+function projectHandleOntoDirection(anchor, handlePoint, direction) {
+  const along =
+    (handlePoint.x - anchor.x) * direction.x + (handlePoint.y - anchor.y) * direction.y;
+  const length = Math.max(along, 1);
+  return { x: anchor.x + direction.x * length, y: anchor.y + direction.y * length };
 }
 
 function getFirstOnCurvePoint(points) {
