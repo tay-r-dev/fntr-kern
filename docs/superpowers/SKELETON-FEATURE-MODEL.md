@@ -100,12 +100,44 @@ pure and independent (contour *i*'s output depends only on contour *i*):
    contour (`reverseContour`). Closed skeletons instead emit **two** contours
    (outer + counter-wound inner).
 6. **Smoothing** — `enforceSmoothColinearity` re-collinearizes handle pairs
-   around smooth on-curves (length-weighted, rotation-capped).
+   around smooth on-curves. When both handles descend from the same skeleton
+   point they carry the axis they were constructed on (`_axis`, stamped at
+   emission, stripped with `_provenance`) and `sharedLockedAxis` uses it
+   directly. Only handles without that axis — caps, line-segment ribs,
+   corner-rounding output — fall back to the length-weighted, rotation-capped
+   estimate.
 
-**Grid rounding happens at every stage**, not once at the end. Several defensive
-mechanisms exist to cope with the error that early quantization introduces:
-`lockNearZeroHandleDirection` (stops sub-unit handles flipping 180°), the
-`NEAR_ZERO_*` constants, and the rotation clamp in `enforceSmoothColinearity`.
+   **The axis must not be derived from handle length.** Rib width changes
+   generated handle length, so a length-weighted axis rotates whenever width
+   changes: measured at 1.1° mean and 12.5° worst per single unit of width
+   before the axis was taken from the skeleton. Deriving it from the *rounded*
+   handle positions is the same trap, because the grid snap is what makes the
+   direction length-dependent in the first place. Locked in by
+   "keeps the smooth-junction handle axis independent of rib width".
+
+   This pass writes handle positions **unrounded**, deliberately: re-snapping
+   to the grid here would undo the colinearity it just established, and worst
+   on short handles, where a unit of rounding is a large angle.
+
+**Grid rounding happens at every stage**, not once at the end. It is also what
+makes handle *direction* length-dependent: a handle emitted at
+`round(ribPoint + axis · length)` carries its axis only to within
+`atan(0.7 / length)` — about 1.3° at 32 units, 4° at 10, and 45° at 1, where the
+eight lattice neighbours are the only directions expressible at all. So any
+later stage that re-derives a direction from rounded coordinates inherits a
+width dependence, because width sets the length.
+
+**Known issue — handles at the minimum length lose their direction.** The
+1-unit floor (`MIN_HANDLE_LENGTH`, plus the `Math.max(along, 1)` clamp in
+`projectHandleOntoDirection`) combined with the grid snap reproduces the
+8-direction quantization that deleting `lockNearZeroHandleDirection` was meant
+to remove. At smooth junctions this no longer shows, because the axis comes from
+the skeleton and is applied unrounded (§3.6). Elsewhere a floored handle still
+points at a lattice neighbour. The floor fires whenever the offset is at or past
+its cusp (`d·κ ≤ −1`), i.e. rib half-width at or beyond the skeleton's radius of
+curvature — genuinely degenerate geometry, but the emitted direction there is
+arbitrary rather than merely short. Fixing it means choosing between a larger
+floor and sub-unit handle coordinates; not yet decided.
 
 **Point-count stability is a hard constraint.** The generated point count must
 stay constant across parameter values, or cross-master interpolation breaks. Any

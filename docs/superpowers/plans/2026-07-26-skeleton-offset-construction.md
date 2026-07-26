@@ -1645,7 +1645,27 @@ cd src-js/fontra-core && node tests/scripts/measure-tension-bound.js
 
 Record both lines in the commit message.
 
-- [ ] **Step 3: Decide from the numbers**
+- [x] **Step 3: Decide from the numbers**
+
+**Measured 2026-07-26 — the bound stays.**
+
+```
+fixtures: {"evaluated":20,"active":2}
+sweep:    {"evaluated":11520,"active":3872}
+```
+
+It fires on 2 of 20 fixture evaluations and 34% of the small-scale sweep, so the
+"delete it" branch below does not apply. The floor is already in place
+(`TENSION_LIMIT_FLOOR_RATIO = 1/3`, commit `8bdef4f34`) and is load-bearing:
+without it, a segment whose rib chord collapses pins both handles to the tangent
+intersection — observed at half-width 30 on a scale-1 junction, where a 6-unit
+rib chord drove both handles to exactly 6.71. That is the collapse-and-snap
+failure mode the floor exists to stop. The `chord/3` value was the user's
+concern about a magic number; it is now justified by measurement rather than
+taste, and it is the same neutral-cubic length `fit-cubic.js` already falls back
+to.
+
+The decision rules as originally written:
 
 **If `active` is 0 in both runs:** delete the tension bound. Remove `tangentIntersectionDistances`, the `calculateTunniPoint` import, `tensionBoundStats`, `resetTensionBoundStats`, and the tension branch of `boundLength`. Keep the chord backstop and the length floor. Delete the tests that reference the removed exports. This is the preferred outcome — it removes a mechanism, a dependency and a constant, and the collapse-and-snap failure mode goes with them.
 

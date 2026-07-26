@@ -62,6 +62,43 @@ describe("skeleton-generator provenance", () => {
     ).to.equal(false);
   });
 
+  it("keeps the smooth-junction handle axis independent of rib width", () => {
+    // A smooth skeleton point has colinear handles, so both generated handles
+    // beside it are constructed on that one axis. Rib width may change their
+    // LENGTH but must never rotate them: the axis previously came from a
+    // length-weighted average of the two rounded handle directions, so every
+    // width change rotated it (measured: 1.1 deg mean, 12.5 deg worst, per
+    // single unit of width).
+    const axesByWidth = [];
+    for (const halfWidth of [5, 6, 7, 12, 20, 28, 35]) {
+      axesByWidth.push(smoothJunctionAxes(smoothJunctionSkeleton(halfWidth)));
+    }
+    for (const axes of axesByWidth) {
+      expect(axes, "a smooth junction with two handles on each side").to.have.length(2);
+    }
+    for (const axes of axesByWidth.slice(1)) {
+      for (const [index, axis] of axes.entries()) {
+        expect(axis.angle, `axis ${index} angle`).to.be.closeTo(
+          axesByWidth[0][index].angle,
+          1e-6
+        );
+      }
+    }
+  });
+
+  it("keeps generated handles exactly colinear across a smooth junction", () => {
+    for (const halfWidth of [5, 12, 20, 35]) {
+      for (const axis of smoothJunctionAxes(smoothJunctionSkeleton(halfWidth))) {
+        // Anti-parallel to within floating point, not merely within the 2.5 deg
+        // the old length-weighted gate allowed through.
+        expect(axis.misalignmentDegrees, `half-width ${halfWidth}`).to.be.closeTo(
+          0,
+          1e-6
+        );
+      }
+    }
+  });
+
   it("emits side-bearing on-curve provenance for every rib point", () => {
     const fixture = fixtures.find((item) => item.name === "open-line-butt-cap");
     const result = generateFromSkeleton(fixture.canonical);
@@ -590,6 +627,70 @@ describe("skeleton-generator near-zero handle stabilization", () => {
     }
   });
 });
+
+// Two cubic segments meeting at a smooth on-curve point (id 5), whose skeleton
+// handles (ids 4 and 6) are exactly colinear through it.
+function smoothJunctionSkeleton(halfWidth) {
+  const onCurve = (id, x, y, smooth) => ({
+    id,
+    x,
+    y,
+    type: null,
+    smooth,
+    width: { left: halfWidth, right: halfWidth, linked: true },
+    nudge: { left: 0, right: 0 },
+    editable: { left: false, right: false },
+    handleOffsets: {},
+  });
+  const offCurve = (id, x, y) => ({ id, x, y, type: "cubic", smooth: false });
+  return {
+    version: 1,
+    nextId: 9,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: halfWidth * 2,
+        singleSided: null,
+        points: [
+          onCurve(2, 0, 0, false),
+          offCurve(3, 20, 40),
+          offCurve(4, 50, 40),
+          onCurve(5, 60, 60, true),
+          offCurve(6, 70, 80),
+          offCurve(7, 100, 100),
+          onCurve(8, 120, 60, false),
+        ],
+      },
+    ],
+    generated: [],
+  };
+}
+
+// For each generated smooth on-curve point flanked by two off-curve handles:
+// the incoming handle's angle and how far from anti-parallel the pair sits.
+function smoothJunctionAxes(skeleton) {
+  const axes = [];
+  for (const contour of generateFromSkeleton(skeleton).contours) {
+    const points = contour.points;
+    for (let i = 1; i < points.length - 1; i++) {
+      const point = points[i];
+      if (point.type || !point.smooth) continue;
+      const previous = points[i - 1];
+      const next = points[i + 1];
+      if (!previous.type || !next.type) continue;
+      const angleIn = Math.atan2(previous.y - point.y, previous.x - point.x);
+      const angleOut = Math.atan2(next.y - point.y, next.x - point.x);
+      axes.push({
+        angle: (angleIn * 180) / Math.PI,
+        misalignmentDegrees: Math.abs(
+          (Math.abs(angleIn - angleOut) * 180) / Math.PI - 180
+        ),
+      });
+    }
+  }
+  return axes;
+}
 
 function roundContours(contours) {
   return contours.map((contour) => ({

@@ -111,6 +111,34 @@ const fixtures = [
     },
   },
   {
+    // Two cubic segments meeting at a smooth on-curve point. No other fixture
+    // has one, which is why a smooth-junction handle defect went unrecorded:
+    // the generated handles either side of point 5 must stay exactly colinear.
+    name: "open-smooth-cubic-junction",
+    canonical: {
+      version: 1,
+      nextId: 9,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 60,
+          singleSided: null,
+          points: [
+            point(2, 0, 0),
+            offCurve(3, 20, 40),
+            offCurve(4, 50, 40),
+            point(5, 60, 60, { smooth: true }),
+            offCurve(6, 70, 80),
+            offCurve(7, 100, 100),
+            point(8, 120, 60),
+          ],
+        },
+      ],
+      generated: [],
+    },
+  },
+  {
     name: "single-sided-left",
     canonical: {
       version: 1,

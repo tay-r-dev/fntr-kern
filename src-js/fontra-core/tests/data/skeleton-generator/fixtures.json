@@ -710,6 +710,263 @@
     ]
   },
   {
+    "name": "open-smooth-cubic-junction",
+    "canonical": {
+      "version": 1,
+      "nextId": 9,
+      "contours": [
+        {
+          "id": 1,
+          "closed": false,
+          "defaultWidth": 60,
+          "singleSided": null,
+          "points": [
+            {
+              "id": 2,
+              "x": 0,
+              "y": 0,
+              "type": null,
+              "smooth": false,
+              "width": {
+                "left": 40,
+                "right": 40,
+                "linked": true
+              },
+              "nudge": {
+                "left": 0,
+                "right": 0
+              },
+              "editable": {
+                "left": false,
+                "right": false
+              },
+              "handleOffsets": {}
+            },
+            {
+              "id": 3,
+              "x": 20,
+              "y": 40,
+              "type": "cubic",
+              "smooth": false
+            },
+            {
+              "id": 4,
+              "x": 50,
+              "y": 40,
+              "type": "cubic",
+              "smooth": false
+            },
+            {
+              "id": 5,
+              "x": 60,
+              "y": 60,
+              "type": null,
+              "smooth": true,
+              "width": {
+                "left": 40,
+                "right": 40,
+                "linked": true
+              },
+              "nudge": {
+                "left": 0,
+                "right": 0
+              },
+              "editable": {
+                "left": false,
+                "right": false
+              },
+              "handleOffsets": {}
+            },
+            {
+              "id": 6,
+              "x": 70,
+              "y": 80,
+              "type": "cubic",
+              "smooth": false
+            },
+            {
+              "id": 7,
+              "x": 100,
+              "y": 100,
+              "type": "cubic",
+              "smooth": false
+            },
+            {
+              "id": 8,
+              "x": 120,
+              "y": 60,
+              "type": null,
+              "smooth": false,
+              "width": {
+                "left": 40,
+                "right": 40,
+                "linked": true
+              },
+              "nudge": {
+                "left": 0,
+                "right": 0
+              },
+              "editable": {
+                "left": false,
+                "right": false
+              },
+              "handleOffsets": {}
+            }
+          ]
+        }
+      ],
+      "generated": []
+    },
+    "donorInput": {
+      "contours": [
+        {
+          "isClosed": false,
+          "defaultWidth": 60,
+          "singleSided": false,
+          "singleSidedDirection": "left",
+          "capStyle": "butt",
+          "reversed": false,
+          "points": [
+            {
+              "x": 0,
+              "y": 0,
+              "smooth": false,
+              "leftWidth": 40,
+              "rightWidth": 40,
+              "leftNudge": 0,
+              "rightNudge": 0,
+              "leftEditable": false,
+              "rightEditable": false
+            },
+            {
+              "x": 20,
+              "y": 40,
+              "smooth": false,
+              "type": "cubic"
+            },
+            {
+              "x": 50,
+              "y": 40,
+              "smooth": false,
+              "type": "cubic"
+            },
+            {
+              "x": 60,
+              "y": 60,
+              "smooth": true,
+              "leftWidth": 40,
+              "rightWidth": 40,
+              "leftNudge": 0,
+              "rightNudge": 0,
+              "leftEditable": false,
+              "rightEditable": false
+            },
+            {
+              "x": 70,
+              "y": 80,
+              "smooth": false,
+              "type": "cubic"
+            },
+            {
+              "x": 100,
+              "y": 100,
+              "smooth": false,
+              "type": "cubic"
+            },
+            {
+              "x": 120,
+              "y": 60,
+              "smooth": false,
+              "leftWidth": 40,
+              "rightWidth": 40,
+              "leftNudge": 0,
+              "rightNudge": 0,
+              "leftEditable": false,
+              "rightEditable": false
+            }
+          ]
+        }
+      ]
+    },
+    "expectedContours": [
+      {
+        "points": [
+          {
+            "x": 36,
+            "y": -18,
+            "smooth": false
+          },
+          {
+            "x": 49,
+            "y": 7,
+            "type": "cubic"
+          },
+          {
+            "x": 70,
+            "y": -10,
+            "type": "cubic"
+          },
+          {
+            "x": 96,
+            "y": 42,
+            "smooth": true
+          },
+          {
+            "x": 98.40831891575846,
+            "y": 46.81663783151692,
+            "type": "cubic"
+          },
+          {
+            "x": 81,
+            "y": 47,
+            "type": "cubic"
+          },
+          {
+            "x": 84,
+            "y": 42,
+            "smooth": false
+          },
+          {
+            "x": 156,
+            "y": 78,
+            "smooth": false
+          },
+          {
+            "x": 118,
+            "y": 154,
+            "type": "cubic"
+          },
+          {
+            "x": 41,
+            "y": 112,
+            "type": "cubic"
+          },
+          {
+            "x": 24,
+            "y": 78,
+            "smooth": true
+          },
+          {
+            "x": 23.552786404500043,
+            "y": 77.10557280900008,
+            "type": "cubic"
+          },
+          {
+            "x": -9,
+            "y": 73,
+            "type": "cubic"
+          },
+          {
+            "x": -36,
+            "y": 18,
+            "smooth": false
+          }
+        ],
+        "isClosed": true
+      }
+    ]
+  },
+  {
     "name": "single-sided-left",
     "canonical": {
       "version": 1,

@@ -99,6 +99,7 @@ function generateContoursFromGeneratorInput(generatorInput) {
 function stripPointProvenance(contour) {
   for (const point of contour.points) {
     delete point._provenance;
+    delete point._axis;
   }
 }
 
@@ -554,6 +555,42 @@ function applyHandleOffsetToControlPoint(
 const SKELETON_DEBUG_PREFIX = "[SKELETON GEN DEBUG]";
 
 /**
+ * The axis two generated handles were constructed on, when both descend from
+ * the same skeleton point and so share that point's handle axis.
+ *
+ * Returns a unit vector pointing from the shared on-curve point towards the
+ * incoming handle, or null when the handles don't carry a locked axis (caps,
+ * line-segment ribs, corner-rounding output) or don't belong to the same
+ * skeleton point. Callers fall back to their own direction estimate then.
+ *
+ * The two stored axes are nominally antiparallel — the skeleton point is
+ * smooth, so its own handles are colinear. They are averaged with equal
+ * weight rather than by length: the result must not depend on handle length,
+ * because rib width changes handle length.
+ * @param {Object} inHandle - The off-curve point before the on-curve point
+ * @param {Object} outHandle - The off-curve point after it
+ * @returns {Object|null} Unit direction {x, y} towards inHandle, or null
+ */
+function sharedLockedAxis(inHandle, outHandle) {
+  const axisIn = inHandle?._axis;
+  const axisOut = outHandle?._axis;
+  if (!axisIn || !axisOut) return null;
+
+  const ownerIn = inHandle._provenance?.skeletonPointId;
+  const ownerOut = outHandle._provenance?.skeletonPointId;
+  if (ownerIn === undefined || ownerIn !== ownerOut) return null;
+
+  // Antiparallel by construction, so subtract to average.
+  const axis = { x: axisIn.x - axisOut.x, y: axisIn.y - axisOut.y };
+  if (Math.hypot(axis.x, axis.y) < 0.001) {
+    // The two axes point the same way: the skeleton handles are not colinear
+    // at a point flagged smooth. Leave this to the length-weighted fallback.
+    return null;
+  }
+  return vector.normalizeVector(axis);
+}
+
+/**
  * Enforce colinearity for smooth points in a contour.
  * For each on-curve smooth point with two adjacent off-curve handles,
  * adjusts the handles to be colinear while preserving their lengths.
@@ -611,6 +648,33 @@ function enforceSmoothColinearity(points, isClosed, options = {}) {
 
       const lenIn = Math.hypot(vecIn.x, vecIn.y);
       const lenOut = Math.hypot(vecOut.x, vecOut.y);
+
+      // Both handles descend from the same skeleton point and were constructed
+      // on that point's own handle axis, which is stored on each of them. Use
+      // it directly.
+      //
+      // Deriving the axis from the rounded positions instead — and weighting by
+      // handle length, as the fallback below does — makes the shared axis move
+      // whenever rib width moves, because width changes the lengths. Measured
+      // at 1.1 deg mean and 12.5 deg worst per single unit of width.
+      //
+      // Written unrounded, like the fallback below: re-snapping to the grid
+      // here would undo the colinearity just established, and worst on short
+      // handles, where a unit of rounding is a large angle.
+      const lockedAxis = sharedLockedAxis(prevPoint, nextPoint);
+      if (lockedAxis && lenIn >= 0.001 && lenOut >= 0.001) {
+        points[prevIdx] = {
+          ...prevPoint,
+          x: point.x + lockedAxis.x * lenIn,
+          y: point.y + lockedAxis.y * lenIn,
+        };
+        points[nextIdx] = {
+          ...nextPoint,
+          x: point.x - lockedAxis.x * lenOut,
+          y: point.y - lockedAxis.y * lenOut,
+        };
+        continue;
+      }
 
       // Skip if handles are too short
       if (lenIn >= 0.001 && lenOut >= 0.001) {
@@ -2279,9 +2343,9 @@ function generateOffsetPointsForSegment(
         startDir
       );
       adjustedHandle2 = projectHandleOntoDirection(fixedEnd, adjustedHandle2, endDir);
-      for (const [point, owner, role] of [
-        [adjustedHandle1, segment.startPoint, "out"],
-        [adjustedHandle2, segment.endPoint, "in"],
+      for (const [point, owner, role, axis] of [
+        [adjustedHandle1, segment.startPoint, "out", startDir],
+        [adjustedHandle2, segment.endPoint, "in", endDir],
       ]) {
         const generated = {
           x: Math.round(point.x),
@@ -2290,6 +2354,11 @@ function generateOffsetPointsForSegment(
         };
         const provenance = pointProvenance(owner, side, role);
         if (provenance) generated._provenance = provenance;
+        // The exact unit direction this handle was constructed on, before the
+        // grid snap above. enforceSmoothColinearity needs it: recovering the
+        // direction from the rounded position is width-dependent and, on short
+        // handles, quantized to the lattice.
+        if (axis) generated._axis = { x: axis.x, y: axis.y };
         output.push(generated);
       }
       if (shouldAddEnd)
