@@ -20,6 +20,7 @@ import {
   getSkeletonPointAddress,
   getSkeletonRibAddress,
   getSkeletonRibPosition,
+  getTiedRibPartner,
   isSkeletonSideLocked,
   makeEditableGeneratedHandleKey,
   makeEditableGeneratedPointKey,
@@ -697,7 +698,17 @@ export function createSkeletonRibTargetEntries(
     return [];
   }
   const reference = referenceSkeletonData || skeletonData;
-  const selected = collectSkeletonRibSelection(selection, reference, skeletonData);
+  // Tangent and interpolate drags move the rib along the skeleton (nudge) rather
+  // than changing its width. Only width is tied across a straight, so those
+  // modes neither pull in a tied partner nor share one delta.
+  const changesWidth =
+    constrainMode !== "tangent" &&
+    behaviorName !== "rib-tangent" &&
+    behaviorName !== "rib-interpolate" &&
+    behaviorName !== "rib-tangent-interpolate";
+  const selected = collectSkeletonRibSelection(selection, reference, skeletonData, {
+    includeTiedPartners: changesWidth,
+  });
   if (!selected.length) {
     return [];
   }
@@ -730,12 +741,7 @@ export function createSkeletonRibTargetEntries(
           clickedRibKey
       )) ||
     executors[0];
-  const sharedWidthDelta =
-    executors.length > 1 &&
-    constrainMode !== "tangent" &&
-    behaviorName !== "rib-tangent" &&
-    behaviorName !== "rib-interpolate" &&
-    behaviorName !== "rib-tangent-interpolate";
+  const sharedWidthDelta = executors.length > 1 && changesWidth;
 
   let rollbackChange = null;
   return [
@@ -892,12 +898,17 @@ function resolveClickedSkeletonPointKey(
 function collectSkeletonRibSelection(
   selection,
   referenceSkeletonData,
-  targetSkeletonData
+  targetSkeletonData,
+  { includeTiedPartners = false } = {}
 ) {
   const { skeletonRib } = parseSelection([...selection]);
   const selected = [];
-  for (const item of skeletonRib || []) {
-    const { contourId, pointId, side } = parseSkeletonRibKey(`skeletonRib/${item}`);
+  const seen = new Set();
+  const addRib = (contourId, pointId, side) => {
+    const key = `${contourId}/${pointId}/${side}`;
+    if (seen.has(key)) {
+      return;
+    }
     const reference = getSkeletonRibAddress(
       referenceSkeletonData,
       contourId,
@@ -912,7 +923,25 @@ function collectSkeletonRibSelection(
       side
     );
     if (reference && target) {
+      seen.add(key);
       selected.push({ reference, target });
+    }
+  };
+  for (const item of skeletonRib || []) {
+    const { contourId, pointId, side } = parseSkeletonRibKey(`skeletonRib/${item}`);
+    addRib(contourId, pointId, side);
+  }
+  // A rib tied across a straight segment drags with its partner even when only
+  // one is selected: the generator uses the mean of the two stored widths, so
+  // moving one alone would advance the outline by half the cursor delta and
+  // leave the partner's gizmo behind. Both ribs then receive the same shared
+  // width delta below, which is what selecting both by hand already did.
+  if (includeTiedPartners) {
+    for (const { reference } of [...selected]) {
+      const partner = getTiedRibPartner(reference.contour, reference.point);
+      if (partner) {
+        addRib(reference.contour.id, partner.id, reference.side);
+      }
     }
   }
   return selected;

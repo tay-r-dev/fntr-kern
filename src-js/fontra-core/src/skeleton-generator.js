@@ -4,7 +4,9 @@ import {
   CAP_POINT_FIELDS,
   CORNER_POINT_FIELDS,
   DEFAULT_SKELETON_WIDTH,
+  isStraightControlledSmoothPoint,
   normalizeSkeletonData,
+  straightSegmentNormal,
 } from "./skeleton-model.js";
 import { packContour } from "./var-path.js";
 import * as vector from "./vector.js";
@@ -2438,41 +2440,6 @@ function generateOffsetPointsForSegment(
 }
 
 /**
- * Is this on-curve point a smooth point whose only handle sits on `curveSegment`,
- * with a straight segment on the other side?
- *
- * Such a point cannot take its direction from its own handle: smoothness means
- * the handle has to be colinear with the straight segment, so the direction is
- * set by the straight — that is, by the on-curve point at the far end of it. The
- * handle follows; it does not lead.
- * @param {Object} point - The shared on-curve skeleton point
- * @param {Object} straightSegment - The segment with no control points
- * @param {Object} curveSegment - The segment carrying the point's one handle
- * @returns {boolean}
- */
-function isStraightControlledSmoothPoint(point, straightSegment, curveSegment) {
-  return (
-    point?.smooth === true &&
-    straightSegment?.controlPoints.length === 0 &&
-    curveSegment?.controlPoints.length > 0
-  );
-}
-
-/**
- * The rib normal for a point whose direction comes from a straight segment:
- * perpendicular to that segment, with no miter averaging against the handle.
- * @param {Object} straightSegment - The straight segment setting the direction
- * @returns {Object} Normal {x, y}
- */
-function straightSegmentNormal(straightSegment) {
-  return vector.rotateVector90CW(
-    vector.normalizeVector(
-      vector.subVectors(straightSegment.endPoint, straightSegment.startPoint)
-    )
-  );
-}
-
-/**
  * Two smooth points joined by a straight segment, each with only one handle, on
  * its far side. Each takes its direction from the straight, so each is defined
  * by the other: they control each other and there is no independent direction
@@ -4406,111 +4373,6 @@ function generateCap(
   // "butt" style needs no extra points
 
   return capPoints;
-}
-
-/**
- * Calculate the normal vector at a specific point index in a skeleton contour.
- * Useful for visualization of ribs.
- */
-export function calculateNormalAtSkeletonPoint(skeletonContour, pointIndex) {
-  const { points, isClosed } = skeletonContour;
-  const numPoints = points.length;
-
-  if (numPoints < 2) {
-    return { x: 0, y: 1 };
-  }
-
-  const point = points[pointIndex];
-
-  // Skip off-curve points
-  if (point.type) {
-    return { x: 0, y: 1 };
-  }
-
-  // Build segments to get proper tangent directions
-  const segments = buildSegmentsFromPoints(points, isClosed);
-  if (segments.length === 0) {
-    return { x: 0, y: 1 };
-  }
-
-  // Find segments that end at or start from this point
-  let incomingSegment = null;
-  let outgoingSegment = null;
-
-  for (const segment of segments) {
-    if (segment.endPoint === point) {
-      incomingSegment = segment;
-    }
-    if (segment.startPoint === point) {
-      outgoingSegment = segment;
-    }
-  }
-
-  // Calculate tangent directions using the same method as contour generation
-  let dir1 = null; // incoming direction
-  let dir2 = null; // outgoing direction
-
-  if (incomingSegment) {
-    if (incomingSegment.controlPoints.length === 0) {
-      dir1 = vector.normalizeVector(
-        vector.subVectors(incomingSegment.endPoint, incomingSegment.startPoint)
-      );
-    } else {
-      const bezier = createBezierFromPoints([
-        incomingSegment.startPoint,
-        ...incomingSegment.controlPoints,
-        incomingSegment.endPoint,
-      ]);
-      const deriv = bezier.derivative(1);
-      dir1 = vector.normalizeVector({ x: deriv.x, y: deriv.y });
-    }
-  }
-
-  if (outgoingSegment) {
-    if (outgoingSegment.controlPoints.length === 0) {
-      dir2 = vector.normalizeVector(
-        vector.subVectors(outgoingSegment.endPoint, outgoingSegment.startPoint)
-      );
-    } else {
-      const bezier = createBezierFromPoints([
-        outgoingSegment.startPoint,
-        ...outgoingSegment.controlPoints,
-        outgoingSegment.endPoint,
-      ]);
-      const deriv = bezier.derivative(0);
-      dir2 = vector.normalizeVector({ x: deriv.x, y: deriv.y });
-    }
-  }
-
-  // Handle endpoints of open contours
-  if (!dir1 && dir2) {
-    const normal = vector.rotateVector90CW(dir2);
-    return getEffectiveNormal(point, normal);
-  }
-  if (dir1 && !dir2) {
-    const normal = vector.rotateVector90CW(dir1);
-    return getEffectiveNormal(point, normal);
-  }
-  if (!dir1 && !dir2) {
-    return getEffectiveNormal(point, { x: 0, y: 1 });
-  }
-
-  // Use atan2-based angle bisector (same as calculateCornerNormal)
-  const dot = dir1.x * dir2.x + dir1.y * dir2.y;
-  const cross = dir1.x * dir2.y - dir1.y * dir2.x;
-  const angle = Math.atan2(cross, dot);
-  const halfAngle = angle / 2;
-  const cosH = Math.cos(halfAngle);
-  const sinH = Math.sin(halfAngle);
-
-  const bisector = {
-    x: dir1.x * cosH - dir1.y * sinH,
-    y: dir1.x * sinH + dir1.y * cosH,
-  };
-
-  // Normal is perpendicular to bisector (rotated 90° CW)
-  const normal = { x: bisector.y, y: -bisector.x };
-  return getEffectiveNormal(point, normal);
 }
 
 /**

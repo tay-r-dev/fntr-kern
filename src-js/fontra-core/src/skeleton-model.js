@@ -1793,6 +1793,69 @@ export function getSkeletonRibSidesForPoint(contour, point) {
   return ["left", "right"];
 }
 
+// The on-curve point across a straight segment whose rib is tied to this one,
+// or null when this point is not half of such a pair.
+//
+// Canonical-model counterpart of the generator's isMutuallyControlledPair. Both
+// points must be smooth, carry exactly one handle (on the side away from the
+// straight), and still have `width.tied` set. Used by the rib drag and by rib
+// rendering so the gizmo, the stored width and the generated geometry cannot
+// disagree about where the rib is.
+export function getTiedRibPartner(contour, point) {
+  const points = contour?.points || [];
+  const index = points.indexOf(point);
+  if (index < 0) {
+    return null;
+  }
+  const closed = contour.closed === true;
+  const at = (i) => {
+    if (!closed) {
+      return i >= 0 && i < points.length ? points[i] : null;
+    }
+    return points[((i % points.length) + points.length) % points.length];
+  };
+  const isTiedSmoothOnCurve = (candidate) =>
+    !!candidate &&
+    !candidate.type &&
+    candidate.smooth === true &&
+    candidate.width?.tied !== false;
+
+  if (!isTiedSmoothOnCurve(point)) {
+    return null;
+  }
+  const previous = at(index - 1);
+  const next = at(index + 1);
+  // Exactly one side is a straight (its immediate neighbour is another
+  // on-curve); the other side must carry this point's one handle.
+  const straightForward = next && !next.type && previous && previous.type;
+  const straightBackward = previous && !previous.type && next && next.type;
+  if (!straightForward && !straightBackward) {
+    return null;
+  }
+  const partner = straightForward ? next : previous;
+  // The partner's own far side must carry its one handle, or it is not the
+  // mirror of this point and the pair does not control itself.
+  const partnerIndex = points.indexOf(partner);
+  const partnerFarSide = at(straightForward ? partnerIndex + 1 : partnerIndex - 1);
+  if (!isTiedSmoothOnCurve(partner) || !partnerFarSide?.type) {
+    return null;
+  }
+  return partner;
+}
+
+// The half-width the generator will actually use for this rib: the stored value,
+// or the mean across a tied pair, matching coupledHalfWidths in
+// skeleton-generator.js. Rendering and hit-testing must use this rather than the
+// stored value, or the gizmo sits somewhere the outline is not.
+export function getEffectiveRibHalfWidth(contour, point, side) {
+  const stored = getSkeletonPointHalfWidth(point, contour?.defaultWidth, side);
+  const partner = getTiedRibPartner(contour, point);
+  if (!partner) {
+    return stored;
+  }
+  return (stored + getSkeletonPointHalfWidth(partner, contour?.defaultWidth, side)) / 2;
+}
+
 // Forward projection of a rib endpoint in glyph space (the C4 gizmo position).
 // This is the single shared source used by rendering (WS-8), hit-testing
 // (WS-11) and selection bounds (WS-16); never re-derive it locally.
@@ -1807,12 +1870,12 @@ export function getSkeletonRibPosition(contour, point, side) {
     pointIndex >= 0 ? pointIndex : point.id
   );
   const defaultWidth = contour.defaultWidth;
-  const leftHalfWidth = getSkeletonPointHalfWidth(point, defaultWidth, "left");
-  const rightHalfWidth = getSkeletonPointHalfWidth(point, defaultWidth, "right");
+  const leftHalfWidth = getEffectiveRibHalfWidth(contour, point, "left");
+  const rightHalfWidth = getEffectiveRibHalfWidth(contour, point, "right");
   const halfWidth =
     contour.singleSided === "left" || contour.singleSided === "right"
       ? leftHalfWidth + rightHalfWidth
-      : getSkeletonPointHalfWidth(point, defaultWidth, side);
+      : getEffectiveRibHalfWidth(contour, point, side);
   const nudge = getSkeletonPointNudge(point, side, defaultWidth);
   return projectSkeletonRibPoint(point, normal, halfWidth, side, nudge);
 }
@@ -2221,6 +2284,39 @@ export function buildSegmentsFromSkeletonPoints(points, closed) {
   return segments;
 }
 
+/**
+ * Is this on-curve point a smooth point whose only handle sits on `curveSegment`,
+ * with a straight segment on the other side?
+ *
+ * Such a point cannot take its direction from its own handle: smoothness means
+ * the handle has to be colinear with the straight segment, so the straight sets
+ * the direction and the handle follows. Shared by contour generation and by rib
+ * rendering/hit-testing, which must agree.
+ * @param {Object} point - The shared on-curve skeleton point
+ * @param {Object} straightSegment - The segment with no control points
+ * @param {Object} curveSegment - The segment carrying the point's one handle
+ * @returns {boolean}
+ */
+export function isStraightControlledSmoothPoint(point, straightSegment, curveSegment) {
+  return (
+    point?.smooth === true &&
+    straightSegment?.controlPoints.length === 0 &&
+    curveSegment?.controlPoints.length > 0
+  );
+}
+
+/**
+ * The rib normal for a point whose direction comes from a straight segment:
+ * perpendicular to that segment, with no miter averaging against the handle.
+ * @param {Object} straightSegment - The straight segment setting the direction
+ * @returns {Object} Normal {x, y}
+ */
+export function straightSegmentNormal(straightSegment) {
+  return rotateVector90CW(
+    normalizeVector(subVectors(straightSegment.endPoint, straightSegment.startPoint))
+  );
+}
+
 export function calculateNormalAtSkeletonPoint(skeletonContour, pointIndexOrPointId) {
   const points = skeletonContour?.points || [];
   if (points.length < 2) {
@@ -2258,6 +2354,16 @@ export function calculateNormalAtSkeletonPoint(skeletonContour, pointIndexOrPoin
   }
   if (!dir1 && !dir2) {
     return getEffectiveNormal(point, { x: 0, y: 1 });
+  }
+
+  // A smooth point with one handle takes its direction from the straight segment
+  // on the other side, matching contour generation (SKELETON-FEATURE-MODEL §3.0).
+  // Without this the rib gizmo sits at a miter angle the outline never uses.
+  if (isStraightControlledSmoothPoint(point, incomingSegment, outgoingSegment)) {
+    return getEffectiveNormal(point, straightSegmentNormal(incomingSegment));
+  }
+  if (isStraightControlledSmoothPoint(point, outgoingSegment, incomingSegment)) {
+    return getEffectiveNormal(point, straightSegmentNormal(outgoingSegment));
   }
 
   const dot = dir1.x * dir2.x + dir1.y * dir2.y;

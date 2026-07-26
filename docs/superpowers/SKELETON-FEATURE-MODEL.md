@@ -108,6 +108,16 @@ pure and independent (contour *i*'s output depends only on contour *i*):
    here, not a bug — do not "fix" the rotation while a pair is untied. Only the
    shared *offset* is optional; the rib staying perpendicular to the straight is
    not, because it follows from the point having no direction of its own.
+
+   **Everything that shows or edits a tied rib must use the coupled value, not
+   the stored one.** `getEffectiveRibHalfWidth` is that value and
+   `getTiedRibPartner` is the pairing test, both in `skeleton-model.js` beside
+   the normal computation the gizmo uses. A rib drag pulls its tied partner into
+   the executor set (`collectSkeletonRibSelection`, gated to width-changing
+   drags — nudge is not tied), so both stored widths move together and the
+   outline tracks the cursor exactly. Skipping either of these produced the
+   original report: the dragged gizmo travelled twice as far as the outline and
+   its partner did not move at all.
 1. **Segmentation** — `buildSegmentsFromPoints` splits the point list into
    on-curve→on-curve segments carrying their off-curve controls.
 2. **Per-segment offsetting** — each side's outline is offset by its half-width.

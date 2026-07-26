@@ -1,9 +1,13 @@
+import { generateFromSkeleton } from "@fontra/core/skeleton-generator.js";
 import {
-  getSkeletonData,
-  findGeneratedPathAddress,
   applySkeletonRibExecutorResult,
   createSkeletonRibExecutor,
+  findGeneratedPathAddress,
+  getEffectiveRibHalfWidth,
+  getSkeletonData,
   getSkeletonRibAddress,
+  getSkeletonRibPosition,
+  getTiedRibPartner,
   makeSkeletonContour,
   makeSkeletonPoint,
   normalizeSkeletonData,
@@ -288,6 +292,142 @@ describe("rib detach toggle", () => {
       const position = positionOf(layer, role);
       expect(Math.abs(position.x - before[role].x), `${role} x`).to.be.at.most(2);
       expect(Math.abs(position.y - before[role].y), `${role} y`).to.be.at.most(2);
+    }
+  });
+});
+
+describe("tied rib partner", () => {
+  // angled / handle / handle / smooth / straight / smooth / handle / handle / angled.
+  // Points 5 and 6 each carry one handle, on the far side, colinear with the
+  // straight between them.
+  function makeTiedSkeleton({ tied = true, widthAtFive = 30 } = {}) {
+    const onCurve = (id, x, y, smooth, halfWidth) => ({
+      id,
+      x,
+      y,
+      type: null,
+      smooth,
+      width: { left: halfWidth, right: halfWidth, linked: true, tied },
+    });
+    const offCurve = (id, x, y) => ({ id, x, y, type: "cubic" });
+    return normalizeSkeletonData({
+      version: 1,
+      nextId: 10,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 40,
+          points: [
+            onCurve(2, 0, 0, false, 20),
+            offCurve(3, 10, 50),
+            offCurve(4, 20, 40),
+            onCurve(5, 60, 60, true, widthAtFive),
+            onCurve(6, 140, 100, true, 20),
+            offCurve(7, 180, 120),
+            offCurve(8, 190, 60),
+            onCurve(9, 200, 0, false, 20),
+          ],
+        },
+      ],
+    });
+  }
+
+  const pointById = (skeletonData, id) =>
+    skeletonData.contours[0].points.find((point) => point.id === id);
+
+  it("pairs the two smooth points across the straight, both ways", () => {
+    const skeletonData = makeTiedSkeleton();
+    const contour = skeletonData.contours[0];
+    expect(getTiedRibPartner(contour, pointById(skeletonData, 5))?.id).to.equal(6);
+    expect(getTiedRibPartner(contour, pointById(skeletonData, 6))?.id).to.equal(5);
+  });
+
+  it("pairs nothing for points that own their direction", () => {
+    const skeletonData = makeTiedSkeleton();
+    const contour = skeletonData.contours[0];
+    // Angled endpoints and off-curve handles are never half of a tied pair.
+    expect(getTiedRibPartner(contour, pointById(skeletonData, 2))).to.equal(null);
+    expect(getTiedRibPartner(contour, pointById(skeletonData, 9))).to.equal(null);
+    expect(getTiedRibPartner(contour, pointById(skeletonData, 4))).to.equal(null);
+  });
+
+  it("pairs nothing once either point unticks tied ribs", () => {
+    const skeletonData = makeTiedSkeleton({ tied: false });
+    const contour = skeletonData.contours[0];
+    expect(getTiedRibPartner(contour, pointById(skeletonData, 5))).to.equal(null);
+  });
+
+  it("reports the mean half-width for a tied rib, so the gizmo sits on the outline", () => {
+    const skeletonData = makeTiedSkeleton({ widthAtFive: 30 });
+    const contour = skeletonData.contours[0];
+    // Stored 30 and 20; the generator uses 25 for both.
+    expect(
+      getEffectiveRibHalfWidth(contour, pointById(skeletonData, 5), "left")
+    ).to.equal(25);
+    expect(
+      getEffectiveRibHalfWidth(contour, pointById(skeletonData, 6), "left")
+    ).to.equal(25);
+  });
+
+  it("reports the stored half-width when untied", () => {
+    const skeletonData = makeTiedSkeleton({ tied: false, widthAtFive: 30 });
+    const contour = skeletonData.contours[0];
+    expect(
+      getEffectiveRibHalfWidth(contour, pointById(skeletonData, 5), "left")
+    ).to.equal(30);
+    expect(
+      getEffectiveRibHalfWidth(contour, pointById(skeletonData, 6), "left")
+    ).to.equal(20);
+  });
+
+  it("puts the rib gizmo where the outline is even with an off-colinear handle", () => {
+    // "Smooth" is a flag, so a stored handle can sit slightly off the straight.
+    // The gizmo angle then has to follow the straight, like the generator does,
+    // rather than splitting the difference with a miter bisector.
+    const skeletonData = makeTiedSkeleton({ widthAtFive: 24 });
+    const contour = skeletonData.contours[0];
+    const handle = contour.points.find((point) => point.id === 4);
+    handle.x += 6;
+    handle.y -= 4;
+    const generated = generateFromSkeleton(skeletonData);
+    const gizmo = getSkeletonRibPosition(contour, pointById(skeletonData, 5), "left");
+    const index = generated.provenance[0].pointMap.findIndex(
+      (entry) =>
+        entry &&
+        entry.skeletonPointId === 5 &&
+        entry.side === "left" &&
+        entry.role === "onCurve"
+    );
+    const rib = generated.contours[0].points[index];
+    // Exact, not merely close: both sides now derive the normal the same way.
+    expect(Math.hypot(gizmo.x - rib.x, gizmo.y - rib.y)).to.equal(0);
+  });
+
+  it("puts the rib gizmo where the generated outline actually is", () => {
+    // The bug this guards: the gizmo read the stored width while the outline used
+    // the coupled one, so dragging one rib moved the diamond twice as far as the
+    // geometry and left its partner behind.
+    const skeletonData = makeTiedSkeleton({ widthAtFive: 30 });
+    const contour = skeletonData.contours[0];
+    const generated = generateFromSkeleton(skeletonData);
+    for (const id of [5, 6]) {
+      const gizmo = getSkeletonRibPosition(
+        contour,
+        pointById(skeletonData, id),
+        "left"
+      );
+      const index = generated.provenance[0].pointMap.findIndex(
+        (entry) =>
+          entry &&
+          entry.skeletonPointId === id &&
+          entry.side === "left" &&
+          entry.role === "onCurve"
+      );
+      const rib = generated.contours[0].points[index];
+      expect(Math.hypot(gizmo.x - rib.x, gizmo.y - rib.y), `point ${id}`).to.be.below(
+        1
+      );
     }
   });
 });
