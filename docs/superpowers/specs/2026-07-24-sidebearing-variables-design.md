@@ -1,8 +1,10 @@
 # Sidebearing Variables — Design Spec
 
 **Date:** 2026-07-24
+**Revised:** 2026-07-26 — storage verified (§3), letterspacer arbitration added
+(§4.10), staleness narrowed to a single cause (§4.8)
 **Branch:** `feature/sidebearing-variables`
-**Status:** design — awaiting user review before a plan is written
+**Status:** design — all open questions resolved; ready for a plan
 
 ---
 
@@ -83,6 +85,34 @@ entity levels:
 | --- | --- | --- |
 | **Shared** (default) | `VariableGlyph.customData` (glyph) | One key per side, shared by **all** sources. The everyday case. |
 | **Source override** | `StaticGlyph.customData` (layer) | A per-side key that **shadows** the shared key **for that source only**. Opt-in. |
+
+**`VariableGlyph.customData` verified as the right home** (2026-07-26, against the
+tree — this was questioned and settled, don't re-litigate):
+
+- It exists **upstream** (`src/fontra/core/classes.py:209`). Unlike
+  `StaticGlyph.customData`, which is the fork's one-line backend change, this
+  needs no backend work at all.
+- It round-trips. The `.fontra` backend serializes the whole `VariableGlyph`; the
+  designspace/UFO backend reads it at `designspace.py:636` and writes it at
+  `:854` under the lib key `xyz.fontra.customData`. Upstream uses the same field
+  for glyph locking (`designspace.py:635` comment).
+- `var-glyph.js:15` deep-copies it, so keys survive glyph copy — the same
+  guarantee skeleton persistence depends on.
+- **The fork already writes here.** Letterspacer stores `referenceGlyphName` at
+  glyph level (`panel-letterspacer.js:171`), persisted through
+  `editNamedGlyphAndRecordChanges` (`:928`). The write path, including undo, is
+  proven in this codebase — reuse it.
+
+Two facts to know rather than worry about: UFO storage is physically the
+**default** source's glyph lib, so copying a *non-default* UFO layer glyph
+between fonts does not carry the keys (same limitation as glyph locking); and
+`designspace.py:853` pops the note key out of `glyph.customData` during write,
+which doesn't touch ours.
+
+The one alternative — font-level customData keyed by glyph name — is worse: a
+single hot object contended by every glyph edit, and it doesn't travel with the
+glyph. `VariableGlyph.customData` is also the *only* per-glyph-not-per-source
+location the format offers.
 
 **Effective key** for (source *S*, side *D*) = source override `[S][D]` if
 present, else the shared `[D]`, else none (plain number). The resolver (§4.7)
@@ -239,6 +269,13 @@ Stale is tested against the **effective** key of the current source, so an
 overridden source is judged by its own expression, an inheriting source by the
 shared one.
 
+**Stale means exactly one thing: the referenced glyph's sidebearing changed.**
+It is the "press Update" signal and nothing else sets it. In particular a
+letterspacer override does **not** produce a stale field — it deletes the key and
+leaves a plain number (§4.10). Keeping the signal single-cause is what makes it
+readable: a stale marker always means *the owner moved*, never *another tool
+touched this*.
+
 ### 4.9 Source override control
 A per-side toggle that detaches the current source from the shared key.
 
@@ -262,6 +299,58 @@ alternatives: "source-adjust" (vague about what it does), "detach source" (the
 fork already uses *detach* for skeleton handles — reusing it here would blur two
 unrelated concepts).
 
+### 4.10 Letterspacer interaction — the second writer
+
+Letterspacer (F6) also writes sidebearings, so a keyed side has two writers and
+needs an arbitration rule.
+
+**How letterspacer writes today** (verified 2026-07-26): its **Apply**
+(`panel-letterspacer.js:493` `applySpacing`) does **not** go through the
+selection-info margin path at all. It shifts the path directly
+(`shiftPath`, `:570`) for the left side and sets `layerGlyph.xAdvance` (`:588`)
+for the right, over every editing layer, inside its own
+`editGlyphAndRecordChanges`. So without a guard it silently overwrites keyed
+margins.
+
+**The flag.** A **font-wide** setting in the **letterspacer panel**, beside the
+existing `applyLSB` / `applyRSB` toggles, stored in the letterspacer
+`fontra.internal` section at font level (next to `enabled`):
+
+```js
+LETTERSPACER_FONT_FIELDS.mayReplaceMetricsKeys   // default: false
+```
+
+It lives in the letterspacer panel because it modifies *letterspacer's* behavior
+and is a policy you set once for the project; the sidebearings panel is where you
+see the consequence, not where you set the rule.
+
+**Semantics:**
+
+| Flag | Letterspacer Apply on a keyed side |
+| --- | --- |
+| **Restrict** (default) | **Skips that side.** The key and its margin are untouched. The other side still applies normally. |
+| **Allow** | **Replaces the variable with a number**: writes its computed margin and **deletes the key** at its effective level. The side becomes plain — no link, no stale marker. |
+
+Allowing is therefore **destructive and font-wide in reach**: one Apply sweep can
+wipe links across many glyphs, recoverable only by undo. Hence the default is
+restrict, and the label must say what it does — *"Letterspacer may replace
+metrics keys with numbers"* — not a vague "override".
+
+**Implementation notes:**
+
+- The guard belongs in `applySpacing`, per side, before the write.
+- Skipping is cheap because the code already has a "preserve this side's margin"
+  branch: `:590-592` recomputes `xAdvance` to hold the old right margin when LSB
+  applies and RSB doesn't. Skipping a keyed right side reuses it verbatim.
+  Skipping a keyed left side needs no new machinery — right-side application
+  doesn't move the path.
+- Deletion (allow case) removes the key at the level the source resolves to
+  (§3 cascade): a source override if that's what governs the side, else the
+  shared key. Deleting a shared key affects every inheriting source, so it
+  happens once per glyph, not once per layer.
+- Both branches must be inside letterspacer's existing single
+  `editGlyphAndRecordChanges` so Apply stays one undo step.
+
 ---
 
 ## 5. Applying a margin
@@ -272,11 +361,16 @@ performs (`panel-selection-info.js:268-304`). The feature reuses that path; it
 does not reimplement margin geometry.
 
 This spec takes no position on how margin-setting works internally, and does not
-touch anything outside the link layer (no metrics-tool changes, no skeleton-move
-work — those are pre-existing concerns unrelated to this feature). The only
-requirement: **create, per-glyph Update, and Update-all must all funnel through
-one apply-margin call**, so the "how" lives in a single place regardless of what
-that place does today.
+change margin geometry (no metrics-tool changes, no skeleton-move work — those
+are pre-existing concerns unrelated to this feature). The only requirement:
+**create, per-glyph Update, and Update-all must all funnel through one
+apply-margin call**, so the "how" lives in a single place regardless of what that
+place does today.
+
+**Letterspacer is the one exception, and it is not folded in.** Its Apply writes
+margins by its own route (`shiftPath` + `xAdvance`, §4.10) and is not being
+refactored onto this path — the feature only adds a *guard* to it. Two writers,
+one arbitration rule; no shared implementation.
 
 Note: setting the left margin repositions the glyph, which shifts what the right
 margin means. When both sides are keyed, apply **left before right** so the
@@ -291,8 +385,9 @@ result is deterministic.
 | `fontra-core/src/fontra-internal-schema.js` | add `SIDEBEARING_KEYS` section constant |
 | `fontra-core/src/metrics-keys.js` *(new)* | pure helpers: parse/validate an expression as a key, format for display; mocha-tested (Q5) |
 | `views-editor/src/panel-selection-info.js` | two-level key store (glyph customData shared + layer customData override) with effective-key resolution; override / reset-to-shared control (§4.9); display + override marker + staleness style (§4.8); per-glyph Update button; two-press unlink (§4.4); clear-on-number; generalize `_evaluateMetricsExpression` into the shared resolver (§4.7) |
+| `views-editor/src/panel-letterspacer.js` | font-wide `mayReplaceMetricsKeys` toggle + field constant; per-side guard in `applySpacing` (§4.10) |
 | `views-editor/src/editor.js` | register the **Update all metrics** action (§4.3) — menu entry + shortcut + confirm |
-| `fontra-core/assets/lang/en.js` | UI strings (`Update`, unlink tooltip + confirm, `Update all metrics` + confirm) |
+| `fontra-core/assets/lang/en.js` | UI strings (`Update`, unlink tooltip + confirm, `Update all metrics` + confirm, the letterspacer toggle label) |
 | `fontra-webcomponents/src/ui-form.js` | number-field display **adornment** for the resolved value + a stale style hook (§4.5, §4.8); today `displayValue` only serves the range slider |
 
 No backend change (customData already persists). The feature is a link layer on
@@ -320,6 +415,10 @@ other tool.
 | 13 | Override with the **same** expression as the shared key | Harmless redundancy; allowed. "Reset to shared" removes it cleanly. |
 | 14 | Unlink the **shared** key while some sources are overridden | Inheriting sources lose the link; overridden sources keep their own key (cascade §4.4). |
 | 15 | Override exists but shared key is a plain number (no shared key) | "Reset to shared" reverts the source to a plain number. |
+| 16 | Letterspacer Apply on a keyed side, flag restricting (default) | Side skipped, key and margin untouched; the other side still applies (§4.10). |
+| 17 | Letterspacer Apply on a keyed side, flag allowing | Margin written, key **deleted** at its effective level; the side becomes a plain number, not a stale key (§4.10, §4.8). |
+| 18 | Letterspacer Apply, both sides keyed, flag restricting | Nothing applies. Report it rather than appearing to do nothing. |
+| 19 | Letterspacer deletes a **shared** key (flag allowing) | Done once for the glyph, not per layer; every inheriting source loses the link, overridden sources keep their own (cascade §4.4). |
 
 ---
 
@@ -375,6 +474,26 @@ either way: `ui-form`'s `displayValue` currently serves only the range slider
 (`ui-form.js:511`), so the `edit-number-x-y` field needs a small addition
 regardless; adornment is the cleaner shape.
 
+**Q8 — May letterspacer overwrite a keyed sidebearing? — RESOLVED (user):
+opt-in, and it replaces the variable with a number (§4.10).**
+A **font-wide flag in the letterspacer panel**, default **restrict**. When
+allowed, letterspacer writes its computed margin and **deletes the key** — it
+does not leave a stale link. Justification: the two states stay single-cause and
+legible — stale always means *the referenced glyph moved* (§4.8), never *another
+tool wrote here*. The flag is font-wide rather than per-glyph or per-side because
+it is a property of letterspacer's behavior, set once for the project.
+
+**Q9 — Is a separate "realize to number" button needed? — RESOLVED (user): no.**
+The **Unlink** button (§4.4) already is it: two-press, drops the key, keeps the
+number. Kept under that name; not renamed, and not split into unlink-vs-realize
+variants. A stale field therefore bakes the number currently applied, which is
+the value the user can see.
+
+**Q10 — Is `VariableGlyph.customData` the right home for the shared key? —
+RESOLVED (verified against the tree, §3).** Yes: upstream field, round-trips
+through both backends, survives glyph copy, already written by letterspacer in
+this fork, and the only per-glyph-not-per-source location the format offers.
+
 ---
 
 ## 9. Out of scope (explicit)
@@ -385,3 +504,6 @@ regardless; adornment is the cleaner shape.
 - Kerning-value keys — this spec is sidebearings only.
 - Any change to margin geometry, the metrics tool, or skeleton-move behavior —
   pre-existing concerns, not part of this link layer.
+- Refactoring letterspacer onto a shared apply-margin path. The feature adds a
+  guard to `applySpacing` (§4.10) and nothing more; letterspacer keeps writing
+  margins its own way.
