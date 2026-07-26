@@ -8,11 +8,11 @@ import {
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
   getSkeletonRibAddress,
+  getSkeletonRibSidesForPoint,
+  isSkeletonSideLocked,
   parseEditableGeneratedHandleKey,
   parseEditableGeneratedPointKey,
   parseSkeletonRibKey,
-  getSkeletonRibSidesForPoint,
-  isSkeletonSideLocked,
 } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 import { getSkeletonPointAddress, parseSkeletonPointKey } from "./skeleton-editing.js";
@@ -257,7 +257,10 @@ export function summarizeSkeletonPointWidths(selectedPoints) {
   const linked = reduceValues(
     selectedPoints.map((entry) => entry.point?.width?.linked !== false)
   );
-  return { left, right, total, distribution, linked };
+  const tied = reduceValues(
+    selectedPoints.map((entry) => entry.point?.width?.tied !== false)
+  );
+  return { left, right, total, distribution, linked, tied };
 }
 
 // Distribution percent in [-100, 100]: negative favors the right side, positive

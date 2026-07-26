@@ -7,8 +7,8 @@
 import { ChangeCollector } from "@fontra/core/changes.js";
 import { generateFromSkeleton } from "@fontra/core/skeleton-generator.js";
 import {
-  getSkeletonData,
   findGeneratedPathAddress,
+  getSkeletonData,
   getSkeletonHandleOffset,
   getSkeletonHandleOffsetKey,
   isSkeletonSideLocked,
@@ -26,6 +26,7 @@ import {
   setSkeletonPointTotalWidth,
   setSkeletonPointWidthDistribution,
   setSkeletonPointWidthLinked,
+  setSkeletonPointWidthTied,
   setSkeletonSideLocked,
 } from "@fontra/core/skeleton-model.js";
 import {
@@ -324,6 +325,22 @@ export async function setPanelPointLinked(
     pointAddresses,
     (point) => {
       setSkeletonPointWidthLinked(point, linked);
+    },
+    undoLabel
+  );
+}
+
+export async function setPanelPointTied(
+  sceneController,
+  pointAddresses,
+  tied,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point) => {
+      setSkeletonPointWidthTied(point, tied);
     },
     undoLabel
   );

@@ -282,7 +282,12 @@ describe("skeleton-model rib mutation helpers", () => {
 
     setSkeletonPointSideWidth(point, DEFAULT_SKELETON_WIDTH, "left", 55);
 
-    expect(point.width).to.deep.equal({ left: 55, right: 55, linked: true });
+    expect(point.width).to.deep.equal({
+      left: 55,
+      right: 55,
+      linked: true,
+      tied: true,
+    });
   });
 
   it("sets unlinked asymmetric side widths without changing the opposite side", () => {
@@ -292,7 +297,12 @@ describe("skeleton-model rib mutation helpers", () => {
 
     setSkeletonPointSideWidth(point, DEFAULT_SKELETON_WIDTH, "left", 55);
 
-    expect(point.width).to.deep.equal({ left: 55, right: 60, linked: false });
+    expect(point.width).to.deep.equal({
+      left: 55,
+      right: 60,
+      linked: false,
+      tied: true,
+    });
   });
 
   it("initializes missing width from the global default width", () => {
@@ -301,6 +311,7 @@ describe("skeleton-model rib mutation helpers", () => {
     setSkeletonPointSideWidth(point, 120, "right", 55, { linked: false });
 
     expect(point.width).to.deep.equal({
+      tied: true,
       left: DEFAULT_SKELETON_WIDTH / 2,
       right: 55,
       linked: false,
@@ -431,7 +442,12 @@ describe("skeleton-model id accessors and mutators", () => {
 
     expect(updated).to.equal(getSkeletonPoint(skeleton, contour.id, point.id));
     expect(updated).to.include({ id: point.id, x: 0, y: 35, type: null });
-    expect(updated.width).to.deep.equal({ left: 14, right: 18, linked: false });
+    expect(updated.width).to.deep.equal({
+      left: 14,
+      right: 18,
+      linked: false,
+      tied: true,
+    });
   });
 
   it("deletes points by id and reports missing targets", () => {

@@ -121,6 +121,30 @@ describe("skeleton-generator provenance", () => {
     }
   });
 
+  it("frees the ribs when either point unticks tied ribs", () => {
+    // The opt-out. Untying restores independent widths, and with them the
+    // handle rotation the coupling exists to prevent — that is the trade the
+    // designer is choosing, so assert it moves rather than that it looks good.
+    const angles = [8, 20, 34].map((halfWidth) => {
+      const skeleton = straightControlledSkeleton(halfWidth);
+      // Point 5 opts out; point 6 stays tied. Either side frees the pair.
+      skeleton.contours[0].points[3].width.tied = false;
+      return straightControlledHandles(halfWidth, skeleton)[0].angle;
+    });
+    expect(
+      new Set(angles.map((a) => a.toFixed(3))).size,
+      "handle angles differ"
+    ).to.equal(3);
+  });
+
+  it("keeps ribs untied out of the generated width of the other point", () => {
+    // Tied: both ribs sit at the mean of 30 and 20. Untied: each keeps its own.
+    const tiedOffsets = straightControlledRibOffsets(30, true);
+    const freeOffsets = straightControlledRibOffsets(30, false);
+    expect(tiedOffsets[0]).to.be.closeTo(tiedOffsets[1], 1e-6);
+    expect(freeOffsets[0]).to.be.above(freeOffsets[1] + 5);
+  });
+
   it("emits side-bearing on-curve provenance for every rib point", () => {
     const fixture = fixtures.find((item) => item.name === "open-line-butt-cap");
     const result = generateFromSkeleton(fixture.canonical);
@@ -704,10 +728,37 @@ function straightControlledSkeleton(halfWidthAtFive) {
   };
 }
 
+// Distance of each of the two coupled rib points from its skeleton point, left
+// side: [at point 5, at point 6]. Equal when tied.
+function straightControlledRibOffsets(halfWidthAtFive, tied) {
+  const skeleton = straightControlledSkeleton(halfWidthAtFive);
+  skeleton.contours[0].points[3].width.tied = tied;
+  skeleton.contours[0].points[4].width.tied = tied;
+  const result = generateFromSkeleton(skeleton);
+  const points = result.contours[0].points;
+  const pointMap = result.provenance[0].pointMap;
+  return [
+    [5, { x: 60, y: 60 }],
+    [6, { x: 140, y: 100 }],
+  ].map(([id, skeletonPoint]) => {
+    const index = pointMap.findIndex(
+      (entry) =>
+        entry &&
+        entry.skeletonPointId === id &&
+        entry.side === "left" &&
+        entry.role === "onCurve"
+    );
+    const rib = points[index];
+    return Math.hypot(rib.x - skeletonPoint.x, rib.y - skeletonPoint.y);
+  });
+}
+
 // The generated handle at skeleton point 5, per side, with its angle measured
 // from that side's rib point.
-function straightControlledHandles(halfWidthAtFive) {
-  const result = generateFromSkeleton(straightControlledSkeleton(halfWidthAtFive));
+function straightControlledHandles(halfWidthAtFive, skeletonOverride = null) {
+  const result = generateFromSkeleton(
+    skeletonOverride ?? straightControlledSkeleton(halfWidthAtFive)
+  );
   const points = result.contours[0].points;
   const pointMap = result.provenance[0].pointMap;
   const find = (side, role) => {

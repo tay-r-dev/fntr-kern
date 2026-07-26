@@ -93,14 +93,21 @@ pure and independent (contour *i*'s output depends only on contour *i*):
    moves both ribs together. The mean is chosen because it is symmetric and
    continuous in both inputs.
 
-   **This is the one place ribs are deliberately coupled**, and it is not a UX
-   preference — it is forced. Ribs at different offsets tilt the generated
-   rib-to-rib line away from the skeleton straight, and the generated handles
-   stay colinear with that line in order to keep the outline smooth, so they
-   rotate as width changes (measured: 8.5° of drift over a width sweep, the two
-   sides shearing opposite ways). Locked in by "keeps handles fixed when width
-   changes across a mutually-controlled straight" and the
-   `mutually-controlled-straight` fixture.
+   **This is the one place ribs are deliberately coupled.** Ribs at different
+   offsets tilt the generated rib-to-rib line away from the skeleton straight,
+   and the generated handles stay colinear with that line in order to keep the
+   outline smooth, so they rotate as width changes (measured: 8.5° of drift over
+   a width sweep, the two sides shearing opposite ways). Locked in by "keeps
+   handles fixed when width changes across a mutually-controlled straight" and
+   the `mutually-controlled-straight` fixture.
+
+   **Opt-out:** `width.tied` on either point (panel: "Tied ribs", under
+   "Linked"). Default on, so existing data keeps the coupling; clearing it on
+   *either* point frees the pair and the handles rotate with width again (16.3°
+   over the same sweep). That is a deliberate trade for independent rib widths
+   here, not a bug — do not "fix" the rotation while a pair is untied. Only the
+   shared *offset* is optional; the rib staying perpendicular to the straight is
+   not, because it follows from the point having no direction of its own.
 1. **Segmentation** — `buildSegmentsFromPoints` splits the point list into
    on-curve→on-curve segments carrying their off-curve controls.
 2. **Per-segment offsetting** — each side's outline is offset by its half-width.

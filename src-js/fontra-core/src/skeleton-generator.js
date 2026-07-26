@@ -190,6 +190,7 @@ function canonicalPointToGeneratorPoint(point) {
   }
   generatorPoint.leftWidth = point.width?.left ?? DEFAULT_SKELETON_WIDTH / 2;
   generatorPoint.rightWidth = point.width?.right ?? DEFAULT_SKELETON_WIDTH / 2;
+  generatorPoint.widthTied = point.width?.tied !== false;
   generatorPoint.leftNudge = point.nudge?.left ?? 0;
   generatorPoint.rightNudge = point.nudge?.right ?? 0;
   generatorPoint.leftLocked = point.locked?.left === true;
@@ -2481,6 +2482,10 @@ function straightSegmentNormal(straightSegment) {
  * offset — otherwise the generated rib-to-rib line tilts away from the skeleton
  * straight, and the generated handles, which stay colinear with that line to
  * keep the outline smooth, rotate as rib width changes.
+ *
+ * Either point may opt out by clearing its `widthTied` flag, which frees the
+ * pair. The handles then rotate with width again; that is the accepted cost of
+ * asking for independent rib widths here.
  * @param {Object} straightSegment - Candidate straight segment
  * @param {Object} prevSegment - Segment before it, or null
  * @param {Object} nextSegment - Segment after it, or null
@@ -2497,7 +2502,9 @@ function isMutuallyControlledPair(straightSegment, prevSegment, nextSegment) {
       straightSegment?.endPoint,
       straightSegment,
       nextSegment
-    )
+    ) &&
+    straightSegment.startPoint.widthTied !== false &&
+    straightSegment.endPoint.widthTied !== false
   );
 }
 

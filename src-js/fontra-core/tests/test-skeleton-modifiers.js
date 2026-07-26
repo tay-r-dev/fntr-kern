@@ -4,8 +4,8 @@ import {
   equalizeEditableGeneratedHandleOffsets,
   equalizeSkeletonHandleFromDelta,
   equalizeSkeletonHandleToPoint,
-  getSkeletonData,
   findGeneratedPathAddress,
+  getSkeletonData,
   getSkeletonHandleEqualizeInfo,
   makeSkeletonContour,
   makeSkeletonPoint,
@@ -17,11 +17,11 @@ import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
 import { EditBehaviorFactory } from "../../views-editor/src/edit-behavior.js";
 import {
+  createEditableGeneratedHandleTargetEntries,
   editSkeleton,
   makeSkeletonPointKey,
   makeSkeletonPointTargetEntry,
 } from "../../views-editor/src/skeleton-editing.js";
-import { createEditableGeneratedHandleTargetEntries } from "../../views-editor/src/skeleton-editing.js";
 
 before(() => {
   globalThis.window = {
@@ -54,6 +54,7 @@ describe("skeleton modifier fixed-rib helpers", () => {
     expect(changed).to.equal(true);
     expect(working.contours[0].points[0]).to.include({ x: 0, y: -10 });
     expect(working.contours[0].points[0].width).to.deep.equal({
+      tied: true,
       left: 50,
       right: 50,
       linked: true,
@@ -75,6 +76,7 @@ describe("skeleton modifier fixed-rib helpers", () => {
 
     expect(working.contours[0].points[0]).to.include({ x: 0, y: -10 });
     expect(working.contours[0].points[0].width).to.deep.equal({
+      tied: true,
       left: 30,
       right: 30,
       linked: true,
@@ -288,7 +290,12 @@ describe("skeleton modifier target-entry parity fixtures", () => {
 
     const point = getSkeletonData(layer).contours[0].points[0];
     expect(point).to.include({ x: 0, y: -10 });
-    expect(point.width).to.deep.equal({ left: 50, right: 50, linked: true });
+    expect(point.width).to.deep.equal({
+      left: 50,
+      right: 50,
+      linked: true,
+      tied: true,
+    });
     expect(layer.path.numContours).to.be.greaterThan(0);
   });
 
@@ -310,7 +317,12 @@ describe("skeleton modifier target-entry parity fixtures", () => {
 
     const point = getSkeletonData(layer).contours[0].points[0];
     expect(point).to.include({ x: 0, y: -10 });
-    expect(point.width).to.deep.equal({ left: 30, right: 30, linked: true });
+    expect(point.width).to.deep.equal({
+      left: 30,
+      right: 30,
+      linked: true,
+      tied: true,
+    });
   });
 
   it("ignores fixed-rib skeleton point selections on layers without skeleton data", () => {

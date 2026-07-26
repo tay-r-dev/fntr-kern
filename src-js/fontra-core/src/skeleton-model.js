@@ -1610,6 +1610,12 @@ export function setSkeletonPointWidthLinked(point, linked) {
   point.width = width;
 }
 
+export function setSkeletonPointWidthTied(point, tied) {
+  const width = normalizeWidth(point?.width);
+  width.tied = tied === true;
+  point.width = width;
+}
+
 export function setSkeletonContourSingleSided(contour, sideOrNull) {
   contour.singleSided = VALID_SINGLE_SIDED.has(sideOrNull) ? sideOrNull : null;
 }
@@ -2423,6 +2429,11 @@ function normalizeWidth(width) {
     left: asNonNegativeNumber(width?.left, DEFAULT_SKELETON_WIDTH / 2),
     right: asNonNegativeNumber(width?.right, DEFAULT_SKELETON_WIDTH / 2),
     linked: width?.linked !== false,
+    // Rib tied to the point across a straight segment. Default on, because two
+    // smooth points joined by a straight define each other's direction and
+    // untied ribs make the generated handles rotate with width. Opting out is
+    // allowed but is a deliberate choice — see SKELETON-FEATURE-MODEL.md §3.0.
+    tied: width?.tied !== false,
   };
 }
 

@@ -25,6 +25,7 @@ import {
   setPanelPointDistributionStream,
   setPanelPointLinked,
   setPanelPointSideWidth,
+  setPanelPointTied,
   setPanelPointTotalWidth,
   setPanelPointValuesStream,
   setPanelRibDetached,
@@ -584,6 +585,15 @@ export default class SkeletonParametersPanel extends Panel {
       label: translate("sidebar.skeleton-parameters.linked"),
       value: summary.linked.mixed ? false : summary.linked.value,
     });
+    // Only has an effect on a smooth point whose one handle faces away from a
+    // straight segment; harmless elsewhere, so it is always shown rather than
+    // appearing and disappearing as the selection changes.
+    formContents.push({
+      type: "checkbox",
+      key: "width:tied",
+      label: translate("sidebar.skeleton-parameters.tied"),
+      value: summary.tied.mixed ? false : summary.tied.value,
+    });
     this._pushSummaryNumber(formContents, "width:total", "total-width", summary.total);
     this._pushSummaryNumber(formContents, "width:left", "left-width", summary.left);
     this._pushSummaryNumber(formContents, "width:right", "right-width", summary.right);
@@ -1051,6 +1061,8 @@ export default class SkeletonParametersPanel extends Panel {
     const sc = this.sceneController;
     if (name === "linked") {
       await setPanelPointLinked(sc, points, value === true, this._undo("set-linked"));
+    } else if (name === "tied") {
+      await setPanelPointTied(sc, points, value === true, this._undo("set-tied"));
     } else if (name === "total") {
       await setPanelPointTotalWidth(sc, points, value, this._undo("set-total-width"));
     } else if (name === "left") {
