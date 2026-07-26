@@ -139,21 +139,68 @@ fitting, no free parameters.
 
 ### 4.5 Saturation
 
-`λ = 1 − w·κ` crosses zero exactly at the cusp. Smooth floor — C^∞ and monotone
-in λ:
+Two complementary bounds, one per side of a turn. Both smooth — a hard clamp
+would be C⁰ but not C¹, leaving a felt "catch" when dragging through the
+threshold.
+
+**Inner side — cusp floor.** `λ = 1 − w·κ` crosses zero exactly at the cusp.
+Smooth floor, C^∞ and monotone in λ:
 
 ```
 λ_safe = ½(λ + √(λ² + 4c²))     c ≈ 0.05
 ```
 
-Plus a smooth ceiling against `k·chord` for the retracted-handle case, where κ
-diverges as `1/|P1−P0|²`. Start `k` at 2.0, the value the existing
-`MAX_HANDLE_TO_CHORD_RATIO` already uses, but applied as a smooth min rather
-than a hard clamp. Together these replace `lockNearZeroHandleDirection`'s
-8-direction snap and `stabilizeSingleCubicHandles`' hard clamps.
+**Outer side — tension ceiling.** Where the offset is on the outside of a turn,
+`λ > 1` and handles lengthen. Bound them so they cannot overshoot the tangent-ray
+intersection `I` (`calculateTunniPoint`, `tunni-calculations.js:103` — rail R-B,
+do not recompute it):
 
-The constants `c` and `k` are the only tunables in the design. Both are
-dimensionless and both act smoothly, so neither can introduce a jump.
+```
+a ≤ |I − P0|        c ≤ |I − P3|
+```
+
+applied as a smooth min, `smoothMin(x,y) = xy/(xⁿ + yⁿ)^(1/n)`, n ≈ 4.
+
+**Bound per end, not the aggregate.** `calculateSegmentTension`
+(`tunni-calculations.js:40`) computes `2ac/(ad + bc)`, which is the *harmonic
+mean* of the two per-end ratios `a/b` and `c/d`. It can therefore read 1.0 while
+one handle overshoots — `a/b = 1.5` with `c/d = 0.75` gives exactly 1.0.
+Bounding each end independently is the constraint actually wanted, and since the
+harmonic mean never exceeds the max, it **implies** `calculateSegmentTension ≤ 1`.
+Bounding the aggregate instead would require an arbitrary rule for splitting the
+reduction between the two ends.
+
+This bound is not a rare guard. It is active on the outer side of exactly the
+tight-turn configurations this design targets.
+
+**Chord backstop.** `calculateTunniPoint` returns null for parallel tangents,
+and on very sharp turns the intersection can lie behind an endpoint, where the
+bound is undefined or would drive the handle to zero. The smooth min goes inert
+on its own as `|I − P0| → ∞`; for the behind-the-endpoint case, keep a smooth
+ceiling against `k·chord` as an always-defined backstop. Start `k` at 2.0, the
+value `MAX_HANDLE_TO_CHORD_RATIO` already uses, applied as a smooth min rather
+than the current hard clamp.
+
+Together these replace `lockNearZeroHandleDirection`'s 8-direction snap and
+`stabilizeSingleCubicHandles`' hard clamps.
+
+**Ordering:** saturation runs *after* the correction pass (§4.6), not before.
+The least-squares solve can push a handle past the intersection, so bounding
+first would be undone. Every stage is smooth, so the composition is smooth.
+
+### 4.5.1 Tunables
+
+`c`, `n` and `k` are the only tunables, and all three are **code constants in
+`offset-cubic.js` — not user-facing.** They act only in degenerate or extreme
+configurations; a control that does nothing in ordinary use is a bad control,
+and exposing a max-tension invites requests for tension > 1.
+
+Testable invariant: **on non-degenerate input, no saturation fires.** If one
+fires on an ordinary glyph, that is a bug rather than a tuning opportunity.
+
+A designer-facing *target* tension for generated curves — a style parameter
+acting everywhere rather than a ceiling — is a coherent separate feature and is
+out of scope here.
 
 ### 4.6 The one correction pass
 
@@ -214,6 +261,12 @@ All in the cubic path, all superseded:
   — dead since the port, now superseded
 - `lockNearZeroHandleDirection` and `getMinimumGridStepFromDirection`, **if** the
   cubic path is their only caller. Verify before removing.
+
+`MAX_HANDLE_TO_CHORD_RATIO` is **retained** but demoted — it becomes the
+always-defined backstop behind the tension bound (§4.5), and is applied as a
+smooth min rather than the current hard clamp. It is currently read at `:2106`
+and `:2851`; the first is inside `stabilizeSingleCubicHandles`, which is being
+deleted.
 - `alignHandleDirections` — dead since the port (both call sites commented out),
   and sits in this exact path. `SKELETON-FEATURE-MODEL.md` §6 already flags it.
 
@@ -239,8 +292,16 @@ per-frame speedup.
 - **Monotonicity sweep.** March a skeleton point 200 steps along a line; assert
   no handle-length jump above threshold.
 - **Cusp regime.** `w·κ > 1` produces finite, bounded, non-flipped handles.
+- **Tension bound.** No generated handle overshoots the tangent-ray
+  intersection, and `calculateSegmentTension` on every generated cubic is ≤ 1.
+  Assert both — the second follows from the first, and checking it guards the
+  harmonic-mean subtlety in §4.5.
+- **No saturation on ordinary input.** Over a corpus of non-degenerate
+  configurations, assert that neither the cusp floor, the tension ceiling nor
+  the chord backstop is active. Saturation firing on an ordinary glyph is a bug.
 - **Degenerates.** Zero-length handles, collinear control points, zero width,
-  coincident endpoints.
+  coincident endpoints, parallel end tangents (no Tunni intersection), and a
+  tangent intersection lying behind an endpoint.
 
 ### Existing
 
