@@ -7,11 +7,13 @@ import { expect } from "chai";
 
 import { readRepoPathAsJSON } from "./test-support.js";
 
+// The recorded outlines this generator currently emits. Regenerate with
+// tests/scripts/make-skeleton-generator-fixtures.js.
 const fixtures = readRepoPathAsJSON("tests/data/skeleton-generator/fixtures.json");
 
 describe("skeleton-generator golden master", () => {
   for (const fixture of fixtures) {
-    it(`matches donor output for ${fixture.name}`, () => {
+    it(`matches the recorded outline for ${fixture.name}`, () => {
       const result = generateFromSkeleton(fixture.canonical);
       expect(roundContours(result.contours)).to.deep.equal(
         roundContours(fixture.expectedContours)
