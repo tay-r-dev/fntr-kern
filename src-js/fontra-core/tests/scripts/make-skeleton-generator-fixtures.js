@@ -1,11 +1,11 @@
-import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath, pathToFileURL } from "url";
+import { fileURLToPath } from "url";
 
-// Four levels up from tests/scripts/ reaches the repo root; the donor checkout
-// lives at <repo>/skeleton.
-import { generateContoursFromSkeleton as generateDonorContours } from "../../../../skeleton/src-js/fontra-core/src/skeleton-contour-generator.js";
+// Fixtures record this generator's own output. Until 2026-07-26 this script ran
+// the pre-port generator out of a gitignored checkout, which meant it could not
+// be run outside one developer's machine.
+import { generateContoursFromSkeleton } from "../../src/skeleton-generator.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,37 +16,6 @@ const outputPath = path.join(
   "skeleton-generator",
   "fixtures.json"
 );
-
-// Round caps were reworked (split-outline geometry) on test/cap-rounding-rewamp,
-// AFTER the pinned donor commit — so round-cap fixtures pin THAT branch's output
-// instead of the pinned donor's (`capReference: true` per fixture). The reference
-// generator is extracted from git at regen time (no vendored blob); if the ref
-// ever disappears, the committed fixtures.json still works — only regeneration
-// would need a new reference.
-const CAP_REFERENCE_COMMIT = "7719b68f4f92e9389f5c10faf6f09630779fe91d"; // test/cap-rounding-rewamp tip
-const capReferenceDir = path.join(__dirname, "..", ".cap-reference-tmp");
-
-async function loadCapReferenceGenerator() {
-  fs.rmSync(capReferenceDir, { recursive: true, force: true });
-  fs.mkdirSync(capReferenceDir, { recursive: true });
-  const repoRoot = path.join(__dirname, "..", "..", "..", "..");
-  const tarPath = path.join(capReferenceDir, "capref.tar");
-  execSync(
-    `git archive ${CAP_REFERENCE_COMMIT} src-js/fontra-core/src -o "${tarPath}"`,
-    { cwd: repoRoot }
-  );
-  // Relative paths: Windows tar can misread "C:\..." as a remote host.
-  execSync(`tar -xf capref.tar`, { cwd: capReferenceDir });
-  const generatorPath = path.join(
-    capReferenceDir,
-    "src-js",
-    "fontra-core",
-    "src",
-    "skeleton-contour-generator.js"
-  );
-  const module = await import(pathToFileURL(generatorPath).href);
-  return module.generateContoursFromSkeleton;
-}
 
 const CAP_CORNER_POINT_FIELDS = [
   "capStyle",
@@ -222,21 +191,20 @@ const fixtures = [
   },
 ];
 
-const generateCapReferenceContours = fixtures.some((fixture) => fixture.capReference)
-  ? await loadCapReferenceGenerator()
-  : null;
-
 for (const fixture of fixtures) {
   fixture.donorInput = canonicalToDonor(fixture.canonical);
-  const generate = fixture.capReference
-    ? generateCapReferenceContours
-    : generateDonorContours;
-  fixture.expectedContours = generate(fixture.donorInput);
+  fixture.expectedContours = generateContoursFromSkeleton(fixture.canonical);
 }
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-fs.writeFileSync(outputPath, `${JSON.stringify(fixtures, null, 2)}\n`);
-fs.rmSync(capReferenceDir, { recursive: true, force: true });
+const newline =
+  fs.existsSync(outputPath) && fs.readFileSync(outputPath, "utf-8").includes("\r\n")
+    ? "\r\n"
+    : "\n";
+fs.writeFileSync(
+  outputPath,
+  `${JSON.stringify(fixtures, null, 2).replaceAll("\n", newline)}${newline}`
+);
 
 function point(id, x, y, extra = {}) {
   return {
