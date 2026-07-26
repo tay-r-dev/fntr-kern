@@ -1192,12 +1192,12 @@ Delete from that helper:
 Replace the handle derivation with:
 
 ```js
-      const [cubicP1, cubicP2] = toCubicControlPoints(segment);
+      const controls = segment.controlPoints;
       const sideSign = isLeftSide ? 1 : -1;
       const constructed = offsetCubicSide({
         p0: segment.startPoint,
-        p1: cubicP1,
-        p2: cubicP2,
+        p1: controls[0],
+        p2: controls[controls.length - 1],
         p3: segment.endPoint,
         d0: sideSign * startHalfWidth,
         d3: sideSign * endHalfWidth,
@@ -1208,33 +1208,13 @@ Replace the handle derivation with:
       let adjustedHandle2 = constructed.h2;
 ```
 
-`buildSegmentsFromPoints` collects every off-curve point between two on-curve
-points, so a segment can carry one control point (a quadratic) as well as two.
-A quadratic must be **degree-elevated**, not have its control point duplicated —
-duplicating gives a different curve. Add this helper next to
-`createBezierFromPoints`:
-
-```js
-/**
- * The two cubic control points for a segment, whatever its off-curve count.
- * A single off-curve point is a quadratic and is degree-elevated; the cubic
- * case passes through. Three or more is malformed input — read it the way
- * createBezierFromPoints does, from the first and last.
- */
-function toCubicControlPoints(segment) {
-  const controls = segment.controlPoints;
-  if (controls.length === 1) {
-    const c = controls[0];
-    const p0 = segment.startPoint;
-    const p3 = segment.endPoint;
-    return [
-      { x: p0.x + (2 / 3) * (c.x - p0.x), y: p0.y + (2 / 3) * (c.y - p0.y) },
-      { x: p3.x + (2 / 3) * (c.x - p3.x), y: p3.y + (2 / 3) * (c.y - p3.y) },
-    ];
-  }
-  return [controls[0], controls[controls.length - 1]];
-}
-```
+Skeleton curve segments always carry exactly two off-curve points — the pen tool
+and `skeleton-model.js` only ever emit handles in pairs, and every existing
+branch in the generator tests `controlPoints.length === 0` (line) against
+everything else (curve). Nothing branches on a count of one, so there is no
+quadratic case to elevate. Indexing first and last rather than `[0]` and `[1]`
+costs nothing and degrades to a sane curve instead of `NaN` if malformed data
+ever reaches here.
 
 Then remove the now-unused `curves` and `sideHalfWidth` parameters from `addOffsetCurves` and drop the corresponding arguments at both call sites — except `sideHalfWidth`, which the collapsed check still needs. Keep `sideHalfWidth`; remove only `curves`.
 
