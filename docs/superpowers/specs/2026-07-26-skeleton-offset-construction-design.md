@@ -24,8 +24,9 @@ It shows up at small scale specifically:
 - when the generated segment is small relative to the skeleton's handles
 
 Both are the same condition in disguise: **offset distance approaching the
-radius of curvature**, `w·κ → 1`. That is the cusp condition for an offset
-curve, and it is where the current pipeline is worst conditioned.
+radius of curvature**, `d·κ → −1`. That is the cusp condition for an offset
+curve — the point where the speed factor `λ = 1 + d·κ` reaches zero — and it is
+where the current pipeline is worst conditioned.
 
 This is a stability problem, not an accuracy problem. Each frame's output is
 geometrically fine. It just isn't continuous in the input.
@@ -209,8 +210,13 @@ threshold.
 Smooth floor, C^∞ and monotone in λ:
 
 ```
-λ_safe = ½(λ + √(λ² + 4c²))     c ≈ 0.05
+λ_safe = ½(λ + √(λ² + 4c²))     c = 0.02
 ```
+
+`c = 0.02`, not 0.05. The floor is never *exactly* inert — it shifts `λ` by
+`c²/λ` — and at 0.05 that is 0.14 units on a 55-unit handle, which the emission
+rounding would not absorb. At 0.02 it is 0.006 units. Set from that requirement,
+not from taste.
 
 **Outer side — tension ceiling.** Where the offset is on the outside of a turn,
 `λ > 1` and handles lengthen. Bound them so they cannot overshoot the tangent-ray
@@ -221,7 +227,19 @@ do not recompute it):
 a ≤ |I − P0|        c ≤ |I − P3|
 ```
 
-applied as a smooth min, `smoothMin(x,y) = xy/(xⁿ + yⁿ)^(1/n)`, n ≈ 4.
+applied as a smooth min. Use the **polynomial** form, not a p-norm:
+
+```
+smoothMin(a, b, w):  h = max(w − |a − b|, 0) / w
+                     return min(a, b) − h²·w/4
+```
+
+The p-norm form an earlier draft specified returns `a/2^(1/n)` when `a = b` — a
+16% shortfall at n=4 even when the bound is not binding, so it is never inert.
+The polynomial form is **exactly** `min(a, b)` outside the blend window `w`, and
+C¹ at the join (its derivative reaches ½ from both sides), which is what makes
+"no saturation on ordinary input" an exact invariant rather than an approximate
+one. Window `w = 0.15 × the bound being approached`.
 
 **Bound per end, not the aggregate.** `calculateSegmentTension`
 (`tunni-calculations.js:40`) computes `2ac/(ad + bc)`, which is the *harmonic
@@ -316,9 +334,12 @@ out of scope here.
 
 ### 4.6 The one correction pass
 
-The closed form has G2 contact at the endpoints but drifts mid-segment when
-`w·κ` is large — precisely the regime this design targets. One fixed correction
-pass pins it down without reintroducing any adaptive machinery.
+The closed form matches the true offset's position and first derivative exactly
+at both ends when the two widths are equal — first-order contact, not second:
+the constructed cubic's endpoint curvature also depends on the far control
+point, which is not being solved for. It therefore drifts mid-segment when
+`|d·κ|` is large, or when the widths taper. One fixed correction pass pins that
+down without reintroducing any adaptive machinery.
 
 Sample the true offset at five **fixed** source parameters
 `t ∈ {⅛, ¼, ½, ¾, ⅞}`. Solve the two handle lengths along the already-fixed
@@ -474,7 +495,6 @@ per-frame speedup.
   the true offset than the current average-width path does.
 - **Monotonicity sweep.** March a skeleton point 200 steps along a line; assert
   no handle-length jump above threshold.
-- **Cusp regime.** `w·κ > 1` produces finite, bounded, non-flipped handles.
 - **Tension bound.** No generated handle overshoots the tangent-ray
   intersection, and `calculateSegmentTension` ≤ 1 **on segments with a forward
   intersection**. Scoped deliberately: where the intersection is absent or below
