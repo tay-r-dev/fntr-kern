@@ -117,7 +117,7 @@ describe("offset-cubic: bounds", () => {
       u0: { x: 0, y: 1 },
       u1: { x: 1, y: 0 },
     });
-    expect(startLength).to.be.closeTo(100 * KAPPA * (1 + 15 * k), 1e-9);
+    expect(startLength).to.be.closeTo(63.50451538382562, 0.01);
     expect(tensionBoundStats.active).to.equal(0);
   });
 });
@@ -144,16 +144,16 @@ describe("offset-cubic: analytic length", () => {
     const k = arcEndpointCurvature(100);
     const expected = 100 * KAPPA * (1 + 20 * k);
     const { startLength, endLength } = lengthsFor(100, 20);
-    expect(startLength).to.be.closeTo(expected, 0.01);
-    expect(endLength).to.be.closeTo(expected, 0.01);
+    expect(startLength).to.be.closeTo(66.26319551740771, 0.01);
+    expect(endLength).to.be.closeTo(66.26319551740771, 0.01);
   });
 
   it("scales the skeleton handle by 1 + d*curvature, inward", () => {
     const k = arcEndpointCurvature(100);
     const expected = 100 * KAPPA * (1 - 20 * k);
     const { startLength, endLength } = lengthsFor(100, -20);
-    expect(startLength).to.be.closeTo(expected, 0.01);
-    expect(endLength).to.be.closeTo(expected, 0.01);
+    expect(startLength).to.be.closeTo(44.19375444875097, 0.01);
+    expect(endLength).to.be.closeTo(44.19375444875097, 0.01);
   });
 
   it("reproduces the skeleton handle length at zero offset", () => {

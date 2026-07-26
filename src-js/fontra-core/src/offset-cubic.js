@@ -1,3 +1,6 @@
+import { solveHandleLengths } from "./fit-cubic.js";
+import { calculateTunniPoint } from "./tunni-calculations.js";
+
 // Floor on the offset speed factor lambda, as a fraction of the un-offset handle
 // length. A handle far past the cusp keeps this fraction rather than collapsing.
 const CUSP_FLOOR = 0.02;
@@ -13,6 +16,7 @@ const SMOOTH_MIN_WINDOW = 0.15;
 const MAX_HANDLE_TO_CHORD_RATIO = 2;
 const MIN_HANDLE_LENGTH = 1;
 const MIN_HANDLE_WINDOW = 0.5;
+const CORRECTION_SAMPLE_TS = [0.125, 0.25, 0.5, 0.75, 0.875];
 
 export const tensionBoundStats = { evaluated: 0, active: 0 };
 export function resetTensionBoundStats() {
@@ -74,6 +78,31 @@ function boundLength(length, limit, chord) {
   );
 }
 
+function offsetPointAt(p0, p1, p2, p3, d0, d3, t) {
+  const mt = 1 - t;
+  const base = {
+    x: mt ** 3 * p0.x + 3 * mt * mt * t * p1.x + 3 * mt * t * t * p2.x + t ** 3 * p3.x,
+    y: mt ** 3 * p0.y + 3 * mt * mt * t * p1.y + 3 * mt * t * t * p2.y + t ** 3 * p3.y,
+  };
+  const deriv = {
+    x:
+      3 * mt * mt * (p1.x - p0.x) +
+      6 * mt * t * (p2.x - p1.x) +
+      3 * t * t * (p3.x - p2.x),
+    y:
+      3 * mt * mt * (p1.y - p0.y) +
+      6 * mt * t * (p2.y - p1.y) +
+      3 * t * t * (p3.y - p2.y),
+  };
+  const speed = Math.hypot(deriv.x, deriv.y);
+  if (speed < EPSILON) return base;
+  const distance = d0 + (d3 - d0) * t;
+  return {
+    x: base.x + (deriv.y * distance) / speed,
+    y: base.y - (deriv.x * distance) / speed,
+  };
+}
+
 function endDerivatives(p0, p1, p2, p3, atEnd) {
   if (atEnd) {
     return {
@@ -106,11 +135,26 @@ export function offsetCubicSide({ p0, p1, p2, p3, d0, d3, q0, q3, u0, u1 }) {
     CUSP_FLOOR,
     CUSP_FLOOR_WINDOW
   );
+  const analyticStart = startHandle * startLambda;
+  const analyticEnd = endHandle * endLambda;
+  const samples = CORRECTION_SAMPLE_TS.map((t) =>
+    offsetPointAt(p0, p1, p2, p3, d0, d3, t)
+  );
+  const { alphaL, alphaR } = solveHandleLengths(
+    [q0, ...samples, q3],
+    [0, ...CORRECTION_SAMPLE_TS, 1],
+    u0,
+    u1
+  );
+  const correctedStart = Math.min(
+    Math.max(alphaL, analyticStart * 0.25),
+    analyticStart * 4
+  );
+  const correctedEnd = Math.min(Math.max(alphaR, analyticEnd * 0.25), analyticEnd * 4);
   const chord = Math.hypot(q3.x - q0.x, q3.y - q0.y);
   const { startLimit, endLimit } = tangentIntersectionDistances(q0, u0, q3, u1);
   return {
-    startLength: boundLength(startHandle * startLambda, startLimit, chord),
-    endLength: boundLength(endHandle * endLambda, endLimit, chord),
+    startLength: boundLength(correctedStart, startLimit, chord),
+    endLength: boundLength(correctedEnd, endLimit, chord),
   };
 }
-import { calculateTunniPoint } from "./tunni-calculations.js";
