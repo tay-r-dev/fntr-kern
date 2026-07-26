@@ -529,21 +529,27 @@ per-frame speedup.
 ### Existing
 
 - **The fixture script cannot regenerate these fixtures as it stands.** Found
-  2026-07-26 in review. `tests/scripts/make-skeleton-generator-fixtures.js`
-  imports the reference generator from `../../../../skeleton/…`, a path that does
-  not exist — the donor lives at `_external/skeleton/`. Its
-  `CAP_REFERENCE_COMMIT` is also not an object in this repo. And even with both
-  fixed, it computes `expectedContours` **from the donor**, so running it would
-  re-pin donor geometry and the suite would still fail.
+  2026-07-26 in review. `tests/scripts/make-skeleton-generator-fixtures.js` is a
+  leftover from the porting era: it runs the pre-port generator and transcribes
+  *its* output as the expected answer. Three problems, any one fatal:
+  - it imports that generator from `../../../../skeleton/…`, which resolves to
+    `<repo>/skeleton` and does not exist
+  - the checkout it means, `_external/skeleton`, is **gitignored** — so the
+    script cannot be run from a fresh clone, by anyone else, or in CI
+  - `CAP_REFERENCE_COMMIT` is not an object in this repo
 
-  Fixing this is its own piece of work, not a step inside another task: the
-  script must record forkra's output for the cubic path, or the suite must split
-  into a donor-parity part and a forkra-baseline part.
-- **The golden-master suite is currently titled "matches donor output". After
-  this change it no longer does.** Retitle it and record the divergence in
-  `SKELETON-FEATURE-MODEL.md`. The donor at `_external/skeleton` stays the
-  behavioral reference for everything else; offset construction is now
-  deliberately forkra's own.
+  Nothing here needs preserving. Porting is finished and no parity with the
+  pre-port code is being maintained; the committed values are simply the
+  outlines forkra emits today — the suite passes, so they already agree. The fix
+  is for the script to record forkra's own output. No suite split, no divergence
+  to record.
+
+  Acceptance test: run the fixed script **before** any geometry change; the
+  output must be byte-identical to the committed file. That proves it reproduces
+  current behavior, which is the only property it needs.
+- The suite's per-case title says "matches donor output", describing a
+  relationship that no longer exists. Retitle it so a failure reads as a
+  regression rather than a parity question.
 - `test-skeleton-interpolation.js` must still pass. Point-count stability is
   preserved trivially — still exactly one cubic per side per segment.
 

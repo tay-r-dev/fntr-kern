@@ -24,21 +24,27 @@
 
 | File | Responsibility |
 |------|----------------|
-| `src-js/fontra-core/tests/scripts/make-skeleton-generator-fixtures.js` | Fixed in Task 1 to record forkra's output instead of the donor's. |
+| `src-js/fontra-core/tests/scripts/make-skeleton-generator-fixtures.js` | Fixed in Task 1 to record this generator's own output. |
 | `src-js/fontra-core/src/fit-cubic.js` | Gains `solveHandleLengths`. `generateBezier` behavior unchanged. |
 | `src-js/fontra-core/src/offset-cubic.js` | **NEW.** The construction. Pure, no state, no `Bezier` objects of its own. |
 | `src-js/fontra-core/tests/test-offset-cubic.js` | **NEW.** Unit tests. |
 | `src-js/fontra-core/src/skeleton-generator.js` | Cubic branch calls the new module. Dead code removed. |
 | `src-js/fontra-core/tests/test-skeleton-generator.js` | Collapsed-side test, end-to-end continuity sweep, suite retitled. |
-| `docs/superpowers/SKELETON-FEATURE-MODEL.md` | Records the donor divergence. |
+| `docs/superpowers/SKELETON-FEATURE-MODEL.md` | Pipeline description updated. |
 
 ---
 
 ### Task 1: Make the fixture script able to regenerate
 
-Nothing in this plan can be verified until this works. The script currently imports the donor generator from `../../../../skeleton/…`, which resolves to `<repo>/skeleton` — a path that does not exist, since the donor lives at `_external/skeleton`. Its `CAP_REFERENCE_COMMIT` is not an object in this repo either. And it computes `expectedContours` **from the donor**, so even with the paths fixed, regenerating would re-pin donor geometry.
+Nothing in this plan can be verified until this works.
 
-The fixtures become forkra's own baseline. For everything except the cubic path this loses nothing: those fixtures pass against donor output today, so recording forkra's output reproduces the same numbers.
+The script is a leftover from the porting era: it runs the pre-port generator and transcribes *its* output as the expected answer. Three problems, any one fatal:
+
+- it imports that generator from `../../../../skeleton/…`, which resolves to `<repo>/skeleton` and does not exist
+- the checkout it means, `_external/skeleton`, is **gitignored** — so the script cannot be run from a fresh clone, by anyone else, or in CI
+- `CAP_REFERENCE_COMMIT` is not an object in this repo
+
+Nothing here needs preserving. Porting is finished and no parity with the pre-port code is being maintained. The committed values are simply the outlines the generator emits today — the suite passes, so they already agree. The script just needs to record that.
 
 **Files:**
 - Modify: `src-js/fontra-core/tests/scripts/make-skeleton-generator-fixtures.js:1-8`, `:225-235`
@@ -63,8 +69,9 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Fixtures record forkra's own output. They were donor-parity fixtures until
-// 2026-07-26; see docs/superpowers/specs/2026-07-26-skeleton-offset-construction-design.md
+// Fixtures record this generator's own output. Until 2026-07-26 this script ran
+// the pre-port generator out of a gitignored checkout, which meant it could not
+// be run outside one developer's machine.
 import { generateContoursFromSkeleton } from "../../src/skeleton-generator.js";
 ```
 
@@ -95,7 +102,7 @@ node tests/scripts/make-skeleton-generator-fixtures.js
 git diff --stat tests/data/skeleton-generator/fixtures.json
 ```
 
-Expected: **no diff**. If the file changed, forkra and the donor already disagree somewhere and that must be understood before proceeding — it is not this change's business to silently absorb it. Investigate and report rather than accepting the new values.
+Expected: **no diff**. If the file changed, the generator and the recorded values already disagree somewhere, and that has nothing to do with this change — do not let it ride along. Investigate and report rather than accepting the new values.
 
 - [ ] **Step 5: Run the suite**
 
@@ -107,18 +114,18 @@ Expected: PASS.
 ```bash
 npx prettier --write src-js/fontra-core/tests/scripts/make-skeleton-generator-fixtures.js
 git add .
-git commit -m "fix: make the skeleton generator fixture script runnable
+git commit -m "fix: generate skeleton fixtures from this generator, not the pre-port one
 
-It imported the donor generator from <repo>/skeleton, which has not existed
-since the donor moved to _external/skeleton, and its cap-reference commit is
-not an object in this repo - so the fixtures could not be regenerated at all.
+The script was a leftover from the port: it ran the pre-port generator and
+transcribed its output as the expected answer. It could not run at all - the
+path it imported does not exist, the checkout it meant is gitignored so no
+fresh clone or CI could reach it, and its cap-reference commit is not an object
+in this repo.
 
-It also computed expected output from the donor rather than from forkra, so
-regenerating would have re-pinned donor geometry.
-
-Now records forkra's own output. Verified byte-identical to the committed
-fixtures before any geometry change, so the switch loses nothing where the
-two already agree.
+Porting is finished and no parity with the pre-port code is maintained. The
+committed values are just the outlines this generator emits, so the script now
+records that directly. Verified byte-identical to the committed fixtures before
+any geometry change.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
@@ -1651,7 +1658,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 10: Record the divergence
+### Task 10: Fix the misleading test title and update the feature model
 
 **Files:**
 - Modify: `src-js/fontra-core/tests/test-skeleton-generator.js:12-14`
@@ -1659,12 +1666,10 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Retitle the golden-master suite**
 
-In `src-js/fontra-core/tests/test-skeleton-generator.js`, change the per-case title from `matches donor output for ${fixture.name}` to `matches the recorded outline for ${fixture.name}`, and add above the `describe`:
+The per-case title reads `matches donor output for ${fixture.name}`. Porting is finished and no parity with the pre-port code is maintained, so that title makes a failure read as a parity question instead of a regression. Change it to `matches the recorded outline for ${fixture.name}` and add above the `describe`:
 
 ```js
-// These were donor-parity fixtures until 2026-07-26, when generated handle
-// lengths moved from a sample-and-fit offset to a closed-form construction.
-// They are forkra's own regression baseline now. Regenerate with
+// The recorded outlines this generator currently emits. Regenerate with
 // tests/scripts/make-skeleton-generator-fixtures.js.
 ```
 
@@ -1685,11 +1690,10 @@ path was not a continuous function of the skeleton — see
 In §4, append:
 
 ```markdown
-- **Outline offsetting is forkra's own.** The donor's sample-and-fit offset was
-  replaced by a closed-form construction (2026-07-26). The generator's golden
-  masters are no longer donor-parity fixtures, and the fixture script now
-  records forkra's output. The donor remains the behavioral reference for
-  everything else.
+- **The generator fixtures are self-recorded.** Until 2026-07-26 the fixture
+  script ran the pre-port generator out of the gitignored `_external/skeleton`
+  checkout, so it could not be run from a fresh clone or in CI. It now records
+  this generator's own output.
 ```
 
 In §6, delete the `alignHandleDirections` and `stabilizeSingleCubicHandles` cleanup entries — both are resolved. Leave the round-once and monolith entries.
@@ -1700,13 +1704,14 @@ In §6, delete the `alignHandleDirections` and `stabilizeSingleCubicHandles` cle
 cd src-js/fontra-core && npm test
 npx prettier --write src-js/fontra-core/tests/test-skeleton-generator.js
 git add .
-git commit -m "docs: record that outline offsetting diverges from the donor
+git commit -m "docs: retitle the generator fixtures and update the pipeline description
 
-The generator's golden masters were donor-parity fixtures; they are forkra's
-own regression baseline now. Retitles the suite so a failure is not read as a
-parity regression, and updates the feature model's pipeline description.
+The suite's per-case title claimed the fixtures match pre-port output. Porting
+is finished and no parity is maintained, so that made a failure read as a parity
+question instead of a regression.
 
-Drops the two cleanup candidates this work resolved.
+Updates the feature model's description of cubic offsetting, and drops the two
+cleanup candidates this work resolved.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
