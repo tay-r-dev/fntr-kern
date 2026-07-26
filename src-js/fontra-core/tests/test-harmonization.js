@@ -557,18 +557,34 @@ describe("harmonization: harmonizePath", () => {
     }
   });
 
-  it("still harmonizes a joint whose handle is already over the limit", () => {
-    // the ceiling is "no worse than it already is", not "refuse to touch it"
+  it("brings a handle that is already over the limit back under it", () => {
+    // over-tension is a defect, not a style to preserve: harmonize corrects it
+    // rather than working around it
     const path = overshootPath();
     // the incoming segment's Tunni point sits at x=10 on the tangent, so an
     // incoming handle at x=5 already reaches past it
     path.setPointPosition(2, 5, 100);
-    const before = Math.max(...jointHandleTensions(path));
-    expect(before).to.be.greaterThan(1);
+    expect(Math.max(...jointHandleTensions(path))).to.be.greaterThan(1);
 
     const result = harmonizePath(path, [NODE], { handleBias: 1 });
-    expect(Math.max(...jointHandleTensions(result.path))).to.be.at.most(before + 1e-6);
+    expect(Math.max(...jointHandleTensions(result.path))).to.be.at.most(1 + 1e-6);
+    expect(result.report[0].tensionReduced).to.equal(true);
     expect(result.report[0].status).to.not.equal("skipped");
+  });
+
+  it("leaves tensionReduced false when nothing was over the limit", () => {
+    const result = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
+    expect(result.report[0].tensionReduced).to.equal(false);
+  });
+
+  it("holds the tension ceiling even with equalization on", () => {
+    // balance averages a segment's two tensions, and that average can land
+    // above the ceiling on its own
+    const result = harmonizePath(overshootPath(), [NODE], {
+      handleBias: 1,
+      equalizeTension: true,
+    });
+    expect(Math.max(...jointHandleTensions(result.path))).to.be.at.most(1 + 1e-6);
   });
 
   it("does not land mid-range on a junk bias", () => {

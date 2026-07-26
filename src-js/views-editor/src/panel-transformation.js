@@ -1678,9 +1678,10 @@ function detailHarmonizeReport(reports, options) {
     for (const entry of report) {
       const reason = entry.reason ? ` / ${entry.reason}` : "";
       const sweeps = entry.iterations ? ` after ${entry.iterations}` : "";
+      const reduced = entry.tensionReduced ? ", handle tension reduced" : "";
       lines.push(
         `  point ${entry.pointIndex} (contour ${entry.contourIndex}): ` +
-          `${entry.status}${reason}${sweeps}`
+          `${entry.status}${reason}${sweeps}${reduced}`
       );
     }
   }

@@ -28,9 +28,11 @@ import { POINT_TYPE_OFF_CURVE_CUBIC } from "./var-path.js";
 import {
   addVectors,
   distance,
+  dotVector,
   interpolateVectors,
   intersect,
   mulVectorScalar,
+  normalizeVector,
   subVectors,
   vectorLength,
 } from "./vector.js";
@@ -52,8 +54,6 @@ export const HARMONIZE_DEFAULTS = {
   // each other and the curve doubles back.
   maxHandleTension: 1,
 };
-
-const ZERO_VECTOR = { x: 0, y: 0 };
 
 function crossProduct(vectorA, vectorB) {
   return vectorA.x * vectorB.y - vectorA.y * vectorB.x;
@@ -291,6 +291,53 @@ function tensionAfterStep(path, ctx, segments, fixup, handleBias) {
 }
 
 //
+// Pull the joint's own handles back to the ceiling if they are already over it.
+//
+// A handle past its Tunni point is a defect, not a style: the segment's two
+// handle lines have crossed and the curve doubles back. Harmonization slides
+// along the tangent and cannot always undo that on its own, so an over-tension
+// handle is shortened first — straight down its own direction, which leaves the
+// tangent and therefore G1 untouched.
+//
+// Returns true when something was shortened.
+//
+function enforceHandleTension(path, ctx, maxHandleTension) {
+  let reduced = false;
+
+  for (const { nearSide, indices } of jointSegments(path, ctx)) {
+    const points = segmentPositions(path, indices);
+    if (handleTension(points, nearSide) <= maxHandleTension) {
+      continue;
+    }
+
+    const [onCurve, handle, handleIndex] =
+      nearSide === "start"
+        ? [points[0], points[1], indices[1]]
+        : [points[3], points[2], indices[2]];
+    const tunniPoint = calculateTunniPoint(points);
+    const toHandle = subVectors(handle, onCurve);
+    const toTunni = subVectors(tunniPoint, onCurve);
+
+    // Only meaningful when the handle actually points at the Tunni point. If it
+    // points away, the ratio is not an overshoot and shortening would be a
+    // guess about a differently-broken segment.
+    if (dotVector(toHandle, toTunni) <= 0) {
+      continue;
+    }
+
+    const reach = maxHandleTension * vectorLength(toTunni);
+    const shortened = addVectors(
+      onCurve,
+      mulVectorScalar(normalizeVector(toHandle), reach)
+    );
+    path.setPointPosition(handleIndex, shortened.x, shortened.y);
+    reduced = true;
+  }
+
+  return reduced;
+}
+
+//
 // Tunni-equalize the two segments meeting at a joint.
 //
 // This is the one thing that moves the *outer* handles, PP and NN, which belong
@@ -418,35 +465,39 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   }
 
   const states = candidates.map((pointIndex) => {
-    // Floors are captured up front, from the untouched geometry: a handle may
-    // never end up shorter than this, however many passes it takes.
-    const ctx = getJointContext(path, pointIndex);
-    const floors = ctx.reason
-      ? undefined
-      : {
-          P: (1 - cuspSafetyMargin) * distance(ctx.node, ctx.P),
-          N: (1 - cuspSafetyMargin) * distance(ctx.node, ctx.N),
-        };
-    // A handle already over the ceiling is not made worse, but neither is it
-    // held hostage: the joint still harmonizes as far as it can.
-    const segments = ctx.reason ? [] : jointSegments(path, ctx);
-    const ceiling = segments.length
-      ? Math.max(
-          maxHandleTension,
-          tensionAfterStep(path, ctx, segments, ZERO_VECTOR, handleBias)
-        )
-      : Infinity;
-    return {
+    const state = {
       pointIndex,
       contourIndex: path.getContourIndex(pointIndex),
       status: undefined,
       reason: undefined,
       iterations: 0,
-      floors,
-      segments,
-      ceiling,
+      floors: undefined,
+      segments: [],
+      tensionReduced: false,
       done: false,
     };
+
+    let ctx = getJointContext(path, pointIndex);
+    if (ctx.reason) {
+      return state;
+    }
+
+    // An over-tension handle is a defect to correct, not a state to preserve:
+    // shorten it back to the ceiling first, so the sweep starts from a joint
+    // whose handle lines do not cross.
+    state.tensionReduced = enforceHandleTension(path, ctx, maxHandleTension);
+    if (state.tensionReduced) {
+      ctx = getJointContext(path, pointIndex);
+    }
+
+    state.segments = jointSegments(path, ctx);
+    // Floors are captured up front, from the geometry the sweep starts with: a
+    // handle may never end up shorter than this, however many passes it takes.
+    state.floors = {
+      P: (1 - cuspSafetyMargin) * distance(ctx.node, ctx.P),
+      N: (1 - cuspSafetyMargin) * distance(ctx.node, ctx.N),
+    };
+    return state;
   });
 
   function settle(state, status, reason) {
@@ -513,7 +564,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
           state.segments,
           mulVectorScalar(solution.fixup, scale),
           handleBias
-        ) > state.ceiling
+        ) > maxHandleTension
       ) {
         let low = 0;
         let high = scale;
@@ -526,7 +577,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
             mulVectorScalar(solution.fixup, mid),
             handleBias
           );
-          if (tension > state.ceiling) {
+          if (tension > maxHandleTension) {
             high = mid;
           } else {
             low = mid;
@@ -567,15 +618,27 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       const ctx = getJointContext(path, state.pointIndex);
       if (!ctx.reason) {
         equalizeJointSegments(path, ctx);
+        // balance averages the two tensions of a segment, and that average can
+        // itself land above the ceiling — so the invariant is re-established
+        // here rather than assumed to have survived
+        state.tensionReduced =
+          enforceHandleTension(
+            path,
+            getJointContext(path, state.pointIndex),
+            maxHandleTension
+          ) || state.tensionReduced;
       }
     }
   }
 
-  return states.map(({ pointIndex, contourIndex, status, reason, iterations }) => ({
-    pointIndex,
-    contourIndex,
-    status,
-    reason,
-    iterations,
-  }));
+  return states.map(
+    ({ pointIndex, contourIndex, status, reason, iterations, tensionReduced }) => ({
+      pointIndex,
+      contourIndex,
+      status,
+      reason,
+      iterations,
+      tensionReduced,
+    })
+  );
 }
