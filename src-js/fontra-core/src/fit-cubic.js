@@ -17,8 +17,7 @@ function zeros(length, ...rest) {
   }
 }
 
-export function generateBezier(points, parameters, leftTangent, rightTangent) {
-  const bezierPoints = [points[0], undefined, undefined, points[points.length - 1]];
+export function solveHandleLengths(points, parameters, leftTangent, rightTangent) {
   const bezierLinear = new Bezier(
     points[0],
     points[0],
@@ -48,8 +47,20 @@ export function generateBezier(points, parameters, leftTangent, rightTangent) {
   const C0_C1 = C[0][0] * C[1][1] - C[1][0] * C[0][1];
   const C0_X = C[0][0] * X[1] - C[1][0] * X[0];
   const X_C1 = X[0] * C[1][1] - X[1] * C[0][1];
-  const alphaL = C0_C1 == 0 ? 0 : X_C1 / C0_C1;
-  const alphaR = C0_C1 == 0 ? 0 : C0_X / C0_C1;
+  return {
+    alphaL: C0_C1 == 0 ? 0 : X_C1 / C0_C1,
+    alphaR: C0_C1 == 0 ? 0 : C0_X / C0_C1,
+  };
+}
+
+export function generateBezier(points, parameters, leftTangent, rightTangent) {
+  const bezierPoints = [points[0], undefined, undefined, points[points.length - 1]];
+  const { alphaL, alphaR } = solveHandleLengths(
+    points,
+    parameters,
+    leftTangent,
+    rightTangent
+  );
   const segLength = vectorLength(subVectors(points[0], points[points.length - 1]));
   const epsilonForAll = 1.0e-6 * segLength;
   if (alphaL < epsilonForAll || alphaR < epsilonForAll) {
