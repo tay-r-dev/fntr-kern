@@ -21,6 +21,21 @@ function arcEndpointCurvature(r) {
   return (2 * (1 - KAPPA)) / (3 * KAPPA ** 2 * r);
 }
 
+function ribInputs(p0, p1, p2, p3, d0, d3) {
+  const unit = (v) => {
+    const length = Math.hypot(v.x, v.y) || 1;
+    return { x: v.x / length, y: v.y / length };
+  };
+  const start = unit({ x: p1.x - p0.x, y: p1.y - p0.y });
+  const end = unit({ x: p3.x - p2.x, y: p3.y - p2.y });
+  return {
+    q0: { x: p0.x + start.y * d0, y: p0.y - start.x * d0 },
+    q3: { x: p3.x + end.y * d3, y: p3.y - end.x * d3 },
+    u0: start,
+    u1: { x: -end.x, y: -end.y },
+  };
+}
+
 describe("offset-cubic: endpointCurvature", () => {
   it("matches the closed form at both ends of an arc", () => {
     const { p0, p1, p2, p3 } = quarterCircle(100);
@@ -209,4 +224,72 @@ describe("offset-cubic: degenerate inputs", () => {
       expect(Number.isFinite(endLength), `${name} end`).to.equal(true);
     });
   }
+});
+
+describe("offset-cubic: continuity", () => {
+  const configurations = [
+    [
+      { x: 0, y: 0 },
+      { x: 40, y: 60 },
+      { x: 120, y: 60 },
+      { x: 160, y: 0 },
+    ],
+    [
+      { x: 0, y: 0 },
+      { x: 6, y: 9 },
+      { x: 18, y: 9 },
+      { x: 24, y: 0 },
+    ],
+    [
+      { x: 0, y: 0 },
+      { x: 20, y: 30 },
+      { x: 60, y: 30 },
+      { x: 80, y: 0 },
+    ],
+    [
+      { x: 0, y: 0 },
+      { x: 90, y: 70 },
+      { x: -70, y: 70 },
+      { x: 20, y: 0 },
+    ],
+  ];
+  const build = ([p0, p1, p2, p3], d0, d3) =>
+    offsetCubicSide({ p0, p1, p2, p3, d0, d3, ...ribInputs(p0, p1, p2, p3, d0, d3) });
+  const moved = (a, b) =>
+    Math.max(
+      Math.abs(a.startLength - b.startLength),
+      Math.abs(a.endLength - b.endLength)
+    );
+  const EPS = 1e-4;
+  for (const points of configurations) {
+    it("has bounded response to every coordinate and width perturbation", () => {
+      for (let i = 0; i < 4; i++)
+        for (const axis of ["x", "y"]) {
+          const nudged = points.map((p, index) =>
+            index === i ? { ...p, [axis]: p[axis] + EPS } : p
+          );
+          expect(moved(build(points, 25, 25), build(nudged, 25, 25))).to.be.at.most(
+            0.2
+          );
+        }
+      expect(moved(build(points, 25, 25), build(points, 25, 25 + EPS))).to.be.at.most(
+        0.2
+      );
+    });
+  }
+  it("has no jump along a 200-step drag", () => {
+    const base = [{ x: 0, y: 0 }, { x: 30, y: 45 }, null, { x: 120, y: 0 }];
+    let previous;
+    let worst = 0;
+    for (let step = 0; step <= 200; step++) {
+      const current = build(
+        [base[0], base[1], { x: 90 - step * 0.8, y: 45 }, base[3]],
+        35,
+        35
+      );
+      if (previous) worst = Math.max(worst, moved(previous, current));
+      previous = current;
+    }
+    expect(worst).to.be.at.most(8);
+  });
 });
