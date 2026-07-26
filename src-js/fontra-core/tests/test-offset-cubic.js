@@ -1,4 +1,9 @@
-import { endpointCurvature, offsetCubicSide } from "@fontra/core/offset-cubic.js";
+import {
+  endpointCurvature,
+  offsetCubicSide,
+  resetTensionBoundStats,
+  tensionBoundStats,
+} from "@fontra/core/offset-cubic.js";
 import { expect } from "chai";
 
 const KAPPA = 0.5522847498307933;
@@ -47,6 +52,73 @@ describe("offset-cubic: endpointCurvature", () => {
     expect(endpointCurvature(p0, p0, { x: 10, y: 5 }, { x: 20, y: 0 }, false)).to.equal(
       0
     );
+  });
+});
+
+describe("offset-cubic: bounds", () => {
+  it("uses the chord backstop when tangent rays are parallel", () => {
+    const { startLength } = offsetCubicSide({
+      p0: { x: 0, y: 0 },
+      p1: { x: 8, y: 26 },
+      p2: { x: 32, y: 26 },
+      p3: { x: 40, y: 0 },
+      d0: 60,
+      d3: 60,
+      q0: { x: -60, y: 0 },
+      q3: { x: 100, y: 0 },
+      u0: { x: 0, y: 1 },
+      u1: { x: 0, y: 1 },
+    });
+    expect(startLength).to.be.at.most(320 + 1e-6);
+  });
+
+  it("floors every handle at one unit", () => {
+    const { startLength, endLength } = offsetCubicSide({
+      p0: { x: 0, y: 0 },
+      p1: { x: 6, y: 9 },
+      p2: { x: 18, y: 9 },
+      p3: { x: 24, y: 0 },
+      d0: -40,
+      d3: -40,
+      q0: { x: 0, y: 40 },
+      q3: { x: 24, y: 40 },
+      u0: { x: 1, y: 0 },
+      u1: { x: -1, y: 0 },
+    });
+    expect(startLength).to.be.at.least(1);
+    expect(endLength).to.be.at.least(1);
+  });
+
+  it("counts tension-bound evaluations", () => {
+    resetTensionBoundStats();
+    const source = quarterCircle(100);
+    offsetCubicSide({
+      ...source,
+      d0: 10,
+      d3: 10,
+      q0: { x: 110, y: 0 },
+      q3: { x: 0, y: 110 },
+      u0: { x: 0, y: 1 },
+      u1: { x: 1, y: 0 },
+    });
+    expect(tensionBoundStats.evaluated).to.equal(2);
+  });
+
+  it("leaves ordinary offsets exactly unchanged", () => {
+    resetTensionBoundStats();
+    const source = quarterCircle(100);
+    const k = arcEndpointCurvature(100);
+    const { startLength } = offsetCubicSide({
+      ...source,
+      d0: 15,
+      d3: 15,
+      q0: { x: 115, y: 0 },
+      q3: { x: 0, y: 115 },
+      u0: { x: 0, y: 1 },
+      u1: { x: 1, y: 0 },
+    });
+    expect(startLength).to.be.closeTo(100 * KAPPA * (1 + 15 * k), 1e-9);
+    expect(tensionBoundStats.active).to.equal(0);
   });
 });
 
