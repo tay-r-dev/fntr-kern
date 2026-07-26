@@ -238,11 +238,22 @@ This is required for the continuity property to be *visible*: a perfectly
 continuous algorithm fed rounded endpoints still steps by one unit, and at the
 scale in question that step is the jump.
 
-Concretely: the local `projectPoint` helper (`:2461-2469`) must yield an
-unrounded rib position for the offset math. Rounding moves to the point where
-the on-curve is pushed onto the side array, so the emitted coordinates are
-identical in kind to today's — only the handle computation sees the extra
-precision.
+Do **not** change `projectPoint` (`:2461-2469`) or `applyNudgeToRibPoint`
+(`:406`, rounds at `:429-430`). Both are shared with the line-segment branch
+(`:2478`+), which is out of scope.
+
+Instead add an unrounded variant used only by the cubic branch's handle math.
+`fixedStart` / `fixedEnd` have three consumers and only the first changes:
+
+| Consumer | Value |
+|----------|-------|
+| the handle construction (§4) | **unrounded** |
+| `buildGeneratedOnCurve` — the emitted on-curve | rounded, as today |
+| `applyHandleOffsetToControlPoint` — detached-handle base | rounded, as today |
+
+The third matters for compatibility: stored handle offsets are relative to the
+rib point as the designer placed it. Feeding an unrounded base would shift
+existing detached handles by under a unit on load.
 
 Blast radius stays inside the cubic path. The emitted on-curve points are
 rounded as today, so corner rounding and caps see exactly what they see now.
@@ -259,8 +270,8 @@ All in the cubic path, all superseded:
 - both `bezier.offset()` calls (`:2632-2633`)
 - `stabilizeSingleCubicHandles` and `ENABLE_EXPERIMENTAL_HANDLE_STABILIZATION`
   — dead since the port, now superseded
-- `lockNearZeroHandleDirection` and `getMinimumGridStepFromDirection`, **if** the
-  cubic path is their only caller. Verify before removing.
+- `lockNearZeroHandleDirection` and `getMinimumGridStepFromDirection` — verified
+  2026-07-26: only callers are `:2853` and `:2860`, both in the cubic branch.
 
 `MAX_HANDLE_TO_CHORD_RATIO` is **retained** but demoted — it becomes the
 always-defined backstop behind the tension bound (§4.5), and is applied as a
@@ -329,7 +340,40 @@ and B–C and nothing beyond. Within A–B it does move the generated handle at 
 A end, because endpoint curvature depends on the whole control polygon — but
 proportionally and smoothly, which is the entire difference.
 
-## 8. What is not in scope
+## 8. Integration surface
+
+Caller counts verified against the tree 2026-07-26.
+
+**What changes:** `adjustedHandle1` and `adjustedHandle2` at `:2964-2977`. That
+is the entire output delta.
+
+**Unchanged:**
+
+- Emitted point shape — `{x, y, type: "cubic"}` plus `_provenance` from
+  `pointProvenance(…, side, "out"/"in")`.
+- Point sequence per segment side — `[onCurve?] handle1 handle2 [onCurve?]`.
+- `buildGeneratedOnCurve` and its corner metadata.
+- Every `skeleton-generator.js` export: `generateFromSkeleton`,
+  `generateContoursFromSkeleton`, `generateOutlineFromSkeletonContour`,
+  `getPointWidth`, `getPointHalfWidth`, `getEffectiveNormal`,
+  `calculateNormalAtSkeletonPoint`, `outlineContourToPackedPath`.
+- `editSkeleton` (R-C), provenance emission (R-D / C3), selection kinds,
+  `skeleton-generated.js` resolution, `applyHandleOffsetToControlPoint`.
+- Corner rounding, caps, `enforceSmoothColinearity`, assembly, `reverseContour`.
+- `skeleton-model.js`, `skeleton-modifiers.js`, `skeleton-tunni.js`,
+  `skeleton-source-defaults.js`, all editor files.
+
+**`fit-cubic.js` is additive only.** Importers: `path-functions.js:3`,
+`skeleton-model.js:2`, `skeleton-generator.js:2`, `tests/test-fit-cubic.js:7`.
+Adding `solveHandleLengths` and having `generateBezier` call it leaves
+`generateBezier` — including its `segLength/3` fallback — behaviorally
+identical, so `fitCubic` is identical and the other two importers are
+unaffected. `test-fit-cubic.js` covers the refactor.
+
+The alternative is a private 2×2 solve inside `offset-cubic.js` and no edit to
+`fit-cubic.js`, at the cost of violating R-B.
+
+## 9. What is not in scope
 
 - Line segments, caps (butt/round/square/drop), corner rounding, assembly,
   `enforceSmoothColinearity`
