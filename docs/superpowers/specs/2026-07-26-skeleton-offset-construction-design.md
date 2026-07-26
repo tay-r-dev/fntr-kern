@@ -102,9 +102,11 @@ offsetCubicSide({ p0, p1, p2, p3, w0, w3, n0, n3, q0, q3 }) → { h1, h2 }
 - `p0..p3` — the skeleton cubic's control points
 - `w0`, `w3` — half-widths at each end, for this side
 - `n0`, `n3` — corner-aware rib normals, already through `getEffectiveNormal`
-- `q0`, `q3` — the projected rib endpoints, **unrounded**, already through
-  `applyNudgeToRibPoint`
-- returns the two generated handles, **unrounded**
+- `q0`, `q3` — the projected rib endpoints exactly as today: **rounded**,
+  already through `applyNudgeToRibPoint`. These are the endpoints of the curve
+  that gets emitted, so they are the endpoints the construction must use.
+- returns the two generated handles in float; the caller rounds once at
+  emission, as it does today (§5)
 
 Same inputs produce byte-identical output, every frame. Nearby inputs produce
 nearby output. That is the entire point.
@@ -230,33 +232,34 @@ One copy of the geometry function (rail R-B).
 
 ## 5. Rounding
 
-`offsetCubicSide` works entirely in float. It receives unrounded rib endpoints
-and returns unrounded handles; the caller rounds once, at emission, exactly
-where it does today.
+**Rib point rounding is not changed.** An earlier draft of this spec proposed
+feeding the handle math an unrounded rib endpoint. That was wrong and is
+withdrawn: the handle would then be anchored to a different origin than the
+emitted on-curve point, which is written out rounded. The two would disagree by
+up to a unit — worse than the half-unit it was meant to save.
 
-This is required for the continuity property to be *visible*: a perfectly
-continuous algorithm fed rounded endpoints still steps by one unit, and at the
-scale in question that step is the jump.
+The rule instead:
 
-Do **not** change `projectPoint` (`:2461-2469`) or `applyNudgeToRibPoint`
-(`:406`, rounds at `:429-430`). Both are shared with the line-segment branch
-(`:2478`+), which is out of scope.
+- `projectPoint` (`:2461-2469`) and `applyNudgeToRibPoint` (`:406`) are
+  untouched. They still round, and they stay shared with the line-segment
+  branch.
+- `offsetCubicSide` computes the handle as a **vector** — direction and length —
+  in exact arithmetic from the skeleton control points, widths and normals. The
+  rib position is not an input to that calculation.
+- The handle is placed at `roundedRibPoint + vector` and rounded once, as today.
+  Origin and curve start agree by construction.
+- The correction pass (§4.6) and the tension bound (§4.5) use the **rounded**
+  endpoints, because those are the endpoints of the curve actually emitted. The
+  fit then compensates for endpoint quantization rather than ignoring it.
+- Stored detached-handle offsets keep their existing anchor, so nothing
+  hand-placed moves.
 
-Instead add an unrounded variant used only by the cubic branch's handle math.
-`fixedStart` / `fixedEnd` have three consumers and only the first changes:
+Rounding was listed as discontinuity source (g) in §2. Only one part of it
+matters here: `lockNearZeroHandleDirection` snapping sub-unit handles to one of
+eight directions. That is already on the deletion list (§6), superseded by the
+smooth saturation. On-curve rounding costs a bounded half unit and is the price
+of grid-aligned coordinates, which is wanted.
 
-| Consumer | Value |
-|----------|-------|
-| the handle construction (§4) | **unrounded** |
-| `buildGeneratedOnCurve` — the emitted on-curve | rounded, as today |
-| `applyHandleOffsetToControlPoint` — detached-handle base | rounded, as today |
-
-The third matters for compatibility: stored handle offsets are relative to the
-rib point as the designer placed it. Feeding an unrounded base would shift
-existing detached handles by under a unit on load.
-
-Blast radius stays inside the cubic path. The emitted on-curve points are
-rounded as today, so corner rounding and caps see exactly what they see now.
 Pipeline-wide round-once (caps, corner rounding, `outlineContourToPackedPath`)
 remains the separate task already listed in `SKELETON-FEATURE-MODEL.md` §6.
 
