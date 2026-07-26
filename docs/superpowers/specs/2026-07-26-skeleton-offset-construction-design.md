@@ -230,6 +230,35 @@ This is the linear algebra `generateBezier` already performs. But
 
 One copy of the geometry function (rail R-B).
 
+### 4.7 Collapsed sides and single-sided contours
+
+The collapsed-side rule is **preserved unchanged**. A side whose average
+half-width is under 0.5 units copies the skeleton's control points verbatim
+(`:2698`) rather than offsetting them. `projectPoint` and `applyNudgeToRibPoint`
+have matching guards. This is what makes single-sided contours exact and is
+listed as must-preserve in `SKELETON-FEATURE-MODEL.md` §5.
+
+Single-sided mode sets one side's half-widths to exactly 0 at both ends
+(`:1377-1392`), so the collapsed branch always fires and `offsetCubicSide` is
+never called for that side. **Single-sided contours are unaffected by this
+change.**
+
+The 0.5 threshold is a **deliberate discontinuity** — below it the side lies on
+the skeleton, at it the side is offset. Do not smooth it: the point of the rule
+is exactness, and softening it would make single-sided approximate. It is the
+one intentional step function in the pipeline, and §7 excludes it from the
+continuity test.
+
+Note for the implementer: the collapse test uses the *average* of the two end
+half-widths, so a side tapering 0 → 0.9 counts as collapsed. Sub-unit, and
+preserving current behavior is preferred over fixing it here.
+
+**Tapered sides improve.** Today a side is offset at the average of its two
+half-widths and the endpoints are corrected afterwards (§2 source f). The
+construction takes both half-widths exactly (§4.3), so the wider the taper, the
+larger the improvement. Same defect family as the small-scale instability this
+spec targets.
+
 ## 5. Rounding
 
 **Rib point rounding is not changed.** An earlier draft of this spec proposed
@@ -303,6 +332,14 @@ per-frame speedup.
   1, retracted handles — perturb each input coordinate by ε and assert every
   output coordinate moves by less than K·ε. **This test fails against the
   current code.** It is the acceptance criterion for the whole change.
+  **Exclude the collapsed-side transition** (§4.7): the 0.5 threshold is an
+  intentional step, and a continuity test that spans it fails for the wrong
+  reason.
+- **Collapsed sides.** A side under the threshold reproduces the skeleton's
+  control points exactly. A single-sided contour's zero-width side is
+  byte-identical to the skeleton, before and after this change.
+- **Tapered sides.** A side with strongly differing end widths lands closer to
+  the true offset than the current average-width path does.
 - **Monotonicity sweep.** March a skeleton point 200 steps along a line; assert
   no handle-length jump above threshold.
 - **Cusp regime.** `w·κ > 1` produces finite, bounded, non-flipped handles.
