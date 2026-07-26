@@ -2067,6 +2067,7 @@ export class SceneController {
         const report = harmonizePathInPlace(layerGlyph.path, pointIndices, {
           handleBias,
           equalizeTension,
+          roundCoordinates: true,
         });
         reports.set(layerName, [...report, ...refused]);
       }

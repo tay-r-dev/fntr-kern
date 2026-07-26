@@ -587,6 +587,43 @@ describe("harmonization: harmonizePath", () => {
     expect(Math.max(...jointHandleTensions(result.path))).to.be.at.most(1 + 1e-6);
   });
 
+  it("rounds every point it moved, and nothing else", () => {
+    const before = asymmetricPath();
+    const result = harmonizePath(before, [NODE], {
+      handleBias: 1,
+      roundCoordinates: true,
+    });
+
+    for (const index of [2, 4]) {
+      const [x, y] = result.path.getPointPosition(index);
+      expect(Number.isInteger(x), `point ${index} x`).to.equal(true);
+      expect(Number.isInteger(y), `point ${index} y`).to.equal(true);
+    }
+    // untouched points keep their exact original coordinates
+    for (const index of [0, 1, 3, 5, 6]) {
+      expect(result.path.getPointPosition(index)).to.deep.equal(
+        before.getPointPosition(index)
+      );
+    }
+  });
+
+  it("rounds the point, not the handles, at handleBias 0", () => {
+    const result = harmonizePath(asymmetricPath(), [NODE], {
+      handleBias: 0,
+      roundCoordinates: true,
+    });
+    const [x, y] = result.path.getPointPosition(NODE);
+    expect(Number.isInteger(x)).to.equal(true);
+    expect(Number.isInteger(y)).to.equal(true);
+    expect(result.path.getPointPosition(2)).to.deep.equal([50, 100]);
+  });
+
+  it("keeps full precision when rounding is off", () => {
+    const result = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
+    const [x] = result.path.getPointPosition(2);
+    expect(Number.isInteger(x)).to.equal(false);
+  });
+
   it("does not land mid-range on a junk bias", () => {
     // a bias of 0.2 moves the point AND the handles; that must never be what a
     // string, an out-of-range number or a NaN quietly turns into

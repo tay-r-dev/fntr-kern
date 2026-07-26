@@ -33,6 +33,7 @@ import {
   intersect,
   mulVectorScalar,
   normalizeVector,
+  roundVector,
   subVectors,
   vectorLength,
 } from "./vector.js";
@@ -53,7 +54,19 @@ export const HARMONIZE_DEFAULTS = {
   // At 1 it lands exactly on it; past 1 the segment's two handle lines cross
   // each other and the curve doubles back.
   maxHandleTension: 1,
+  // Round the points this operation moved to whole units, once, at the end.
+  // Off here so the math stays exact and testable; the editor turns it on,
+  // because a document wants integer coordinates and the sweep does not.
+  roundCoordinates: false,
 };
+
+// Every write in this module goes through here, so the set of points the
+// operation actually moved is known at the end — which is what makes rounding
+// possible without disturbing geometry nobody asked to touch.
+function writePoint(path, touched, index, point) {
+  path.setPointPosition(index, point.x, point.y);
+  touched.add(index);
+}
 
 function crossProduct(vectorA, vectorB) {
   return vectorA.x * vectorB.y - vectorA.y * vectorB.x;
@@ -301,7 +314,7 @@ function tensionAfterStep(path, ctx, segments, fixup, handleBias) {
 //
 // Returns true when something was shortened.
 //
-function enforceHandleTension(path, ctx, maxHandleTension) {
+function enforceHandleTension(path, ctx, maxHandleTension, touched) {
   let reduced = false;
 
   for (const { nearSide, indices } of jointSegments(path, ctx)) {
@@ -330,7 +343,7 @@ function enforceHandleTension(path, ctx, maxHandleTension) {
       onCurve,
       mulVectorScalar(normalizeVector(toHandle), reach)
     );
-    path.setPointPosition(handleIndex, shortened.x, shortened.y);
+    writePoint(path, touched, handleIndex, shortened);
     reduced = true;
   }
 
@@ -350,7 +363,7 @@ function enforceHandleTension(path, ctx, maxHandleTension) {
 // which perturbs the very curvature match harmonization just established. Off
 // by default for that reason; see HARMONIZE_DEFAULTS.equalizeTension.
 //
-function equalizeJointSegments(path, ctx) {
+function equalizeJointSegments(path, ctx, touched) {
   for (const { indices } of jointSegments(path, ctx)) {
     const points = segmentPositions(path, indices);
 
@@ -370,22 +383,22 @@ function equalizeJointSegments(path, ctx) {
 
     const balanced = balanceSegment(points);
     for (const i of [1, 2]) {
-      path.setPointPosition(indices[i], balanced[i].x, balanced[i].y);
+      writePoint(path, touched, indices[i], balanced[i]);
     }
   }
 }
 
-function applyFixup(path, ctx, fixup, handleBias) {
+function applyFixup(path, ctx, fixup, handleBias, touched) {
   if (handleBias < 1) {
     const delta = mulVectorScalar(fixup, -(1 - handleBias));
     const node = addVectors(ctx.node, delta);
-    path.setPointPosition(ctx.pointIndex, node.x, node.y);
+    writePoint(path, touched, ctx.pointIndex, node);
   }
   if (handleBias > 0) {
     const delta = mulVectorScalar(fixup, handleBias);
     for (const name of ["P", "N"]) {
       const handle = addVectors(ctx[name], delta);
-      path.setPointPosition(ctx.indices[name], handle.x, handle.y);
+      writePoint(path, touched, ctx.indices[name], handle);
     }
   }
 }
@@ -436,10 +449,13 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     maxIterations,
     equalizeTension,
     maxHandleTension,
+    roundCoordinates,
   } = {
     ...HARMONIZE_DEFAULTS,
     ...options,
   };
+
+  const touched = new Set();
 
   // The bias decides which points move at all, so a value that is a string, out
   // of range, or NaN must not silently land in the middle and move everything.
@@ -459,7 +475,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     for (const pointIndex of candidates) {
       const ctx = getJointContext(path, pointIndex);
       if (!ctx.reason) {
-        equalizeJointSegments(path, ctx);
+        equalizeJointSegments(path, ctx, touched);
       }
     }
   }
@@ -485,7 +501,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     // An over-tension handle is a defect to correct, not a state to preserve:
     // shorten it back to the ceiling first, so the sweep starts from a joint
     // whose handle lines do not cross.
-    state.tensionReduced = enforceHandleTension(path, ctx, maxHandleTension);
+    state.tensionReduced = enforceHandleTension(path, ctx, maxHandleTension, touched);
     if (state.tensionReduced) {
       ctx = getJointContext(path, pointIndex);
     }
@@ -588,7 +604,13 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       }
 
       if (scale > 0) {
-        applyFixup(path, ctx, mulVectorScalar(solution.fixup, scale), handleBias);
+        applyFixup(
+          path,
+          ctx,
+          mulVectorScalar(solution.fixup, scale),
+          handleBias,
+          touched
+        );
         state.iterations += 1;
         anyMoved = true;
       }
@@ -617,7 +639,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       }
       const ctx = getJointContext(path, state.pointIndex);
       if (!ctx.reason) {
-        equalizeJointSegments(path, ctx);
+        equalizeJointSegments(path, ctx, touched);
         // balance averages the two tensions of a segment, and that average can
         // itself land above the ceiling — so the invariant is re-established
         // here rather than assumed to have survived
@@ -625,8 +647,22 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
           enforceHandleTension(
             path,
             getJointContext(path, state.pointIndex),
-            maxHandleTension
+            maxHandleTension,
+            touched
           ) || state.tensionReduced;
+      }
+    }
+  }
+
+  if (roundCoordinates) {
+    // Once, at the end, and only on points this operation moved. Rounding
+    // during the sweep would put the residual permanently above the
+    // convergence tolerance, so nothing would ever settle.
+    for (const index of [...touched].sort((a, b) => a - b)) {
+      const [x, y] = path.getPointPosition(index);
+      const rounded = roundVector({ x, y });
+      if (rounded.x !== x || rounded.y !== y) {
+        path.setPointPosition(index, rounded.x, rounded.y);
       }
     }
   }
