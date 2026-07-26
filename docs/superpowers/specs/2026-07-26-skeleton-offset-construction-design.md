@@ -232,8 +232,7 @@ harmonic mean never exceeds the max, it **implies** `calculateSegmentTension ≤
 Bounding the aggregate instead would require an arbitrary rule for splitting the
 reduction between the two ends.
 
-This bound is not a rare guard. It is active on the outer side of exactly the
-tight-turn configurations this design targets.
+This bound is a **guard, not a shaper** — see the measurement decision below.
 
 **The limit needs a floor, not just smoothing.** Corrected 2026-07-26 after
 review. The tangent-ray intersection can slide *backwards* onto the start point:
@@ -246,16 +245,32 @@ curve: the handle is squeezed to 0.6 units, then jumps 41.9 units.
 This is not the ≥180°-turn edge case an earlier draft claimed. It is reachable
 whenever a start tangent points near the far endpoint.
 
-Therefore the effective limit is
+**Decision: measure before choosing a floor.** A floor ratio would be exactly the
+kind of arbitrary constant the tension bound was adopted to *remove*, and the
+review showed the bound may not earn its place at all:
 
-```
-limit = max(|I − P0|, FLOOR_RATIO · chord)
-```
+- Offsetting a circular arc **preserves tension exactly** — larger radius, longer
+  handles, longer chord, same ratio. So for the clean case the bound provably
+  cannot bind, however thick the stroke. Analytically `rK + 0.54d < r + d` always.
+- Every test written to exercise it in an earlier draft of the plan failed to
+  trigger it.
 
-with `FLOOR_RATIO` around 0.4, and `Infinity` when there is no forward
-intersection. The bound then stops tightening as the triangle degenerates and
-fades out rather than collapsing and snapping. Below the floor the bound is
-inert, so the transition to "no forward intersection" is no longer observable.
+So the bound is not a shaper — an earlier draft of this spec claimed it was
+"active on the outer side of exactly the tight-turn configurations this design
+targets", which is **wrong**. It is a guard against curvature varying sharply
+*within* one segment.
+
+Implement the bound with an activation counter and measure it over the fixture
+corpus and `test-py/data/fonts/SkeletonRendering.fontra/`. Then:
+
+- **Never fires** → delete the mechanism. The chord backstop already covers the
+  guard role with a constant that is already in the codebase.
+- **Fires** → the recorded configurations determine the floor, from data rather
+  than taste. The candidate is `chord/3`, which at least has meaning: it is the
+  handle length of a neutral cubic, and already the fallback in `fit-cubic.js`.
+
+A floor shrinks the jump but does not remove it, so "delete" is the better
+outcome if the data allows it.
 
 **Chord backstop.** `calculateTunniPoint` returns null for parallel tangents.
 The smooth min goes inert on its own as `|I − P0| → ∞`; keep a smooth ceiling
@@ -263,12 +278,20 @@ against `k·chord` as the always-defined backstop. Start `k` at 2.0, the value
 `MAX_HANDLE_TO_CHORD_RATIO` already uses, applied as a smooth min rather than
 the current hard clamp.
 
-**Absolute minimum length.** The cusp floor is *relative* (`λ ≥ c`), so it does
-not guarantee a usable handle: at `λ` near zero the constructed length can round
-to zero and emit an off-curve point coincident with its on-curve point. The
-current `lockNearZeroHandleDirection` guarantees at least one grid step; that
-guarantee must be carried over, as a smooth floor at 1 unit. Without it, deleting
-that function regresses degenerate segments into zero-length handles.
+**Absolute minimum length — an existing guardrail, kept.** The cusp floor is
+*relative* (`λ ≥ c`), so it cannot guarantee a usable handle: at `λ` near zero
+the constructed length rounds to zero and emits an off-curve point coincident
+with its on-curve point.
+
+`getMinimumGridStepFromDirection` (`:2258`) is the current guarantee — a step of
+one unit on X, one on Y, or one on both. Keep the guarantee; drop the mechanism.
+
+With direction locked (§4.3), a smooth **floor of 1 unit on the length** gives
+the identical protection: a unit-length step along any direction has at least one
+component ≥ 0.71, so it always rounds to at least one whole unit on some axis.
+That is precisely what the eight-direction snap was arranging by hand. Same
+guarantee, no direction quantization, continuous — so discontinuity source (g)
+goes away as a side effect rather than needing its own fix.
 
 Together these replace `lockNearZeroHandleDirection`'s 8-direction snap and
 `stabilizeSingleCubicHandles`' hard clamps.
