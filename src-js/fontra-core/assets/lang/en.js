@@ -53,6 +53,7 @@ export const strings = {
   "action.glyph.convert-curves-to-quadratic-5": "To Quadratic (5 off-curve points)",
   "action.glyph.delete-source": "Delete source...",
   "action.glyph.edit-glyph-axes": "Edit glyph axes...",
+  "action.harmonize": "Harmonize Curves",
   "action.join-contours": "Join Contours",
   "action.lock-background-images": "Lock Background Images",
   "action.lock-guideline": "Lock Guideline",
@@ -568,6 +569,33 @@ export const strings = {
   "sidebar.selection-transformation.flip": "Flip",
   "sidebar.selection-transformation.flip.horizontally": "Flip Horizontally",
   "sidebar.selection-transformation.flip.vertically": "Flip Vertically",
+  "sidebar.selection-transformation.harmonize": "Harmonize",
+  "sidebar.selection-transformation.harmonize.apply": "Harmonize",
+  "sidebar.selection-transformation.harmonize.handles": "handles",
+  "sidebar.selection-transformation.harmonize.point": "point",
+  "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
+  "sidebar.selection-transformation.harmonize.equalize-tension": "Equalize tension",
+  "sidebar.selection-transformation.harmonize.equalize-tension.tooltip":
+    "Also even out the two segments at each joint, which moves the outer handles. Matches SuperTool’s Harmonize command, but trades away an exact curvature match.",
+  "sidebar.selection-transformation.harmonize.other-sources": "Other sources",
+  "sidebar.selection-transformation.harmonize.reason.already-harmonic":
+    "already harmonic",
+  "sidebar.selection-transformation.harmonize.reason.clamped": "clamped",
+  "sidebar.selection-transformation.harmonize.reason.degenerate":
+    "handles are parallel",
+  "sidebar.selection-transformation.harmonize.reason.generated-contour":
+    "generated contour",
+  "sidebar.selection-transformation.harmonize.reason.not-converged": "did not converge",
+  "sidebar.selection-transformation.harmonize.reason.not-curve-joint":
+    "not between two curves",
+  "sidebar.selection-transformation.harmonize.reason.not-smooth": "not a smooth point",
+  "sidebar.selection-transformation.harmonize.reason.tension-limited":
+    "would cross its handles",
+  "sidebar.selection-transformation.harmonize.status.harmonized": "%0 harmonized",
+  "sidebar.selection-transformation.harmonize.status.partial": "%0 partial",
+  "sidebar.selection-transformation.harmonize.status.skipped": "%0 skipped",
+  "sidebar.selection-transformation.harmonize.tooltip":
+    "What absorbs the correction. At “handles” the on-curve point never moves, so extrema and metric alignment survive; at “point” the handles keep the positions you gave them. The curvature result is the same either way.",
   "sidebar.selection-transformation.move": "Move",
   "sidebar.selection-transformation.origin": "Origin",
   "sidebar.selection-transformation.origin.bottom.center": "Origin bottom center",

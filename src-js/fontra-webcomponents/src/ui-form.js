@@ -567,6 +567,14 @@ export class Form extends SimpleElement {
       };
     }
 
+    // Sliders were the only editable field type with no getter/setter, so
+    // form.getValue() could not read one back. Callers were left inferring the
+    // value from onFieldChange, which during a drag reports the value from
+    // *before* the drag and streams the rest — easy to get wrong, and invisible
+    // when you do.
+    this._fieldGetters[fieldItem.key] = () => rangeElement.value;
+    this._fieldSetters[fieldItem.key] = (value) => (rangeElement.value = value);
+
     valueElement.appendChild(rangeElement);
     if (checkboxElement) {
       valueElement.appendChild(checkboxElement);

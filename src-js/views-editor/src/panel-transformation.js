@@ -1,4 +1,5 @@
 import { registerAction } from "@fontra/core/actions.js";
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { Backend } from "@fontra/core/backend-api.js";
 import {
   ChangeCollector,
@@ -73,6 +74,17 @@ export default class TransformationPanel extends Panel {
     background-color: var(--text-input-background-color-dark);
     border: 0.15em solid var(--text-input-background-color-dark);
   }
+
+  .harmonize-slider-end {
+    font-size: 0.9em;
+    opacity: 0.7;
+    white-space: nowrap;
+  }
+
+  .harmonize-report {
+    font-size: 0.9em;
+    opacity: 0.7;
+  }
 `;
 
   constructor(editorController) {
@@ -131,7 +143,12 @@ export default class TransformationPanel extends Panel {
         "fontLocationSourceMapped",
         "glyphLocation",
       ],
-      (event) => this.updateDimensions()
+      (event) => {
+        // a report describes one apply on one selection; it stops being true
+        // the moment the selection moves
+        this.setHarmonizeReport("");
+        this.updateDimensions();
+      }
     );
     this.sceneController.addCurrentGlyphChangeListener((event) => {
       this.updateDimensions();
@@ -738,9 +755,100 @@ export default class TransformationPanel extends Panel {
       field3: {},
     });
 
+    // Harmonize section.
+    //
+    // Deliberately last: the Point-labels listeners below are bound by
+    // querySelectorAll position, so any checkbox added ahead of them would
+    // rebind Distance/Tension/Angle to the wrong controls. Those toggles are
+    // slated for deprecation, so this section works around the issue instead of
+    // fixing it -- see docs/superpowers/specs/2026-07-25-curve-harmonization-design.md §7.
+    formContents.push({ type: "divider" });
+    formContents.push({
+      type: "header",
+      label: translate("sidebar.selection-transformation.harmonize"),
+    });
+
+    formContents.push({
+      type: "universal-row",
+      field1: {
+        type: "auxiliaryElement",
+        auxiliaryElement: html.span(
+          {
+            class: "harmonize-slider-end",
+            title: translate("sidebar.selection-transformation.harmonize.tooltip"),
+          },
+          [translate("sidebar.selection-transformation.harmonize.point")]
+        ),
+      },
+      field2: {
+        type: "edit-number-slider",
+        key: "harmonizeHandleBias",
+        value: applicationSettingsController.model.harmonizeHandleBias,
+        minValue: 0,
+        defaultValue: 1,
+        maxValue: 1,
+        step: 0.05,
+      },
+      field3: {
+        type: "auxiliaryElement",
+        auxiliaryElement: html.span({ class: "harmonize-slider-end" }, [
+          translate("sidebar.selection-transformation.harmonize.handles"),
+        ]),
+      },
+    });
+
+    formContents.push({
+      type: "checkbox",
+      key: "harmonizeEqualizeTension",
+      label: translate("sidebar.selection-transformation.harmonize.equalize-tension"),
+      value: applicationSettingsController.model.harmonizeEqualizeTension,
+    });
+
+    formContents.push({
+      type: "checkbox",
+      key: "harmonizeOtherSources",
+      label: translate("sidebar.selection-transformation.harmonize.other-sources"),
+      value: applicationSettingsController.model.harmonizeOtherSources,
+    });
+
+    formContents.push({
+      type: "universal-row",
+      field1: {},
+      field2: {
+        type: "auxiliaryElement",
+        auxiliaryElement: html.button({ onclick: () => this.doHarmonize() }, [
+          translate("sidebar.selection-transformation.harmonize.apply"),
+        ]),
+      },
+      field3: {},
+    });
+
+    formContents.push({
+      type: "universal-row",
+      field1: {},
+      field2: {
+        type: "auxiliaryElement",
+        auxiliaryElement: (this.harmonizeReportElement = html.span(
+          { class: "harmonize-report", title: this.harmonizeReportDetail || "" },
+          [this.harmonizeReportText || ""]
+        )),
+      },
+      field3: {},
+    });
+
     this.infoForm.setFieldDescriptions(formContents);
 
     this.infoForm.onFieldChange = async (fieldItem, value, valueStream) => {
+      // A dragged slider calls this once, at drag start, with the value it had
+      // *before* the drag; every value after that arrives on valueStream
+      // (ui-form.js:545-567). Ignoring the stream stores a value one drag
+      // behind whatever the slider shows.
+      if (valueStream) {
+        for await (const streamedValue of valueStream) {
+          value = streamedValue;
+        }
+      }
+
       this.transformParameters[fieldItem.key] = value;
 
       // Handle Tunni visibility parameters
@@ -751,6 +859,16 @@ export default class TransformationPanel extends Panel {
       ) {
         // Update the scene settings
         this.sceneController.sceneSettingsController.setItem(fieldItem.key, value);
+      }
+
+      if (
+        [
+          "harmonizeHandleBias",
+          "harmonizeOtherSources",
+          "harmonizeEqualizeTension",
+        ].includes(fieldItem.key)
+      ) {
+        applicationSettingsController.model[fieldItem.key] = value;
       }
 
       if (fieldItem.key === "originXButton" || fieldItem.key === "originYButton") {
@@ -818,6 +936,33 @@ export default class TransformationPanel extends Panel {
     }, 0);
 
     this.updateDimensions();
+  }
+
+  async doHarmonize() {
+    const settings = applicationSettingsController.model;
+    // Read the bias off the slider itself, not off the setting. The setting is
+    // for persistence; the slider is what the user is looking at, and the two
+    // can disagree if a change event is missed. What you see is what applies.
+    const shownBias = this.infoForm.getValue("harmonizeHandleBias");
+    const options = {
+      handleBias: Number(shownBias ?? settings.harmonizeHandleBias),
+      applyToOtherSources: settings.harmonizeOtherSources,
+      equalizeTension: settings.harmonizeEqualizeTension,
+    };
+    const reports = await this.sceneController.doHarmonize(options);
+    this.setHarmonizeReport(
+      formatHarmonizeReport(reports),
+      detailHarmonizeReport(reports, options)
+    );
+  }
+
+  setHarmonizeReport(text, detail = "") {
+    this.harmonizeReportText = text;
+    this.harmonizeReportDetail = detail;
+    if (this.harmonizeReportElement) {
+      this.harmonizeReportElement.innerText = text;
+      this.harmonizeReportElement.title = detail;
+    }
   }
 
   async updateDimensions() {
@@ -1477,5 +1622,83 @@ class DistributeObjectsDescriptor {
 
 const distributeHorizontally = new DistributeObjectsDescriptor("horizontally", "x");
 const distributeVertically = new DistributeObjectsDescriptor("vertically", "y");
+
+function summarizeHarmonizeReport(report) {
+  // Group by status, and within a status by reason. "2 skipped" on its own is
+  // not answerable; "2 skipped (not a smooth point)" is.
+  const byStatus = new Map();
+  for (const { status, reason } of report) {
+    if (!byStatus.has(status)) {
+      byStatus.set(status, { total: 0, reasons: new Map() });
+    }
+    const entry = byStatus.get(status);
+    entry.total += 1;
+    if (reason) {
+      entry.reasons.set(reason, (entry.reasons.get(reason) || 0) + 1);
+    }
+  }
+
+  const parts = [];
+  for (const status of ["harmonized", "partial", "skipped"]) {
+    const entry = byStatus.get(status);
+    if (!entry) {
+      continue;
+    }
+    let part = translate(
+      `sidebar.selection-transformation.harmonize.status.${status}`,
+      entry.total
+    );
+    if (entry.reasons.size) {
+      const reasons = [...entry.reasons]
+        .sort((a, b) => b[1] - a[1])
+        .map(([reason, count]) =>
+          entry.reasons.size === 1 && count === entry.total
+            ? translate(`sidebar.selection-transformation.harmonize.reason.${reason}`)
+            : `${count} ${translate(
+                `sidebar.selection-transformation.harmonize.reason.${reason}`
+              )}`
+        );
+      part += ` (${reasons.join(", ")})`;
+    }
+    parts.push(part);
+  }
+  return parts.join(" · ");
+}
+
+// Hover detail: the bias that actually ran, plus one line per candidate point.
+// The summary says what happened; this says which point and why.
+function detailHarmonizeReport(reports, options) {
+  const lines = [
+    `bias ${Number(options.handleBias).toFixed(2)} (0 = node, 1 = handles)` +
+      `, equalize tension: ${options.equalizeTension ? "on" : "off"}` +
+      `, other sources: ${options.applyToOtherSources ? "on" : "off"}`,
+  ];
+  for (const [layerName, report] of reports) {
+    lines.push(`${layerName}:`);
+    for (const entry of report) {
+      const reason = entry.reason ? ` / ${entry.reason}` : "";
+      const sweeps = entry.iterations ? ` after ${entry.iterations}` : "";
+      const reduced = entry.tensionReduced ? ", handle tension reduced" : "";
+      lines.push(
+        `  point ${entry.pointIndex} (contour ${entry.contourIndex}): ` +
+          `${entry.status}${reason}${sweeps}${reduced}`
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
+function formatHarmonizeReport(reports) {
+  const rows = [...reports];
+  if (!rows.length) {
+    return translate("sidebar.selection-transformation.harmonize.nothing-to-do");
+  }
+  if (rows.length === 1) {
+    return summarizeHarmonizeReport(rows[0][1]);
+  }
+  return rows
+    .map(([layerName, report]) => `${layerName}: ${summarizeHarmonizeReport(report)}`)
+    .join(" · ");
+}
 
 customElements.define("panel-transformation", TransformationPanel);

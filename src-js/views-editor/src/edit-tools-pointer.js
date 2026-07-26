@@ -389,7 +389,7 @@ export class PointerTool extends BaseTool {
       return;
     }
 
-    const { selection, pathHit } = this.sceneModel.selectionAtPoint(
+    const { selection, pathHit, isSegment } = this.sceneModel.selectionAtPoint(
       point,
       size,
       sceneController.selection,
@@ -441,7 +441,10 @@ export class PointerTool extends BaseTool {
     let initiateRectSelect = false;
 
     const modeFunc = getSelectModeFunction(event);
-    const newSelection = modeFunc(sceneController.selection, selection);
+    const newSelection =
+      isSegment && modeFunc === symmetricDifference
+        ? toggleSegmentSelection(sceneController.selection, selection)
+        : modeFunc(sceneController.selection, selection);
     const cleanSel = selection;
     if (
       !selection.size ||
@@ -1351,6 +1354,16 @@ function hasRibLikeSelection(selection) {
 
 function replace(setA, setB) {
   return setB;
+}
+
+// Shift-clicking a segment toggles the segment as a whole: add its points
+// unless all of them are already selected, in which case remove them. Plain
+// symmetric difference would deselect the point an adjacent segment shares
+// with the segment selected before it.
+function toggleSegmentSelection(currentSelection, segmentSelection) {
+  return isSuperset(currentSelection, segmentSelection)
+    ? difference(currentSelection, segmentSelection)
+    : union(currentSelection, segmentSelection);
 }
 
 function getSelectModeFunction(event) {

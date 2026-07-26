@@ -35,6 +35,7 @@ import {
 } from "@fontra/core/skeleton-model.js";
 import { isObjectEmpty, parseSelection, range } from "@fontra/core/utils.ts";
 import { VarPackedPath } from "@fontra/core/var-path.js";
+import { dotVector, mulVectorScalar } from "@fontra/core/vector.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 
 export function makeSkeletonPointKey(contourId, pointId) {
