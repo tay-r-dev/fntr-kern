@@ -18,6 +18,9 @@ const MIN_HANDLE_LENGTH = 1;
 const MIN_HANDLE_WINDOW = 0.5;
 const TENSION_LIMIT_FLOOR_RATIO = 1 / 3;
 const CORRECTION_SAMPLE_TS = [0.125, 0.25, 0.5, 0.75, 0.875];
+const CORRECTION_BAND_LOW = 0.25;
+const CORRECTION_BAND_HIGH = 4;
+const CORRECTION_BAND_WINDOW = 0.05;
 
 export const tensionBoundStats = { evaluated: 0, active: 0 };
 export function resetTensionBoundStats() {
@@ -78,6 +81,16 @@ function boundLength(length, limit, chord) {
     MIN_HANDLE_LENGTH,
     MIN_HANDLE_WINDOW
   );
+}
+
+function easeIntoBand(solved, analytic) {
+  if (!Number.isFinite(solved) || !(analytic > EPSILON)) {
+    return analytic;
+  }
+  const window = CORRECTION_BAND_WINDOW * analytic;
+  const low = CORRECTION_BAND_LOW * analytic;
+  const high = CORRECTION_BAND_HIGH * analytic;
+  return smoothMin(smoothMax(solved, low, window), high, window);
 }
 
 function offsetPointAt(p0, p1, p2, p3, d0, d3, t) {
@@ -148,11 +161,8 @@ export function offsetCubicSide({ p0, p1, p2, p3, d0, d3, q0, q3, u0, u1 }) {
     u0,
     u1
   );
-  const correctedStart = Math.min(
-    Math.max(alphaL, analyticStart * 0.25),
-    analyticStart * 4
-  );
-  const correctedEnd = Math.min(Math.max(alphaR, analyticEnd * 0.25), analyticEnd * 4);
+  const correctedStart = easeIntoBand(alphaL, analyticStart);
+  const correctedEnd = easeIntoBand(alphaR, analyticEnd);
   const chord = Math.hypot(q3.x - q0.x, q3.y - q0.y);
   const { startLimit, endLimit } = tangentIntersectionDistances(q0, u0, q3, u1);
   return {
