@@ -79,16 +79,52 @@ Offsetting a cubic preserves the tangent **direction** exactly:
 
 ```
 O(t)  = P(t) + d·N(t)
-O'(t) = P'(t)·(1 − d·κ(t))
+O'(t) = P'(t)·(1 + d·κ(t))
 ```
 
-Direction identical, speed scaled by `(1 − d·κ)`. For one-cubic-per-side output
-— already the topology contract — endpoints and tangent directions are therefore
-known exactly, and the only free parameters are two handle lengths. Those have a
-closed form too.
+with `N` the **clockwise** normal (`rotateVector90CW`, the convention this
+codebase uses), `d` the signed offset distance positive along it, and `κ` the
+standard signed curvature `cross(B′,B″)/|B′|³`. Direction identical, speed
+scaled by `λ = 1 + d·κ`. Derivation: `dN_cw/dt = θ′·T`, so
+`O′ = P′ + d·θ′·T = P′(1 + dκ)`. Independently re-derived and checked
+numerically 2026-07-26.
+
+For one-cubic-per-side output — already the topology contract — endpoints and
+tangent directions are therefore known exactly, and the only free parameters are
+two handle lengths. Those have a closed form too.
 
 The rule a designer can hold: **the generated handle is the skeleton handle
-scaled by (1 − width × curvature).**
+scaled by (1 + width × curvature).**
+
+### Direction is locked to the skeleton handle
+
+**The current generator already locks generated handle direction to the skeleton
+handle direction and fits only the length.** `lockNearZeroHandleDirection`
+(`:2226-2236`) emits `anchor + ref·projectedLength` with
+`ref = getSkeletonHandleDirection(...)`, unconditionally, on every generated
+cubic handle — not only on short ones. This was mis-read as a degenerate-case
+guard in an earlier draft of this spec; it is a behavior.
+
+**That behavior is preserved.** Direction stays exactly as it is today. Only the
+length changes, from fitted to constructed.
+
+This was a deliberate choice (2026-07-26) over using the true offset tangent:
+
+- Generated handles stay parallel to their skeleton handles, which is itself a
+  predictability property — the feature's stated goal.
+- The true offset tangent turns when the two end widths differ, by up to 37° on
+  a strongly tapered stroke. That would move handle points by tens of units, not
+  the unit or two a length-only change costs.
+- It would also make `enforceSmoothColinearity` (§9, out of scope) active where
+  it is currently inert: at a smooth skeleton point the two adjacent segments
+  have different width gradients, so their generated handles would stop being
+  colinear and the smoothing pass would rotate them — coupling segment A–B's
+  handles to segment B–C's geometry and breaking the locality property in §7.
+
+Accuracy where widths taper is recovered through the correction pass (§4.6),
+which adjusts lengths, rather than through direction.
+
+Revisiting the tilt is a separate, later change.
 
 ### 4.1 New module
 
@@ -96,20 +132,36 @@ scaled by (1 − width × curvature).**
 object construction, no history:
 
 ```js
-offsetCubicSide({ p0, p1, p2, p3, w0, w3, n0, n3, q0, q3 }) → { h1, h2 }
+offsetCubicSide({ p0, p1, p2, p3, d0, d3, q0, q3, u0, u1 })
+  → { startLength, endLength }
 ```
 
 - `p0..p3` — the skeleton cubic's control points
-- `w0`, `w3` — half-widths at each end, for this side
-- `n0`, `n3` — corner-aware rib normals, already through `getEffectiveNormal`
+- `d0`, `d3` — the **signed** offset distance at each end, positive along the
+  clockwise normal. The generator's left side is `+halfWidth`, right is
+  `−halfWidth`, matching `projectPoint`'s sign argument.
 - `q0`, `q3` — the projected rib endpoints exactly as today: **rounded**,
   already through `applyNudgeToRibPoint`. These are the endpoints of the curve
   that gets emitted, so they are the endpoints the construction must use.
-- returns the two generated handles in float; the caller rounds once at
-  emission, as it does today (§5)
+- `u0`, `u1` — the locked handle directions (§4.3), unit vectors pointing into
+  the curve from each endpoint. Supplied by the caller, which already computes
+  them.
+- returns the two handle **lengths** in float. The caller places each handle at
+  `q + u·length` and rounds once at emission, as it does today (§5).
+
+Returning lengths rather than positions is deliberate: the direction is
+unchanged from today, so the length is the entire output delta and the interface
+says so.
 
 Same inputs produce byte-identical output, every frame. Nearby inputs produce
 nearby output. That is the entire point.
+
+`n0` and `n3` are **not** inputs. The corner-aware rib normals position `q0` and
+`q3`, which the caller supplies; the construction uses the curve's own geometry.
+One consequence, noted rather than fixed: where a corner normal or a
+`forceHorizontal`/`forceVertical` override tilts the rib away from the true
+perpendicular, the effective offset is `halfWidth·cos θ` and `λ` is slightly
+over-estimated. No worse than today's average-width approximation.
 
 ### 4.2 Endpoint curvature
 
@@ -121,23 +173,31 @@ B'(1) = 3(P3−P2)      B''(1) = 6(P3 − 2P2 + P1)
 κ(t)  = cross(B'(t), B''(t)) / |B'(t)|³
 ```
 
-### 4.3 End tangents, with the width gradient
+### 4.3 Direction
 
-With `w(t)` linear between `w0` and `w3`:
-
-```
-O(t)  = P(t) + w(t)·N(t)
-O'(t) = P'(t)·(1 − w(t)·κ(t)) + w'(t)·N(t)
-```
-
-The `w'·N` term tilts the end tangent when the widths differ. This is the
-correct treatment of variable width, and it retires (f) entirely — widths enter
-exactly, per endpoint, instead of as an average plus a rigid correction.
+`getSkeletonHandleDirection(segment, position, role)` — the same reference the
+current code locks to, with the segment tangent as its fallback for a retracted
+handle. Unchanged from today, bit for bit.
 
 ### 4.4 Handle lengths
 
-`L = |O'|/3` at each end, along the normalized `O'`. Fully determined. No
-fitting, no free parameters.
+```
+L = h_skeleton · λ        λ = 1 + d·κ
+```
+
+where `h_skeleton` is the corresponding skeleton handle's length.
+
+This is exact when the two end widths are equal: `|O′(0)| = |P′(0)|·λ` and
+`|P′(0)|/3` is exactly the skeleton handle length.
+
+With the direction locked, the width-gradient term drops out at the endpoints:
+its contribution is along `N`, and `N` is perpendicular to the locked direction,
+so it projects to zero. Taper is therefore handled entirely by the correction
+pass (§4.6) adjusting lengths — not by tilting. This is why locking direction
+costs so little: the gradient term never affected length in the first place.
+
+Retires discontinuity source (f): widths enter per endpoint through `d`, not as
+an average followed by a rigid correction.
 
 ### 4.5 Saturation
 
@@ -145,7 +205,7 @@ Two complementary bounds, one per side of a turn. Both smooth — a hard clamp
 would be C⁰ but not C¹, leaving a felt "catch" when dragging through the
 threshold.
 
-**Inner side — cusp floor.** `λ = 1 − w·κ` crosses zero exactly at the cusp.
+**Inner side — cusp floor.** `λ = 1 + d·κ` crosses zero exactly at the cusp.
 Smooth floor, C^∞ and monotone in λ:
 
 ```
@@ -175,13 +235,40 @@ reduction between the two ends.
 This bound is not a rare guard. It is active on the outer side of exactly the
 tight-turn configurations this design targets.
 
-**Chord backstop.** `calculateTunniPoint` returns null for parallel tangents,
-and on very sharp turns the intersection can lie behind an endpoint, where the
-bound is undefined or would drive the handle to zero. The smooth min goes inert
-on its own as `|I − P0| → ∞`; for the behind-the-endpoint case, keep a smooth
-ceiling against `k·chord` as an always-defined backstop. Start `k` at 2.0, the
-value `MAX_HANDLE_TO_CHORD_RATIO` already uses, applied as a smooth min rather
-than the current hard clamp.
+**The limit needs a floor, not just smoothing.** Corrected 2026-07-26 after
+review. The tangent-ray intersection can slide *backwards* onto the start point:
+if the end tangent, extended backwards, passes through the start point, then the
+intersection **is** the start point and `|I − P0| → 0`, so the bound drives the
+handle to zero. One step further and the intersection lands behind the endpoint,
+the bound goes inert, and the handle springs back. Measured on an ordinary
+curve: the handle is squeezed to 0.6 units, then jumps 41.9 units.
+
+This is not the ≥180°-turn edge case an earlier draft claimed. It is reachable
+whenever a start tangent points near the far endpoint.
+
+Therefore the effective limit is
+
+```
+limit = max(|I − P0|, FLOOR_RATIO · chord)
+```
+
+with `FLOOR_RATIO` around 0.4, and `Infinity` when there is no forward
+intersection. The bound then stops tightening as the triangle degenerates and
+fades out rather than collapsing and snapping. Below the floor the bound is
+inert, so the transition to "no forward intersection" is no longer observable.
+
+**Chord backstop.** `calculateTunniPoint` returns null for parallel tangents.
+The smooth min goes inert on its own as `|I − P0| → ∞`; keep a smooth ceiling
+against `k·chord` as the always-defined backstop. Start `k` at 2.0, the value
+`MAX_HANDLE_TO_CHORD_RATIO` already uses, applied as a smooth min rather than
+the current hard clamp.
+
+**Absolute minimum length.** The cusp floor is *relative* (`λ ≥ c`), so it does
+not guarantee a usable handle: at `λ` near zero the constructed length can round
+to zero and emit an off-curve point coincident with its on-curve point. The
+current `lockNearZeroHandleDirection` guarantees at least one grid step; that
+guarantee must be carried over, as a smooth floor at 1 unit. Without it, deleting
+that function regresses degenerate segments into zero-length handles.
 
 Together these replace `lockNearZeroHandleDirection`'s 8-direction snap and
 `stabilizeSingleCubicHandles`' hard clamps.
@@ -304,6 +391,23 @@ All in the cubic path, all superseded:
   — dead since the port, now superseded
 - `lockNearZeroHandleDirection` and `getMinimumGridStepFromDirection` — verified
   2026-07-26: only callers are `:2853` and `:2860`, both in the cubic branch.
+  **Both of its roles must be carried over first, or this is a regression.**
+  Direction locking moves to the caller, which supplies `u0`/`u1` (§4.3); the
+  guaranteed non-zero handle length moves into the module as a smooth 1-unit
+  floor (§4.5). Its third role, the chord cap, is already in §4.5.
+- `normalizeDirectionOrFallback` — all nine call sites are inside functions being
+  deleted here, so it goes too.
+- `fitCubic` in the `skeleton-generator.js` import list — its only uses are
+  inside `simplifyOffsetCurves`. Remove it alongside `chordLengthParameterize`
+  and `computeMaxError`, but **not** from `fit-cubic.js`, where it is exported
+  and tested.
+- The "fallback: use original curves without simplification" branch
+  (`:2999-3160`) — already unreachable today, since `simplifyOffsetCurves`
+  returns null only for an empty input, which is caught earlier at `:2731`.
+
+Note the `:2731` empty-offset fallback currently emits **zero** handles, so an
+`offset()` returning `[]` changes that side's point count. Removing it is a net
+improvement to interpolation stability, not just a simplification.
 
 `MAX_HANDLE_TO_CHORD_RATIO` is **retained** but demoted — it becomes the
 always-defined backstop behind the tension bound (§4.5), and is applied as a
@@ -323,10 +427,15 @@ per-frame speedup.
 
 ### New — `fontra-core/tests/test-offset-cubic.js`
 
-- **Circular-arc exactness.** Offsetting a Bézier quarter-circle by `d` yields
-  the `r±d` arc. The construction is exact here; the current fit is not. Doubles
-  as the sign-convention oracle — this code uses CW normals
-  (`rotateVector90CW`), bezier-js uses CCW.
+- **Circular-arc tracking.** Offsetting a Bézier quarter-circle by `d` yields
+  approximately the `r±d` arc. **Not exact**, and the oracle must not assume it
+  is: a Bézier quarter-circle is not a circle, and its endpoint curvature is
+  `2(1−K)/(3K²r)` — about `0.0097855` at `r=100`, not `0.01`. Corrected
+  2026-07-26 after review; an earlier draft asserted the circle's value and
+  would have failed by 214× its own tolerance. Use the Bézier's own curvature as
+  the oracle, or assert the round-trip invariant (offset by `+d` then `−d`
+  returns the original) which holds exactly. Doubles as the sign-convention
+  check — this code uses CW normals, bezier-js uses CCW.
 - **Lipschitz continuity.** The property that is missing today. Over a grid of
   configurations including the pathological regime — short segments, `w·κ` near
   1, retracted handles — perturb each input coordinate by ε and assert every
@@ -344,20 +453,49 @@ per-frame speedup.
   no handle-length jump above threshold.
 - **Cusp regime.** `w·κ > 1` produces finite, bounded, non-flipped handles.
 - **Tension bound.** No generated handle overshoots the tangent-ray
-  intersection, and `calculateSegmentTension` on every generated cubic is ≤ 1.
-  Assert both — the second follows from the first, and checking it guards the
-  harmonic-mean subtlety in §4.5.
+  intersection, and `calculateSegmentTension` ≤ 1 **on segments with a forward
+  intersection**. Scoped deliberately: where the intersection is absent or below
+  the floor the bound is inert by design (§4.5), so the aggregate is not
+  constrained there. The test must use a configuration where the bound actually
+  binds — a quarter circle never does, since `rK + 0.54d < r + d` always. Use a
+  short chord with a large outer-side offset.
+- **Degenerate tangent triangle.** Sweep the end tangent through the start point
+  and assert no jump. This is the case an earlier draft dismissed as a
+  ≥180°-turn edge case; it produced a 41.9-unit jump on an ordinary curve.
 - **No saturation on ordinary input.** Over a corpus of non-degenerate
-  configurations, assert that neither the cusp floor, the tension ceiling nor
-  the chord backstop is active. Saturation firing on an ordinary glyph is a bug.
+  configurations, assert the tension ceiling, chord backstop and length floor
+  are all exactly inert, and that the cusp floor perturbs `λ` by under 0.5%.
+  Saturation firing on an ordinary glyph is a bug. Note the cusp floor is never
+  *exactly* inert — it shifts `λ` by `c²/λ` — so its constant must stay small
+  enough that the shift is well under half a unit on a normal handle.
+- **Cusp regime.** `|d·κ| > 1` produces finite, bounded, non-flipped handles
+  **of at least one unit**. The length floor is what this checks; without it the
+  handle rounds to zero and emits an off-curve point coincident with its
+  on-curve point.
+- **End to end.** A `generateFromSkeleton`-level drag sweep, not just the module
+  in isolation. The user-visible symptom lives downstream of the construction,
+  past corner rounding, the smoothing pass and the surviving grid rounding — the
+  module can be green while the drag still jumps. Note
+  `test-skeleton-interpolation.js` does **not** cover this: its fixtures are
+  two-point skeletons with no off-curve points, so they never reach the cubic
+  branch.
 - **Degenerates.** Zero-length handles, collinear control points, zero width,
   coincident endpoints, parallel end tangents (no Tunni intersection), and a
   tangent intersection lying behind an endpoint.
 
 ### Existing
 
-- `tests/data/skeleton-generator/fixtures.json` regenerates via
-  `tests/scripts/make-skeleton-generator-fixtures.js`.
+- **The fixture script cannot regenerate these fixtures as it stands.** Found
+  2026-07-26 in review. `tests/scripts/make-skeleton-generator-fixtures.js`
+  imports the reference generator from `../../../../skeleton/…`, a path that does
+  not exist — the donor lives at `_external/skeleton/`. Its
+  `CAP_REFERENCE_COMMIT` is also not an object in this repo. And even with both
+  fixed, it computes `expectedContours` **from the donor**, so running it would
+  re-pin donor geometry and the suite would still fail.
+
+  Fixing this is its own piece of work, not a step inside another task: the
+  script must record forkra's output for the cubic path, or the suite must split
+  into a donor-parity part and a forkra-baseline part.
 - **The golden-master suite is currently titled "matches donor output". After
   this change it no longer does.** Retitle it and record the divergence in
   `SKELETON-FEATURE-MODEL.md`. The donor at `_external/skeleton` stays the
@@ -371,23 +509,41 @@ per-frame speedup.
 One-time, at the change. Not ongoing.
 
 Endpoints do not move: both old and new pin them to the exact rib positions.
-Only handles change, so mid-segment deviation lands within the range the current
-fit already tolerates — roughly 1–3 units at mid-segment for a 60-unit stroke,
-zero at the ends.
+Handle **directions** do not move either — they stay locked to the skeleton
+handle directions exactly as today (§4.3). Only handle **lengths** change, so
+mid-segment deviation lands within the range the current fit already tolerates:
+roughly 1–3 units at mid-segment for a 60-unit stroke, zero at the ends.
+
+That estimate is only valid because direction is locked. With the true offset
+tangent it would have been an order of magnitude larger on tapered strokes —
+a 37° tilt on a 70-unit handle moves the handle point about 20 units.
+
+`enforceSmoothColinearity` stays inert for the same reason. Locking direction
+keeps generated handles colinear at smooth skeleton points, so the smoothing
+pass has nothing to rotate — which is what preserves locality below.
 
 Locality is unchanged from today. Moving skeleton point B affects segments A–B
 and B–C and nothing beyond. Within A–B it does move the generated handle at the
 A end, because endpoint curvature depends on the whole control polygon — but
 proportionally and smoothly, which is the entire difference.
 
+**Stored relative handle offsets shift.** A designer's non-detached handle
+offset is stored relative to the *computed* handle, so it moves by the same
+delta as its base handle. Detached offsets are anchored to the rib point and are
+unaffected (§5).
+
 ## 8. Integration surface
 
 Caller counts verified against the tree 2026-07-26.
 
-**What changes:** `adjustedHandle1` and `adjustedHandle2` at `:2964-2977`. That
-is the entire output delta.
+**What changes:** the *length* of `adjustedHandle1` and `adjustedHandle2` at
+`:2964-2977`. Their directions are unchanged. That is the entire output delta.
 
 **Unchanged:**
+
+- Generated handle directions — still exactly the skeleton handle directions
+  (§4.3).
+- `enforceSmoothColinearity`, which stays inert because of the above.
 
 - Emitted point shape — `{x, y, type: "cubic"}` plus `_provenance` from
   `pointProvenance(…, side, "out"/"in")`.
