@@ -16,6 +16,7 @@ const SMOOTH_MIN_WINDOW = 0.15;
 const MAX_HANDLE_TO_CHORD_RATIO = 2;
 const MIN_HANDLE_LENGTH = 1;
 const MIN_HANDLE_WINDOW = 0.5;
+const TENSION_LIMIT_FLOOR_RATIO = 1 / 3;
 const CORRECTION_SAMPLE_TS = [0.125, 0.25, 0.5, 0.75, 0.875];
 
 export const tensionBoundStats = { evaluated: 0, active: 0 };
@@ -66,7 +67,8 @@ function boundLength(length, limit, chord) {
   tensionBoundStats.evaluated += 1;
   let bounded = length;
   if (Number.isFinite(limit)) {
-    const next = smoothMin(bounded, limit, SMOOTH_MIN_WINDOW * limit);
+    const flooredLimit = Math.max(limit, chord * TENSION_LIMIT_FLOOR_RATIO);
+    const next = smoothMin(bounded, flooredLimit, SMOOTH_MIN_WINDOW * flooredLimit);
     if (next < bounded - EPSILON) tensionBoundStats.active += 1;
     bounded = next;
   }
