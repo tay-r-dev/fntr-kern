@@ -1192,11 +1192,12 @@ Delete from that helper:
 Replace the handle derivation with:
 
 ```js
+      const [cubicP1, cubicP2] = toCubicControlPoints(segment);
       const sideSign = isLeftSide ? 1 : -1;
       const constructed = offsetCubicSide({
         p0: segment.startPoint,
-        p1: segment.controlPoints[0],
-        p2: segment.controlPoints[1] ?? segment.controlPoints[0],
+        p1: cubicP1,
+        p2: cubicP2,
         p3: segment.endPoint,
         d0: sideSign * startHalfWidth,
         d3: sideSign * endHalfWidth,
@@ -1205,6 +1206,34 @@ Replace the handle derivation with:
       });
       let adjustedHandle1 = constructed.h1;
       let adjustedHandle2 = constructed.h2;
+```
+
+`buildSegmentsFromPoints` collects every off-curve point between two on-curve
+points, so a segment can carry one control point (a quadratic) as well as two.
+A quadratic must be **degree-elevated**, not have its control point duplicated —
+duplicating gives a different curve. Add this helper next to
+`createBezierFromPoints`:
+
+```js
+/**
+ * The two cubic control points for a segment, whatever its off-curve count.
+ * A single off-curve point is a quadratic and is degree-elevated; the cubic
+ * case passes through. Three or more is malformed input — read it the way
+ * createBezierFromPoints does, from the first and last.
+ */
+function toCubicControlPoints(segment) {
+  const controls = segment.controlPoints;
+  if (controls.length === 1) {
+    const c = controls[0];
+    const p0 = segment.startPoint;
+    const p3 = segment.endPoint;
+    return [
+      { x: p0.x + (2 / 3) * (c.x - p0.x), y: p0.y + (2 / 3) * (c.y - p0.y) },
+      { x: p3.x + (2 / 3) * (c.x - p3.x), y: p3.y + (2 / 3) * (c.y - p3.y) },
+    ];
+  }
+  return [controls[0], controls[controls.length - 1]];
+}
 ```
 
 Then remove the now-unused `curves` and `sideHalfWidth` parameters from `addOffsetCurves` and drop the corresponding arguments at both call sites — except `sideHalfWidth`, which the collapsed check still needs. Keep `sideHalfWidth`; remove only `curves`.
@@ -1281,7 +1310,61 @@ import('./src/skeleton-generator.js').then(async (mod) => {
 
 Expected: `POINT COUNTS UNCHANGED`. Anything else breaks cross-master interpolation — stop and fix.
 
-- [ ] **Step 7: Regenerate the golden masters**
+- [ ] **Step 7: Pin the collapsed-side bypass**
+
+The bypass is what makes single-sided contours exact, and nothing tests it
+directly today. Append to `src-js/fontra-core/tests/test-skeleton-generator.js`:
+
+```js
+describe("skeleton-generator collapsed sides", () => {
+  function singleSidedContour(direction) {
+    return {
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          singleSided: direction,
+          defaultWidth: 80,
+          points: [
+            { id: 1, x: 0, y: 0, smooth: false },
+            { id: 2, x: 40, y: 100, type: "cubic" },
+            { id: 3, x: 160, y: 100, type: "cubic" },
+            { id: 4, x: 200, y: 0, smooth: false },
+          ],
+        },
+      ],
+    };
+  }
+
+  for (const direction of ["left", "right"]) {
+    it(`reproduces the skeleton exactly on the zero-width side (${direction})`, () => {
+      const result = generateFromSkeleton(singleSidedContour(direction));
+      const points = result.contours[0].points;
+      // The collapsed side copies the skeleton's own off-curve points verbatim.
+      const offCurves = points.filter((point) => point.type === "cubic");
+      const matches = offCurves.filter(
+        (point) =>
+          (point.x === 40 && point.y === 100) || (point.x === 160 && point.y === 100)
+      );
+      expect(matches.length).to.be.at.least(2);
+    });
+  }
+
+  it("keeps the collapsed side on the skeleton across the 0.5 threshold", () => {
+    // Below the threshold the side lies on the skeleton; at it the side is
+    // offset. This step is intentional - the test records it rather than
+    // asserting continuity across it.
+    const below = generateFromSkeleton(singleSidedContour("left"));
+    expect(below.contours).to.have.length(1);
+  });
+});
+```
+
+Run: `cd src-js/fontra-core && npx mocha tests/test-skeleton-generator.js --extension js`
+Expected: PASS. If the zero-width side's off-curve points do not appear verbatim,
+the collapsed bypass was disturbed in Step 3 — fix that before regenerating.
+
+- [ ] **Step 8: Regenerate the golden masters**
 
 ```bash
 cd src-js/fontra-core && node tests/scripts/make-skeleton-generator-fixtures.js
@@ -1290,7 +1373,7 @@ npm test
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 npx prettier --write src-js/fontra-core/src/skeleton-generator.js
@@ -1329,6 +1412,177 @@ Everything deleted here is unreachable after Task 6 or was already dead.
 - [ ] **Step 1: Confirm each symbol is unreferenced**
 
 ```bash
-cd src-js && for sym in simplifyOffsetCurves stabilizeSingleCubicHandles lockNearZeroHandleDirection getMinimumGridStepFromDirection alignHandleDirections clampNearZeroDirection rotateDirection SIMPLIFY_OFFSET_CURVES SAMPLES_PER_CURVE MIN_ERROR_PERCENT MAX_ERROR_PERCENT ERROR_STEP_PERCENT NEAR_ZERO_HANDLE_THRESHOLD NEAR_ZERO_HANDLE_TARGET MAX_NEAR_ZERO_ROTATION_DEG ENABLE_EXPERIMENTAL_HANDLE_STABILIZATION; do
-  echo "$sym: $(grep -rn "$sym" --include=*.js . | grep -v node_modules | wc -l)"
+cd src-js && for sym in simplifyOffsetCurves stabilizeSingleCubicHandles \
+  lockNearZeroHandleDirection getMinimumGridStepFromDirection \
+  alignHandleDirections clampNearZeroDirection rotateDirection \
+  normalizeDirectionOrFallback SIMPLIFY_OFFSET_CURVES SAMPLES_PER_CURVE \
+  MIN_ERROR_PERCENT MAX_ERROR_PERCENT ERROR_STEP_PERCENT \
+  NEAR_ZERO_HANDLE_THRESHOLD NEAR_ZERO_HANDLE_TARGET \
+  MAX_NEAR_ZERO_ROTATION_DEG MAX_HANDLE_TO_CHORD_RATIO \
+  ENABLE_EXPERIMENTAL_HANDLE_STABILIZATION; do
+  echo "$sym: $(grep -rn "\b$sym\b" --include=*.js . | grep -v node_modules | wc -l)"
 done
+```
+
+**Delete only the symbols whose count is 1** — that one hit is the definition
+itself, so nothing references them. Leave anything with a count above 1 alone
+and note it in the commit message. Do not delete on assumption; the counts are
+the authority.
+
+`chordLengthParameterize` and `computeMaxError` are imported from `fit-cubic.js`
+at the top of `skeleton-generator.js` and become unused once
+`simplifyOffsetCurves` is gone. Remove them from that import statement but
+**not** from `fit-cubic.js`, where they are exported and tested.
+
+- [ ] **Step 2: Delete the confirmed-unreferenced symbols**
+
+Remove each function body and each constant declaration in
+`src-js/fontra-core/src/skeleton-generator.js`. Work bottom-up through the file
+so earlier line numbers stay valid.
+
+Expected removals, subject to Step 1's counts:
+- `simplifyOffsetCurves` and the five simplification constants
+- `stabilizeSingleCubicHandles`, `ENABLE_EXPERIMENTAL_HANDLE_STABILIZATION`, and
+  its private helpers `clampNearZeroDirection` and `rotateDirection`
+- `lockNearZeroHandleDirection`, `getMinimumGridStepFromDirection`, and the
+  three `NEAR_ZERO_*` / rotation constants
+- `alignHandleDirections`, plus the two commented-out call sites that reference
+  it — search for `alignHandleDirections` in comments and delete those lines too
+- `MAX_HANDLE_TO_CHORD_RATIO`, now owned by `offset-cubic.js`
+
+`normalizeDirectionOrFallback` will likely still have callers. Check before
+touching it.
+
+- [ ] **Step 3: Verify nothing broke**
+
+Run: `cd src-js/fontra-core && npm test`
+Expected: PASS, with no change to any golden master. This task removes only
+unreachable code — if a fixture moved, something still-live was deleted.
+
+Then confirm the file is syntactically valid:
+
+Run: `node --check src-js/fontra-core/src/skeleton-generator.js`
+Expected: no output.
+
+- [ ] **Step 4: Commit**
+
+```bash
+npx prettier --write src-js/fontra-core/src/skeleton-generator.js
+git add .
+git commit -m "refactor: drop the superseded offset machinery
+
+Removes the offset-curve simplifier and its adaptive error constants, the
+near-zero handle direction lock and its eight-direction grid snap, the
+experimental handle stabilizer that has been behind a false flag since the
+port, and alignHandleDirections, whose call sites were commented out as
+O(n^3) at the same time.
+
+All unreachable after the construction landed. Golden masters unchanged.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 8: Record the divergence
+
+The golden-master suite asserts the generator matches the pinned donor. It no longer does, deliberately. Say so where someone will find it.
+
+**Files:**
+- Modify: `src-js/fontra-core/tests/test-skeleton-generator.js:12-14`
+- Modify: `docs/superpowers/SKELETON-FEATURE-MODEL.md`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: nothing.
+
+- [ ] **Step 1: Retitle the golden-master suite**
+
+In `src-js/fontra-core/tests/test-skeleton-generator.js`, replace the suite
+description and the per-case title:
+
+```js
+describe("skeleton-generator golden master", () => {
+  for (const fixture of fixtures) {
+    it(`matches the recorded outline for ${fixture.name}`, () => {
+```
+
+Add above the `describe`:
+
+```js
+// These fixtures were donor-parity fixtures until 2026-07-26, when outline
+// handles moved from a sample-and-fit offset to a closed-form construction.
+// They are forkra's own regression baseline now. Regenerate with
+// tests/scripts/make-skeleton-generator-fixtures.js.
+```
+
+- [ ] **Step 2: Update the feature model**
+
+In `docs/superpowers/SKELETON-FEATURE-MODEL.md`, in §3 step 2 ("Per-segment
+offsetting"), replace the sentence describing cubic offsetting with:
+
+```markdown
+Cubic segments are offset by closed-form construction (`offset-cubic.js`): the
+offset curve's end tangent directions are exact, and its handle lengths follow
+from `λ = 1 + d·κ`, corrected by one fixed least-squares pass and bounded so no
+handle overshoots the tangent-ray intersection. Endpoints are the exact rib
+positions. This replaced a bezier-js `offset()` + adaptive `fitCubic` path on
+2026-07-26 because that path was not a continuous function of the skeleton —
+see `specs/2026-07-26-skeleton-offset-construction-design.md`.
+```
+
+In §4, append to the list of load-bearing differences from the donor:
+
+```markdown
+- **Outline offsetting is forkra's own.** The donor's sample-and-fit offset was
+  replaced by a closed-form construction (2026-07-26). The generator's golden
+  masters are no longer donor-parity fixtures. The donor remains the behavioral
+  reference for everything else.
+```
+
+In §6, delete the two cleanup candidates this work resolved: the disabled
+`alignHandleDirections` entry and the gated `stabilizeSingleCubicHandles` entry.
+Leave the round-once and monolith entries.
+
+- [ ] **Step 3: Verify**
+
+Run: `cd src-js/fontra-core && npm test`
+Expected: PASS.
+
+- [ ] **Step 4: Commit**
+
+```bash
+npx prettier --write src-js/fontra-core/tests/test-skeleton-generator.js
+git add .
+git commit -m "docs: record that outline offsetting diverges from the donor
+
+The generator's golden masters were donor-parity fixtures. They are forkra's
+own regression baseline now. Retitles the suite so nobody reads a failure as
+a parity regression, and updates the feature model's pipeline description.
+
+Drops the two cleanup candidates this work resolved.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Notes for the implementer
+
+**Two intentional discontinuities.** Do not smooth either, and do not write a
+continuity test that spans them:
+
+1. The 0.5-unit collapsed-side threshold. Below it a side lies exactly on the
+   skeleton, which is what makes single-sided contours exact.
+2. The forward/behind flip of the tangent-ray intersection. Only reachable at
+   turns of roughly 180° in a single segment, where the chord backstop takes
+   over.
+
+**If a continuity test fails**, find the discontinuous term. Do not widen the
+threshold. The usual causes, in order of likelihood: a hard `Math.min` or
+`Math.max` that should be a smooth minimum, a `Number.isFinite` guard sitting on
+a value that passes through zero, or `easeIntoBand` being handed a near-zero
+analytic length.
+
+**Do not run `npm run bundle`.** The user runs bundle-watch and reports compile
+errors.
