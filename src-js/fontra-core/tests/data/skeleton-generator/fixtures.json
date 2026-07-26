@@ -967,6 +967,303 @@
     ]
   },
   {
+    "name": "mutually-controlled-straight",
+    "canonical": {
+      "version": 1,
+      "nextId": 10,
+      "contours": [
+        {
+          "id": 1,
+          "closed": false,
+          "defaultWidth": 40,
+          "singleSided": null,
+          "points": [
+            {
+              "id": 2,
+              "x": 0,
+              "y": 0,
+              "type": null,
+              "smooth": false,
+              "width": {
+                "left": 40,
+                "right": 40,
+                "linked": true
+              },
+              "nudge": {
+                "left": 0,
+                "right": 0
+              },
+              "editable": {
+                "left": false,
+                "right": false
+              },
+              "handleOffsets": {}
+            },
+            {
+              "id": 3,
+              "x": 10,
+              "y": 50,
+              "type": "cubic",
+              "smooth": false
+            },
+            {
+              "id": 4,
+              "x": 20,
+              "y": 40,
+              "type": "cubic",
+              "smooth": false
+            },
+            {
+              "id": 5,
+              "x": 60,
+              "y": 60,
+              "type": null,
+              "smooth": true,
+              "width": {
+                "left": 30,
+                "right": 30
+              },
+              "nudge": {
+                "left": 0,
+                "right": 0
+              },
+              "editable": {
+                "left": false,
+                "right": false
+              },
+              "handleOffsets": {}
+            },
+            {
+              "id": 6,
+              "x": 140,
+              "y": 100,
+              "type": null,
+              "smooth": true,
+              "width": {
+                "left": 18,
+                "right": 18
+              },
+              "nudge": {
+                "left": 0,
+                "right": 0
+              },
+              "editable": {
+                "left": false,
+                "right": false
+              },
+              "handleOffsets": {}
+            },
+            {
+              "id": 7,
+              "x": 180,
+              "y": 120,
+              "type": "cubic",
+              "smooth": false
+            },
+            {
+              "id": 8,
+              "x": 190,
+              "y": 60,
+              "type": "cubic",
+              "smooth": false
+            },
+            {
+              "id": 9,
+              "x": 200,
+              "y": 0,
+              "type": null,
+              "smooth": false,
+              "width": {
+                "left": 40,
+                "right": 40,
+                "linked": true
+              },
+              "nudge": {
+                "left": 0,
+                "right": 0
+              },
+              "editable": {
+                "left": false,
+                "right": false
+              },
+              "handleOffsets": {}
+            }
+          ]
+        }
+      ],
+      "generated": []
+    },
+    "donorInput": {
+      "contours": [
+        {
+          "isClosed": false,
+          "defaultWidth": 40,
+          "singleSided": false,
+          "singleSidedDirection": "left",
+          "capStyle": "butt",
+          "reversed": false,
+          "points": [
+            {
+              "x": 0,
+              "y": 0,
+              "smooth": false,
+              "leftWidth": 40,
+              "rightWidth": 40,
+              "leftNudge": 0,
+              "rightNudge": 0,
+              "leftEditable": false,
+              "rightEditable": false
+            },
+            {
+              "x": 10,
+              "y": 50,
+              "smooth": false,
+              "type": "cubic"
+            },
+            {
+              "x": 20,
+              "y": 40,
+              "smooth": false,
+              "type": "cubic"
+            },
+            {
+              "x": 60,
+              "y": 60,
+              "smooth": true,
+              "leftWidth": 30,
+              "rightWidth": 30,
+              "leftNudge": 0,
+              "rightNudge": 0,
+              "leftEditable": false,
+              "rightEditable": false
+            },
+            {
+              "x": 140,
+              "y": 100,
+              "smooth": true,
+              "leftWidth": 18,
+              "rightWidth": 18,
+              "leftNudge": 0,
+              "rightNudge": 0,
+              "leftEditable": false,
+              "rightEditable": false
+            },
+            {
+              "x": 180,
+              "y": 120,
+              "smooth": false,
+              "type": "cubic"
+            },
+            {
+              "x": 190,
+              "y": 60,
+              "smooth": false,
+              "type": "cubic"
+            },
+            {
+              "x": 200,
+              "y": 0,
+              "smooth": false,
+              "leftWidth": 40,
+              "rightWidth": 40,
+              "leftNudge": 0,
+              "rightNudge": 0,
+              "leftEditable": false,
+              "rightEditable": false
+            }
+          ]
+        }
+      ]
+    },
+    "expectedContours": [
+      {
+        "points": [
+          {
+            "x": 39,
+            "y": -8,
+            "smooth": false
+          },
+          {
+            "x": 46,
+            "y": 26,
+            "type": "cubic"
+          },
+          {
+            "x": 45.796825596762616,
+            "y": 26.398412798381308,
+            "type": "cubic"
+          },
+          {
+            "x": 71,
+            "y": 39,
+            "smooth": true
+          },
+          {
+            "x": 151,
+            "y": 79,
+            "smooth": true
+          },
+          {
+            "x": 156.21536192416212,
+            "y": 81.60768096208106,
+            "type": "cubic"
+          },
+          {
+            "x": 149,
+            "y": 65,
+            "type": "cubic"
+          },
+          {
+            "x": 161,
+            "y": -7,
+            "smooth": false
+          },
+          {
+            "x": 239,
+            "y": 7,
+            "smooth": false
+          },
+          {
+            "x": 231,
+            "y": 55,
+            "type": "cubic"
+          },
+          {
+            "x": 203.8010695110705,
+            "y": 158.40053475553526,
+            "type": "cubic"
+          },
+          {
+            "x": 129,
+            "y": 121,
+            "smooth": true
+          },
+          {
+            "x": 49,
+            "y": 81,
+            "smooth": true
+          },
+          {
+            "x": 23,
+            "y": 68,
+            "type": "cubic"
+          },
+          {
+            "x": -32,
+            "y": 45,
+            "type": "cubic"
+          },
+          {
+            "x": -39,
+            "y": 8,
+            "smooth": false
+          }
+        ],
+        "isClosed": true
+      }
+    ]
+  },
+  {
     "name": "single-sided-left",
     "canonical": {
       "version": 1,

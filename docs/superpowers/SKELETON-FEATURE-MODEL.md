@@ -78,6 +78,29 @@ provenance** — `annotateGeneratedContourProvenance` stamps every generated poi
 with `{skeletonPointId, side, role}` (arch map C3). The per-contour pipeline is
 pure and independent (contour *i*'s output depends only on contour *i*):
 
+0. **Direction ownership** — before any offsetting, note which on-curve points do
+   **not** own their own direction. A smooth point with only **one** handle
+   cannot be defined by that handle: smoothness forces the handle to be colinear
+   with the straight segment on its other side, so the straight sets the
+   direction and the handle follows. Its rib is perpendicular to that straight,
+   not to a miter average (`isStraightControlledSmoothPoint` →
+   `straightSegmentNormal`).
+
+   When **both** ends of a straight are such points, they define each other and
+   neither has an independent direction (`isMutuallyControlledPair`). Their ribs
+   are locked parallel *and* to a shared offset — `coupledHalfWidths` gives both
+   the mean of the two stored half-widths per side, so adjusting either width
+   moves both ribs together. The mean is chosen because it is symmetric and
+   continuous in both inputs.
+
+   **This is the one place ribs are deliberately coupled**, and it is not a UX
+   preference — it is forced. Ribs at different offsets tilt the generated
+   rib-to-rib line away from the skeleton straight, and the generated handles
+   stay colinear with that line in order to keep the outline smooth, so they
+   rotate as width changes (measured: 8.5° of drift over a width sweep, the two
+   sides shearing opposite ways). Locked in by "keeps handles fixed when width
+   changes across a mutually-controlled straight" and the
+   `mutually-controlled-straight` fixture.
 1. **Segmentation** — `buildSegmentsFromPoints` splits the point list into
    on-curve→on-curve segments carrying their off-curve controls.
 2. **Per-segment offsetting** — each side's outline is offset by its half-width.
@@ -127,17 +150,12 @@ eight lattice neighbours are the only directions expressible at all. So any
 later stage that re-derives a direction from rounded coordinates inherits a
 width dependence, because width sets the length.
 
-**Known issue — handles at the minimum length lose their direction.** The
-1-unit floor (`MIN_HANDLE_LENGTH`, plus the `Math.max(along, 1)` clamp in
-`projectHandleOntoDirection`) combined with the grid snap reproduces the
-8-direction quantization that deleting `lockNearZeroHandleDirection` was meant
-to remove. At smooth junctions this no longer shows, because the axis comes from
-the skeleton and is applied unrounded (§3.6). Elsewhere a floored handle still
-points at a lattice neighbour. The floor fires whenever the offset is at or past
-its cusp (`d·κ ≤ −1`), i.e. rib half-width at or beyond the skeleton's radius of
-curvature — genuinely degenerate geometry, but the emitted direction there is
-arbitrary rather than merely short. Fixing it means choosing between a larger
-floor and sub-unit handle coordinates; not yet decided.
+Handles at the 1-unit floor (`MIN_HANDLE_LENGTH`, plus the `Math.max(along, 1)`
+clamp in `projectHandleOntoDirection`) therefore express only three directions —
+axis-aligned and diagonal — and degrade colinearity at that size. **This is
+accepted, not a defect:** ordinary on-curve points behave the same way at that
+scale, so the generated outline is consistent with hand-drawn geometry. Do not
+"fix" it by raising the floor or by allowing sub-unit handle coordinates.
 
 **Point-count stability is a hard constraint.** The generated point count must
 stay constant across parameter values, or cross-master interpolation breaks. Any

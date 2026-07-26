@@ -99,6 +99,28 @@ describe("skeleton-generator provenance", () => {
     }
   });
 
+  it("keeps handles fixed when width changes across a mutually-controlled straight", () => {
+    // A smooth point with only one handle takes its direction from the straight
+    // segment on its other side, so two such points joined by a straight define
+    // each other. Their ribs are locked parallel and share an offset; adjusting
+    // either width moves both together. Without that, the generated rib-to-rib
+    // line tilts and the handles, which stay colinear with it, rotate with width
+    // — measured at 8.5 deg of drift over a width sweep, the two sides shearing
+    // in opposite directions.
+    const straightAngle = (Math.atan2(100 - 60, 140 - 60) * 180) / Math.PI;
+    for (const halfWidth of [8, 12, 20, 27, 34]) {
+      const handles = straightControlledHandles(halfWidth);
+      expect(handles, "one handle per side at the smooth point").to.have.length(2);
+      for (const handle of handles) {
+        // Points back along the straight, so 180 deg away from it.
+        expect(handle.angle, `half-width ${halfWidth} ${handle.side}`).to.be.closeTo(
+          straightAngle - 180,
+          1e-6
+        );
+      }
+    }
+  });
+
   it("emits side-bearing on-curve provenance for every rib point", () => {
     const fixture = fixtures.find((item) => item.name === "open-line-butt-cap");
     const result = generateFromSkeleton(fixture.canonical);
@@ -627,6 +649,89 @@ describe("skeleton-generator near-zero handle stabilization", () => {
     }
   });
 });
+
+// Angled on-curve, handle, handle, smooth on-curve, straight, smooth on-curve,
+// handle, handle, angled on-curve. The two smooth points (5 and 6) each carry
+// only one handle, on the far side, colinear with the straight between them.
+// Only point 5's width varies; point 6 stays at 20.
+function straightControlledSkeleton(halfWidthAtFive) {
+  const a = { x: 60, y: 60 };
+  const b = { x: 140, y: 100 };
+  const along = Math.atan2(b.y - a.y, b.x - a.x);
+  const reach = 45;
+  const onCurve = (id, x, y, smooth, halfWidth) => ({
+    id,
+    x,
+    y,
+    type: null,
+    smooth,
+    width: { left: halfWidth, right: halfWidth, linked: true },
+    nudge: { left: 0, right: 0 },
+    editable: { left: false, right: false },
+    handleOffsets: {},
+  });
+  const offCurve = (id, x, y) => ({ id, x, y, type: "cubic", smooth: false });
+  return {
+    version: 1,
+    nextId: 10,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 40,
+        singleSided: null,
+        points: [
+          onCurve(2, 0, 0, false, 20),
+          offCurve(3, 10, 50),
+          offCurve(
+            4,
+            Math.round(a.x - Math.cos(along) * reach),
+            Math.round(a.y - Math.sin(along) * reach)
+          ),
+          onCurve(5, a.x, a.y, true, halfWidthAtFive),
+          onCurve(6, b.x, b.y, true, 20),
+          offCurve(
+            7,
+            Math.round(b.x + Math.cos(along) * reach),
+            Math.round(b.y + Math.sin(along) * reach)
+          ),
+          offCurve(8, 190, 60),
+          onCurve(9, 200, 0, false, 20),
+        ],
+      },
+    ],
+    generated: [],
+  };
+}
+
+// The generated handle at skeleton point 5, per side, with its angle measured
+// from that side's rib point.
+function straightControlledHandles(halfWidthAtFive) {
+  const result = generateFromSkeleton(straightControlledSkeleton(halfWidthAtFive));
+  const points = result.contours[0].points;
+  const pointMap = result.provenance[0].pointMap;
+  const find = (side, role) => {
+    const index = pointMap.findIndex(
+      (entry) =>
+        entry &&
+        entry.skeletonPointId === 5 &&
+        entry.side === side &&
+        entry.role === role
+    );
+    return index < 0 ? null : points[index];
+  };
+  const handles = [];
+  for (const side of ["left", "right"]) {
+    const anchor = find(side, "onCurve");
+    const handle = find(side, "in");
+    if (!anchor || !handle) continue;
+    handles.push({
+      side,
+      angle: (Math.atan2(handle.y - anchor.y, handle.x - anchor.x) * 180) / Math.PI,
+    });
+  }
+  return handles;
+}
 
 // Two cubic segments meeting at a smooth on-curve point (id 5), whose skeleton
 // handles (ids 4 and 6) are exactly colinear through it.

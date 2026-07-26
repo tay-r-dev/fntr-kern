@@ -1240,6 +1240,10 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
   const leftSide = [];
   const rightSide = [];
 
+  const coupled = coupledHalfWidths(segments, isClosed, defaultWidth);
+  const resolveHalfWidth = (point, side) =>
+    coupled.get(point)?.[side] ?? getPointHalfWidth(point, defaultWidth, side);
+
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
     // For open skeletons, don't wrap around - first/last segments have no prev/next
@@ -1251,19 +1255,13 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
     const isFirstSegment = i === 0;
     const isLastSegment = i === segments.length - 1;
 
-    // Get per-point widths for start and end of segment
-    let startLeftHalfWidth = getPointHalfWidth(
-      segment.startPoint,
-      defaultWidth,
-      "left"
-    );
-    let startRightHalfWidth = getPointHalfWidth(
-      segment.startPoint,
-      defaultWidth,
-      "right"
-    );
-    let endLeftHalfWidth = getPointHalfWidth(segment.endPoint, defaultWidth, "left");
-    let endRightHalfWidth = getPointHalfWidth(segment.endPoint, defaultWidth, "right");
+    // Get per-point widths for start and end of segment. Points whose ribs are
+    // locked to a neighbour's take the shared value, so every segment touching
+    // such a point places its rib in the same place.
+    let startLeftHalfWidth = resolveHalfWidth(segment.startPoint, "left");
+    let startRightHalfWidth = resolveHalfWidth(segment.startPoint, "right");
+    let endLeftHalfWidth = resolveHalfWidth(segment.endPoint, "left");
+    let endRightHalfWidth = resolveHalfWidth(segment.endPoint, "right");
 
     // Single-sided mode: redirect all width to one side
     if (singleSided) {
@@ -2040,7 +2038,11 @@ function generateOffsetPointsForSegment(
     const shouldAddStart = isClosed || isFirst;
     if (shouldAddStart) {
       let startNormal =
-        !prevSegment || (isFirst && !isClosed)
+        !prevSegment ||
+        (isFirst && !isClosed) ||
+        // Direction comes from this straight, not from a miter average with the
+        // one handle on the far side.
+        isStraightControlledSmoothPoint(segment.startPoint, segment, prevSegment)
           ? normal
           : calculateCornerNormal(prevSegment, segment, startLeftHW);
       // Apply angle override if set on the point
@@ -2099,7 +2101,11 @@ function generateOffsetPointsForSegment(
     const shouldAddEnd = !isClosed;
     if (shouldAddEnd) {
       let endNormal =
-        !nextSegment || isLast
+        !nextSegment ||
+        isLast ||
+        // Direction comes from this straight, not from a miter average with the
+        // one handle on the far side.
+        isStraightControlledSmoothPoint(segment.endPoint, segment, nextSegment)
           ? normal
           : calculateCornerNormal(segment, nextSegment, endLeftHW);
       // Apply angle override if set on the point
@@ -2166,18 +2172,33 @@ function generateOffsetPointsForSegment(
     const endTangent = vector.normalizeVector({ x: endDeriv.x, y: endDeriv.y });
     const bezierEndNormal = vector.rotateVector90CW(endTangent);
 
-    // For corners (non-smooth junctions), use averaged normal
-    let startNormal =
-      !prevSegment || (isFirst && !isClosed)
-        ? bezierStartNormal
-        : calculateCornerNormal(prevSegment, segment, startLeftHW);
+    // For corners (non-smooth junctions), use averaged normal. A smooth point
+    // whose only handle is on this curve takes its direction from the straight
+    // segment on the other side instead — that straight is what defines it, so
+    // its rib must be perpendicular to the straight and not to a miter average.
+    let startNormal;
+    if (!prevSegment || (isFirst && !isClosed)) {
+      startNormal = bezierStartNormal;
+    } else if (
+      isStraightControlledSmoothPoint(segment.startPoint, prevSegment, segment)
+    ) {
+      startNormal = straightSegmentNormal(prevSegment);
+    } else {
+      startNormal = calculateCornerNormal(prevSegment, segment, startLeftHW);
+    }
     // Apply angle override if set on the point
     startNormal = getEffectiveNormal(segment.startPoint, startNormal);
 
-    let endNormal =
-      !nextSegment || (isLast && !isClosed)
-        ? bezierEndNormal
-        : calculateCornerNormal(segment, nextSegment, endLeftHW);
+    let endNormal;
+    if (!nextSegment || (isLast && !isClosed)) {
+      endNormal = bezierEndNormal;
+    } else if (
+      isStraightControlledSmoothPoint(segment.endPoint, nextSegment, segment)
+    ) {
+      endNormal = straightSegmentNormal(nextSegment);
+    } else {
+      endNormal = calculateCornerNormal(segment, nextSegment, endLeftHW);
+    }
     // Apply angle override if set on the point
     endNormal = getEffectiveNormal(segment.endPoint, endNormal);
 
@@ -2413,6 +2434,111 @@ function generateOffsetPointsForSegment(
   }
 
   return { left, right };
+}
+
+/**
+ * Is this on-curve point a smooth point whose only handle sits on `curveSegment`,
+ * with a straight segment on the other side?
+ *
+ * Such a point cannot take its direction from its own handle: smoothness means
+ * the handle has to be colinear with the straight segment, so the direction is
+ * set by the straight — that is, by the on-curve point at the far end of it. The
+ * handle follows; it does not lead.
+ * @param {Object} point - The shared on-curve skeleton point
+ * @param {Object} straightSegment - The segment with no control points
+ * @param {Object} curveSegment - The segment carrying the point's one handle
+ * @returns {boolean}
+ */
+function isStraightControlledSmoothPoint(point, straightSegment, curveSegment) {
+  return (
+    point?.smooth === true &&
+    straightSegment?.controlPoints.length === 0 &&
+    curveSegment?.controlPoints.length > 0
+  );
+}
+
+/**
+ * The rib normal for a point whose direction comes from a straight segment:
+ * perpendicular to that segment, with no miter averaging against the handle.
+ * @param {Object} straightSegment - The straight segment setting the direction
+ * @returns {Object} Normal {x, y}
+ */
+function straightSegmentNormal(straightSegment) {
+  return vector.rotateVector90CW(
+    vector.normalizeVector(
+      vector.subVectors(straightSegment.endPoint, straightSegment.startPoint)
+    )
+  );
+}
+
+/**
+ * Two smooth points joined by a straight segment, each with only one handle, on
+ * its far side. Each takes its direction from the straight, so each is defined
+ * by the other: they control each other and there is no independent direction
+ * for either.
+ *
+ * Their ribs are therefore locked parallel, and must also sit at the same
+ * offset — otherwise the generated rib-to-rib line tilts away from the skeleton
+ * straight, and the generated handles, which stay colinear with that line to
+ * keep the outline smooth, rotate as rib width changes.
+ * @param {Object} straightSegment - Candidate straight segment
+ * @param {Object} prevSegment - Segment before it, or null
+ * @param {Object} nextSegment - Segment after it, or null
+ * @returns {boolean}
+ */
+function isMutuallyControlledPair(straightSegment, prevSegment, nextSegment) {
+  return (
+    isStraightControlledSmoothPoint(
+      straightSegment?.startPoint,
+      straightSegment,
+      prevSegment
+    ) &&
+    isStraightControlledSmoothPoint(
+      straightSegment?.endPoint,
+      straightSegment,
+      nextSegment
+    )
+  );
+}
+
+/**
+ * Half-widths for on-curve points whose ribs must move as one, keyed by the
+ * skeleton point object.
+ *
+ * Both ends of a mutually-controlled straight segment get the mean of the two
+ * stored half-widths, per side. The mean rather than one end's value: it is
+ * symmetric, so neither point wins, and it is continuous in both inputs, so
+ * dragging either width moves both ribs together and smoothly. Every consumer
+ * resolves a point's width through this map, so the straight segment and the
+ * cubic on the other side of a shared point cannot disagree about where the rib
+ * is.
+ * @param {Array} segments - The contour's segments
+ * @param {boolean} isClosed - Whether the contour is closed
+ * @param {number} defaultWidth - Contour default width
+ * @returns {Map} skeleton point -> {left, right}
+ */
+function coupledHalfWidths(segments, isClosed, defaultWidth) {
+  const coupled = new Map();
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    const prevSegment =
+      isClosed || i > 0 ? segments[(i - 1 + segments.length) % segments.length] : null;
+    const nextSegment =
+      isClosed || i < segments.length - 1 ? segments[(i + 1) % segments.length] : null;
+    if (!isMutuallyControlledPair(segment, prevSegment, nextSegment)) {
+      continue;
+    }
+    const shared = {};
+    for (const side of ["left", "right"]) {
+      shared[side] =
+        (getPointHalfWidth(segment.startPoint, defaultWidth, side) +
+          getPointHalfWidth(segment.endPoint, defaultWidth, side)) /
+        2;
+    }
+    coupled.set(segment.startPoint, shared);
+    coupled.set(segment.endPoint, shared);
+  }
+  return coupled;
 }
 
 /**

@@ -139,6 +139,37 @@ const fixtures = [
     },
   },
   {
+    // Two cubic segments joined by a straight in the middle, between two smooth
+    // points (5 and 6) that each carry only ONE handle, on the far side. Neither
+    // has an independent direction — the straight defines both — so their ribs
+    // are locked parallel and share an offset. Widths deliberately differ (30 vs
+    // 18) so the coupling is exercised rather than coincidentally satisfied.
+    name: "mutually-controlled-straight",
+    canonical: {
+      version: 1,
+      nextId: 10,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 40,
+          singleSided: null,
+          points: [
+            point(2, 0, 0),
+            offCurve(3, 10, 50),
+            offCurve(4, 20, 40),
+            point(5, 60, 60, { smooth: true, width: { left: 30, right: 30 } }),
+            point(6, 140, 100, { smooth: true, width: { left: 18, right: 18 } }),
+            offCurve(7, 180, 120),
+            offCurve(8, 190, 60),
+            point(9, 200, 0),
+          ],
+        },
+      ],
+      generated: [],
+    },
+  },
+  {
     name: "single-sided-left",
     canonical: {
       version: 1,
