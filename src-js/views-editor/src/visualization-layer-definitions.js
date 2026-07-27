@@ -1279,11 +1279,8 @@ registerVisualizationLayerDefinition({
   },
 });
 
-// While the generated contours are edited through their gizmos, the handle
-// LINES on them are not the control surface — drawing them invites a drag that
-// gizmo mode does not accept, and they clutter the very curve being judged.
-// Points are untouched, on-curve and off-curve alike: they say where the outline
-// is, which is worth seeing whichever way it is being edited. Only the lines go.
+// While generated contours are edited through their gizmos, neither their
+// handle lines nor their unattached off-curve nodes are useful control surfaces.
 // Null when gizmo mode is off, so direct handle editing looks exactly as before.
 function getGizmoHiddenContourIndices(positionedGlyph, model) {
   if (
@@ -1296,9 +1293,28 @@ function getGizmoHiddenContourIndices(positionedGlyph, model) {
   return indices?.size ? indices : null;
 }
 
-// Is this the node at the end of a handle we just suppressed? On-curve points
-// stay drawn: they are where the outline actually is, not a control being
-// withdrawn.
+function* iterGizmoVisibleNodes(path, pointIndices, hiddenContourIndices) {
+  if (pointIndices == null) {
+    let pointIndex = 0;
+    for (const point of path.iterPoints()) {
+      if (!point.type || !hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
+        yield point;
+      }
+      pointIndex++;
+    }
+    return;
+  }
+  for (const pointIndex of pointIndices) {
+    const point = path.getPoint(pointIndex);
+    if (point?.type && hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
+      continue;
+    }
+    if (point) {
+      yield point;
+    }
+  }
+}
+
 registerVisualizationLayerDefinition({
   identifier: "fontra.nodes",
   name: "Nodes",
@@ -1314,7 +1330,11 @@ registerVisualizationLayerDefinition({
     const handleSize = parameters.handleSize;
 
     context.fillStyle = parameters.color;
-    for (const pt of glyph.path.iterPoints()) {
+    for (const pt of iterGizmoVisibleNodes(
+      glyph.path,
+      null,
+      getGizmoHiddenContourIndices(positionedGlyph, model)
+    )) {
       fillNode(context, pt, cornerSize, smoothSize, handleSize);
     }
   },
@@ -1343,11 +1363,16 @@ registerVisualizationLayerDefinition({
 
     const { point: hoveredPointIndices } = parseSelection(model.hoverSelection);
     const { point: selectedPointIndices } = parseSelection(model.selection);
+    const hiddenContourIndices = getGizmoHiddenContourIndices(positionedGlyph, model);
 
     // Under layer
     const underlayOffset = parameters.underlayOffset;
     context.fillStyle = parameters.underColor;
-    for (const pt of iterPointsByIndex(glyph.path, selectedPointIndices)) {
+    for (const pt of iterGizmoVisibleNodes(
+      glyph.path,
+      selectedPointIndices,
+      hiddenContourIndices
+    )) {
       fillNode(
         context,
         pt,
@@ -1358,14 +1383,22 @@ registerVisualizationLayerDefinition({
     }
     // Selected nodes
     context.fillStyle = parameters.selectedColor;
-    for (const pt of iterPointsByIndex(glyph.path, selectedPointIndices)) {
+    for (const pt of iterGizmoVisibleNodes(
+      glyph.path,
+      selectedPointIndices,
+      hiddenContourIndices
+    )) {
       fillNode(context, pt, cornerSize, smoothSize, handleSize);
     }
     // Hovered nodes
     context.strokeStyle = parameters.hoveredColor;
     context.lineWidth = parameters.strokeWidth;
     const hoverStrokeOffset = parameters.hoverStrokeOffset;
-    for (const pt of iterPointsByIndex(glyph.path, hoveredPointIndices)) {
+    for (const pt of iterGizmoVisibleNodes(
+      glyph.path,
+      hoveredPointIndices,
+      hiddenContourIndices
+    )) {
       strokeNode(
         context,
         pt,

@@ -33,6 +33,8 @@ import {
   parseSkeletonRibKey,
   setSkeletonData,
   setSkeletonHandleOffset,
+  transformSkeletonContourMetadata,
+  transformSkeletonPointMetadata,
 } from "@fontra/core/skeleton-model.js";
 import { isObjectEmpty, parseSelection, range } from "@fontra/core/utils.ts";
 import { VarPackedPath } from "@fontra/core/var-path.js";
@@ -508,9 +510,18 @@ export function makeSkeletonPointTargetEntry(
   const syntheticDeltaBehavior = deltaFactory.getBehavior(behaviorName);
   const syntheticTransformBehavior =
     transformFactory.getTransformBehavior(behaviorName);
+  const selectedPointIdsByContour = new Map();
+  for (const { contourId, pointId } of selected) {
+    let pointIds = selectedPointIdsByContour.get(contourId);
+    if (!pointIds) {
+      pointIds = new Set();
+      selectedPointIdsByContour.set(contourId, pointIds);
+    }
+    pointIds.add(pointId);
+  }
 
   let rollbackChange = null;
-  const makeChange = (behavior, method, argument) => {
+  const makeChange = (behavior, method, argument, transformMetadata = false) => {
     // 1. Run the regular point-behavior rules on the synthetic path. The
     //    behavior computes absolute coordinates from the captured originals,
     //    so applying its change to the synthetic instance per frame yields
@@ -531,6 +542,28 @@ export function makeSkeletonPointTargetEntry(
         target.point.x = x;
         target.point.y = y;
       }
+      if (transformMetadata) {
+        for (const [contourId, pointIds] of selectedPointIdsByContour) {
+          const contourAddress = getSkeletonPointAddress(
+            working,
+            contourId,
+            pointIds.values().next().value
+          );
+          if (!contourAddress) {
+            continue;
+          }
+          const { contour } = contourAddress;
+          for (const pointId of pointIds) {
+            const pointAddress = getSkeletonPointAddress(working, contourId, pointId);
+            if (pointAddress) {
+              transformSkeletonPointMetadata(pointAddress.point, argument);
+            }
+          }
+          if (pointIds.size === contour.points.length) {
+            transformSkeletonContourMetadata(contour, argument);
+          }
+        }
+      }
     });
     rollbackChange = changes.rollbackChange;
     return changes.change;
@@ -547,7 +580,8 @@ export function makeSkeletonPointTargetEntry(
       return makeChange(
         syntheticTransformBehavior,
         "makeChangeForTransformation",
-        transformation
+        transformation,
+        true
       );
     },
   };

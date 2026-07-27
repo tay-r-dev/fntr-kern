@@ -743,10 +743,11 @@ describe("skeleton-model panel-facing mutators", () => {
     expect(point.cornerTrimRatio).to.equal(undefined);
   });
 
-  it("reset rib removes nudge/handle offsets for one side, leaving locks", () => {
+  it("reset rib removes nudge/handle offsets/curvature for one side, leaving locks", () => {
     const point = makePoint({
       locked: { left: true, right: true },
       nudge: { left: 5, right: 7 },
+      segmentCurvature: { left: 0.4, right: 0.7 },
       handleOffsets: {
         leftIn: { x: 1, y: 2, detached: true },
         rightOut: { x: 3, y: 4, detached: false },
@@ -754,16 +755,19 @@ describe("skeleton-model panel-facing mutators", () => {
     });
     resetSkeletonEditableRib(point, "left");
     expect(point.nudge.left).to.equal(0);
+    expect(point.segmentCurvature.left).to.equal(null);
     expect(point.handleOffsets.leftIn).to.equal(undefined);
     // Reset clears adjustments only — the lock is independent.
     expect(point.locked.left).to.equal(true);
     expect(point.nudge.right).to.equal(7);
+    expect(point.segmentCurvature.right).to.equal(0.7);
     expect(point.handleOffsets.rightOut).to.not.equal(undefined);
   });
 
   it("reset rib handles removes only handle offsets for one side", () => {
     const point = makePoint({
       nudge: { left: 5, right: 7 },
+      segmentCurvature: { left: 0.4, right: 0.7 },
       handleOffsets: {
         leftIn: { x: 1, y: 2, detached: true },
         rightOut: { x: 3, y: 4, detached: false },
@@ -772,6 +776,7 @@ describe("skeleton-model panel-facing mutators", () => {
     resetSkeletonEditableRibHandles(point, "left");
     expect(point.handleOffsets.leftIn).to.equal(undefined);
     expect(point.nudge.left).to.equal(5);
+    expect(point.segmentCurvature.left).to.equal(0.4);
     expect(point.handleOffsets.rightOut).to.not.equal(undefined);
   });
 
@@ -824,7 +829,8 @@ describe("skeleton-model transform/translate/id-allocation", () => {
         {
           id: 1,
           closed: true,
-          singleSided: null,
+          singleSided: "left",
+          capBallSide: "right",
           defaultWidth: 80,
           points: [
             {
@@ -833,10 +839,20 @@ describe("skeleton-model transform/translate/id-allocation", () => {
               y: 200,
               type: null,
               smooth: false,
-              width: { left: 40, right: 40, linked: true },
-              nudge: { left: 3, right: 0 },
+              width: { left: 30, right: 50, linked: true, tied: false },
+              nudge: { left: 3, right: -7 },
+              locked: { left: true, right: false },
+              segmentCurvature: { left: 0.3, right: 0.8 },
+              capBallSide: "left",
+              capAngle: 12,
+              cornerAsymmetry: -0.25,
               editable: { left: true, right: false },
-              handleOffsets: { leftIn: { x: 10, y: 0, detached: true } },
+              handleOffsets: {
+                leftIn: { x: 10, y: 2, detached: true },
+                leftOut: { x: 4, y: 5, detached: false },
+                rightIn: { x: -6, y: 7, detached: false },
+                rightOut: { x: 8, y: -9, detached: true },
+              },
             },
             { id: 3, x: 150, y: 250, type: "cubic", smooth: false },
           ],
@@ -866,9 +882,18 @@ describe("skeleton-model transform/translate/id-allocation", () => {
   it("translate leaves widths/nudges/handleOffsets unchanged", () => {
     const out = translateSkeletonData(makeFixture(), 5, -7);
     const point = out.contours[0].points[0];
-    expect(point.width).to.deep.equal({ left: 40, right: 40, linked: true });
-    expect(point.nudge).to.deep.equal({ left: 3, right: 0 });
-    expect(point.handleOffsets.leftIn).to.deep.equal({ x: 10, y: 0, detached: true });
+    expect(point.width).to.deep.equal({
+      left: 30,
+      right: 50,
+      linked: true,
+      tied: false,
+    });
+    expect(point.nudge).to.deep.equal({ left: 3, right: -7 });
+    expect(point.handleOffsets.leftIn).to.deep.equal({
+      x: 10,
+      y: 2,
+      detached: true,
+    });
   });
 
   it("translate does not mutate the input", () => {
@@ -885,16 +910,61 @@ describe("skeleton-model transform/translate/id-allocation", () => {
 
   it("transform applies only the linear part to handle offsets", () => {
     const out = transformSkeletonData(makeFixture(), new Transform(2, 0, 0, 3, 10, 20));
-    // offset (10, 0) under linear part (xx=2) → (20, 0); translation ignored
+    // offset (10, 2) under the linear part → (20, 6); translation ignored
     expect(out.contours[0].points[0].handleOffsets.leftIn.x).to.equal(20);
-    expect(out.contours[0].points[0].handleOffsets.leftIn.y).to.equal(0);
+    expect(out.contours[0].points[0].handleOffsets.leftIn.y).to.equal(6);
     expect(out.contours[0].points[0].handleOffsets.leftIn.detached).to.equal(true);
   });
 
-  it("transform of a horizontal flip negates x offsets", () => {
+  it("transform of a reflection swaps side-owned point and contour data", () => {
     const out = transformSkeletonData(makeFixture(), new Transform(-1, 0, 0, 1, 0, 0));
-    expect(out.contours[0].points[0].x).to.equal(-100);
-    expect(out.contours[0].points[0].handleOffsets.leftIn.x).to.equal(-10);
+    const contour = out.contours[0];
+    const point = contour.points[0];
+    expect(point.x).to.equal(-100);
+    expect(point.width).to.deep.equal({
+      left: 50,
+      right: 30,
+      linked: true,
+      tied: false,
+    });
+    expect(point.nudge).to.deep.equal({ left: -7, right: 3 });
+    expect(point.locked).to.deep.equal({ left: false, right: true });
+    expect(point.segmentCurvature).to.deep.equal({ left: 0.8, right: 0.3 });
+    expect(point.handleOffsets).to.deep.equal({
+      leftIn: { x: 6, y: 7, detached: false },
+      leftOut: { x: -8, y: -9, detached: true },
+      rightIn: { x: -10, y: 2, detached: true },
+      rightOut: { x: -4, y: 5, detached: false },
+    });
+    expect(point.capBallSide).to.equal("right");
+    expect(point.capAngle).to.equal(-12);
+    expect(point.cornerAsymmetry).to.equal(0.25);
+    expect(contour.singleSided).to.equal("right");
+    expect(contour.capBallSide).to.equal("left");
+  });
+
+  it("transform without reflection keeps sides and signed side parameters", () => {
+    const out = transformSkeletonData(makeFixture(), new Transform(0, 1, -1, 0, 0, 0));
+    const contour = out.contours[0];
+    const point = contour.points[0];
+    expect(point.width).to.deep.equal({
+      left: 30,
+      right: 50,
+      linked: true,
+      tied: false,
+    });
+    expect(point.nudge).to.deep.equal({ left: 3, right: -7 });
+    expect(point.segmentCurvature).to.deep.equal({ left: 0.3, right: 0.8 });
+    expect(point.handleOffsets.leftIn).to.deep.equal({
+      x: -2,
+      y: 10,
+      detached: true,
+    });
+    expect(point.capBallSide).to.equal("left");
+    expect(point.capAngle).to.equal(12);
+    expect(point.cornerAsymmetry).to.equal(-0.25);
+    expect(contour.singleSided).to.equal("left");
+    expect(contour.capBallSide).to.equal("right");
   });
 
   it("allocateSkeletonIds re-keys contours and points from nextId", () => {
@@ -919,9 +989,10 @@ describe("skeleton-model transform/translate/id-allocation", () => {
     expect(data.contours[0].defaultWidth).to.equal(80);
     expect(data.contours[0].points[0].x).to.equal(100);
     expect(data.contours[0].points[0].width).to.deep.equal({
-      left: 40,
-      right: 40,
+      left: 30,
+      right: 50,
       linked: true,
+      tied: false,
     });
   });
 });

@@ -1743,6 +1743,7 @@ export function resetSkeletonEditableRib(point, side) {
   const nudge = normalizeNudge(point?.nudge);
   nudge[side] = 0;
   point.nudge = nudge;
+  setSkeletonSegmentCurvature(point, side, null);
   resetSkeletonEditableRibHandles(point, side);
 }
 
@@ -1768,14 +1769,86 @@ export function translateSkeletonData(skeletonData, dx, dy) {
   return data;
 }
 
-// Pure affine of all skeleton point coordinates. Point positions go through the
-// full affine; handle offsets are vectors relative to their point, so only the
-// linear part (xx, xy, yx, yy) applies — never the translation (dx, dy).
-export function transformSkeletonData(skeletonData, affine) {
-  const data = deepCopyObject(skeletonData);
+function affineFlipsOrientation(affine) {
+  return affine.xx * affine.yy - affine.xy * affine.yx < 0;
+}
+
+function swapProperties(object, firstKey, secondKey) {
+  if (!object || typeof object !== "object") {
+    return;
+  }
+  const hasFirst = Object.hasOwn(object, firstKey);
+  const hasSecond = Object.hasOwn(object, secondKey);
+  const first = object[firstKey];
+  const second = object[secondKey];
+  if (hasSecond) {
+    object[firstKey] = second;
+  } else {
+    delete object[firstKey];
+  }
+  if (hasFirst) {
+    object[secondKey] = first;
+  } else {
+    delete object[secondKey];
+  }
+}
+
+function swapSideName(value) {
+  return value === "left" ? "right" : value === "right" ? "left" : value;
+}
+
+// Transform the metadata owned by one skeleton on-curve point. Handle offsets
+// are glyph-space vectors, so they receive only the affine's linear part.
+// Reflections additionally exchange geometric left/right.
+export function transformSkeletonPointMetadata(point, affine) {
   const linearX = (x, y) => affine.xx * x + affine.yx * y;
   const linearY = (x, y) => affine.xy * x + affine.yy * y;
+  if (point.handleOffsets && typeof point.handleOffsets === "object") {
+    for (const key of Object.keys(point.handleOffsets)) {
+      const offset = point.handleOffsets[key];
+      if (!offset || typeof offset !== "object") {
+        continue;
+      }
+      const ox = asFiniteNumber(offset.x, 0);
+      const oy = asFiniteNumber(offset.y, 0);
+      offset.x = linearX(ox, oy);
+      offset.y = linearY(ox, oy);
+    }
+  }
+
+  if (!affineFlipsOrientation(affine) || point.type) {
+    return;
+  }
+  for (const field of ["width", "nudge", "locked", "segmentCurvature"]) {
+    swapProperties(point[field], "left", "right");
+  }
+  swapProperties(point.handleOffsets, "leftIn", "rightIn");
+  swapProperties(point.handleOffsets, "leftOut", "rightOut");
+  point.capBallSide = swapSideName(point.capBallSide);
+  if (Number.isFinite(point.capAngle)) {
+    point.capAngle = -point.capAngle;
+  }
+  if (Number.isFinite(point.cornerAsymmetry)) {
+    point.cornerAsymmetry = -point.cornerAsymmetry;
+  }
+}
+
+// Contour-wide side ownership can only be transformed when the entire contour
+// participates in the edit. Whole-data transforms always satisfy that rule;
+// partial editor transforms call this helper only for fully selected contours.
+export function transformSkeletonContourMetadata(contour, affine) {
+  if (!affineFlipsOrientation(affine)) {
+    return;
+  }
+  contour.singleSided = swapSideName(contour.singleSided);
+  contour.capBallSide = swapSideName(contour.capBallSide);
+}
+
+// Pure affine of all skeleton point coordinates and transform-owned metadata.
+export function transformSkeletonData(skeletonData, affine) {
+  const data = deepCopyObject(skeletonData);
   for (const contour of data?.contours || []) {
+    transformSkeletonContourMetadata(contour, affine);
     for (const point of contour.points || []) {
       const [x, y] = affine.transformPoint(
         asFiniteNumber(point.x, 0),
@@ -1783,18 +1856,7 @@ export function transformSkeletonData(skeletonData, affine) {
       );
       point.x = x;
       point.y = y;
-      if (point.handleOffsets && typeof point.handleOffsets === "object") {
-        for (const key of Object.keys(point.handleOffsets)) {
-          const offset = point.handleOffsets[key];
-          if (!offset || typeof offset !== "object") {
-            continue;
-          }
-          const ox = asFiniteNumber(offset.x, 0);
-          const oy = asFiniteNumber(offset.y, 0);
-          offset.x = linearX(ox, oy);
-          offset.y = linearY(ox, oy);
-        }
-      }
+      transformSkeletonPointMetadata(point, affine);
     }
   }
   return data;
