@@ -496,16 +496,49 @@ export function equalizeTensions(tensions, amount) {
   };
 }
 
-// Rescale both tensions so their harmonic mean equals `target`, keeping the
-// ratio between them. The mean is homogeneous of degree one in the pair, so
-// this is a division and not a search.
-export function scaleTensionsToMean(tensions, target) {
-  const current = harmonicMeanTension(tensions);
-  if (!(current > TENSION_EPSILON) || !(target > TENSION_EPSILON)) {
+// Shift both tensions by one shared increment, each capped at the ceiling on
+// its own.
+//
+// Shared, not proportional: the curvature drag moves both ends by the same
+// amount, so reproducing a pinned mean has to move them the same way or the
+// number does not round-trip. Capped individually, not as a pair: a pair capped
+// together stops the moment the LEADING handle reaches the ceiling, which puts
+// the highest reachable mean at 2r/(1+r) for a split of r — 0.6 on a 0.3/0.7
+// segment, 0.4 on a 0.2/0.8 one. The control then appears to stop at an
+// arbitrary value that moves whenever the geometry does. Capping each end alone
+// lets the trailing end keep climbing, and the mean reaches 1 exactly when both
+// ends do, which is what tension 1 means in the first place.
+export function shiftTensions(tensions, increment, maxTension = 1) {
+  return {
+    start: Math.min(tensions.start + increment, maxTension),
+    end: Math.min(tensions.end + increment, maxTension),
+  };
+}
+
+// The shared increment that puts the harmonic mean at `target`.
+//
+// The cap makes this piecewise, so there is no closed form, but the mean is
+// monotone in the increment and bracketed by construction: at the low end both
+// tensions reach zero, at the high end both sit at the ceiling and the mean is
+// the ceiling. Fixed trip count, no convergence test — the same continuity
+// contract the rest of the generation path lives under.
+const TENSION_SHIFT_STEPS = 40;
+
+export function shiftTensionsToMean(tensions, target, maxTension = 1) {
+  if (!(target > TENSION_EPSILON)) {
     return tensions;
   }
-  const factor = target / current;
-  return { start: tensions.start * factor, end: tensions.end * factor };
+  let low = -Math.min(tensions.start, tensions.end);
+  let high = maxTension;
+  for (let step = 0; step < TENSION_SHIFT_STEPS; step++) {
+    const middle = (low + high) / 2;
+    if (harmonicMeanTension(shiftTensions(tensions, middle, maxTension)) < target) {
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+  return shiftTensions(tensions, (low + high) / 2, maxTension);
 }
 
 //
@@ -555,11 +588,17 @@ export function calculateCurvatureGizmoAxis(segmentPoints) {
 // control, and movement across the axis is discarded rather than interpreted.
 //
 // Both tensions change by the SAME amount, so their difference survives the
-// drag. That matters: a generated segment's two tensions differ when the
-// skeleton is asymmetric, and that asymmetry is faithful — equalizing it
-// measurably degrades the fit. The ceiling is enforced on the shared increment
-// for the same reason: clamping each tension on its own would quietly pull them
-// together at the top of the range.
+// drag through most of the range. That matters: a generated segment's two
+// tensions differ when the skeleton is asymmetric, and that asymmetry is
+// faithful — equalizing it measurably degrades the fit.
+//
+// The ceiling is applied to each end SEPARATELY, so the asymmetry does close up
+// at the very top. It has to: the segment's own tension is the harmonic mean of
+// the two, and a mean of 1 with neither end above 1 is only possible when both
+// are exactly 1. Stopping the whole drag when the leading end reaches the
+// ceiling instead caps the segment at 2r/(1+r) for a split of r — 0.6 on a
+// 0.3/0.7 segment — so the control appears to stop somewhere arbitrary, and
+// somewhere that moves whenever the geometry does.
 //
 export function calculateControlPointsFromCurvatureDelta(
   delta,
@@ -598,22 +637,23 @@ export function calculateControlPointsFromCurvatureDelta(
   // tension increment: with the two ends alike, each handle tracks the pointer
   // one for one.
   let increment = (2 * dotVector(delta, axis)) / (startUnit + endUnit);
-  // Only an end with real reach ahead of it has a ceiling to hit.
-  const ceiling = Math.min(
-    startReach > CURVATURE_EPSILON ? maxTension - startTension : Infinity,
-    endReach > CURVATURE_EPSILON ? maxTension - endTension : Infinity
-  );
-  increment = Math.min(increment, ceiling);
   increment = Math.max(increment, -Math.min(startTension, endTension));
 
-  const place = (from, control, unit, tension) => {
+  // Only an end with real reach ahead of it has a ceiling to hit; an end
+  // without one has no tension scale to be measured against and is left to
+  // follow the increment.
+  const place = (from, control, unit, tension, reach) => {
     const direction = normalizeVector(subVectors(control, from));
-    const length = (tension + increment) * unit;
+    const capped =
+      reach > CURVATURE_EPSILON
+        ? Math.min(tension + increment, maxTension)
+        : tension + increment;
+    const length = capped * unit;
     return { x: from.x + direction.x * length, y: from.y + direction.y * length };
   };
   return [
-    place(startPoint, controlPoint1, startUnit, startTension),
-    place(endPoint, controlPoint2, endUnit, endTension),
+    place(startPoint, controlPoint1, startUnit, startTension, startReach),
+    place(endPoint, controlPoint2, endUnit, endTension, endReach),
   ];
 }
 

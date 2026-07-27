@@ -3,7 +3,7 @@ import {
   calculateTunniPoint,
   equalizeTensions,
   handleTensions,
-  scaleTensionsToMean,
+  shiftTensionsToMean,
 } from "./tunni-calculations.js";
 
 // Floor on the offset speed factor lambda, as a fraction of the un-offset handle
@@ -100,6 +100,18 @@ function tangentIntersectionDistances(q0, u0, q3, u1) {
   };
 }
 
+// `limit` is Infinity where there is no ceiling to apply — either the tangent
+// rays give no reach ahead, or the segment is pinned and has already had the
+// ceiling enforced against the rendered rib ends.
+//
+// A pinned segment must not be bounded twice. This bound eases into its limit
+// over a blend window, so a handle sitting exactly ON the limit still comes back
+// about 3.75% short of it; measured against the construction's rib ends while
+// the pin was measured against the rendered ones, that shortfall also moved with
+// the nudge. A pin of 1 rendered as 0.91-0.96 depending on how the on-curve
+// gizmo had been used. The pin's own per-handle cap is the same guarantee - no
+// handle past the tangent intersection - stated in the space the number was read
+// in, so it is the one that survives.
 function boundLength(length, limit, chord) {
   tensionBoundStats.evaluated += 1;
   let bounded = length;
@@ -192,16 +204,41 @@ function offsetDeviation(q0, q3, u0, u1, startLength, endLength, samples, parame
 // exist, so a segment whose tangent rays meet behind an endpoint passes through
 // with exactly the lengths the fit gave it.
 //
+// The two steps deliberately measure against DIFFERENT endpoints.
+//
+// Equalization is about fidelity to the true offset, which is a property of the
+// curve as constructed, so it uses the construction's own rib ends. The pin is a
+// number the designer read off the curve on screen and asked to have back, so it
+// uses the rendered ones — after each rib end has slid along its tangent by its
+// own nudge. Those two differ whenever the on-curve gizmo has been used: a nudge
+// moves an endpoint and its handle together, so the handle VECTOR is untouched
+// but the tangent intersection is not, and the tension measured either side of
+// the nudge is not the same number.
+//
+// Measuring the pin in construction space and reproducing it on screen is what
+// made a pinned segment jump — and collapse to the handle floor — the moment the
+// on-curve gizmo had been touched.
+//
 function shapeTensions(
   startLength,
   endLength,
   startReach,
   endReach,
-  { q0, q3, u0, u1, samples, parameters, pinnedTension }
+  {
+    q0,
+    q3,
+    u0,
+    u1,
+    samples,
+    parameters,
+    pinnedTension,
+    renderedStartReach,
+    renderedEndReach,
+  }
 ) {
   const fitted = handleTensions(startLength, endLength, startReach, endReach);
   if (!fitted) {
-    return { startLength, endLength };
+    return { startLength, endLength, pinned: false };
   }
 
   const lengthsFor = (tensions) => ({
@@ -234,16 +271,33 @@ function shapeTensions(
       excessive = amount;
     }
   }
-  let shaped = equalizeTensions(fitted, affordable);
+  const shaped = equalizeTensions(fitted, affordable);
+  const equalized = { ...lengthsFor(shaped), pinned: false };
+  if (!(Number.isFinite(pinnedTension) && pinnedTension > 0)) {
+    return equalized;
+  }
 
   // The pin overrides the fit outright - the designer set this number and asked
-  // for it back. It rescales both tensions together, so the split just settled
-  // on survives untouched. Where the geometry cannot express it the bounds
-  // below clamp the OUTPUT; the stored number is never touched from here.
-  if (Number.isFinite(pinnedTension) && pinnedTension > 0) {
-    shaped = scaleTensionsToMean(shaped, pinnedTension);
+  // for it back. Restate the equalized lengths as tensions against the RENDERED
+  // rib ends, shift both by one shared increment until their harmonic mean is
+  // the pinned number, and convert straight back to lengths. A length is the
+  // same quantity on either side of a nudge, so this hands back exactly what
+  // came in when nothing is pinned and nothing has been nudged.
+  const rendered = handleTensions(
+    equalized.startLength,
+    equalized.endLength,
+    renderedStartReach,
+    renderedEndReach
+  );
+  if (!rendered) {
+    return equalized;
   }
-  return lengthsFor(shaped);
+  const shifted = shiftTensionsToMean(rendered, pinnedTension);
+  return {
+    startLength: shifted.start * renderedStartReach,
+    endLength: shifted.end * renderedEndReach,
+    pinned: true,
+  };
 }
 
 function endDerivatives(p0, p1, p2, p3, atEnd) {
@@ -277,6 +331,11 @@ export function offsetCubicSide({
   u0,
   u1,
   pinnedTension = null,
+  // The rib ends after each has slid along its tangent by its own nudge — what
+  // the designer sees and what the curvature gizmo measures. Default to the
+  // construction's own ends, which is what they are when nothing is nudged.
+  renderedQ0 = null,
+  renderedQ3 = null,
 }) {
   const startHandle = Math.hypot(p1.x - p0.x, p1.y - p0.y);
   const endHandle = Math.hypot(p3.x - p2.x, p3.y - p2.y);
@@ -331,6 +390,12 @@ export function offsetCubicSide({
   const { startLimit, endLimit } = tangentIntersectionDistances(q0, u0, q3, u1);
   // The reaches the bounds already use are the same reaches a tension is
   // measured against, so tension space costs nothing extra to enter here.
+  const rendered = tangentIntersectionDistances(
+    renderedQ0 ?? q0,
+    u0,
+    renderedQ3 ?? q3,
+    u1
+  );
   const shaped = shapeTensions(correctedStart, correctedEnd, startLimit, endLimit, {
     q0,
     q3,
@@ -339,9 +404,12 @@ export function offsetCubicSide({
     samples,
     parameters,
     pinnedTension,
+    renderedStartReach: rendered.startLimit,
+    renderedEndReach: rendered.endLimit,
   });
+  const pinned = shaped.pinned;
   return {
-    startLength: boundLength(shaped.startLength, startLimit, chord),
-    endLength: boundLength(shaped.endLength, endLimit, chord),
+    startLength: boundLength(shaped.startLength, pinned ? Infinity : startLimit, chord),
+    endLength: boundLength(shaped.endLength, pinned ? Infinity : endLimit, chord),
   };
 }

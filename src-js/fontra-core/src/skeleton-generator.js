@@ -2372,6 +2372,11 @@ function generateOffsetPointsForSegment(
         pinnedTension: isLeftSide
           ? segment.startPoint.leftSegmentCurvature
           : segment.startPoint.rightSegmentCurvature,
+        // The pin is a number read off the finished curve, so it has to be
+        // reproduced against the finished curve's rib ends - after the nudges
+        // below have slid them along their tangents.
+        renderedQ0: translateRibPoint(fixedStart, startNudge),
+        renderedQ3: translateRibPoint(fixedEnd, endNudge),
       });
       if (shouldAddStart)
         output.push(

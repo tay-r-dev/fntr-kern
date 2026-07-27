@@ -279,3 +279,72 @@ There is no affordance for returning a pinned segment to automatic. The gizmo ca
 always set a new value, so a pin is not a trap, but "undo my override" is
 currently only reachable through edit history. The context-menu action §4
 proposed was not built.
+
+---
+
+## 7. Corrections after first use
+
+The first implementation broke the control in three visible ways. All three trace
+to two mistakes, recorded here because both are easy to make again.
+
+### 7.1 D14 amended — the pin shifts both tensions, it does not scale them
+
+Reproducing a pinned mean by scaling both tensions by a common factor preserves
+their ratio, and a preserved ratio caps the reachable mean at `2r/(1+r)`: 0.6 on
+a 0.3/0.7 split, 0.4 on a 0.2/0.8 one. The control therefore stopped at a value
+that was neither 1 nor stable — it moved whenever the geometry moved.
+
+It is also not what the drag does. The drag adds one shared increment to both
+ends; reproduction must do the same or the number cannot round-trip.
+
+**Corrected:** one shared increment, solved by fixed-count bisection, with each
+end capped at the ceiling **individually**. Mean 1 then means both ends at 1,
+which is what tension 1 means, and it is always reachable. The asymmetry survives
+everywhere except the very top, where it must close by definition.
+
+The same correction applies to the drag itself: capping the pair together stopped
+it at the leading handle.
+
+### 7.2 D15 amended — the pin is measured and applied in rendered space
+
+The offset construction works with the rib ends it computes; the finished contour
+has them slid along their tangents by each point's nudge. A nudge moves an
+endpoint together with its handle, so handle _vectors_ are untouched but the
+tangent intersection is not — the tension either side of a nudge is a different
+number.
+
+The pin was read off the rendered curve and applied to the constructed one. After
+any use of the on-curve gizmo, grabbing the curvature gizmo therefore jumped, and
+where the demanded length fell under the floor the handles collapsed to it and
+the drag continued from there.
+
+**Corrected:** the construction takes the rendered rib ends as well, and the pin
+is stated against those. Equalization still uses the constructed ones, because it
+is about fidelity to the true offset, which is a property of the curve as built.
+
+### 7.3 A pinned segment must not be bounded twice
+
+The pre-existing tension bound eases into its limit over a blend window, so a
+handle exactly on the limit comes back ~3.75% short — and, being measured against
+the constructed rib ends, that shortfall moved with the nudge. A pin of 1
+rendered as 0.91–0.96 depending on how the on-curve gizmo had been used.
+
+**Corrected:** where a pin is present it enforces the ceiling itself, against the
+rendered ends, and the older bound stands down. The chord backstop and the
+one-unit floor still apply. Unpinned segments are untouched — the full fixture
+set regenerates byte-for-byte.
+
+### 7.4 Measured after the corrections
+
+Round-trip and range, across nudges of 0, ±25 and 50 on the same segment:
+
+| nudge | rendered | grab at zero drag → regenerated | max pin → rendered |
+| ----- | -------- | ------------------------------- | ------------------ |
+| 0     | 0.2587   | 0.2587 → 0.2599                 | 1.0000 → 1.0000    |
+| 25    | 0.2787   | 0.2787 → 0.2757                 | 1.0000 → 1.0000    |
+| −25   | 0.2413   | 0.2413 → 0.2414                 | 1.0000 → 1.0000    |
+| 50    | 0.2983   | 0.2983 → 0.2992                 | 1.0000 → 1.0000    |
+
+The maximum is 1 at every nudge, grabbing the gizmo no longer moves anything, and
+residuals are grid rounding. A 4000-step drag sweep moves the segment tension by
+at most 0.00025 per step, monotone, with no jump where the per-handle cap engages.
