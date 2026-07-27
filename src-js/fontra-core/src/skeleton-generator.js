@@ -4,7 +4,9 @@ import {
   CAP_POINT_FIELDS,
   CORNER_POINT_FIELDS,
   DEFAULT_SKELETON_WIDTH,
+  collectTiedRibGroups,
   isStraightControlledSmoothPoint,
+  meanHalfWidth,
   normalizeSkeletonData,
   straightSegmentNormal,
 } from "./skeleton-model.js";
@@ -2440,77 +2442,38 @@ function generateOffsetPointsForSegment(
 }
 
 /**
- * Two smooth points joined by a straight segment, each with only one handle, on
- * its far side. Each takes its direction from the straight, so each is defined
- * by the other: they control each other and there is no independent direction
- * for either.
- *
- * Their ribs are therefore locked parallel, and must also sit at the same
- * offset — otherwise the generated rib-to-rib line tilts away from the skeleton
- * straight, and the generated handles, which stay colinear with that line to
- * keep the outline smooth, rotate as rib width changes.
- *
- * Either point may opt out by clearing its `widthTied` flag, which frees the
- * pair. The handles then rotate with width again; that is the accepted cost of
- * asking for independent rib widths here.
- * @param {Object} straightSegment - Candidate straight segment
- * @param {Object} prevSegment - Segment before it, or null
- * @param {Object} nextSegment - Segment after it, or null
- * @returns {boolean}
- */
-function isMutuallyControlledPair(straightSegment, prevSegment, nextSegment) {
-  return (
-    isStraightControlledSmoothPoint(
-      straightSegment?.startPoint,
-      straightSegment,
-      prevSegment
-    ) &&
-    isStraightControlledSmoothPoint(
-      straightSegment?.endPoint,
-      straightSegment,
-      nextSegment
-    ) &&
-    straightSegment.startPoint.widthTied !== false &&
-    straightSegment.endPoint.widthTied !== false
-  );
-}
-
-/**
  * Half-widths for on-curve points whose ribs must move as one, keyed by the
  * skeleton point object.
  *
- * Both ends of a mutually-controlled straight segment get the mean of the two
- * stored half-widths, per side. The mean rather than one end's value: it is
- * symmetric, so neither point wins, and it is continuous in both inputs, so
- * dragging either width moves both ribs together and smoothly. Every consumer
- * resolves a point's width through this map, so the straight segment and the
- * cubic on the other side of a shared point cannot disagree about where the rib
- * is.
+ * Every point in a tied group (collectTiedRibGroups, which owns the rule) gets
+ * the mean of the group's stored half-widths, per side. Every consumer resolves
+ * a point's width through this map, so the straight segment and whatever is on
+ * the other side of a shared point cannot disagree about where the rib is.
  * @param {Array} segments - The contour's segments
  * @param {boolean} isClosed - Whether the contour is closed
  * @param {number} defaultWidth - Contour default width
  * @returns {Map} skeleton point -> {left, right}
  */
 function coupledHalfWidths(segments, isClosed, defaultWidth) {
+  const groups = collectTiedRibGroups(
+    segments,
+    isClosed,
+    (point) => point.widthTied !== false
+  );
+  const sharedByGroup = new Map();
   const coupled = new Map();
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
-    const prevSegment =
-      isClosed || i > 0 ? segments[(i - 1 + segments.length) % segments.length] : null;
-    const nextSegment =
-      isClosed || i < segments.length - 1 ? segments[(i + 1) % segments.length] : null;
-    if (!isMutuallyControlledPair(segment, prevSegment, nextSegment)) {
-      continue;
+  for (const [point, group] of groups) {
+    let shared = sharedByGroup.get(group);
+    if (!shared) {
+      shared = {};
+      for (const side of ["left", "right"]) {
+        shared[side] = meanHalfWidth(group, (member) =>
+          getPointHalfWidth(member, defaultWidth, side)
+        );
+      }
+      sharedByGroup.set(group, shared);
     }
-    const shared = {};
-    for (const side of ["left", "right"]) {
-      shared[side] =
-        (getPointHalfWidth(segment.startPoint, defaultWidth, side) +
-          getPointHalfWidth(segment.endPoint, defaultWidth, side)) /
-        2;
-    }
-    coupled.set(segment.startPoint, shared);
-    coupled.set(segment.endPoint, shared);
+    coupled.set(point, shared);
   }
   return coupled;
 }

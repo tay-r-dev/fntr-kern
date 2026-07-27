@@ -20,7 +20,7 @@ import {
   getSkeletonPointAddress,
   getSkeletonRibAddress,
   getSkeletonRibPosition,
-  getTiedRibPartner,
+  getTiedRibGroup,
   isSkeletonSideLocked,
   makeEditableGeneratedHandleKey,
   makeEditableGeneratedPointKey,
@@ -700,14 +700,14 @@ export function createSkeletonRibTargetEntries(
   const reference = referenceSkeletonData || skeletonData;
   // Tangent and interpolate drags move the rib along the skeleton (nudge) rather
   // than changing its width. Only width is tied across a straight, so those
-  // modes neither pull in a tied partner nor share one delta.
+  // modes neither pull in the rest of a tied group nor share one delta.
   const changesWidth =
     constrainMode !== "tangent" &&
     behaviorName !== "rib-tangent" &&
     behaviorName !== "rib-interpolate" &&
     behaviorName !== "rib-tangent-interpolate";
   const selected = collectSkeletonRibSelection(selection, reference, skeletonData, {
-    includeTiedPartners: changesWidth,
+    includeTiedRibs: changesWidth,
   });
   if (!selected.length) {
     return [];
@@ -899,7 +899,7 @@ function collectSkeletonRibSelection(
   selection,
   referenceSkeletonData,
   targetSkeletonData,
-  { includeTiedPartners = false } = {}
+  { includeTiedRibs = false } = {}
 ) {
   const { skeletonRib } = parseSelection([...selection]);
   const selected = [];
@@ -931,16 +931,16 @@ function collectSkeletonRibSelection(
     const { contourId, pointId, side } = parseSkeletonRibKey(`skeletonRib/${item}`);
     addRib(contourId, pointId, side);
   }
-  // A rib tied across a straight segment drags with its partner even when only
-  // one is selected: the generator uses the mean of the two stored widths, so
-  // moving one alone would advance the outline by half the cursor delta and
-  // leave the partner's gizmo behind. Both ribs then receive the same shared
-  // width delta below, which is what selecting both by hand already did.
-  if (includeTiedPartners) {
+  // A rib tied across a straight segment drags with the rest of its group even
+  // when only one is selected: the generator uses the mean of the group's stored
+  // widths, so moving one alone would advance the outline by a fraction of the
+  // cursor delta and leave the other gizmos behind. Every rib in the group then
+  // receives the same shared width delta below, which is what selecting them all
+  // by hand already did.
+  if (includeTiedRibs) {
     for (const { reference } of [...selected]) {
-      const partner = getTiedRibPartner(reference.contour, reference.point);
-      if (partner) {
-        addRib(reference.contour.id, partner.id, reference.side);
+      for (const member of getTiedRibGroup(reference.contour, reference.point) || []) {
+        addRib(reference.contour.id, member.id, reference.side);
       }
     }
   }

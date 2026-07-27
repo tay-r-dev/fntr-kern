@@ -121,6 +121,42 @@ describe("skeleton-generator provenance", () => {
     }
   });
 
+  it("keeps handles fixed when only one end of the straight is controlled", () => {
+    // The far end being an ordinary corner does not give the one-handle smooth
+    // point a direction of its own, so the same tilt happens with one such point
+    // as with two — measured at 15.6 deg over the same sweep before the whole
+    // projected straight moved as a unit. What is left is not width drift: it is
+    // non-monotonic in width and inside the +/-0.6 deg a handle of this length
+    // can express on the grid at all.
+    const straightAngle = (Math.atan2(100 - 60, 140 - 60) * 180) / Math.PI;
+    for (const halfWidth of [8, 12, 20, 27, 34]) {
+      const handles = straightControlledHandles(
+        halfWidth,
+        straightControlledSkeleton(halfWidth, { farEnd: "corner" })
+      );
+      expect(handles, "one handle per side at the smooth point").to.have.length(2);
+      for (const handle of handles) {
+        expect(handle.angle, `half-width ${halfWidth} ${handle.side}`).to.be.closeTo(
+          straightAngle - 180,
+          0.6
+        );
+      }
+    }
+  });
+
+  it("ties the far rib of the straight even when it owns its direction", () => {
+    // Point 6 is a corner here, so nothing forces its rib angle — but its offset
+    // is still shared, because the projected straight has to move as one. Within
+    // a unit: the corner rib rounds to the grid off a different normal.
+    const tiedOffsets = straightControlledRibOffsets(30, true, { farEnd: "corner" });
+    const freeOffsets = straightControlledRibOffsets(30, false, { farEnd: "corner" });
+    for (const offset of tiedOffsets) {
+      expect(offset, "mean of 30 and 20").to.be.closeTo(25, 1);
+    }
+    expect(freeOffsets[0], "stored at point 5").to.be.closeTo(30, 1);
+    expect(freeOffsets[1], "stored at point 6").to.be.closeTo(20, 1);
+  });
+
   it("frees the ribs when either point unticks tied ribs", () => {
     // The opt-out. Untying restores independent widths, and with them the
     // handle rotation the coupling exists to prevent — that is the trade the
@@ -674,11 +710,16 @@ describe("skeleton-generator near-zero handle stabilization", () => {
   });
 });
 
-// Angled on-curve, handle, handle, smooth on-curve, straight, smooth on-curve,
-// handle, handle, angled on-curve. The two smooth points (5 and 6) each carry
-// only one handle, on the far side, colinear with the straight between them.
-// Only point 5's width varies; point 6 stays at 20.
-function straightControlledSkeleton(halfWidthAtFive) {
+// Angled on-curve, handle, handle, smooth on-curve, straight, on-curve, handle,
+// handle, angled on-curve. Point 5 is a smooth point carrying only one handle,
+// on the far side, colinear with the straight; only its width varies, point 6
+// stays at 20.
+//
+// `farEnd` picks what sits at the other end of the straight: "smooth" makes
+// point 6 the mirror of point 5, so the two control each other; "corner" makes
+// it an ordinary corner that owns its own direction, leaving point 5 as the
+// straight's only controlled end.
+function straightControlledSkeleton(halfWidthAtFive, { farEnd = "smooth" } = {}) {
   const a = { x: 60, y: 60 };
   const b = { x: 140, y: 100 };
   const along = Math.atan2(b.y - a.y, b.x - a.x);
@@ -695,6 +736,7 @@ function straightControlledSkeleton(halfWidthAtFive) {
     handleOffsets: {},
   });
   const offCurve = (id, x, y) => ({ id, x, y, type: "cubic", smooth: false });
+  const smoothFarEnd = farEnd === "smooth";
   return {
     version: 1,
     nextId: 10,
@@ -713,13 +755,17 @@ function straightControlledSkeleton(halfWidthAtFive) {
             Math.round(a.y - Math.sin(along) * reach)
           ),
           onCurve(5, a.x, a.y, true, halfWidthAtFive),
-          onCurve(6, b.x, b.y, true, 20),
-          offCurve(
-            7,
-            Math.round(b.x + Math.cos(along) * reach),
-            Math.round(b.y + Math.sin(along) * reach)
-          ),
-          offCurve(8, 190, 60),
+          onCurve(6, b.x, b.y, smoothFarEnd, 20),
+          smoothFarEnd
+            ? offCurve(
+                7,
+                Math.round(b.x + Math.cos(along) * reach),
+                Math.round(b.y + Math.sin(along) * reach)
+              )
+            : // Off the straight, so point 6 is a real corner rather than a
+              // smooth point that happens to be flagged otherwise.
+              offCurve(7, 200, 160),
+          smoothFarEnd ? offCurve(8, 190, 60) : offCurve(8, 240, 60),
           onCurve(9, 200, 0, false, 20),
         ],
       },
@@ -730,8 +776,8 @@ function straightControlledSkeleton(halfWidthAtFive) {
 
 // Distance of each of the two coupled rib points from its skeleton point, left
 // side: [at point 5, at point 6]. Equal when tied.
-function straightControlledRibOffsets(halfWidthAtFive, tied) {
-  const skeleton = straightControlledSkeleton(halfWidthAtFive);
+function straightControlledRibOffsets(halfWidthAtFive, tied, options = {}) {
+  const skeleton = straightControlledSkeleton(halfWidthAtFive, options);
   skeleton.contours[0].points[3].width.tied = tied;
   skeleton.contours[0].points[4].width.tied = tied;
   const result = generateFromSkeleton(skeleton);

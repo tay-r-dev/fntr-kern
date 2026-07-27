@@ -170,6 +170,36 @@ const fixtures = [
     },
   },
   {
+    // Only ONE end of the straight is a one-handle smooth point (5); point 6 is
+    // an ordinary corner into the following cubic and owns its own direction.
+    // One such point is still enough to tie the whole projected straight, so
+    // both ribs sit at the mean of 30 and 18 here too.
+    name: "one-ended-controlled-straight",
+    canonical: {
+      version: 1,
+      nextId: 10,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 40,
+          singleSided: null,
+          points: [
+            point(2, 0, 0),
+            offCurve(3, 10, 50),
+            offCurve(4, 20, 40),
+            point(5, 60, 60, { smooth: true, width: { left: 30, right: 30 } }),
+            point(6, 140, 100, { width: { left: 18, right: 18 } }),
+            offCurve(7, 200, 160),
+            offCurve(8, 240, 60),
+            point(9, 200, 0),
+          ],
+        },
+      ],
+      generated: [],
+    },
+  },
+  {
     name: "single-sided-left",
     canonical: {
       version: 1,

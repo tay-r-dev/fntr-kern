@@ -86,35 +86,48 @@ pure and independent (contour *i*'s output depends only on contour *i*):
    not to a miter average (`isStraightControlledSmoothPoint` →
    `straightSegmentNormal`).
 
-   When **both** ends of a straight are such points, they define each other and
-   neither has an independent direction (`isMutuallyControlledPair`). Their ribs
-   are locked parallel *and* to a shared offset — `coupledHalfWidths` gives both
-   the mean of the two stored half-widths per side, so adjusting either width
-   moves both ribs together. The mean is chosen because it is symmetric and
-   continuous in both inputs.
+   **One such point anywhere on a straight ties the ribs at *both* of its ends**
+   to a shared offset, so the whole projected straight moves as a unit
+   (`collectTiedRibGroups`, the single definition of the rule; `coupledHalfWidths`
+   then gives every point in a group the mean of the group's stored half-widths
+   per side, so adjusting any one width moves them all). The mean is chosen
+   because it is symmetric and continuous in every input. The far end does not
+   have to be straight-controlled itself — an ordinary corner or a contour
+   terminal is tied just the same, because what forces the coupling is the
+   controlled point, not the pair. Straights that share an end point merge into
+   one group: that shared point has one rib and cannot sit at two offsets.
 
    **This is the one place ribs are deliberately coupled.** Ribs at different
    offsets tilt the generated rib-to-rib line away from the skeleton straight,
-   and the generated handles stay colinear with that line in order to keep the
-   outline smooth, so they rotate as width changes (measured: 8.5° of drift over
-   a width sweep, the two sides shearing opposite ways). Locked in by "keeps
-   handles fixed when width changes across a mutually-controlled straight" and
-   the `mutually-controlled-straight` fixture.
+   and the generated handle at the smooth point is re-collinearized against that
+   line in order to keep the outline smooth (`enforceSmoothColinearity`, the
+   on-curve neighbour cases), so it rotates as width changes: measured over a
+   half-width sweep of 8..34 at 8.5° with both ends controlled and ~16° with
+   one, the two sides shearing opposite ways. Locked in by "keeps handles fixed
+   when width changes across a mutually-controlled straight" and "…when only one
+   end of the straight is controlled", plus the `mutually-controlled-straight`
+   and `one-ended-controlled-straight` fixtures.
 
-   **Opt-out:** `width.tied` on either point (panel: "Tied ribs", under
-   "Linked"). Default on, so existing data keeps the coupling; clearing it on
-   *either* point frees the pair and the handles rotate with width again (16.3°
-   over the same sweep). That is a deliberate trade for independent rib widths
-   here, not a bug — do not "fix" the rotation while a pair is untied. Only the
-   shared *offset* is optional; the rib staying perpendicular to the straight is
-   not, because it follows from the point having no direction of its own.
+   What survives the coupling at a corner far end is second-order: the miter
+   normal is the straight's normal *rotated* by a quarter of the corner's turn,
+   so the part of it that still tilts the projected straight is
+   `2·hw·sin²(turn/4)` — 0.4 units at the widest end of that sweep, under the
+   ~0.3° the grid itself imposes on a handle this long. Do not chase it.
+
+   **Opt-out:** `width.tied` on either end (panel: "Tied ribs", under "Linked").
+   Default on, so existing data keeps the coupling; clearing it on *either* end
+   frees that straight and the handles rotate with width again (16.3° over the
+   same sweep). That is a deliberate trade for independent rib widths here, not
+   a bug — do not "fix" the rotation while a straight is untied. Only the shared
+   *offset* is optional; the rib staying perpendicular to the straight is not,
+   because it follows from the point having no direction of its own.
 
    **Everything that shows or edits a tied rib must use the coupled value, not
    the stored one.** `getEffectiveRibHalfWidth` is that value and
-   `getTiedRibPartner` is the pairing test, both in `skeleton-model.js` beside
-   the normal computation the gizmo uses. A rib drag pulls its tied partner into
-   the executor set (`collectSkeletonRibSelection`, gated to width-changing
-   drags — nudge is not tied), so both stored widths move together and the
+   `getTiedRibGroup` is the membership test, both in `skeleton-model.js` beside
+   the normal computation the gizmo uses. A rib drag pulls its whole tied group
+   into the executor set (`collectSkeletonRibSelection`, gated to width-changing
+   drags — nudge is not tied), so all the stored widths move together and the
    outline tracks the cursor exactly. Skipping either of these produced the
    original report: the dragged gizmo travelled twice as far as the outline and
    its partner did not move at all.

@@ -7,7 +7,7 @@ import {
   getSkeletonData,
   getSkeletonRibAddress,
   getSkeletonRibPosition,
-  getTiedRibPartner,
+  getTiedRibGroup,
   makeSkeletonContour,
   makeSkeletonPoint,
   normalizeSkeletonData,
@@ -296,7 +296,7 @@ describe("rib detach toggle", () => {
   });
 });
 
-describe("tied rib partner", () => {
+describe("tied rib group", () => {
   // angled / handle / handle / smooth / straight / smooth / handle / handle / angled.
   // Points 5 and 6 each carry one handle, on the far side, colinear with the
   // straight between them.
@@ -333,29 +333,95 @@ describe("tied rib partner", () => {
     });
   }
 
+  // The same one-handle smooth point (5) and straight, with an arbitrary tail
+  // after point 6 — which is left a corner, so only ONE end of the straight is
+  // straight-controlled.
+  function makeOneEndedSkeleton(tail = []) {
+    const skeletonData = makeTiedSkeleton();
+    const points = skeletonData.contours[0].points;
+    points[4].smooth = false;
+    skeletonData.contours[0].points = [...points.slice(0, 5), ...tail];
+    return normalizeSkeletonData(skeletonData);
+  }
+
   const pointById = (skeletonData, id) =>
     skeletonData.contours[0].points.find((point) => point.id === id);
+  const groupIds = (skeletonData, id) =>
+    getTiedRibGroup(skeletonData.contours[0], pointById(skeletonData, id))
+      ?.map((point) => point.id)
+      .sort() ?? null;
 
-  it("pairs the two smooth points across the straight, both ways", () => {
+  it("groups the two smooth points across the straight, both ways", () => {
     const skeletonData = makeTiedSkeleton();
-    const contour = skeletonData.contours[0];
-    expect(getTiedRibPartner(contour, pointById(skeletonData, 5))?.id).to.equal(6);
-    expect(getTiedRibPartner(contour, pointById(skeletonData, 6))?.id).to.equal(5);
+    expect(groupIds(skeletonData, 5)).to.deep.equal([5, 6]);
+    expect(groupIds(skeletonData, 6)).to.deep.equal([5, 6]);
   });
 
-  it("pairs nothing for points that own their direction", () => {
+  it("groups nothing for points that own their direction", () => {
     const skeletonData = makeTiedSkeleton();
     const contour = skeletonData.contours[0];
-    // Angled endpoints and off-curve handles are never half of a tied pair.
-    expect(getTiedRibPartner(contour, pointById(skeletonData, 2))).to.equal(null);
-    expect(getTiedRibPartner(contour, pointById(skeletonData, 9))).to.equal(null);
-    expect(getTiedRibPartner(contour, pointById(skeletonData, 4))).to.equal(null);
+    // Angled endpoints and off-curve handles are never part of a tied group.
+    expect(getTiedRibGroup(contour, pointById(skeletonData, 2))).to.equal(null);
+    expect(getTiedRibGroup(contour, pointById(skeletonData, 9))).to.equal(null);
+    expect(getTiedRibGroup(contour, pointById(skeletonData, 4))).to.equal(null);
   });
 
-  it("pairs nothing once either point unticks tied ribs", () => {
+  it("groups nothing once either point unticks tied ribs", () => {
     const skeletonData = makeTiedSkeleton({ tied: false });
     const contour = skeletonData.contours[0];
-    expect(getTiedRibPartner(contour, pointById(skeletonData, 5))).to.equal(null);
+    expect(getTiedRibGroup(contour, pointById(skeletonData, 5))).to.equal(null);
+  });
+
+  it("ties the far end of the straight whatever it is", () => {
+    // One straight-controlled smooth point anywhere on the straight is enough:
+    // the whole projected straight has to move as a unit, so the far rib is
+    // tied even when that point owns its own direction.
+    const smoothTied = { left: 20, right: 20, linked: true, tied: true };
+    const cases = {
+      // Terminal on-curve: the straight is the contour's last segment.
+      "terminal": [],
+      // Sharp corner into a cubic.
+      "corner": [
+        { id: 7, x: 200, y: 160, type: "cubic" },
+        { id: 8, x: 240, y: 60, type: "cubic" },
+        { id: 9, x: 200, y: 0, type: null, smooth: false, width: smoothTied },
+      ],
+      // A second straight, so point 6 carries no handle at all.
+      "second straight": [
+        { id: 9, x: 220, y: 130, type: null, smooth: false, width: smoothTied },
+      ],
+    };
+    for (const [name, tail] of Object.entries(cases)) {
+      const skeletonData = makeOneEndedSkeleton(tail);
+      expect(groupIds(skeletonData, 5), name).to.deep.equal([5, 6]);
+      expect(groupIds(skeletonData, 6), name).to.deep.equal([5, 6]);
+    }
+  });
+
+  it("merges straights that share an end point into one group", () => {
+    // smooth(5) / straight / corner(6) / straight / smooth(9): both straights
+    // are tied, and point 6 has one rib, so all three share one offset.
+    const smoothTied = (halfWidth) => ({
+      left: halfWidth,
+      right: halfWidth,
+      linked: true,
+      tied: true,
+    });
+    const skeletonData = makeOneEndedSkeleton([
+      { id: 9, x: 220, y: 130, type: null, smooth: true, width: smoothTied(20) },
+      { id: 10, x: 260, y: 190, type: "cubic" },
+      { id: 11, x: 300, y: 120, type: "cubic" },
+      { id: 12, x: 320, y: 60, type: null, smooth: false, width: smoothTied(20) },
+    ]);
+    expect(groupIds(skeletonData, 5)).to.deep.equal([5, 6, 9]);
+    expect(groupIds(skeletonData, 6)).to.deep.equal([5, 6, 9]);
+    expect(groupIds(skeletonData, 9)).to.deep.equal([5, 6, 9]);
+    // And the shared offset is the mean across all three, not across a pair.
+    const contour = skeletonData.contours[0];
+    pointById(skeletonData, 5).width.left = 30;
+    expect(
+      getEffectiveRibHalfWidth(contour, pointById(skeletonData, 6), "left")
+    ).to.be.closeTo((30 + 20 + 20) / 3, 1e-9);
   });
 
   it("reports the mean half-width for a tied rib, so the gizmo sits on the outline", () => {

@@ -1793,67 +1793,45 @@ export function getSkeletonRibSidesForPoint(contour, point) {
   return ["left", "right"];
 }
 
-// The on-curve point across a straight segment whose rib is tied to this one,
-// or null when this point is not half of such a pair.
+// The on-curve points whose ribs move as one with this point's — itself
+// included — or null when its rib stands alone.
 //
-// Canonical-model counterpart of the generator's isMutuallyControlledPair. Both
-// points must be smooth, carry exactly one handle (on the side away from the
-// straight), and still have `width.tied` set. Used by the rib drag and by rib
-// rendering so the gizmo, the stored width and the generated geometry cannot
-// disagree about where the rib is.
-export function getTiedRibPartner(contour, point) {
+// Contour-level entry to collectTiedRibGroups, the rule the generator resolves
+// widths through. Used by the rib drag and by rib rendering so the gizmo, the
+// stored width and the generated geometry cannot disagree about where the rib
+// is.
+export function getTiedRibGroup(contour, point) {
+  if (!point || point.type) {
+    return null;
+  }
   const points = contour?.points || [];
-  const index = points.indexOf(point);
-  if (index < 0) {
+  if (!points.includes(point)) {
     return null;
   }
-  const closed = contour.closed === true;
-  const at = (i) => {
-    if (!closed) {
-      return i >= 0 && i < points.length ? points[i] : null;
-    }
-    return points[((i % points.length) + points.length) % points.length];
-  };
-  const isTiedSmoothOnCurve = (candidate) =>
-    !!candidate &&
-    !candidate.type &&
-    candidate.smooth === true &&
-    candidate.width?.tied !== false;
-
-  if (!isTiedSmoothOnCurve(point)) {
-    return null;
-  }
-  const previous = at(index - 1);
-  const next = at(index + 1);
-  // Exactly one side is a straight (its immediate neighbour is another
-  // on-curve); the other side must carry this point's one handle.
-  const straightForward = next && !next.type && previous && previous.type;
-  const straightBackward = previous && !previous.type && next && next.type;
-  if (!straightForward && !straightBackward) {
-    return null;
-  }
-  const partner = straightForward ? next : previous;
-  // The partner's own far side must carry its one handle, or it is not the
-  // mirror of this point and the pair does not control itself.
-  const partnerIndex = points.indexOf(partner);
-  const partnerFarSide = at(straightForward ? partnerIndex + 1 : partnerIndex - 1);
-  if (!isTiedSmoothOnCurve(partner) || !partnerFarSide?.type) {
-    return null;
-  }
-  return partner;
+  const isClosed = contour.closed === true;
+  const segments = buildSegmentsFromSkeletonPoints(points, isClosed);
+  return collectTiedRibGroups(segments, isClosed).get(point) || null;
 }
 
 // The half-width the generator will actually use for this rib: the stored value,
-// or the mean across a tied pair, matching coupledHalfWidths in
+// or the mean across a tied group, matching coupledHalfWidths in
 // skeleton-generator.js. Rendering and hit-testing must use this rather than the
 // stored value, or the gizmo sits somewhere the outline is not.
 export function getEffectiveRibHalfWidth(contour, point, side) {
-  const stored = getSkeletonPointHalfWidth(point, contour?.defaultWidth, side);
-  const partner = getTiedRibPartner(contour, point);
-  if (!partner) {
-    return stored;
+  const group = getTiedRibGroup(contour, point);
+  if (!group) {
+    return getSkeletonPointHalfWidth(point, contour?.defaultWidth, side);
   }
-  return (stored + getSkeletonPointHalfWidth(partner, contour?.defaultWidth, side)) / 2;
+  return meanHalfWidth(group, (member) =>
+    getSkeletonPointHalfWidth(member, contour?.defaultWidth, side)
+  );
+}
+
+// The shared half-width of a tied group. The mean rather than any one member's
+// value: symmetric, so no point wins, and continuous in every input, so dragging
+// any one width moves the whole group together and smoothly.
+export function meanHalfWidth(group, halfWidthOf) {
+  return group.reduce((total, member) => total + halfWidthOf(member), 0) / group.length;
 }
 
 // Forward projection of a rib endpoint in glyph space (the C4 gizmo position).
@@ -2303,6 +2281,85 @@ export function isStraightControlledSmoothPoint(point, straightSegment, curveSeg
     straightSegment?.controlPoints.length === 0 &&
     curveSegment?.controlPoints.length > 0
   );
+}
+
+const ribTiedByDefault = (point) => point?.width?.tied !== false;
+
+/**
+ * Does this segment tie the ribs at its two ends to a shared offset?
+ *
+ * It does when it is a straight carrying at least one straight-controlled smooth
+ * point (above). Such a point's rib is perpendicular to the straight, and the
+ * generated handle leaving it stays colinear with the projected straight to keep
+ * the outline smooth — so unless the far rib sits at the same offset, the
+ * projected straight tilts with width and takes the handle with it. One such
+ * point anywhere on the straight is enough: the whole projected straight has to
+ * move as a unit.
+ *
+ * Either end may opt out via its tied flag, which frees the segment. The handles
+ * then rotate with width again; that is the accepted cost of asking for
+ * independent rib widths here.
+ * @param {Object} segment - Candidate segment
+ * @param {Object} prevSegment - Segment before it, or null
+ * @param {Object} nextSegment - Segment after it, or null
+ * @param {Function} isTied - Reads a point's tied flag
+ * @returns {boolean}
+ */
+function tiesTheRibsAtItsEnds(segment, prevSegment, nextSegment, isTied) {
+  const startPoint = segment?.startPoint;
+  const endPoint = segment?.endPoint;
+  if (!startPoint || !endPoint || startPoint === endPoint) {
+    return false;
+  }
+  if (!isTied(startPoint) || !isTied(endPoint)) {
+    return false;
+  }
+  return (
+    isStraightControlledSmoothPoint(startPoint, segment, prevSegment) ||
+    isStraightControlledSmoothPoint(endPoint, segment, nextSegment)
+  );
+}
+
+/**
+ * On-curve points whose ribs must share one offset, keyed by point. Each value
+ * is the whole group, the key point included; points with an independent rib are
+ * absent.
+ *
+ * The rule is per straight segment (above); segments that share an end point
+ * merge, because that shared point has one rib and cannot sit at two offsets at
+ * once. This is the single definition of the coupling — the generator resolves
+ * widths through it, and rendering and hit-testing read it back through
+ * getTiedRibGroup, so the outline and the gizmo cannot disagree.
+ * @param {Array} segments - The contour's segments, in order
+ * @param {boolean} isClosed - Whether the contour is closed
+ * @param {Function} isTied - Reads a point's tied flag; defaults to the canonical field
+ * @returns {Map} skeleton point -> array of skeleton points
+ */
+export function collectTiedRibGroups(segments, isClosed, isTied = ribTiedByDefault) {
+  const groupByPoint = new Map();
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    const prevSegment =
+      isClosed || i > 0 ? segments[(i - 1 + segments.length) % segments.length] : null;
+    const nextSegment =
+      isClosed || i < segments.length - 1 ? segments[(i + 1) % segments.length] : null;
+    if (!tiesTheRibsAtItsEnds(segment, prevSegment, nextSegment, isTied)) {
+      continue;
+    }
+    const group = [];
+    for (const point of [
+      ...(groupByPoint.get(segment.startPoint) || [segment.startPoint]),
+      ...(groupByPoint.get(segment.endPoint) || [segment.endPoint]),
+    ]) {
+      if (!group.includes(point)) {
+        group.push(point);
+      }
+    }
+    for (const point of group) {
+      groupByPoint.set(point, group);
+    }
+  }
+  return groupByPoint;
 }
 
 /**
