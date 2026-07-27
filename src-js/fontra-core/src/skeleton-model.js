@@ -13,6 +13,7 @@ import { getGlyphInfoFromGlyphName } from "./glyph-data.js";
 import {
   areTensionsEqualized,
   calculateControlHandlePoint,
+  calculateControlPointsFromCurvatureDelta,
   calculateEqualizedControlPoints,
   calculateTunniPoint,
 } from "./tunni-calculations.js";
@@ -2647,4 +2648,55 @@ function asFiniteNumber(value, fallback) {
 
 function asNonNegativeNumber(value, fallback) {
   return Math.max(0, asFiniteNumber(value, fallback));
+}
+
+//
+// A curvature-gizmo drag on a generated segment, expressed as skeleton writes.
+//
+// The two handles of a generated segment belong to DIFFERENT skeleton points —
+// the start point's "out" and the end point's "in", on this generated side — so
+// one drag produces two writes. Their addresses are read from the provenance the
+// generator emitted, never recovered from geometry (rail R-D): if a handle has
+// no provenance, or provenance that is not a handle, the drag is declined rather
+// than aimed at a guess.
+//
+// The result is stated as an offset to ADD to whatever the handle already
+// carries. A stored handle offset is measured from the derived control point,
+// and the segment points passed in are the finished geometry, which already
+// includes the current offset — so the difference between wanted and current is
+// exactly what the stored offset must change by, whatever it happens to be.
+//
+export function calculateGeneratedCurvatureEdits({
+  segmentPoints,
+  provenance,
+  delta,
+  maxTension = 1,
+}) {
+  const addresses = [provenance?.[1], provenance?.[2]];
+  const roles = ["out", "in"];
+  if (
+    addresses.some(
+      (address, index) =>
+        !address ||
+        address.role !== roles[index] ||
+        address.skeletonPointId === undefined
+    )
+  ) {
+    return null;
+  }
+  const moved = calculateControlPointsFromCurvatureDelta(delta, segmentPoints, {
+    maxTension,
+  });
+  if (!moved) {
+    return null;
+  }
+  return moved.map((point, index) => ({
+    skeletonPointId: addresses[index].skeletonPointId,
+    side: addresses[index].side,
+    role: addresses[index].role,
+    offsetDelta: {
+      x: point.x - segmentPoints[index + 1].x,
+      y: point.y - segmentPoints[index + 1].y,
+    },
+  }));
 }
