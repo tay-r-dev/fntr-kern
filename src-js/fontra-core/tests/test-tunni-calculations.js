@@ -1,6 +1,9 @@
 import {
   areTensionsEqualized,
   calculateControlHandlePoint,
+  calculateControlPointsFromCurvatureDelta,
+  calculateCurvatureGizmoAxis,
+  calculateCurvatureGizmoPoint,
   calculateSegmentTension,
   calculateTunniPoint,
 } from "@fontra/core/tunni-calculations.js";
@@ -78,5 +81,151 @@ describe("tunni-calculations: areTensionsEqualized (option C)", () => {
         { x: 200, y: 200 },
       ])
     ).to.equal(false);
+  });
+});
+
+// The curvature gizmo for generated contours. Anchored on the CURVE, dragged
+// along the ray toward the true Tunni point. Distinct from the basic editor's
+// "tunni-point" control, which anchors on the midpoint of the two HANDLES and
+// drags along a fixed 45-degree vector.
+describe("tunni-calculations: curvature gizmo", () => {
+  // deliberately asymmetric, so curve centre and handle midpoint differ
+  const asymmetric = [
+    { x: 0, y: 0 },
+    { x: 20, y: 80 },
+    { x: 160, y: 60 },
+    { x: 200, y: 0 },
+  ];
+  const symmetric = [
+    { x: 0, y: 0 },
+    { x: 40, y: 80 },
+    { x: 160, y: 80 },
+    { x: 200, y: 0 },
+  ];
+
+  const tensions = (points) => {
+    const tunni = calculateTunniPoint(points);
+    const [p1, p2, p3, p4] = points;
+    const reach = (from) => Math.hypot(tunni.x - from.x, tunni.y - from.y);
+    return [
+      Math.hypot(p2.x - p1.x, p2.y - p1.y) / reach(p1),
+      Math.hypot(p3.x - p4.x, p3.y - p4.y) / reach(p4),
+    ];
+  };
+  const directions = (points) => {
+    const [p1, p2, p3, p4] = points;
+    return [Math.atan2(p2.y - p1.y, p2.x - p1.x), Math.atan2(p3.y - p4.y, p3.x - p4.x)];
+  };
+
+  it("anchors on the curve at t = 0.5, not on the handle midpoint", () => {
+    const anchor = calculateCurvatureGizmoPoint(asymmetric);
+    const [p1, p2, p3, p4] = asymmetric;
+    expect(anchor.x).to.be.closeTo((p1.x + 3 * p2.x + 3 * p3.x + p4.x) / 8, 1e-9);
+    expect(anchor.y).to.be.closeTo((p1.y + 3 * p2.y + 3 * p3.y + p4.y) / 8, 1e-9);
+
+    const handleMidpoint = calculateControlHandlePoint(asymmetric);
+    expect(
+      Math.hypot(anchor.x - handleMidpoint.x, anchor.y - handleMidpoint.y)
+    ).to.be.above(1);
+  });
+
+  it("takes its axis from the anchor toward the true Tunni point", () => {
+    const anchor = calculateCurvatureGizmoPoint(asymmetric);
+    const tunni = calculateTunniPoint(asymmetric);
+    const axis = calculateCurvatureGizmoAxis(asymmetric);
+    const expected = { x: tunni.x - anchor.x, y: tunni.y - anchor.y };
+    const length = Math.hypot(expected.x, expected.y);
+    expect(Math.hypot(axis.x, axis.y)).to.be.closeTo(1, 1e-9);
+    expect(axis.x).to.be.closeTo(expected.x / length, 1e-9);
+    expect(axis.y).to.be.closeTo(expected.y / length, 1e-9);
+  });
+
+  it("has no axis when the handles are parallel and no Tunni point exists", () => {
+    const parallel = [
+      { x: 0, y: 0 },
+      { x: 50, y: 0 },
+      { x: 150, y: 0 },
+      { x: 200, y: 0 },
+    ];
+    expect(calculateCurvatureGizmoAxis(parallel)).to.equal(null);
+    expect(
+      calculateControlPointsFromCurvatureDelta({ x: 10, y: 10 }, parallel)
+    ).to.equal(null);
+  });
+
+  it("fills the curve out when dragged toward the Tunni point", () => {
+    const axis = calculateCurvatureGizmoAxis(symmetric);
+    const moved = calculateControlPointsFromCurvatureDelta(
+      { x: axis.x * 10, y: axis.y * 10 },
+      symmetric
+    );
+    const [beforeStart, beforeEnd] = tensions(symmetric);
+    const [afterStart, afterEnd] = tensions([symmetric[0], ...moved, symmetric[3]]);
+    expect(afterStart).to.be.above(beforeStart);
+    expect(afterEnd).to.be.above(beforeEnd);
+  });
+
+  it("flattens the curve when dragged away from the Tunni point", () => {
+    const axis = calculateCurvatureGizmoAxis(symmetric);
+    const moved = calculateControlPointsFromCurvatureDelta(
+      { x: -axis.x * 10, y: -axis.y * 10 },
+      symmetric
+    );
+    const [beforeStart, beforeEnd] = tensions(symmetric);
+    const [afterStart, afterEnd] = tensions([symmetric[0], ...moved, symmetric[3]]);
+    expect(afterStart).to.be.below(beforeStart);
+    expect(afterEnd).to.be.below(beforeEnd);
+  });
+
+  it("moves both tensions together, preserving their difference", () => {
+    const [beforeStart, beforeEnd] = tensions(asymmetric);
+    const axis = calculateCurvatureGizmoAxis(asymmetric);
+    const moved = calculateControlPointsFromCurvatureDelta(
+      { x: axis.x * 8, y: axis.y * 8 },
+      asymmetric
+    );
+    const [afterStart, afterEnd] = tensions([asymmetric[0], ...moved, asymmetric[3]]);
+    expect(afterStart - beforeStart).to.be.closeTo(afterEnd - beforeEnd, 1e-6);
+    expect(afterStart).to.be.above(beforeStart);
+  });
+
+  it("never changes a handle direction", () => {
+    const axis = calculateCurvatureGizmoAxis(asymmetric);
+    for (const amount of [-30, -5, 5, 30]) {
+      const moved = calculateControlPointsFromCurvatureDelta(
+        { x: axis.x * amount, y: axis.y * amount },
+        asymmetric
+      );
+      const [beforeStart, beforeEnd] = directions(asymmetric);
+      const [afterStart, afterEnd] = directions([
+        asymmetric[0],
+        ...moved,
+        asymmetric[3],
+      ]);
+      expect(afterStart).to.be.closeTo(beforeStart, 1e-9);
+      expect(afterEnd).to.be.closeTo(beforeEnd, 1e-9);
+    }
+  });
+
+  it("ignores movement across the axis", () => {
+    const axis = calculateCurvatureGizmoAxis(asymmetric);
+    const across = { x: -axis.y * 25, y: axis.x * 25 };
+    const moved = calculateControlPointsFromCurvatureDelta(across, asymmetric);
+    expect(moved[0].x).to.be.closeTo(asymmetric[1].x, 1e-9);
+    expect(moved[0].y).to.be.closeTo(asymmetric[1].y, 1e-9);
+    expect(moved[1].x).to.be.closeTo(asymmetric[2].x, 1e-9);
+    expect(moved[1].y).to.be.closeTo(asymmetric[2].y, 1e-9);
+  });
+
+  it("stops at tension 1 however far it is pushed", () => {
+    const axis = calculateCurvatureGizmoAxis(asymmetric);
+    const moved = calculateControlPointsFromCurvatureDelta(
+      { x: axis.x * 5000, y: axis.y * 5000 },
+      asymmetric
+    );
+    const [afterStart, afterEnd] = tensions([asymmetric[0], ...moved, asymmetric[3]]);
+    expect(afterStart).to.be.at.most(1 + 1e-9);
+    expect(afterEnd).to.be.at.most(1 + 1e-9);
+    expect(Math.max(afterStart, afterEnd)).to.be.closeTo(1, 1e-6);
   });
 });

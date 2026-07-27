@@ -1,6 +1,7 @@
 import {
   addVectors,
   distance,
+  dotVector,
   intersect,
   normalizeVector,
   subVectors,
@@ -433,4 +434,94 @@ export function calculateOnCurvePointsFromTunni(
     return [snapToGrid(newP1), p2, p3, snapToGrid(newP4)];
   }
   return [newP1, p2, p3, newP4];
+}
+
+//
+// The curvature gizmo: "make this curve fuller or flatter".
+//
+// Do not confuse it with calculateControlHandlePoint above. That one anchors on
+// the midpoint of the two HANDLES and is dragged along a fixed 45-degree vector.
+// This one anchors on the CURVE and is dragged along the ray toward the true
+// Tunni point, which is the direction the curve actually swells in. What the two
+// share — moving both tensions by the same amount — lives in
+// calculateControlPointsFromCurvatureDelta and is the part worth reusing.
+//
+
+const CURVATURE_EPSILON = 1e-10;
+
+// Where the gizmo sits: the curve at t = 0.5. Writing the Bernstein weights out
+// rather than reaching for a general evaluator, because half is the only
+// parameter this control ever needs.
+export function calculateCurvatureGizmoPoint(segmentPoints) {
+  const [p1, p2, p3, p4] = segmentPoints;
+  return {
+    x: (p1.x + 3 * p2.x + 3 * p3.x + p4.x) / 8,
+    y: (p1.y + 3 * p2.y + 3 * p3.y + p4.y) / 8,
+  };
+}
+
+// Null when the two handle lines are parallel: there is no Tunni point to aim
+// at, so the control has no axis and must not be offered.
+export function calculateCurvatureGizmoAxis(segmentPoints) {
+  const tunniPoint = calculateTunniPoint(segmentPoints);
+  if (!tunniPoint) {
+    return null;
+  }
+  const toTunni = subVectors(tunniPoint, calculateCurvatureGizmoPoint(segmentPoints));
+  const reach = Math.hypot(toTunni.x, toTunni.y);
+  if (!(reach > CURVATURE_EPSILON)) {
+    return null;
+  }
+  return { x: toTunni.x / reach, y: toTunni.y / reach };
+}
+
+//
+// Drag the curvature gizmo by `delta`. Returns the two new control points, or
+// null where the control does not exist.
+//
+// Only the component along the axis counts — this is a one-degree-of-freedom
+// control, and movement across the axis is discarded rather than interpreted.
+//
+// Both tensions change by the SAME amount, so their difference survives the
+// drag. That matters: a generated segment's two tensions differ when the
+// skeleton is asymmetric, and that asymmetry is faithful — equalizing it
+// measurably degrades the fit. The ceiling is enforced on the shared increment
+// for the same reason: clamping each tension on its own would quietly pull them
+// together at the top of the range.
+//
+export function calculateControlPointsFromCurvatureDelta(
+  delta,
+  segmentPoints,
+  { maxTension = 1 } = {}
+) {
+  const axis = calculateCurvatureGizmoAxis(segmentPoints);
+  if (!axis) {
+    return null;
+  }
+  const tunniPoint = calculateTunniPoint(segmentPoints);
+  const [startPoint, controlPoint1, controlPoint2, endPoint] = segmentPoints;
+  const startReach = distance(startPoint, tunniPoint);
+  const endReach = distance(endPoint, tunniPoint);
+  if (!(startReach > CURVATURE_EPSILON) || !(endReach > CURVATURE_EPSILON)) {
+    return null;
+  }
+
+  const startTension = distance(startPoint, controlPoint1) / startReach;
+  const endTension = distance(endPoint, controlPoint2) / endReach;
+
+  // Half the summed reach converts a distance dragged in glyph units into a
+  // tension increment, matching the basic Tunni control's feel.
+  let increment = (2 * dotVector(delta, axis)) / (startReach + endReach);
+  increment = Math.min(increment, maxTension - Math.max(startTension, endTension));
+  increment = Math.max(increment, -Math.min(startTension, endTension));
+
+  const place = (from, control, reach, tension) => {
+    const direction = normalizeVector(subVectors(control, from));
+    const length = (tension + increment) * reach;
+    return { x: from.x + direction.x * length, y: from.y + direction.y * length };
+  };
+  return [
+    place(startPoint, controlPoint1, startReach, startTension),
+    place(endPoint, controlPoint2, endReach, endTension),
+  ];
 }
