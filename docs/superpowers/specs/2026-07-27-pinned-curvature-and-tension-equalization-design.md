@@ -362,12 +362,15 @@ at most 0.00025 per step, monotone, with no jump where the per-handle cap engage
 
 ## 8. Construction space is canonical
 
-The rendered-space decision in §7.2 is superseded. A nudge now moves only the
-emitted on-curve; generated handles remain at their un-nudged construction
-positions. The on-curve's provenance carries its nonzero nudge vector, allowing
-the curvature gizmo to reconstruct the construction endpoints by subtraction.
-Its visible drag axis still comes from the rendered curve, while distance-to-
-tension conversion uses construction reaches.
+The rendered-space decision in §7.2 is superseded. The default gizmo and Z-Alt
+move only the emitted on-curve; generated handles remain at their construction
+positions. Z-normal retains ordinary on-curve semantics by accumulating a
+separate per-side `handleNudge` and emitting it on adjacent handles after
+construction. This carry scalar never enters fit, adjustment, reach, or pin
+math. The on-curve's provenance carries its nonzero `nudge` vector, allowing the
+curvature gizmo to reconstruct the construction endpoints by subtraction. Its
+visible drag axis still comes from the rendered curve, while distance-to-tension
+conversion uses construction reaches.
 
 Per segment side, handle length is resolved in this order:
 
@@ -377,9 +380,11 @@ Per segment side, handle length is resolved in this order:
 4. apply a pinned curvature as one shared tension increment, capped by the
    construction-space headroom;
 5. apply the ordinary minimum and maximum bounds;
-6. emit un-nudged handles and separately emit on-curves with their nudges.
+6. emit handles with any Z-normal `handleNudge`, and separately emit on-curves
+   with their full nudges.
 
 The per-handle adjustment owns the split and the pin owns the magnitude; neither
-overwrites the other. Detached handles remain absolute and bypass stages 3 and 4. A zero-delta grab therefore reproduces the existing construction tension,
-nudge cannot move an off-curve, and width, nudge, and attached-handle edits do
-not change the stored pin except for unavoidable output-grid residuals.
+overwrites the other. Detached handles remain absolute and bypass stages 3 and 4. A zero-delta grab therefore reproduces the existing construction tension;
+default/Alt nudge cannot move an off-curve; and width, nudge, carry, and
+attached-handle edits do not change the stored pin except for unavoidable
+output-grid residuals.

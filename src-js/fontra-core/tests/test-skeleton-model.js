@@ -747,6 +747,7 @@ describe("skeleton-model panel-facing mutators", () => {
     const point = makePoint({
       locked: { left: true, right: true },
       nudge: { left: 5, right: 7 },
+      handleNudge: { left: 4, right: 6 },
       segmentCurvature: { left: 0.4, right: 0.7 },
       handleOffsets: {
         leftIn: { x: 1, y: 2, detached: true },
@@ -755,11 +756,13 @@ describe("skeleton-model panel-facing mutators", () => {
     });
     resetSkeletonEditableRib(point, "left");
     expect(point.nudge.left).to.equal(0);
+    expect(point.handleNudge.left).to.equal(0);
     expect(point.segmentCurvature.left).to.equal(null);
     expect(point.handleOffsets.leftIn).to.equal(undefined);
     // Reset clears adjustments only — the lock is independent.
     expect(point.locked.left).to.equal(true);
     expect(point.nudge.right).to.equal(7);
+    expect(point.handleNudge.right).to.equal(6);
     expect(point.segmentCurvature.right).to.equal(0.7);
     expect(point.handleOffsets.rightOut).to.not.equal(undefined);
   });
@@ -841,6 +844,7 @@ describe("skeleton-model transform/translate/id-allocation", () => {
               smooth: false,
               width: { left: 30, right: 50, linked: true, tied: false },
               nudge: { left: 3, right: -7 },
+              handleNudge: { left: 2, right: -5 },
               locked: { left: true, right: false },
               segmentCurvature: { left: 0.3, right: 0.8 },
               capBallSide: "left",
@@ -889,6 +893,7 @@ describe("skeleton-model transform/translate/id-allocation", () => {
       tied: false,
     });
     expect(point.nudge).to.deep.equal({ left: 3, right: -7 });
+    expect(point.handleNudge).to.deep.equal({ left: 2, right: -5 });
     expect(point.handleOffsets.leftIn).to.deep.equal({
       x: 10,
       y: 2,
@@ -928,6 +933,7 @@ describe("skeleton-model transform/translate/id-allocation", () => {
       tied: false,
     });
     expect(point.nudge).to.deep.equal({ left: -7, right: 3 });
+    expect(point.handleNudge).to.deep.equal({ left: -5, right: 2 });
     expect(point.locked).to.deep.equal({ left: false, right: true });
     expect(point.segmentCurvature).to.deep.equal({ left: 0.8, right: 0.3 });
     expect(point.handleOffsets).to.deep.equal({

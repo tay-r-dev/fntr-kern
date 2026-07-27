@@ -104,6 +104,8 @@ function stripPointProvenance(contour) {
   for (const point of contour.points) {
     delete point._provenance;
     delete point._axis;
+    delete point._constructionAnchor;
+    delete point._handleNudge;
   }
 }
 
@@ -205,6 +207,8 @@ function canonicalPointToGeneratorPoint(point) {
   generatorPoint.widthTied = point.width?.tied !== false;
   generatorPoint.leftNudge = point.nudge?.left ?? 0;
   generatorPoint.rightNudge = point.nudge?.right ?? 0;
+  generatorPoint.leftHandleNudge = point.handleNudge?.left ?? 0;
+  generatorPoint.rightHandleNudge = point.handleNudge?.right ?? 0;
   generatorPoint.leftLocked = point.locked?.left === true;
   generatorPoint.rightLocked = point.locked?.right === true;
   // The pinned segment tension for the segment STARTING here, per side. Null
@@ -362,7 +366,8 @@ function buildGeneratedOnCurve(
   halfWidth,
   cornerRoundBaseOverride = undefined,
   side = null,
-  nudge = null
+  nudge = null,
+  constructionAnchor = null
 ) {
   const generatedPoint = {
     x: basePoint.x,
@@ -372,6 +377,12 @@ function buildGeneratedOnCurve(
   const provenance = pointProvenance(skeletonPoint, side, "onCurve", nudge);
   if (provenance) {
     generatedPoint._provenance = provenance;
+  }
+  if (provenance?.nudge && constructionAnchor) {
+    generatedPoint._constructionAnchor = {
+      x: constructionAnchor.x,
+      y: constructionAnchor.y,
+    };
   }
   const cornerRoundness = getCornerRoundness(skeletonPoint);
   const cornerAsymmetry = getCornerAsymmetry(skeletonPoint);
@@ -424,12 +435,9 @@ function stripCornerRoundMetadata(points) {
  * The displacement a nudge applies at a rib point: along the tangent
  * (perpendicular to the normal), or zero when the nudge does not apply.
  *
- * This is a translation of the finished geometry, never an input to it. A nudge
- * moves a generated on-curve point *and the handles either side of it* as one
- * rigid piece, the way any on-curve point carries its handles. Feeding the
- * nudged position into the offset construction instead makes the least-squares
- * pass fit against the un-nudged offset curve and shorten the handle to
- * compensate, so the handle travels opposite to the point it belongs to.
+ * This is an on-curve emission translation, never an input to construction.
+ * Ordinary Z-mode carry is tracked independently by
+ * ribHandleNudgeDisplacement; default and Alt drags change only this value.
  * @param {Object} skeletonPoint - The skeleton point (may have nudge values)
  * @param {Object} normal - The normal vector at this point
  * @param {string} side - "left" or "right"
@@ -461,6 +469,27 @@ function ribNudgeDisplacement(skeletonPoint, normal, side, halfWidth) {
   return { x: tangent.x * nudge, y: tangent.y * nudge };
 }
 
+// The portion of an on-curve nudge accumulated by ordinary Z-mode drags.
+// Default gizmo and Alt drags leave this scalar unchanged, so their on-curves
+// move independently while any earlier carried handle position is preserved.
+function ribHandleNudgeDisplacement(skeletonPoint, normal, side, halfWidth) {
+  const none = { x: 0, y: 0 };
+  if (halfWidth !== undefined && halfWidth < 0.5) {
+    return none;
+  }
+  const lockedKey = side === "left" ? "leftLocked" : "rightLocked";
+  if (skeletonPoint?.[lockedKey]) {
+    return none;
+  }
+  const nudgeKey = side === "left" ? "leftHandleNudge" : "rightHandleNudge";
+  const nudge = skeletonPoint[nudgeKey];
+  if (!nudge) {
+    return none;
+  }
+  const tangent = { x: -normal.y, y: normal.x };
+  return { x: tangent.x * nudge, y: tangent.y * nudge };
+}
+
 function translateRibPoint(point, displacement) {
   if (!displacement.x && !displacement.y) {
     return point;
@@ -473,9 +502,7 @@ function translateRibPoint(point, displacement) {
 }
 
 /**
- * Apply nudge offset to a rib point position. Line segments emit no handles, so
- * the point moves on its own; cubic segments translate the point together with
- * its handle (see ribNudgeDisplacement).
+ * Apply nudge offset to a rib point position.
  * @param {Object} ribPoint - The rib point {x, y} to modify
  * @param {Object} skeletonPoint - The skeleton point (may have nudge values)
  * @param {Object} normal - The normal vector at this point
@@ -655,6 +682,12 @@ function enforceSmoothColinearity(points, isClosed, options = {}) {
     // Only process on-curve smooth points
     if (point.type || !point.smooth) continue;
     if (point.skipColinear) continue;
+    // Smooth generated handles live around the construction rib point. The
+    // rendered on-curve may have a nudge that is deliberately absent from the
+    // handles, so recover the construction anchor before enforcing the axis.
+    // A Z-normal handleNudge remains visible as changed lengths from this same
+    // anchor; default and Alt drags leave the handles untouched.
+    const smoothAnchor = point._constructionAnchor || point;
 
     // Find adjacent points (could be on-curve or off-curve)
     const prevIdx = (i - 1 + numPoints) % numPoints;
@@ -675,8 +708,14 @@ function enforceSmoothColinearity(points, isClosed, options = {}) {
     // Case 1: Both neighbors are off-curve (traditional smooth curve behavior)
     if (!prevIsOnCurve && !nextIsOnCurve) {
       // Traditional colinearity enforcement for smooth point between two off-curve handles
-      const vecIn = { x: prevPoint.x - point.x, y: prevPoint.y - point.y };
-      const vecOut = { x: nextPoint.x - point.x, y: nextPoint.y - point.y };
+      const vecIn = {
+        x: prevPoint.x - smoothAnchor.x,
+        y: prevPoint.y - smoothAnchor.y,
+      };
+      const vecOut = {
+        x: nextPoint.x - smoothAnchor.x,
+        y: nextPoint.y - smoothAnchor.y,
+      };
 
       const lenIn = Math.hypot(vecIn.x, vecIn.y);
       const lenOut = Math.hypot(vecOut.x, vecOut.y);
@@ -697,13 +736,13 @@ function enforceSmoothColinearity(points, isClosed, options = {}) {
       if (lockedAxis && lenIn >= 0.001 && lenOut >= 0.001) {
         points[prevIdx] = {
           ...prevPoint,
-          x: point.x + lockedAxis.x * lenIn,
-          y: point.y + lockedAxis.y * lenIn,
+          x: smoothAnchor.x + lockedAxis.x * lenIn,
+          y: smoothAnchor.y + lockedAxis.y * lenIn,
         };
         points[nextIdx] = {
           ...nextPoint,
-          x: point.x - lockedAxis.x * lenOut,
-          y: point.y - lockedAxis.y * lenOut,
+          x: smoothAnchor.x - lockedAxis.x * lenOut,
+          y: smoothAnchor.y - lockedAxis.y * lenOut,
         };
         continue;
       }
@@ -750,14 +789,14 @@ function enforceSmoothColinearity(points, isClosed, options = {}) {
             // Adjust handle positions to be colinear through the on-curve point
             points[prevIdx] = {
               ...prevPoint,
-              x: point.x + avgDir.x * lenIn,
-              y: point.y + avgDir.y * lenIn,
+              x: smoothAnchor.x + avgDir.x * lenIn,
+              y: smoothAnchor.y + avgDir.y * lenIn,
             };
 
             points[nextIdx] = {
               ...nextPoint,
-              x: point.x - avgDir.x * lenOut,
-              y: point.y - avgDir.y * lenOut,
+              x: smoothAnchor.x - avgDir.x * lenOut,
+              y: smoothAnchor.y - avgDir.y * lenOut,
             };
           }
         }
@@ -768,14 +807,20 @@ function enforceSmoothColinearity(points, isClosed, options = {}) {
       // Smooth point with linear segment before and curve after
       // The smooth point should act as a pivot: the off-curve handle should be collinear
       // with the linear segment, extending its direction
-      const linearVec = { x: point.x - prevPoint.x, y: point.y - prevPoint.y }; // Vector from prev linear point to smooth point
+      const linearVec = {
+        x: smoothAnchor.x - prevPoint.x,
+        y: smoothAnchor.y - prevPoint.y,
+      }; // Vector from prev linear point to smooth point
       const linearLen = Math.hypot(linearVec.x, linearVec.y);
       if (!(linearLen > 0.001)) {
         continue;
       }
       const linearDir = vector.normalizeVector(linearVec);
 
-      const curveVec = { x: nextPoint.x - point.x, y: nextPoint.y - point.y }; // Vector from smooth point to off-curve
+      const curveVec = {
+        x: nextPoint.x - smoothAnchor.x,
+        y: nextPoint.y - smoothAnchor.y,
+      }; // Vector from smooth point to off-curve
       const curveLength = Math.hypot(curveVec.x, curveVec.y);
 
       if (curveLength >= 0.001) {
@@ -785,8 +830,8 @@ function enforceSmoothColinearity(points, isClosed, options = {}) {
         const newDirectionY = linearDir.y;
 
         // Calculate new position by extending the linear direction with the original handle length
-        const newX = point.x + newDirectionX * curveLength;
-        const newY = point.y + newDirectionY * curveLength;
+        const newX = smoothAnchor.x + newDirectionX * curveLength;
+        const newY = smoothAnchor.y + newDirectionY * curveLength;
 
         points[nextIdx] = {
           ...nextPoint,
@@ -797,14 +842,20 @@ function enforceSmoothColinearity(points, isClosed, options = {}) {
     } else if (includeLinearNeighborCases && !prevIsOnCurve && nextIsOnCurve) {
       // Smooth point with curve before and linear segment after
       // The previous off-curve handle should be collinear with the next linear segment
-      const linearVec = { x: nextPoint.x - point.x, y: nextPoint.y - point.y }; // Vector from smooth point to next linear point
+      const linearVec = {
+        x: nextPoint.x - smoothAnchor.x,
+        y: nextPoint.y - smoothAnchor.y,
+      }; // Vector from smooth point to next linear point
       const linearLen = Math.hypot(linearVec.x, linearVec.y);
       if (!(linearLen > 0.001)) {
         continue;
       }
       const linearDir = vector.normalizeVector(linearVec);
 
-      const curveVec = { x: prevPoint.x - point.x, y: prevPoint.y - point.y }; // Vector from smooth point to prev off-curve
+      const curveVec = {
+        x: prevPoint.x - smoothAnchor.x,
+        y: prevPoint.y - smoothAnchor.y,
+      }; // Vector from smooth point to prev off-curve
       const curveLength = Math.hypot(curveVec.x, curveVec.y);
 
       if (curveLength >= 0.001) {
@@ -814,8 +865,8 @@ function enforceSmoothColinearity(points, isClosed, options = {}) {
         const newDirectionY = -linearDir.y;
 
         // Calculate new position by extending in the opposite linear direction with the original handle length
-        const newX = point.x + newDirectionX * curveLength;
-        const newY = point.y + newDirectionY * curveLength;
+        const newX = smoothAnchor.x + newDirectionX * curveLength;
+        const newY = smoothAnchor.y + newDirectionY * curveLength;
 
         points[prevIdx] = {
           ...prevPoint,
@@ -845,6 +896,16 @@ function enforceSmoothColinearity(points, isClosed, options = {}) {
       // The smooth point is already in the right position, just ensure it's marked as smooth
       points[i] = { ...point, smooth: true };
     }
+  }
+
+  // Ordinary Z-mode on-curve carry is an emission operation, like moving an
+  // on-curve in a regular path. Apply it only after every construction-space
+  // smoothing decision so the rendered handle receives exactly the same
+  // rounded displacement as its rib point.
+  for (const point of points) {
+    if (!point?._handleNudge) continue;
+    point.x += point._handleNudge.x;
+    point.y += point._handleNudge.y;
   }
 
   return points;
@@ -2089,10 +2150,13 @@ function generateOffsetPointsForSegment(
         "left",
         startLeftHW
       );
-      const startLeftPt = translateRibPoint(
-        projectPoint(segment.startPoint, startNormal, startLeftHW, 1),
-        startLeftNudge
+      const startLeftBase = projectPoint(
+        segment.startPoint,
+        startNormal,
+        startLeftHW,
+        1
       );
+      const startLeftPt = translateRibPoint(startLeftBase, startLeftNudge);
       left.push(
         buildGeneratedOnCurve(
           startLeftPt,
@@ -2101,7 +2165,8 @@ function generateOffsetPointsForSegment(
           startLeftHW,
           startLeftRoundBase,
           "left",
-          startLeftNudge
+          startLeftNudge,
+          startLeftBase
         )
       );
 
@@ -2111,10 +2176,13 @@ function generateOffsetPointsForSegment(
         "right",
         startRightHW
       );
-      const startRightPt = translateRibPoint(
-        projectPoint(segment.startPoint, startNormal, startRightHW, -1),
-        startRightNudge
+      const startRightBase = projectPoint(
+        segment.startPoint,
+        startNormal,
+        startRightHW,
+        -1
       );
+      const startRightPt = translateRibPoint(startRightBase, startRightNudge);
       right.push(
         buildGeneratedOnCurve(
           startRightPt,
@@ -2123,7 +2191,8 @@ function generateOffsetPointsForSegment(
           startRightHW,
           startRightRoundBase,
           "right",
-          startRightNudge
+          startRightNudge,
+          startRightBase
         )
       );
     }
@@ -2153,10 +2222,8 @@ function generateOffsetPointsForSegment(
         "left",
         endLeftHW
       );
-      const endLeftPt = translateRibPoint(
-        projectPoint(segment.endPoint, endNormal, endLeftHW, 1),
-        endLeftNudge
-      );
+      const endLeftBase = projectPoint(segment.endPoint, endNormal, endLeftHW, 1);
+      const endLeftPt = translateRibPoint(endLeftBase, endLeftNudge);
       left.push(
         buildGeneratedOnCurve(
           endLeftPt,
@@ -2165,7 +2232,8 @@ function generateOffsetPointsForSegment(
           endLeftHW,
           endLeftRoundBase,
           "left",
-          endLeftNudge
+          endLeftNudge,
+          endLeftBase
         )
       );
 
@@ -2175,10 +2243,8 @@ function generateOffsetPointsForSegment(
         "right",
         endRightHW
       );
-      const endRightPt = translateRibPoint(
-        projectPoint(segment.endPoint, endNormal, endRightHW, -1),
-        endRightNudge
-      );
+      const endRightBase = projectPoint(segment.endPoint, endNormal, endRightHW, -1);
+      const endRightPt = translateRibPoint(endRightBase, endRightNudge);
       right.push(
         buildGeneratedOnCurve(
           endRightPt,
@@ -2187,7 +2253,8 @@ function generateOffsetPointsForSegment(
           endRightHW,
           endRightRoundBase,
           "right",
-          endRightNudge
+          endRightNudge,
+          endRightBase
         )
       );
     }
@@ -2247,8 +2314,8 @@ function generateOffsetPointsForSegment(
     // Fixed endpoint positions (using corner-aware normals and per-point widths),
     // rounded to UPM grid. These stay UN-nudged: the offset construction below
     // is fit against the un-nudged offset curve, so handing it a nudged endpoint
-    // makes it shorten the handle to pull the curve back. The nudge is applied
-    // afterwards, translating each on-curve point and its handle together.
+    // makes it shorten the handle to pull the curve back. On-curve nudge and
+    // Z-normal handle carry are applied independently after construction.
     const fixedStartLeft = projectPoint(
       segment.startPoint,
       startNormal,
@@ -2319,7 +2386,8 @@ function generateOffsetPointsForSegment(
               startHalfWidth,
               startRoundBase,
               side,
-              startNudge
+              startNudge,
+              segment.startPoint
             )
           );
         }
@@ -2336,7 +2404,8 @@ function generateOffsetPointsForSegment(
               endHalfWidth,
               endRoundBase,
               side,
-              endNudge
+              endNudge,
+              segment.endPoint
             )
           );
         }
@@ -2393,7 +2462,8 @@ function generateOffsetPointsForSegment(
             startHalfWidth,
             startRoundBase,
             side,
-            startNudge
+            startNudge,
+            fixedStart
           )
         );
       const adjustedHandle1 = {
@@ -2404,9 +2474,37 @@ function generateOffsetPointsForSegment(
         x: fixedEnd.x + endDir.x * endLength,
         y: fixedEnd.y + endDir.y * endLength,
       };
-      for (const [point, owner, role, axis] of [
-        [adjustedHandle1, segment.startPoint, "out", startDir],
-        [adjustedHandle2, segment.endPoint, "in", endDir],
+      const startHandleNudge = ribHandleNudgeDisplacement(
+        segment.startPoint,
+        startNormal,
+        side,
+        startHalfWidth
+      );
+      const endHandleNudge = ribHandleNudgeDisplacement(
+        segment.endPoint,
+        endNormal,
+        side,
+        endHalfWidth
+      );
+      const emittedNudge = (anchor, displacement) => {
+        const translated = translateRibPoint(anchor, displacement);
+        return { x: translated.x - anchor.x, y: translated.y - anchor.y };
+      };
+      for (const [point, owner, role, axis, handleNudge] of [
+        [
+          adjustedHandle1,
+          segment.startPoint,
+          "out",
+          startDir,
+          emittedNudge(fixedStart, startHandleNudge),
+        ],
+        [
+          adjustedHandle2,
+          segment.endPoint,
+          "in",
+          endDir,
+          emittedNudge(fixedEnd, endHandleNudge),
+        ],
       ]) {
         const generated = {
           x: Math.round(point.x),
@@ -2420,6 +2518,9 @@ function generateOffsetPointsForSegment(
         // direction from the rounded position is width-dependent and, on short
         // handles, quantized to the lattice.
         if (axis) generated._axis = { x: axis.x, y: axis.y };
+        if (handleNudge.x || handleNudge.y) {
+          generated._handleNudge = handleNudge;
+        }
         output.push(generated);
       }
       if (shouldAddEnd)
@@ -2431,7 +2532,8 @@ function generateOffsetPointsForSegment(
             endHalfWidth,
             endRoundBase,
             side,
-            endNudge
+            endNudge,
+            fixedEnd
           )
         );
       return;

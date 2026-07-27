@@ -725,7 +725,12 @@ export function createSkeletonRibTargetEntries(
   layer,
   selection,
   behaviorName,
-  { referenceSkeletonData = null, constrainMode = null, clickedRibKey = null } = {}
+  {
+    referenceSkeletonData = null,
+    constrainMode = null,
+    clickedRibKey = null,
+    carryNudgeToHandles = false,
+  } = {}
 ) {
   const skeletonData = getSkeletonData(layer);
   if (!skeletonData) {
@@ -760,6 +765,7 @@ export function createSkeletonRibTargetEntries(
       interpolationAxis: wantsInterpolation
         ? makeRibInterpolationAxis(originalLayerGlyph, skeletonData, address.target)
         : null,
+      carryNudgeToHandles,
     }),
   }));
 
@@ -1075,6 +1081,7 @@ export function createEditableGeneratedPointTargetEntries(
   return createSkeletonRibTargetEntries(layerGlyph, ribSelection, behaviorName, {
     ...options,
     referenceSkeletonData,
+    carryNudgeToHandles: behaviorName === "rib-tangent",
   });
 }
 

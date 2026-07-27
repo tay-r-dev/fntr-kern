@@ -147,14 +147,26 @@ pure and independent (contour _i_'s output depends only on contour _i_):
    this and copies the skeleton verbatim — this is what makes single-sided
    contours exact.
 
-   **A nudge is an on-curve-only emission post-step, never an input to handle
-   construction.** `ribNudgeDisplacement` moves the emitted on-curve along its
-   corner-aware tangent; adjacent off-curves stay byte-identical. On-curve
-   provenance publishes the nonzero nudge vector so a screen-space gizmo can
-   subtract it and recover the construction rib end exactly. Consequently an
-   on-curve drag stores only the scalar nudge: it never creates compensating
-   handle offsets. The `nudged-cubic-endpoints` fixture deliberately records
-   this new contract.
+   **A nudge is an emission post-step, never an input to handle construction.**
+   `ribNudgeDisplacement` moves the emitted on-curve along its corner-aware
+   tangent. The interaction contract has two independently accumulated scalars
+   per side:
+
+   - `nudge` is the rendered on-curve displacement;
+   - `handleNudge` is the portion accumulated by ordinary Z-mode drags and is
+     emitted on adjacent handles after the construction pipeline.
+
+   Default gizmo drags and Z-Alt drags change only `nudge`, so adjacent
+   off-curves remain byte-identical. Z-normal changes both scalars, so it behaves
+   like an ordinary on-curve edit and carries the off-curves. A later Alt-style
+   edit leaves the earlier carried handle position intact. This is deliberately
+   separate from `handleOffsets`: carry must also work where no forward tension
+   reach exists and an attached adjustment is therefore inapplicable.
+
+   On-curve provenance publishes the nonzero on-curve nudge vector so a
+   screen-space gizmo can subtract it and recover the construction rib end
+   exactly. The `nudged-cubic-endpoints` fixture deliberately records the
+   default/Alt contract.
 
 3. **Corner rounding** — `roundSharpCornersOnSide` replaces non-smooth generated
    corners with an arc (two on-curves + handles). Corner metadata rides on the

@@ -1,3 +1,4 @@
+import { applyChange } from "@fontra/core/changes.js";
 import { generateFromSkeleton } from "@fontra/core/skeleton-generator.js";
 import {
   applySkeletonRibExecutorResult,
@@ -17,7 +18,10 @@ import {
 } from "@fontra/core/skeleton-model.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
-import { editSkeleton } from "../../views-editor/src/skeleton-editing.js";
+import {
+  createEditableGeneratedPointTargetEntries,
+  editSkeleton,
+} from "../../views-editor/src/skeleton-editing.js";
 import { computeRibDetachConversions } from "../../views-editor/src/skeleton-panel-edits.js";
 
 describe("skeleton rib executor", () => {
@@ -100,7 +104,7 @@ describe("skeleton rib executor", () => {
     expect(result.nudge).to.equal(0);
   });
 
-  it("alt-drag interpolation slides nudge along the axis and keeps width", () => {
+  it("alt-drag interpolation slides nudge without carrying handles", () => {
     const address = makeAddress("left", {
       handleOffsets: {
         leftIn: { x: 3, y: 0 },
@@ -121,15 +125,8 @@ describe("skeleton rib executor", () => {
 
     expect(result.halfWidth).to.equal(40);
     expect(result.nudge).to.equal(7);
-    // Handles are compensated so they stay fixed on canvas.
-    expect(result.handleOffsets.in).to.deep.include({
-      x: Math.round(3 - tangent.x * 7),
-      y: Math.round(0 - tangent.y * 7),
-    });
-    expect(result.handleOffsets.out).to.deep.include({
-      x: Math.round(-2 - tangent.x * 7),
-      y: Math.round(0 - tangent.y * 7),
-    });
+    // Generator nudges no longer carry handles, so Alt needs no compensation.
+    expect(result).to.not.have.property("handleOffsets");
   });
 
   it("interpolation without an axis falls back to pure tangent nudge", () => {
@@ -152,7 +149,7 @@ describe("skeleton rib executor", () => {
     expect(result.nudge).to.equal(0);
   });
 
-  it("applying an interpolation result persists compensated handle offsets", () => {
+  it("applying an interpolation result leaves handle offsets unchanged", () => {
     const address = makeAddress("left", {
       handleOffsets: { leftOut: { x: 0, y: 0 } },
     });
@@ -167,8 +164,8 @@ describe("skeleton rib executor", () => {
 
     expect(address.point.nudge.left).to.equal(5);
     expect(address.point.handleOffsets.leftOut).to.deep.include({
-      x: Math.round(-tangent.x * 5) || 0,
-      y: Math.round(-tangent.y * 5) || 0,
+      x: 0,
+      y: 0,
     });
     expect(address.point.handleOffsets.leftIn).to.equal(undefined);
   });
@@ -182,6 +179,122 @@ describe("skeleton rib executor", () => {
 
     expect(address.point.nudge.right).to.equal(-5);
     expect(address.point.width.right).to.equal(40);
+  });
+});
+
+describe("editable generated on-curve drag modes", () => {
+  const makeLayer = () => {
+    const layer = {
+      path: new VarPackedPath(),
+      components: [],
+      anchors: [],
+      guidelines: [],
+      customData: {},
+    };
+    setSkeletonData(
+      layer,
+      normalizeSkeletonData({
+        contours: [
+          makeSkeletonContour({
+            id: 80,
+            defaultWidth: 40,
+            points: [
+              makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+              makeSkeletonPoint({ id: 2, x: 20, y: 40, type: "cubic" }),
+              makeSkeletonPoint({ id: 3, x: 50, y: 40, type: "cubic" }),
+              makeSkeletonPoint({
+                id: 4,
+                x: 60,
+                y: 60,
+                smooth: true,
+                editable: { left: true },
+              }),
+              makeSkeletonPoint({ id: 5, x: 70, y: 80, type: "cubic" }),
+              makeSkeletonPoint({ id: 6, x: 100, y: 100, type: "cubic" }),
+              makeSkeletonPoint({ id: 7, x: 120, y: 60 }),
+            ],
+          }),
+        ],
+      })
+    );
+    editSkeleton(layer, () => {});
+    return layer;
+  };
+
+  const positions = (layer) =>
+    Object.fromEntries(
+      ["onCurve", "in", "out"].map((role) => {
+        const address = findGeneratedPathAddress(
+          getSkeletonData(layer),
+          80,
+          4,
+          "left",
+          role
+        );
+        return [
+          role,
+          layer.path.getPoint(
+            layer.path.getAbsolutePointIndex(
+              address.pathContourIndex,
+              address.contourPointIndex
+            )
+          ),
+        ];
+      })
+    );
+
+  const drag = (layer, behaviorName, delta) => {
+    const selection = new Set(["editableGeneratedPoint/80/4/left"]);
+    const entries = createEditableGeneratedPointTargetEntries(
+      layer,
+      selection,
+      behaviorName,
+      { referenceSkeletonData: getSkeletonData(layer) }
+    );
+    expect(entries).to.have.length(1);
+    applyChange(layer, entries[0].makeChangeForDelta(delta));
+  };
+
+  it("Z-normal carries both adjacent generated handles with the on-curve", () => {
+    const layer = makeLayer();
+    const before = positions(layer);
+    drag(layer, "rib-tangent", { x: 7, y: 4 });
+    const after = positions(layer);
+    const movement = {
+      x: after.onCurve.x - before.onCurve.x,
+      y: after.onCurve.y - before.onCurve.y,
+    };
+    expect(movement).to.not.deep.equal({ x: 0, y: 0 });
+    for (const role of ["in", "out"]) {
+      expect(
+        {
+          x: after[role].x - before[role].x,
+          y: after[role].y - before[role].y,
+        },
+        `${role} handle`
+      ).to.deep.equal(movement);
+    }
+  });
+
+  it("Z-Alt moves the on-curve while leaving adjacent handles fixed", () => {
+    const layer = makeLayer();
+    const before = positions(layer);
+    drag(layer, "rib-tangent-interpolate", { x: 7, y: 4 });
+    const after = positions(layer);
+    expect(after.onCurve).to.not.deep.equal(before.onCurve);
+    expect(after.in).to.deep.equal(before.in);
+    expect(after.out).to.deep.equal(before.out);
+  });
+
+  it("keeps a prior Z-normal carry fixed during a later Z-Alt drag", () => {
+    const layer = makeLayer();
+    drag(layer, "rib-tangent", { x: 7, y: 4 });
+    const carried = positions(layer);
+    drag(layer, "rib-tangent-interpolate", { x: -5, y: 8 });
+    const afterAlt = positions(layer);
+    expect(afterAlt.onCurve).to.not.deep.equal(carried.onCurve);
+    expect(afterAlt.in).to.deep.equal(carried.in);
+    expect(afterAlt.out).to.deep.equal(carried.out);
   });
 });
 

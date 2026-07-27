@@ -751,13 +751,13 @@ describe("generated on-curve gizmo, through the generator", () => {
 
   it("leaves the handles where they were", () => {
     const { snapshot, after } = dragFirstSegment({ x: 20, y: 20 });
-    expect(dist(snapshot[1], after[1])).to.be.below(1);
-    expect(dist(snapshot[2], after[2])).to.be.below(1);
+    expect({ x: after[1].x, y: after[1].y }).to.deep.equal(snapshot[1]);
+    expect({ x: after[2].x, y: after[2].y }).to.deep.equal(snapshot[2]);
   });
 
   it("holds the handles still in the other direction too", () => {
     const { snapshot, after } = dragFirstSegment({ x: -20, y: -20 });
-    expect(dist(snapshot[1], after[1])).to.be.below(1);
-    expect(dist(snapshot[2], after[2])).to.be.below(1);
+    expect({ x: after[1].x, y: after[1].y }).to.deep.equal(snapshot[1]);
+    expect({ x: after[2].x, y: after[2].y }).to.deep.equal(snapshot[2]);
   });
 });

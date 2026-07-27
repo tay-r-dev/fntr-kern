@@ -110,6 +110,15 @@ describe("skeleton-generator provenance", () => {
     }
   });
 
+  it("leaves both generated handles fixed when a smooth rib point is nudged", () => {
+    const base = smoothJunctionPositions(0);
+    for (const nudge of [5, 10, 17]) {
+      const moved = smoothJunctionPositions(nudge);
+      expect(moved.in, `incoming handle at nudge ${nudge}`).to.deep.equal(base.in);
+      expect(moved.out, `outgoing handle at nudge ${nudge}`).to.deep.equal(base.out);
+    }
+  });
+
   it("publishes the on-curve nudge vector in provenance", () => {
     const base = nudgedRibGeometry(0);
     const moved = nudgedRibGeometry(17);
@@ -997,6 +1006,28 @@ function smoothJunctionSkeleton(halfWidth) {
     ],
     generated: [],
   };
+}
+
+function smoothJunctionPositions(nudge) {
+  const skeleton = smoothJunctionSkeleton(20);
+  const smoothPoint = skeleton.contours[0].points.find((point) => point.id === 5);
+  smoothPoint.nudge.left = nudge;
+  smoothPoint.editable.left = true;
+  const generated = generateFromSkeleton(skeleton);
+  const positions = {};
+  for (const [contourIndex, entry] of generated.provenance.entries()) {
+    for (const [pointIndex, provenance] of entry.pointMap.entries()) {
+      if (
+        provenance?.skeletonPointId === 5 &&
+        provenance.side === "left" &&
+        ["onCurve", "in", "out"].includes(provenance.role)
+      ) {
+        positions[provenance.role] =
+          generated.contours[contourIndex].points[pointIndex];
+      }
+    }
+  }
+  return positions;
 }
 
 // For each generated smooth on-curve point flanked by two off-curve handles:

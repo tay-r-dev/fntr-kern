@@ -981,6 +981,7 @@ export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = nul
   if (!type) {
     normalized.width = normalizeWidth(point?.width);
     normalized.nudge = normalizeNudge(point?.nudge);
+    normalized.handleNudge = normalizeNudge(point?.handleNudge);
     normalized.segmentCurvature = normalizeSegmentCurvature(point?.segmentCurvature);
     normalized.locked = normalizeLocked(point?.locked);
     normalized.handleOffsets = normalizeHandleOffsets(point?.handleOffsets);
@@ -1538,6 +1539,23 @@ export function setSkeletonPointSideNudge(
   point.nudge = normalizedNudge;
 }
 
+export function getSkeletonPointHandleNudge(point, side) {
+  assertSkeletonRibSide(side);
+  return normalizeNudge(point?.handleNudge)[side];
+}
+
+export function setSkeletonPointSideHandleNudge(
+  point,
+  side,
+  nudge,
+  { round = Math.round } = {}
+) {
+  assertSkeletonRibSide(side);
+  const normalizedNudge = normalizeNudge(point?.handleNudge);
+  normalizedNudge[side] = round(asFiniteNumber(nudge, 0));
+  point.handleNudge = normalizedNudge;
+}
+
 export function setSkeletonContourDefaultWidth(
   contour,
   defaultWidth,
@@ -1743,6 +1761,9 @@ export function resetSkeletonEditableRib(point, side) {
   const nudge = normalizeNudge(point?.nudge);
   nudge[side] = 0;
   point.nudge = nudge;
+  const handleNudge = normalizeNudge(point?.handleNudge);
+  handleNudge[side] = 0;
+  point.handleNudge = handleNudge;
   setSkeletonSegmentCurvature(point, side, null);
   resetSkeletonEditableRibHandles(point, side);
 }
@@ -1819,7 +1840,7 @@ export function transformSkeletonPointMetadata(point, affine) {
   if (!affineFlipsOrientation(affine) || point.type) {
     return;
   }
-  for (const field of ["width", "nudge", "locked", "segmentCurvature"]) {
+  for (const field of ["width", "nudge", "handleNudge", "locked", "segmentCurvature"]) {
     swapProperties(point[field], "left", "right");
   }
   swapProperties(point.handleOffsets, "leftIn", "rightIn");
@@ -2066,7 +2087,7 @@ export function getSkeletonRibAddress(skeletonData, contourId, pointId, side) {
 export function createSkeletonRibExecutor(
   address,
   behaviorName = "rib-default",
-  { interpolationAxis = null } = {}
+  { interpolationAxis = null, carryNudgeToHandles = false } = {}
 ) {
   const { contour, point, side, defaultWidth, normal } = address;
   const leftHalfWidth = getSkeletonPointHalfWidth(point, defaultWidth, "left");
@@ -2077,6 +2098,7 @@ export function createSkeletonRibExecutor(
     ? leftHalfWidth + rightHalfWidth
     : getSkeletonPointHalfWidth(point, defaultWidth, side);
   const originalNudge = getSkeletonPointNudge(point, side, defaultWidth);
+  const originalHandleNudge = getSkeletonPointHandleNudge(point, side);
   const tangent = { x: -normal.y, y: normal.x };
   const adjustable = !isSkeletonSideLocked(point, side);
   const forceTangent =
@@ -2086,12 +2108,6 @@ export function createSkeletonRibExecutor(
     (behaviorName === "rib-interpolate" || behaviorName === "rib-tangent-interpolate");
   const axis = interpolate
     ? interpolationAxis || { dir: tangent, hasHandle: {} }
-    : null;
-  const originalOffsets = interpolate
-    ? {
-        in: getSkeletonHandleOffset(point, side, "in"),
-        out: getSkeletonHandleOffset(point, side, "out"),
-      }
     : null;
   return {
     contourId: contour.id,
@@ -2103,21 +2119,11 @@ export function createSkeletonRibExecutor(
         const deltaAlongAxis = delta.x * axis.dir.x + delta.y * axis.dir.y;
         const axisDotTangent = axis.dir.x * tangent.x + axis.dir.y * tangent.y;
         const deltaNudge = axisDotTangent * deltaAlongAxis;
-        const handleOffsets = {};
-        for (const role of ["in", "out"]) {
-          if (!axis.hasHandle?.[role]) continue;
-          const original = originalOffsets[role];
-          handleOffsets[role] = {
-            x: round(original.x - tangent.x * deltaNudge),
-            y: round(original.y - tangent.y * deltaNudge),
-            detached: original.detached,
-          };
-        }
         return {
           halfWidth: originalHalfWidth,
           nudge: round(originalNudge + deltaNudge),
+          handleNudge: originalHandleNudge,
           side,
-          handleOffsets,
         };
       }
       const normalSign = side === "left" ? 1 : -1;
@@ -2129,7 +2135,11 @@ export function createSkeletonRibExecutor(
         : Math.max(0, round(originalHalfWidth + normalDelta));
       const nudge =
         adjustable && tangentOnly ? round(originalNudge + tangentDelta) : originalNudge;
-      return { halfWidth, nudge, side };
+      const handleNudge =
+        adjustable && tangentOnly && carryNudgeToHandles
+          ? round(originalHandleNudge + tangentDelta)
+          : originalHandleNudge;
+      return { halfWidth, nudge, handleNudge, side };
     },
   };
 }
@@ -2143,6 +2153,7 @@ export function applySkeletonRibExecutorResult(address, result) {
   }
   if (!isSkeletonSideLocked(point, side)) {
     setSkeletonPointSideNudge(point, side, result.nudge);
+    setSkeletonPointSideHandleNudge(point, side, result.handleNudge);
     for (const [role, offset] of Object.entries(result.handleOffsets || {})) {
       setSkeletonHandleOffset(point, side, role, offset, { round: (value) => value });
     }
@@ -2985,10 +2996,9 @@ export function generatedTunniHitTest(point, size, skeletonData, path, options =
 // be pointing. A control whose meaning rotated with its segment would need
 // re-learning at every joint.
 //
-// Only the extent changes. Handle lengths are left exactly as they were - the
-// nudge carries each handle along with the point it belongs to - so the curve
-// keeps the shape the fit gave it and the cubic stays well-formed. Those lengths
-// are invisible to the designer but the segment is not a segment without them.
+// Only the extent changes. This default gizmo writes the on-curve nudge and
+// leaves handleNudge untouched, giving it the same move-alone semantics as a
+// Z-Alt drag. Existing carried handle positions therefore remain fixed too.
 //
 // Both rib ends are addressed from provenance, and the drag is declined outright
 // rather than half-applied if either address is missing (R-D).

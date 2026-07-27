@@ -22,6 +22,7 @@ const skeleton = {
           smooth: false,
           width: { left: 20, right: 90, linked: false },
           nudge: { left: 8, right: -6 },
+          handleNudge: { left: 5, right: -3 },
           segmentCurvature: { left: 0.42, right: 0.68 },
           editable: { left: true, right: true },
           handleOffsets: {
@@ -39,6 +40,7 @@ const skeleton = {
           smooth: false,
           width: { left: 60, right: 15, linked: false },
           nudge: { left: -4, right: 5 },
+          handleNudge: { left: -2, right: 4 },
           editable: { left: true, right: true },
           handleOffsets: {
             leftIn: { x: 3, y: 6, detached: false },

@@ -45,6 +45,16 @@ for (const nudge of NUDGES) {
 }
 console.log("on-curve nudge sweep: handles byte-identical");
 
+const smoothReference = smoothJunctionHandles(0);
+for (const nudge of NUDGES) {
+  assert.deepEqual(
+    smoothJunctionHandles(nudge),
+    smoothReference,
+    `smooth handles moved at nudge ${nudge}`
+  );
+}
+console.log("smooth-junction nudge sweep: handles byte-identical");
+
 let worstPinError = 0;
 for (const width of [20, 35, 50, 70])
   for (const nudge of [-40, -20, 0, 20, 40])
@@ -108,6 +118,53 @@ function makeSkeleton({ width = 20, nudge = 0, pin = null, adjustment = 0 } = {}
     ],
     generated: [],
   };
+}
+
+function smoothJunctionHandles(nudge) {
+  const onCurve = (id, x, y, smooth) => ({
+    id,
+    x,
+    y,
+    type: null,
+    smooth,
+    width: { left: 20, right: 20, linked: true },
+    nudge: { left: id === 5 ? nudge : 0, right: 0 },
+    editable: { left: true, right: true },
+  });
+  const offCurve = (id, x, y) => ({ id, x, y, type: "cubic" });
+  const generated = generateFromSkeleton({
+    version: 1,
+    nextId: 9,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 40,
+        points: [
+          onCurve(2, 0, 0, false),
+          offCurve(3, 20, 40),
+          offCurve(4, 50, 40),
+          onCurve(5, 60, 60, true),
+          offCurve(6, 70, 80),
+          offCurve(7, 100, 100),
+          onCurve(8, 120, 60, false),
+        ],
+      },
+    ],
+  });
+  const handles = {};
+  for (const [contourIndex, provenance] of generated.provenance.entries()) {
+    for (const [pointIndex, entry] of provenance.pointMap.entries()) {
+      if (
+        entry?.skeletonPointId === 5 &&
+        entry.side === "left" &&
+        (entry.role === "in" || entry.role === "out")
+      ) {
+        handles[entry.role] = generated.contours[contourIndex].points[pointIndex];
+      }
+    }
+  }
+  return handles;
 }
 
 function segmentGeometry(skeleton) {
