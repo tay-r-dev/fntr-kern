@@ -401,10 +401,3 @@ Pinned regeneration uses the identical independently saturated shift while
 solving the stored harmonic mean. The drag and regeneration therefore reproduce
 the same asymmetric-to-saturated path without allowing either handle beyond its
 tangent intersection.
-
-### 9.2 Storage events do not echo
-
-Visualization settings are synchronized through local storage. An update
-received from a storage event updates the local observable but is not written
-back to storage. Echoing it can make two editor contexts race and alternate the
-gizmo mode indefinitely.

@@ -105,43 +105,6 @@ describe("ObservableObject Tests", () => {
     await asyncTimeout(0);
     expect(result).to.deep.equal({ a: 300, b: 2 });
   });
-
-  it("does not echo a storage-originated update back to localStorage", async () => {
-    const originalWindow = globalThis.window;
-    const originalLocalStorage = globalThis.localStorage;
-    const storageListeners: ((event: { key: string; newValue: string }) => void)[] =
-      [];
-    const stored = new Map([["test-enabled", "false"]]);
-    const writes: [string, string][] = [];
-    globalThis.window = {
-      addEventListener: (name: string, listener: (event: any) => void) => {
-        if (name === "storage") {
-          storageListeners.push(listener);
-        }
-      },
-    } as Window & typeof globalThis;
-    globalThis.localStorage = {
-      getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        writes.push([key, value]);
-        stored.set(key, value);
-      },
-    } as Storage;
-    try {
-      const controller = new ObservableController({ enabled: false });
-      controller.synchronizeWithLocalStorage("test-");
-      writes.length = 0;
-
-      storageListeners[0]({ key: "test-enabled", newValue: "true" });
-      await asyncTimeout(0);
-
-      expect(controller.model.enabled).to.equal(true);
-      expect(writes).to.deep.equal([]);
-    } finally {
-      globalThis.window = originalWindow;
-      globalThis.localStorage = originalLocalStorage;
-    }
-  });
 });
 
 function asyncTimeout(ms: number) {

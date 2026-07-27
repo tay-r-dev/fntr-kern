@@ -229,7 +229,6 @@ function synchronizeWithLocalStorage<T extends {}>(
   prefix = "",
   readItemsFromLocalStorage = false
 ) {
-  const storageUpdateSender = Symbol("local-storage-update");
   const mapKeyToObject: Record<string, string> = {};
   const mapKeyToStorage: Record<string, string> = {};
   const stringKeys: Record<string, boolean> = {};
@@ -285,11 +284,7 @@ function synchronizeWithLocalStorage<T extends {}>(
   }
 
   function setItemOnObject<K extends keyof T & string>(key: K, value: string) {
-    controller.setItem(
-      key,
-      (stringKeys[key] ? value : JSON.parse(value)) as T[K],
-      storageUpdateSender
-    );
+    controller.model[key] = stringKeys[key] ? value : JSON.parse(value);
   }
 
   function setItemOnStorage<K extends keyof T & string>(key: K, value: T[K]) {
@@ -302,7 +297,7 @@ function synchronizeWithLocalStorage<T extends {}>(
   }
 
   controller.addListener((event) => {
-    if (event.senderInfo !== storageUpdateSender && event.key in mapKeyToStorage) {
+    if (event.key in mapKeyToStorage) {
       // @ts-ignore
       //
       // TypeScript isn't smart enough to figure out that the above check
