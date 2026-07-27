@@ -42,10 +42,15 @@ export const DEFAULT_SKELETON_WIDTH = 80;
 // starts riding along with the rib end instead of holding still.
 const MIN_GENERATED_HANDLE_LENGTH = 1;
 
-// D1: tension above 1 puts a handle past the tangent intersection, where a cubic
-// starts to distend. The measured accuracy optimum never asks for more than
-// 1.04, so this is a ceiling on the control, not a compromise.
-const MAX_SEGMENT_TENSION = 1;
+// D1's ceiling of 1 is enforced where a person is choosing how far to drag, not
+// on the way into storage. A nudged rib end slides along its tangent while its
+// handle stays put, which shortens the reach, so an untouched segment can render
+// above 1 without anyone having asked for it — and clamping that on storage
+// would drag the curve back the moment the gizmo was grabbed.
+//
+// This is a data-sanity guard on a stored number, deliberately far above
+// anything the drag can produce. It is not the design ceiling.
+const MAX_STORED_SEGMENT_TENSION = 4;
 
 const VALID_POINT_TYPES = new Set([null, "cubic"]);
 const VALID_SINGLE_SIDED = new Set([null, "left", "right"]);
@@ -1552,8 +1557,9 @@ export function getSkeletonSegmentCurvature(point, side) {
 }
 
 //
-// Pin, or clear with null. Clamped to the tension ceiling on the way in (D1) so
-// an out-of-range number can never be stored in the first place.
+// Pin, or clear with null. Only a sanity guard is applied on the way in — the
+// design ceiling belongs to the drag, which is where someone is choosing how far
+// to go, and where it can be applied without ever pulling the curve backwards.
 //
 // Nothing in generation calls this. A pin is only ever written by a deliberate
 // drag, which is what lets an unreachable pin clamp its OUTPUT and still come
@@ -1563,7 +1569,7 @@ export function setSkeletonSegmentCurvature(point, side, tension) {
   assertSkeletonRibSide(side);
   const curvature = normalizeSegmentCurvature(point?.segmentCurvature);
   curvature[side] = Number.isFinite(tension)
-    ? Math.min(Math.max(tension, 0), MAX_SEGMENT_TENSION)
+    ? Math.min(Math.max(tension, 0), MAX_STORED_SEGMENT_TENSION)
     : null;
   point.segmentCurvature = curvature;
 }
@@ -2653,7 +2659,9 @@ function normalizeWidth(width) {
 // would address the two sides of the same skeleton segment inconsistently.
 function normalizeSegmentCurvature(curvature) {
   const clamp = (value) =>
-    Number.isFinite(value) ? Math.min(Math.max(value, 0), MAX_SEGMENT_TENSION) : null;
+    Number.isFinite(value)
+      ? Math.min(Math.max(value, 0), MAX_STORED_SEGMENT_TENSION)
+      : null;
   return {
     left: clamp(curvature?.left),
     right: clamp(curvature?.right),
@@ -2782,11 +2790,15 @@ export function calculateGeneratedCurvatureEdits({
   if (!start || start.role !== "onCurve" || start.skeletonPointId === undefined) {
     return null;
   }
+  // Not clamped to maxTension here. The drag above already stopped at the
+  // ceiling, and a segment whose rendered tension was already past it — a
+  // nudged rib end shortens the reach without moving its handle — must be
+  // recorded as it stands rather than pulled back.
   return {
     segmentPointIndex,
     skeletonPointId: start.skeletonPointId,
     side: start.side,
-    tension: Math.min(tension, maxTension),
+    tension,
   };
 }
 

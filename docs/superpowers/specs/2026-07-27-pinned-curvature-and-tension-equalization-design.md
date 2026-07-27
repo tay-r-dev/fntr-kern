@@ -81,6 +81,11 @@ on emission order would address the two sides inconsistently.
 Unchanged from D1. A drag cannot produce a pin above 1, so a clamp on
 regeneration only ever means the skeleton moved under a legitimately-set value.
 
+**Amended by §8.2.** The second clause is false: a nudged rib end shortens the
+reach without moving its handle, so a segment can render above 1 untouched, and a
+drag on it records that. The ceiling limits where a drag may go; it never pulls a
+curve back to satisfy itself, and storage does not clamp to it.
+
 ### D18 — Equalize the split, holding the mean, under a fixed error allowance
 
 Walk the two handle tensions toward each other with their harmonic mean held
@@ -297,13 +302,14 @@ that was neither 1 nor stable — it moved whenever the geometry moved.
 It is also not what the drag does. The drag adds one shared increment to both
 ends; reproduction must do the same or the number cannot round-trip.
 
-**Corrected:** one shared increment, solved by fixed-count bisection, with each
-end capped at the ceiling **individually**. Mean 1 then means both ends at 1,
-which is what tension 1 means, and it is always reachable. The asymmetry survives
-everywhere except the very top, where it must close by definition.
+**Corrected:** one shared increment, solved by fixed-count bisection.
 
-The same correction applies to the drag itself: capping the pair together stopped
-it at the leading handle.
+**Superseded in part — see §8.1.** The first attempt at this also capped each end
+at the ceiling _individually_, so that the harmonic mean could reach 1. That
+reaches 1 but breaks the feel of the control: once the leading handle stops, the
+trailing one travels on alone. The cap stops both ends together, as it always
+did; "reaching 1" means the leading handle reaching the tangent intersection,
+which is the visible limit, not the mean reading 1.0.
 
 ### 7.2 D15 amended — the pin is measured and applied in rendered space
 
