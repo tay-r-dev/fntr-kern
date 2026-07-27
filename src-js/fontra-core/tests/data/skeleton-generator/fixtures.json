@@ -1807,6 +1807,173 @@
     ]
   },
   {
+    "name": "nudged-cubic-endpoints",
+    "canonical": {
+      "version": 1,
+      "nextId": 6,
+      "contours": [
+        {
+          "id": 1,
+          "closed": false,
+          "defaultWidth": 40,
+          "singleSided": null,
+          "points": [
+            {
+              "id": 2,
+              "x": 0,
+              "y": 0,
+              "type": null,
+              "smooth": false,
+              "width": {
+                "left": 20,
+                "right": 20
+              },
+              "nudge": {
+                "left": 17,
+                "right": -9
+              },
+              "editable": {
+                "left": true,
+                "right": true
+              },
+              "handleOffsets": {}
+            },
+            {
+              "id": 3,
+              "x": 40,
+              "y": 60,
+              "type": "cubic",
+              "smooth": false
+            },
+            {
+              "id": 4,
+              "x": 120,
+              "y": 60,
+              "type": "cubic",
+              "smooth": false
+            },
+            {
+              "id": 5,
+              "x": 160,
+              "y": 0,
+              "type": null,
+              "smooth": false,
+              "width": {
+                "left": 20,
+                "right": 20
+              },
+              "nudge": {
+                "left": -11,
+                "right": 6
+              },
+              "editable": {
+                "left": true,
+                "right": true
+              },
+              "handleOffsets": {}
+            }
+          ]
+        }
+      ],
+      "generated": []
+    },
+    "donorInput": {
+      "contours": [
+        {
+          "isClosed": false,
+          "defaultWidth": 40,
+          "singleSided": false,
+          "singleSidedDirection": "left",
+          "capStyle": "butt",
+          "reversed": false,
+          "points": [
+            {
+              "x": 0,
+              "y": 0,
+              "smooth": false,
+              "leftWidth": 20,
+              "rightWidth": 20,
+              "leftNudge": 17,
+              "rightNudge": -9,
+              "leftEditable": true,
+              "rightEditable": true
+            },
+            {
+              "x": 40,
+              "y": 60,
+              "smooth": false,
+              "type": "cubic"
+            },
+            {
+              "x": 120,
+              "y": 60,
+              "smooth": false,
+              "type": "cubic"
+            },
+            {
+              "x": 160,
+              "y": 0,
+              "smooth": false,
+              "leftWidth": 20,
+              "rightWidth": 20,
+              "leftNudge": -11,
+              "rightNudge": 6,
+              "leftEditable": true,
+              "rightEditable": true
+            }
+          ]
+        }
+      ]
+    },
+    "expectedContours": [
+      {
+        "points": [
+          {
+            "x": 26,
+            "y": 3,
+            "smooth": false
+          },
+          {
+            "x": 59,
+            "y": 51,
+            "type": "cubic"
+          },
+          {
+            "x": 105,
+            "y": 46,
+            "type": "cubic"
+          },
+          {
+            "x": 137,
+            "y": -2,
+            "smooth": false
+          },
+          {
+            "x": 180,
+            "y": 6,
+            "smooth": false
+          },
+          {
+            "x": 133,
+            "y": 78,
+            "type": "cubic"
+          },
+          {
+            "x": 26,
+            "y": 75,
+            "type": "cubic"
+          },
+          {
+            "x": -22,
+            "y": 4,
+            "smooth": false
+          }
+        ],
+        "isClosed": true
+      }
+    ]
+  },
+  {
     "name": "detached-handle-offsets",
     "canonical": {
       "version": 1,

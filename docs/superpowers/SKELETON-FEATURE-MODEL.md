@@ -134,14 +134,29 @@ pure and independent (contour *i*'s output depends only on contour *i*):
 1. **Segmentation** — `buildSegmentsFromPoints` splits the point list into
    on-curve→on-curve segments carrying their off-curve controls.
 2. **Per-segment offsetting** — each side's outline is offset by its half-width.
-   Line segments project endpoints along the rib normal (`applyNudgeToRibPoint`
-   applies nudges). Cubic segments keep skeleton handle directions and construct
-   handle lengths with `λ = 1 + d·κ` in `offset-cubic.js`, followed by one fixed
-   least-squares correction pass; endpoints remain the exact rib positions; user
-   handle offsets apply via
+   Line segments project endpoints along the rib normal. Cubic segments keep
+   skeleton handle directions and construct handle lengths with `λ = 1 + d·κ` in
+   `offset-cubic.js`, followed by one fixed least-squares correction pass;
+   endpoints remain the exact rib positions; user handle offsets apply via
    `applyHandleOffsetToControlPoint`. A side under ~0.5 units ("collapsed") skips
    all of this and copies the skeleton verbatim — this is what makes single-sided
    contours exact.
+
+   **A nudge is a translation of finished geometry, never an input to it**
+   (`ribNudgeDisplacement` → `translateRibPoint`). It slides a generated on-curve
+   point along the tangent *together with the handles either side of it*, the way
+   any on-curve point carries its handles, and leaves the segment's shape alone.
+   Feeding the nudged position to the offset construction as its endpoint instead
+   — which is what the code did until this was fixed — makes the least-squares
+   pass fit against the un-nudged offset curve and shorten the handle to pull the
+   curve back, so the handle travels the *opposite* way from its own point, unit
+   for unit, and the segment's handle length collapses (57.7 → 24.4 units at a
+   nudge of 17). Locked in by "carries a nudged rib point's generated handles
+   along with it" and the `nudged-cubic-endpoints` fixture. The alt-drag
+   interpolating behavior, which compensates handle offsets so the handles hold
+   still while the point slides, only reads correctly on top of this: before, it
+   compensated against the broken base and overshot to twice the distance, the
+   wrong way.
 3. **Corner rounding** — `roundSharpCornersOnSide` replaces non-smooth generated
    corners with an arc (two on-curves + handles). Corner metadata rides on the
    generated on-curve points (`buildGeneratedOnCurve`) and is stripped before

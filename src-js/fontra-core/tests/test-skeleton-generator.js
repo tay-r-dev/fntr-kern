@@ -99,6 +99,51 @@ describe("skeleton-generator provenance", () => {
     }
   });
 
+  it("carries a nudged rib point's generated handles along with it", () => {
+    // Nudge slides a generated on-curve point along the outline tangent. Its
+    // handles have to travel with it, the way any on-curve point carries its
+    // handles — the local shape is what the designer positioned, and the nudge
+    // is a translation of it.
+    //
+    // The bug this guards: the nudged position was handed to the offset
+    // construction as the curve endpoint, while the least-squares pass still fit
+    // against the un-nudged offset curve, so it shortened the handle to pull the
+    // curve back. The handle then moved the OPPOSITE way from the point it
+    // belongs to, unit for unit.
+    const base = nudgedRibGeometry(0);
+    for (const nudge of [5, 10, 17]) {
+      const moved = nudgedRibGeometry(nudge);
+      const anchorDelta = {
+        x: moved.onCurve.x - base.onCurve.x,
+        y: moved.onCurve.y - base.onCurve.y,
+      };
+      const handleDelta = {
+        x: moved.handle.x - base.handle.x,
+        y: moved.handle.y - base.handle.y,
+      };
+      // Same translation, to within the grid.
+      expect(handleDelta.x, `nudge ${nudge} handle x`).to.be.closeTo(anchorDelta.x, 1);
+      expect(handleDelta.y, `nudge ${nudge} handle y`).to.be.closeTo(anchorDelta.y, 1);
+    }
+  });
+
+  it("leaves the curve shape alone when a rib point is nudged", () => {
+    // The translation must not also restyle the segment: the handle keeps its
+    // length and direction relative to its own on-curve point.
+    const base = nudgedRibGeometry(0);
+    const moved = nudgedRibGeometry(17);
+    const armOf = (geometry) => ({
+      x: geometry.handle.x - geometry.onCurve.x,
+      y: geometry.handle.y - geometry.onCurve.y,
+    });
+    const before = armOf(base);
+    const after = armOf(moved);
+    expect(Math.hypot(after.x, after.y), "handle length").to.be.closeTo(
+      Math.hypot(before.x, before.y),
+      1.5
+    );
+  });
+
   it("keeps handles fixed when width changes across a mutually-controlled straight", () => {
     // A smooth point with only one handle takes its direction from the straight
     // segment on its other side, so two such points joined by a straight define
@@ -709,6 +754,65 @@ describe("skeleton-generator near-zero handle stabilization", () => {
     }
   });
 });
+
+// A single cubic segment whose first on-curve point (id 2) carries a left-side
+// nudge. Returns that point's generated left rib point and the generated handle
+// leaving it.
+function nudgedRibGeometry(nudge) {
+  const skeleton = {
+    version: 1,
+    nextId: 6,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 40,
+        singleSided: null,
+        points: [
+          {
+            id: 2,
+            x: 0,
+            y: 0,
+            type: null,
+            smooth: false,
+            width: { left: 20, right: 20, linked: true },
+            nudge: { left: nudge, right: 0 },
+            editable: { left: true, right: true },
+            handleOffsets: {},
+          },
+          { id: 3, x: 40, y: 60, type: "cubic", smooth: false },
+          { id: 4, x: 120, y: 60, type: "cubic", smooth: false },
+          {
+            id: 5,
+            x: 160,
+            y: 0,
+            type: null,
+            smooth: false,
+            width: { left: 20, right: 20, linked: true },
+            nudge: { left: 0, right: 0 },
+            editable: { left: true, right: true },
+            handleOffsets: {},
+          },
+        ],
+      },
+    ],
+    generated: [],
+  };
+  const result = generateFromSkeleton(skeleton);
+  const points = result.contours[0].points;
+  const pointMap = result.provenance[0].pointMap;
+  const find = (role) => {
+    const index = pointMap.findIndex(
+      (entry) =>
+        entry &&
+        entry.skeletonPointId === 2 &&
+        entry.side === "left" &&
+        entry.role === role
+    );
+    return index < 0 ? null : points[index];
+  };
+  return { onCurve: find("onCurve"), handle: find("out") };
+}
 
 // Angled on-curve, handle, handle, smooth on-curve, straight, on-curve, handle,
 // handle, angled on-curve. Point 5 is a smooth point carrying only one handle,

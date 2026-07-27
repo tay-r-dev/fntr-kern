@@ -245,6 +245,40 @@ const fixtures = [
     },
   },
   {
+    // Nudges on the endpoints of a CUBIC segment, which asymmetric-editable-nudge
+    // (a line) cannot cover: the nudge has to translate each generated on-curve
+    // point together with its handle, rather than being fed to the offset
+    // construction as an endpoint constraint.
+    name: "nudged-cubic-endpoints",
+    canonical: {
+      version: 1,
+      nextId: 6,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 40,
+          singleSided: null,
+          points: [
+            point(2, 0, 0, {
+              width: { left: 20, right: 20 },
+              editable: { left: true, right: true },
+              nudge: { left: 17, right: -9 },
+            }),
+            offCurve(3, 40, 60),
+            offCurve(4, 120, 60),
+            point(5, 160, 0, {
+              width: { left: 20, right: 20 },
+              editable: { left: true, right: true },
+              nudge: { left: -11, right: 6 },
+            }),
+          ],
+        },
+      ],
+      generated: [],
+    },
+  },
+  {
     name: "detached-handle-offsets",
     canonical: {
       version: 1,

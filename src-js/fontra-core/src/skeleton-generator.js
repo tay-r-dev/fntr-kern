@@ -400,8 +400,61 @@ function stripCornerRoundMetadata(points) {
 }
 
 /**
- * Apply nudge offset to a rib point position.
- * Nudge moves the point along the tangent direction (perpendicular to normal).
+ * The displacement a nudge applies at a rib point: along the tangent
+ * (perpendicular to the normal), or zero when the nudge does not apply.
+ *
+ * This is a translation of the finished geometry, never an input to it. A nudge
+ * moves a generated on-curve point *and the handles either side of it* as one
+ * rigid piece, the way any on-curve point carries its handles. Feeding the
+ * nudged position into the offset construction instead makes the least-squares
+ * pass fit against the un-nudged offset curve and shorten the handle to
+ * compensate, so the handle travels opposite to the point it belongs to.
+ * @param {Object} skeletonPoint - The skeleton point (may have nudge values)
+ * @param {Object} normal - The normal vector at this point
+ * @param {string} side - "left" or "right"
+ * @param {number} halfWidth - The half-width for this side (no nudge if near 0)
+ * @returns {Object} Displacement {x, y}
+ */
+function ribNudgeDisplacement(skeletonPoint, normal, side, halfWidth) {
+  const none = { x: 0, y: 0 };
+  // Don't apply nudge if width is near 0 (single-sided mode - this side matches skeleton)
+  if (halfWidth !== undefined && halfWidth < 0.5) {
+    return none;
+  }
+
+  // A locked side keeps its stored nudge but does not apply it.
+  const lockedKey = side === "left" ? "leftLocked" : "rightLocked";
+  if (skeletonPoint?.[lockedKey]) {
+    return none;
+  }
+
+  const nudgeKey = side === "left" ? "leftNudge" : "rightNudge";
+  const nudge = skeletonPoint[nudgeKey];
+
+  if (nudge === undefined || nudge === 0) {
+    return none;
+  }
+
+  // Tangent is perpendicular to normal (rotate 90 CCW)
+  const tangent = { x: -normal.y, y: normal.x };
+  return { x: tangent.x * nudge, y: tangent.y * nudge };
+}
+
+function translateRibPoint(point, displacement) {
+  if (!displacement.x && !displacement.y) {
+    return point;
+  }
+  return {
+    ...point,
+    x: Math.round(point.x + displacement.x),
+    y: Math.round(point.y + displacement.y),
+  };
+}
+
+/**
+ * Apply nudge offset to a rib point position. Line segments emit no handles, so
+ * the point moves on its own; cubic segments translate the point together with
+ * its handle (see ribNudgeDisplacement).
  * @param {Object} ribPoint - The rib point {x, y} to modify
  * @param {Object} skeletonPoint - The skeleton point (may have nudge values)
  * @param {Object} normal - The normal vector at this point
@@ -410,31 +463,10 @@ function stripCornerRoundMetadata(points) {
  * @returns {Object} Modified rib point {x, y}
  */
 function applyNudgeToRibPoint(ribPoint, skeletonPoint, normal, side, halfWidth) {
-  // Don't apply nudge if width is near 0 (single-sided mode - this side matches skeleton)
-  if (halfWidth !== undefined && halfWidth < 0.5) {
-    return ribPoint;
-  }
-
-  // A locked side keeps its stored nudge but does not apply it.
-  const lockedKey = side === "left" ? "leftLocked" : "rightLocked";
-  if (skeletonPoint?.[lockedKey]) {
-    return ribPoint;
-  }
-
-  const nudgeKey = side === "left" ? "leftNudge" : "rightNudge";
-  const nudge = skeletonPoint[nudgeKey];
-
-  if (nudge === undefined || nudge === 0) {
-    return ribPoint;
-  }
-
-  // Tangent is perpendicular to normal (rotate 90 CCW)
-  const tangent = { x: -normal.y, y: normal.x };
-
-  return {
-    x: Math.round(ribPoint.x + tangent.x * nudge),
-    y: Math.round(ribPoint.y + tangent.y * nudge),
-  };
+  return translateRibPoint(
+    ribPoint,
+    ribNudgeDisplacement(skeletonPoint, normal, side, halfWidth)
+  );
 }
 
 /**
@@ -2210,43 +2242,45 @@ function generateOffsetPointsForSegment(
     const avgLeftHW = (startLeftHW + endLeftHW) / 2;
     const avgRightHW = (startRightHW + endRightHW) / 2;
 
-    // Fixed endpoint positions (using corner-aware normals and per-point widths), rounded to UPM grid
-    // Apply nudge offset if points are editable
-    let fixedStartLeft = projectPoint(segment.startPoint, startNormal, startLeftHW, 1);
-    fixedStartLeft = applyNudgeToRibPoint(
-      fixedStartLeft,
+    // Fixed endpoint positions (using corner-aware normals and per-point widths),
+    // rounded to UPM grid. These stay UN-nudged: the offset construction below
+    // is fit against the un-nudged offset curve, so handing it a nudged endpoint
+    // makes it shorten the handle to pull the curve back. The nudge is applied
+    // afterwards, translating each on-curve point and its handle together.
+    const fixedStartLeft = projectPoint(
       segment.startPoint,
       startNormal,
-      "left",
-      startLeftHW
+      startLeftHW,
+      1
     );
-
-    let fixedStartRight = projectPoint(
+    const fixedStartRight = projectPoint(
       segment.startPoint,
       startNormal,
       startRightHW,
       -1
     );
-    fixedStartRight = applyNudgeToRibPoint(
-      fixedStartRight,
+    const fixedEndLeft = projectPoint(segment.endPoint, endNormal, endLeftHW, 1);
+    const fixedEndRight = projectPoint(segment.endPoint, endNormal, endRightHW, -1);
+
+    const nudgeStartLeft = ribNudgeDisplacement(
+      segment.startPoint,
+      startNormal,
+      "left",
+      startLeftHW
+    );
+    const nudgeStartRight = ribNudgeDisplacement(
       segment.startPoint,
       startNormal,
       "right",
       startRightHW
     );
-
-    let fixedEndLeft = projectPoint(segment.endPoint, endNormal, endLeftHW, 1);
-    fixedEndLeft = applyNudgeToRibPoint(
-      fixedEndLeft,
+    const nudgeEndLeft = ribNudgeDisplacement(
       segment.endPoint,
       endNormal,
       "left",
       endLeftHW
     );
-
-    let fixedEndRight = projectPoint(segment.endPoint, endNormal, endRightHW, -1);
-    fixedEndRight = applyNudgeToRibPoint(
-      fixedEndRight,
+    const nudgeEndRight = ribNudgeDisplacement(
       segment.endPoint,
       endNormal,
       "right",
@@ -2266,7 +2300,9 @@ function generateOffsetPointsForSegment(
       startHalfWidth,
       endHalfWidth,
       startRoundBase,
-      endRoundBase
+      endRoundBase,
+      startNudge,
+      endNudge
     ) => {
       const side = isLeftSide ? "left" : "right";
       // When halfWidth is near zero, contour should exactly match skeleton
@@ -2329,7 +2365,7 @@ function generateOffsetPointsForSegment(
       if (shouldAddStart)
         output.push(
           buildGeneratedOnCurve(
-            fixedStart,
+            translateRibPoint(fixedStart, startNudge),
             smoothStart,
             segment.startPoint,
             startHalfWidth,
@@ -2369,6 +2405,10 @@ function generateOffsetPointsForSegment(
         startDir
       );
       adjustedHandle2 = projectHandleOntoDirection(fixedEnd, adjustedHandle2, endDir);
+      // Each handle rides with the on-curve point it belongs to, so a nudge
+      // translates the pair and leaves the segment's shape untouched.
+      adjustedHandle1 = translateRibPoint(adjustedHandle1, startNudge);
+      adjustedHandle2 = translateRibPoint(adjustedHandle2, endNudge);
       for (const [point, owner, role, axis] of [
         [adjustedHandle1, segment.startPoint, "out", startDir],
         [adjustedHandle2, segment.endPoint, "in", endDir],
@@ -2390,7 +2430,7 @@ function generateOffsetPointsForSegment(
       if (shouldAddEnd)
         output.push(
           buildGeneratedOnCurve(
-            fixedEnd,
+            translateRibPoint(fixedEnd, endNudge),
             smoothEnd,
             segment.endPoint,
             endHalfWidth,
@@ -2418,7 +2458,9 @@ function generateOffsetPointsForSegment(
       startLeftHW,
       endLeftHW,
       startLeftRoundBase,
-      endLeftRoundBase
+      endLeftRoundBase,
+      nudgeStartLeft,
+      nudgeEndLeft
     );
 
     addOffsetCurves(
@@ -2434,7 +2476,9 @@ function generateOffsetPointsForSegment(
       startRightHW,
       endRightHW,
       startRightRoundBase,
-      endRightRoundBase
+      endRightRoundBase,
+      nudgeStartRight,
+      nudgeEndRight
     );
   }
 
