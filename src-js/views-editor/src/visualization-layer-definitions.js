@@ -1271,12 +1271,34 @@ registerVisualizationLayerDefinition({
     const glyph = positionedGlyph.glyph;
     context.strokeStyle = parameters.color;
     context.lineWidth = parameters.strokeWidth;
-    for (const [pt1, pt2] of glyph.path.iterHandles()) {
+    for (const [pt1, pt2] of glyph.path.iterHandles(
+      getGizmoHiddenContourIndices(positionedGlyph, model)
+    )) {
       strokeLine(context, pt1.x, pt1.y, pt2.x, pt2.y);
     }
   },
 });
 
+// While the generated contours are edited through their gizmos, the handle
+// LINES on them are not the control surface — drawing them invites a drag that
+// gizmo mode does not accept, and they clutter the very curve being judged.
+// Points are untouched, on-curve and off-curve alike: they say where the outline
+// is, which is worth seeing whichever way it is being edited. Only the lines go.
+// Null when gizmo mode is off, so direct handle editing looks exactly as before.
+function getGizmoHiddenContourIndices(positionedGlyph, model) {
+  if (
+    model?.visualizationLayersSettings?.model["fontra.skeleton.generated-tunni"] !==
+    true
+  ) {
+    return null;
+  }
+  const indices = getGeneratedContourIndicesForTunni(positionedGlyph, model);
+  return indices?.size ? indices : null;
+}
+
+// Is this the node at the end of a handle we just suppressed? On-curve points
+// stay drawn: they are where the outline actually is, not a control being
+// withdrawn.
 registerVisualizationLayerDefinition({
   identifier: "fontra.nodes",
   name: "Nodes",

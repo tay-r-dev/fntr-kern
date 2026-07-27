@@ -429,21 +429,26 @@ export async function handleGeneratedTunniDrag({
         if (!resolved) {
           return null;
         }
+        // A segment's four provenance entries are two handles and two rib ends.
+        // Only handles have a stored offset — asking for one under an "onCurve"
+        // role is an error, not an empty result — and only rib ends have a
+        // nudge. Read each where it exists.
+        const isHandle = provenance.role === "in" || provenance.role === "out";
         return {
           contourIndex: resolved.contourIndex,
           pointIndex: resolved.pointIndex,
           side: provenance.side,
           role: provenance.role,
-          offset: getSkeletonHandleOffset(
-            resolved.point,
-            provenance.side,
-            provenance.role
-          ),
-          nudge: getSkeletonPointNudge(
-            resolved.point,
-            provenance.side,
-            resolved.contour.defaultWidth
-          ),
+          offset: isHandle
+            ? getSkeletonHandleOffset(resolved.point, provenance.side, provenance.role)
+            : null,
+          nudge: isHandle
+            ? 0
+            : getSkeletonPointNudge(
+                resolved.point,
+                provenance.side,
+                resolved.contour.defaultWidth
+              ),
         };
       });
     }
@@ -486,7 +491,7 @@ export async function handleGeneratedTunniDrag({
             if (!original || !point || isSkeletonSideLocked(point, original.side)) {
               continue;
             }
-            if (write.offsetDelta) {
+            if (write.offsetDelta && original.offset) {
               setSkeletonHandleOffset(
                 point,
                 original.side,

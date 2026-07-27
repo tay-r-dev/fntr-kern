@@ -1553,3 +1553,63 @@ describe("VarPackedPath Tests", () => {
     expect(path.pointAttributes).to.deep.equal(null);
   });
 });
+
+describe("VarPackedPath iterHandles contour filtering", () => {
+  function twoCurvedContours() {
+    return VarPackedPath.fromUnpackedContours([
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 30, type: POINT_TYPE_OFF_CURVE_CUBIC },
+          { x: 50, y: 30, type: POINT_TYPE_OFF_CURVE_CUBIC },
+          { x: 60, y: 0 },
+        ],
+        isClosed: false,
+      },
+      {
+        points: [
+          { x: 100, y: 0 },
+          { x: 110, y: 30, type: POINT_TYPE_OFF_CURVE_CUBIC },
+          { x: 150, y: 30, type: POINT_TYPE_OFF_CURVE_CUBIC },
+          { x: 160, y: 0 },
+        ],
+        isClosed: false,
+      },
+    ]);
+  }
+
+  it("yields every handle when nothing is skipped", () => {
+    const path = twoCurvedContours();
+    expect([...path.iterHandles()]).to.have.length(4);
+    expect([...path.iterHandles(null)]).to.have.length(4);
+    expect([...path.iterHandles(new Set())]).to.have.length(4);
+  });
+
+  it("drops only the skipped contour's handles", () => {
+    const path = twoCurvedContours();
+    const handles = [...path.iterHandles(new Set([0]))];
+    expect(handles).to.have.length(2);
+    // Everything left belongs to the second contour, which starts at x = 100.
+    for (const [pt1, pt2] of handles) {
+      expect(pt1.x).to.be.at.least(100);
+      expect(pt2.x).to.be.at.least(100);
+    }
+  });
+
+  it("keeps the contour walk aligned after a skip", () => {
+    // The skipped contour still has to advance the running point index, or the
+    // next contour's handles come back with coordinates from the wrong points.
+    const path = twoCurvedContours();
+    expect([...path.iterHandles(new Set([0]))]).to.deep.equal(
+      [...path.iterHandles()].slice(2)
+    );
+    expect([...path.iterHandles(new Set([1]))]).to.deep.equal(
+      [...path.iterHandles()].slice(0, 2)
+    );
+  });
+
+  it("yields nothing when every contour is skipped", () => {
+    const path = twoCurvedContours();
+    expect([...path.iterHandles(new Set([0, 1]))]).to.have.length(0);
+  });
+});
