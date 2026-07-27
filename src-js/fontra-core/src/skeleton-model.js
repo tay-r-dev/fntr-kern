@@ -35,6 +35,12 @@ import {
 export const SKELETON_SCHEMA_VERSION = 1;
 export const DEFAULT_SKELETON_WIDTH = 80;
 
+// Mirrors MIN_HANDLE_LENGTH in offset-cubic.js: the shortest handle the
+// generator will emit. The on-curve gizmo stops before driving a handle past it,
+// because beyond that point the generator floors the length and the handle
+// starts riding along with the rib end instead of holding still.
+const MIN_GENERATED_HANDLE_LENGTH = 1;
+
 const VALID_POINT_TYPES = new Set([null, "cubic"]);
 const VALID_SINGLE_SIDED = new Set([null, "left", "right"]);
 const VALID_CAP_STYLES = new Set(["butt", "round", "square", "drop"]);
@@ -2676,14 +2682,19 @@ export function calculateGeneratedCurvatureEdits({
   maxTension = 1,
 }) {
   const addresses = [provenance?.[1], provenance?.[2]];
-  const roles = ["out", "in"];
+  // Both middles must be handles — but in EITHER order. The right-side
+  // generated contour is emitted backwards, so its segments carry "in" first
+  // and "out" second. Demanding out-then-in silently refused every segment on
+  // that side, which is half the outline. Each write is addressed with its own
+  // role below, so the order does not otherwise matter.
   if (
     addresses.some(
-      (address, index) =>
+      (address) =>
         !address ||
-        address.role !== roles[index] ||
+        (address.role !== "in" && address.role !== "out") ||
         address.skeletonPointId === undefined
-    )
+    ) ||
+    addresses[0].role === addresses[1].role
   ) {
     return null;
   }
@@ -2837,7 +2848,18 @@ export function calculateGeneratedOnCurveEdits({ segmentPoints, provenance, delt
 
   // Up and right both spread, so they add rather than cancel: this is the
   // projection onto the 45-degree axis the basic Tunni control already uses.
-  const spread = (delta.x + delta.y) / Math.SQRT2;
+  let spread = (delta.x + delta.y) / Math.SQRT2;
+
+  // Closing the two ends together slides each rib end toward its own handle,
+  // which the handle cannot outrun: past the point where it would invert, the
+  // generator floors the length and the handle starts drifting with the point
+  // instead of holding still. Stop at that limit here, so the control simply
+  // stops rather than quietly changing what it does.
+  const reach = Math.min(
+    distance(segmentPoints[0], segmentPoints[1]),
+    distance(segmentPoints[3], segmentPoints[2])
+  );
+  spread = Math.max(spread, -Math.max(reach - MIN_GENERATED_HANDLE_LENGTH, 0));
 
   // A nudge slides along the SKELETON's tangent, which runs against the
   // generated contour on one of the two sides - the right-side contour is
@@ -2845,10 +2867,35 @@ export function calculateGeneratedOnCurveEdits({ segmentPoints, provenance, delt
   // "out". Reading the orientation off that role keeps the gizmo spreading
   // outward on both sides instead of collapsing one while opening the other.
   const orientation = provenance[1]?.role === "out" ? 1 : -1;
-  return addresses.map((address, index) => ({
-    skeletonPointId: address.skeletonPointId,
-    side: address.side,
-    role: address.role,
-    nudgeDelta: (index === 0 ? -spread : spread) * orientation,
-  }));
+
+  // The skeleton tangent at each rib end, in the direction a positive nudge
+  // slides it. At the start the handle points into the segment, at the end it
+  // points back into it, hence the sign flip.
+  const tangents = [
+    mulVectorScalar(
+      normalizeVector(subVectors(segmentPoints[1], segmentPoints[0])),
+      orientation
+    ),
+    mulVectorScalar(
+      normalizeVector(subVectors(segmentPoints[2], segmentPoints[3])),
+      -orientation
+    ),
+  ];
+
+  return addresses.map((address, index) => {
+    const nudgeDelta = (index === 0 ? -spread : spread) * orientation;
+    return {
+      skeletonPointId: address.skeletonPointId,
+      side: address.side,
+      role: address.role,
+      nudgeDelta,
+      // A nudge translates the rib end AND the handles either side of it, so on
+      // its own it slides the whole curve bodily. This control is meant to move
+      // the point ALONG the outline and leave the outline alone, so each handle
+      // gets an equal and opposite offset and stays exactly where it was. The
+      // compensation is added to whatever offset the handle already carries, so
+      // curvature edits made earlier survive untouched.
+      handleCompensation: mulVectorScalar(tangents[index], -nudgeDelta),
+    };
+  });
 }

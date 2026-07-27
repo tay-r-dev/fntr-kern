@@ -12,11 +12,15 @@ import {
   generatedTunniHitTest,
   getGeneratedPathContourIndices,
   getSkeletonData,
+  getSkeletonHandleOffset,
+  getSkeletonPointNudge,
   makeSkeletonContour,
   makeSkeletonPoint,
   normalizeSkeletonData,
   segmentToTunniPoints,
   setSkeletonData,
+  setSkeletonHandleOffset,
+  setSkeletonPointSideNudge,
   skeletonTunniHitTest,
 } from "@fontra/core/skeleton-model.js";
 import {
@@ -371,6 +375,27 @@ describe("generated curvature gizmo edits", () => {
     ).to.equal(null);
   });
 
+  it("works on a contour that runs backwards, where the roles swap", () => {
+    // The right-side generated contour is emitted in reverse, so its segments
+    // carry "in" first and "out" second. That is an orientation, not a defect,
+    // and the control must not refuse it.
+    const reversed = [
+      { skeletonPointId: 2, side: "right", role: "onCurve" },
+      { skeletonPointId: 2, side: "right", role: "in" },
+      { skeletonPointId: 5, side: "right", role: "out" },
+      { skeletonPointId: 5, side: "right", role: "onCurve" },
+    ];
+    const edits = calculateGeneratedCurvatureEdits({
+      segmentPoints,
+      provenance: reversed,
+      delta: { x: axis().x * 10, y: axis().y * 10 },
+    });
+    expect(edits).to.have.length(2);
+    expect(edits[0]).to.include({ skeletonPointId: 2, side: "right", role: "in" });
+    expect(edits[1]).to.include({ skeletonPointId: 5, side: "right", role: "out" });
+    expect(Math.hypot(edits[0].offsetDelta.x, edits[0].offsetDelta.y)).to.be.above(0);
+  });
+
   it("declines when a handle's provenance is not a handle role", () => {
     expect(
       calculateGeneratedCurvatureEdits({
@@ -627,5 +652,102 @@ describe("generated on-curve gizmo edits", () => {
         delta: { x: 5, y: 5 },
       })
     ).to.equal(null);
+  });
+});
+
+// End-to-end: an on-curve drag must slide the rib ends along the outline and
+// leave the handles where they are. Dragging the point and its handles together
+// slides the whole curve bodily, which is not what the control is for.
+describe("generated on-curve gizmo, through the generator", () => {
+  const points = [
+    makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+    makeSkeletonPoint({ id: 2, x: 30, y: 40, type: "cubic" }),
+    makeSkeletonPoint({ id: 3, x: 70, y: 40, type: "cubic" }),
+    makeSkeletonPoint({ id: 4, x: 100, y: 0, smooth: true }),
+    makeSkeletonPoint({ id: 5, x: 130, y: -40, type: "cubic" }),
+    makeSkeletonPoint({ id: 6, x: 170, y: -40, type: "cubic" }),
+    makeSkeletonPoint({ id: 7, x: 200, y: 0 }),
+  ];
+
+  function makeGlyph() {
+    const layer = {
+      path: new VarPackedPath(),
+      components: [],
+      anchors: [],
+      guidelines: [],
+      customData: {},
+    };
+    setSkeletonData(
+      layer,
+      normalizeSkeletonData({
+        contours: [makeSkeletonContour({ id: 80, defaultWidth: 80, points })],
+      })
+    );
+    editSkeleton(layer, () => {});
+    return layer;
+  }
+
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  function dragFirstSegment(delta) {
+    const layer = makeGlyph();
+    const before = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path)[0];
+    const snapshot = before.points.map((p) => ({ x: p.x, y: p.y }));
+    const edits = calculateGeneratedOnCurveEdits({
+      segmentPoints: before.points,
+      provenance: before.provenance,
+      delta,
+    });
+    editSkeleton(layer, (working) => {
+      const contour = working.contours[0];
+      for (const edit of edits) {
+        const point = contour.points.find((p) => p.id === edit.skeletonPointId);
+        setSkeletonPointSideNudge(
+          point,
+          edit.side,
+          getSkeletonPointNudge(point, edit.side, contour.defaultWidth) +
+            edit.nudgeDelta,
+          { round: (v) => v }
+        );
+        for (const role of ["in", "out"]) {
+          const current = getSkeletonHandleOffset(point, edit.side, role);
+          setSkeletonHandleOffset(
+            point,
+            edit.side,
+            role,
+            {
+              x: current.x + edit.handleCompensation.x,
+              y: current.y + edit.handleCompensation.y,
+              detached: current.detached,
+            },
+            { round: (v) => v }
+          );
+        }
+      }
+    });
+    const after = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path).find(
+      (s) =>
+        s.pathContourIndex === before.pathContourIndex &&
+        s.segmentIndex === before.segmentIndex
+    );
+    return { snapshot, after: after.points };
+  }
+
+  it("moves the rib ends", () => {
+    const { snapshot, after } = dragFirstSegment({ x: 20, y: 20 });
+    expect(dist(snapshot[0], after[0])).to.be.above(5);
+    expect(dist(snapshot[3], after[3])).to.be.above(5);
+  });
+
+  it("leaves the handles where they were", () => {
+    const { snapshot, after } = dragFirstSegment({ x: 20, y: 20 });
+    expect(dist(snapshot[1], after[1])).to.be.below(1);
+    expect(dist(snapshot[2], after[2])).to.be.below(1);
+  });
+
+  it("holds the handles still in the other direction too", () => {
+    const { snapshot, after } = dragFirstSegment({ x: -20, y: -20 });
+    expect(dist(snapshot[1], after[1])).to.be.below(1);
+    expect(dist(snapshot[2], after[2])).to.be.below(1);
   });
 });

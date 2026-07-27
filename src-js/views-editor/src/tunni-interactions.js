@@ -433,6 +433,12 @@ export async function handleGeneratedTunniDrag({
         // Only handles have a stored offset — asking for one under an "onCurve"
         // role is an error, not an empty result — and only rib ends have a
         // nudge. Read each where it exists.
+        //
+        // A rib end also carries BOTH handle offsets, because the on-curve
+        // control compensates them so the handles hold still while the point
+        // slides. Both roles at that point matter, not just this segment's: the
+        // rib end is shared with the neighbouring segment, whose handle would
+        // otherwise be left behind.
         const isHandle = provenance.role === "in" || provenance.role === "out";
         return {
           contourIndex: resolved.contourIndex,
@@ -442,6 +448,12 @@ export async function handleGeneratedTunniDrag({
           offset: isHandle
             ? getSkeletonHandleOffset(resolved.point, provenance.side, provenance.role)
             : null,
+          handleOffsets: isHandle
+            ? null
+            : {
+                in: getSkeletonHandleOffset(resolved.point, provenance.side, "in"),
+                out: getSkeletonHandleOffset(resolved.point, provenance.side, "out"),
+              },
           nudge: isHandle
             ? 0
             : getSkeletonPointNudge(
@@ -503,13 +515,32 @@ export async function handleGeneratedTunniDrag({
                 },
                 { round }
               );
-            } else {
+            } else if (write.nudgeDelta !== undefined) {
               setSkeletonPointSideNudge(
                 point,
                 original.side,
                 original.nudge + write.nudgeDelta,
                 { round }
               );
+              // Hold both handles at this rib end still while the point slides
+              // out from under them.
+              for (const role of ["in", "out"]) {
+                const existing = original.handleOffsets?.[role];
+                if (!existing || !write.handleCompensation) {
+                  continue;
+                }
+                setSkeletonHandleOffset(
+                  point,
+                  original.side,
+                  role,
+                  {
+                    x: existing.x + write.handleCompensation.x,
+                    y: existing.y + write.handleCompensation.y,
+                    detached: existing.detached,
+                  },
+                  { round }
+                );
+              }
             }
           }
         });
@@ -566,8 +597,20 @@ function generatedOnCurveWrites(originalPoints, segment, delta) {
     return null;
   }
   return [
-    [0, { nudgeDelta: edits[0].nudgeDelta }],
-    [3, { nudgeDelta: edits[1].nudgeDelta }],
+    [
+      0,
+      {
+        nudgeDelta: edits[0].nudgeDelta,
+        handleCompensation: edits[0].handleCompensation,
+      },
+    ],
+    [
+      3,
+      {
+        nudgeDelta: edits[1].nudgeDelta,
+        handleCompensation: edits[1].handleCompensation,
+      },
+    ],
   ];
 }
 
