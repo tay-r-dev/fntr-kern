@@ -195,14 +195,35 @@ the designer rather than collapsing.
 
 ---
 
-## 4. Open questions
+## 4. Gizmo mechanics (was: open questions — both now decided)
 
-- **Is the on-curve (Tunni) gizmo tangent-constrained or free?** Tangent-constrained is what
-  `nudge` already does and keeps the neighbouring segment's endpoint valid — a generated
-  on-curve point is a rib end shared by two adjacent generated segments, so moving it
-  reshapes the neighbour too. Free movement does not preserve that. Undecided.
-- What the curvature gizmo's drag axis is (curve normal at the midpoint is the obvious
-  candidate) and whether it is clamped by D1 directly.
+### D12 — The on-curve gizmo is tangent-constrained. Everywhere, by design.
+
+Not a per-case judgement: tangent-constrained is what the on-curve gizmo *is* throughout this
+editor, and generated contours are no exception. It also happens to be what keeps a rib end
+valid for both of the generated segments that share it.
+
+It does the same job as `nudge` and writes the same field — **this is an interaction
+decision, not a data one** (D10). `nudge` is a scalar the designer types or shifts; the gizmo
+is the same scalar grabbed directly on the curve. Two affordances, one number.
+
+### D13 — The curvature gizmo slides along the curve-centre-to-Tunni-point axis.
+
+- **Anchor:** the centre of the generated curve, i.e. the curve point at t = 0.5.
+- **Axis:** the ray from that anchor toward the segment's true Tunni point. Pushing toward
+  the Tunni point fills the curve out, pulling away flattens it.
+- **Effect:** both tensions move together, proportionally — the same mechanism the basic
+  Tunni control point uses, so reuse it rather than growing a second copy (R-B).
+- **Ceiling:** D1. Tension 1 is where the anchor would reach the Tunni point.
+
+The existing basic-editor control this generalizes is `hitType: "tunni-point"`, whose anchor
+is `calculateControlHandlePoint` — the midpoint of the two *handles*, dragged along a fixed
+45° vector. Ours differs in both: anchor on the **curve**, axis toward the **Tunni point**.
+The proportional-tension drag underneath is the same and is shared.
+
+Note that `tunniLayerHitTest` currently skips generated contours outright
+(`generatedContourIndices.has(contourIndex)` → `continue`). That skip is where the generated
+gizmo layer attaches.
 
 ---
 
