@@ -3,6 +3,8 @@ import { ChangeCollector } from "@fontra/core/changes.js";
 import {
   areSkeletonTensionsEqualized,
   buildSkeletonTunniSegments,
+  calculateGeneratedCurvatureEdits,
+  calculateGeneratedOnCurveEdits,
   calculateSkeletonControlPointsFromTunniDelta,
   calculateSkeletonEqualizedControlPoints,
   calculateSkeletonOnCurveFromTunni,
@@ -10,6 +12,11 @@ import {
   calculateSkeletonTunniPoint,
   getGeneratedPathContourIndices,
   getSkeletonData,
+  getSkeletonHandleOffset,
+  getSkeletonPointNudge,
+  isSkeletonSideLocked,
+  setSkeletonHandleOffset,
+  setSkeletonPointSideNudge,
 } from "@fontra/core/skeleton-model.js";
 import {
   areTensionsEqualized,
@@ -20,7 +27,10 @@ import {
 } from "@fontra/core/tunni-calculations.js";
 import { assert } from "@fontra/core/utils.ts";
 import { distance, normalizeVector, subVectors } from "@fontra/core/vector.js";
-import { editSkeleton } from "./skeleton-editing.js";
+import {
+  editSkeleton,
+  resolveSkeletonAddressAcrossLayers,
+} from "./skeleton-editing.js";
 
 function applyTunniDragChanges(path, dragChanges, isTrueTunniPoint) {
   if (isTrueTunniPoint) {
@@ -80,6 +90,25 @@ export function tunniHoverResult(
     }
     if (skeletonHit?.type === "tunni") {
       return { cursor: "pointer", skeletonHit };
+    }
+  }
+
+  if (
+    visualizationLayersSettings.model["fontra.skeleton.generated-tunni"] &&
+    sceneModel
+  ) {
+    const generatedHit = sceneModel.generatedTunniAtPoint(
+      { x: point.x + positionedGlyph.x, y: point.y + positionedGlyph.y },
+      size,
+      positionedGlyph
+    );
+    if (generatedHit) {
+      // Same cursor split as the skeleton's gizmos: crosshair moves on-curve
+      // points, pointer reshapes between them.
+      return {
+        cursor: generatedHit.type === "generated-on-curve" ? "crosshair" : "pointer",
+        generatedHit,
+      };
     }
   }
 
@@ -329,6 +358,213 @@ export async function handleSkeletonTunniDrag({
       broadcast: true,
     };
   });
+}
+
+//
+// Dragging one of the two gizmos on a GENERATED segment (D8).
+//
+// Both write skeleton fields that already exist — the curvature gizmo writes
+// handle offsets, the on-curve gizmo writes nudges — so this adds an affordance,
+// not a storage mode (D10). Nothing here is reachable only through a gizmo: the
+// same two edits can be made by hand.
+//
+// Edits are computed ONCE, from the geometry under the pointer, and applied as
+// deltas on top of each edited layer's own original value. Recomputing per layer
+// would need that layer's generated geometry, which is only produced after the
+// skeleton is written — and a delta is what keeps interpolation honest anyway.
+//
+export async function handleGeneratedTunniDrag({
+  sceneController,
+  eventStream,
+  initialEvent,
+  gizmoHit,
+}) {
+  const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
+  if (!positionedGlyph) {
+    return;
+  }
+  const segment = gizmoHit.segment;
+  const originalPoints = segment.points.map((point) => ({ x: point.x, y: point.y }));
+  const isCurvature = gizmoHit.type === "generated-curvature";
+  const originalTunniPoint = calculateTunniPoint(originalPoints);
+  if (!originalTunniPoint) {
+    return;
+  }
+
+  const startPoint = sceneController.localPoint(initialEvent);
+  const startGlyphPoint = {
+    x: startPoint.x - positionedGlyph.x,
+    y: startPoint.y - positionedGlyph.y,
+  };
+
+  await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
+    const layerInfo = Object.entries(
+      sceneController.getEditingLayerFromGlyphLayers(glyph.layers)
+    )
+      .map(([layerName, layerGlyph]) => ({
+        layerName,
+        layerGlyph,
+        changePath: ["layers", layerName, "glyph"],
+        originalSkeletonData: getSkeletonData(layerGlyph),
+      }))
+      .filter((entry) => entry.originalSkeletonData?.contours?.length);
+    if (!layerInfo.length) {
+      return;
+    }
+
+    // Drag-start values, per layer. Read once: `working` accumulates as the
+    // drag proceeds, so reading it per frame would compound the delta.
+    const referenceSkeletonData = getSkeletonData(
+      positionedGlyph.varGlyph?.glyph?.layers?.[positionedGlyph.glyph?.layerName]
+        ?.glyph || positionedGlyph.glyph
+    );
+    for (const entry of layerInfo) {
+      entry.originals = segment.provenance.map((provenance) => {
+        const resolved = resolveSkeletonAddressAcrossLayers(
+          referenceSkeletonData,
+          entry.originalSkeletonData,
+          provenance.skeletonContourId ?? segment.skeletonContourId,
+          provenance.skeletonPointId
+        );
+        if (!resolved) {
+          return null;
+        }
+        return {
+          contourIndex: resolved.contourIndex,
+          pointIndex: resolved.pointIndex,
+          side: provenance.side,
+          role: provenance.role,
+          offset: getSkeletonHandleOffset(
+            resolved.point,
+            provenance.side,
+            provenance.role
+          ),
+          nudge: getSkeletonPointNudge(
+            resolved.point,
+            provenance.side,
+            resolved.contour.defaultWidth
+          ),
+        };
+      });
+    }
+
+    let accumulated = new ChangeCollector();
+    let dragged = false;
+
+    for await (const event of eventStream) {
+      if (event.type === "mouseup") {
+        break;
+      }
+      if (event.type !== "mousemove") {
+        continue;
+      }
+      const currentPoint = sceneController.localPoint(event);
+      const delta = {
+        x: currentPoint.x - positionedGlyph.x - startGlyphPoint.x,
+        y: currentPoint.y - positionedGlyph.y - startGlyphPoint.y,
+      };
+      const round = sceneController.sceneSettings?.gridSnapEnabled
+        ? Math.round
+        : (value) => value;
+
+      const writes = isCurvature
+        ? generatedCurvatureWrites(originalPoints, segment, delta)
+        : generatedOnCurveWrites(originalPoints, segment, delta, !event.altKey);
+      if (!writes) {
+        continue;
+      }
+
+      let frame = new ChangeCollector();
+      for (const { layerGlyph, changePath, originals } of layerInfo) {
+        const changes = editSkeleton(layerGlyph, (working) => {
+          for (const [index, write] of writes) {
+            const original = originals[index];
+            const point =
+              working?.contours?.[original?.contourIndex]?.points?.[
+                original?.pointIndex
+              ];
+            if (!original || !point || isSkeletonSideLocked(point, original.side)) {
+              continue;
+            }
+            if (write.offsetDelta) {
+              setSkeletonHandleOffset(
+                point,
+                original.side,
+                original.role,
+                {
+                  x: original.offset.x + write.offsetDelta.x,
+                  y: original.offset.y + write.offsetDelta.y,
+                  detached: original.offset.detached,
+                },
+                { round }
+              );
+            } else {
+              setSkeletonPointSideNudge(
+                point,
+                original.side,
+                original.nudge + write.nudgeDelta,
+                { round }
+              );
+            }
+          }
+        });
+        if (changes.hasChange) {
+          frame = frame.concat(changes.prefixed(changePath));
+        }
+      }
+
+      if (!frame.hasChange) {
+        continue;
+      }
+      dragged = true;
+      accumulated = accumulated.concat(frame);
+      await sendIncrementalChange(frame.change, true);
+    }
+
+    if (!dragged || !accumulated.hasChange) {
+      return;
+    }
+    return {
+      changes: accumulated,
+      undoLabel: isCurvature
+        ? "Adjust Generated Curvature"
+        : "Move Generated On-Curves",
+      broadcast: true,
+    };
+  });
+}
+
+// Curvature: the two handles, keyed by their index in the segment.
+function generatedCurvatureWrites(originalPoints, segment, delta) {
+  const edits = calculateGeneratedCurvatureEdits({
+    segmentPoints: originalPoints,
+    provenance: segment.provenance,
+    delta,
+  });
+  if (!edits) {
+    return null;
+  }
+  return [
+    [1, { offsetDelta: edits[0].offsetDelta }],
+    [2, { offsetDelta: edits[1].offsetDelta }],
+  ];
+}
+
+// On-curve: the two rib ends, tangent-constrained (D12).
+function generatedOnCurveWrites(originalPoints, segment, delta, equalizeDistances) {
+  const edits = calculateGeneratedOnCurveEdits({
+    segmentPoints: originalPoints,
+    provenance: segment.provenance,
+    delta,
+    equalizeDistances,
+  });
+  if (!edits) {
+    return null;
+  }
+  return [
+    [0, { nudgeDelta: edits[0].nudgeDelta }],
+    [3, { nudgeDelta: edits[1].nudgeDelta }],
+  ];
 }
 
 export async function equalizeSkeletonTunniTensions({ sceneController, tunniHit }) {

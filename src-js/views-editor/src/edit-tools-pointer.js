@@ -41,22 +41,20 @@ import { MeasureInteraction } from "./measure-interactions.js";
 import { getPinPoint } from "./panel-transformation.js";
 import { equalGlyphSelection } from "./scene-controller.js";
 import {
+  createEditableGeneratedHandleTargetEntries,
+  createEditableGeneratedPointTargetEntries,
   createSkeletonRibTargetEntries,
   getSelectionTargetKinds,
   getSkeletonModifierBehaviorName,
+  getSkeletonRibBehaviorName,
   hasSkeletonPointSelection,
   makeSkeletonModifierOptions,
   makeSkeletonPointKey,
   makeSkeletonPointTargetEntry,
   parseSkeletonPointKey,
+  toggleEditableGeneratedHandleDetached,
   toggleSkeletonSmooth,
 } from "./skeleton-editing.js";
-import {
-  createEditableGeneratedHandleTargetEntries,
-  createEditableGeneratedPointTargetEntries,
-  toggleEditableGeneratedHandleDetached,
-} from "./skeleton-editing.js";
-import { getSkeletonRibBehaviorName } from "./skeleton-editing.js";
 import {
   glyphSelector,
   registerVisualizationLayerDefinition,
@@ -66,6 +64,7 @@ import {
 // Import Tunni functions for integration with pointer tool
 import {
   equalizeSkeletonTunniTensions,
+  handleGeneratedTunniDrag,
   handleSkeletonTunniDrag,
   handleTrueTunniPointMouseDown,
   handleTunniDrag,
@@ -283,6 +282,8 @@ export class PointerTool extends BaseTool {
     const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
     const isSkeletonTunniLayerActive =
       this.editor.visualizationLayersSettings.model["fontra.skeleton.tunni"];
+    const isGeneratedTunniLayerActive =
+      this.editor.visualizationLayersSettings.model["fontra.skeleton.generated-tunni"];
 
     if (initialEvent.ctrlKey && initialEvent.shiftKey && positionedGlyph) {
       const tunniHit = this.sceneModel.skeletonTunniAtPoint(
@@ -326,6 +327,27 @@ export class PointerTool extends BaseTool {
           }
           return;
         }
+      }
+    }
+
+    // The generated contours' own gizmos. Checked after the skeleton's Tunni
+    // gizmos so a skeleton control is never stolen by an outline control lying
+    // underneath it, and before path selection so a click on a gizmo does not
+    // fall through to selecting the outline point behind it.
+    if (isGeneratedTunniLayerActive && positionedGlyph) {
+      const gizmoHit = this.sceneModel.generatedTunniAtPoint(
+        point,
+        size,
+        positionedGlyph
+      );
+      if (gizmoHit) {
+        await handleGeneratedTunniDrag({
+          sceneController,
+          eventStream,
+          initialEvent,
+          gizmoHit,
+        });
+        return;
       }
     }
 

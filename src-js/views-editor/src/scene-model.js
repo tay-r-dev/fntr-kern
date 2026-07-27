@@ -23,17 +23,18 @@ import {
 import { difference, isEqualSet, union, updateSet } from "@fontra/core/set-ops.js";
 import { MAX_UNICODE } from "@fontra/core/shaper.js";
 import {
-  getGeneratedPathContourIndices,
   findGeneratedPathAddress,
-  parseEditableGeneratedHandleKey,
-  parseEditableGeneratedPointKey,
-  resolveEditableGeneratedTarget,
-  getSkeletonRibAddress,
-  iterSkeletonRibTargets,
+  generatedTunniHitTest,
+  getGeneratedPathContourIndices,
   getSkeletonData,
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
+  getSkeletonRibAddress,
   isSkeletonSideLocked,
+  iterSkeletonRibTargets,
+  parseEditableGeneratedHandleKey,
+  parseEditableGeneratedPointKey,
+  resolveEditableGeneratedTarget,
   skeletonTunniHitTest,
 } from "@fontra/core/skeleton-model.js";
 import { decomposedToTransform } from "@fontra/core/transform.js";
@@ -1316,6 +1317,34 @@ d ${measure.distance.toFixed(1)}`,
       y: point.y - positionedGlyph.y,
     };
     return skeletonTunniHitTest(glyphPoint, size, skeletonData, options);
+  }
+
+  // The gizmos on the GENERATED contours, as opposed to skeletonTunniAtPoint,
+  // which targets the skeleton itself.
+  generatedTunniAtPoint(
+    point,
+    size,
+    positionedGlyph = this.getSelectedPositionedGlyph(),
+    options = {}
+  ) {
+    if (!positionedGlyph?.glyph?.path) {
+      return null;
+    }
+    const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
+    if (!skeletonData?.generated?.length) {
+      return null;
+    }
+    const glyphPoint = {
+      x: point.x - positionedGlyph.x,
+      y: point.y - positionedGlyph.y,
+    };
+    return generatedTunniHitTest(
+      glyphPoint,
+      size,
+      skeletonData,
+      positionedGlyph.glyph.path,
+      options
+    );
   }
 
   skeletonRibSelectionAtPoint(point, size, parsedCurrentSelection) {

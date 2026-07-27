@@ -16,6 +16,7 @@ import {
   calculateControlPointsFromCurvatureDelta,
   calculateCurvatureGizmoPoint,
   calculateEqualizedControlPoints,
+  calculateOnCurvePointsFromTunni,
   calculateTunniPoint,
 } from "./tunni-calculations.js";
 import { deepCopyObject, splitGlyphNameExtension } from "./utils.ts";
@@ -2804,4 +2805,73 @@ export function generatedTunniHitTest(point, size, skeletonData, path, options =
     }
   }
   return null;
+}
+
+//
+// An on-curve-gizmo drag on a generated segment, expressed as skeleton writes.
+//
+// The Tunni math hands back a displacement in the plane; only its component
+// along the rib's own axis survives. That is not a simplification made here for
+// convenience — the on-curve gizmo is tangent-constrained by design (D12), and a
+// nudge is a scalar along that axis, so the projection IS the control. A
+// generated on-curve point is a rib end shared by the two segments either side
+// of it, and letting it leave the rib would reshape the neighbour in a way the
+// skeleton cannot express.
+//
+// Both rib ends are addressed from provenance, and the drag is declined outright
+// rather than half-applied if either address is missing (R-D).
+//
+export function calculateGeneratedOnCurveEdits({
+  segmentPoints,
+  provenance,
+  delta,
+  equalizeDistances = true,
+}) {
+  const addresses = [provenance?.[0], provenance?.[3]];
+  if (
+    addresses.some(
+      (address) =>
+        !address || address.role !== "onCurve" || address.skeletonPointId === undefined
+    )
+  ) {
+    return null;
+  }
+  const tunniPoint = calculateTunniPoint(segmentPoints);
+  if (!tunniPoint) {
+    return null;
+  }
+  const moved = calculateOnCurvePointsFromTunni(
+    { x: tunniPoint.x + delta.x, y: tunniPoint.y + delta.y },
+    segmentPoints,
+    equalizeDistances
+  );
+  // The baseline is the same call at zero drag, NOT the incoming points. With
+  // coupled ends the helper equalizes the two tensions whatever the delta, so
+  // measuring against the incoming geometry would fire that equalization the
+  // instant the gizmo is grabbed — a snap nobody asked for, and one measured to
+  // cost accuracy where the asymmetry is faithful to the skeleton. Differencing
+  // against the resting state reports only what the drag itself did.
+  const resting = calculateOnCurvePointsFromTunni(
+    tunniPoint,
+    segmentPoints,
+    equalizeDistances
+  );
+  if (!moved || !resting) {
+    return null;
+  }
+  return [
+    [0, 1],
+    [3, 2],
+  ].map(([endIndex, handleIndex], index) => {
+    const axis = normalizeVector(
+      subVectors(segmentPoints[handleIndex], segmentPoints[endIndex])
+    );
+    const displacement = subVectors(moved[endIndex], resting[endIndex]);
+    return {
+      skeletonPointId: addresses[index].skeletonPointId,
+      side: addresses[index].side,
+      role: addresses[index].role,
+      nudgeDelta: dotVector(displacement, axis),
+    };
+  });
 }
