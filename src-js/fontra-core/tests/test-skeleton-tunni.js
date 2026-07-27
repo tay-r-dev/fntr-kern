@@ -1,5 +1,6 @@
 import {
   areSkeletonTensionsEqualized,
+  buildGeneratedTunniSegments,
   buildSkeletonTunniSegments,
   calculateGeneratedCurvatureEdits,
   calculateSkeletonControlPointsFromTunniDelta,
@@ -7,15 +8,29 @@ import {
   calculateSkeletonOnCurveFromTunni,
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
+  generatedTunniHitTest,
+  getGeneratedPathContourIndices,
+  getSkeletonData,
+  makeSkeletonContour,
+  makeSkeletonPoint,
+  normalizeSkeletonData,
   segmentToTunniPoints,
+  setSkeletonData,
   skeletonTunniHitTest,
 } from "@fontra/core/skeleton-model.js";
 import {
   calculateControlPointsFromCurvatureDelta,
   calculateCurvatureGizmoAxis,
+  calculateCurvatureGizmoPoint,
   calculateTunniPoint,
 } from "@fontra/core/tunni-calculations.js";
+import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
+import { editSkeleton } from "../../views-editor/src/skeleton-editing.js";
+
+before(() => {
+  globalThis.window = { coarseGridSpacing: 1, event: null };
+});
 
 describe("skeleton Tunni segment helpers", () => {
   it("builds stable cubic segments for open contours without wrapping", () => {
@@ -389,5 +404,109 @@ describe("generated curvature gizmo edits", () => {
       Math.hypot(tunni.x - on.x, tunni.y - on.y);
     expect(tension(points[0], points[1])).to.be.at.most(1 + 1e-9);
     expect(tension(points[3], points[2])).to.be.at.most(1 + 1e-9);
+  });
+});
+
+// Enumerating the generated contours' cubic segments, and hit-testing the two
+// gizmos on them. This is the join the visualization layer and the pointer tool
+// both need, so it lives in one place rather than twice.
+describe("generated Tunni segments", () => {
+  function makeGlyph() {
+    const layer = {
+      path: new VarPackedPath(),
+      components: [],
+      anchors: [],
+      guidelines: [],
+      customData: {},
+    };
+    setSkeletonData(
+      layer,
+      normalizeSkeletonData({
+        contours: [
+          makeSkeletonContour({
+            id: 80,
+            defaultWidth: 80,
+            points: [
+              makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+              makeSkeletonPoint({ id: 2, x: 30, y: 40, type: "cubic" }),
+              makeSkeletonPoint({ id: 3, x: 70, y: 40, type: "cubic" }),
+              makeSkeletonPoint({ id: 4, x: 100, y: 0, smooth: true }),
+              makeSkeletonPoint({ id: 5, x: 130, y: -40, type: "cubic" }),
+              makeSkeletonPoint({ id: 6, x: 170, y: -40, type: "cubic" }),
+              makeSkeletonPoint({ id: 7, x: 200, y: 0 }),
+            ],
+          }),
+        ],
+      })
+    );
+    editSkeleton(layer, () => {});
+    return layer;
+  }
+
+  it("finds the cubic segments of the generated contours", () => {
+    const layer = makeGlyph();
+    const segments = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path);
+    expect(segments.length).to.be.above(0);
+    for (const segment of segments) {
+      expect(segment.points).to.have.length(4);
+      expect(segment.pointIndices).to.have.length(4);
+      expect(segment.provenance).to.have.length(4);
+    }
+  });
+
+  it("carries each point's own provenance, in segment order", () => {
+    const layer = makeGlyph();
+    const segments = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path);
+    const roles = segments.map((segment) =>
+      segment.provenance.map((entry) => entry?.role)
+    );
+    expect(
+      roles.some((r) => r[0] === "onCurve" && r[1] === "out" && r[2] === "in")
+    ).to.equal(true);
+    for (const segment of segments) {
+      const sides = new Set(segment.provenance.map((entry) => entry?.side));
+      expect(sides.size).to.equal(1);
+    }
+  });
+
+  it("skips contours that are not generated", () => {
+    const layer = makeGlyph();
+    const skeletonData = getSkeletonData(layer);
+    const generatedIndices = getGeneratedPathContourIndices(skeletonData);
+    for (const segment of buildGeneratedTunniSegments(skeletonData, layer.path)) {
+      expect(generatedIndices.has(segment.pathContourIndex)).to.equal(true);
+    }
+  });
+
+  it("hits the curvature gizmo where the curve's centre is", () => {
+    const layer = makeGlyph();
+    const skeletonData = getSkeletonData(layer);
+    const [segment] = buildGeneratedTunniSegments(skeletonData, layer.path);
+    const anchor = calculateCurvatureGizmoPoint(segment.points);
+    const hit = generatedTunniHitTest(anchor, 4, skeletonData, layer.path);
+    expect(hit?.type).to.equal("generated-curvature");
+    expect(hit.gizmoPoint.x).to.be.closeTo(anchor.x, 1e-9);
+    expect(hit.gizmoPoint.y).to.be.closeTo(anchor.y, 1e-9);
+  });
+
+  it("hits the on-curve gizmo at the segment's true Tunni point", () => {
+    const layer = makeGlyph();
+    const skeletonData = getSkeletonData(layer);
+    const [segment] = buildGeneratedTunniSegments(skeletonData, layer.path);
+    const truePoint = calculateTunniPoint(segment.points);
+    const hit = generatedTunniHitTest(truePoint, 4, skeletonData, layer.path);
+    expect(hit?.type).to.equal("generated-on-curve");
+  });
+
+  it("misses when nothing is near", () => {
+    const layer = makeGlyph();
+    expect(
+      generatedTunniHitTest(
+        { x: -5000, y: -5000 },
+        4,
+        getSkeletonData(layer),
+        layer.path
+      )
+    ).to.equal(null);
   });
 });

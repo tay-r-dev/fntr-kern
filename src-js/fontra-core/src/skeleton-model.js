@@ -14,10 +14,12 @@ import {
   areTensionsEqualized,
   calculateControlHandlePoint,
   calculateControlPointsFromCurvatureDelta,
+  calculateCurvatureGizmoPoint,
   calculateEqualizedControlPoints,
   calculateTunniPoint,
 } from "./tunni-calculations.js";
 import { deepCopyObject, splitGlyphNameExtension } from "./utils.ts";
+import { VarPackedPath } from "./var-path.js";
 import {
   addVectors,
   distance,
@@ -2699,4 +2701,107 @@ export function calculateGeneratedCurvatureEdits({
       y: point.y - segmentPoints[index + 1].y,
     },
   }));
+}
+
+//
+// Every cubic segment of every generated contour, paired with the provenance
+// its four points were emitted with.
+//
+// The generated geometry lives in the path and its addresses live in the
+// skeleton's `generated` entries, so this is the join both the visualization
+// layer and the pointer tool need. One copy (R-B): a gizmo drawn from one walk
+// and hit-tested from another would eventually disagree about where it is.
+//
+// A segment is only usable if all four of its points carry provenance on the
+// same side. Anything else — a cap, a corner fill, a contour whose provenance
+// did not survive — is skipped rather than half-addressed.
+//
+export function buildGeneratedTunniSegments(skeletonData, path) {
+  const segments = [];
+  if (!path) {
+    return segments;
+  }
+  for (const entry of skeletonData?.generated || []) {
+    const pathContourIndex = entry.pathContourIndex;
+    if (!Number.isInteger(pathContourIndex) || pathContourIndex < 0) {
+      continue;
+    }
+    const pointMap = entry.pointMap || [];
+    let contourStart;
+    try {
+      contourStart = path.getAbsolutePointIndex(pathContourIndex, 0);
+    } catch {
+      continue;
+    }
+    let segmentIndex = 0;
+    for (const segment of path.iterContourDecomposedSegments(pathContourIndex)) {
+      const index = segmentIndex++;
+      if (segment.points?.length !== 4) {
+        continue;
+      }
+      const pointIndices = segment.parentPointIndices.map(
+        (absolute) => absolute - contourStart
+      );
+      const isCubicControl = (absolute) =>
+        (path.pointTypes[absolute] & VarPackedPath.POINT_TYPE_MASK) ===
+        VarPackedPath.OFF_CURVE_CUBIC;
+      if (
+        !isCubicControl(segment.parentPointIndices[1]) ||
+        !isCubicControl(segment.parentPointIndices[2])
+      ) {
+        continue;
+      }
+      const provenance = pointIndices.map((pointIndex) => pointMap[pointIndex] || null);
+      if (provenance.some((item) => !item)) {
+        continue;
+      }
+      const side = provenance[0].side;
+      if (
+        (side !== "left" && side !== "right") ||
+        provenance.some((item) => item.side !== side)
+      ) {
+        continue;
+      }
+      segments.push({
+        pathContourIndex,
+        segmentIndex: index,
+        skeletonContourId: entry.skeletonContourId,
+        side,
+        pointIndices,
+        parentPointIndices: [...segment.parentPointIndices],
+        points: segment.points,
+        provenance,
+      });
+    }
+  }
+  return segments;
+}
+
+//
+// Which generated gizmo, if any, sits under `point`.
+//
+// The on-curve gizmo is checked first: it sits at the segment's true Tunni
+// point, out beyond the handles, while the curvature gizmo sits on the curve
+// itself, so the two only compete on very flat segments — and there the
+// on-curve control is the one that can still do something.
+//
+export function generatedTunniHitTest(point, size, skeletonData, path, options = {}) {
+  const { includeOnCurve = true, includeCurvature = true } = options;
+  const segments = buildGeneratedTunniSegments(skeletonData, path);
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const segment = segments[i];
+    if (includeOnCurve) {
+      const truePoint = calculateTunniPoint(segment.points);
+      if (truePoint && distance(point, truePoint) <= size) {
+        return { type: "generated-on-curve", segment, gizmoPoint: truePoint };
+      }
+    }
+    if (includeCurvature) {
+      const anchor = calculateCurvatureGizmoPoint(segment.points);
+      if (anchor && distance(point, anchor) <= size) {
+        return { type: "generated-curvature", segment, gizmoPoint: anchor };
+      }
+    }
+  }
+  return null;
 }

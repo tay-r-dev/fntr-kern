@@ -1,16 +1,21 @@
 import { drawCubicHandleLabelPair } from "@fontra/core/distance-angle.js";
 import {
+  buildGeneratedTunniSegments,
   buildSkeletonTunniSegments,
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
   getSkeletonData,
   getSkeletonHandleOffset,
   getSkeletonRibPosition,
+  isSkeletonSideLocked,
   makeEditableGeneratedHandleKey,
   makeEditableGeneratedPointKey,
   makeSkeletonRibKey,
-  isSkeletonSideLocked,
 } from "@fontra/core/skeleton-model.js";
+import {
+  calculateCurvatureGizmoPoint,
+  calculateTunniPoint,
+} from "@fontra/core/tunni-calculations.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 
 import {
@@ -634,6 +639,73 @@ registerVisualizationLayerDefinition({
         }
       }
     });
+    context.restore();
+  },
+});
+
+// The two gizmos on a GENERATED segment (D8). Deliberately a separate layer
+// from fontra.skeleton.tunni: that one controls the skeleton, this one controls
+// the outline the skeleton produced, and a designer switches between the two
+// questions independently.
+registerVisualizationLayerDefinition({
+  identifier: "fontra.skeleton.generated-tunni",
+  name: "Generated contour gizmos",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: true,
+  zIndex: 548,
+  screenParameters: {
+    lineDash: [3, 3],
+    curvatureSize: 7,
+    strokeWidth: 1,
+    onCurveSize: 8,
+  },
+  colors: {
+    axisColor: "rgba(0, 160, 120, 0.5)",
+    curvatureColor: "rgba(0, 175, 130, 0.95)",
+    onCurveColor: "rgba(210, 90, 190, 0.95)",
+  },
+  colorsDarkMode: {
+    axisColor: "rgba(80, 220, 180, 0.6)",
+    curvatureColor: "rgba(96, 232, 190, 1)",
+    onCurveColor: "rgba(240, 140, 220, 1)",
+  },
+  draw: (context, positionedGlyph, parameters, model) => {
+    const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
+    const segments = buildGeneratedTunniSegments(
+      skeletonData,
+      positionedGlyph.glyph.path
+    );
+    if (!segments.length) {
+      return;
+    }
+    context.save();
+    context.lineWidth = parameters.strokeWidth;
+    context.strokeStyle = parameters.axisColor;
+    context.setLineDash(parameters.lineDash);
+    // The axis first, so both nodes sit on top of it. Drawing the axis at all
+    // is what makes the curvature control legible: it is the direction the
+    // curve swells in, and without it the node looks free to go anywhere.
+    for (const segment of segments) {
+      const anchor = calculateCurvatureGizmoPoint(segment.points);
+      const truePoint = calculateTunniPoint(segment.points);
+      if (anchor && truePoint) {
+        strokeLine(context, anchor.x, anchor.y, truePoint.x, truePoint.y);
+      }
+    }
+    context.setLineDash([]);
+    for (const segment of segments) {
+      const truePoint = calculateTunniPoint(segment.points);
+      if (truePoint) {
+        context.fillStyle = parameters.onCurveColor;
+        drawDiamondNode(context, truePoint, parameters.onCurveSize, true);
+      }
+      const anchor = calculateCurvatureGizmoPoint(segment.points);
+      if (anchor) {
+        context.fillStyle = parameters.curvatureColor;
+        fillRoundNode(context, anchor, parameters.curvatureSize);
+      }
+    }
     context.restore();
   },
 });
