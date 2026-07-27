@@ -27,6 +27,7 @@ import {
   calculateControlPointsFromCurvatureDelta,
   calculateCurvatureGizmoAxis,
   calculateCurvatureGizmoPoint,
+  calculateSegmentTension,
   calculateTunniPoint,
 } from "@fontra/core/tunni-calculations.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
@@ -322,32 +323,39 @@ describe("generated curvature gizmo edits", () => {
       ...overrides,
     });
 
-  it("addresses the two handles by their own provenance", () => {
-    const edits = drag(10);
-    expect(edits).to.have.length(2);
-    expect(edits[0]).to.include({ skeletonPointId: 2, side: "left", role: "out" });
-    expect(edits[1]).to.include({ skeletonPointId: 5, side: "left", role: "in" });
+  it("addresses the skeleton segment's start point, from provenance", () => {
+    expect(drag(10)).to.include({
+      segmentPointIndex: 0,
+      skeletonPointId: 2,
+      side: "left",
+    });
   });
 
-  it("reports the offset each handle must move by", () => {
-    const edits = drag(10);
+  it("reports the segment tension the drag arrives at", () => {
     const moved = calculateControlPointsFromCurvatureDelta(
       { x: axis().x * 10, y: axis().y * 10 },
       segmentPoints
     );
-    expect(edits[0].offsetDelta.x).to.be.closeTo(moved[0].x - segmentPoints[1].x, 1e-9);
-    expect(edits[0].offsetDelta.y).to.be.closeTo(moved[0].y - segmentPoints[1].y, 1e-9);
-    expect(edits[1].offsetDelta.x).to.be.closeTo(moved[1].x - segmentPoints[2].x, 1e-9);
-    expect(edits[1].offsetDelta.y).to.be.closeTo(moved[1].y - segmentPoints[2].y, 1e-9);
+    expect(drag(10).tension).to.be.closeTo(
+      calculateSegmentTension(moved[0], segmentPoints[0], moved[1], segmentPoints[3]),
+      1e-9
+    );
   });
 
-  it("produces zero offsets for a drag that goes nowhere", () => {
-    const edits = drag(0);
-    expect(edits).to.have.length(2);
-    for (const edit of edits) {
-      expect(edit.offsetDelta.x).to.be.closeTo(0, 1e-9);
-      expect(edit.offsetDelta.y).to.be.closeTo(0, 1e-9);
-    }
+  it("reports the segment's current tension for a drag that goes nowhere", () => {
+    expect(drag(0).tension).to.be.closeTo(
+      calculateSegmentTension(
+        segmentPoints[1],
+        segmentPoints[0],
+        segmentPoints[2],
+        segmentPoints[3]
+      ),
+      1e-9
+    );
+  });
+
+  it("pins a fuller curve for a drag toward the Tunni point", () => {
+    expect(drag(10).tension).to.be.above(drag(0).tension);
   });
 
   it("declines the drag when the segment has no Tunni point", () => {
@@ -385,15 +393,20 @@ describe("generated curvature gizmo edits", () => {
       { skeletonPointId: 5, side: "right", role: "out" },
       { skeletonPointId: 5, side: "right", role: "onCurve" },
     ];
-    const edits = calculateGeneratedCurvatureEdits({
+    const edit = calculateGeneratedCurvatureEdits({
       segmentPoints,
       provenance: reversed,
       delta: { x: axis().x * 10, y: axis().y * 10 },
     });
-    expect(edits).to.have.length(2);
-    expect(edits[0]).to.include({ skeletonPointId: 2, side: "right", role: "in" });
-    expect(edits[1]).to.include({ skeletonPointId: 5, side: "right", role: "out" });
-    expect(Math.hypot(edits[0].offsetDelta.x, edits[0].offsetDelta.y)).to.be.above(0);
+    // Index 3, not 0: on the reversed side the skeleton segment's start is the
+    // segment's LAST point. Both sides of one skeleton segment must land on the
+    // same skeleton point, or the two sides pin independently and drift.
+    expect(edit).to.include({
+      segmentPointIndex: 3,
+      skeletonPointId: 5,
+      side: "right",
+    });
+    expect(edit.tension).to.be.above(0);
   });
 
   it("declines when a handle's provenance is not a handle role", () => {
@@ -412,24 +425,7 @@ describe("generated curvature gizmo edits", () => {
   });
 
   it("carries the tension ceiling through", () => {
-    const edits = drag(5000);
-    const moved = [
-      {
-        x: segmentPoints[1].x + edits[0].offsetDelta.x,
-        y: segmentPoints[1].y + edits[0].offsetDelta.y,
-      },
-      {
-        x: segmentPoints[2].x + edits[1].offsetDelta.x,
-        y: segmentPoints[2].y + edits[1].offsetDelta.y,
-      },
-    ];
-    const points = [segmentPoints[0], ...moved, segmentPoints[3]];
-    const tunni = calculateTunniPoint(points);
-    const tension = (on, off) =>
-      Math.hypot(off.x - on.x, off.y - on.y) /
-      Math.hypot(tunni.x - on.x, tunni.y - on.y);
-    expect(tension(points[0], points[1])).to.be.at.most(1 + 1e-9);
-    expect(tension(points[3], points[2])).to.be.at.most(1 + 1e-9);
+    expect(drag(5000).tension).to.be.at.most(1 + 1e-9);
   });
 });
 

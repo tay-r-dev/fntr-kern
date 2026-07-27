@@ -437,6 +437,78 @@ export function calculateOnCurvePointsFromTunni(
 }
 
 //
+// Tension algebra: a segment's tension is the harmonic mean of its handles'.
+//
+// With T the tangent intersection, b = |P1T| and d = |P4T| the two reaches and
+// a, c the two handle lengths, the canonical tension above, tau = 2ac/(ad+bc),
+// rewrites as 2*t1*t2/(t1+t2) for t1 = a/b and t2 = c/d — the harmonic mean,
+// exactly. Verified against calculateSegmentTension to floating point.
+//
+// That identity splits a segment's two handle lengths into two quantities that
+// do not interact: the MAGNITUDE, which is what the curvature gizmo sets and
+// pins, and the SPLIT, which is what equalization moves. Because they are
+// orthogonal, the generator can apply one after the other with no precedence
+// rule between them.
+//
+// Everything below works in RECIPROCAL tension, where both operations are
+// linear: the harmonic mean is 2/(r1+r2), so holding the mean fixed is holding
+// r1+r2 fixed, and equalizing is sliding both reciprocals toward their average
+// along that constraint. The mean therefore cannot drift by construction rather
+// than by correction afterwards.
+//
+
+const TENSION_EPSILON = 1e-10;
+
+// Null where a tension does not exist: a reach that is not ahead of its own
+// on-curve point is not a reach, and dividing by it invents a tension out of
+// nothing. Callers skip both operations rather than substituting a guess.
+export function handleTensions(startLength, endLength, startReach, endReach) {
+  // Infinity is how callers spell "no reach ahead of this end". It passes a
+  // `> 0` test and then divides a real length down to a tension of zero, which
+  // would read as a perfectly flat handle rather than as no answer.
+  if (
+    !Number.isFinite(startReach) ||
+    !Number.isFinite(endReach) ||
+    !(startReach > TENSION_EPSILON) ||
+    !(endReach > TENSION_EPSILON) ||
+    !(startLength > TENSION_EPSILON) ||
+    !(endLength > TENSION_EPSILON)
+  ) {
+    return null;
+  }
+  return { start: startLength / startReach, end: endLength / endReach };
+}
+
+export function harmonicMeanTension(tensions) {
+  const sum = tensions.start + tensions.end;
+  return sum > TENSION_EPSILON ? (2 * tensions.start * tensions.end) / sum : 0;
+}
+
+// Move the two tensions `amount` of the way toward equal — 0 leaves them alone,
+// 1 makes them equal — holding their harmonic mean exactly fixed.
+export function equalizeTensions(tensions, amount) {
+  const r1 = 1 / tensions.start;
+  const r2 = 1 / tensions.end;
+  const mid = (r1 + r2) / 2;
+  return {
+    start: 1 / (r1 + amount * (mid - r1)),
+    end: 1 / (r2 + amount * (mid - r2)),
+  };
+}
+
+// Rescale both tensions so their harmonic mean equals `target`, keeping the
+// ratio between them. The mean is homogeneous of degree one in the pair, so
+// this is a division and not a search.
+export function scaleTensionsToMean(tensions, target) {
+  const current = harmonicMeanTension(tensions);
+  if (!(current > TENSION_EPSILON) || !(target > TENSION_EPSILON)) {
+    return tensions;
+  }
+  const factor = target / current;
+  return { start: tensions.start * factor, end: tensions.end * factor };
+}
+
+//
 // The curvature gizmo: "make this curve fuller or flatter".
 //
 // Do not confuse it with calculateControlHandlePoint above. That one anchors on

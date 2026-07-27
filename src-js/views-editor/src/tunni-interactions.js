@@ -17,6 +17,7 @@ import {
   isSkeletonSideLocked,
   setSkeletonHandleOffset,
   setSkeletonPointSideNudge,
+  setSkeletonSegmentCurvature,
 } from "@fontra/core/skeleton-model.js";
 import {
   areTensionsEqualized,
@@ -503,7 +504,12 @@ export async function handleGeneratedTunniDrag({
             if (!original || !point || isSkeletonSideLocked(point, original.side)) {
               continue;
             }
-            if (write.offsetDelta && original.offset) {
+            if (write.pinnedTension !== undefined) {
+              // Absolute, not a delta: the drag already computed the tension it
+              // wants from the geometry it grabbed, and every mousemove restates
+              // it against the same original. Accumulating it would compound.
+              setSkeletonSegmentCurvature(point, original.side, write.pinnedTension);
+            } else if (write.offsetDelta && original.offset) {
               setSkeletonHandleOffset(
                 point,
                 original.side,
@@ -570,20 +576,18 @@ export async function handleGeneratedTunniDrag({
   });
 }
 
-// Curvature: the two handles, keyed by their index in the segment.
+// Curvature: one pin on the skeleton segment's start point, not two handle
+// displacements. The gizmo sets a number and the generator reproduces it.
 function generatedCurvatureWrites(originalPoints, segment, delta) {
-  const edits = calculateGeneratedCurvatureEdits({
+  const edit = calculateGeneratedCurvatureEdits({
     segmentPoints: originalPoints,
     provenance: segment.provenance,
     delta,
   });
-  if (!edits) {
+  if (!edit) {
     return null;
   }
-  return [
-    [1, { offsetDelta: edits[0].offsetDelta }],
-    [2, { offsetDelta: edits[1].offsetDelta }],
-  ];
+  return [[edit.segmentPointIndex, { pinnedTension: edit.tension }]];
 }
 
 // On-curve: the two rib ends, tangent-constrained (D12).

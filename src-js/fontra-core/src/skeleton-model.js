@@ -17,6 +17,7 @@ import {
   calculateCurvatureGizmoPoint,
   calculateEqualizedControlPoints,
   calculateOnCurvePointsFromTunni,
+  calculateSegmentTension,
   calculateTunniPoint,
 } from "./tunni-calculations.js";
 import { deepCopyObject, splitGlyphNameExtension } from "./utils.ts";
@@ -40,6 +41,11 @@ export const DEFAULT_SKELETON_WIDTH = 80;
 // because beyond that point the generator floors the length and the handle
 // starts riding along with the rib end instead of holding still.
 const MIN_GENERATED_HANDLE_LENGTH = 1;
+
+// D1: tension above 1 puts a handle past the tangent intersection, where a cubic
+// starts to distend. The measured accuracy optimum never asks for more than
+// 1.04, so this is a ceiling on the control, not a compromise.
+const MAX_SEGMENT_TENSION = 1;
 
 const VALID_POINT_TYPES = new Set([null, "cubic"]);
 const VALID_SINGLE_SIDED = new Set([null, "left", "right"]);
@@ -970,6 +976,7 @@ export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = nul
   if (!type) {
     normalized.width = normalizeWidth(point?.width);
     normalized.nudge = normalizeNudge(point?.nudge);
+    normalized.segmentCurvature = normalizeSegmentCurvature(point?.segmentCurvature);
     normalized.locked = normalizeLocked(point?.locked);
     normalized.handleOffsets = normalizeHandleOffsets(point?.handleOffsets);
     normalized.capStyle = VALID_CAP_STYLES.has(point?.capStyle) ? point.capStyle : null;
@@ -1532,6 +1539,33 @@ export function setSkeletonContourDefaultWidth(
   { round = Math.round } = {}
 ) {
   contour.defaultWidth = Math.max(0, round(asFiniteNumber(defaultWidth, 0)));
+}
+
+//
+// The pinned segment tension for the segment starting at `point` on `side`, or
+// null where the segment is unpinned and the generator's own fit stands.
+//
+export function getSkeletonSegmentCurvature(point, side) {
+  assertSkeletonRibSide(side);
+  const value = point?.segmentCurvature?.[side];
+  return Number.isFinite(value) ? value : null;
+}
+
+//
+// Pin, or clear with null. Clamped to the tension ceiling on the way in (D1) so
+// an out-of-range number can never be stored in the first place.
+//
+// Nothing in generation calls this. A pin is only ever written by a deliberate
+// drag, which is what lets an unreachable pin clamp its OUTPUT and still come
+// back intact once the skeleton allows it again.
+//
+export function setSkeletonSegmentCurvature(point, side, tension) {
+  assertSkeletonRibSide(side);
+  const curvature = normalizeSegmentCurvature(point?.segmentCurvature);
+  curvature[side] = Number.isFinite(tension)
+    ? Math.min(Math.max(tension, 0), MAX_SEGMENT_TENSION)
+    : null;
+  point.segmentCurvature = curvature;
 }
 
 export function getSkeletonHandleOffsetKey(side, role) {
@@ -2610,6 +2644,22 @@ function normalizeWidth(width) {
   };
 }
 
+// The pinned segment tension for the generated segment STARTING at this point,
+// per side. Null means unpinned, which is the default and is not the same as
+// zero - zero is a legitimate pin meaning "as flat as this can go".
+//
+// Keyed on the segment's start point rather than on either generated segment,
+// because the right-side contour is emitted backwards: keying on emission order
+// would address the two sides of the same skeleton segment inconsistently.
+function normalizeSegmentCurvature(curvature) {
+  const clamp = (value) =>
+    Number.isFinite(value) ? Math.min(Math.max(value, 0), MAX_SEGMENT_TENSION) : null;
+  return {
+    left: clamp(curvature?.left),
+    right: clamp(curvature?.right),
+  };
+}
+
 function normalizeNudge(nudge) {
   return {
     left: asFiniteNumber(nudge?.left, 0),
@@ -2669,11 +2719,23 @@ function asNonNegativeNumber(value, fallback) {
 // no provenance, or provenance that is not a handle, the drag is declined rather
 // than aimed at a guess.
 //
-// The result is stated as an offset to ADD to whatever the handle already
-// carries. A stored handle offset is measured from the derived control point,
-// and the segment points passed in are the finished geometry, which already
-// includes the current offset — so the difference between wanted and current is
-// exactly what the stored offset must change by, whatever it happens to be.
+// The result is a PINNED SEGMENT TENSION, not a pair of handle displacements.
+//
+// A displacement is measured from wherever the generator happened to put the
+// handle, so it stops meaning what the designer set the moment the skeleton,
+// the width or the taper moves underneath it. A tension is a property of the
+// segment's shape and survives all three. The generator reproduces the number
+// on every regeneration and clamps only its output, never the stored value.
+//
+// One number for the whole segment: a segment's tension is the harmonic mean of
+// its two handles' tensions, so pinning the mean leaves the split free — which
+// is what equalization and the fit's faithful asymmetry both need.
+//
+// The write is addressed to the SKELETON segment's start point, which is index
+// 0 on the left side and index 3 on the right: the right-side contour is
+// emitted backwards, and its segments carry "in" where the left carries "out".
+// Reading the orientation off that role is what keeps one skeleton segment's
+// two sides addressed the same way.
 //
 export function calculateGeneratedCurvatureEdits({
   segmentPoints,
@@ -2704,15 +2766,28 @@ export function calculateGeneratedCurvatureEdits({
   if (!moved) {
     return null;
   }
-  return moved.map((point, index) => ({
-    skeletonPointId: addresses[index].skeletonPointId,
-    side: addresses[index].side,
-    role: addresses[index].role,
-    offsetDelta: {
-      x: point.x - segmentPoints[index + 1].x,
-      y: point.y - segmentPoints[index + 1].y,
-    },
-  }));
+  const tension = calculateSegmentTension(
+    moved[0],
+    segmentPoints[0],
+    moved[1],
+    segmentPoints[3]
+  );
+  if (!Number.isFinite(tension) || tension <= 0) {
+    return null;
+  }
+  // Index 1 is this segment's first off-curve. "out" there means the segment
+  // runs in skeleton order, so its start is index 0; otherwise it is index 3.
+  const segmentPointIndex = addresses[0].role === "out" ? 0 : 3;
+  const start = provenance[segmentPointIndex];
+  if (!start || start.role !== "onCurve" || start.skeletonPointId === undefined) {
+    return null;
+  }
+  return {
+    segmentPointIndex,
+    skeletonPointId: start.skeletonPointId,
+    side: start.side,
+    tension: Math.min(tension, maxTension),
+  };
 }
 
 //

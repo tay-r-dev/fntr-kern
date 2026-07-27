@@ -199,6 +199,10 @@ function canonicalPointToGeneratorPoint(point) {
   generatorPoint.rightNudge = point.nudge?.right ?? 0;
   generatorPoint.leftLocked = point.locked?.left === true;
   generatorPoint.rightLocked = point.locked?.right === true;
+  // The pinned segment tension for the segment STARTING here, per side. Null
+  // where the segment is unpinned, which is not the same as zero.
+  generatorPoint.leftSegmentCurvature = point.segmentCurvature?.left ?? null;
+  generatorPoint.rightSegmentCurvature = point.segmentCurvature?.right ?? null;
   for (const field of [
     "capStyle",
     "capBallSide",
@@ -2361,6 +2365,13 @@ function generateOffsetPointsForSegment(
         q3: fixedEnd,
         u0: startDir,
         u1: endDir,
+        // The pin lives on the skeleton segment's start point, so it reads the
+        // same for both sides regardless of which way each side is emitted.
+        // Read off the generator's own flattened point shape, not the canonical
+        // one - by here the points have been through canonicalToGeneratorInput.
+        pinnedTension: isLeftSide
+          ? segment.startPoint.leftSegmentCurvature
+          : segment.startPoint.rightSegmentCurvature,
       });
       if (shouldAddStart)
         output.push(
