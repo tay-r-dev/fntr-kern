@@ -6,6 +6,7 @@ import {
   calculateCurvatureGizmoPoint,
   calculateSegmentTension,
   calculateTunniPoint,
+  shiftTensionsToMean,
 } from "@fontra/core/tunni-calculations.js";
 import { expect } from "chai";
 
@@ -227,6 +228,37 @@ describe("tunni-calculations: curvature gizmo", () => {
     expect(afterStart).to.be.at.most(1 + 1e-9);
     expect(afterEnd).to.be.at.most(1 + 1e-9);
     expect(Math.max(afterStart, afterEnd)).to.be.closeTo(1, 1e-6);
+  });
+
+  it("keeps moving the trailing handle until both tensions reach 1", () => {
+    const axis = calculateCurvatureGizmoAxis(asymmetric);
+    const moved = calculateControlPointsFromCurvatureDelta(
+      { x: axis.x * 5000, y: axis.y * 5000 },
+      asymmetric
+    );
+    const [afterStart, afterEnd] = tensions([asymmetric[0], ...moved, asymmetric[3]]);
+    expect(afterStart).to.be.closeTo(1, 1e-6);
+    expect(afterEnd).to.be.closeTo(1, 1e-6);
+  });
+
+  it("reproduces an independently saturated tension pair from its mean", () => {
+    const shifted = shiftTensionsToMean({ start: 0.2, end: 0.5 }, 1, 1);
+    expect(shifted.start).to.be.closeTo(1, 1e-9);
+    expect(shifted.end).to.be.closeTo(1, 1e-9);
+  });
+
+  it("does not pull an existing over-ceiling handle back on grab", () => {
+    const overCeiling = [
+      { x: 0, y: 0 },
+      { x: 120, y: 60 },
+      { x: 80, y: 60 },
+      { x: 200, y: 0 },
+    ];
+    const moved = calculateControlPointsFromCurvatureDelta(
+      { x: 0, y: 0 },
+      overCeiling
+    );
+    expect(moved).to.deep.equal(overCeiling.slice(1, 3));
   });
 });
 

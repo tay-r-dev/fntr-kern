@@ -496,47 +496,52 @@ export function equalizeTensions(tensions, amount) {
   };
 }
 
-// Shift both tensions by one shared increment.
-//
-// Shared, and with no ceiling of its own: the curvature drag moves both ends by
-// the same amount and stops them together, so reproducing a pinned mean has to
-// move them the same way or the number does not round-trip and the two ends stop
-// tracking each other. Capping here instead — each end held at a ceiling on its
-// own — lets one end keep travelling after the other has stopped, which reads as
-// one handle being far more responsive than its partner.
-//
-// The ceiling belongs to the drag, which is where a person is choosing how far
-// to go. By the time a stored number reaches this function it has already been
-// bounded, and re-bounding it here can only fight it.
-export function shiftTensions(tensions, increment) {
-  return { start: tensions.start + increment, end: tensions.end + increment };
+// Shift both tensions by one shared increment, optionally saturating each end
+// independently. Once one handle reaches its ceiling the other remains
+// responsive until it reaches the same ceiling.
+export function shiftTensions(tensions, increment, maxTension = Infinity) {
+  return {
+    start: Math.min(
+      tensions.start + increment,
+      Math.max(tensions.start, maxTension)
+    ),
+    end: Math.min(tensions.end + increment, Math.max(tensions.end, maxTension)),
+  };
 }
 
 // The shared increment that puts the harmonic mean at `target`.
 //
 // No closed form — the mean is a ratio of quadratics in the increment — but it
-// is monotone in it and easily bracketed: at the low end both tensions reach
-// zero and the mean with them, and for large increments the mean grows without
-// bound, so `target + max` is always past it. Fixed trip count, no convergence
-// test, the same continuity contract the rest of the generation path lives
-// under.
+// is monotone in it and easily bracketed. With a finite ceiling, the upper
+// bracket saturates both ends and the target is limited to that ceiling. Fixed
+// trip count, no convergence test, the same continuity contract the rest of the
+// generation path lives under.
 const TENSION_SHIFT_STEPS = 40;
 
-export function shiftTensionsToMean(tensions, target) {
+export function shiftTensionsToMean(tensions, target, maxTension = Infinity) {
   if (!(target > TENSION_EPSILON)) {
     return tensions;
   }
+  const saturated = shiftTensions(tensions, Infinity, maxTension);
+  target = Math.min(target, harmonicMeanTension(saturated));
   let low = -Math.min(tensions.start, tensions.end);
-  let high = target + Math.max(tensions.start, tensions.end);
+  let high = Number.isFinite(maxTension)
+    ? Math.max(
+        saturated.start - tensions.start,
+        saturated.end - tensions.end
+      )
+    : target + Math.max(tensions.start, tensions.end);
   for (let step = 0; step < TENSION_SHIFT_STEPS; step++) {
     const middle = (low + high) / 2;
-    if (harmonicMeanTension(shiftTensions(tensions, middle)) < target) {
+    if (
+      harmonicMeanTension(shiftTensions(tensions, middle, maxTension)) < target
+    ) {
       low = middle;
     } else {
       high = middle;
     }
   }
-  return shiftTensions(tensions, (low + high) / 2);
+  return shiftTensions(tensions, (low + high) / 2, maxTension);
 }
 
 //
@@ -590,10 +595,10 @@ export function calculateCurvatureGizmoAxis(segmentPoints) {
 // tensions differ when the skeleton is asymmetric, and that asymmetry is
 // faithful — equalizing it measurably degrades the fit.
 //
-// The ceiling stops BOTH ends together, when the leading one reaches it. That is
-// what keeps the two handles tracking each other all the way through the drag,
-// which is how this control has always felt; capping each end on its own instead
-// lets the trailing handle carry on alone once its partner has stopped.
+// Both tensions share the increment until one reaches 1. That end then
+// saturates independently while the trailing handle continues to 1. This keeps
+// the whole available range reachable without either handle crossing its
+// tangent intersection.
 //
 // The ceiling never forces a REDUCTION. Construction reaches and handles are
 // independent of an emitted on-curve nudge, so grabbing is a no-op and the
@@ -637,25 +642,20 @@ export function calculateControlPointsFromCurvatureDelta(
   // one for one.
   let increment = (2 * dotVector(delta, axis)) / (startUnit + endUnit);
 
-  // Only an end with real reach ahead of it has a ceiling to hit. Floored at
-  // zero so an end already over the ceiling blocks further travel up without
-  // being dragged back down.
-  const headroom = (tension, reach) =>
-    reach > CURVATURE_EPSILON ? Math.max(maxTension - tension, 0) : Infinity;
-  increment = Math.min(
-    increment,
-    Math.min(headroom(startTension, startReach), headroom(endTension, endReach))
-  );
   increment = Math.max(increment, -Math.min(startTension, endTension));
 
-  const place = (from, control, unit, tension) => {
+  const place = (from, control, unit, tension, reach) => {
     const direction = normalizeVector(subVectors(control, from));
-    const length = (tension + increment) * unit;
+    const movedTension =
+      reach > CURVATURE_EPSILON
+        ? Math.min(tension + increment, Math.max(tension, maxTension))
+        : tension + increment;
+    const length = movedTension * unit;
     return { x: from.x + direction.x * length, y: from.y + direction.y * length };
   };
   return [
-    place(startPoint, controlPoint1, startUnit, startTension),
-    place(endPoint, controlPoint2, endUnit, endTension),
+    place(startPoint, controlPoint1, startUnit, startTension, startReach),
+    place(endPoint, controlPoint2, endUnit, endTension, endReach),
   ];
 }
 

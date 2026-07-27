@@ -1295,18 +1295,12 @@ function getGizmoHiddenContourIndices(positionedGlyph, model) {
 
 function* iterGizmoVisibleNodes(path, pointIndices, hiddenContourIndices) {
   if (pointIndices == null) {
-    let pointIndex = 0;
-    for (const point of path.iterPoints()) {
-      if (!point.type || !hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
-        yield point;
-      }
-      pointIndex++;
-    }
+    yield* path.iterPoints(hiddenContourIndices);
     return;
   }
   for (const pointIndex of pointIndices) {
     const point = path.getPoint(pointIndex);
-    if (point?.type && hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
+    if (hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
       continue;
     }
     if (point) {

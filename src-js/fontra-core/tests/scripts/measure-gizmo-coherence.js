@@ -31,10 +31,10 @@ for (const nudge of NUDGES) {
     { axisSegmentPoints: before.points }
   );
   const ceiling = handleTensions(construction, ceilingControls);
-  assert.ok(Math.abs(Math.max(...ceiling) - 1) < 1e-9);
+  assert.ok(ceiling.every((tension) => Math.abs(tension - 1) < 1e-9));
 
   console.log(
-    `nudge ${nudge}: grab movement ${movement.toFixed(6)}, leading ceiling ${Math.max(...ceiling).toFixed(6)}`
+    `nudge ${nudge}: grab movement ${movement.toFixed(6)}, ceilings ${ceiling.map((value) => value.toFixed(6)).join("/")}`
   );
 }
 

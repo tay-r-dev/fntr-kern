@@ -2874,8 +2874,8 @@ export function calculateGeneratedCurvatureEdits({
   if (!start || start.role !== "onCurve" || start.skeletonPointId === undefined) {
     return null;
   }
-  // Not clamped here: the shared-increment drag above already stopped both
-  // handles when its leading construction tension reached the ceiling.
+  // Not clamped here: the drag above already saturated each construction
+  // tension independently at the ceiling.
   return {
     segmentPointIndex,
     skeletonPointId: start.skeletonPointId,

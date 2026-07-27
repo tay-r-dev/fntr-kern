@@ -591,8 +591,18 @@ export class VarPackedPath {
     }
   }
 
-  *iterPoints() {
-    yield* this._iterPointsFromTo(0, this.pointTypes.length - 1);
+  *iterPoints(skipContours = null) {
+    if (!skipContours?.size) {
+      yield* this._iterPointsFromTo(0, this.pointTypes.length - 1);
+      return;
+    }
+    let startPoint = 0;
+    for (const [contourIndex, contour] of enumerate(this.contourInfo)) {
+      if (!skipContours.has(contourIndex)) {
+        yield* this._iterPointsFromTo(startPoint, contour.endPoint);
+      }
+      startPoint = contour.endPoint + 1;
+    }
   }
 
   *_iterPointsOfContour(contourIndex) {

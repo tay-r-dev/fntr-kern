@@ -270,9 +270,9 @@ Per segment side:
 4. **Pin** — if the segment's start point carries a pin for this side, shift both
    handle tensions by one shared increment `δ` so their harmonic mean equals the
    pinned number, using construction reaches. Bisection on `δ`, fixed trip count,
-   as today. Cap `δ` so neither tension exceeds 1, with headroom floored at zero
-   so an end already past the ceiling blocks further travel up without being
-   dragged down (D17 as amended).
+   as today. Saturate each tension independently at 1: after the leading handle
+   reaches the ceiling, the trailing handle remains responsive until it reaches
+   1 too.
 5. **Bound** — minimum handle length and chord cap. A pinned segment keeps the
    existing bypass of the smooth tension ceiling so its number is not shaved twice.
 6. **Emit** — handles at `q + u·L`, on-curves at `q + n`, then grid-round.

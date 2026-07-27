@@ -3,7 +3,6 @@ import {
   calculateTunniPoint,
   equalizeTensions,
   handleTensions,
-  shiftTensions,
   shiftTensionsToMean,
 } from "./tunni-calculations.js";
 
@@ -277,16 +276,7 @@ function shapeTensions(
   if (!adjustedTensions) {
     return adjusted;
   }
-  const requested = shiftTensionsToMean(adjustedTensions, pinnedTension);
-  const requestedIncrement = requested.start - adjustedTensions.start;
-  const headroom = Math.max(
-    0,
-    Math.min(1 - adjustedTensions.start, 1 - adjustedTensions.end)
-  );
-  const shifted = shiftTensions(
-    adjustedTensions,
-    Math.min(requestedIncrement, headroom)
-  );
+  const shifted = shiftTensionsToMean(adjustedTensions, pinnedTension, 1);
   return {
     startLength: shifted.start * startReach,
     endLength: shifted.end * endReach,

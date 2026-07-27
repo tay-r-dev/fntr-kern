@@ -304,12 +304,9 @@ ends; reproduction must do the same or the number cannot round-trip.
 
 **Corrected:** one shared increment, solved by fixed-count bisection.
 
-**Superseded in part — see §8.1.** The first attempt at this also capped each end
-at the ceiling _individually_, so that the harmonic mean could reach 1. That
-reaches 1 but breaks the feel of the control: once the leading handle stops, the
-trailing one travels on alone. The cap stops both ends together, as it always
-did; "reaching 1" means the leading handle reaching the tangent intersection,
-which is the visible limit, not the mean reading 1.0.
+**Superseded again by §9.** Live verification established that stopping both
+ends at the leading handle was the defect: the trailing handle must remain
+responsive until it reaches tension 1 too.
 
 ### 7.2 D15 amended — the pin is measured and applied in rendered space
 
@@ -377,8 +374,8 @@ Per segment side, handle length is resolved in this order:
 1. fit the true offset;
 2. equalize the fitted split within the fidelity allowance;
 3. apply attached per-handle adjustments along each construction handle axis;
-4. apply a pinned curvature as one shared tension increment, capped by the
-   construction-space headroom;
+4. apply a pinned curvature as one shared tension increment, saturating each
+   handle independently at tension 1;
 5. apply the ordinary minimum and maximum bounds;
 6. emit handles with any Z-normal `handleNudge`, and separately emit on-curves
    with their full nudges.
@@ -388,3 +385,26 @@ overwrites the other. Detached handles remain absolute and bypass stages 3 and 4
 default/Alt nudge cannot move an off-curve; and width, nudge, carry, and
 attached-handle edits do not change the stored pin except for unavoidable
 output-grid residuals.
+
+---
+
+## 9. Corrections after live editor verification
+
+### 9.1 The ceiling saturates each handle independently
+
+The curvature gizmo applies one shared tension increment while both handles are
+below tension 1. When the leading handle reaches 1 it stays there; the trailing
+handle continues with the same pointer drag until it also reaches 1. Stopping
+both at the leading ceiling left part of the control's valid range unreachable.
+
+Pinned regeneration uses the identical independently saturated shift while
+solving the stored harmonic mean. The drag and regeneration therefore reproduce
+the same asymmetric-to-saturated path without allowing either handle beyond its
+tangent intersection.
+
+### 9.2 Storage events do not echo
+
+Visualization settings are synchronized through local storage. An update
+received from a storage event updates the local observable but is not written
+back to storage. Echoing it can make two editor contexts race and alternate the
+gizmo mode indefinitely.
