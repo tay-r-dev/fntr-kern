@@ -212,10 +212,12 @@ the designer rather than collapsing.
    achievable 0.67; hard-pinning 2 → 1 of 118; arcs unchanged. Implemented D4 only —
    reparameterization alone reached the target, so D5 (working in tension space) was not
    needed and is not implemented.
-2. ~~**Equalize and harmonize passes** (D6, D7).~~ **Withdrawn.** See §6 — there is nothing
-   at the joints for these passes to fix, and running them would destroy curvature steps the
-   skeleton legitimately asks for. Replaced by the taper question in §6.
-3. **Gizmos** (D8, D9, D10), once there is a good default for them to adjust.
+2. ~~**Equalize and harmonize passes** (D6, D7).~~ **Withdrawn** — see §6. Harmonize has
+   nothing at the joints to fix and would destroy curvature steps the skeleton legitimately
+   asks for (§6.2, §6.3); equalize is a no-op where it is safe and a 3.3× degradation where
+   it is not (§6.6). Taper, the one real remaining defect, is out of reach under D11 (§6.5).
+3. **Gizmos** (D8, D9, D10). Now the next step, and the only remaining one — the automatic
+   base is as good as it gets under D11.
 
 ---
 
@@ -284,13 +286,37 @@ Per-end tilt brings tapered strokes to the same quality as constant-width ones. 
 shared tilt — the variant that would keep two adjacent generated segments trivially G1 at the
 rib they share — recovers less than half the gain and is *worse than pinned* on two cases.
 
-### 6.5 The decision this forces
+### 6.5 D11 — Generated handles always point along the skeleton's handle direction.
 
-Per-end tilt means the outline's tangent at a rib is no longer the skeleton's direction. Two
-adjacent segments still agree at a shared rib whenever the width ramp's slope agrees across
-it; where the designer changes the taper rate at a point, they would disagree and the outline
-would corner there. That corner is geometrically honest — a stroke that tapers and then stops
-tapering really does break — but it is a change to a property the outline has always had, and
-it would make the `smooth` flag on generated on-curve points a lie unless it is recomputed.
+**Decided: the tilt is rejected.** Out of the question, aside from the cases already handled
+specially. The axis is skeleton-owned and stays that way; §6.4 records what that costs, not a
+proposal.
 
-**Undecided:** whether to take it. Blocking the taper fix.
+Consequences, measured under the constraint:
+
+- **The taper defect is permanent.** With the axis pinned, the best any handle-length choice
+  can reach on the same 20 cases is **4.92** against the current 6.65 — still ten times the
+  constant-width figure. The residual is direction error, which lengths cannot absorb.
+- **And that remaining 26% is not reachable by this fit either.** The correction band is not
+  what blocks it: the band clamps 13 of 20 tapered cases, but widening it from 0.25×–4× to
+  0.005×–200× moves the mean only 5.57 → 5.45, and constant width does not move at all
+  (0.29). The gap is a least-squares-versus-minimax objective difference, not a bug. There is
+  no cheap fit change left.
+
+So taper is where §3's argument applies: the automatic answer cannot be right, and the
+curvature gizmo (D8) is the answer, not a better solver.
+
+### 6.6 Equalize has nothing to do either
+
+Unlike the tilt, equalize is compatible with D11 — it slides handles along the directions
+they already have. It was measured anyway, and it has no job:
+
+- **Where it is safe, it is a no-op.** On symmetric geometry the fit already produces equal
+  tensions on its own: round arc 0.37/0.37, wide shallow 0.47/0.47, tight turn 0.35/0.35,
+  quarter circle 0.55/0.55, at every offset tried.
+- **Where it would change something, it degrades.** The one constant-width shape with
+  genuinely unequal tensions is the one with asymmetric skeleton handles (0.21/0.38) — and
+  that asymmetry is faithful. Equalizing it costs 0.38 → 1.26 deviation, a factor of 3.3.
+
+D7's "maximum available" is therefore satisfied trivially: the available amount is zero
+wherever equalizing would change anything. **D6 and D7 are both withdrawn.**
