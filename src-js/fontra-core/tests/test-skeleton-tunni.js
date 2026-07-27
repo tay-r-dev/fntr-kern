@@ -4,6 +4,7 @@ import {
   buildSkeletonTunniSegments,
   calculateGeneratedCurvatureEdits,
   calculateGeneratedOnCurveEdits,
+  calculateGeneratedOnCurveGizmoPoint,
   calculateSkeletonControlPointsFromTunniDelta,
   calculateSkeletonEqualizedControlPoints,
   calculateSkeletonOnCurveFromTunni,
@@ -532,19 +533,37 @@ describe("generated Tunni segments", () => {
     const skeletonData = getSkeletonData(layer);
     const [segment] = buildGeneratedTunniSegments(skeletonData, layer.path);
     const anchor = calculateCurvatureGizmoPoint(segment.points);
-    const hit = generatedTunniHitTest(anchor, 4, skeletonData, layer.path);
+    const hit = generatedTunniHitTest(anchor, 4, skeletonData, layer.path, {
+      includeOnCurve: false,
+    });
     expect(hit?.type).to.equal("generated-curvature");
     expect(hit.gizmoPoint.x).to.be.closeTo(anchor.x, 1e-9);
     expect(hit.gizmoPoint.y).to.be.closeTo(anchor.y, 1e-9);
   });
 
-  it("hits the on-curve gizmo at the segment's true Tunni point", () => {
+  it("hits the on-curve gizmo at its outside placement", () => {
     const layer = makeGlyph();
     const skeletonData = getSkeletonData(layer);
     const [segment] = buildGeneratedTunniSegments(skeletonData, layer.path);
-    const truePoint = calculateTunniPoint(segment.points);
-    const hit = generatedTunniHitTest(truePoint, 4, skeletonData, layer.path);
+    const gizmoPoint = calculateGeneratedOnCurveGizmoPoint(segment, 24);
+    const hit = generatedTunniHitTest(gizmoPoint, 4, skeletonData, layer.path, {
+      onCurveOffset: 24,
+    });
     expect(hit?.type).to.equal("generated-on-curve");
+  });
+
+  it("places the on-curve gizmo away from the curve by its supplied offset", () => {
+    const layer = makeGlyph();
+    const skeletonData = getSkeletonData(layer);
+    const [segment] = buildGeneratedTunniSegments(skeletonData, layer.path);
+    const midpoint = calculateCurvatureGizmoPoint(segment.points);
+    const hit = generatedTunniHitTest(midpoint, 100, skeletonData, layer.path, {
+      includeCurvature: false,
+      onCurveOffset: 24,
+    });
+    expect(hit?.type).to.equal("generated-on-curve");
+    expect(Math.hypot(hit.gizmoPoint.x - midpoint.x, hit.gizmoPoint.y - midpoint.y)).to.be
+      .closeTo(24, 1e-9);
   });
 
   it("misses when nothing is near", () => {
@@ -557,6 +576,60 @@ describe("generated Tunni segments", () => {
         layer.path
       )
     ).to.equal(null);
+  });
+});
+
+describe("generated on-curve gizmo eligibility", () => {
+  it("does not expose a control when both far skeleton segments are curves", () => {
+    const path = new VarPackedPath();
+    path.moveTo(0, 0);
+    path.cubicCurveTo(20, 80, 80, 80, 100, 0);
+    path.cubicCurveTo(120, -80, 180, -80, 200, 0);
+    path.cubicCurveTo(220, 80, 280, 80, 300, 0);
+
+    const ids = [1, 2, 3, 4];
+    const skeletonData = {
+      contours: [
+        {
+          id: 71,
+          closed: false,
+          points: [
+            { id: ids[0], x: 0, y: 0 },
+            { id: 11, x: 20, y: 80, type: "cubic" },
+            { id: 12, x: 80, y: 80, type: "cubic" },
+            { id: ids[1], x: 100, y: 0 },
+            { id: 13, x: 120, y: -80, type: "cubic" },
+            { id: 14, x: 180, y: -80, type: "cubic" },
+            { id: ids[2], x: 200, y: 0 },
+            { id: 15, x: 220, y: 80, type: "cubic" },
+            { id: 16, x: 280, y: 80, type: "cubic" },
+            { id: ids[3], x: 300, y: 0 },
+          ],
+        },
+      ],
+      generated: [
+        {
+          skeletonContourId: 71,
+          pathContourIndex: 0,
+          pointMap: [
+            { skeletonContourId: 71, skeletonPointId: 1, side: "left", role: "onCurve" },
+            { skeletonContourId: 71, skeletonPointId: 1, side: "left", role: "out" },
+            { skeletonContourId: 71, skeletonPointId: 2, side: "left", role: "in" },
+            { skeletonContourId: 71, skeletonPointId: 2, side: "left", role: "onCurve" },
+            { skeletonContourId: 71, skeletonPointId: 2, side: "left", role: "out" },
+            { skeletonContourId: 71, skeletonPointId: 3, side: "left", role: "in" },
+            { skeletonContourId: 71, skeletonPointId: 3, side: "left", role: "onCurve" },
+            { skeletonContourId: 71, skeletonPointId: 3, side: "left", role: "out" },
+            { skeletonContourId: 71, skeletonPointId: 4, side: "left", role: "in" },
+            { skeletonContourId: 71, skeletonPointId: 4, side: "left", role: "onCurve" },
+          ],
+        },
+      ],
+    };
+    const segment = buildGeneratedTunniSegments(skeletonData, path)[1];
+    const truePoint = calculateTunniPoint(segment.points);
+
+    expect(generatedTunniHitTest(truePoint, 0.1, skeletonData, path)).to.equal(null);
   });
 });
 
@@ -666,6 +739,44 @@ describe("generated on-curve gizmo edits", () => {
     for (const edit of drag({ x: 0, y: 0 })) {
       expect(edit.nudgeDelta).to.be.closeTo(0, 1e-9);
     }
+  });
+
+  it("moves only the eligible end when the other end holds", () => {
+    const edits = calculateGeneratedOnCurveEdits({
+      segmentPoints,
+      provenance,
+      delta: { x: 20, y: 20 },
+      movable: [false, true],
+    });
+    expect(edits[0].nudgeDelta).to.equal(0);
+    expect(spread(edits)[1]).to.be.above(0);
+  });
+
+  it("declines the drag when neither end is eligible", () => {
+    expect(
+      calculateGeneratedOnCurveEdits({
+        segmentPoints,
+        provenance,
+        delta: { x: 20, y: 20 },
+        movable: [false, false],
+      })
+    ).to.equal(null);
+  });
+
+  it("equalizes the two reaches through the same constrained write path", () => {
+    const truePoint = calculateTunniPoint(segmentPoints);
+    const expectedSpread =
+      (Math.hypot(truePoint.x - segmentPoints[0].x, truePoint.y - segmentPoints[0].y) -
+        Math.hypot(truePoint.x - segmentPoints[3].x, truePoint.y - segmentPoints[3].y)) /
+      2;
+    const edits = calculateGeneratedOnCurveEdits({
+      segmentPoints,
+      provenance,
+      delta: { x: 0, y: 0 },
+      equalizeReaches: true,
+    });
+    expect(edits[0].nudgeDelta).to.be.closeTo(-expectedSpread, 1e-9);
+    expect(edits[1].nudgeDelta).to.be.closeTo(expectedSpread, 1e-9);
   });
 
   it("declines rather than guessing when a rib end has no provenance", () => {

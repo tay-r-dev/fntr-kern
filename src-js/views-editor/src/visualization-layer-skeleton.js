@@ -2,6 +2,7 @@ import { drawCubicHandleLabelPair } from "@fontra/core/distance-angle.js";
 import {
   buildGeneratedTunniSegments,
   buildSkeletonTunniSegments,
+  calculateGeneratedOnCurveGizmoPoint,
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
   getSkeletonData,
@@ -13,8 +14,8 @@ import {
   makeSkeletonRibKey,
 } from "@fontra/core/skeleton-model.js";
 import {
+  calculateCurvatureGizmoAxis,
   calculateCurvatureGizmoPoint,
-  calculateTunniPoint,
 } from "@fontra/core/tunni-calculations.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 
@@ -659,6 +660,8 @@ registerVisualizationLayerDefinition({
     curvatureSize: 7,
     strokeWidth: 1,
     onCurveSize: 8,
+    onCurveOffset: 24,
+    curvatureAxisLength: 18,
   },
   colors: {
     axisColor: "rgba(0, 160, 120, 0.5)",
@@ -688,17 +691,25 @@ registerVisualizationLayerDefinition({
     // curve swells in, and without it the node looks free to go anywhere.
     for (const segment of segments) {
       const anchor = calculateCurvatureGizmoPoint(segment.points);
-      const truePoint = calculateTunniPoint(segment.points);
-      if (anchor && truePoint) {
-        strokeLine(context, anchor.x, anchor.y, truePoint.x, truePoint.y);
+      const axis = calculateCurvatureGizmoAxis(segment.points);
+      if (anchor && axis) {
+        strokeLine(
+          context,
+          anchor.x,
+          anchor.y,
+          anchor.x + axis.x * parameters.curvatureAxisLength,
+          anchor.y + axis.y * parameters.curvatureAxisLength
+        );
       }
     }
     context.setLineDash([]);
     for (const segment of segments) {
-      const truePoint = calculateTunniPoint(segment.points);
-      if (truePoint) {
+      const gizmoPoint = segment.onCurveMovable?.some(Boolean)
+        ? calculateGeneratedOnCurveGizmoPoint(segment, parameters.onCurveOffset)
+        : null;
+      if (gizmoPoint) {
         context.fillStyle = parameters.onCurveColor;
-        drawDiamondNode(context, truePoint, parameters.onCurveSize, true);
+        drawDiamondNode(context, gizmoPoint, parameters.onCurveSize, true);
       }
       const anchor = calculateCurvatureGizmoPoint(segment.points);
       if (anchor) {

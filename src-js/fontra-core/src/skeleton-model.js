@@ -2908,6 +2908,7 @@ export function buildGeneratedTunniSegments(skeletonData, path) {
       continue;
     }
     const pointMap = entry.pointMap || [];
+    const contourSignedArea = getPathContourSignedArea(path, pathContourIndex);
     let contourStart;
     try {
       contourStart = path.getAbsolutePointIndex(pathContourIndex, 0);
@@ -2943,7 +2944,7 @@ export function buildGeneratedTunniSegments(skeletonData, path) {
       ) {
         continue;
       }
-      segments.push({
+      const generatedSegment = {
         pathContourIndex,
         segmentIndex: index,
         skeletonContourId: entry.skeletonContourId,
@@ -2952,10 +2953,101 @@ export function buildGeneratedTunniSegments(skeletonData, path) {
         parentPointIndices: [...segment.parentPointIndices],
         points: segment.points,
         provenance,
-      });
+        contourSignedArea,
+      };
+      generatedSegment.onCurveMovable = getGeneratedOnCurveMovability(
+        skeletonData,
+        generatedSegment
+      );
+      segments.push(generatedSegment);
     }
   }
   return segments;
+}
+
+function getPathContourSignedArea(path, contourIndex) {
+  let contour;
+  try {
+    contour = path.getUnpackedContour(contourIndex);
+  } catch {
+    return 0;
+  }
+  const points = contour.points || [];
+  let area = 0;
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index];
+    const next = points[(index + 1) % points.length];
+    area += point.x * next.y - next.x * point.y;
+  }
+  return area / 2;
+}
+
+function getGeneratedOnCurveMovability(skeletonData, segment) {
+  const contourId =
+    segment.provenance[0]?.skeletonContourId ?? segment.skeletonContourId;
+  const contour = (skeletonData?.contours || []).find(
+    (item) => item?.id === contourId
+  );
+  if (!contour) {
+    return [false, false];
+  }
+  const startIndex = contour.points?.findIndex(
+    (point) => point?.id === segment.provenance[0]?.skeletonPointId
+  );
+  const endIndex = contour.points?.findIndex(
+    (point) => point?.id === segment.provenance[3]?.skeletonPointId
+  );
+  if (startIndex < 0 || endIndex < 0) {
+    return [false, false];
+  }
+  const runsInSkeletonOrder = segment.provenance[1]?.role === "out";
+  return [
+    isFarSkeletonSegmentStraight(contour, startIndex, runsInSkeletonOrder ? -1 : 1),
+    isFarSkeletonSegmentStraight(contour, endIndex, runsInSkeletonOrder ? 1 : -1),
+  ];
+}
+
+function isFarSkeletonSegmentStraight(contour, pointIndex, direction) {
+  const points = contour.points || [];
+  if (!points.length) {
+    return false;
+  }
+  let index = pointIndex;
+  for (let steps = 0; steps < points.length; steps++) {
+    index += direction;
+    if (index < 0 || index >= points.length) {
+      return !contour.closed;
+    }
+    if (!points[index]?.type) {
+      return true;
+    }
+    // A far segment with even one off-curve is a curve, so this end holds.
+    return false;
+  }
+  return false;
+}
+
+export function calculateGeneratedOnCurveGizmoPoint(segment, offset = 0) {
+  const anchor = calculateCurvatureGizmoPoint(segment.points);
+  if (!anchor) {
+    return null;
+  }
+  const [p0, p1, p2, p3] = segment.points;
+  const tangent = normalizeVector({
+    x: -p0.x - p1.x + p2.x + p3.x,
+    y: -p0.y - p1.y + p2.y + p3.y,
+  });
+  if (!tangent) {
+    return null;
+  }
+  const outwardNormal =
+    segment.contourSignedArea >= 0
+      ? { x: tangent.y, y: -tangent.x }
+      : { x: -tangent.y, y: tangent.x };
+  return {
+    x: anchor.x + outwardNormal.x * offset,
+    y: anchor.y + outwardNormal.y * offset,
+  };
 }
 
 //
@@ -2967,14 +3059,14 @@ export function buildGeneratedTunniSegments(skeletonData, path) {
 // on-curve control is the one that can still do something.
 //
 export function generatedTunniHitTest(point, size, skeletonData, path, options = {}) {
-  const { includeOnCurve = true, includeCurvature = true } = options;
+  const { includeOnCurve = true, includeCurvature = true, onCurveOffset = 0 } = options;
   const segments = buildGeneratedTunniSegments(skeletonData, path);
   for (let i = segments.length - 1; i >= 0; i--) {
     const segment = segments[i];
-    if (includeOnCurve) {
-      const truePoint = calculateTunniPoint(segment.points);
-      if (truePoint && distance(point, truePoint) <= size) {
-        return { type: "generated-on-curve", segment, gizmoPoint: truePoint };
+    if (includeOnCurve && segment.onCurveMovable?.some(Boolean)) {
+      const gizmoPoint = calculateGeneratedOnCurveGizmoPoint(segment, onCurveOffset);
+      if (gizmoPoint && distance(point, gizmoPoint) <= size) {
+        return { type: "generated-on-curve", segment, gizmoPoint };
       }
     }
     if (includeCurvature) {
@@ -3003,7 +3095,13 @@ export function generatedTunniHitTest(point, size, skeletonData, path, options =
 // Both rib ends are addressed from provenance, and the drag is declined outright
 // rather than half-applied if either address is missing (R-D).
 //
-export function calculateGeneratedOnCurveEdits({ segmentPoints, provenance, delta }) {
+export function calculateGeneratedOnCurveEdits({
+  segmentPoints,
+  provenance,
+  delta,
+  movable = [true, true],
+  equalizeReaches = false,
+}) {
   const addresses = [provenance?.[0], provenance?.[3]];
   if (
     addresses.some(
@@ -3013,21 +3111,43 @@ export function calculateGeneratedOnCurveEdits({ segmentPoints, provenance, delt
   ) {
     return null;
   }
+  const movableEnds = [Boolean(movable[0]), Boolean(movable[1])];
+  const movableCount = Number(movableEnds[0]) + Number(movableEnds[1]);
+  if (!movableCount) {
+    return null;
+  }
 
   // Up and right both spread, so they add rather than cancel: this is the
   // projection onto the 45-degree axis the basic Tunni control already uses.
   let spread = (delta.x + delta.y) / Math.SQRT2;
+  if (equalizeReaches) {
+    const truePoint = calculateTunniPoint(segmentPoints);
+    if (!truePoint) {
+      return null;
+    }
+    spread =
+      (distance(segmentPoints[0], truePoint) - distance(segmentPoints[3], truePoint)) /
+      2;
+  }
 
   // Closing the two ends together slides each rib end toward its own handle,
   // which the handle cannot outrun: past the point where it would invert, the
   // generator floors the length and the handle starts drifting with the point
   // instead of holding still. Stop at that limit here, so the control simply
   // stops rather than quietly changing what it does.
-  const reach = Math.min(
+  const nudgeScale = movableCount === 1 ? 2 : 1;
+  const reaches = [
     distance(segmentPoints[0], segmentPoints[1]),
-    distance(segmentPoints[3], segmentPoints[2])
+    distance(segmentPoints[3], segmentPoints[2]),
+  ];
+  const maxClosing = Math.min(
+    ...reaches.flatMap((reach, index) =>
+      movableEnds[index]
+        ? [Math.max(reach - MIN_GENERATED_HANDLE_LENGTH, 0) / nudgeScale]
+        : []
+    )
   );
-  spread = Math.max(spread, -Math.max(reach - MIN_GENERATED_HANDLE_LENGTH, 0));
+  spread = Math.max(spread, -maxClosing);
 
   // A nudge slides along the SKELETON's tangent, which runs against the
   // generated contour on one of the two sides - the right-side contour is
@@ -3037,7 +3157,9 @@ export function calculateGeneratedOnCurveEdits({ segmentPoints, provenance, delt
   const orientation = provenance[1]?.role === "out" ? 1 : -1;
 
   return addresses.map((address, index) => {
-    const nudgeDelta = (index === 0 ? -spread : spread) * orientation;
+    const nudgeDelta = movableEnds[index]
+      ? (index === 0 ? -spread : spread) * orientation * nudgeScale
+      : 0;
     return {
       skeletonPointId: address.skeletonPointId,
       side: address.side,

@@ -64,6 +64,7 @@ import {
 // Import Tunni functions for integration with pointer tool
 import {
   equalizeSkeletonTunniTensions,
+  handleGeneratedTunniCommand,
   handleGeneratedTunniDrag,
   handleSkeletonTunniDrag,
   handleTrueTunniPointMouseDown,
@@ -338,9 +339,26 @@ export class PointerTool extends BaseTool {
       const gizmoHit = this.sceneModel.generatedTunniAtPoint(
         point,
         size,
-        positionedGlyph
+        positionedGlyph,
+        { onCurveOffset: size * 2 }
       );
       if (gizmoHit) {
+        if (initialEvent.ctrlKey && initialEvent.shiftKey) {
+          await handleGeneratedTunniCommand({
+            sceneController,
+            gizmoHit,
+            command: "equalize",
+          });
+          return;
+        }
+        if (initialEvent.detail >= 2) {
+          await handleGeneratedTunniCommand({
+            sceneController,
+            gizmoHit,
+            command: "reset",
+          });
+          return;
+        }
         await handleGeneratedTunniDrag({
           sceneController,
           eventStream,
