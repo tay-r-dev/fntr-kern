@@ -1,4 +1,4 @@
-import { solveHandleLengths } from "./fit-cubic.js";
+import { parameterizeAgainstCubic, solveHandleLengths } from "./fit-cubic.js";
 import { calculateTunniPoint } from "./tunni-calculations.js";
 
 // Floor on the offset speed factor lambda, as a fraction of the un-offset handle
@@ -21,6 +21,14 @@ const CORRECTION_SAMPLE_TS = [0.125, 0.25, 0.5, 0.75, 0.875];
 const CORRECTION_BAND_LOW = 0.25;
 const CORRECTION_BAND_HIGH = 4;
 const CORRECTION_BAND_WINDOW = 0.05;
+
+// Fixed trip count, no convergence test, no early exit. That is the whole
+// difference between this and the sample-and-fit path that used to live in the
+// generator: an adaptive loop's output jumps when its stopping test flips, so it
+// is not a continuous function of the skeleton, and two masters can stop at
+// different iterations and stop interpolating. A fixed number of passes from a
+// fixed seed is just a composition of smooth maps.
+const CORRECTION_PASSES = 4;
 
 export const tensionBoundStats = { evaluated: 0, active: 0 };
 export function resetTensionBoundStats() {
@@ -155,14 +163,38 @@ export function offsetCubicSide({ p0, p1, p2, p3, d0, d3, q0, q3, u0, u1 }) {
   const samples = CORRECTION_SAMPLE_TS.map((t) =>
     offsetPointAt(p0, p1, p2, p3, d0, d3, t)
   );
-  const { alphaL, alphaR } = solveHandleLengths(
-    [q0, ...samples, q3],
-    [0, ...CORRECTION_SAMPLE_TS, 1],
-    u0,
-    u1
-  );
-  const correctedStart = easeIntoBand(alphaL, analyticStart);
-  const correctedEnd = easeIntoBand(alphaR, analyticEnd);
+  // A sample taken at parameter t does not belong at the generated curve's t.
+  // An offset is stretched on the convex side and compressed on the concave one,
+  // so the two parameterizations drift apart - and on an inflected segment they
+  // drift in opposite directions either side of the inflection. Solving against
+  // the source's own parameters therefore fits the wrong correspondence, and
+  // returns lengths that are either indistinguishable from the analytic ones or
+  // negative. Re-place each sample on the curve actually being solved for, then
+  // solve again; the band keeps every iterate positive so the next pass has a
+  // real curve to project onto.
+  let correctedStart = analyticStart;
+  let correctedEnd = analyticEnd;
+  let parameters = CORRECTION_SAMPLE_TS;
+  for (let pass = 0; pass < CORRECTION_PASSES; pass++) {
+    parameters = parameterizeAgainstCubic(
+      [
+        q0,
+        { x: q0.x + u0.x * correctedStart, y: q0.y + u0.y * correctedStart },
+        { x: q3.x + u1.x * correctedEnd, y: q3.y + u1.y * correctedEnd },
+        q3,
+      ],
+      samples,
+      parameters
+    );
+    const { alphaL, alphaR } = solveHandleLengths(
+      [q0, ...samples, q3],
+      [0, ...parameters, 1],
+      u0,
+      u1
+    );
+    correctedStart = easeIntoBand(alphaL, analyticStart);
+    correctedEnd = easeIntoBand(alphaR, analyticEnd);
+  }
   const chord = Math.hypot(q3.x - q0.x, q3.y - q0.y);
   const { startLimit, endLimit } = tangentIntersectionDistances(q0, u0, q3, u1);
   return {

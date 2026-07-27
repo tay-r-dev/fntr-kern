@@ -108,6 +108,25 @@ function reparameterize(bezier, points, parameters) {
   );
 }
 
+//
+// Where each point lands on the cubic through `controlPoints`, as a parameter.
+//
+// Split out of fitCubic's own loop so callers that build a cubic from handle
+// lengths — offset construction — reuse this root find rather than growing a
+// second copy (rail R-B). Unlike the private helper above it clamps the result
+// into [0, 1] and keeps the incoming parameter when Newton returns nothing
+// usable, so a caller can feed the answer straight back into solveHandleLengths.
+//
+export function parameterizeAgainstCubic(controlPoints, points, parameters) {
+  const bezier = new Bezier(...controlPoints);
+  return points.map((point, index) => {
+    const parameter = newtonRhapsonRootFind(bezier, point, parameters[index]);
+    return Number.isFinite(parameter)
+      ? Math.min(Math.max(parameter, 0), 1)
+      : parameters[index];
+  });
+}
+
 export function fitCubic(points, leftTangent, rightTangent, error) {
   // Parameterize points, and attempt to fit curve
   let parameters = chordLengthParameterize(points);

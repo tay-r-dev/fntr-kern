@@ -226,6 +226,175 @@ describe("offset-cubic: degenerate inputs", () => {
   }
 });
 
+describe("offset-cubic: tracks the true offset", () => {
+  // The true offset, defined independently of the module: walk the source cubic
+  // and step off along its normal. Deviation is measured as a distance from the
+  // true curve to the generated one, not as a displacement at matching t --
+  // matching t is precisely the assumption that makes the fit wrong.
+  function trueOffsetPoints(p0, p1, p2, p3, d0, d3, count = 41) {
+    const points = [];
+    for (let i = 0; i < count; i++) {
+      const t = i / (count - 1);
+      const m = 1 - t;
+      const base = {
+        x: m ** 3 * p0.x + 3 * m * m * t * p1.x + 3 * m * t * t * p2.x + t ** 3 * p3.x,
+        y: m ** 3 * p0.y + 3 * m * m * t * p1.y + 3 * m * t * t * p2.y + t ** 3 * p3.y,
+      };
+      const deriv = {
+        x:
+          3 * m * m * (p1.x - p0.x) +
+          6 * m * t * (p2.x - p1.x) +
+          3 * t * t * (p3.x - p2.x),
+        y:
+          3 * m * m * (p1.y - p0.y) +
+          6 * m * t * (p2.y - p1.y) +
+          3 * t * t * (p3.y - p2.y),
+      };
+      const speed = Math.hypot(deriv.x, deriv.y);
+      if (speed < 1e-9) {
+        points.push(base);
+        continue;
+      }
+      const d = d0 + (d3 - d0) * t;
+      points.push({
+        x: base.x + (deriv.y * d) / speed,
+        y: base.y - (deriv.x * d) / speed,
+      });
+    }
+    return points;
+  }
+
+  function maxDeviation([p0, p1, p2, p3], d0, d3) {
+    const rib = ribInputs(p0, p1, p2, p3, d0, d3);
+    const { startLength, endLength } = offsetCubicSide({
+      p0,
+      p1,
+      p2,
+      p3,
+      d0,
+      d3,
+      ...rib,
+    });
+    const c1 = {
+      x: rib.q0.x + rib.u0.x * startLength,
+      y: rib.q0.y + rib.u0.y * startLength,
+    };
+    const c2 = {
+      x: rib.q3.x + rib.u1.x * endLength,
+      y: rib.q3.y + rib.u1.y * endLength,
+    };
+    const generated = [];
+    for (let i = 0; i <= 400; i++) {
+      const t = i / 400;
+      const m = 1 - t;
+      generated.push({
+        x:
+          m ** 3 * rib.q0.x +
+          3 * m * m * t * c1.x +
+          3 * m * t * t * c2.x +
+          t ** 3 * rib.q3.x,
+        y:
+          m ** 3 * rib.q0.y +
+          3 * m * m * t * c1.y +
+          3 * m * t * t * c2.y +
+          t ** 3 * rib.q3.y,
+      });
+    }
+    let worst = 0;
+    for (const target of trueOffsetPoints(p0, p1, p2, p3, d0, d3)) {
+      let nearest = Infinity;
+      for (const point of generated) {
+        const squared = (point.x - target.x) ** 2 + (point.y - target.y) ** 2;
+        if (squared < nearest) nearest = squared;
+      }
+      worst = Math.max(worst, Math.sqrt(nearest));
+    }
+    return worst;
+  }
+
+  const arc = quarterCircle(100);
+  const arcPoints = [arc.p0, arc.p1, arc.p2, arc.p3];
+
+  it("follows a circular arc offset outward", () => {
+    expect(maxDeviation(arcPoints, 25, 25)).to.be.at.most(1);
+  });
+
+  it("follows a circular arc offset inward", () => {
+    expect(maxDeviation(arcPoints, -40, -40)).to.be.at.most(1);
+  });
+
+  // An inflected segment is the worst case for a fit at fixed t: the offset is
+  // stretched on one side of the inflection and compressed on the other, so the
+  // parameter drifts in opposite directions either side of it.
+  const sCurve = [
+    { x: 0, y: 0 },
+    { x: 60, y: 60 },
+    { x: 120, y: -60 },
+    { x: 180, y: 0 },
+  ];
+
+  it("follows an S-curve", () => {
+    expect(maxDeviation(sCurve, 35, 35)).to.be.at.most(2.5);
+  });
+
+  it("follows an S-curve offset the other way", () => {
+    expect(maxDeviation(sCurve, -35, -35)).to.be.at.most(2.5);
+  });
+
+  it("follows a tight turn offset inward", () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 20, y: 90 },
+      { x: 120, y: 90 },
+      { x: 140, y: 0 },
+    ];
+    expect(maxDeviation(points, -70, -70)).to.be.at.most(1.5);
+  });
+
+  it("follows a shallow curve at a wide offset", () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 50, y: 40 },
+      { x: 150, y: 40 },
+      { x: 200, y: 0 },
+    ];
+    expect(maxDeviation(points, 70, 70)).to.be.at.most(1);
+  });
+
+  it("follows a segment whose handles differ in length", () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 25, y: 60 },
+      { x: 150, y: 75 },
+      { x: 190, y: 0 },
+    ];
+    expect(maxDeviation(points, 50, 50)).to.be.at.most(1);
+  });
+
+  it("keeps a handle off the collapse floor", () => {
+    // The un-reparameterized solve drives this one's start handle onto
+    // MIN_HANDLE_LENGTH exactly, while the other end balloons to compensate.
+    const points = [
+      { x: 0, y: 0 },
+      { x: 25, y: 60 },
+      { x: 150, y: 75 },
+      { x: 190, y: 0 },
+    ];
+    const [p0, p1, p2, p3] = points;
+    const d = 70;
+    const { startLength } = offsetCubicSide({
+      p0,
+      p1,
+      p2,
+      p3,
+      d0: d,
+      d3: d,
+      ...ribInputs(p0, p1, p2, p3, d, d),
+    });
+    expect(startLength).to.be.above(3);
+  });
+});
+
 describe("offset-cubic: continuity", () => {
   const configurations = [
     [
