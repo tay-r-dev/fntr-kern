@@ -985,6 +985,17 @@ export class SceneModel {
     if (!positionedGlyph) {
       return null;
     }
+    // D9: gizmo editing is the default, and dragging a generated handle
+    // directly is the opt-out. The two would otherwise compete for the same
+    // click - the gizmos sit on and around the very handles this targets - so
+    // exactly one of them is live at a time. Neither owns the data: both write
+    // the same nudge and handle-offset fields, so the switch loses no work.
+    if (
+      this.visualizationLayersSettings?.model["fontra.skeleton.generated-tunni"] ===
+      true
+    ) {
+      return null;
+    }
     const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
     if (!skeletonData?.generated?.length) {
       return null;

@@ -902,6 +902,16 @@ export default class SkeletonParametersPanel extends Panel {
       type: "header",
       label: translate("sidebar.skeleton-parameters.ribs"),
     });
+    // D9: the gizmos are the default way to shape a generated segment; dragging
+    // its handles directly is the opt-out. A behavior name, not a data mode
+    // (R-F) — both write the same fields, so flipping this loses nothing and
+    // there is nothing to reset on the way back.
+    formContents.push({
+      type: "checkbox",
+      key: "rib:generated-gizmos",
+      label: translate("sidebar.skeleton-parameters.generated-gizmos"),
+      value: this._generatedGizmosEnabled(),
+    });
     // Locking blocks this side's generated adjustments without clearing them.
     // With a skeleton point selected the derived targets are both its ribs, so
     // this is the donor's combined lock control.
@@ -1181,7 +1191,25 @@ export default class SkeletonParametersPanel extends Panel {
     );
   }
 
+  // The gizmo layer's own switch is the single source of truth for the mode, so
+  // the panel checkbox and the View menu can never drift apart. Nothing about
+  // this is stored in the glyph: it is how the outline is edited, not what the
+  // outline is.
+  _generatedGizmosEnabled() {
+    return (
+      this.editorController.visualizationLayersSettings.model[
+        "fontra.skeleton.generated-tunni"
+      ] === true
+    );
+  }
+
   async _onRibChange(name, value) {
+    if (name === "generated-gizmos") {
+      this.editorController.visualizationLayersSettings.model[
+        "fontra.skeleton.generated-tunni"
+      ] = value === true;
+      return;
+    }
     if (name === "locked") {
       await setPanelRibLocked(
         this.sceneController,

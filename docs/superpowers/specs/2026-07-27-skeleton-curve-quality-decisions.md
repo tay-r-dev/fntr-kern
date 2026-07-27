@@ -237,8 +237,31 @@ gizmo layer attaches.
    nothing at the joints to fix and would destroy curvature steps the skeleton legitimately
    asks for (§6.2, §6.3); equalize is a no-op where it is safe and a 3.3× degradation where
    it is not (§6.6). Taper, the one real remaining defect, is out of reach under D11 (§6.5).
-3. **Gizmos** (D8, D9, D10). Now the next step, and the only remaining one — the automatic
-   base is as good as it gets under D11.
+3. ~~**Gizmos** (D8, D9, D10).~~ **Done.** Shipped in four commits:
+   - `aba940073` — the curvature control as pure segment math in `tunni-calculations.js`.
+   - `5bac71b6e` — `calculateGeneratedCurvatureEdits`: one drag, two writes, addressed from
+     provenance.
+   - `b200c00f5` — `buildGeneratedTunniSegments` (the path/skeleton join, one copy),
+     `generatedTunniHitTest`, and the `fontra.skeleton.generated-tunni` layer.
+   - `9cad17298` — the drag itself, plus `calculateGeneratedOnCurveEdits`.
+
+   Implementation notes worth keeping:
+
+   - **Nothing new is stored.** The curvature gizmo writes `handleOffsets`, the on-curve
+     gizmo writes `nudge` — the same two fields the direct-handle mode writes. D10 holds as
+     specified: flipping the mode loses no work and resets nothing.
+   - **Edits are computed once and applied as deltas** to each edited layer's own original
+     value. Recomputing per layer would need that layer's generated geometry, which only
+     exists after the skeleton is written.
+   - **`calculateOnCurvePointsFromTunni` is not identity at zero drag.** With coupled ends it
+     equalizes the two tensions regardless of the delta, so differencing against the incoming
+     geometry fired that equalization the moment the gizmo was grabbed — a 152-unit jump on
+     the test segment before the pointer moved. The edits are differenced against the same
+     call at zero drag instead.
+   - **The mode's single source of truth is the layer switch** `fontra.skeleton.generated-tunni`.
+     The panel checkbox and the View menu both read and write it, so they cannot drift, and
+     `editableGeneratedAtPoint` returns null while it is on — the two modes compete for the
+     same clicks, since the gizmos sit on and around the very handles that mode targets.
 
 ---
 
