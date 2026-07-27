@@ -5,7 +5,8 @@
 remains the spec for the closed-form construction itself. This document records what we
 decided *after* that construction shipped and its curve quality was measured.
 
-**Status:** decisions agreed, implementation not started. Work order is at the end.
+**Status:** step 1 done (`8adb3bb55`). Step 2 **withdrawn on measurement** — see §6.
+Work order is at the end.
 
 ---
 
@@ -207,12 +208,89 @@ the designer rather than collapsing.
 
 ## 5. Work order
 
-1. **Fix the fit** (D4, D5). Smallest change, directly measurable, and both equalize and
-   harmonize are meaningless on top of a bad base. Target: mean error 3.11 → ≈0.84 against
-   an achievable 0.67, with no regression in hard-pinning.
-2. **Equalize and harmonize passes** (D6, D7), then re-measure G2 at the joints. Baseline
-   recorded 2026-07-27 on a constant-curvature skeleton (two 60° arcs, exactly G2, whose
-   offset is exactly another arc): outer side essentially perfect (radii 240.7/240.1 against
-   an ideal 240), inner side 152.9/161.6 against an ideal 160 — a 6% joint mismatch that is
-   the fit undershooting, not the joint disagreeing. Expect step 1 to close most of it.
+1. ~~**Fix the fit** (D4, D5).~~ **Done**, `8adb3bb55`. Mean error 3.11 → 0.89 against an
+   achievable 0.67; hard-pinning 2 → 1 of 118; arcs unchanged. Implemented D4 only —
+   reparameterization alone reached the target, so D5 (working in tension space) was not
+   needed and is not implemented.
+2. ~~**Equalize and harmonize passes** (D6, D7).~~ **Withdrawn.** See §6 — there is nothing
+   at the joints for these passes to fix, and running them would destroy curvature steps the
+   skeleton legitimately asks for. Replaced by the taper question in §6.
 3. **Gizmos** (D8, D9, D10), once there is a good default for them to adjust.
+
+---
+
+## 6. Post-step-1 measurements: why step 2 was withdrawn
+
+### 6.1 The 6% joint mismatch in the old work order was grid noise
+
+The baseline quoted for step 2 (inner radii 152.9/161.6 against an ideal 160) came from a
+5-point endpoint-curvature stencil applied to the **rounded** generated contour. Endpoint
+curvature is a second-derivative quantity: jiggling each off-curve point inside its own
+rounding cell (±0.5 in x and y) moves the implied radius over **136.9–156.3** on that same
+joint. The 6% "mismatch" sits entirely inside that band. The stencil cannot resolve anything
+at this scale and must not be used as a quality measure on rounded output.
+
+Radial fidelity on the same geometry — max distance from the ideal circle — is 0.219 outer
+and 0.402 inner. That is the trustworthy number, and it is good.
+
+### 6.2 Unrounded, the joints are already right
+
+Measured on `offsetCubicSide` directly, bypassing `Math.round`:
+
+- **Arc skeletons, constant width.** Generated joint curvature is within **1.7%** of the true
+  offset's on every case tried (R 90–300, turns 40–80°, both sides). Where the skeleton is
+  exactly G2 the two generated sides agree to floating point — joint step is `1e-17`.
+- **Arbitrary geometry, constant width.** Taking one cubic and splitting it at t = 0.5 gives
+  two segments that are exactly G2 at the joint by construction. Feeding each half through
+  the generator independently, the joint step is **0.0–0.9%** of the local curvature across
+  round, shallow, tight, asymmetric and shoulder shapes.
+
+So the generated contour already reproduces the true offset's curvature at joints. A
+harmonize pass has nothing to remove there.
+
+### 6.3 …and the mismatch that *is* there is the skeleton's, faithfully reproduced
+
+On arcs of differing radius either side of a joint, the generated joint step runs up to
+**80%** — and matches the true offset's own step to within 1.7%. That step is genuine: the
+designer asked for two different curvatures. **Harmonizing would erase it.** Equalize has
+the same problem, already noted in D7 for a different reason.
+
+### 6.4 The real remaining defect is taper, and neither pass touches it
+
+Max deviation from the true offset, one segment, after step 1:
+
+| | constant width | tapered |
+| --- | --- | --- |
+| deviation | 0.11 – 0.49 | **3.6 – 14.4** |
+
+Cause: the generated handle **axis** is pinned to the skeleton handle direction. On a tapered
+stroke the true offset's tangent is not parallel to the skeleton's — it tilts by
+`atan(d′ / speed)`, measured at **6°–79°** across realistic tapers (55/20, 70/10, 30/60,
+−20/−55 against half-widths of 40). No handle *length* can compensate for a wrong direction,
+and both equalize and harmonize only slide handles along the existing axis.
+
+At constant width the tilt measures −0.01°, so this is exactly targeted: it changes tapered
+strokes and nothing else.
+
+Refitting handle lengths numerically for each axis choice, over 20 tapered cases:
+
+| axis | mean deviation |
+| --- | --- |
+| pinned to the skeleton (current) | 6.65 |
+| tilted per end, to the true offset's tangent | **0.44** |
+| one shared tilt for both ends | 2.52 |
+
+Per-end tilt brings tapered strokes to the same quality as constant-width ones. A single
+shared tilt — the variant that would keep two adjacent generated segments trivially G1 at the
+rib they share — recovers less than half the gain and is *worse than pinned* on two cases.
+
+### 6.5 The decision this forces
+
+Per-end tilt means the outline's tangent at a rib is no longer the skeleton's direction. Two
+adjacent segments still agree at a shared rib whenever the width ramp's slope agrees across
+it; where the designer changes the taper rate at a point, they would disagree and the outline
+would corner there. That corner is geometrically honest — a stroke that tapers and then stops
+tapering really does break — but it is a change to a property the outline has always had, and
+it would make the `smooth` flag on generated on-curve points a lie unless it is recomputed.
+
+**Undecided:** whether to take it. Blocking the taper fix.
