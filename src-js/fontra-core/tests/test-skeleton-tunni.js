@@ -513,6 +513,12 @@ describe("generated Tunni segments", () => {
 });
 
 // The on-curve gizmo's writes: two nudges, tangent-constrained (D12).
+//
+// The drag reads in ABSOLUTE coordinates, never in the gizmo's own frame: up or
+// right spreads the two on-curve points apart along their generated curves,
+// down or left brings them together. Handle lengths are untouched - the nudge
+// carries each handle with its point - so the curve keeps its shape and only
+// its extent changes.
 describe("generated on-curve gizmo edits", () => {
   const segmentPoints = [
     { x: 0, y: 0 },
@@ -520,89 +526,97 @@ describe("generated on-curve gizmo edits", () => {
     { x: 160, y: 60 },
     { x: 200, y: 0 },
   ];
+  // Left side: the segment runs with the skeleton, so its first handle is "out".
   const provenance = [
     { skeletonPointId: 2, side: "left", role: "onCurve" },
     { skeletonPointId: 2, side: "left", role: "out" },
     { skeletonPointId: 5, side: "left", role: "in" },
     { skeletonPointId: 5, side: "left", role: "onCurve" },
   ];
+  // Right side: the generated contour runs backwards, so the roles swap.
+  const reversedProvenance = [
+    { skeletonPointId: 2, side: "right", role: "onCurve" },
+    { skeletonPointId: 2, side: "right", role: "in" },
+    { skeletonPointId: 5, side: "right", role: "out" },
+    { skeletonPointId: 5, side: "right", role: "onCurve" },
+  ];
+  const drag = (delta, prov = provenance, points = segmentPoints) =>
+    calculateGeneratedOnCurveEdits({ segmentPoints: points, provenance: prov, delta });
+  // Positive means "this end moved away from the other one", whichever way the
+  // stored nudge axis happens to point.
+  const spread = (edits, prov = provenance) => {
+    const orientation = prov[1].role === "out" ? 1 : -1;
+    return [-edits[0].nudgeDelta * orientation, edits[1].nudgeDelta * orientation];
+  };
 
   it("addresses both rib ends by their own provenance", () => {
-    const edits = calculateGeneratedOnCurveEdits({
-      segmentPoints,
-      provenance,
-      delta: { x: 0, y: 20 },
-    });
+    const edits = drag({ x: 0, y: 20 });
     expect(edits).to.have.length(2);
     expect(edits[0]).to.include({ skeletonPointId: 2, side: "left", role: "onCurve" });
     expect(edits[1]).to.include({ skeletonPointId: 5, side: "left", role: "onCurve" });
   });
 
   it("reports a scalar nudge, never a free displacement", () => {
-    const edits = calculateGeneratedOnCurveEdits({
-      segmentPoints,
-      provenance,
-      delta: { x: 7, y: 13 },
-    });
-    for (const edit of edits) {
+    for (const edit of drag({ x: 7, y: 13 })) {
       expect(edit.nudgeDelta).to.be.a("number");
       expect(Number.isFinite(edit.nudgeDelta)).to.equal(true);
       expect(edit).to.not.have.property("displacement");
     }
   });
 
-  it("slides the rib end by the amount dragged along its own axis", () => {
-    const axis = { x: 20 / Math.hypot(20, 80), y: 80 / Math.hypot(20, 80) };
-    for (const amount of [-40, -10, 10, 40]) {
-      const edits = calculateGeneratedOnCurveEdits({
-        segmentPoints,
-        provenance,
-        delta: { x: axis.x * amount, y: axis.y * amount },
-      });
-      // A tangent-constrained control should track the pointer 1:1 along the
-      // axis it is constrained to, not merely move in the right direction.
-      expect(edits[0].nudgeDelta).to.be.closeTo(amount, Math.abs(amount) * 0.2);
+  it("spreads the points apart when the cursor goes right", () => {
+    const [start, end] = spread(drag({ x: 20, y: 0 }));
+    expect(start).to.be.above(0);
+    expect(end).to.be.above(0);
+  });
+
+  it("spreads them apart when the cursor goes up", () => {
+    const [start, end] = spread(drag({ x: 0, y: 20 }));
+    expect(start).to.be.above(0);
+    expect(end).to.be.above(0);
+  });
+
+  it("draws them together when the cursor goes left or down", () => {
+    for (const delta of [
+      { x: -20, y: 0 },
+      { x: 0, y: -20 },
+    ]) {
+      const [start, end] = spread(drag(delta));
+      expect(start).to.be.below(0);
+      expect(end).to.be.below(0);
     }
   });
 
-  it("responds monotonically, so a drag never doubles back", () => {
-    const axis = { x: 20 / Math.hypot(20, 80), y: 80 / Math.hypot(20, 80) };
-    let previous = -Infinity;
-    for (const amount of [-40, -20, -5, 0, 5, 20, 40]) {
-      const edits = calculateGeneratedOnCurveEdits({
-        segmentPoints,
-        provenance,
-        delta: { x: axis.x * amount, y: axis.y * amount },
-      });
-      expect(edits[0].nudgeDelta).to.be.above(previous);
-      previous = edits[0].nudgeDelta;
-    }
+  it("adds up and right rather than letting them cancel", () => {
+    const right = spread(drag({ x: 20, y: 0 }))[0];
+    const both = spread(drag({ x: 20, y: 20 }))[0];
+    expect(both).to.be.above(right);
+  });
+
+  it("reads the drag in absolute coordinates, not the segment's frame", () => {
+    // Same absolute drag, segment rotated 90 degrees: the response must not
+    // change, or the control would mean something different per segment.
+    const rotated = segmentPoints.map((p) => ({ x: -p.y, y: p.x }));
+    const flat = spread(drag({ x: 15, y: 15 }));
+    const turned = spread(drag({ x: 15, y: 15 }, provenance, rotated));
+    expect(turned[0]).to.be.closeTo(flat[0], 1e-9);
+    expect(turned[1]).to.be.closeTo(flat[1], 1e-9);
+  });
+
+  it("spreads the same way on a contour that runs backwards", () => {
+    const forward = spread(drag({ x: 20, y: 20 }));
+    const backward = spread(
+      drag({ x: 20, y: 20 }, reversedProvenance),
+      reversedProvenance
+    );
+    expect(backward[0]).to.be.closeTo(forward[0], 1e-9);
+    expect(backward[1]).to.be.closeTo(forward[1], 1e-9);
   });
 
   it("stays put for a drag that goes nowhere", () => {
-    const edits = calculateGeneratedOnCurveEdits({
-      segmentPoints,
-      provenance,
-      delta: { x: 0, y: 0 },
-    });
-    for (const edit of edits) {
+    for (const edit of drag({ x: 0, y: 0 })) {
       expect(edit.nudgeDelta).to.be.closeTo(0, 1e-9);
     }
-  });
-
-  it("declines when the segment has no Tunni point", () => {
-    expect(
-      calculateGeneratedOnCurveEdits({
-        segmentPoints: [
-          { x: 0, y: 0 },
-          { x: 50, y: 0 },
-          { x: 150, y: 0 },
-          { x: 200, y: 0 },
-        ],
-        provenance,
-        delta: { x: 5, y: 5 },
-      })
-    ).to.equal(null);
   });
 
   it("declines rather than guessing when a rib end has no provenance", () => {

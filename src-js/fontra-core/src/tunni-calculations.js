@@ -500,28 +500,55 @@ export function calculateControlPointsFromCurvatureDelta(
   }
   const tunniPoint = calculateTunniPoint(segmentPoints);
   const [startPoint, controlPoint1, controlPoint2, endPoint] = segmentPoints;
-  const startReach = distance(startPoint, tunniPoint);
-  const endReach = distance(endPoint, tunniPoint);
-  if (!(startReach > CURVATURE_EPSILON) || !(endReach > CURVATURE_EPSILON)) {
+  // Reach must be measured ALONG the handle axis, not as a plain distance. When
+  // the handles splay outward the tangent rays still meet, but behind both ends
+  // — the distance to that meeting point is large and positive while the reach
+  // is negative. Taking the distance there invents a tension out of nothing,
+  // and the ceiling built from it can pin the control before it has moved.
+  // offset-cubic draws the same line: a reach that is not ahead is no limit.
+  const startReach = signedReach(startPoint, controlPoint1, tunniPoint);
+  const endReach = signedReach(endPoint, controlPoint2, tunniPoint);
+
+  const startLength = distance(startPoint, controlPoint1);
+  const endLength = distance(endPoint, controlPoint2);
+  // Where there is no reach ahead, fall back to the handle's own length as the
+  // unit, so the control keeps a sensible scale instead of dropping out.
+  const startUnit = startReach > CURVATURE_EPSILON ? startReach : startLength;
+  const endUnit = endReach > CURVATURE_EPSILON ? endReach : endLength;
+  if (!(startUnit > CURVATURE_EPSILON) || !(endUnit > CURVATURE_EPSILON)) {
     return null;
   }
 
-  const startTension = distance(startPoint, controlPoint1) / startReach;
-  const endTension = distance(endPoint, controlPoint2) / endReach;
+  const startTension = startLength / startUnit;
+  const endTension = endLength / endUnit;
 
   // Half the summed reach converts a distance dragged in glyph units into a
-  // tension increment, matching the basic Tunni control's feel.
-  let increment = (2 * dotVector(delta, axis)) / (startReach + endReach);
-  increment = Math.min(increment, maxTension - Math.max(startTension, endTension));
+  // tension increment: with the two ends alike, each handle tracks the pointer
+  // one for one.
+  let increment = (2 * dotVector(delta, axis)) / (startUnit + endUnit);
+  // Only an end with real reach ahead of it has a ceiling to hit.
+  const ceiling = Math.min(
+    startReach > CURVATURE_EPSILON ? maxTension - startTension : Infinity,
+    endReach > CURVATURE_EPSILON ? maxTension - endTension : Infinity
+  );
+  increment = Math.min(increment, ceiling);
   increment = Math.max(increment, -Math.min(startTension, endTension));
 
-  const place = (from, control, reach, tension) => {
+  const place = (from, control, unit, tension) => {
     const direction = normalizeVector(subVectors(control, from));
-    const length = (tension + increment) * reach;
+    const length = (tension + increment) * unit;
     return { x: from.x + direction.x * length, y: from.y + direction.y * length };
   };
   return [
-    place(startPoint, controlPoint1, startReach, startTension),
-    place(endPoint, controlPoint2, endReach, endTension),
+    place(startPoint, controlPoint1, startUnit, startTension),
+    place(endPoint, controlPoint2, endUnit, endTension),
   ];
+}
+
+// How far the tangent intersection lies ALONG the handle's own axis. Negative
+// when it sits behind the on-curve point, which is the case a plain distance
+// cannot tell apart.
+function signedReach(onCurvePoint, controlPoint, tunniPoint) {
+  const axis = normalizeVector(subVectors(controlPoint, onCurvePoint));
+  return dotVector(subVectors(tunniPoint, onCurvePoint), axis);
 }

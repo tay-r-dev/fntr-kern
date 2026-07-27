@@ -229,3 +229,51 @@ describe("tunni-calculations: curvature gizmo", () => {
     expect(Math.max(afterStart, afterEnd)).to.be.closeTo(1, 1e-6);
   });
 });
+
+describe("tunni-calculations: curvature gizmo reach sign", () => {
+  // Handles splaying outward: the tangent rays meet BEHIND both on-curve
+  // points. The distance to that intersection is large and positive, but the
+  // reach along each handle axis is negative — there is no tension ceiling to
+  // enforce, exactly as offset-cubic treats it.
+  const splayed = [
+    { x: 0, y: 0 },
+    { x: -40, y: 25 },
+    { x: 240, y: 25 },
+    { x: 200, y: 0 },
+  ];
+
+  it("does not invent a ceiling where the intersection is behind the ends", () => {
+    const axis = calculateCurvatureGizmoAxis(splayed);
+    const far = calculateControlPointsFromCurvatureDelta(
+      { x: axis.x * 400, y: axis.y * 400 },
+      splayed
+    );
+    const near = calculateControlPointsFromCurvatureDelta(
+      { x: axis.x * 40, y: axis.y * 40 },
+      splayed
+    );
+    const moved = (m) => Math.hypot(m[0].x - splayed[1].x, m[0].y - splayed[1].y);
+    // With no meaningful ceiling the control keeps responding rather than
+    // stopping at a tension computed from an unsigned distance.
+    expect(moved(far)).to.be.above(moved(near) * 5);
+  });
+
+  it("still enforces the ceiling when the intersection is genuinely ahead", () => {
+    const ahead = [
+      { x: 0, y: 0 },
+      { x: 30, y: 60 },
+      { x: 170, y: 60 },
+      { x: 200, y: 0 },
+    ];
+    const axis = calculateCurvatureGizmoAxis(ahead);
+    const moved = calculateControlPointsFromCurvatureDelta(
+      { x: axis.x * 5000, y: axis.y * 5000 },
+      ahead
+    );
+    const tunni = calculateTunniPoint([ahead[0], ...moved, ahead[3]]);
+    const tension =
+      Math.hypot(moved[0].x - ahead[0].x, moved[0].y - ahead[0].y) /
+      Math.hypot(tunni.x - ahead[0].x, tunni.y - ahead[0].y);
+    expect(tension).to.be.at.most(1 + 1e-9);
+  });
+});

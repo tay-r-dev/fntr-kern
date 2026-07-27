@@ -2810,23 +2810,21 @@ export function generatedTunniHitTest(point, size, skeletonData, path, options =
 //
 // An on-curve-gizmo drag on a generated segment, expressed as skeleton writes.
 //
-// The Tunni math hands back a displacement in the plane; only its component
-// along the rib's own axis survives. That is not a simplification made here for
-// convenience — the on-curve gizmo is tangent-constrained by design (D12), and a
-// nudge is a scalar along that axis, so the projection IS the control. A
-// generated on-curve point is a rib end shared by the two segments either side
-// of it, and letting it leave the rib would reshape the neighbour in a way the
-// skeleton cannot express.
+// The drag is read in ABSOLUTE coordinates, deliberately: up or right spreads
+// the segment's two on-curve points apart along their own curves, down or left
+// draws them together, and that stays true whichever way the segment happens to
+// be pointing. A control whose meaning rotated with its segment would need
+// re-learning at every joint.
+//
+// Only the extent changes. Handle lengths are left exactly as they were - the
+// nudge carries each handle along with the point it belongs to - so the curve
+// keeps the shape the fit gave it and the cubic stays well-formed. Those lengths
+// are invisible to the designer but the segment is not a segment without them.
 //
 // Both rib ends are addressed from provenance, and the drag is declined outright
 // rather than half-applied if either address is missing (R-D).
 //
-export function calculateGeneratedOnCurveEdits({
-  segmentPoints,
-  provenance,
-  delta,
-  equalizeDistances = true,
-}) {
+export function calculateGeneratedOnCurveEdits({ segmentPoints, provenance, delta }) {
   const addresses = [provenance?.[0], provenance?.[3]];
   if (
     addresses.some(
@@ -2836,42 +2834,21 @@ export function calculateGeneratedOnCurveEdits({
   ) {
     return null;
   }
-  const tunniPoint = calculateTunniPoint(segmentPoints);
-  if (!tunniPoint) {
-    return null;
-  }
-  const moved = calculateOnCurvePointsFromTunni(
-    { x: tunniPoint.x + delta.x, y: tunniPoint.y + delta.y },
-    segmentPoints,
-    equalizeDistances
-  );
-  // The baseline is the same call at zero drag, NOT the incoming points. With
-  // coupled ends the helper equalizes the two tensions whatever the delta, so
-  // measuring against the incoming geometry would fire that equalization the
-  // instant the gizmo is grabbed — a snap nobody asked for, and one measured to
-  // cost accuracy where the asymmetry is faithful to the skeleton. Differencing
-  // against the resting state reports only what the drag itself did.
-  const resting = calculateOnCurvePointsFromTunni(
-    tunniPoint,
-    segmentPoints,
-    equalizeDistances
-  );
-  if (!moved || !resting) {
-    return null;
-  }
-  return [
-    [0, 1],
-    [3, 2],
-  ].map(([endIndex, handleIndex], index) => {
-    const axis = normalizeVector(
-      subVectors(segmentPoints[handleIndex], segmentPoints[endIndex])
-    );
-    const displacement = subVectors(moved[endIndex], resting[endIndex]);
-    return {
-      skeletonPointId: addresses[index].skeletonPointId,
-      side: addresses[index].side,
-      role: addresses[index].role,
-      nudgeDelta: dotVector(displacement, axis),
-    };
-  });
+
+  // Up and right both spread, so they add rather than cancel: this is the
+  // projection onto the 45-degree axis the basic Tunni control already uses.
+  const spread = (delta.x + delta.y) / Math.SQRT2;
+
+  // A nudge slides along the SKELETON's tangent, which runs against the
+  // generated contour on one of the two sides - the right-side contour is
+  // emitted backwards, and its segments carry "in" where the left side carries
+  // "out". Reading the orientation off that role keeps the gizmo spreading
+  // outward on both sides instead of collapsing one while opening the other.
+  const orientation = provenance[1]?.role === "out" ? 1 : -1;
+  return addresses.map((address, index) => ({
+    skeletonPointId: address.skeletonPointId,
+    side: address.side,
+    role: address.role,
+    nudgeDelta: (index === 0 ? -spread : spread) * orientation,
+  }));
 }

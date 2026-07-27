@@ -474,7 +474,7 @@ export async function handleGeneratedTunniDrag({
 
       const writes = isCurvature
         ? generatedCurvatureWrites(originalPoints, segment, delta)
-        : generatedOnCurveWrites(originalPoints, segment, delta, !event.altKey);
+        : generatedOnCurveWrites(originalPoints, segment, delta);
       if (!writes) {
         continue;
       }
@@ -556,12 +556,11 @@ function generatedCurvatureWrites(originalPoints, segment, delta) {
 }
 
 // On-curve: the two rib ends, tangent-constrained (D12).
-function generatedOnCurveWrites(originalPoints, segment, delta, equalizeDistances) {
+function generatedOnCurveWrites(originalPoints, segment, delta) {
   const edits = calculateGeneratedOnCurveEdits({
     segmentPoints: originalPoints,
     provenance: segment.provenance,
     delta,
-    equalizeDistances,
   });
   if (!edits) {
     return null;
