@@ -12,14 +12,12 @@ import {
   generatedTunniHitTest,
   getGeneratedPathContourIndices,
   getSkeletonData,
-  getSkeletonHandleOffset,
   getSkeletonPointNudge,
   makeSkeletonContour,
   makeSkeletonPoint,
   normalizeSkeletonData,
   segmentToTunniPoints,
   setSkeletonData,
-  setSkeletonHandleOffset,
   setSkeletonPointSideNudge,
   skeletonTunniHitTest,
 } from "@fontra/core/skeleton-model.js";
@@ -354,6 +352,35 @@ describe("generated curvature gizmo edits", () => {
     );
   });
 
+  it("stores construction-space tension when rendered ends carry nudges", () => {
+    const constructionPoints = segmentPoints;
+    const nudgedProvenance = provenance.map((entry, index) =>
+      index === 0
+        ? { ...entry, nudge: { x: 12, y: -4 } }
+        : index === 3
+          ? { ...entry, nudge: { x: -7, y: 5 } }
+          : entry
+    );
+    const renderedPoints = constructionPoints.map((point, index) => ({
+      x: point.x + (nudgedProvenance[index].nudge?.x ?? 0),
+      y: point.y + (nudgedProvenance[index].nudge?.y ?? 0),
+    }));
+    const edit = calculateGeneratedCurvatureEdits({
+      segmentPoints: renderedPoints,
+      provenance: nudgedProvenance,
+      delta: { x: 0, y: 0 },
+    });
+    expect(edit.tension).to.be.closeTo(
+      calculateSegmentTension(
+        constructionPoints[1],
+        constructionPoints[0],
+        constructionPoints[2],
+        constructionPoints[3]
+      ),
+      1e-9
+    );
+  });
+
   it("pins a fuller curve for a drag toward the Tunni point", () => {
     expect(drag(10).tension).to.be.above(drag(0).tension);
   });
@@ -582,6 +609,7 @@ describe("generated on-curve gizmo edits", () => {
       expect(edit.nudgeDelta).to.be.a("number");
       expect(Number.isFinite(edit.nudgeDelta)).to.equal(true);
       expect(edit).to.not.have.property("displacement");
+      expect(edit).to.not.have.property("handleCompensation");
     }
   });
 
@@ -705,20 +733,6 @@ describe("generated on-curve gizmo, through the generator", () => {
             edit.nudgeDelta,
           { round: (v) => v }
         );
-        for (const role of ["in", "out"]) {
-          const current = getSkeletonHandleOffset(point, edit.side, role);
-          setSkeletonHandleOffset(
-            point,
-            edit.side,
-            role,
-            {
-              x: current.x + edit.handleCompensation.x,
-              y: current.y + edit.handleCompensation.y,
-              detached: current.detached,
-            },
-            { round: (v) => v }
-          );
-        }
       }
     });
     const after = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path).find(

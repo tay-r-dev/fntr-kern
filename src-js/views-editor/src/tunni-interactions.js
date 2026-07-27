@@ -528,25 +528,6 @@ export async function handleGeneratedTunniDrag({
                 original.nudge + write.nudgeDelta,
                 { round }
               );
-              // Hold both handles at this rib end still while the point slides
-              // out from under them.
-              for (const role of ["in", "out"]) {
-                const existing = original.handleOffsets?.[role];
-                if (!existing || !write.handleCompensation) {
-                  continue;
-                }
-                setSkeletonHandleOffset(
-                  point,
-                  original.side,
-                  role,
-                  {
-                    x: existing.x + write.handleCompensation.x,
-                    y: existing.y + write.handleCompensation.y,
-                    detached: existing.detached,
-                  },
-                  { round }
-                );
-              }
             }
           }
         });
@@ -605,14 +586,12 @@ function generatedOnCurveWrites(originalPoints, segment, delta) {
       0,
       {
         nudgeDelta: edits[0].nudgeDelta,
-        handleCompensation: edits[0].handleCompensation,
       },
     ],
     [
       3,
       {
         nudgeDelta: edits[1].nudgeDelta,
-        handleCompensation: edits[1].handleCompensation,
       },
     ],
   ];

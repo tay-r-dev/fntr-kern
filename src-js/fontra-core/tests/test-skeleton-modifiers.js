@@ -368,7 +368,7 @@ describe("skeleton modifier target-entry parity fixtures", () => {
     expect(points[3]).to.include({ x: 20, y: 0 });
   });
 
-  it("equalizes editable generated handles through the live target-entry path", () => {
+  it("bounds editable generated handle equalization through the live target-entry path", () => {
     const layer = makeLayerGlyph(makeEditableGeneratedHandleSkeleton());
     // Materialize the generated path + provenance-based pointMap.
     editSkeleton(layer, () => {});
@@ -413,8 +413,11 @@ describe("skeleton modifier target-entry parity fixtures", () => {
     const rib = positionOf("onCurve");
     const outLength = distance(positionOf("out"), rib);
     const inLength = distance(positionOf("in"), rib);
-    // True equalization: both handles at the same distance from the rib point.
-    expect(Math.abs(outLength - inLength)).to.be.at.most(2);
+    // The opposite segment only has 30 units of construction reach. Equalize
+    // records the requested split, but emission must stop that handle at the
+    // tension-1 ceiling rather than recreating the old post-bound overshoot.
+    expect(inLength).to.be.closeTo(30, 0.001);
+    expect(inLength).to.be.lessThan(outLength);
     // No minimum-distance floor: the handle went inside its base position.
     expect(outLength).to.be.lessThan(baseOutLength);
   });

@@ -2,10 +2,10 @@
 
 **Reframed:** 2026-07-25 — from a donor-code review into a description of
 **forkra's own** skeleton code, verified against the tree.
-**Companion to** `FEATURE-ARCHITECTURE-MAP.md`: that doc says *where* the
-skeleton files are and *who owns them*; this one is the conceptual **mental
+**Companion to** `FEATURE-ARCHITECTURE-MAP.md`: that doc says _where_ the
+skeleton files are and _who owns them_; this one is the conceptual **mental
 model** — what the feature is, how the generation pipeline works, and which
-behaviors must be preserved when you touch it. The design *rationale* (C1–C4,
+behaviors must be preserved when you touch it. The design _rationale_ (C1–C4,
 the defects it answers) lives in the map's §9.
 
 Line numbers drift; **function names are the durable anchors** here. Verify
@@ -35,7 +35,7 @@ Everything else is elaboration of that one idea:
   rounded per point, asymmetrically per side.
 - **Editable generated geometry** — individual generated outline points and
   handles can be marked editable and offset from their computed positions
-  (nudges, handle offsets, detached handles) while remaining *generated*.
+  (nudges, handle offsets, detached handles) while remaining _generated_.
 - **Single-sided contours** — all width on one side; the other lies exactly on
   the skeleton.
 - **Modifier behaviors** — D (fixed-rib), S (fixed-rib-compress), X (equalize),
@@ -64,7 +64,7 @@ survived the port (`getPointHalfWidth` / `getPointWidth`,
 halfWidth = point.<side>Width  ??  point.width / 2  ??  contour.defaultWidth / 2
 ```
 
-This matters: a point with no width fields is a *live consumer* of the contour
+This matters: a point with no width fields is a _live consumer_ of the contour
 default — change `defaultWidth` and un-overridden points follow. Keep this
 cascade intact; materializing widths onto every point silently kills it. (An
 earlier normalization draft did exactly that; the current code does not.)
@@ -76,7 +76,7 @@ point: it loops contours (`generateContoursFromSkeleton`) and, per contour, runs
 `generateOutlineFromSkeletonContour` (`:1322`), then **emits forward
 provenance** — `annotateGeneratedContourProvenance` stamps every generated point
 with `{skeletonPointId, side, role}` (arch map C3). The per-contour pipeline is
-pure and independent (contour *i*'s output depends only on contour *i*):
+pure and independent (contour _i_'s output depends only on contour _i_):
 
 0. **Direction ownership** — before any offsetting, note which on-curve points do
    **not** own their own direction. A smooth point with only **one** handle
@@ -86,7 +86,7 @@ pure and independent (contour *i*'s output depends only on contour *i*):
    not to a miter average (`isStraightControlledSmoothPoint` →
    `straightSegmentNormal`).
 
-   **One such point anywhere on a straight ties the ribs at *both* of its ends**
+   **One such point anywhere on a straight ties the ribs at _both_ of its ends**
    to a shared offset, so the whole projected straight moves as a unit
    (`collectTiedRibGroups`, the single definition of the rule; `coupledHalfWidths`
    then gives every point in a group the mean of the group's stored half-widths
@@ -109,17 +109,17 @@ pure and independent (contour *i*'s output depends only on contour *i*):
    and `one-ended-controlled-straight` fixtures.
 
    What survives the coupling at a corner far end is second-order: the miter
-   normal is the straight's normal *rotated* by a quarter of the corner's turn,
+   normal is the straight's normal _rotated_ by a quarter of the corner's turn,
    so the part of it that still tilts the projected straight is
    `2·hw·sin²(turn/4)` — 0.4 units at the widest end of that sweep, under the
    ~0.3° the grid itself imposes on a handle this long. Do not chase it.
 
    **Opt-out:** `width.tied` on either end (panel: "Tied ribs", under "Linked").
-   Default on, so existing data keeps the coupling; clearing it on *either* end
+   Default on, so existing data keeps the coupling; clearing it on _either_ end
    frees that straight and the handles rotate with width again (16.3° over the
    same sweep). That is a deliberate trade for independent rib widths here, not
    a bug — do not "fix" the rotation while a straight is untied. Only the shared
-   *offset* is optional; the rib staying perpendicular to the straight is not,
+   _offset_ is optional; the rib staying perpendicular to the straight is not,
    because it follows from the point having no direction of its own.
 
    **Everything that shows or edits a tied rib must use the coupled value, not
@@ -131,32 +131,31 @@ pure and independent (contour *i*'s output depends only on contour *i*):
    outline tracks the cursor exactly. Skipping either of these produced the
    original report: the dragged gizmo travelled twice as far as the outline and
    its partner did not move at all.
+
 1. **Segmentation** — `buildSegmentsFromPoints` splits the point list into
    on-curve→on-curve segments carrying their off-curve controls.
 2. **Per-segment offsetting** — each side's outline is offset by its half-width.
    Line segments project endpoints along the rib normal. Cubic segments keep
    skeleton handle directions and construct handle lengths with `λ = 1 + d·κ` in
    `offset-cubic.js`, followed by one fixed least-squares correction pass;
-   endpoints remain the exact rib positions; user handle offsets apply via
-   `applyHandleOffsetToControlPoint`. A side under ~0.5 units ("collapsed") skips
-   all of this and copies the skeleton verbatim — this is what makes single-sided
+   endpoints remain the exact construction rib positions. Handle length has one
+   ordered pipeline, all in that construction space: fit, bounded equalization,
+   attached per-handle adjustment, curvature pin, then bound. The adjustment
+   owns the split; the pin adds one shared tension increment and owns the
+   magnitude. Detached handles remain absolute and bypass the attached
+   adjustment and pin stages. A side under ~0.5 units ("collapsed") skips all of
+   this and copies the skeleton verbatim — this is what makes single-sided
    contours exact.
 
-   **A nudge is a translation of finished geometry, never an input to it**
-   (`ribNudgeDisplacement` → `translateRibPoint`). It slides a generated on-curve
-   point along the tangent *together with the handles either side of it*, the way
-   any on-curve point carries its handles, and leaves the segment's shape alone.
-   Feeding the nudged position to the offset construction as its endpoint instead
-   — which is what the code did until this was fixed — makes the least-squares
-   pass fit against the un-nudged offset curve and shorten the handle to pull the
-   curve back, so the handle travels the *opposite* way from its own point, unit
-   for unit, and the segment's handle length collapses (57.7 → 24.4 units at a
-   nudge of 17). Locked in by "carries a nudged rib point's generated handles
-   along with it" and the `nudged-cubic-endpoints` fixture. The alt-drag
-   interpolating behavior, which compensates handle offsets so the handles hold
-   still while the point slides, only reads correctly on top of this: before, it
-   compensated against the broken base and overshot to twice the distance, the
-   wrong way.
+   **A nudge is an on-curve-only emission post-step, never an input to handle
+   construction.** `ribNudgeDisplacement` moves the emitted on-curve along its
+   corner-aware tangent; adjacent off-curves stay byte-identical. On-curve
+   provenance publishes the nonzero nudge vector so a screen-space gizmo can
+   subtract it and recover the construction rib end exactly. Consequently an
+   on-curve drag stores only the scalar nudge: it never creates compensating
+   handle offsets. The `nudged-cubic-endpoints` fixture deliberately records
+   this new contract.
+
 3. **Corner rounding** — `roundSharpCornersOnSide` replaces non-smooth generated
    corners with an arc (two on-curves + handles). Corner metadata rides on the
    generated on-curve points (`buildGeneratedOnCurve`) and is stripped before
@@ -178,7 +177,7 @@ pure and independent (contour *i*'s output depends only on contour *i*):
    **The axis must not be derived from handle length.** Rib width changes
    generated handle length, so a length-weighted axis rotates whenever width
    changes: measured at 1.1° mean and 12.5° worst per single unit of width
-   before the axis was taken from the skeleton. Deriving it from the *rounded*
+   before the axis was taken from the skeleton. Deriving it from the _rounded_
    handle positions is the same trap, because the grid snap is what makes the
    direction length-dependent in the first place. Locked in by
    "keeps the smooth-junction handle axis independent of rib width".
@@ -188,7 +187,7 @@ pure and independent (contour *i*'s output depends only on contour *i*):
    on short handles, where a unit of rounding is a large angle.
 
 **Grid rounding happens at every stage**, not once at the end. It is also what
-makes handle *direction* length-dependent: a handle emitted at
+makes handle _direction_ length-dependent: a handle emitted at
 `round(ribPoint + axis · length)` carries its axis only to within
 `atan(0.7 / length)` — about 1.3° at 32 units, 4° at 10, and 45° at 1, where the
 eight lattice neighbours are the only directions expressible at all. So any

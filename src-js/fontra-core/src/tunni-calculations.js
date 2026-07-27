@@ -595,19 +595,16 @@ export function calculateCurvatureGizmoAxis(segmentPoints) {
 // which is how this control has always felt; capping each end on its own instead
 // lets the trailing handle carry on alone once its partner has stopped.
 //
-// The ceiling never forces a REDUCTION. A rib end that has been nudged slides
-// along its tangent while its handle stays put, which shortens the reach and can
-// leave the rendered tension above 1 with nobody having asked for it. Enforcing
-// the ceiling on that retroactively would move the curve the instant the gizmo
-// was grabbed — a control that changes the thing it was grabbed to control.
-// Grabbing is always a no-op; the ceiling only limits where the drag can go.
+// The ceiling never forces a REDUCTION. Construction reaches and handles are
+// independent of an emitted on-curve nudge, so grabbing is a no-op and the
+// ceiling only limits where a positive drag can go.
 //
 export function calculateControlPointsFromCurvatureDelta(
   delta,
   segmentPoints,
-  { maxTension = 1 } = {}
+  { maxTension = 1, axisSegmentPoints = segmentPoints } = {}
 ) {
-  const axis = calculateCurvatureGizmoAxis(segmentPoints);
+  const axis = calculateCurvatureGizmoAxis(axisSegmentPoints);
   if (!axis) {
     return null;
   }

@@ -2830,17 +2830,28 @@ export function calculateGeneratedCurvatureEdits({
   ) {
     return null;
   }
-  const moved = calculateControlPointsFromCurvatureDelta(delta, segmentPoints, {
+  const constructionPoints = segmentPoints.map((point, index) => {
+    if (index !== 0 && index !== 3) {
+      return point;
+    }
+    const nudge = provenance?.[index]?.nudge;
+    return {
+      x: point.x - asFiniteNumber(nudge?.x, 0),
+      y: point.y - asFiniteNumber(nudge?.y, 0),
+    };
+  });
+  const moved = calculateControlPointsFromCurvatureDelta(delta, constructionPoints, {
     maxTension,
+    axisSegmentPoints: segmentPoints,
   });
   if (!moved) {
     return null;
   }
   const tension = calculateSegmentTension(
     moved[0],
-    segmentPoints[0],
+    constructionPoints[0],
     moved[1],
-    segmentPoints[3]
+    constructionPoints[3]
   );
   if (!Number.isFinite(tension) || tension <= 0) {
     return null;
@@ -2852,10 +2863,8 @@ export function calculateGeneratedCurvatureEdits({
   if (!start || start.role !== "onCurve" || start.skeletonPointId === undefined) {
     return null;
   }
-  // Not clamped to maxTension here. The drag above already stopped at the
-  // ceiling, and a segment whose rendered tension was already past it — a
-  // nudged rib end shortens the reach without moving its handle — must be
-  // recorded as it stands rather than pulled back.
+  // Not clamped here: the shared-increment drag above already stopped both
+  // handles when its leading construction tension reached the ceiling.
   return {
     segmentPointIndex,
     skeletonPointId: start.skeletonPointId,
@@ -3017,20 +3026,6 @@ export function calculateGeneratedOnCurveEdits({ segmentPoints, provenance, delt
   // outward on both sides instead of collapsing one while opening the other.
   const orientation = provenance[1]?.role === "out" ? 1 : -1;
 
-  // The skeleton tangent at each rib end, in the direction a positive nudge
-  // slides it. At the start the handle points into the segment, at the end it
-  // points back into it, hence the sign flip.
-  const tangents = [
-    mulVectorScalar(
-      normalizeVector(subVectors(segmentPoints[1], segmentPoints[0])),
-      orientation
-    ),
-    mulVectorScalar(
-      normalizeVector(subVectors(segmentPoints[2], segmentPoints[3])),
-      -orientation
-    ),
-  ];
-
   return addresses.map((address, index) => {
     const nudgeDelta = (index === 0 ? -spread : spread) * orientation;
     return {
@@ -3038,13 +3033,6 @@ export function calculateGeneratedOnCurveEdits({ segmentPoints, provenance, delt
       side: address.side,
       role: address.role,
       nudgeDelta,
-      // A nudge translates the rib end AND the handles either side of it, so on
-      // its own it slides the whole curve bodily. This control is meant to move
-      // the point ALONG the outline and leave the outline alone, so each handle
-      // gets an equal and opposite offset and stays exactly where it was. The
-      // compensation is added to whatever offset the handle already carries, so
-      // curvature edits made earlier survive untouched.
-      handleCompensation: mulVectorScalar(tangents[index], -nudgeDelta),
     };
   });
 }

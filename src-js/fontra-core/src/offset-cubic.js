@@ -3,6 +3,7 @@ import {
   calculateTunniPoint,
   equalizeTensions,
   handleTensions,
+  shiftTensions,
   shiftTensionsToMean,
 } from "./tunni-calculations.js";
 
@@ -198,43 +199,22 @@ function offsetDeviation(q0, q3, u0, u1, startLength, endLength, samples, parame
 }
 
 //
-// Steps 2 and 3 of the pipeline: equalize the split, then apply the pin.
+// Steps 2 through 4 of the pipeline: equalize the split, apply attached
+// per-handle adjustments, then apply the pin.
 //
 // Both are stated in tension space and both are no-ops where a tension does not
 // exist, so a segment whose tangent rays meet behind an endpoint passes through
 // with exactly the lengths the fit gave it.
 //
-// The two steps deliberately measure against DIFFERENT endpoints.
-//
-// Equalization is about fidelity to the true offset, which is a property of the
-// curve as constructed, so it uses the construction's own rib ends. The pin is a
-// number the designer read off the curve on screen and asked to have back, so it
-// uses the rendered ones — after each rib end has slid along its tangent by its
-// own nudge. Those two differ whenever the on-curve gizmo has been used: a nudge
-// moves an endpoint and its handle together, so the handle VECTOR is untouched
-// but the tangent intersection is not, and the tension measured either side of
-// the nudge is not the same number.
-//
-// Measuring the pin in construction space and reproducing it on screen is what
-// made a pinned segment jump — and collapse to the handle floor — the moment the
-// on-curve gizmo had been touched.
+// Every stage uses the construction rib ends. Nudge is a pure emission post-step
+// on on-curves and never enters handle length, reach, adjustment, or pin math.
 //
 function shapeTensions(
   startLength,
   endLength,
   startReach,
   endReach,
-  {
-    q0,
-    q3,
-    u0,
-    u1,
-    samples,
-    parameters,
-    pinnedTension,
-    renderedStartReach,
-    renderedEndReach,
-  }
+  { q0, q3, u0, u1, samples, parameters, pinnedTension, startAdjustment, endAdjustment }
 ) {
   const fitted = handleTensions(startLength, endLength, startReach, endReach);
   if (!fitted) {
@@ -272,32 +252,65 @@ function shapeTensions(
     }
   }
   const shaped = equalizeTensions(fitted, affordable);
-  const equalized = { ...lengthsFor(shaped), pinned: false };
-  if (!(Number.isFinite(pinnedTension) && pinnedTension > 0)) {
-    return equalized;
+  const equalized = lengthsFor(shaped);
+  const adjusted = {
+    startLength: startAdjustment?.detached
+      ? equalized.startLength
+      : adjustedHandleLength(equalized.startLength, q0, u0, startAdjustment),
+    endLength: endAdjustment?.detached
+      ? equalized.endLength
+      : adjustedHandleLength(equalized.endLength, q3, u1, endAdjustment),
+    pinned: false,
+  };
+  if (!Number.isFinite(pinnedTension)) {
+    return adjusted;
   }
 
-  // The pin overrides the fit outright - the designer set this number and asked
-  // for it back. Restate the equalized lengths as tensions against the RENDERED
-  // rib ends, shift both by one shared increment until their harmonic mean is
-  // the pinned number, and convert straight back to lengths. A length is the
-  // same quantity on either side of a nudge, so this hands back exactly what
-  // came in when nothing is pinned and nothing has been nudged.
-  const rendered = handleTensions(
-    equalized.startLength,
-    equalized.endLength,
-    renderedStartReach,
-    renderedEndReach
+  // Attached adjustments own the split; the shared tension increment owns the
+  // magnitude. Applying the pin after those offsets keeps both edits stable.
+  const adjustedTensions = handleTensions(
+    adjusted.startLength,
+    adjusted.endLength,
+    startReach,
+    endReach
   );
-  if (!rendered) {
-    return equalized;
+  if (!adjustedTensions) {
+    return adjusted;
   }
-  const shifted = shiftTensionsToMean(rendered, pinnedTension);
+  const requested = shiftTensionsToMean(adjustedTensions, pinnedTension);
+  const requestedIncrement = requested.start - adjustedTensions.start;
+  const headroom = Math.max(
+    0,
+    Math.min(1 - adjustedTensions.start, 1 - adjustedTensions.end)
+  );
+  const shifted = shiftTensions(
+    adjustedTensions,
+    Math.min(requestedIncrement, headroom)
+  );
   return {
-    startLength: shifted.start * renderedStartReach,
-    endLength: shifted.end * renderedEndReach,
+    startLength: shifted.start * startReach,
+    endLength: shifted.end * endReach,
     pinned: true,
   };
+}
+
+function adjustedHandleLength(length, anchor, direction, adjustment) {
+  if (!adjustment) {
+    return length;
+  }
+  const base = adjustment.detached
+    ? anchor
+    : {
+        x: anchor.x + direction.x * length,
+        y: anchor.y + direction.y * length,
+      };
+  const adjusted = {
+    x: Math.round(base.x + (adjustment.x || 0)),
+    y: Math.round(base.y + (adjustment.y || 0)),
+  };
+  const along =
+    (adjusted.x - anchor.x) * direction.x + (adjusted.y - anchor.y) * direction.y;
+  return Math.max(along, MIN_HANDLE_LENGTH);
 }
 
 function endDerivatives(p0, p1, p2, p3, atEnd) {
@@ -331,11 +344,8 @@ export function offsetCubicSide({
   u0,
   u1,
   pinnedTension = null,
-  // The rib ends after each has slid along its tangent by its own nudge — what
-  // the designer sees and what the curvature gizmo measures. Default to the
-  // construction's own ends, which is what they are when nothing is nudged.
-  renderedQ0 = null,
-  renderedQ3 = null,
+  startAdjustment = null,
+  endAdjustment = null,
 }) {
   const startHandle = Math.hypot(p1.x - p0.x, p1.y - p0.y);
   const endHandle = Math.hypot(p3.x - p2.x, p3.y - p2.y);
@@ -390,12 +400,6 @@ export function offsetCubicSide({
   const { startLimit, endLimit } = tangentIntersectionDistances(q0, u0, q3, u1);
   // The reaches the bounds already use are the same reaches a tension is
   // measured against, so tension space costs nothing extra to enter here.
-  const rendered = tangentIntersectionDistances(
-    renderedQ0 ?? q0,
-    u0,
-    renderedQ3 ?? q3,
-    u1
-  );
   const shaped = shapeTensions(correctedStart, correctedEnd, startLimit, endLimit, {
     q0,
     q3,
@@ -404,12 +408,16 @@ export function offsetCubicSide({
     samples,
     parameters,
     pinnedTension,
-    renderedStartReach: rendered.startLimit,
-    renderedEndReach: rendered.endLimit,
+    startAdjustment,
+    endAdjustment,
   });
   const pinned = shaped.pinned;
   return {
-    startLength: boundLength(shaped.startLength, pinned ? Infinity : startLimit, chord),
-    endLength: boundLength(shaped.endLength, pinned ? Infinity : endLimit, chord),
+    startLength: startAdjustment?.detached
+      ? adjustedHandleLength(0, q0, u0, startAdjustment)
+      : boundLength(shaped.startLength, pinned ? Infinity : startLimit, chord),
+    endLength: endAdjustment?.detached
+      ? adjustedHandleLength(0, q3, u1, endAdjustment)
+      : boundLength(shaped.endLength, pinned ? Infinity : endLimit, chord),
   };
 }

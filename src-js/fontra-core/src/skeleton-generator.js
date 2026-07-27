@@ -138,22 +138,30 @@ function annotateGeneratedContourProvenance(contour, skeletonContour) {
   }
 }
 
-function withProvenance(point, sourcePoint, side, role) {
+function withProvenance(point, sourcePoint, side, role, nudge = null) {
   if (!sourcePoint?._sourcePointId) {
     return point;
   }
+  const provenance = {
+    skeletonPointId: sourcePoint._sourcePointId,
+    side,
+    role,
+  };
+  if (
+    role === "onCurve" &&
+    nudge &&
+    (Math.abs(nudge.x) > 1e-9 || Math.abs(nudge.y) > 1e-9)
+  ) {
+    provenance.nudge = { x: nudge.x, y: nudge.y };
+  }
   return {
     ...point,
-    _provenance: {
-      skeletonPointId: sourcePoint._sourcePointId,
-      side,
-      role,
-    },
+    _provenance: provenance,
   };
 }
 
-function generatedOnCurve(basePoint, sourcePoint, side) {
-  return withProvenance(basePoint, sourcePoint, side, "onCurve");
+function generatedOnCurve(basePoint, sourcePoint, side, nudge = null) {
+  return withProvenance(basePoint, sourcePoint, side, "onCurve", nudge);
 }
 
 function generatedHandle(basePoint, sourcePoint, side, role) {
@@ -332,11 +340,19 @@ function getCornerAsymmetry(point) {
 // generated[].pointMap and stripped from the output points. Points that get
 // replaced by later stages (corner rounding, caps) simply lose provenance and
 // fall back to the side-less annotator — they are not editable targets.
-function pointProvenance(sourcePoint, side, role) {
+function pointProvenance(sourcePoint, side, role, nudge = null) {
   if (!sourcePoint?._sourcePointId || (side !== "left" && side !== "right")) {
     return undefined;
   }
-  return { skeletonPointId: sourcePoint._sourcePointId, side, role };
+  const provenance = { skeletonPointId: sourcePoint._sourcePointId, side, role };
+  if (
+    role === "onCurve" &&
+    nudge &&
+    (Math.abs(nudge.x) > 1e-9 || Math.abs(nudge.y) > 1e-9)
+  ) {
+    provenance.nudge = { x: nudge.x, y: nudge.y };
+  }
+  return provenance;
 }
 
 function buildGeneratedOnCurve(
@@ -345,14 +361,15 @@ function buildGeneratedOnCurve(
   skeletonPoint,
   halfWidth,
   cornerRoundBaseOverride = undefined,
-  side = null
+  side = null,
+  nudge = null
 ) {
   const generatedPoint = {
     x: basePoint.x,
     y: basePoint.y,
     smooth,
   };
-  const provenance = pointProvenance(skeletonPoint, side, "onCurve");
+  const provenance = pointProvenance(skeletonPoint, side, "onCurve", nudge);
   if (provenance) {
     generatedPoint._provenance = provenance;
   }
@@ -466,13 +483,6 @@ function translateRibPoint(point, displacement) {
  * @param {number} halfWidth - The half-width for this side (don't apply nudge if near 0)
  * @returns {Object} Modified rib point {x, y}
  */
-function applyNudgeToRibPoint(ribPoint, skeletonPoint, normal, side, halfWidth) {
-  return translateRibPoint(
-    ribPoint,
-    ribNudgeDisplacement(skeletonPoint, normal, side, halfWidth)
-  );
-}
-
 /**
  * Get the skeleton handle direction for a given segment endpoint.
  * @param {Object} segment - The segment containing the on-curve point
@@ -515,31 +525,19 @@ function getSkeletonHandleDirection(segment, position, handleType) {
   return normalized;
 }
 
-/**
- * Apply handle offset to a generated control point position.
- * Supports both 2D offsets (X/Y) and legacy 1D offsets (along skeleton handle direction).
- * In "detached" mode, offsets are absolute positions relative to the rib point,
- * independent of skeleton handle lengths.
- * @param {Object} controlPoint - The generated control point {x, y}
- * @param {Object} skeletonPoint - The skeleton on-curve point (may have handle offset values)
- * @param {Object} skeletonHandleDir - Normalized direction of skeleton handle
- * @param {string} side - "left" or "right"
- * @param {string} handleType - "in" or "out" (incoming or outgoing handle)
- * @param {Object} ribPoint - Optional rib point position {x, y} for detached mode
- * @returns {Object} Modified control point {x, y}
- */
-function applyHandleOffsetToControlPoint(
-  controlPoint,
+// Resolve a stored generated-handle adjustment into one glyph-space vector.
+// Attached adjustments are consumed inside offsetCubicSide before the pin;
+// detached adjustments remain absolute relative to the construction rib point.
+function getGeneratedHandleAdjustment(
   skeletonPoint,
   skeletonHandleDir,
   side,
-  handleType,
-  ribPoint = null
+  handleType
 ) {
   // A locked side keeps its stored handle offsets but does not apply them.
   const lockedKey = side === "left" ? "leftLocked" : "rightLocked";
   if (skeletonPoint?.[lockedKey]) {
-    return controlPoint;
+    return null;
   }
 
   const keyPrefix = `${side}Handle${handleType === "in" ? "In" : "Out"}`;
@@ -567,30 +565,23 @@ function applyHandleOffsetToControlPoint(
   const offset2DY = skeletonPoint[offsetKeyY];
   const offset1D = skeletonPoint[offset1DKey];
 
-  // In detached mode with 2D offsets, use ribPoint as base (absolute positioning)
-  if (isDetached && ribPoint && (offset2DX !== undefined || offset2DY !== undefined)) {
-    return {
-      x: Math.round(ribPoint.x + (offset2DX || 0)),
-      y: Math.round(ribPoint.y + (offset2DY || 0)),
-    };
-  }
-
-  // Priority: 2D offset if present, else 1D (relative to controlPoint)
   if (offset2DX !== undefined || offset2DY !== undefined) {
     return {
-      x: Math.round(controlPoint.x + (offset2DX || 0)),
-      y: Math.round(controlPoint.y + (offset2DY || 0)),
+      x: offset2DX || 0,
+      y: offset2DY || 0,
+      detached: isDetached,
     };
   }
 
   if (offset1D !== undefined && offset1D !== 0) {
     return {
-      x: Math.round(controlPoint.x + skeletonHandleDir.x * offset1D),
-      y: Math.round(controlPoint.y + skeletonHandleDir.y * offset1D),
+      x: skeletonHandleDir.x * offset1D,
+      y: skeletonHandleDir.y * offset1D,
+      detached: false,
     };
   }
 
-  return controlPoint;
+  return null;
 }
 
 const SKELETON_DEBUG_PREFIX = "[SKELETON GEN DEBUG]";
@@ -2092,13 +2083,15 @@ function generateOffsetPointsForSegment(
       // Copy smooth property from skeleton point, round to UPM grid
       // Use per-point half-widths for left and right sides
       // Apply nudge offset if point is editable
-      let startLeftPt = projectPoint(segment.startPoint, startNormal, startLeftHW, 1);
-      startLeftPt = applyNudgeToRibPoint(
-        startLeftPt,
+      const startLeftNudge = ribNudgeDisplacement(
         segment.startPoint,
         startNormal,
         "left",
         startLeftHW
+      );
+      const startLeftPt = translateRibPoint(
+        projectPoint(segment.startPoint, startNormal, startLeftHW, 1),
+        startLeftNudge
       );
       left.push(
         buildGeneratedOnCurve(
@@ -2107,22 +2100,20 @@ function generateOffsetPointsForSegment(
           segment.startPoint,
           startLeftHW,
           startLeftRoundBase,
-          "left"
+          "left",
+          startLeftNudge
         )
       );
 
-      let startRightPt = projectPoint(
-        segment.startPoint,
-        startNormal,
-        startRightHW,
-        -1
-      );
-      startRightPt = applyNudgeToRibPoint(
-        startRightPt,
+      const startRightNudge = ribNudgeDisplacement(
         segment.startPoint,
         startNormal,
         "right",
         startRightHW
+      );
+      const startRightPt = translateRibPoint(
+        projectPoint(segment.startPoint, startNormal, startRightHW, -1),
+        startRightNudge
       );
       right.push(
         buildGeneratedOnCurve(
@@ -2131,7 +2122,8 @@ function generateOffsetPointsForSegment(
           segment.startPoint,
           startRightHW,
           startRightRoundBase,
-          "right"
+          "right",
+          startRightNudge
         )
       );
     }
@@ -2155,13 +2147,15 @@ function generateOffsetPointsForSegment(
       // Copy smooth property from skeleton point, round to UPM grid
       // Use per-point half-widths for left and right sides
       // Apply nudge offset if point is editable
-      let endLeftPt = projectPoint(segment.endPoint, endNormal, endLeftHW, 1);
-      endLeftPt = applyNudgeToRibPoint(
-        endLeftPt,
+      const endLeftNudge = ribNudgeDisplacement(
         segment.endPoint,
         endNormal,
         "left",
         endLeftHW
+      );
+      const endLeftPt = translateRibPoint(
+        projectPoint(segment.endPoint, endNormal, endLeftHW, 1),
+        endLeftNudge
       );
       left.push(
         buildGeneratedOnCurve(
@@ -2170,17 +2164,20 @@ function generateOffsetPointsForSegment(
           segment.endPoint,
           endLeftHW,
           endLeftRoundBase,
-          "left"
+          "left",
+          endLeftNudge
         )
       );
 
-      let endRightPt = projectPoint(segment.endPoint, endNormal, endRightHW, -1);
-      endRightPt = applyNudgeToRibPoint(
-        endRightPt,
+      const endRightNudge = ribNudgeDisplacement(
         segment.endPoint,
         endNormal,
         "right",
         endRightHW
+      );
+      const endRightPt = translateRibPoint(
+        projectPoint(segment.endPoint, endNormal, endRightHW, -1),
+        endRightNudge
       );
       right.push(
         buildGeneratedOnCurve(
@@ -2189,7 +2186,8 @@ function generateOffsetPointsForSegment(
           segment.endPoint,
           endRightHW,
           endRightRoundBase,
-          "right"
+          "right",
+          endRightNudge
         )
       );
     }
@@ -2320,7 +2318,8 @@ function generateOffsetPointsForSegment(
               segment.startPoint,
               startHalfWidth,
               startRoundBase,
-              side
+              side,
+              startNudge
             )
           );
         }
@@ -2336,7 +2335,8 @@ function generateOffsetPointsForSegment(
               segment.endPoint,
               endHalfWidth,
               endRoundBase,
-              side
+              side,
+              endNudge
             )
           );
         }
@@ -2372,11 +2372,17 @@ function generateOffsetPointsForSegment(
         pinnedTension: isLeftSide
           ? segment.startPoint.leftSegmentCurvature
           : segment.startPoint.rightSegmentCurvature,
-        // The pin is a number read off the finished curve, so it has to be
-        // reproduced against the finished curve's rib ends - after the nudges
-        // below have slid them along their tangents.
-        renderedQ0: translateRibPoint(fixedStart, startNudge),
-        renderedQ3: translateRibPoint(fixedEnd, endNudge),
+        startAdjustment: startHandleDir
+          ? getGeneratedHandleAdjustment(
+              segment.startPoint,
+              startHandleDir,
+              side,
+              "out"
+            )
+          : null,
+        endAdjustment: endHandleDir
+          ? getGeneratedHandleAdjustment(segment.endPoint, endHandleDir, side, "in")
+          : null,
       });
       if (shouldAddStart)
         output.push(
@@ -2386,45 +2392,18 @@ function generateOffsetPointsForSegment(
             segment.startPoint,
             startHalfWidth,
             startRoundBase,
-            side
+            side,
+            startNudge
           )
         );
-      let adjustedHandle1 = {
+      const adjustedHandle1 = {
         x: fixedStart.x + startDir.x * startLength,
         y: fixedStart.y + startDir.y * startLength,
       };
-      let adjustedHandle2 = {
+      const adjustedHandle2 = {
         x: fixedEnd.x + endDir.x * endLength,
         y: fixedEnd.y + endDir.y * endLength,
       };
-      if (startHandleDir)
-        adjustedHandle1 = applyHandleOffsetToControlPoint(
-          adjustedHandle1,
-          segment.startPoint,
-          startHandleDir,
-          side,
-          "out",
-          fixedStart
-        );
-      if (endHandleDir)
-        adjustedHandle2 = applyHandleOffsetToControlPoint(
-          adjustedHandle2,
-          segment.endPoint,
-          endHandleDir,
-          side,
-          "in",
-          fixedEnd
-        );
-      adjustedHandle1 = projectHandleOntoDirection(
-        fixedStart,
-        adjustedHandle1,
-        startDir
-      );
-      adjustedHandle2 = projectHandleOntoDirection(fixedEnd, adjustedHandle2, endDir);
-      // Each handle rides with the on-curve point it belongs to, so a nudge
-      // translates the pair and leaves the segment's shape untouched.
-      adjustedHandle1 = translateRibPoint(adjustedHandle1, startNudge);
-      adjustedHandle2 = translateRibPoint(adjustedHandle2, endNudge);
       for (const [point, owner, role, axis] of [
         [adjustedHandle1, segment.startPoint, "out", startDir],
         [adjustedHandle2, segment.endPoint, "in", endDir],
@@ -2451,7 +2430,8 @@ function generateOffsetPointsForSegment(
             segment.endPoint,
             endHalfWidth,
             endRoundBase,
-            side
+            side,
+            endNudge
           )
         );
       return;
@@ -2664,13 +2644,6 @@ function getSegmentTangent(segment, position) {
   const t = position === "start" ? 0 : 1;
   const deriv = bezier.derivative(t);
   return vector.normalizeVector({ x: deriv.x, y: deriv.y });
-}
-
-function projectHandleOntoDirection(anchor, handlePoint, direction) {
-  const along =
-    (handlePoint.x - anchor.x) * direction.x + (handlePoint.y - anchor.y) * direction.y;
-  const length = Math.max(along, 1);
-  return { x: anchor.x + direction.x * length, y: anchor.y + direction.y * length };
 }
 
 function getFirstOnCurvePoint(points) {

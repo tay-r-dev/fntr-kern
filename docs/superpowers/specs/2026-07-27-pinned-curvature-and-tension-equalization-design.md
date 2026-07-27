@@ -313,6 +313,9 @@ which is the visible limit, not the mean reading 1.0.
 
 ### 7.2 D15 amended — the pin is measured and applied in rendered space
 
+**Superseded — see §8.** This was the necessary correction while nudges carried
+handles, but that coupling has since been removed.
+
 The offset construction works with the rib ends it computes; the finished contour
 has them slid along their tangents by each point's nudge. A nudge moves an
 endpoint together with its handle, so handle _vectors_ are untouched but the
@@ -354,3 +357,29 @@ Round-trip and range, across nudges of 0, ±25 and 50 on the same segment:
 The maximum is 1 at every nudge, grabbing the gizmo no longer moves anything, and
 residuals are grid rounding. A 4000-step drag sweep moves the segment tension by
 at most 0.00025 per step, monotone, with no jump where the per-handle cap engages.
+
+---
+
+## 8. Construction space is canonical
+
+The rendered-space decision in §7.2 is superseded. A nudge now moves only the
+emitted on-curve; generated handles remain at their un-nudged construction
+positions. The on-curve's provenance carries its nonzero nudge vector, allowing
+the curvature gizmo to reconstruct the construction endpoints by subtraction.
+Its visible drag axis still comes from the rendered curve, while distance-to-
+tension conversion uses construction reaches.
+
+Per segment side, handle length is resolved in this order:
+
+1. fit the true offset;
+2. equalize the fitted split within the fidelity allowance;
+3. apply attached per-handle adjustments along each construction handle axis;
+4. apply a pinned curvature as one shared tension increment, capped by the
+   construction-space headroom;
+5. apply the ordinary minimum and maximum bounds;
+6. emit un-nudged handles and separately emit on-curves with their nudges.
+
+The per-handle adjustment owns the split and the pin owns the magnitude; neither
+overwrites the other. Detached handles remain absolute and bypass stages 3 and 4. A zero-delta grab therefore reproduces the existing construction tension,
+nudge cannot move an off-curve, and width, nudge, and attached-handle edits do
+not change the stored pin except for unavoidable output-grid residuals.
