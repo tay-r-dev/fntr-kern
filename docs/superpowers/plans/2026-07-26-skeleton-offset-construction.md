@@ -1574,6 +1574,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 The bound was adopted to replace an arbitrary constant, and then needed an arbitrary floor of its own to stop it collapsing. Before adding that constant, find out whether the bound ever fires.
 
+> **Done, and the instrumentation has since been removed.** The bound fired, so it was kept and floored at `chord/3`. The `tensionBoundStats` counters and `measure-tension-bound.js` were deleted afterwards: they had one reader, this task, and the counter over-reports — it counts any touch inside the smooth blend window rather than hard pinning, which is the misreading recorded in D2 of `2026-07-27-skeleton-curve-quality-decisions.md`. They also made a module whose whole premise is statelessness carry mutable module state. Everything below is the historical record of the decision, not a live instruction.
+
 **Files:**
 - Create: `src-js/fontra-core/tests/scripts/measure-tension-bound.js`
 - Possibly modify: `src-js/fontra-core/src/offset-cubic.js`

@@ -64,6 +64,10 @@ pinning. Hard pinning on realistic geometry is 2 of 118, not the "34%" that stat
 The current pipeline still carries **4.6× the achievable error where nothing clamps at
 all**. Fix the fit; leave the ceiling alone.
 
+The counter has since been **deleted**, for the reason this decision gives: it measured
+something other than what it was read as, and the question it was built to answer is closed.
+The ceiling itself stays.
+
 ### D3 — Do not restore main's sample-and-fit path.
 
 `simplifyOffsetCurves` on `main` ran bezier-js `.offset()` (variable curve count), sampled

@@ -56,11 +56,6 @@ const EQUALIZE_ALLOWANCE = 0.25;
 // equal, which is invisible.
 const EQUALIZE_STEPS = 6;
 
-export const tensionBoundStats = { evaluated: 0, active: 0 };
-export function resetTensionBoundStats() {
-  tensionBoundStats.evaluated = tensionBoundStats.active = 0;
-}
-
 function cross(a, b) {
   return a.x * b.y - a.y * b.x;
 }
@@ -113,13 +108,10 @@ function tangentIntersectionDistances(q0, u0, q3, u1) {
 // handle past the tangent intersection - stated in the space the number was read
 // in, so it is the one that survives.
 function boundLength(length, limit, chord) {
-  tensionBoundStats.evaluated += 1;
   let bounded = length;
   if (Number.isFinite(limit)) {
     const flooredLimit = Math.max(limit, chord * TENSION_LIMIT_FLOOR_RATIO);
-    const next = smoothMin(bounded, flooredLimit, SMOOTH_MIN_WINDOW * flooredLimit);
-    if (next < bounded - EPSILON) tensionBoundStats.active += 1;
-    bounded = next;
+    bounded = smoothMin(bounded, flooredLimit, SMOOTH_MIN_WINDOW * flooredLimit);
   }
   const chordCap = Math.max(chord * MAX_HANDLE_TO_CHORD_RATIO, EPSILON);
   return smoothMax(

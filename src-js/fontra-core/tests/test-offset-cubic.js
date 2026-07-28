@@ -1,9 +1,4 @@
-import {
-  endpointCurvature,
-  offsetCubicSide,
-  resetTensionBoundStats,
-  tensionBoundStats,
-} from "@fontra/core/offset-cubic.js";
+import { endpointCurvature, offsetCubicSide } from "@fontra/core/offset-cubic.js";
 import { expect } from "chai";
 
 const KAPPA = 0.5522847498307933;
@@ -104,23 +99,7 @@ describe("offset-cubic: bounds", () => {
     expect(endLength).to.be.at.least(1);
   });
 
-  it("counts tension-bound evaluations", () => {
-    resetTensionBoundStats();
-    const source = quarterCircle(100);
-    offsetCubicSide({
-      ...source,
-      d0: 10,
-      d3: 10,
-      q0: { x: 110, y: 0 },
-      q3: { x: 0, y: 110 },
-      u0: { x: 0, y: 1 },
-      u1: { x: 1, y: 0 },
-    });
-    expect(tensionBoundStats.evaluated).to.equal(2);
-  });
-
   it("leaves ordinary offsets exactly unchanged", () => {
-    resetTensionBoundStats();
     const source = quarterCircle(100);
     const k = arcEndpointCurvature(100);
     const { startLength } = offsetCubicSide({
@@ -133,7 +112,6 @@ describe("offset-cubic: bounds", () => {
       u1: { x: 1, y: 0 },
     });
     expect(startLength).to.be.closeTo(63.50451538382562, 0.01);
-    expect(tensionBoundStats.active).to.equal(0);
   });
 });
 
