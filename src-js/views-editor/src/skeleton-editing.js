@@ -70,6 +70,15 @@ export function getSkeletonRibBehaviorName(event, modifiers = {}) {
   return "rib-default";
 }
 
+// The two Z behaviors slide the rib end along its tangent and leave the width
+// exactly where it was, so anything that reports a width — the drag readout — has
+// nothing to say during one. Stated as the tangent pair rather than as "not the
+// width pair": the same drag can carry a fixed-rib behavior instead, and that one
+// does change widths.
+export function skeletonRibBehaviorIsTangentSlide(behaviorName) {
+  return behaviorName === "rib-tangent" || behaviorName === "rib-tangent-interpolate";
+}
+
 export function getSelectionTargetKinds(selection) {
   const parsed = parseSelection([...selection]);
   const kinds = new Set();

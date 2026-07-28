@@ -557,6 +557,7 @@ export class PointerTool extends BaseTool {
       delete this.sceneController.sceneModel.initialClickedSkeletonPointKey;
       delete this.sceneController.sceneModel.initialClickedSkeletonRibKey;
       delete this.sceneController.sceneModel.initialClickedGeneratedKey;
+      delete this.sceneController.sceneModel.skeletonDragBehaviorName;
       return result;
     }
   }
@@ -747,6 +748,10 @@ export class PointerTool extends BaseTool {
             ? getGeneratedHandleBehaviorName(event, getRealtimeModifiers())
             : getBehaviorName(event));
       let behaviorName = getSelectionBehaviorName(initialEvent);
+      // Published for the drag readouts, which have no route to the realtime
+      // modifier state of their own. Updated wherever the behavior is, so a Z
+      // pressed or released mid-drag is reflected on the next frame.
+      sceneController.sceneModel.skeletonDragBehaviorName = behaviorName;
 
       // Read the edit layer's skeleton data once; every layer's skeleton target
       // entry resolves selection ids against this single reference by structural
@@ -846,6 +851,7 @@ export class PointerTool extends BaseTool {
         if (behaviorName !== newEditBehaviorName) {
           // Behavior changed, undo current changes
           behaviorName = newEditBehaviorName;
+          sceneController.sceneModel.skeletonDragBehaviorName = behaviorName;
           const rollbackChanges = [];
           for (const layer of layerInfo) {
             applyChange(layer.layerGlyph, layer.editBehavior.rollbackChange);
