@@ -415,15 +415,28 @@ before deciding between equalize and an ordinary curvature drag. The on-curve
 gizmo's reach-equalization (plan Part 4.2) is **withdrawn**, with the
 `equalizeReaches` branch of the on-curve edit path removed.
 
-### 10.2 Z moved off the generated geometry
+### 10.2 The modifiers are unchanged — twice tried, twice reverted
 
-Generated points and handles are adjustable by default, so a plain drag adjusts
-them; Z was gating that for no reason and Alt still equalizes.
+Two rearrangements were built and both were reverted the same day. Recorded so
+neither gets re-derived from first principles:
 
-**Ribs are unchanged, deliberately.** Swapping them — plain for width, Z for the
-tangent slide — was tried and reverted the same day: Z exists precisely because a
-tangential rib move is the _rarer_ intent, and a plain drag reaching for the width
-is what the tool is for. Do not swap them again.
+- **Swapping the rib pair** — plain for width, Z for the tangent slide. Z exists
+  precisely because a tangential rib move is the _rarer_ intent, and a plain drag
+  reaching for the width is what the tool is for.
+- **Dropping Z as the gate on generated geometry** — a plain drag adjusting a
+  generated handle. The gate is the safety on derived geometry, not an accident.
+
+The settled set, which is also `main`'s: a plain rib drag changes the width; Z
+slides the rib end along its tangent and carries the adjacent generated handles;
+Z-Alt slides it and leaves them; a generated handle moves only under Z; Alt on a
+generated handle at a smooth point equalizes.
+
+**One real defect was found underneath.** Z carried the handles when the drag came
+in through the generated on-curve and not when it came in through the rib — two
+entry points to the same nudge, and only one of them passed the carry flag. The
+flag is now derived from the behavior name inside
+`createSkeletonRibTargetEntries`, where both callers pass through, and a test
+covers the rib entry point.
 
 ### 10.3 The curvature number is shown
 

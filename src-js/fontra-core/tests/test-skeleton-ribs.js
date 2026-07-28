@@ -20,6 +20,7 @@ import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
 import {
   createEditableGeneratedPointTargetEntries,
+  createSkeletonRibTargetEntries,
   editSkeleton,
 } from "../../views-editor/src/skeleton-editing.js";
 import { computeRibDetachConversions } from "../../views-editor/src/skeleton-panel-edits.js";
@@ -271,6 +272,34 @@ describe("editable generated on-curve drag modes", () => {
           x: after[role].x - before[role].x,
           y: after[role].y - before[role].y,
         },
+        `${role} handle`
+      ).to.deep.equal(movement);
+    }
+  });
+
+  it("carries the handles the same way when the drag came in through the rib", () => {
+    // The rib gizmo sits exactly on the generated on-curve, so a rib drag and a
+    // generated-point drag are two entry points to one nudge. They must agree
+    // about whether the adjacent handles come along.
+    const layer = makeLayer();
+    const before = positions(layer);
+    const entries = createSkeletonRibTargetEntries(
+      layer,
+      new Set(["skeletonRib/80/4/left"]),
+      "rib-tangent",
+      { referenceSkeletonData: getSkeletonData(layer), constrainMode: "tangent" }
+    );
+    expect(entries).to.have.length(1);
+    applyChange(layer, entries[0].makeChangeForDelta({ x: 7, y: 4 }));
+    const after = positions(layer);
+    const movement = {
+      x: after.onCurve.x - before.onCurve.x,
+      y: after.onCurve.y - before.onCurve.y,
+    };
+    expect(movement).to.not.deep.equal({ x: 0, y: 0 });
+    for (const role of ["in", "out"]) {
+      expect(
+        { x: after[role].x - before[role].x, y: after[role].y - before[role].y },
         `${role} handle`
       ).to.deep.equal(movement);
     }

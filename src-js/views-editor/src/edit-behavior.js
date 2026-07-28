@@ -1447,9 +1447,15 @@ const behaviorTypes = {
     actions: actionFactories,
   },
 
-  // Generated-handle drags. A plain drag moves the handle, so this is the name an
-  // unmodified drag resolves to; Alt goes to the equalize behaviors instead. Uses
-  // the default base point behavior.
+  // Generated-handle drags. Adjustment is modifier-gated: "generated-handle-move"
+  // is the Z variant that actually moves the handle; the unmodified name exists
+  // so a plain drag still carries co-selected path points while leaving derived
+  // geometry alone. Both use the default base point behavior.
+  "generated-handle-default": {
+    matchTree: buildPointMatchTree(defaultRules),
+    actions: actionFactories,
+  },
+
   "generated-handle-move": {
     matchTree: buildPointMatchTree(defaultRules),
     actions: actionFactories,

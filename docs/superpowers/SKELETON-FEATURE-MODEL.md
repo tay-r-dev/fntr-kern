@@ -40,9 +40,13 @@ Everything else is elaboration of that one idea:
   the skeleton.
 - **Modifier behaviors** — D (fixed-rib), S (fixed-rib-compress), X (equalize),
   Z (tangent-only rib drag), held as realtime keys during drags. A plain rib drag
-  changes the width; **Z** slides the rib end along its tangent instead, and Alt
-  interpolates the nudge across the selection. Generated points and handles need
-  no modifier at all: a plain drag adjusts them, Alt equalizes.
+  changes the width; **Z** slides the rib end along its tangent instead and
+  carries the adjacent generated handles with it, so it reads as an ordinary
+  on-curve edit; **Z-Alt** slides the on-curve and leaves the handles. A generated
+  handle moves only under Z, and Alt on one at a smooth point equalizes. Both
+  entry points to the tangent nudge — the rib gizmo and the generated on-curve,
+  which sit at the same place — derive the handle carry from the behavior name
+  inside `createSkeletonRibTargetEntries`, so they cannot disagree about it.
 - **D/S expansion offsets the centerline.** Every selected on-curve moves the same
   distance along its own normal, which makes each affected segment a
   constant-distance offset of itself — or a tapered one where only one of its ends

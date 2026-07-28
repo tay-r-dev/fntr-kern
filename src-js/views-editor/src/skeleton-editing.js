@@ -727,13 +727,15 @@ export function createSkeletonRibTargetEntries(
   layer,
   selection,
   behaviorName,
-  {
-    referenceSkeletonData = null,
-    constrainMode = null,
-    clickedRibKey = null,
-    carryNudgeToHandles = false,
-  } = {}
+  { referenceSkeletonData = null, constrainMode = null, clickedRibKey = null } = {}
 ) {
+  // Z carries the adjacent generated handles with the on-curve, so it reads as an
+  // ordinary on-curve edit; Z-Alt leaves them. Derived here rather than passed in,
+  // because a rib drag and a generated-point drag are two entry points to the one
+  // nudge — the rib gizmo sits exactly on the generated on-curve — and when only
+  // the second passed the flag, dragging the rib moved the on-curve and left its
+  // handles behind.
+  const carryNudgeToHandles = behaviorName === "rib-tangent";
   const skeletonData = getSkeletonData(layer);
   if (!skeletonData) {
     return [];
@@ -1083,7 +1085,6 @@ export function createEditableGeneratedPointTargetEntries(
   return createSkeletonRibTargetEntries(layerGlyph, ribSelection, behaviorName, {
     ...options,
     referenceSkeletonData,
-    carryNudgeToHandles: behaviorName === "rib-tangent",
   });
 }
 

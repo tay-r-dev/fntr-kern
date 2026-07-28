@@ -748,7 +748,7 @@ export class PointerTool extends BaseTool {
         (hasRibLikeSelection(sceneController.selection)
           ? getSkeletonRibBehaviorName(event, getRealtimeModifiers())
           : hasEditableGeneratedHandleSelection(sceneController.selection)
-            ? getGeneratedHandleBehaviorName(event)
+            ? getGeneratedHandleBehaviorName(event, getRealtimeModifiers())
             : getBehaviorName(event));
       let behaviorName = getSelectionBehaviorName(initialEvent);
 
@@ -769,10 +769,9 @@ export class PointerTool extends BaseTool {
             sceneController.sceneModel.initialClickedSkeletonPointKey,
         });
         if (hasEditableGeneratedHandleSelection(sceneController.selection)) {
-          // A plain drag adjusts a generated handle - that is the point of
-          // marking it editable. The guard is only here for a mixed selection,
-          // where a skeleton modifier owns the drag and this handle is a
-          // passenger rather than the target.
+          // Generated geometry is adjustable by default, so the modifier is the
+          // safety: only Z (move) and Alt (equalize) reach a generated handle.
+          // A plain drag builds no entry and leaves the derived handle alone.
           if (!isGeneratedHandleAdjustBehavior(name)) {
             return [];
           }
@@ -1371,10 +1370,16 @@ function hasEditableGeneratedHandleSelection(selection) {
   return !!parseSelection([...selection]).editableGeneratedHandle?.length;
 }
 
-// A plain drag moves a generated handle; Alt equalizes. Z belongs to rib widths
-// and a handle has no width, so it neither unlocks nor blocks anything here.
-function getGeneratedHandleBehaviorName(event) {
-  return event?.altKey ? getBehaviorName(event) : "generated-handle-move";
+// Generated handles move only under a modifier (donor side-lock model): Z
+// moves the handle, Alt equalizes. The name carries Z so that pressing or
+// releasing it mid-drag rebuilds the behavior through the normal path.
+function getGeneratedHandleBehaviorName(event, modifiers = {}) {
+  if (event?.altKey) {
+    return getBehaviorName(event);
+  }
+  return modifiers.tangentRibMode
+    ? "generated-handle-move"
+    : "generated-handle-default";
 }
 
 function isGeneratedHandleAdjustBehavior(name) {
