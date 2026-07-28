@@ -422,20 +422,17 @@ land, and says nothing about acceptable deviation.
 Sits **off** the curve: anchored at the segment midpoint and displaced along the
 **outward** normal. Outward follows from the contour's signed area, so counters
 come out correct. One placement function serves both the drawing layer and the
-hit test, and the distance is resolved once per segment when the segments are
-built, so the two cannot disagree about where the control is.
+hit test, and both take the distance from the same constant, so they cannot
+disagree about where the control is.
 
-**The displacement scales with the local stroke half-width**, in glyph units —
-1.5× the mean of the effective half-widths at the segment's two ends, on its own
-side. The gizmo marks an offset from an outline, so the stroke's own thickness is
-the scale that belongs to it, and it then zooms with the letter. It was a
-**screen** constant first, which holds its pixel size at every zoom but grows
-without bound in glyph space, so zoomed out the control sat a large fraction of
-the letter away from the segment it belongs to. Two fallbacks bind only where the
-stroke supplies no scale, and neither is the governing rule: a **collapsed side**
-has no thickness at all and is placed off the segment's own chord instead, and an
-absolute floor keeps a hairline stroke from putting the gizmo inside the curvature
-node.
+**The displacement is one constant, in glyph units** — the same everywhere on the
+glyph, zooming with the letter. Two rules that vary it were built and rejected in
+use, and are not to be reintroduced without a fresh reason: a **screen** constant,
+which holds its pixel size at every zoom but grows without bound in glyph space, so
+zoomed out the control drifted a large fraction of the letter away from the outline;
+and scaling by the **local stroke thickness**, which is defensible on paper — the
+gizmo does mark an offset from an outline — and reads as unsettled in use, because
+the gap then changes with every width edit.
 
 It is tangent-constrained, like every on-curve gizmo in this editor, and it
 writes the same `nudge` the panel writes — one number, two affordances. Its drag

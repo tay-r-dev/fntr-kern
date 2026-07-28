@@ -3090,12 +3090,6 @@ export function buildGeneratedTunniSegments(skeletonData, path) {
         skeletonData,
         generatedSegment
       );
-      // Resolved here, once, so the drawing layer and the hit test cannot place
-      // the gizmo differently (R-B).
-      generatedSegment.gizmoOffset = generatedOnCurveGizmoOffset(
-        getGeneratedSegmentHalfWidth(skeletonData, generatedSegment),
-        distance(segment.points[0], segment.points[3])
-      );
       segments.push(generatedSegment);
     }
   }
@@ -3117,27 +3111,6 @@ function getPathContourSignedArea(path, contourIndex) {
     area += point.x * next.y - next.x * point.y;
   }
   return area / 2;
-}
-
-// The stroke thickness the gizmo placement scales by: the mean of the effective
-// half-widths at the segment's two ends, on this segment's own side. Effective,
-// not stored, so a tied group reads the value it actually renders at.
-function getGeneratedSegmentHalfWidth(skeletonData, segment) {
-  const contour = findGeneratedSegmentSkeletonContour(skeletonData, segment);
-  if (!contour) {
-    return 0;
-  }
-  const points = [segment.provenance[0], segment.provenance[3]]
-    .map((address) =>
-      (contour.points || []).find((point) => point?.id === address?.skeletonPointId)
-    )
-    .filter(Boolean);
-  if (!points.length) {
-    return 0;
-  }
-  return meanHalfWidth(points, (point) =>
-    getEffectiveRibHalfWidth(contour, point, segment.side)
-  );
 }
 
 function findGeneratedSegmentSkeletonContour(skeletonData, segment) {
@@ -3187,36 +3160,17 @@ function isFarSkeletonSegmentStraight(contour, pointIndex, direction) {
   return false;
 }
 
-// How far the on-curve gizmo sits off its generated curve, in GLYPH units, far
-// enough to clear the curvature gizmo that sits on the curve at the same
-// parameter.
+// How far the on-curve gizmo sits off its generated curve, in GLYPH units. Far
+// enough to clear the curvature gizmo, which sits on the curve at the same
+// parameter, and to leave room for its label above it.
 //
-// Tied to the local stroke half-width, because the gizmo marks an offset from an
-// outline and the stroke's own thickness is the scale that belongs to it. It used
-// to be a screen constant: that holds its pixel size at every zoom but grows
-// without bound in glyph space, so zoomed out the control sat a large fraction of
-// the letter away from the segment it belongs to.
-//
-// Two degenerate cases need something else, and neither is the governing rule —
-// both bind only where the stroke cannot supply a scale. A collapsed side lies
-// exactly on the skeleton and has no thickness at all, so it is placed off the
-// segment's own chord; and a hairline stroke would otherwise put the gizmo inside
-// the curvature node, so there is an absolute floor.
-const GENERATED_ON_CURVE_GIZMO_WIDTH_RATIO = 1.5;
-const GENERATED_ON_CURVE_GIZMO_CHORD_RATIO = 0.3;
-const GENERATED_ON_CURVE_GIZMO_MIN_OFFSET = 10;
-
-// The generator's collapsed-side rule: under half a unit, a side lies on the
-// skeleton rather than being offset from it.
-const COLLAPSED_SIDE_HALF_WIDTH = 0.5;
-
-export function generatedOnCurveGizmoOffset(halfWidth, chord) {
-  const fromGeometry =
-    halfWidth >= COLLAPSED_SIDE_HALF_WIDTH
-      ? GENERATED_ON_CURVE_GIZMO_WIDTH_RATIO * halfWidth
-      : GENERATED_ON_CURVE_GIZMO_CHORD_RATIO * asFiniteNumber(chord, 0);
-  return Math.max(fromGeometry, GENERATED_ON_CURVE_GIZMO_MIN_OFFSET);
-}
+// One constant, deliberately: it zooms with the letter, it is the same everywhere
+// on the glyph, and there is nothing to reason about. Two rules that vary it were
+// tried and are not wanted — a screen constant, which holds its pixel size but
+// grows without bound in glyph space so the control drifted away from the outline
+// as you zoomed out; and scaling by the local stroke thickness, which is defensible
+// on paper and reads as unsettled in use.
+export const GENERATED_ON_CURVE_GIZMO_OFFSET = 30;
 
 // The curvature readout, one copy for the label layer and the drag readout: two
 // decimals, with a dot when the number is a stored pin the generator is
@@ -3309,7 +3263,7 @@ export function getGeneratedSegmentCurvature(skeletonData, segment) {
 
 export function calculateGeneratedOnCurveGizmoPoint(
   segment,
-  offset = segment?.gizmoOffset ?? 0
+  offset = GENERATED_ON_CURVE_GIZMO_OFFSET
 ) {
   const anchor = calculateCurvatureGizmoPoint(segment.points);
   if (!anchor) {
@@ -3345,16 +3299,13 @@ export function generatedTunniHitTest(point, size, skeletonData, path, options =
   const {
     includeOnCurve = true,
     includeCurvature = true,
-    onCurveOffset = null,
+    onCurveOffset = GENERATED_ON_CURVE_GIZMO_OFFSET,
   } = options;
   const segments = buildGeneratedTunniSegments(skeletonData, path);
   for (let i = segments.length - 1; i >= 0; i--) {
     const segment = segments[i];
     if (includeOnCurve && segment.onCurveMovable?.some(Boolean)) {
-      const gizmoPoint = calculateGeneratedOnCurveGizmoPoint(
-        segment,
-        onCurveOffset ?? segment.gizmoOffset
-      );
+      const gizmoPoint = calculateGeneratedOnCurveGizmoPoint(segment, onCurveOffset);
       if (gizmoPoint && distance(point, gizmoPoint) <= size) {
         return { type: "generated-on-curve", segment, gizmoPoint };
       }
