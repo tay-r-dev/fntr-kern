@@ -23,9 +23,12 @@ import {
 import { difference, isEqualSet, union, updateSet } from "@fontra/core/set-ops.js";
 import { MAX_UNICODE } from "@fontra/core/shaper.js";
 import {
+  buildGeneratedTunniSegments,
   findGeneratedPathAddress,
+  formatGeneratedCurvature,
   generatedTunniHitTest,
   getGeneratedPathContourIndices,
+  getGeneratedSegmentCurvature,
   getSkeletonData,
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
@@ -38,6 +41,7 @@ import {
   skeletonTunniHitTest,
 } from "@fontra/core/skeleton-model.js";
 import { decomposedToTransform } from "@fontra/core/transform.js";
+import { calculateCurvatureGizmoPoint } from "@fontra/core/tunni-calculations.js";
 
 import {
   assert,
@@ -1046,11 +1050,55 @@ export class SceneModel {
     if (!positionedGlyph) {
       return [];
     }
+    const curvatureReadout = this._getGeneratedCurvatureDragReadout(positionedGlyph);
+    if (curvatureReadout) {
+      return [curvatureReadout];
+    }
     const ribReadout = this._getRibDragReadout(positionedGlyph);
     if (ribReadout) {
       return [ribReadout];
     }
     return this._getTunniDragReadouts(positionedGlyph);
+  }
+
+  // The curvature a generated-segment drag is arriving at, beside its gizmo.
+  // Suppressed while the label layer is on, which already says the same thing —
+  // the same rule the Tunni readouts follow against the native point labels.
+  _getGeneratedCurvatureDragReadout(positionedGlyph) {
+    const target = this.generatedCurvatureDragTarget;
+    if (!target) {
+      return null;
+    }
+    if (
+      this.visualizationLayersSettings?.model?.[
+        "fontra.skeleton.generated-curvature-labels"
+      ]
+    ) {
+      return null;
+    }
+    const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
+    const segment = buildGeneratedTunniSegments(
+      skeletonData,
+      positionedGlyph.glyph?.path
+    ).find(
+      (candidate) =>
+        candidate.pathContourIndex === target.pathContourIndex &&
+        candidate.segmentIndex === target.segmentIndex
+    );
+    if (!segment) {
+      return null;
+    }
+    const curvature = getGeneratedSegmentCurvature(skeletonData, segment);
+    const anchor = calculateCurvatureGizmoPoint(segment.points);
+    if (!curvature || !anchor) {
+      return null;
+    }
+    return {
+      x: anchor.x,
+      y: anchor.y,
+      kind: "skeleton",
+      label: formatGeneratedCurvature(curvature),
+    };
   }
 
   _getRibDragReadout(positionedGlyph) {

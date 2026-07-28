@@ -2978,16 +2978,10 @@ export function calculateGeneratedCurvatureEdits({
   ) {
     return null;
   }
-  const constructionPoints = segmentPoints.map((point, index) => {
-    if (index !== 0 && index !== 3) {
-      return point;
-    }
-    const nudge = provenance?.[index]?.nudge;
-    return {
-      x: point.x - asFiniteNumber(nudge?.x, 0),
-      y: point.y - asFiniteNumber(nudge?.y, 0),
-    };
-  });
+  const constructionPoints = generatedSegmentConstructionPoints(
+    segmentPoints,
+    provenance
+  );
   const moved = calculateControlPointsFromCurvatureDelta(delta, constructionPoints, {
     maxTension,
     axisSegmentPoints: segmentPoints,
@@ -3160,6 +3154,82 @@ function isFarSkeletonSegmentStraight(contour, pointIndex, direction) {
     return false;
   }
   return false;
+}
+
+// Screen-space distance from the generated curve out to its on-curve gizmo. Far
+// enough to clear the curvature gizmo, which sits on the curve at the same
+// parameter, plus that one's label.
+export const GENERATED_ON_CURVE_GIZMO_OFFSET = 38;
+
+// The curvature readout, one copy for the label layer and the drag readout: two
+// decimals, with a dot when the number is a stored pin the generator is
+// reproducing rather than the value its own fit arrived at.
+export function formatGeneratedCurvature(curvature) {
+  return `${curvature.tension.toFixed(2)}${curvature.pinned ? "•" : ""}`;
+}
+
+// The scene's hit radius in screen pixels (scene-controller's mouseClickMargin).
+// Hit tests receive that radius already converted to glyph units and have no
+// other way back to a screen scale, so the conversion is named here rather than
+// each call site inventing a multiple of it.
+const MOUSE_CLICK_MARGIN_PIXELS = 12;
+
+export function generatedOnCurveGizmoOffsetForHitRadius(hitRadius) {
+  return (hitRadius / MOUSE_CLICK_MARGIN_PIXELS) * GENERATED_ON_CURVE_GIZMO_OFFSET;
+}
+
+// The segment as the generator constructed it. Emitted on-curves carry their
+// nudge and handles never do, so subtracting the published nudge recovers the one
+// space every stored number lives in. Every reader of a generated segment's
+// curvature goes through here — the drag, the equalize command and the label.
+export function generatedSegmentConstructionPoints(segmentPoints, provenance) {
+  return segmentPoints.map((point, index) => {
+    if (index !== 0 && index !== 3) {
+      return point;
+    }
+    const nudge = provenance?.[index]?.nudge;
+    return {
+      x: point.x - asFiniteNumber(nudge?.x, 0),
+      y: point.y - asFiniteNumber(nudge?.y, 0),
+    };
+  });
+}
+
+// The skeleton point a generated segment's curvature pin is stored on: the point
+// its skeleton segment STARTS at, which is index 0 when the side is emitted in
+// skeleton order and index 3 when it is emitted backwards.
+export function generatedSegmentPinAddress(skeletonData, segment) {
+  const startIndex = segment?.provenance?.[1]?.role === "out" ? 0 : 3;
+  const entry = segment?.provenance?.[startIndex];
+  if (!entry || entry.skeletonPointId === undefined) {
+    return null;
+  }
+  const address = getSkeletonPointAddress(
+    skeletonData,
+    entry.skeletonContourId ?? segment.skeletonContourId,
+    entry.skeletonPointId
+  );
+  return address ? { ...address, side: segment.side } : null;
+}
+
+// What the curvature gizmo owns for one generated segment: the construction-space
+// segment tension, and whether that number is a stored pin the generator is
+// reproducing rather than a value the fit arrived at on its own.
+export function getGeneratedSegmentCurvature(skeletonData, segment) {
+  const points = generatedSegmentConstructionPoints(
+    segment?.points,
+    segment?.provenance
+  );
+  if (points?.length !== 4 || points.some((point) => !point)) {
+    return null;
+  }
+  const tension = calculateSegmentTension(points[0], points[1], points[2], points[3]);
+  if (!Number.isFinite(tension) || tension <= 0) {
+    return null;
+  }
+  const address = generatedSegmentPinAddress(skeletonData, segment);
+  const pin = address ? getSkeletonSegmentCurvature(address.point, address.side) : null;
+  return { tension, pinned: pin !== null && pin !== undefined };
 }
 
 export function calculateGeneratedOnCurveGizmoPoint(segment, offset = 0) {

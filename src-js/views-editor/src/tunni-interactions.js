@@ -10,6 +10,8 @@ import {
   calculateSkeletonOnCurveFromTunni,
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
+  generatedOnCurveGizmoOffsetForHitRadius,
+  generatedSegmentConstructionPoints,
   getGeneratedPathContourIndices,
   getSkeletonData,
   getSkeletonHandleOffset,
@@ -108,7 +110,7 @@ export function tunniHoverResult(
       { x: point.x + positionedGlyph.x, y: point.y + positionedGlyph.y },
       size,
       positionedGlyph,
-      { onCurveOffset: size * 2 }
+      { onCurveOffset: generatedOnCurveGizmoOffsetForHitRadius(size) }
     );
     if (generatedHit) {
       // Same cursor split as the skeleton's gizmos: crosshair moves on-curve
@@ -583,13 +585,7 @@ export async function handleGeneratedTunniCommand({
 }
 
 function generatedCurvatureEqualizationWrites(segment) {
-  const points = segment.points.map((point, index) => {
-    const nudge = index === 0 || index === 3 ? segment.provenance[index]?.nudge : null;
-    return {
-      x: point.x - (nudge?.x || 0),
-      y: point.y - (nudge?.y || 0),
-    };
-  });
+  const points = generatedSegmentConstructionPoints(segment.points, segment.provenance);
   const [p0, h1, h2, p3] = points;
   const intersection = calculateTunniPoint(points);
   const u1 = normalizeVector(subVectors(h1, p0));

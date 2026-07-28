@@ -1055,6 +1055,20 @@ function drawRoundRect(context, x, y, width, height, radii) {
  * @param {Object} controller - The controller
  */
 
+// One line of point-label text, in the same 6px face and left-aligned baseline
+// the handle badges use, at a glyph-space position a caller has already offset.
+// The y flip is local: the canvas is upside down for text.
+export function drawPointStyleLabel(context, x, y, text, color) {
+  context.save();
+  context.scale(1, -1);
+  context.font = `6px fontra-ui-regular, sans-serif`;
+  context.textAlign = "left";
+  context.textBaseline = "middle";
+  context.fillStyle = color;
+  context.fillText(String(text), x, -y);
+  context.restore();
+}
+
 // Distance/tension/angle badges for one cubic segment's two handles.
 // Shared by the path "Point labels" layer and the skeleton point labels layer.
 export function drawCubicHandleLabelPair(context, points, show = {}) {

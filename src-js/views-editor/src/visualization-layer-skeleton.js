@@ -1,10 +1,16 @@
-import { drawCubicHandleLabelPair } from "@fontra/core/distance-angle.js";
 import {
+  drawCubicHandleLabelPair,
+  drawPointStyleLabel,
+} from "@fontra/core/distance-angle.js";
+import {
+  GENERATED_ON_CURVE_GIZMO_OFFSET,
   buildGeneratedTunniSegments,
   buildSkeletonTunniSegments,
   calculateGeneratedOnCurveGizmoPoint,
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
+  formatGeneratedCurvature,
+  getGeneratedSegmentCurvature,
   getSkeletonData,
   getSkeletonHandleOffset,
   getSkeletonRibPosition,
@@ -660,7 +666,7 @@ registerVisualizationLayerDefinition({
     curvatureSize: 7,
     strokeWidth: 1,
     onCurveSize: 8,
-    onCurveOffset: 24,
+    onCurveOffset: GENERATED_ON_CURVE_GIZMO_OFFSET,
     curvatureAxisLength: 18,
   },
   colors: {
@@ -718,6 +724,49 @@ registerVisualizationLayerDefinition({
       }
     }
     context.restore();
+  },
+});
+
+// The number the curvature gizmo owns, beside the gizmo. Its own layer because it
+// answers a different question from the control itself — "what is this segment at"
+// rather than "let me change it" — and a designer wants the second without the
+// first once the numbers stop being news. While a curvature drag is running the
+// drag readout shows the same value regardless of this switch.
+registerVisualizationLayerDefinition({
+  identifier: "fontra.skeleton.generated-curvature-labels",
+  name: "Generated curvature labels",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: false,
+  zIndex: 549,
+  screenParameters: { labelOffset: 11 },
+  colors: { color: "rgba(0, 120, 90, 1)", pinnedColor: "rgba(190, 60, 20, 1)" },
+  colorsDarkMode: {
+    color: "rgba(96, 232, 190, 1)",
+    pinnedColor: "rgba(255, 150, 90, 1)",
+  },
+  draw: (context, positionedGlyph, parameters, model) => {
+    const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
+    for (const segment of buildGeneratedTunniSegments(
+      skeletonData,
+      positionedGlyph.glyph.path
+    )) {
+      const curvature = getGeneratedSegmentCurvature(skeletonData, segment);
+      const anchor = calculateCurvatureGizmoPoint(segment.points);
+      const axis = calculateCurvatureGizmoAxis(segment.points);
+      if (!curvature || !anchor || !axis) {
+        continue;
+      }
+      // Away from the axis stub, which is drawn from the same anchor in the
+      // opposite direction, so the two never sit on top of each other.
+      drawPointStyleLabel(
+        context,
+        anchor.x - axis.x * parameters.labelOffset,
+        anchor.y - axis.y * parameters.labelOffset,
+        formatGeneratedCurvature(curvature),
+        curvature.pinned ? parameters.pinnedColor : parameters.color
+      );
+    }
   },
 });
 

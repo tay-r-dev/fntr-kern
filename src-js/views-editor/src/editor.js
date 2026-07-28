@@ -693,9 +693,9 @@ export class EditorController extends ViewController {
         titleKey: "shortcuts.realtime.measure-direct",
         defaultShortCuts: [{ baseKey: "q", altKey: true }],
       });
-      registerActionInfo("action.realtime.rib-tangent", {
+      registerActionInfo("action.realtime.rib-width", {
         topic,
-        titleKey: "shortcuts.realtime.rib-tangent",
+        titleKey: "shortcuts.realtime.rib-width",
         defaultShortCuts: [{ baseKey: "z" }],
       });
       // X-drag equalize was deprecated 2026-07-07 (alt-drag covers equalize);
@@ -2627,13 +2627,11 @@ export class EditorController extends ViewController {
       if (!editedAnchorName.length) {
         warnings.push(`⚠️ ${translate("warning.name-must-not-be-empty")}`);
       }
-      if (
-        !(
-          nameController.model.anchorName ||
-          nameController.model.anchorX ||
-          nameController.model.anchorY
-        )
-      ) {
+      if (!(
+        nameController.model.anchorName ||
+        nameController.model.anchorX ||
+        nameController.model.anchorY
+      )) {
         warnings.push("");
       }
       for (const n of ["X", "Y"]) {

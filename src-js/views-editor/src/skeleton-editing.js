@@ -57,11 +57,15 @@ export function getSkeletonModifierBehaviorName(event, modifiers = {}, targetKin
   return null;
 }
 
+// A plain drag slides the rib end along its tangent; the width is what Z is for.
+// Alt is the same second axis either way: it drops the handle carry on a tangent
+// drag and interpolates across the selection on a width drag. The behavior names
+// describe the effect, so only which key picks them has moved.
 export function getSkeletonRibBehaviorName(event, modifiers = {}) {
-  if (modifiers.tangentRibMode && event?.altKey) return "rib-tangent-interpolate";
-  if (modifiers.tangentRibMode) return "rib-tangent";
-  if (event?.altKey) return "rib-interpolate";
-  return "rib-default";
+  if (modifiers.ribWidthMode) {
+    return event?.altKey ? "rib-interpolate" : "rib-default";
+  }
+  return event?.altKey ? "rib-tangent-interpolate" : "rib-tangent";
 }
 
 export function getSelectionTargetKinds(selection) {

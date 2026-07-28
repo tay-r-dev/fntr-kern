@@ -20,7 +20,10 @@ import {
   symmetricDifference,
   union,
 } from "@fontra/core/set-ops.js";
-import { getSkeletonData } from "@fontra/core/skeleton-model.js";
+import {
+  generatedOnCurveGizmoOffsetForHitRadius,
+  getSkeletonData,
+} from "@fontra/core/skeleton-model.js";
 import { Transform } from "@fontra/core/transform.js";
 import {
   assert,
@@ -76,14 +79,14 @@ import {
 const transformHandleMargin = 6;
 const transformHandleSize = 8;
 const rotationHandleSizeFactor = 1.2;
-const REALTIME_RIB_TANGENT_ACTION = "action.realtime.rib-tangent";
+const REALTIME_RIB_WIDTH_ACTION = "action.realtime.rib-width";
 const REALTIME_FIXED_RIB_ACTION = "action.realtime.fixed-rib";
 const REALTIME_FIXED_RIB_COMPRESS_ACTION = "action.realtime.fixed-rib-compress";
 
 const REALTIME_MODIFIER_ACTIONS = [
   {
-    action: REALTIME_RIB_TANGENT_ACTION,
-    modeProperty: "tangentRibMode",
+    action: REALTIME_RIB_WIDTH_ACTION,
+    modeProperty: "ribWidthMode",
   },
   {
     action: REALTIME_FIXED_RIB_ACTION,
@@ -137,7 +140,7 @@ export class PointerTool extends BaseTool {
   constructor(...args) {
     super(...args);
     this.measureInteraction = new MeasureInteraction(this);
-    this.tangentRibMode = false;
+    this.ribWidthMode = false;
     this.fixedRibMode = false;
     this.fixedRibCompressMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
@@ -340,7 +343,7 @@ export class PointerTool extends BaseTool {
         point,
         size,
         positionedGlyph,
-        { onCurveOffset: size * 2 }
+        { onCurveOffset: generatedOnCurveGizmoOffsetForHitRadius(size) }
       );
       if (gizmoHit) {
         if (initialEvent.detail >= 2) {
@@ -368,12 +371,23 @@ export class PointerTool extends BaseTool {
           });
           return;
         }
-        await handleGeneratedTunniDrag({
-          sceneController,
-          eventStream,
-          initialEvent,
-          gizmoHit,
-        });
+        // The readout layer re-reads the segment from live geometry each frame,
+        // so it shows the curvature the drag is arriving at even when the label
+        // layer is switched off.
+        this.sceneModel.generatedCurvatureDragTarget =
+          gizmoHit.type === "generated-curvature"
+            ? makeGeneratedCurvatureDragTarget(gizmoHit)
+            : null;
+        try {
+          await handleGeneratedTunniDrag({
+            sceneController,
+            eventStream,
+            initialEvent,
+            gizmoHit,
+          });
+        } finally {
+          this.sceneModel.generatedCurvatureDragTarget = null;
+        }
         return;
       }
     }
@@ -727,14 +741,14 @@ export class PointerTool extends BaseTool {
       const getRealtimeModifiers = () => ({
         fixedRibMode: this.fixedRibMode,
         fixedRibCompressMode: this.fixedRibCompressMode,
-        tangentRibMode: this.tangentRibMode,
+        ribWidthMode: this.ribWidthMode,
       });
       const getSelectionBehaviorName = (event) =>
         getSkeletonModifierBehaviorName(event, getRealtimeModifiers(), targetKinds) ||
         (hasRibLikeSelection(sceneController.selection)
           ? getSkeletonRibBehaviorName(event, getRealtimeModifiers())
           : hasEditableGeneratedHandleSelection(sceneController.selection)
-            ? getGeneratedHandleBehaviorName(event, getRealtimeModifiers())
+            ? getGeneratedHandleBehaviorName(event)
             : getBehaviorName(event));
       let behaviorName = getSelectionBehaviorName(initialEvent);
 
@@ -755,9 +769,10 @@ export class PointerTool extends BaseTool {
             sceneController.sceneModel.initialClickedSkeletonPointKey,
         });
         if (hasEditableGeneratedHandleSelection(sceneController.selection)) {
-          // Generated geometry is adjustable by default, so the modifier is the
-          // safety: only Z (move) and Alt (equalize) reach a generated handle.
-          // A plain drag builds no entry and leaves the derived handle alone.
+          // A plain drag adjusts a generated handle - that is the point of
+          // marking it editable. The guard is only here for a mixed selection,
+          // where a skeleton modifier owns the drag and this handle is a
+          // passenger rather than the target.
           if (!isGeneratedHandleAdjustBehavior(name)) {
             return [];
           }
@@ -777,7 +792,7 @@ export class PointerTool extends BaseTool {
               name,
               {
                 ...modifierOptions,
-                constrainMode: this.tangentRibMode ? "tangent" : null,
+                constrainMode: this.ribWidthMode ? null : "tangent",
                 clickedRibKey: sceneController.sceneModel.initialClickedSkeletonRibKey,
               }
             )
@@ -789,7 +804,7 @@ export class PointerTool extends BaseTool {
               name,
               {
                 ...modifierOptions,
-                constrainMode: this.tangentRibMode ? "tangent" : null,
+                constrainMode: this.ribWidthMode ? null : "tangent",
               }
             )
           );
@@ -1356,16 +1371,10 @@ function hasEditableGeneratedHandleSelection(selection) {
   return !!parseSelection([...selection]).editableGeneratedHandle?.length;
 }
 
-// Generated handles move only under a modifier (donor side-lock model): Z
-// moves the handle, Alt equalizes. The name carries Z so that pressing or
-// releasing it mid-drag rebuilds the behavior through the normal path.
-function getGeneratedHandleBehaviorName(event, modifiers = {}) {
-  if (event?.altKey) {
-    return getBehaviorName(event);
-  }
-  return modifiers.tangentRibMode
-    ? "generated-handle-move"
-    : "generated-handle-default";
+// A plain drag moves a generated handle; Alt equalizes. Z belongs to rib widths
+// and a handle has no width, so it neither unlocks nor blocks anything here.
+function getGeneratedHandleBehaviorName(event) {
+  return event?.altKey ? getBehaviorName(event) : "generated-handle-move";
 }
 
 function isGeneratedHandleAdjustBehavior(name) {
@@ -1393,6 +1402,19 @@ function makeSkeletonTunniDragTarget(tunniHit) {
     return null;
   }
   return { kind: "skeleton", contourId, startPointId, endPointId };
+}
+
+// Address the dragged generated segment by its place in the path, so the readout
+// can rebuild it from live geometry rather than the snapshot taken at mousedown.
+function makeGeneratedCurvatureDragTarget(gizmoHit) {
+  const segment = gizmoHit?.segment;
+  if (!Number.isInteger(segment?.pathContourIndex)) {
+    return null;
+  }
+  return {
+    pathContourIndex: segment.pathContourIndex,
+    segmentIndex: segment.segmentIndex,
+  };
 }
 
 function hasRibLikeSelection(selection) {
