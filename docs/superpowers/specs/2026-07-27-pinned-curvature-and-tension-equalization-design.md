@@ -359,11 +359,12 @@ at most 0.00025 per step, monotone, with no jump where the per-handle cap engage
 
 ## 8. Construction space is canonical
 
-The rendered-space decision in §7.2 is superseded. The default gizmo and Z-Alt
-move only the emitted on-curve; generated handles remain at their construction
-positions. Z-normal retains ordinary on-curve semantics by accumulating a
-separate per-side `handleNudge` and emitting it on adjacent handles after
-construction. This carry scalar never enters fit, adjustment, reach, or pin
+The rendered-space decision in §7.2 is superseded. The gizmo and an Alt-held rib
+drag move only the emitted on-curve; generated handles remain at their
+construction positions. An unmodified rib drag retains ordinary on-curve
+semantics by accumulating a separate per-side `handleNudge` and emitting it on
+adjacent handles after construction. (These were Z-Alt and Z-normal when this was
+written; §10 moved the key, not the behavior.) This carry scalar never enters fit, adjustment, reach, or pin
 math. The on-curve's provenance carries its nonzero `nudge` vector, allowing the
 curvature gizmo to reconstruct the construction endpoints by subtraction. Its
 visible drag axis still comes from the rendered curve, while distance-to-tension
@@ -401,3 +402,43 @@ Pinned regeneration uses the identical independently saturated shift while
 solving the stored harmonic mean. The drag and regeneration therefore reproduce
 the same asymmetric-to-saturated path without allowing either handle beyond its
 tangent intersection.
+
+---
+
+## 10. Corrections after the second round of live use
+
+### 10.1 The equalize is a click, and only on the curvature gizmo
+
+Ctrl+shift fired equalize on button-down, so a modified drag was unreachable, and
+it fired on both gizmos. Only the curvature gizmo has an equalize — it owns the
+split between the two handles — and it now waits to see whether the pointer moves
+before deciding between equalize and an ordinary curvature drag. The on-curve
+gizmo's reach-equalization (plan Part 4.2) is **withdrawn**, with the
+`equalizeReaches` branch of the on-curve edit path removed.
+
+### 10.2 Z moved off the generated geometry
+
+Generated points and handles are adjustable by default, so a plain drag adjusts
+them; Z was gating that for no reason and Alt still equalizes. Z's remaining job
+is the rib **width** drag, with a plain rib drag being the tangent slide — the two
+ends of that pair have swapped. Alt is unchanged on both. Behavior names describe
+effects and did not move; only the key that selects them did, and the mode flag is
+named `ribWidthMode` accordingly.
+
+### 10.3 The curvature number is shown
+
+A switchable label layer draws each generated segment's construction-space
+tension beside its curvature gizmo, in the point-label face, with a dot when the
+number is a stored pin rather than the fit's own answer. During a curvature drag
+the drag readout shows the same value whatever that switch is set to. This is also
+the affordance §6.4 recorded as missing for telling a pinned segment from an
+automatic one.
+
+### 10.4 The empty-selection node bug
+
+Unrelated to the pin, but found while chasing it: the node iterator introduced
+with the gizmo layers read a null index list as "every point", and an empty
+selection parses to no list at all, so the selected-node layer filled the whole
+path in the selected colour. Two iterators now, one per meaning. The blanket
+hiding of generated nodes that had been applied to the same symptom is withdrawn:
+only off-curve nodes are hidden, and only while gizmo mode is on.

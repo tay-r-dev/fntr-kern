@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the sample-and-fit offset path for cubic skeleton segments with a closed-form construction, so generated outline handle *lengths* are a continuous function of the skeleton.
+**Goal:** Replace the sample-and-fit offset path for cubic skeleton segments with a closed-form construction, so generated outline handle _lengths_ are a continuous function of the skeleton.
 
 **Architecture:** Generated handle direction is already locked to the skeleton handle direction and stays that way — only the length changes, from fitted to constructed. Length is the skeleton handle length scaled by `λ = 1 + d·κ`, corrected by one fixed least-squares pass, then bounded. No `reduce()`, no adaptive thresholds, no iteration counts.
 
@@ -22,15 +22,15 @@
 
 ## File Structure
 
-| File | Responsibility |
-|------|----------------|
-| `src-js/fontra-core/tests/scripts/make-skeleton-generator-fixtures.js` | Fixed in Task 1 to record this generator's own output. |
-| `src-js/fontra-core/src/fit-cubic.js` | Gains `solveHandleLengths`. `generateBezier` behavior unchanged. |
-| `src-js/fontra-core/src/offset-cubic.js` | **NEW.** The construction. Pure, no state, no `Bezier` objects of its own. |
-| `src-js/fontra-core/tests/test-offset-cubic.js` | **NEW.** Unit tests. |
-| `src-js/fontra-core/src/skeleton-generator.js` | Cubic branch calls the new module. Dead code removed. |
-| `src-js/fontra-core/tests/test-skeleton-generator.js` | Collapsed-side test, end-to-end continuity sweep, suite retitled. |
-| `docs/superpowers/SKELETON-FEATURE-MODEL.md` | Pipeline description updated. |
+| File                                                                   | Responsibility                                                             |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `src-js/fontra-core/tests/scripts/make-skeleton-generator-fixtures.js` | Fixed in Task 1 to record this generator's own output.                     |
+| `src-js/fontra-core/src/fit-cubic.js`                                  | Gains `solveHandleLengths`. `generateBezier` behavior unchanged.           |
+| `src-js/fontra-core/src/offset-cubic.js`                               | **NEW.** The construction. Pure, no state, no `Bezier` objects of its own. |
+| `src-js/fontra-core/tests/test-offset-cubic.js`                        | **NEW.** Unit tests.                                                       |
+| `src-js/fontra-core/src/skeleton-generator.js`                         | Cubic branch calls the new module. Dead code removed.                      |
+| `src-js/fontra-core/tests/test-skeleton-generator.js`                  | Collapsed-side test, end-to-end continuity sweep, suite retitled.          |
+| `docs/superpowers/SKELETON-FEATURE-MODEL.md`                           | Pipeline description updated.                                              |
 
 ---
 
@@ -38,7 +38,7 @@
 
 Nothing in this plan can be verified until this works.
 
-The script is a leftover from the porting era: it runs the pre-port generator and transcribes *its* output as the expected answer. Three problems, any one fatal:
+The script is a leftover from the porting era: it runs the pre-port generator and transcribes _its_ output as the expected answer. Three problems, any one fatal:
 
 - it imports that generator from `../../../../skeleton/…`, which resolves to `<repo>/skeleton` and does not exist
 - the checkout it means, `_external/skeleton`, is **gitignored** — so the script cannot be run from a fresh clone, by anyone else, or in CI
@@ -47,9 +47,11 @@ The script is a leftover from the porting era: it runs the pre-port generator an
 Nothing here needs preserving. Porting is finished and no parity with the pre-port code is being maintained. The committed values are simply the outlines the generator emits today — the suite passes, so they already agree. The script just needs to record that.
 
 **Files:**
+
 - Modify: `src-js/fontra-core/tests/scripts/make-skeleton-generator-fixtures.js:1-8`, `:225-235`
 
 **Interfaces:**
+
 - Consumes: nothing.
 - Produces: a script that regenerates `fixtures.json` from `generateContoursFromSkeleton` in `src-js/fontra-core/src/skeleton-generator.js`.
 
@@ -58,6 +60,7 @@ Nothing here needs preserving. Porting is finished and no parity with the pre-po
 ```bash
 cd src-js/fontra-core && node tests/scripts/make-skeleton-generator-fixtures.js
 ```
+
 Expected: FAIL — module not found for `../../../../skeleton/…`.
 
 - [ ] **Step 2: Point it at forkra's generator**
@@ -137,11 +140,13 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 `generateBezier` solves the two-handle-length problem the construction needs, but discards both solved handles for `segLength/3` whenever either comes out non-positive. Extract the solve so the new module can apply its own smooth fallback, leaving `generateBezier` identical for its three importers.
 
 **Files:**
+
 - Modify: `src-js/fontra-core/src/fit-cubic.js:20-72`
 - Test: `src-js/fontra-core/tests/test-fit-cubic.js`
 
 **Interfaces:**
-- Produces: `solveHandleLengths(points, parameters, leftTangent, rightTangent) → {alphaL, alphaR}`. `points` is `{x,y}[]` whose first and last are the endpoints; `parameters` a parallel number array in [0,1]; tangents unit vectors pointing *into* the curve from each endpoint. Returns `{alphaL: 0, alphaR: 0}` when the normal equations are singular.
+
+- Produces: `solveHandleLengths(points, parameters, leftTangent, rightTangent) → {alphaL, alphaR}`. `points` is `{x,y}[]` whose first and last are the endpoints; `parameters` a parallel number array in [0,1]; tangents unit vectors pointing _into_ the curve from each endpoint. Returns `{alphaL: 0, alphaR: 0}` when the normal equations are singular.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -307,10 +312,12 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 Endpoint curvature and the analytic handle length, with the cusp floor. No correction and no bounds yet.
 
 **Files:**
+
 - Create: `src-js/fontra-core/src/offset-cubic.js`
 - Test: `src-js/fontra-core/tests/test-offset-cubic.js`
 
 **Interfaces:**
+
 - Produces:
   - `endpointCurvature(p0, p1, p2, p3, atEnd) → number` — signed curvature at `t=0` (`atEnd` false) or `t=1`. Returns `0` for a degenerate end tangent.
   - `offsetCubicSide({p0, p1, p2, p3, d0, d3, q0, q3, u0, u1}) → {startLength, endLength}` — `d0`/`d3` signed offset distances (positive along the clockwise normal); `q0`/`q3` the rounded rib endpoints; `u0`/`u1` the locked handle directions, unit, pointing into the curve.
@@ -603,10 +610,12 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 Three, applied after the construction: the tension ceiling (instrumented, not yet trusted), the chord backstop, and the minimum-length guardrail carried over from the code being deleted.
 
 **Files:**
+
 - Modify: `src-js/fontra-core/src/offset-cubic.js`
 - Test: `src-js/fontra-core/tests/test-offset-cubic.js`
 
 **Interfaces:**
+
 - Consumes: `calculateTunniPoint(segmentPoints) → {x,y} | undefined` from `./tunni-calculations.js` — takes `[p1,p2,p3,p4]`, returns where the ray `p1→p2` meets the ray `p4→p3`, or `undefined` if parallel.
 - Produces: `tensionBoundStats` — a mutable `{evaluated, active}` counter, exported for Task 9's measurement. `resetTensionBoundStats()` zeroes it.
 
@@ -647,9 +656,7 @@ describe("offset-cubic: bounds", () => {
     });
     // Both directions are +y, so the rays are parallel and the bound is inert;
     // the chord backstop must still hold.
-    expect(startLength).to.be.at.most(
-      2 * Math.hypot(q3.x - q0.x, q3.y - q0.y) + 1e-6
-    );
+    expect(startLength).to.be.at.most(2 * Math.hypot(q3.x - q0.x, q3.y - q0.y) + 1e-6);
   });
 
   it("floors every handle at one unit", () => {
@@ -793,13 +800,13 @@ function boundLength(length, limit, chord) {
 Replace `offsetCubicSide`'s return with:
 
 ```js
-  const chord = Math.hypot(q3.x - q0.x, q3.y - q0.y);
-  const { startLimit, endLimit } = tangentIntersectionDistances(q0, u0, q3, u1);
+const chord = Math.hypot(q3.x - q0.x, q3.y - q0.y);
+const { startLimit, endLimit } = tangentIntersectionDistances(q0, u0, q3, u1);
 
-  return {
-    startLength: boundLength(startHandle * startLambda, startLimit, chord),
-    endLength: boundLength(endHandle * endLambda, endLimit, chord),
-  };
+return {
+  startLength: boundLength(startHandle * startLambda, startLimit, chord),
+  endLength: boundLength(endHandle * endLambda, endLimit, chord),
+};
 ```
 
 - [ ] **Step 4: Run to verify it passes**
@@ -837,10 +844,12 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 The construction matches the true offset's position and first derivative at the ends, but drifts mid-segment when `|d·κ|` is large or the widths taper. One fixed least-squares pass against five fixed samples fixes that, with no adaptive machinery.
 
 **Files:**
+
 - Modify: `src-js/fontra-core/src/offset-cubic.js`
 - Test: `src-js/fontra-core/tests/test-offset-cubic.js`
 
 **Interfaces:**
+
 - Consumes: `solveHandleLengths` from Task 2.
 
 - [ ] **Step 1: Write the failing test**
@@ -865,7 +874,10 @@ function maxOffsetError({ p0, p1, p2, p3, d0, d3, q0, q3, u0, u1 }, lengths) {
       y: 3 * mt * mt * (b.y - a.y) + 6 * mt * t * (c.y - b.y) + 3 * t * t * (d.y - c.y),
     };
   };
-  const h1 = { x: q0.x + u0.x * lengths.startLength, y: q0.y + u0.y * lengths.startLength };
+  const h1 = {
+    x: q0.x + u0.x * lengths.startLength,
+    y: q0.y + u0.y * lengths.startLength,
+  };
   const h2 = { x: q3.x + u1.x * lengths.endLength, y: q3.y + u1.y * lengths.endLength };
 
   let worst = 0;
@@ -912,13 +924,29 @@ describe("offset-cubic: correction pass", () => {
     const p1 = { x: 60, y: 90 };
     const p2 = { x: 180, y: 90 };
     const p3 = { x: 240, y: 0 };
-    const input = { p0, p1, p2, p3, d0: 5, d3: 70, ...ribInputs(p0, p1, p2, p3, 5, 70) };
+    const input = {
+      p0,
+      p1,
+      p2,
+      p3,
+      d0: 5,
+      d3: 70,
+      ...ribInputs(p0, p1, p2, p3, 5, 70),
+    };
     expect(maxOffsetError(input, offsetCubicSide(input))).to.be.at.most(3);
   });
 
   it("tracks the true offset at high curvature", () => {
     const { p0, p1, p2, p3 } = quarterCircle(40);
-    const input = { p0, p1, p2, p3, d0: 30, d3: 30, ...ribInputs(p0, p1, p2, p3, 30, 30) };
+    const input = {
+      p0,
+      p1,
+      p2,
+      p3,
+      d0: 30,
+      d3: 30,
+      ...ribInputs(p0, p1, p2, p3, 30, 30),
+    };
     expect(maxOffsetError(input, offsetCubicSide(input))).to.be.at.most(1);
   });
 });
@@ -1000,17 +1028,17 @@ function easeIntoBand(solved, analytic) {
 In `offsetCubicSide`, insert before the `chord` line:
 
 ```js
-  const samples = CORRECTION_SAMPLE_TS.map((t) =>
-    offsetPointAt(p0, p1, p2, p3, d0, d3, t)
-  );
-  const { alphaL, alphaR } = solveHandleLengths(
-    [q0, ...samples, q3],
-    [0, ...CORRECTION_SAMPLE_TS, 1],
-    u0,
-    u1
-  );
-  const correctedStart = easeIntoBand(alphaL, startHandle * startLambda);
-  const correctedEnd = easeIntoBand(alphaR, endHandle * endLambda);
+const samples = CORRECTION_SAMPLE_TS.map((t) =>
+  offsetPointAt(p0, p1, p2, p3, d0, d3, t)
+);
+const { alphaL, alphaR } = solveHandleLengths(
+  [q0, ...samples, q3],
+  [0, ...CORRECTION_SAMPLE_TS, 1],
+  u0,
+  u1
+);
+const correctedStart = easeIntoBand(alphaL, startHandle * startLambda);
+const correctedEnd = easeIntoBand(alphaR, endHandle * endLambda);
 ```
 
 and change the return to bound `correctedStart` / `correctedEnd` instead of the raw products.
@@ -1054,6 +1082,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 The acceptance criterion. The property the current pipeline lacks.
 
 **Files:**
+
 - Test: `src-js/fontra-core/tests/test-offset-cubic.js`
 
 - [ ] **Step 1: Write the test**
@@ -1223,11 +1252,13 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ### Task 7: Wire into the generator
 
 **Files:**
+
 - Modify: `src-js/fontra-core/src/skeleton-generator.js` — imports, and the `addOffsetCurves` helper inside `generateOffsetPointsForSegment`
 - Modify: `src-js/fontra-core/tests/test-skeleton-generator.js`
 - Modify: `src-js/fontra-core/tests/data/skeleton-generator/fixtures.json` (regenerated)
 
 **Interfaces:**
+
 - Consumes: `offsetCubicSide` as completed in Task 5.
 
 - [ ] **Step 1: Read the branch end to end**
@@ -1270,62 +1301,62 @@ function projectHandleOntoDirection(anchor, handlePoint, direction) {
 Replace the handle derivation with:
 
 ```js
-      const controls = segment.controlPoints;
-      const sideSign = isLeftSide ? 1 : -1;
-      const startTangentFallback = getSegmentTangent(segment, "start");
-      const endTangentFallback = getSegmentTangent(segment, "end");
-      const startHandleDir = getSkeletonHandleDirection(segment, "start", "out");
-      const endHandleDir = getSkeletonHandleDirection(segment, "end", "in");
-      const startDir = startHandleDir ?? startTangentFallback;
-      const endDir = endHandleDir ?? {
-        x: -endTangentFallback.x,
-        y: -endTangentFallback.y,
-      };
+const controls = segment.controlPoints;
+const sideSign = isLeftSide ? 1 : -1;
+const startTangentFallback = getSegmentTangent(segment, "start");
+const endTangentFallback = getSegmentTangent(segment, "end");
+const startHandleDir = getSkeletonHandleDirection(segment, "start", "out");
+const endHandleDir = getSkeletonHandleDirection(segment, "end", "in");
+const startDir = startHandleDir ?? startTangentFallback;
+const endDir = endHandleDir ?? {
+  x: -endTangentFallback.x,
+  y: -endTangentFallback.y,
+};
 
-      const { startLength, endLength } = offsetCubicSide({
-        p0: segment.startPoint,
-        p1: controls[0],
-        p2: controls[controls.length - 1],
-        p3: segment.endPoint,
-        d0: sideSign * startHalfWidth,
-        d3: sideSign * endHalfWidth,
-        q0: fixedStart,
-        q3: fixedEnd,
-        u0: startDir,
-        u1: endDir,
-      });
+const { startLength, endLength } = offsetCubicSide({
+  p0: segment.startPoint,
+  p1: controls[0],
+  p2: controls[controls.length - 1],
+  p3: segment.endPoint,
+  d0: sideSign * startHalfWidth,
+  d3: sideSign * endHalfWidth,
+  q0: fixedStart,
+  q3: fixedEnd,
+  u0: startDir,
+  u1: endDir,
+});
 
-      let adjustedHandle1 = {
-        x: fixedStart.x + startDir.x * startLength,
-        y: fixedStart.y + startDir.y * startLength,
-      };
-      let adjustedHandle2 = {
-        x: fixedEnd.x + endDir.x * endLength,
-        y: fixedEnd.y + endDir.y * endLength,
-      };
+let adjustedHandle1 = {
+  x: fixedStart.x + startDir.x * startLength,
+  y: fixedStart.y + startDir.y * startLength,
+};
+let adjustedHandle2 = {
+  x: fixedEnd.x + endDir.x * endLength,
+  y: fixedEnd.y + endDir.y * endLength,
+};
 ```
 
 Then, **after** the two existing `applyHandleOffsetToControlPoint` calls, add:
 
 ```js
-      adjustedHandle1 = projectHandleOntoDirection(fixedStart, adjustedHandle1, startDir);
-      adjustedHandle2 = projectHandleOntoDirection(fixedEnd, adjustedHandle2, endDir);
+adjustedHandle1 = projectHandleOntoDirection(fixedStart, adjustedHandle1, startDir);
+adjustedHandle2 = projectHandleOntoDirection(fixedEnd, adjustedHandle2, endDir);
 ```
 
 Replace the surviving debug payload with:
 
 ```js
-      logSkeletonDebug(
-        { ...debugContext, side },
-        {
-          stage: "offsetCubicSide",
-          startHalfWidth,
-          endHalfWidth,
-          startLength,
-          endLength,
-          chordLength: Math.hypot(fixedEnd.x - fixedStart.x, fixedEnd.y - fixedStart.y),
-        }
-      );
+logSkeletonDebug(
+  { ...debugContext, side },
+  {
+    stage: "offsetCubicSide",
+    startHalfWidth,
+    endHalfWidth,
+    startLength,
+    endLength,
+    chordLength: Math.hypot(fixedEnd.x - fixedStart.x, fixedEnd.y - fixedStart.y),
+  }
+);
 ```
 
 `segment.controlPoints` always holds exactly two off-curve points for a curve segment: the pen tool and the model only emit handles in pairs, and every branch in the generator tests `controlPoints.length === 0` against everything else. Indexing first and last rather than `[0]` and `[1]` costs nothing and degrades to a sane curve rather than `NaN` if malformed data ever arrives.
@@ -1335,8 +1366,8 @@ Replace the surviving debug payload with:
 Remove from the bezier branch (near `:2632`):
 
 ```js
-    const offsetLeftCurves = bezier.offset(-avgLeftHW);
-    const offsetRightCurves = bezier.offset(avgRightHW);
+const offsetLeftCurves = bezier.offset(-avgLeftHW);
+const offsetRightCurves = bezier.offset(avgRightHW);
 ```
 
 Keep `avgLeftHW` / `avgRightHW` — both are still the `sideHalfWidth` argument at the `addOffsetCurves` call sites, which the collapsed check needs. Keep `bezier`; the endpoint normals above still use it. Remove the `curves` parameter from `addOffsetCurves` and both call sites' first argument.
@@ -1508,6 +1539,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ### Task 8: Remove the superseded code
 
 **Files:**
+
 - Modify: `src-js/fontra-core/src/skeleton-generator.js`
 
 - [ ] **Step 1: Confirm reference counts**
@@ -1544,6 +1576,7 @@ Working bottom-up through `src-js/fontra-core/src/skeleton-generator.js` so earl
 ```bash
 cd src-js/fontra-core && node --check src/skeleton-generator.js && npm test
 ```
+
 Expected: no output from `node --check`, and PASS with **no golden-master change**. This task removes only unreachable code — a fixture moving means something live was deleted.
 
 - [ ] **Step 4: Commit**
@@ -1575,6 +1608,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 The bound was adopted to replace an arbitrary constant, and then needed an arbitrary floor of its own to stop it collapsing. Before adding that constant, find out whether the bound ever fires.
 
 **Files:**
+
 - Create: `src-js/fontra-core/tests/scripts/measure-tension-bound.js`
 - Possibly modify: `src-js/fontra-core/src/offset-cubic.js`
 
@@ -1617,7 +1651,13 @@ for (let handle = 5; handle <= 120; handle += 5) {
             closed: false,
             defaultWidth: width * 2,
             points: [
-              { id: 1, x: 0, y: 0, smooth: false, width: { left: width, right: width } },
+              {
+                id: 1,
+                x: 0,
+                y: 0,
+                smooth: false,
+                width: { left: width, right: width },
+              },
               { id: 2, x: handle, y: handle, type: "cubic" },
               { id: 3, x: 120 - handle, y: handle, type: "cubic" },
               {
@@ -1695,6 +1735,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ### Task 10: Fix the misleading test title and update the feature model
 
 **Files:**
+
 - Modify: `src-js/fontra-core/tests/test-skeleton-generator.js:12-14`
 - Modify: `docs/superpowers/SKELETON-FEATURE-MODEL.md`
 
@@ -1712,8 +1753,8 @@ The per-case title reads `matches donor output for ${fixture.name}`. Porting is 
 In `docs/superpowers/SKELETON-FEATURE-MODEL.md` §3 step 2, replace the sentence describing cubic offsetting with:
 
 ```markdown
-Cubic segments: the generated handle *direction* is the skeleton handle
-direction, and its *length* is the skeleton handle length scaled by
+Cubic segments: the generated handle _direction_ is the skeleton handle
+direction, and its _length_ is the skeleton handle length scaled by
 `λ = 1 + d·κ` (`offset-cubic.js`), corrected by one fixed least-squares pass and
 bounded below at one unit. Endpoints are the exact rib positions. This replaced
 a bezier-js `offset()` + adaptive `fitCubic` path on 2026-07-26 because that

@@ -3,7 +3,7 @@
 **Date:** 2026-07-27
 **Supersedes nothing.** Extends `2026-07-26-skeleton-offset-construction-design.md`, which
 remains the spec for the closed-form construction itself. This document records what we
-decided *after* that construction shipped and its curve quality was measured.
+decided _after_ that construction shipped and its curve quality was measured.
 
 **Status:** step 1 done (`8adb3bb55`). Step 2 **withdrawn on measurement** — see §6.
 Work order is at the end.
@@ -37,11 +37,11 @@ is 0.5523), turns 15–75°, offsets 10–50% of the endpoint curvature radius, 
 
 On the 118 representable cases:
 
-| | mean error | hard-pinned at tension 1 | max tension wanted |
-| --- | --- | --- | --- |
-| current pipeline | 3.11 | 2 / 118 | 1.00 |
-| with a reparameterized fit | 0.84 | 3 / 118 | 1.12 |
-| numerical optimum | 0.67 | — | **1.04** |
+|                            | mean error | hard-pinned at tension 1 | max tension wanted |
+| -------------------------- | ---------- | ------------------------ | ------------------ |
+| current pipeline           | 3.11       | 2 / 118                  | 1.00               |
+| with a reparameterized fit | 0.84       | 3 / 118                  | 1.12               |
+| numerical optimum          | 0.67       | —                        | **1.04**           |
 
 ---
 
@@ -54,8 +54,8 @@ tension 1 puts the handles on the tangent intersection, the fullest a cubic gets
 distends. The measurement agrees: across the realistic sweep the accuracy optimum **never
 asks for more than 1.04**.
 
-*An earlier claim that the optimum wants tension 4–5 was an artifact of Sweep A and is
-withdrawn.*
+_An earlier claim that the optimum wants tension 4–5 was an artifact of Sweep A and is
+withdrawn._
 
 ### D2 — The clamp is not the disease.
 
@@ -101,7 +101,7 @@ iteration from a fixed seed is a continuous function of its input; an adaptive o
 
 ### D5 — Work in tension space, seeded from the skeleton.
 
-The current path works in *length* space and converts to tension only at the end, to clamp.
+The current path works in _length_ space and converts to tension only at the end, to clamp.
 That is why it can leave the valid domain at all. Instead: seed from the skeleton segment's
 own tension, and shift both ends **simultaneously**. Tension ≤ 1 then becomes the edge of
 the parameter rather than a patch applied afterwards.
@@ -122,7 +122,7 @@ Two primitives for this already exist and must be reused, not re-derived (rail R
 
 Confirmed by the code's own reasoning: `equalizeJointSegments` notes that the donor's
 trailing balance "perturbs the very curvature match harmonization just established", so
-equalize must come *first*. Harmonize runs with `handleBias: 1.0` so the node never moves —
+equalize must come _first_. Harmonize runs with `handleBias: 1.0` so the node never moves —
 only the two inner handles slide along the shared tangent, which is precisely the freedom
 available on a generated contour (rib positions are not ours to move).
 
@@ -131,7 +131,7 @@ Harmonize's `maxHandleTension: 1` default is consistent with D1 and stays.
 ### D7 — Equalize to the **maximum available**, never unconditionally and never as a snap.
 
 Equalize forces a segment's two tensions together, which overrides the fit wherever
-asymmetry is *correct* — asymmetric skeleton handles, or a tapering width. Measured optimal
+asymmetry is _correct_ — asymmetric skeleton handles, or a tapering width. Measured optimal
 tensions in asymmetric cases: 1.17/0.56 and 0.37/1.31, nowhere near equal.
 
 So: equalize as far as the geometry allows, and no further. Not a snap to equal, not
@@ -142,7 +142,7 @@ skipped either.
 - **Curvature gizmo** — sits at **the centre of the generated curve** and changes its
   curvature. This is **not** the Tunni centreline gizmo; do not implement it as one. It is
   the "make this rounder / flatter" control, e.g. a more geometrically round inner contour
-  of an *O* against a more oval outer.
+  of an _O_ against a more oval outer.
 - **Tunni point** — as on skeletons and basic points; controls **generated on-curve
   placement**, for when handle manipulation alone cannot reach the wanted geometry.
 
@@ -175,7 +175,7 @@ rule; makes interpolation ambiguous about which a master reads) and "z-shift ove
 tunnis, reset on opt-out" (destructive on toggle — flipping the flag to look at the other
 mode loses work).
 
-The only genuine difference is that a gizmo drag *distributes* a change across both handles
+The only genuine difference is that a gizmo drag _distributes_ a change across both handles
 while z-shift edits one number. Both write the same fields. That is a distribution rule, not
 a schema.
 
@@ -185,7 +185,7 @@ a schema.
 
 31 of 149 realistic cases are geometry where a single cubic **cannot** represent the offset
 — offset distance near half the endpoint curvature radius, i.e. a bold stroke on a tight
-curve. Errors run into the hundreds for every strategy *including the numerical optimum*.
+curve. Errors run into the hundreds for every strategy _including the numerical optimum_.
 Point-count stability forbids splitting the segment, so no fit removes this.
 
 This is very likely a large part of the collapse behaviour observed in the editor.
@@ -199,7 +199,7 @@ the designer rather than collapsing.
 
 ### D12 — The on-curve gizmo is tangent-constrained. Everywhere, by design.
 
-Not a per-case judgement: tangent-constrained is what the on-curve gizmo *is* throughout this
+Not a per-case judgement: tangent-constrained is what the on-curve gizmo _is_ throughout this
 editor, and generated contours are no exception. It also happens to be what keeps a rib end
 valid for both of the generated segments that share it.
 
@@ -217,7 +217,7 @@ is the same scalar grabbed directly on the curve. Two affordances, one number.
 - **Ceiling:** D1. Tension 1 is where the anchor would reach the Tunni point.
 
 The existing basic-editor control this generalizes is `hitType: "tunni-point"`, whose anchor
-is `calculateControlHandlePoint` — the midpoint of the two *handles*, dragged along a fixed
+is `calculateControlHandlePoint` — the midpoint of the two _handles_, dragged along a fixed
 45° vector. Ours differs in both: anchor on the **curve**, axis toward the **Tunni point**.
 The proportional-tension drag underneath is the same and is shared.
 
@@ -294,7 +294,7 @@ Measured on `offsetCubicSide` directly, bypassing `Math.round`:
 So the generated contour already reproduces the true offset's curvature at joints. A
 harmonize pass has nothing to remove there.
 
-### 6.3 …and the mismatch that *is* there is the skeleton's, faithfully reproduced
+### 6.3 …and the mismatch that _is_ there is the skeleton's, faithfully reproduced
 
 On arcs of differing radius either side of a joint, the generated joint step runs up to
 **80%** — and matches the true offset's own step to within 1.7%. That step is genuine: the
@@ -305,14 +305,14 @@ the same problem, already noted in D7 for a different reason.
 
 Max deviation from the true offset, one segment, after step 1:
 
-| | constant width | tapered |
-| --- | --- | --- |
-| deviation | 0.11 – 0.49 | **3.6 – 14.4** |
+|           | constant width | tapered        |
+| --------- | -------------- | -------------- |
+| deviation | 0.11 – 0.49    | **3.6 – 14.4** |
 
 Cause: the generated handle **axis** is pinned to the skeleton handle direction. On a tapered
 stroke the true offset's tangent is not parallel to the skeleton's — it tilts by
 `atan(d′ / speed)`, measured at **6°–79°** across realistic tapers (55/20, 70/10, 30/60,
-−20/−55 against half-widths of 40). No handle *length* can compensate for a wrong direction,
+−20/−55 against half-widths of 40). No handle _length_ can compensate for a wrong direction,
 and both equalize and harmonize only slide handles along the existing axis.
 
 At constant width the tilt measures −0.01°, so this is exactly targeted: it changes tapered
@@ -320,15 +320,15 @@ strokes and nothing else.
 
 Refitting handle lengths numerically for each axis choice, over 20 tapered cases:
 
-| axis | mean deviation |
-| --- | --- |
-| pinned to the skeleton (current) | 6.65 |
-| tilted per end, to the true offset's tangent | **0.44** |
-| one shared tilt for both ends | 2.52 |
+| axis                                         | mean deviation |
+| -------------------------------------------- | -------------- |
+| pinned to the skeleton (current)             | 6.65           |
+| tilted per end, to the true offset's tangent | **0.44**       |
+| one shared tilt for both ends                | 2.52           |
 
 Per-end tilt brings tapered strokes to the same quality as constant-width ones. A single
 shared tilt — the variant that would keep two adjacent generated segments trivially G1 at the
-rib they share — recovers less than half the gain and is *worse than pinned* on two cases.
+rib they share — recovers less than half the gain and is _worse than pinned_ on two cases.
 
 ### 6.5 D11 — Generated handles always point along the skeleton's handle direction.
 

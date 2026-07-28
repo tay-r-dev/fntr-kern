@@ -17,10 +17,10 @@ skeleton is shaped the way it is.
 
 One companion document remains:
 
-| Doc                         | Answers                                                                  |
-| --------------------------- | ------------------------------------------------------------------------ |
+| Doc                         | Answers                                                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `SKELETON-FEATURE-MODEL.md` | The conceptual **mental model** of forkra's skeleton: what the feature is, how the generation pipeline works, what to preserve |
-| **this doc**                | Where everything **is**, who owns it, and (§9) why the skeleton is built this way |
+| **this doc**                | Where everything **is**, who owns it, and (§9) why the skeleton is built this way                                              |
 
 ---
 
@@ -95,7 +95,9 @@ projection anywhere.
 contain `if (skeleton…)`. Kind decisions happen at construction time, via **target entries**.
 
 **R-F — Cross-cutting modifiers are behavior names**, not bypass flags — see
-`skeleton-modifiers.js` (both copies, core + editor).
+`skeleton-model.js` (the semantics) and `skeleton-editing.js` (event/keys → behavior name).
+There is no `skeleton-modifiers.js`: an earlier draft of this doc claimed one in each of
+core and editor, and neither ever existed in the tree.
 
 **R-G — Test split.** Only `fontra-core` has a harness (mocha + chai, `npm test`).
 `views-editor` has none: those changes carry a manual test matrix in their plan.
@@ -223,7 +225,6 @@ outline contours are generated live.
 | --------------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fontra-core/src/skeleton-model.js`           | +1243 | Schema, stable-id allocation, accessors/mutators, rib projection, normals. **The single home for skeleton geometry constants.**                                                    |
 | `fontra-core/src/skeleton-generator.js`       | +5168 | Centerline → outline. Segments, offset curves, caps (butt/round/square/**drop**), corner rounding, single-sided, handle offsets, detached handles. Emits forward provenance (R-D). |
-| `fontra-core/src/skeleton-modifiers.js`       | +475  | D/S/X/Z semantics: `applyFixedRibDelta`, the equalize family                                                                                                                       |
 | `fontra-core/src/skeleton-source-defaults.js` | +241  | Per-source defaults, resolved by glyph case                                                                                                                                        |
 | `fontra-core/src/skeleton-tunni.js`           | +234  | Tunni math on skeleton segments                                                                                                                                                    |
 
@@ -234,7 +235,6 @@ outline contours are generated live.
 | `views-editor/src/skeleton-editing.js`             | +959  | **`editSkeleton` — the one write path (R-C).** Selection keys, target entries, contour-index bookkeeping, selection bounds |
 | `views-editor/src/skeleton-generated.js`           | +639  | Editable generated points/handles; provenance resolution; detach                                                           |
 | `views-editor/src/skeleton-ribs.js`                | +233  | Rib keys, addresses, width/nudge executors                                                                                 |
-| `views-editor/src/skeleton-modifiers.js`           | +42   | Thin: maps selection kinds → behavior names                                                                                |
 | `views-editor/src/edit-tools-skeleton.js`          | +855  | Skeleton Pen drawing tool                                                                                                  |
 | `views-editor/src/visualization-layer-skeleton.js` | +781  | 11 canvas layers                                                                                                           |
 | `views-editor/src/panel-skeleton-parameters.js`    | +1181 | Numeric editing panel (right sidebar)                                                                                      |
@@ -254,10 +254,13 @@ editableGeneratedHandle/<contourId>/<pointId>/<side>/<role>  role ∈ in|out
 `fontra-core/src/utils.ts` was changed (+14/−6) precisely so `parseSelection` keeps the raw
 remainder for these compound kinds instead of `parseInt`-ing them.
 
-**Visualization layers (11):**
+**Visualization layers (13):**
 `width-shading`, `ribs`, `rib-points`, `centerline`, `handles`, `nodes`, `selected-nodes`,
-`tunni`, `insert-handles-preview`, `editable-markers`, `point-labels` — all under
-`fontra.skeleton.*` in `visualization-layer-skeleton.js`.
+`tunni`, `generated-tunni`, `generated-curvature-labels`, `insert-handles-preview`,
+`editable-markers`, `point-labels` — all under `fontra.skeleton.*` in
+`visualization-layer-skeleton.js`. The last two of the generated pair are the
+outline's own gizmos and their readout, deliberately separate from `tunni`, which
+controls the skeleton.
 
 **Hit-testing** — all in `scene-model.js`, per R-A:
 `skeletonPointAtPoint`, `skeletonRibAtPoint`, `skeletonTunniAtPoint`, `editableGeneratedAtPoint`,
@@ -435,7 +438,8 @@ etc. — don't duplicate them) → `skeleton-model.js` for geometry (rib positio
 Provenance lookups go through `skeleton-generated.js`, never geometry matching (R-D).
 
 **"Fix a skeleton editing behavior"**
-`skeleton-editing.js` (target entries) → `skeleton-modifiers.js`, both copies → the relevant
+`skeleton-editing.js` (target entries, and the key → behavior-name mapping) → the modifier
+semantics in `skeleton-model.js` (`applyFixedRibDelta`, the equalize family) → the relevant
 executor in `skeleton-ribs.js` / `skeleton-generated.js`. If the fix wants a branch inside
 `makeChangeForDelta`, it is the wrong fix (R-E).
 
@@ -464,8 +468,8 @@ Everything in the skeleton is an instance of one of these.
 - **C1 — A skeleton is a path.** Skeleton geometry uses the same point representation as glyph
   paths (x, y, on/off-curve type, smooth flag) plus per-point attributes (widths, nudges, flags,
   handle offsets). So the existing point-editing machinery — behavior rules, executors,
-  hit-testing, selection — applies verbatim, parameterized only by *which* path is edited and
-  *where* the change is recorded. On-curve points and handles are **one** selection kind
+  hit-testing, selection — applies verbatim, parameterized only by _which_ path is edited and
+  _where_ the change is recorded. On-curve points and handles are **one** selection kind
   (`skeletonPoint/contour/point`), never split. → rail R-A.
 - **C2 — One write path.** `editSkeleton` (`skeleton-editing.js`) is the only caller of the
   generator on the editing side: apply `mutate()` to a working copy → regenerate → update
@@ -477,7 +481,7 @@ Everything in the skeleton is an instance of one of these.
   tolerance-based inverse projection anywhere. → rail R-D.
 - **C4 — Derived handles are gizmos with one contract.** Rib endpoints, editable generated
   handles and Tunni points all share: `position(source)` for render/hit-test, `applyDrag(delta)
-  → source mutation` for editing. Tunni is written once against "a path + an edit sink"; the
+→ source mutation` for editing. Tunni is written once against "a path + an edit sink"; the
   skeleton sink is `editSkeleton`.
 
 ### The defects it answers (P1–P7)
@@ -495,7 +499,7 @@ reintroduce:
   times; drift makes the outline and the edit targets disagree. → rail R-B (one copy of every
   constant and geometry fn).
 - **P5 — Features bolted outside the behavior model.** X-equalize as a side channel regressed
-  five times; interpolation, expressed *inside* the rules, never did. → rail R-F (modifiers are
+  five times; interpolation, expressed _inside_ the rules, never did. → rail R-F (modifiers are
   behavior names + executor variants, not bypass flags).
 - **P6 — Monolith files.** Donor pointer was 7,496 lines. The fork keeps the pointer thin, but
   `skeleton-generator.js` (~5,200 lines) is the one place this weight still lives (§7 residue #3).
@@ -512,7 +516,7 @@ is what makes C3 cheap. Generated contours are tracked by `generatedContourIndic
 per-point provenance map keyed by skeleton id.
 
 The one seam outside `editSkeleton`: **path** contours have no id facility in Fontra, so a
-generated contour's *index* can still be invalidated when a non-skeleton contour is inserted or
+generated contour's _index_ can still be invalidated when a non-skeleton contour is inserted or
 deleted. Every editor operation that restructures the contour list must update the mapping in the
 same change — the knife/pen bookkeeping in §3 F7 is that hook. The donor hit this exact bug
 twice; ids + one write path are the structural answer, but the enumeration is real work, not an

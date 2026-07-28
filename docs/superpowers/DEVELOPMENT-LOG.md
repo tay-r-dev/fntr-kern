@@ -72,27 +72,27 @@ editor calls it from `scene-controller.js`; the UI is in
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `4df999813` | docs: add curve harmonization (F9) design spec |
-| `0cbaf2174` | docs: split the two deferred skeleton items in the F9 spec |
-| `fb956451d` | feat: initial implementation |
-| `9dfe9f4ff` | fix(harmonize): write through setPointPosition, not a path assignment |
-| `482a4158c` | feat(harmonize): report why each point was skipped or left partial |
-| `1c4b24b50` | feat(harmonize): optional Tunni equalization, the pass that moves outer handles |
+| Commit      | Subject                                                                               |
+| ----------- | ------------------------------------------------------------------------------------- |
+| `4df999813` | docs: add curve harmonization (F9) design spec                                        |
+| `0cbaf2174` | docs: split the two deferred skeleton items in the F9 spec                            |
+| `fb956451d` | feat: initial implementation                                                          |
+| `9dfe9f4ff` | fix(harmonize): write through setPointPosition, not a path assignment                 |
+| `482a4158c` | feat(harmonize): report why each point was skipped or left partial                    |
+| `1c4b24b50` | feat(harmonize): optional Tunni equalization, the pass that moves outer handles       |
 | `f72e9cebe` | fix(harmonize): drain the slider's valueStream, so the applied bias is the shown bias |
-| `92f660621` | fix(harmonize): show the bias number; rename the slider end to "point" |
-| `e479f706c` | fix(harmonize): apply the bias the slider shows, not the one the model stored |
-| `c1f76ebe1` | feat(harmonize): cap each handle's tension at 1 so handles cannot cross |
-| `aa1adcaa5` | feat(harmonize): pull an over-tension handle back under the ceiling |
-| `251f96cd6` | feat(harmonize): round the moved points to whole units |
+| `92f660621` | fix(harmonize): show the bias number; rename the slider end to "point"                |
+| `e479f706c` | fix(harmonize): apply the bias the slider shows, not the one the model stored         |
+| `c1f76ebe1` | feat(harmonize): cap each handle's tension at 1 so handles cannot cross               |
+| `aa1adcaa5` | feat(harmonize): pull an over-tension handle back under the ceiling                   |
+| `251f96cd6` | feat(harmonize): round the moved points to whole units                                |
 
 ### 4. Challenges and findings
 
 **Harmonization converges in one pass, at any bias.** The spec assumed
 iteration was needed and that a handle-heavy bias would take more passes. It
 doesn't. The ratio depends only on the perpendicular offsets of `PP` and `NN`
-from the tangent line, and neither the joint nor the handles moving *along* the
+from the tangent line, and neither the joint nor the handles moving _along_ the
 tangent changes those offsets. `D`'s own offset cancels out of the formula. So
 one pass is exact regardless of where the bias puts the correction. Iteration
 earns its keep only on **coupled** joints — adjacent smooth points that share a
@@ -114,7 +114,7 @@ rollback (`change-recorder.js:69`). This is a general rule for any future
 geometry operation, not a harmonization quirk.
 
 **A dragged `edit-number-slider` doesn't deliver its value through
-`onFieldChange`.** It fires once at `dragBegin` with the *pre-drag* value; every
+`onFieldChange`.** It fires once at `dragBegin` with the _pre-drag_ value; every
 subsequent value arrives on a `valueStream` `QueueIterator`. So the setting we
 stored was always one drag stale — the node kept moving in full-handle mode
 because the code was reading bias 0.2 while the slider showed 1.0. Two fixes:
@@ -126,12 +126,12 @@ the UI was assumed innocent. The user's console dump of the options object is
 what settled it. When reported behaviour contradicts the math, instrument the
 boundary between them first.
 
-**`displayValue: true` is not a boolean.** It's a placeholder *string* that
+**`displayValue: true` is not a boolean.** It's a placeholder _string_ that
 blanks the number box (`range-slider.js:256-262`), so the box literally read
 "true".
 
 **Supertool moves more handles than its `harmonize:` method does.** The method
-itself only moves the joint's immediate neighbours, but the Harmonize *command*
+itself only moves the joint's immediate neighbours, but the Harmonize _command_
 brackets it with `[self balance]`, which moves the adjacent segments' handles
 too. That's the source of the "it moves adjacent handles" observation, and it
 maps to our optional Tunni equalization pass, not to the core algorithm.
@@ -156,7 +156,7 @@ margin (ceiling 0.98) would remove it if it ever matters.
 
 Clicking a segment selects its two on-curve points. Shift-clicking an adjacent
 segment should have added its two points to the selection, but instead it
-*removed* the point the two segments share — so you could never build a
+_removed_ the point the two segments share — so you could never build a
 selection by walking along a contour.
 
 ### 2. Solution
@@ -176,8 +176,8 @@ unchanged.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
+| Commit      | Subject                                               |
+| ----------- | ----------------------------------------------------- |
 | `f757a2e53` | fix(selection): make shift-clicking segments additive |
 
 Files: `scene-model.js` (two return sites), `edit-tools-pointer.js`
@@ -186,7 +186,7 @@ is symmetric difference).
 
 ### 4. Challenges and findings
 
-**The bug was in the selection *mode*, not the hit test.** `getSelectModeFunction`
+**The bug was in the selection _mode_, not the hit test.** `getSelectModeFunction`
 maps shift to `symmetricDifference`, which is right for a single point and wrong
 for a multi-point hit. The hit test was returning the correct two points all
 along.

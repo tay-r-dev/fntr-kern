@@ -1,7 +1,9 @@
 # Gizmo coherence, mirroring, and the generated-contour controls
 
 Date: 2026-07-27
-Status: plan
+Status: **built**, with two deviations recorded in place — **4.1** is a click
+rather than a whole ctrl+shift gesture, and **4.2 is withdrawn**. Later
+corrections live in §10 of the companion spec.
 
 Covers five reported bugs, one scope restriction, and four interaction additions on
 the generated-contour gizmos. The five bugs are not five problems: three are
@@ -440,6 +442,10 @@ inside that branch rather than in the general paths.
 
 ## 4.1 Ctrl+Shift+click on the curvature gizmo — equalize handles
 
+**Built, as a click.** The gesture waits to see whether the pointer moves: it
+equalizes only if it does not, and otherwise hands over to the ordinary curvature
+drag, so holding the modifiers never costs the drag.
+
 Set both handle tensions equal while leaving the segment's curvature exactly where
 it is: both go to the segment's harmonic mean `τ`, so the number the curvature
 gizmo owns does not move. This is the `amount = 1` case of the equalization the
@@ -453,7 +459,12 @@ is stable under regeneration whether or not the segment is pinned.
 No-op when the two tensions are already equal within tolerance, mirroring the
 existing skeleton Tunni equalize.
 
-## 4.2 Ctrl+Shift+click on the on-curve gizmo — equalize the reaches
+## 4.2 Ctrl+Shift+click on the on-curve gizmo — equalize the reaches — WITHDRAWN
+
+**Not built.** Built once and removed: the on-curve gizmo has no modified gesture,
+and ctrl+shift on it is an ordinary drag. Only the curvature gizmo equalizes. The
+rest of this section is kept for the closed form, which is correct if the control
+is ever wanted again.
 
 Make the tangent intersection equidistant from the segment's two on-curve points.
 

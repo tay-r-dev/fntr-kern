@@ -39,7 +39,19 @@ Everything else is elaboration of that one idea:
 - **Single-sided contours** — all width on one side; the other lies exactly on
   the skeleton.
 - **Modifier behaviors** — D (fixed-rib), S (fixed-rib-compress), X (equalize),
-  Z (tangent-only rib drag), held as realtime keys during drags.
+  Z (rib width drag), held as realtime keys during drags. A plain rib drag slides
+  the rib end along its tangent; **Z** is what changes the width, and Alt is the
+  same second axis either way — no handle carry on a tangent drag, interpolation
+  across the selection on a width drag. Generated points and handles need no
+  modifier at all: a plain drag adjusts them, Alt equalizes.
+- **D/S expansion offsets the centerline.** Every selected on-curve moves the same
+  distance along its own normal, which makes each affected segment a
+  constant-distance offset of itself — or a tapered one where only one of its ends
+  is selected — so the drag runs `offsetCubicSide`, the generator's own
+  construction, on the skeleton. Handle directions are kept and their lengths
+  scale by `1 + d·κ`. It carries whole tied rib groups (§3.0), and on a
+  single-sided contour it moves no skeleton at all: the centerline is one edge
+  there, so only the half-width changes.
 - **Tunni points** on skeleton curve segments.
 - **Per-source defaults** — new points inherit widths/caps from source-level
   settings, keyed by glyph case.
@@ -153,11 +165,11 @@ pure and independent (contour _i_'s output depends only on contour _i_):
    per side:
 
    - `nudge` is the rendered on-curve displacement;
-   - `handleNudge` is the portion accumulated by ordinary Z-mode drags and is
+   - `handleNudge` is the portion accumulated by an unmodified rib drag and is
      emitted on adjacent handles after the construction pipeline.
 
-   Default gizmo drags and Z-Alt drags change only `nudge`, so adjacent
-   off-curves remain byte-identical. Z-normal changes both scalars, so it behaves
+   Gizmo drags and Alt-held rib drags change only `nudge`, so adjacent off-curves
+   remain byte-identical. A plain rib drag changes both scalars, so it behaves
    like an ordinary on-curve edit and carries the off-curves. A later Alt-style
    edit leaves the earlier carried handle position intact. This is deliberately
    separate from `handleOffsets`: carry must also work where no forward tension
