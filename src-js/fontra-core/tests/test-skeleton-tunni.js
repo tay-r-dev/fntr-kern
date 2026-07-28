@@ -562,8 +562,9 @@ describe("generated Tunni segments", () => {
       onCurveOffset: 24,
     });
     expect(hit?.type).to.equal("generated-on-curve");
-    expect(Math.hypot(hit.gizmoPoint.x - midpoint.x, hit.gizmoPoint.y - midpoint.y)).to.be
-      .closeTo(24, 1e-9);
+    expect(
+      Math.hypot(hit.gizmoPoint.x - midpoint.x, hit.gizmoPoint.y - midpoint.y)
+    ).to.be.closeTo(24, 1e-9);
   });
 
   it("misses when nothing is near", () => {
@@ -612,16 +613,36 @@ describe("generated on-curve gizmo eligibility", () => {
           skeletonContourId: 71,
           pathContourIndex: 0,
           pointMap: [
-            { skeletonContourId: 71, skeletonPointId: 1, side: "left", role: "onCurve" },
+            {
+              skeletonContourId: 71,
+              skeletonPointId: 1,
+              side: "left",
+              role: "onCurve",
+            },
             { skeletonContourId: 71, skeletonPointId: 1, side: "left", role: "out" },
             { skeletonContourId: 71, skeletonPointId: 2, side: "left", role: "in" },
-            { skeletonContourId: 71, skeletonPointId: 2, side: "left", role: "onCurve" },
+            {
+              skeletonContourId: 71,
+              skeletonPointId: 2,
+              side: "left",
+              role: "onCurve",
+            },
             { skeletonContourId: 71, skeletonPointId: 2, side: "left", role: "out" },
             { skeletonContourId: 71, skeletonPointId: 3, side: "left", role: "in" },
-            { skeletonContourId: 71, skeletonPointId: 3, side: "left", role: "onCurve" },
+            {
+              skeletonContourId: 71,
+              skeletonPointId: 3,
+              side: "left",
+              role: "onCurve",
+            },
             { skeletonContourId: 71, skeletonPointId: 3, side: "left", role: "out" },
             { skeletonContourId: 71, skeletonPointId: 4, side: "left", role: "in" },
-            { skeletonContourId: 71, skeletonPointId: 4, side: "left", role: "onCurve" },
+            {
+              skeletonContourId: 71,
+              skeletonPointId: 4,
+              side: "left",
+              role: "onCurve",
+            },
           ],
         },
       ],
@@ -761,22 +782,6 @@ describe("generated on-curve gizmo edits", () => {
         movable: [false, false],
       })
     ).to.equal(null);
-  });
-
-  it("equalizes the two reaches through the same constrained write path", () => {
-    const truePoint = calculateTunniPoint(segmentPoints);
-    const expectedSpread =
-      (Math.hypot(truePoint.x - segmentPoints[0].x, truePoint.y - segmentPoints[0].y) -
-        Math.hypot(truePoint.x - segmentPoints[3].x, truePoint.y - segmentPoints[3].y)) /
-      2;
-    const edits = calculateGeneratedOnCurveEdits({
-      segmentPoints,
-      provenance,
-      delta: { x: 0, y: 0 },
-      equalizeReaches: true,
-    });
-    expect(edits[0].nudgeDelta).to.be.closeTo(-expectedSpread, 1e-9);
-    expect(edits[1].nudgeDelta).to.be.closeTo(expectedSpread, 1e-9);
   });
 
   it("declines rather than guessing when a rib end has no provenance", () => {

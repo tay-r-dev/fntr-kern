@@ -343,19 +343,28 @@ export class PointerTool extends BaseTool {
         { onCurveOffset: size * 2 }
       );
       if (gizmoHit) {
-        if (initialEvent.ctrlKey && initialEvent.shiftKey) {
-          await handleGeneratedTunniCommand({
-            sceneController,
-            gizmoHit,
-            command: "equalize",
-          });
-          return;
-        }
         if (initialEvent.detail >= 2) {
           await handleGeneratedTunniCommand({
             sceneController,
             gizmoHit,
             command: "reset",
+          });
+          return;
+        }
+        // Equalizing the two handles is a click on the curvature gizmo, so the
+        // modifiers must not cost the drag: once the pointer moves this falls
+        // through to the ordinary curvature drag. The on-curve gizmo has no
+        // modified gesture at all.
+        if (
+          initialEvent.ctrlKey &&
+          initialEvent.shiftKey &&
+          gizmoHit.type === "generated-curvature" &&
+          !(await shouldInitiateDrag(eventStream, initialEvent))
+        ) {
+          await handleGeneratedTunniCommand({
+            sceneController,
+            gizmoHit,
+            command: "equalize",
           });
           return;
         }

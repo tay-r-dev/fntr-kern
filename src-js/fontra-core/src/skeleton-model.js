@@ -2985,9 +2985,7 @@ function getPathContourSignedArea(path, contourIndex) {
 function getGeneratedOnCurveMovability(skeletonData, segment) {
   const contourId =
     segment.provenance[0]?.skeletonContourId ?? segment.skeletonContourId;
-  const contour = (skeletonData?.contours || []).find(
-    (item) => item?.id === contourId
-  );
+  const contour = (skeletonData?.contours || []).find((item) => item?.id === contourId);
   if (!contour) {
     return [false, false];
   }
@@ -3100,7 +3098,6 @@ export function calculateGeneratedOnCurveEdits({
   provenance,
   delta,
   movable = [true, true],
-  equalizeReaches = false,
 }) {
   const addresses = [provenance?.[0], provenance?.[3]];
   if (
@@ -3120,15 +3117,6 @@ export function calculateGeneratedOnCurveEdits({
   // Up and right both spread, so they add rather than cancel: this is the
   // projection onto the 45-degree axis the basic Tunni control already uses.
   let spread = (delta.x + delta.y) / Math.SQRT2;
-  if (equalizeReaches) {
-    const truePoint = calculateTunniPoint(segmentPoints);
-    if (!truePoint) {
-      return null;
-    }
-    spread =
-      (distance(segmentPoints[0], truePoint) - distance(segmentPoints[3], truePoint)) /
-      2;
-  }
 
   // Closing the two ends together slides each rib end toward its own handle,
   // which the handle cannot outrun: past the point where it would invert, the

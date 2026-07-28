@@ -15,8 +15,8 @@ import {
   getSkeletonHandleOffset,
   getSkeletonPointNudge,
   isSkeletonSideLocked,
-  setSkeletonHandleOffset,
   setSkeletonHandleDetached,
+  setSkeletonHandleOffset,
   setSkeletonPointSideNudge,
   setSkeletonSegmentCurvature,
 } from "@fontra/core/skeleton-model.js";
@@ -28,7 +28,12 @@ import {
   snapToGrid,
 } from "@fontra/core/tunni-calculations.js";
 import { assert } from "@fontra/core/utils.ts";
-import { distance, dotVector, normalizeVector, subVectors } from "@fontra/core/vector.js";
+import {
+  distance,
+  dotVector,
+  normalizeVector,
+  subVectors,
+} from "@fontra/core/vector.js";
 import {
   editSkeleton,
   resolveSkeletonAddressAcrossLayers,
@@ -548,18 +553,22 @@ export async function handleGeneratedTunniDrag({
   });
 }
 
-export async function handleGeneratedTunniCommand({ sceneController, gizmoHit, command }) {
+export async function handleGeneratedTunniCommand({
+  sceneController,
+  gizmoHit,
+  command,
+}) {
   const segment = gizmoHit.segment;
   let writes;
   let undoLabel;
   if (command === "equalize") {
-    if (gizmoHit.type === "generated-curvature") {
-      writes = generatedCurvatureEqualizationWrites(segment);
-      undoLabel = "Equalize Generated Handles";
-    } else {
-      writes = generatedOnCurveEqualizationWrites(segment);
-      undoLabel = "Equalize Generated On-Curves";
+    // Only the curvature gizmo equalizes: it owns the split between the two
+    // handles. The on-curve gizmo has no equalize gesture.
+    if (gizmoHit.type !== "generated-curvature") {
+      return;
     }
+    writes = generatedCurvatureEqualizationWrites(segment);
+    undoLabel = "Equalize Generated Handles";
   } else if (gizmoHit.type === "generated-curvature") {
     writes = generatedCurvatureResetWrites(segment);
     undoLabel = "Reset Generated Curvature";
@@ -602,22 +611,25 @@ function generatedCurvatureEqualizationWrites(segment) {
     return null;
   }
   return [
-    [1, { offsetDelta: { x: p0.x + u1.x * r1 * tension - h1.x, y: p0.y + u1.y * r1 * tension - h1.y } }],
-    [2, { offsetDelta: { x: p3.x + u2.x * r2 * tension - h2.x, y: p3.y + u2.y * r2 * tension - h2.y } }],
+    [
+      1,
+      {
+        offsetDelta: {
+          x: p0.x + u1.x * r1 * tension - h1.x,
+          y: p0.y + u1.y * r1 * tension - h1.y,
+        },
+      },
+    ],
+    [
+      2,
+      {
+        offsetDelta: {
+          x: p3.x + u2.x * r2 * tension - h2.x,
+          y: p3.y + u2.y * r2 * tension - h2.y,
+        },
+      },
+    ],
   ];
-}
-
-function generatedOnCurveEqualizationWrites(segment) {
-  const edits = calculateGeneratedOnCurveEdits({
-    segmentPoints: segment.points,
-    provenance: segment.provenance,
-    delta: { x: 0, y: 0 },
-    movable: segment.onCurveMovable,
-    equalizeReaches: true,
-  });
-  return edits
-    ? [[0, { nudgeDelta: edits[0].nudgeDelta }], [3, { nudgeDelta: edits[1].nudgeDelta }]]
-    : null;
 }
 
 function generatedCurvatureResetWrites(segment) {
@@ -630,17 +642,25 @@ function generatedCurvatureResetWrites(segment) {
 }
 
 function generatedOnCurveResetWrites() {
-  return [[0, { resetNudge: true }], [3, { resetNudge: true }]];
+  return [
+    [0, { resetNudge: true }],
+    [3, { resetNudge: true }],
+  ];
 }
 
-async function applyGeneratedSegmentWrites(sceneController, segment, writes, undoLabel) {
+async function applyGeneratedSegmentWrites(
+  sceneController,
+  segment,
+  writes,
+  undoLabel
+) {
   const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
   if (!positionedGlyph) {
     return;
   }
   const referenceSkeletonData = getSkeletonData(
-    positionedGlyph.varGlyph?.glyph?.layers?.[positionedGlyph.glyph?.layerName]?.glyph ||
-      positionedGlyph.glyph
+    positionedGlyph.varGlyph?.glyph?.layers?.[positionedGlyph.glyph?.layerName]
+      ?.glyph || positionedGlyph.glyph
   );
   await sceneController.editGlyph(async (_sendIncrementalChange, glyph) => {
     let accumulated = new ChangeCollector();
@@ -658,12 +678,19 @@ async function applyGeneratedSegmentWrites(sceneController, segment, writes, und
             provenance.skeletonPointId
           );
           if (!resolved) continue;
-          const originalPoint = originalSkeletonData.contours?.[resolved.contourIndex]?.points?.[
-            resolved.pointIndex
-          ];
+          const originalPoint =
+            originalSkeletonData.contours?.[resolved.contourIndex]?.points?.[
+              resolved.pointIndex
+            ];
           const contour = originalSkeletonData.contours?.[resolved.contourIndex];
-          const point = working.contours?.[resolved.contourIndex]?.points?.[resolved.pointIndex];
-          if (!originalPoint || !contour || !point || isSkeletonSideLocked(point, provenance.side)) {
+          const point =
+            working.contours?.[resolved.contourIndex]?.points?.[resolved.pointIndex];
+          if (
+            !originalPoint ||
+            !contour ||
+            !point ||
+            isSkeletonSideLocked(point, provenance.side)
+          ) {
             continue;
           }
           if (write.pinnedTension !== undefined) {
@@ -692,14 +719,19 @@ async function applyGeneratedSegmentWrites(sceneController, segment, writes, und
             setSkeletonPointSideNudge(
               point,
               provenance.side,
-              getSkeletonPointNudge(originalPoint, provenance.side, contour.defaultWidth) +
-                write.nudgeDelta
+              getSkeletonPointNudge(
+                originalPoint,
+                provenance.side,
+                contour.defaultWidth
+              ) + write.nudgeDelta
             );
           }
         }
       });
       if (changes.hasChange) {
-        accumulated = accumulated.concat(changes.prefixed(["layers", layerName, "glyph"]));
+        accumulated = accumulated.concat(
+          changes.prefixed(["layers", layerName, "glyph"])
+        );
       }
     }
     if (!accumulated.hasChange) return;
