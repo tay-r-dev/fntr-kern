@@ -8,6 +8,7 @@ import {
 import {
   applyFixedRibDelta,
   applySkeletonRibExecutorResult,
+  clearSkeletonSegmentCurvatureForHandle,
   createSkeletonRibExecutor,
   equalizeEditableGeneratedHandleOffsets,
   equalizeSkeletonHandleFromDelta,
@@ -1212,6 +1213,14 @@ function createEditableGeneratedHandleExecutorForEditing(
       : null;
   return {
     applyDelta(target, delta, { round = Math.round } = {}) {
+      // Direct manipulation outranks a curvature the gizmo pinned earlier, for
+      // this handle's own segment. Both branches below place the handle by hand.
+      clearSkeletonSegmentCurvatureForHandle(
+        target.contour,
+        target.point,
+        target.side,
+        target.role
+      );
       if (equalize && equalizeGeometry) {
         equalizeEditableGeneratedHandleOffsets(
           target.point,

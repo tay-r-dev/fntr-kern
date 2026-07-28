@@ -134,6 +134,9 @@ The positional offsets apply **on top of** the pinned result. Neither destroys
 the other; flipping modes still loses no work. What is lost is the property that
 the two modes are the same edit seen twice.
 
+**Amended by §10.5:** a direct handle drag now clears the pin on that handle's own
+segment. They still stack everywhere else.
+
 The curvature gizmo stops writing handle offsets entirely. Existing documents are
 not migrated: their handle offsets simply remain as positional offsets with no
 pin, which is what they already are.
@@ -455,3 +458,27 @@ selection parses to no list at all, so the selected-node layer filled the whole
 path in the selected colour. Two iterators now, one per meaning. The blanket
 hiding of generated nodes that had been applied to the same symptom is withdrawn:
 only off-curve nodes are hidden, and only while gizmo mode is on.
+
+### 10.5 A direct handle drag discards the pin on its own segment
+
+D20 had the two stored things stacking unconditionally, so a segment kept
+reproducing a pinned curvature underneath a handle the designer had since placed
+by hand. The hand is the later and more specific answer to the same question and
+has to win, or the segment fights the cursor.
+
+So a direct generated-handle drag — plain Z, and the Alt equalize with it — clears
+`segmentCurvature` for the segment **that handle belongs to**, before writing the
+offset. Which segment that is follows from the role: a pin lives on its segment's
+start point (D16), so an `out` handle owns the pin at its own skeleton point, and
+an `in` handle sits at its segment's far end, where the pin belongs to the
+previous on-curve point. Only that one segment is affected; the handle's other
+neighbour keeps its own pin.
+
+Two things deliberately do **not** clear it:
+
+- **Moving a generated on-curve.** The pin is independent of the nudge by
+  construction (§8) — that independence is the whole point of the one-space
+  restructure — so there is nothing for a nudge to override.
+- **The panel's numeric handle-offset fields.** Typing a number is not the same
+  gesture as overruling the curve by hand; if that turns out to be wanted, it is
+  the same one-line call at the panel's write site.

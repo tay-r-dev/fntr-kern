@@ -7,11 +7,13 @@ import {
   findGeneratedPathAddress,
   getSkeletonData,
   getSkeletonHandleEqualizeInfo,
+  getSkeletonSegmentCurvature,
   makeSkeletonContour,
   makeSkeletonPoint,
   normalizeSkeletonData,
   parseSkeletonPointKey,
   setSkeletonData,
+  setSkeletonSegmentCurvature,
 } from "@fontra/core/skeleton-model.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
@@ -604,6 +606,58 @@ function makeLayerGlyph(skeletonData = null) {
 // A middle smooth on-curve (id 4) between two curve segments, editable on the
 // left: its generated left contour carries onCurve/in/out provenance so the
 // editable-handle machinery can run against a REAL generated path.
+describe("direct handle drags override a stored curvature", () => {
+  // A pin and a direct handle drag are two answers to the same question, and the
+  // direct one is the later and more specific of the two: dragging the handle by
+  // hand has to win, or the segment fights the cursor.
+  const dragHandle = (layer, role, delta) => {
+    const selection = new Set([`editableGeneratedHandle/80/4/left/${role}`]);
+    const targetEntries = createEditableGeneratedHandleTargetEntries(
+      layer,
+      selection,
+      "generated-handle-move",
+      { referenceSkeletonData: getSkeletonData(layer) }
+    );
+    expect(targetEntries).to.have.length(1);
+    applyChange(layer, targetEntries[0].makeChangeForDelta(delta));
+  };
+
+  const pointById = (layer, id) =>
+    getSkeletonData(layer).contours[0].points.find((point) => point.id === id);
+
+  const pin = (layer, id) => getSkeletonSegmentCurvature(pointById(layer, id), "left");
+
+  const makePinnedLayer = () => {
+    const layer = makeLayerGlyph(makeEditableGeneratedHandleSkeleton());
+    editSkeleton(layer, (working) => {
+      for (const id of [1, 4]) {
+        setSkeletonSegmentCurvature(
+          working.contours[0].points.find((point) => point.id === id),
+          "left",
+          0.6
+        );
+      }
+    });
+    return layer;
+  };
+
+  it("clears the pin of the segment an out handle leaves", () => {
+    const layer = makePinnedLayer();
+    expect(pin(layer, 4)).to.equal(0.6);
+    dragHandle(layer, "out", { x: 4, y: -3 });
+    expect(pin(layer, 4)).to.equal(null);
+    // The segment arriving at point 4 is a different segment and keeps its own.
+    expect(pin(layer, 1)).to.equal(0.6);
+  });
+
+  it("clears the pin of the segment an in handle arrives on", () => {
+    const layer = makePinnedLayer();
+    dragHandle(layer, "in", { x: 4, y: -3 });
+    expect(pin(layer, 1)).to.equal(null);
+    expect(pin(layer, 4)).to.equal(0.6);
+  });
+});
+
 function makeEditableGeneratedHandleSkeleton() {
   return normalizeSkeletonData({
     contours: [

@@ -3178,6 +3178,34 @@ export function generatedOnCurveGizmoOffsetForHitRadius(hitRadius) {
   return (hitRadius / MOUSE_CLICK_MARGIN_PIXELS) * GENERATED_ON_CURVE_GIZMO_OFFSET;
 }
 
+// A pin and a hand-placed handle are two answers to one question, and the hand is
+// the later and more specific of them: a direct handle drag therefore discards the
+// pin on the segment that handle belongs to, or the segment fights the cursor.
+//
+// Which segment that is follows from the role. A pin lives on its segment's START
+// point (D16), so an "out" handle owns the pin at its own point, while an "in"
+// handle sits at its segment's far end and the pin belongs to the previous
+// on-curve point. Returns false when there was nothing to clear.
+export function clearSkeletonSegmentCurvatureForHandle(contour, point, side, role) {
+  const points = contour?.points || [];
+  let owner = point;
+  if (role === "in") {
+    let index = points.indexOf(point);
+    if (index < 0) {
+      return false;
+    }
+    do {
+      index = getPreviousPointIndex(contour, index);
+    } while (index >= 0 && points[index]?.type);
+    owner = index >= 0 ? points[index] : null;
+  }
+  if (!owner || getSkeletonSegmentCurvature(owner, side) === null) {
+    return false;
+  }
+  setSkeletonSegmentCurvature(owner, side, null);
+  return true;
+}
+
 // The segment as the generator constructed it. Emitted on-curves carry their
 // nudge and handles never do, so subtracting the published nudge recovers the one
 // space every stored number lives in. Every reader of a generated segment's
