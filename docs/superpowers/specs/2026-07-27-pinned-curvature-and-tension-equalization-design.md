@@ -479,6 +479,13 @@ Two things deliberately do **not** clear it:
 - **Moving a generated on-curve.** The pin is independent of the nudge by
   construction (§8) — that independence is the whole point of the one-space
   restructure — so there is nothing for a nudge to override.
-- **The panel's numeric handle-offset fields.** Typing a number is not the same
-  gesture as overruling the curve by hand; if that turns out to be wanted, it is
-  the same one-line call at the panel's write site.
+- **The panel's two handle controls**, neither of which places a handle by hand.
+  "Reset handles" goes through `resetSkeletonEditableRibHandles`, which is
+  deliberately narrower than a rib reset and leaves the pin alone (plan 1.2, where
+  the full rib reset was given the pin and the handles-only one was not). The
+  detach toggle writes offsets only to hold the handle exactly where it already is
+  across the flip, so clearing a pin there would make a toggle that is designed to
+  change nothing change the shape.
+
+There are no numeric handle-offset fields in the panel; an earlier draft of this
+section claimed there were.
