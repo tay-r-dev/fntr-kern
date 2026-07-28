@@ -79,14 +79,14 @@ import {
 const transformHandleMargin = 6;
 const transformHandleSize = 8;
 const rotationHandleSizeFactor = 1.2;
-const REALTIME_RIB_WIDTH_ACTION = "action.realtime.rib-width";
+const REALTIME_RIB_TANGENT_ACTION = "action.realtime.rib-tangent";
 const REALTIME_FIXED_RIB_ACTION = "action.realtime.fixed-rib";
 const REALTIME_FIXED_RIB_COMPRESS_ACTION = "action.realtime.fixed-rib-compress";
 
 const REALTIME_MODIFIER_ACTIONS = [
   {
-    action: REALTIME_RIB_WIDTH_ACTION,
-    modeProperty: "ribWidthMode",
+    action: REALTIME_RIB_TANGENT_ACTION,
+    modeProperty: "tangentRibMode",
   },
   {
     action: REALTIME_FIXED_RIB_ACTION,
@@ -140,7 +140,7 @@ export class PointerTool extends BaseTool {
   constructor(...args) {
     super(...args);
     this.measureInteraction = new MeasureInteraction(this);
-    this.ribWidthMode = false;
+    this.tangentRibMode = false;
     this.fixedRibMode = false;
     this.fixedRibCompressMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
@@ -741,7 +741,7 @@ export class PointerTool extends BaseTool {
       const getRealtimeModifiers = () => ({
         fixedRibMode: this.fixedRibMode,
         fixedRibCompressMode: this.fixedRibCompressMode,
-        ribWidthMode: this.ribWidthMode,
+        tangentRibMode: this.tangentRibMode,
       });
       const getSelectionBehaviorName = (event) =>
         getSkeletonModifierBehaviorName(event, getRealtimeModifiers(), targetKinds) ||
@@ -792,7 +792,7 @@ export class PointerTool extends BaseTool {
               name,
               {
                 ...modifierOptions,
-                constrainMode: this.ribWidthMode ? null : "tangent",
+                constrainMode: this.tangentRibMode ? "tangent" : null,
                 clickedRibKey: sceneController.sceneModel.initialClickedSkeletonRibKey,
               }
             )
@@ -804,7 +804,7 @@ export class PointerTool extends BaseTool {
               name,
               {
                 ...modifierOptions,
-                constrainMode: this.ribWidthMode ? null : "tangent",
+                constrainMode: this.tangentRibMode ? "tangent" : null,
               }
             )
           );

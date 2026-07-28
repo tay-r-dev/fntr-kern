@@ -221,12 +221,12 @@ outline contours are generated live.
 
 **Core (pure, mocha-tested):**
 
-| File                                          | +/−   | Role                                                                                                                                                                               |
-| --------------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fontra-core/src/skeleton-model.js`           | +1243 | Schema, stable-id allocation, accessors/mutators, rib projection, normals. **The single home for skeleton geometry constants.**                                                    |
-| `fontra-core/src/skeleton-generator.js`       | +5168 | Centerline → outline. Segments, offset curves, caps (butt/round/square/**drop**), corner rounding, single-sided, handle offsets, detached handles. Emits forward provenance (R-D). |
-| `fontra-core/src/skeleton-source-defaults.js` | +241  | Per-source defaults, resolved by glyph case                                                                                                                                        |
-| `fontra-core/src/skeleton-tunni.js`           | +234  | Tunni math on skeleton segments                                                                                                                                                    |
+| File                                          | +/−   | Role                                                                                                                                                                                                                     |
+| --------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `fontra-core/src/skeleton-model.js`           | +1243 | Schema, stable-id allocation, accessors/mutators, rib projection, normals, D/S/X/Z semantics (`applyFixedRibDelta`, the equalize family), generated-gizmo geometry. **The single home for skeleton geometry constants.** |
+| `fontra-core/src/skeleton-generator.js`       | +5168 | Centerline → outline. Segments, offset curves, caps (butt/round/square/**drop**), corner rounding, single-sided, handle offsets, detached handles. Emits forward provenance (R-D).                                       |
+| `fontra-core/src/skeleton-source-defaults.js` | +241  | Per-source defaults, resolved by glyph case                                                                                                                                                                              |
+| `fontra-core/src/skeleton-tunni.js`           | +234  | Tunni math on skeleton segments                                                                                                                                                                                          |
 
 **Editor (no test harness — manual matrices):**
 
@@ -236,7 +236,7 @@ outline contours are generated live.
 | `views-editor/src/skeleton-generated.js`           | +639  | Editable generated points/handles; provenance resolution; detach                                                           |
 | `views-editor/src/skeleton-ribs.js`                | +233  | Rib keys, addresses, width/nudge executors                                                                                 |
 | `views-editor/src/edit-tools-skeleton.js`          | +855  | Skeleton Pen drawing tool                                                                                                  |
-| `views-editor/src/visualization-layer-skeleton.js` | +781  | 11 canvas layers                                                                                                           |
+| `views-editor/src/visualization-layer-skeleton.js` | +781  | 13 canvas layers                                                                                                           |
 | `views-editor/src/panel-skeleton-parameters.js`    | +1181 | Numeric editing panel (right sidebar)                                                                                      |
 | `views-editor/src/skeleton-panel-edits.js`         | +741  | Panel → `editSkeleton` write helpers, streaming edits                                                                      |
 | `views-editor/src/skeleton-panel-model.js`         | +460  | Panel read model: selection summaries, mixed/uniform state                                                                 |

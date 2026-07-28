@@ -320,7 +320,7 @@ export const strings = {
   "shortcuts.import": "Import shortcuts",
   "shortcuts.realtime.measure": "Measure (hold)",
   "shortcuts.realtime.measure-direct": "Measure direct (hold)",
-  "shortcuts.realtime.rib-width": "Rib width (hold)",
+  "shortcuts.realtime.rib-tangent": "Rib tangent (hold)",
   "shortcuts.realtime.fixed-rib": "Fixed rib (hold)",
   "shortcuts.realtime.fixed-rib-compress": "Fixed rib compress (hold)",
   "shortcuts.reset-all": "Reset all shortcuts",

@@ -984,7 +984,7 @@ export class SceneController {
     const modifiers = {
       fixedRibMode: this.selectedTool?.fixedRibMode === true,
       fixedRibCompressMode: this.selectedTool?.fixedRibCompressMode === true,
-      ribWidthMode: this.selectedTool?.ribWidthMode === true,
+      tangentRibMode: this.selectedTool?.tangentRibMode === true,
     };
     const behaviorName =
       getSkeletonModifierBehaviorName(

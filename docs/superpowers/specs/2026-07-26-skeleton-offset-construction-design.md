@@ -36,15 +36,15 @@ geometrically fine. It just isn't continuous in the input.
 The cubic path is a stack of step functions. Every one of these makes a
 discrete decision inside a continuous drag.
 
-| #   | Location                            | Discontinuity                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| --- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| a   | `fit-cubic.js:55`                   | When a solved handle length comes out ≤ ~0, **both** handles are discarded and replaced with `segLength/3` along the tangents. Negative alpha is common on short or shallow sample sets. This is the visible "handles snapped to a generic shape" jump.                                                                                                                                                                                                                                       |
-| b   | `bezier.js:572` `reduce()`          | Subcurve count changes discontinuously — extrema entering/leaving [0,1] (`:582`), the S-shape test in `simple()` (`:559-561`). The second pass walks t in **0.01 steps** (`:604`), so split points are quantized: continuous input, staircase output. And `return []` at `:610` returns from the `forEach` callback rather than from `reduce`, so a span that cannot be made simple is **silently dropped** — the offset path loses a piece. Fires when curvature is high relative to length. |
-| c   | `skeleton-generator.js:2313-2315`   | The fit's sample set is 5 samples per subcurve at uniform _local_ t. When the `reduce()` partition changes, every sample moves. Chord-length parameterization (`:2327`) then compounds it.                                                                                                                                                                                                                                                                                                    |
-| d   | `fit-cubic.js:110-121`              | Branch on `maxError < error*1000`, then up to 20 Newton reparameterizations with break conditions `maxError < error` and `prevMaxError - maxError < 0.5`. The number of iterations actually run is an integer function of the input; output jumps when it changes.                                                                                                                                                                                                                            |
-| e   | `skeleton-generator.js:2334-2352`   | Adaptive threshold loop returns the first of ~7 thresholds (2%…15% of halfWidth) that passes. Which one passes is a step function; each yields a different curve.                                                                                                                                                                                                                                                                                                                             |
-| f   | `:2630-2633`, `:2788-2800`          | Offset is computed at the **average** half-width, then endpoints are swapped for the true rib points and the handles **rigidly translated** by the delta. On a short segment that translation is a large fraction of the handle length.                                                                                                                                                                                                                                                       |
-| g   | `:2466-2467`, `:2893-2900`, `:2258` | Grid rounding at multiple stages. `lockNearZeroHandleDirection` snaps sub-1.25-unit handles via `getMinimumGridStepFromDirection`, which has only **8 possible directions**.                                                                                                                                                                                                                                                                                                                  |
+| # | Location | Discontinuity |
+|---|----------|---------------|
+| a | `fit-cubic.js:55` | When a solved handle length comes out ≤ ~0, **both** handles are discarded and replaced with `segLength/3` along the tangents. Negative alpha is common on short or shallow sample sets. This is the visible "handles snapped to a generic shape" jump. |
+| b | `bezier.js:572` `reduce()` | Subcurve count changes discontinuously — extrema entering/leaving [0,1] (`:582`), the S-shape test in `simple()` (`:559-561`). The second pass walks t in **0.01 steps** (`:604`), so split points are quantized: continuous input, staircase output. And `return []` at `:610` returns from the `forEach` callback rather than from `reduce`, so a span that cannot be made simple is **silently dropped** — the offset path loses a piece. Fires when curvature is high relative to length. |
+| c | `skeleton-generator.js:2313-2315` | The fit's sample set is 5 samples per subcurve at uniform *local* t. When the `reduce()` partition changes, every sample moves. Chord-length parameterization (`:2327`) then compounds it. |
+| d | `fit-cubic.js:110-121` | Branch on `maxError < error*1000`, then up to 20 Newton reparameterizations with break conditions `maxError < error` and `prevMaxError - maxError < 0.5`. The number of iterations actually run is an integer function of the input; output jumps when it changes. |
+| e | `skeleton-generator.js:2334-2352` | Adaptive threshold loop returns the first of ~7 thresholds (2%…15% of halfWidth) that passes. Which one passes is a step function; each yields a different curve. |
+| f | `:2630-2633`, `:2788-2800` | Offset is computed at the **average** half-width, then endpoints are swapped for the true rib points and the handles **rigidly translated** by the delta. On a short segment that translation is a large fraction of the handle length. |
+| g | `:2466-2467`, `:2893-2900`, `:2258` | Grid rounding at multiple stages. `lockNearZeroHandleDirection` snaps sub-1.25-unit handles via `getMinimumGridStepFromDirection`, which has only **8 possible directions**. |
 
 Note also a dimensional inconsistency: `computeMaxError` returns **squared**
 distance (`fit-cubic.js:148`) but is compared against a linear tolerance at
@@ -216,7 +216,7 @@ Smooth floor, C^∞ and monotone in λ:
 using the same polynomial form as the tension bound below, mirrored.
 
 **Not the sqrt form** `½(λ + √(λ² + 4c²))`, which an earlier draft specified.
-That form is never _exactly_ inert: it shifts `λ` by `c²/λ`, and that shift is
+That form is never *exactly* inert: it shifts `λ` by `c²/λ`, and that shift is
 multiplied by the handle length. On a 55-unit handle at `c = 0.02` it is **0.022
 units** — an earlier draft of this section miscalculated it as 0.006 — and it
 grows with the handle, so no fixed test tolerance survives it. It also
@@ -257,8 +257,8 @@ C¹ at the join (its derivative reaches ½ from both sides), which is what makes
 one. Window `w = 0.15 × the bound being approached`.
 
 **Bound per end, not the aggregate.** `calculateSegmentTension`
-(`tunni-calculations.js:40`) computes `2ac/(ad + bc)`, which is the _harmonic
-mean_ of the two per-end ratios `a/b` and `c/d`. It can therefore read 1.0 while
+(`tunni-calculations.js:40`) computes `2ac/(ad + bc)`, which is the *harmonic
+mean* of the two per-end ratios `a/b` and `c/d`. It can therefore read 1.0 while
 one handle overshoots — `a/b = 1.5` with `c/d = 0.75` gives exactly 1.0.
 Bounding each end independently is the constraint actually wanted, and since the
 harmonic mean never exceeds the max, it **implies** `calculateSegmentTension ≤ 1`.
@@ -268,7 +268,7 @@ reduction between the two ends.
 This bound is a **guard, not a shaper** — see the measurement decision below.
 
 **The limit needs a floor, not just smoothing.** Corrected 2026-07-26 after
-review. The tangent-ray intersection can slide _backwards_ onto the start point:
+review. The tangent-ray intersection can slide *backwards* onto the start point:
 if the end tangent, extended backwards, passes through the start point, then the
 intersection **is** the start point and `|I − P0| → 0`, so the bound drives the
 handle to zero. One step further and the intersection lands behind the endpoint,
@@ -279,7 +279,7 @@ This is not the ≥180°-turn edge case an earlier draft claimed. It is reachabl
 whenever a start tangent points near the far endpoint.
 
 **Decision: measure before choosing a floor.** A floor ratio would be exactly the
-kind of arbitrary constant the tension bound was adopted to _remove_, and the
+kind of arbitrary constant the tension bound was adopted to *remove*, and the
 review showed the bound may not earn its place at all:
 
 - Offsetting a circular arc **preserves tension exactly** — larger radius, longer
@@ -291,7 +291,7 @@ review showed the bound may not earn its place at all:
 So the bound is not a shaper — an earlier draft of this spec claimed it was
 "active on the outer side of exactly the tight-turn configurations this design
 targets", which is **wrong**. It is a guard against curvature varying sharply
-_within_ one segment.
+*within* one segment.
 
 Implement the bound with an activation counter and measure it over the fixture
 corpus and `test-py/data/fonts/SkeletonRendering.fontra/`. Then:
@@ -312,7 +312,7 @@ against `k·chord` as the always-defined backstop. Start `k` at 2.0, the value
 the current hard clamp.
 
 **Absolute minimum length — an existing guardrail, kept.** The cusp floor is
-_relative_ (`λ ≥ c`), so it cannot guarantee a usable handle: at `λ` near zero
+*relative* (`λ ≥ c`), so it cannot guarantee a usable handle: at `λ` near zero
 the constructed length rounds to zero and emits an off-curve point coincident
 with its on-curve point.
 
@@ -329,7 +329,7 @@ goes away as a side effect rather than needing its own fix.
 Together these replace `lockNearZeroHandleDirection`'s 8-direction snap and
 `stabilizeSingleCubicHandles`' hard clamps.
 
-**Ordering:** saturation runs _after_ the correction pass (§4.6), not before.
+**Ordering:** saturation runs *after* the correction pass (§4.6), not before.
 The least-squares solve can push a handle past the intersection, so bounding
 first would be undone. Every stage is smooth, so the composition is smooth.
 
@@ -343,7 +343,7 @@ and exposing a max-tension invites requests for tension > 1.
 Testable invariant: **on non-degenerate input, no saturation fires.** If one
 fires on an ordinary glyph, that is a bug rather than a tuning opportunity.
 
-A designer-facing _target_ tension for generated curves — a style parameter
+A designer-facing *target* tension for generated curves — a style parameter
 acting everywhere rather than a ceiling — is a coherent separate feature and is
 out of scope here.
 
@@ -366,7 +366,7 @@ This is the linear algebra `generateBezier` already performs. But
 `generateBezier` embeds fallback (a). So:
 
 - Extract `solveHandleLengths(points, parameters, leftTangent, rightTangent)
-→ {alphaL, alphaR}` from `fit-cubic.js`, containing the 2×2 solve and nothing
+  → {alphaL, alphaR}` from `fit-cubic.js`, containing the 2×2 solve and nothing
   else.
 - `generateBezier` calls it and keeps its existing `segLength/3` fallback, so
   its current callers are unaffected.
@@ -395,7 +395,7 @@ is exactness, and softening it would make single-sided approximate. It is the
 one intentional step function in the pipeline, and §7 excludes it from the
 continuity test.
 
-Note for the implementer: the collapse test uses the _average_ of the two end
+Note for the implementer: the collapse test uses the *average* of the two end
 half-widths, so a side tapering 0 → 0.9 counts as collapsed. Sub-unit, and
 preserving current behavior is preferred over fixing it here.
 
@@ -473,7 +473,6 @@ always-defined backstop behind the tension bound (§4.5), and is applied as a
 smooth min rather than the current hard clamp. It is currently read at `:2106`
 and `:2851`; the first is inside `stabilizeSingleCubicHandles`, which is being
 deleted.
-
 - `alignHandleDirections` — dead since the port (both call sites commented out),
   and sits in this exact path. `SKELETON-FEATURE-MODEL.md` §6 already flags it.
 
@@ -525,7 +524,7 @@ per-frame speedup.
   configurations, assert the tension ceiling, chord backstop and length floor
   are all exactly inert, and that the cusp floor perturbs `λ` by under 0.5%.
   Saturation firing on an ordinary glyph is a bug. Note the cusp floor is never
-  _exactly_ inert — it shifts `λ` by `c²/λ` — so its constant must stay small
+  *exactly* inert — it shifts `λ` by `c²/λ` — so its constant must stay small
   enough that the shift is well under half a unit on a normal handle.
 - **Cusp regime.** `|d·κ| > 1` produces finite, bounded, non-flipped handles
   **of at least one unit**. The length floor is what this checks; without it the
@@ -547,7 +546,7 @@ per-frame speedup.
 - **The fixture script cannot regenerate these fixtures as it stands.** Found
   2026-07-26 in review. `tests/scripts/make-skeleton-generator-fixtures.js` is a
   leftover from the porting era: it runs the pre-port generator and transcribes
-  _its_ output as the expected answer. Three problems, any one fatal:
+  *its* output as the expected answer. Three problems, any one fatal:
   - it imports that generator from `../../../../skeleton/…`, which resolves to
     `<repo>/skeleton` and does not exist
   - the checkout it means, `_external/skeleton`, is **gitignored** — so the
@@ -563,7 +562,6 @@ per-frame speedup.
   Acceptance test: run the fixed script **before** any geometry change; the
   output must be byte-identical to the committed file. That proves it reproduces
   current behavior, which is the only property it needs.
-
 - The suite's per-case title says "matches donor output", describing a
   relationship that no longer exists. Retitle it so a failure reads as a
   regression rather than a parity question.
@@ -594,7 +592,7 @@ A end, because endpoint curvature depends on the whole control polygon — but
 proportionally and smoothly, which is the entire difference.
 
 **Stored relative handle offsets shift.** A designer's non-detached handle
-offset is stored relative to the _computed_ handle, so it moves by the same
+offset is stored relative to the *computed* handle, so it moves by the same
 delta as its base handle. Detached offsets are anchored to the rib point and are
 unaffected (§5).
 
@@ -602,7 +600,7 @@ unaffected (§5).
 
 Caller counts verified against the tree 2026-07-26.
 
-**What changes:** the _length_ of `adjustedHandle1` and `adjustedHandle2` at
+**What changes:** the *length* of `adjustedHandle1` and `adjustedHandle2` at
 `:2964-2977`. Their directions are unchanged. That is the entire output delta.
 
 **Unchanged:**

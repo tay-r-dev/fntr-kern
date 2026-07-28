@@ -359,12 +359,11 @@ at most 0.00025 per step, monotone, with no jump where the per-handle cap engage
 
 ## 8. Construction space is canonical
 
-The rendered-space decision in §7.2 is superseded. The gizmo and an Alt-held rib
-drag move only the emitted on-curve; generated handles remain at their
-construction positions. An unmodified rib drag retains ordinary on-curve
-semantics by accumulating a separate per-side `handleNudge` and emitting it on
-adjacent handles after construction. (These were Z-Alt and Z-normal when this was
-written; §10 moved the key, not the behavior.) This carry scalar never enters fit, adjustment, reach, or pin
+The rendered-space decision in §7.2 is superseded. The default gizmo and Z-Alt
+move only the emitted on-curve; generated handles remain at their construction
+positions. Z-normal retains ordinary on-curve semantics by accumulating a
+separate per-side `handleNudge` and emitting it on adjacent handles after
+construction. This carry scalar never enters fit, adjustment, reach, or pin
 math. The on-curve's provenance carries its nonzero `nudge` vector, allowing the
 curvature gizmo to reconstruct the construction endpoints by subtraction. Its
 visible drag axis still comes from the rendered curve, while distance-to-tension
@@ -419,11 +418,12 @@ gizmo's reach-equalization (plan Part 4.2) is **withdrawn**, with the
 ### 10.2 Z moved off the generated geometry
 
 Generated points and handles are adjustable by default, so a plain drag adjusts
-them; Z was gating that for no reason and Alt still equalizes. Z's remaining job
-is the rib **width** drag, with a plain rib drag being the tangent slide — the two
-ends of that pair have swapped. Alt is unchanged on both. Behavior names describe
-effects and did not move; only the key that selects them did, and the mode flag is
-named `ribWidthMode` accordingly.
+them; Z was gating that for no reason and Alt still equalizes.
+
+**Ribs are unchanged, deliberately.** Swapping them — plain for width, Z for the
+tangent slide — was tried and reverted the same day: Z exists precisely because a
+tangential rib move is the _rarer_ intent, and a plain drag reaching for the width
+is what the tool is for. Do not swap them again.
 
 ### 10.3 The curvature number is shown
 
