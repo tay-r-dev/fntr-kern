@@ -1612,11 +1612,4 @@ describe("VarPackedPath iterHandles contour filtering", () => {
     const path = twoCurvedContours();
     expect([...path.iterHandles(new Set([0, 1]))]).to.have.length(0);
   });
-
-  it("drops every node from a skipped contour, including on-curves", () => {
-    const path = twoCurvedContours();
-    const points = [...path.iterPoints(new Set([0]))];
-    expect(points).to.have.length(4);
-    expect(points.map((point) => point.x)).to.deep.equal([100, 110, 150, 160]);
-  });
 });

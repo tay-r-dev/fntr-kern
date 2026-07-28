@@ -1279,9 +1279,9 @@ registerVisualizationLayerDefinition({
   },
 });
 
-// While generated contours are edited through their gizmos, neither their
-// handle lines nor their unattached off-curve nodes are useful control surfaces.
-// Null when gizmo mode is off, so direct handle editing looks exactly as before.
+// While generated contours are edited through their gizmos, their handle lines
+// are not control surfaces. Null when gizmo mode is off, so direct handle
+// editing looks exactly as before.
 function getGizmoHiddenContourIndices(positionedGlyph, model) {
   if (
     model?.visualizationLayersSettings?.model["fontra.skeleton.generated-tunni"] !==
@@ -1293,19 +1293,31 @@ function getGizmoHiddenContourIndices(positionedGlyph, model) {
   return indices?.size ? indices : null;
 }
 
-function* iterGizmoVisibleNodes(path, pointIndices, hiddenContourIndices) {
-  if (pointIndices == null) {
-    yield* path.iterPoints(hiddenContourIndices);
-    return;
-  }
-  for (const pointIndex of pointIndices) {
-    const point = path.getPoint(pointIndex);
-    if (hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
-      continue;
-    }
-    if (point) {
+// On a suppressed contour the off-curve nodes are circles attached to nothing
+// once their handle lines are gone, so they are dropped; the on-curve nodes stay
+// because they say where the outline is.
+function* iterGizmoVisibleNodes(path, hiddenContourIndices) {
+  let pointIndex = 0;
+  for (const point of path.iterPoints()) {
+    if (!point.type || !hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
       yield point;
     }
+    pointIndex++;
+  }
+}
+
+// Same rule, over an explicit index list. An absent list means no points at all
+// — never every point, which is what an empty selection would otherwise paint.
+function* iterGizmoVisibleNodesByIndex(path, pointIndices, hiddenContourIndices) {
+  for (const pointIndex of pointIndices || []) {
+    const point = path.getPoint(pointIndex);
+    if (!point) {
+      continue;
+    }
+    if (point.type && hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
+      continue;
+    }
+    yield point;
   }
 }
 
@@ -1326,7 +1338,6 @@ registerVisualizationLayerDefinition({
     context.fillStyle = parameters.color;
     for (const pt of iterGizmoVisibleNodes(
       glyph.path,
-      null,
       getGizmoHiddenContourIndices(positionedGlyph, model)
     )) {
       fillNode(context, pt, cornerSize, smoothSize, handleSize);
@@ -1362,7 +1373,7 @@ registerVisualizationLayerDefinition({
     // Under layer
     const underlayOffset = parameters.underlayOffset;
     context.fillStyle = parameters.underColor;
-    for (const pt of iterGizmoVisibleNodes(
+    for (const pt of iterGizmoVisibleNodesByIndex(
       glyph.path,
       selectedPointIndices,
       hiddenContourIndices
@@ -1377,7 +1388,7 @@ registerVisualizationLayerDefinition({
     }
     // Selected nodes
     context.fillStyle = parameters.selectedColor;
-    for (const pt of iterGizmoVisibleNodes(
+    for (const pt of iterGizmoVisibleNodesByIndex(
       glyph.path,
       selectedPointIndices,
       hiddenContourIndices
@@ -1388,7 +1399,7 @@ registerVisualizationLayerDefinition({
     context.strokeStyle = parameters.hoveredColor;
     context.lineWidth = parameters.strokeWidth;
     const hoverStrokeOffset = parameters.hoverStrokeOffset;
-    for (const pt of iterGizmoVisibleNodes(
+    for (const pt of iterGizmoVisibleNodesByIndex(
       glyph.path,
       hoveredPointIndices,
       hiddenContourIndices
