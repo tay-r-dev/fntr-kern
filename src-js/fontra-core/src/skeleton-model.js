@@ -10,6 +10,7 @@ import {
   FONTRA_INTERNAL_SECTIONS,
 } from "./fontra-internal-schema.js";
 import { getGlyphInfoFromGlyphName } from "./glyph-data.js";
+import { offsetCubicSide } from "./offset-cubic.js";
 import {
   areTensionsEqualized,
   calculateControlHandlePoint,
@@ -363,47 +364,94 @@ export function applyFixedRibDelta(
     const originalContour = originalContourAddress.contour;
     const workingContour = workingContourAddress.contour;
     const anchorSide = getFixedRibAnchorSide(originalContour, projectedDelta, compress);
+    // On a single-sided contour the skeleton IS one edge of the stroke, so it has
+    // to hold still: the drag moves the other edge, which is the sum of the two
+    // half-widths, and nothing else. Moving the centerline as well would drag the
+    // flat edge off the skeleton it is defined to lie on.
+    const singleSided =
+      originalContour.singleSided === "left" || originalContour.singleSided === "right";
     const pointDeltas = new Map();
-    for (const pointId of pointIds) {
+    for (const pointId of expandToTiedRibGroups(originalContour, pointIds)) {
       const originalPointIndex = originalContour.points.findIndex(
         (point) => point.id === pointId
       );
       const originalPoint = originalContour.points[originalPointIndex];
       const workingPoint = workingContour.points?.[originalPointIndex];
       if (!originalPoint || !workingPoint || originalPoint.type) continue;
-      const normal = calculateNormalAtSkeletonPoint(
-        originalContour,
-        originalPointIndex
-      );
-      const pointDelta = { x: normal.x * projectedDelta, y: normal.y * projectedDelta };
-      pointDeltas.set(originalPointIndex, pointDelta);
-      workingPoint.x = round(originalPoint.x + pointDelta.x);
-      workingPoint.y = round(originalPoint.y + pointDelta.y);
+      if (!singleSided) {
+        const normal = calculateNormalAtSkeletonPoint(
+          originalContour,
+          originalPointIndex
+        );
+        const pointDelta = {
+          x: normal.x * projectedDelta,
+          y: normal.y * projectedDelta,
+        };
+        pointDeltas.set(originalPointIndex, pointDelta);
+        workingPoint.x = round(originalPoint.x + pointDelta.x);
+        workingPoint.y = round(originalPoint.y + pointDelta.y);
+      }
       applyFixedRibWidthDelta(
         workingPoint,
         originalPoint,
         originalContour.defaultWidth,
         anchorSide,
         projectedDelta,
-        round
+        round,
+        singleSided
       );
       changed = true;
     }
     if (scaleControlPoints && pointDeltas.size)
-      moveControlPointsWithFixedRibSegments(
+      offsetControlPointsWithFixedRibSegments(
         originalContour,
         workingContour,
         pointDeltas,
+        projectedDelta,
         round
       );
   }
   return changed;
 }
 
-function moveControlPointsWithFixedRibSegments(
+// A tension point — smooth with a single handle — has no direction of its own:
+// the straight beside it sets one, which holds the ribs at both ends of that
+// straight to a shared offset (SKELETON-FEATURE-MODEL §3.0). Dragging either end
+// therefore has to carry the whole group, the same way a rib width drag pulls its
+// tied group in, or the straight tilts out of the projection it is meant to keep.
+function expandToTiedRibGroups(contour, pointIds) {
+  const points = contour?.points || [];
+  const isClosed = contour?.closed === true;
+  const groupByPoint = collectTiedRibGroups(
+    buildSegmentsFromSkeletonPoints(points, isClosed),
+    isClosed
+  );
+  if (!groupByPoint.size) return pointIds;
+  const expanded = new Set(pointIds);
+  for (const pointId of pointIds) {
+    const point = points.find((candidate) => candidate.id === pointId);
+    for (const member of groupByPoint.get(point) || []) {
+      expanded.add(member.id);
+    }
+  }
+  return expanded;
+}
+
+// Every moved on-curve travels the same distance along its own normal, so an
+// affected segment is a constant-distance offset of itself — or a tapered one
+// where only one of its ends moved. Both are what the outline generator already
+// constructs, so the drag runs the same construction on the centerline: handle
+// directions are preserved and their lengths scale by 1 + d·kappa.
+//
+// Displacing the handles by an interpolation of the two endpoint deltas instead
+// shears the segment, because it can never lengthen a handle. On a quarter arc of
+// radius 100 pushed out 20 units the middle of the curve came up 6 units short of
+// its ends, which is the curvature loss the whole tool is supposed to avoid.
+function offsetControlPointsWithFixedRibSegments(
   originalContour,
   workingContour,
   pointDeltas,
+  projectedDelta,
   round
 ) {
   const points = originalContour.points || [];
@@ -416,28 +464,105 @@ function moveControlPointsWithFixedRibSegments(
   for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
     const startIndex = onCurveIndices[segmentIndex];
     const endIndex = onCurveIndices[(segmentIndex + 1) % onCurveIndices.length];
-    const startDelta = pointDeltas.get(startIndex);
-    const endDelta = pointDeltas.get(endIndex);
-    if (!startDelta && !endDelta) continue;
+    const startMoved = pointDeltas.has(startIndex);
+    const endMoved = pointDeltas.has(endIndex);
+    if (!startMoved && !endMoved) continue;
     const controlIndices = getControlPointIndicesBetween(
       points,
       startIndex,
       endIndex,
       originalContour.closed
     );
-    for (let i = 0; i < controlIndices.length; i++) {
-      const controlIndex = controlIndices[i];
-      const originalPoint = points[controlIndex];
-      const workingPoint = workingContour.points?.[controlIndex];
-      if (!originalPoint || !workingPoint) continue;
-      const t = controlIndices.length === 1 ? 0.5 : i / (controlIndices.length - 1);
-      workingPoint.x = round(
-        originalPoint.x + interpolateDelta(startDelta?.x || 0, endDelta?.x || 0, t)
-      );
-      workingPoint.y = round(
-        originalPoint.y + interpolateDelta(startDelta?.y || 0, endDelta?.y || 0, t)
+    if (!controlIndices.length) continue;
+    if (
+      controlIndices.length !== 2 ||
+      !offsetFixedRibSegmentHandles(
+        points,
+        workingContour,
+        startIndex,
+        endIndex,
+        controlIndices,
+        startMoved ? projectedDelta : 0,
+        endMoved ? projectedDelta : 0,
+        round
+      )
+    ) {
+      // A segment with a single handle has no second length to receive, and a
+      // degenerate one has no direction to keep. Carry those along with the
+      // endpoints instead, which at least holds their relative position.
+      interpolateFixedRibSegmentHandles(
+        points,
+        workingContour,
+        controlIndices,
+        pointDeltas.get(startIndex),
+        pointDeltas.get(endIndex),
+        round
       );
     }
+  }
+}
+
+function offsetFixedRibSegmentHandles(
+  points,
+  workingContour,
+  startIndex,
+  endIndex,
+  controlIndices,
+  d0,
+  d3,
+  round
+) {
+  const p0 = points[startIndex];
+  const p3 = points[endIndex];
+  const p1 = points[controlIndices[0]];
+  const p2 = points[controlIndices[1]];
+  const q0 = workingContour.points?.[startIndex];
+  const q3 = workingContour.points?.[endIndex];
+  const handle1 = workingContour.points?.[controlIndices[0]];
+  const handle2 = workingContour.points?.[controlIndices[1]];
+  if (!p0 || !p1 || !p2 || !p3 || !q0 || !q3 || !handle1 || !handle2) return false;
+  const u0 = normalizeVector(subVectors(p1, p0));
+  const u1 = normalizeVector(subVectors(p2, p3));
+  if (!vectorLength(u0) || !vectorLength(u1)) return false;
+  const { startLength, endLength } = offsetCubicSide({
+    p0,
+    p1,
+    p2,
+    p3,
+    d0,
+    d3,
+    q0,
+    q3,
+    u0,
+    u1,
+  });
+  handle1.x = round(q0.x + u0.x * startLength);
+  handle1.y = round(q0.y + u0.y * startLength);
+  handle2.x = round(q3.x + u1.x * endLength);
+  handle2.y = round(q3.y + u1.y * endLength);
+  return true;
+}
+
+function interpolateFixedRibSegmentHandles(
+  points,
+  workingContour,
+  controlIndices,
+  startDelta,
+  endDelta,
+  round
+) {
+  for (let i = 0; i < controlIndices.length; i++) {
+    const controlIndex = controlIndices[i];
+    const originalPoint = points[controlIndex];
+    const workingPoint = workingContour.points?.[controlIndex];
+    if (!originalPoint || !workingPoint) continue;
+    const t = controlIndices.length === 1 ? 0.5 : i / (controlIndices.length - 1);
+    workingPoint.x = round(
+      originalPoint.x + interpolateDelta(startDelta?.x || 0, endDelta?.x || 0, t)
+    );
+    workingPoint.y = round(
+      originalPoint.y + interpolateDelta(startDelta?.y || 0, endDelta?.y || 0, t)
+    );
   }
 }
 
@@ -633,7 +758,8 @@ function applyFixedRibWidthDelta(
   defaultWidth,
   anchorSide,
   projectedDelta,
-  round
+  round,
+  singleSided = false
 ) {
   const linked = originalPoint.width?.linked !== false;
   const originalHalfWidth = getSkeletonPointHalfWidth(
@@ -641,14 +767,25 @@ function applyFixedRibWidthDelta(
     defaultWidth,
     anchorSide
   );
-  const widthDelta = anchorSide === "left" ? -projectedDelta : projectedDelta;
+  // Double-sided: the centerline has already moved by the drag, and this pins one
+  // outline edge by taking the same amount back out of its half-width. Single-
+  // sided: the centerline held still, so the sign flips — the half-width alone
+  // has to carry the edge to the cursor.
+  const towardTheDrag = anchorSide === "left" ? projectedDelta : -projectedDelta;
+  const widthDelta = singleSided ? towardTheDrag : -towardTheDrag;
   setSkeletonPointSideWidth(
     workingPoint,
     defaultWidth,
     anchorSide,
     Math.max(1, originalHalfWidth + widthDelta),
-    { linked, round }
+    // Linking would move the far half-width by the same amount and so travel the
+    // edge twice as far as the drag. Single-sided has only the one edge to
+    // answer for, so the change lands on its own side; the stored flag stands.
+    { linked: singleSided ? false : linked, round }
   );
+  if (singleSided) {
+    workingPoint.width.linked = linked;
+  }
 }
 function getFixedRibAnchorSide(contour, projectedDelta, compress) {
   if (contour.singleSided === "left" || contour.singleSided === "right")

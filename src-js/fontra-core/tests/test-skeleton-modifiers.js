@@ -423,6 +423,132 @@ describe("skeleton modifier target-entry parity fixtures", () => {
   });
 });
 
+describe("fixed-rib drag geometry", () => {
+  it("offsets a curved segment instead of shearing its handles", () => {
+    // A quarter-circle cubic of radius 100 about the origin. Both endpoints are
+    // selected, so the whole segment moves out along its own normals by the same
+    // distance - a constant-distance offset, whose result is the concentric arc.
+    const original = makeArcSkeleton();
+    const working = normalizeSkeletonData(structuredClone(original));
+    const radiusBefore = midRadius(original.contours[0].points);
+
+    applyFixedRibDelta(
+      original,
+      working,
+      new Set(["skeletonPoint/50/1", "skeletonPoint/50/4"]),
+      "skeletonPoint/50/1",
+      { x: 20, y: 0 }
+    );
+
+    const points = working.contours[0].points;
+    expect(points[0]).to.include({ x: 120, y: 0 });
+    expect(points[3]).to.include({ x: 0, y: 120 });
+    // The middle of the arc has to travel the same 20 units as its ends. Moving
+    // the handles by an interpolation of the two endpoint deltas leaves it about
+    // 6 units short, because it never lengthens them.
+    expect(midRadius(points) - radiusBefore).to.be.closeTo(20, 0.6);
+  });
+
+  it("carries a tension point's whole straight, not just the dragged end", () => {
+    // Point 2 is smooth with a single handle, so the straight 1-2 owns its
+    // direction and the two ribs are tied. Dragging either end must move both.
+    const original = makeTensionPointSkeleton();
+    const working = normalizeSkeletonData(structuredClone(original));
+
+    applyFixedRibDelta(
+      original,
+      working,
+      new Set(["skeletonPoint/60/1"]),
+      "skeletonPoint/60/1",
+      { x: 0, y: -10 }
+    );
+
+    const points = working.contours[0].points;
+    expect(points[0]).to.include({ x: 0, y: -10 });
+    expect(points[1]).to.include({ x: 100, y: -10 });
+    expect(points[1].width.right).to.equal(points[0].width.right);
+  });
+
+  it("changes only the width on a single-sided contour", () => {
+    // The skeleton is one edge of a single-sided stroke, so it must hold still:
+    // the drag moves the generated edge, which is the sum of the half-widths.
+    const original = makeSingleSidedSkeleton();
+    const working = normalizeSkeletonData(structuredClone(original));
+
+    applyFixedRibDelta(
+      original,
+      working,
+      new Set(["skeletonPoint/70/1", "skeletonPoint/70/2"]),
+      "skeletonPoint/70/1",
+      { x: 0, y: -10 }
+    );
+
+    const before = original.contours[0].points[0];
+    const after = working.contours[0].points[0];
+    expect(after).to.include({ x: before.x, y: before.y });
+    expect(after.width.left + after.width.right).to.equal(
+      before.width.left + before.width.right + 10
+    );
+  });
+});
+
+// Radius of the segment's midpoint about the origin, for the arc fixture.
+function midRadius(points) {
+  const [p0, p1, p2, p3] = points;
+  const at = (a, b, c, d) => (a + 3 * b + 3 * c + d) / 8;
+  return Math.hypot(at(p0.x, p1.x, p2.x, p3.x), at(p0.y, p1.y, p2.y, p3.y));
+}
+
+function makeArcSkeleton() {
+  return normalizeSkeletonData({
+    contours: [
+      makeSkeletonContour({
+        id: 50,
+        defaultWidth: 80,
+        points: [
+          makeSkeletonPoint({ id: 1, x: 100, y: 0 }),
+          makeSkeletonPoint({ id: 2, x: 100, y: 55, type: "cubic" }),
+          makeSkeletonPoint({ id: 3, x: 55, y: 100, type: "cubic" }),
+          makeSkeletonPoint({ id: 4, x: 0, y: 100 }),
+        ],
+      }),
+    ],
+  });
+}
+
+function makeTensionPointSkeleton() {
+  return normalizeSkeletonData({
+    contours: [
+      makeSkeletonContour({
+        id: 60,
+        defaultWidth: 80,
+        points: [
+          makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+          makeSkeletonPoint({ id: 2, x: 100, y: 0, smooth: true }),
+          makeSkeletonPoint({ id: 3, x: 150, y: 0, type: "cubic" }),
+          makeSkeletonPoint({ id: 4, x: 200, y: 100 }),
+        ],
+      }),
+    ],
+  });
+}
+
+function makeSingleSidedSkeleton() {
+  return normalizeSkeletonData({
+    contours: [
+      makeSkeletonContour({
+        id: 70,
+        defaultWidth: 80,
+        singleSided: "left",
+        points: [
+          makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+          makeSkeletonPoint({ id: 2, x: 100, y: 0 }),
+        ],
+      }),
+    ],
+  });
+}
+
 function makeLineSkeleton() {
   return normalizeSkeletonData({
     contours: [
