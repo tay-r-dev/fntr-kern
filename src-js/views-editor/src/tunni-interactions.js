@@ -10,7 +10,6 @@ import {
   calculateSkeletonOnCurveFromTunni,
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
-  generatedOnCurveGizmoOffsetForHitRadius,
   generatedSegmentConstructionPoints,
   getGeneratedPathContourIndices,
   getSkeletonData,
@@ -109,8 +108,7 @@ export function tunniHoverResult(
     const generatedHit = sceneModel.generatedTunniAtPoint(
       { x: point.x + positionedGlyph.x, y: point.y + positionedGlyph.y },
       size,
-      positionedGlyph,
-      { onCurveOffset: generatedOnCurveGizmoOffsetForHitRadius(size) }
+      positionedGlyph
     );
     if (generatedHit) {
       // Same cursor split as the skeleton's gizmos: crosshair moves on-curve

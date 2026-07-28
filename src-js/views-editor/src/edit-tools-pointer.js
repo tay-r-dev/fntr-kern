@@ -20,10 +20,7 @@ import {
   symmetricDifference,
   union,
 } from "@fontra/core/set-ops.js";
-import {
-  generatedOnCurveGizmoOffsetForHitRadius,
-  getSkeletonData,
-} from "@fontra/core/skeleton-model.js";
+import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { Transform } from "@fontra/core/transform.js";
 import {
   assert,
@@ -342,8 +339,7 @@ export class PointerTool extends BaseTool {
       const gizmoHit = this.sceneModel.generatedTunniAtPoint(
         point,
         size,
-        positionedGlyph,
-        { onCurveOffset: generatedOnCurveGizmoOffsetForHitRadius(size) }
+        positionedGlyph
       );
       if (gizmoHit) {
         if (initialEvent.detail >= 2) {

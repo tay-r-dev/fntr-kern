@@ -420,11 +420,22 @@ land, and says nothing about acceptable deviation.
 ### The on-curve gizmo
 
 Sits **off** the curve: anchored at the segment midpoint and displaced along the
-**outward** normal by a screen-space constant, so it holds a steady distance at
-any zoom and reads as belonging to the segment. Outward follows from the
-contour's signed area, so counters come out correct. One placement function
-serves both the drawing layer and the hit test, so they cannot disagree about
-where the control is.
+**outward** normal. Outward follows from the contour's signed area, so counters
+come out correct. One placement function serves both the drawing layer and the
+hit test, and the distance is resolved once per segment when the segments are
+built, so the two cannot disagree about where the control is.
+
+**The displacement scales with the local stroke half-width**, in glyph units —
+1.5× the mean of the effective half-widths at the segment's two ends, on its own
+side. The gizmo marks an offset from an outline, so the stroke's own thickness is
+the scale that belongs to it, and it then zooms with the letter. It was a
+**screen** constant first, which holds its pixel size at every zoom but grows
+without bound in glyph space, so zoomed out the control sat a large fraction of
+the letter away from the segment it belongs to. Two fallbacks bind only where the
+stroke supplies no scale, and neither is the governing rule: a **collapsed side**
+has no thickness at all and is placed off the segment's own chord instead, and an
+absolute floor keeps a hairline stroke from putting the gizmo inside the curvature
+node.
 
 It is tangent-constrained, like every on-curve gizmo in this editor, and it
 writes the same `nudge` the panel writes — one number, two affordances. Its drag
@@ -451,7 +462,7 @@ and not hit-tested. A drawn control that cannot move is worse than no control.
   adjustments, returning the segment to what the fit produces. On the on-curve
   gizmo, zero the nudge at both ends.
 - **A switchable label layer** draws each generated segment's construction-space
-  tension beside its curvature gizmo, in the point-label face, with a dot when the
+  tension just above its curvature gizmo, in the point-label face, with a dot when the
   number is a stored pin rather than the fit's own answer. During a curvature drag
   the drag readout shows the same value whatever the switch is set to. This is how
   a pinned segment is told from an automatic one.

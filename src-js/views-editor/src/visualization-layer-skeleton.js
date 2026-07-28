@@ -3,7 +3,6 @@ import {
   drawPointStyleLabel,
 } from "@fontra/core/distance-angle.js";
 import {
-  GENERATED_ON_CURVE_GIZMO_OFFSET,
   buildGeneratedTunniSegments,
   buildSkeletonTunniSegments,
   calculateGeneratedOnCurveGizmoPoint,
@@ -666,7 +665,6 @@ registerVisualizationLayerDefinition({
     curvatureSize: 7,
     strokeWidth: 1,
     onCurveSize: 8,
-    onCurveOffset: GENERATED_ON_CURVE_GIZMO_OFFSET,
     curvatureAxisLength: 18,
   },
   colors: {
@@ -711,7 +709,7 @@ registerVisualizationLayerDefinition({
     context.setLineDash([]);
     for (const segment of segments) {
       const gizmoPoint = segment.onCurveMovable?.some(Boolean)
-        ? calculateGeneratedOnCurveGizmoPoint(segment, parameters.onCurveOffset)
+        ? calculateGeneratedOnCurveGizmoPoint(segment)
         : null;
       if (gizmoPoint) {
         context.fillStyle = parameters.onCurveColor;
@@ -739,7 +737,7 @@ registerVisualizationLayerDefinition({
   userSwitchable: true,
   defaultOn: false,
   zIndex: 549,
-  screenParameters: { labelOffset: 11 },
+  screenParameters: { labelOffset: 13, labelInset: 5 },
   colors: { color: "rgba(0, 120, 90, 1)", pinnedColor: "rgba(190, 60, 20, 1)" },
   colorsDarkMode: {
     color: "rgba(96, 232, 190, 1)",
@@ -753,16 +751,18 @@ registerVisualizationLayerDefinition({
     )) {
       const curvature = getGeneratedSegmentCurvature(skeletonData, segment);
       const anchor = calculateCurvatureGizmoPoint(segment.points);
-      const axis = calculateCurvatureGizmoAxis(segment.points);
-      if (!curvature || !anchor || !axis) {
+      if (!curvature || !anchor) {
         continue;
       }
-      // Away from the axis stub, which is drawn from the same anchor in the
-      // opposite direction, so the two never sit on top of each other.
+      // Straight above the gizmo, clear of the node. Placing it along the axis
+      // instead put it where the gizmo and its stub already are, and an offset
+      // that follows the axis moves the number around as the segment turns —
+      // a label the eye has to hunt for is worse than one that occasionally
+      // crosses the stub.
       drawPointStyleLabel(
         context,
-        anchor.x - axis.x * parameters.labelOffset,
-        anchor.y - axis.y * parameters.labelOffset,
+        anchor.x + parameters.labelInset,
+        anchor.y + parameters.labelOffset,
         formatGeneratedCurvature(curvature),
         curvature.pinned ? parameters.pinnedColor : parameters.color
       );
