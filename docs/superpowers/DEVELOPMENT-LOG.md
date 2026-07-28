@@ -675,3 +675,245 @@ along with the iterator change made to support it.
 counter answered its question in generation 1 and was then read once as hard
 pinning, which it never was. Removed with the script that consumed it; the ceiling
 and its floor stay.
+
+---
+
+## 9. The plans and specs were dissolved — docs
+
+**Branch:** `fix/skeleton-expand-math` (not yet merged)
+**Date:** 2026-07-28
+
+### 1. Problem
+
+Five design specs and implementation plans, 3,783 lines, all describing work that
+had shipped. A plan that outlives its implementation is worse than no plan: it
+still reads as an instruction, and a reader has no way to tell which parts are the
+design of record and which were withdrawn three rounds ago.
+
+### 2. Solution
+
+Folded the durable content into the two docs that are actually read at the start of
+a session, and deleted the rest. The feature model gained the continuity contract
+that governs handle lengths, the two permanent limits (taper, and offsets a single
+cubic cannot represent), a section on the generated-contour controls and the
+curvature pin, and a register of everything tried and rejected on measurement. The
+architecture map gained the construction module, the gizmo hit-test and mode
+switch, and corrected sizes and counts.
+
+The register is the part worth having. Eleven rows, each with the measurement or
+the use that closed it — including two ideas that were built and reverted twice.
+
+### 3. Commits
+
+| Commit | Subject |
+| --- | --- |
+| `9671505ec` | docs: dissolve the plans and specs into the two standing docs |
+
+### 4. Challenges and findings
+
+**The map named two editor modules that have never existed** — with line counts,
+which is what made them credible. Same error as the phantom modifiers file
+corrected a few days earlier, so the correction now carries a "grep before trusting
+a filename here" note rather than just fixing the row.
+
+**A code comment had been pointing at a deleted spec for several commits.** Cited
+paths rot silently; the comment now states the fix it was deferring instead.
+
+**Documents that were already unformatted were left that way.** Reformatting them
+would have buried the change in noise, which is the same call made on the segment
+selection fix in entry 2.
+
+---
+
+## 10. Placement and readout of the generated controls — fixes
+
+**Branch:** `fix/skeleton-expand-math` (not yet merged)
+**Date:** 2026-07-28
+
+### 1. Problem
+
+Three small things, all about what sits where. The curvature label was drawn along
+the gizmo's own axis, competing for space with the node and the dashed stub drawn
+from the same anchor. The on-curve gizmo's distance from its curve was a screen
+constant, which holds its pixel size at every zoom but grows without bound in glyph
+space — zoomed out, the control sat a large fraction of the letter away from the
+segment it belongs to. And the rib width plaque appeared during a Z-drag, which
+slides the rib end along its tangent and changes no width at all.
+
+### 2. Solution
+
+The label sits straight above the node. An offset that follows the axis also swings
+the number around as the segment turns, and a label the eye has to hunt for is
+worse than one that occasionally crosses the stub.
+
+The gizmo distance is one constant in glyph units. It was briefly scaled by the
+local stroke half-width — defensible, since the gizmo does mark an offset from an
+outline — and that read as unsettled in use, because the gap then moves with every
+width edit. Both rejected rules are recorded in the feature model.
+
+The plaque now reads the drag's behavior name, which the pointer tool publishes on
+the scene model because the readouts have no route to the realtime modifier state
+of their own.
+
+### 3. Commits
+
+| Commit | Subject |
+| --- | --- |
+| `a168b107d` | fix: place the curvature label above its gizmo, scale the on-curve gizmo by the stroke |
+| `fea8aa622` | fix: put the on-curve gizmo at a constant distance from its curve |
+| `f811b0589` | fix: hide the rib width plaque during a tangent slide |
+
+### 4. Challenges and findings
+
+**Defensible on paper, unsettled in use.** Tying the gizmo offset to the stroke
+thickness is the better-argued design and was rejected on sight of it. Worth
+recording as a decision rather than a mistake — the argument will be just as
+convincing next time.
+
+**The suppression predicate had to be narrowed after it was written.** "Not one of
+the two width behaviors" and "is one of the two tangent behaviors" look equivalent
+and are not: a rib drag can carry a fixed-rib behavior instead, and that one does
+change widths, so the broader form would have silenced a plaque that was telling
+the truth.
+
+**Publishing the behavior name where it is set** rather than at drag start is what
+makes a Z pressed mid-drag take effect on the next frame instead of the next drag.
+
+---
+
+## 11. A pinned curvature did not survive the hand that overruled it — fix
+
+**Branch:** `fix/skeleton-expand-math` (not yet merged)
+**Date:** 2026-07-28
+
+### 1. Problem
+
+Set a curvature with the gizmo, switch to direct handle editing, drag a handle:
+the handles jumped back to where the automatic fit had put them before the
+curvature was set, and the drag then continued from a position the designer never
+chose. Fixed once, and the first drag after a curvature adjust still dragged heavy
+and then broke loose — while every drag after it was smooth.
+
+### 2. Solution
+
+Two causes, one behind the other.
+
+A direct handle drag discards the pin on its own segment, which is right — the
+hand is the later and more specific answer. But the discard was destructive: the
+pin contributes length to both of the segment's handles, so dropping it bare snaps
+them back to the fit. The pin is now **baked** before it is dropped. One
+regeneration with it cleared measures how far each handle moves, and that
+difference is stored as a per-handle offset, so rendered geometry is unchanged
+across the clear.
+
+Underneath that: a pinned segment bypasses the ordinary tension ceiling, because
+the pin saturates its own tensions at 1. Clearing the pin puts that ceiling back —
+and it eases into its limit over a blend window, so it re-shaved exactly what the
+bake had restored, and the drag spent its first units of travel inside the window.
+The ceiling now comes in three forms, one per author of the length: none for a
+pinned segment, exact for a handle carrying a hand-placed adjustment, eased for the
+fit's own answer.
+
+### 3. Commits
+
+| Commit | Subject |
+| --- | --- |
+| `53e4d3be8` | fix: preserve the curve when a handle drag discards its pinned curvature |
+| `757a27ab0` | fix: state the tension ceiling exactly for a hand-placed handle |
+
+### 4. Challenges and findings
+
+**"From the correct position, but a jump."** The report distinguished a wrong
+starting position from a wrong first movement, and that distinction is what
+separated the two causes. The first fix was verified by a zero-delta drag, which
+proves the start position and says nothing about travel — so it passed while the
+second fault was still there.
+
+**Both handles, not just the dragged one.** The pin sets the two lengths together
+and only one is ever under the cursor, so baking the dragged handle alone would
+have held half the segment still and moved the other half.
+
+**The eased ceiling is right for the fit and wrong for a hand.** The fit's answer
+has to be a continuous function of the skeleton; a length the designer chose has no
+such obligation, and easing it lands a few percent short of what was asked for.
+Measured at 5.0 units short at tension 1 — which also meant a hand-dragged handle
+could never quite reach the tangent intersection. Tension 1 is still the wall; the
+wall is now where the number says it is.
+
+**Measured, not reasoned.** The residual was 0.00 units below a pin of 0.8 and grew
+to 5.0 at 1.0, which is why it presented as intermittent — it depended entirely on
+how far the curvature had been pushed.
+
+---
+
+## 12. Three faults in the fixed-rib drag — fixes
+
+**Branch:** `fix/skeleton-expand-math` (not yet merged)
+**Date:** 2026-07-28
+
+### 1. Problem
+
+**Single-sided drags rewrote the width distribution.** A single-sided contour
+renders the sum of its two half-widths on the visible side, so the split between
+them is nothing the drag should touch — but it wrote one side and left the other,
+which moved the split. That split is the distribution the point returns to when
+the contour goes back to double-sided, so the drag was changing a shape the
+designer cannot see while they work.
+
+**The single-sided floor was on the wrong quantity.** Flooring one side at a
+half-width of one stopped the visible edge a whole far-side width away from the
+skeleton — 41 units short of the centerline on a 40-unit far side.
+
+**The drag did not stop.** Widths clamped and everything else carried on, so past
+the floor the anchor edge the drag exists to pin walked away with it.
+
+### 2. Solution
+
+Single-sided drags write the **total**, which preserves the split by construction
+and puts the floor on the width the designer can see: two units. The panel greys
+the per-side numbers and the distribution while single-sided is on, rather than
+hiding them, so they read as kept rather than lost.
+
+For the floor, one allowance is computed per point — how much of the drag that
+point's ribs can actually pay for — and everything that travels with the drag is
+held to it: the point's own movement, both sides' widths, and the segment's
+handles. Points are independent, so a narrow one cannot hold up a wide one and the
+drag stands completely still only when every affected rib is at the floor. A tied
+group is held to whichever member gets there first, since the group shares one
+offset by definition.
+
+### 3. Commits
+
+| Commit | Subject |
+| --- | --- |
+| `61b35caea` | fix: three faults in the fixed-rib drag |
+| `efe4d4b2c` | fix: stop the fixed-rib drag's handles and far side at the floor too |
+
+### 4. Challenges and findings
+
+**A straight-skeleton test cannot see a handle bug.** The first round of tests used
+a two-point line fixture, so the handle-scaling path never ran — the fix tested
+green and was still wrong in the editor, because every real skeleton has curves.
+The property that actually catches it is idempotence past the floor: a drag far
+past it must produce geometry identical to one exactly at it. That is now asserted
+on the arc fixture.
+
+**Three things travel with one drag, and each leaked separately.** The point's
+position, the far side's width, and the handles. Fixing them one at a time meant
+three rounds of "still doesn't stop"; the lesson is to enumerate what a clamp has
+to cover before clamping anything.
+
+**Linked ribs move both sides by one amount**, so with an uneven distribution the
+far side reaches the floor while the anchor still has room. It was pinned at zero
+there while the drag carried on compressing the anchor alone.
+
+**My own test asserted the wrong direction twice.** Plain fixed-rib anchors the far
+side, which grows; only compress anchors the side the drag moves toward, and only
+that side shrinks. Nothing hits a floor without compress.
+
+**The distribution can only be preserved to within grid rounding.** Whole-unit
+sides cannot hold 60/20 at a total of 90 — it wants 67.5/22.5 and lands on 68/22,
+about 1% of distribution. Chasing that would need fractional widths. Rounding both
+sides independently, which is what the shared total-width mutator did, also missed
+the total itself by a unit and put the visible edge past the cursor; one side is
+now rounded and the other taken as the remainder.
