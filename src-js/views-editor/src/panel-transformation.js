@@ -761,7 +761,8 @@ export default class TransformationPanel extends Panel {
     // querySelectorAll position, so any checkbox added ahead of them would
     // rebind Distance/Tension/Angle to the wrong controls. Those toggles are
     // slated for deprecation, so this section works around the issue instead of
-    // fixing it -- see docs/superpowers/specs/2026-07-25-curve-harmonization-design.md §7.
+    // fixing it. The fix, if they outlive the deprecation: bind those listeners
+    // by id rather than by position.
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",

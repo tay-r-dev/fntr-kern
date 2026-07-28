@@ -11,9 +11,12 @@ One entry per feature or fix, newest last. Each entry has the same four parts:
 4. **Challenges and findings** — what went wrong on the way, and what we learned
    that isn't obvious from the diff.
 
-Companion docs: `FEATURE-ARCHITECTURE-MAP.md` (what lives where),
-`SKELETON-FEATURE-MODEL.md` (skeleton mental model), `specs/` (per-feature
-design and implementation specs).
+Companion docs: `FEATURE-ARCHITECTURE-MAP.md` (what lives where) and
+`SKELETON-FEATURE-MODEL.md` (skeleton mental model). The `specs/` and `plans/`
+folders no longer exist — they were dissolved into those two on 2026-07-28, so
+the design of record is always a doc, never a plan. Where an entry below names a
+spec, that spec's durable content is in the feature model; the spec itself is
+reachable only through git history.
 
 ---
 
@@ -21,8 +24,7 @@ design and implementation specs).
 
 **Branch:** `feature/harmonize` → merged to `main`
 **Dates:** 2026-07-25 – 2026-07-26
-**Specs:** `specs/2026-07-25-curve-harmonization-design.md`,
-`specs/2026-07-25-curve-harmonization-implementation.md`
+**Specs:** retired in `28db0e869` ("docs: cleanup"); the durable content is in this entry.
 
 ### 1. Problem
 
@@ -206,3 +208,470 @@ fragile — worth cleaning up if that function is touched again.
 **Prettier reports both edited files as unformatted, and did so before the
 change.** Left alone deliberately; reformatting them would bury the fix in
 noise.
+
+---
+
+## 3. Generated outline handles jumped during a drag — rework
+
+**Branch:** `fix/skeleton-expand-math` (not yet merged)
+**Dates:** 2026-07-26
+**Spec:** dissolved into `SKELETON-FEATURE-MODEL.md` §3.2
+
+### 1. Problem
+
+Moving a skeleton point by one unit could flip the adjacent generated segments
+into a completely different handle configuration — one that fitted the curve just
+as well but looked nothing like the previous frame's. Each frame's output was
+geometrically fine; it just wasn't continuous in the input, so a designer could
+not predict where a generated handle would land. Worst exactly where it matters:
+when the distance between skeleton points is small relative to the rib width.
+
+### 2. Solution
+
+Replaced sampling-and-fitting with a closed-form construction. Offsetting a cubic
+preserves the tangent direction exactly and scales its speed by `1 + width ×
+curvature`, so for one cubic per side the endpoints and directions are known and
+the only free numbers are two handle lengths — which have a closed form too. The
+rule a designer can hold: **the generated handle is the skeleton handle scaled by
+one plus width times curvature.**
+
+Handle direction stays locked to the skeleton's, exactly as before. One fixed
+least-squares correction pass recovers accuracy where the widths taper, then
+smooth bounds replace the old hard clamps. Seven discrete decisions came out of
+the pipeline — an adaptive error-threshold loop, variable curve splitting, a
+Newton iteration with early bail, an eight-direction snap for short handles, and
+the average-width-then-translate hack for tapered sides.
+
+### 3. Commits
+
+| Commit | Subject |
+| --- | --- |
+| `1ad572170` | docs: add skeleton offset construction design spec |
+| `6862cd7e7` | docs: bound generated handles by tangent-ray intersection |
+| `91c99f2a8` | docs: pin the offset spec's integration surface |
+| `0b894092d` | docs: withdraw the unrounded-rib-endpoint plan |
+| `9f321429e` | docs: cover collapsed sides and single-sided contours |
+| `055d16ce3` | docs: initial plan |
+| `118e59919` | docs: add skeleton offset construction implementation plan |
+| `b8d189f27` | docs: drop the quadratic-segment handling from the plan |
+| `12c7f5e96` | docs: lock generated handle direction to the skeleton; fix review findings |
+| `2885f91db` | docs: keep the minimum-handle guardrail; measure the tension bound first |
+| `a78c51cda` | docs: reconcile spec drift after the direction-locking revision |
+| `b2c750e5d` | docs: rewrite the implementation plan for the length-only construction |
+| `52346b21a` | docs: drop the donor-parity framing from the fixture work |
+| `4ea94c37e` | fix: generate skeleton fixtures from this generator, not the pre-port one |
+| `864c0bbe9` | refactor: expose the two-handle least-squares solve from fit-cubic |
+| `4acb82a34` | fix(plan): make the cusp floor exactly inert |
+| `c1bd7bc5d` | fix: make the cusp floor exactly inert in offset-cubic |
+| `79d3914e9` | feat: bound generated handle length |
+| `f1510b084` | feat: one fixed correction pass for the offset construction |
+| `5dfdff706` | test: cover continuity of the offset cubic construction |
+| `597038307` | feat: construct generated handle lengths instead of fitting them |
+| `8bdef4f34` | feat: floor the tension limit at a third of the chord |
+| `0479d309d` | docs: retitle generator fixtures and update cubic pipeline |
+| `db2710771` | docs: update the skeleton cubic construction model |
+| `6158aa278` | refactor: remove disabled handle-direction alignment |
+| `be4bd3f55` | refactor: remove superseded offset machinery |
+| `40b6cc12b` | fix: ease the offset correction band |
+
+### 4. Challenges and findings
+
+**The fixture script could not be run at all.** It was a leftover from the
+porting era: it imported the pre-port generator from a path that resolves to a
+directory that does not exist, in a checkout that is gitignored, referencing a
+commit that is not an object in this repo. So the golden masters could not be
+regenerated by anyone, from a fresh clone, or in CI. Fixed first, before any
+geometry changed, and proved by regenerating byte-identically.
+
+**Two smoothing forms that look inert are not.** A square-root cusp floor shifts
+its input by a small constant over the input, and that shift is then multiplied by
+the handle length — 0.022 units on a 55-unit handle, growing with the handle, so
+no fixed test tolerance survives it. A p-norm smooth minimum returns 84% of its
+argument when both arguments are equal, a 16% shortfall even when the bound is not
+binding. The polynomial forms are _exactly_ the min or max outside a blend window,
+which is what makes "no saturation on ordinary input" an exact invariant instead
+of an approximate one. Mixing an exactly-inert form with a never-inert one is what
+produced a miscalculation in the first draft.
+
+**The bound needed a floor for an ordinary reason, not an exotic one.** The
+tangent-ray intersection can slide backwards onto the start point whenever a start
+tangent points near the far endpoint — not only past a 180° turn, as first
+assumed. Measured on an ordinary curve: the handle squeezed to 0.6 units, then
+sprang back 41.9. Floored at a third of the chord, which at least means something
+— it is the handle length of a neutral cubic.
+
+**An error function was being compared against a linear tolerance while returning
+a squared distance**, so the effective tolerance was distorted and scale-dependent.
+Part of why the old behaviour differed by glyph size.
+
+**A one-time output change, bounded by locking direction.** Endpoints don't move
+and directions don't move, so mid-segment deviation lands within the range the old
+fit already tolerated — 1–3 units on a 60-unit stroke, zero at the ends. Had the
+handles been tilted to the true offset tangent instead, the same change would have
+moved handle points by tens of units on tapered strokes.
+
+---
+
+## 4. Rib width rotated the handles it should not touch — fix
+
+**Branch:** `fix/skeleton-expand-math` (not yet merged)
+**Date:** 2026-07-26
+
+### 1. Problem
+
+Two faults with one shape. A smooth skeleton point with a single handle has no
+direction of its own — smoothness forces the handle collinear with the straight on
+its other side — so the straight owns the direction. But the ribs at the two ends
+of that straight sat at independent offsets, which tilts the generated
+rib-to-rib line away from the skeleton straight, and the generated handle was then
+re-collinearized against the tilted line. Changing a rib width therefore rotated
+handles: measured 8.5° over a half-width sweep with both ends controlled, ~16°
+with one. Separately, the smoothing pass estimated its axis from handle _lengths_,
+and rib width sets handle length, so width rotated the axis there too — 1.1° mean
+and 12.5° worst per single unit of width.
+
+### 2. Solution
+
+Take the smooth-junction axis from the skeleton, not from the emitted handles:
+when both handles descend from the same skeleton point they carry the axis they
+were constructed on. And tie the ribs at both ends of a straight controlled by a
+tension point to one shared offset, so the whole projected straight moves as a
+unit. Tied groups merge where straights share an end point — a shared point has
+one rib and cannot sit at two offsets. A "Tied ribs" opt-out is on by default, and
+untying deliberately brings the rotation back in exchange for independent widths.
+
+Everything that shows or edits a tied rib had to use the coupled value rather than
+the stored one, and a rib drag pulls its whole group into the executor set.
+
+### 3. Commits
+
+| Commit | Subject |
+| --- | --- |
+| `2ad2b04b1` | fix(skeleton): take the smooth-junction handle axis from the skeleton |
+| `130a75ddf` | fix(skeleton): couple ribs across a mutually-controlled straight segment |
+| `bd572be5c` | feat(skeleton): add a Tied ribs opt-out for coupled straight segments |
+| `8c1b2ea14` | fix(skeleton): make the rib gizmo and drag agree with coupled geometry |
+| `149a6962d` | fix(skeleton): tie the whole projected straight, not just controlled pairs |
+| `d4d1dcfac` | fix(skeleton): make a nudge carry its generated handles |
+
+### 4. Challenges and findings
+
+**Deriving a direction from rounded coordinates inherits a width dependence.** A
+handle emitted at `round(anchor + axis × length)` carries its axis only to within
+about `atan(0.7 / length)` — 1.3° at 32 units, 4° at 10, 45° at 1. So any later
+stage that re-derives a direction from the emitted points is length-dependent, and
+width sets the length. This is the general trap behind both faults here.
+
+**The first coupling rule was too narrow.** Tying only _pairs_ of controlled
+points missed the common case: one tension point anywhere on a straight ties the
+ribs at both of its ends, and the far end does not have to be controlled itself. An
+ordinary corner or a contour terminal is tied just the same, because what forces
+the coupling is the controlled point, not the pair.
+
+**Skipping the coupled accessor in the gizmo produced the original report** — the
+dragged gizmo travelled twice as far as the outline and its partner did not move at
+all. Coupling that only the generator knows about is worse than no coupling.
+
+**One residual tilt was measured and deliberately left.** At a corner far end the
+miter normal is the straight's normal rotated by a quarter of the turn, leaving a
+second-order term of `2·hw·sin²(turn/4)` — 0.4 units at the widest end of the
+sweep, under the ~0.3° the grid itself imposes on a handle that long.
+
+---
+
+## 5. Generated curves collapsed to minimum or maximum handle length — fix
+
+**Branch:** `fix/skeleton-expand-math` (not yet merged)
+**Date:** 2026-07-27
+**Spec:** dissolved into `SKELETON-FEATURE-MODEL.md` §3.2 and §8
+
+### 1. Problem
+
+After the construction shipped, the generated contour was "too eager to collapse
+to minimum or maximum handle length".
+
+### 2. Solution
+
+The correction pass was solving against the wrong correspondence. It assumed the
+true offset's point at a given parameter belongs at the generated curve's point at
+the same parameter — false for an offset, which is stretched on the convex side and
+compressed on the concave one. So the correction either did nothing or returned
+_negative_ handle lengths, which the bounds then turned into the collapse.
+Reparameterizing fixed it, under a hard contract inherited from the old pipeline's
+failure: fixed iteration count, fixed seed, no convergence test, no threshold
+search. Mean error 3.11 → 0.89 against an achievable 0.67, hard-pinning 2 → 1 of
+118, arcs unchanged.
+
+### 3. Commits
+
+| Commit | Subject |
+| --- | --- |
+| `0374a884d` | docs(skeleton): record the curve-quality decisions |
+| `8adb3bb55` | fix(skeleton): fit the offset against the right correspondence |
+| `cbd92a0a9` | docs(skeleton): withdraw the equalize/harmonize step on measurement |
+| `b8f29354e` | docs(skeleton): pin the handle axis to the skeleton, drop equalize too |
+| `005a6e43c` | docs(skeleton): settle the two gizmo mechanics |
+
+### 4. Challenges and findings
+
+**A synthetic sweep produced wrong conclusions and had to be thrown away.**
+Parameterizing by handle length as a fraction of chord invents skeletons nobody
+would draw — a 0.55-chord handle on a 20° turn is already past tension 1. It
+supported a claim that the accuracy optimum wants tension 4–5. Re-parameterized by
+tension directly, over geometry a designer would actually draw, the optimum never
+asks for more than 1.04. **Sweep design decided the answer here, twice.**
+
+**The clamp was not the disease.** The instrumentation counted any touch inside a
+smooth blend window, not hard pinning, which read as 34% of cases where the true
+figure was 2 in 118 — and the pipeline still carried 4.6× the achievable error
+where nothing clamped at all.
+
+**Three things were then withdrawn on measurement**, and all three are recorded in
+the feature model §8 so they are not re-derived: a harmonize pass (the generated
+contour already reproduces the true offset's joint curvature to 1.7%, and the
+mismatches that remain are the skeleton's own, faithfully reproduced —
+harmonizing would erase a curvature the designer asked for); unconditional
+equalization (a no-op where it is safe, a 3.3× fidelity loss where it is not); and
+tilting the handle axis to the true offset tangent, which would recover almost all
+of the taper defect and was rejected because the axis is skeleton-owned.
+
+**Some geometry a single cubic simply cannot represent** — a bold stroke on a
+tight curve, 31 of 149 realistic cases — with errors in the hundreds for every
+strategy including a numerical optimum, and point-count stability forbidding a
+split. That is the strongest argument for handing the designer a control.
+
+---
+
+## 6. Generated-segment gizmos, and a curvature that survives a skeleton edit — feature
+
+**Branch:** `fix/skeleton-expand-math` (not yet merged)
+**Dates:** 2026-07-27
+**Spec:** dissolved into `SKELETON-FEATURE-MODEL.md` §7
+
+### 1. Problem
+
+Where the automatic answer cannot be right — taper, and offsets a single cubic
+cannot express — the generator collapsed instead of deferring. There was no way to
+say "make this segment rounder". And the first version of that control stored a
+positional handle displacement, so changing the skeleton, the width or the taper
+afterwards moved the base handle, left the displacement behind, and drifted the
+curvature the designer had set: they set a number, the model stored a nudge.
+
+### 2. Solution
+
+Two gizmos per generated segment. A **curvature** gizmo on the curve, dragging
+along the axis toward the tangent intersection, and an **on-curve** gizmo that
+slides the segment's two ends along the outline. Nothing new is stored for the
+second: it writes the same nudge the panel writes.
+
+The curvature gizmo stores the **segment tension it arrived at** — a number.
+Regeneration reproduces it whatever the skeleton has done since; where the geometry
+cannot express it the output clamps and the stored value is never rewritten, so the
+segment returns to exactly what was set once the skeleton comes back into range.
+
+What makes that clean is an identity: a segment's tension is exactly the harmonic
+mean of its two handles' tensions. So two handle lengths decompose into a
+magnitude, which the pin owns, and a split, which per-handle adjustments own. They
+are orthogonal, so the two stored things compose without a precedence rule.
+
+### 3. Commits
+
+| Commit | Subject |
+| --- | --- |
+| `aba940073` | feat(tunni): add the curvature gizmo geometry |
+| `5bac71b6e` | feat(skeleton): map a curvature drag onto skeleton handle offsets |
+| `b200c00f5` | feat(skeleton): draw the two gizmos on generated segments |
+| `9cad17298` | feat(skeleton): make the generated gizmos draggable |
+| `408dc586b` | feat(skeleton): make gizmo editing the default, direct handles the opt-out |
+| `7008c78c1` | fix(skeleton): stop the gizmo drag throwing, and hide generated handle lines |
+| `b5ba9e25f` | fix(skeleton): unstick the curvature gizmo, respec the on-curve one |
+| `de317addc` | fix(skeleton): unblock reversed-contour gizmos, hold handles on an on-curve drag |
+| `9f2a4173d` | feat(skeleton): pin generated curvature and equalize handle tensions |
+| `c4e7d9069` | fix(skeleton): make the pinned curvature control reach 1 and hold still |
+| `4914a7b0b` | fix(skeleton): stop the curvature gizmo moving the curve when it is grabbed |
+
+### 4. Challenges and findings
+
+**A new per-point field is invisible to the generator until it is copied across
+explicitly.** Points are flattened into a different shape before generation, and
+the model's own accessors do not work on the far side of that translation. This
+failed _silently_: the pin stored, read back correctly, and did nothing at all,
+because the generator saw an undefined value on every segment. Any future
+per-point field has the same trap.
+
+**Reproducing a pinned mean by scaling both tensions cannot work.** A preserved
+ratio caps the reachable mean at `2r/(1+r)` — 0.6 on a 0.3/0.7 split — so the
+control stopped at a value that was neither 1 nor stable, and moved whenever the
+geometry moved. It is also not what the drag does: the drag adds one shared
+increment to both ends, and reproduction has to do the same or the number cannot
+round-trip.
+
+**Saturating both handles at the leading one's ceiling hides part of the control's
+range.** When the leading handle reaches tension 1 it stays; the trailing one must
+remain responsive until it reaches 1 too.
+
+**A zero-delta grab must be exactly a no-op, and it wasn't.** The underlying math
+equalizes two coupled tensions regardless of the delta, so differencing against
+the incoming geometry fired that equalization the moment the gizmo was grabbed — a
+152-unit jump before the pointer moved. Fixed by differencing against the same
+call at zero drag.
+
+**A pinned segment must not be bounded twice.** The pre-existing smooth ceiling
+eases into its limit, so a handle exactly on the limit comes back ~3.75% short: a
+pin of 1 rendered as 0.91–0.96 depending on how the on-curve gizmo had been used.
+Where a pin is present it now enforces the ceiling itself and the older bound
+stands down.
+
+---
+
+## 7. The two generated controls fought each other — fix
+
+**Branch:** `fix/skeleton-expand-math` (not yet merged)
+**Dates:** 2026-07-27 – 2026-07-28
+**Plan:** dissolved into `SKELETON-FEATURE-MODEL.md` §3.2 and §7
+
+### 1. Problem
+
+Grabbing the curvature gizmo moved the curve; its reachable range looked
+arbitrary; and dragging a generated on-curve moved the neighbouring off-curves.
+All three were one fault. Three things wrote a generated handle's length — the
+fit, the pin, and stored per-handle adjustments — and the nudge translated each
+handle along with its rib end, so the on-curve drag had to store an equal and
+opposite adjustment to hold the handle still. The moment the on-curve gizmo was
+touched, that adjustment existed and overwrote the pin. It only behaved while no
+on-curve had ever been touched, which was exactly the report.
+
+Two smaller faults alongside: mirroring a skeleton produced the wrong shape,
+because a mirror has negative determinant and the geometric left of the mirrored
+centerline is what the stored data calls right; and with handle lines hidden in
+gizmo mode, the off-curve points were circles attached to nothing.
+
+### 2. Solution
+
+One space for the whole handle-length pipeline. The nudge stops carrying the
+handle and becomes a pure emission post-step: handles are emitted from un-nudged
+geometry, on-curves carry their nudge. Net rendered geometry is identical to what
+the two mechanisms produced when they worked — the difference is that there is one
+mechanism instead of two that cancel, so nothing is stored to make the
+cancellation happen and nothing downstream can defeat it. An on-curve drag then
+_cannot_ move an off-curve, a nudge cannot push curvature past the ceiling on its
+own, and the pin becomes independent of the on-curve gizmo rather than coupled to
+it. Ordinary carry-the-handles semantics survive as a separately accumulated
+scalar that is emitted after construction and never enters the math.
+
+Also: the mirror side-swap, the rib reset clearing the pin it had been leaving
+behind, the on-curve gizmo moved off the curve along the outward normal and
+restricted to ends that can actually move, and double-click resets.
+
+### 3. Commits
+
+| Commit | Subject |
+| --- | --- |
+| `e2309c358` | docs: gizmo plan |
+| `7b78a3b32` | fix: preserve skeleton side semantics through gizmo edits |
+| `8ba6546ec` | fix: unify generated handle construction space |
+| `465f878e1` | fix: preserve generated on-curve drag mode semantics |
+| `fc82cb9d8` | fix: stabilize generated gizmo controls |
+| `8764a5df6` | revert: keep observable storage behavior unchanged |
+| `7ce15a04a` | feat: complete generated gizmo controls |
+
+### 4. Challenges and findings
+
+**This reversed a decision made one day earlier, and both were right in turn.**
+Measuring the pin in rendered space was necessary while the nudge carried handles;
+once it stopped, construction space became strictly better because it makes the
+pin independent of the on-curve gizmo. The lesson recorded in the feature model is
+the ordering: fix the mechanics, then choose the space, not the other way round.
+
+**A nudge could push a rendered tension past the ceiling on an untouched
+segment** — 1.18 at nudge 20, 1.48 at nudge 40 — because the length was preserved
+while the reach shrank. Sliding a rib end toward its handle now reduces both, and
+the ratio stays under 1 by arithmetic.
+
+**Mirroring was verified by construction, not by eye:** generate-then-mirror and
+mirror-then-generate must produce the same point set. Swapping the per-side fields
+by hand on the mirrored data made the two agree exactly, which is what confirmed
+the swap was the whole fix. Contour-wide side ownership can only be swapped when
+the entire contour is selected, so a partial selection deliberately leaves it.
+
+**Hiding the on-curve points along with the handle lines would have been wrong.**
+On-curve points say where the outline is; off-curve points with no lines are
+floating circles. Only the off-curves are hidden.
+
+---
+
+## 8. Second round of live use — fixes
+
+**Branch:** `fix/skeleton-expand-math` (not yet merged)
+**Date:** 2026-07-28
+
+### 1. Problem
+
+Five reports from using the controls in earnest. Basic points, both real and
+generated, rendered black as if selected. The equalize gesture fired on
+button-down, so a modified drag was unreachable, and it fired on both gizmos
+rather than only the one that owns the split. The D/S expansion drag sheared the
+skeleton's segments instead of offsetting them, which negates the point of the
+tool — and did nothing at all on a single-sided contour. There was no way to see a
+segment's curvature number, or to tell a pinned segment from an automatic one.
+And a segment kept reproducing a pinned curvature underneath a handle the designer
+had since placed by hand.
+
+### 2. Solution
+
+The black points were a null index list read as "every point" by the node
+iterator, and an empty selection parses to no list at all — so the selected-node
+layer painted the whole path. Two iterators now, one per meaning.
+
+D/S expansion now moves every selected on-curve the same distance along its own
+normal, which makes each affected segment a constant-distance offset of itself, and
+runs the generator's own construction on the skeleton to get the handle lengths.
+It carries whole tied rib groups, and on a single-sided contour it moves no
+skeleton at all — the centerline is one edge there, so only the half-width changes.
+
+Equalize became a click on the curvature gizmo only, deciding after it sees
+whether the pointer moves. A switchable label layer shows each segment's tension
+with a dot when it is a pin, and the drag readout shows the same number whatever
+the switch is set to. A direct handle drag now clears the pin on that handle's own
+segment: the hand is the later and more specific answer, and has to win or the
+segment fights the cursor.
+
+### 3. Commits
+
+| Commit | Subject |
+| --- | --- |
+| `6a4080a1e` | fix: stop an empty selection painting every node as selected |
+| `10515143d` | fix: make the generated equalize a click, on the curvature gizmo only |
+| `537b83eec` | fix: make the S/D drag offset the skeleton instead of shearing it |
+| `dee00f852` | feat: label the curvature gizmo, and hand generated geometry the plain drag |
+| `5f2e0afdc` | docs: record the gizmo and modifier corrections |
+| `f5f172043` | revert: keep the rib modifiers as they were |
+| `aa9f80b41` | fix: restore the modifiers, and make Z carry the handles from either grip |
+| `4aecabf91` | feat: let a direct handle drag discard the curvature it overrules |
+| `0f82e404f` | docs: correct the pin-override exceptions |
+| `36dfc70af` | refactor: drop the tension-bound instrumentation |
+
+### 4. Challenges and findings
+
+**Two modifier rearrangements were built and both were reverted the same day.**
+Swapping the rib pair — plain for width, Z for the tangent slide — ignores why Z
+exists: a tangential rib move is the _rarer_ intent, and a plain drag reaching for
+the width is what the tool is for. Dropping Z as the gate on generated geometry
+removes the safety on derived geometry. Both are now in the feature model's §8 as
+closed, with the reasons, because both were arrived at twice.
+
+**A real defect was hiding under the second attempt.** Z carried the adjacent
+handles when the drag came in through the generated on-curve and not when it came
+in through the rib grip — two entry points to the same nudge, sitting at the same
+place on screen, and only one of them passed the carry flag. Under Z the rib grip
+therefore behaved exactly like Z-Alt. The flag is now derived from the behavior
+name where both callers pass through, so they cannot disagree.
+
+**The previous round's fix for the black points was to hide all generated points**,
+which is not a fix — it removes the symptom and the feature together. Withdrawn,
+along with the iterator change made to support it.
+
+**A stat that measures the wrong thing is worse than no stat.** The tension-bound
+counter answered its question in generation 1 and was then read once as hard
+pinning, which it never was. Removed with the script that consumed it; the ceiling
+and its floor stay.
