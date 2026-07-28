@@ -260,7 +260,18 @@ export function summarizeSkeletonPointWidths(selectedPoints) {
   const tied = reduceValues(
     selectedPoints.map((entry) => entry.point?.width?.tied !== false)
   );
-  return { left, right, total, distribution, linked, tied };
+  // A single-sided contour renders the SUM of the two half-widths on its visible
+  // side, so per-side numbers and the split between them describe nothing the
+  // designer can see. They are still stored, and still what the point returns to
+  // when the contour goes back to double-sided — the panel greys them rather than
+  // hiding them, so it is clear they are being kept rather than lost.
+  const singleSided =
+    selectedPoints.length > 0 &&
+    selectedPoints.every(
+      (entry) =>
+        entry.contour?.singleSided === "left" || entry.contour?.singleSided === "right"
+    );
+  return { left, right, total, distribution, linked, tied, singleSided };
 }
 
 // Distribution percent in [-100, 100]: negative favors the right side, positive

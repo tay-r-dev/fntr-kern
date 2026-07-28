@@ -492,6 +492,92 @@ describe("fixed-rib drag geometry", () => {
       before.width.left + before.width.right + 10
     );
   });
+
+  // Single-sided renders the SUM of the two half-widths on the visible side, so
+  // the split between them is nothing the drag has any business touching. It is
+  // still the distribution the point returns to when the contour goes back to
+  // double-sided, and a drag that quietly rewrites it changes a shape the
+  // designer cannot even see while they are working.
+  const distributionOf = (point) => {
+    const total = point.width.left + point.width.right;
+    return total > 0 ? ((point.width.left - point.width.right) / total) * 100 : 0;
+  };
+
+  it("leaves the width distribution alone on a single-sided contour", () => {
+    const original = makeSingleSidedSkeleton();
+    original.contours[0].points[0].width = { left: 60, right: 20 };
+    const working = normalizeSkeletonData(structuredClone(original));
+
+    applyFixedRibDelta(
+      original,
+      working,
+      new Set(["skeletonPoint/70/1", "skeletonPoint/70/2"]),
+      "skeletonPoint/70/1",
+      { x: 0, y: -10 }
+    );
+
+    const after = working.contours[0].points[0];
+    expect(after.width.left + after.width.right).to.equal(90);
+    // Held to within grid rounding, which is as well as it can be held: the two
+    // sides are whole units, so a 60/20 split at a total of 90 wants 67.5/22.5 and
+    // has to land on 68/22. One unit of either side is 100/total percent of the
+    // distribution — 1.2 here. Rounding both sides independently, as this used to,
+    // would instead have missed the total itself.
+    expect(distributionOf(after)).to.be.closeTo(
+      distributionOf(original.contours[0].points[0]),
+      100 / 90
+    );
+  });
+
+  it("stops a single-sided drag at a total width of 2, not at the far side's", () => {
+    // The floor belongs to the width the designer sees, which single-sided reads
+    // as the total. Flooring one side instead stopped the edge a whole far-side
+    // width away from the skeleton.
+    const original = makeSingleSidedSkeleton();
+    const working = normalizeSkeletonData(structuredClone(original));
+
+    applyFixedRibDelta(
+      original,
+      working,
+      new Set(["skeletonPoint/70/1", "skeletonPoint/70/2"]),
+      "skeletonPoint/70/1",
+      { x: 0, y: 500 }
+    );
+
+    for (const point of working.contours[0].points) {
+      expect(point.width.left + point.width.right).to.equal(2);
+    }
+  });
+
+  it("holds a point still once its own rib is at the floor", () => {
+    // Double-sided: the anchor edge is pinned by taking the drag back out of the
+    // half-width. Once that width can give no more, the point has to stop moving
+    // too — otherwise the drag carries on and the edge it was pinning walks away.
+    // Each point stops on its own, so a narrow one does not hold up a wide one.
+    const original = makeLineSkeleton();
+    original.contours[0].points[0].width = { left: 40, right: 40 };
+    original.contours[0].points[1].width = { left: 4, right: 4 };
+    const working = normalizeSkeletonData(structuredClone(original));
+
+    applyFixedRibDelta(
+      original,
+      working,
+      new Set(["skeletonPoint/10/1", "skeletonPoint/10/2"]),
+      "skeletonPoint/10/1",
+      { x: 0, y: 20 },
+      // Compress: the anchor is the side the drag moves toward, and it is the one
+      // that gives up width. Plain fixed-rib anchors the far side, which grows.
+      { compress: true }
+    );
+
+    const [wide, narrow] = working.contours[0].points;
+    // The narrow point could only give 3 of the 20 before hitting the floor.
+    expect(narrow.width.right).to.equal(1);
+    expect(narrow.y).to.equal(original.contours[0].points[1].y + 3);
+    // The wide one had room for all 20 and must not have been held back.
+    expect(wide.width.right).to.equal(20);
+    expect(wide.y).to.equal(original.contours[0].points[0].y + 20);
+  });
 });
 
 // Radius of the segment's midpoint about the origin, for the arc fixture.

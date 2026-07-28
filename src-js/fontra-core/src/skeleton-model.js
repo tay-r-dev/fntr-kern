@@ -371,21 +371,35 @@ export function applyFixedRibDelta(
     const singleSided =
       originalContour.singleSided === "left" || originalContour.singleSided === "right";
     const pointDeltas = new Map();
-    for (const pointId of expandToTiedRibGroups(originalContour, pointIds)) {
+    const affected = expandToTiedRibGroups(originalContour, pointIds);
+    const allowed = collectFixedRibAllowances(
+      originalContour,
+      affected,
+      anchorSide,
+      projectedDelta,
+      singleSided
+    );
+    for (const pointId of affected) {
       const originalPointIndex = originalContour.points.findIndex(
         (point) => point.id === pointId
       );
       const originalPoint = originalContour.points[originalPointIndex];
       const workingPoint = workingContour.points?.[originalPointIndex];
       if (!originalPoint || !workingPoint || originalPoint.type) continue;
+      // Each point travels only as far as its own rib can pay for. A point at the
+      // floor stops narrowing AND stops moving - otherwise the drag carries on and
+      // the edge that width was pinning walks away with it. Its neighbours are
+      // unaffected and keep going until they reach the floor too, at which point
+      // the drag has nothing left to move and stands still.
+      const allowedDelta = allowed.has(pointId) ? allowed.get(pointId) : projectedDelta;
       if (!singleSided) {
         const normal = calculateNormalAtSkeletonPoint(
           originalContour,
           originalPointIndex
         );
         const pointDelta = {
-          x: normal.x * projectedDelta,
-          y: normal.y * projectedDelta,
+          x: normal.x * allowedDelta,
+          y: normal.y * allowedDelta,
         };
         pointDeltas.set(originalPointIndex, pointDelta);
         workingPoint.x = round(originalPoint.x + pointDelta.x);
@@ -396,7 +410,7 @@ export function applyFixedRibDelta(
         originalPoint,
         originalContour.defaultWidth,
         anchorSide,
-        projectedDelta,
+        allowedDelta,
         round,
         singleSided
       );
@@ -752,6 +766,53 @@ function constrainVector(vector, constrain) {
     y: Math.sin(constrainedAngle) * length,
   };
 }
+// The narrowest a rib may be driven: one unit of half-width either side of the
+// centerline, so two units of stroke. Named once, because the fixed-rib drag reads
+// it both to clamp a width and to decide when a point may no longer move.
+const MIN_FIXED_RIB_HALF_WIDTH = 1;
+const MIN_FIXED_RIB_TOTAL_WIDTH = 2 * MIN_FIXED_RIB_HALF_WIDTH;
+
+// How much of the drag each affected point can pay for, in the drag's own projected
+// units. Only a shrinking drag is bounded; growing has no ceiling here.
+//
+// Tied ribs share one offset by definition (feature model 3.0), so a tied group
+// travels together and is held to whichever member reaches the floor first. Letting
+// members clamp separately would pull the group apart at exactly the moment the
+// coupling matters most.
+function collectFixedRibAllowances(
+  contour,
+  pointIds,
+  anchorSide,
+  projectedDelta,
+  singleSided
+) {
+  const allowances = new Map();
+  const points = contour?.points || [];
+  const towardTheDrag = anchorSide === "left" ? projectedDelta : -projectedDelta;
+  const widthDelta = singleSided ? towardTheDrag : -towardTheDrag;
+  if (widthDelta >= 0) {
+    return allowances;
+  }
+  const roomFor = (point) =>
+    Math.max(
+      0,
+      singleSided
+        ? getSkeletonPointWidth(point, contour?.defaultWidth) -
+            MIN_FIXED_RIB_TOTAL_WIDTH
+        : getSkeletonPointHalfWidth(point, contour?.defaultWidth, anchorSide) -
+            MIN_FIXED_RIB_HALF_WIDTH
+    );
+  for (const pointId of pointIds) {
+    const point = points.find((candidate) => candidate.id === pointId);
+    if (!point || point.type) continue;
+    const group = getTiedRibGroup(contour, point) || [point];
+    const room = Math.min(...group.map(roomFor));
+    const magnitude = Math.min(Math.abs(projectedDelta), room);
+    allowances.set(pointId, Math.sign(projectedDelta) * magnitude);
+  }
+  return allowances;
+}
+
 function applyFixedRibWidthDelta(
   workingPoint,
   originalPoint,
@@ -762,30 +823,47 @@ function applyFixedRibWidthDelta(
   singleSided = false
 ) {
   const linked = originalPoint.width?.linked !== false;
+  // Double-sided: the centerline has already moved by the drag, and this pins one
+  // outline edge by taking the same amount back out of its half-width. Single-
+  // sided: the centerline held still, so the sign flips - the width alone has to
+  // carry the edge to the cursor.
+  const towardTheDrag = anchorSide === "left" ? projectedDelta : -projectedDelta;
+  const widthDelta = singleSided ? towardTheDrag : -towardTheDrag;
+  if (singleSided) {
+    // Single-sided renders the SUM of the two half-widths on its visible side, so
+    // the drag owns the total and the split between the two sides is none of its
+    // business. That split is the distribution the point returns to when the
+    // contour goes back to double-sided, and a drag that rewrote it would be
+    // changing a shape the designer cannot see while they work. Writing the total
+    // preserves it by construction - and it also puts the floor on the width they
+    // can see rather than on one side of it, which is what let the visible edge
+    // stop a whole far-side width away from the skeleton.
+    setSkeletonPointTotalWidth(
+      workingPoint,
+      defaultWidth,
+      Math.max(
+        MIN_FIXED_RIB_TOTAL_WIDTH,
+        getSkeletonPointWidth(originalPoint, defaultWidth) + widthDelta
+      ),
+      { round }
+    );
+    workingPoint.width.linked = linked;
+    return;
+  }
   const originalHalfWidth = getSkeletonPointHalfWidth(
     originalPoint,
     defaultWidth,
     anchorSide
   );
-  // Double-sided: the centerline has already moved by the drag, and this pins one
-  // outline edge by taking the same amount back out of its half-width. Single-
-  // sided: the centerline held still, so the sign flips — the half-width alone
-  // has to carry the edge to the cursor.
-  const towardTheDrag = anchorSide === "left" ? projectedDelta : -projectedDelta;
-  const widthDelta = singleSided ? towardTheDrag : -towardTheDrag;
   setSkeletonPointSideWidth(
     workingPoint,
     defaultWidth,
     anchorSide,
-    Math.max(1, originalHalfWidth + widthDelta),
+    Math.max(MIN_FIXED_RIB_HALF_WIDTH, originalHalfWidth + widthDelta),
     // Linking would move the far half-width by the same amount and so travel the
-    // edge twice as far as the drag. Single-sided has only the one edge to
-    // answer for, so the change lands on its own side; the stored flag stands.
-    { linked: singleSided ? false : linked, round }
+    // edge twice as far as the drag.
+    { linked, round }
   );
-  if (singleSided) {
-    workingPoint.width.linked = linked;
-  }
 }
 function getFixedRibAnchorSide(contour, projectedDelta, compress) {
   if (contour.singleSided === "left" || contour.singleSided === "right")
@@ -1788,8 +1866,12 @@ export function setSkeletonPointTotalWidth(
   const total = Math.max(0, asFiniteNumber(totalWidth, 0));
   const currentTotal = width.left + width.right;
   const leftFrac = currentTotal > 0 ? width.left / currentTotal : 0.5;
-  width.left = Math.max(0, round(total * leftFrac));
-  width.right = Math.max(0, round(total * (1 - leftFrac)));
+  // Round one side and take the other as the remainder, so the total asked for is
+  // the total stored. Rounding both independently can overshoot by a unit, which
+  // on a single-sided contour puts the visible edge a unit past the cursor.
+  const rounded = Math.max(0, round(total));
+  width.left = Math.min(rounded, Math.max(0, round(total * leftFrac)));
+  width.right = rounded - width.left;
   point.width = width;
   clearCollapsedRibSides(point);
 }

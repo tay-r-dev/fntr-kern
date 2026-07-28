@@ -60,7 +60,28 @@ Everything else is elaboration of that one idea:
   construction, on the skeleton. Handle directions are kept and their lengths
   scale by `1 + d·κ`. It carries whole tied rib groups (§3.0), and on a
   single-sided contour it moves no skeleton at all: the centerline is one edge
-  there, so only the half-width changes.
+  there, so only the width changes.
+
+  **It stops where the ribs run out, per point.** No rib may be driven under two
+  units of stroke. A point that reaches that floor stops narrowing _and stops
+  moving_ — the two go together, because the whole point of the drag is that the
+  anchor edge stays pinned, and a point that keeps travelling after its width has
+  given out drags that edge along with it. Its neighbours are unaffected and carry
+  on until they reach the floor too, so a narrow point cannot hold up a wide one
+  and the drag comes to a complete stop only when every affected rib is at the
+  floor. A tied group is held to whichever member reaches it first, since the group
+  shares one offset by definition.
+
+  **On a single-sided contour the drag owns the total, not a side.** The visible
+  edge is the sum of the two stored half-widths, so that sum is what the drag
+  writes, and the split between the two sides is left exactly as it was. That split
+  is the distribution the point returns to if the contour goes back to
+  double-sided, and it is invisible while single-sided is on — a drag that rewrote
+  it would be changing a shape the designer cannot see. It survives to within grid
+  rounding, which is as well as it can survive: the sides are whole units, so a
+  60/20 split at a total of 90 wants 67.5/22.5 and has to land on 68/22. The panel
+  greys the per-side numbers and the distribution while single-sided is on, rather
+  than hiding them, so it reads as kept rather than lost.
 - **Tunni points** on skeleton curve segments.
 - **Generated-segment gizmos** — two per generated cubic, on their own layers:
   one sets the segment's curvature, one slides its two ends along the outline.

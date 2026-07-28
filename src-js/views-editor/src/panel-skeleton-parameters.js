@@ -595,8 +595,25 @@ export default class SkeletonParametersPanel extends Panel {
       value: summary.tied.mixed ? false : summary.tied.value,
     });
     this._pushSummaryNumber(formContents, "width:total", "total-width", summary.total);
-    this._pushSummaryNumber(formContents, "width:left", "left-width", summary.left);
-    this._pushSummaryNumber(formContents, "width:right", "right-width", summary.right);
+    // On a single-sided contour the visible edge is the TOTAL, so the per-side
+    // numbers and the split between them describe nothing on screen. Greyed and
+    // blank rather than hidden: they are still stored, and still what the point
+    // goes back to if the contour returns to double-sided.
+    const perSideGate = summary.singleSided ? { disabled: true, blank: true } : {};
+    this._pushSummaryNumber(
+      formContents,
+      "width:left",
+      "left-width",
+      summary.left,
+      perSideGate
+    );
+    this._pushSummaryNumber(
+      formContents,
+      "width:right",
+      "right-width",
+      summary.right,
+      perSideGate
+    );
     this._pushSummarySlider(
       formContents,
       "width:distribution",
@@ -605,7 +622,9 @@ export default class SkeletonParametersPanel extends Panel {
       -100,
       100,
       0,
-      { step: 10 }
+      summary.singleSided
+        ? { step: 10, disabled: true, displayValue: "" }
+        : { step: 10 }
     );
     // Donor: scale 0.2–2.0 in 0.2 steps, shown here in percent; the number
     // input accepts values beyond the slider range.
@@ -959,13 +978,15 @@ export default class SkeletonParametersPanel extends Panel {
 
   // ---- Field description helpers -------------------------------------------
 
-  _pushSummaryNumber(formContents, key, labelKey, summary) {
+  _pushSummaryNumber(formContents, key, labelKey, summary, options = {}) {
+    const { blank = false, ...fieldOptions } = options;
     formContents.push({
       type: "edit-number",
       key,
       label: translate(`sidebar.skeleton-parameters.${labelKey}`),
-      value: summary.mixed ? null : summary.value,
-      placeholder: summary.placeholder || undefined,
+      value: blank || summary.mixed ? null : summary.value,
+      placeholder: blank ? "" : summary.placeholder || undefined,
+      ...fieldOptions,
     });
   }
 
