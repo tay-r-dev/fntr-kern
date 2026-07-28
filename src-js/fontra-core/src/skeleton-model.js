@@ -3188,23 +3188,53 @@ export function formatGeneratedCurvature(curvature) {
 // handle sits at its segment's far end and the pin belongs to the previous
 // on-curve point. Returns false when there was nothing to clear.
 export function clearSkeletonSegmentCurvatureForHandle(contour, point, side, role) {
-  const points = contour?.points || [];
-  let owner = point;
-  if (role === "in") {
-    let index = points.indexOf(point);
-    if (index < 0) {
-      return false;
-    }
-    do {
-      index = getPreviousPointIndex(contour, index);
-    } while (index >= 0 && points[index]?.type);
-    owner = index >= 0 ? points[index] : null;
-  }
+  const owner = getSkeletonSegmentHandles(contour, point, role)?.owner;
   if (!owner || getSkeletonSegmentCurvature(owner, side) === null) {
     return false;
   }
   setSkeletonSegmentCurvature(owner, side, null);
   return true;
+}
+
+// The two handles that shape the segment one generated handle belongs to: `out`
+// at the segment's start point and `in` at its end point. One copy of the walk,
+// beside the ownership rule above, because both readers have to agree about which
+// segment a handle names — the pin lives on the start point, and the pin sets the
+// two handle lengths together, so anything that touches one has to know the other.
+export function getSkeletonSegmentHandles(contour, point, role) {
+  const points = contour?.points || [];
+  const index = points.indexOf(point);
+  if (index < 0 || (role !== "in" && role !== "out")) {
+    return null;
+  }
+  const step = (from, direction) => {
+    let cursor = from;
+    do {
+      cursor =
+        direction < 0
+          ? getPreviousPointIndex(contour, cursor)
+          : getNextPointIndex(contour, cursor);
+    } while (cursor >= 0 && points[cursor]?.type);
+    return cursor;
+  };
+  const ownerIndex = role === "out" ? index : step(index, -1);
+  if (ownerIndex < 0) {
+    return null;
+  }
+  const farIndex = role === "in" ? index : step(index, 1);
+  const owner = points[ownerIndex] || null;
+  const far = farIndex >= 0 ? points[farIndex] || null : null;
+  if (!owner) {
+    return null;
+  }
+  return {
+    owner,
+    far,
+    handles: [
+      { point: owner, role: "out" },
+      ...(far ? [{ point: far, role: "in" }] : []),
+    ],
+  };
 }
 
 // The segment as the generator constructed it. Emitted on-curves carry their

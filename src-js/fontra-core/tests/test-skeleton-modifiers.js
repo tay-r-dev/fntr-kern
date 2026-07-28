@@ -656,6 +656,43 @@ describe("direct handle drags override a stored curvature", () => {
     expect(pin(layer, 1)).to.equal(null);
     expect(pin(layer, 4)).to.equal(0.6);
   });
+
+  // Discarding the pin must not MOVE anything. The pin contributes length to
+  // both of its segment's handles, so dropping it bare snaps them back to the
+  // fit's own answer — the curvature the designer just set, thrown away the
+  // instant a handle is touched, with the drag then starting from a position
+  // they never chose. A zero-delta drag is the test: it clears the pin and
+  // moves nothing.
+  const generatedPosition = (layer, pointId, role) => {
+    const pathAddress = findGeneratedPathAddress(
+      getSkeletonData(layer),
+      80,
+      pointId,
+      "left",
+      role
+    );
+    return layer.path.getPoint(
+      layer.path.getAbsolutePointIndex(
+        pathAddress.pathContourIndex,
+        pathAddress.contourPointIndex
+      )
+    );
+  };
+
+  it("holds both of the segment's handles still while the pin is discarded", () => {
+    const layer = makePinnedLayer();
+    // The segment leaving point 4: its start handle is out at 4, its end handle
+    // is in at 7. The pin sets the two lengths together, so both move when it
+    // goes — and only one of them is ever under the cursor.
+    const before = [
+      generatedPosition(layer, 4, "out"),
+      generatedPosition(layer, 7, "in"),
+    ];
+    dragHandle(layer, "out", { x: 0, y: 0 });
+    expect(pin(layer, 4)).to.equal(null);
+    expect(generatedPosition(layer, 4, "out")).to.deep.equal(before[0]);
+    expect(generatedPosition(layer, 7, "in")).to.deep.equal(before[1]);
+  });
 });
 
 function makeEditableGeneratedHandleSkeleton() {

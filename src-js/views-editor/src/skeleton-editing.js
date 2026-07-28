@@ -21,6 +21,8 @@ import {
   getSkeletonPointAddress,
   getSkeletonRibAddress,
   getSkeletonRibPosition,
+  getSkeletonSegmentCurvature,
+  getSkeletonSegmentHandles,
   getTiedRibGroup,
   isSkeletonSideLocked,
   makeEditableGeneratedHandleKey,
@@ -34,6 +36,7 @@ import {
   parseSkeletonRibKey,
   setSkeletonData,
   setSkeletonHandleOffset,
+  setSkeletonSegmentCurvature,
   transformSkeletonContourMetadata,
   transformSkeletonPointMetadata,
 } from "@fontra/core/skeleton-model.js";
@@ -1188,17 +1191,201 @@ export function toggleEditableGeneratedHandleDetached(layerGlyph, selection) {
   });
 }
 
+// Discarding a pinned curvature must not MOVE anything.
+//
+// A direct handle drag discards the pin on that handle's own segment, because the
+// hand is the later and more specific answer. But the pin contributes LENGTH to
+// both of that segment's handles, so dropping it bare snapped them back to the
+// fit's own answer: the curvature just set with the gizmo was thrown away the
+// instant a handle was touched, and the drag then started from a position the
+// designer never chose.
+//
+// So the pin is baked before it is dropped. Regenerate once with the pin cleared,
+// measure how far each of the segment's two handles moved, and carry that as a
+// stored per-handle offset. Rendered geometry is then unchanged across the clear
+// and the drag proceeds from where the curve actually was.
+//
+// Both handles, not just the dragged one: the pin sets the two lengths together,
+// and only one of them is ever under the cursor.
+//
+// The generation here is a measurement, not a mutation — it writes nothing and
+// touches no customData, so the one-write-path rail is intact.
+function makeGeneratedHandlePinBakeForEditing(address, originalPath, skeletonData) {
+  if (!originalPath || !skeletonData) {
+    return null;
+  }
+  const segment = getSkeletonSegmentHandles(
+    address.contour,
+    address.point,
+    address.role
+  );
+  if (!segment || getSkeletonSegmentCurvature(segment.owner, address.side) === null) {
+    return null;
+  }
+  const unpinned = structuredClone(skeletonData);
+  const unpinnedOwner = unpinned.contours
+    ?.find((contour) => contour?.id === address.contour.id)
+    ?.points?.find((point) => point?.id === segment.owner.id);
+  if (!unpinnedOwner) {
+    return null;
+  }
+  setSkeletonSegmentCurvature(unpinnedOwner, address.side, null);
+  const generated = generateFromSkeleton(unpinned);
+  const bakes = [];
+  for (const handle of segment.handles) {
+    const pinnedPosition = getGeneratedPathPositionForEditing(
+      skeletonData,
+      originalPath,
+      address.contour.id,
+      handle.point.id,
+      address.side,
+      handle.role
+    );
+    const unpinnedPosition = getGeneratedOutlinePositionForEditing(
+      generated,
+      address.contour.id,
+      handle.point.id,
+      address.side,
+      handle.role
+    );
+    if (!pinnedPosition || !unpinnedPosition) {
+      // Measure both ends or neither: baking one handle and not the other would
+      // hold half the segment still and move the other half.
+      return null;
+    }
+    bakes.push({
+      pointId: handle.point.id,
+      role: handle.role,
+      offset: {
+        x: pinnedPosition.x - unpinnedPosition.x,
+        y: pinnedPosition.y - unpinnedPosition.y,
+      },
+    });
+  }
+  // The dragged handle's own bake is handed to whichever branch writes its
+  // offset, so the two do not overwrite each other; the rest are written outright.
+  const isDragged = (bake) =>
+    bake.pointId === address.point.id && bake.role === address.role;
+  return {
+    contourId: address.contour.id,
+    side: address.side,
+    dragged: bakes.find(isDragged)?.offset || null,
+    others: bakes.filter((bake) => !isDragged(bake)),
+  };
+}
+
+function getGeneratedPathPositionForEditing(
+  skeletonData,
+  path,
+  contourId,
+  pointId,
+  side,
+  role
+) {
+  const pathAddress = findGeneratedPathAddress(
+    skeletonData,
+    contourId,
+    pointId,
+    side,
+    role
+  );
+  if (!pathAddress) {
+    return null;
+  }
+  try {
+    return path.getPoint(
+      path.getAbsolutePointIndex(
+        pathAddress.pathContourIndex,
+        pathAddress.contourPointIndex
+      )
+    );
+  } catch {
+    return null;
+  }
+}
+
+function getGeneratedOutlinePositionForEditing(
+  generated,
+  contourId,
+  pointId,
+  side,
+  role
+) {
+  const entryIndex = (generated?.provenance || []).findIndex(
+    (entry) => entry?.skeletonContourId === contourId
+  );
+  if (entryIndex < 0) {
+    return null;
+  }
+  const pointMap = generated.provenance[entryIndex].pointMap || [];
+  const contourPointIndex = pointMap.findIndex(
+    (provenance) =>
+      provenance?.skeletonPointId === pointId &&
+      provenance.side === side &&
+      provenance.role === role
+  );
+  if (contourPointIndex < 0) {
+    return null;
+  }
+  return generated.contours?.[entryIndex]?.points?.[contourPointIndex] || null;
+}
+
+// Writes each baked offset on top of whatever that handle already stored. Runs
+// inside the mutate, on a working copy rebuilt from the original every frame, so
+// it is idempotent and the values it adds are constants measured once.
+function applyGeneratedHandlePinBakeForEditing(
+  contour,
+  pinBake,
+  { round = Math.round }
+) {
+  if (!contour || contour.id !== pinBake.contourId) {
+    return;
+  }
+  for (const bake of pinBake.others) {
+    const point = (contour.points || []).find((item) => item?.id === bake.pointId);
+    if (!point) {
+      continue;
+    }
+    const offset = getSkeletonHandleOffset(point, pinBake.side, bake.role);
+    if (offset.detached) {
+      // A detached handle is absolute and never saw the pin, so there is nothing
+      // of the pin in its position to preserve.
+      continue;
+    }
+    setSkeletonHandleOffset(point, pinBake.side, bake.role, {
+      ...offset,
+      x: round(offset.x + bake.offset.x),
+      y: round(offset.y + bake.offset.y),
+    });
+  }
+}
+
 function createEditableGeneratedHandleExecutorForEditing(
   address,
   behaviorName,
   originalPath = null,
   skeletonData = null
 ) {
-  const originalOffset = getSkeletonHandleOffset(
+  const pinBake = makeGeneratedHandlePinBakeForEditing(
+    address,
+    originalPath,
+    skeletonData
+  );
+  const storedOffset = getSkeletonHandleOffset(
     address.point,
     address.side,
     address.role
   );
+  // A detached handle is absolute and never saw the pin, so it has nothing of the
+  // pin in its position to preserve.
+  const draggedBake = storedOffset.detached ? null : pinBake?.dragged;
+  const originalOffset = draggedBake
+    ? {
+        ...storedOffset,
+        x: storedOffset.x + draggedBake.x,
+        y: storedOffset.y + draggedBake.y,
+      }
+    : storedOffset;
   const equalize =
     behaviorName?.startsWith("equalize") === true ||
     behaviorName === "alternate" ||
@@ -1208,13 +1395,19 @@ function createEditableGeneratedHandleExecutorForEditing(
       ? makeEditableGeneratedHandleEqualizeGeometryForEditing(
           address,
           originalPath,
-          skeletonData
+          skeletonData,
+          draggedBake
         )
       : null;
   return {
     applyDelta(target, delta, { round = Math.round } = {}) {
       // Direct manipulation outranks a curvature the gizmo pinned earlier, for
       // this handle's own segment. Both branches below place the handle by hand.
+      // The pin's contribution to the two handle lengths is preserved as stored
+      // offsets first, so dropping it moves nothing.
+      if (pinBake) {
+        applyGeneratedHandlePinBakeForEditing(target.contour, pinBake, { round });
+      }
       clearSkeletonSegmentCurvatureForHandle(
         target.contour,
         target.point,
@@ -1271,7 +1464,8 @@ function makeEditableGeneratedHandleOffsetForEditing(
 function makeEditableGeneratedHandleEqualizeGeometryForEditing(
   address,
   originalPath,
-  skeletonData
+  skeletonData,
+  draggedBake = null
 ) {
   const oppositeRole = address.role === "in" ? "out" : "in";
   const positions = {};
@@ -1307,11 +1501,15 @@ function makeEditableGeneratedHandleEqualizeGeometryForEditing(
   const ribPos = positions.onCurve;
   const baseFor = (position, offset) =>
     offset.detached ? ribPos : { x: position.x - offset.x, y: position.y - offset.y };
+  // Where the generator will put this handle once the pin is gone: the offsets
+  // below are stated against that base, so it has to be the post-clear one.
+  const unpinBase = (base) =>
+    draggedBake ? { x: base.x - draggedBake.x, y: base.y - draggedBake.y } : base;
   return {
     ribPos,
     draggedPos: positions[address.role],
     oppositePos: positions[oppositeRole],
-    draggedBase: baseFor(positions[address.role], draggedOffset),
+    draggedBase: unpinBase(baseFor(positions[address.role], draggedOffset)),
     oppositeBase: baseFor(positions[oppositeRole], oppositeOffset),
     draggedDirection: address.direction,
     draggedDetached: draggedOffset.detached === true,
