@@ -62,15 +62,25 @@ Everything else is elaboration of that one idea:
   single-sided contour it moves no skeleton at all: the centerline is one edge
   there, so only the width changes.
 
-  **It stops where the ribs run out, per point.** No rib may be driven under two
-  units of stroke. A point that reaches that floor stops narrowing _and stops
-  moving_ — the two go together, because the whole point of the drag is that the
-  anchor edge stays pinned, and a point that keeps travelling after its width has
-  given out drags that edge along with it. Its neighbours are unaffected and carry
-  on until they reach the floor too, so a narrow point cannot hold up a wide one
-  and the drag comes to a complete stop only when every affected rib is at the
-  floor. A tied group is held to whichever member reaches it first, since the group
-  shares one offset by definition.
+  **It stops where the ribs run out, per point.** No side may be driven under one
+  unit of half-width, so no rib under two units of stroke. A point that reaches
+  that floor stops narrowing _and stops moving_ — the two go together, because the
+  whole point of the drag is that the anchor edge stays pinned, and a point that
+  keeps travelling after its width has given out drags that edge along with it. Its
+  neighbours are unaffected and carry on until they reach the floor too, so a
+  narrow point cannot hold up a wide one, and the drag comes to a complete stop
+  only when every affected rib is at the floor.
+
+  Three things all have to be held back by that same per-point allowance, and each
+  one was found leaking separately: the point's own travel, the **far** side's
+  width (linked ribs move both sides by one amount, so the far side can reach the
+  floor first — and when it does the drag is over, because that edge is down on the
+  skeleton), and the segment's **handles**. The handles are the one that hides:
+  scaled by the raw drag while the on-curves were held, they keep the shape moving
+  after everything else has stopped, and only on a curved skeleton — which is every
+  real one. A straight-skeleton test will not see it. A tied group is held to
+  whichever member reaches the floor first, since the group shares one offset by
+  definition.
 
   **On a single-sided contour the drag owns the total, not a side.** The visible
   edge is the sum of the two stored half-widths, so that sum is what the drag

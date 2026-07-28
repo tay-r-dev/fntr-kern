@@ -578,6 +578,59 @@ describe("fixed-rib drag geometry", () => {
     expect(wide.width.right).to.equal(20);
     expect(wide.y).to.equal(original.contours[0].points[0].y + 20);
   });
+
+  it("stops the handles too, not just the on-curves", () => {
+    // Past the floor the drag must do nothing at all. The on-curves were being
+    // held while the segment's HANDLES kept scaling by the raw drag, so on a
+    // curved skeleton — which is every real one — the shape carried on moving.
+    const atTheFloor = makeArcSkeleton();
+    for (const point of atTheFloor.contours[0].points) {
+      point.width = { left: 12, right: 12, linked: true };
+    }
+    const selection = new Set(["skeletonPoint/50/1", "skeletonPoint/50/4"]);
+    const drag = (magnitude) => {
+      const working = normalizeSkeletonData(structuredClone(atTheFloor));
+      applyFixedRibDelta(
+        atTheFloor,
+        working,
+        selection,
+        "skeletonPoint/50/1",
+        { x: magnitude, y: 0 },
+        { compress: true }
+      );
+      return working.contours[0].points;
+    };
+
+    // 11 of the 12 units is all the rib can give. Anything past that is refused.
+    expect(drag(200)).to.deep.equal(drag(11));
+  });
+
+  it("stops on whichever of the two sides runs out first", () => {
+    // Linked ribs move both sides by the same amount, so the FAR side can reach
+    // the floor before the anchor does. It used to be pinned at zero there while
+    // the drag carried on compressing the anchor — the opposite edge sitting on
+    // the skeleton, visibly done, and the drag still going.
+    const original = makeLineSkeleton();
+    original.contours[0].points[0].width = { left: 60, right: 10, linked: true };
+    original.contours[0].points[1].width = { left: 60, right: 10, linked: true };
+    const working = normalizeSkeletonData(structuredClone(original));
+
+    applyFixedRibDelta(
+      original,
+      working,
+      new Set(["skeletonPoint/10/1", "skeletonPoint/10/2"]),
+      "skeletonPoint/10/1",
+      { x: 0, y: -40 },
+      { compress: true }
+    );
+
+    for (const point of working.contours[0].points) {
+      // The right side had 9 units to give before the floor; the left keeps the
+      // rest of its width rather than being compressed on alone.
+      expect(point.width.right).to.equal(1);
+      expect(point.width.left).to.equal(51);
+    }
+  });
 });
 
 // Radius of the segment's midpoint about the origin, for the arc fixture.

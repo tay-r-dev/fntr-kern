@@ -371,6 +371,11 @@ export function applyFixedRibDelta(
     const singleSided =
       originalContour.singleSided === "left" || originalContour.singleSided === "right";
     const pointDeltas = new Map();
+    // The same allowance again, as the signed distance each end actually travelled.
+    // The handle construction needs it as a scalar per end, and it must be the
+    // clamped one: handles scaled by the raw drag kept the shape moving after the
+    // on-curves had stopped, which on a curved skeleton is the whole shape.
+    const pointOffsets = new Map();
     const affected = expandToTiedRibGroups(originalContour, pointIds);
     const allowed = collectFixedRibAllowances(
       originalContour,
@@ -402,6 +407,7 @@ export function applyFixedRibDelta(
           y: normal.y * allowedDelta,
         };
         pointDeltas.set(originalPointIndex, pointDelta);
+        pointOffsets.set(originalPointIndex, allowedDelta);
         workingPoint.x = round(originalPoint.x + pointDelta.x);
         workingPoint.y = round(originalPoint.y + pointDelta.y);
       }
@@ -421,7 +427,7 @@ export function applyFixedRibDelta(
         originalContour,
         workingContour,
         pointDeltas,
-        projectedDelta,
+        pointOffsets,
         round
       );
   }
@@ -465,7 +471,7 @@ function offsetControlPointsWithFixedRibSegments(
   originalContour,
   workingContour,
   pointDeltas,
-  projectedDelta,
+  pointOffsets,
   round
 ) {
   const points = originalContour.points || [];
@@ -496,8 +502,8 @@ function offsetControlPointsWithFixedRibSegments(
         startIndex,
         endIndex,
         controlIndices,
-        startMoved ? projectedDelta : 0,
-        endMoved ? projectedDelta : 0,
+        startMoved ? pointOffsets.get(startIndex) || 0 : 0,
+        endMoved ? pointOffsets.get(endIndex) || 0 : 0,
         round
       )
     ) {
@@ -793,15 +799,30 @@ function collectFixedRibAllowances(
   if (widthDelta >= 0) {
     return allowances;
   }
-  const roomFor = (point) =>
-    Math.max(
+  const farSide = anchorSide === "left" ? "right" : "left";
+  const roomFor = (point) => {
+    if (singleSided) {
+      return Math.max(
+        0,
+        getSkeletonPointWidth(point, contour?.defaultWidth) - MIN_FIXED_RIB_TOTAL_WIDTH
+      );
+    }
+    // Linked ribs move BOTH sides by the same amount, so the far side can reach
+    // the floor before the anchor does - and when it does the drag is finished,
+    // because that edge is already down on the skeleton. Without this the far side
+    // pinned at zero while the drag carried on compressing the anchor alone.
+    const sides = point?.width?.linked !== false ? [anchorSide, farSide] : [anchorSide];
+    return Math.max(
       0,
-      singleSided
-        ? getSkeletonPointWidth(point, contour?.defaultWidth) -
-            MIN_FIXED_RIB_TOTAL_WIDTH
-        : getSkeletonPointHalfWidth(point, contour?.defaultWidth, anchorSide) -
+      Math.min(
+        ...sides.map(
+          (side) =>
+            getSkeletonPointHalfWidth(point, contour?.defaultWidth, side) -
             MIN_FIXED_RIB_HALF_WIDTH
+        )
+      )
     );
+  };
   for (const pointId of pointIds) {
     const point = points.find((candidate) => candidate.id === pointId);
     if (!point || point.type) continue;
