@@ -107,8 +107,18 @@ function tangentIntersectionDistances(q0, u0, q3, u1) {
 // gizmo had been used. The pin's own per-handle cap is the same guarantee - no
 // handle past the tangent intersection - stated in the space the number was read
 // in, so it is the one that survives.
-function boundLength(length, limit, chord) {
-  let bounded = length;
+//
+// `hardLimit` is the same ceiling stated exactly, with no blend window, and it is
+// what a HAND-PLACED handle gets. The smooth form is right for the fit, whose
+// answer must be a continuous function of the skeleton, and wrong for a length the
+// designer chose: eased, it lands a few percent short of what was asked for, so a
+// handle could never quite reach the tangent intersection and a curvature baked out
+// of a pin came back shaved. Measured before this: 5.0 units short at tension 1,
+// with the last third of the drag's travel absorbed by the blend window - the
+// "resistance" report. Tension 1 is still the wall (D1); it is now exactly where
+// the wall is.
+function boundLength(length, limit, chord, hardLimit = Infinity) {
+  let bounded = Math.min(length, hardLimit);
   if (Number.isFinite(limit)) {
     const flooredLimit = Math.max(limit, chord * TENSION_LIMIT_FLOOR_RATIO);
     bounded = smoothMin(bounded, flooredLimit, SMOOTH_MIN_WINDOW * flooredLimit);
@@ -276,6 +286,16 @@ function shapeTensions(
   };
 }
 
+// An attached adjustment with something in it is a length the designer placed.
+// A zero one is not: every attached handle carries an adjustment object whether or
+// not it has ever been touched, so testing for the object alone would hand the
+// exact ceiling to the whole outline.
+function isHandPlaced(adjustment) {
+  return (
+    !!adjustment && !adjustment.detached && !!((adjustment.x || 0) || (adjustment.y || 0))
+  );
+}
+
 function adjustedHandleLength(length, anchor, direction, adjustment) {
   if (!adjustment) {
     return length;
@@ -394,12 +414,24 @@ export function offsetCubicSide({
     endAdjustment,
   });
   const pinned = shaped.pinned;
+  // Which ceiling each end gets: none if the segment is pinned, since the pin
+  // saturates its own tensions at 1; the exact one if the handle carries an
+  // attached adjustment, because that length was chosen by hand; the smooth one
+  // otherwise, because that length is the fit's and has to stay continuous.
+  const boundsFor = (adjustment, limit) =>
+    pinned
+      ? [Infinity, Infinity]
+      : isHandPlaced(adjustment)
+        ? [Infinity, limit]
+        : [limit, Infinity];
+  const [startSmooth, startHard] = boundsFor(startAdjustment, startLimit);
+  const [endSmooth, endHard] = boundsFor(endAdjustment, endLimit);
   return {
     startLength: startAdjustment?.detached
       ? adjustedHandleLength(0, q0, u0, startAdjustment)
-      : boundLength(shaped.startLength, pinned ? Infinity : startLimit, chord),
+      : boundLength(shaped.startLength, startSmooth, chord, startHard),
     endLength: endAdjustment?.detached
       ? adjustedHandleLength(0, q3, u1, endAdjustment)
-      : boundLength(shaped.endLength, pinned ? Infinity : endLimit, chord),
+      : boundLength(shaped.endLength, endSmooth, chord, endHard),
   };
 }

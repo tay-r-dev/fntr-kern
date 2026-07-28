@@ -167,7 +167,19 @@ pure and independent (contour _i_'s output depends only on contour _i_):
    attached per-handle adjustment, curvature pin, then bound. The adjustment
    owns the split; the pin adds one shared tension increment and owns the
    magnitude. Detached handles remain absolute and bypass the attached
-   adjustment and pin stages. A side under ~0.5 units ("collapsed") skips all of
+   adjustment and pin stages.
+
+   **The final bound comes in three forms, one per author of the length.** A
+   pinned segment is not bounded at all, because the pin saturates its own two
+   tensions at 1. A handle carrying a nonzero attached adjustment gets the ceiling
+   stated **exactly**. Everything else — the fit's own answer — gets it **eased**
+   over a blend window, because the fit has to be a continuous function of the
+   skeleton. The eased form lands a few percent under what it is given, which is
+   right for a fit and wrong for a length a designer chose: it cost 5 units at
+   tension 1, so a hand-dragged handle could never quite reach the tangent
+   intersection and a curvature baked out of a pin (§7) came back shaved. Tension
+   1 is still the wall either way; the exact form just puts the wall where the
+   number says it is. A side under ~0.5 units ("collapsed") skips all of
    this and copies the skeleton verbatim — this is what makes single-sided
    contours exact.
 
@@ -389,6 +401,13 @@ Rules that hold everywhere:
   neither of the panel's two handle controls clears it, because neither places a
   handle by hand: "reset handles" is deliberately narrower than a rib reset, and
   the detach toggle writes offsets only to hold a handle where it already is.
+- **Clearing the pin must not move anything.** The pin contributes length to both
+  of its segment's handles, so a bare clear snaps them back to the fit's own
+  answer — the curvature just set, thrown away the instant a handle is touched.
+  The pin is therefore **baked** first: one regeneration with it cleared measures
+  how far each of the two handles moves, and that difference is stored as a
+  per-handle offset. Both handles, because only one is ever under the cursor.
+  Detached handles are skipped — they are absolute and never saw the pin.
 - **The full rib reset does clear it**, alongside the nudge and the handle
   adjustments, on the segment *leaving* that point.
 
