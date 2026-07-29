@@ -1,4 +1,8 @@
-import { parameterizeAgainstCubic, solveHandleLengths } from "./fit-cubic.js";
+import {
+  parameterizeAgainstCubic,
+  solveHandleLengths,
+  solveHandleScale,
+} from "./fit-cubic.js";
 import {
   calculateTunniPoint,
   equalizeTensions,
@@ -35,16 +39,32 @@ const CORRECTION_BAND_WINDOW = 0.05;
 // fixed seed is just a composition of smooth maps.
 const CORRECTION_PASSES = 4;
 
-// How much extra deviation from the true offset equalization may spend, in font
-// units, over what the fit alone achieves.
+// How much extra deviation from the true offset equalization may spend over
+// what the fit alone achieves: a fraction of the fit's own error, plus a floor
+// in font units.
 //
-// Absolute rather than proportional, deliberately. Constant-width segments come
-// out of the fit at 0.11-0.49 total deviation, so a quarter unit is real room
-// there. Tapered ones sit at 3.6-14.4 because handle DIRECTION is pinned to the
-// skeleton (D11) and no length can absorb a direction error, so the same
-// quarter unit is noise and equalization goes quiet. That is the intent: do not
-// spend accuracy where none is left to spare.
+// The floor alone was the whole allowance once, and it silenced the walk on
+// exactly the segments that need it. Constant-width segments come out of the fit
+// at 0.11-0.49 total deviation, so a quarter unit is real room there. Tapered
+// ones sit at 3.6-14.4, because handle DIRECTION is pinned to the skeleton (D11)
+// and no length can absorb a direction error - and a tapered segment is also
+// where the fit's own answer comes out most lopsided, since lambda is applied per
+// end and the two ends of a cubic differ in curvature. So the stage that exists
+// to rebalance the pair went quiet precisely where the pair was worst, leaving
+// one handle on the tension ceiling and its partner starved, off a skeleton whose
+// own two handles were symmetric to three decimals.
+//
+// Sized against the fit's own error, the room to rebalance appears where the
+// error is. The floor stays for segments the fit nails, where a proportional
+// allowance would be too small to let the walk move at all.
 const EQUALIZE_ALLOWANCE = 0.25;
+const EQUALIZE_ALLOWANCE_RATIO = 0.25;
+
+// The magnitude re-solve is a least squares like any other here, and gets the
+// same treatment as the handle fit: bounded to a band around the split it was
+// asked about, so a degenerate system cannot return a wild scale.
+const SCALE_BAND_LOW = 0.25;
+const SCALE_BAND_HIGH = 4;
 
 // Bisection on "is this split still within the allowance", from the fitted
 // split toward the equal one. Fixed count, taken every time, no convergence
@@ -222,10 +242,40 @@ function shapeTensions(
     return { startLength, endLength, pinned: false };
   }
 
-  const lengthsFor = (tensions) => ({
-    startLength: tensions.start * startReach,
-    endLength: tensions.end * endReach,
-  });
+  // A candidate split, taken at ITS OWN best magnitude. Walking the split alone
+  // moves the curve, so every candidate but the fitted one would be measured
+  // carrying a magnitude that does not belong to it, and the walk would be
+  // rejecting magnitudes while believing it was rejecting splits. Re-solving the
+  // scale costs one closed form and is exactly inert on the fitted pair, which
+  // is already the joint optimum.
+  //
+  // The candidate is normalized to the fitted pair's magnitude before the scale
+  // is solved, so the band below means "how far the magnitude may travel from
+  // the fit's" rather than being read against whatever magnitude the ratio path
+  // happened to leave behind. equalizeTensions holds the harmonic mean, and the
+  // mean of a pair with one dead handle is itself dead, so an un-normalized
+  // equal candidate arrives as two near-zero handles - a direction that is
+  // right and a magnitude that is meaningless.
+  const fittedNorm = Math.hypot(startLength, endLength);
+  const lengthsFor = (tensions) => {
+    let rayStart = tensions.start * startReach;
+    let rayEnd = tensions.end * endReach;
+    const norm = Math.hypot(rayStart, rayEnd);
+    if (norm > EPSILON && fittedNorm > EPSILON) {
+      rayStart = (rayStart / norm) * fittedNorm;
+      rayEnd = (rayEnd / norm) * fittedNorm;
+    }
+    const scale = solveHandleScale(
+      [q0, ...samples, q3],
+      [0, ...parameters, 1],
+      u0,
+      u1,
+      rayStart,
+      rayEnd
+    );
+    const bounded = Math.min(Math.max(scale, SCALE_BAND_LOW), SCALE_BAND_HIGH);
+    return { startLength: rayStart * bounded, endLength: rayEnd * bounded };
+  };
   const deviationOf = (lengths) =>
     offsetDeviation(
       q0,
@@ -241,7 +291,20 @@ function shapeTensions(
   // Walk from the fitted split toward the equal one for as long as the
   // allowance holds. Symmetric geometry arrives here already equal, so the walk
   // has nowhere to go and costs nothing.
-  const threshold = deviationOf({ startLength, endLength }) + EQUALIZE_ALLOWANCE;
+  //
+  // The allowance is a FRACTION of what the fit itself achieves, plus a floor.
+  // A flat quarter unit was room on a constant-width segment (they fit to
+  // 0.11-0.49) and nothing at all on a tapered one (3.6-14.4), because handle
+  // direction is skeleton-owned there and no length can absorb a direction
+  // error. So the walk went quiet on precisely the segments whose fit comes out
+  // lopsided, and the lopsided split stood - one handle on the tension ceiling,
+  // its partner starved, from a skeleton whose own two tensions were equal to
+  // three decimals. Sized against the fit's own error, the room to rebalance
+  // appears where the error is.
+  const fittedLengths = lengthsFor(fitted);
+  const fittedDeviation = deviationOf(fittedLengths);
+  const threshold =
+    fittedDeviation * (1 + EQUALIZE_ALLOWANCE_RATIO) + EQUALIZE_ALLOWANCE;
   let affordable = 0;
   let excessive = 1;
   for (let step = 0; step < EQUALIZE_STEPS; step++) {
@@ -292,7 +355,7 @@ function shapeTensions(
 // exact ceiling to the whole outline.
 function isHandPlaced(adjustment) {
   return (
-    !!adjustment && !adjustment.detached && !!((adjustment.x || 0) || (adjustment.y || 0))
+    !!adjustment && !adjustment.detached && !!(adjustment.x || 0 || adjustment.y || 0)
   );
 }
 

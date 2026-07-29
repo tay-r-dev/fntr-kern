@@ -440,3 +440,95 @@ describe("offset-cubic: continuity", () => {
     expect(worst).to.be.at.most(8);
   });
 });
+
+// The reported case: one skeleton segment, two states differing only in the
+// tension of its own handles. The skeleton's two handle tensions are equal to
+// within 0.003 in BOTH states, and the segment is the same otherwise: a 100
+// degree turn between two straights, stroke tapering 40 -> 114 per side.
+//
+// The generated pair used to come out at (0.40, 0.99) and (0.60, 0.97) on the
+// wide side and (0.73, 0.016) on the narrow one, so one handle always sat on a
+// bound - the clamp at tension 1, or collapsed on the floor. A near-symmetric
+// skeleton must not produce a near-degenerate generated pair.
+describe("offset-cubic: keeps the generated split near the skeleton's", () => {
+  const START = { x: 126, y: 210 };
+  const END = { x: 442, y: 380 };
+  const END_DIR = { x: 16 / 88.459, y: -87 / 88.459 };
+
+  // Tension of each handle: its length over the distance to where the two
+  // tangent rays meet. Same measure the module bounds against.
+  function tensions(p0, p1, p2, p3, d0, d3) {
+    const rib = ribInputs(p0, p1, p2, p3, d0, d3);
+    const { startLength, endLength } = offsetCubicSide({
+      p0,
+      p1,
+      p2,
+      p3,
+      d0,
+      d3,
+      ...rib,
+    });
+    const cross = (a, b) => a.x * b.y - a.y * b.x;
+    const between = { x: rib.q3.x - rib.q0.x, y: rib.q3.y - rib.q0.y };
+    const denominator = cross(rib.u0, { x: -rib.u1.x, y: -rib.u1.y });
+    const startReach = cross(between, { x: -rib.u1.x, y: -rib.u1.y }) / denominator;
+    const endReach = cross(rib.u0, between) / denominator;
+    return { start: startLength / startReach, end: endLength / endReach };
+  }
+
+  function segment(startHandle, endHandle) {
+    return [
+      START,
+      { x: START.x + startHandle, y: START.y },
+      { x: END.x + END_DIR.x * endHandle, y: END.y + END_DIR.y * endHandle },
+      END,
+    ];
+  }
+
+  // Both states, both sides. Skeleton reaches are 347.3 and 172.9, so these
+  // handle pairs are equal-tension skeletons to within 0.003.
+  const states = {
+    "low tension (0.51)": segment(179, 88.459),
+    "high tension (0.75)": segment(262, 130.231),
+  };
+
+  // Measured ratio between the two tensions, before this changed -> after:
+  //   low  outer 2.46 -> 1.66     low  inner 33.0 -> 1.03
+  //   high outer 1.62 -> 1.42     high inner 2.90 -> 1.57
+  // The ceiling itself is not the complaint: the high-tension inner side still
+  // saturates one handle at exactly 1, because its fit asks for 1.29 and 1 is
+  // the wall. What must not happen is its partner being starved to 0.345 for it.
+  for (const [name, [p0, p1, p2, p3]] of Object.entries(states)) {
+    for (const [side, d0, d3] of [
+      ["outer", 40, 114],
+      ["inner", -40, -114],
+    ]) {
+      it(`spreads the tension across both handles, ${side} side, ${name}`, () => {
+        const t = tensions(p0, p1, p2, p3, d0, d3);
+        const low = Math.min(t.start, t.end);
+        const high = Math.max(t.start, t.end);
+        expect(low, "starved handle").to.be.above(0.3);
+        expect(high / low, "tension ratio").to.be.at.most(1.8);
+      });
+    }
+  }
+
+  it("moves smoothly as the skeleton tension is swept through the collapse", () => {
+    let previous = null;
+    let worst = 0;
+    for (let endHandle = 60; endHandle <= 200; endHandle += 1) {
+      const [p0, p1, p2, p3] = segment((endHandle * 347.3) / 172.9, endHandle);
+      const rib = ribInputs(p0, p1, p2, p3, -40, -114);
+      const current = offsetCubicSide({ p0, p1, p2, p3, d0: -40, d3: -114, ...rib });
+      if (previous) {
+        worst = Math.max(
+          worst,
+          Math.abs(current.startLength - previous.startLength),
+          Math.abs(current.endLength - previous.endLength)
+        );
+      }
+      previous = current;
+    }
+    expect(worst, "jump per unit of skeleton handle").to.be.at.most(6);
+  });
+});

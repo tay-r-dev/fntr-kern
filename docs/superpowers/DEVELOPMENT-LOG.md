@@ -970,3 +970,78 @@ consumer exists.
 **Round and drop caps put points past the rib**, so the "every cap style" test can
 only assert the rib line itself on the flat-ended styles; for the others it asserts
 that the lock changes the outline at all.
+
+---
+
+## 14. One generated handle always on a bound — fix
+
+**Branch:** `fix/skeleton-expand-math`
+**Date:** 2026-07-29
+
+### 1. Problem
+
+A glyph with two skeleton contours, identical but for the tension of one curved
+segment's own handles — same endpoints, same tangents, same 40 → 114 taper, and
+both equal-tension to three decimals within themselves. One generated a sound
+outline; the other's inner edge cut straight across the bend, with its handle on
+the 1-unit floor.
+
+The collapse was the visible half. Both contours had the same fault: **one
+generated handle on a bound in every case** — the tension ceiling or the
+collapse floor — from a skeleton whose own two handles were symmetric.
+
+| side        | tensions before | ratio | after         | ratio |
+| ----------- | --------------- | ----- | ------------- | ----- |
+| low, outer  | 0.403 / 0.993   | 2.46  | 0.447 / 0.740 | 1.66  |
+| low, inner  | 0.30 / 0.009    | 33.0  | 0.610 / 0.592 | 1.03  |
+| high, outer | 0.60 / 0.97     | 1.62  | 0.626 / 0.889 | 1.42  |
+| high, inner | 1.00 / 0.345    | 2.90  | 1.000 / 0.638 | 1.57  |
+
+### 2. Solution
+
+The asymmetry is born in the seed: λ = 1 + d·κ is applied per end, and the two
+ends of a cubic have different curvature, so the two handles are scaled by
+different factors — 1.07 and 2.61 here. The band then confines each handle to a
+window around **its own** seed, so neither can migrate toward the other; the
+bound clamps whichever ended up over its reach; and the equalization stage, the
+one thing that could have rebalanced the pair, could not:
+
+- its allowance was an absolute 0.25 units, which is room on a constant-width
+  segment and nothing on a tapered one — and tapered is exactly where the fit
+  comes out lopsided;
+- it judged every candidate split at the fitted magnitude, so a re-split curve
+  was charged for a scale nobody would pair it with.
+
+Both were fixed in that stage. The allowance is now a quarter of the fit's own
+deviation plus the flat quarter unit, and each candidate is measured at its own
+best magnitude, re-solved in closed form by `solveHandleScale` — the same normal
+equations as the two-handle fit collapsed onto one unknown. It is exactly inert
+on the fitted pair, so segments the fit already got right do not move.
+
+### 3. Commits
+
+Single commit on `fix/skeleton-expand-math`.
+
+### 4. Challenges and findings
+
+**Three wrong diagnoses came before the right one, and each was disproved by a
+measurement.** That the offset was geometrically unrepresentable past the cusp —
+disproved by rendering the balanced pair, which produces the waist. That the
+least-squares was ill-conditioned and sliding along a flat direction — disproved
+by the normal matrix, condition number 1.3. That the fit had no information at
+the dead end — true of that one end and irrelevant, since the fault was present
+on the _healthy_ contour too. The report that settled it was the user's: both
+contours show it, so stop explaining the collapsed one.
+
+**A sweep is the test this class of bug needs.** Hold the segment fixed and walk
+its own tension: the generated handle stepped 1, 1, 1, 2, 5, 7, 11, 17, 34 while
+its partner went 104, 70, 163 — a 33.9-unit jump per unit of skeleton handle,
+sitting in the middle of the healthy range where nothing about the skeleton
+jumps. Monotone now, worst step 5.4. No single-configuration assertion would
+have caught either fault.
+
+**Cost, measured per segment against the true offset:** of the four generated
+segments that moved across the fixture set, three improved (7.47 → 6.96,
+13.00 → 12.84, 12.90 → 12.73) and one lost 0.28 units (0.79 → 1.07). That last
+is the allowance being spent, and it is the trade the change exists to make.
+Every accuracy ceiling in the suite still holds unchanged.

@@ -17,7 +17,9 @@ function zeros(length, ...rest) {
   }
 }
 
-export function solveHandleLengths(points, parameters, leftTangent, rightTangent) {
+// The normal equations behind the two-handle fit, exposed so a caller can also
+// solve them with the SPLIT held fixed — see solveHandleScale.
+export function handleFitSystem(points, parameters, leftTangent, rightTangent) {
   const bezierLinear = new Bezier(
     points[0],
     points[0],
@@ -43,7 +45,11 @@ export function solveHandleLengths(points, parameters, leftTangent, rightTangent
     X[0] += dotVector(A[i][0], tmp);
     X[1] += dotVector(A[i][1], tmp);
   }
+  return { C, X };
+}
 
+export function solveHandleLengths(points, parameters, leftTangent, rightTangent) {
+  const { C, X } = handleFitSystem(points, parameters, leftTangent, rightTangent);
   const C0_C1 = C[0][0] * C[1][1] - C[1][0] * C[0][1];
   const C0_X = C[0][0] * X[1] - C[1][0] * X[0];
   const X_C1 = X[0] * C[1][1] - X[1] * C[0][1];
@@ -51,6 +57,36 @@ export function solveHandleLengths(points, parameters, leftTangent, rightTangent
     alphaL: C0_C1 == 0 ? 0 : X_C1 / C0_C1,
     alphaR: C0_C1 == 0 ? 0 : C0_X / C0_C1,
   };
+}
+
+// The best scale for a handle pair whose RATIO is already decided: the same
+// least squares as solveHandleLengths, collapsed onto one unknown along the ray
+// through (startLength, endLength).
+//
+// This is what lets the split be chosen on its own merits. Redistributing
+// tension between the two handles changes the curve, so a candidate split
+// judged at the fitted magnitude is judged unfairly - it is being charged for a
+// magnitude nobody would pair it with. Re-solving the magnitude here means each
+// split is measured at its own best, which is the only comparison that says
+// anything about the split itself.
+//
+// Returns 1 when the pair is already the joint optimum, exactly: the joint
+// solution is optimal along every ray through itself, this one included.
+export function solveHandleScale(
+  points,
+  parameters,
+  leftTangent,
+  rightTangent,
+  startLength,
+  endLength
+) {
+  const { C, X } = handleFitSystem(points, parameters, leftTangent, rightTangent);
+  const numerator = startLength * X[0] + endLength * X[1];
+  const denominator =
+    startLength * startLength * C[0][0] +
+    2 * startLength * endLength * C[0][1] +
+    endLength * endLength * C[1][1];
+  return denominator > 0 ? numerator / denominator : 1;
 }
 
 export function generateBezier(points, parameters, leftTangent, rightTangent) {

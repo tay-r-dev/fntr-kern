@@ -208,6 +208,13 @@ pure and independent (contour _i_'s output depends only on contour _i_):
    magnitude. Detached handles remain absolute and bypass the attached
    adjustment and pin stages.
 
+   **λ is applied per end, and that is where an uneven split is born.** Each
+   handle is scaled by the curvature at _its own_ endpoint, so on any cubic that
+   is not an arc the two factors differ — 1.07 against 2.61 on the segment in
+   §7's sweep. The λ seed is a starting point, not an answer; the equalization
+   stage is what keeps that asymmetry from reaching the outline, and it has to
+   be sized to do so (§7).
+
    **The final bound comes in three forms, one per author of the length.** A
    pinned segment is not bounded at all, because the pin saturates its own two
    tensions at 1. A handle carrying a nonzero attached adjustment gets the ceiling
@@ -460,16 +467,42 @@ Any future per-point field has the same trap.
 
 ### Equalization of the split
 
-Inside the construction, the two handle tensions are walked toward each other
-with their harmonic mean held fixed, stopping when the segment's deviation from
-the true offset has grown **0.25 units** past the fitted best, or at fully equal.
-Absolute units deliberately: that is meaningful against the 0.11–0.49 a
-constant-width segment shows and noise against the 3.6–14.4 a tapered one shows,
-so equalization acts on constant-width strokes and goes quiet on tapered ones,
-where §3.2 has already left no accuracy to spare. Fixed-count bisection, per the
-continuity contract. Symmetric geometry is untouched to floating point; mild
-asymmetry closes by half or fully; a faithful asymmetry like a shoulder barely
-moves, which is the allowance doing its job.
+Inside the construction, the two handle tensions are walked toward each other,
+stopping when the segment's deviation from the true offset has grown past the
+fitted best by **a quarter of that best, plus a quarter unit**, or at fully
+equal. Fixed-count bisection, per the continuity contract. Symmetric geometry is
+untouched to floating point; mild asymmetry closes by half or fully; a faithful
+asymmetry like a shoulder barely moves, which is the allowance doing its job.
+
+**Each candidate split is measured at its own best magnitude**, re-solved in
+closed form (`solveHandleScale`, the two-handle normal equations collapsed onto
+one unknown along the ray through the candidate) and normalized to the fitted
+pair's magnitude first. Without that, a candidate is judged carrying a magnitude
+nobody would pair it with, and the walk rejects magnitudes while believing it is
+rejecting splits. The re-solve is exactly inert on the fitted pair, which is
+already the joint optimum and therefore optimal along every ray through itself —
+so a segment the fit got right passes through unchanged.
+
+**The allowance is proportional for a reason, and this was learned the hard
+way.** A flat quarter unit is room on a constant-width segment (they fit to
+0.11–0.49) and nothing at all on a tapered one (3.6–14.4, because handle
+direction is skeleton-owned and no length can absorb a direction error). That
+was once described as the allowance doing its job — going quiet where there is
+no accuracy to spare. It was the opposite: a tapered segment is exactly where
+the fit comes out lopsided, so the walk fell silent on the only segments that
+needed it. Two states of one skeleton, differing only in the tension of the
+segment's own handles and equal-tension to three decimals in both, generated
+pairs of (0.40, 0.99) and (0.60, 0.97) on one side and (0.73, 0.016) on the
+other — one handle on the tension ceiling or on the collapse floor in every
+case, and a visibly broken outline in the last. Sized against the fit's own
+error, the room appears where the error is: those four became (0.45, 0.74),
+(0.63, 0.89), (0.61, 0.59) and (1.00, 0.64).
+
+**A near-symmetric skeleton must not generate a near-degenerate pair.** That is
+the property to test, and the way to test it is a sweep: hold the segment fixed
+and walk its own tension through the range. Before, the generated handle stepped
+1, 1, 1, 2, 5, 7, 11, 17, 34 while its partner went 104, 70, 163 — a 33.9-unit
+jump for one unit of skeleton handle. It is monotone now, worst step 5.4.
 
 The correction band on the fit (0.25×–4× the analytic length) is **not** an error
 allowance and must not be reused as one — it bounds where the solver's answer may
@@ -549,6 +582,8 @@ once already.
 | **Tilt the generated handle axis to the true offset tangent**    | Recovers nearly all of the taper defect and is still rejected: the axis is skeleton-owned (§3.2). A single shared tilt recovers under half the gain and is _worse than pinned_ on some cases.                                                                                                     |
 | **A harmonize pass on generated joints**                         | Measured: unrounded, the generated contour already reproduces the true offset's joint curvature to within 1.7%, and to floating point where the skeleton is G2. Where a step does exist it is the skeleton's, faithfully reproduced — harmonizing would erase a curvature the designer asked for. |
 | **Unconditional equalization to fully equal**                    | Where it is safe it is a no-op (the fit already produces equal tensions on symmetric geometry); where it would change something it degrades fidelity 3.3×. Survives only as the bounded walk above.                                                                                               |
+| **An absolute-only allowance on that walk**                      | Closed the other way round: a flat 0.25 units silences the walk on tapered segments, which are the ones whose fit is lopsided. See §7 — the allowance is now proportional to the fit's own deviation with the flat quarter unit kept as a floor. Do not restore the absolute-only form.           |
+| **Judging a candidate split at the fitted magnitude**            | The split and the magnitude are orthogonal (§7), so a re-split curve wants its own scale; measured at the old one, every candidate looks worse than it is and the walk stalls. `solveHandleScale` re-solves it in closed form and is inert on the fitted pair.                                    |
 | **Measure the pin in rendered (post-nudge) space**               | Correct while nudges carried handles; superseded once they stopped. Construction space makes the pin _independent_ of the on-curve gizmo instead of coupled to it.                                                                                                                                |
 | **Reproduce a pinned mean by scaling both tensions**             | A preserved ratio caps the reachable mean at `2r/(1+r)` — 0.6 on a 0.3/0.7 split — so the control stopped at a value that was neither 1 nor stable. It is also not what the drag does. One shared increment instead.                                                                              |
 | **Swap the rib modifier pair** (plain for width ↔ Z for tangent) | Built twice, reverted twice. Z exists precisely because a tangential rib move is the _rarer_ intent, and a plain drag reaching for the width is what the tool is for.                                                                                                                             |
