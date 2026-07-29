@@ -2,6 +2,7 @@ import {
   buildHandleDomain,
   solveNaturalHandles,
 } from "@fontra/core/natural-handle-solver.js";
+import { offsetCubicSide } from "@fontra/core/offset-cubic.js";
 import { expect } from "chai";
 
 const KAPPA = 0.5522847498307933;
@@ -148,6 +149,233 @@ const accuracyCases = [
   ["strong taper, right", sCurve, -20, -110, null],
 ];
 
+function trueOffsetPoints([p0, p1, p2, p3], d0, d3, count = 41) {
+  const points = [];
+  for (let index = 0; index < count; index++) {
+    const t = index / (count - 1);
+    const mt = 1 - t;
+    const base = {
+      x:
+        mt ** 3 * p0.x + 3 * mt * mt * t * p1.x + 3 * mt * t * t * p2.x + t ** 3 * p3.x,
+      y:
+        mt ** 3 * p0.y + 3 * mt * mt * t * p1.y + 3 * mt * t * t * p2.y + t ** 3 * p3.y,
+    };
+    const derivative = {
+      x:
+        3 * mt * mt * (p1.x - p0.x) +
+        6 * mt * t * (p2.x - p1.x) +
+        3 * t * t * (p3.x - p2.x),
+      y:
+        3 * mt * mt * (p1.y - p0.y) +
+        6 * mt * t * (p2.y - p1.y) +
+        3 * t * t * (p3.y - p2.y),
+    };
+    const speed = Math.hypot(derivative.x, derivative.y);
+    if (speed < 1e-9) {
+      points.push(base);
+      continue;
+    }
+    const width = d0 + (d3 - d0) * t;
+    points.push({
+      x: base.x + (derivative.y * width) / speed,
+      y: base.y - (derivative.x * width) / speed,
+    });
+  }
+  return points;
+}
+
+function maxDeviationForHandles(points, d0, d3, handles) {
+  const request = requestFor(points, d0, d3);
+  const c1 = {
+    x:
+      request.startOutlinePoint.x +
+      request.startHandleDirection.x * handles.startLength,
+    y:
+      request.startOutlinePoint.y +
+      request.startHandleDirection.y * handles.startLength,
+  };
+  const c2 = {
+    x: request.endOutlinePoint.x + request.endHandleDirection.x * handles.endLength,
+    y: request.endOutlinePoint.y + request.endHandleDirection.y * handles.endLength,
+  };
+  const generated = [];
+  for (let index = 0; index <= 400; index++) {
+    const t = index / 400;
+    const mt = 1 - t;
+    generated.push({
+      x:
+        mt ** 3 * request.startOutlinePoint.x +
+        3 * mt * mt * t * c1.x +
+        3 * mt * t * t * c2.x +
+        t ** 3 * request.endOutlinePoint.x,
+      y:
+        mt ** 3 * request.startOutlinePoint.y +
+        3 * mt * mt * t * c1.y +
+        3 * mt * t * t * c2.y +
+        t ** 3 * request.endOutlinePoint.y,
+    });
+  }
+  let worst = 0;
+  for (const target of trueOffsetPoints(points, d0, d3)) {
+    let nearest = Infinity;
+    for (const point of generated) {
+      nearest = Math.min(
+        nearest,
+        (point.x - target.x) ** 2 + (point.y - target.y) ** 2
+      );
+    }
+    worst = Math.max(worst, Math.sqrt(nearest));
+  }
+  return worst;
+}
+
+function measureCurrentOffset(points, d0, d3) {
+  const request = requestFor(points, d0, d3);
+  return maxDeviationForHandles(
+    points,
+    d0,
+    d3,
+    offsetCubicSide({
+      p0: points[0],
+      p1: points[1],
+      p2: points[2],
+      p3: points[3],
+      d0,
+      d3,
+      q0: request.startOutlinePoint,
+      q3: request.endOutlinePoint,
+      u0: request.startHandleDirection,
+      u1: request.endHandleDirection,
+    })
+  );
+}
+
+function measureNaturalOffset(points, d0, d3, solve = solveNaturalHandles) {
+  const result = solve(requestFor(points, d0, d3));
+  return {
+    maxDeviation: maxDeviationForHandles(points, d0, d3, result),
+    pullWeightRatio: result.pullWeightRatio,
+    perpendicularRms: result.perpendicularRms,
+  };
+}
+
+const U1 = {
+  p0: { x: 408, y: 105 },
+  p3: { x: 936, y: 338 },
+  startHandleLength: 337,
+  endHandleLength: Math.hypot(30, 162),
+  startDirection: { x: 1, y: 0 },
+  endDirection: {
+    x: -30 / Math.hypot(30, 162),
+    y: -162 / Math.hypot(30, 162),
+  },
+};
+
+const u1Sides = {
+  "single-sided right": {
+    d0: -80,
+    d3: -290,
+    q0: { x: 408, y: 185 },
+    q3: { x: 650, y: 388 },
+  },
+  "single-sided left": {
+    d0: 80,
+    d3: 290,
+    q0: { x: 408, y: 25 },
+    q3: { x: 1222, y: 288 },
+  },
+  "double-sided outer": {
+    d0: 40,
+    d3: 145,
+    q0: { x: 408, y: 65 },
+    q3: { x: 1079, y: 313 },
+  },
+  "double-sided inner": {
+    d0: -40,
+    d3: -145,
+    q0: { x: 408, y: 145 },
+    q3: { x: 793, y: 363 },
+  },
+};
+
+function u1RequestAt(scale, side) {
+  const skeletonControlPoints = [
+    U1.p0,
+    {
+      x: U1.p0.x + U1.startDirection.x * U1.startHandleLength * scale,
+      y: U1.p0.y + U1.startDirection.y * U1.startHandleLength * scale,
+    },
+    {
+      x: U1.p3.x + U1.endDirection.x * U1.endHandleLength * scale,
+      y: U1.p3.y + U1.endDirection.y * U1.endHandleLength * scale,
+    },
+    U1.p3,
+  ];
+  return {
+    skeletonControlPoints,
+    startSignedWidth: side.d0,
+    endSignedWidth: side.d3,
+    startOutlinePoint: side.q0,
+    endOutlinePoint: side.q3,
+    startHandleDirection: U1.startDirection,
+    endHandleDirection: U1.endDirection,
+    handleDomain: buildHandleDomain(
+      side.q0,
+      side.q3,
+      U1.startDirection,
+      U1.endDirection
+    ),
+  };
+}
+
+function sweepRequests(requestAt, solve = solveNaturalHandles) {
+  const forward = [];
+  for (let step = 0; step <= 260; step++) {
+    forward.push(solve(requestAt(0.5 + (step * 1.3) / 260)));
+  }
+  const reverse = [];
+  for (let step = 260; step >= 0; step--) {
+    reverse.push(solve(requestAt(0.5 + (step * 1.3) / 260)));
+  }
+  return { forward, reverse };
+}
+
+function sweepMetrics(values) {
+  let worstStep = 0;
+  let worstBacktrack = 0;
+  for (let index = 1; index < values.length; index++) {
+    const previous = values[index - 1];
+    const current = values[index];
+    worstStep = Math.max(
+      worstStep,
+      Math.abs(current.startLength - previous.startLength),
+      Math.abs(current.endLength - previous.endLength)
+    );
+    worstBacktrack = Math.max(
+      worstBacktrack,
+      previous.startLength - current.startLength,
+      previous.endLength - current.endLength
+    );
+  }
+  return { worstStep, worstBacktrack };
+}
+
+function scaledHandles(points, scale) {
+  const [p0, p1, p2, p3] = points;
+  return [
+    p0,
+    {
+      x: p0.x + (p1.x - p0.x) * scale,
+      y: p0.y + (p1.y - p0.y) * scale,
+    },
+    {
+      x: p3.x + (p2.x - p3.x) * scale,
+      y: p3.y + (p2.y - p3.y) * scale,
+    },
+    p3,
+  ];
+}
+
 describe("natural-handle-solver: fixed perpendicular fit", () => {
   it("uses the chord cap when a tangent intersection is behind an endpoint", () => {
     const domain = buildHandleDomain(
@@ -272,6 +500,76 @@ describe("natural-handle-solver: perturbation continuity", () => {
       }
     });
   }
+});
+
+describe("natural-handle-solver: offset accuracy", () => {
+  for (const [name, points, d0, d3, ceiling] of accuracyCases) {
+    it(`records offset accuracy for ${name}`, () => {
+      const before = measureCurrentOffset(points, d0, d3);
+      const measured = measureNaturalOffset(points, d0, d3);
+      const diagnostic =
+        `before=${before}, after=${measured.maxDeviation}, ` +
+        `delta=${measured.maxDeviation - before}, ` +
+        `pull=${measured.pullWeightRatio}, rms=${measured.perpendicularRms}`;
+      expect(Number.isFinite(before), diagnostic).to.equal(true);
+      expect(Number.isFinite(measured.maxDeviation), diagnostic).to.equal(true);
+      if (ceiling !== null) {
+        expect(measured.maxDeviation, diagnostic).to.be.at.most(ceiling);
+      }
+    });
+  }
+});
+
+describe("natural-handle-solver: U^1 sweep", () => {
+  for (const [name, side] of Object.entries(u1Sides)) {
+    it(`is monotone and continuous for ${name}`, () => {
+      const { forward, reverse } = sweepRequests((scale) => u1RequestAt(scale, side));
+      const { worstStep, worstBacktrack } = sweepMetrics(forward);
+      const diagnostic = `worst step=${worstStep}, backtrack=${worstBacktrack}`;
+      expect(worstBacktrack, diagnostic).to.be.at.most(1e-9);
+      expect(worstStep, diagnostic).to.be.at.most(3);
+      expect(reverse).to.deep.equal([...forward].reverse());
+      for (const result of forward) {
+        expect(Number.isFinite(result.pullWeightRatio)).to.equal(true);
+        expect(Number.isFinite(result.perpendicularRms)).to.equal(true);
+      }
+    });
+  }
+
+  it("uses more pull for the unrepresentable side than a circular offset", () => {
+    const circularPull = solveNaturalHandles(arcRequest(100, 25)).pullWeightRatio;
+    const sidePull = solveNaturalHandles(
+      u1RequestAt(1, u1Sides["single-sided right"])
+    ).pullWeightRatio;
+    expect(sidePull).to.be.above(circularPull);
+  });
+
+  for (const [name, d0, d3] of [
+    ["taper left", 20, 110],
+    ["taper right", -20, -110],
+  ]) {
+    it(`keeps adjacent steps bounded for ${name}`, () => {
+      const { forward, reverse } = sweepRequests((scale) =>
+        requestFor(scaledHandles(sCurve, scale), d0, d3)
+      );
+      const { worstStep } = sweepMetrics(forward);
+      expect(worstStep, `worst step=${worstStep}`).to.be.at.most(3);
+      expect(reverse).to.deep.equal([...forward].reverse());
+    });
+  }
+});
+
+describe("natural-handle-solver: near-cusp shape", () => {
+  it("does not split normalized tensions by more than three", () => {
+    for (let width = 10; width <= 160; width++) {
+      const request = makeTightTurnRequest(width);
+      const result = solveNaturalHandles(request);
+      const start = result.startLength / request.handleDomain.startReach;
+      const end = result.endLength / request.handleDomain.endReach;
+      const ratio = Math.max(start, end) / Math.min(start, end);
+      expect(ratio, `width=${width}, start=${start}, end=${end}`).to.be.at.most(3);
+    }
+  });
 });
 
 describe("natural-handle-solver: constrained answer", () => {

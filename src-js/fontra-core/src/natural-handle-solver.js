@@ -5,8 +5,10 @@ const MIN_HANDLE_LENGTH = 1;
 const REACH_FLOOR_RATIO = 1 / 3;
 const REACH_CAP_RATIO = 2;
 const OFFSET_SAMPLE_PARAMETERS = [0.125, 0.25, 0.5, 0.75, 0.875];
+const CUSP_GATE = 0.05;
 const PULL_FLOOR = 1e-3;
-const PULL_CUSP = 4;
+const PULL_CUSP_GAIN = 0.005;
+const PULL_TAPER_GAIN = 1;
 
 function dot(a, b) {
   return a.x * b.x + a.y * b.y;
@@ -269,19 +271,28 @@ function minimizeInsideRectangle(system, domain) {
 
 function pullWeightRatio(request) {
   const points = request.skeletonControlPoints;
-  let health = 1;
+  let minimumCuspFactor = Infinity;
   for (const parameter of [0, ...OFFSET_SAMPLE_PARAMETERS, 1]) {
     const curvature = curvatureAt(points, parameter);
     if (curvature === null) {
-      health = 0;
+      minimumCuspFactor = -Infinity;
       break;
     }
     const width =
       request.startSignedWidth +
       (request.endSignedWidth - request.startSignedWidth) * parameter;
-    health = Math.min(health, clamp(1 + width * curvature, 0, 1));
+    minimumCuspFactor = Math.min(minimumCuspFactor, 1 + width * curvature);
   }
-  return PULL_FLOOR + (PULL_CUSP - PULL_FLOOR) * (1 - health) ** 2;
+  const positiveCuspFactor = Math.max(minimumCuspFactor, 0);
+  const cuspRisk = 1 / (1 + (positiveCuspFactor / CUSP_GATE) ** 4);
+
+  const [p0, , , p3] = points;
+  const chordLength = Math.hypot(p3.x - p0.x, p3.y - p0.y);
+  const widthDelta = Math.abs(request.endSignedWidth - request.startSignedWidth);
+  const taperDenominator = chordLength + widthDelta;
+  const taperRisk = taperDenominator === 0 ? 0 : widthDelta / taperDenominator;
+
+  return PULL_FLOOR + PULL_CUSP_GAIN * cuspRisk ** 2 + PULL_TAPER_GAIN * taperRisk ** 2;
 }
 
 export function solveNaturalHandles(request) {
