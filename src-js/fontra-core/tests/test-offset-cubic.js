@@ -663,3 +663,62 @@ describe("offset-cubic: an unrepresentable offset saturates, it does not jitter"
     expect(worstBacktrack, "rebound against the sweep").to.be.at.most(3);
   });
 });
+
+// The same glyph as above, converted back to double-sided: the width halves and
+// lands on both sides, so each side sits at -40/-145 instead of -80/-290. The
+// single-sided form was quiet and this one jumped 11 units per 1.7-unit step.
+//
+// The cause was the walk's own metric. Deviation was a MAX over the five
+// correction samples, which is exactly flat in whichever handle does not own the
+// worst sample: here the end tension could move 0.097 -> 0.353 without shifting
+// the number at all. Bisecting a plateau converges on its edge, where the max
+// changes owner, and that edge slides fast when the two branches run close. An
+// RMS responds to both handles everywhere.
+describe("offset-cubic: the equalization walk has a metric it can see", () => {
+  const P0 = { x: 408, y: 105 };
+  const P3 = { x: 936, y: 338 };
+  const START_HANDLE = 337;
+  const END_HANDLE = Math.hypot(30, 162);
+  const START_DIR = { x: 1, y: 0 };
+  const END_DIR = { x: -30 / END_HANDLE, y: -162 / END_HANDLE };
+
+  // Both sides of the double-sided contour, as the generator builds them.
+  const sides = {
+    outer: { d0: 40, d3: 145, q0: { x: 408, y: 65 }, q3: { x: 1079, y: 313 } },
+    inner: { d0: -40, d3: -145, q0: { x: 408, y: 145 }, q3: { x: 793, y: 363 } },
+  };
+
+  for (const [name, rib] of Object.entries(sides)) {
+    it(`neither generated handle jumps as the tension is swept, ${name} side`, () => {
+      let previous = null;
+      let worstStep = 0;
+      for (let step = 0; step <= 220; step++) {
+        const scale = 0.3 + (step * 1.1) / 220;
+        const current = offsetCubicSide({
+          p0: P0,
+          p1: {
+            x: P0.x + START_DIR.x * START_HANDLE * scale,
+            y: P0.y + START_DIR.y * START_HANDLE * scale,
+          },
+          p2: {
+            x: P3.x + END_DIR.x * END_HANDLE * scale,
+            y: P3.y + END_DIR.y * END_HANDLE * scale,
+          },
+          p3: P3,
+          u0: START_DIR,
+          u1: END_DIR,
+          ...rib,
+        });
+        if (previous) {
+          worstStep = Math.max(
+            worstStep,
+            Math.abs(current.startLength - previous.startLength),
+            Math.abs(current.endLength - previous.endLength)
+          );
+        }
+        previous = current;
+      }
+      expect(worstStep, "jump per 1.7 units of skeleton handle").to.be.at.most(6);
+    });
+  }
+});

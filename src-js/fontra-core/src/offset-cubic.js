@@ -101,7 +101,15 @@ const CORRECTION_PASSES = 4;
 // the pair went quiet precisely where the pair was worst, leaving one handle on
 // the tension ceiling and its partner starved, off a skeleton whose own two
 // handles were symmetric to three decimals.
-const EQUALIZE_ALLOWANCE = 0.25;
+//
+// The floor is stated in the norm `offsetDeviation` returns, which is an RMS
+// over the five correction samples. It was 0.25 while that function returned a
+// max over the same five samples, and an RMS over five is between 0.447x and
+// 1x that max, so the same physical room restates to somewhere in 0.11-0.25;
+// 0.20 is where it lands and is the value at which every accuracy ceiling in the
+// suite still holds. It is not a free parameter - move the norm and this moves
+// with it.
+const EQUALIZE_ALLOWANCE = 0.2;
 const EQUALIZE_ALLOWANCE_RATIO = 0.15;
 
 // Bisection on "is this split still within the allowance", from the fitted split
@@ -219,21 +227,38 @@ function sideCurve(q0, q3, u0, u1, startLength, endLength) {
   ];
 }
 
-// Worst distance from the true offset to a candidate pair, measured at the
-// samples the correction pass already computed. Each sample is re-projected onto
-// the candidate before measuring, seeded from the parameters the correction
-// settled on: comparing at fixed parameters would charge a candidate for
+// Distance from the true offset to a candidate pair, measured at the samples the
+// correction pass already computed. Each sample is re-projected onto the
+// candidate before measuring, seeded from the parameters the correction settled
+// on: comparing at fixed parameters would charge a candidate for
 // parameterization drift rather than for shape.
+//
+// **This is an RMS, and it must not be a max.** A max over five samples is
+// exactly flat in whichever handle does not own the current worst sample, and
+// the equalization walk bisects on it. Measured on a double-sided rib on the
+// inside of a bend: the end tension moved 0.097 -> 0.353, more than tripling one
+// handle, and the max did not move in the fourth decimal. So the walk was
+// bisecting a plateau and converging on its EDGE - the amount at which the max
+// changes owner - which is a kink whose position slides fast when the two
+// branches run close. A smooth input then produced `affordable` stepping
+// 0.984 -> 0.906 -> 0.813 -> 0.750 -> 0.688, and the outline jumped with it.
+// That is a threshold search in everything but name, which the continuity
+// contract forbids.
+//
+// An RMS has a nonzero gradient in both handles everywhere, so the crossing the
+// walk looks for moves at the same rate as its input. It is also the norm the
+// fit itself minimizes, so the walk judges candidates by the same measure that
+// produced the one it started from.
 function offsetDeviation(tensions, box, { q0, q3, u0, u1, samples, parameters }) {
   const { startLength, endLength } = lengthsFromTensions(tensions, box);
   const curve = sideCurve(q0, q3, u0, u1, startLength, endLength);
   const projected = parameterizeAgainstCubic(curve, samples, parameters);
-  let worst = 0;
+  let total = 0;
   for (let i = 0; i < samples.length; i++) {
     const point = cubicAt(...curve, projected[i]);
-    worst = Math.max(worst, Math.hypot(point.x - samples[i].x, point.y - samples[i].y));
+    total += (point.x - samples[i].x) ** 2 + (point.y - samples[i].y) ** 2;
   }
-  return worst;
+  return Math.sqrt(total / samples.length);
 }
 
 function endDerivatives(p0, p1, p2, p3, atEnd) {

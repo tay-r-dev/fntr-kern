@@ -503,10 +503,31 @@ Any future per-point field has the same trap.
 
 Inside the construction, the two handle tensions are walked toward each other,
 stopping when the segment's deviation from the true offset has grown past the
-fitted best by **15% of that best, plus a quarter unit**, or at fully equal.
+fitted best by **15% of that best, plus a fifth of a unit**, or at fully equal.
 Fixed-count bisection, per the continuity contract. Symmetric geometry is
 untouched to floating point; mild asymmetry closes by half or fully; a faithful
 asymmetry like a shoulder barely moves, which is the allowance doing its job.
+
+**The metric the walk bisects on is an RMS over the five correction samples, and
+it must never be a max.** A max is exactly _flat_ in whichever handle does not
+own the current worst sample, so the walk was bisecting a plateau and converging
+on its **edge** — the amount at which the max changes owner. That edge is a kink,
+and its position slides fast whenever the two branches run close, so a smooth
+input produced a lurching answer: measured on a double-sided rib on the inside of
+a bend, the end tension moved 0.097 → 0.353 without shifting the max in the
+fourth decimal, and the walk's result stepped 0.984 → 0.906 → 0.813 → 0.750 →
+0.688 while the skeleton moved evenly. Eleven units of generated handle per 1.7
+units of skeleton. **A bisection is only as continuous as the function under it**
+— fixed trip count does not save a search over a plateau, and this was a
+threshold search in everything but name.
+
+An RMS has a nonzero gradient in both handles everywhere. It is also the norm the
+fit itself minimizes, so the walk now judges candidates by the same measure that
+produced the one it started from. The flat part of the allowance is stated in
+that norm and moved 0.25 → 0.20 with it — an RMS over five samples is between
+0.447× and 1× the max, so the same physical room restates into 0.11–0.25, and
+0.20 is where every accuracy ceiling in the suite still holds. **It is not a free
+parameter:** change the norm and it changes with it.
 
 **Every candidate is judged as it will be emitted, ceiling included** — now a
 consequence of the box (§3.2) rather than a rule of its own, since a candidate
@@ -643,4 +664,5 @@ once already.
 | **Delete the tension bound because it never fires**                  | It fires. Kept, floored at a third of the chord. The instrumentation that answered the question has been removed, and its `active` count is not a hard-pinning measure — it counts any touch inside the blend window, which was misread once as 34% where the true figure was 2 cases in 118.                                                                                                                                                                        |
 | **Let the correction loop solve unbounded and bound on the way out** | This is the jitter. Where a cubic cannot represent the offset the least squares asks for 2.4× the reach at one end and a _negative_ length at the other, so the loop's own iterate is a self-intersecting curve, and Newton's reparameterization onto a looped curve is multivalued — one sample walked t = 0.907 → 0.200 → 0.319 → 0.635 across four passes. Fixed trip count makes that deterministic, not continuous. Enter the box on every pass instead (§3.2). |
 | **Ease the fit's tension ceiling over a blend window**               | Bought C1 where the contract only asks for continuity, at the price of landing a few percent under whatever it was given — and it is what forced the ceiling into three variants (eased / exact / exempt) and the pin into an exemption. One exact clamp is continuous and 1-Lipschitz. Do not reintroduce a smooth bound to "protect" a stage; put the stage inside the box.                                                                                        |
+| **Judge the equalization walk by the worst of its samples**          | A max over five samples is exactly flat in whichever handle does not own the worst one, so the bisection ran over a plateau and settled on its edge — the amount at which the max changes owner. Smooth input, lurching output: 11 units of generated handle per 1.7 units of skeleton. Use the RMS, which is also the norm the fit itself minimizes (§7).                                                                                                           |
 | **Keep `handleTensions`' null return for "no reach ahead"**          | The null existed so its one caller could skip the whole shaping stage — which meant a segment whose tangent rays met behind an endpoint silently got no equalization, no pin and no ceiling. Defining `reach` once, finite and positive (§3.2), deletes the case rather than the check. The function is gone from `tunni-calculations.js`.                                                                                                                           |

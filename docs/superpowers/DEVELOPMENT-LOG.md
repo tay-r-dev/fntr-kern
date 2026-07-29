@@ -1220,3 +1220,85 @@ steps under a width drag land where `1 + d·κ` crosses zero — the offset genu
 cusps there and the handle genuinely collapses. Both are ~3.3× better than
 before, and chasing them further means representing a cusp with one cubic, which
 is the limit the curvature gizmo exists for.
+
+---
+
+## 17. The equalization walk was bisecting a plateau — fix
+
+**Branch:** `fix/skeleton-tension-overflow`
+**Date:** 2026-07-29
+**Design of record:** `SKELETON-FEATURE-MODEL.md` §7 (equalization of the split)
+
+### 1. Problem
+
+Reported against §16. On the same glyph, converting the contour to single-sided
+was quiet, and converting it **back** to double-sided brought the jumps back —
+11 units of generated handle per 1.7 units of skeleton.
+
+The toggle was innocent: `setSkeletonContourSingleSided` writes one flag and
+nothing else, and a single → double → single round trip was verified
+byte-identical. Double-sided simply still jittered on its own, and §16's own
+measurements had said so — 15.00 in the mode table, reported and not chased.
+
+### 2. Solution
+
+The fault was the metric the equalization walk bisects on. `offsetDeviation`
+returned the **max** over its five samples, and a max is exactly flat in
+whichever handle does not own the current worst sample. So the walk was
+bisecting a plateau and converging on its **edge** — the amount at which the max
+changes owner, which is a kink whose position slides fast when the two branches
+run close.
+
+It now returns an RMS. That has a nonzero gradient in both handles everywhere,
+and it is the norm the fit itself minimizes, so the walk judges candidates by the
+same measure that produced the one it started from.
+
+### 3. Commits
+
+Single commit on `fix/skeleton-tension-overflow`.
+
+### 4. Challenges and findings
+
+**A bisection is only as continuous as the function under it.** This is the
+sharper form of the contract, and §16's version of it was not sharp enough.
+Fixed trip count, fixed seed, no convergence test and no threshold search were
+all satisfied — and the search was still over a plateau, which makes the answer a
+step function of where the plateau's edge happens to be. Measured: the end
+tension moved 0.097 → 0.353, more than tripling one handle, without shifting the
+max in the fourth decimal; `affordable` then stepped 0.984 → 0.906 → 0.813 →
+0.750 → 0.688 on a smoothly moving input.
+
+**The allowance floor is not a free parameter — it is stated in a norm.** An RMS
+over five samples is between 0.447× and 1× the max over the same five, so the
+0.25-unit floor restates into 0.11–0.25. At 0.25 one accuracy ceiling failed
+(1.043 against 1); 0.20 holds every ceiling **and** gives the lowest jitter of
+the values tried. Values below it were both looser on accuracy and slightly worse
+on jitter, which is the sign that this is a real optimum rather than a fudge.
+
+**The regression test was watched failing against the metric it replaced**, on
+the inner side only — the outer side of the same contour passed throughout. Same
+lesson as §15: when a fault is a property of a sweep, sweep every side.
+
+**Worst single-step movement, sweeping the glyph in every mode** — original,
+after §16, after this:
+
+| driver          | mode               | orig   | §16   | now   |
+| --------------- | ------------------ | ------ | ----- | ----- |
+| segment tension | single-sided right | 36.67  | 2.15  | 2.15  |
+| segment tension | single-sided left  | 196.00 | 4.12  | 3.13  |
+| segment tension | double-sided       | 122.00 | 15.00 | 5.00  |
+| rib width       | single-sided right | 53.01  | 16.03 | 8.00  |
+| rib width       | double-sided       | 35.00  | 10.43 | 6.00  |
+| rib width       | pinned curvature   | 69.01  | 20.02 | 11.05 |
+| on-curve drag   | single-sided right | 14.35  | 2.00  | 2.00  |
+| on-curve drag   | double-sided       | 11.25  | 12.69 | 5.67  |
+
+The one row §16 made worse (on-curve drag, double-sided) is fixed by the same
+change. Accuracy across the fixture corpus improved again: of 16 sides that
+moved, 8 better and 8 worse, net −1.84 units against the true offset, worst
+single loss 0.68.
+
+**One self-inflicted detour worth recording.** A `git checkout` of the source
+file, run to strip debug instrumentation, silently discarded the uncommitted fix
+along with it — the file was clean of instrumentation and also clean of the work.
+Check what a revert actually reverted when the fix is not yet committed.
