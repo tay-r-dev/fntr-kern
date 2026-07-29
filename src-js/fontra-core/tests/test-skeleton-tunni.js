@@ -11,6 +11,7 @@ import {
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
   generatedTunniHitTest,
+  getGeneratedSegmentCurvature,
   getGeneratedPathContourIndices,
   getSkeletonData,
   getSkeletonPointNudge,
@@ -502,6 +503,22 @@ describe("generated Tunni segments", () => {
       expect(segment.pointIndices).to.have.length(4);
       expect(segment.provenance).to.have.length(4);
     }
+  });
+
+  it("reports segment tension from the canonical control-point order", () => {
+    const curvature = getGeneratedSegmentCurvature(
+      {},
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 40, y: 80 },
+          { x: 160, y: 80 },
+          { x: 200, y: 0 },
+        ],
+      }
+    );
+
+    expect(curvature.tension).to.be.closeTo(0.4, 1e-9);
   });
 
   it("carries each point's own provenance, in segment order", () => {

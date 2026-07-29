@@ -3413,7 +3413,7 @@ export function getGeneratedSegmentCurvature(skeletonData, segment) {
   if (!hasForwardTangentIntersection(points)) {
     return null;
   }
-  const tension = calculateSegmentTension(points[0], points[1], points[2], points[3]);
+  const tension = calculateSegmentTension(points[1], points[0], points[2], points[3]);
   if (!Number.isFinite(tension) || tension <= 0) {
     return null;
   }
