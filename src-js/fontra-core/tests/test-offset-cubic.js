@@ -603,36 +603,98 @@ describe("offset-cubic: a saturated handle does not reverse its partner", () => 
 // segment's own tension in ONE direction, the generated handles oscillated by
 // more than 20 units per 1.7-unit step of skeleton handle - so the outline
 // jumped and rebounded under a single-directed drag.
+const U1 = {
+  p0: { x: 408, y: 105 },
+  p3: { x: 936, y: 338 },
+  startHandleLength: 337,
+  endHandleLength: Math.hypot(30, 162),
+  startDirection: { x: 1, y: 0 },
+  endDirection: {
+    x: -30 / Math.hypot(30, 162),
+    y: -162 / Math.hypot(30, 162),
+  },
+};
+
+function u1SkeletonAt(scale) {
+  return {
+    p0: U1.p0,
+    p1: {
+      x: U1.p0.x + U1.startDirection.x * U1.startHandleLength * scale,
+      y: U1.p0.y + U1.startDirection.y * U1.startHandleLength * scale,
+    },
+    p2: {
+      x: U1.p3.x + U1.endDirection.x * U1.endHandleLength * scale,
+      y: U1.p3.y + U1.endDirection.y * U1.endHandleLength * scale,
+    },
+    p3: U1.p3,
+  };
+}
+
+function sweepU1(side) {
+  const forward = [];
+  for (let step = 0; step <= 260; step++) {
+    const scale = 0.5 + (step * 1.3) / 260;
+    forward.push(
+      offsetCubicSide({
+        ...u1SkeletonAt(scale),
+        u0: U1.startDirection,
+        u1: U1.endDirection,
+        ...side,
+      })
+    );
+  }
+  const reverse = [];
+  for (let step = 260; step >= 0; step--) {
+    const scale = 0.5 + (step * 1.3) / 260;
+    reverse.push(
+      offsetCubicSide({
+        ...u1SkeletonAt(scale),
+        u0: U1.startDirection,
+        u1: U1.endDirection,
+        ...side,
+      })
+    );
+  }
+  return { forward, reverse };
+}
+
+function expectContinuousMonotoneSweep(values) {
+  let worstStep = 0;
+  let worstBacktrack = 0;
+  for (let index = 1; index < values.length; index++) {
+    const previous = values[index - 1];
+    const current = values[index];
+    worstStep = Math.max(
+      worstStep,
+      Math.abs(current.startLength - previous.startLength),
+      Math.abs(current.endLength - previous.endLength)
+    );
+    worstBacktrack = Math.max(
+      worstBacktrack,
+      previous.startLength - current.startLength,
+      previous.endLength - current.endLength
+    );
+  }
+  const diagnostic = `worst step ${worstStep}, worst backtrack ${worstBacktrack}`;
+  expect(worstBacktrack, diagnostic).to.be.at.most(1e-9);
+  expect(worstStep, "jump per 1.7-unit skeleton-handle step").to.be.at.most(3);
+}
+
 describe("offset-cubic: an unrepresentable offset saturates, it does not jitter", () => {
-  const P0 = { x: 408, y: 105 };
-  const P3 = { x: 936, y: 338 };
-  const START_HANDLE = 337; // 745,105
-  const END_HANDLE = Math.hypot(30, 162); // 906,176
-  const START_DIR = { x: 1, y: 0 };
-  const END_DIR = { x: -30 / END_HANDLE, y: -162 / END_HANDLE };
   // The rib ends and rib normals are fixed by the two straights, so a sweep of
   // the segment's own handles moves nothing else in this call.
   const RIB = {
     q0: { x: 408, y: 185 },
     q3: { x: 650, y: 388 },
-    u0: START_DIR,
-    u1: END_DIR,
+    u0: U1.startDirection,
+    u1: U1.endDirection,
     d0: -80,
     d3: -290,
   };
 
   function lengthsAt(scale) {
     return offsetCubicSide({
-      p0: P0,
-      p1: {
-        x: P0.x + START_DIR.x * START_HANDLE * scale,
-        y: P0.y + START_DIR.y * START_HANDLE * scale,
-      },
-      p2: {
-        x: P3.x + END_DIR.x * END_HANDLE * scale,
-        y: P3.y + END_DIR.y * END_HANDLE * scale,
-      },
-      p3: P3,
+      ...u1SkeletonAt(scale),
       ...RIB,
     });
   }
@@ -675,13 +737,6 @@ describe("offset-cubic: an unrepresentable offset saturates, it does not jitter"
 // changes owner, and that edge slides fast when the two branches run close. An
 // RMS responds to both handles everywhere.
 describe("offset-cubic: the equalization walk has a metric it can see", () => {
-  const P0 = { x: 408, y: 105 };
-  const P3 = { x: 936, y: 338 };
-  const START_HANDLE = 337;
-  const END_HANDLE = Math.hypot(30, 162);
-  const START_DIR = { x: 1, y: 0 };
-  const END_DIR = { x: -30 / END_HANDLE, y: -162 / END_HANDLE };
-
   // Both sides of the double-sided contour, as the generator builds them.
   const sides = {
     outer: { d0: 40, d3: 145, q0: { x: 408, y: 65 }, q3: { x: 1079, y: 313 } },
@@ -695,18 +750,9 @@ describe("offset-cubic: the equalization walk has a metric it can see", () => {
       for (let step = 0; step <= 220; step++) {
         const scale = 0.3 + (step * 1.1) / 220;
         const current = offsetCubicSide({
-          p0: P0,
-          p1: {
-            x: P0.x + START_DIR.x * START_HANDLE * scale,
-            y: P0.y + START_DIR.y * START_HANDLE * scale,
-          },
-          p2: {
-            x: P3.x + END_DIR.x * END_HANDLE * scale,
-            y: P3.y + END_DIR.y * END_HANDLE * scale,
-          },
-          p3: P3,
-          u0: START_DIR,
-          u1: END_DIR,
+          ...u1SkeletonAt(scale),
+          u0: U1.startDirection,
+          u1: U1.endDirection,
           ...rib,
         });
         if (previous) {
@@ -722,3 +768,36 @@ describe("offset-cubic: the equalization walk has a metric it can see", () => {
     });
   }
 });
+
+for (const [name, side] of Object.entries({
+  "single-sided right": {
+    d0: -80,
+    d3: -290,
+    q0: { x: 408, y: 185 },
+    q3: { x: 650, y: 388 },
+  },
+  "single-sided left": {
+    d0: 80,
+    d3: 290,
+    q0: { x: 408, y: 25 },
+    q3: { x: 1222, y: 288 },
+  },
+  "double-sided outer": {
+    d0: 40,
+    d3: 145,
+    q0: { x: 408, y: 65 },
+    q3: { x: 1079, y: 313 },
+  },
+  "double-sided inner": {
+    d0: -40,
+    d3: -145,
+    q0: { x: 408, y: 145 },
+    q3: { x: 793, y: 363 },
+  },
+})) {
+  it(`is monotone and frame-independent for ${name}`, () => {
+    const { forward, reverse } = sweepU1(side);
+    expectContinuousMonotoneSweep(forward);
+    expect(reverse).to.deep.equal([...forward].reverse());
+  });
+}
