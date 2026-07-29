@@ -638,6 +638,30 @@ export function calculateControlPointsFromCurvatureDelta(
   ];
 }
 
+// Whether the tangent intersection lies AHEAD of both endpoints.
+//
+// Tension is a fraction of the reach to that intersection, so it only means
+// anything while the intersection is ahead. Where it sits behind an endpoint
+// there is no ceiling for a handle to be a fraction of, and the ratio is
+// negative. calculateSegmentTension builds its answer from plain distances,
+// so it drops that sign and returns a plausible-looking number instead —
+// which is how a segment with nothing overshooting reported a tension of
+// 1.38. Callers that present or bound a tension must ask this first.
+export function hasForwardTangentIntersection(segmentPoints) {
+  if (segmentPoints?.length !== 4 || segmentPoints.some((point) => !point)) {
+    return false;
+  }
+  const [startPoint, controlPoint1, controlPoint2, endPoint] = segmentPoints;
+  const tunniPoint = calculateTunniPoint(segmentPoints);
+  if (!tunniPoint) {
+    return false;
+  }
+  return (
+    signedReach(startPoint, controlPoint1, tunniPoint) > CURVATURE_EPSILON &&
+    signedReach(endPoint, controlPoint2, tunniPoint) > CURVATURE_EPSILON
+  );
+}
+
 // How far the tangent intersection lies ALONG the handle's own axis. Negative
 // when it sits behind the on-curve point, which is the case a plain distance
 // cannot tell apart.

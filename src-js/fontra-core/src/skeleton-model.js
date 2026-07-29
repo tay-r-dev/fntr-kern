@@ -20,6 +20,7 @@ import {
   calculateOnCurvePointsFromTunni,
   calculateSegmentTension,
   calculateTunniPoint,
+  hasForwardTangentIntersection,
 } from "./tunni-calculations.js";
 import { deepCopyObject, splitGlyphNameExtension } from "./utils.ts";
 import { VarPackedPath } from "./var-path.js";
@@ -3404,6 +3405,12 @@ export function getGeneratedSegmentCurvature(skeletonData, segment) {
     segment?.provenance
   );
   if (points?.length !== 4 || points.some((point) => !point)) {
+    return null;
+  }
+  // No forward intersection means no reach to be a fraction of, so there is no
+  // tension to report — and the distance-based formula below would invent one
+  // above 1 rather than say so.
+  if (!hasForwardTangentIntersection(points)) {
     return null;
   }
   const tension = calculateSegmentTension(points[0], points[1], points[2], points[3]);

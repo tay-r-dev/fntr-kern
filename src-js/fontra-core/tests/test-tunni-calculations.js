@@ -6,9 +6,48 @@ import {
   calculateCurvatureGizmoPoint,
   calculateSegmentTension,
   calculateTunniPoint,
+  hasForwardTangentIntersection,
   shiftTensionsToMean,
 } from "@fontra/core/tunni-calculations.js";
 import { expect } from "chai";
+
+describe("tunni-calculations: hasForwardTangentIntersection", () => {
+  it("is true when the tangent rays meet ahead of both endpoints", () => {
+    expect(
+      hasForwardTangentIntersection([
+        { x: 0, y: 0 },
+        { x: 5, y: 0 },
+        { x: 10, y: 5 },
+        { x: 10, y: 10 },
+      ])
+    ).to.be.true;
+  });
+
+  it("is false when the intersection lies behind an endpoint", () => {
+    // Both handles run right; the rays meet far behind the second endpoint.
+    // A plain distance cannot tell this apart from a forward reach, which is
+    // how a segment reported a tension above 1 with nothing overshooting.
+    expect(
+      hasForwardTangentIntersection([
+        { x: 0, y: 0 },
+        { x: 60, y: 1 },
+        { x: 40, y: 99 },
+        { x: 100, y: 100 },
+      ])
+    ).to.be.false;
+  });
+
+  it("is false when the tangents are parallel and never meet", () => {
+    expect(
+      hasForwardTangentIntersection([
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 90, y: 100 },
+        { x: 100, y: 100 },
+      ])
+    ).to.be.false;
+  });
+});
 
 describe("tunni-calculations: calculateSegmentTension", () => {
   it("returns 1.0 when both handles point at the corner (a=b=c=d)", () => {
@@ -254,10 +293,7 @@ describe("tunni-calculations: curvature gizmo", () => {
       { x: 80, y: 60 },
       { x: 200, y: 0 },
     ];
-    const moved = calculateControlPointsFromCurvatureDelta(
-      { x: 0, y: 0 },
-      overCeiling
-    );
+    const moved = calculateControlPointsFromCurvatureDelta({ x: 0, y: 0 }, overCeiling);
     expect(moved).to.deep.equal(overCeiling.slice(1, 3));
   });
 });
