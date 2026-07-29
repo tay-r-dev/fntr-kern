@@ -415,18 +415,21 @@ r_\text{taper}=
 \end{cases}
 \]
 
-Combine the independent risks without double-counting their overlap, then map them to the
-pull ratio:
+Give the independent risks separate global gains, then add them to the conditioning
+floor:
 
 \[
-r=1-(1-r_\text{cusp})(1-r_\text{taper})
-\qquad
-\rho=\rho_\text{floor}+(\rho_\text{peak}-\rho_\text{floor})r^2
+\rho=\rho_\text{floor}
++g_\text{cusp}r_\text{cusp}^2
++g_\text{taper}r_\text{taper}^2
 \]
 
-The calibration suite selects and freezes the three global model constants
-\(\lambda_\text{gate}\), \(\rho_\text{floor}\), and \(\rho_\text{peak}\). The finite
-candidate grid and lexicographic selection rule live in the implementation plan.
+The gains are separate because calibration shows that one shared peak couples two
+different failure modes: enough taper authority to stabilize an outward tapered side can
+make a near-cusp transition too steep on the inward side. The calibration suite selects
+and freezes the four global model constants \(\lambda_\text{gate}\),
+\(\rho_\text{floor}\), \(g_\text{cusp}\), and \(g_\text{taper}\). The finite candidate
+grid and lexicographic selection rule live in the implementation plan.
 
 **The ratio \(\rho\) is computed only from the skeleton and the widths.** It does not read
 the fit's residual, the fit's answer, or anything else the solve produces. The absolute
