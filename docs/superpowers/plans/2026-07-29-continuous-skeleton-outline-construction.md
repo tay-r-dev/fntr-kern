@@ -6,7 +6,7 @@
 
 **Architecture:** Add `natural-handle-solver.js` as the focused pure geometry unit for fixed offset samples, the two-variable perpendicular-error system, the reference answer, the pull weight, and exact box-constrained minimization. Keep `offset-cubic.js` as the cubic-side orchestrator that builds the shared handle domain and then applies attached adjustments, the curvature pin, and detached handles; keep `skeleton-generator.js` responsible for ribs, directions, collapsed sides, topology, provenance, nudges, caps, corners, and final grid emission.
 
-**One term, three jobs.** The pull is a quadratic penalty on tension-space distance from the reference answer, weighted at `ρ·S`, where `S` is the fixed unprojected handle-influence scale. Because `S` stays positive even when the projected fit system is zero, the pull makes the system strictly convex for every finite input, supplies the answer wherever the fit has no information, and removes the rank branch and tie-break rule. It bounds each solve's condition number; the complete input-to-output sensitivity is accepted by high-resolution sweeps. The ratio `ρ` is computed from skeleton geometry and widths, never from the residual or answer. There is no confidence score and no blend between two computed answers; see the spec's §10 for why both were rejected.
+**One term, three jobs.** The pull is a quadratic penalty on tension-space distance from the reference answer, weighted at `ρ·S`, where `S` is the fixed unprojected handle-influence scale. Because `S` stays positive even when the projected fit system is zero, the pull makes the system strictly convex for every finite input, supplies the answer wherever the fit has no information, and removes the rank branch and tie-break rule. It bounds each solve's condition number; the complete input-to-output sensitivity is accepted by high-resolution sweeps. The ratio `ρ` combines a sharp near-zero cusp risk with normalized endpoint-width taper, using only skeleton geometry and widths—never the residual or answer. There is no confidence score and no blend between two computed answers; see the spec's §10 for why both were rejected.
 
 **Tech Stack:** JavaScript ES modules, Mocha, Chai, Fontra core geometry utilities, npm workspaces, Webpack.
 
@@ -877,8 +877,9 @@ comparison is on the single penalized objective only.
 - [ ] **Step 4: Implement the pull weight**
 
 ```js
+const CUSP_GATE = 0.1;
 const PULL_FLOOR = 1e-3;
-const PULL_CUSP = 4;
+const PULL_PEAK = 0.5;
 
 // The predictor of an unrepresentable offset is the cusp factor at the
 // endpoints and the same five fixed interior parameters used by the fit. The
@@ -893,28 +894,41 @@ const PULL_CUSP = 4;
 // length can absorb.
 function pullWeightRatio(request) {
   const points = request.skeletonControlPoints;
-  let health = 1;
+  let minimumCuspFactor = Infinity;
   for (const parameter of [0, ...OFFSET_SAMPLE_PARAMETERS, 1]) {
     const curvature = curvatureAt(points, parameter);
     if (curvature === null) {
-      health = 0;
+      minimumCuspFactor = -Infinity;
       break;
     }
     const width =
       request.startSignedWidth +
       (request.endSignedWidth - request.startSignedWidth) * parameter;
-    health = Math.min(health, clamp(1 + width * curvature, 0, 1));
+    minimumCuspFactor = Math.min(minimumCuspFactor, 1 + width * curvature);
   }
-  return PULL_FLOOR + (PULL_CUSP - PULL_FLOOR) * (1 - health) ** 2;
+  const positiveCuspFactor = Math.max(minimumCuspFactor, 0);
+  const cuspRisk = 1 / (1 + (positiveCuspFactor / CUSP_GATE) ** 4);
+
+  const [p0, , , p3] = points;
+  const chordLength = Math.hypot(p3.x - p0.x, p3.y - p0.y);
+  const widthDelta = Math.abs(request.endSignedWidth - request.startSignedWidth);
+  const taperDenominator = chordLength + widthDelta;
+  const taperRisk = taperDenominator === 0 ? 0 : widthDelta / taperDenominator;
+
+  const combinedRisk = 1 - (1 - cuspRisk) * (1 - taperRisk);
+  return PULL_FLOOR + (PULL_PEAK - PULL_FLOOR) * combinedRisk ** 2;
 }
 ```
 
 `PULL_FLOOR` sets the conditioning bound: because the unprojected influence scale bounds
 the projected Hessian from above, the penalized condition number is at most
-`1 + 1 / PULL_FLOOR`. The complete geometry response is still measured by sweeps because
-the frame, domain, reference, and ratio also move with the input. Both constants are
-calibrated in Task 5 against the complete accuracy and sweep suite and then frozen. They
-may not vary by glyph, side, mode, or fixture.
+`1 + 1 / PULL_FLOOR`. `CUSP_GATE` makes moderately low positive cusp factors contribute
+very little while retaining maximum authority at zero or below; the taper term catches
+the measured `U^1` sides whose cusp factors remain healthy. The complete geometry
+response is still measured by sweeps because the frame, domain, reference, and ratio also
+move with the input. All three constants are calibrated in Task 5 against the complete
+accuracy and sweep suite and then frozen. They may not vary by glyph, side, mode, or
+fixture.
 
 - [ ] **Step 5: Wire the penalized solve into the public solver**
 
@@ -1140,22 +1154,24 @@ Require the larger normalized tension divided by the smaller to remain at most `
 This rejects a near-degenerate split; it does not claim that neither handle may
 legitimately touch a box face.
 
-- [ ] **Step 5: Calibrate the two global ratios against the complete suite**
+- [ ] **Step 5: Calibrate the three global predictor constants against the complete suite**
 
 Evaluate this finite grid in ascending order:
 
 ```js
-const PULL_FLOOR_CANDIDATES = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2];
-const PULL_CUSP_CANDIDATES = [0.25, 0.5, 1, 2, 4, 8, 16];
+const PULL_FLOOR_CANDIDATES = [0.001, 0.002, 0.005, 0.01];
+const PULL_PEAK_CANDIDATES = [0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 4];
+const CUSP_GATE_CANDIDATES = [0.05, 0.075, 0.1, 0.15, 0.2];
 ```
 
 Make the grid executable without environment variables or source rewriting:
 
-1. Refactor the private solver body to accept `pullFloor` and `pullCusp`; keep the public
-   `solveNaturalHandles(request)` wrapper fixed to the two production constants.
+1. Refactor the private solver body to accept `pullFloor`, `pullPeak`, and `cuspGate`; keep
+   the public `solveNaturalHandles(request)` wrapper fixed to the three production
+   constants.
 2. Temporarily export a clearly named
-   `_solveNaturalHandlesForCalibration(request, pullFloor, pullCusp)` wrapper from the
-   solver module.
+   `_solveNaturalHandlesForCalibration(request, pullFloor, pullPeak, cuspGate)` wrapper
+   from the solver module.
 3. Parameterize the accuracy, `U^1`, taper, near-cusp, and perturbation check helpers with
    a `solve` callback. Build one `firstAcceptanceFailure(solve)` evaluator that runs those
    same checks and returns either the first diagnostic string or `null`.
@@ -1163,19 +1179,21 @@ Make the grid executable without environment variables or source rewriting:
    pair to the calibration wrapper. Log the pair and returned diagnostic, stopping at the
    first `null`.
 
-Select the first floor value for which at least one cusp value passes everything; for
-that floor, select the first passing cusp value. This is a lexicographic rule, not
-fixture-by-fixture tuning. Record every tried pair and its first failing assertion for
-the development log. If no pair passes, stop before routing production geometry and
-report that the one-pull model does not meet the combined accuracy/stability contract.
+Iterate lexicographically by floor, then peak, then gate, skipping `peak < floor`. Select
+the first triplet that passes everything. This is a fixed minimal-authority rule, not
+fixture-by-fixture tuning. Record every tried triplet and its first failing assertion for
+the development log. If no triplet passes, stop before routing production geometry and
+report that the revised one-pull model does not meet the combined accuracy/stability
+contract.
 
 - [ ] **Step 6: Freeze the selected constants**
 
-Replace the provisional `PULL_FLOOR` and `PULL_CUSP` values with the selected pair.
+Replace the provisional `PULL_FLOOR`, `PULL_PEAK`, and `CUSP_GATE` values with the
+selected triplet.
 Remove the candidate arrays, temporary calibration test, calibration-only export, and
 parameter override from the public module surface. Keep the parameterized test helpers
 where they make the frozen suite clearer, but every committed test must call the normal
-one-argument public solver. Only the two frozen global constants remain in production.
+one-argument public solver. Only the three frozen global constants remain in production.
 
 - [ ] **Step 7: Run the focused suite and record measurements**
 
@@ -1183,7 +1201,7 @@ one-argument public solver. Only the two frozen global constants remain in produ
 npm.cmd test --workspace src-js/fontra-core -- --grep "natural-handle-solver"
 ```
 
-Expected: PASS. Record the selected pair, worst sweep steps, and every accuracy maximum
+Expected: PASS. Record the selected triplet, worst sweep steps, and every accuracy maximum
 for Task 9. Summarize improved-case count, lost-case count, net change in maximum
 deviation, and worst single loss from the before/after rows. The implementation must meet
 the inherited ceilings; do not regenerate fixtures to hide a miss.
@@ -1605,7 +1623,8 @@ Update §5 preservation requirements to name:
 Record:
 
 - the original failing side and worst step from Task 1;
-- every calibrated ratio pair tried, its first failure, and the selected global pair;
+- every calibrated predictor triplet tried, its first failure, and the selected global
+  triplet;
 - the final worst `U^1` step in each width mode;
 - circular, S-curve, tight-turn, shallow-wide, unequal-handle, and taper deviation;
 - the before/after accuracy ledger, including net change and worst loss;
@@ -1697,7 +1716,7 @@ Confirm from tests and source inspection:
 - natural handles are continuous for coordinate and width perturbations;
 - the penalized system remains finite and strictly convex when the projected Hessian is
   zero;
-- the selected global pull ratios pass the complete accuracy and sweep grid;
+- the selected global pull-predictor constants pass the complete accuracy and sweep grid;
 - `U^1` is monotone with no step above `3`;
 - authored adjustments, pinned curvature, detached handles, pin clearing, and nudge independence are preserved;
 - identical input returns identical output;
