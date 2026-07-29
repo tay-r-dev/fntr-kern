@@ -66,15 +66,20 @@ Its objective has two terms:
    **reference answer** — the skeleton's own two handle tensions transferred to the
    generated tangent reaches.
 
-The pull's weight is a fraction of the fit's own scale, so the two terms are always
-commensurate. Where the fit has information the pull is negligible and the answer is the
-fit. Where the fit has no information in some direction, the pull is what determines the
-answer in that direction, and it resolves to the skeleton's curve character.
+The pull's weight is a dimensionless multiple of the frame's fixed **unprojected
+handle-influence scale**, so the two terms are always commensurate. Unlike `trace(H)`,
+that scale remains positive when the perpendicular fit has no information. In healthy
+geometry the calibrated ratio stays near its floor and the answer is fit-led. As cusp
+health degrades the ratio rises; where the fit has no information in some direction, the
+pull determines the answer in that direction and resolves to the skeleton's curve
+character.
 
 The sum is minimized inside the existing handle box. Because the pull is strictly
-positive-definite, the total is **strictly convex for every input**: the minimizer always
-exists, is always unique, and is a continuous function of the geometry with a slope bound
-set directly by the pull's weight.
+positive-definite, the total is **strictly convex for every finite input**: the minimizer
+always exists and is unique. Away from the declared topology events, its coefficients,
+reference, and box vary continuously, so the answer varies continuously too. The pull
+also bounds the condition number of each solve; end-to-end motion is accepted by the
+required sweeps rather than claimed from conditioning alone.
 
 That single term does three jobs that would otherwise be three mechanisms — it supplies
 the rank-deficient answer, it breaks ties in a flat valley, and it is how an
@@ -120,17 +125,21 @@ The automatic path contains:
 
 ### 4.2 Continuity
 
-1. Within a fixed contour topology, every unrounded automatic handle position is a
-   continuous function of skeleton coordinates and widths.
+1. Within a fixed contour topology, and while the sampled skeleton tangents remain
+   nonzero, every unrounded automatic handle position is a continuous function of
+   skeleton coordinates and widths. An exact zero derivative makes the requested normal
+   undefined; that invalid input is covered by the finiteness requirement rather than a
+   continuity claim.
 2. The construction is frame-independent. It cannot read prior generated geometry.
 3. No threshold chooses between two automatic algorithms.
-4. The minimized objective is strictly convex for every input, so the minimizer is unique
-   and no tie-break rule exists. Active handle-box constraints may change; the answer must
-   meet continuously at each shared boundary.
-5. Continuity is not sufficient on its own. The answer's sensitivity to the input must be
-   **bounded**, and the bound is set explicitly by the pull weight rather than left to the
-   conditioning of the fit. A sweep step ceiling, not a continuity proof, is the
-   acceptance criterion.
+4. The minimized objective is strictly convex for every finite input, so the minimizer is
+   unique and no tie-break rule exists. Active handle-box constraints may change; the
+   answer must meet continuously at each shared boundary.
+5. Continuity is not sufficient on its own. The pull must bound the condition number of
+   every solve rather than leave it to the perpendicular fit. Because the frame,
+   reference, box, and pull weight all vary with the input, the end-to-end sensitivity
+   requirement is empirical: the high-resolution sweep step ceiling is the acceptance
+   criterion.
 6. Deliberate topology events remain explicit: collapsed-side activation, a
    forward/behind tangent-intersection change, and final grid rounding. The
    forward/behind change occurs independently on the outline frame and on the skeleton
@@ -153,12 +162,13 @@ The automatic path contains:
 
 1. The solver remains pure and stateless.
 2. All internal calculations remain floating point.
-3. The solver introduces no rounding at all. The two existing rounding points are
-   unchanged: the generator's grid emission, and the resolution of a hand-placed attached
-   or detached handle onto the grid in the orchestrator — that point is one the designer
-   placed and sees, and the pin runs after it, so it cannot be deferred to emission.
-4. Invalid or rank-deficient geometry produces finite output by continuously preferring
-   the reference answer.
+3. The solver introduces no rounding at all. Existing generator rounding and the existing
+   resolution of hand-placed attached or detached handles onto the grid in the
+   orchestrator remain unchanged. The pin runs after the authored-handle resolution, so
+   that resolution cannot be deferred without changing rendered authored geometry.
+4. Rank-deficient geometry with defined normals produces finite output through the
+   reference pull. Invalid geometry such as an exact zero sampled derivative also produces
+   finite output, with the cusp-health predictor assigning maximum reference authority.
 5. The work stays in the geometry core and retains automated test coverage.
 6. No persistence schema, editor gesture, panel, or selection change is required.
 
@@ -213,14 +223,15 @@ For sample `i`, let:
 
 - `requestedPointᵢ` be the requested offset point;
 - `skeletonNormalᵢ` be the skeleton normal;
-- `candidatePointᵢ(a, b)` be the generated cubic point;
-- `a` and `b` be the two handle lengths.
+- `candidatePointᵢ(τₐ, τᵦ)` be the generated cubic point;
+- `τₐ` and `τᵦ` be the two handle tensions, whose lengths are `Rₐτₐ` and
+  `Rᵦτᵦ`.
 
 The residual is:
 
 \[
-r_i(a,b)=
-n_i\cdot\left(C_i(a,b)-O_i\right)
+r_i(\tau_a,\tau_b)=
+n_i\cdot\left(C_i(\tau_a,\tau_b)-O_i\right)
 \]
 
 Only perpendicular error is measured. Tangential displacement is excluded because it
@@ -230,32 +241,34 @@ outline shape.
 Each residual has the form:
 
 \[
-r_i(a,b)=c_i+\alpha_i a+\beta_i b
+r_i(\tau_a,\tau_b)=c_i+\alpha_i\tau_a+\beta_i\tau_b
 \]
 
 The geometric objective is:
 
 \[
-E_\text{geometry}(a,b)=
-\frac{1}{N}\sum_i w_i r_i(a,b)^2
+E_\text{geometry}(\tau_a,\tau_b)=
+\frac{1}{N}\sum_i w_i r_i(\tau_a,\tau_b)^2
 \]
 
 The implementation accumulates one two-by-two quadratic system:
 
 ```js
-function buildPerpendicularErrorSystem(frame, offsetSamples) {
+function buildPerpendicularErrorSystem(frame, offsetSamples, handleDomain) {
   const system = new HandleQuadraticSystem();
 
   for (const sample of offsetSamples) {
     const influence = getHandleInfluenceAt(sample.parameter, frame);
     const fixedPoint = getFixedCubicPointAt(sample.parameter, frame);
+    const startTensionInfluence = scale(influence.startVector, handleDomain.startReach);
+    const endTensionInfluence = scale(influence.endVector, handleDomain.endReach);
 
     const constantError = dot(
       sample.skeletonNormal,
       subtract(fixedPoint, sample.requestedPoint)
     );
-    const startCoefficient = dot(sample.skeletonNormal, influence.startVector);
-    const endCoefficient = dot(sample.skeletonNormal, influence.endVector);
+    const startCoefficient = dot(sample.skeletonNormal, startTensionInfluence);
+    const endCoefficient = dot(sample.skeletonNormal, endTensionInfluence);
 
     system.addSquaredResidual(
       constantError,
@@ -263,11 +276,19 @@ function buildPerpendicularErrorSystem(frame, offsetSamples) {
       endCoefficient,
       sample.weight
     );
+    system.addInfluenceScale(
+      sample.weight *
+        (squaredLength(startTensionInfluence) + squaredLength(endTensionInfluence))
+    );
   }
 
   return system;
 }
 ```
+
+The system coefficients and box are therefore both in tension coordinates. The
+unprojected scale is accumulated beside the projected residual coefficients from the same
+fixed influences; it is not recovered from the Hessian after projection.
 
 ### 5.4 Reference answer
 
@@ -275,13 +296,18 @@ The reference answer transfers each skeleton handle's normalized tension to the
 corresponding generated reach:
 
 ```js
-function transferSkeletonTensions(skeletonCurve, outlineFrame, handleDomain) {
-  const skeletonTensions = measureSkeletonHandleTensions(skeletonCurve);
-
-  return handleDomain.constrain({
-    startLength: skeletonTensions.start * outlineFrame.startTangentReach,
-    endLength: skeletonTensions.end * outlineFrame.endTangentReach,
-  });
+function transferSkeletonTensions(skeletonCurve, handleDomain) {
+  const skeletonDomain = buildHandleDomain(
+    skeletonCurve.startPoint,
+    skeletonCurve.endPoint,
+    skeletonCurve.startHandleDirection,
+    skeletonCurve.endHandleDirection
+  );
+  const skeletonTensions = {
+    start: skeletonCurve.startHandleLength / skeletonDomain.startReach,
+    end: skeletonCurve.endHandleLength / skeletonDomain.endReach,
+  };
+  return constrainTensions(skeletonTensions, handleDomain);
 }
 ```
 
@@ -301,11 +327,8 @@ and §8 requires sweeping it.
 
 ### 5.5 The pull
 
-Carry both unknowns as tensions, so the fit's system is expressed against the reaches:
-
-\[
-r_i(\tau_a,\tau_b)=c_i+(\alpha_i R_a)\tau_a+(\beta_i R_b)\tau_b
-\]
+The perpendicular system above already carries both unknowns as tensions: its handle
+influence vectors have been multiplied by their reaches before projection.
 
 Add one quadratic term penalizing distance from the reference answer
 \((\hat\tau_a,\hat\tau_b)\):
@@ -313,17 +336,27 @@ Add one quadratic term penalizing distance from the reference answer
 \[
 P(\tau)=\mu\left[(\tau_a-\hat\tau_a)^2+(\tau_b-\hat\tau_b)^2\right]
 \qquad
-\mu=\rho\,\operatorname{trace}(H)
+\mu=\rho S
 \]
 
-Scaling \(\mu\) by the fit's own trace makes \(\rho\) dimensionless and makes the whole
-construction invariant to glyph scale and to sample count.
+The scale \(S\) is the weighted squared magnitude of the two handle influences **before**
+they are projected onto the skeleton normals:
+
+\[
+S=\sum_i w_i\left[(B_1(t_i)R_a)^2+(B_2(t_i)R_b)^2\right]
+\]
+
+Every sample parameter lies strictly between zero and one, every weight is positive, and
+both reaches are finite and positive, so \(S>0\) even when the projected system is zero.
+Scaling \(\mu\) this way makes \(\rho\) dimensionless and makes the construction invariant
+to glyph scale and sample count. Because projection onto a unit normal cannot increase a
+vector's magnitude, \(\operatorname{trace}(H)\le S\).
 
 Adding the pull is a **modification of the same two-by-two system**, not a second solve:
 
 ```js
 function addReferencePull(system, reference, weightRatio) {
-  const weight = weightRatio * (system.aa + system.bb);
+  const weight = weightRatio * system.influenceScale;
   return {
     ...system,
     aa: system.aa + weight,
@@ -336,28 +369,33 @@ function addReferencePull(system, reference, weightRatio) {
 
 Three consequences follow directly, and they are why this replaces three mechanisms:
 
-- **Strict convexity, always.** The unpenalized system is positive semi-definite, so
-  \(aa\cdot bb\ge ab^2\) and the penalized determinant is at least \(\mu^2>0\). The
-  minimizer exists and is unique for every input, including a coincident, retracted or
-  perfectly straight segment. There is no rank branch and no tie-break rule.
-- **A slope bound you set.** The smallest eigenvalue is at least \(\mu\), so the answer's
-  sensitivity to the data is at most \(1/\mu\), and the condition number is at most
-  \(1+1/\rho\). Continuity is not left to the conditioning of the fit.
+- **Strict convexity, always.** The unpenalized system is positive semi-definite and
+  \(\mu>0\), so the penalized determinant is at least \(\mu^2>0\). The minimizer exists
+  and is unique for every finite input, including a coincident, retracted, or perfectly
+  straight segment. There is no rank branch and no tie-break rule.
+- **A conditioning bound you set.** The smallest eigenvalue is at least \(\mu\), while
+  the largest eigenvalue of the unpenalized system is at most \(S\). The condition number
+  is therefore at most \(1+1/\rho\). This bounds amplification inside each solve; the
+  required geometry sweeps measure the complete input-to-output sensitivity, including
+  changes in the frame, reference, domain, and weight ratio.
 - **Unrepresentable offsets inherit shape.** Where one cubic cannot express the offset,
-  the fit alone lands on a face of the box — one handle on the ceiling or the collapse
-  floor. The pull is what holds it off that face and toward the skeleton's own split.
+  the pull biases the constrained optimum toward the skeleton's own split instead of
+  allowing the fit alone to dictate a collapsed pair. It does not prohibit a legitimate
+  active box constraint, and the reference itself may lie on a face.
 
 ### 5.6 The pull weight
 
-\(\rho\) has a floor that is always present, and rises as the offset approaches its cusp.
+\(\rho\) has a floor that is always present, and rises as the offset approaches a cusp.
 
-The predictor is the **cusp factor** \(\lambda=1+d\kappa\) at each end: the offset of a
-curve is singular exactly where this reaches zero, and a single cubic already fails to
-represent the offset well before it. This is the same quantity the superseded seed
-scaled by; it survives as the weight rather than as a starting point.
+The predictor is the **cusp factor** \(\lambda=1+d\kappa\), evaluated at the endpoints and
+the same five fixed interior sample parameters used by the fit. The offset of a curve is
+singular where this reaches zero, and a single cubic already fails to represent the
+offset well before it. This is the same quantity the superseded seed scaled by; it
+survives as a weight predictor rather than as a starting point.
 
 \[
-s=\operatorname{clamp}\!\left(\min(\lambda_\text{start},\lambda_\text{end}),0,1\right)
+s=\operatorname{clamp}\!\left(\min_{t\in\{0,\frac18,\frac14,\frac12,
+\frac34,\frac78,1\}}\lambda(t),0,1\right)
 \qquad
 \rho=\rho_\text{floor}+(\rho_\text{cusp}-\rho_\text{floor})(1-s)^2
 \]
@@ -365,13 +403,13 @@ s=\operatorname{clamp}\!\left(\min(\lambda_\text{start},\lambda_\text{end}),0,1\
 Starting values, to be calibrated by the sweeps in §8 and then frozen as global model
 constants: \(\rho_\text{floor}=10^{-3}\), \(\rho_\text{cusp}=4\).
 
-**The weight is computed only from the skeleton and the widths.** It does not read the
-fit's residual, the fit's answer, or anything else the solve produces. That is deliberate:
-a weight driven by the achieved residual closes a feedback path from the answer back into
-how much the answer counts, and it puts its own steepest region on tapered segments, which
-are common and whose error is a direction error no handle length can absorb. Taper is
-therefore **not** a special case here — it gets the plain fit, held off the faces of the
-box by the floor weight alone.
+**The ratio \(\rho\) is computed only from the skeleton and the widths.** It does not read
+the fit's residual, the fit's answer, or anything else the solve produces. The absolute
+weight \(\mu\) also uses the fixed frame influence scale \(S\), never the projected
+Hessian. A ratio driven by the achieved residual would put its own steepest region on
+tapered segments, whose error is commonly a direction error no handle length can absorb.
+Taper is therefore not a separate weighting rule: the global floor must pass the taper
+sweeps, while cusp proximity can raise the ratio continuously.
 
 ### 5.7 The solve
 
@@ -401,8 +439,10 @@ answer, because the objective is one continuous strictly convex function on both
 the boundary. Straight and degenerate segments need no alternative algorithm and no
 special case: the pull supplies the answer in any direction the fit does not constrain.
 
-`pullWeightRatio` reads only the skeleton control points and the two signed widths.
-It must not be given access to the system, the samples, or the answer.
+`pullWeightRatio` reads only the skeleton control points and the two signed widths. It may
+evaluate those inputs at the fixed parameters, but it must not be given access to the
+assembled system, its residual, or the answer. `addReferencePull` separately reads the
+precomputed frame influence scale needed to give that ratio physical scale.
 
 The pull constants are global model constants. They cannot vary by glyph, side, mode, or
 fixture. The prototype measurements below were taken with the superseded blend and stand
@@ -614,9 +654,12 @@ pull deliberately holds near the skeleton's shape.
 
 ### 8.3.1 Accuracy ledger
 
-Report, across every cubic side the fixture corpus generates, how many improved against
-the true offset, how many lost, the net change, and the worst single loss. A ceiling
-table alone does not show what the change cost.
+Before routing production geometry through the new solver, evaluate both the current
+automatic `offsetCubicSide` path and `solveNaturalHandles` against the same independent
+true-offset samples for every case named in §8.3. Report how many cases improved, how
+many lost, the net change in maximum deviation, and the worst single loss. Keep the
+current ceilings as the acceptance contract; the ledger is additional evidence and must
+not manufacture new ceilings from the implementation under test.
 
 ### 8.4 Invariants
 
@@ -723,8 +766,10 @@ And a steep sigmoid is a threshold with a slope — the same species as the ease
 ceiling that had already been withdrawn twice, and it puts a large slope in the output
 precisely where the two answers are furthest apart.
 
-Superseded by the pull: one term inside the objective, weighted from the skeleton alone,
-which does the same job with a slope bound stated up front.
+Superseded by the pull: one term inside the objective, with a ratio derived from the
+skeleton and widths and an absolute scale derived from the fixed frame. It gives each
+solve an explicit conditioning bound; the complete geometry response is then accepted by
+the required sweeps.
 
 ### A determinant-based rank score
 

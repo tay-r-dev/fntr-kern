@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace candidate-dependent cubic offset refitting with a pure, stateless natural-handle solver: one strictly convex quadratic — a fixed-sample perpendicular fit plus a pull toward the skeleton's own tension — minimized exactly inside the handle box, so unrounded automatic handles are continuous within a fixed contour topology and their sensitivity to the input is bounded by a stated constant.
+**Goal:** Replace candidate-dependent cubic offset refitting with a pure, stateless natural-handle solver: one strictly convex quadratic — a fixed-sample perpendicular fit plus a pull toward the skeleton's own tension — minimized exactly inside the handle box, so unrounded automatic handles are continuous within a fixed contour topology and meet explicit sweep-step ceilings.
 
 **Architecture:** Add `natural-handle-solver.js` as the focused pure geometry unit for fixed offset samples, the two-variable perpendicular-error system, the reference answer, the pull weight, and exact box-constrained minimization. Keep `offset-cubic.js` as the cubic-side orchestrator that builds the shared handle domain and then applies attached adjustments, the curvature pin, and detached handles; keep `skeleton-generator.js` responsible for ribs, directions, collapsed sides, topology, provenance, nudges, caps, corners, and final grid emission.
 
-**One term, three jobs.** The pull is a quadratic penalty on tension-space distance from the reference answer, weighted at `ρ·trace(H)`. It makes the system strictly convex for every input, which supplies the answer wherever the fit has no information, removes the rank branch and the tie-break rule, and bounds the answer's sensitivity at `1/μ`. Its weight is computed from the skeleton and the widths alone — never from the residual, the system, or the answer. There is no confidence score and no blend between two computed answers; see the spec's §10 for why both were rejected.
+**One term, three jobs.** The pull is a quadratic penalty on tension-space distance from the reference answer, weighted at `ρ·S`, where `S` is the fixed unprojected handle-influence scale. Because `S` stays positive even when the projected fit system is zero, the pull makes the system strictly convex for every finite input, supplies the answer wherever the fit has no information, and removes the rank branch and tie-break rule. It bounds each solve's condition number; the complete input-to-output sensitivity is accepted by high-resolution sweeps. The ratio `ρ` is computed from skeleton geometry and widths, never from the residual or answer. There is no confidence score and no blend between two computed answers; see the spec's §10 for why both were rejected.
 
 **Tech Stack:** JavaScript ES modules, Mocha, Chai, Fontra core geometry utilities, npm workspaces, Webpack.
 
@@ -366,7 +366,20 @@ function cubicPointAndDerivative(points, t) {
         6 * mt * t * (p2.y - p1.y) +
         3 * t * t * (p3.y - p2.y),
     },
+    secondDerivative: {
+      x: 6 * mt * (p2.x - 2 * p1.x + p0.x) + 6 * t * (p3.x - 2 * p2.x + p1.x),
+      y: 6 * mt * (p2.y - 2 * p1.y + p0.y) + 6 * t * (p3.y - 2 * p2.y + p1.y),
+    },
   };
+}
+
+function curvatureAt(points, parameter) {
+  const { derivative, secondDerivative } = cubicPointAndDerivative(points, parameter);
+  const speed = Math.hypot(derivative.x, derivative.y);
+  if (speed === 0) return null;
+  return (
+    (derivative.x * secondDerivative.y - derivative.y * secondDerivative.x) / speed ** 3
+  );
 }
 
 function buildOffsetSamples(points, startSignedWidth, endSignedWidth) {
@@ -395,7 +408,16 @@ function buildOffsetSamples(points, startSignedWidth, endSignedWidth) {
 // the emitted answer - is then in one space, which is what lets the pull be a
 // single scalar weight instead of a per-axis one.
 function buildPerpendicularErrorSystem(request, samples, domain) {
-  const system = { aa: 0, ab: 0, bb: 0, ac: 0, bc: 0, cc: 0, weight: 0 };
+  const system = {
+    aa: 0,
+    ab: 0,
+    bb: 0,
+    ac: 0,
+    bc: 0,
+    cc: 0,
+    weight: 0,
+    influenceScale: 0,
+  };
   for (const sample of samples) {
     const { b0, b1, b2, b3 } = cubicBasis(sample.parameter);
     const fixedPoint = {
@@ -408,10 +430,11 @@ function buildPerpendicularErrorSystem(request, samples, domain) {
       sample.skeletonNormal,
       subtract(fixedPoint, sample.requestedPoint)
     );
+    const startInfluence = b1 * domain.startReach;
+    const endInfluence = b2 * domain.endReach;
     const start =
-      b1 * dot(sample.skeletonNormal, request.startHandleDirection) * domain.startReach;
-    const end =
-      b2 * dot(sample.skeletonNormal, request.endHandleDirection) * domain.endReach;
+      startInfluence * dot(sample.skeletonNormal, request.startHandleDirection);
+    const end = endInfluence * dot(sample.skeletonNormal, request.endHandleDirection);
     const weight = sample.weight;
     system.aa += weight * start * start;
     system.ab += weight * start * end;
@@ -420,17 +443,21 @@ function buildPerpendicularErrorSystem(request, samples, domain) {
     system.bc += weight * end * constant;
     system.cc += weight * constant * constant;
     system.weight += weight;
+    // Deliberately unprojected: positive even when the perpendicular fit has
+    // no handle information and both projected coefficients are zero.
+    system.influenceScale +=
+      weight * (startInfluence * startInfluence + endInfluence * endInfluence);
   }
   return system;
 }
 
-function objective(system, startLength, endLength) {
+function objective(system, startTension, endTension) {
   return (
-    system.aa * startLength * startLength +
-    2 * system.ab * startLength * endLength +
-    system.bb * endLength * endLength +
-    2 * system.ac * startLength +
-    2 * system.bc * endLength +
+    system.aa * startTension * startTension +
+    2 * system.ab * startTension * endTension +
+    system.bb * endTension * endTension +
+    2 * system.ac * startTension +
+    2 * system.bc * endTension +
     system.cc
   );
 }
@@ -458,7 +485,7 @@ export function buildHandleDomain(startPoint, endPoint, startDirection, endDirec
   const projectedReach = (anchor, direction) => {
     if (!tunni) return cap;
     const reach = dot(subtract(tunni, anchor), direction);
-    return reach > 0 ? clamp(reach, floor, cap) : cap;
+    return clamp(reach, floor, cap);
   };
   const startReach = projectedReach(startPoint, startDirection);
   const endReach = projectedReach(endPoint, endDirection);
@@ -474,7 +501,11 @@ export function buildHandleDomain(startPoint, endPoint, startDirection, endDirec
 }
 ```
 
-This preserves the current forward/behind tangent-intersection topology event and the one-unit/non-crossing domain. Do not add a near-zero threshold that chooses another fit.
+This is the current `feasibleBox` reach rule: a missing/parallel intersection uses the
+chord cap, while a finite signed reach is clamped between the floor and cap. It therefore
+preserves the current forward/behind tangent-intersection topology event and the
+one-unit/non-crossing domain. Do not turn a behind intersection into the cap, and do not
+add a near-zero threshold that chooses another fit.
 
 - [ ] **Step 5: Add a temporary unconstrained solve sufficient for the circular test**
 
@@ -521,388 +552,7 @@ git commit -m "feat: add fixed quadratic outline fit"
 - Modify: `src-js/fontra-core/src/natural-handle-solver.js`
 - Modify: `src-js/fontra-core/tests/test-natural-handle-solver.js`
 
-- [ ] **Step 1: Add constraint, degeneracy, and sensitivity tests**
-
-```js
-describe("natural-handle-solver: constrained answer", () => {
-  it("keeps both lengths inside the positive non-crossing domain", () => {
-    const request = {
-      ...arcRequest(30, -80),
-      startSignedWidth: -80,
-      endSignedWidth: -80,
-    };
-    const { handleDomain } = request;
-    const result = solveNaturalHandles(request);
-    expect(result.startLength / handleDomain.startReach).to.be.within(
-      handleDomain.minStartTension,
-      handleDomain.maxStartTension
-    );
-    expect(result.endLength / handleDomain.endReach).to.be.within(
-      handleDomain.minEndTension,
-      handleDomain.maxEndTension
-    );
-  });
-
-  for (const points of [
-    Array(4).fill({ x: 10, y: 10 }),
-    [
-      { x: 0, y: 0 },
-      { x: 0, y: 0 },
-      { x: 100, y: 0 },
-      { x: 100, y: 0 },
-    ],
-    [
-      { x: 0, y: 0 },
-      { x: 30, y: 0 },
-      { x: 60, y: 0 },
-      { x: 90, y: 0 },
-    ],
-  ]) {
-    it("returns the finite reference answer when the fit loses rank", () => {
-      const start = points[0];
-      const end = points[3];
-      const startDirection = { x: 1, y: 0 };
-      const endDirection = { x: -1, y: 0 };
-      const result = solveNaturalHandles({
-        skeletonControlPoints: points,
-        startSignedWidth: 25,
-        endSignedWidth: 25,
-        startOutlinePoint: { x: start.x, y: start.y + 25 },
-        endOutlinePoint: { x: end.x, y: end.y + 25 },
-        startHandleDirection: startDirection,
-        endHandleDirection: endDirection,
-        handleDomain: buildHandleDomain(start, end, startDirection, endDirection),
-      });
-      expect(Number.isFinite(result.startLength)).to.equal(true);
-      expect(Number.isFinite(result.endLength)).to.equal(true);
-      const reference = referenceAnswerFor(points, startDirection, endDirection);
-      expect(result.startLength).to.be.closeTo(reference.startLength, 1e-6);
-      expect(result.endLength).to.be.closeTo(reference.endLength, 1e-6);
-    });
-  }
-
-  it("keeps the penalized system strictly convex on every degenerate input", () => {
-    for (const request of degenerateRequests()) {
-      const system = penalizedSystemFor(request);
-      const determinant = system.aa * system.bb - system.ab * system.ab;
-      expect(determinant).to.be.above(0);
-    }
-  });
-
-  it("bounds sensitivity to the input by the pull weight", () => {
-    // The smallest eigenvalue of the penalized system is at least the pull
-    // weight, so a data perturbation cannot move the answer by more than the
-    // perturbation over that weight. Assert the realized ratio, not the bound.
-    const base = makeTightTurnRequest(120);
-    const perturbed = perturbCoordinate(base, "p1", "x", 1);
-    const moved = handleDistance(
-      solveNaturalHandles(base),
-      solveNaturalHandles(perturbed)
-    );
-    expect(moved).to.be.at.most(3);
-  });
-
-  it("takes the reference tension along a rank-one null direction", () => {
-    const points = [
-      { x: 0, y: 0 },
-      { x: 30, y: 0 },
-      { x: 60, y: 0 },
-      { x: 90, y: 0 },
-    ];
-    const startOutlinePoint = { x: 0, y: 25 };
-    const endOutlinePoint = { x: 90, y: 25 };
-    const startHandleDirection = { x: 1, y: 0 };
-    const endHandleDirection = { x: 0, y: -1 };
-    const domain = buildHandleDomain(
-      startOutlinePoint,
-      endOutlinePoint,
-      startHandleDirection,
-      endHandleDirection
-    );
-    const result = solveNaturalHandles({
-      skeletonControlPoints: points,
-      startSignedWidth: 25,
-      endSignedWidth: 25,
-      startOutlinePoint,
-      endOutlinePoint,
-      startHandleDirection,
-      endHandleDirection,
-      handleDomain: domain,
-    });
-    // Skeleton start tension is 30 / 180; transfer it to this outline reach.
-    // The floor pull perturbs the constrained direction by its own ratio, so
-    // the tolerance is relative to that, not to floating point.
-    const expected = (30 / 180) * domain.startReach;
-    expect(result.startLength).to.be.closeTo(expected, 1e-2 * domain.startReach);
-  });
-});
-```
-
-- [ ] **Step 2: Run the tests and verify the temporary implementation fails**
-
-Run:
-
-```powershell
-npm.cmd test --workspace src-js/fontra-core -- --grep "constrained answer"
-```
-
-Expected: FAIL on the degenerate cases and at least one constrained case.
-
-- [ ] **Step 3: Add the pull, then enumerate exactly**
-
-Add the reference answer and the penalty term first, because the penalty is what makes the
-enumeration below need no rank branch and no tie-break:
-
-```js
-function constrainTensions(tensions, domain) {
-  return {
-    start: clamp(tensions.start, domain.minStartTension, domain.maxStartTension),
-    end: clamp(tensions.end, domain.minEndTension, domain.maxEndTension),
-  };
-}
-
-// The reference answer, in tension coordinates: the skeleton's own two tensions,
-// measured against ITS OWN frame's reaches, transferred unchanged.
-function referenceHandles(request) {
-  const [p0, p1, p2, p3] = request.skeletonControlPoints;
-  const startVector = subtract(p1, p0);
-  const endVector = subtract(p2, p3);
-  const startLength = Math.hypot(startVector.x, startVector.y);
-  const endLength = Math.hypot(endVector.x, endVector.y);
-  const startDirection =
-    startLength === 0
-      ? request.startHandleDirection
-      : { x: startVector.x / startLength, y: startVector.y / startLength };
-  const endDirection =
-    endLength === 0
-      ? request.endHandleDirection
-      : { x: endVector.x / endLength, y: endVector.y / endLength };
-  const skeletonDomain = buildHandleDomain(p0, p3, startDirection, endDirection);
-  return constrainTensions(
-    {
-      start: startLength / skeletonDomain.startReach,
-      end: endLength / skeletonDomain.endReach,
-    },
-    request.handleDomain
-  );
-}
-
-// The pull: one quadratic term on tension-space distance from the reference
-// answer. Adding it is a modification of the same 2x2 system, never a second
-// solve. Because the fit's system is positive semi-definite, the penalized
-// determinant is at least the weight squared - strictly convex for every input.
-function addReferencePull(system, reference, weightRatio) {
-  const weight = weightRatio * (system.aa + system.bb);
-  return {
-    ...system,
-    aa: system.aa + weight,
-    bb: system.bb + weight,
-    ac: system.ac - weight * reference.start,
-    bc: system.bc - weight * reference.end,
-  };
-}
-
-function minimizeInsideRectangle(system, domain) {
-  const candidates = [];
-  const add = (start, end) => {
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-    candidates.push({
-      start: clamp(start, domain.minStartTension, domain.maxStartTension),
-      end: clamp(end, domain.minEndTension, domain.maxEndTension),
-    });
-  };
-
-  // The penalized system is strictly convex, so the interior stationary point
-  // always exists. No rank branch, and no fallback for a zero system.
-  const interior = unconstrainedMinimum(system);
-  if (
-    interior.start >= domain.minStartTension &&
-    interior.start <= domain.maxStartTension &&
-    interior.end >= domain.minEndTension &&
-    interior.end <= domain.maxEndTension
-  ) {
-    add(interior.start, interior.end);
-  }
-
-  for (const start of [domain.minStartTension, domain.maxStartTension]) {
-    add(start, -(system.bc + system.ab * start) / system.bb);
-  }
-  for (const end of [domain.minEndTension, domain.maxEndTension]) {
-    add(-(system.ac + system.ab * end) / system.aa, end);
-  }
-  for (const start of [domain.minStartTension, domain.maxStartTension]) {
-    for (const end of [domain.minEndTension, domain.maxEndTension]) {
-      add(start, end);
-    }
-  }
-
-  let best = candidates[0];
-  let bestError = objective(system, best.start, best.end);
-  for (const candidate of candidates.slice(1)) {
-    const error = objective(system, candidate.start, candidate.end);
-    if (error < bestError) {
-      best = candidate;
-      bestError = error;
-    }
-  }
-  return { tensions: best, error: Math.max(bestError, 0) };
-}
-```
-
-`system.aa` and `system.bb` are each at least the pull weight, and the determinant is at
-least the weight squared, so every division above is safe by construction. Do not add a
-guard against zero — if one is needed, the pull has been dropped somewhere.
-
-There is no tie-break rule. A strictly convex objective has one minimizer, so the
-comparison is on the single penalized objective only.
-
-- [ ] **Step 4: Implement the pull weight**
-
-```js
-const PULL_FLOOR = 1e-3;
-const PULL_CUSP = 4;
-
-// The predictor of an unrepresentable offset is the cusp factor at each end:
-// the offset of a curve is singular exactly where 1 + d*curvature reaches
-// zero, and one cubic fails well before that. This is the quantity the
-// superseded seed scaled by; it survives as the weight, not as a start point.
-//
-// It reads the skeleton and the widths ONLY. Never the residual, the system,
-// or the answer - a weight driven by the achieved error closes a feedback path
-// from the answer into how much the answer counts, and puts its own steepest
-// region on tapered segments, whose error is a direction error no handle
-// length can absorb.
-function pullWeightRatio(request) {
-  const points = request.skeletonControlPoints;
-  const startFactor =
-    1 + request.startSignedWidth * endpointCurvature(...points, false);
-  const endFactor = 1 + request.endSignedWidth * endpointCurvature(...points, true);
-  const health = clamp(Math.min(startFactor, endFactor), 0, 1);
-  return PULL_FLOOR + (PULL_CUSP - PULL_FLOOR) * (1 - health) ** 2;
-}
-```
-
-`PULL_FLOOR` sets the sensitivity bound: the smallest eigenvalue is at least
-`PULL_FLOOR · trace`, so the answer cannot move faster than the reciprocal of that. Both
-constants are calibrated in Task 5 against the sweeps and then frozen. They may not vary
-by glyph, side, mode or fixture.
-
-- [ ] **Step 5: Wire the penalized solve into the public solver**
-
-```js
-export function solveNaturalHandles(request) {
-  const domain = request.handleDomain;
-  const reference = referenceHandles(request);
-  const samples = buildOffsetSamples(
-    request.skeletonControlPoints,
-    request.startSignedWidth,
-    request.endSignedWidth
-  );
-  const fit = buildPerpendicularErrorSystem(request, samples, domain);
-  const ratio = pullWeightRatio(request);
-  const { tensions } = minimizeInsideRectangle(
-    addReferencePull(fit, reference, ratio),
-    domain
-  );
-  return {
-    startLength: tensions.start * domain.startReach,
-    endLength: tensions.end * domain.endReach,
-    pullWeightRatio: ratio,
-    perpendicularRms: Math.sqrt(
-      objective(fit, tensions.start, tensions.end) / Math.max(fit.weight, 1)
-    ),
-  };
-}
-```
-
-The reported residual is measured against the **unpenalized** fit at the answer the solver
-returned, so it means "how far this outline is from the true offset" rather than "what the
-fit alone would have scored".
-
-- [ ] **Step 6: Run and commit**
-
-Run:
-
-```powershell
-npx.cmd prettier --write src-js/fontra-core/src/natural-handle-solver.js src-js/fontra-core/tests/test-natural-handle-solver.js
-npm.cmd test --workspace src-js/fontra-core -- --grep "natural-handle-solver"
-```
-
-Expected: PASS.
-
-```powershell
-git add src-js/fontra-core/src/natural-handle-solver.js src-js/fontra-core/tests/test-natural-handle-solver.js
-git commit -m "feat: constrain outline fit inside handle domain"
-```
-
-### Task 4: Calibrate the pull and prove it carries the shape
-
-**Files:**
-
-- Modify: `src-js/fontra-core/src/natural-handle-solver.js`
-- Modify: `src-js/fontra-core/tests/test-natural-handle-solver.js`
-
-- [ ] **Step 1: Add reference-shape tests**
-
-```js
-describe("natural-handle-solver: reference answer", () => {
-  it("transfers equal skeleton tension to equal outline tension", () => {
-    const request = arcRequest(100, 25);
-    const result = solveNaturalHandles(request);
-    expect(result.startLength / request.handleDomain.startReach).to.be.closeTo(
-      result.endLength / request.handleDomain.endReach,
-      1e-9
-    );
-  });
-
-  it("retains deliberate unequal skeleton tension near the cusp", () => {
-    const request = makeTightTaperRequest({
-      startSkeletonLength: 40,
-      endSkeletonLength: 100,
-    });
-    const result = solveNaturalHandles(request);
-    expect(result.pullWeightRatio).to.be.above(0.5);
-    expect(result.endLength / request.handleDomain.endReach).to.be.above(
-      result.startLength / request.handleDomain.startReach
-    );
-  });
-
-  it("holds both handles off the faces of the box through the cusp", () => {
-    // The fault this replaces: one generated handle on the tension ceiling or
-    // the collapse floor in every case, off a symmetric skeleton.
-    for (let width = 10; width <= 160; width += 1) {
-      const request = makeTightTurnRequest(width);
-      const { handleDomain: domain } = request;
-      const result = solveNaturalHandles(request);
-      const start = result.startLength / domain.startReach;
-      const end = result.endLength / domain.endReach;
-      expect(
-        Math.max(start, end) / Math.min(start, end),
-        `width ${width}`
-      ).to.be.at.most(3);
-    }
-  });
-
-  it("moves within the step ceiling as the pull takes over", () => {
-    let previous = null;
-    let weakest = 1;
-    for (let width = 10; width <= 160; width += 1) {
-      const result = solveNaturalHandles(makeTightTurnRequest(width));
-      if (previous) {
-        expect(Math.abs(result.startLength - previous.startLength)).to.be.below(3);
-        expect(Math.abs(result.endLength - previous.endLength)).to.be.below(3);
-      }
-      weakest = Math.min(weakest, result.pullWeightRatio);
-      previous = result;
-    }
-    // The sweep must actually cross into the cusp region, or it proves nothing.
-    expect(weakest).to.be.below(0.01);
-    expect(previous.pullWeightRatio).to.be.above(0.5);
-  });
-});
-```
-
-Define the requests from literal geometry:
+- [ ] **Step 1: Add constraint, degeneracy, and motion tests**
 
 ```js
 function unit(vector) {
@@ -975,11 +625,409 @@ function makeTightTurnRequest(width) {
     -width
   );
 }
+
+describe("natural-handle-solver: constrained answer", () => {
+  it("keeps both lengths inside the positive non-crossing domain", () => {
+    const request = {
+      ...arcRequest(30, -80),
+      startSignedWidth: -80,
+      endSignedWidth: -80,
+    };
+    const { handleDomain } = request;
+    const result = solveNaturalHandles(request);
+    expect(result.startLength / handleDomain.startReach).to.be.within(
+      handleDomain.minStartTension,
+      handleDomain.maxStartTension
+    );
+    expect(result.endLength / handleDomain.endReach).to.be.within(
+      handleDomain.minEndTension,
+      handleDomain.maxEndTension
+    );
+  });
+
+  for (const { name, points, expected } of [
+    {
+      name: "coincident controls",
+      points: Array(4).fill({ x: 10, y: 10 }),
+      expected: { startLength: 1, endLength: 1 },
+    },
+    {
+      name: "retracted handles",
+      points: [
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 0 },
+      ],
+      expected: { startLength: 1, endLength: 1 },
+    },
+    {
+      name: "straight control polygon",
+      points: [
+        { x: 0, y: 0 },
+        { x: 30, y: 0 },
+        { x: 60, y: 0 },
+        { x: 90, y: 0 },
+      ],
+      expected: { startLength: 30, endLength: 30 },
+    },
+  ]) {
+    it(`returns the finite reference answer for ${name}`, () => {
+      const start = points[0];
+      const end = points[3];
+      const startDirection = { x: 1, y: 0 };
+      const endDirection = { x: -1, y: 0 };
+      const startOutlinePoint = { x: start.x, y: start.y + 25 };
+      const endOutlinePoint = { x: end.x, y: end.y + 25 };
+      const result = solveNaturalHandles({
+        skeletonControlPoints: points,
+        startSignedWidth: 25,
+        endSignedWidth: 25,
+        startOutlinePoint,
+        endOutlinePoint,
+        startHandleDirection: startDirection,
+        endHandleDirection: endDirection,
+        handleDomain: buildHandleDomain(
+          startOutlinePoint,
+          endOutlinePoint,
+          startDirection,
+          endDirection
+        ),
+      });
+      expect(Number.isFinite(result.startLength)).to.equal(true);
+      expect(Number.isFinite(result.endLength)).to.equal(true);
+      expect(result.startLength).to.be.closeTo(expected.startLength, 1e-6);
+      expect(result.endLength).to.be.closeTo(expected.endLength, 1e-6);
+    });
+  }
+
+  it("meets the representative coordinate-step ceiling", () => {
+    const base = makeTightTurnRequest(120);
+    const points = base.skeletonControlPoints.map((point, index) =>
+      index === 1 ? { ...point, x: point.x + 1 } : point
+    );
+    const perturbed = requestFor(points, base.startSignedWidth, base.endSignedWidth);
+    const before = solveNaturalHandles(base);
+    const after = solveNaturalHandles(perturbed);
+    const moved = Math.max(
+      Math.abs(after.startLength - before.startLength),
+      Math.abs(after.endLength - before.endLength)
+    );
+    expect(moved).to.be.at.most(3);
+  });
+
+  it("takes the reference tension along a rank-one null direction", () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 30, y: 0 },
+      { x: 60, y: 0 },
+      { x: 90, y: 0 },
+    ];
+    const startOutlinePoint = { x: 0, y: 25 };
+    const endOutlinePoint = { x: 90, y: 25 };
+    const startHandleDirection = { x: 1, y: 0 };
+    const endHandleDirection = { x: 0, y: -1 };
+    const domain = buildHandleDomain(
+      startOutlinePoint,
+      endOutlinePoint,
+      startHandleDirection,
+      endHandleDirection
+    );
+    const result = solveNaturalHandles({
+      skeletonControlPoints: points,
+      startSignedWidth: 25,
+      endSignedWidth: 25,
+      startOutlinePoint,
+      endOutlinePoint,
+      startHandleDirection,
+      endHandleDirection,
+      handleDomain: domain,
+    });
+    // Skeleton start tension is 30 / 180; transfer it to this outline reach.
+    // The fit has no start-handle information, so the pull supplies this
+    // coordinate exactly.
+    const expected = (30 / 180) * domain.startReach;
+    expect(result.startLength).to.be.closeTo(expected, 1e-9);
+  });
+});
 ```
 
-These helpers only construct inputs; accuracy expectations remain independent of the implementation.
+- [ ] **Step 2: Run the tests and verify the temporary implementation fails**
 
-- [ ] **Step 2: Run and record which assertions fail**
+Run:
+
+```powershell
+npm.cmd test --workspace src-js/fontra-core -- --grep "constrained answer"
+```
+
+Expected: FAIL on the degenerate cases and at least one constrained case.
+
+- [ ] **Step 3: Add the pull, then enumerate exactly**
+
+Add the reference answer and the penalty term first, because the penalty is what makes the
+enumeration below need no rank branch and no tie-break:
+
+```js
+function constrainTensions(tensions, domain) {
+  return {
+    start: clamp(tensions.start, domain.minStartTension, domain.maxStartTension),
+    end: clamp(tensions.end, domain.minEndTension, domain.maxEndTension),
+  };
+}
+
+// The reference answer, in tension coordinates: the skeleton's own two tensions,
+// measured against ITS OWN frame's reaches, transferred unchanged.
+function referenceHandles(request) {
+  const [p0, p1, p2, p3] = request.skeletonControlPoints;
+  const startVector = subtract(p1, p0);
+  const endVector = subtract(p2, p3);
+  const startLength = Math.hypot(startVector.x, startVector.y);
+  const endLength = Math.hypot(endVector.x, endVector.y);
+  const startDirection =
+    startLength === 0
+      ? request.startHandleDirection
+      : { x: startVector.x / startLength, y: startVector.y / startLength };
+  const endDirection =
+    endLength === 0
+      ? request.endHandleDirection
+      : { x: endVector.x / endLength, y: endVector.y / endLength };
+  const skeletonDomain = buildHandleDomain(p0, p3, startDirection, endDirection);
+  return constrainTensions(
+    {
+      start: startLength / skeletonDomain.startReach,
+      end: endLength / skeletonDomain.endReach,
+    },
+    request.handleDomain
+  );
+}
+
+// The pull: one quadratic term on tension-space distance from the reference
+// answer. Adding it is a modification of the same 2x2 system, never a second
+// solve. Because the fit's system is positive semi-definite, the penalized
+// determinant is at least the weight squared. The unprojected influence scale
+// stays positive even when the fit's projected Hessian is exactly zero.
+function addReferencePull(system, reference, weightRatio) {
+  const weight = weightRatio * system.influenceScale;
+  return {
+    ...system,
+    aa: system.aa + weight,
+    bb: system.bb + weight,
+    ac: system.ac - weight * reference.start,
+    bc: system.bc - weight * reference.end,
+  };
+}
+
+function minimizeInsideRectangle(system, domain) {
+  const candidates = [];
+  const add = (start, end) => {
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+    candidates.push({
+      start: clamp(start, domain.minStartTension, domain.maxStartTension),
+      end: clamp(end, domain.minEndTension, domain.maxEndTension),
+    });
+  };
+
+  // The penalized system is strictly convex, so the interior stationary point
+  // always exists. No rank branch, and no fallback for a zero system.
+  const interior = unconstrainedMinimum(system);
+  if (
+    interior.start >= domain.minStartTension &&
+    interior.start <= domain.maxStartTension &&
+    interior.end >= domain.minEndTension &&
+    interior.end <= domain.maxEndTension
+  ) {
+    add(interior.start, interior.end);
+  }
+
+  for (const start of [domain.minStartTension, domain.maxStartTension]) {
+    add(start, -(system.bc + system.ab * start) / system.bb);
+  }
+  for (const end of [domain.minEndTension, domain.maxEndTension]) {
+    add(-(system.ac + system.ab * end) / system.aa, end);
+  }
+  for (const start of [domain.minStartTension, domain.maxStartTension]) {
+    for (const end of [domain.minEndTension, domain.maxEndTension]) {
+      add(start, end);
+    }
+  }
+
+  let best = candidates[0];
+  let bestError = objective(system, best.start, best.end);
+  for (const candidate of candidates.slice(1)) {
+    const error = objective(system, candidate.start, candidate.end);
+    if (error < bestError) {
+      best = candidate;
+      bestError = error;
+    }
+  }
+  return { tensions: best, error: Math.max(bestError, 0) };
+}
+```
+
+`system.influenceScale` is positive because the sample parameters are interior and both
+reaches are positive. `system.aa` and `system.bb` are therefore each at least the positive
+pull weight, and the determinant is at least the weight squared, so every division above
+is safe by construction. Do not add a guard against zero — if one is needed, the
+unprojected scale or pull has been dropped somewhere.
+
+There is no tie-break rule. A strictly convex objective has one minimizer, so the
+comparison is on the single penalized objective only.
+
+- [ ] **Step 4: Implement the pull weight**
+
+```js
+const PULL_FLOOR = 1e-3;
+const PULL_CUSP = 4;
+
+// The predictor of an unrepresentable offset is the cusp factor at the
+// endpoints and the same five fixed interior parameters used by the fit. The
+// offset is singular where 1 + d*curvature reaches zero, and one cubic fails
+// well before that. A zero source derivative is treated as zero health: the
+// offset normal is undefined there and the reference must own the answer.
+//
+// It reads the skeleton and the widths ONLY. Never the residual, the system,
+// or the answer - a weight driven by the achieved error closes a feedback path
+// from the answer into how much the answer counts, and puts its own steepest
+// region on tapered segments, whose error is a direction error no handle
+// length can absorb.
+function pullWeightRatio(request) {
+  const points = request.skeletonControlPoints;
+  let health = 1;
+  for (const parameter of [0, ...OFFSET_SAMPLE_PARAMETERS, 1]) {
+    const curvature = curvatureAt(points, parameter);
+    if (curvature === null) {
+      health = 0;
+      break;
+    }
+    const width =
+      request.startSignedWidth +
+      (request.endSignedWidth - request.startSignedWidth) * parameter;
+    health = Math.min(health, clamp(1 + width * curvature, 0, 1));
+  }
+  return PULL_FLOOR + (PULL_CUSP - PULL_FLOOR) * (1 - health) ** 2;
+}
+```
+
+`PULL_FLOOR` sets the conditioning bound: because the unprojected influence scale bounds
+the projected Hessian from above, the penalized condition number is at most
+`1 + 1 / PULL_FLOOR`. The complete geometry response is still measured by sweeps because
+the frame, domain, reference, and ratio also move with the input. Both constants are
+calibrated in Task 5 against the complete accuracy and sweep suite and then frozen. They
+may not vary by glyph, side, mode, or fixture.
+
+- [ ] **Step 5: Wire the penalized solve into the public solver**
+
+```js
+export function solveNaturalHandles(request) {
+  const domain = request.handleDomain;
+  const reference = referenceHandles(request);
+  const samples = buildOffsetSamples(
+    request.skeletonControlPoints,
+    request.startSignedWidth,
+    request.endSignedWidth
+  );
+  const fit = buildPerpendicularErrorSystem(request, samples, domain);
+  const ratio = pullWeightRatio(request);
+  const { tensions } = minimizeInsideRectangle(
+    addReferencePull(fit, reference, ratio),
+    domain
+  );
+  return {
+    startLength: tensions.start * domain.startReach,
+    endLength: tensions.end * domain.endReach,
+    pullWeightRatio: ratio,
+    perpendicularRms: Math.sqrt(
+      objective(fit, tensions.start, tensions.end) / Math.max(fit.weight, 1)
+    ),
+  };
+}
+```
+
+The reported residual is measured against the **unpenalized** fit at the answer the solver
+returned, so it means "how far this outline is from the true offset" rather than "what the
+fit alone would have scored".
+
+- [ ] **Step 6: Run and commit**
+
+Run:
+
+```powershell
+npx.cmd prettier --write src-js/fontra-core/src/natural-handle-solver.js src-js/fontra-core/tests/test-natural-handle-solver.js
+npm.cmd test --workspace src-js/fontra-core -- --grep "natural-handle-solver"
+```
+
+Expected: PASS.
+
+```powershell
+git add src-js/fontra-core/src/natural-handle-solver.js src-js/fontra-core/tests/test-natural-handle-solver.js
+git commit -m "feat: constrain outline fit inside handle domain"
+```
+
+### Task 4: Prove the pull carries reference shape without output feedback
+
+**Files:**
+
+- Modify: `src-js/fontra-core/src/natural-handle-solver.js`
+- Modify: `src-js/fontra-core/tests/test-natural-handle-solver.js`
+
+- [ ] **Step 1: Add reference-shape tests**
+
+```js
+describe("natural-handle-solver: reference answer", () => {
+  it("transfers equal skeleton tension to equal outline tension", () => {
+    const request = arcRequest(100, 25);
+    const result = solveNaturalHandles(request);
+    expect(result.startLength / request.handleDomain.startReach).to.be.closeTo(
+      result.endLength / request.handleDomain.endReach,
+      1e-9
+    );
+  });
+
+  it("retains deliberate unequal skeleton tension near a cusp", () => {
+    const request = makeTightTaperRequest({
+      startSkeletonLength: 40,
+      endSkeletonLength: 100,
+    });
+    const result = solveNaturalHandles(request);
+    expect(result.pullWeightRatio).to.be.above(0.001);
+    expect(result.endLength / request.handleDomain.endReach).to.be.above(
+      result.startLength / request.handleDomain.startReach
+    );
+  });
+
+  it("does not read the outline frame when choosing the ratio", () => {
+    const request = makeTightTaperRequest();
+    const startOutlinePoint = {
+      x: request.startOutlinePoint.x + 80,
+      y: request.startOutlinePoint.y - 30,
+    };
+    const endOutlinePoint = {
+      x: request.endOutlinePoint.x - 40,
+      y: request.endOutlinePoint.y + 60,
+    };
+    const changedFrame = {
+      ...request,
+      startOutlinePoint,
+      endOutlinePoint,
+      handleDomain: buildHandleDomain(
+        startOutlinePoint,
+        endOutlinePoint,
+        request.startHandleDirection,
+        request.endHandleDirection
+      ),
+    };
+    expect(solveNaturalHandles(changedFrame).pullWeightRatio).to.equal(
+      solveNaturalHandles(request).pullWeightRatio
+    );
+  });
+});
+```
+
+The literal request helpers were added in Task 3 so this task can run immediately; reuse
+them here. They construct inputs only, and the accuracy expectations remain independent
+of the implementation.
+
+- [ ] **Step 2: Run the reference tests**
 
 Run:
 
@@ -987,27 +1035,14 @@ Run:
 npm.cmd test --workspace src-js/fontra-core -- --grep "reference answer"
 ```
 
-Expected: FAIL where the starting constants are not yet calibrated. The solver structure from Task 3 is already complete; this task tunes two numbers and proves what they buy.
+Expected: PASS with the provisional global constants. Calibration waits until Task 5 has
+created the complete accuracy and sweep suite.
 
-- [ ] **Step 3: Calibrate the two pull constants**
-
-`PULL_FLOOR` and `PULL_CUSP` are the only free parameters in the automatic path. Sweep each against the whole focused suite and pick by these rules, in order:
-
-1. `PULL_FLOOR` is the smallest value at which every sweep in Task 5 stays inside the `3`-unit ceiling. It sets the sensitivity bound, so raising it buys stability and spends accuracy; do not raise it to fix a single fixture.
-2. `PULL_CUSP` is the smallest value at which the tight-turn sweep keeps both handles off the faces of the box across its whole range.
-3. Every accuracy ceiling in Task 5 must still hold at the chosen pair. If it does not, the pair is wrong — do not raise a ceiling.
-
-Record the tried values and the measurement that selected each, for the development-log entry. If the two rules pull in opposite directions, that is a finding to report, not a compromise to split silently.
-
-- [ ] **Step 4: Confirm the pull weight reads nothing it must not**
-
-The weight function takes the skeleton control points and the two signed widths. Assert directly that it is independent of everything else: build two requests with identical skeleton and widths but different outline frames, and expect the same weight. This is the guard against the rejected residual-driven form growing back.
-
-- [ ] **Step 5: Add perturbation continuity coverage**
+- [ ] **Step 3: Add perturbation continuity coverage**
 
 For every nondegenerate accuracy fixture, perturb each of the eight skeleton coordinates and both widths by `1e-5`, on both signed sides. Compare the base result with perturbations of `1e-5` and `5e-6`; require the smaller perturbation's handle delta to be no greater than the larger perturbation's delta plus `1e-8`, and require both to remain below `1e-2`. Skip only the three explicit topology events named in the design.
 
-- [ ] **Step 6: Run and commit**
+- [ ] **Step 4: Run and commit**
 
 ```powershell
 npx.cmd prettier --write src-js/fontra-core/src/natural-handle-solver.js src-js/fontra-core/tests/test-natural-handle-solver.js
@@ -1024,9 +1059,22 @@ Expected: PASS.
 
 - Modify: `src-js/fontra-core/tests/test-natural-handle-solver.js`
 
-- [ ] **Step 1: Move the independent true-offset accuracy helper**
+- [ ] **Step 1: Move and parameterize the independent true-offset accuracy helper**
 
-Move `trueOffsetPoints` and `maxDeviation` from `test-offset-cubic.js` into the new solver test. Change `maxDeviation` to call `solveNaturalHandles()` and return both:
+Move `trueOffsetPoints` and the generated-curve distance calculation from
+`test-offset-cubic.js` into the new solver test. Split the old `maxDeviation` helper into:
+
+- `maxDeviationForHandles(points, d0, d3, handles)`, which only constructs the generated
+  cubic and compares it with the independently sampled true offset;
+- `measureCurrentOffset(points, d0, d3)`, which calls the still-unmodified
+  `offsetCubicSide` path and passes its lengths to `maxDeviationForHandles`;
+- `measureNaturalOffset(points, d0, d3, solve = solveNaturalHandles)`, which calls
+  `solve(requestFor(points, d0, d3))` and passes its lengths to the same measurement
+  helper. The callback keeps the measurement identical during the finite calibration
+  grid below.
+
+Do this before Task 6 routes `offsetCubicSide` through the new solver, so the first
+measurement is a genuine before value. Have `measureNaturalOffset` return:
 
 ```js
 return {
@@ -1036,39 +1084,47 @@ return {
 };
 ```
 
-Keep the target curve generation and nearest-distance measurement independent of the solver. Do not call solver sampling helpers from the test.
+Keep the target curve generation and nearest-distance measurement independent of both
+implementations. Do not call solver sampling helpers from the test.
 
 - [ ] **Step 2: Add all accuracy cases with pull diagnostics**
 
 ```js
 for (const testCase of [
-  ["circular outward", quarterCirclePoints, 25, 25, 0.1],
-  ["circular inward", quarterCirclePoints, -40, -40, 0.1],
+  ["circular outward", quarterCirclePoints, 25, 25, 1],
+  ["circular inward", quarterCirclePoints, -40, -40, 1],
   ["S-curve left", sCurve, 35, 35, 2.5],
   ["S-curve right", sCurve, -35, -35, 2.5],
-  ["tight inward turn", tightTurn, -70, -70, 0.6],
-  ["shallow wide offset", shallowCurve, 70, 70, 0.25],
-  ["unequal handles", unequalCurve, 50, 50, 0.4],
-  // Taper has no case in the current suite, and it is where the superseded
-  // blend put its steepest region. Ceilings are set from the first measured
-  // run, not carried over from anywhere.
+  ["tight inward turn", tightTurn, -70, -70, 1.5],
+  ["shallow wide offset", shallowCurve, 70, 70, 1],
+  ["unequal handles", unequalCurve, 50, 50, 1],
+  // Taper has no inherited accuracy ceiling. These rows enter the accuracy
+  // ledger and must remain finite; their motion is accepted by the sweep.
   ["moderate taper, left", sCurve, 25, 60, null],
   ["moderate taper, right", sCurve, -25, -60, null],
   ["strong taper, left", sCurve, 20, 110, null],
   ["strong taper, right", sCurve, -20, -110, null],
 ]) {
   const [name, points, d0, d3, ceiling] = testCase;
-  it(`meets the existing accuracy ceiling for ${name}`, () => {
-    const measured = maxDeviation(points, d0, d3);
-    expect(
-      measured.maxDeviation,
-      `pull=${measured.pullWeightRatio}, rms=${measured.perpendicularRms}`
-    ).to.be.at.most(ceiling ?? measuredTaperCeiling(name));
+  it(`records offset accuracy for ${name}`, () => {
+    const before = measureCurrentOffset(points, d0, d3);
+    const measured = measureNaturalOffset(points, d0, d3);
+    const diagnostic =
+      `before=${before}, after=${measured.maxDeviation}, ` +
+      `delta=${measured.maxDeviation - before}, ` +
+      `pull=${measured.pullWeightRatio}, rms=${measured.perpendicularRms}`;
+    expect(Number.isFinite(before), diagnostic).to.equal(true);
+    expect(Number.isFinite(measured.maxDeviation), diagnostic).to.equal(true);
+    if (ceiling !== null) {
+      expect(measured.maxDeviation, diagnostic).to.be.at.most(ceiling);
+    }
   });
 }
 ```
 
-For the four taper rows, run once, record the measured deviation, and set each ceiling just above it in the same commit. State in the commit message that these are new baselines, not inherited ones — a ceiling nobody has justified is worse than no ceiling.
+Record the before value, after value, and delta for every row in the Task 9 accuracy
+ledger. For the four taper rows, do not create an implementation-derived ceiling in the
+same change.
 
 - [ ] **Step 3: Add the pure `U^1` sweep**
 
@@ -1082,18 +1138,65 @@ Use the `U1` geometry from Task 1 and construct `NaturalHandleRequest` objects f
 
 Add a tapered sweep alongside, held to the same `3`-unit ceiling, since the taper cases are new and nothing else sweeps them.
 
-- [ ] **Step 4: Run the focused suite and record measurements**
+- [ ] **Step 4: Add the near-cusp shape acceptance**
+
+Sweep `makeTightTurnRequest(width)` for every integer width from `10` through `160`.
+Require the larger normalized tension divided by the smaller to remain at most `3`.
+This rejects a near-degenerate split; it does not claim that neither handle may
+legitimately touch a box face.
+
+- [ ] **Step 5: Calibrate the two global ratios against the complete suite**
+
+Evaluate this finite grid in ascending order:
+
+```js
+const PULL_FLOOR_CANDIDATES = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2];
+const PULL_CUSP_CANDIDATES = [0.25, 0.5, 1, 2, 4, 8, 16];
+```
+
+Make the grid executable without environment variables or source rewriting:
+
+1. Refactor the private solver body to accept `pullFloor` and `pullCusp`; keep the public
+   `solveNaturalHandles(request)` wrapper fixed to the two production constants.
+2. Temporarily export a clearly named
+   `_solveNaturalHandlesForCalibration(request, pullFloor, pullCusp)` wrapper from the
+   solver module.
+3. Parameterize the accuracy, `U^1`, taper, near-cusp, and perturbation check helpers with
+   a `solve` callback. Build one `firstAcceptanceFailure(solve)` evaluator that runs those
+   same checks and returns either the first diagnostic string or `null`.
+4. In one temporary calibration test, iterate the grid lexicographically and bind each
+   pair to the calibration wrapper. Log the pair and returned diagnostic, stopping at the
+   first `null`.
+
+Select the first floor value for which at least one cusp value passes everything; for
+that floor, select the first passing cusp value. This is a lexicographic rule, not
+fixture-by-fixture tuning. Record every tried pair and its first failing assertion for
+the development log. If no pair passes, stop before routing production geometry and
+report that the one-pull model does not meet the combined accuracy/stability contract.
+
+- [ ] **Step 6: Freeze the selected constants**
+
+Replace the provisional `PULL_FLOOR` and `PULL_CUSP` values with the selected pair.
+Remove the candidate arrays, temporary calibration test, calibration-only export, and
+parameter override from the public module surface. Keep the parameterized test helpers
+where they make the frozen suite clearer, but every committed test must call the normal
+one-argument public solver. Only the two frozen global constants remain in production.
+
+- [ ] **Step 7: Run the focused suite and record measurements**
 
 ```powershell
 npm.cmd test --workspace src-js/fontra-core -- --grep "natural-handle-solver"
 ```
 
-Expected: PASS. Record the measured worst step and each accuracy maximum for Task 9. The implementation must meet the ceilings; do not regenerate fixtures to hide a miss.
+Expected: PASS. Record the selected pair, worst sweep steps, and every accuracy maximum
+for Task 9. Summarize improved-case count, lost-case count, net change in maximum
+deviation, and worst single loss from the before/after rows. The implementation must meet
+the inherited ceilings; do not regenerate fixtures to hide a miss.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```powershell
-git add src-js/fontra-core/tests/test-natural-handle-solver.js
+git add src-js/fontra-core/src/natural-handle-solver.js src-js/fontra-core/tests/test-natural-handle-solver.js
 git commit -m "test: verify continuous natural outline solver"
 ```
 
@@ -1481,8 +1584,8 @@ Rewrite §3.2 so its durable pipeline is:
 exact rib endpoints + skeleton-owned directions
     -> fixed requested-offset samples at source parameters
     -> convex perpendicular-error fit inside the handle domain
-       + a pull toward the skeleton's own tension, weighted from the
-         skeleton and the widths alone
+       + a pull toward the skeleton's own tension, with a ratio from the
+         skeleton and widths and a positive fixed frame-influence scale
     -> attached handle adjustments
     -> pinned harmonic-mean tension
     -> detached absolute handles
@@ -1496,7 +1599,8 @@ Update §5 preservation requirements to name:
 - fixed sample identity;
 - no projection/root finding/iterative refit/error-budget search in the automatic path;
 - one strictly convex objective, so a unique minimizer and no tie-break;
-- a pull weight that reads only the skeleton and the widths;
+- a pull ratio that reads only the skeleton and widths;
+- a positive unprojected influence scale that cannot vanish with the Hessian;
 - positive non-crossing domain;
 - authored adjustment/pin/detach ordering;
 - the three explicit topology/emission events.
@@ -1506,8 +1610,10 @@ Update §5 preservation requirements to name:
 Record:
 
 - the original failing side and worst step from Task 1;
+- every calibrated ratio pair tried, its first failure, and the selected global pair;
 - the final worst `U^1` step in each width mode;
-- circular, S-curve, tight-turn, shallow-wide, and unequal-handle deviation;
+- circular, S-curve, tight-turn, shallow-wide, unequal-handle, and taper deviation;
+- the before/after accuracy ledger, including net change and worst loss;
 - focused/full/bundle commands;
 - fixture review scope;
 - commit hashes after the implementation commits exist.
@@ -1594,6 +1700,9 @@ Confirm from tests and source inspection:
 - the automatic path contains no projection, root finding, iterative refit, convergence test, error-budget search, equalization repair, motion override, or history;
 - endpoints, directions, one-cubic topology, collapsed sides, lines, side modes, reversal, mirroring, taper, caps, corners, and point counts retain their owners;
 - natural handles are continuous for coordinate and width perturbations;
+- the penalized system remains finite and strictly convex when the projected Hessian is
+  zero;
+- the selected global pull ratios pass the complete accuracy and sweep grid;
 - `U^1` is monotone with no step above `3`;
 - authored adjustments, pinned curvature, detached handles, pin clearing, and nudge independence are preserved;
 - identical input returns identical output;
