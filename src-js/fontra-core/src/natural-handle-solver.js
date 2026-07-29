@@ -5,6 +5,8 @@ const MIN_HANDLE_LENGTH = 1;
 const REACH_FLOOR_RATIO = 1 / 3;
 const REACH_CAP_RATIO = 2;
 const OFFSET_SAMPLE_PARAMETERS = [0.125, 0.25, 0.5, 0.75, 0.875];
+const PULL_FLOOR = 1e-3;
+const PULL_CUSP = 4;
 
 function dot(a, b) {
   return a.x * b.x + a.y * b.y;
@@ -179,23 +181,127 @@ function unconstrainedMinimum(system) {
   };
 }
 
+function constrainTensions(tensions, domain) {
+  return {
+    start: clamp(tensions.start, domain.minStartTension, domain.maxStartTension),
+    end: clamp(tensions.end, domain.minEndTension, domain.maxEndTension),
+  };
+}
+
+function referenceHandles(request) {
+  const [p0, p1, p2, p3] = request.skeletonControlPoints;
+  const startVector = subtract(p1, p0);
+  const endVector = subtract(p2, p3);
+  const startLength = Math.hypot(startVector.x, startVector.y);
+  const endLength = Math.hypot(endVector.x, endVector.y);
+  const startDirection =
+    startLength === 0
+      ? request.startHandleDirection
+      : { x: startVector.x / startLength, y: startVector.y / startLength };
+  const endDirection =
+    endLength === 0
+      ? request.endHandleDirection
+      : { x: endVector.x / endLength, y: endVector.y / endLength };
+  const skeletonDomain = buildHandleDomain(p0, p3, startDirection, endDirection);
+  return constrainTensions(
+    {
+      start: startLength / skeletonDomain.startReach,
+      end: endLength / skeletonDomain.endReach,
+    },
+    request.handleDomain
+  );
+}
+
+function addReferencePull(system, reference, weightRatio) {
+  const weight = weightRatio * system.influenceScale;
+  return {
+    ...system,
+    aa: system.aa + weight,
+    bb: system.bb + weight,
+    ac: system.ac - weight * reference.start,
+    bc: system.bc - weight * reference.end,
+  };
+}
+
+function minimizeInsideRectangle(system, domain) {
+  const candidates = [];
+  const add = (start, end) => {
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+    candidates.push({
+      start: clamp(start, domain.minStartTension, domain.maxStartTension),
+      end: clamp(end, domain.minEndTension, domain.maxEndTension),
+    });
+  };
+
+  const interior = unconstrainedMinimum(system);
+  if (
+    interior.start >= domain.minStartTension &&
+    interior.start <= domain.maxStartTension &&
+    interior.end >= domain.minEndTension &&
+    interior.end <= domain.maxEndTension
+  ) {
+    add(interior.start, interior.end);
+  }
+
+  for (const start of [domain.minStartTension, domain.maxStartTension]) {
+    add(start, -(system.bc + system.ab * start) / system.bb);
+  }
+  for (const end of [domain.minEndTension, domain.maxEndTension]) {
+    add(-(system.ac + system.ab * end) / system.aa, end);
+  }
+  for (const start of [domain.minStartTension, domain.maxStartTension]) {
+    for (const end of [domain.minEndTension, domain.maxEndTension]) {
+      add(start, end);
+    }
+  }
+
+  let best = candidates[0];
+  let bestError = objective(system, best.start, best.end);
+  for (const candidate of candidates.slice(1)) {
+    const error = objective(system, candidate.start, candidate.end);
+    if (error < bestError) {
+      best = candidate;
+      bestError = error;
+    }
+  }
+  return { tensions: best, error: Math.max(bestError, 0) };
+}
+
+function pullWeightRatio(request) {
+  const points = request.skeletonControlPoints;
+  let health = 1;
+  for (const parameter of [0, ...OFFSET_SAMPLE_PARAMETERS, 1]) {
+    const curvature = curvatureAt(points, parameter);
+    if (curvature === null) {
+      health = 0;
+      break;
+    }
+    const width =
+      request.startSignedWidth +
+      (request.endSignedWidth - request.startSignedWidth) * parameter;
+    health = Math.min(health, clamp(1 + width * curvature, 0, 1));
+  }
+  return PULL_FLOOR + (PULL_CUSP - PULL_FLOOR) * (1 - health) ** 2;
+}
+
 export function solveNaturalHandles(request) {
   const domain = request.handleDomain;
+  const reference = referenceHandles(request);
   const samples = buildOffsetSamples(
     request.skeletonControlPoints,
     request.startSignedWidth,
     request.endSignedWidth
   );
   const fit = buildPerpendicularErrorSystem(request, samples, domain);
-  const unconstrained = unconstrainedMinimum(fit);
-  const tensions = {
-    start: clamp(unconstrained.start, domain.minStartTension, domain.maxStartTension),
-    end: clamp(unconstrained.end, domain.minEndTension, domain.maxEndTension),
-  };
+  const ratio = pullWeightRatio(request);
+  const { tensions } = minimizeInsideRectangle(
+    addReferencePull(fit, reference, ratio),
+    domain
+  );
   return {
     startLength: tensions.start * domain.startReach,
     endLength: tensions.end * domain.endReach,
-    pullWeightRatio: 0,
+    pullWeightRatio: ratio,
     perpendicularRms: Math.sqrt(
       objective(fit, tensions.start, tensions.end) / Math.max(fit.weight, 1)
     ),
