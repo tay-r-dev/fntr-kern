@@ -1172,7 +1172,7 @@ Make the grid executable without environment variables or source rewriting:
    fixed to the four production constants.
 2. Temporarily export a clearly named
    `_solveNaturalHandlesForCalibration(request, pullFloor, pullCuspGain, pullTaperGain,
-   cuspGate)` wrapper from the solver module.
+cuspGate)` wrapper from the solver module.
 3. Parameterize the accuracy, `U^1`, taper, near-cusp, and perturbation check helpers with
    a `solve` callback. Build one `firstAcceptanceFailure(solve)` evaluator that runs those
    same checks and returns either the first diagnostic string or `null`.
@@ -1548,7 +1548,10 @@ node src-js/fontra-core/tests/scripts/make-skeleton-generator-fixtures.js
 git diff -- src-js/fontra-core/tests/data/skeleton-generator/fixtures.json
 ```
 
-Review every changed cubic fixture. Expected changes are generated off-curve coordinates only. Reject changes to:
+Review every changed cubic fixture. Expected changes are generated off-curve coordinates
+and, in the split-outline round-cap fixture, the derived trim on-curves and cap controls
+whose positions and tangents are computed from the terminal side cubic. Those derived
+round-cap points must retain their existing provenance and topology. Reject changes to:
 
 - contour counts;
 - point counts or point types;
@@ -1556,7 +1559,8 @@ Review every changed cubic fixture. Expected changes are generated off-curve coo
 - provenance ownership;
 - line-only fixtures;
 - collapsed-side skeleton copies;
-- caps or corner topology.
+- cap or corner topology;
+- cap-independent rib endpoints or cap inputs.
 
 - [ ] **Step 2: Run golden and focused suites**
 
