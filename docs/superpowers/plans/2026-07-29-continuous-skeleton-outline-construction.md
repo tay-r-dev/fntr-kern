@@ -320,6 +320,7 @@ Create the module with these constants and complete primitives:
 ```js
 import { calculateTunniPoint } from "./tunni-calculations.js";
 
+const EPSILON = 1e-9;
 const MIN_HANDLE_LENGTH = 1;
 const REACH_FLOOR_RATIO = 1 / 3;
 const REACH_CAP_RATIO = 2;
@@ -485,7 +486,7 @@ export function buildHandleDomain(startPoint, endPoint, startDirection, endDirec
   const projectedReach = (anchor, direction) => {
     if (!tunni) return cap;
     const reach = dot(subtract(tunni, anchor), direction);
-    return clamp(reach, floor, cap);
+    return reach > EPSILON ? clamp(reach, floor, cap) : cap;
   };
   const startReach = projectedReach(startPoint, startDirection);
   const endReach = projectedReach(endPoint, endDirection);
@@ -501,11 +502,11 @@ export function buildHandleDomain(startPoint, endPoint, startDirection, endDirec
 }
 ```
 
-This is the current `feasibleBox` reach rule: a missing/parallel intersection uses the
-chord cap, while a finite signed reach is clamped between the floor and cap. It therefore
-preserves the current forward/behind tangent-intersection topology event and the
-one-unit/non-crossing domain. Do not turn a behind intersection into the cap, and do not
-add a near-zero threshold that chooses another fit.
+This is the current `feasibleBox` reach rule: a missing/parallel or behind intersection
+uses the chord cap, while a forward signed reach is clamped between the floor and cap. It
+therefore preserves the current `EPSILON`-defined forward/behind tangent-intersection
+topology event and the one-unit/non-crossing domain. Do not change that existing boundary
+as part of the solver replacement.
 
 - [ ] **Step 5: Add a temporary unconstrained solve sufficient for the circular test**
 
