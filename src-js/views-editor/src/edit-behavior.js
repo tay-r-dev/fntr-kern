@@ -1320,6 +1320,20 @@ const constrainRules = defaultRules.concat([
 
 ]);
 
+// A handle whose on-curve is smooth and carries only this one handle has no
+// direction of its own: the straight on the other side of that on-curve owns
+// the angle, and the handle may only slide along it. That is true of the drag
+// itself, not of any one modifier, so these rows are appended to EVERY rule
+// set. Without them the alternate sets had no match for this shape and fell
+// through to a plain free Move, which rotated the handle off the straight.
+// Appended last on purpose: later rules win at the leaf.
+// prettier-ignore
+const tangentHandleRules = [
+  //   prev3       prevPrev    prev        the point   next        nextNext    Constrain   Action
+  [    ANY|NIL,    SMO|SHA,    SMO|UNS,    OFF|SEL,    ANY|UNS|NIL,ANY|NIL,    false,      "ConstrainPrevAngle"],
+  [    ANY|NIL,    SMO|SHA,    SMO|UNS,    OFF|SEL,    SHA|OFF,    ANY|NIL,    false,      "ConstrainPrevAngle"],
+];
+
 // prettier-ignore
 const alternateRules = [
   //   prev3       prevPrev    prev        the point   next        nextNext    Constrain   Action
@@ -1366,7 +1380,7 @@ const alternateRules = [
   // Selected off-curve locked between two selected smooth points
   [    ANY|NIL,    ANY|NIL,    SMO|SEL,    OFF|SEL,    SMO|SEL,    ANY|NIL,    false,      "DontMove"],
 
-];
+].concat(tangentHandleRules);
 
 // prettier-ignore
 const alternateConstrainRules = alternateRules.concat([
@@ -1376,7 +1390,9 @@ const alternateConstrainRules = alternateRules.concat([
   // Two unselected smooth points between two off-curves, one of them selected
   [    ANY|UNS,    SMO|UNS,    SMO|UNS,    OFF|SEL,    ANY|NIL,    ANY|NIL,    false,      "ConstrainAroundPrevPrevPrev"],
 
-]);
+  // Re-applied after the rotate-around rules above, which would otherwise
+  // swing this handle off the straight that owns its angle.
+]).concat(tangentHandleRules);
 
 const behaviorTypes = {
   "default": {

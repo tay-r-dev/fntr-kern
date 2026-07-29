@@ -2359,24 +2359,33 @@ export class EditorController extends ViewController {
             (skeletonDataByLayer && skeletonDataByLayer[layerName]) ||
             defaultSkeletonPaste;
           if (pasteSkeleton?.contours?.length) {
-            editSkeleton(layerGlyph, (working) => {
-              const { data, nextId } = allocateSkeletonIds(
-                { contours: structuredClone(pasteSkeleton.contours), generated: [] },
-                working.nextId
-              );
-              working.contours.push(...data.contours);
-              working.nextId = nextId;
-              if (layerName === selectionLayerName) {
-                // Selection ids are canonical in the edit layer (WS-9).
-                for (const contour of data.contours) {
-                  for (const point of contour.points || []) {
-                    if (!point.type) {
-                      selection.add(`skeletonPoint/${contour.id}/${point.id}`);
+            // createIfMissing: a glyph with no skeleton block yet has nothing
+            // for editSkeleton to clone, and without this it returns without
+            // mutating — so pasting a skeleton onto an empty glyph silently
+            // did nothing until some other skeleton geometry had created the
+            // block first.
+            editSkeleton(
+              layerGlyph,
+              (working) => {
+                const { data, nextId } = allocateSkeletonIds(
+                  { contours: structuredClone(pasteSkeleton.contours), generated: [] },
+                  working.nextId
+                );
+                working.contours.push(...data.contours);
+                working.nextId = nextId;
+                if (layerName === selectionLayerName) {
+                  // Selection ids are canonical in the edit layer (WS-9).
+                  for (const contour of data.contours) {
+                    for (const point of contour.points || []) {
+                      if (!point.type) {
+                        selection.add(`skeletonPoint/${contour.id}/${point.id}`);
+                      }
                     }
                   }
                 }
-              }
-            });
+              },
+              { createIfMissing: true }
+            );
           }
         }
         this.sceneController.selection = selection;
@@ -2627,13 +2636,11 @@ export class EditorController extends ViewController {
       if (!editedAnchorName.length) {
         warnings.push(`⚠️ ${translate("warning.name-must-not-be-empty")}`);
       }
-      if (
-        !(
-          nameController.model.anchorName ||
-          nameController.model.anchorX ||
-          nameController.model.anchorY
-        )
-      ) {
+      if (!(
+        nameController.model.anchorName ||
+        nameController.model.anchorX ||
+        nameController.model.anchorY
+      )) {
         warnings.push("");
       }
       for (const n of ["X", "Y"]) {
