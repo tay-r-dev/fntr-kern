@@ -244,20 +244,28 @@ pure and independent (contour _i_'s output depends only on contour _i_):
    designer placed. This ordering is product behavior, not an implementation
    detail.
 
-   **`reach` has one definition shared by the solver and authored layers** — the tangent-ray distance,
-   floored at a third of the chord and capped at twice it. The floor is because
-   the intersection slides backwards onto the start point whenever a start
-   tangent points near the far endpoint (measured: a handle squeezed to 0.6 units,
-   then sprang back 41.9); a third of the chord is the handle length of a neutral
-   cubic. The cap is because with the rays near parallel the intersection runs off
-   to infinity. Because reach is finite and positive by construction, a tension
-   always exists — there is no "this end has no reach" case for a stage to skip
-   on, which is what the deleted `handleTensions` used to spell.
+   **The domain separates its coordinate scale from its geometric ceiling.**
+   The scale used to normalize each handle is the signed tangent-ray distance,
+   floored at a third of the chord and capped at twice it. The floor prevents a
+   forward intersection sliding onto an endpoint from squeezing a handle to
+   almost zero and then springing it back; the cap prevents near-parallel rays
+   from giving the fit an unbounded lever arm. A parallel or behind intersection
+   retains the chord-cap fallback.
 
-   Tension 1 remains the exact wall for the automatic fit, attached adjustments,
-   and the pin. The lower face is the one-unit handle floor. Detached handles
-   are intentionally absolute authored geometry and are applied after this
-   constrained construction.
+   A positive forward intersection remains the actual non-crossing maximum. If
+   it lies below the scale floor, that end's maximum normalized tension is
+   `realReach / scaleReach`, below 1, so the emitted length can still land no
+   farther than the intersection. Between the floor and cap, geometric and
+   normalized tension 1 coincide. Beyond the cap, the cap is conservative.
+   Because the scale remains finite and positive, every stage still works in one
+   tension coordinate system without mistaking its stabilizer for geometry.
+
+   The ordinary lower face is the one-unit handle floor. If a real forward reach
+   is shorter than one unit, non-crossing wins and the minimum contracts to the
+   maximum; creating a loop cannot preserve a meaningful grid direction.
+   Automatic fit, attached adjustments, and pins all consume these same per-end
+   limits. Detached handles remain intentionally absolute authored geometry and
+   are applied after the constrained construction.
 
    A side under ~0.5 units ("collapsed") skips all of this and copies the
    skeleton verbatim — this is what makes single-sided contours exact.
@@ -406,7 +414,9 @@ Losing any of these regresses the product:
   positive unprojected influence scale that cannot vanish with the projected
   Hessian.
 - **The positive non-crossing handle domain** — automatic and attached/pinned
-  tensions remain inside the one-unit floor and tension-1 ceiling.
+  lengths remain between the one-unit floor and the true forward tangent
+  intersection. Where the intersection is shorter than one unit, non-crossing
+  wins; the stabilized tension scale never replaces the geometric ceiling.
 - **Authored ordering** — natural answer, attached adjustments, pinned
   harmonic-mean tension, then detached absolute handles.
 - **The three explicit topology/emission events** — collapsed-side threshold,

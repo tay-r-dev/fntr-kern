@@ -98,4 +98,3 @@ Tests will prove:
 4. generated-curvature labels use the canonical segment-tension argument order;
 5. existing behind, parallel, ordinary, taper, continuity, mirror, reversal,
    authored-adjustment, and pin behavior remains green.
-

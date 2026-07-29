@@ -157,6 +157,9 @@ export function buildHandleDomain(startPoint, endPoint, startDirection, endDirec
     },
     endPoint,
   ]);
+  // The clamped reach is a stable coordinate scale, not a substitute tangent
+  // intersection. A short real forward reach lowers the normalized maximum so
+  // multiplying it by that scale still lands exactly on the geometric ceiling.
   const projectedDomain = (anchor, direction) => {
     if (!tunni) return { reach: cap, maxTension: 1 };
     const realReach = dot(subtract(tunni, anchor), direction);

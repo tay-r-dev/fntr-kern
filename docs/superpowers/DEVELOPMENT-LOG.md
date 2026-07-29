@@ -1452,3 +1452,51 @@ Those caps intentionally compute trim points and tangents from the terminal side
 cubic. Changing the cubic must move those derived on-curves and cap controls.
 The correct preservation boundary is their topology, provenance, and cap inputs,
 not frozen derived coordinates.
+
+---
+
+## 19. Stabilized reach was mistaken for the geometric ceiling — fix
+
+**Branch:** `fix/skeleton-continuous-outline-solver`
+**Date:** 2026-07-30
+**Design of record:** `2026-07-30-true-geometric-handle-ceiling-design.md`
+
+### 1. Problem
+
+The handle domain used one number for two jobs: a stable scale for normalized
+tension and the maximum non-crossing length. A short positive tangent reach was
+floored to a third of the chord, so a solver answer at tension 1 could be almost
+twice the real reach. The refreshed `c.json` exposed left-side individual
+tensions of `1.002/1.993` and `0.837/1.473`; their harmonic segment tensions
+were `1.334` and `1.068`.
+
+The label reader separately called `calculateSegmentTension` with its first
+on-curve and control point reversed. It displayed `3.968`, `1.389`, `2.291`, and
+`1.266` for four segments whose correctly ordered means were `1.334`, `0.820`,
+`1.068`, and `0.775`.
+
+### 2. Solution
+
+`buildHandleDomain` keeps the floored/capped reach as the quadratic's stable
+coordinate scale. For a real positive forward reach below that scale, its
+per-end maximum becomes `realReach / scaleReach`; multiplying the two lands
+exactly on the true intersection. The minimum is capped by the maximum, so
+non-crossing wins if a real reach is shorter than the ordinary one-unit floor.
+Parallel and behind intersections retain the chord-cap fallback because they
+have no forward crossing ceiling.
+
+`getGeneratedSegmentCurvature` now passes
+`control1, onCurve1, control2, onCurve2` to the canonical tension calculation.
+It neither clamps nor hides the result.
+
+### 3. Result
+
+Regenerating both supplied configurations gives harmonic segment tensions
+`0.9995`, `0.8198`, `0.9817`, and `0.7752`. The only individual values still
+fractionally above 1 are `1.0024` and `1.0044`, both caused by final integer-grid
+emission at the boundary; grid rounding was deliberately left unchanged.
+
+Two straight-controlled golden fixtures moved only their four affected handle
+coordinates. Focused regression coverage includes the reported short-forward
+geometry, a real reach below one unit, canonical label argument order, and the
+existing solver/generator architecture suites.

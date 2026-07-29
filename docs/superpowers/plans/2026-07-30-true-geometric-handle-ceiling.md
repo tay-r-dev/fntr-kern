@@ -13,6 +13,7 @@
 ### Task 1: Express the true ceiling in the handle domain
 
 **Files:**
+
 - Modify: `src-js/fontra-core/tests/test-natural-handle-solver.js`
 - Modify: `src-js/fontra-core/src/natural-handle-solver.js`
 
@@ -100,6 +101,7 @@ git commit -m "fix: enforce the true outline handle ceiling"
 ### Task 2: Correct generated tension labels
 
 **Files:**
+
 - Modify: `src-js/fontra-core/tests/test-skeleton-tunni.js`
 - Modify: `src-js/fontra-core/src/skeleton-model.js`
 
@@ -137,7 +139,7 @@ Expected: the new assertion fails because the reader currently treats the first 
 Use:
 
 ```js
-calculateSegmentTension(points[1], points[0], points[2], points[3])
+calculateSegmentTension(points[1], points[0], points[2], points[3]);
 ```
 
 - [ ] **Step 4: Run the focused test and verify GREEN**
@@ -156,6 +158,7 @@ git commit -m "fix: report generated segment tension correctly"
 ### Task 3: Verify production geometry and align documentation
 
 **Files:**
+
 - Modify: `docs/superpowers/SKELETON-FEATURE-MODEL.md`
 - Modify: `docs/superpowers/DEVELOPMENT-LOG.md`
 
@@ -188,4 +191,3 @@ Expected: all tests pass, the bundle succeeds with only pre-existing size/Browse
 git add docs/superpowers/SKELETON-FEATURE-MODEL.md docs/superpowers/DEVELOPMENT-LOG.md
 git commit -m "docs: clarify the true outline handle ceiling"
 ```
-
