@@ -69,10 +69,10 @@ Its objective has two terms:
 The pull's weight is a dimensionless multiple of the frame's fixed **unprojected
 handle-influence scale**, so the two terms are always commensurate. Unlike `trace(H)`,
 that scale remains positive when the perpendicular fit has no information. In healthy
-geometry the calibrated ratio stays near its floor and the answer is fit-led. As cusp
-health degrades the ratio rises; where the fit has no information in some direction, the
-pull determines the answer in that direction and resolves to the skeleton's curve
-character.
+geometry the calibrated ratio stays near its floor and the answer is fit-led. As the
+offset approaches a cusp or endpoint widths diverge sharply, the ratio rises; where the
+fit has no information in some direction, the pull determines the answer in that
+direction and resolves to the skeleton's curve character.
 
 The sum is minimized inside the existing handle box. Because the pull is strictly
 positive-definite, the total is **strictly convex for every finite input**: the minimizer
@@ -385,31 +385,56 @@ Three consequences follow directly, and they are why this replaces three mechani
 
 ### 5.6 The pull weight
 
-\(\rho\) has a floor that is always present, and rises as the offset approaches a cusp.
+\(\rho\) has a floor that is always present and rises for either of two input-only
+signals: a genuine near-cusp offset or strong endpoint-width taper.
 
-The predictor is the **cusp factor** \(\lambda=1+d\kappa\), evaluated at the endpoints and
-the same five fixed interior sample parameters used by the fit. The offset of a curve is
-singular where this reaches zero, and a single cubic already fails to represent the
-offset well before it. This is the same quantity the superseded seed scaled by; it
-survives as a weight predictor rather than as a starting point.
+The cusp signal starts with the **cusp factor** \(\lambda=1+d\kappa\), evaluated at the
+endpoints and the same five fixed interior sample parameters used by the fit. The offset
+is singular where this reaches zero. Ordinary inflections can produce a moderately low
+positive factor while remaining accurately representable, so the predictor uses a sharp
+continuous near-zero gate rather than treating all of \(1-\lambda\) as risk:
 
 \[
-s=\operatorname{clamp}\!\left(\min_{t\in\{0,\frac18,\frac14,\frac12,
-\frac34,\frac78,1\}}\lambda(t),0,1\right)
+\lambda_\min=\min_{t\in\{0,\frac18,\frac14,\frac12,
+\frac34,\frac78,1\}}\lambda(t)
 \qquad
-\rho=\rho_\text{floor}+(\rho_\text{cusp}-\rho_\text{floor})(1-s)^2
+r_\text{cusp}=
+\frac{1}{1+\left(\frac{\max(\lambda_\min,0)}{\lambda_\text{gate}}\right)^4}
 \]
 
-Starting values, to be calibrated by the sweeps in §8 and then frozen as global model
-constants: \(\rho_\text{floor}=10^{-3}\), \(\rho_\text{cusp}=4\).
+The taper signal is normalized by the source chord \(L\), so it is bounded and invariant
+to glyph scale:
+
+\[
+\Delta d=|d_3-d_0|
+\qquad
+r_\text{taper}=
+\begin{cases}
+0 & L+\Delta d=0 \\
+\frac{\Delta d}{L+\Delta d} & \text{otherwise}
+\end{cases}
+\]
+
+Combine the independent risks without double-counting their overlap, then map them to the
+pull ratio:
+
+\[
+r=1-(1-r_\text{cusp})(1-r_\text{taper})
+\qquad
+\rho=\rho_\text{floor}+(\rho_\text{peak}-\rho_\text{floor})r^2
+\]
+
+The calibration suite selects and freezes the three global model constants
+\(\lambda_\text{gate}\), \(\rho_\text{floor}\), and \(\rho_\text{peak}\). The finite
+candidate grid and lexicographic selection rule live in the implementation plan.
 
 **The ratio \(\rho\) is computed only from the skeleton and the widths.** It does not read
 the fit's residual, the fit's answer, or anything else the solve produces. The absolute
 weight \(\mu\) also uses the fixed frame influence scale \(S\), never the projected
-Hessian. A ratio driven by the achieved residual would put its own steepest region on
-tapered segments, whose error is commonly a direction error no handle length can absorb.
-Taper is therefore not a separate weighting rule: the global floor must pass the taper
-sweeps, while cusp proximity can raise the ratio continuously.
+Hessian. A ratio driven by the achieved residual would put an answer-dependent feedback
+path on tapered segments. The normalized taper term above is different: it is known
+before the solve, remains continuous, and captures the measured `U^1` failure modes whose
+cusp factors stay healthy despite a large endpoint-width change.
 
 ### 5.7 The solve
 
