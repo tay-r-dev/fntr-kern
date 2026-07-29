@@ -108,6 +108,46 @@ function makeTightTurnRequest(width) {
   );
 }
 
+const quarterCirclePoints = quarterCircle(100);
+const sCurve = [
+  { x: 0, y: 0 },
+  { x: 60, y: 60 },
+  { x: 120, y: -60 },
+  { x: 180, y: 0 },
+];
+const tightTurn = [
+  { x: 0, y: 0 },
+  { x: 20, y: 90 },
+  { x: 120, y: 90 },
+  { x: 140, y: 0 },
+];
+const shallowCurve = [
+  { x: 0, y: 0 },
+  { x: 50, y: 40 },
+  { x: 150, y: 40 },
+  { x: 200, y: 0 },
+];
+const unequalCurve = [
+  { x: 0, y: 0 },
+  { x: 25, y: 60 },
+  { x: 150, y: 75 },
+  { x: 190, y: 0 },
+];
+
+const accuracyCases = [
+  ["circular outward", quarterCirclePoints, 25, 25, 1],
+  ["circular inward", quarterCirclePoints, -40, -40, 1],
+  ["S-curve left", sCurve, 35, 35, 2.5],
+  ["S-curve right", sCurve, -35, -35, 2.5],
+  ["tight inward turn", tightTurn, -70, -70, 1.5],
+  ["shallow wide offset", shallowCurve, 70, 70, 1],
+  ["unequal handles", unequalCurve, 50, 50, 1],
+  ["moderate taper, left", sCurve, 25, 60, null],
+  ["moderate taper, right", sCurve, -25, -60, null],
+  ["strong taper, left", sCurve, 20, 110, null],
+  ["strong taper, right", sCurve, -20, -110, null],
+];
+
 describe("natural-handle-solver: fixed perpendicular fit", () => {
   it("uses the chord cap when a tangent intersection is behind an endpoint", () => {
     const domain = buildHandleDomain(
@@ -134,6 +174,104 @@ describe("natural-handle-solver: fixed perpendicular fit", () => {
     expect(solveNaturalHandles(request)).to.deep.equal(solveNaturalHandles(request));
     expect(request).to.deep.equal(before);
   });
+});
+
+describe("natural-handle-solver: reference answer", () => {
+  it("transfers equal skeleton tension to equal outline tension", () => {
+    const request = arcRequest(100, 25);
+    const result = solveNaturalHandles(request);
+    expect(result.startLength / request.handleDomain.startReach).to.be.closeTo(
+      result.endLength / request.handleDomain.endReach,
+      1e-9
+    );
+  });
+
+  it("retains deliberate unequal skeleton tension near a cusp", () => {
+    const request = makeTightTaperRequest({
+      startSkeletonLength: 40,
+      endSkeletonLength: 100,
+    });
+    const result = solveNaturalHandles(request);
+    expect(result.pullWeightRatio).to.be.above(0.001);
+    expect(result.endLength / request.handleDomain.endReach).to.be.above(
+      result.startLength / request.handleDomain.startReach
+    );
+  });
+
+  it("does not read the outline frame when choosing the ratio", () => {
+    const request = makeTightTaperRequest();
+    const startOutlinePoint = {
+      x: request.startOutlinePoint.x + 80,
+      y: request.startOutlinePoint.y - 30,
+    };
+    const endOutlinePoint = {
+      x: request.endOutlinePoint.x - 40,
+      y: request.endOutlinePoint.y + 60,
+    };
+    const changedFrame = {
+      ...request,
+      startOutlinePoint,
+      endOutlinePoint,
+      handleDomain: buildHandleDomain(
+        startOutlinePoint,
+        endOutlinePoint,
+        request.startHandleDirection,
+        request.endHandleDirection
+      ),
+    };
+    expect(solveNaturalHandles(changedFrame).pullWeightRatio).to.equal(
+      solveNaturalHandles(request).pullWeightRatio
+    );
+  });
+});
+
+function resultDelta(left, right) {
+  return Math.max(
+    Math.abs(left.startLength - right.startLength),
+    Math.abs(left.endLength - right.endLength)
+  );
+}
+
+function perturbAccuracyCase(points, d0, d3, dimension, amount) {
+  const changedPoints = points.map((point) => ({ ...point }));
+  let changedD0 = d0;
+  let changedD3 = d3;
+  if (dimension < 8) {
+    const pointIndex = Math.floor(dimension / 2);
+    const coordinate = dimension % 2 === 0 ? "x" : "y";
+    changedPoints[pointIndex][coordinate] += amount;
+  } else if (dimension === 8) {
+    changedD0 += amount;
+  } else {
+    changedD3 += amount;
+  }
+  return requestFor(changedPoints, changedD0, changedD3);
+}
+
+describe("natural-handle-solver: perturbation continuity", () => {
+  for (const [name, points, d0, d3] of accuracyCases) {
+    it(`moves continuously for ${name}`, () => {
+      const base = solveNaturalHandles(requestFor(points, d0, d3));
+      for (let dimension = 0; dimension < 10; dimension++) {
+        for (const sign of [-1, 1]) {
+          const large = solveNaturalHandles(
+            perturbAccuracyCase(points, d0, d3, dimension, sign * 1e-5)
+          );
+          const small = solveNaturalHandles(
+            perturbAccuracyCase(points, d0, d3, dimension, sign * 5e-6)
+          );
+          const largeDelta = resultDelta(base, large);
+          const smallDelta = resultDelta(base, small);
+          const diagnostic =
+            `${name}, dimension=${dimension}, sign=${sign}, ` +
+            `large=${largeDelta}, small=${smallDelta}`;
+          expect(largeDelta, diagnostic).to.be.below(1e-2);
+          expect(smallDelta, diagnostic).to.be.below(1e-2);
+          expect(smallDelta, diagnostic).to.be.at.most(largeDelta + 1e-8);
+        }
+      }
+    });
+  }
 });
 
 describe("natural-handle-solver: constrained answer", () => {
