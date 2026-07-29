@@ -1045,3 +1045,66 @@ segments that moved across the fixture set, three improved (7.47 → 6.96,
 13.00 → 12.84, 12.90 → 12.73) and one lost 0.28 units (0.79 → 1.07). That last
 is the allowance being spent, and it is the trade the change exists to make.
 Every accuracy ceiling in the suite still holds unchanged.
+
+---
+
+## 15. A saturated handle dragged its partner backwards — fix
+
+**Branch:** `fix/skeleton-expand-math`
+**Date:** 2026-07-29
+
+### 1. Problem
+
+Follow-up to §14, reported against it. With the collapse gone, one artifact
+remained: sweeping a skeleton segment's own tension, at the step where one
+generated handle reached the tension ceiling, **the other handle moved backwards**
+— 90.6 → 59.4 in one step, then back up through 70.4, 91.4, 110.4. Reaching the
+ceiling is normal in that configuration; the partner reversing is not.
+
+### 2. Solution
+
+The ceiling was applied _after_ the equalization walk. So the walk balanced a pair
+that could never be emitted, and sized the free handle against a partner that was
+about to be truncated. It now measures every candidate through the same bound the
+emitted geometry gets, so it optimizes the curve that will actually be drawn.
+
+Bounding inside the walk also raises the baseline the allowance is a fraction of,
+which loosened the walk by a side effect — the `controlled-straight` fixtures lost
+2.9 units. The ratio came down from 25% to 15% to pay that back: 1.7 units on
+those fixtures, and every side of the reported glyph still inside the balance the
+§14 tests assert.
+
+Backtracking over a 240-step tension sweep, worst step: double-sided 8.1 → 1.2,
+single-sided inside 10.9 → 0.2, single-sided outside 9.5 → 2.5. What is left is
+about 1% of a handle and comes from the allowance itself moving with the driver.
+
+### 3. Commits
+
+Single commit on `fix/skeleton-expand-math`.
+
+### 4. Challenges and findings
+
+**The first version of the test only swept one side and passed while two faults
+were still live.** Sweeping the other side of the same configuration found both.
+When a fault is a property of a sweep, sweep every side and both signs of the
+offset.
+
+**A bounded measurement changes the baseline, not just the answer.** Judging
+candidates by the emitted curve was correct and silently made the allowance more
+generous, because the allowance is a fraction of that same measurement. Two golden
+fixtures caught it; without them the accuracy loss would have shipped as
+"rebalancing".
+
+### 5. Still open
+
+Two faults in single-sided mode, found while investigating and **not fixed here**:
+
+- **The collapse survives at low tension on the inside.** With the full width on
+  one side (−80/−228 on the reported segment) the fit's own answer collapses —
+  analytic start 71.4 → corrected 19.9, end on the cusp floor — and the walk
+  normalizes candidates to the fitted magnitude, so it inherits the collapse and
+  emits (4.5, 2.1) against reaches of 100.7/49.6. It also jumps: at one step
+  further the fit flips to asking for tension 3.0 and the pair becomes (216, 33).
+- **The outside side is the least balanced case anywhere**, 0.43/0.85 on the
+  reported glyph, because doubling the offset distance drives λ per end further
+  apart (1.14 against 4.2) and full equalization there genuinely costs 24.8 → 54.9.

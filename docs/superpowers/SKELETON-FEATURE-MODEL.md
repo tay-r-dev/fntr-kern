@@ -469,10 +469,22 @@ Any future per-point field has the same trap.
 
 Inside the construction, the two handle tensions are walked toward each other,
 stopping when the segment's deviation from the true offset has grown past the
-fitted best by **a quarter of that best, plus a quarter unit**, or at fully
-equal. Fixed-count bisection, per the continuity contract. Symmetric geometry is
+fitted best by **15% of that best, plus a quarter unit**, or at fully equal.
+Fixed-count bisection, per the continuity contract. Symmetric geometry is
 untouched to floating point; mild asymmetry closes by half or fully; a faithful
 asymmetry like a shoulder barely moves, which is the allowance doing its job.
+
+**Every candidate is judged as it will be emitted, ceiling included.** The
+tension ceiling used to be applied after this stage, so a candidate whose handle
+ran past its reach was measured with the overshoot intact and then truncated on
+the way out — the walk sizing the free handle against a partner about to be cut
+back. Sweeping a skeleton's own tension through the point where one handle
+saturates, its partner dropped 90.6 → 59.4 in a single step and took three more
+to climb back. Saturation is a legitimate answer; its partner moving backwards
+while it sits on the wall is not. Bounding inside the walk also raises the
+baseline the allowance is a fraction of, which is why the ratio is 15% and not
+the 25% it started at: measured on the `controlled-straight` fixtures, 25% of a
+bounded baseline spent 2.9 units of accuracy where 15% spends 1.7.
 
 **Each candidate split is measured at its own best magnitude**, re-solved in
 closed form (`solveHandleScale`, the two-handle normal equations collapsed onto

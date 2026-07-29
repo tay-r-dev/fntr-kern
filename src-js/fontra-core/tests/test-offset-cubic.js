@@ -532,3 +532,62 @@ describe("offset-cubic: keeps the generated split near the skeleton's", () => {
     expect(worst, "jump per unit of skeleton handle").to.be.at.most(6);
   });
 });
+
+// Saturation is legitimate: a wide offset on a tight curve genuinely asks for
+// more tension than a cubic has, and tension 1 is the wall. What must not happen
+// is the PARTNER moving backwards while its neighbour sits on that wall. The
+// ceiling used to be applied after the split was chosen, so the walk balanced a
+// pair that could never be emitted and sized the free handle against a partner
+// that was about to be truncated: sweeping the skeleton's own tension, the free
+// handle dropped 90.6 -> 59.4 at the exact step where its neighbour reached 1,
+// then climbed back through 70.4, 91.4, 110.4.
+describe("offset-cubic: a saturated handle does not reverse its partner", () => {
+  const START = { x: 126, y: 210 };
+  const END = { x: 442, y: 380 };
+  const END_DIR = { x: 16 / 88.459, y: -87 / 88.459 };
+
+  function lengths(endHandle, d0, d3) {
+    const startHandle = (endHandle * 347.3) / 172.9; // equal-tension skeleton
+    const p0 = START;
+    const p1 = { x: START.x + startHandle, y: START.y };
+    const p2 = { x: END.x + END_DIR.x * endHandle, y: END.y + END_DIR.y * endHandle };
+    const p3 = END;
+    return offsetCubicSide({
+      p0,
+      p1,
+      p2,
+      p3,
+      d0,
+      d3,
+      ...ribInputs(p0, p1, p2, p3, d0, d3),
+    });
+  }
+
+  for (const [name, d0, d3] of [
+    ["double-sided", -40, -114],
+    ["single-sided, width on the inside", -80, -228],
+    ["single-sided, width on the outside", 80, 228],
+  ]) {
+    it(`neither handle backtracks as the skeleton tension grows, ${name}`, () => {
+      let previous = null;
+      let worstBacktrack = 0;
+      for (let endHandle = 100; endHandle <= 340; endHandle += 2) {
+        const current = lengths(endHandle, d0, d3);
+        if (previous) {
+          // Both handles grow with the skeleton's own tension, monotonically,
+          // until each saturates and stays. Nothing goes back down.
+          worstBacktrack = Math.max(
+            worstBacktrack,
+            previous.startLength - current.startLength,
+            previous.endLength - current.endLength
+          );
+        }
+        previous = current;
+      }
+      // Not zero: the walk's allowance moves with the driver too, so the pair
+      // wobbles by about 1% of a handle - 1.2, 0.2 and 2.5 units on these three.
+      // The reported fault was 31 units in one step, and visible.
+      expect(worstBacktrack, "backtrack").to.be.at.most(3);
+    });
+  }
+});

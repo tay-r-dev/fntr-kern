@@ -58,7 +58,7 @@ const CORRECTION_PASSES = 4;
 // error is. The floor stays for segments the fit nails, where a proportional
 // allowance would be too small to let the walk move at all.
 const EQUALIZE_ALLOWANCE = 0.25;
-const EQUALIZE_ALLOWANCE_RATIO = 0.25;
+const EQUALIZE_ALLOWANCE_RATIO = 0.15;
 
 // The magnitude re-solve is a least squares like any other here, and gets the
 // same treatment as the handle fit: bounded to a band around the split it was
@@ -235,7 +235,18 @@ function shapeTensions(
   endLength,
   startReach,
   endReach,
-  { q0, q3, u0, u1, samples, parameters, pinnedTension, startAdjustment, endAdjustment }
+  {
+    q0,
+    q3,
+    u0,
+    u1,
+    chord,
+    samples,
+    parameters,
+    pinnedTension,
+    startAdjustment,
+    endAdjustment,
+  }
 ) {
   const fitted = handleTensions(startLength, endLength, startReach, endReach);
   if (!fitted) {
@@ -276,17 +287,35 @@ function shapeTensions(
     const bounded = Math.min(Math.max(scale, SCALE_BAND_LOW), SCALE_BAND_HIGH);
     return { startLength: rayStart * bounded, endLength: rayEnd * bounded };
   };
-  const deviationOf = (lengths) =>
-    offsetDeviation(
+  // Judge a candidate by the curve that will actually be emitted, ceiling and
+  // all. The ceiling used to land after this stage, so a candidate whose start
+  // handle ran past its reach was measured with that overshoot intact and then
+  // truncated on the way out - the walk sizing the free handle against a partner
+  // that was about to be cut back. Sweeping a skeleton's own tension through the
+  // point where one handle saturates, the other dropped 90.6 to 59.4 and took
+  // three more steps to climb back. A saturated handle is a legitimate answer;
+  // its partner moving backwards while it sits there is not.
+  //
+  // This is the fit's own bound - the eased form, no hand-placed hard limit and
+  // no pin - because a candidate split is the fit's answer by definition. The
+  // adjustment and pin stages below still bound their own output afterwards.
+  const emitted = (lengths) => ({
+    startLength: boundLength(lengths.startLength, startReach, chord),
+    endLength: boundLength(lengths.endLength, endReach, chord),
+  });
+  const deviationOf = (lengths) => {
+    const bounded = emitted(lengths);
+    return offsetDeviation(
       q0,
       q3,
       u0,
       u1,
-      lengths.startLength,
-      lengths.endLength,
+      bounded.startLength,
+      bounded.endLength,
       samples,
       parameters
     );
+  };
 
   // Walk from the fitted split toward the equal one for as long as the
   // allowance holds. Symmetric geometry arrives here already equal, so the walk
@@ -470,6 +499,7 @@ export function offsetCubicSide({
     q3,
     u0,
     u1,
+    chord,
     samples,
     parameters,
     pinnedTension,
