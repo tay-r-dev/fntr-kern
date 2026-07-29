@@ -55,17 +55,32 @@ following an unrepresentable target at any cost.
 
 ## 3. Solution summary
 
-The new construction computes two complete, continuous answers:
+The new construction is **one convex minimization**, solved once in closed form.
 
-1. **Geometric answer.** A fixed convex fit minimizes perpendicular distance from the
-   generated cubic to the requested offset. Samples never change identity.
-2. **Inherited answer.** The skeleton's two handle tensions are transferred to the
-   generated tangent reaches. This preserves the curve character when the mathematical
-   offset is not representable by the allowed cubic.
+Its objective has two terms:
 
-A continuous representability score blends those answers. A small residual gives the
-geometric answer full authority. A large residual smoothly transfers authority to the
-inherited answer.
+1. **The fit.** Perpendicular distance from the generated cubic to the requested offset,
+   measured at fixed sample identities. Affine in the two handle lengths, so this term is
+   a convex quadratic.
+2. **The pull.** A quadratic penalty on the distance, in tension space, from the
+   **reference answer** — the skeleton's own two handle tensions transferred to the
+   generated tangent reaches.
+
+The pull's weight is a fraction of the fit's own scale, so the two terms are always
+commensurate. Where the fit has information the pull is negligible and the answer is the
+fit. Where the fit has no information in some direction, the pull is what determines the
+answer in that direction, and it resolves to the skeleton's curve character.
+
+The sum is minimized inside the existing handle box. Because the pull is strictly
+positive-definite, the total is **strictly convex for every input**: the minimizer always
+exists, is always unique, and is a continuous function of the geometry with a slope bound
+set directly by the pull's weight.
+
+That single term does three jobs that would otherwise be three mechanisms — it supplies
+the rank-deficient answer, it breaks ties in a flat valley, and it is how an
+unrepresentable offset inherits the skeleton's shape instead of landing on a face of the
+box. There is no separate confidence score, no blend between two computed answers, and no
+branch on the rank of the system.
 
 This is part of the geometry definition. It does not inspect pointer direction, previous
 frames, or output motion. The same input always produces the same result.
@@ -78,6 +93,8 @@ The automatic path contains:
 - no convergence test;
 - no error-budget search;
 - no equalization repair;
+- no rank branch or degeneracy threshold;
+- no blend between two separately computed answers;
 - no motion override;
 - no history or hysteresis.
 
@@ -107,12 +124,18 @@ The automatic path contains:
    continuous function of skeleton coordinates and widths.
 2. The construction is frame-independent. It cannot read prior generated geometry.
 3. No threshold chooses between two automatic algorithms.
-4. Active handle-domain constraints may change, but a full-rank constrained answer must
-   meet continuously at the shared boundary. As rank disappears, the geometric answer's
-   influence must continuously fall to zero.
-5. Deliberate topology events remain explicit: collapsed-side activation, a
-   forward/behind tangent-intersection change, and final grid rounding.
-6. A high-resolution sweep must test each side and each supported width mode.
+4. The minimized objective is strictly convex for every input, so the minimizer is unique
+   and no tie-break rule exists. Active handle-box constraints may change; the answer must
+   meet continuously at each shared boundary.
+5. Continuity is not sufficient on its own. The answer's sensitivity to the input must be
+   **bounded**, and the bound is set explicitly by the pull weight rather than left to the
+   conditioning of the fit. A sweep step ceiling, not a continuity proof, is the
+   acceptance criterion.
+6. Deliberate topology events remain explicit: collapsed-side activation, a
+   forward/behind tangent-intersection change, and final grid rounding. The
+   forward/behind change occurs independently on the outline frame and on the skeleton
+   frame used by the reference answer; both must be swept.
+7. A high-resolution sweep must test each side and each supported width mode.
 
 ### 4.3 Authored geometry
 
@@ -130,10 +153,12 @@ The automatic path contains:
 
 1. The solver remains pure and stateless.
 2. All internal calculations remain floating point.
-3. Grid rounding occurs only at the existing emission boundary. The solver introduces
-   no intermediate rounding.
+3. The solver introduces no rounding at all. The two existing rounding points are
+   unchanged: the generator's grid emission, and the resolution of a hand-placed attached
+   or detached handle onto the grid in the orchestrator — that point is one the designer
+   placed and sees, and the pin runs after it, so it cannot be deferred to emission.
 4. Invalid or rank-deficient geometry produces finite output by continuously preferring
-   the inherited answer.
+   the reference answer.
 5. The work stays in the geometry core and retains automated test coverage.
 6. No persistence schema, editor gesture, panel, or selection change is required.
 
@@ -154,16 +179,8 @@ The generated cubic is:
 function buildOutlineCubic(frame, startLength, endLength) {
   return [
     frame.startOutlinePoint,
-    addScaled(
-      frame.startOutlinePoint,
-      frame.startHandleDirection,
-      startLength
-    ),
-    addScaled(
-      frame.endOutlinePoint,
-      frame.endHandleDirection,
-      endLength
-    ),
+    addScaled(frame.startOutlinePoint, frame.startHandleDirection, startLength),
+    addScaled(frame.endOutlinePoint, frame.endHandleDirection, endLength),
     frame.endOutlinePoint,
   ];
 }
@@ -237,14 +254,8 @@ function buildPerpendicularErrorSystem(frame, offsetSamples) {
       sample.skeletonNormal,
       subtract(fixedPoint, sample.requestedPoint)
     );
-    const startCoefficient = dot(
-      sample.skeletonNormal,
-      influence.startVector
-    );
-    const endCoefficient = dot(
-      sample.skeletonNormal,
-      influence.endVector
-    );
+    const startCoefficient = dot(sample.skeletonNormal, influence.startVector);
+    const endCoefficient = dot(sample.skeletonNormal, influence.endVector);
 
     system.addSquaredResidual(
       constantError,
@@ -258,36 +269,9 @@ function buildPerpendicularErrorSystem(frame, offsetSamples) {
 }
 ```
 
-### 5.4 Geometric answer
+### 5.4 Reference answer
 
-Minimize the fixed quadratic inside the existing handle domain:
-
-```js
-function solveGeometricHandles(frame, offsetSamples, handleDomain) {
-  const errorSystem = buildPerpendicularErrorSystem(frame, offsetSamples);
-  return minimizeQuadraticInsideRectangle(errorSystem, handleDomain);
-}
-```
-
-The domain is a rectangle because each handle has a minimum positive length and a
-maximum non-crossing reach.
-
-The solve has two ordered objectives. First, minimize perpendicular error. Second, among
-answers with the same minimum error, select the answer closest to the inherited answer
-in normalized tension space. This gives the constrained problem one deterministic
-answer, including when the geometric system lacks rank.
-
-The solve needs no iterative search. The implementation evaluates the interior minimum,
-the four edge minima, and the four corners. It compares their perpendicular errors
-first and their normalized distances from the inherited answer second. When an active
-boundary changes in a full-rank system, both active sets meet at the same answer. When
-rank disappears, the representability score defined below continuously removes the
-geometric answer's influence. Straight and degenerate segments therefore need no
-alternative fitting algorithm.
-
-### 5.5 Inherited answer
-
-The inherited answer transfers each skeleton handle's normalized tension to the
+The reference answer transfers each skeleton handle's normalized tension to the
 corresponding generated reach:
 
 ```js
@@ -295,10 +279,8 @@ function transferSkeletonTensions(skeletonCurve, outlineFrame, handleDomain) {
   const skeletonTensions = measureSkeletonHandleTensions(skeletonCurve);
 
   return handleDomain.constrain({
-    startLength:
-      skeletonTensions.start * outlineFrame.startTangentReach,
-    endLength:
-      skeletonTensions.end * outlineFrame.endTangentReach,
+    startLength: skeletonTensions.start * outlineFrame.startTangentReach,
+    endLength: skeletonTensions.end * outlineFrame.endTangentReach,
   });
 }
 ```
@@ -313,79 +295,120 @@ Where a tangent reach is geometrically unavailable, the same finite chord-based 
 used by the existing authored-tension controls is used. One reach definition remains
 shared by the automatic and authored layers.
 
-### 5.6 Representability score
+The skeleton's own frame has its own forward/behind tangent-intersection change,
+independent of the outline's. It is the same declared topology event, in a second place,
+and §8 requires sweeping it.
 
-The geometric answer's perpendicular root-mean-square residual measures how well one
-allowed cubic can represent the requested offset.
+### 5.5 The pull
 
-Normalize that residual by the generated chord:
-
-\[
-e=
-\frac{\operatorname{RMS}(r_i)}
-     {\max(\text{chord},1)}
-\]
-
-The geometric confidence is:
+Carry both unknowns as tensions, so the fit's system is expressed against the reaches:
 
 \[
-c_\text{error}=
-\frac{1}{1+(e/0.02)^6}
+r_i(\tau_a,\tau_b)=c_i+(\alpha_i R_a)\tau_a+(\beta_i R_b)\tau_b
 \]
 
-The quadratic system's nonnegative normalized determinant supplies a continuous rank
-score. Let \(d=\max(\det(H),0)\); this only removes a possible negative roundoff error
-from a positive-semidefinite system.
+Add one quadratic term penalizing distance from the reference answer
+\((\hat\tau_a,\hat\tau_b)\):
 
 \[
-c_\text{rank}=
-\frac{d}
-     {d+10^{-6}\operatorname{trace}(H)^2}
+P(\tau)=\mu\left[(\tau_a-\hat\tau_a)^2+(\tau_b-\hat\tau_b)^2\right]
+\qquad
+\mu=\rho\,\operatorname{trace}(H)
 \]
 
-Define \(c_\text{rank}=0\) when both numerator and denominator are zero.
+Scaling \(\mu\) by the fit's own trace makes \(\rho\) dimensionless and makes the whole
+construction invariant to glyph scale and to sample count.
 
-The final confidence is:
-
-\[
-c=c_\text{error}c_\text{rank}
-\]
-
-Both scores are continuous. Neither performs a threshold comparison.
-
-The natural automatic answer is:
+Adding the pull is a **modification of the same two-by-two system**, not a second solve:
 
 ```js
-function chooseNaturalHandles(geometricAnswer, inheritedAnswer, fitQuality) {
-  const errorRatio =
-    fitQuality.perpendicularRms / Math.max(fitQuality.chordLength, 1);
-  const errorConfidence =
-    1 / (1 + Math.pow(errorRatio / 0.02, 6));
-
-  const nonnegativeDeterminant = Math.max(fitQuality.determinant, 0);
-  const rankScale =
-    nonnegativeDeterminant +
-    1e-6 * fitQuality.trace * fitQuality.trace;
-  const rankConfidence =
-    rankScale === 0 ? 0 : nonnegativeDeterminant / rankScale;
-
-  const geometricConfidence = errorConfidence * rankConfidence;
-
-  return interpolateHandleLengths(
-    inheritedAnswer,
-    geometricAnswer,
-    geometricConfidence
-  );
+function addReferencePull(system, reference, weightRatio) {
+  const weight = weightRatio * (system.aa + system.bb);
+  return {
+    ...system,
+    aa: system.aa + weight,
+    bb: system.bb + weight,
+    ac: system.ac - weight * reference.startTension,
+    bc: system.bc - weight * reference.endTension,
+  };
 }
 ```
 
-This blend is not a motion correction. It is computed only from the current segment's
-representability. A mathematical offset that fits well receives the geometric answer.
-An impossible offset cannot drag the outline into a collapsed or crossed solution merely
-because its raw coordinates are far away.
+Three consequences follow directly, and they are why this replaces three mechanisms:
 
-The constants are global model constants. They cannot vary by glyph, side, mode, or
-fixture. The values above come from the initial disposable prototype:
+- **Strict convexity, always.** The unpenalized system is positive semi-definite, so
+  \(aa\cdot bb\ge ab^2\) and the penalized determinant is at least \(\mu^2>0\). The
+  minimizer exists and is unique for every input, including a coincident, retracted or
+  perfectly straight segment. There is no rank branch and no tie-break rule.
+- **A slope bound you set.** The smallest eigenvalue is at least \(\mu\), so the answer's
+  sensitivity to the data is at most \(1/\mu\), and the condition number is at most
+  \(1+1/\rho\). Continuity is not left to the conditioning of the fit.
+- **Unrepresentable offsets inherit shape.** Where one cubic cannot express the offset,
+  the fit alone lands on a face of the box — one handle on the ceiling or the collapse
+  floor. The pull is what holds it off that face and toward the skeleton's own split.
+
+### 5.6 The pull weight
+
+\(\rho\) has a floor that is always present, and rises as the offset approaches its cusp.
+
+The predictor is the **cusp factor** \(\lambda=1+d\kappa\) at each end: the offset of a
+curve is singular exactly where this reaches zero, and a single cubic already fails to
+represent the offset well before it. This is the same quantity the superseded seed
+scaled by; it survives as the weight rather than as a starting point.
+
+\[
+s=\operatorname{clamp}\!\left(\min(\lambda_\text{start},\lambda_\text{end}),0,1\right)
+\qquad
+\rho=\rho_\text{floor}+(\rho_\text{cusp}-\rho_\text{floor})(1-s)^2
+\]
+
+Starting values, to be calibrated by the sweeps in §8 and then frozen as global model
+constants: \(\rho_\text{floor}=10^{-3}\), \(\rho_\text{cusp}=4\).
+
+**The weight is computed only from the skeleton and the widths.** It does not read the
+fit's residual, the fit's answer, or anything else the solve produces. That is deliberate:
+a weight driven by the achieved residual closes a feedback path from the answer back into
+how much the answer counts, and it puts its own steepest region on tapered segments, which
+are common and whose error is a direction error no handle length can absorb. Taper is
+therefore **not** a special case here — it gets the plain fit, held off the faces of the
+box by the floor weight alone.
+
+### 5.7 The solve
+
+Minimize the penalized quadratic inside the handle box:
+
+```js
+function solveNaturalHandles(request) {
+  const samples = buildRequestedOffsetSamples(request);
+  const reference = transferSkeletonTensions(request);
+  const system = addReferencePull(
+    buildPerpendicularErrorSystem(request, samples),
+    reference,
+    pullWeightRatio(request)
+  );
+  return minimizeQuadraticInsideRectangle(system, request.handleDomain);
+}
+```
+
+The box is a rectangle because each handle has a minimum positive length and a maximum
+non-crossing reach.
+
+The solve needs no iterative search. Because the penalized system is strictly convex, the
+minimizer is the interior stationary point when it lies inside the rectangle, and
+otherwise the best of the four edge minima and four corners. It is compared on the single
+penalized objective. When an active boundary changes, both active sets meet at the same
+answer, because the objective is one continuous strictly convex function on both sides of
+the boundary. Straight and degenerate segments need no alternative algorithm and no
+special case: the pull supplies the answer in any direction the fit does not constrain.
+
+`pullWeightRatio` reads only the skeleton control points and the two signed widths.
+It must not be given access to the system, the samples, or the answer.
+
+The pull constants are global model constants. They cannot vary by glyph, side, mode, or
+fixture. The prototype measurements below were taken with the superseded blend and stand
+only as feasibility evidence for the fixed-sample fit; the committed implementation must
+reproduce them through repository tests, after `ρ_floor` and `ρ_cusp` are calibrated
+against the §8 sweeps:
 
 - `U^1` single-sided tension sweep: worst unrounded handle step about `1.14` units,
   with no backtracking;
@@ -398,31 +421,19 @@ fixture. The values above come from the initial disposable prototype:
 These measurements establish feasibility. The committed implementation must reproduce
 them through repository tests before replacing the current construction.
 
-### 5.7 Authored-handle layer
+### 5.8 Authored-handle layer
 
-The natural answer is followed by the existing authored semantics in one explicit layer:
+The solved answer is followed by the existing authored semantics in one explicit layer:
 
 ```js
 function applyAuthoredHandleState(naturalHandles, authoredState, frame) {
-  const attached = applyAttachedHandleAdjustments(
-    naturalHandles,
-    authoredState,
-    frame
-  );
+  const attached = applyAttachedHandleAdjustments(naturalHandles, authoredState, frame);
 
   const curvaturePinned = authoredState.hasPinnedCurvature
-    ? setHarmonicMeanTension(
-        attached,
-        authoredState.pinnedCurvature,
-        frame
-      )
+    ? setHarmonicMeanTension(attached, authoredState.pinnedCurvature, frame)
     : attached;
 
-  return replaceDetachedHandles(
-    curvaturePinned,
-    authoredState,
-    frame
-  );
+  return replaceDetachedHandles(curvaturePinned, authoredState, frame);
 }
 ```
 
@@ -446,23 +457,12 @@ function constructOutlineSide(input) {
 
   const frame = buildFixedSegmentFrame(input);
   const handleDomain = buildHandleDomain(frame);
-  const offsetSamples = buildRequestedOffsetSamples(input);
 
-  const geometricAnswer = solveGeometricHandles(
+  const naturalHandles = solveNaturalHandles({
+    ...input,
     frame,
-    offsetSamples,
-    handleDomain
-  );
-  const inheritedAnswer = transferSkeletonTensions(
-    input.skeletonCurve,
-    frame,
-    handleDomain
-  );
-  const naturalHandles = chooseNaturalHandles(
-    geometricAnswer.handles,
-    inheritedAnswer,
-    geometricAnswer.fitQuality
-  );
+    handleDomain,
+  });
   const authoredHandles = applyAuthoredHandleState(
     naturalHandles,
     input.authoredState,
@@ -478,9 +478,9 @@ Data flows in one direction:
 ```text
 skeleton geometry
     -> fixed segment frame
-    -> requested offset samples
-    -> geometric answer + inherited answer
-    -> continuous representability blend
+    -> requested offset samples  +  reference answer  +  pull weight
+    -> one strictly convex quadratic
+    -> exact minimization inside the handle box
     -> authored handle state
     -> emitted cubic
 ```
@@ -495,10 +495,9 @@ Add one focused geometry module beside the existing cubic construction module. I
 
 - fixed offset sampling;
 - quadratic-system assembly;
-- exact two-variable constrained minimization;
-- inherited-tension transfer;
-- representability scoring;
-- the natural-handle blend.
+- the reference answer (skeleton-tension transfer);
+- the pull weight, from the skeleton and the widths only;
+- exact two-variable constrained minimization of the penalized system.
 
 It has no knowledge of pins, attached offsets, detached handles, provenance, caps,
 corners, contour direction, or editor state.
@@ -522,10 +521,14 @@ Its public input and output are plain objects:
  * @typedef {Object} NaturalHandleResult
  * @property {number} startLength
  * @property {number} endLength
- * @property {number} geometricConfidence
- * @property {number} perpendicularRms
+ * @property {number} pullWeightRatio    diagnostic only
+ * @property {number} perpendicularRms   diagnostic only, measured on the answer
  */
 ```
+
+The two diagnostics exist so a failing accuracy test can distinguish a poor fit from a
+segment the pull deliberately holds near the skeleton's shape. Nothing downstream may
+branch on either.
 
 ### 7.2 Cubic-side orchestrator
 
@@ -598,9 +601,22 @@ Retain the existing true-offset accuracy cases:
 - shallow curve at wide offset;
 - unequal skeleton handles.
 
-The new implementation must meet the current ceilings. It must also record the
-representability confidence so failures distinguish a bad geometric fit from an
-intentional inherited-shape result.
+Add, because the current suite has no case with unequal endpoint widths and taper is
+common:
+
+- a tapered segment at moderate ratio, both sides;
+- a tapered segment at strong ratio, both sides;
+- a tension sweep on a tapered segment, held to the same step ceiling as §8.1.
+
+The new implementation must meet the current ceilings. It must also record the pull
+weight and the answer's residual so a failure distinguishes a poor fit from a segment the
+pull deliberately holds near the skeleton's shape.
+
+### 8.3.1 Accuracy ledger
+
+Report, across every cubic side the fixture corpus generates, how many improved against
+the true offset, how many lost, the net change, and the worst single loss. A ceiling
+table alone does not show what the change cost.
 
 ### 8.4 Invariants
 
@@ -652,7 +668,7 @@ been reviewed.
 2. Add pure tests for the new natural-handle solver.
 3. Implement fixed offset sampling and the quadratic system.
 4. Implement exact minimization inside the handle domain.
-5. Implement inherited-tension transfer and representability scoring.
+5. Implement the reference answer and the pull weight.
 6. Verify the prototype measurements in repository tests.
 7. Route only the automatic natural handles through the new solver.
 8. Keep authored adjustments, pins, detached handles, contour assembly, caps, corners,
@@ -694,6 +710,33 @@ Fit freely, then search how much imbalance repair an error allowance can afford.
 This makes balance a later correction. Plateaus, active sample changes, and allowance
 constants become part of the geometry.
 
+### Blending two computed answers by a representability score
+
+Solve the fit, score how well it did, and interpolate between it and the reference answer
+by that score.
+
+Three faults. The score's steep region lands on tapered segments, which are common and
+whose error is a direction error no handle length can absorb, so the most ordinary
+non-trivial case sits in the fastest-moving part of the control. A weight read off the
+achieved residual closes a feedback path from the answer into how much the answer counts.
+And a steep sigmoid is a threshold with a slope — the same species as the eased tension
+ceiling that had already been withdrawn twice, and it puts a large slope in the output
+precisely where the two answers are furthest apart.
+
+Superseded by the pull: one term inside the objective, weighted from the skeleton alone,
+which does the same job with a slope bound stated up front.
+
+### A determinant-based rank score
+
+Multiply the answer by a continuous function of the normalized determinant so the fit's
+influence falls away as rank disappears.
+
+It is calibrated in the wrong place. A score reaching half strength at a determinant of
+`1e-6` of the squared trace corresponds to a condition number near one million, while the
+answer's sensitivity is already large at ten thousand — so the guard does nothing across
+the entire range where conditioning actually degrades the answer. Making it strictly
+convex from the start removes the quantity being measured.
+
 ### Fixed subdivision
 
 Emit multiple cubics for every skeleton cubic.
@@ -706,8 +749,9 @@ and all segment-level controls. It is unnecessary for the reported problem.
 The feature is complete when:
 
 1. The current iterative correction and split-search machinery is absent from the automatic
-   path.
-2. `U^1` sweeps without generated-handle jumps or rebound in every supported width mode.
+   path, and no confidence score, rank branch or blend has replaced it.
+2. `U^1` sweeps without generated-handle jumps or rebound in every supported width mode,
+   and a tapered segment sweeps to the same ceiling.
 3. Generated directions remain skeleton-owned.
 4. Existing accuracy ceilings pass.
 5. Authored handle behavior remains unchanged.
