@@ -1108,3 +1108,115 @@ Two faults in single-sided mode, found while investigating and **not fixed here*
 - **The outside side is the least balanced case anywhere**, 0.43/0.85 on the
   reported glyph, because doubling the offset distance drives λ per end further
   apart (1.14 against 4.2) and full equalization there genuinely costs 24.8 → 54.9.
+
+---
+
+## 16. The offset construction was rebuilt around one invariant — rework
+
+**Branch:** `fix/skeleton-tension-overflow`
+**Date:** 2026-07-29
+**Design of record:** `SKELETON-FEATURE-MODEL.md` §3.2 (the feasible box), §7, §8
+
+### 1. Problem
+
+The two faults §15 left open, reported from use on a `U`: two straights joined by
+one curved segment, both joints straight-controlled, the contour single-sided so
+the whole width lands on the inside of the bend. Sweeping the curved segment's
+own tension in **one** direction, the generated handles jumped and rebounded —
+±20 units per step while the skeleton handle moved 1.7.
+
+The wider complaint was structural, and it is the one this entry answers. Each
+fix since the construction shipped had added a guard: a correction band, a chord
+cap, a handle floor, a cusp floor on λ, a tension ceiling in an eased form and an
+exact form and an exemption for pins, a scale band on the magnitude re-solve, a
+rule that a candidate split must be judged as it will be emitted, and a null
+return meaning "this end has no reach, skip the stage". Every one of them was a
+correct answer to a real measurement. Together they were a list of exceptions
+that was still incomplete, because none of them addressed why an infeasible
+answer was being produced in the first place.
+
+### 2. Solution
+
+One invariant, stated once and held everywhere: **both handle lengths are carried
+as tensions, and every stage produces a point inside the feasible box** —
+`[1/reach, 1]` on each axis, where tension 1 is the tangent-ray intersection and
+the lower face is the one-unit grid floor.
+
+`reach` gets a single definition — the tangent-ray distance, floored at a third
+of the chord and capped at twice it — used by the seed, the correction, the
+equalization walk, the hand adjustment, the pin and the emitted length alike.
+Because it is finite and positive by construction, a tension always exists.
+
+The pipeline is then five stages on a compact box, in order: seed (λ = 1 + d·κ),
+correction (four fixed least-squares passes), split (the bounded equalization
+walk), attached adjustment, pin. Every one of the guards above is either the box
+or a consequence of it, and all of them are gone from the source. `handleTensions`
+went with them — its whole purpose was the null return.
+
+### 3. Commits
+
+Single commit on `fix/skeleton-tension-overflow`.
+
+### 4. Challenges and findings
+
+**The jitter was the correction loop reparameterizing against a curve that
+loops.** Where a cubic cannot represent the offset — and on the reported segment
+it cannot, the fit's own deviation running to ~90 units — the least squares asks
+for a start handle at 2.4× its reach and a **negative** end handle. The band
+clamped the negative one and left the other free, so the loop's iterate was
+self-intersecting, and Newton's root find on a self-intersecting curve is
+multivalued: one sample's parameter walked 0.907 → 0.200 → 0.319 → 0.635 across
+the four passes, and a one-unit move of the skeleton sent it down a different
+branch. That magnitude then reached the outline through the equalization walk,
+which normalizes candidates to the fit's own magnitude.
+
+**A fixed trip count buys determinism, not continuity.** This is the correction
+to the contract as it was written down after entry §3. Fixed count, fixed seed,
+no convergence test and no threshold search were all satisfied here, and the
+output still jumped, because the map being iterated was not continuous in its
+input. The box is what makes the iterated map well-behaved; the trip count only
+stops the loop from _deciding_ when to stop. Both are required and neither
+implies the other.
+
+**The eased ceiling was the root of the three-variant bound.** It was introduced
+so the fit's answer would be C1, but the contract only asks for continuity, and a
+clamp is continuous and 1-Lipschitz. Easing cost a few percent of whatever it was
+given — which is wrong for a hand-placed length, hence the exact variant, and
+wrong for a pin, hence the exemption. One exact ceiling collapses three cases
+into one.
+
+**Measured, on every cubic side the fixture set and the reported glyph generate
+(33 sides, 13 moved by more than half a unit):** 8 improved against the true
+offset, 5 lost, net −1.10 units of deviation, worst single loss 0.68. One side of
+`open-smooth-cubic-junction` had a handle sitting on the 1-unit collapse floor at
+52.8/1.1 and now comes out 62.1/20.8 — the §14 fault, still live on a fixture
+after §14 shipped. Three of eleven golden fixtures moved and were regenerated.
+
+**Worst single-step movement of any generated point, sweeping the reported glyph
+in every mode** (200 steps; driver step in brackets):
+
+| driver          | mode               | before | after |
+| --------------- | ------------------ | ------ | ----- |
+| segment tension | single-sided right | 36.67  | 2.15  |
+| segment tension | single-sided left  | 196.00 | 4.12  |
+| segment tension | double-sided       | 122.00 | 15.00 |
+| segment tension | pinned curvature   | 1.85   | 1.85  |
+| rib width       | single-sided right | 53.01  | 16.03 |
+| rib width       | double-sided       | 35.00  | 10.43 |
+| rib width       | pinned curvature   | 69.01  | 20.02 |
+| on-curve drag   | single-sided right | 14.35  | 2.00  |
+| on-curve drag   | double-sided       | 11.25  | 12.69 |
+| on-curve drag   | pinned curvature   | 300.00 | 2.00  |
+
+**A sweep harness that starts at a degenerate configuration lies.** The first
+run of that table drove the segment's tension from zero-length skeleton handles
+and reported 765- and 625-unit steps in both the old and new code — all of it the
+first step out of the degenerate seed. Re-run from 30% of the drawn handle, the
+same sweep tells the story above. This is the same lesson as §5's synthetic
+sweep: sweep design decides the answer.
+
+**What is left is the cusp, and it is not jitter.** The residual 16 and 10-unit
+steps under a width drag land where `1 + d·κ` crosses zero — the offset genuinely
+cusps there and the handle genuinely collapses. Both are ~3.3× better than
+before, and chasing them further means representing a cusp with one cubic, which
+is the limit the curvature gizmo exists for.

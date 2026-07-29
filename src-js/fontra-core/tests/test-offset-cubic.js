@@ -591,3 +591,75 @@ describe("offset-cubic: a saturated handle does not reverse its partner", () => 
     });
   }
 });
+
+// The reported U-with-a-tail case, taken straight off the glyph: two straights
+// joined by one curved segment, both joints straight-controlled, and the contour
+// single-sided so the whole width lands on the INSIDE of the bend - 80 units at
+// the start, 290 at the end. No cubic on those rib ends and those directions
+// represents that offset: the fit's own deviation runs to ~90 units, which is
+// the regime the curvature gizmo exists for.
+//
+// Saturating there is the honest answer. Jittering is not. Sweeping the skeleton
+// segment's own tension in ONE direction, the generated handles oscillated by
+// more than 20 units per 1.7-unit step of skeleton handle - so the outline
+// jumped and rebounded under a single-directed drag.
+describe("offset-cubic: an unrepresentable offset saturates, it does not jitter", () => {
+  const P0 = { x: 408, y: 105 };
+  const P3 = { x: 936, y: 338 };
+  const START_HANDLE = 337; // 745,105
+  const END_HANDLE = Math.hypot(30, 162); // 906,176
+  const START_DIR = { x: 1, y: 0 };
+  const END_DIR = { x: -30 / END_HANDLE, y: -162 / END_HANDLE };
+  // The rib ends and rib normals are fixed by the two straights, so a sweep of
+  // the segment's own handles moves nothing else in this call.
+  const RIB = {
+    q0: { x: 408, y: 185 },
+    q3: { x: 650, y: 388 },
+    u0: START_DIR,
+    u1: END_DIR,
+    d0: -80,
+    d3: -290,
+  };
+
+  function lengthsAt(scale) {
+    return offsetCubicSide({
+      p0: P0,
+      p1: {
+        x: P0.x + START_DIR.x * START_HANDLE * scale,
+        y: P0.y + START_DIR.y * START_HANDLE * scale,
+      },
+      p2: {
+        x: P3.x + END_DIR.x * END_HANDLE * scale,
+        y: P3.y + END_DIR.y * END_HANDLE * scale,
+      },
+      p3: P3,
+      ...RIB,
+    });
+  }
+
+  it("neither generated handle jumps as the skeleton tension is swept", () => {
+    // 0.5 to 1.8 of the drawn handle length is skeleton tension 0.35 to 1.25,
+    // and one step moves the skeleton's own handle by 1.7 units.
+    let previous = null;
+    let worstStep = 0;
+    let worstBacktrack = 0;
+    for (let step = 0; step <= 260; step++) {
+      const current = lengthsAt(0.5 + (step * 1.3) / 260);
+      if (previous) {
+        worstStep = Math.max(
+          worstStep,
+          Math.abs(current.startLength - previous.startLength),
+          Math.abs(current.endLength - previous.endLength)
+        );
+        worstBacktrack = Math.max(
+          worstBacktrack,
+          previous.startLength - current.startLength,
+          previous.endLength - current.endLength
+        );
+      }
+      previous = current;
+    }
+    expect(worstStep, "jump per 1.7 units of skeleton handle").to.be.at.most(6);
+    expect(worstBacktrack, "rebound against the sweep").to.be.at.most(3);
+  });
+});

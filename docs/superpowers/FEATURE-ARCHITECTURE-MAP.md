@@ -226,13 +226,13 @@ outline contours are generated live.
 
 **Core (pure, mocha-tested):**
 
-| File                                          | +/−   | Role                                                                                                                                                                                                                       |
-| --------------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fontra-core/src/skeleton-model.js`           | +3393 | Schema, stable-id allocation, accessors/mutators, rib projection, normals, D/S/X/Z semantics (`applyFixedRibDelta`, the equalize family), generated-gizmo geometry. **The single home for skeleton geometry constants.**   |
-| `fontra-core/src/skeleton-generator.js`       | +4481 | Centerline → outline. Segments, offset curves, caps (butt/round/square/**drop**), corner rounding, single-sided, handle offsets, detached handles. Emits forward provenance (R-D).                                         |
-| `fontra-core/src/skeleton-source-defaults.js` | +241  | Per-source defaults, resolved by glyph case                                                                                                                                                                                |
-| `fontra-core/src/skeleton-tunni.js`           | +234  | Tunni math on skeleton segments                                                                                                                                                                                            |
-| `fontra-core/src/offset-cubic.js`             | +405  | The closed-form offset construction for one cubic side: `λ = 1 + d·κ`, one fixed correction pass, bounded equalization, pin application, bounds. Pure and **stateless** — same inputs, byte-identical output, every frame. |
+| File                                          | +/−   | Role                                                                                                                                                                                                                                                                                    |
+| --------------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/skeleton-model.js`           | +3393 | Schema, stable-id allocation, accessors/mutators, rib projection, normals, D/S/X/Z semantics (`applyFixedRibDelta`, the equalize family), generated-gizmo geometry. **The single home for skeleton geometry constants.**                                                                |
+| `fontra-core/src/skeleton-generator.js`       | +4481 | Centerline → outline. Segments, offset curves, caps (butt/round/square/**drop**), corner rounding, single-sided, handle offsets, detached handles. Emits forward provenance (R-D).                                                                                                      |
+| `fontra-core/src/skeleton-source-defaults.js` | +241  | Per-source defaults, resolved by glyph case                                                                                                                                                                                                                                             |
+| `fontra-core/src/skeleton-tunni.js`           | +234  | Tunni math on skeleton segments                                                                                                                                                                                                                                                         |
+| `fontra-core/src/offset-cubic.js`             | +483  | The closed-form offset construction for one cubic side, as five stages on a **feasible box** in tension space: seed (`λ = 1 + d·κ`), fixed correction passes, bounded equalization, attached adjustment, pin. Pure and **stateless** — same inputs, byte-identical output, every frame. |
 
 **Editor (no test harness — manual matrices):**
 
@@ -285,7 +285,7 @@ clicks, since the gizmos sit on and around the very handles direct manipulation 
 
 **Tests:** `test-skeleton-generator.js` (1075), `test-skeleton-model.js` (1004),
 `test-skeleton-tunni.js` (879), `test-skeleton-modifiers.js` (685), `test-skeleton-ribs.js` (641),
-`test-offset-cubic.js` (442), `test-skeleton-source-defaults.js` (125),
+`test-offset-cubic.js` (665), `test-skeleton-source-defaults.js` (125),
 `test-skeleton-interpolation.js` (99).
 Golden-master fixtures: `tests/data/skeleton-generator/fixtures.json` (2183), regenerated by
 `tests/scripts/make-skeleton-generator-fixtures.js` — which records **this** generator's own
@@ -467,11 +467,20 @@ executor in `skeleton-ribs.js` / `skeleton-generated.js`. If the fix wants a bra
 **"Change generated outline geometry"**
 `skeleton-generator.js` + `test-skeleton-generator.js`, and `offset-cubic.js` +
 `test-offset-cubic.js` for anything touching cubic handle lengths. TDD is available and expected
-here. Three hard constraints, all in the feature model: generated **point-count stability** (or
+here. Four hard constraints, all in the feature model: generated **point-count stability** (or
 cross-master interpolation breaks), the **continuity contract** on handle lengths (fixed trip
-count, fixed seed, no convergence test, no threshold search), and **a pinned curvature is
-permanent**. Read the feature model's §8 first — it lists what has already been tried here and
-rejected on measurement, including two ideas that were re-proposed and reverted twice.
+count, fixed seed, no convergence test, no threshold search), **the feasible box** (every stage of
+the handle-length construction lands inside `[1/reach, 1]²` in tension space — a new stage that
+clamps only on the way out reintroduces the jitter), and **a pinned curvature is permanent**.
+Read the feature model's §8 first — it lists what has already been tried here and rejected on
+measurement, including two ideas that were re-proposed and reverted twice, and three guards that
+were deleted because the box subsumes them.
+
+**Test this class of change with a sweep, not an assertion.** Hold the geometry fixed, walk one
+input through its range in fine steps, and measure the worst single-step movement against the
+driver's own step. A per-configuration assertion has missed every fault in this module so far.
+Start the sweep away from degenerate configurations — a sweep that begins at zero-length handles
+reports its own seed as a 700-unit jump.
 
 **"Add a visualization"**
 New draw in the feature's `visualization-layer-*.js`; register in

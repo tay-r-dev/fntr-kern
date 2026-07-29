@@ -459,25 +459,12 @@ export function calculateOnCurvePointsFromTunni(
 
 const TENSION_EPSILON = 1e-10;
 
-// Null where a tension does not exist: a reach that is not ahead of its own
-// on-curve point is not a reach, and dividing by it invents a tension out of
-// nothing. Callers skip both operations rather than substituting a guess.
-export function handleTensions(startLength, endLength, startReach, endReach) {
-  // Infinity is how callers spell "no reach ahead of this end". It passes a
-  // `> 0` test and then divides a real length down to a tension of zero, which
-  // would read as a perfectly flat handle rather than as no answer.
-  if (
-    !Number.isFinite(startReach) ||
-    !Number.isFinite(endReach) ||
-    !(startReach > TENSION_EPSILON) ||
-    !(endReach > TENSION_EPSILON) ||
-    !(startLength > TENSION_EPSILON) ||
-    !(endLength > TENSION_EPSILON)
-  ) {
-    return null;
-  }
-  return { start: startLength / startReach, end: endLength / endReach };
-}
+// `handleTensions` used to live here: lengths over reaches, returning null where
+// a reach was not ahead of its own on-curve point, so that its one caller could
+// skip the whole shaping stage rather than substitute a guess. The offset
+// construction now gives every end a reach that is finite and positive by
+// definition (`feasibleBox` in offset-cubic.js), so there is no "no answer" case
+// left to spell, and the caller that skipped is gone with it.
 
 export function harmonicMeanTension(tensions) {
   const sum = tensions.start + tensions.end;
@@ -501,10 +488,7 @@ export function equalizeTensions(tensions, amount) {
 // responsive until it reaches the same ceiling.
 export function shiftTensions(tensions, increment, maxTension = Infinity) {
   return {
-    start: Math.min(
-      tensions.start + increment,
-      Math.max(tensions.start, maxTension)
-    ),
+    start: Math.min(tensions.start + increment, Math.max(tensions.start, maxTension)),
     end: Math.min(tensions.end + increment, Math.max(tensions.end, maxTension)),
   };
 }
@@ -526,16 +510,11 @@ export function shiftTensionsToMean(tensions, target, maxTension = Infinity) {
   target = Math.min(target, harmonicMeanTension(saturated));
   let low = -Math.min(tensions.start, tensions.end);
   let high = Number.isFinite(maxTension)
-    ? Math.max(
-        saturated.start - tensions.start,
-        saturated.end - tensions.end
-      )
+    ? Math.max(saturated.start - tensions.start, saturated.end - tensions.end)
     : target + Math.max(tensions.start, tensions.end);
   for (let step = 0; step < TENSION_SHIFT_STEPS; step++) {
     const middle = (low + high) / 2;
-    if (
-      harmonicMeanTension(shiftTensions(tensions, middle, maxTension)) < target
-    ) {
+    if (harmonicMeanTension(shiftTensions(tensions, middle, maxTension)) < target) {
       low = middle;
     } else {
       high = middle;
