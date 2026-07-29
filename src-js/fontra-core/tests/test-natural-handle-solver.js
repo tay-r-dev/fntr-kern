@@ -3,6 +3,7 @@ import {
   solveNaturalHandles,
 } from "@fontra/core/natural-handle-solver.js";
 import { offsetCubicSide } from "@fontra/core/offset-cubic.js";
+import { calculateTunniPoint } from "@fontra/core/tunni-calculations.js";
 import { expect } from "chai";
 
 const KAPPA = 0.5522847498307933;
@@ -41,6 +42,18 @@ function arcRequest(sourceRadius, offset) {
 function unit(vector) {
   const length = Math.hypot(vector.x, vector.y) || 1;
   return { x: vector.x / length, y: vector.y / length };
+}
+
+function add(a, b) {
+  return { x: a.x + b.x, y: a.y + b.y };
+}
+
+function subtract(a, b) {
+  return { x: a.x - b.x, y: a.y - b.y };
+}
+
+function dot(a, b) {
+  return a.x * b.x + a.y * b.y;
 }
 
 function requestFor(points, startSignedWidth, endSignedWidth) {
@@ -386,6 +399,38 @@ describe("natural-handle-solver: fixed perpendicular fit", () => {
     );
     expect(domain.startReach).to.be.closeTo(100, 1e-9);
     expect(domain.endReach).to.be.closeTo(200 * Math.sqrt(2), 1e-9);
+  });
+
+  it("uses a short forward intersection as the geometric maximum", () => {
+    const start = { x: 157, y: 205 };
+    const end = { x: 145, y: 133 };
+    const startDirection = { x: 0, y: -1 };
+    const endDirection = unit({ x: 54, y: 14 });
+    const domain = buildHandleDomain(start, end, startDirection, endDirection);
+    const tunni = calculateTunniPoint([
+      start,
+      add(start, startDirection),
+      add(end, endDirection),
+      end,
+    ]);
+    const realEndReach = dot(subtract(tunni, end), endDirection);
+
+    expect(domain.endReach).to.be.greaterThan(realEndReach);
+    expect(domain.maxEndTension * domain.endReach).to.be.closeTo(realEndReach, 1e-9);
+  });
+
+  it("lets the geometric ceiling beat the one-unit floor", () => {
+    const start = { x: 0, y: 0 };
+    const end = { x: 10, y: 0.5 };
+    const startDirection = { x: 1, y: 0 };
+    const endDirection = unit({ x: -0.1, y: -0.5 });
+    const domain = buildHandleDomain(start, end, startDirection, endDirection);
+
+    expect(domain.maxEndTension * domain.endReach).to.be.closeTo(
+      Math.hypot(0.1, 0.5),
+      1e-9
+    );
+    expect(domain.minEndTension).to.equal(domain.maxEndTension);
   });
 
   it("recovers a circular offset without rematching samples", () => {

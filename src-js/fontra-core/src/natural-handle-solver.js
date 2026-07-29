@@ -157,21 +157,26 @@ export function buildHandleDomain(startPoint, endPoint, startDirection, endDirec
     },
     endPoint,
   ]);
-  const projectedReach = (anchor, direction) => {
-    if (!tunni) return cap;
-    const reach = dot(subtract(tunni, anchor), direction);
-    return reach > EPSILON ? clamp(reach, floor, cap) : cap;
+  const projectedDomain = (anchor, direction) => {
+    if (!tunni) return { reach: cap, maxTension: 1 };
+    const realReach = dot(subtract(tunni, anchor), direction);
+    if (!(realReach > EPSILON)) return { reach: cap, maxTension: 1 };
+    const reach = clamp(realReach, floor, cap);
+    return {
+      reach,
+      maxTension: Math.min(1, realReach / reach),
+    };
   };
-  const startReach = projectedReach(startPoint, startDirection);
-  const endReach = projectedReach(endPoint, endDirection);
+  const start = projectedDomain(startPoint, startDirection);
+  const end = projectedDomain(endPoint, endDirection);
   return {
-    startReach,
-    endReach,
+    startReach: start.reach,
+    endReach: end.reach,
     chordLength,
-    minStartTension: MIN_HANDLE_LENGTH / startReach,
-    maxStartTension: 1,
-    minEndTension: MIN_HANDLE_LENGTH / endReach,
-    maxEndTension: 1,
+    minStartTension: Math.min(MIN_HANDLE_LENGTH / start.reach, start.maxTension),
+    maxStartTension: start.maxTension,
+    minEndTension: Math.min(MIN_HANDLE_LENGTH / end.reach, end.maxTension),
+    maxEndTension: end.maxTension,
   };
 }
 
