@@ -32,6 +32,7 @@ import {
   setSkeletonData,
   setSkeletonHandleDetached,
   setSkeletonHandleOffset,
+  setSkeletonPointRibAngleLock,
   setSkeletonPointSideNudge,
   setSkeletonPointSideWidth,
   setSkeletonPointTotalWidth,
@@ -540,6 +541,7 @@ describe("skeleton-model shape-preserving multi-point deletion", () => {
     updateSkeletonPoint(skeleton, contour.id, a.id, {
       capStyle: "round",
       capRadiusRatio: 0.125,
+      ribAngleLock: "vertical",
     });
 
     deleteSkeletonPoints(skeleton, [[contour.id, a.id]]);
@@ -551,6 +553,8 @@ describe("skeleton-model shape-preserving multi-point deletion", () => {
     // cap parameters of the deleted terminal migrate to the new terminal
     expect(points[0].capStyle).to.equal("round");
     expect(points[0].capRadiusRatio).to.equal(0.125);
+    // as does the rib angle lock, which describes the same terminal
+    expect(points[0].ribAngleLock).to.equal("vertical");
   });
 
   it("moves cap fields to the new endpoint but not corner-rounding fields", () => {
@@ -1000,5 +1004,49 @@ describe("skeleton-model transform/translate/id-allocation", () => {
       linked: true,
       tied: false,
     });
+  });
+});
+
+describe("skeleton-model rib angle lock", () => {
+  it("normalizes the lock to horizontal, vertical or null", () => {
+    expect(makeSkeletonPoint({ ribAngleLock: "vertical" }).ribAngleLock).to.equal(
+      "vertical"
+    );
+    expect(makeSkeletonPoint({ ribAngleLock: "horizontal" }).ribAngleLock).to.equal(
+      "horizontal"
+    );
+    expect(makeSkeletonPoint({ ribAngleLock: "diagonal" }).ribAngleLock).to.equal(null);
+    expect(makeSkeletonPoint({}).ribAngleLock).to.equal(null);
+  });
+
+  it("sets and clears the lock through the mutator", () => {
+    const point = makeSkeletonPoint({});
+    setSkeletonPointRibAngleLock(point, "horizontal");
+    expect(point.ribAngleLock).to.equal("horizontal");
+    setSkeletonPointRibAngleLock(point, null);
+    expect(point.ribAngleLock).to.equal(null);
+    setSkeletonPointRibAngleLock(point, "sideways");
+    expect(point.ribAngleLock).to.equal(null);
+  });
+
+  it("overrides the rib normal, keeping the side orientation", () => {
+    const contour = makeSkeletonContour({
+      points: [
+        makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+        makeSkeletonPoint({ id: 2, x: 100, y: 100, ribAngleLock: "vertical" }),
+      ],
+    });
+    // Unlocked, the normal at the diagonal's end points down-right.
+    const free = calculateNormalAtSkeletonPoint(
+      makeSkeletonContour({
+        points: [
+          makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+          makeSkeletonPoint({ id: 2, x: 100, y: 100 }),
+        ],
+      }),
+      1
+    );
+    const locked = calculateNormalAtSkeletonPoint(contour, 1);
+    expect(locked).to.deep.equal({ x: 0, y: free.y >= 0 ? 1 : -1 });
   });
 });

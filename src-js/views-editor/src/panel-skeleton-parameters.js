@@ -28,6 +28,7 @@ import {
   setPanelPointTied,
   setPanelPointTotalWidth,
   setPanelPointValuesStream,
+  setPanelRibAngleLock,
   setPanelRibDetached,
   setPanelRibLocked,
 } from "./skeleton-panel-edits.js";
@@ -713,6 +714,33 @@ export default class SkeletonParametersPanel extends Panel {
         },
       ],
     });
+    // The rib angle lock is offered for every cap style, not just the flat one
+    // as in the donor: it decides the rib the cap is built on, so it supersedes
+    // the style rather than belonging to one.
+    formContents.push({
+      type: "select",
+      key: "cap:ribanglelock",
+      label: translate("sidebar.skeleton-parameters.rib-angle-lock"),
+      value: cap.ribAngleLock.mixed ? "" : (cap.ribAngleLock.value ?? "auto"),
+      disabled: !capStyle.canEdit,
+      options: [
+        ...(cap.ribAngleLock.mixed
+          ? [{ value: "", label: "mixed", disabled: true }]
+          : []),
+        {
+          value: "auto",
+          label: translate("sidebar.skeleton-parameters.rib-angle-lock.auto"),
+        },
+        {
+          value: "horizontal",
+          label: translate("sidebar.skeleton-parameters.rib-angle-lock.horizontal"),
+        },
+        {
+          value: "vertical",
+          label: translate("sidebar.skeleton-parameters.rib-angle-lock.vertical"),
+        },
+      ],
+    });
     // Donor parity: cap parameters appear as sliders, only for the styles
     // they apply to. Radius maps 20 discrete slider positions logarithmically
     // onto the [1/128, 1/4] ratio range; tension is edited in percent. Both
@@ -1145,6 +1173,18 @@ export default class SkeletonParametersPanel extends Panel {
   }
 
   async _onCapChange(name, value) {
+    if (name === "ribanglelock") {
+      if (!["auto", "horizontal", "vertical"].includes(value)) {
+        return;
+      }
+      await setPanelRibAngleLock(
+        this.sceneController,
+        this._widthPoints(),
+        value === "auto" ? null : value,
+        this._undo("set-rib-angle-lock")
+      );
+      return;
+    }
     if (name === "style") {
       if (!["butt", "square", "round", "drop"].includes(value)) {
         return;

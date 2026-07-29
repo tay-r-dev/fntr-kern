@@ -74,27 +74,27 @@ editor calls it from `scene-controller.js`; the UI is in
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `4df999813` | docs: add curve harmonization (F9) design spec |
-| `0cbaf2174` | docs: split the two deferred skeleton items in the F9 spec |
-| `fb956451d` | feat: initial implementation |
-| `9dfe9f4ff` | fix(harmonize): write through setPointPosition, not a path assignment |
-| `482a4158c` | feat(harmonize): report why each point was skipped or left partial |
-| `1c4b24b50` | feat(harmonize): optional Tunni equalization, the pass that moves outer handles |
+| Commit      | Subject                                                                               |
+| ----------- | ------------------------------------------------------------------------------------- |
+| `4df999813` | docs: add curve harmonization (F9) design spec                                        |
+| `0cbaf2174` | docs: split the two deferred skeleton items in the F9 spec                            |
+| `fb956451d` | feat: initial implementation                                                          |
+| `9dfe9f4ff` | fix(harmonize): write through setPointPosition, not a path assignment                 |
+| `482a4158c` | feat(harmonize): report why each point was skipped or left partial                    |
+| `1c4b24b50` | feat(harmonize): optional Tunni equalization, the pass that moves outer handles       |
 | `f72e9cebe` | fix(harmonize): drain the slider's valueStream, so the applied bias is the shown bias |
-| `92f660621` | fix(harmonize): show the bias number; rename the slider end to "point" |
-| `e479f706c` | fix(harmonize): apply the bias the slider shows, not the one the model stored |
-| `c1f76ebe1` | feat(harmonize): cap each handle's tension at 1 so handles cannot cross |
-| `aa1adcaa5` | feat(harmonize): pull an over-tension handle back under the ceiling |
-| `251f96cd6` | feat(harmonize): round the moved points to whole units |
+| `92f660621` | fix(harmonize): show the bias number; rename the slider end to "point"                |
+| `e479f706c` | fix(harmonize): apply the bias the slider shows, not the one the model stored         |
+| `c1f76ebe1` | feat(harmonize): cap each handle's tension at 1 so handles cannot cross               |
+| `aa1adcaa5` | feat(harmonize): pull an over-tension handle back under the ceiling                   |
+| `251f96cd6` | feat(harmonize): round the moved points to whole units                                |
 
 ### 4. Challenges and findings
 
 **Harmonization converges in one pass, at any bias.** The spec assumed
 iteration was needed and that a handle-heavy bias would take more passes. It
 doesn't. The ratio depends only on the perpendicular offsets of `PP` and `NN`
-from the tangent line, and neither the joint nor the handles moving *along* the
+from the tangent line, and neither the joint nor the handles moving _along_ the
 tangent changes those offsets. `D`'s own offset cancels out of the formula. So
 one pass is exact regardless of where the bias puts the correction. Iteration
 earns its keep only on **coupled** joints — adjacent smooth points that share a
@@ -116,7 +116,7 @@ rollback (`change-recorder.js:69`). This is a general rule for any future
 geometry operation, not a harmonization quirk.
 
 **A dragged `edit-number-slider` doesn't deliver its value through
-`onFieldChange`.** It fires once at `dragBegin` with the *pre-drag* value; every
+`onFieldChange`.** It fires once at `dragBegin` with the _pre-drag_ value; every
 subsequent value arrives on a `valueStream` `QueueIterator`. So the setting we
 stored was always one drag stale — the node kept moving in full-handle mode
 because the code was reading bias 0.2 while the slider showed 1.0. Two fixes:
@@ -128,12 +128,12 @@ the UI was assumed innocent. The user's console dump of the options object is
 what settled it. When reported behaviour contradicts the math, instrument the
 boundary between them first.
 
-**`displayValue: true` is not a boolean.** It's a placeholder *string* that
+**`displayValue: true` is not a boolean.** It's a placeholder _string_ that
 blanks the number box (`range-slider.js:256-262`), so the box literally read
 "true".
 
 **Supertool moves more handles than its `harmonize:` method does.** The method
-itself only moves the joint's immediate neighbours, but the Harmonize *command*
+itself only moves the joint's immediate neighbours, but the Harmonize _command_
 brackets it with `[self balance]`, which moves the adjacent segments' handles
 too. That's the source of the "it moves adjacent handles" observation, and it
 maps to our optional Tunni equalization pass, not to the core algorithm.
@@ -158,7 +158,7 @@ margin (ceiling 0.98) would remove it if it ever matters.
 
 Clicking a segment selects its two on-curve points. Shift-clicking an adjacent
 segment should have added its two points to the selection, but instead it
-*removed* the point the two segments share — so you could never build a
+_removed_ the point the two segments share — so you could never build a
 selection by walking along a contour.
 
 ### 2. Solution
@@ -178,8 +178,8 @@ unchanged.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
+| Commit      | Subject                                               |
+| ----------- | ----------------------------------------------------- |
 | `f757a2e53` | fix(selection): make shift-clicking segments additive |
 
 Files: `scene-model.js` (two return sites), `edit-tools-pointer.js`
@@ -188,7 +188,7 @@ is symmetric difference).
 
 ### 4. Challenges and findings
 
-**The bug was in the selection *mode*, not the hit test.** `getSelectModeFunction`
+**The bug was in the selection _mode_, not the hit test.** `getSelectModeFunction`
 maps shift to `symmetricDifference`, which is right for a single point and wrong
 for a multi-point hit. The hit test was returning the correct two points all
 along.
@@ -244,35 +244,35 @@ the average-width-then-translate hack for tapered sides.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `1ad572170` | docs: add skeleton offset construction design spec |
-| `6862cd7e7` | docs: bound generated handles by tangent-ray intersection |
-| `91c99f2a8` | docs: pin the offset spec's integration surface |
-| `0b894092d` | docs: withdraw the unrounded-rib-endpoint plan |
-| `9f321429e` | docs: cover collapsed sides and single-sided contours |
-| `055d16ce3` | docs: initial plan |
-| `118e59919` | docs: add skeleton offset construction implementation plan |
-| `b8d189f27` | docs: drop the quadratic-segment handling from the plan |
+| Commit      | Subject                                                                    |
+| ----------- | -------------------------------------------------------------------------- |
+| `1ad572170` | docs: add skeleton offset construction design spec                         |
+| `6862cd7e7` | docs: bound generated handles by tangent-ray intersection                  |
+| `91c99f2a8` | docs: pin the offset spec's integration surface                            |
+| `0b894092d` | docs: withdraw the unrounded-rib-endpoint plan                             |
+| `9f321429e` | docs: cover collapsed sides and single-sided contours                      |
+| `055d16ce3` | docs: initial plan                                                         |
+| `118e59919` | docs: add skeleton offset construction implementation plan                 |
+| `b8d189f27` | docs: drop the quadratic-segment handling from the plan                    |
 | `12c7f5e96` | docs: lock generated handle direction to the skeleton; fix review findings |
-| `2885f91db` | docs: keep the minimum-handle guardrail; measure the tension bound first |
-| `a78c51cda` | docs: reconcile spec drift after the direction-locking revision |
-| `b2c750e5d` | docs: rewrite the implementation plan for the length-only construction |
-| `52346b21a` | docs: drop the donor-parity framing from the fixture work |
-| `4ea94c37e` | fix: generate skeleton fixtures from this generator, not the pre-port one |
-| `864c0bbe9` | refactor: expose the two-handle least-squares solve from fit-cubic |
-| `4acb82a34` | fix(plan): make the cusp floor exactly inert |
-| `c1bd7bc5d` | fix: make the cusp floor exactly inert in offset-cubic |
-| `79d3914e9` | feat: bound generated handle length |
-| `f1510b084` | feat: one fixed correction pass for the offset construction |
-| `5dfdff706` | test: cover continuity of the offset cubic construction |
-| `597038307` | feat: construct generated handle lengths instead of fitting them |
-| `8bdef4f34` | feat: floor the tension limit at a third of the chord |
-| `0479d309d` | docs: retitle generator fixtures and update cubic pipeline |
-| `db2710771` | docs: update the skeleton cubic construction model |
-| `6158aa278` | refactor: remove disabled handle-direction alignment |
-| `be4bd3f55` | refactor: remove superseded offset machinery |
-| `40b6cc12b` | fix: ease the offset correction band |
+| `2885f91db` | docs: keep the minimum-handle guardrail; measure the tension bound first   |
+| `a78c51cda` | docs: reconcile spec drift after the direction-locking revision            |
+| `b2c750e5d` | docs: rewrite the implementation plan for the length-only construction     |
+| `52346b21a` | docs: drop the donor-parity framing from the fixture work                  |
+| `4ea94c37e` | fix: generate skeleton fixtures from this generator, not the pre-port one  |
+| `864c0bbe9` | refactor: expose the two-handle least-squares solve from fit-cubic         |
+| `4acb82a34` | fix(plan): make the cusp floor exactly inert                               |
+| `c1bd7bc5d` | fix: make the cusp floor exactly inert in offset-cubic                     |
+| `79d3914e9` | feat: bound generated handle length                                        |
+| `f1510b084` | feat: one fixed correction pass for the offset construction                |
+| `5dfdff706` | test: cover continuity of the offset cubic construction                    |
+| `597038307` | feat: construct generated handle lengths instead of fitting them           |
+| `8bdef4f34` | feat: floor the tension limit at a third of the chord                      |
+| `0479d309d` | docs: retitle generator fixtures and update cubic pipeline                 |
+| `db2710771` | docs: update the skeleton cubic construction model                         |
+| `6158aa278` | refactor: remove disabled handle-direction alignment                       |
+| `be4bd3f55` | refactor: remove superseded offset machinery                               |
+| `40b6cc12b` | fix: ease the offset correction band                                       |
 
 ### 4. Challenges and findings
 
@@ -345,14 +345,14 @@ the stored one, and a rib drag pulls its whole group into the executor set.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `2ad2b04b1` | fix(skeleton): take the smooth-junction handle axis from the skeleton |
-| `130a75ddf` | fix(skeleton): couple ribs across a mutually-controlled straight segment |
-| `bd572be5c` | feat(skeleton): add a Tied ribs opt-out for coupled straight segments |
-| `8c1b2ea14` | fix(skeleton): make the rib gizmo and drag agree with coupled geometry |
+| Commit      | Subject                                                                    |
+| ----------- | -------------------------------------------------------------------------- |
+| `2ad2b04b1` | fix(skeleton): take the smooth-junction handle axis from the skeleton      |
+| `130a75ddf` | fix(skeleton): couple ribs across a mutually-controlled straight segment   |
+| `bd572be5c` | feat(skeleton): add a Tied ribs opt-out for coupled straight segments      |
+| `8c1b2ea14` | fix(skeleton): make the rib gizmo and drag agree with coupled geometry     |
 | `149a6962d` | fix(skeleton): tie the whole projected straight, not just controlled pairs |
-| `d4d1dcfac` | fix(skeleton): make a nudge carry its generated handles |
+| `d4d1dcfac` | fix(skeleton): make a nudge carry its generated handles                    |
 
 ### 4. Challenges and findings
 
@@ -404,13 +404,13 @@ search. Mean error 3.11 → 0.89 against an achievable 0.67, hard-pinning 2 → 
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `0374a884d` | docs(skeleton): record the curve-quality decisions |
-| `8adb3bb55` | fix(skeleton): fit the offset against the right correspondence |
-| `cbd92a0a9` | docs(skeleton): withdraw the equalize/harmonize step on measurement |
+| Commit      | Subject                                                                |
+| ----------- | ---------------------------------------------------------------------- |
+| `0374a884d` | docs(skeleton): record the curve-quality decisions                     |
+| `8adb3bb55` | fix(skeleton): fit the offset against the right correspondence         |
+| `cbd92a0a9` | docs(skeleton): withdraw the equalize/harmonize step on measurement    |
 | `b8f29354e` | docs(skeleton): pin the handle axis to the skeleton, drop equalize too |
-| `005a6e43c` | docs(skeleton): settle the two gizmo mechanics |
+| `005a6e43c` | docs(skeleton): settle the two gizmo mechanics                         |
 
 ### 4. Challenges and findings
 
@@ -476,19 +476,19 @@ are orthogonal, so the two stored things compose without a precedence rule.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `aba940073` | feat(tunni): add the curvature gizmo geometry |
-| `5bac71b6e` | feat(skeleton): map a curvature drag onto skeleton handle offsets |
-| `b200c00f5` | feat(skeleton): draw the two gizmos on generated segments |
-| `9cad17298` | feat(skeleton): make the generated gizmos draggable |
-| `408dc586b` | feat(skeleton): make gizmo editing the default, direct handles the opt-out |
-| `7008c78c1` | fix(skeleton): stop the gizmo drag throwing, and hide generated handle lines |
-| `b5ba9e25f` | fix(skeleton): unstick the curvature gizmo, respec the on-curve one |
+| Commit      | Subject                                                                          |
+| ----------- | -------------------------------------------------------------------------------- |
+| `aba940073` | feat(tunni): add the curvature gizmo geometry                                    |
+| `5bac71b6e` | feat(skeleton): map a curvature drag onto skeleton handle offsets                |
+| `b200c00f5` | feat(skeleton): draw the two gizmos on generated segments                        |
+| `9cad17298` | feat(skeleton): make the generated gizmos draggable                              |
+| `408dc586b` | feat(skeleton): make gizmo editing the default, direct handles the opt-out       |
+| `7008c78c1` | fix(skeleton): stop the gizmo drag throwing, and hide generated handle lines     |
+| `b5ba9e25f` | fix(skeleton): unstick the curvature gizmo, respec the on-curve one              |
 | `de317addc` | fix(skeleton): unblock reversed-contour gizmos, hold handles on an on-curve drag |
-| `9f2a4173d` | feat(skeleton): pin generated curvature and equalize handle tensions |
-| `c4e7d9069` | fix(skeleton): make the pinned curvature control reach 1 and hold still |
-| `4914a7b0b` | fix(skeleton): stop the curvature gizmo moving the curve when it is grabbed |
+| `9f2a4173d` | feat(skeleton): pin generated curvature and equalize handle tensions             |
+| `c4e7d9069` | fix(skeleton): make the pinned curvature control reach 1 and hold still          |
+| `4914a7b0b` | fix(skeleton): stop the curvature gizmo moving the curve when it is grabbed      |
 
 ### 4. Challenges and findings
 
@@ -565,15 +565,15 @@ restricted to ends that can actually move, and double-click resets.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `e2309c358` | docs: gizmo plan |
+| Commit      | Subject                                                   |
+| ----------- | --------------------------------------------------------- |
+| `e2309c358` | docs: gizmo plan                                          |
 | `7b78a3b32` | fix: preserve skeleton side semantics through gizmo edits |
-| `8ba6546ec` | fix: unify generated handle construction space |
-| `465f878e1` | fix: preserve generated on-curve drag mode semantics |
-| `fc82cb9d8` | fix: stabilize generated gizmo controls |
-| `8764a5df6` | revert: keep observable storage behavior unchanged |
-| `7ce15a04a` | feat: complete generated gizmo controls |
+| `8ba6546ec` | fix: unify generated handle construction space            |
+| `465f878e1` | fix: preserve generated on-curve drag mode semantics      |
+| `fc82cb9d8` | fix: stabilize generated gizmo controls                   |
+| `8764a5df6` | revert: keep observable storage behavior unchanged        |
+| `7ce15a04a` | feat: complete generated gizmo controls                   |
 
 ### 4. Challenges and findings
 
@@ -638,18 +638,18 @@ segment fights the cursor.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `6a4080a1e` | fix: stop an empty selection painting every node as selected |
-| `10515143d` | fix: make the generated equalize a click, on the curvature gizmo only |
-| `537b83eec` | fix: make the S/D drag offset the skeleton instead of shearing it |
+| Commit      | Subject                                                                     |
+| ----------- | --------------------------------------------------------------------------- |
+| `6a4080a1e` | fix: stop an empty selection painting every node as selected                |
+| `10515143d` | fix: make the generated equalize a click, on the curvature gizmo only       |
+| `537b83eec` | fix: make the S/D drag offset the skeleton instead of shearing it           |
 | `dee00f852` | feat: label the curvature gizmo, and hand generated geometry the plain drag |
-| `5f2e0afdc` | docs: record the gizmo and modifier corrections |
-| `f5f172043` | revert: keep the rib modifiers as they were |
-| `aa9f80b41` | fix: restore the modifiers, and make Z carry the handles from either grip |
-| `4aecabf91` | feat: let a direct handle drag discard the curvature it overrules |
-| `0f82e404f` | docs: correct the pin-override exceptions |
-| `36dfc70af` | refactor: drop the tension-bound instrumentation |
+| `5f2e0afdc` | docs: record the gizmo and modifier corrections                             |
+| `f5f172043` | revert: keep the rib modifiers as they were                                 |
+| `aa9f80b41` | fix: restore the modifiers, and make Z carry the handles from either grip   |
+| `4aecabf91` | feat: let a direct handle drag discard the curvature it overrules           |
+| `0f82e404f` | docs: correct the pin-override exceptions                                   |
+| `36dfc70af` | refactor: drop the tension-bound instrumentation                            |
 
 ### 4. Challenges and findings
 
@@ -705,8 +705,8 @@ the use that closed it — including two ideas that were built and reverted twic
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
+| Commit      | Subject                                                       |
+| ----------- | ------------------------------------------------------------- |
 | `9671505ec` | docs: dissolve the plans and specs into the two standing docs |
 
 ### 4. Challenges and findings
@@ -757,11 +757,11 @@ of their own.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
+| Commit      | Subject                                                                                |
+| ----------- | -------------------------------------------------------------------------------------- |
 | `a168b107d` | fix: place the curvature label above its gizmo, scale the on-curve gizmo by the stroke |
-| `fea8aa622` | fix: put the on-curve gizmo at a constant distance from its curve |
-| `f811b0589` | fix: hide the rib width plaque during a tangent slide |
+| `fea8aa622` | fix: put the on-curve gizmo at a constant distance from its curve                      |
+| `f811b0589` | fix: hide the rib width plaque during a tangent slide                                  |
 
 ### 4. Challenges and findings
 
@@ -816,10 +816,10 @@ fit's own answer.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
+| Commit      | Subject                                                                  |
+| ----------- | ------------------------------------------------------------------------ |
 | `53e4d3be8` | fix: preserve the curve when a handle drag discards its pinned curvature |
-| `757a27ab0` | fix: state the tension ceiling exactly for a hand-placed handle |
+| `757a27ab0` | fix: state the tension ceiling exactly for a hand-placed handle          |
 
 ### 4. Challenges and findings
 
@@ -884,9 +884,9 @@ offset by definition.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `61b35caea` | fix: three faults in the fixed-rib drag |
+| Commit      | Subject                                                              |
+| ----------- | -------------------------------------------------------------------- |
+| `61b35caea` | fix: three faults in the fixed-rib drag                              |
 | `efe4d4b2c` | fix: stop the fixed-rib drag's handles and far side at the floor too |
 
 ### 4. Challenges and findings
@@ -917,3 +917,56 @@ about 1% of distribution. Chasing that would need fractional widths. Rounding bo
 sides independently, which is what the shared total-width mutator did, also missed
 the total itself by a unit and put the visible edge past the cursor; one side is
 now rounded and the other taken as the remainder.
+
+---
+
+## 13. The rib angle lock was never ported — feature
+
+**Branch:** `fix/skeleton-expand-math`
+**Date:** 2026-07-29
+
+### 1. Problem
+
+The donor could force a terminal rib onto an axis, so an open contour's end reads
+flat and horizontal or flat and vertical however the centerline arrives at it.
+The port carried the geometry — `getEffectiveNormal` existed in both the generator
+and the model — but nothing else: no canonical field, no copy across
+`canonicalToGeneratorInput`, no panel control. Both copies read
+`point.forceHorizontal` / `point.forceVertical`, fields the schema drops on
+normalization, so the override could not fire at all.
+
+Exactly the trap the feature model §7 names: a per-point field is invisible to the
+generator until it is copied across explicitly.
+
+### 2. Solution
+
+One canonical field, `ribAngleLock` ∈ `null | "horizontal" | "vertical"`, named for
+the direction the **rib** runs — which is what the designer sees, since a flat
+terminal is drawn along the rib. Normalized in `normalizeSkeletonPoint`, written by
+`setSkeletonPointRibAngleLock`, copied into the generator dialect flat, and moved
+with the cap data when a terminal is deleted, since it describes that terminal.
+
+`getEffectiveNormal` is now one exported copy in `skeleton-model.js` that the
+generator imports (rail R-B); it previously existed twice, and both copies read the
+dead donor field names.
+
+The panel exposes it as a select in the cap section, gated to open-contour
+endpoints like the cap style is. Unlike the donor, where it was only offered on the
+flat cap, it is offered under **every** cap style: it decides the rib the cap is
+built on, so it supersedes the style rather than belonging to one.
+
+### 3. Commits
+
+Single commit on `fix/skeleton-expand-math`.
+
+### 4. Challenges and findings
+
+**Two dead code paths looked like a working feature.** Grepping for the donor's
+field names found the math in place in two files and made the port look half-done
+when in fact none of it could ever run. The check that matters is whether the field
+survives `normalizeSkeletonPoint` and `canonicalToGeneratorInput`, not whether the
+consumer exists.
+
+**Round and drop caps put points past the rib**, so the "every cap style" test can
+only assert the rib line itself on the flat-ended styles; for the others it asserts
+that the lock changes the outline at all.

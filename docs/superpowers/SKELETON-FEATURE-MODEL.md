@@ -92,6 +92,14 @@ Everything else is elaboration of that one idea:
   60/20 split at a total of 90 wants 67.5/22.5 and has to land on 68/22. The panel
   greys the per-side numbers and the distribution while single-sided is on, rather
   than hiding them, so it reads as kept rather than lost.
+
+- **Rib angle lock** — `ribAngleLock` on a point forces its rib onto an axis
+  (`"horizontal"` / `"vertical"`, named for the way the rib runs), overriding the
+  normal the geometry computes and keeping the sign so the sides stay put. Offered
+  on open-contour endpoints, where it makes a terminal read flat and axis-aligned
+  whatever angle the centerline arrives at, and it applies under **every** cap
+  style — it sets the rib the cap is built on. `getEffectiveNormal` in
+  `skeleton-model.js` is its single implementation; the generator imports it.
 - **Tunni points** on skeleton curve segments.
 - **Generated-segment gizmos** — two per generated cubic, on their own layers:
   one sets the segment's curvature, one slides its two ends along the outline.
@@ -254,7 +262,7 @@ pure and independent (contour _i_'s output depends only on contour _i_):
    smoothing pass inert). On a **tapered** stroke the true offset's tangent is
    not parallel to the skeleton's — measured at 6°–79° across realistic tapers —
    so a tapered segment deviates from the true offset by 3.6–14.4 units against
-   0.11–0.49 at constant width, and no choice of handle *length* can absorb a
+   0.11–0.49 at constant width, and no choice of handle _length_ can absorb a
    direction error. Tilting the axis per end would recover almost all of it and
    is **rejected**: the axis is skeleton-owned and stays that way. Second, where
    the offset distance approaches half the endpoint curvature radius — a bold
@@ -410,8 +418,8 @@ Rules that hold everywhere:
   when the leading one reaches 1 it stays, and the trailing one stays responsive
   until it reaches 1 too, or part of the control's valid range is unreachable.
 - **Unreachable pins clamp; they never release.** Where the geometry cannot
-  express the stored number, the *output* is clamped and the *stored number is
-  never rewritten*, so the segment returns to exactly what was set once the
+  express the stored number, the _output_ is clamped and the _stored number is
+  never rewritten_, so the segment returns to exactly what was set once the
   skeleton comes back into range. Nothing in generation ever writes this field —
   only a drag does.
 - **A pinned segment is not bounded twice.** The ordinary smooth tension ceiling
@@ -440,7 +448,7 @@ Rules that hold everywhere:
   per-handle offset. Both handles, because only one is ever under the cursor.
   Detached handles are skipped — they are absolute and never saw the pin.
 - **The full rib reset does clear it**, alongside the nudge and the handle
-  adjustments, on the segment *leaving* that point.
+  adjustments, on the segment _leaving_ that point.
 
 **A new per-point field is invisible to the generator until it is copied across
 explicitly.** `canonicalToGeneratorInput` flattens every point before generation,
@@ -492,7 +500,7 @@ a control whose meaning rotated with its segment would need re-learning at every
 joint.
 
 **It is only offered where an end can actually move.** An end may be nudged only
-if the skeleton segment on the *far* side of it is a straight line, or does not
+if the skeleton segment on the _far_ side of it is a straight line, or does not
 exist because the contour ends there; a curve attached there holds that end. With
 one end movable the whole spread goes to it; with neither, the gizmo is not drawn
 and not hit-tested. A drawn control that cannot move is worse than no control.
@@ -535,16 +543,16 @@ Each of these was designed or built, then measured or used, and withdrawn.
 Recorded so none is re-derived from first principles — several were re-proposed
 once already.
 
-| Idea                                                                  | Why it is closed                                                                                                                                                                       |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Restore the old sample-and-fit offset path**                        | Adaptive threshold jumps a step when an input nudges, so output is discontinuous and two masters land on different answers; endpoints become free samples, destroying provenance; variable curve count destroys point-count stability. |
-| **Tilt the generated handle axis to the true offset tangent**         | Recovers nearly all of the taper defect and is still rejected: the axis is skeleton-owned (§3.2). A single shared tilt recovers under half the gain and is *worse than pinned* on some cases. |
-| **A harmonize pass on generated joints**                              | Measured: unrounded, the generated contour already reproduces the true offset's joint curvature to within 1.7%, and to floating point where the skeleton is G2. Where a step does exist it is the skeleton's, faithfully reproduced — harmonizing would erase a curvature the designer asked for. |
-| **Unconditional equalization to fully equal**                         | Where it is safe it is a no-op (the fit already produces equal tensions on symmetric geometry); where it would change something it degrades fidelity 3.3×. Survives only as the bounded walk above. |
-| **Measure the pin in rendered (post-nudge) space**                    | Correct while nudges carried handles; superseded once they stopped. Construction space makes the pin *independent* of the on-curve gizmo instead of coupled to it.                        |
-| **Reproduce a pinned mean by scaling both tensions**                  | A preserved ratio caps the reachable mean at `2r/(1+r)` — 0.6 on a 0.3/0.7 split — so the control stopped at a value that was neither 1 nor stable. It is also not what the drag does. One shared increment instead. |
-| **Swap the rib modifier pair** (plain for width ↔ Z for tangent)      | Built twice, reverted twice. Z exists precisely because a tangential rib move is the *rarer* intent, and a plain drag reaching for the width is what the tool is for.                     |
-| **Drop Z as the gate on generated geometry**                          | Built, reverted. The gate is the safety on derived geometry, not an accident.                                                                                                            |
-| **Equalize the reaches from the on-curve gizmo**                      | Built, removed. Only the curvature gizmo equalizes. (The closed form, if ever wanted: the control's one degree of freedom moves one end by `−s` and the other by `+s`, so `s = (r₀−r₁)/2`.) |
-| **Hide all generated nodes to stop them looking selected**            | Wrong fix for a real bug — the node iterator read a null index list as "every point", and an empty selection parses to no list. Only off-curve nodes are hidden, and only in gizmo mode.  |
-| **Delete the tension bound because it never fires**                   | It fires. Kept, floored at a third of the chord. The instrumentation that answered the question has been removed, and its `active` count is not a hard-pinning measure — it counts any touch inside the blend window, which was misread once as 34% where the true figure was 2 cases in 118. |
+| Idea                                                             | Why it is closed                                                                                                                                                                                                                                                                                  |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Restore the old sample-and-fit offset path**                   | Adaptive threshold jumps a step when an input nudges, so output is discontinuous and two masters land on different answers; endpoints become free samples, destroying provenance; variable curve count destroys point-count stability.                                                            |
+| **Tilt the generated handle axis to the true offset tangent**    | Recovers nearly all of the taper defect and is still rejected: the axis is skeleton-owned (§3.2). A single shared tilt recovers under half the gain and is _worse than pinned_ on some cases.                                                                                                     |
+| **A harmonize pass on generated joints**                         | Measured: unrounded, the generated contour already reproduces the true offset's joint curvature to within 1.7%, and to floating point where the skeleton is G2. Where a step does exist it is the skeleton's, faithfully reproduced — harmonizing would erase a curvature the designer asked for. |
+| **Unconditional equalization to fully equal**                    | Where it is safe it is a no-op (the fit already produces equal tensions on symmetric geometry); where it would change something it degrades fidelity 3.3×. Survives only as the bounded walk above.                                                                                               |
+| **Measure the pin in rendered (post-nudge) space**               | Correct while nudges carried handles; superseded once they stopped. Construction space makes the pin _independent_ of the on-curve gizmo instead of coupled to it.                                                                                                                                |
+| **Reproduce a pinned mean by scaling both tensions**             | A preserved ratio caps the reachable mean at `2r/(1+r)` — 0.6 on a 0.3/0.7 split — so the control stopped at a value that was neither 1 nor stable. It is also not what the drag does. One shared increment instead.                                                                              |
+| **Swap the rib modifier pair** (plain for width ↔ Z for tangent) | Built twice, reverted twice. Z exists precisely because a tangential rib move is the _rarer_ intent, and a plain drag reaching for the width is what the tool is for.                                                                                                                             |
+| **Drop Z as the gate on generated geometry**                     | Built, reverted. The gate is the safety on derived geometry, not an accident.                                                                                                                                                                                                                     |
+| **Equalize the reaches from the on-curve gizmo**                 | Built, removed. Only the curvature gizmo equalizes. (The closed form, if ever wanted: the control's one degree of freedom moves one end by `−s` and the other by `+s`, so `s = (r₀−r₁)/2`.)                                                                                                       |
+| **Hide all generated nodes to stop them looking selected**       | Wrong fix for a real bug — the node iterator read a null index list as "every point", and an empty selection parses to no list. Only off-curve nodes are hidden, and only in gizmo mode.                                                                                                          |
+| **Delete the tension bound because it never fires**              | It fires. Kept, floored at a third of the chord. The instrumentation that answered the question has been removed, and its `active` count is not a hard-pinning measure — it counts any touch inside the blend window, which was misread once as 34% where the true figure was 2 cases in 118.     |

@@ -5,6 +5,7 @@ import {
   CORNER_POINT_FIELDS,
   DEFAULT_SKELETON_WIDTH,
   collectTiedRibGroups,
+  getEffectiveNormal,
   isStraightControlledSmoothPoint,
   meanHalfWidth,
   normalizeSkeletonData,
@@ -209,6 +210,9 @@ function canonicalPointToGeneratorPoint(point) {
   generatorPoint.rightNudge = point.nudge?.right ?? 0;
   generatorPoint.leftHandleNudge = point.handleNudge?.left ?? 0;
   generatorPoint.rightHandleNudge = point.handleNudge?.right ?? 0;
+  // The rib angle lock has to be copied across explicitly like every other
+  // per-point field: the generator never sees the canonical shape (§7).
+  generatorPoint.ribAngleLock = point.ribAngleLock ?? null;
   generatorPoint.leftLocked = point.locked?.left === true;
   generatorPoint.rightLocked = point.locked?.right === true;
   // The pinned segment tension for the segment STARTING here, per side. Null
@@ -2014,25 +2018,6 @@ function logSkeletonDebug(debugContext, payload) {
   };
   // Log as a single string to avoid collapsed object entries in DevTools.
   console.log(`${SKELETON_DEBUG_PREFIX} ${JSON.stringify(message)}`);
-}
-
-/**
- * Apply angle override to a calculated normal if the point has forceHorizontal or forceVertical set.
- * Preserves the sign (direction) of the original normal to maintain left/right orientation.
- * @param {Object} point - The skeleton point
- * @param {Object} calculatedNormal - The normal calculated from curve geometry {x, y}
- * @returns {Object} The effective normal (possibly overridden)
- */
-export function getEffectiveNormal(point, calculatedNormal) {
-  if (point.forceHorizontal) {
-    // Horizontal ribs: normal points up or down based on original sign
-    return { x: 0, y: calculatedNormal.y >= 0 ? 1 : -1 };
-  }
-  if (point.forceVertical) {
-    // Vertical ribs: normal points left or right based on original sign
-    return { x: calculatedNormal.x >= 0 ? 1 : -1, y: 0 };
-  }
-  return calculatedNormal;
 }
 
 /**

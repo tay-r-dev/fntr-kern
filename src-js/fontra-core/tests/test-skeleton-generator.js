@@ -1073,3 +1073,79 @@ function roundContours(contours) {
 function round(value) {
   return Math.round(value * 1000) / 1000;
 }
+
+describe("skeleton-generator rib angle lock", () => {
+  // Open diagonal line: without a lock the terminal rib is perpendicular to the
+  // diagonal, so its two ends differ in both x and y.
+  function diagonalSkeleton(ribAngleLock, capStyle = "butt") {
+    return {
+      version: 1,
+      nextId: 4,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80,
+          singleSided: null,
+          capStyle,
+          points: [
+            { id: 2, x: 0, y: 0, type: null, smooth: false },
+            { id: 3, x: 100, y: 100, type: null, smooth: false, ribAngleLock },
+          ],
+        },
+      ],
+      generated: [],
+    };
+  }
+
+  function terminalOnCurves(result) {
+    const points = result.contours[0].points;
+    const pointMap = result.provenance[0].pointMap;
+    return points.filter(
+      (point, index) =>
+        pointMap[index]?.skeletonPointId === 3 && pointMap[index].role === "onCurve"
+    );
+  }
+
+  it("leaves the rib on the geometric normal without a lock", () => {
+    const ends = terminalOnCurves(generateFromSkeleton(diagonalSkeleton(null)));
+    expect(ends).to.have.length(2);
+    expect(ends[0].x).to.not.equal(ends[1].x);
+    expect(ends[0].y).to.not.equal(ends[1].y);
+  });
+
+  it("locks the terminal rib vertical", () => {
+    const ends = terminalOnCurves(generateFromSkeleton(diagonalSkeleton("vertical")));
+    expect(ends).to.have.length(2);
+    expect(ends[0].x).to.equal(100);
+    expect(ends[1].x).to.equal(100);
+    expect(Math.abs(ends[0].y - ends[1].y)).to.equal(80);
+  });
+
+  it("locks the terminal rib horizontal", () => {
+    const ends = terminalOnCurves(generateFromSkeleton(diagonalSkeleton("horizontal")));
+    expect(ends).to.have.length(2);
+    expect(ends[0].y).to.equal(100);
+    expect(ends[1].y).to.equal(100);
+    expect(Math.abs(ends[0].x - ends[1].x)).to.equal(80);
+  });
+
+  // The donor gated this on the flat cap; here it supersedes the cap style, so
+  // every style builds on the locked rib.
+  it("applies under every cap style", () => {
+    for (const capStyle of ["butt", "square", "round", "drop"]) {
+      const locked = generateFromSkeleton(diagonalSkeleton("vertical", capStyle));
+      const plain = generateFromSkeleton(diagonalSkeleton(null, capStyle));
+      expect(locked.contours, capStyle).to.not.deep.equal(plain.contours);
+      // Round and drop caps put their own points beyond the rib, so only the
+      // flat-ended styles can be checked on the rib line itself.
+      if (capStyle === "butt" || capStyle === "square") {
+        const ends = terminalOnCurves(locked);
+        expect(ends.length, capStyle).to.be.greaterThan(0);
+        for (const end of ends) {
+          expect(end.x, capStyle).to.equal(100);
+        }
+      }
+    }
+  });
+});

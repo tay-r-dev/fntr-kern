@@ -22,6 +22,7 @@ import {
   setSkeletonData,
   setSkeletonHandleDetached,
   setSkeletonHandleOffset,
+  setSkeletonPointRibAngleLock,
   setSkeletonPointSideWidth,
   setSkeletonPointTotalWidth,
   setSkeletonPointWidthDistribution,
@@ -496,6 +497,32 @@ export async function setPanelCapStyle(
         resetSkeletonEditableRib(point, "left");
         resetSkeletonEditableRib(point, "right");
       }
+    },
+    undoLabel
+  );
+}
+
+// Lock the ribs of selected open-contour endpoints to an axis (or clear it).
+// Gated to endpoints like the cap style is, since that is where it is offered.
+export async function setPanelRibAngleLock(
+  sceneController,
+  pointAddresses,
+  ribAngleLock,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, { contour }) => {
+      const endpoints = skeletonContourEndpointIndices(contour);
+      if (!endpoints) {
+        return;
+      }
+      const pointIndex = contour.points.indexOf(point);
+      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
+        return;
+      }
+      setSkeletonPointRibAngleLock(point, ribAngleLock);
     },
     undoLabel
   );

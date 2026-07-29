@@ -360,6 +360,11 @@ export function summarizeSkeletonCapSelection(selectedPoints) {
     capBallSide: reduceValues(
       selectedPoints.map((entry) => entry.point.capBallSide ?? null)
     ),
+    // Not a cap parameter — it sets the rib the cap is built on — but it is
+    // edited beside the cap style, and gated the same way.
+    ribAngleLock: reduceValues(
+      selectedPoints.map((entry) => entry.point.ribAngleLock ?? null)
+    ),
   };
 }
 

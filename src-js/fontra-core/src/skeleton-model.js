@@ -57,6 +57,11 @@ const VALID_POINT_TYPES = new Set([null, "cubic"]);
 const VALID_SINGLE_SIDED = new Set([null, "left", "right"]);
 const VALID_CAP_STYLES = new Set(["butt", "round", "square", "drop"]);
 const VALID_CAP_BALL_SIDES = new Set(["auto", "left", "right"]);
+// A rib may be locked to an axis, overriding the normal the geometry computes.
+// Named for the direction the RIB runs — which is what the designer sees, since
+// a flat terminal is drawn along the rib — so "vertical" means the normal is the
+// y axis. Independent of cap style: every style is built on the locked rib.
+export const VALID_RIB_ANGLE_LOCKS = new Set([null, "horizontal", "vertical"]);
 export const CAP_POINT_FIELDS = [
   "capRadiusRatio",
   "capTension",
@@ -1225,6 +1230,9 @@ export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = nul
     normalized.capBallSide = VALID_CAP_BALL_SIDES.has(point?.capBallSide)
       ? point.capBallSide
       : null;
+    normalized.ribAngleLock = VALID_RIB_ANGLE_LOCKS.has(point?.ribAngleLock)
+      ? (point.ribAngleLock ?? null)
+      : null;
     for (const field of [...CAP_POINT_FIELDS, ...CORNER_POINT_FIELDS]) {
       if (Number.isFinite(point?.[field])) {
         normalized[field] = point[field];
@@ -1404,6 +1412,9 @@ function copySkeletonCapData(sourcePoint, targetPoint) {
   }
   targetPoint.capStyle = sourcePoint.capStyle ?? null;
   targetPoint.capBallSide = sourcePoint.capBallSide ?? null;
+  // The lock describes the terminal, not the point, so it moves with the cap
+  // when the terminal does (donor parity: it travelled in the same key list).
+  targetPoint.ribAngleLock = sourcePoint.ribAngleLock ?? null;
   for (const field of CAP_POINT_FIELDS) {
     if (Number.isFinite(sourcePoint[field])) {
       targetPoint[field] = sourcePoint[field];
@@ -1922,6 +1933,12 @@ export function setSkeletonPointWidthTied(point, tied) {
   const width = normalizeWidth(point?.width);
   width.tied = tied === true;
   point.width = width;
+}
+
+// Lock this point's rib to an axis, or clear the lock. Anything unrecognized
+// clears it, so the field can never hold a value the normal override ignores.
+export function setSkeletonPointRibAngleLock(point, lock) {
+  point.ribAngleLock = VALID_RIB_ANGLE_LOCKS.has(lock) ? (lock ?? null) : null;
 }
 
 export function setSkeletonContourSingleSided(contour, sideOrNull) {
@@ -2910,11 +2927,15 @@ function createBezierFromSegment(segment) {
   return new Bezier(segment.startPoint, ...segment.controlPoints, segment.endPoint);
 }
 
-function getEffectiveNormal(point, calculatedNormal) {
-  if (point.forceHorizontal) {
+// Apply a point's rib angle lock to a computed normal, keeping the sign of the
+// computed one so left and right stay on the sides they were. The single copy —
+// the generator imports this rather than keeping its own (rail R-B).
+export function getEffectiveNormal(point, calculatedNormal) {
+  if (point?.ribAngleLock === "vertical") {
+    // Rib along the y axis: normal is y, pointing the way it already pointed.
     return { x: 0, y: calculatedNormal.y >= 0 ? 1 : -1 };
   }
-  if (point.forceVertical) {
+  if (point?.ribAngleLock === "horizontal") {
     return { x: calculatedNormal.x >= 0 ? 1 : -1, y: 0 };
   }
   return calculatedNormal;
