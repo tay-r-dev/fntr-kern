@@ -290,6 +290,187 @@ describe("skeleton-generator provenance", () => {
   });
 });
 
+describe("skeleton-generator outline boundary invariants", () => {
+  it("copies the collapsed side exactly from the skeleton cubic", () => {
+    const skeleton = boundaryCubicSkeleton({ singleSided: "left" });
+    const result = generateFromSkeleton(skeleton);
+    for (const [id, point] of [
+      [2, skeleton.contours[0].points[0]],
+      [5, skeleton.contours[0].points[3]],
+    ]) {
+      expect(
+        generatedPointFor(result, id, "right", "onCurve"),
+        `${id}/right/onCurve`
+      ).to.include({ x: point.x, y: point.y });
+    }
+    const generatedPoints = result.contours.flatMap((contour) => contour.points);
+    for (const control of skeleton.contours[0].points.slice(1, 3)) {
+      expect(
+        generatedPoints.some(
+          (point) =>
+            point.type === "cubic" && point.x === control.x && point.y === control.y
+        ),
+        `collapsed control ${control.id}`
+      ).to.equal(true);
+    }
+  });
+
+  it("keeps generated point count stable across the four U1 width modes", () => {
+    const variants = [
+      boundaryCubicSkeleton({ startWidth: 40, endWidth: 145 }),
+      boundaryCubicSkeleton({
+        startWidth: 40,
+        endWidth: 145,
+        singleSided: "left",
+      }),
+      boundaryCubicSkeleton({
+        startWidth: 40,
+        endWidth: 145,
+        singleSided: "right",
+      }),
+      boundaryCubicSkeleton({
+        startWidth: 20,
+        endWidth: 110,
+        rightStartWidth: 60,
+        rightEndWidth: 180,
+      }),
+    ].map((skeleton) => generateFromSkeleton(skeleton));
+    const signature = (result) =>
+      result.contours.map((contour) => ({
+        closed: contour.isClosed,
+        types: contour.points.map((point) => point.type ?? null),
+      }));
+    for (const variant of variants.slice(1)) {
+      expect(signature(variant)).to.deep.equal(signature(variants[0]));
+    }
+  });
+
+  it("is mirror-equivalent by provenance role", () => {
+    const original = generateFromSkeleton(boundaryCubicSkeleton());
+    const mirrored = generateFromSkeleton(boundaryCubicSkeleton({ mirrorX: true }));
+    const mirroredPoints = provenancePointMap(mirrored);
+    let compared = 0;
+    for (const [key, point] of provenancePointMap(original)) {
+      const [id, side, role] = key.split("/");
+      const mirrorKey = `${id}/${side === "left" ? "right" : "left"}/${role}`;
+      const mirrorPoint = mirroredPoints.get(mirrorKey);
+      if (!mirrorPoint) {
+        continue;
+      }
+      expect(mirrorPoint.x, mirrorKey).to.equal(-point.x);
+      expect(mirrorPoint.y, mirrorKey).to.equal(point.y);
+      compared++;
+    }
+    expect(compared).to.be.at.least(8);
+  });
+
+  it("is reversal-equivalent by provenance role", () => {
+    const forward = provenancePointMap(generateFromSkeleton(boundaryCubicSkeleton()));
+    const reversed = provenancePointMap(
+      generateFromSkeleton(boundaryCubicSkeleton({ reversed: true }))
+    );
+    expect([...reversed.keys()].sort()).to.deep.equal([...forward.keys()].sort());
+    for (const [key, point] of forward) {
+      expect(reversed.get(key), key).to.deep.equal(point);
+    }
+  });
+
+  it("emits finite output for coincident points and retracted handles", () => {
+    for (const skeleton of [
+      boundaryCubicSkeleton({
+        points: [
+          { x: 10, y: 10 },
+          { x: 10, y: 10 },
+          { x: 10, y: 10 },
+          { x: 10, y: 10 },
+        ],
+      }),
+      boundaryCubicSkeleton({
+        points: [
+          { x: 0, y: 0 },
+          { x: 0, y: 0 },
+          { x: 180, y: 20 },
+          { x: 180, y: 20 },
+        ],
+      }),
+    ]) {
+      const result = generateFromSkeleton(skeleton);
+      expect(result.contours.length).to.be.greaterThan(0);
+      expect(allGeneratedCoordinatesFinite(result)).to.equal(true);
+    }
+  });
+
+  it("keeps emitted cubic handles on the skeleton-owned axes", () => {
+    const skeleton = boundaryCubicSkeleton();
+    const result = generateFromSkeleton(skeleton);
+    const points = skeleton.contours[0].points;
+    const expected = [
+      [2, "out", unitVector(points[0], points[1])],
+      [5, "in", unitVector(points[3], points[2])],
+    ];
+    for (const side of ["left", "right"]) {
+      for (const [id, role, axis] of expected) {
+        const anchor = generatedPointFor(result, id, side, "onCurve");
+        const handle = generatedPointFor(result, id, side, role);
+        const vector = { x: handle.x - anchor.x, y: handle.y - anchor.y };
+        const cross = vector.x * axis.y - vector.y * axis.x;
+        const dot = vector.x * axis.x + vector.y * axis.y;
+        expect(Math.abs(cross), `${id}/${side}/${role}`).to.be.at.most(
+          Math.SQRT1_2 + 1e-9
+        );
+        expect(dot, `${id}/${side}/${role} forward`).to.be.above(0);
+      }
+    }
+  });
+
+  it("keeps line segments as direct rib-to-rib projections", () => {
+    const fixture = fixtures.find((item) => item.name === "open-line-butt-cap");
+    const result = generateFromSkeleton(fixture.canonical);
+    const pointMap = result.provenance[0].pointMap;
+    const count = result.contours[0].points.length;
+    for (const side of ["left", "right"]) {
+      const indices = [2, 3].map((id) =>
+        pointMap.findIndex(
+          (entry) =>
+            entry?.skeletonPointId === id &&
+            entry.side === side &&
+            entry.role === "onCurve"
+        )
+      );
+      expect(
+        indices.every((index) => index >= 0),
+        side
+      ).to.equal(true);
+      const cyclicDistance = Math.min(
+        Math.abs(indices[0] - indices[1]),
+        count - Math.abs(indices[0] - indices[1])
+      );
+      expect(cyclicDistance, side).to.equal(1);
+      expect(result.contours[0].points[indices[0]].type).to.equal(undefined);
+      expect(result.contours[0].points[indices[1]].type).to.equal(undefined);
+    }
+  });
+
+  it("leaves the natural solve unchanged by an on-curve nudge", () => {
+    const base = nudgedRibGeometry(0);
+    const moved = nudgedRibGeometry(17);
+    expect(moved.segmentPoints[1]).to.deep.equal(base.segmentPoints[1]);
+    expect(moved.segmentPoints[2]).to.deep.equal(base.segmentPoints[2]);
+  });
+
+  it("keeps detached handles absolute across width and taper changes", () => {
+    const narrow = detachedHandleGeometry({
+      startWidth: 20,
+      endWidth: 20,
+    });
+    const tapered = detachedHandleGeometry({
+      startWidth: 20,
+      endWidth: 80,
+    });
+    expect(tapered.leftStartHandle).to.deep.equal(narrow.leftStartHandle);
+  });
+});
+
 describe("skeleton-generator corner rounding input", () => {
   function makeAnglePointSkeleton(cornerFields = {}) {
     // open polyline with a sharp angle at the middle point
@@ -773,6 +954,128 @@ describe("skeleton-generator near-zero handle stabilization", () => {
     }
   });
 });
+
+function boundaryCubicSkeleton({
+  startWidth = 40,
+  endWidth = 145,
+  rightStartWidth = startWidth,
+  rightEndWidth = endWidth,
+  singleSided = null,
+  mirrorX = false,
+  reversed = false,
+  points = null,
+} = {}) {
+  const sourcePoints = points ?? [
+    { x: 408, y: 105 },
+    { x: 745, y: 105 },
+    { x: 906, y: 176 },
+    { x: 936, y: 338 },
+  ];
+  const position = (point) => ({
+    x: mirrorX ? -point.x : point.x,
+    y: point.y,
+  });
+  const onCurve = (id, point, left, right) => ({
+    id,
+    ...position(point),
+    type: null,
+    smooth: false,
+    width: { left, right, linked: left === right },
+    nudge: { left: 0, right: 0 },
+    editable: { left: true, right: true },
+    handleOffsets: {},
+  });
+  return {
+    version: 1,
+    nextId: 6,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 80,
+        singleSided,
+        capStyle: "butt",
+        reversed,
+        points: [
+          onCurve(2, sourcePoints[0], startWidth, rightStartWidth),
+          {
+            id: 3,
+            ...position(sourcePoints[1]),
+            type: "cubic",
+            smooth: false,
+          },
+          {
+            id: 4,
+            ...position(sourcePoints[2]),
+            type: "cubic",
+            smooth: false,
+          },
+          onCurve(5, sourcePoints[3], endWidth, rightEndWidth),
+        ],
+      },
+    ],
+    generated: [],
+  };
+}
+
+function generatedPointFor(result, skeletonPointId, side, role) {
+  for (const [contourIndex, provenance] of result.provenance.entries()) {
+    const pointIndex = provenance.pointMap.findIndex(
+      (entry) =>
+        entry?.skeletonPointId === skeletonPointId &&
+        entry.side === side &&
+        entry.role === role
+    );
+    if (pointIndex >= 0) {
+      return result.contours[contourIndex].points[pointIndex];
+    }
+  }
+  return undefined;
+}
+
+function provenancePointMap(result) {
+  const mapped = new Map();
+  for (const [contourIndex, provenance] of result.provenance.entries()) {
+    for (const [pointIndex, entry] of provenance.pointMap.entries()) {
+      if (!entry) {
+        continue;
+      }
+      mapped.set(
+        `${entry.skeletonPointId}/${entry.side}/${entry.role}`,
+        result.contours[contourIndex].points[pointIndex]
+      );
+    }
+  }
+  return mapped;
+}
+
+function allGeneratedCoordinatesFinite(result) {
+  return result.contours.every((contour) =>
+    contour.points.every(
+      (point) => Number.isFinite(point.x) && Number.isFinite(point.y)
+    )
+  );
+}
+
+function unitVector(from, to) {
+  const x = to.x - from.x;
+  const y = to.y - from.y;
+  const length = Math.hypot(x, y);
+  return { x: x / length, y: y / length };
+}
+
+function detachedHandleGeometry({ startWidth, endWidth }) {
+  const skeleton = boundaryCubicSkeleton({ startWidth, endWidth });
+  skeleton.contours[0].points[0].handleOffsets.leftOut = {
+    x: 24,
+    y: 0,
+    detached: true,
+  };
+  const result = generateFromSkeleton(skeleton);
+  return {
+    leftStartHandle: generatedPointFor(result, 2, "left", "out"),
+  };
+}
 
 // A single cubic segment whose first on-curve point (id 2) carries a left-side
 // nudge. Returns that point's generated left rib point and the generated handle
