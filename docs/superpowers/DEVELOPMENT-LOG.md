@@ -12,11 +12,10 @@ One entry per feature or fix, newest last. Each entry has the same four parts:
    that isn't obvious from the diff.
 
 Companion docs: `FEATURE-ARCHITECTURE-MAP.md` (what lives where) and
-`SKELETON-FEATURE-MODEL.md` (skeleton mental model). The `specs/` and `plans/`
-folders no longer exist — they were dissolved into those two on 2026-07-28, so
-the design of record is always a doc, never a plan. Where an entry below names a
-spec, that spec's durable content is in the feature model; the spec itself is
-reachable only through git history.
+`SKELETON-FEATURE-MODEL.md` (skeleton mental model). Dated implementation specs
+and plans may exist under `specs/` and `plans/`, but their durable conclusions
+must be folded into these standing documents. Where an older entry names a
+retired spec, its durable content is in the feature model.
 
 ---
 
@@ -1302,3 +1301,154 @@ single loss 0.68.
 file, run to strip debug instrumentation, silently discarded the uncommitted fix
 along with it — the file was clean of instrumentation and also clean of the work.
 Check what a revert actually reverted when the fix is not yet committed.
+
+---
+
+## 18. Cubic outline construction became one continuous solve — rework
+
+**Branch:** `fix/skeleton-continuous-outline-solver`
+**Date:** 2026-07-29
+**Design of record:** `SKELETON-FEATURE-MODEL.md` §3.2, §5, §7, §8
+
+### 1. Problem
+
+The boxed five-stage construction from §§16–17 was deterministic and still not
+continuous. Its fixed correction loop rematched samples to the candidate cubic,
+and its split walk selected the last candidate inside an error allowance. Both
+operations could change branch while the skeleton moved smoothly.
+
+On the fixed U¹ tension sweep, the old automatic path passed single-sided right
+but failed the other generated sides: single-sided left reached a 3.139117-unit
+step/backtrack, double-sided outer backtracked 1.43315 units, and double-sided
+inner reached a 4.77523-unit step with 2.07709 units of backtracking. The last
+two fixes had reduced the visible failures without removing the decision
+structure that caused them.
+
+### 2. Solution
+
+`natural-handle-solver.js` now builds one quadratic from five fixed
+source-parameter offset samples. It minimizes perpendicular error in normalized
+tension space together with a pull toward the skeleton's own tension, inside the
+positive non-crossing rectangle. The pull ratio reads only the skeleton and
+widths; its absolute weight uses a positive unprojected frame-influence scale.
+The exact answer is the best interior, edge, or corner point on that one
+strictly convex objective.
+
+`offset-cubic.js` is now only the authored orchestrator: natural answer,
+attached grid adjustment, pinned harmonic-mean tension, detached absolute
+handle. The correction/refit loop, split bisection, candidate magnitude
+re-solve, and their tests were removed. Generator ownership of ribs, axes,
+collapsed sides, topology, provenance, nudges, caps, corners, and grid emission
+did not move.
+
+The calibrated global constants are:
+
+| constant   | value |
+| ---------- | ----: |
+| pull floor | 0.001 |
+| cusp gain  | 0.005 |
+| taper gain |     1 |
+| cusp gate  |  0.05 |
+
+Every tuple tried before the first pass used `floor=0.001` and
+`cuspGain=0.005`:
+
+| taper gain | cusp gates tried            | first failure                                                                 |
+| ---------: | --------------------------- | ----------------------------------------------------------------------------- |
+|       0.05 | 0.05, 0.075, 0.1, 0.15, 0.2 | single-sided right backtrack 1.314095 at every gate                           |
+|        0.1 | 0.05, 0.075, 0.1, 0.15, 0.2 | single-sided right backtrack 0.746824 at every gate                           |
+|        0.2 | 0.05, 0.075, 0.1, 0.15, 0.2 | single-sided right backtrack 0.198037 at every gate                           |
+|        0.5 | 0.05, 0.075, 0.1, 0.15, 0.2 | double-sided outer backtrack 0.110314, 0.110314, 0.110314, 0.110314, 0.110313 |
+|          1 | 0.05                        | PASS                                                                          |
+
+This is the lexicographically first passing tuple; no glyph, side, or fixture
+has its own constants.
+
+### 3. Measurements
+
+Final U¹ sweep results, all with zero backtracking:
+
+| generated side     | worst adjacent step |
+| ------------------ | ------------------: |
+| single-sided right |            2.174284 |
+| single-sided left  |            2.250511 |
+| double-sided outer |            2.477796 |
+| double-sided inner |            2.703904 |
+
+The additional taper sweeps measured 0.710573 left and 0.484189 right. The
+near-cusp normalized tension split peaked at 1.0000000000000078, below the
+3-to-1 ceiling.
+
+Independent true-offset deviation before and after routing production:
+
+| case                  |    before |     after |      delta |
+| --------------------- | --------: | --------: | ---------: |
+| circular outward      |  0.029513 |  0.029534 |  +0.000021 |
+| circular inward       |  0.047331 |  0.047254 |  -0.000077 |
+| S-curve left          |  1.999582 |  2.405062 |  +0.405481 |
+| S-curve right         |  1.999582 |  2.405062 |  +0.405481 |
+| tight inward turn     |  0.687162 |  0.523590 |  -0.163571 |
+| shallow wide offset   |  0.353324 |  0.191762 |  -0.161561 |
+| unequal handles       |  0.920123 |  0.331487 |  -0.588636 |
+| moderate taper, left  |  3.460796 |  7.062596 |  +3.601801 |
+| moderate taper, right |  8.734695 |  8.794356 |  +0.059661 |
+| strong taper, left    |  9.801322 | 24.071712 | +14.270390 |
+| strong taper, right   | 46.403016 | 46.403016 |   0.000000 |
+
+Four cases improved, six lost, and one was unchanged; the summed change in the
+eleven maximum deviations is +17.828989, with the strong left taper the worst
+single loss at +14.270390. The seven inherited constant-width ceilings all
+remain green. Taper intentionally has no implementation-derived ceiling: its
+skeleton-owned handle axes cannot reproduce the true tapered-offset tangents,
+and the stronger pull is what removes backtracking. The ledger makes that
+stability/accuracy trade explicit rather than hiding it in regenerated fixtures.
+
+### 4. Commits
+
+Implementation and evidence, oldest first:
+
+- `5a82b84b3` — reproduce the U¹ failure;
+- `03005198b`, `99ad000c6` — fixed quadratic fit and handle domain;
+- `8af4bec45` — skeleton-tension reference pull;
+- `669a280b0` — calibrated accuracy, perturbation, U¹, taper, and cusp suites;
+- `88837b1ae` — production routing and authored ordering;
+- `e423466ac` — generator/provenance/interpolation invariants;
+- `04d6e14dd` — reviewed natural-outline fixtures.
+
+The predictor redesign and review corrections are recorded in `b4f759bf8`,
+`6b2344863`, `03e62bc62`, and `ed7ae10ed`.
+
+### 5. Verification and fixture review
+
+- `natural-handle-solver`: 42 passing.
+- `offset-cubic`: 27 passing.
+- architecture suite excluding golden masters: 1,612 passing.
+- full `fontra-core`: 1,624 passing.
+- `npm.cmd run bundle`: passed; only the repository's existing asset and
+  entrypoint size warnings remain.
+
+Five cubic fixtures changed: `open-cubic-round-cap`,
+`open-cubic-butt-cap`, `open-smooth-cubic-junction`,
+`mutually-controlled-straight`, and `one-ended-controlled-straight`. The audit
+found zero structural changes: canonical inputs, contour counts, point counts,
+point types, line fixtures, and non-round on-curves are unchanged. The round-cap
+fixture also moves its existing derived trim on-curves and cap controls because
+that cap is split from the terminal side cubic; its topology and provenance
+ownership remain unchanged.
+
+### 6. Challenges and findings
+
+**A cusp-only predictor could not satisfy both accuracy and continuity.** The
+reported U¹ taper remains healthy by the cusp factor, so it needed a separate
+input-only taper signal.
+
+**One shared cusp/taper strength also could not pass.** Enough shared authority
+to stabilize the tapered side made the inward near-cusp transition too steep.
+Independent global gains preserve one deterministic model without coupling the
+two failure modes.
+
+**The first fixture-review rule was too strict for split-outline round caps.**
+Those caps intentionally compute trim points and tangents from the terminal side
+cubic. Changing the cubic must move those derived on-curves and cap controls.
+The correct preservation boundary is their topology, provenance, and cap inputs,
+not frozen derived coordinates.

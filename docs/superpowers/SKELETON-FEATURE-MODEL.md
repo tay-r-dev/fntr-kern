@@ -121,7 +121,7 @@ handle offsets/detached flags. Off-curve points are `{x, y, type: "cubic"}`.
 
 **The width of a side is a fallback cascade, not a stored value** — and it
 survived the port (`getPointHalfWidth` / `getPointWidth`,
-`skeleton-generator.js:264,284`):
+`skeleton-generator.js:290,310`):
 
 ```
 halfWidth = point.<side>Width  ??  point.width / 2  ??  contour.defaultWidth / 2
@@ -134,9 +134,9 @@ earlier normalization draft did exactly that; the current code does not.)
 
 ## 3. The generation pipeline
 
-`generateFromSkeleton(skeletonData)` (`skeleton-generator.js:51`) is the entry
+`generateFromSkeleton(skeletonData)` (`skeleton-generator.js:56`) is the entry
 point: it loops contours (`generateContoursFromSkeleton`) and, per contour, runs
-`generateOutlineFromSkeletonContour` (`:1322`), then **emits forward
+`generateOutlineFromSkeletonContour` (`:1311`), then **emits forward
 provenance** — `annotateGeneratedContourProvenance` stamps every generated point
 with `{skeletonPointId, side, role}` (arch map C3). The per-contour pipeline is
 pure and independent (contour _i_'s output depends only on contour _i_):
@@ -203,27 +203,48 @@ pure and independent (contour _i_'s output depends only on contour _i_):
    positions, so the only free numbers are two handle lengths, and choosing them
    is the whole of `offset-cubic.js`.
 
-   **Both lengths are carried as tensions, and every stage stays inside one
-   box.** A handle's tension is its length over its own **reach** — the distance
-   along its direction to where the two tangent rays meet. In that space the
-   useful pairs form a box, `[1/reach, 1]` on each axis: tension 1 is the tangent
-   intersection, past which the two handle lines cross and the curve loops, and
-   the lower face is the one-unit grid floor. **No stage produces a point outside
-   that box**, so no stage has to know what an earlier one might have done. That
-   single invariant is the module's shape, and it is what replaced a correction
-   band, a chord cap, a handle floor, a cusp floor on λ, a tension ceiling in two
-   forms, a scale band on the magnitude re-solve, and the rule that a candidate
-   split must be judged as it will be emitted — each of which had been added to
-   repair a different downstream symptom of the same missing invariant.
+   The durable construction is:
 
-   The five stages, in order, all in construction space: **seed** (λ = 1 + d·κ
-   per end), **correction** (four fixed least-squares passes against re-placed
-   samples), **split** (the bounded equalization walk), **attached per-handle
-   adjustment**, **curvature pin**. The adjustment owns the split; the pin adds
-   one shared tension increment and owns the magnitude. Detached handles are
-   absolute and bypass the adjustment and the pin.
+   ```text
+   exact rib endpoints + skeleton-owned directions
+       -> fixed requested-offset samples at source parameters
+       -> convex perpendicular-error fit inside the handle domain
+          + a pull toward the skeleton's own tension, with a ratio from the
+            skeleton and widths and a positive fixed frame-influence scale
+       -> attached handle adjustments
+       -> pinned harmonic-mean tension
+       -> detached absolute handles
+       -> generator emission and grid rounding
+   ```
 
-   **`reach` is one definition, used by every stage** — the tangent-ray distance,
+   `natural-handle-solver.js` owns the automatic answer. It samples the true
+   requested offset at `t = 1/8, 1/4, 1/2, 3/4, 7/8`; sample identity never
+   changes and no sample is projected onto a candidate curve. With the endpoints
+   and axes fixed, each sampled perpendicular error is affine in the two
+   normalized handle tensions, so their squared sum is one two-variable
+   quadratic.
+
+   The fit is pulled toward the skeleton's own normalized start/end tensions.
+   Its ratio is computed before the solve from only cusp proximity and normalized
+   width taper; it never reads a residual or a candidate answer. The absolute
+   pull uses the fixed frame's unprojected influence scale, with a positive
+   floor, so a rank-deficient projected fit cannot also erase the regularizer.
+   The resulting objective is strictly convex and has one answer.
+
+   The exact minimizer is found inside the positive non-crossing rectangle by
+   comparing the interior stationary point, the four edge minima, and the four
+   corners on that one objective. There is no iterative refit, candidate
+   rematching, magnitude re-solve, error-budget walk, or tie-break. Active box
+   faces can change, but the minimizer meets continuously where they do.
+
+   `offset-cubic.js` owns the authored layers after that automatic answer.
+   Attached adjustments are grid-resolved displacements from it; a stored pin
+   then shifts both normalized tensions to the requested harmonic mean; detached
+   handles finally replace their side with the absolute grid position the
+   designer placed. This ordering is product behavior, not an implementation
+   detail.
+
+   **`reach` has one definition shared by the solver and authored layers** — the tangent-ray distance,
    floored at a third of the chord and capped at twice it. The floor is because
    the intersection slides backwards onto the start point whenever a start
    tangent points near the far endpoint (measured: a handle squeezed to 0.6 units,
@@ -233,23 +254,10 @@ pure and independent (contour _i_'s output depends only on contour _i_):
    always exists — there is no "this end has no reach" case for a stage to skip
    on, which is what the deleted `handleTensions` used to spell.
 
-   **λ is applied per end, and that is where an uneven split is born.** Each
-   handle is scaled by the curvature at _its own_ endpoint, so on any cubic that
-   is not an arc the two factors differ — 1.07 against 2.61 on the segment in
-   §7's sweep. The λ seed is a starting point, not an answer; the equalization
-   stage is what keeps that asymmetry from reaching the outline, and it has to
-   be sized to do so (§7).
-
-   **The ceiling is exact, and there is only one of it.** Tension 1 is the wall
-   for the fit, for a hand-placed length and for a pin alike. It used to be
-   _eased_ into over a blend window for the fit's own answer, on the grounds that
-   the fit must be continuous in the skeleton — but a clamp is continuous, and
-   1-Lipschitz, so easing bought C1 at the price of landing a few percent under
-   whatever it was given: 5 units at tension 1, so a hand-dragged handle could
-   never quite reach the tangent intersection and a curvature baked out of a pin
-   (§7) came back shaved. That is why the exact form existed as a second variant,
-   and why a pinned segment had to be exempted from the bound entirely. One exact
-   ceiling makes all three cases the same case.
+   Tension 1 remains the exact wall for the automatic fit, attached adjustments,
+   and the pin. The lower face is the one-unit handle floor. Detached handles
+   are intentionally absolute authored geometry and are applied after this
+   constrained construction.
 
    A side under ~0.5 units ("collapsed") skips all of this and copies the
    skeleton verbatim — this is what makes single-sided contours exact.
@@ -275,19 +283,18 @@ pure and independent (contour _i_'s output depends only on contour _i_):
    exactly. The `nudged-cubic-endpoints` fixture deliberately records the
    default/Alt contract.
 
-   **The continuity contract governs every stage of this pipeline, and it is the
-   reason the construction exists.** Regeneration runs on every frame of a drag,
-   so the output must be a continuous function of the input: a one-unit skeleton
-   move must not reshape a generated segment. Four properties buy that, and all
-   four are non-negotiable in any future change to handle lengths — **fixed trip
-   count, fixed seed, no convergence test, no threshold search.** An iteration
-   that stops when it is happy is a step function of its input; a fixed-count
-   iteration from a fixed seed is not. This is what disqualified the old
-   sample-and-fit path, whose adaptive error threshold both jittered under the
-   cursor and let two masters land on different answers, breaking interpolation.
-   Three discontinuities are deliberate and no continuity test may span them: the
-   0.5-unit collapsed-side threshold, the forward/behind flip of the tangent-ray
-   intersection, and grid rounding at emission.
+   **The continuity contract governs the automatic answer.** Regeneration runs
+   on every frame of a drag, so a one-directional skeleton edit must not reshape
+   the generated segment by jumping or backtracking. The contract is now
+   structural: fixed sample identity; no projection, root finding, iterative
+   refit, convergence decision, or error-budget threshold search; one strictly
+   convex objective; one input-only pull ratio; and exact minimization in the
+   positive non-crossing rectangle. Fixed trip count alone is only determinism
+   and did not make the superseded candidate-rematching path continuous.
+
+   Three discontinuities are deliberate and no continuity test may span them:
+   the 0.5-unit collapsed-side threshold, the forward/behind tangent-intersection
+   event, and grid rounding at authored placement or generator emission.
 
    **Two limits here are permanent, and neither is a bug to chase.** First,
    generated handle direction is skeleton-owned (§3, and it is what keeps the
@@ -388,16 +395,23 @@ Losing any of these regresses the product:
   other; easy to lose in a reimplementation.
 - **Point-count stability** across parameter values (§3) — the interpolation
   contract.
-- **The continuity contract on handle lengths** (§3.2) — fixed trip count, fixed
-  seed, no convergence test, no threshold search. Losing it brings back drag
-  jitter and breaks interpolation, and neither failure is visible in a unit test.
-- **The feasible box** (§3.2) — every stage of the handle-length construction
-  produces a point inside `[1/reach, 1]²` in tension space. The contract above is
-  not sufficient on its own: a fixed-count iteration that is allowed to wander
-  outside the box is deterministic and still discontinuous, because it
-  reparameterizes against a curve that loops. This is the invariant that keeps
-  the module a pipeline instead of a pile of repairs, and the one a new stage is
-  most likely to break by "just clamping at the end".
+- **Fixed sample identity** (§3.2) — the automatic solve always uses the same
+  five source parameters. No projection, root finding, iterative refit, or
+  error-budget search belongs in this path.
+- **One strictly convex automatic objective** — the perpendicular fit and
+  skeleton-reference pull are minimized together, so there is one minimizer and
+  no candidate tie-break.
+- **An input-only pull ratio** — it may read only skeleton geometry and endpoint
+  widths, never the achieved residual or answer. Its absolute weight uses a
+  positive unprojected influence scale that cannot vanish with the projected
+  Hessian.
+- **The positive non-crossing handle domain** — automatic and attached/pinned
+  tensions remain inside the one-unit floor and tension-1 ceiling.
+- **Authored ordering** — natural answer, attached adjustments, pinned
+  harmonic-mean tension, then detached absolute handles.
+- **The three explicit topology/emission events** — collapsed-side threshold,
+  forward/behind tangent-intersection event, and grid rounding. Continuity tests
+  must not silently span them.
 - **A pinned curvature is permanent** (§7) — the generator reproduces the stored
   number through skeleton, width and taper edits, clamping only its output. A pin
   that drifts makes the control pointless.
@@ -415,7 +429,7 @@ today; treat as opportunities, not mandates, and confirm before acting.
   rotation clamp exist. Keeping interior handles in floats and rounding once at
   the boundary (`outlineContourToPackedPath`) would let several defensive
   subsystems shrink. Larger change; measure first.
-- **The generator is the monolith.** `skeleton-generator.js` at ~5,200 lines is
+- **The generator is the monolith.** `skeleton-generator.js` at 4,466 lines is
   defect **P6** (arch map §9) still biting — the single largest file in the fork.
 
 (The donor's dead `mergeCap` branches and `generateSampledOffsetPoints` are
@@ -499,85 +513,27 @@ through the accessor, did nothing at all, because the generator saw `undefined` 
 every segment. It travels as `leftSegmentCurvature` / `rightSegmentCurvature`.
 Any future per-point field has the same trap.
 
-### Equalization of the split
+### The automatic split follows the skeleton reference
 
-Inside the construction, the two handle tensions are walked toward each other,
-stopping when the segment's deviation from the true offset has grown past the
-fitted best by **15% of that best, plus a fifth of a unit**, or at fully equal.
-Fixed-count bisection, per the continuity contract. Symmetric geometry is
-untouched to floating point; mild asymmetry closes by half or fully; a faithful
-asymmetry like a shoulder barely moves, which is the allowance doing its job.
+The natural solver does not equalize in a later stage. The skeleton's own
+normalized handle tensions are the reference inside the same strictly convex
+objective as the perpendicular fit. Ordinary representable offsets use only the
+small conditioning floor; near-cusp and tapered inputs raise the reference pull
+by one global, input-only formula. The fit and reference therefore negotiate one
+answer instead of handing a candidate to a second error-budget decision.
 
-**The metric the walk bisects on is an RMS over the five correction samples, and
-it must never be a max.** A max is exactly _flat_ in whichever handle does not
-own the current worst sample, so the walk was bisecting a plateau and converging
-on its **edge** — the amount at which the max changes owner. That edge is a kink,
-and its position slides fast whenever the two branches run close, so a smooth
-input produced a lurching answer: measured on a double-sided rib on the inside of
-a bend, the end tension moved 0.097 → 0.353 without shifting the max in the
-fourth decimal, and the walk's result stepped 0.984 → 0.906 → 0.813 → 0.750 →
-0.688 while the skeleton moved evenly. Eleven units of generated handle per 1.7
-units of skeleton. **A bisection is only as continuous as the function under it**
-— fixed trip count does not save a search over a plateau, and this was a
-threshold search in everything but name.
+The calibrated ratio has four global constants: a small positive floor, a sharp
+near-zero cusp gate, and independent cusp and taper gains. Separating the gains
+matters: a shared peak coupled two different failures, so enough authority to
+stabilize a tapered outward side made an inward near-cusp transition too steep.
+The selected constants are recorded in the development log, not tuned per glyph,
+side, or fixture.
 
-An RMS has a nonzero gradient in both handles everywhere. It is also the norm the
-fit itself minimizes, so the walk now judges candidates by the same measure that
-produced the one it started from. The flat part of the allowance is stated in
-that norm and moved 0.25 → 0.20 with it — an RMS over five samples is between
-0.447× and 1× the max, so the same physical room restates into 0.11–0.25, and
-0.20 is where every accuracy ceiling in the suite still holds. **It is not a free
-parameter:** change the norm and it changes with it.
-
-**Every candidate is judged as it will be emitted, ceiling included** — now a
-consequence of the box (§3.2) rather than a rule of its own, since a candidate
-is built inside the box like everything else. It was once a rule, because the
-ceiling landed _after_ this stage: a candidate whose handle ran past its reach
-was measured with the overshoot intact and then truncated on the way out, the
-walk sizing the free handle against a partner about to be cut back. Sweeping a
-skeleton's own tension through the point where one handle saturates, its partner
-dropped 90.6 → 59.4 in a single step and took three more to climb back.
-Saturation is a legitimate answer; its partner moving backwards while it sits on
-the wall is not. Bounding inside the walk also raises the baseline the allowance
-is a fraction of, which is why the ratio is 15% and not the 25% it started at:
-measured on the `controlled-straight` fixtures, 25% of a bounded baseline spent
-2.9 units of accuracy where 15% spends 1.7.
-
-**Each candidate split is measured at its own best magnitude**, re-solved in
-closed form (`solveHandleScale`, the two-handle normal equations collapsed onto
-one unknown along the ray through the candidate) and normalized to the fitted
-pair's magnitude first. Without that, a candidate is judged carrying a magnitude
-nobody would pair it with, and the walk rejects magnitudes while believing it is
-rejecting splits. The re-solve is exactly inert on the fitted pair, which is
-already the joint optimum and therefore optimal along every ray through itself —
-so a segment the fit got right passes through unchanged.
-
-**The allowance is proportional for a reason, and this was learned the hard
-way.** A flat quarter unit is room on a constant-width segment (they fit to
-0.11–0.49) and nothing at all on a tapered one (3.6–14.4, because handle
-direction is skeleton-owned and no length can absorb a direction error). That
-was once described as the allowance doing its job — going quiet where there is
-no accuracy to spare. It was the opposite: a tapered segment is exactly where
-the fit comes out lopsided, so the walk fell silent on the only segments that
-needed it. Two states of one skeleton, differing only in the tension of the
-segment's own handles and equal-tension to three decimals in both, generated
-pairs of (0.40, 0.99) and (0.60, 0.97) on one side and (0.73, 0.016) on the
-other — one handle on the tension ceiling or on the collapse floor in every
-case, and a visibly broken outline in the last. Sized against the fit's own
-error, the room appears where the error is: those four became (0.45, 0.74),
-(0.63, 0.89), (0.61, 0.59) and (1.00, 0.64).
-
-**A near-symmetric skeleton must not generate a near-degenerate pair.** That is
-the property to test, and the way to test it is a sweep: hold the segment fixed
-and walk its own tension through the range. Before, the generated handle stepped
-1, 1, 1, 2, 5, 7, 11, 17, 34 while its partner went 104, 70, 163 — a 33.9-unit
-jump for one unit of skeleton handle. It is monotone now, worst step 5.4.
-
-The **allowance** is the only error budget in the module. It must not be confused
-with the box, which bounds where an answer may _land_ and says nothing about
-acceptable deviation. (A correction band of 0.25×–4× the analytic length used to
-play the box's role for the fit alone; it is gone, and the box does that job for
-every stage.)
+**A near-symmetric skeleton must not generate a near-degenerate pair.** That
+property is tested directly across near-cusp widths, while monotone U¹ sweeps
+cover both single-sided directions, both double-sided generated sides, taper,
+pins, attached adjustments, and detached handles. The pull is a regularizer
+inside one objective, not an error allowance and not a second-stage threshold.
 
 ### The on-curve gizmo
 
@@ -647,22 +603,21 @@ Each of these was designed or built, then measured or used, and withdrawn.
 Recorded so none is re-derived from first principles — several were re-proposed
 once already.
 
-| Idea                                                                 | Why it is closed                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Restore the old sample-and-fit offset path**                       | Adaptive threshold jumps a step when an input nudges, so output is discontinuous and two masters land on different answers; endpoints become free samples, destroying provenance; variable curve count destroys point-count stability.                                                                                                                                                                                                                               |
-| **Tilt the generated handle axis to the true offset tangent**        | Recovers nearly all of the taper defect and is still rejected: the axis is skeleton-owned (§3.2). A single shared tilt recovers under half the gain and is _worse than pinned_ on some cases.                                                                                                                                                                                                                                                                        |
-| **A harmonize pass on generated joints**                             | Measured: unrounded, the generated contour already reproduces the true offset's joint curvature to within 1.7%, and to floating point where the skeleton is G2. Where a step does exist it is the skeleton's, faithfully reproduced — harmonizing would erase a curvature the designer asked for.                                                                                                                                                                    |
-| **Unconditional equalization to fully equal**                        | Where it is safe it is a no-op (the fit already produces equal tensions on symmetric geometry); where it would change something it degrades fidelity 3.3×. Survives only as the bounded walk above.                                                                                                                                                                                                                                                                  |
-| **An absolute-only allowance on that walk**                          | Closed the other way round: a flat 0.25 units silences the walk on tapered segments, which are the ones whose fit is lopsided. See §7 — the allowance is now proportional to the fit's own deviation with the flat quarter unit kept as a floor. Do not restore the absolute-only form.                                                                                                                                                                              |
-| **Judging a candidate split at the fitted magnitude**                | The split and the magnitude are orthogonal (§7), so a re-split curve wants its own scale; measured at the old one, every candidate looks worse than it is and the walk stalls. `solveHandleScale` re-solves it in closed form and is inert on the fitted pair.                                                                                                                                                                                                       |
-| **Measure the pin in rendered (post-nudge) space**                   | Correct while nudges carried handles; superseded once they stopped. Construction space makes the pin _independent_ of the on-curve gizmo instead of coupled to it.                                                                                                                                                                                                                                                                                                   |
-| **Reproduce a pinned mean by scaling both tensions**                 | A preserved ratio caps the reachable mean at `2r/(1+r)` — 0.6 on a 0.3/0.7 split — so the control stopped at a value that was neither 1 nor stable. It is also not what the drag does. One shared increment instead.                                                                                                                                                                                                                                                 |
-| **Swap the rib modifier pair** (plain for width ↔ Z for tangent)     | Built twice, reverted twice. Z exists precisely because a tangential rib move is the _rarer_ intent, and a plain drag reaching for the width is what the tool is for.                                                                                                                                                                                                                                                                                                |
-| **Drop Z as the gate on generated geometry**                         | Built, reverted. The gate is the safety on derived geometry, not an accident.                                                                                                                                                                                                                                                                                                                                                                                        |
-| **Equalize the reaches from the on-curve gizmo**                     | Built, removed. Only the curvature gizmo equalizes. (The closed form, if ever wanted: the control's one degree of freedom moves one end by `−s` and the other by `+s`, so `s = (r₀−r₁)/2`.)                                                                                                                                                                                                                                                                          |
-| **Hide all generated nodes to stop them looking selected**           | Wrong fix for a real bug — the node iterator read a null index list as "every point", and an empty selection parses to no list. Only off-curve nodes are hidden, and only in gizmo mode.                                                                                                                                                                                                                                                                             |
-| **Delete the tension bound because it never fires**                  | It fires. Kept, floored at a third of the chord. The instrumentation that answered the question has been removed, and its `active` count is not a hard-pinning measure — it counts any touch inside the blend window, which was misread once as 34% where the true figure was 2 cases in 118.                                                                                                                                                                        |
-| **Let the correction loop solve unbounded and bound on the way out** | This is the jitter. Where a cubic cannot represent the offset the least squares asks for 2.4× the reach at one end and a _negative_ length at the other, so the loop's own iterate is a self-intersecting curve, and Newton's reparameterization onto a looped curve is multivalued — one sample walked t = 0.907 → 0.200 → 0.319 → 0.635 across four passes. Fixed trip count makes that deterministic, not continuous. Enter the box on every pass instead (§3.2). |
-| **Ease the fit's tension ceiling over a blend window**               | Bought C1 where the contract only asks for continuity, at the price of landing a few percent under whatever it was given — and it is what forced the ceiling into three variants (eased / exact / exempt) and the pin into an exemption. One exact clamp is continuous and 1-Lipschitz. Do not reintroduce a smooth bound to "protect" a stage; put the stage inside the box.                                                                                        |
-| **Judge the equalization walk by the worst of its samples**          | A max over five samples is exactly flat in whichever handle does not own the worst one, so the bisection ran over a plateau and settled on its edge — the amount at which the max changes owner. Smooth input, lurching output: 11 units of generated handle per 1.7 units of skeleton. Use the RMS, which is also the norm the fit itself minimizes (§7).                                                                                                           |
-| **Keep `handleTensions`' null return for "no reach ahead"**          | The null existed so its one caller could skip the whole shaping stage — which meant a segment whose tangent rays met behind an endpoint silently got no equalization, no pin and no ceiling. Defining `reach` once, finite and positive (§3.2), deletes the case rather than the check. The function is gone from `tunni-calculations.js`.                                                                                                                           |
+| Idea                                                                 | Why it is closed                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Restore the old sample-and-fit offset path**                       | Adaptive threshold jumps a step when an input nudges, so output is discontinuous and two masters land on different answers; endpoints become free samples, destroying provenance; variable curve count destroys point-count stability.                                                                                                                                                                                                |
+| **Tilt the generated handle axis to the true offset tangent**        | Recovers nearly all of the taper defect and is still rejected: the axis is skeleton-owned (§3.2). A single shared tilt recovers under half the gain and is _worse than pinned_ on some cases.                                                                                                                                                                                                                                         |
+| **A harmonize pass on generated joints**                             | Measured: unrounded, the generated contour already reproduces the true offset's joint curvature to within 1.7%, and to floating point where the skeleton is G2. Where a step does exist it is the skeleton's, faithfully reproduced — harmonizing would erase a curvature the designer asked for.                                                                                                                                     |
+| **A post-fit equalization walk, absolute or proportional allowance** | Removed. It makes the automatic answer depend on whether a candidate crosses an error budget. A fixed trip count makes the search deterministic but cannot make that threshold map continuous. The skeleton reference now participates in the one convex objective instead.                                                                                                                                                           |
+| **Judging or rescaling candidate splits after the fit**              | Removed with the walk. `solveHandleScale` and candidate normalization optimized a second answer on a second objective. The current solver has no candidate family: fit, reference, and bounds produce one minimizer.                                                                                                                                                                                                                  |
+| **Measure the pin in rendered (post-nudge) space**                   | Correct while nudges carried handles; superseded once they stopped. Construction space makes the pin _independent_ of the on-curve gizmo instead of coupled to it.                                                                                                                                                                                                                                                                    |
+| **Reproduce a pinned mean by scaling both tensions**                 | A preserved ratio caps the reachable mean at `2r/(1+r)` — 0.6 on a 0.3/0.7 split — so the control stopped at a value that was neither 1 nor stable. It is also not what the drag does. One shared increment instead.                                                                                                                                                                                                                  |
+| **Swap the rib modifier pair** (plain for width ↔ Z for tangent)     | Built twice, reverted twice. Z exists precisely because a tangential rib move is the _rarer_ intent, and a plain drag reaching for the width is what the tool is for.                                                                                                                                                                                                                                                                 |
+| **Drop Z as the gate on generated geometry**                         | Built, reverted. The gate is the safety on derived geometry, not an accident.                                                                                                                                                                                                                                                                                                                                                         |
+| **Equalize the reaches from the on-curve gizmo**                     | Built, removed. Only the curvature gizmo equalizes. (The closed form, if ever wanted: the control's one degree of freedom moves one end by `−s` and the other by `+s`, so `s = (r₀−r₁)/2`.)                                                                                                                                                                                                                                           |
+| **Hide all generated nodes to stop them looking selected**           | Wrong fix for a real bug — the node iterator read a null index list as "every point", and an empty selection parses to no list. Only off-curve nodes are hidden, and only in gizmo mode.                                                                                                                                                                                                                                              |
+| **Delete the tension bound because it never fires**                  | It fires. Kept, floored at a third of the chord. The instrumentation that answered the question has been removed, and its `active` count is not a hard-pinning measure — it counts any touch inside the blend window, which was misread once as 34% where the true figure was 2 cases in 118.                                                                                                                                         |
+| **Iteratively rematch samples to a candidate cubic**                 | This was the jitter. Where one cubic cannot represent the offset, the least-squares iterate can self-intersect; Newton projection onto it is multivalued — one sample walked t = 0.907 → 0.200 → 0.319 → 0.635. Bounding the loop reduced symptoms but did not remove branch changes. Fixed trip count gives determinism, not continuity. The automatic path now keeps fixed source-parameter samples and has no projection or refit. |
+| **Ease the fit's tension ceiling over a blend window**               | Bought C1 where the contract only asks for continuity, at the price of landing a few percent under whatever it was given — and it is what forced the ceiling into three variants (eased / exact / exempt) and the pin into an exemption. One exact clamp is continuous and 1-Lipschitz. Do not reintroduce a smooth bound to "protect" a stage; put the stage inside the box.                                                         |
+| **Judge a split walk by max or RMS sample error**                    | Both belong to the removed threshold search. Max exposed the fault first because its plateau edge moved abruptly; RMS reduced that symptom but still left a candidate-dependent decision. Neither metric is part of the current automatic path.                                                                                                                                                                                       |
+| **Keep `handleTensions`' null return for "no reach ahead"**          | The null existed so its one caller could skip the whole shaping stage — which meant a segment whose tangent rays met behind an endpoint silently got no equalization, no pin and no ceiling. Defining `reach` once, finite and positive (§3.2), deletes the case rather than the check. The function is gone from `tunni-calculations.js`.                                                                                            |

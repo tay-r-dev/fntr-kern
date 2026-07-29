@@ -47,16 +47,16 @@ of the three docs below.
 
 ## 1. Feature inventory
 
-| #   | Feature                 | Status                                            | Origin                         | Owned files                                              | Entry point                                 |
-| --- | ----------------------- | ------------------------------------------------- | ------------------------------ | -------------------------------------------------------- | ------------------------------------------- |
-| F1  | **Coarse grid**         | shipped (WS-1)                                    | donor panel + forkra mechanics | 1 new core, 1 panel                                      | `fontra.coarse.grid` layer, `f`/`g` actions |
-| F2  | **Q-measure**           | shipped (WS-2)                                    | donor port                     | 1 new editor module                                      | hold **Q** / **Alt+Q**                      |
-| F3  | **SpeedPunk**           | shipped (WS-3)                                    | fork-original + donor panel    | `curvature.js`                                           | `fontra.curvature` layer                    |
-| F4  | **Tunni**               | shipped (WS-4)                                    | fork-original, refactored      | 1 core + 1 editor module                                 | `fontra.tunni.*` layers                     |
-| F5  | **Point labels**        | shipped (WS-4.5)                                  | fork-original, relocated       | inside `distance-angle.js`                               | `fontra.point.labels` layer                 |
-| F6  | **Letterspacer**        | shipped (WS-5)                                    | donor port                     | engine + panel + overlay                                 | Selection-info sidebar                      |
-| F7  | **Skeleton**            | shipped WS-6…WS-16; parity pass WS-17 in progress | re-integrated from donor       | 5 core + 9 editor + panel set                            | Skeleton Pen tool, right sidebar            |
-| F8  | **Carried fork extras** | shipped, pre-dating the program                   | fork-original                  | `corner-overlap.js`, quad handles, equalize, pen-connect | scattered — see §3.8                        |
+| #   | Feature                 | Status                          | Origin                         | Owned files                                              | Entry point                                 |
+| --- | ----------------------- | ------------------------------- | ------------------------------ | -------------------------------------------------------- | ------------------------------------------- |
+| F1  | **Coarse grid**         | shipped (WS-1)                  | donor panel + forkra mechanics | 1 new core, 1 panel                                      | `fontra.coarse.grid` layer, `f`/`g` actions |
+| F2  | **Q-measure**           | shipped (WS-2)                  | donor port                     | 1 new editor module                                      | hold **Q** / **Alt+Q**                      |
+| F3  | **SpeedPunk**           | shipped (WS-3)                  | fork-original + donor panel    | `curvature.js`                                           | `fontra.curvature` layer                    |
+| F4  | **Tunni**               | shipped (WS-4)                  | fork-original, refactored      | 1 core + 1 editor module                                 | `fontra.tunni.*` layers                     |
+| F5  | **Point labels**        | shipped (WS-4.5)                | fork-original, relocated       | inside `distance-angle.js`                               | `fontra.point.labels` layer                 |
+| F6  | **Letterspacer**        | shipped (WS-5)                  | donor port                     | engine + panel + overlay                                 | Selection-info sidebar                      |
+| F7  | **Skeleton**            | shipped WS-6…WS-17              | re-integrated from donor       | 4 core + 9 editor + panel set                            | Skeleton Pen tool, right sidebar            |
+| F8  | **Carried fork extras** | shipped, pre-dating the program | fork-original                  | `corner-overlap.js`, quad handles, equalize, pen-connect | scattered — see §3.8                        |
 
 Feature sizes, owned code only (shared-file hunks excluded):
 
@@ -226,13 +226,12 @@ outline contours are generated live.
 
 **Core (pure, mocha-tested):**
 
-| File                                          | +/−   | Role                                                                                                                                                                                                                                                                                    |
-| --------------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fontra-core/src/skeleton-model.js`           | +3393 | Schema, stable-id allocation, accessors/mutators, rib projection, normals, D/S/X/Z semantics (`applyFixedRibDelta`, the equalize family), generated-gizmo geometry. **The single home for skeleton geometry constants.**                                                                |
-| `fontra-core/src/skeleton-generator.js`       | +4481 | Centerline → outline. Segments, offset curves, caps (butt/round/square/**drop**), corner rounding, single-sided, handle offsets, detached handles. Emits forward provenance (R-D).                                                                                                      |
-| `fontra-core/src/skeleton-source-defaults.js` | +241  | Per-source defaults, resolved by glyph case                                                                                                                                                                                                                                             |
-| `fontra-core/src/skeleton-tunni.js`           | +234  | Tunni math on skeleton segments                                                                                                                                                                                                                                                         |
-| `fontra-core/src/offset-cubic.js`             | +508  | The closed-form offset construction for one cubic side, as five stages on a **feasible box** in tension space: seed (`λ = 1 + d·κ`), fixed correction passes, bounded equalization, attached adjustment, pin. Pure and **stateless** — same inputs, byte-identical output, every frame. |
+| File                                       | Lines | Role                                                                                                                                                                                                                                                 |
+| ------------------------------------------ | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/skeleton-model.js`        | 3555  | Schema, stable-id allocation, source defaults, accessors/mutators, rib projection, normals, D/S/X/Z semantics (`applyFixedRibDelta`, the equalize family), Tunni/gizmo geometry. **The single home for skeleton geometry constants.**                |
+| `fontra-core/src/skeleton-generator.js`    | 4466  | Centerline → outline. Owns segmentation, ribs, skeleton handle axes, collapsed sides, contour topology, provenance, nudges, grid emission, caps (butt/round/square/**drop**), and corner rounding.                                                   |
+| `fontra-core/src/natural-handle-solver.js` | 320   | Pure automatic cubic-side geometry: fixed source-parameter offset samples, normalized perpendicular-error quadratic, skeleton-tension reference, input-only cusp/taper pull, positive frame-influence scale, and exact box-constrained minimization. |
+| `fontra-core/src/offset-cubic.js`          | 118   | Stateless authored cubic-side orchestrator. Builds the shared handle domain, calls the natural solver, then applies attached grid adjustments, pinned harmonic-mean tension, and detached absolute handles in that order.                            |
 
 **Editor (no test harness — manual matrices):**
 
@@ -283,10 +282,11 @@ The panel checkbox and the View menu both read and write that one setting, so th
 and `editableGeneratedAtPoint` returns null while it is on — the two modes compete for the same
 clicks, since the gizmos sit on and around the very handles direct manipulation targets.
 
-**Tests:** `test-skeleton-generator.js` (1075), `test-skeleton-model.js` (1004),
-`test-skeleton-tunni.js` (879), `test-skeleton-modifiers.js` (685), `test-skeleton-ribs.js` (641),
-`test-offset-cubic.js` (724), `test-skeleton-source-defaults.js` (125),
-`test-skeleton-interpolation.js` (99).
+**Tests:** `test-skeleton-generator.js` (1454), `test-skeleton-model.js` (1052),
+`test-skeleton-tunni.js` (879), `test-skeleton-modifiers.js` (861),
+`test-skeleton-ribs.js` (641), `test-natural-handle-solver.js` (695),
+`test-offset-cubic.js` (385), `test-skeleton-source-defaults.js` (125),
+`test-skeleton-interpolation.js` (138).
 Golden-master fixtures: `tests/data/skeleton-generator/fixtures.json` (2183), regenerated by
 `tests/scripts/make-skeleton-generator-fixtures.js` — which records **this** generator's own
 output, not any pre-port reference.
@@ -438,7 +438,7 @@ when the doc was last verified, 2026-07-22 — re-check against the code before 
 2. **Letterspacer ↔ skeleton coupling** — verify whether sidebearing changes move skeleton
    data before assuming it works. (This is the coupling the sidebearing-variables work must
    route through — it is not yet in the base margin-set path.)
-3. **`skeleton-generator.js` is 4,481 lines.** Justified by the port, but it is the single
+3. **`skeleton-generator.js` is 4,466 lines.** Justified by the port, but it is the single
    largest file in the fork — the one place defect **P6** (§9, monoliths) still bites.
 
 ---
@@ -453,25 +453,27 @@ Minimal reading sets for the most likely next tasks. Each assumes §2 (rails) ha
 `lang/en.js`. Never call the generator or write customData directly (R-C).
 
 **"Make feature X skeleton-aware"** (the Q-measure fix, 4.12, is the worked example)
-`scene-model.js` for the hit-test (reuse the private skeleton iterators — `iterSkeletonCurveSegments`
-etc. — don't duplicate them) → `skeleton-model.js` for geometry (rib positions, normals — do
-**not** recompute them) → the feature's own interaction module, which just consumes and tags.
-Provenance lookups go through `skeleton-generated.js`, never geometry matching (R-D).
+`scene-model.js` for the hit-test (reuse the private skeleton iterators —
+`iterSkeletonCurveSegments` etc. — don't duplicate them) → `skeleton-model.js` for geometry
+(rib positions, normals — do **not** recompute them) → the feature's own interaction module,
+which just consumes and tags. Provenance is emitted by `skeleton-generator.js` and resolved
+through the helpers in `skeleton-model.js`; never recover it by geometry matching (R-D).
 
 **"Fix a skeleton editing behavior"**
-`skeleton-editing.js` (target entries, and the key → behavior-name mapping) → the modifier
-semantics in `skeleton-model.js` (`applyFixedRibDelta`, the equalize family) → the relevant
-executor in `skeleton-ribs.js` / `skeleton-generated.js`. If the fix wants a branch inside
+`views-editor/src/skeleton-editing.js` (target entries, the key → behavior-name mapping, and
+the behavior executors) → the modifier semantics in `skeleton-model.js`
+(`applyFixedRibDelta`, the equalize family). If the fix wants a branch inside
 `makeChangeForDelta`, it is the wrong fix (R-E).
 
 **"Change generated outline geometry"**
-`skeleton-generator.js` + `test-skeleton-generator.js`, and `offset-cubic.js` +
-`test-offset-cubic.js` for anything touching cubic handle lengths. TDD is available and expected
-here. Four hard constraints, all in the feature model: generated **point-count stability** (or
-cross-master interpolation breaks), the **continuity contract** on handle lengths (fixed trip
-count, fixed seed, no convergence test, no threshold search), **the feasible box** (every stage of
-the handle-length construction lands inside `[1/reach, 1]²` in tension space — a new stage that
-clamps only on the way out reintroduces the jitter), and **a pinned curvature is permanent**.
+`skeleton-generator.js` + `test-skeleton-generator.js`, and
+`natural-handle-solver.js` / `offset-cubic.js` with their matching tests for
+anything touching cubic handle lengths. TDD is available and expected
+here. The hard constraints are all in the feature model: generated **point-count stability**
+(or cross-master interpolation breaks); **fixed sample identity** with no projection, refit,
+or candidate search; one **strictly convex objective** whose positive pull is derived only
+from the input skeleton and widths; the existing positive, non-crossing **handle domain**;
+the established **authored-state order**; and **a pinned curvature is permanent**.
 Read the feature model's §8 first — it lists what has already been tried here and rejected on
 measurement, including two ideas that were re-proposed and reverted twice, and three guards that
 were deleted because the box subsumes them.
