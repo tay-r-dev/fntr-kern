@@ -107,8 +107,9 @@ The automatic path contains:
    continuous function of skeleton coordinates and widths.
 2. The construction is frame-independent. It cannot read prior generated geometry.
 3. No threshold chooses between two automatic algorithms.
-4. Active handle-domain constraints may change, but the unique constrained minimum must
-   meet continuously at the shared boundary.
+4. Active handle-domain constraints may change, but a full-rank constrained answer must
+   meet continuously at the shared boundary. As rank disappears, the geometric answer's
+   influence must continuously fall to zero.
 5. Deliberate topology events remain explicit: collapsed-side activation, a
    forward/behind tangent-intersection change, and final grid rounding.
 6. A high-resolution sweep must test each side and each supported width mode.
@@ -271,14 +272,18 @@ function solveGeometricHandles(frame, offsetSamples, handleDomain) {
 The domain is a rectangle because each handle has a minimum positive length and a
 maximum non-crossing reach.
 
-The constrained two-variable problem has a unique answer. It needs no iterative search.
-The implementation evaluates the interior minimum, the four edge minima, and the four
-corners, then selects the lowest objective value. When the active boundary changes, the
-unique solution is shared by both active sets and remains continuous.
+The solve has two ordered objectives. First, minimize perpendicular error. Second, among
+answers with the same minimum error, select the answer closest to the inherited answer
+in normalized tension space. This gives the constrained problem one deterministic
+answer, including when the geometric system lacks rank.
 
-If the geometric system lacks rank, its tied minimum is the point closest to the
-inherited answer in normalized tension space. This defines straight and degenerate
-segments without a numerical fallback branch.
+The solve needs no iterative search. The implementation evaluates the interior minimum,
+the four edge minima, and the four corners. It compares their perpendicular errors
+first and their normalized distances from the inherited answer second. When an active
+boundary changes in a full-rank system, both active sets meet at the same answer. When
+rank disappears, the representability score defined below continuously removes the
+geometric answer's influence. Straight and degenerate segments therefore need no
+alternative fitting algorithm.
 
 ### 5.5 Inherited answer
 
@@ -328,13 +333,17 @@ c_\text{error}=
 \frac{1}{1+(e/0.02)^6}
 \]
 
-The quadratic system's normalized determinant supplies a continuous rank score:
+The quadratic system's nonnegative normalized determinant supplies a continuous rank
+score. Let \(d=\max(\det(H),0)\); this only removes a possible negative roundoff error
+from a positive-semidefinite system.
 
 \[
 c_\text{rank}=
-\frac{\det(H)}
-     {\det(H)+10^{-6}\operatorname{trace}(H)^2}
+\frac{d}
+     {d+10^{-6}\operatorname{trace}(H)^2}
 \]
+
+Define \(c_\text{rank}=0\) when both numerator and denominator are zero.
 
 The final confidence is:
 
@@ -353,12 +362,12 @@ function chooseNaturalHandles(geometricAnswer, inheritedAnswer, fitQuality) {
   const errorConfidence =
     1 / (1 + Math.pow(errorRatio / 0.02, 6));
 
+  const nonnegativeDeterminant = Math.max(fitQuality.determinant, 0);
+  const rankScale =
+    nonnegativeDeterminant +
+    1e-6 * fitQuality.trace * fitQuality.trace;
   const rankConfidence =
-    fitQuality.determinant /
-    (
-      fitQuality.determinant +
-      1e-6 * fitQuality.trace * fitQuality.trace
-    );
+    rankScale === 0 ? 0 : nonnegativeDeterminant / rankScale;
 
   const geometricConfidence = errorConfidence * rankConfidence;
 
@@ -624,8 +633,7 @@ Retain or add tests proving:
 Before fixture regeneration:
 
 ```powershell
-Set-Location src-js\fontra-core
-npm.cmd test -- --grep "offset|skeleton"
+npm.cmd test --workspace src-js/fontra-core -- --grep "offset|skeleton"
 ```
 
 Before completion:
@@ -706,4 +714,3 @@ The feature is complete when:
 6. Point counts and interpolation remain stable.
 7. Core tests and the production bundle pass.
 8. The standing architecture and feature-model documents describe the new pipeline.
-
