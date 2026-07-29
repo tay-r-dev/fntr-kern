@@ -1041,7 +1041,13 @@ created the complete accuracy and sweep suite.
 
 - [ ] **Step 3: Add perturbation continuity coverage**
 
-For every nondegenerate accuracy fixture, perturb each of the eight skeleton coordinates and both widths by `1e-5`, on both signed sides. Compare the base result with perturbations of `1e-5` and `5e-6`; require the smaller perturbation's handle delta to be no greater than the larger perturbation's delta plus `1e-8`, and require both to remain below `1e-2`. Skip only the three explicit topology events named in the design.
+Define the shared `accuracyCases` table listed in Task 5 now, so these tests and the later
+accuracy ledger exercise exactly the same corpus. For every nondegenerate accuracy
+fixture, perturb each of the eight skeleton coordinates and both widths by `1e-5`, in
+both directions. Compare the base result with perturbations of `1e-5` and `5e-6`; require
+the smaller perturbation's handle delta to be no greater than the larger perturbation's
+delta plus `1e-8`, and require both to remain below `1e-2`. Skip only the three explicit
+topology events named in the design.
 
 - [ ] **Step 4: Run and commit**
 
@@ -1090,22 +1096,10 @@ implementations. Do not call solver sampling helpers from the test.
 
 - [ ] **Step 2: Add all accuracy cases with pull diagnostics**
 
+Reuse the `accuracyCases` table established by Task 4:
+
 ```js
-for (const testCase of [
-  ["circular outward", quarterCirclePoints, 25, 25, 1],
-  ["circular inward", quarterCirclePoints, -40, -40, 1],
-  ["S-curve left", sCurve, 35, 35, 2.5],
-  ["S-curve right", sCurve, -35, -35, 2.5],
-  ["tight inward turn", tightTurn, -70, -70, 1.5],
-  ["shallow wide offset", shallowCurve, 70, 70, 1],
-  ["unequal handles", unequalCurve, 50, 50, 1],
-  // Taper has no inherited accuracy ceiling. These rows enter the accuracy
-  // ledger and must remain finite; their motion is accepted by the sweep.
-  ["moderate taper, left", sCurve, 25, 60, null],
-  ["moderate taper, right", sCurve, -25, -60, null],
-  ["strong taper, left", sCurve, 20, 110, null],
-  ["strong taper, right", sCurve, -20, -110, null],
-]) {
+for (const testCase of accuracyCases) {
   const [name, points, d0, d3, ceiling] = testCase;
   it(`records offset accuracy for ${name}`, () => {
     const before = measureCurrentOffset(points, d0, d3);
