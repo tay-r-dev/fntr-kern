@@ -1479,3 +1479,67 @@ describe("skeleton-generator serif field translation", () => {
     expect(Math.max(...xs)).to.be.above(100);
   });
 });
+
+describe("skeleton-generator serif reach clamping", () => {
+  function shortStem(reach) {
+    const half = {
+      wingLength: 80,
+      tipThickness: 30,
+      wingSlope: 0,
+      tipCutAngle: 0,
+      reach,
+      tension: 0.7,
+      concavity: 0.8,
+    };
+    return {
+      version: 1,
+      nextId: 4,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 100,
+          capStyle: "serif",
+          points: [
+            {
+              id: 1,
+              x: 0,
+              y: 0,
+              serif: {
+                left: half,
+                right: half,
+                axisMode: "perpendicular",
+                axisAngle: 0,
+                undersideCup: 0,
+                straightDepth: 0,
+              },
+            },
+            { id: 2, x: 0, y: 40 },
+            { id: 3, x: 0, y: 400 },
+          ],
+        },
+      ],
+      generated: [],
+    };
+  }
+
+  it("never consumes more than the terminal segment", () => {
+    const result = generateFromSkeleton(shortStem(400));
+    const ys = result.contours[0].points.map((point) => point.y);
+    expect(Math.max(...ys)).to.be.closeTo(400, 2);
+  });
+
+  it("keeps the emitted point count stable at the clamped terminal", () => {
+    const clamped = generateFromSkeleton(shortStem(400));
+    const roomy = generateFromSkeleton(shortStem(20));
+    expect(clamped.contours[0].points.length).to.equal(roomy.contours[0].points.length);
+  });
+
+  it("produces a finite outline when reach far exceeds the segment", () => {
+    const result = generateFromSkeleton(shortStem(10000));
+    for (const point of result.contours[0].points) {
+      expect(Number.isFinite(point.x)).to.equal(true);
+      expect(Number.isFinite(point.y)).to.equal(true);
+    }
+  });
+});

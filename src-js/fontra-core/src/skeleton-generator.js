@@ -4428,12 +4428,27 @@ function buildSerifCap({
     x: endpoint.x - normal.x * rightHalfWidth,
     y: endpoint.y - normal.y * rightHalfWidth,
   };
+  const left = resolveSerifHalf(pointSerif, contourSerif, "left");
+  const right = resolveSerifHalf(pointSerif, contourSerif, "right");
+  // A terminal may only consume its own segment. Clamp before constructing the
+  // serif as well as before splitting the outline, otherwise the splice stays
+  // local while the emitted straight section still reaches into the next one.
+  const clampReach = (side, half) => {
+    const available = Math.max(getTerminalSegmentLength(side, position) * 0.95, 1);
+    const requested = Math.max(half.reach, 0);
+    return {
+      half: { ...half, reach: Math.min(requested, available) },
+      clamped: requested > available,
+    };
+  };
+  const leftReach = clampReach(leftSide, left);
+  const rightReach = clampReach(rightSide, right);
   const terminal = buildSerifTerminal({
     frame,
     leftFlankU: frame.toFrame(leftRibEnd).u,
     rightFlankU: frame.toFrame(rightRibEnd).u,
-    left: resolveSerifHalf(pointSerif, contourSerif, "left"),
-    right: resolveSerifHalf(pointSerif, contourSerif, "right"),
+    left: leftReach.half,
+    right: rightReach.half,
     undersideCup: pointSerif?.undersideCup ?? contourSerif?.undersideCup ?? 0,
     straightDepth: pointSerif?.straightDepth ?? contourSerif?.straightDepth ?? 0,
   });
@@ -4469,7 +4484,7 @@ function buildSerifCap({
       rightSplit.referenceEndpointIndex
     ),
     capPoints,
-    reachClamped: false,
+    reachClamped: leftReach.clamped || rightReach.clamped,
   };
 }
 
