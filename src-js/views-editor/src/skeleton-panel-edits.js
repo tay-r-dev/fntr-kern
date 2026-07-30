@@ -529,6 +529,84 @@ export async function setPanelSerifParameters(
   );
 }
 
+// Multiply one serif length by a factor, per point, the way the width scale
+// slider does. Scaling has to happen per point rather than on a panel summary so
+// a mixed selection keeps its differences instead of collapsing to one number.
+//
+// `targets` is a list of {side, field} for half fields, or {field} for the
+// terminal-level ones. A value the point does not store is resolved from the
+// contour first; if neither has one there is nothing to scale and the point is
+// left inheriting rather than being pinned to a scaled default.
+export async function scalePanelSerifValue(
+  sceneController,
+  pointAddresses,
+  targets,
+  factor,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, { contour }) => {
+      const endpoints = skeletonContourEndpointIndices(contour);
+      if (!endpoints) {
+        return;
+      }
+      const pointIndex = contour.points.indexOf(point);
+      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
+        return;
+      }
+      const values = {};
+      for (const { side, field } of targets) {
+        const current = side
+          ? (point.serif?.[side]?.[field] ?? contour.serif?.[side]?.[field])
+          : (point.serif?.[field] ?? contour.serif?.[field]);
+        if (!Number.isFinite(current)) {
+          continue;
+        }
+        const scaled = Math.max(0, current * factor);
+        if (side) {
+          values[side] = { ...(values[side] || {}), [field]: scaled };
+        } else {
+          values[field] = scaled;
+        }
+      }
+      setSkeletonSerifParameters(point, values);
+    },
+    undoLabel
+  );
+}
+
+// Streaming variant, for the serif sliders: the terminal redraws under the
+// thumb instead of jumping once on release. Same endpoint gate as the committed
+// path, applied per point rather than up front because the stream helper hands
+// the contour over one point at a time.
+export async function setPanelSerifParametersStream(
+  sceneController,
+  pointAddresses,
+  valueStream,
+  makeValues,
+  undoLabel
+) {
+  return setPanelPointValuesStream(
+    sceneController,
+    pointAddresses,
+    valueStream,
+    (point, contour, value) => {
+      const endpoints = skeletonContourEndpointIndices(contour);
+      if (!endpoints) {
+        return;
+      }
+      const pointIndex = contour.points.indexOf(point);
+      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
+        return;
+      }
+      setSkeletonSerifParameters(point, makeValues(value));
+    },
+    undoLabel
+  );
+}
+
 // Lock the ribs of selected open-contour endpoints to an axis (or clear it).
 // Gated to endpoints like the cap style is, since that is where it is offered.
 export async function setPanelRibAngleLock(

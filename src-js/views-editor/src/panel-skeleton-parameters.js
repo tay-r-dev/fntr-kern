@@ -18,6 +18,7 @@ import {
   resetPanelGeneratedHandle,
   resetPanelRibs,
   scalePanelPointWidth,
+  scalePanelSerifValue,
   setPanelCapParameters,
   setPanelCapStyle,
   setPanelContourDefaultWidth,
@@ -34,6 +35,7 @@ import {
   setPanelRibDetached,
   setPanelRibLocked,
   setPanelSerifParameters,
+  setPanelSerifParametersStream,
 } from "./skeleton-panel-edits.js";
 import {
   collectRibEditTargets,
@@ -124,6 +126,36 @@ function capValuesFromField(name, value) {
 export const SERIF_TIP_CUT_MIN = -80;
 export const SERIF_TIP_CUT_MAX = 80;
 
+// Everything about a set of field descriptions EXCEPT the values. Two form
+// contents with the same signature can share one set of DOM inputs, so the panel
+// can push new values into the existing form instead of rebuilding it.
+export function formContentsLayoutSignature(formContents) {
+  return formContents
+    .map((item) =>
+      [
+        item.type,
+        item.key ?? "",
+        item.label ?? "",
+        // A field switching between a real value and "mixed", or gaining a
+        // placeholder, changes what the input shows independently of its value,
+        // so those belong to the layout rather than to the value.
+        item.displayValue ?? "",
+        item.placeholder ?? "",
+        item.disabled ? "1" : "",
+        item.minValue ?? "",
+        item.maxValue ?? "",
+        item.step ?? "",
+        (item.options || []).map((option) => option.value).join(","),
+        // Button and dropdown rows carry no key, so they cannot be refreshed in
+        // place: their live click handlers close over the values they were built
+        // with. Folding their text in makes any change to what they offer count
+        // as a layout change, which rebuilds them.
+        item.element?.textContent ?? "",
+      ].join("")
+    )
+    .join("");
+}
+
 // Ratio-stored fields are edited as percent, like cap tension.
 function percentSummary(summary) {
   return {
@@ -138,6 +170,42 @@ function serifHalfValueFromField(field, value) {
     return Number(value) / 100;
   }
   return Number(value);
+}
+
+// A `<scope>-<field>` half-serif field name and its panel-unit value, turned
+// into the partial serif object the model mutator takes. Null for anything that
+// is not a half field, so the caller can fall through to the shared ones.
+function serifHalfValuesFromField(name, value) {
+  const [scope, field] = String(name).split("-");
+  if (!SERIF_HALF_FIELDS.includes(field)) {
+    return null;
+  }
+  const resolved = value == null ? null : serifHalfValueFromField(field, value);
+  const values = {};
+  for (const side of scope === "both" ? ["left", "right"] : [scope]) {
+    values[side] = { [field]: resolved };
+  }
+  return values;
+}
+
+// Which stored serif numbers one scale slider multiplies. A slider under a
+// linked half drives both sides, which is what "linked" means everywhere else in
+// this panel.
+function serifScaleTargets(name) {
+  if (name === "cup") {
+    return [{ field: "undersideCup" }];
+  }
+  if (name === "depth") {
+    return [{ field: "straightDepth" }];
+  }
+  const [scope, field] = String(name).split("-");
+  if (!SERIF_HALF_FIELDS.includes(field)) {
+    return [];
+  }
+  return (scope === "both" ? ["left", "right"] : [scope]).map((side) => ({
+    side,
+    field,
+  }));
 }
 
 function cornerValuesFromField(name, value) {
@@ -294,6 +362,7 @@ export default class SkeletonParametersPanel extends Panel {
         type: "text",
         value: translate("sidebar.skeleton-parameters.no-skeleton"),
       });
+      this._lastFormLayout = null;
       this.infoForm.setFieldDescriptions(formContents);
       this.infoForm.onFieldChange = () => {};
       return;
@@ -330,9 +399,35 @@ export default class SkeletonParametersPanel extends Panel {
 
     formContents.push({ type: "spacer" });
 
-    this.infoForm.setFieldDescriptions(formContents);
+    this._applyFormContents(formContents);
     this.infoForm.onFieldChange = (fieldItem, value, valueStream) =>
       this._onFieldChange(fieldItem, value, valueStream);
+  }
+
+  // Handing the form a new set of field descriptions rebuilds every input from
+  // scratch, which throws away focus and any in-flight interaction: an arrow key
+  // in a number input applied once and then stopped, and a slider went dead until
+  // the selection was cycled. When only the VALUES moved — which is the common
+  // case, since editing a parameter is what triggers the update — the existing
+  // inputs are still the right ones and just need their values pushed in.
+  _applyFormContents(formContents) {
+    const layout = formContentsLayoutSignature(formContents);
+    if (layout === this._lastFormLayout) {
+      for (const item of formContents) {
+        if (item.key == null || !this.infoForm.hasKey(item.key)) {
+          continue;
+        }
+        // Writing back into the input the user just used would fight their next
+        // keystroke, and it already holds the value it reported to us.
+        if (item.key === this._activeFieldKey) {
+          continue;
+        }
+        this.infoForm.setValue(item.key, item.value);
+      }
+      return;
+    }
+    this._lastFormLayout = layout;
+    this.infoForm.setFieldDescriptions(formContents);
   }
 
   // ---- Master default profiles (force-apply) --------------------------------
@@ -1052,35 +1147,25 @@ export default class SkeletonParametersPanel extends Panel {
       disabled: !canEdit,
     });
 
+    // Every serif length gets a scale slider directly beneath it, working like
+    // the point-width one: it always reads 100% and multiplies what is already
+    // there, so it stays useful across a mixed selection.
+    const pushLength = (key, labelKey, summary) => {
+      this._pushSummaryNumber(formContents, key, labelKey, summary, {
+        disabled: !canEdit,
+      });
+      this._pushScaleSlider(formContents, `${key}-scale`, canEdit);
+    };
+
     const pushHalf = (scope, half) => {
-      this._pushSummaryNumber(
-        formContents,
-        `serif:${scope}-wingLength`,
-        "serif-wing-length",
-        half.wingLength,
-        { disabled: !canEdit }
-      );
-      this._pushSummaryNumber(
-        formContents,
+      pushLength(`serif:${scope}-wingLength`, "serif-wing-length", half.wingLength);
+      pushLength(
         `serif:${scope}-tipThickness`,
         "serif-tip-thickness",
-        half.tipThickness,
-        { disabled: !canEdit }
+        half.tipThickness
       );
-      this._pushSummaryNumber(
-        formContents,
-        `serif:${scope}-wingSlope`,
-        "serif-wing-slope",
-        half.wingSlope,
-        { disabled: !canEdit }
-      );
-      this._pushSummaryNumber(
-        formContents,
-        `serif:${scope}-reach`,
-        "serif-reach",
-        half.reach,
-        { disabled: !canEdit }
-      );
+      pushLength(`serif:${scope}-wingSlope`, "serif-wing-slope", half.wingSlope);
+      pushLength(`serif:${scope}-reach`, "serif-reach", half.reach);
       this._pushSummarySlider(
         formContents,
         `serif:${scope}-tipCutAngle`,
@@ -1101,7 +1186,7 @@ export default class SkeletonParametersPanel extends Panel {
         0,
         100,
         0,
-        { step: 5, disabled: !canEdit }
+        { step: 1, disabled: !canEdit }
       );
       // Signed: negative bulges the transition convex, 0 is a flat chamfer,
       // positive is the classic hollow bracket.
@@ -1113,7 +1198,7 @@ export default class SkeletonParametersPanel extends Panel {
         -100,
         100,
         0,
-        { step: 5, disabled: !canEdit }
+        { step: 1, disabled: !canEdit }
       );
     };
 
@@ -1178,20 +1263,26 @@ export default class SkeletonParametersPanel extends Panel {
     }
     // One curve across the whole terminal, so this is shared rather than per
     // half: a cup on each half would meet at a break in the middle.
-    this._pushSummaryNumber(
-      formContents,
-      "serif:cup",
-      "serif-underside-cup",
-      serif.undersideCup,
-      { disabled: !canEdit }
-    );
-    this._pushSummaryNumber(
-      formContents,
-      "serif:depth",
-      "serif-straight-depth",
-      serif.straightDepth,
-      { disabled: !canEdit }
-    );
+    pushLength("serif:cup", "serif-underside-cup", serif.undersideCup);
+    pushLength("serif:depth", "serif-straight-depth", serif.straightDepth);
+  }
+
+  // A relative multiplier, parked at 100% so each drag scales whatever the
+  // selection currently holds rather than pushing one absolute number onto every
+  // point. Same range and step as the point-width scale.
+  _pushScaleSlider(formContents, key, canEdit) {
+    formContents.push({
+      type: "edit-number-slider",
+      key,
+      label: translate("sidebar.skeleton-parameters.scale"),
+      value: 100,
+      minValue: 20,
+      defaultValue: 100,
+      maxValue: 200,
+      step: 5,
+      allowInputBeyondRange: true,
+      disabled: !canEdit,
+    });
   }
 
   // ---- Field description helpers -------------------------------------------
@@ -1241,6 +1332,10 @@ export default class SkeletonParametersPanel extends Panel {
   async _onFieldChange(fieldItem, value, valueStream) {
     const [group, name] = String(fieldItem.key).split(":");
     this._suppressGlyphChangeUpdate = true;
+    // Remembered so the refresh at the end of this method leaves this one input
+    // alone: it already holds what the user put in it, and writing back would
+    // interrupt a run of arrow-key increments.
+    this._activeFieldKey = fieldItem.key;
     try {
       // Distribution, cap and corner sliders stream onto the canvas while
       // dragging; all other fields apply the committed value once.
@@ -1269,6 +1364,24 @@ export default class SkeletonParametersPanel extends Panel {
           return;
         }
       }
+      // Scale sliders are excluded: they multiply what is stored, so streaming
+      // them would compound the factor once per frame.
+      if (valueStream && group === "serif" && !name.endsWith("-scale")) {
+        const makeValues = (streamed) =>
+          name === "axisangle"
+            ? { axisAngle: Number(streamed) }
+            : serifHalfValuesFromField(name, streamed);
+        if (makeValues(value)) {
+          await setPanelSerifParametersStream(
+            this.sceneController,
+            this._widthPoints(),
+            valueStream,
+            makeValues,
+            this._undo("set-serif")
+          );
+          return;
+        }
+      }
       const finalValue = await this._resolveStreamValue(value, valueStream);
       if (group === "width") {
         await this._onWidthChange(name, finalValue);
@@ -1287,6 +1400,7 @@ export default class SkeletonParametersPanel extends Panel {
       this._suppressGlyphChangeUpdate = false;
       this._forceRebuild = true;
       await this.update();
+      this._activeFieldKey = null;
     }
   }
 
@@ -1440,6 +1554,19 @@ export default class SkeletonParametersPanel extends Panel {
         this._undo("set-serif")
       );
 
+    if (name.endsWith("-scale")) {
+      const targets = serifScaleTargets(name.slice(0, -"-scale".length));
+      if (targets.length) {
+        await scalePanelSerifValue(
+          this.sceneController,
+          this._widthPoints(),
+          targets,
+          (Number(value) || 100) / 100,
+          this._undo("scale-serif")
+        );
+      }
+      return;
+    }
     if (name === "linked") {
       // Linking copies the left half onto the right, so turning it on gives one
       // symmetric serif rather than silently keeping a difference the panel can
@@ -1476,17 +1603,10 @@ export default class SkeletonParametersPanel extends Panel {
       await apply({ straightDepth: value == null ? null : Number(value) });
       return;
     }
-    const [scope, field] = String(name).split("-");
-    if (!SERIF_HALF_FIELDS.includes(field)) {
-      return;
+    const values = serifHalfValuesFromField(name, value);
+    if (values) {
+      await apply(values);
     }
-    const resolved = value == null ? null : serifHalfValueFromField(field, value);
-    const sides = scope === "both" ? ["left", "right"] : [scope];
-    const values = {};
-    for (const side of sides) {
-      values[side] = { [field]: resolved };
-    }
-    await apply(values);
   }
 
   async _onCornerChange(name, value) {
