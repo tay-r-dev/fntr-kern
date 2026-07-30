@@ -1452,3 +1452,30 @@ describe("skeleton-generator rib angle lock", () => {
     }
   });
 });
+
+describe("skeleton-generator serif field translation", () => {
+  it("carries per-point serif values through to generation", () => {
+    // A serif cap that draws nothing but a butt cap unless the fields arrive.
+    const canonical = {
+      version: 1,
+      nextId: 3,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 100,
+          capStyle: "serif",
+          points: [
+            { id: 1, x: 0, y: 0, serif: { left: { wingLength: 80 } } },
+            { id: 2, x: 0, y: 300 },
+          ],
+        },
+      ],
+      generated: [],
+    };
+    const result = generateFromSkeleton(canonical);
+    const xs = result.contours[0].points.map((point) => point.x);
+    // Without the wing the outline never passes 50; with it, it reaches 130.
+    expect(Math.max(...xs)).to.be.above(100);
+  });
+});

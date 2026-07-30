@@ -1,5 +1,6 @@
 import { Bezier } from "bezier-js";
 import { offsetCubicSide } from "./offset-cubic.js";
+import { buildSerifTerminal, computeSerifFrame } from "./serif-geometry.js";
 import {
   CAP_POINT_FIELDS,
   CORNER_POINT_FIELDS,
@@ -183,6 +184,7 @@ function canonicalToGeneratorInput(skeletonData) {
       capBallRatio: contour.capBallRatio,
       capBallShape: contour.capBallShape,
       capBallSide: contour.capBallSide,
+      serif: contour.serif ?? null,
       reversed: contour.reversed === true,
       cornerTrimRatio: contour.cornerTrimRatio,
       cornerRadiusBoost: contour.cornerRadiusBoost,
@@ -213,6 +215,10 @@ function canonicalPointToGeneratorPoint(point) {
   // The rib angle lock has to be copied across explicitly like every other
   // per-point field: the generator never sees the canonical shape (§7).
   generatorPoint.ribAngleLock = point.ribAngleLock ?? null;
+  // Serif parameters travel as one object. Like ribAngleLock, they have to be
+  // copied across explicitly: the generator never sees the canonical shape, and
+  // a field that is not copied here fails silently rather than throwing.
+  generatorPoint.serif = point.serif ?? null;
   generatorPoint.leftLocked = point.locked?.left === true;
   generatorPoint.rightLocked = point.locked?.right === true;
   // The pinned segment tension for the segment STARTING here, per side. Null
@@ -1499,6 +1505,8 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
     const endIsSquare = endCapStyle === "square";
     const startIsDrop = startCapStyle === "drop";
     const endIsDrop = endCapStyle === "drop";
+    const startIsSerif = startCapStyle === "serif";
+    const endIsSerif = endCapStyle === "serif";
 
     let startCap = [];
     let endCap = [];
@@ -1665,6 +1673,29 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         roundedLeftSide = drop.leftSide;
         roundedRightSide = drop.rightSide;
         startCap = drop.capPoints;
+      }
+    } else if (startIsSerif) {
+      const startTangent = getSegmentTangent(segments[0], "start");
+      const serifCap = buildSerifCap({
+        position: "start",
+        endpoint: firstOnCurvePoint,
+        tangent: { x: -startTangent.x, y: -startTangent.y },
+        normal: getEffectiveNormal(
+          firstOnCurvePoint,
+          vector.rotateVector90CW(startTangent)
+        ),
+        leftSide: roundedLeftSide,
+        rightSide: roundedRightSide,
+        leftHalfWidth: startCapLeftHW,
+        rightHalfWidth: startCapRightHW,
+        pointSerif: firstOnCurvePoint.serif,
+        contourSerif: skeletonContour.serif,
+        ownerPoint: firstOnCurvePoint,
+      });
+      if (serifCap) {
+        roundedLeftSide = serifCap.leftSide;
+        roundedRightSide = serifCap.rightSide;
+        startCap = serifCap.capPoints;
       }
     } else {
       startCap = generateCap(
@@ -1843,6 +1874,29 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         roundedLeftSide = drop.leftSide;
         roundedRightSide = drop.rightSide;
         endCap = drop.capPoints;
+      }
+    } else if (endIsSerif) {
+      const endTangent = getSegmentTangent(segments[segments.length - 1], "end");
+      const serifCap = buildSerifCap({
+        position: "end",
+        endpoint: lastOnCurvePoint,
+        tangent: endTangent,
+        normal: getEffectiveNormal(
+          lastOnCurvePoint,
+          vector.rotateVector90CW(endTangent)
+        ),
+        leftSide: roundedLeftSide,
+        rightSide: roundedRightSide,
+        leftHalfWidth: endCapLeftHW,
+        rightHalfWidth: endCapRightHW,
+        pointSerif: lastOnCurvePoint.serif,
+        contourSerif: skeletonContour.serif,
+        ownerPoint: lastOnCurvePoint,
+      });
+      if (serifCap) {
+        roundedLeftSide = serifCap.leftSide;
+        roundedRightSide = serifCap.rightSide;
+        endCap = serifCap.capPoints;
       }
     } else {
       endCap = generateCap(
@@ -4320,6 +4374,102 @@ function buildDropCap({
     leftSide: outerSide === "left" ? trimmedOuterSide : trimmedInnerSide,
     rightSide: outerSide === "left" ? trimmedInnerSide : trimmedOuterSide,
     capPoints,
+  };
+}
+
+const SERIF_HALF_DEFAULTS = Object.freeze({
+  wingLength: 0,
+  tipThickness: 0,
+  wingSlope: 0,
+  tipCutAngle: 0,
+  reach: 0,
+  tension: 0,
+  concavity: 0,
+});
+
+function resolveSerifHalf(pointSerif, contourSerif, side) {
+  const resolved = {};
+  for (const field of Object.keys(SERIF_HALF_DEFAULTS)) {
+    resolved[field] =
+      pointSerif?.[side]?.[field] ??
+      contourSerif?.[side]?.[field] ??
+      SERIF_HALF_DEFAULTS[field];
+  }
+  return resolved;
+}
+
+function buildSerifCap({
+  position,
+  endpoint,
+  tangent,
+  normal,
+  leftSide,
+  rightSide,
+  leftHalfWidth,
+  rightHalfWidth,
+  pointSerif,
+  contourSerif,
+  ownerPoint,
+}) {
+  const outward = vector.normalizeVector(tangent);
+  if (!isUsableDirection(outward)) return null;
+  const frame = computeSerifFrame({
+    endpoint,
+    tangent: outward,
+    normal,
+    axisMode: pointSerif?.axisMode ?? contourSerif?.axisMode ?? "perpendicular",
+    axisAngle: pointSerif?.axisAngle ?? contourSerif?.axisAngle ?? 0,
+  });
+  const leftRibEnd = {
+    x: endpoint.x + normal.x * leftHalfWidth,
+    y: endpoint.y + normal.y * leftHalfWidth,
+  };
+  const rightRibEnd = {
+    x: endpoint.x - normal.x * rightHalfWidth,
+    y: endpoint.y - normal.y * rightHalfWidth,
+  };
+  const terminal = buildSerifTerminal({
+    frame,
+    leftFlankU: frame.toFrame(leftRibEnd).u,
+    rightFlankU: frame.toFrame(rightRibEnd).u,
+    left: resolveSerifHalf(pointSerif, contourSerif, "left"),
+    right: resolveSerifHalf(pointSerif, contourSerif, "right"),
+    undersideCup: pointSerif?.undersideCup ?? contourSerif?.undersideCup ?? 0,
+    straightDepth: pointSerif?.straightDepth ?? contourSerif?.straightDepth ?? 0,
+  });
+  const leftTrim = vector.distance(
+    leftRibEnd,
+    frame.toGlyph(terminal.halves.left.straightTop)
+  );
+  const rightTrim = vector.distance(
+    rightRibEnd,
+    frame.toGlyph(terminal.halves.right.straightTop)
+  );
+  const leftSplit = splitTerminalSideForRoundCap(leftSide, position, leftTrim, {
+    endpointTangent: outward,
+    capTangent: outward,
+  });
+  const rightSplit = splitTerminalSideForRoundCap(rightSide, position, rightTrim, {
+    endpointTangent: outward,
+    capTangent: outward,
+  });
+  if (!leftSplit || !rightSplit) return null;
+  const capPoints =
+    position === "end" ? terminal.points : [...terminal.points].reverse();
+  for (const point of capPoints) withRoundCapProvenance(point, ownerPoint);
+  return {
+    leftSide: trimSideForRoundCapEmission(
+      leftSplit.sidePoints,
+      position,
+      leftSplit.referenceEndpointIndex
+    ),
+    rightSide: trimSideForRoundCapEmission(
+      rightSplit.sidePoints,
+      position,
+      rightSplit.referenceEndpointIndex
+    ),
+    capPoints,
+    reachClamped: false,
   };
 }
 
