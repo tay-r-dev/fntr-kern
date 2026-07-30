@@ -17,9 +17,10 @@ skeleton is shaped the way it is.
 
 The per-feature design specs and implementation plans have been retired the same way: the
 `specs/` and `plans/` folders that carried the offset construction, the generated-segment
-gizmos and the curvature pin are **dissolved**, their durable content folded into this doc and
-the feature model. Nothing forward-looking is left in a plan — if it is still true, it is in one
-of the three docs below.
+gizmos, the curvature pin, the continuous natural solver and the true geometric handle ceiling
+are **dissolved and deleted**, their durable content folded into this doc and the feature model.
+Nothing forward-looking is left in a plan — if it is still true, it is in one of the three docs
+below.
 
 | Doc                         | Answers                                                                                                                        |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
