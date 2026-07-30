@@ -1,4 +1,8 @@
-import { buildHalfSerif, computeSerifFrame } from "@fontra/core/serif-geometry.js";
+import {
+  buildHalfSerif,
+  buildSerifTerminal,
+  computeSerifFrame,
+} from "@fontra/core/serif-geometry.js";
 import { expect } from "chai";
 
 const CLOSE = 1e-9;
@@ -195,5 +199,108 @@ describe("half serif in frame coordinates", () => {
     expectClose(half.tipBottom.u, 50);
     expectClose(half.tipTop.u, 50);
     expect(Object.keys(half)).to.have.length(7);
+  });
+});
+
+describe("serif terminal assembly", () => {
+  const half = {
+    wingLength: 60,
+    tipThickness: 30,
+    wingSlope: 0,
+    tipCutAngle: 0,
+    reach: 80,
+    tension: 0.7,
+    concavity: 0.8,
+  };
+
+  function terminal(overrides = {}) {
+    const frame = computeSerifFrame({
+      endpoint: { x: 0, y: 0 },
+      tangent: { x: 0, y: -1 },
+      normal: { x: 1, y: 0 },
+      axisMode: "perpendicular",
+    });
+    return buildSerifTerminal({
+      frame,
+      leftFlankU: 50,
+      rightFlankU: -50,
+      left: half,
+      right: half,
+      undersideCup: 0,
+      straightDepth: 0,
+      ...overrides,
+    });
+  }
+
+  it("emits exactly nine on-curve points", () => {
+    const { points } = terminal();
+    expect(points.filter((point) => !point.type)).to.have.length(9);
+  });
+
+  it("keeps nine on-curve points at every degenerate value", () => {
+    const flat = {
+      wingLength: 0,
+      tipThickness: 0,
+      wingSlope: 0,
+      tipCutAngle: 0,
+      reach: 0,
+      tension: 0,
+      concavity: 0,
+    };
+    const { points } = terminal({ left: flat, right: flat, undersideCup: 0 });
+    expect(points.filter((point) => !point.type)).to.have.length(9);
+  });
+
+  it("puts the foot centre on the skeleton endpoint with no cup", () => {
+    const { points } = terminal();
+    const centre = points.filter((point) => !point.type)[4];
+    expect(Math.abs(centre.x)).to.be.below(1e-9);
+    expect(Math.abs(centre.y)).to.be.below(1e-9);
+  });
+
+  it("lifts the foot centre by the cup amount, along the depth", () => {
+    const { points } = terminal({ undersideCup: 18 });
+    const centre = points.filter((point) => !point.type)[4];
+    expectClose(centre.y, 18);
+  });
+
+  it("keeps the foot centre on the skeleton when the halves are unequal", () => {
+    const { points } = terminal({
+      left: { ...half, wingLength: 20 },
+      right: { ...half, wingLength: 120 },
+    });
+    const centre = points.filter((point) => !point.type)[4];
+    expect(Math.abs(centre.x)).to.be.below(1e-9);
+  });
+
+  it("runs from the left straight top to the right straight top", () => {
+    const { points } = terminal();
+    const onCurve = points.filter((point) => !point.type);
+    expect(onCurve[0].x).to.be.above(0);
+    expect(onCurve[8].x).to.be.below(0);
+  });
+
+  it("emits one cup curve across the whole foot, not one per half", () => {
+    const { points } = terminal({ undersideCup: 18 });
+    const centreIndex = points.findIndex(
+      (point) => !point.type && Math.abs(point.y - 18) < 1e-9
+    );
+    expect(points[centreIndex - 1].type).to.equal("cubic");
+    expect(points[centreIndex + 1].type).to.equal("cubic");
+  });
+
+  it("leaves the foot tangent to the baseline at the tips and flat at the centre", () => {
+    const { points } = terminal({ undersideCup: 18 });
+    const centreIndex = points.findIndex(
+      (point) => !point.type && Math.abs(point.y - 18) < 1e-9
+    );
+    expectClose(points[centreIndex - 2].y, 0);
+    expectClose(points[centreIndex - 1].y, 18);
+  });
+
+  it("returns the frame-space halves for the caller's trimming maths", () => {
+    const { halves } = terminal();
+    expectClose(halves.left.straightBottom.u, 50);
+    expectClose(halves.right.straightBottom.u, -50);
   });
 });

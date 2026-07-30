@@ -138,3 +138,77 @@ export function buildHalfSerif({ side, flankU, params, straightDepth }) {
     wingInnerV,
   };
 }
+
+// How far along the foot's axis span the underside controls sit.
+const FOOT_CONTROL_FRACTION = 1 / 3;
+
+// Each control keeps its own end's depth, so the foot leaves the tip tangent to
+// the baseline and arrives at the centre flat. Putting both controls on the
+// straight chord instead would give a shallow V, not the old-style scoop. At
+// cup 0 both depths are 0 and the foot is a straight line.
+function footControls(from, to) {
+  const span = to.u - from.u;
+  return [
+    { u: from.u + span * FOOT_CONTROL_FRACTION, v: from.v },
+    { u: from.u + span * (1 - FOOT_CONTROL_FRACTION), v: to.v },
+  ];
+}
+
+// One serif terminal: two halves plus the single underside curve that joins
+// them. Emission order is left straightTop -> ... -> foot centre -> ... -> right
+// straightTop, which is the order the generator's assembly wants between the
+// trimmed left side and the reversed right side.
+//
+// The underside is ONE curve across the whole terminal, driven by one cup value.
+// The foot centre sits on the skeleton, not at the midpoint of the two tips: the
+// axis modes routinely produce unequal halves, and a midpoint-anchored centre
+// would drag the contact geometry off the alignment zone as the axis rotates.
+export function buildSerifTerminal({
+  frame,
+  leftFlankU,
+  rightFlankU,
+  left,
+  right,
+  undersideCup,
+  straightDepth,
+}) {
+  const halves = {
+    left: buildHalfSerif({ side: 1, flankU: leftFlankU, params: left, straightDepth }),
+    right: buildHalfSerif({
+      side: -1,
+      flankU: rightFlankU,
+      params: right,
+      straightDepth,
+    }),
+  };
+  const centre = { u: 0, v: Math.max(undersideCup ?? 0, 0) };
+
+  const onCurve = (uv) => frame.toGlyph(uv);
+  const control = (uv) => ({ ...frame.toGlyph(uv), type: "cubic" });
+
+  const [leftCup1, leftCup2] = footControls(halves.left.tipBottom, centre);
+  const [rightCup1, rightCup2] = footControls(centre, halves.right.tipBottom);
+
+  return {
+    halves,
+    points: [
+      onCurve(halves.left.straightTop),
+      onCurve(halves.left.straightBottom),
+      control(halves.left.control2),
+      control(halves.left.control1),
+      onCurve(halves.left.tipTop),
+      onCurve(halves.left.tipBottom),
+      control(leftCup1),
+      control(leftCup2),
+      onCurve(centre),
+      control(rightCup1),
+      control(rightCup2),
+      onCurve(halves.right.tipBottom),
+      onCurve(halves.right.tipTop),
+      control(halves.right.control1),
+      control(halves.right.control2),
+      onCurve(halves.right.straightBottom),
+      onCurve(halves.right.straightTop),
+    ],
+  };
+}
