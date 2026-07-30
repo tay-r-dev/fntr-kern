@@ -81,16 +81,16 @@ export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAng
 
 const MAX_TIP_CUT_ANGLE = 80;
 
-// Handle reach along the transition chord. Neither end of the range is
-// geometrically free. Too short and a deep hollow throws the control past the
-// flank onto the far side of the stroke, which self-intersects; too long and the
-// two controls meet at the chord centre and the cubic degenerates.
-const HANDLE_MIN_FRACTION = 0.2;
-const HANDLE_MAX_FRACTION = 0.45;
+// How lopsided the two transition handles are allowed to get. Tension slides the
+// split between them across this range; the bounds keep both of them alive,
+// because a handle of zero length gives up the tangency at its end and turns the
+// release back into a corner.
+const MIN_HANDLE_SHARE = 0.25;
+const MAX_HANDLE_SHARE = 0.75;
 
-// A symmetric pair of controls offset by `o` moves the curve's midpoint by
-// three quarters of `o`, so scaling by 4/3 lands the belly exactly where asked.
-const BELLY_TO_CONTROL = 4 / 3;
+// A handle that reaches the corner exactly is the deepest bracket available. Any
+// further and the two controls cross, which loops the curve.
+const MAX_HANDLE_TO_CORNER = 1;
 
 function lerpUV(a, b, t) {
   return { u: a.u + (b.u - a.u) * t, v: a.v + (b.v - a.v) * t };
@@ -104,7 +104,14 @@ function lerpUV(a, b, t) {
 // transition curve bends around, exactly as in the serif-lab mockup. Emitting it
 // would split the sweep from tip to flank into two segments and destroy the
 // bracketed look.
-export function buildHalfSerif({ side, flankU, params, straightDepth, release }) {
+export function buildHalfSerif({
+  side,
+  flankU,
+  params,
+  straightDepth,
+  release,
+  releaseTangent,
+}) {
   const wingLength = params.wingLength ?? 0;
   const tipThickness = params.tipThickness ?? 0;
   const wingSlope = params.wingSlope ?? 0;
@@ -116,7 +123,13 @@ export function buildHalfSerif({ side, flankU, params, straightDepth, release })
     MAX_TIP_CUT_ANGLE
   );
 
-  const depthOfStraight = Math.max(straightDepth ?? 0, 0);
+  // A half with no wing is a half that is switched off, and it must add nothing
+  // to the outline. The straight section is shared by the terminal, so without
+  // this it would still push a spur out of a disabled side — and since the
+  // section is straight while the edge it leaves is not, that spur lands outside
+  // the stroke.
+  const depthOfStraight =
+    (params.wingLength ?? 0) === 0 ? 0 : Math.max(straightDepth ?? 0, 0);
   const wingInnerV = tipThickness + wingSlope;
   const tipU = flankU + side * wingLength;
   const cutOffset = side * tipThickness * Math.tan((cutAngle * Math.PI) / 180);
@@ -132,54 +145,61 @@ export function buildHalfSerif({ side, flankU, params, straightDepth, release })
   // cut really landed on, which makes `reach` a distance along the edge instead
   // of a height above the rib.
   const straightTop = release ?? { u: flankU, v: wingInnerV + reach + depthOfStraight };
+  // The straight section hangs below the release, along the stroke edge rather
+  // than straight down the frame: running it any other way would put a corner at
+  // the release, which is exactly the join that has to stay smooth.
   const straightBottom = release
-    ? // The straight section hangs below the release. Never below the wing's
-      // inner corner, or the transition curve would run backwards.
-      { u: release.u, v: Math.max(release.v - depthOfStraight, wingInnerV) }
+    ? {
+        u: release.u - (releaseTangent?.u ?? 0) * depthOfStraight,
+        v: release.v - (releaseTangent?.v ?? 1) * depthOfStraight,
+      }
     : { u: flankU, v: wingInnerV + reach };
 
-  // The transition cubic runs straightBottom -> tipTop. The two sliders drive
-  // separate things and must not multiply:
+  // The transition cubic runs straightBottom -> tipTop, and both of its handles
+  // lie on the line from their own end toward the wing's inner corner. That is
+  // what makes the bracket a bracket: the curve leaves the stroke edge along the
+  // stroke edge, and meets the wing along the wing's top surface. Any non-zero
+  // handle length preserves both tangents, so the two sliders are free to shape
+  // the curve without ever breaking them.
   //
-  //   concavity sets HOW DEEP the hollow is. The belly of the curve lands at
-  //   `concavity` of the way from the chord to the inner corner. 0 is a straight
-  //   bevel, 1 touches the corner, negative bulges out convex.
+  //   concavity is the handle length, as a fraction of the distance to the
+  //   corner. 0 collapses the curve to a straight chamfer, 1 carries the handles
+  //   all the way onto the corner for the deepest hollow, negative sends them the
+  //   other way for a convex bulge.
   //
-  //   tension sets HOW THE BEND IS DISTRIBUTED. Low tension keeps the handles
-  //   short, so the curve turns hard next to the tip and the release and runs
-  //   nearly flat between them. High tension stretches them to the chord centre
-  //   for one even arc.
+  //   tension is the balance between the two. At 0.5 they are equal; away from
+  //   that the curve turns nearer one end than the other, which is what moves the
+  //   bracket up the stem or out along the wing.
   //
-  // Offsetting both controls by BELLY_TO_CONTROL times the wanted belly offset
-  // puts the curve's midpoint exactly on the belly whatever the tension is, which
-  // is what keeps the two controls independent.
+  // They cannot cancel each other out: tension only ever splits a length that
+  // concavity set, and the split is bounded so neither handle can vanish.
   const corner = { u: flankU, v: wingInnerV };
-  const mid = lerpUV(tipTop, straightBottom, 0.5);
-  // With no wing there is no corner to bracket around: the corner has collapsed
-  // onto the tip, and hollowing toward it only pushes the curve below the foot
-  // line and dimples the baseline. A half turned off this way must contribute
-  // nothing but a straight run, which it does at zero hollow.
+  // With no wing there is no corner to bracket around, since it has collapsed
+  // onto the tip. Hollowing toward it only pushes the curve below the foot line
+  // and dimples the baseline, so a half turned off this way stays straight.
   const hollow = wingLength === 0 ? 0 : concavity;
-  const offset = {
-    u: (corner.u - mid.u) * hollow * BELLY_TO_CONTROL,
-    v: (corner.v - mid.v) * hollow * BELLY_TO_CONTROL,
-  };
-  const reachFraction =
-    HANDLE_MIN_FRACTION + (HANDLE_MAX_FRACTION - HANDLE_MIN_FRACTION) * tension;
-  const nearTip = lerpUV(tipTop, straightBottom, reachFraction);
-  const nearRelease = lerpUV(tipTop, straightBottom, 1 - reachFraction);
-  // The offset points at the corner, so it pushes the controls along the axis as
-  // well as into the stroke. Left free, a deep hollow drags them past the flank
-  // and the curve crosses the stem edge it is supposed to land on. Holding every
-  // control inside the half's own span keeps the whole cubic there too, by the
-  // convex hull. The cost is that the deepest hollows stop exactly at the flank
-  // instead of overshooting it, which is the bracket everybody actually wants.
-  const clampU = (u) =>
-    side > 0
-      ? Math.min(Math.max(u, flankU), tipU)
-      : Math.max(Math.min(u, flankU), tipU);
-  const control1 = { u: clampU(nearTip.u + offset.u), v: nearTip.v + offset.v };
-  const control2 = { u: clampU(nearRelease.u + offset.u), v: nearRelease.v + offset.v };
+  const share = MIN_HANDLE_SHARE + (MAX_HANDLE_SHARE - MIN_HANDLE_SHARE) * tension;
+  const clampShare = (amount) =>
+    Math.max(Math.min(amount, MAX_HANDLE_TO_CORNER), -MAX_HANDLE_TO_CORNER);
+  const handle = (from, toward, amount) => lerpUV(from, toward, clampShare(amount));
+
+  // Without an override the corner sits directly below the release on the flank,
+  // so aiming the handle at it already runs along the stroke edge. With one, the
+  // edge has curved away from the flank and the caller's tangent is the only
+  // thing still pointing along it; the corner sets the length either way.
+  const cornerDistance = Math.hypot(
+    corner.u - straightBottom.u,
+    corner.v - straightBottom.v
+  );
+  const releaseTarget = releaseTangent
+    ? {
+        u: straightBottom.u - releaseTangent.u * cornerDistance,
+        v: straightBottom.v - releaseTangent.v * cornerDistance,
+      }
+    : corner;
+
+  const control1 = handle(tipTop, corner, hollow * 2 * (1 - share));
+  const control2 = handle(straightBottom, releaseTarget, hollow * 2 * share);
 
   return {
     straightTop,
@@ -226,6 +246,8 @@ export function buildSerifTerminal({
   straightDepth,
   leftRelease,
   rightRelease,
+  leftReleaseTangent,
+  rightReleaseTangent,
 }) {
   const halves = {
     left: buildHalfSerif({
@@ -234,6 +256,7 @@ export function buildSerifTerminal({
       params: left,
       straightDepth,
       release: leftRelease,
+      releaseTangent: leftReleaseTangent,
     }),
     right: buildHalfSerif({
       side: -1,
@@ -241,11 +264,17 @@ export function buildSerifTerminal({
       params: right,
       straightDepth,
       release: rightRelease,
+      releaseTangent: rightReleaseTangent,
     }),
   };
   const centre = { u: 0, v: Math.max(undersideCup ?? 0, 0) };
 
   const onCurve = (uv) => frame.toGlyph(uv);
+  // Both handles at these two run along one line by construction, so the editor
+  // should draw them as smooth points and keep them that way when they are
+  // dragged. straightBottom continues the stroke edge into the bracket; the foot
+  // centre sits mid-curve in the single underside sweep.
+  const smoothOnCurve = (uv) => ({ ...frame.toGlyph(uv), smooth: true });
   const control = (uv) => ({ ...frame.toGlyph(uv), type: "cubic" });
 
   const [leftCup1, leftCup2] = footControls(halves.left.tipBottom, centre);
@@ -258,21 +287,21 @@ export function buildSerifTerminal({
     // The straight section is the run from that existing point down to
     // straightBottom.
     points: [
-      onCurve(halves.left.straightBottom),
+      smoothOnCurve(halves.left.straightBottom),
       control(halves.left.control2),
       control(halves.left.control1),
       onCurve(halves.left.tipTop),
       onCurve(halves.left.tipBottom),
       control(leftCup1),
       control(leftCup2),
-      onCurve(centre),
+      smoothOnCurve(centre),
       control(rightCup1),
       control(rightCup2),
       onCurve(halves.right.tipBottom),
       onCurve(halves.right.tipTop),
       control(halves.right.control1),
       control(halves.right.control2),
-      onCurve(halves.right.straightBottom),
+      smoothOnCurve(halves.right.straightBottom),
     ],
   };
 }

@@ -4522,10 +4522,30 @@ function buildSerifCap({
     trimDistance(rightRibEnd, draft.halves.right)
   );
   if (!leftSplit || !rightSplit) return null;
+  // The direction the trimmed edge is heading when it hands over, in frame
+  // coordinates and pointing away from the terminal. The serif hangs its straight
+  // section and its transition handle on this, which is what keeps the handover
+  // an actual smooth point rather than a corner that happens to look shallow.
+  const releaseTangent = (split) => {
+    const tip = split.tangentToEndpoint;
+    if (!isUsableDirection(tip)) return null;
+    const origin = frame.toFrame({ x: 0, y: 0 });
+    const direction = {
+      u: frame.toFrame(tip).u - origin.u,
+      v: frame.toFrame(tip).v - origin.v,
+    };
+    const length = Math.hypot(direction.u, direction.v);
+    if (!(length > 0)) return null;
+    const unit = { u: direction.u / length, v: direction.v / length };
+    // Away from the terminal means deeper into the stroke: positive v.
+    return unit.v >= 0 ? unit : { u: -unit.u, v: -unit.v };
+  };
   const terminal = buildSerifTerminal({
     ...terminalArgs,
     leftRelease: frame.toFrame(leftSplit.insertedPoint),
     rightRelease: frame.toFrame(rightSplit.insertedPoint),
+    leftReleaseTangent: releaseTangent(leftSplit),
+    rightReleaseTangent: releaseTangent(rightSplit),
   });
   const capPoints =
     position === "end" ? terminal.points : [...terminal.points].reverse();

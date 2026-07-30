@@ -195,13 +195,30 @@ describe("half serif in frame coordinates", () => {
     }
   });
 
-  it("keeps the hollow depth independent of tension", () => {
-    const depths = [0, 0.25, 0.5, 1].map(
-      (tension) => transitionBelly(build({ tension, concavity: 1 })).v
-    );
-    for (const depth of depths) {
-      expectClose(depth, depths[0]);
+  it("keeps both transition handles alive at every tension", () => {
+    // Tension only splits the length concavity asked for. If either share could
+    // reach zero, that end would lose its tangent and the release would go back
+    // to being a corner.
+    for (const tension of [0, 0.25, 0.5, 0.75, 1]) {
+      const half = build({ tension, concavity: 0.6 });
+      const toTip = Math.hypot(
+        half.control1.u - half.tipTop.u,
+        half.control1.v - half.tipTop.v
+      );
+      const toRelease = Math.hypot(
+        half.control2.u - half.straightBottom.u,
+        half.control2.v - half.straightBottom.v
+      );
+      expect(toTip, `tip handle at tension ${tension}`).to.be.above(1);
+      expect(toRelease, `release handle at tension ${tension}`).to.be.above(1);
     }
+  });
+
+  it("moves where the curve turns with tension, at one hollow depth", () => {
+    const nearTip = build({ tension: 0, concavity: 0.6 });
+    const nearRelease = build({ tension: 1, concavity: 0.6 });
+    // Low tension puts the longer handle on the tip end, so the curve turns later.
+    expect(transitionBelly(nearTip).u).to.not.equal(transitionBelly(nearRelease).u);
   });
 
   it("deepens the hollow with concavity", () => {
@@ -213,15 +230,30 @@ describe("half serif in frame coordinates", () => {
     expect(shallow).to.be.below(flat);
   });
 
-  it("never lets a transition control cross its own flank", () => {
+  it("leaves both ends of the transition tangent, at every setting", () => {
+    // This is the whole point of aiming the handles at the inner corner: the
+    // bracket leaves the stroke edge along the stroke edge and meets the wing
+    // along the wing's top surface, so both joins are smooth points that stay
+    // smooth when they are dragged.
+    const cross = (a, b) => Math.abs(a.u * b.v - a.v * b.u);
     for (const tension of [0, 0.5, 1]) {
-      for (const concavity of [1, -1]) {
-        const left = build({ tension, concavity });
-        expect(left.control1.u).to.be.within(50, left.tipTop.u);
-        expect(left.control2.u).to.be.within(50, left.tipTop.u);
-        const right = build({ tension, concavity }, -1);
-        expect(right.control1.u).to.be.within(right.tipTop.u, -50);
-        expect(right.control2.u).to.be.within(right.tipTop.u, -50);
+      for (const concavity of [1, 0.4, -0.6]) {
+        for (const side of [1, -1]) {
+          const half = build({ tension, concavity }, side);
+          const corner = { u: side * 50, v: half.wingInnerV };
+          const at = (from, control) => ({
+            handle: { u: control.u - from.u, v: control.v - from.v },
+            line: { u: corner.u - from.u, v: corner.v - from.v },
+          });
+          const tip = at(half.tipTop, half.control1);
+          const release = at(half.straightBottom, half.control2);
+          expectClose(cross(tip.handle, tip.line), 0, `tip ${tension}/${concavity}`);
+          expectClose(
+            cross(release.handle, release.line),
+            0,
+            `release ${tension}/${concavity}`
+          );
+        }
       }
     }
   });
