@@ -54,10 +54,10 @@ const DEFAULT_CORNER_RADIUS_BOOST = 1;
 const MIN_CORNER_RADIUS_BOOST = 0.1;
 const MAX_CORNER_RADIUS_BOOST = 4;
 
-export function generateFromSkeleton(skeletonData) {
+export function generateFromSkeleton(skeletonData, options = {}) {
   const normalized = normalizeSkeletonData(skeletonData);
   const generatorInput = canonicalToGeneratorInput(normalized);
-  const generated = generateContoursFromGeneratorInput(generatorInput);
+  const generated = generateContoursFromGeneratorInput(generatorInput, options);
   return {
     contours: generated.contours,
     provenance: generated.provenance,
@@ -68,7 +68,7 @@ export function generateContoursFromSkeleton(skeletonData) {
   return generateFromSkeleton(skeletonData).contours;
 }
 
-function generateContoursFromGeneratorInput(generatorInput) {
+function generateContoursFromGeneratorInput(generatorInput, options = {}) {
   if (!generatorInput?.contours?.length) {
     return { contours: [], provenance: [] };
   }
@@ -86,6 +86,7 @@ function generateContoursFromGeneratorInput(generatorInput) {
     const generatedContours = generateOutlineFromSkeletonContour(skeletonContour, {
       contourIndex,
       skeletonContourId: skeletonContour.id,
+      serifUnitsMode: options.serifUnitsMode ?? "absolute",
     });
     for (const generatedContour of generatedContours) {
       const generatedContourIndex = contours.length;
@@ -1691,6 +1692,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         pointSerif: firstOnCurvePoint.serif,
         contourSerif: skeletonContour.serif,
         ownerPoint: firstOnCurvePoint,
+        serifUnitsMode: options.serifUnitsMode,
       });
       if (serifCap) {
         roundedLeftSide = serifCap.leftSide;
@@ -1892,6 +1894,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         pointSerif: lastOnCurvePoint.serif,
         contourSerif: skeletonContour.serif,
         ownerPoint: lastOnCurvePoint,
+        serifUnitsMode: options.serifUnitsMode,
       });
       if (serifCap) {
         roundedLeftSide = serifCap.leftSide;
@@ -4387,13 +4390,22 @@ const SERIF_HALF_DEFAULTS = Object.freeze({
   concavity: 0,
 });
 
-function resolveSerifHalf(pointSerif, contourSerif, side) {
+const SERIF_LENGTH_FIELDS = new Set([
+  "wingLength",
+  "tipThickness",
+  "wingSlope",
+  "reach",
+]);
+
+function resolveSerifHalf(pointSerif, contourSerif, side, context = {}) {
+  const scale = context.unitsMode === "normalized" ? context.strokeWidth : 1;
   const resolved = {};
   for (const field of Object.keys(SERIF_HALF_DEFAULTS)) {
-    resolved[field] =
+    const value =
       pointSerif?.[side]?.[field] ??
       contourSerif?.[side]?.[field] ??
       SERIF_HALF_DEFAULTS[field];
+    resolved[field] = SERIF_LENGTH_FIELDS.has(field) ? value * scale : value;
   }
   return resolved;
 }
@@ -4410,6 +4422,7 @@ function buildSerifCap({
   pointSerif,
   contourSerif,
   ownerPoint,
+  serifUnitsMode,
 }) {
   const outward = vector.normalizeVector(tangent);
   if (!isUsableDirection(outward)) return null;
@@ -4428,8 +4441,14 @@ function buildSerifCap({
     x: endpoint.x - normal.x * rightHalfWidth,
     y: endpoint.y - normal.y * rightHalfWidth,
   };
-  const left = resolveSerifHalf(pointSerif, contourSerif, "left");
-  const right = resolveSerifHalf(pointSerif, contourSerif, "right");
+  const unitsContext = {
+    unitsMode: serifUnitsMode,
+    strokeWidth: leftHalfWidth + rightHalfWidth,
+  };
+  const lengthScale =
+    unitsContext.unitsMode === "normalized" ? unitsContext.strokeWidth : 1;
+  const left = resolveSerifHalf(pointSerif, contourSerif, "left", unitsContext);
+  const right = resolveSerifHalf(pointSerif, contourSerif, "right", unitsContext);
   // A terminal may only consume its own segment. Clamp before constructing the
   // serif as well as before splitting the outline, otherwise the splice stays
   // local while the emitted straight section still reaches into the next one.
@@ -4449,8 +4468,10 @@ function buildSerifCap({
     rightFlankU: frame.toFrame(rightRibEnd).u,
     left: leftReach.half,
     right: rightReach.half,
-    undersideCup: pointSerif?.undersideCup ?? contourSerif?.undersideCup ?? 0,
-    straightDepth: pointSerif?.straightDepth ?? contourSerif?.straightDepth ?? 0,
+    undersideCup:
+      (pointSerif?.undersideCup ?? contourSerif?.undersideCup ?? 0) * lengthScale,
+    straightDepth:
+      (pointSerif?.straightDepth ?? contourSerif?.straightDepth ?? 0) * lengthScale,
   });
   const leftTrim = vector.distance(
     leftRibEnd,

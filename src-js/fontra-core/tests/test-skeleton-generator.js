@@ -1543,3 +1543,60 @@ describe("skeleton-generator serif reach clamping", () => {
     }
   });
 });
+
+describe("skeleton-generator serif units mode", () => {
+  const ratios = {
+    wingLength: 0.8,
+    tipThickness: 0.3,
+    wingSlope: 0,
+    tipCutAngle: 10,
+    reach: 0.6,
+    tension: 0.7,
+    concavity: 0.8,
+  };
+  const stem = (width) => ({
+    version: 1,
+    nextId: 3,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: width,
+        capStyle: "serif",
+        points: [
+          {
+            id: 1,
+            x: 0,
+            y: 0,
+            width: { left: width / 2, right: width / 2 },
+            serif: {
+              left: ratios,
+              right: ratios,
+              axisMode: "perpendicular",
+              axisAngle: 0,
+              undersideCup: 0,
+              straightDepth: 0,
+            },
+          },
+          { id: 2, x: 0, y: 400, width: { left: width / 2, right: width / 2 } },
+        ],
+      },
+    ],
+    generated: [],
+  });
+  const widthOf = (result) => {
+    const xs = result.contours[0].points.map((point) => point.x);
+    return Math.max(...xs) - Math.min(...xs);
+  };
+  it("scales serif lengths with stroke width in normalized mode", () => {
+    const thin = generateFromSkeleton(stem(100), { serifUnitsMode: "normalized" });
+    const thick = generateFromSkeleton(stem(200), { serifUnitsMode: "normalized" });
+    expect(widthOf(thick)).to.be.closeTo(widthOf(thin) * 2, 2);
+  });
+  it("defaults to absolute units", () => {
+    expect(widthOf(generateFromSkeleton(stem(150)))).to.be.closeTo(
+      widthOf(generateFromSkeleton(stem(150), { serifUnitsMode: "absolute" })),
+      1e-6
+    );
+  });
+});
