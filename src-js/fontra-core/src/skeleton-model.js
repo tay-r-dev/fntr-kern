@@ -2128,7 +2128,14 @@ export function transformSkeletonPointMetadata(point, affine) {
   if (!affineFlipsOrientation(affine) || point.type) {
     return;
   }
-  for (const field of ["width", "nudge", "handleNudge", "locked", "segmentCurvature"]) {
+  for (const field of [
+    "width",
+    "nudge",
+    "handleNudge",
+    "locked",
+    "segmentCurvature",
+    "serif",
+  ]) {
     swapProperties(point[field], "left", "right");
   }
   swapProperties(point.handleOffsets, "leftIn", "rightIn");
@@ -2139,6 +2146,14 @@ export function transformSkeletonPointMetadata(point, affine) {
   }
   if (Number.isFinite(point.cornerAsymmetry)) {
     point.cornerAsymmetry = -point.cornerAsymmetry;
+  }
+  // The absolute serif axis angle is a direction in glyph space, so it reflects
+  // like capAngle. `axisMode` does not: horizontal stays horizontal under a
+  // mirror. `tipCutAngle` and `wingSlope` also do not, because they are measured
+  // inside their own half's frame and swapping the halves is the whole
+  // correction.
+  if (Number.isFinite(point.serif?.axisAngle)) {
+    point.serif.axisAngle = -point.serif.axisAngle;
   }
 }
 

@@ -40,6 +40,7 @@ import {
   setSkeletonPointWidthDistribution,
   setSkeletonPointWidthLinked,
   transformSkeletonData,
+  transformSkeletonPointMetadata,
   translateSkeletonData,
   updateSkeletonPoint,
 } from "@fontra/core/skeleton-model.js";
@@ -1051,6 +1052,62 @@ describe("skeleton-model serif schema", () => {
   it("does not put serif data on off-curve points", () => {
     const point = normalizeSkeletonPoint({ x: 0, y: 0, type: "cubic", serif: {} });
     expect(point.serif).to.equal(undefined);
+  });
+});
+
+describe("skeleton-model serif mirroring", () => {
+  const mirrorX = { xx: -1, xy: 0, yx: 0, yy: 1, dx: 0, dy: 0 };
+  const scaleUp = { xx: 2, xy: 0, yx: 0, yy: 2, dx: 0, dy: 0 };
+
+  function serifPoint() {
+    return normalizeSkeletonPoint({
+      x: 0,
+      y: 0,
+      serif: {
+        left: { wingLength: 40, tipCutAngle: 5 },
+        right: { wingLength: 90, tipCutAngle: -12 },
+        axisMode: "absolute",
+        axisAngle: 30,
+      },
+    });
+  }
+
+  it("swaps the two halves on a determinant flip", () => {
+    const point = serifPoint();
+    transformSkeletonPointMetadata(point, mirrorX);
+    expect(point.serif.left.wingLength).to.equal(90);
+    expect(point.serif.right.wingLength).to.equal(40);
+  });
+
+  it("negates the absolute axis angle on a flip", () => {
+    const point = serifPoint();
+    transformSkeletonPointMetadata(point, mirrorX);
+    expect(point.serif.axisAngle).to.equal(-30);
+  });
+
+  it("leaves the axis mode alone on a flip", () => {
+    const point = normalizeSkeletonPoint({
+      x: 0,
+      y: 0,
+      serif: { axisMode: "horizontal" },
+    });
+    transformSkeletonPointMetadata(point, mirrorX);
+    expect(point.serif.axisMode).to.equal("horizontal");
+  });
+
+  it("does not swap halves when the determinant is positive", () => {
+    const point = serifPoint();
+    transformSkeletonPointMetadata(point, scaleUp);
+    expect(point.serif.left.wingLength).to.equal(40);
+    expect(point.serif.axisAngle).to.equal(30);
+  });
+
+  it("round-trips through two mirrors", () => {
+    const point = serifPoint();
+    const before = JSON.parse(JSON.stringify(point.serif));
+    transformSkeletonPointMetadata(point, mirrorX);
+    transformSkeletonPointMetadata(point, mirrorX);
+    expect(point.serif).to.deep.equal(before);
   });
 });
 
