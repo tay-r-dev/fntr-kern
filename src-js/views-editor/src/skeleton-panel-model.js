@@ -4,6 +4,7 @@
 // through skeleton-panel-edits.js -> editSkeleton (Global Constraints).
 
 import {
+  SERIF_HALF_FIELDS,
   getSkeletonHandleOffset,
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
@@ -368,6 +369,47 @@ export function summarizeSkeletonCapSelection(selectedPoints) {
   };
 }
 
+// Serif parameters for the selected points. Gated exactly like the cap style,
+// because a serif IS a cap style — it is only offered on open-contour endpoints.
+// Every half field falls back point -> contour -> null, and null means the
+// generator's own default rather than a stored zero.
+export function summarizeSkeletonSerifSelection(selectedPoints) {
+  const half = (side) => {
+    const summary = {};
+    for (const field of SERIF_HALF_FIELDS) {
+      summary[field] = reduceValues(
+        selectedPoints.map(
+          (entry) =>
+            entry.point.serif?.[side]?.[field] ??
+            entry.contour.serif?.[side]?.[field] ??
+            null
+        )
+      );
+    }
+    return summary;
+  };
+  const terminal = (field, fallback = null) =>
+    reduceValues(
+      selectedPoints.map(
+        (entry) =>
+          entry.point.serif?.[field] ?? entry.contour.serif?.[field] ?? fallback
+      )
+    );
+  return {
+    left: half("left"),
+    right: half("right"),
+    // Linked is the panel's own convenience: it edits both halves at once. It
+    // is not a storage mode — the two halves are always stored independently.
+    linked: reduceValues(
+      selectedPoints.map((entry) => entry.point.serif?.linked !== false)
+    ),
+    axisMode: terminal("axisMode", "perpendicular"),
+    axisAngle: terminal("axisAngle", 0),
+    undersideCup: terminal("undersideCup"),
+    straightDepth: terminal("straightDepth"),
+  };
+}
+
 // Corner rounding is the angle-point engine (donor "Corner Rounding" section):
 // all four parameters live on the point, and are editable only when EVERY
 // selected point is a non-smooth on-curve that is not an open-contour
@@ -518,7 +560,7 @@ export function makeSkeletonPanelStateSignature({
         // when a side is locked outside the panel. Handle offsets are
         // deliberately NOT tracked: they change every frame while a generated
         // handle is dragged, which would rebuild the panel per frame.
-        `p:${entry.contourId}/${entry.pointId}:${JSON.stringify(entry.point.width)}:${JSON.stringify(entry.point.nudge)}:${JSON.stringify(entry.point.locked)}:${entry.point.capStyle}:${entry.point.capRadiusRatio}:${entry.point.capTension}:${entry.point.capAngle}:${entry.point.capDistance}:${entry.point.capBallRatio}:${entry.point.capBallShape}:${entry.point.capBallSide}:${entry.point.roundnessStrength}:${entry.point.cornerAsymmetry}`
+        `p:${entry.contourId}/${entry.pointId}:${JSON.stringify(entry.point.width)}:${JSON.stringify(entry.point.nudge)}:${JSON.stringify(entry.point.locked)}:${entry.point.capStyle}:${entry.point.capRadiusRatio}:${entry.point.capTension}:${entry.point.capAngle}:${entry.point.capDistance}:${entry.point.capBallRatio}:${entry.point.capBallShape}:${entry.point.capBallSide}:${entry.point.roundnessStrength}:${entry.point.cornerAsymmetry}:${JSON.stringify(entry.point.serif)}`
       );
     }
     for (const entry of panelSelection.contours) {

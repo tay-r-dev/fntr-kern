@@ -2014,6 +2014,49 @@ export function setSkeletonCapParameters(point, values, { round = null } = {}) {
   }
 }
 
+// Partial merge into the point's serif data. Only the keys present in `values`
+// are written, so the panel can send one field at a time and everything else
+// keeps inheriting. A half field set to null goes back to inheriting, which is
+// how the panel clears a value rather than storing a zero.
+export function setSkeletonSerifParameters(point, values) {
+  if (!values || typeof values !== "object") {
+    return;
+  }
+  const serif = normalizeSerif(point?.serif);
+  for (const side of ["left", "right"]) {
+    if (!values[side] || typeof values[side] !== "object") {
+      continue;
+    }
+    for (const field of SERIF_HALF_FIELDS) {
+      if (!(field in values[side])) {
+        continue;
+      }
+      const value = values[side][field];
+      serif[side][field] = Number.isFinite(value) ? value : null;
+    }
+  }
+  if (VALID_SERIF_AXIS_MODES.has(values.axisMode)) {
+    serif.axisMode = values.axisMode;
+  }
+  if ("linked" in values) {
+    serif.linked = values.linked === true;
+  }
+  for (const field of ["axisAngle", "undersideCup", "straightDepth"]) {
+    if (!(field in values)) {
+      continue;
+    }
+    const value = values[field];
+    // axisAngle is never null: it is meaningless without a number, and the mode
+    // decides whether it is consulted at all.
+    serif[field] = Number.isFinite(value)
+      ? value
+      : field === "axisAngle"
+        ? serif.axisAngle
+        : null;
+  }
+  point.serif = serif;
+}
+
 export function setSkeletonCornerParameters(point, values, { round = null } = {}) {
   if (!values || typeof values !== "object") {
     return;

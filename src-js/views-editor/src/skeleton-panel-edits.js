@@ -28,6 +28,7 @@ import {
   setSkeletonPointWidthDistribution,
   setSkeletonPointWidthLinked,
   setSkeletonPointWidthTied,
+  setSkeletonSerifParameters,
   setSkeletonSideLocked,
 } from "@fontra/core/skeleton-model.js";
 import {
@@ -497,6 +498,32 @@ export async function setPanelCapStyle(
         resetSkeletonEditableRib(point, "left");
         resetSkeletonEditableRib(point, "right");
       }
+    },
+    undoLabel
+  );
+}
+
+// Serif parameters, gated to open-contour endpoints like the cap style is,
+// since a serif is a cap style and is only offered there.
+export async function setPanelSerifParameters(
+  sceneController,
+  pointAddresses,
+  values,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, { contour }) => {
+      const endpoints = skeletonContourEndpointIndices(contour);
+      if (!endpoints) {
+        return;
+      }
+      const pointIndex = contour.points.indexOf(point);
+      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
+        return;
+      }
+      setSkeletonSerifParameters(point, values);
     },
     undoLabel
   );

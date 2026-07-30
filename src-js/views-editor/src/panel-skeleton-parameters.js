@@ -1,7 +1,9 @@
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import {
+  SERIF_HALF_FIELDS,
   SKELETON_SOURCE_DEFAULT_KEYS,
+  VALID_SERIF_AXIS_MODES,
   getSkeletonData,
   getSkeletonGlyphCase,
   resolveEffectiveSourceSkeletonDefault,
@@ -31,6 +33,7 @@ import {
   setPanelRibAngleLock,
   setPanelRibDetached,
   setPanelRibLocked,
+  setPanelSerifParameters,
 } from "./skeleton-panel-edits.js";
 import {
   collectRibEditTargets,
@@ -44,6 +47,7 @@ import {
   summarizeSkeletonCornerSelection,
   summarizeSkeletonPointWidths,
   summarizeSkeletonRibSelection,
+  summarizeSkeletonSerifSelection,
 } from "./skeleton-panel-model.js";
 
 // Cap parameter UI constants (donor parity: panel-skeleton-parameters.js).
@@ -115,6 +119,25 @@ function capValuesFromField(name, value) {
     return { capBallSide: value };
   }
   return null;
+}
+
+export const SERIF_TIP_CUT_MIN = -80;
+export const SERIF_TIP_CUT_MAX = 80;
+
+// Ratio-stored fields are edited as percent, like cap tension.
+function percentSummary(summary) {
+  return {
+    value: summary.value == null ? null : Math.round(summary.value * 100),
+    mixed: summary.mixed,
+  };
+}
+
+// Slider/number-unit -> model-unit for one serif half field.
+function serifHalfValueFromField(field, value) {
+  if (field === "tension" || field === "concavity") {
+    return Number(value) / 100;
+  }
+  return Number(value);
 }
 
 function cornerValuesFromField(name, value) {
@@ -712,6 +735,10 @@ export default class SkeletonParametersPanel extends Panel {
           value: "drop",
           label: translate("sidebar.skeleton-parameters.cap-style.drop"),
         },
+        {
+          value: "serif",
+          label: translate("sidebar.skeleton-parameters.cap-style.serif"),
+        },
       ],
     });
     // The rib angle lock is offered for every cap style, not just the flat one
@@ -866,9 +893,12 @@ export default class SkeletonParametersPanel extends Panel {
           },
         ],
       });
+    } else if (styleValue === "serif") {
+      this._buildSerifSection(formContents, widthPoints, capStyle.canEdit);
     }
     // Force-apply master cap defaults (or a custom cap profile) to the
-    // selected endpoints, two-click confirm.
+    // selected endpoints, two-click confirm. Serifs have no profile library
+    // yet, so they are not offered here.
     if (
       (styleValue === "round" || styleValue === "square" || styleValue === "drop") &&
       capStyle.canEdit
@@ -1004,6 +1034,166 @@ export default class SkeletonParametersPanel extends Panel {
     });
   }
 
+  // Serif parameters. Seven numbers per half plus four shared by the terminal.
+  // Absolute font units for the lengths; tension and concavity are edited as
+  // percent and stored as ratios. When the halves are linked one set of
+  // controls is shown and written to both sides — the storage is always two
+  // independent halves, linking is only an editing convenience.
+  _buildSerifSection(formContents, widthPoints, canEdit) {
+    const serif = summarizeSkeletonSerifSelection(widthPoints);
+    const linked = !serif.linked.mixed && serif.linked.value !== false;
+
+    formContents.push({
+      type: "checkbox",
+      key: "serif:linked",
+      label: translate("sidebar.skeleton-parameters.serif-linked"),
+      value: linked,
+      indeterminate: serif.linked.mixed,
+      disabled: !canEdit,
+    });
+
+    const pushHalf = (scope, half) => {
+      this._pushSummaryNumber(
+        formContents,
+        `serif:${scope}-wingLength`,
+        "serif-wing-length",
+        half.wingLength,
+        { disabled: !canEdit }
+      );
+      this._pushSummaryNumber(
+        formContents,
+        `serif:${scope}-tipThickness`,
+        "serif-tip-thickness",
+        half.tipThickness,
+        { disabled: !canEdit }
+      );
+      this._pushSummaryNumber(
+        formContents,
+        `serif:${scope}-wingSlope`,
+        "serif-wing-slope",
+        half.wingSlope,
+        { disabled: !canEdit }
+      );
+      this._pushSummaryNumber(
+        formContents,
+        `serif:${scope}-reach`,
+        "serif-reach",
+        half.reach,
+        { disabled: !canEdit }
+      );
+      this._pushSummarySlider(
+        formContents,
+        `serif:${scope}-tipCutAngle`,
+        "serif-tip-cut",
+        half.tipCutAngle,
+        SERIF_TIP_CUT_MIN,
+        SERIF_TIP_CUT_MAX,
+        0,
+        { step: 1, disabled: !canEdit }
+      );
+      // Tension 0 collapses the transition to a straight line, which is the
+      // angular wedge; there is no separate corner-or-smooth switch.
+      this._pushSummarySlider(
+        formContents,
+        `serif:${scope}-tension`,
+        "serif-tension",
+        percentSummary(half.tension),
+        0,
+        100,
+        0,
+        { step: 5, disabled: !canEdit }
+      );
+      // Signed: negative bulges the transition convex, 0 is a flat chamfer,
+      // positive is the classic hollow bracket.
+      this._pushSummarySlider(
+        formContents,
+        `serif:${scope}-concavity`,
+        "serif-concavity",
+        percentSummary(half.concavity),
+        -100,
+        100,
+        0,
+        { step: 5, disabled: !canEdit }
+      );
+    };
+
+    if (linked) {
+      pushHalf("both", serif.left);
+    } else {
+      formContents.push({
+        type: "header",
+        label: translate("sidebar.skeleton-parameters.serif-left"),
+      });
+      pushHalf("left", serif.left);
+      formContents.push({
+        type: "header",
+        label: translate("sidebar.skeleton-parameters.serif-right"),
+      });
+      pushHalf("right", serif.right);
+    }
+
+    formContents.push({ type: "divider" });
+    // The serif axis is independent of the rib angle lock above: the lock sets
+    // the rib the cap is built on, this sets which way the wings run. Both
+    // apply at once.
+    formContents.push({
+      type: "select",
+      key: "serif:axismode",
+      label: translate("sidebar.skeleton-parameters.serif-axis"),
+      value: serif.axisMode.mixed ? "" : (serif.axisMode.value ?? "perpendicular"),
+      disabled: !canEdit,
+      options: [
+        ...(serif.axisMode.mixed
+          ? [{ value: "", label: "mixed", disabled: true }]
+          : []),
+        {
+          value: "perpendicular",
+          label: translate("sidebar.skeleton-parameters.serif-axis.perpendicular"),
+        },
+        {
+          value: "horizontal",
+          label: translate("sidebar.skeleton-parameters.serif-axis.horizontal"),
+        },
+        {
+          value: "vertical",
+          label: translate("sidebar.skeleton-parameters.serif-axis.vertical"),
+        },
+        {
+          value: "absolute",
+          label: translate("sidebar.skeleton-parameters.serif-axis.absolute"),
+        },
+      ],
+    });
+    if (serif.axisMode.value === "absolute" && !serif.axisMode.mixed) {
+      this._pushSummarySlider(
+        formContents,
+        "serif:axisangle",
+        "serif-axis-angle",
+        serif.axisAngle,
+        -90,
+        90,
+        0,
+        { step: 1, disabled: !canEdit }
+      );
+    }
+    // One curve across the whole terminal, so this is shared rather than per
+    // half: a cup on each half would meet at a break in the middle.
+    this._pushSummaryNumber(
+      formContents,
+      "serif:cup",
+      "serif-underside-cup",
+      serif.undersideCup,
+      { disabled: !canEdit }
+    );
+    this._pushSummaryNumber(
+      formContents,
+      "serif:depth",
+      "serif-straight-depth",
+      serif.straightDepth,
+      { disabled: !canEdit }
+    );
+  }
+
   // ---- Field description helpers -------------------------------------------
 
   _pushSummaryNumber(formContents, key, labelKey, summary, options = {}) {
@@ -1090,6 +1280,8 @@ export default class SkeletonParametersPanel extends Panel {
         await this._onCornerChange(name, finalValue);
       } else if (group === "rib") {
         await this._onRibChange(name, finalValue);
+      } else if (group === "serif") {
+        await this._onSerifChange(name, finalValue);
       }
     } finally {
       this._suppressGlyphChangeUpdate = false;
@@ -1186,7 +1378,7 @@ export default class SkeletonParametersPanel extends Panel {
       return;
     }
     if (name === "style") {
-      if (!["butt", "square", "round", "drop"].includes(value)) {
+      if (!["butt", "square", "round", "drop", "serif"].includes(value)) {
         return;
       }
       const location =
@@ -1237,6 +1429,64 @@ export default class SkeletonParametersPanel extends Panel {
       values,
       this._undo("set-cap")
     );
+  }
+
+  async _onSerifChange(name, value) {
+    const apply = (values) =>
+      setPanelSerifParameters(
+        this.sceneController,
+        this._widthPoints(),
+        values,
+        this._undo("set-serif")
+      );
+
+    if (name === "linked") {
+      // Linking copies the left half onto the right, so turning it on gives one
+      // symmetric serif rather than silently keeping a difference the panel can
+      // no longer show.
+      const serif = summarizeSkeletonSerifSelection(this._widthPoints());
+      const values = { linked: value === true };
+      if (value === true) {
+        values.right = {};
+        for (const field of SERIF_HALF_FIELDS) {
+          values.right[field] = serif.left[field].mixed
+            ? null
+            : serif.left[field].value;
+        }
+      }
+      await apply(values);
+      return;
+    }
+    if (name === "axismode") {
+      if (!VALID_SERIF_AXIS_MODES.has(value)) {
+        return;
+      }
+      await apply({ axisMode: value });
+      return;
+    }
+    if (name === "axisangle") {
+      await apply({ axisAngle: Number(value) });
+      return;
+    }
+    if (name === "cup") {
+      await apply({ undersideCup: value == null ? null : Number(value) });
+      return;
+    }
+    if (name === "depth") {
+      await apply({ straightDepth: value == null ? null : Number(value) });
+      return;
+    }
+    const [scope, field] = String(name).split("-");
+    if (!SERIF_HALF_FIELDS.includes(field)) {
+      return;
+    }
+    const resolved = value == null ? null : serifHalfValueFromField(field, value);
+    const sides = scope === "both" ? ["left", "right"] : [scope];
+    const values = {};
+    for (const side of sides) {
+      values[side] = { [field]: resolved };
+    }
+    await apply(values);
   }
 
   async _onCornerChange(name, value) {
