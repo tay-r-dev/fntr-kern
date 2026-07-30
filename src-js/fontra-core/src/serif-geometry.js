@@ -104,7 +104,7 @@ function lerpUV(a, b, t) {
 // transition curve bends around, exactly as in the serif-lab mockup. Emitting it
 // would split the sweep from tip to flank into two segments and destroy the
 // bracketed look.
-export function buildHalfSerif({ side, flankU, params, straightDepth }) {
+export function buildHalfSerif({ side, flankU, params, straightDepth, release }) {
   const wingLength = params.wingLength ?? 0;
   const tipThickness = params.tipThickness ?? 0;
   const wingSlope = params.wingSlope ?? 0;
@@ -123,8 +123,20 @@ export function buildHalfSerif({ side, flankU, params, straightDepth }) {
 
   const tipBottom = { u: tipU + cutOffset, v: 0 };
   const tipTop = { u: tipU, v: tipThickness };
-  const straightBottom = { u: flankU, v: wingInnerV + reach };
-  const straightTop = { u: flankU, v: wingInnerV + reach + depthOfStraight };
+  // Where the serif lets go of the stroke. Without an override it is placed on
+  // the flank line, straight up from the rib end. That is only where the stroke
+  // edge actually is when the stroke runs straight into the terminal; on a curved
+  // approach the edge has already drifted off the flank by the time it gets this
+  // far, and a release built on the flank leaves a step between the trimmed edge
+  // and the serif. The caller therefore trims first and hands back the point the
+  // cut really landed on, which makes `reach` a distance along the edge instead
+  // of a height above the rib.
+  const straightTop = release ?? { u: flankU, v: wingInnerV + reach + depthOfStraight };
+  const straightBottom = release
+    ? // The straight section hangs below the release. Never below the wing's
+      // inner corner, or the transition curve would run backwards.
+      { u: release.u, v: Math.max(release.v - depthOfStraight, wingInnerV) }
+    : { u: flankU, v: wingInnerV + reach };
 
   // The transition cubic runs straightBottom -> tipTop. The two sliders drive
   // separate things and must not multiply:
@@ -143,9 +155,14 @@ export function buildHalfSerif({ side, flankU, params, straightDepth }) {
   // is what keeps the two controls independent.
   const corner = { u: flankU, v: wingInnerV };
   const mid = lerpUV(tipTop, straightBottom, 0.5);
+  // With no wing there is no corner to bracket around: the corner has collapsed
+  // onto the tip, and hollowing toward it only pushes the curve below the foot
+  // line and dimples the baseline. A half turned off this way must contribute
+  // nothing but a straight run, which it does at zero hollow.
+  const hollow = wingLength === 0 ? 0 : concavity;
   const offset = {
-    u: (corner.u - mid.u) * concavity * BELLY_TO_CONTROL,
-    v: (corner.v - mid.v) * concavity * BELLY_TO_CONTROL,
+    u: (corner.u - mid.u) * hollow * BELLY_TO_CONTROL,
+    v: (corner.v - mid.v) * hollow * BELLY_TO_CONTROL,
   };
   const reachFraction =
     HANDLE_MIN_FRACTION + (HANDLE_MAX_FRACTION - HANDLE_MIN_FRACTION) * tension;
@@ -207,14 +224,23 @@ export function buildSerifTerminal({
   right,
   undersideCup,
   straightDepth,
+  leftRelease,
+  rightRelease,
 }) {
   const halves = {
-    left: buildHalfSerif({ side: 1, flankU: leftFlankU, params: left, straightDepth }),
+    left: buildHalfSerif({
+      side: 1,
+      flankU: leftFlankU,
+      params: left,
+      straightDepth,
+      release: leftRelease,
+    }),
     right: buildHalfSerif({
       side: -1,
       flankU: rightFlankU,
       params: right,
       straightDepth,
+      release: rightRelease,
     }),
   };
   const centre = { u: 0, v: Math.max(undersideCup ?? 0, 0) };
@@ -227,8 +253,11 @@ export function buildSerifTerminal({
 
   return {
     halves,
+    // straightTop is NOT emitted. It is where the trimmed stroke edge already
+    // ends, so emitting it too would stack a second on-curve on the same spot.
+    // The straight section is the run from that existing point down to
+    // straightBottom.
     points: [
-      onCurve(halves.left.straightTop),
       onCurve(halves.left.straightBottom),
       control(halves.left.control2),
       control(halves.left.control1),
@@ -244,7 +273,6 @@ export function buildSerifTerminal({
       control(halves.right.control1),
       control(halves.right.control2),
       onCurve(halves.right.straightBottom),
-      onCurve(halves.right.straightTop),
     ],
   };
 }

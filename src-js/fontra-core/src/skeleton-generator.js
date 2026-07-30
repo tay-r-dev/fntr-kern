@@ -4490,7 +4490,7 @@ function buildSerifCap({
   };
   const leftReach = clampReach(leftSide, left);
   const rightReach = clampReach(rightSide, right);
-  const terminal = buildSerifTerminal({
+  const terminalArgs = {
     frame,
     leftFlankU: frame.toFrame(leftRibEnd).u,
     rightFlankU: frame.toFrame(rightRibEnd).u,
@@ -4500,24 +4500,33 @@ function buildSerifCap({
       (pointSerif?.undersideCup ?? contourSerif?.undersideCup ?? 0) * lengthScale,
     straightDepth:
       (pointSerif?.straightDepth ?? contourSerif?.straightDepth ?? 0) * lengthScale,
-  });
-  const leftTrim = vector.distance(
-    leftRibEnd,
-    frame.toGlyph(terminal.halves.left.straightTop)
+  };
+  // Two passes. The first is only there to measure how much edge the serif wants
+  // to consume, which is what decides where each side gets cut. The second builds
+  // the real thing against the points the cuts actually produced, so the serif
+  // starts exactly where the trimmed edge stops. Building once against the flank
+  // line instead leaves a gap wherever the stroke curves into its terminal: the
+  // edge is no longer on the flank by the time the serif releases it, and the
+  // splice shows up as a stray on-curve with a sideways handle.
+  const draft = buildSerifTerminal(terminalArgs);
+  const trimDistance = (ribEnd, half) =>
+    vector.distance(ribEnd, frame.toGlyph(half.straightTop));
+  const splitSide = (side, distance) =>
+    splitTerminalSideForRoundCap(side, position, distance, {
+      endpointTangent: outward,
+      capTangent: outward,
+    });
+  const leftSplit = splitSide(leftSide, trimDistance(leftRibEnd, draft.halves.left));
+  const rightSplit = splitSide(
+    rightSide,
+    trimDistance(rightRibEnd, draft.halves.right)
   );
-  const rightTrim = vector.distance(
-    rightRibEnd,
-    frame.toGlyph(terminal.halves.right.straightTop)
-  );
-  const leftSplit = splitTerminalSideForRoundCap(leftSide, position, leftTrim, {
-    endpointTangent: outward,
-    capTangent: outward,
-  });
-  const rightSplit = splitTerminalSideForRoundCap(rightSide, position, rightTrim, {
-    endpointTangent: outward,
-    capTangent: outward,
-  });
   if (!leftSplit || !rightSplit) return null;
+  const terminal = buildSerifTerminal({
+    ...terminalArgs,
+    leftRelease: frame.toFrame(leftSplit.insertedPoint),
+    rightRelease: frame.toFrame(rightSplit.insertedPoint),
+  });
   const capPoints =
     position === "end" ? terminal.points : [...terminal.points].reverse();
   for (const point of capPoints) withRoundCapProvenance(point, ownerPoint);

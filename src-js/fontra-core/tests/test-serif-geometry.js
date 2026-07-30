@@ -271,12 +271,12 @@ describe("serif terminal assembly", () => {
     });
   }
 
-  it("emits exactly nine on-curve points", () => {
+  it("emits exactly seven on-curve points", () => {
     const { points } = terminal();
-    expect(points.filter((point) => !point.type)).to.have.length(9);
+    expect(points.filter((point) => !point.type)).to.have.length(7);
   });
 
-  it("keeps nine on-curve points at every degenerate value", () => {
+  it("keeps seven on-curve points at every degenerate value", () => {
     const flat = {
       wingLength: 0,
       tipThickness: 0,
@@ -287,19 +287,19 @@ describe("serif terminal assembly", () => {
       concavity: 0,
     };
     const { points } = terminal({ left: flat, right: flat, undersideCup: 0 });
-    expect(points.filter((point) => !point.type)).to.have.length(9);
+    expect(points.filter((point) => !point.type)).to.have.length(7);
   });
 
   it("puts the foot centre on the skeleton endpoint with no cup", () => {
     const { points } = terminal();
-    const centre = points.filter((point) => !point.type)[4];
+    const centre = points.filter((point) => !point.type)[3];
     expect(Math.abs(centre.x)).to.be.below(1e-9);
     expect(Math.abs(centre.y)).to.be.below(1e-9);
   });
 
   it("lifts the foot centre by the cup amount, along the depth", () => {
     const { points } = terminal({ undersideCup: 18 });
-    const centre = points.filter((point) => !point.type)[4];
+    const centre = points.filter((point) => !point.type)[3];
     expectClose(centre.y, 18);
   });
 
@@ -308,15 +308,15 @@ describe("serif terminal assembly", () => {
       left: { ...half, wingLength: 20 },
       right: { ...half, wingLength: 120 },
     });
-    const centre = points.filter((point) => !point.type)[4];
+    const centre = points.filter((point) => !point.type)[3];
     expect(Math.abs(centre.x)).to.be.below(1e-9);
   });
 
-  it("runs from the left straight top to the right straight top", () => {
+  it("runs from the left release to the right release", () => {
     const { points } = terminal();
     const onCurve = points.filter((point) => !point.type);
     expect(onCurve[0].x).to.be.above(0);
-    expect(onCurve[8].x).to.be.below(0);
+    expect(onCurve[6].x).to.be.below(0);
   });
 
   it("emits one cup curve across the whole foot, not one per half", () => {
