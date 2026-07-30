@@ -87,6 +87,7 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
       contourIndex,
       skeletonContourId: skeletonContour.id,
       serifUnitsMode: options.serifUnitsMode ?? "absolute",
+      removeCollapsedPoints: options.removeCollapsedPoints === true,
     });
     for (const generatedContour of generatedContours) {
       const generatedContourIndex = contours.length;
@@ -440,6 +441,27 @@ function stripCornerRoundMetadata(points) {
     } = point;
     return rest;
   });
+}
+
+function removeCollapsedOutlinePoints(points, tolerance = 0.5) {
+  const kept = [];
+  for (const point of points) {
+    if (point.type) {
+      kept.push(point);
+      continue;
+    }
+    const previous = [...kept].reverse().find((candidate) => !candidate.type);
+    if (
+      previous &&
+      Math.abs(previous.x - point.x) <= tolerance &&
+      Math.abs(previous.y - point.y) <= tolerance
+    ) {
+      while (kept.length && kept[kept.length - 1].type) kept.pop();
+      continue;
+    }
+    kept.push(point);
+  }
+  return kept;
 }
 
 /**
@@ -1926,7 +1948,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
     // DISABLED for performance testing - alignHandleDirections is O(n³)
     // const alignedOutlinePoints = alignHandleDirections(outlinePoints, segments, null);
 
-    const finalPoints = enforceSmoothColinearity(
+    const colinearPoints = enforceSmoothColinearity(
       stripCornerRoundMetadata(outlinePoints),
       true,
       {
@@ -1934,6 +1956,9 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         maxHandleRotationDeg: 60,
       }
     );
+    const finalPoints = options.removeCollapsedPoints
+      ? removeCollapsedOutlinePoints(colinearPoints)
+      : colinearPoints;
     let contour = { points: finalPoints, isClosed: true };
 
     // Apply reverse if flag is set

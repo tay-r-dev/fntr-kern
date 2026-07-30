@@ -1600,3 +1600,51 @@ describe("skeleton-generator serif units mode", () => {
     );
   });
 });
+
+describe("skeleton-generator collapsed serif points", () => {
+  const half = {
+    wingLength: 0,
+    tipThickness: 0,
+    wingSlope: 0,
+    tipCutAngle: 0,
+    reach: 0,
+    tension: 0,
+    concavity: 0,
+  };
+  const data = () => ({
+    version: 1,
+    nextId: 3,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 100,
+        capStyle: "serif",
+        points: [
+          {
+            id: 1,
+            x: 0,
+            y: 0,
+            serif: {
+              left: half,
+              right: half,
+              axisMode: "perpendicular",
+              axisAngle: 0,
+              undersideCup: 0,
+              straightDepth: 0,
+            },
+          },
+          { id: 2, x: 0, y: 300 },
+        ],
+      },
+    ],
+    generated: [],
+  });
+  it("drops coincident points only when requested", () => {
+    const kept = generateFromSkeleton(data());
+    const dropped = generateFromSkeleton(data(), { removeCollapsedPoints: true });
+    expect(dropped.contours[0].points.length).to.be.below(
+      kept.contours[0].points.length
+    );
+  });
+});
