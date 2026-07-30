@@ -123,3 +123,32 @@ describe("skeleton-source-defaults", () => {
     }
   });
 });
+
+describe("skeleton source defaults for serifs", () => {
+  it("defaults to absolute units with collapsed-point removal off", () => {
+    const normalized = normalizeSkeletonSourceDefaults({});
+    expect(normalized.serifDefaults.unitsMode).to.equal("absolute");
+    expect(normalized.serifDefaults.removeCollapsedPoints).to.equal(false);
+  });
+
+  it("keeps a stored units mode", () => {
+    const normalized = normalizeSkeletonSourceDefaults({
+      serifDefaults: { unitsMode: "normalized" },
+    });
+    expect(normalized.serifDefaults.unitsMode).to.equal("normalized");
+  });
+
+  it("rejects an unknown units mode", () => {
+    const normalized = normalizeSkeletonSourceDefaults({
+      serifDefaults: { unitsMode: "percent" },
+    });
+    expect(normalized.serifDefaults.unitsMode).to.equal("absolute");
+  });
+
+  it("coerces collapsed-point removal to a boolean", () => {
+    const normalized = normalizeSkeletonSourceDefaults({
+      serifDefaults: { removeCollapsedPoints: 1 },
+    });
+    expect(normalized.serifDefaults.removeCollapsedPoints).to.equal(true);
+  });
+});

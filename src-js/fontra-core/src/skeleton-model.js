@@ -77,6 +77,7 @@ export const VALID_SERIF_AXIS_MODES = new Set([
   "vertical",
   "absolute",
 ]);
+export const VALID_SERIF_UNITS_MODES = new Set(["absolute", "normalized"]);
 
 // One half-serif's shape. Absolute font units unless the source's serif units
 // mode says otherwise; `tipCutAngle` is degrees and `tension`/`concavity` are
@@ -182,6 +183,8 @@ export const SKELETON_SOURCE_DEFAULT_KEYS = Object.freeze({
   CUSTOM_WIDTHS_LOWERCASE: "customWidthsLowercase",
   CUSTOM_CAP_SQUARE: "customCapSquare",
   CUSTOM_CAP_ROUNDED: "customCapRounded",
+  SERIF_UNITS_MODE: "serifUnitsMode",
+  SERIF_REMOVE_COLLAPSED: "serifRemoveCollapsedPoints",
 });
 
 export const SKELETON_SOURCE_DEFAULT_FALLBACKS = Object.freeze({
@@ -201,6 +204,8 @@ export const SKELETON_SOURCE_DEFAULT_FALLBACKS = Object.freeze({
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_WIDTHS_LOWERCASE]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_SQUARE]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED]: [],
+  [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_UNITS_MODE]: "absolute",
+  [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED]: false,
 });
 
 const SKELETON_SOURCE_DEFAULT_KEY_PATHS = new Map([
@@ -253,6 +258,11 @@ const SKELETON_SOURCE_DEFAULT_KEY_PATHS = new Map([
   ],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_SQUARE, ["capProfiles", "square"]],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED, ["capProfiles", "round"]],
+  [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_UNITS_MODE, ["serifDefaults", "unitsMode"]],
+  [
+    SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED,
+    ["serifDefaults", "removeCollapsedPoints"],
+  ],
 ]);
 
 function cloneSkeletonDefaultValue(value) {
@@ -285,6 +295,17 @@ export function normalizeSkeletonSourceDefaults(rawDefaults) {
   const capProfiles = ensureSkeletonDefaultsObject(defaults, "capProfiles");
   ensureSkeletonDefaultsArray(capProfiles, "square");
   ensureSkeletonDefaultsArray(capProfiles, "round");
+  // Both of these are properties of how the font is being worked on, not of any
+  // one letter, which is why they sit at source level rather than per terminal.
+  // Removing collapsed points forfeits cross-master interpolation for serifed
+  // terminals, so it is off until a designer turns it on for production.
+  const serifDefaults = ensureSkeletonDefaultsObject(defaults, "serifDefaults");
+  serifDefaults.unitsMode = VALID_SERIF_UNITS_MODES.has(serifDefaults.unitsMode)
+    ? serifDefaults.unitsMode
+    : "absolute";
+  serifDefaults.removeCollapsedPoints =
+    serifDefaults.removeCollapsedPoints === true ||
+    serifDefaults.removeCollapsedPoints === 1;
   return defaults;
 }
 
