@@ -1648,3 +1648,61 @@ describe("skeleton-generator collapsed serif points", () => {
     );
   });
 });
+
+describe("skeleton-generator serif stability", () => {
+  const base = {
+    wingLength: 80,
+    tipThickness: 30,
+    wingSlope: 10,
+    tipCutAngle: 5,
+    reach: 60,
+    tension: 0.7,
+    concavity: 0.6,
+  };
+  const outlineFor = (overrides) =>
+    generateFromSkeleton({
+      version: 1,
+      nextId: 3,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 100,
+          capStyle: "serif",
+          points: [
+            {
+              id: 1,
+              x: 0,
+              y: 0,
+              serif: {
+                left: { ...base, ...overrides },
+                right: { ...base, ...overrides },
+                axisMode: "perpendicular",
+                axisAngle: 0,
+                undersideCup: 0,
+                straightDepth: 0,
+              },
+            },
+            { id: 2, x: 0, y: 400 },
+          ],
+        },
+      ],
+      generated: [],
+    }).contours[0].points;
+  for (const [field, from, to] of [
+    ["wingLength", 20, 140],
+    ["tipThickness", 10, 90],
+    ["wingSlope", -20, 60],
+    ["tipCutAngle", -30, 30],
+    ["reach", 20, 200],
+    ["tension", 0.05, 0.95],
+    ["concavity", -0.9, 0.9],
+  ]) {
+    it(`keeps point count stable while ${field} sweeps`, () => {
+      const counts = new Set();
+      for (let step = 0; step <= 40; step++)
+        counts.add(outlineFor({ [field]: from + ((to - from) * step) / 40 }).length);
+      expect([...counts]).to.have.length(1);
+    });
+  }
+});
