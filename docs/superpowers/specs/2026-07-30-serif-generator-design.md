@@ -69,7 +69,7 @@ axis modes exist to produce.
 
 ## 2. Parameters
 
-### 2.1 Per half-serif (8 numbers, absolute font units)
+### 2.1 Per half-serif (7 numbers, absolute font units)
 
 | Name            | Meaning                                                                                    |
 | --------------- | ------------------------------------------------------------------------------------------ |
@@ -77,10 +77,13 @@ axis modes exist to produce.
 | `tipThickness`  | serif depth at its outer end. Thick = slab, thin = didone                                  |
 | `wingSlope`     | how far the inner corner sits above the tip. Positive gives the old-style rise             |
 | `tipCutAngle`   | slant of the outer edge, degrees. Positive splays the foot outward                         |
-| `tipRadius`     | rounding of the tip corner                                                                 |
-| `reach`         | how far back up the stroke flank the release point sits                                    |
+| `reach`         | how far back up the stroke flank the transition curve extends                              |
 | `tension`       | 0 collapses the transition to a straight line (angular wedge); 1 hugs the inner corner     |
 | `concavity`     | signed. Negative = convex fillet, 0 = flat chamfer, positive = classic hollow transition   |
+
+**`tipRadius` is deferred.** Rounding the tip corner needs the corner-rounding machinery,
+and rounding composing over caps is out of scope (§9). Adding it later costs two more
+emitted points per half, always emitted, per §5.
 
 `tension` is the corner/smooth control. There is **no discrete smooth-vs-corner flag**: at
 `tension = 0` the transition's control points collapse onto its endpoints and the join reads
@@ -130,7 +133,7 @@ Per-side fields follow the existing `{left, right}` sub-object convention used b
 
 ```js
 point.serif = {
-  left:  { wingLength, tipThickness, wingSlope, tipCutAngle, tipRadius, reach, tension, concavity },
+  left:  { wingLength, tipThickness, wingSlope, tipCutAngle, reach, tension, concavity },
   right: { ...same },
   axisMode, axisAngle, undersideCup, straightDepth,
 };
@@ -216,12 +219,24 @@ A parallel-sided rectangle of stroke width, inserted between the stroke and the 
 transition curve and the flank release point move further up the stroke instead. Alignment
 zones are therefore invariant under this parameter.
 
-Geometrically: from the wing inner corner the outline runs straight along the depth
-direction for `straightDepth`, and only then does the transition curve begin, releasing onto
-the flank `reach` beyond that.
+Geometrically, in frame coordinates (`u` along the axis, `v` along the depth, origin at the
+skeleton endpoint), for a half whose flank crosses the rib at `flankU`:
 
-At `straightDepth = 0` the section collapses to zero length, like every other parameter's
-degenerate value. Its two points remain emitted (§5).
+```
+wingInnerV      = tipThickness + wingSlope        // the corner the transition sweeps around
+straightBottom  = (flankU, wingInnerV + reach)    // transition curve ends here
+straightTop     = (flankU, wingInnerV + reach + straightDepth)
+release         = the flank's own endpoint after trimming
+```
+
+The straight run is `straightBottom → straightTop`, at constant `u`, so it is exactly stroke
+width and parallel-sided. The transition curve spans `straightBottom → tipTop`, meaning
+`reach` measures the curve's own extent and `straightDepth` adds beyond it. The flank is
+trimmed so it lands on `straightTop`.
+
+At `straightDepth = 0` the two straight points coincide. On a straight flank perpendicular to
+the axis, `release` also coincides with `straightTop`. Both are collapsed-point cases; all
+points are still emitted (§5).
 
 ### 4.5 Reach clamping
 
@@ -245,16 +260,16 @@ obeys.
 
 Eleven on-curve points per serif terminal, **constant at every parameter value**:
 
-| Per half (×2)          | Shared        |
-| ---------------------- | ------------- |
-| release point          | foot centre   |
-| straight section start |               |
-| wing inner corner      |               |
-| tip top                |               |
-| tip bottom             |               |
+| Per half (×2)      | Shared        |
+| ------------------ | ------------- |
+| release point      | foot centre   |
+| straight top       |               |
+| straight bottom    |               |
+| tip top            |               |
+| tip bottom         |               |
 
-The straight section needs its own start point so that `straightDepth` has somewhere to
-express itself; at depth 0 it sits exactly on the wing inner corner.
+The wing inner corner is **not** emitted — it is the attractor the transition curve bends
+around, as in the mockup. Emitting it would split the sweep and destroy the bracketed look.
 
 Degenerate values produce coincident points, never fewer points. `wingLength = 0`,
 `straightDepth = 0`, `tipThickness = 0` and `reach = 0` all still emit their points.
