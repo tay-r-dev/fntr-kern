@@ -56,7 +56,7 @@ const MAX_STORED_SEGMENT_TENSION = 4;
 
 const VALID_POINT_TYPES = new Set([null, "cubic"]);
 const VALID_SINGLE_SIDED = new Set([null, "left", "right"]);
-const VALID_CAP_STYLES = new Set(["butt", "round", "square", "drop"]);
+const VALID_CAP_STYLES = new Set(["butt", "round", "square", "drop", "serif"]);
 const VALID_CAP_BALL_SIDES = new Set(["auto", "left", "right"]);
 // A rib may be locked to an axis, overriding the normal the geometry computes.
 // Named for the direction the RIB runs — which is what the designer sees, since
@@ -71,6 +71,35 @@ export const CAP_POINT_FIELDS = [
   "capBallRatio",
   "capBallShape",
 ];
+export const VALID_SERIF_AXIS_MODES = new Set([
+  "perpendicular",
+  "horizontal",
+  "vertical",
+  "absolute",
+]);
+
+// One half-serif's shape. Absolute font units unless the source's serif units
+// mode says otherwise; `tipCutAngle` is degrees and `tension`/`concavity` are
+// dimensionless in every mode. Null means "inherit", so the contour and source
+// defaults stay live consumers the way stroke width does.
+export const SERIF_HALF_FIELDS = Object.freeze([
+  "wingLength",
+  "tipThickness",
+  "wingSlope",
+  "tipCutAngle",
+  "reach",
+  "tension",
+  "concavity",
+]);
+
+// Shared by both halves of one terminal. The underside cup is deliberately NOT
+// per half: the foot is one curve across the whole terminal, and one cup per
+// half produces two scoops meeting at a break in the middle.
+export const SERIF_TERMINAL_FIELDS = Object.freeze([
+  "axisAngle",
+  "undersideCup",
+  "straightDepth",
+]);
 // Corner rounding is the angle-point engine's parameter set — related to caps
 // only in that both live on on-curve points
 export const CORNER_POINT_FIELDS = [
@@ -1227,6 +1256,7 @@ export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = nul
     normalized.segmentCurvature = normalizeSegmentCurvature(point?.segmentCurvature);
     normalized.locked = normalizeLocked(point?.locked);
     normalized.handleOffsets = normalizeHandleOffsets(point?.handleOffsets);
+    normalized.serif = normalizeSerif(point?.serif);
     normalized.capStyle = VALID_CAP_STYLES.has(point?.capStyle) ? point.capStyle : null;
     normalized.capBallSide = VALID_CAP_BALL_SIDES.has(point?.capBallSide)
       ? point.capBallSide
@@ -2983,6 +3013,30 @@ function normalizeWidth(width) {
     // allowed but is a deliberate choice — see SKELETON-FEATURE-MODEL.md §3.0.
     tied: width?.tied !== false,
   };
+}
+
+function normalizeSerifHalf(half) {
+  const normalized = {};
+  for (const field of SERIF_HALF_FIELDS) {
+    normalized[field] = Number.isFinite(half?.[field]) ? half[field] : null;
+  }
+  return normalized;
+}
+
+function normalizeSerif(serif) {
+  const normalized = {
+    left: normalizeSerifHalf(serif?.left),
+    right: normalizeSerifHalf(serif?.right),
+    linked: serif?.linked !== false,
+    axisMode: VALID_SERIF_AXIS_MODES.has(serif?.axisMode)
+      ? serif.axisMode
+      : "perpendicular",
+  };
+  normalized.axisAngle = Number.isFinite(serif?.axisAngle) ? serif.axisAngle : 0;
+  for (const field of ["undersideCup", "straightDepth"]) {
+    normalized[field] = Number.isFinite(serif?.[field]) ? serif[field] : null;
+  }
+  return normalized;
 }
 
 // The pinned segment tension for the generated segment STARTING at this point,

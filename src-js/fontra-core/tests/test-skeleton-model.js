@@ -21,6 +21,7 @@ import {
   makeSkeletonContour,
   makeSkeletonPoint,
   normalizeSkeletonData,
+  normalizeSkeletonPoint,
   projectSkeletonRibPoint,
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
@@ -1004,6 +1005,52 @@ describe("skeleton-model transform/translate/id-allocation", () => {
       linked: true,
       tied: false,
     });
+  });
+});
+
+describe("skeleton-model serif schema", () => {
+  it("accepts serif as a cap style", () => {
+    const point = normalizeSkeletonPoint({ x: 0, y: 0, capStyle: "serif" });
+    expect(point.capStyle).to.equal("serif");
+  });
+
+  it("fills every half field, leaving unset values null", () => {
+    const point = normalizeSkeletonPoint({
+      x: 0,
+      y: 0,
+      serif: { left: { wingLength: 40 } },
+    });
+    expect(point.serif.left.wingLength).to.equal(40);
+    expect(point.serif.left.tension).to.equal(null);
+    expect(point.serif.right.wingLength).to.equal(null);
+    expect(Object.keys(point.serif.left)).to.have.length(7);
+  });
+
+  it("defaults the axis mode and the link flag", () => {
+    const point = normalizeSkeletonPoint({ x: 0, y: 0 });
+    expect(point.serif.axisMode).to.equal("perpendicular");
+    expect(point.serif.axisAngle).to.equal(0);
+    expect(point.serif.linked).to.equal(true);
+  });
+
+  it("rejects an unknown axis mode", () => {
+    const point = normalizeSkeletonPoint({
+      x: 0,
+      y: 0,
+      serif: { axisMode: "diagonal" },
+    });
+    expect(point.serif.axisMode).to.equal("perpendicular");
+  });
+
+  it("leaves terminal-level values null when unset", () => {
+    const point = normalizeSkeletonPoint({ x: 0, y: 0 });
+    expect(point.serif.undersideCup).to.equal(null);
+    expect(point.serif.straightDepth).to.equal(null);
+  });
+
+  it("does not put serif data on off-curve points", () => {
+    const point = normalizeSkeletonPoint({ x: 0, y: 0, type: "cubic", serif: {} });
+    expect(point.serif).to.equal(undefined);
   });
 });
 
