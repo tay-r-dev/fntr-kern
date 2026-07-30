@@ -78,3 +78,63 @@ export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAng
     },
   };
 }
+
+const MAX_TIP_CUT_ANGLE = 80;
+
+function lerpUV(a, b, t) {
+  return { u: a.u + (b.u - a.u) * t, v: a.v + (b.v - a.v) * t };
+}
+
+// One half-serif, entirely in frame coordinates. `side` is +1 for the left half
+// and -1 for the right, so the same seven numbers describe both and the caller
+// never mirrors anything by hand.
+//
+// The wing inner corner is NOT a returned point. It is the attractor the
+// transition curve bends around, exactly as in the serif-lab mockup. Emitting it
+// would split the sweep from tip to flank into two segments and destroy the
+// bracketed look.
+export function buildHalfSerif({ side, flankU, params, straightDepth }) {
+  const wingLength = params.wingLength ?? 0;
+  const tipThickness = params.tipThickness ?? 0;
+  const wingSlope = params.wingSlope ?? 0;
+  const reach = Math.max(params.reach ?? 0, 0);
+  const tension = Math.min(Math.max(params.tension ?? 0, 0), 1);
+  const concavity = Math.min(Math.max(params.concavity ?? 0, -1), 1);
+  const cutAngle = Math.min(
+    Math.max(params.tipCutAngle ?? 0, -MAX_TIP_CUT_ANGLE),
+    MAX_TIP_CUT_ANGLE
+  );
+
+  const depthOfStraight = Math.max(straightDepth ?? 0, 0);
+  const wingInnerV = tipThickness + wingSlope;
+  const tipU = flankU + side * wingLength;
+  const cutOffset = side * tipThickness * Math.tan((cutAngle * Math.PI) / 180);
+
+  const tipBottom = { u: tipU + cutOffset, v: 0 };
+  const tipTop = { u: tipU, v: tipThickness };
+  const straightBottom = { u: flankU, v: wingInnerV + reach };
+  const straightTop = { u: flankU, v: wingInnerV + reach + depthOfStraight };
+
+  // The transition cubic runs straightBottom -> tipTop. Its controls are pulled
+  // from the chord toward the inner corner by `concavity`, then toward that
+  // attractor by `tension`. At tension 0 the controls sit on the endpoints and
+  // the curve is a straight line, which is the angular wedge.
+  const corner = { u: flankU, v: wingInnerV };
+  const mid = lerpUV(tipTop, straightBottom, 0.5);
+  const attractor = {
+    u: mid.u + (corner.u - mid.u) * concavity,
+    v: mid.v + (corner.v - mid.v) * concavity,
+  };
+  const control1 = lerpUV(tipTop, attractor, tension);
+  const control2 = lerpUV(straightBottom, attractor, tension);
+
+  return {
+    straightTop,
+    straightBottom,
+    control1,
+    control2,
+    tipTop,
+    tipBottom,
+    wingInnerV,
+  };
+}

@@ -1,4 +1,4 @@
-import { computeSerifFrame } from "@fontra/core/serif-geometry.js";
+import { buildHalfSerif, computeSerifFrame } from "@fontra/core/serif-geometry.js";
 import { expect } from "chai";
 
 const CLOSE = 1e-9;
@@ -103,5 +103,97 @@ describe("serif frame", () => {
     const back = frame.toGlyph(frame.toFrame(original));
     expectClose(back.x, original.x);
     expectClose(back.y, original.y);
+  });
+});
+
+describe("half serif in frame coordinates", () => {
+  const base = {
+    wingLength: 60,
+    tipThickness: 30,
+    wingSlope: 0,
+    tipCutAngle: 0,
+    reach: 80,
+    tension: 0.7,
+    concavity: 0.8,
+  };
+  const build = (overrides = {}, side = 1, straightDepth = 0) =>
+    buildHalfSerif({
+      side,
+      flankU: side * 50,
+      params: { ...base, ...overrides },
+      straightDepth,
+    });
+
+  it("puts the tip bottom on the foot line, out past the flank", () => {
+    const half = build();
+    expectClose(half.tipBottom.v, 0);
+    expectClose(half.tipBottom.u, 110);
+  });
+
+  it("raises the tip top by the tip thickness", () => {
+    const half = build();
+    expectClose(half.tipTop.u, 110);
+    expectClose(half.tipTop.v, 30);
+  });
+
+  it("splays the tip with a positive cut angle", () => {
+    const half = build({ tipCutAngle: 45 });
+    // The outer edge leans out by tipThickness * tan(45) = 30.
+    expectClose(half.tipBottom.u, 140);
+    expectClose(half.tipTop.u, 110);
+  });
+
+  it("mirrors every u for the right half", () => {
+    const left = build();
+    const right = build({}, -1);
+    expectClose(right.tipBottom.u, -left.tipBottom.u);
+    expectClose(right.tipTop.v, left.tipTop.v);
+  });
+
+  it("ends the transition curve at reach above the wing inner corner", () => {
+    const half = build({ wingSlope: 12 });
+    expectClose(half.wingInnerV, 42);
+    expectClose(half.straightBottom.v, 122);
+    expectClose(half.straightBottom.u, 50);
+  });
+
+  it("collapses the straight run at depth zero", () => {
+    const half = build();
+    expect(half.straightTop).to.deep.equal(half.straightBottom);
+  });
+
+  it("raises the straight top by the straight depth, at constant u", () => {
+    const half = build({}, 1, 25);
+    expectClose(half.straightTop.u, half.straightBottom.u);
+    expectClose(half.straightTop.v - half.straightBottom.v, 25);
+  });
+
+  it("collapses the transition to a straight line at tension zero", () => {
+    const half = build({ tension: 0 });
+    expect(half.control1).to.deep.equal(half.tipTop);
+    expect(half.control2).to.deep.equal(half.straightBottom);
+  });
+
+  it("pulls the transition toward the inner corner at high tension", () => {
+    const half = build({ tension: 1, concavity: 1 });
+    // Both controls land on the inner corner itself.
+    expectClose(half.control1.u, 50);
+    expectClose(half.control1.v, 30);
+    expectClose(half.control2.u, 50);
+    expectClose(half.control2.v, 30);
+  });
+
+  it("bulges the transition outward at negative concavity", () => {
+    const hollow = build({ concavity: 0.8 });
+    const bulged = build({ concavity: -0.8 });
+    // Concavity moves the attractor across the chord, so the controls swap sides.
+    expect(bulged.control1.u).to.be.above(hollow.control1.u);
+  });
+
+  it("emits a wingless half without losing any point", () => {
+    const half = build({ wingLength: 0 });
+    expectClose(half.tipBottom.u, 50);
+    expectClose(half.tipTop.u, 50);
+    expect(Object.keys(half)).to.have.length(7);
   });
 });
