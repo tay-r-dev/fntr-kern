@@ -172,19 +172,58 @@ describe("half serif in frame coordinates", () => {
     expectClose(half.straightTop.v - half.straightBottom.v, 25);
   });
 
-  it("collapses the transition to a straight line at tension zero", () => {
-    const half = build({ tension: 0 });
-    expect(half.control1).to.deep.equal(half.tipTop);
-    expect(half.control2).to.deep.equal(half.straightBottom);
+  // The midpoint of the transition cubic, which is where the hollow is deepest.
+  const transitionBelly = (half) => {
+    const p = [half.tipTop, half.control1, half.control2, half.straightBottom];
+    return {
+      u: (p[0].u + 3 * p[1].u + 3 * p[2].u + p[3].u) / 8,
+      v: (p[0].v + 3 * p[1].v + 3 * p[2].v + p[3].v) / 8,
+    };
+  };
+
+  it("collapses the transition to a straight line at concavity zero", () => {
+    for (const tension of [0, 0.5, 1]) {
+      const half = build({ tension, concavity: 0 });
+      // Every control sits on the chord, so the cubic is the chord, whatever the
+      // tension. Depth is concavity's job alone.
+      const chordV = (u) =>
+        half.tipTop.v +
+        ((u - half.tipTop.u) / (half.straightBottom.u - half.tipTop.u)) *
+          (half.straightBottom.v - half.tipTop.v);
+      expectClose(half.control1.v, chordV(half.control1.u));
+      expectClose(half.control2.v, chordV(half.control2.u));
+    }
   });
 
-  it("pulls the transition toward the inner corner at high tension", () => {
-    const half = build({ tension: 1, concavity: 1 });
-    // Both controls land on the inner corner itself.
-    expectClose(half.control1.u, 50);
-    expectClose(half.control1.v, 30);
-    expectClose(half.control2.u, 50);
-    expectClose(half.control2.v, 30);
+  it("keeps the hollow depth independent of tension", () => {
+    const depths = [0, 0.25, 0.5, 1].map(
+      (tension) => transitionBelly(build({ tension, concavity: 1 })).v
+    );
+    for (const depth of depths) {
+      expectClose(depth, depths[0]);
+    }
+  });
+
+  it("deepens the hollow with concavity", () => {
+    const shallow = transitionBelly(build({ concavity: 0.25 })).v;
+    const deep = transitionBelly(build({ concavity: 1 })).v;
+    const flat = transitionBelly(build({ concavity: 0 })).v;
+    // The inner corner is below the chord, so a deeper hollow means a lower belly.
+    expect(deep).to.be.below(shallow);
+    expect(shallow).to.be.below(flat);
+  });
+
+  it("never lets a transition control cross its own flank", () => {
+    for (const tension of [0, 0.5, 1]) {
+      for (const concavity of [1, -1]) {
+        const left = build({ tension, concavity });
+        expect(left.control1.u).to.be.within(50, left.tipTop.u);
+        expect(left.control2.u).to.be.within(50, left.tipTop.u);
+        const right = build({ tension, concavity }, -1);
+        expect(right.control1.u).to.be.within(right.tipTop.u, -50);
+        expect(right.control2.u).to.be.within(right.tipTop.u, -50);
+      }
+    }
   });
 
   it("bulges the transition outward at negative concavity", () => {

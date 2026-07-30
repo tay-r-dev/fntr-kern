@@ -81,6 +81,17 @@ export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAng
 
 const MAX_TIP_CUT_ANGLE = 80;
 
+// Handle reach along the transition chord. Neither end of the range is
+// geometrically free. Too short and a deep hollow throws the control past the
+// flank onto the far side of the stroke, which self-intersects; too long and the
+// two controls meet at the chord centre and the cubic degenerates.
+const HANDLE_MIN_FRACTION = 0.2;
+const HANDLE_MAX_FRACTION = 0.45;
+
+// A symmetric pair of controls offset by `o` moves the curve's midpoint by
+// three quarters of `o`, so scaling by 4/3 lands the belly exactly where asked.
+const BELLY_TO_CONTROL = 4 / 3;
+
 function lerpUV(a, b, t) {
   return { u: a.u + (b.u - a.u) * t, v: a.v + (b.v - a.v) * t };
 }
@@ -115,18 +126,43 @@ export function buildHalfSerif({ side, flankU, params, straightDepth }) {
   const straightBottom = { u: flankU, v: wingInnerV + reach };
   const straightTop = { u: flankU, v: wingInnerV + reach + depthOfStraight };
 
-  // The transition cubic runs straightBottom -> tipTop. Its controls are pulled
-  // from the chord toward the inner corner by `concavity`, then toward that
-  // attractor by `tension`. At tension 0 the controls sit on the endpoints and
-  // the curve is a straight line, which is the angular wedge.
+  // The transition cubic runs straightBottom -> tipTop. The two sliders drive
+  // separate things and must not multiply:
+  //
+  //   concavity sets HOW DEEP the hollow is. The belly of the curve lands at
+  //   `concavity` of the way from the chord to the inner corner. 0 is a straight
+  //   bevel, 1 touches the corner, negative bulges out convex.
+  //
+  //   tension sets HOW THE BEND IS DISTRIBUTED. Low tension keeps the handles
+  //   short, so the curve turns hard next to the tip and the release and runs
+  //   nearly flat between them. High tension stretches them to the chord centre
+  //   for one even arc.
+  //
+  // Offsetting both controls by BELLY_TO_CONTROL times the wanted belly offset
+  // puts the curve's midpoint exactly on the belly whatever the tension is, which
+  // is what keeps the two controls independent.
   const corner = { u: flankU, v: wingInnerV };
   const mid = lerpUV(tipTop, straightBottom, 0.5);
-  const attractor = {
-    u: mid.u + (corner.u - mid.u) * concavity,
-    v: mid.v + (corner.v - mid.v) * concavity,
+  const offset = {
+    u: (corner.u - mid.u) * concavity * BELLY_TO_CONTROL,
+    v: (corner.v - mid.v) * concavity * BELLY_TO_CONTROL,
   };
-  const control1 = lerpUV(tipTop, attractor, tension);
-  const control2 = lerpUV(straightBottom, attractor, tension);
+  const reachFraction =
+    HANDLE_MIN_FRACTION + (HANDLE_MAX_FRACTION - HANDLE_MIN_FRACTION) * tension;
+  const nearTip = lerpUV(tipTop, straightBottom, reachFraction);
+  const nearRelease = lerpUV(tipTop, straightBottom, 1 - reachFraction);
+  // The offset points at the corner, so it pushes the controls along the axis as
+  // well as into the stroke. Left free, a deep hollow drags them past the flank
+  // and the curve crosses the stem edge it is supposed to land on. Holding every
+  // control inside the half's own span keeps the whole cubic there too, by the
+  // convex hull. The cost is that the deepest hollows stop exactly at the flank
+  // instead of overshooting it, which is the bracket everybody actually wants.
+  const clampU = (u) =>
+    side > 0
+      ? Math.min(Math.max(u, flankU), tipU)
+      : Math.max(Math.min(u, flankU), tipU);
+  const control1 = { u: clampU(nearTip.u + offset.u), v: nearTip.v + offset.v };
+  const control2 = { u: clampU(nearRelease.u + offset.u), v: nearRelease.v + offset.v };
 
   return {
     straightTop,

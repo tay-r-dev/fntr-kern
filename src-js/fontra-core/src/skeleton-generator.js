@@ -4411,8 +4411,11 @@ const SERIF_HALF_DEFAULTS = Object.freeze({
   wingSlope: 0,
   tipCutAngle: 0,
   reach: 0,
-  tension: 0,
-  concavity: 0,
+  // A fresh serif should read as a serif, so the transition starts as a real
+  // bracket rather than a straight bevel. Both are dimensionless, so they need
+  // no unit scaling.
+  tension: 0.5,
+  concavity: 1,
 });
 
 const SERIF_LENGTH_FIELDS = new Set([
