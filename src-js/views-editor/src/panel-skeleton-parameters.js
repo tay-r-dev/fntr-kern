@@ -418,8 +418,11 @@ export default class SkeletonParametersPanel extends Panel {
           continue;
         }
         // Writing back into the input the user just used would fight their next
-        // keystroke, and it already holds the value it reported to us.
-        if (item.key === this._activeFieldKey) {
+        // keystroke, and it already holds the value it reported to us. Scale
+        // sliders are the exception: they are relative, so the thumb has to
+        // return to neutral for the next drag to scale from where the edit
+        // landed rather than compounding from where the thumb was left.
+        if (item.key === this._activeFieldKey && !item.resetAfterEdit) {
           continue;
         }
         this.infoForm.setValue(item.key, item.value);
@@ -757,6 +760,7 @@ export default class SkeletonParametersPanel extends Panel {
       maxValue: 200,
       step: 20,
       allowInputBeyondRange: true,
+      resetAfterEdit: true,
     });
     // Force-apply a master width profile to the selected points (two-click
     // confirm; the dropdown picks base/horizontal/contrast or a custom width).
@@ -1282,6 +1286,7 @@ export default class SkeletonParametersPanel extends Panel {
       step: 5,
       allowInputBeyondRange: true,
       disabled: !canEdit,
+      resetAfterEdit: true,
     });
   }
 
