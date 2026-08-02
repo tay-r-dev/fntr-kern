@@ -8,7 +8,9 @@ here).
 Items are ordered by **how much of the code's structure has to move**, deepest
 first, with blocking relationships allowed to override that order. The numbering
 here is this document's own; the origin of each item in the original list is
-noted so it stays traceable.
+noted so it stays traceable. **A number is stable once assigned** — the table is
+re-sorted as items arrive, so a new item keeps the next free number wherever it
+lands in the order, and commits and notes referring to an item stay valid.
 
 Status legend: **open** = agreed, not started · **undecided** = needs a decision
 before it can be planned.
@@ -18,8 +20,10 @@ before it can be planned.
 | 1   | Axis modes other than perpendicular      | core geometry model | (1)    | undecided |
 | 2   | Rework the easing model                  | core geometry model | (4)    | open      |
 | 3   | Lift the minimum-separation clamps       | core geometry       | new    | open      |
+| 9   | Couple a serif's rib to its neighbour    | core geometry model | new    | open      |
 | 4   | Preset storage and editing               | source defaults     | (6.1)  | open      |
 | 5   | Preset apply / create / update           | panel               | (6.2)  | open      |
+| 10  | Cancel a scale drag with right-click     | edit pipeline       | new    | open      |
 | 6   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | **done**  |
 | 7   | Scale sliders inline with inputs         | panel layout        | (2)    | **done**  |
 | 8   | Shape-and-easing reframe                 | panel labels        | (4)    | open      |
@@ -265,6 +269,76 @@ amending to say so.
 
 Test the ends of every range directly. A clamp that is removed but still enforced
 somewhere downstream is worse than one that is documented.
+
+---
+
+## 9. Couple a serif's rib to its neighbour
+
+A serif terminal is normally not alone at the end of a stem: the endpoint carries
+the serif, and the point next to it is a corner — a non-smooth skeleton point
+where the stem turns. Those two points each own their own rib, and today the ribs
+are wholly independent. That is wrong for this configuration, because the two of
+them describe **one stem wall**, and the wall has to be one width.
+
+Three behaviours, all of the same rule:
+
+- Adjusting the corner point's rib adjusts the serif's rib to match.
+- Adjusting the serif's rib adjusts the corner point's rib to match.
+- **On applying a serif** to an endpoint that has a corner point next to it, the
+  corner point's rib is equalized to the endpoint's — on the serifed sides only.
+
+### Why this is a model change and not an editing convenience
+
+Doing it only in the drag handler gives a rule that holds while you drag and not
+otherwise: it would be silently violated by the parameters panel, by a preset
+apply, by an interpolated master, and by any edit that reaches the width through
+another path. Rail R-B says there is one write path; a coupling that only some
+callers honour is the thing that rail exists to prevent.
+
+So it needs to be a property of the model — an equality the width resolution
+maintains — with the drag handler and the panel both landing on it for free.
+
+### To settle when planning
+
+- **Which side is authoritative.** "Adjust either and the other follows" is
+  symmetric during editing but the equalization on apply names the endpoint as
+  the source. Decide whether the stored state is two equal numbers kept in sync,
+  or one number the corner point defers to (null-means-inherit already exists and
+  would express the second cleanly).
+- **Sides are independent.** A serif can be one-sided — a half with no wing is a
+  half switched off — and the requirement is explicit that only the serifed sides
+  equalize. The coupling is per side, not per point.
+- **What "next to" means.** Directly adjacent in the contour, non-smooth, and
+  presumably only when no off-curve intervenes. A corner two points away, or a
+  smooth point next to the endpoint, is not this case.
+- **What breaks the coupling.** There must be a way to have a serif on an
+  endpoint whose neighbour deliberately differs, or the rule becomes a cage.
+- **Interpolation.** The coupling changes stored widths, so it has to produce the
+  same result in every master or it introduces a cross-master difference where
+  there was none.
+
+---
+
+## 10. Cancel a scale drag with right-click
+
+Right mouse button during a scale slider drag abandons the drag and puts the
+values back where they were, rather than committing what the thumb currently
+reads.
+
+The restore machinery already exists and is exactly what makes this cheap. The
+streaming edit path snapshots every editable layer when the drag opens and
+restores that snapshot before applying each frame — a cancel is that same restore
+with no re-apply, and then no undo record at all rather than a no-op one.
+
+The work is in getting the signal there. The slider component owns the pointer
+interaction and reports values through a stream; the stream has no way to say
+"discarded" as opposed to "ended". So this needs a cancel channel from the
+component through the form to the edit path, and the edit path needs to
+distinguish the two endings.
+
+Worth doing generally rather than for the scale sliders alone — every streaming
+slider in the panel has the same gap — but the scale sliders are where it is felt,
+because their edit is relative and there is no obvious value to type back.
 
 ---
 
