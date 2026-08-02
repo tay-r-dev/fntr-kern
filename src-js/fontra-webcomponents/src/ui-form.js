@@ -553,6 +553,11 @@ export class Form extends SimpleElement {
       rangeElement.onChangeCallback = (event) => {
         const value = event.value;
         if (event.dragBegin) {
+          // A second begin without an end in between would abandon the first
+          // stream still open, and a listener consuming it keeps its edit open
+          // with it — after which every later edit is refused. Close the old one
+          // rather than letting it strand.
+          valueStream?.done();
           valueStream = new QueueIterator(5, true);
           this._fieldChanging(fieldItem, value, valueStream);
         }
