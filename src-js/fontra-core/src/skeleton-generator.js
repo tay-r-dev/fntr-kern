@@ -3276,6 +3276,42 @@ function splitTerminalSideForRoundCap(
   };
 }
 
+/**
+ * Move a terminal split onto an exact point, and re-aim the one handle that
+ * survives the trim so the edge still arrives along `intoStroke`.
+ *
+ * The split itself lands wherever the edge happens to run, which is a function
+ * of the edge's shape and therefore of everything that shapes it. A terminal
+ * that wants a fixed release cannot take that point; it takes the cut only as a
+ * decision about how much curve to keep, then pulls the loose end into place.
+ * The handle rotation is what keeps the join smooth: `intoStroke` is the
+ * direction the terminal's own straight section leaves in.
+ * @param {Object} split - Result of splitTerminalSideForRoundCap
+ * @param {Object} target - Where the trimmed edge must end, in glyph space
+ * @param {Object} intoStroke - Unit direction away from the terminal
+ * @param {string} sidePosition - "start" or "end"
+ * @returns {Object} The split, with its inserted point and kept handle moved
+ */
+function anchorTerminalSplit(split, target, intoStroke, sidePosition) {
+  const sidePoints = [...split.sidePoints];
+  const insertedIndex = split.insertedPointIndex;
+  const insertedPoint = { ...sidePoints[insertedIndex], x: target.x, y: target.y };
+  sidePoints[insertedIndex] = insertedPoint;
+
+  // The kept side of the cut is whichever side is not the terminal's own.
+  const handleIndex = sidePosition === "end" ? insertedIndex - 1 : insertedIndex + 1;
+  const handle = sidePoints[handleIndex];
+  if (handle?.type) {
+    const length = vector.distance(handle, split.insertedPoint);
+    sidePoints[handleIndex] = {
+      ...handle,
+      x: target.x + intoStroke.x * length,
+      y: target.y + intoStroke.y * length,
+    };
+  }
+  return { ...split, sidePoints, insertedPoint };
+}
+
 function trimSideForRoundCapEmission(sidePoints, sidePosition, referenceEndpointIndex) {
   const emitted = [...sidePoints];
   emitted.splice(referenceEndpointIndex, 1);
@@ -4501,52 +4537,26 @@ function buildSerifCap({
     straightDepth:
       (pointSerif?.straightDepth ?? contourSerif?.straightDepth ?? 0) * lengthScale,
   };
-  // Two passes. The first is only there to measure how much edge the serif wants
-  // to consume, which is what decides where each side gets cut. The second builds
-  // the real thing against the points the cuts actually produced, so the serif
-  // starts exactly where the trimmed edge stops. Building once against the flank
-  // line instead leaves a gap wherever the stroke curves into its terminal: the
-  // edge is no longer on the flank by the time the serif releases it, and the
-  // splice shows up as a stray on-curve with a sideways handle.
-  const draft = buildSerifTerminal(terminalArgs);
-  const trimDistance = (ribEnd, half) =>
-    vector.distance(ribEnd, frame.toGlyph(half.straightTop));
-  const splitSide = (side, distance) =>
-    splitTerminalSideForRoundCap(side, position, distance, {
-      endpointTangent: outward,
-      capTangent: outward,
-    });
-  const leftSplit = splitSide(leftSide, trimDistance(leftRibEnd, draft.halves.left));
-  const rightSplit = splitSide(
-    rightSide,
-    trimDistance(rightRibEnd, draft.halves.right)
-  );
-  if (!leftSplit || !rightSplit) return null;
-  // The direction the trimmed edge is heading when it hands over, in frame
-  // coordinates and pointing away from the terminal. The serif hangs its straight
-  // section and its transition handle on this, which is what keeps the handover
-  // an actual smooth point rather than a corner that happens to look shallow.
-  const releaseTangent = (split) => {
-    const tip = split.tangentToEndpoint;
-    if (!isUsableDirection(tip)) return null;
-    const origin = frame.toFrame({ x: 0, y: 0 });
-    const direction = {
-      u: frame.toFrame(tip).u - origin.u,
-      v: frame.toFrame(tip).v - origin.v,
-    };
-    const length = Math.hypot(direction.u, direction.v);
-    if (!(length > 0)) return null;
-    const unit = { u: direction.u / length, v: direction.v / length };
-    // Away from the terminal means deeper into the stroke: positive v.
-    return unit.v >= 0 ? unit : { u: -unit.u, v: -unit.v };
+  const terminal = buildSerifTerminal(terminalArgs);
+  // The serif releases the stroke at a point of its own choosing, on the flank
+  // line, and the edge is brought to that point rather than the reverse. Cutting
+  // the edge and taking whatever point falls out would hand the serif a release
+  // that moves whenever the edge is reshaped - and a curvature pin reshapes the
+  // edge, so dragging one would walk two on-curves along the stroke. The cut only
+  // decides how much curve to keep; the handle that survives it absorbs the rest.
+  const releaseSide = (side, ribEnd, half) => {
+    const release = frame.toGlyph(half.straightTop);
+    const split = splitTerminalSideForRoundCap(
+      side,
+      position,
+      vector.distance(ribEnd, release),
+      { endpointTangent: outward, capTangent: outward }
+    );
+    return split ? anchorTerminalSplit(split, release, frame.depth, position) : null;
   };
-  const terminal = buildSerifTerminal({
-    ...terminalArgs,
-    leftRelease: frame.toFrame(leftSplit.insertedPoint),
-    rightRelease: frame.toFrame(rightSplit.insertedPoint),
-    leftReleaseTangent: releaseTangent(leftSplit),
-    rightReleaseTangent: releaseTangent(rightSplit),
-  });
+  const leftSplit = releaseSide(leftSide, leftRibEnd, terminal.halves.left);
+  const rightSplit = releaseSide(rightSide, rightRibEnd, terminal.halves.right);
+  if (!leftSplit || !rightSplit) return null;
   const capPoints =
     position === "end" ? terminal.points : [...terminal.points].reverse();
   for (const point of capPoints) withRoundCapProvenance(point, ownerPoint);

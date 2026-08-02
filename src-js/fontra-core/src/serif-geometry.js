@@ -104,14 +104,7 @@ function lerpUV(a, b, t) {
 // transition curve bends around, exactly as in the serif-lab mockup. Emitting it
 // would split the sweep from tip to flank into two segments and destroy the
 // bracketed look.
-export function buildHalfSerif({
-  side,
-  flankU,
-  params,
-  straightDepth,
-  release,
-  releaseTangent,
-}) {
+export function buildHalfSerif({ side, flankU, params, straightDepth }) {
   const wingLength = params.wingLength ?? 0;
   const tipThickness = params.tipThickness ?? 0;
   const wingSlope = params.wingSlope ?? 0;
@@ -136,24 +129,17 @@ export function buildHalfSerif({
 
   const tipBottom = { u: tipU + cutOffset, v: 0 };
   const tipTop = { u: tipU, v: tipThickness };
-  // Where the serif lets go of the stroke. Without an override it is placed on
-  // the flank line, straight up from the rib end. That is only where the stroke
-  // edge actually is when the stroke runs straight into the terminal; on a curved
-  // approach the edge has already drifted off the flank by the time it gets this
-  // far, and a release built on the flank leaves a step between the trimmed edge
-  // and the serif. The caller therefore trims first and hands back the point the
-  // cut really landed on, which makes `reach` a distance along the edge instead
-  // of a height above the rib.
-  const straightTop = release ?? { u: flankU, v: wingInnerV + reach + depthOfStraight };
-  // The straight section hangs below the release, along the stroke edge rather
-  // than straight down the frame: running it any other way would put a corner at
-  // the release, which is exactly the join that has to stay smooth.
-  const straightBottom = release
-    ? {
-        u: release.u - (releaseTangent?.u ?? 0) * depthOfStraight,
-        v: release.v - (releaseTangent?.v ?? 1) * depthOfStraight,
-      }
-    : { u: flankU, v: wingInnerV + reach };
+  // Where the serif lets go of the stroke, and the straight run below it. Both
+  // sit on the flank line, straight up from the rib end, and both are functions
+  // of the serif's own numbers alone.
+  //
+  // Reading them off the stroke edge instead is tempting, because on a curved
+  // approach the edge has drifted off the flank by the time it gets this far.
+  // But then anything that reshapes the edge - a curvature pin above all - slides
+  // these two on-curves along the stroke, and a curvature pin is only allowed to
+  // change handles. The caller brings the edge to these points instead.
+  const straightTop = { u: flankU, v: wingInnerV + reach + depthOfStraight };
+  const straightBottom = { u: flankU, v: wingInnerV + reach };
 
   // The transition cubic runs straightBottom -> tipTop, and both of its handles
   // lie on the line from their own end toward the wing's inner corner. That is
@@ -183,23 +169,11 @@ export function buildHalfSerif({
     Math.max(Math.min(amount, MAX_HANDLE_TO_CORNER), -MAX_HANDLE_TO_CORNER);
   const handle = (from, toward, amount) => lerpUV(from, toward, clampShare(amount));
 
-  // Without an override the corner sits directly below the release on the flank,
-  // so aiming the handle at it already runs along the stroke edge. With one, the
-  // edge has curved away from the flank and the caller's tangent is the only
-  // thing still pointing along it; the corner sets the length either way.
-  const cornerDistance = Math.hypot(
-    corner.u - straightBottom.u,
-    corner.v - straightBottom.v
-  );
-  const releaseTarget = releaseTangent
-    ? {
-        u: straightBottom.u - releaseTangent.u * cornerDistance,
-        v: straightBottom.v - releaseTangent.v * cornerDistance,
-      }
-    : corner;
-
+  // The corner sits directly below straightBottom on the flank, so aiming the
+  // handle at it already runs along the flank - which is the direction the
+  // straight section leaves in, and so the tangent that has to be preserved.
   const control1 = handle(tipTop, corner, hollow * 2 * (1 - share));
-  const control2 = handle(straightBottom, releaseTarget, hollow * 2 * share);
+  const control2 = handle(straightBottom, corner, hollow * 2 * share);
 
   return {
     straightTop,
@@ -244,27 +218,14 @@ export function buildSerifTerminal({
   right,
   undersideCup,
   straightDepth,
-  leftRelease,
-  rightRelease,
-  leftReleaseTangent,
-  rightReleaseTangent,
 }) {
   const halves = {
-    left: buildHalfSerif({
-      side: 1,
-      flankU: leftFlankU,
-      params: left,
-      straightDepth,
-      release: leftRelease,
-      releaseTangent: leftReleaseTangent,
-    }),
+    left: buildHalfSerif({ side: 1, flankU: leftFlankU, params: left, straightDepth }),
     right: buildHalfSerif({
       side: -1,
       flankU: rightFlankU,
       params: right,
       straightDepth,
-      release: rightRelease,
-      releaseTangent: rightReleaseTangent,
     }),
   };
   const centre = { u: 0, v: Math.max(undersideCup ?? 0, 0) };
