@@ -112,6 +112,14 @@ export class Form extends SimpleElement {
       gap: 0.35rem;
     }
 
+    /* A slider sharing its row with a number input takes whatever the input
+       leaves, rather than its natural width, which would push the row wider
+       than the panel. */
+    .ui-form-value.universal-row range-slider {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
     .ui-form-value.slider-has-checkbox {
       display: grid;
       gap: 0.25em;

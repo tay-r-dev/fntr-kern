@@ -358,18 +358,40 @@ export async function scalePanelPointWidth(
   return editSelectedSkeletonPoints(
     sceneController,
     pointAddresses,
-    (point, _address, { defaultWidth }) => {
-      const width = point.width || {};
-      const left = Math.max(0, (width.left ?? defaultWidth / 2) * factor);
-      const right = Math.max(0, (width.right ?? defaultWidth / 2) * factor);
-      const total = Math.max(2, left + right);
-      const scale = left + right > 0 ? total / (left + right) : 1;
-      point.width = {
-        left: Math.round(left * scale),
-        right: Math.round(right * scale),
-        linked: width.linked !== false,
-      };
-    },
+    (point, _address, { defaultWidth }) =>
+      scaleOnePointWidth(point, defaultWidth, factor),
+    undoLabel
+  );
+}
+
+function scaleOnePointWidth(point, defaultWidth, factor) {
+  const width = point.width || {};
+  const left = Math.max(0, (width.left ?? defaultWidth / 2) * factor);
+  const right = Math.max(0, (width.right ?? defaultWidth / 2) * factor);
+  const total = Math.max(2, left + right);
+  const scale = left + right > 0 ? total / (left + right) : 1;
+  point.width = {
+    left: Math.round(left * scale),
+    right: Math.round(right * scale),
+    linked: width.linked !== false,
+  };
+}
+
+// Streaming variant: the stroke follows the thumb. Each frame restores the
+// skeleton the drag started from before applying, so the factor multiplies the
+// starting widths every time rather than compounding frame over frame.
+export async function scalePanelPointWidthStream(
+  sceneController,
+  pointAddresses,
+  valueStream,
+  undoLabel
+) {
+  return setPanelPointValuesStream(
+    sceneController,
+    pointAddresses,
+    valueStream,
+    (point, contour, value) =>
+      scaleOnePointWidth(point, contour.defaultWidth, (Number(value) || 100) / 100),
     undoLabel
   );
 }
@@ -556,22 +578,57 @@ export async function scalePanelSerifValue(
       if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
         return;
       }
-      const values = {};
-      for (const { side, field } of targets) {
-        const current = side
-          ? (point.serif?.[side]?.[field] ?? contour.serif?.[side]?.[field])
-          : (point.serif?.[field] ?? contour.serif?.[field]);
-        if (!Number.isFinite(current)) {
-          continue;
-        }
-        const scaled = Math.max(0, current * factor);
-        if (side) {
-          values[side] = { ...(values[side] || {}), [field]: scaled };
-        } else {
-          values[field] = scaled;
-        }
+      scaleOnePointSerif(point, contour, targets, factor);
+    },
+    undoLabel
+  );
+}
+
+// Serif lengths are font units and the generator quantizes to the grid anyway,
+// so a scale that leaves fractions behind only stores a number the outline
+// never uses — and makes the next scale start from a value the panel isn't
+// showing. Round here instead.
+function scaleOnePointSerif(point, contour, targets, factor) {
+  const values = {};
+  for (const { side, field } of targets) {
+    const current = side
+      ? (point.serif?.[side]?.[field] ?? contour.serif?.[side]?.[field])
+      : (point.serif?.[field] ?? contour.serif?.[field]);
+    if (!Number.isFinite(current)) {
+      continue;
+    }
+    const scaled = Math.round(Math.max(0, current * factor));
+    if (side) {
+      values[side] = { ...(values[side] || {}), [field]: scaled };
+    } else {
+      values[field] = scaled;
+    }
+  }
+  setSkeletonSerifParameters(point, values);
+}
+
+// Streaming variant, same restore-then-apply guarantee as the width scale.
+export async function scalePanelSerifValueStream(
+  sceneController,
+  pointAddresses,
+  targets,
+  valueStream,
+  undoLabel
+) {
+  return setPanelPointValuesStream(
+    sceneController,
+    pointAddresses,
+    valueStream,
+    (point, contour, value) => {
+      const endpoints = skeletonContourEndpointIndices(contour);
+      if (!endpoints) {
+        return;
       }
-      setSkeletonSerifParameters(point, values);
+      const pointIndex = contour.points.indexOf(point);
+      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
+        return;
+      }
+      scaleOnePointSerif(point, contour, targets, (Number(value) || 100) / 100);
     },
     undoLabel
   );

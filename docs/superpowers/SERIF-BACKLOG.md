@@ -20,8 +20,8 @@ before it can be planned.
 | 3   | Lift the minimum-separation clamps       | core geometry       | new    | open      |
 | 4   | Preset storage and editing               | source defaults     | (6.1)  | open      |
 | 5   | Preset apply / create / update           | panel               | (6.2)  | open      |
-| 6   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | open      |
-| 7   | Scale sliders inline with inputs         | panel layout        | (2)    | open      |
+| 6   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | **done**  |
+| 7   | Scale sliders inline with inputs         | panel layout        | (2)    | **done**  |
 | 8   | Shape-and-easing reframe                 | panel labels        | (4)    | open      |
 
 Blocking: 3 → 2 (the easing rework assumes zero is a legal value for every field,
@@ -315,66 +315,40 @@ Additive on top of item 4. Two notes:
 
 ---
 
-## 6. Scale sliders: live update and integer step
+## 6. Scale sliders: live update and integer step — DONE
 
-One change, not two. Doing either half alone is a regression.
+Both scale sliders — the serif lengths and the point width — now stream, and both
+round what they store.
 
-### Live update
+The predicted drag baseline turned out to already exist. The shared streaming
+helper snapshots every editable layer when the drag opens and restores that
+snapshot before applying each frame, so a relative factor multiplies the values
+the drag started from every time and cannot compound. The exclusion comment was
+describing a hazard the helper had already removed. Streaming a scale slider is
+therefore just routing it through the same helper the absolute sliders use.
 
-The serif scale sliders are deliberately excluded from the streaming path today,
-and the exclusion is load-bearing:
+Rounding moved into the per-point scale, next to the clamp at zero, so the
+committed path and the streamed path round identically — one function, called
+from both.
 
-> Scale sliders are excluded: they multiply what is stored, so streaming them
-> would compound the factor once per frame.
-
-A relative control cannot stream while it reads its multiplicand from live
-storage. The fix is a **drag baseline**: snapshot the affected values when the
-drag starts, and have each streamed frame apply the current factor to the
-snapshot rather than to whatever the last frame wrote. On commit, one undo record
-from baseline to final.
-
-### Integer step
-
-`scalePanelSerifValue` writes `Math.max(0, current * factor)` with no rounding,
-so scaling a wing of 40 by 95% stores 38 but by 97% stores 38.8. Compare
-`scalePanelPointWidth`, which rounds and re-normalizes so the two halves still
-sum to the intended total.
-
-### Why they are one change
-
-Rounding a value recomputed from live storage every frame quantizes the
-compounding and makes the drift worse. Rounding a value recomputed from a fixed
-baseline is stable. Baseline plus rounding is one behaviour.
-
-Neither half is serif-specific. The point-width scale slider is relative in
-exactly the same way and has the same limitation, so the baseline belongs in the
-shared panel edit path, not in the serif branch — Rail R-B (one write path) and
-R-D (no kind-branching in shared code).
-
-To settle: rounding under `serifUnitsMode: normalized`, where the stored number
-is a ratio of stroke width and an integer is meaningless. Either round the
-resulting font units rather than the stored ratio, or do not round in that mode.
+Still open: rounding under `serifUnitsMode: normalized`, where the stored number
+is a ratio of stroke width and an integer is meaningless. The rounding as landed
+applies to the stored number in both modes.
 
 ---
 
-## 7. Scale sliders inline with inputs
+## 7. Scale sliders inline with inputs — DONE
 
-Each serif length currently emits two form rows: the number input, then an
-`edit-number-slider` row beneath it carrying its own "Scale" label. Four lengths
-per half plus two terminal-level ones means the section is mostly scale sliders.
+Each serif length is one row now: label, number input, scale slider. Same for
+point width, where the scale slider sits on the total — the number it actually
+moves.
 
-The shared form component already supports the layout. `_addUniversalRow` renders
-`field1` into the label cell and `field2` / `field3` into the value cell, which is
-exactly a labelled input with a slider beside it. `_pushScaleSlider` becomes part
-of the length's own row rather than a row of its own, and the redundant label
-disappears.
-
-The work is not in the rendering. It is in the parameters panel's in-place update
-path: `_applyFormContents` walks top-level items and matches `item.key` against
-the form's registered keys, and `formContentsLayoutSignature` builds its signature
-the same way. Neither descends into a universal row's nested fields, so both need
-to — otherwise the section falls back to a full rebuild on every edit and
-reintroduces the focus loss that development log 21 fixed.
+The rendering was free, as expected: the shared form component already packs
+several inputs into one row. The work was the parameters panel's in-place update
+path. Both the layout signature and the value refresh walked top-level items
+only, so a packed row read as keyless and every edit fell back to a full rebuild.
+Both now flatten a packed row into its nested fields first, which is what keeps
+the in-place refresh — and so the focus and the live drag — working.
 
 ---
 

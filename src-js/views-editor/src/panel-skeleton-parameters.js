@@ -18,7 +18,9 @@ import {
   resetPanelGeneratedHandle,
   resetPanelRibs,
   scalePanelPointWidth,
+  scalePanelPointWidthStream,
   scalePanelSerifValue,
+  scalePanelSerifValueStream,
   setPanelCapParameters,
   setPanelCapStyle,
   setPanelContourDefaultWidth,
@@ -126,11 +128,27 @@ function capValuesFromField(name, value) {
 export const SERIF_TIP_CUT_MIN = -80;
 export const SERIF_TIP_CUT_MAX = 80;
 
+// A row that packs several inputs onto one line carries them as nested fields,
+// and it is those nested fields that own the keys. Flattening the row into its
+// parts is what lets both the layout signature and the in-place value refresh
+// treat a packed row exactly like the separate rows it replaced — without it,
+// every packed row reads as keyless and the section falls back to a full
+// rebuild on each edit, which is what loses focus mid-drag.
+function formFieldsOf(item) {
+  if (item?.type !== "universal-row") {
+    return [item];
+  }
+  // The row itself stays in the list so its own label still counts as layout;
+  // it carries no key, so the value refresh skips it.
+  return [item, item.field1, item.field2, item.field3].filter((field) => field);
+}
+
 // Everything about a set of field descriptions EXCEPT the values. Two form
 // contents with the same signature can share one set of DOM inputs, so the panel
 // can push new values into the existing form instead of rebuilding it.
 export function formContentsLayoutSignature(formContents) {
   return formContents
+    .flatMap((item) => formFieldsOf(item))
     .map((item) =>
       [
         item.type,
@@ -413,7 +431,7 @@ export default class SkeletonParametersPanel extends Panel {
   _applyFormContents(formContents) {
     const layout = formContentsLayoutSignature(formContents);
     if (layout === this._lastFormLayout) {
-      for (const item of formContents) {
+      for (const item of formContents.flatMap((row) => formFieldsOf(row))) {
         if (item.key == null || !this.infoForm.hasKey(item.key)) {
           continue;
         }
@@ -716,7 +734,15 @@ export default class SkeletonParametersPanel extends Panel {
       label: translate("sidebar.skeleton-parameters.tied"),
       value: summary.tied.mixed ? false : summary.tied.value,
     });
-    this._pushSummaryNumber(formContents, "width:total", "total-width", summary.total);
+    // The scale slider rides on the total, which is the number it moves; the
+    // two per-side numbers follow it proportionally.
+    formContents.push({
+      type: "universal-row",
+      label: translate("sidebar.skeleton-parameters.total-width"),
+      field1: { type: "text" },
+      field2: this._summaryNumberField("width:total", summary.total),
+      field3: this._scaleSliderField("width:scale", true),
+    });
     // On a single-sided contour the visible edge is the TOTAL, so the per-side
     // numbers and the split between them describe nothing on screen. Greyed and
     // blank rather than hidden: they are still stored, and still what the point
@@ -748,20 +774,6 @@ export default class SkeletonParametersPanel extends Panel {
         ? { step: 10, disabled: true, displayValue: "" }
         : { step: 10 }
     );
-    // Donor: scale 0.2–2.0 in 0.2 steps, shown here in percent; the number
-    // input accepts values beyond the slider range.
-    formContents.push({
-      type: "edit-number-slider",
-      key: "width:scale",
-      label: translate("sidebar.skeleton-parameters.scale"),
-      value: 100,
-      minValue: 20,
-      defaultValue: 100,
-      maxValue: 200,
-      step: 20,
-      allowInputBeyondRange: true,
-      resetAfterEdit: true,
-    });
     // Force-apply a master width profile to the selected points (two-click
     // confirm; the dropdown picks base/horizontal/contrast or a custom width).
     this._buildForceApplyRow(formContents, {
@@ -1151,14 +1163,20 @@ export default class SkeletonParametersPanel extends Panel {
       disabled: !canEdit,
     });
 
-    // Every serif length gets a scale slider directly beneath it, working like
-    // the point-width one: it always reads 100% and multiplies what is already
-    // there, so it stays useful across a mixed selection.
+    // Every serif length gets a scale slider on the same line as its number,
+    // working like the point-width one: it always reads 100% and multiplies
+    // what is already there, so it stays useful across a mixed selection. The
+    // slider carries no label of its own — sharing the length's row is what
+    // says which number it scales, and a second label per length pushed the
+    // whole section past a screen.
     const pushLength = (key, labelKey, summary) => {
-      this._pushSummaryNumber(formContents, key, labelKey, summary, {
-        disabled: !canEdit,
+      formContents.push({
+        type: "universal-row",
+        label: translate(`sidebar.skeleton-parameters.${labelKey}`),
+        field1: { type: "text" },
+        field2: this._summaryNumberField(key, summary, { disabled: !canEdit }),
+        field3: this._scaleSliderField(`${key}-scale`, canEdit),
       });
-      this._pushScaleSlider(formContents, `${key}-scale`, canEdit);
     };
 
     const pushHalf = (scope, half) => {
@@ -1274,11 +1292,10 @@ export default class SkeletonParametersPanel extends Panel {
   // A relative multiplier, parked at 100% so each drag scales whatever the
   // selection currently holds rather than pushing one absolute number onto every
   // point. Same range and step as the point-width scale.
-  _pushScaleSlider(formContents, key, canEdit) {
-    formContents.push({
+  _scaleSliderField(key, canEdit) {
+    return {
       type: "edit-number-slider",
       key,
-      label: translate("sidebar.skeleton-parameters.scale"),
       value: 100,
       minValue: 20,
       defaultValue: 100,
@@ -1287,21 +1304,29 @@ export default class SkeletonParametersPanel extends Panel {
       allowInputBeyondRange: true,
       disabled: !canEdit,
       resetAfterEdit: true,
-    });
+    };
   }
 
   // ---- Field description helpers -------------------------------------------
 
   _pushSummaryNumber(formContents, key, labelKey, summary, options = {}) {
-    const { blank = false, ...fieldOptions } = options;
     formContents.push({
+      label: translate(`sidebar.skeleton-parameters.${labelKey}`),
+      ...this._summaryNumberField(key, summary, options),
+    });
+  }
+
+  // The number input on its own, so a caller can either give it a row of its
+  // own or pack it beside something else.
+  _summaryNumberField(key, summary, options = {}) {
+    const { blank = false, ...fieldOptions } = options;
+    return {
       type: "edit-number",
       key,
-      label: translate(`sidebar.skeleton-parameters.${labelKey}`),
       value: blank || summary.mixed ? null : summary.value,
       placeholder: blank ? "" : summary.placeholder || undefined,
       ...fieldOptions,
-    });
+    };
   }
 
   _pushSummarySlider(
@@ -1369,8 +1394,32 @@ export default class SkeletonParametersPanel extends Panel {
           return;
         }
       }
-      // Scale sliders are excluded: they multiply what is stored, so streaming
-      // them would compound the factor once per frame.
+      // Scale sliders stream too. They multiply what is stored, which would
+      // compound once per frame if applied on top of itself — the stream helper
+      // restores the skeleton the drag started from before each frame, so every
+      // frame scales the same starting numbers and only the last one is kept.
+      if (valueStream && group === "width" && name === "scale") {
+        await scalePanelPointWidthStream(
+          this.sceneController,
+          this._widthPoints(),
+          valueStream,
+          this._undo("scale-width")
+        );
+        return;
+      }
+      if (valueStream && group === "serif" && name.endsWith("-scale")) {
+        const targets = serifScaleTargets(name.slice(0, -"-scale".length));
+        if (targets.length) {
+          await scalePanelSerifValueStream(
+            this.sceneController,
+            this._widthPoints(),
+            targets,
+            valueStream,
+            this._undo("scale-serif")
+          );
+          return;
+        }
+      }
       if (valueStream && group === "serif" && !name.endsWith("-scale")) {
         const makeValues = (streamed) =>
           name === "axisangle"
