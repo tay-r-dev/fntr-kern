@@ -1388,7 +1388,14 @@ export default class TransformationPanel extends Panel {
           );
           applyChange(layerGlyph, editChange);
           editChanges.push(consolidateChanges(editChange, changePath));
-          rollbackChanges.push(consolidateChanges(rollbackChange, changePath));
+          // Each object is moved on top of the one before it, so its rollback
+          // restores the state the PREVIOUS object left behind, not the state
+          // this whole edit started from. Undoing them front to back therefore
+          // ends on the second-to-last object's result and keeps every earlier
+          // move. They have to come off in the reverse order they went on —
+          // which is what the change collector does for changes it records
+          // itself, and what this hand-assembled list has to do by hand.
+          rollbackChanges.unshift(consolidateChanges(rollbackChange, changePath));
         }
       }
 
