@@ -18,9 +18,14 @@ skeleton is shaped the way it is.
 The per-feature design specs and implementation plans have been retired the same way: the
 `specs/` and `plans/` folders that carried the offset construction, the generated-segment
 gizmos, the curvature pin, the continuous natural solver and the true geometric handle ceiling
-are **dissolved and deleted**, their durable content folded into this doc and the feature model.
+are **dissolved**, their durable content folded into this doc and the feature model.
 Nothing forward-looking is left in a plan — if it is still true, it is in one of the three docs
 below.
+
+Two files remain under those folders — the serif generator's design and plan, dated 2026-07-30,
+plus the `serif-lab.html` mockup they were written against. They are shipped, so their durable
+content is now in feature model §8 and log entries 20–22; retire them the same way once nothing
+references them.
 
 | Doc                         | Answers                                                                                                                        |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -56,13 +61,13 @@ below.
 | F4  | **Tunni**               | shipped (WS-4)                  | fork-original, refactored      | 1 core + 1 editor module                                 | `fontra.tunni.*` layers                     |
 | F5  | **Point labels**        | shipped (WS-4.5)                | fork-original, relocated       | inside `distance-angle.js`                               | `fontra.point.labels` layer                 |
 | F6  | **Letterspacer**        | shipped (WS-5)                  | donor port                     | engine + panel + overlay                                 | Selection-info sidebar                      |
-| F7  | **Skeleton**            | shipped WS-6…WS-17              | re-integrated from donor       | 4 core + 9 editor + panel set                            | Skeleton Pen tool, right sidebar            |
+| F7  | **Skeleton**            | shipped WS-6…WS-17              | re-integrated from donor       | 5 core + 7 editor + panel set                            | Skeleton Pen tool, right sidebar            |
 | F8  | **Carried fork extras** | shipped, pre-dating the program | fork-original                  | `corner-overlap.js`, quad handles, equalize, pen-connect | scattered — see §3.8                        |
 
 Feature sizes, owned code only (shared-file hunks excluded):
 
 ```
-Skeleton      ████████████████████████████████████████  ~15,700 lines
+Skeleton      ████████████████████████████████████████  ~16,300 lines
 Letterspacer  █████                                      ~1,900
 Tunni         █████                                      ~1,850
 Measure+labels████                                       ~2,050  (F2 + F5 share distance-angle.js)
@@ -221,7 +226,8 @@ Verify before assuming it is wired — see §7 residue #2.
 
 ### F7 — Skeleton
 
-The largest feature by an order of magnitude: ~15,700 lines of owned code across 14 files.
+The largest feature by an order of magnitude: ~16,300 lines of owned code across 12 owned files
+(plus the tools that had to learn about generated contours, below).
 Stroke-based design — the designer draws centerlines with per-point widths, and the filled
 outline contours are generated live.
 
@@ -229,8 +235,9 @@ outline contours are generated live.
 
 | File                                       | Lines | Role                                                                                                                                                                                                                                                 |
 | ------------------------------------------ | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fontra-core/src/skeleton-model.js`        | 3555  | Schema, stable-id allocation, source defaults, accessors/mutators, rib projection, normals, D/S/X/Z semantics (`applyFixedRibDelta`, the equalize family), Tunni/gizmo geometry. **The single home for skeleton geometry constants.**                |
-| `fontra-core/src/skeleton-generator.js`    | 4466  | Centerline → outline. Owns segmentation, ribs, skeleton handle axes, collapsed sides, contour topology, provenance, nudges, grid emission, caps (butt/round/square/**drop**), and corner rounding.                                                   |
+| `fontra-core/src/skeleton-model.js`        | 3744  | Schema, stable-id allocation, source defaults, accessors/mutators, rib projection, normals, D/S/X/Z semantics (`applyFixedRibDelta`, the equalize family), Tunni/gizmo geometry. **The single home for skeleton geometry constants.**                |
+| `fontra-core/src/skeleton-generator.js`    | 4730  | Centerline → outline. Owns segmentation, ribs, skeleton handle axes, collapsed sides, contour topology, provenance, nudges, grid emission, caps (butt/round/square/**drop**/**serif**), and corner rounding.                                         |
+| `fontra-core/src/serif-geometry.js`        | 268   | **NEW** — the serif terminal as pure frame geometry: `computeSerifFrame`, `buildHalfSerif`, `buildSerifTerminal`. Knows nothing about strokes, trimming or splicing; the generator owns all of that. See feature model §8.                           |
 | `fontra-core/src/natural-handle-solver.js` | 320   | Pure automatic cubic-side geometry: fixed source-parameter offset samples, normalized perpendicular-error quadratic, skeleton-tension reference, input-only cusp/taper pull, positive frame-influence scale, and exact box-constrained minimization. |
 | `fontra-core/src/offset-cubic.js`          | 118   | Stateless authored cubic-side orchestrator. Builds the shared handle domain, calls the natural solver, then applies attached grid adjustments, pinned harmonic-mean tension, and detached absolute handles in that order.                            |
 
@@ -241,9 +248,9 @@ outline contours are generated live.
 | `views-editor/src/skeleton-editing.js`             | +1400 | **`editSkeleton` — the one write path (R-C).** Selection keys, target entries, contour-index bookkeeping, selection bounds; rib keys/addresses and their width/nudge executors; editable generated points and handles, provenance resolution, detach |
 | `views-editor/src/edit-tools-skeleton.js`          | +855  | Skeleton Pen drawing tool                                                                                                                                                                                                                            |
 | `views-editor/src/visualization-layer-skeleton.js` | +919  | 13 canvas layers                                                                                                                                                                                                                                     |
-| `views-editor/src/panel-skeleton-parameters.js`    | +1181 | Numeric editing panel (right sidebar)                                                                                                                                                                                                                |
-| `views-editor/src/skeleton-panel-edits.js`         | +741  | Panel → `editSkeleton` write helpers, streaming edits                                                                                                                                                                                                |
-| `views-editor/src/skeleton-panel-model.js`         | +460  | Panel read model: selection summaries, mixed/uniform state                                                                                                                                                                                           |
+| `views-editor/src/panel-skeleton-parameters.js`    | +1695 | Numeric editing panel (right sidebar). Rebuilds in place when only values changed (`formContentsLayoutSignature`), so a field keeps focus across an edit                                                                                             |
+| `views-editor/src/skeleton-panel-edits.js`         | +1012 | Panel → `editSkeleton` write helpers, streaming edits, relative scale helpers                                                                                                                                                                        |
+| `views-editor/src/skeleton-panel-model.js`         | +573  | Panel read model: selection summaries, mixed/uniform state                                                                                                                                                                                           |
 | `views-editor/src/panel-skeleton-defaults.js`      | +483  | Per-source defaults panel                                                                                                                                                                                                                            |
 
 > There is no `skeleton-ribs.js` and no `skeleton-generated.js`. An earlier draft of this doc
@@ -286,8 +293,8 @@ clicks, since the gizmos sit on and around the very handles direct manipulation 
 **Tests:** `test-skeleton-generator.js` (1454), `test-skeleton-model.js` (1052),
 `test-skeleton-tunni.js` (879), `test-skeleton-modifiers.js` (861),
 `test-skeleton-ribs.js` (641), `test-natural-handle-solver.js` (695),
-`test-offset-cubic.js` (385), `test-skeleton-source-defaults.js` (125),
-`test-skeleton-interpolation.js` (138).
+`test-offset-cubic.js` (385), `test-serif-geometry.js` (377),
+`test-skeleton-source-defaults.js` (125), `test-skeleton-interpolation.js` (138).
 Golden-master fixtures: `tests/data/skeleton-generator/fixtures.json` (2183), regenerated by
 `tests/scripts/make-skeleton-generator-fixtures.js` — which records **this** generator's own
 output, not any pre-port reference.
@@ -401,7 +408,7 @@ Skeleton data is per-layer, and `StaticGlyph` had no `customData` upstream. Mirr
 
 ## 6. Test coverage map
 
-`cd src-js/fontra-core && npm test` — currently **1559 tests**.
+`cd src-js/fontra-core && npm test` — currently **1690 tests**.
 
 | Feature                             | Automated                                                                                   | Manual only                                                 |
 | ----------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -439,8 +446,16 @@ when the doc was last verified, 2026-07-22 — re-check against the code before 
 2. **Letterspacer ↔ skeleton coupling** — verify whether sidebearing changes move skeleton
    data before assuming it works. (This is the coupling the sidebearing-variables work must
    route through — it is not yet in the base margin-set path.)
-3. **`skeleton-generator.js` is 4,466 lines.** Justified by the port, but it is the single
-   largest file in the fork — the one place defect **P6** (§9, monoliths) still bites.
+3. **`skeleton-generator.js` is 4,730 lines.** Justified by the port, but it is the single
+   largest file in the fork — the one place defect **P6** (§9, monoliths) still bites. The serif
+   was built the other way as a deliberate counter-example: its geometry is a separate 268-line
+   core module and only the trimming and splicing live in the generator.
+4. **A pin of exactly zero is read as "no pin"** in `shiftTensionsToMean`
+   (`tunni-calculations.js`), so the shape falls back to the natural solve there while the
+   smallest positive value snaps to nearly-collapsed handles — a step of tens of units at the
+   very bottom of the curvature gizmo's range, measured on `_external/g.json` and reproduced
+   with the serif switched off. Shared by every curvature pin in the app, so it was left alone
+   rather than fixed as a side effect of serif work. Reported 2026-08-02, undecided.
 
 ---
 
@@ -475,9 +490,24 @@ here. The hard constraints are all in the feature model: generated **point-count
 or candidate search; one **strictly convex objective** whose positive pull is derived only
 from the input skeleton and widths; the existing positive, non-crossing **handle domain**;
 the established **authored-state order**; and **a pinned curvature is permanent**.
-Read the feature model's §8 first — it lists what has already been tried here and rejected on
+Read the feature model's §9 first — it lists what has already been tried here and rejected on
 measurement, including two ideas that were re-proposed and reverted twice, and three guards that
 were deleted because the box subsumes them.
+
+**"Change the serif terminal"**
+`serif-geometry.js` + `test-serif-geometry.js` for anything about the terminal's own shape;
+`buildSerifCap` in `skeleton-generator.js` for how it is trimmed onto the stroke and spliced in.
+Keep that split: the geometry module never learns what a stroke is. Read feature model §8 first,
+in particular the release rule — **the terminal's on-curves are fixed in the serif's own frame
+and the edge is brought to them, never the reverse.** A terminal built off the cut is the one
+mistake this feature has already made and reverted.
+
+**"Touch anything a terminal trims"**
+A trimmed terminal makes the emitted segment shorter than the segment the generator solved, and
+anything that measures the emitted one is then measuring the wrong curve. `splitTerminalSideForRoundCap`
+publishes the uncut segment on the inserted point's provenance (`constructionSegment`) and
+`generatedSegmentConstructionPoints` in `skeleton-model.js` is the one reader that resolves it —
+go through that, and do not measure a generated segment's shape from `segment.points` directly.
 
 **Test this class of change with a sweep, not an assertion.** Hold the geometry fixed, walk one
 input through its range in fine steps, and measure the worst single-step movement against the
@@ -539,7 +569,7 @@ reintroduce:
   five times; interpolation, expressed _inside_ the rules, never did. → rail R-F (modifiers are
   behavior names + executor variants, not bypass flags).
 - **P6 — Monolith files.** Donor pointer was 7,496 lines. The fork keeps the pointer thin, but
-  `skeleton-generator.js` (~4,500 lines) is the one place this weight still lives (§7 residue #3).
+  `skeleton-generator.js` (~4,700 lines) is the one place this weight still lives (§7 residue #3).
 - **P7 — In-place rearchitecting.** Four months of refactoring a live donor feature produced two
   successive architectures and a long regression tail with no new capability — the reason this
   was a clean re-integration, not a refactor.

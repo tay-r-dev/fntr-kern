@@ -11,14 +11,15 @@ the defects it answers) lives in the map's §9.
 The design specs and implementation plans that produced the offset construction,
 the generated-segment gizmos, the curvature pin, the continuous natural solver and
 the true geometric handle ceiling have all been **dissolved into this doc and the
-map** — §3.2, §7 and §8 here carry their durable content, and §8 in particular is
-the register of what was tried and rejected. There are no `plans/` or `specs/`
-folders any more: if something is still true it is here or in the map. The
-narrative of how each landed is in `DEVELOPMENT-LOG.md`.
+map** — §3.2, §7, §8 and §9 here carry their durable content, and §9 in particular
+is the register of what was tried and rejected. The serif's own spec and plan are
+still on disk under `docs/superpowers/{specs,plans}/` and are the last two; their
+durable content is §8. Otherwise, if something is still true it is here or in the
+map. The narrative of how each landed is in `DEVELOPMENT-LOG.md`.
 
 Line numbers drift; **function names are the durable anchors** here. Verify
 against the code before relying on any specific location (`skeleton-generator.js`
-alone is ~5,200 lines).
+alone is ~4,700 lines).
 
 ---
 
@@ -37,8 +38,9 @@ Everything else is elaboration of that one idea:
 
 - **Ribs** — the width at a point, drawn as a bar across the centerline,
   draggable at both endpoints.
-- **Caps** — how open ends close: `butt` / `round` / `square` / **`drop`**
-  (forkra added the drop cap), each parameterized.
+- **Caps** — how open ends close: `butt` / `round` / `square` / **`drop`** /
+  **`serif`** (forkra added the last two), each parameterized, and mutually
+  exclusive. The serif is much the largest of them and has its own section, §8.
 - **Corner rounding** — sharp outline corners from non-smooth skeleton points,
   rounded per point, asymmetrically per side.
 - **Editable generated geometry** — individual generated outline points and
@@ -334,7 +336,9 @@ pure and independent (contour _i_'s output depends only on contour _i_):
    output (`stripCornerRoundMetadata`). A pairwise pass shrinks adjacent trims so
    they can't overlap.
 4. **Caps** (open contours) — butt / round / square / drop, built from the two
-   side ends plus tip points; handle lengths come from a tension parameter.
+   side ends plus tip points; handle lengths come from a tension parameter. The
+   **serif** is the one cap that does not simply close the two side ends: it
+   trims a length off each side first and splices its own terminal on. §8.
 5. **Assembly** — `left + endCap + reverse(right) + startCap` → one closed
    contour (`reverseContour`). Closed skeletons instead emit **two** contours
    (outer + counter-wound inner).
@@ -434,6 +438,20 @@ Losing any of these regresses the product:
 - **A pinned curvature is permanent** (§7) — the generator reproduces the stored
   number through skeleton, width and taper edits, clamping only its output. A pin
   that drifts makes the control pointless.
+- **A curvature pin moves handles, and nothing else.** No on-curve may move when
+  only the pin changes — not a rib end, not a terminal's release, not the bottom
+  of a serif's straight run. This is what forces the serif's release to be fixed
+  in its own frame (§8), and it is checkable: sweep the pin and sum each emitted
+  on-curve's travel, which must be exactly zero.
+- **A gizmo measures the curve its write governs.** The curvature gizmo's pin is
+  reproduced on the whole segment, so its starting value must be read from the
+  whole segment — via `constructionSegment` where a terminal has trimmed one.
+  Reading the emitted points directly makes the first drag jump, because the
+  number displayed and the number written describe different curves.
+- **A drag's geometry does not consult the panel's link flag.** `width.linked`
+  says how the designer types numbers in; a fixed-rib drag is a statement about
+  which of the two edges is pinned. Reading one from the other made the same drag
+  behave two ways inside one selection.
 - **The rules-tables interaction feel** — skeleton points behave exactly like
   path points under Shift/Alt because they run the same rules (C1). This is the
   feature's best UX decision.
@@ -616,7 +634,137 @@ change: mirroring flips the outline's winding and swapping the sides flips the
 emission order back. Contour-wide ownership (`singleSided`, `capBallSide`) can
 only be swapped when the **entire** contour is in the selection.
 
-## 8. Closed decisions and dead ends
+## 8. The serif terminal
+
+A cap style, so it is mutually exclusive with the other four, and offered only on
+open-contour endpoints. It is the only cap that **consumes stroke** rather than
+just closing it: it trims a length off each side of the outline and splices its
+own terminal in.
+
+The split is deliberate and must be kept:
+
+- `serif-geometry.js` (core, 268 lines) is the terminal's shape as pure geometry
+  in its own frame — `computeSerifFrame`, `buildHalfSerif`, `buildSerifTerminal`.
+  It has never heard of a stroke, a rib, a trim or a contour.
+- `buildSerifCap` in `skeleton-generator.js` owns everything about attaching that
+  shape to a stroke: where each side is cut, how the loose end is brought to the
+  terminal, and the splice.
+
+This is the counter-example to defect **P6** (arch map §9): the generator did not
+need to grow another 300 lines of geometry.
+
+### The frame
+
+Origin at the skeleton endpoint. **u** runs along the serif axis, positive toward
+the contour's left side, matching the generator's own rib convention, so a half
+stored as "left" is the half on the left. **v** is depth, perpendicular to the
+axis — not to the tangent — and positive back into the stroke, so the frame stays
+orthonormal in every mode.
+
+`axisMode` is `perpendicular` / `horizontal` / `vertical` / `absolute`, the last
+taking `axisAngle`. The axis is held at least `MIN_AXIS_TANGENT_SEPARATION_DEG`
+(15°) off the tangent: an axis that approaches the tangent makes the terminal
+degenerate, and the wings start to lie along the stroke rather than across it.
+
+**The serif axis is its own property and composes with `ribAngleLock`** rather
+than replacing it. The lock sets the rib the cap is built on; the axis sets the
+direction the serif runs. Both apply.
+
+### The two halves
+
+Seven fields per half, independent left and right, with a `linked` flag that
+copies left onto right:
+
+`wingLength`, `tipThickness`, `wingSlope`, `tipCutAngle`, `reach`, `tension`,
+`concavity`.
+
+Terminal-level, shared by both: `axisMode`, `axisAngle`, `undersideCup`,
+`straightDepth`.
+
+Null means **inherit**, so contour and source defaults stay live consumers
+exactly the way stroke width does (§2). `SERIF_LENGTH_FIELDS` — the four that are
+distances — are the only ones scaled by the source's `serifUnitsMode`
+(`absolute` / `normalized`, the latter multiplying by the stroke width).
+`tipCutAngle` is degrees; `tension` and `concavity` are dimensionless in every
+mode and are never scaled.
+
+**`tension` and `concavity` must not multiply.** They shape one cubic, the
+transition from the straight run down to the wing's tip, and both of its handles
+lie on the line from their own end toward the **wing's inner corner**. Concavity
+is the handle length as a fraction of the distance to that corner; tension is the
+balance between the two, bounded so neither can vanish. Aiming both at the corner
+is what makes the bracket a bracket, and it is also what makes the tangents
+unconditional: any non-zero handle length preserves them, so the two sliders are
+free to shape the curve without ever breaking the join. An earlier construction
+multiplied the two, which made either one at zero cancel the other — and since
+both defaulted to zero, a fresh serif was a flat bevel. A fresh serif now starts
+at tension 0.5, concavity 1.
+
+A half with `wingLength === 0` is a half that is **switched off** and must add
+nothing to the outline. Two things follow from that and both were found the hard
+way: it contributes no straight depth (the straight run is shared by the
+terminal, so without this a disabled side still pushes a spur out — and since the
+run is straight while the edge it leaves is not, that spur lands outside the
+stroke), and it does no hollowing (the corner has collapsed onto the tip, so
+bending toward it only dimples the foot line).
+
+### The release — the one rule to keep
+
+**The terminal's on-curves are fixed in the serif's own frame, and the stroke
+edge is brought to them. Never the reverse.**
+
+Both the release (where the serif takes over from the edge) and the bottom of the
+straight run sit on the flank line, straight up from the rib end, at depths the
+serif's own numbers decide. The cut in the edge only decides **how much curve to
+keep**; `anchorTerminalSplit` then pulls the loose end onto the release and turns
+the surviving handle onto the frame's depth axis, which is what keeps the join a
+real smooth point rather than a corner that happens to look shallow.
+
+Reading the release off the cut instead is the mistake this feature has already
+made and reverted. It is tempting because on a curved approach the edge really
+has drifted off the flank by the time the serif lets go, so building on the flank
+leaves a visible step. But a point taken from the cut is a function of the edge's
+shape, and therefore of everything that shapes the edge — so **a curvature pin
+started moving two on-curves along the stroke**, which is not what that gizmo
+does anywhere else in the editor. See §9.
+
+The cost is explicit and accepted: where the stroke wall has curved off the flank
+by the height the serif grabs at, the wall is bent back to meet it. Measured on
+`_external/g.json` as drawn, 2.6 units; up to ~32 at the very bottom of the
+curvature range, where the wall is a chord nowhere near the flank. The lever for
+that is the serif's reach, not the pin.
+
+### Point count
+
+**Seven on-curve points per terminal, at every parameter value**, including every
+degenerate one — a wingless half, zero thickness, zero cup. The straight run's
+top is not among them: it is where the trimmed edge already ends, so emitting it
+too would stack a second on-curve on the same spot. At `straightDepth === 0` the
+run has no length and its two ends coincide; that is a zero-length segment, not a
+missing point, and the count holds. Tested directly ("keeps seven on-curve points
+at every degenerate value") because this is the interpolation contract (§3).
+
+### The underside is one curve
+
+One cup value drives a single curve across the whole terminal, tip to tip — not
+one per half. The foot centre sits on the **skeleton**, not at the midpoint of
+the two tips: the axis modes routinely produce unequal halves, and a
+midpoint-anchored centre would drag the contact geometry off the alignment zone
+as the axis rotates.
+
+### What a trimmed terminal owes the rest of the editor
+
+A trim makes the **emitted** segment shorter than the segment the generator
+solved. Anything that measures the emitted one is measuring a different curve
+from the one a pin governs, so the split publishes the segment it cut from on the
+inserted point's provenance as `constructionSegment`, and
+`generatedSegmentConstructionPoints` resolves it for every reader. This is not
+serif-specific plumbing — round caps trim too, they just trim a sliver — but the
+serif is what made the error visible, at 83 units on a real glyph. §9.
+
+---
+
+## 9. Closed decisions and dead ends
 
 Each of these was designed or built, then measured or used, and withdrawn.
 Recorded so none is re-derived from first principles — several were re-proposed
@@ -645,3 +793,7 @@ once already.
 | **Score the system's rank by its normalized determinant**             | Calibrated in the wrong place: half strength at a determinant of `1e-6` of the squared trace is a condition number near a million, while the answer is already too sensitive at ten thousand — so it does nothing across the whole range where conditioning actually bites. Making the objective strictly convex deletes the quantity it was measuring.                                                                                   |
 | **Emit several cubics per skeleton cubic**                            | Would improve approximation, and changes point topology, provenance, interpolation and every segment-level control at once. Point-count stability is the interpolation contract (§3); the curvature gizmo is the affordance for what one cubic cannot express.                                                                                                                                                                            |
 | **Keep `handleTensions`' null return for "no reach ahead"**           | The null existed so its one caller could skip the whole shaping stage — which meant a segment whose tangent rays met behind an endpoint silently got no equalization, no pin and no ceiling. Defining `reach` once, finite and positive (§3.2), deletes the case rather than the check. The function is gone from `tunni-calculations.js`.                                                                                                |
+| **Build the serif terminal against the cut it made in the edge**      | Built, reverted. It does fix the step a flank-built terminal leaves on a curved approach, and it does so by making the terminal a function of the edge's shape — so a curvature pin, whose whole job is to reshape the edge, walked the release and the straight run's bottom along the stroke. Fix the step by bringing the edge to the terminal instead (§8).                                                                           |
+| **Let `tension` and `concavity` scale each other**                    | Built, reverted. Two sliders over one product means either at zero cancels the other; both defaulted to zero, so a fresh serif drew a flat bevel and neither slider appeared to do anything. They are now a length and a balance over the same corner-aimed construction, and independent.                                                                                                                                                |
+| **Rebuild the parameter form on every field change**                  | It is what `setFieldDescriptions` is for, and it clears `innerHTML` — so an arrow-key edit destroyed the input it came from and took focus with it, one increment per click. The panel now compares a layout signature and writes values in place when only values changed, skipping whichever field the user is currently in.                                                                                                            |
+| **Read a generated segment's curvature from its emitted points**      | Correct until a terminal trimmed one. The pin is reproduced on the whole segment while the emitted part can be much shorter — 83 units on a real serif — so the gizmo displayed a number that meant something else and the first drag jumped the shape. `constructionSegment` on the inserted point's provenance is the fix; every reader goes through `generatedSegmentConstructionPoints`.                                              |

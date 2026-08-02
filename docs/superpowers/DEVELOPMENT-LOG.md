@@ -1500,3 +1500,236 @@ Two straight-controlled golden fixtures moved only their four affected handle
 coordinates. Focused regression coverage includes the reported short-forward
 geometry, a real reach below one unit, canonical label argument order, and the
 existing solver/generator architecture suites.
+
+---
+
+## 20. The serif cap style — feature
+
+**Branch:** `feature/skeleton-serif-generator`
+**Dates:** 2026-07-30 – 2026-08-02
+**Spec / plan:** `specs/2026-07-30-serif-generator-design.md`,
+`plans/2026-07-30-serif-generator.md`, `serif-lab.html` (the mockup they were
+written against). Durable content is now feature model §8.
+
+### 1. Problem
+
+Open ends could close four ways — butt, round, square, drop — all of which just
+cap the two side ends. None of them can draw a serif, which is not a cap over the
+stroke's end but a terminal that **consumes** some of the stroke and replaces it
+with its own shape: two wings, a bracketed transition into each, and one
+underside curve across the foot.
+
+### 2. Solution
+
+A fifth cap style, `serif`, mutually exclusive with the rest and offered only on
+open-contour endpoints.
+
+The terminal's shape is a new pure core module, `serif-geometry.js` (268 lines):
+a frame with the origin on the skeleton endpoint, `u` along the serif axis and
+`v` into the stroke, then `buildHalfSerif` and `buildSerifTerminal` on top of it.
+That module has never heard of a stroke, a rib or a contour. Everything about
+attaching the shape to a stroke — trimming each side, bringing the loose end to
+the terminal, splicing — is `buildSerifCap` in the generator.
+
+Two independent halves of seven fields each (`wingLength`, `tipThickness`,
+`wingSlope`, `tipCutAngle`, `reach`, `tension`, `concavity`) with a `linked` flag,
+plus four terminal-level values (`axisMode`, `axisAngle`, `undersideCup`,
+`straightDepth`). Null means inherit, so contour and source defaults stay live
+consumers the way stroke width does.
+
+The axis is its own property with four modes and composes with `ribAngleLock`
+rather than replacing it; it is held at least 15° off the tangent. A source-level
+`serifUnitsMode` scales the four distance fields by stroke width when set to
+`normalized`. Panel controls live in the skeleton parameters sidebar.
+
+### 3. Commits
+
+`ecd436f1d` schema and cap style; `3d0782dac` mirroring; `eda8270b6` source-level
+units mode and the collapsed-point switch; `e767c2a93` the frame; `f4928aafb` the
+half; `461954d6f` terminal assembly; `9563fe0c1` trimming and splicing;
+`773d53273` reach clamping; `250084ed4` normalized units; `d853f85f3` opt-in
+collapsed-point removal; `5d89ddb31` stability sweeps and fixtures;
+`52ce5c9e7` panel controls.
+
+### 4. Challenges and findings
+
+**Point-count stability is harder for a terminal than for a cap.** Seven
+on-curves per terminal at _every_ parameter value, including a wingless half,
+zero thickness and zero cup. The straight run's top is not one of them — it is
+where the trimmed edge already ends — and at `straightDepth === 0` the run has no
+length and its two ends coincide, which is a zero-length segment rather than a
+missing point. Tested directly rather than inferred.
+
+**A half with no wing must add nothing.** Two separate leaks: the shared straight
+run still pushed a spur out of the disabled side, and since the run is straight
+while the edge it leaves is not, that spur landed _outside_ the stroke; and the
+hollow still bent toward a corner that had collapsed onto the tip, dimpling the
+foot line by half a unit.
+
+**The underside is one curve across the whole terminal, not one per half**, and
+its centre sits on the skeleton rather than midway between the two tips. The axis
+modes routinely produce unequal halves, and a midpoint-anchored centre drags the
+contact geometry off the alignment zone as the axis rotates.
+
+---
+
+## 21. The serif under live use — fixes
+
+**Branch:** `feature/skeleton-serif-generator`
+**Date:** 2026-07-30
+
+### 1. Problem
+
+Six rounds of reports from drawing with it. Two were shape, four were the panel.
+
+- `tension` and `concavity` did not emit sensible off-curves. Both defaulted to
+  zero, and a fresh serif drew a flat bevel.
+- Arrow keys in a numeric field moved the value once and then lost focus.
+- Each length wanted a relative scale slider beside it, like stroke width has.
+- The tip-cut, tension and concavity sliders did not update live, and got stuck
+  on the value they had when the point was selected.
+- The scale sliders held their thumb position after a drag instead of returning
+  to neutral, so the next drag re-applied the old factor.
+- The release point drew as a square, not a dot.
+
+### 2. Solution
+
+**Shape.** `tension` and `concavity` were multiplying: the off-chord component of
+both handles was `tension · concavity · (corner − mid)`, so either at zero
+cancelled the other. They are now two independent readings of one construction —
+both transition handles lie on the line from their own end toward the wing's
+inner corner; concavity is the handle length as a fraction of the distance to
+that corner, tension is the balance between the two, bounded so neither can
+vanish. Aiming both at the corner is also what makes the tangents unconditional.
+Defaults moved to tension 0.5, concavity 1, so a fresh serif reads as a serif.
+
+`wingSlope` and `reach` were reported as indistinguishable and are not: slope
+raises the wing's inner corner above the tip, reach is the run of stroke edge
+above that corner before the transition starts.
+
+**Panel.** Every field change rebuilt the whole form through
+`setFieldDescriptions`, which clears `innerHTML` — so the edit destroyed the
+input it came from. The panel now compares a layout signature and writes values
+in place when only values changed, skipping whichever field the user is in. The
+serif sliders were missing from the streaming branch entirely, so they only
+committed on release; they stream now, with the scale sliders deliberately
+excluded because they multiply what is stored and streaming would compound the
+factor once per frame. Scale sliders carry `resetAfterEdit`, which the width
+scale slider needed too.
+
+### 3. Commits
+
+`76229419c` tension/concavity; `d15ac81b8` focus, streaming and scale sliders;
+`67a9a6fa5` scale sliders return to neutral; `9b84e6cac` the release's smooth
+flag.
+
+### 4. Challenges and findings
+
+**The transition was not actually tangent, at any ordinary setting** — 10–37° off,
+and exactly tangent only where an unrelated clamp happened to pin it. Nobody
+reported that; it was found while checking a report that the release _point_
+should be smooth. The corner-aimed construction fixes both, and the `smooth` flag
+was separately never being set.
+
+**A depth clamp is the wrong tool for a degenerate half.** Killing the half-unit
+baseline dimple that way broke ordinary serif shapes, because it bit at concavity
+0.5–1 with no wing slope. The narrow fix — no hollow when there is no wing — is
+the correct one.
+
+**`7055e87cd` in this range was reverted by entry 22.** It made the terminal read
+its release off the cut it made in the edge, which fixes a real step on a curved
+approach and introduces a worse problem. Recorded in feature model §9 so it is
+not re-derived.
+
+---
+
+## 22. Three faults the serif exposed in shared code — fixes
+
+**Branch:** `feature/skeleton-serif-generator`
+**Date:** 2026-08-02
+
+### 1. Problem
+
+All three were reported as serif bugs. None of them was.
+
+The serif is more sensitive to the rest of the pipeline than any previous cap,
+because it _derives_ geometry from the trimmed stroke edge rather than closing an
+endpoint — so it leans on shared code that nothing else was leaning on hard
+enough to notice.
+
+1. Dragging the curvature gizmo moved the serif's release and the bottom of its
+   straight run along the stroke. A curvature pin is supposed to change handle
+   tension and nothing else.
+2. Grabbing the curvature gizmo on a segment with no pin yet jumped the shape,
+   then dragged smoothly, and jumped again after every reset back to generated.
+3. An S/D (fixed-rib) drag turned the panel's per-side widths, total and
+   distribution to mixed, differently depending on drag direction — and kept
+   doing it after the serif was switched off and its values cleared.
+
+### 2. Solution
+
+**1 — the terminal is fixed in its own frame.** The release and the straight
+run's bottom are back to being functions of the serif's own numbers, on the flank
+line. The cut in the edge now only decides how much curve to keep;
+`anchorTerminalSplit` pulls the loose end onto the release and turns the
+surviving handle onto the frame's depth axis, so the join stays smooth and the
+pin has nothing left to move but handle lengths.
+
+**2 — the gizmo reads the segment its pin governs.** A trim makes the emitted
+segment shorter than the one the generator solved, so the number read and the
+number written described different curves. `splitTerminalSideForRoundCap` now
+publishes the uncut segment on the inserted point's provenance as
+`constructionSegment`, and `generatedSegmentConstructionPoints` resolves it for
+every reader — the drag, the label and equalize.
+
+**3 — a drag does not consult the panel's link flag.** `applyFixedRibDelta` took
+its width out of the anchor side alone when `width.linked` was false and out of
+both sides when it was true. Both sides now always move, and the flag is put back
+afterwards instead of being overwritten by the write that moved them.
+
+### 3. Result
+
+Measured on `_external/g.json`.
+
+| Fault | Before                                                                    | After                                         |
+| ----- | ------------------------------------------------------------------------- | --------------------------------------------- |
+| 1     | release and straight-run bottom travel 25.7 and 22.4 units over the range | total on-curve travel 0.000000 over 400 steps |
+| 1     | join at the release opened as the pin moved                               | 0.0000° at every pin value                    |
+| 2     | gizmo reads 0.7487 for a stroke whose own value is 0.8725                 | reads 0.8725, same as the serif switched off  |
+| 2     | setting the number it displayed moved the handles 9.0 and 7.8 units       | moves nothing                                 |
+| 3     | three points at 20/20, middle one unlinked: 30/20 against 30/30, mirrored | all three 30/30, both drag directions         |
+
+Full suite 1690 passing throughout. Fault 3's fix changed no test, which is a
+decent sign the linked path was the intended semantics all along.
+
+### 4. Challenges and findings
+
+**Fault 1 has a cost, and it is stated rather than hidden.** Where the stroke wall
+has curved off the flank by the height the serif grabs at, the wall is now bent
+back to meet the terminal — 2.6 units on that G as drawn, up to ~32 at the very
+bottom of the curvature range, where the wall is a chord nowhere near the flank.
+The lever for that is the serif's reach, not the pin.
+
+**Fault 2 was present on round caps too, at 0.0002.** They trim a sliver; the
+serif trims 83 units. Same defect, four orders of magnitude apart, which is why
+it had survived this long.
+
+**Faults chased in the wrong order.** Before fault 2 was found, the same report
+was attributed twice to smaller defects that are real but were not causing it: a
+half-unit tolerance in the split bisection, and integer grid snapping on the edge
+handles the trim solves against. Both were measured — the release moved in steps
+up to 0.91 units that reversed direction at every grid snap — and neither was
+what was being reported. The lesson, now in memory: take a reported symptom
+literally instead of matching it to the nearest defect already in hand.
+
+**One finding left alone deliberately.** `shiftTensionsToMean` treats a pin of
+exactly 0 as "no pin", so the shape falls back to the natural solve there while
+the smallest positive value snaps to nearly-collapsed handles — tens of units of
+jump at the very bottom of the gizmo's range. Verified identical with the serif
+switched off. It is in the code path of every curvature pin in the app, so it was
+reported rather than fixed as a side effect of serif work. Arch map §7 residue #4.
+
+### 5. Commits
+
+`f9338db5a` the pin moves handles only; `a476b73e4` the gizmo reads its own
+segment; `f64138557` S/D drags ignore the link flag.
