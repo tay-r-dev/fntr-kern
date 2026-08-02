@@ -39,6 +39,29 @@ are independent of each other and either can land alone.
   renested or replaced. That drops it from a schema change to a panel change and
   moves it to the bottom of this list.
 
+### Ground rule: points collapse, they do not disappear
+
+Every point a serif can emit is emitted at every parameter value, including
+values where it has nowhere to go and lands on top of its neighbour. **A serif is
+allowed to collapse points to zero distance — on-curves and off-curves alike —
+and the one-unit minimum separation that applies elsewhere does not apply
+inside a terminal.** Coincident points and zero-length segments are the correct
+output, not a degenerate one.
+
+That is what keeps point count constant across the whole range, which is the
+cross-master interpolation contract. Removing them is opt-in per master via
+`serifRemoveCollapsedPoints`, and taking that option forfeits interpolation for
+serifed glyphs in that master — already stated at the source-default.
+
+Consequences when planning anything below:
+
+- A new field never needs a minimum value to keep its points apart. Zero is
+  always a legal setting and must emit the same points as any other setting.
+- "Switched off" means contributing no _shape_, not contributing no _points_ —
+  the obligation a wingless half already carries (feature model §8).
+- A discontinuity in a coupled parameter is a jump in shape only, never a jump in
+  topology. That makes it a drag-feel problem, not an interpolation problem.
+
 ---
 
 ## 1. Axis modes other than perpendicular
@@ -203,14 +226,13 @@ does.
   already saved with a non-zero reach, and the golden fixtures regenerate.
 - Two renames and two new fields per half — the inherit-via-null chain,
   mirroring, the panel and the source defaults all follow.
-- Point-count stability has to be re-established across the new range, including
-  contour easing at zero distance and at the disabled end of the coupling. A
-  disabled contour easing must add no points, the same obligation a wingless half
-  already carries (feature model §8).
-- The coupling is a discontinuity at serif easing 0 if contour easing switches on
-  at a non-zero distance. Decide whether crossing zero ramps the distance in from
-  nothing or snaps it — the latter breaks interpolation between masters that sit
-  either side of zero.
+- Contour easing emits its points at every setting, including zero distance and
+  the disabled half of the coupling, where they collapse onto the corner. See the
+  ground rule above: disabled means no shape, not no points.
+- The coupling is a shape discontinuity at serif easing 0 if contour easing
+  switches on at a non-zero distance. Topology is unaffected, so this is a
+  drag-feel question, not an interpolation one: decide whether crossing zero ramps
+  the distance in from nothing or snaps it.
 
 ---
 
