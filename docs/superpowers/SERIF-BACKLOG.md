@@ -17,23 +17,25 @@ before it can be planned.
 | --- | ---------------------------------------- | ------------------- | ------ | --------- |
 | 1   | Axis modes other than perpendicular      | core geometry model | (1)    | undecided |
 | 2   | Rework the easing model                  | core geometry model | (4)    | open      |
-| 3   | Preset storage and editing               | source defaults     | (6.1)  | open      |
-| 4   | Preset apply / create / update           | panel               | (6.2)  | open      |
-| 5   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | open      |
-| 6   | Scale sliders inline with inputs         | panel layout        | (2)    | open      |
-| 7   | Shape-and-easing reframe                 | panel labels        | (4)    | open      |
+| 3   | Lift the minimum-separation clamps       | core geometry       | new    | open      |
+| 4   | Preset storage and editing               | source defaults     | (6.1)  | open      |
+| 5   | Preset apply / create / update           | panel               | (6.2)  | open      |
+| 6   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | open      |
+| 7   | Scale sliders inline with inputs         | panel layout        | (2)    | open      |
+| 8   | Shape-and-easing reframe                 | panel labels        | (4)    | open      |
 
-Blocking: 3 → 4 · 2 → 7 (the reframe groups the fields item 2 may redefine, but
-the reframe is cheap to redo, so this only sets the order, not a gate).
+Blocking: 3 → 2 (the easing rework assumes zero is a legal value for every field,
+which the clamps currently prevent — land 3 first or land them together) · 4 → 5
+· 2 → 8 (the reframe groups by the easings item 2 defines).
 
-Items 5 and 6 both touch the same sliders and should ship as one pass, but they
+Items 6 and 7 both touch the same sliders and should ship as one pass, but they
 are independent of each other and either can land alone.
 
 ### Decided
 
 - **Presets are per master**, held in the source defaults, not per font. This
   removes the units problem a font-wide preset would have had (absolute lengths
-  are wrong in every master but one) and lets item 3 follow the existing custom
+  are wrong in every master but one) and lets item 4 follow the existing custom
   width / cap preset pattern exactly.
 - **The shape-and-easing reframe is presentation only.** No field is renamed,
   renested or replaced. That drops it from a schema change to a panel change and
@@ -236,7 +238,37 @@ does.
 
 ---
 
-## 3. Preset storage and editing
+## 3. Lift the minimum-separation clamps
+
+The ground rule above says a serif may collapse any point to zero distance. The
+code does not currently allow it: several clamps exist specifically to stop
+things reaching zero, and they have to come out before the rule is true.
+
+### The clamps, and what to do with each
+
+| Clamp                                             | Purpose as written                                                       | Verdict                                                                                                                 |
+| ------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `MIN_HANDLE_SHARE` 0.25 / `MAX_HANDLE_SHARE` 0.75 | "keep both handles alive… a handle of zero length gives up the tangency" | **Remove.** This is the rule stated as a constant. Balance must reach 0 and 1.                                          |
+| `MAX_HANDLE_TO_CORNER` 1                          | stops the two controls crossing and looping the curve                    | **Keep.** Prevents a self-intersecting outline, not a collapse.                                                         |
+| `MIN_AXIS_TANGENT_SEPARATION_DEG` 15              | a parallel axis leaves no flank to release onto                          | **Revisit with item 1.** May become a shear-factor limit instead.                                                       |
+| `clampReach`'s `Math.max(…, 1)` floor             | a terminal may only consume its own segment                              | **Split.** Segment ownership is a real constraint and stays; the one-unit floor under it is the collapse rule and goes. |
+| `Math.round` on emitted points                    | integer grid quantization                                                | **Keep.** The grid is the grid; two points rounding onto each other is a collapse, which is now legal.                  |
+
+### Why it matters beyond tidiness
+
+`MIN_HANDLE_SHARE` is the reason the tangency argument in feature model §8 holds
+— "any non-zero handle length preserves both tangents". Removing it means a
+handle _can_ hit zero, and at zero the release becomes a corner. That is the
+correct output under the ground rule, but it means the smooth-release guarantee
+becomes conditional rather than unconditional, and feature model §5 needs
+amending to say so.
+
+Test the ends of every range directly. A clamp that is removed but still enforced
+somewhere downstream is worse than one that is documented.
+
+---
+
+## 4. Preset storage and editing
 
 **Per master, in the source defaults.** There is already a working template for
 this and the serif should follow it rather than invent a second mechanism.
@@ -266,12 +298,12 @@ option source in the parameters panel.
 
 ---
 
-## 4. Preset apply / create / update
+## 5. Preset apply / create / update
 
 The control in the parameters panel: a select listing the presets, with apply,
 create-new, and a double-press update-in-place.
 
-Additive on top of item 3. Two notes:
+Additive on top of item 4. Two notes:
 
 - **Create** needs a name. The defaults panel currently auto-names
   (`Custom ${n + 1}`) and lets the row be renamed afterwards; doing the same here
@@ -283,7 +315,7 @@ Additive on top of item 3. Two notes:
 
 ---
 
-## 5. Scale sliders: live update and integer step
+## 6. Scale sliders: live update and integer step
 
 One change, not two. Doing either half alone is a regression.
 
@@ -325,7 +357,7 @@ resulting font units rather than the stored ratio, or do not round in that mode.
 
 ---
 
-## 6. Scale sliders inline with inputs
+## 7. Scale sliders inline with inputs
 
 Each serif length currently emits two form rows: the number input, then an
 `edit-number-slider` row beneath it carrying its own "Scale" label. Four lengths
@@ -346,7 +378,7 @@ reintroduces the focus loss that development log 21 fixed.
 
 ---
 
-## 7. Shape-and-easing reframe
+## 8. Shape-and-easing reframe
 
 **Presentation only.** No field renamed, renested or replaced; the stored model
 is untouched, so there is no migration, no fixture change and no interpolation
