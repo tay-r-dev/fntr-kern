@@ -7,25 +7,37 @@ here).
 
 Items are ordered by **how much of the code's structure has to move**, deepest
 first, with blocking relationships allowed to override that order. The numbering
-here is this document's own; the origin of each item is noted so the original
-list stays traceable.
+here is this document's own; the origin of each item in the original list is
+noted so it stays traceable.
 
 Status legend: **open** = agreed, not started · **undecided** = needs a decision
 before it can be planned.
 
-| #   | Item                                | Depth               | Origin | Status    |
-| --- | ----------------------------------- | ------------------- | ------ | --------- |
-| 1   | Axis modes other than perpendicular | core geometry model | (1)    | open      |
-| 2   | Shape-and-easing reframe            | stored model?       | (4)    | undecided |
-| 3   | Preset storage and editing          | source defaults     | (6.1)  | undecided |
-| 4   | Preset apply / create / update      | panel               | (6.2)  | open      |
-| 5   | Live update for scale sliders       | edit pipeline       | (3)    | open      |
-| 6   | Scale sliders produce integers      | edit pipeline       | (5)    | open      |
-| 7   | Scale sliders inline with inputs    | panel layout        | (2)    | open      |
+| #   | Item                                     | Depth               | Origin | Status    |
+| --- | ---------------------------------------- | ------------------- | ------ | --------- |
+| 1   | Axis modes other than perpendicular      | core geometry model | (1)    | undecided |
+| 2   | `reach` and `wingSlope` are redundant    | core geometry model | (4)    | open      |
+| 3   | Preset storage and editing               | source defaults     | (6.1)  | open      |
+| 4   | Preset apply / create / update           | panel               | (6.2)  | open      |
+| 5   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | open      |
+| 6   | Scale sliders inline with inputs         | panel layout        | (2)    | open      |
+| 7   | Shape-and-easing reframe                 | panel labels        | (4)    | open      |
 
-Blocking: 1 → 2 (the axis rework may change the field set that 2 regroups) ·
-2 → 3 (a preset stores a bundle of field names; freeze the taxonomy first) ·
-3 → 4 · 5 and 6 are one change and must land together (see item 6).
+Blocking: 3 → 4 · 2 → 7 (the reframe groups the fields item 2 may redefine, but
+the reframe is cheap to redo, so this only sets the order, not a gate).
+
+Items 5 and 6 both touch the same sliders and should ship as one pass, but they
+are independent of each other and either can land alone.
+
+### Decided
+
+- **Presets are per master**, held in the source defaults, not per font. This
+  removes the units problem a font-wide preset would have had (absolute lengths
+  are wrong in every master but one) and lets item 3 follow the existing custom
+  width / cap preset pattern exactly.
+- **The shape-and-easing reframe is presentation only.** No field is renamed,
+  renested or replaced. That drops it from a schema change to a panel change and
+  moves it to the bottom of this list.
 
 ---
 
@@ -78,15 +90,28 @@ particular:
 - the reach and straight-run heights, currently measured along `v` from a
   baseline through the skeleton endpoint
 
-**Open:** whether the foot baseline stays a line of constant `v` through the
-skeleton endpoint (a slanted foot in horizontal mode on an upright stem) or
-becomes a line perpendicular to the axis. These differ as soon as the frame is
-sheared and they are visibly different serifs.
+### The decision this needs first
 
-**Open:** whether the 15° minimum separation between axis and tangent survives.
-It exists because a parallel axis leaves no flank to release onto. In a sheared
-frame the degeneracy is the same but the clamp may need to act on the shear
-factor rather than the angle.
+**Which reference does the wing use once the two disagree?** Today every height
+is measured square to the foot, so the wings are an even slab whichever way the
+foot points. Once the flank has to follow the wall, the wing must pick one:
+
+- **Even slab** — thickness stays square to the foot. Constant wing thickness
+  end to end; the join where the wing meets the stem becomes a shallow wedge.
+- **Follows the stem** — thickness is measured along the stem. The flank lies
+  exactly on the wall with no join, and the wing becomes a parallelogram,
+  visibly thicker at the stem than at the tip.
+
+Identical on an upright stem with a perpendicular foot; they only diverge in the
+tilted modes. This is a drawing decision, and it determines the whole
+construction below it, so it is a gate on planning this item.
+
+### Also open
+
+Whether the 15° minimum separation between axis and tangent survives. It exists
+because a parallel axis leaves no flank to release onto. In a sheared frame the
+degeneracy is the same, but the clamp may need to act on the shear factor rather
+than on the angle.
 
 ### Constraints that still hold
 
@@ -97,48 +122,64 @@ it from the shape looking right.
 
 ---
 
-## 2. Shape-and-easing reframe
+## 2. `reach` and `wingSlope` are redundant
 
-**Undecided: this is either a panel regrouping or a schema change, and the two
-have very different costs.**
+Reported as "I can't figure out what reach does — in practice it's the same as
+slope, with the curve apex changing if there's easing." That is exactly right,
+and it is measurable.
 
-The proposal is to present the serif's construction as two concerns — the shape
-(where the material is) and the easing (how the transition gets there) — rather
-than as seven flat numbers per half.
+### Evidence
 
-The existing seven map onto that split cleanly enough:
+`buildHalfSerif`, wing 40, tip thickness 20, tension 0.5. Comparing
+`wingSlope: 15, reach: 0` against `wingSlope: 0, reach: 15`:
 
-| Concern | Fields                                                   |
-| ------- | -------------------------------------------------------- |
-| Shape   | `wingLength`, `tipThickness`, `wingSlope`, `tipCutAngle` |
-| Easing  | `reach`, `tension`, `concavity`                          |
+| `concavity` | Emitted on-curves       | Handles                                       |
+| ----------- | ----------------------- | --------------------------------------------- |
+| 0           | identical to 3 decimals | identical — the two settings give one outline |
+| 0.5         | identical to 3 decimals | `control1` and `control2` differ              |
+| 1           | identical to 3 decimals | `control1` and `control2` differ              |
 
-plus the terminal-level `undersideCup` and `straightDepth`, which are shape, and
-`axisMode` / `axisAngle`, which are neither — they place the terminal rather than
-form it.
+The two fields move **no emitted point differently at any setting**. Every
+difference between them lives in the two transition handles, and only when
+`concavity` is non-zero.
 
-**If it is presentation only** — two headers in the parameters panel, existing
-keys untouched — it is a small change to `_buildSerifSection` and belongs at the
-bottom of this list, not here.
+### Why
 
-**If it changes the stored model** — renaming fields, nesting them under `shape`
-and `easing`, or replacing any of the seven with a derived pair — then it is a
-schema change and carries the full weight: normalization, the inherit-via-null
-chain through point → contour → source, mirroring, the golden fixtures, and a
-migration for any file already saved with a serif. It also has to preserve the
-guarantee that no field can cancel another (development log 21: `tension` and
-`concavity` used to multiply, and either at zero killed the other).
+```js
+const wingInnerV = tipThickness + wingSlope;
+const corner = { u: flankU, v: wingInnerV };
+const straightBottom = { u: flankU, v: wingInnerV + reach };
+```
 
-**Question to settle before this can be planned:** is the reframe about what the
-panel shows, or about what a serif _is_? Item 3 depends on the answer, because a
-preset stores field names.
+`reach` is measured **from the corner**, and `wingSlope` raises the corner. So
+slope lifts the release by its own amount as a side effect of steering the
+bracket, and that lift is all reach does. The redundancy is the lift.
+
+Second symptom in the same construction: `control2 = lerp(straightBottom, corner,
+…)`, so at `reach === 0` the lower handle collapses onto the release at every
+easing value. Measured above: with slope 15 and reach 0, `control2` equals
+`straightBottom` at concavity 0.5 and 1. The release is a corner regardless of
+easing, which means **slope alone cannot produce a bracket** — it needs a
+non-zero reach before it does anything visible.
+
+### Direction
+
+Give the release its own height above the foot instead of an offset from the
+corner, leaving `wingSlope` to steer the bracket's departure from the tip and
+nothing else. Clamp the release to stay above the corner, since the corner has to
+lie between the tip and the release for the bracket to run the right way.
+
+Small in code — one construction line plus a clamp — but it is a shape change for
+every serif already drawn, so it needs the fixtures regenerated and a note in the
+log. It is a model change, not a panel one: two controls with one effect cannot
+be relabelled apart.
 
 ---
 
 ## 3. Preset storage and editing
 
-There is already a working template for this in the codebase, and the serif
-should follow it rather than invent a second mechanism.
+**Per master, in the source defaults.** There is already a working template for
+this and the serif should follow it rather than invent a second mechanism.
 
 `panel-skeleton-defaults.js` edits named lists held in the source defaults —
 `customWidthsUppercase`, `customWidthsLowercase`, `customCapSquare`,
@@ -149,28 +190,7 @@ a new key in `SKELETON_SOURCE_DEFAULT_KEYS` holding an array of
 `{ name, ...fields }`, a new block of rows in the defaults panel, and a new
 option source in the parameters panel.
 
-### The one real decision
-
-The original request says presets belong **in font info**. Every preset list that
-exists today lives in the **source defaults**, edited from the editor's skeleton
-defaults sidebar. These are different scopes with different consequences:
-
-- **Source defaults** (existing pattern) — per master. Each master can hold its
-  own serif proportions, which is what you want when the serif thickens with
-  weight. Costs: a preset must be created in each master, and the two can drift.
-- **Font info** (as requested) — one list for the whole font. Create once, use
-  everywhere. Costs: absolute lengths in a shared preset are wrong in every
-  master but one, unless the preset is stored in normalized units.
-
-The `serifUnitsMode` source default (`absolute` | `normalized`) already exists
-and scales the four `SERIF_LENGTH_FIELDS` by stroke width. A font-level preset
-stored in normalized units is coherent; stored in absolute units it is not.
-
-**Question to settle:** font-level list, source-level list, or font-level list
-that is required to be normalized. This decides where the editing UI goes and
-whether it can reuse the defaults panel's rows at all.
-
-### Also to settle
+### To settle when planning
 
 - Does a preset cover both halves, or one half that can be applied to either
   side? Applying a single-half preset to the right side is the mirroring case,
@@ -180,6 +200,9 @@ whether it can reuse the defaults panel's rows at all.
   foot and a slanted terminal.
 - Does a preset include `undersideCup` and `straightDepth`? They are per-terminal
   rather than per-half.
+- Absolute or normalized lengths. `serifUnitsMode` already exists at source
+  level; a per-master preset can safely store absolute units, but a preset copied
+  between masters cannot.
 
 ---
 
@@ -188,19 +211,23 @@ whether it can reuse the defaults panel's rows at all.
 The control in the parameters panel: a select listing the presets, with apply,
 create-new, and a double-press update-in-place.
 
-Additive once item 3 has settled storage. Two notes:
+Additive on top of item 3. Two notes:
 
 - **Create** needs a name. The defaults panel currently auto-names
   (`Custom ${n + 1}`) and lets the row be renamed afterwards; doing the same here
   avoids a modal.
-- **Double-press to update** is a destructive action behind a repeated click.
-  The defaults panel already has a confirm-on-second-press idiom for delete
+- **Double-press to update** is a destructive action behind a repeated click. The
+  defaults panel already has a confirm-on-second-press idiom for delete
   (`_customDeleteConfirm`); reuse it rather than adding a second interaction
   grammar for the same kind of confirmation.
 
 ---
 
-## 5. Live update for scale sliders
+## 5. Scale sliders: live update and integer step
+
+One change, not two. Doing either half alone is a regression.
+
+### Live update
 
 The serif scale sliders are deliberately excluded from the streaming path today,
 and the exclusion is load-bearing:
@@ -210,59 +237,76 @@ and the exclusion is load-bearing:
 
 A relative control cannot stream while it reads its multiplicand from live
 storage. The fix is a **drag baseline**: snapshot the affected values when the
-drag starts, and each streamed frame applies the current factor to the snapshot
-rather than to whatever the last frame wrote. On commit, one undo record from
-baseline to final.
+drag starts, and have each streamed frame apply the current factor to the
+snapshot rather than to whatever the last frame wrote. On commit, one undo record
+from baseline to final.
 
-This is not serif-specific. The point-width scale slider is relative in exactly
-the same way and has the same limitation, so the baseline belongs in the shared
-panel edit path, not in the serif branch — Rail R-B (one write path) and R-D (no
-kind-branching in shared code).
-
-It removes a stated constraint from that shared path, which is why this sits
-above the layout items despite being smaller in line count.
-
----
-
-## 6. Scale sliders produce integers
+### Integer step
 
 `scalePanelSerifValue` writes `Math.max(0, current * factor)` with no rounding,
 so scaling a wing of 40 by 95% stores 38 but by 97% stores 38.8. Compare
 `scalePanelPointWidth`, which rounds and re-normalizes so the two halves still
 sum to the intended total.
 
-**This must land with item 5, not before or after it.** Rounding a value that is
-recomputed from live storage every frame quantizes the drift and makes it worse;
-rounding a value recomputed from a fixed baseline is stable. Baseline plus
-rounding is one change with one behaviour; either alone is a regression.
+### Why they are one change
+
+Rounding a value recomputed from live storage every frame quantizes the
+compounding and makes the drift worse. Rounding a value recomputed from a fixed
+baseline is stable. Baseline plus rounding is one behaviour.
+
+Neither half is serif-specific. The point-width scale slider is relative in
+exactly the same way and has the same limitation, so the baseline belongs in the
+shared panel edit path, not in the serif branch — Rail R-B (one write path) and
+R-D (no kind-branching in shared code).
 
 To settle: rounding under `serifUnitsMode: normalized`, where the stored number
 is a ratio of stroke width and an integer is meaningless. Either round the
-resulting font units rather than the stored ratio, or don't round in that mode.
+resulting font units rather than the stored ratio, or do not round in that mode.
 
 ---
 
-## 7. Scale sliders inline with inputs
+## 6. Scale sliders inline with inputs
 
-Each serif length currently emits two form rows: the number input, then a full
+Each serif length currently emits two form rows: the number input, then an
 `edit-number-slider` row beneath it carrying its own "Scale" label. Four lengths
 per half plus two terminal-level ones means the section is mostly scale sliders.
 
-The shared form component already supports this. `_addUniversalRow` renders
-`field1` into the label cell and `field2` / `field3` into the value cell, which
-is exactly a labelled input with a slider beside it. `_pushScaleSlider` becomes
-part of the length's own row rather than a row of its own, and the redundant
-label disappears.
+The shared form component already supports the layout. `_addUniversalRow` renders
+`field1` into the label cell and `field2` / `field3` into the value cell, which is
+exactly a labelled input with a slider beside it. `_pushScaleSlider` becomes part
+of the length's own row rather than a row of its own, and the redundant label
+disappears.
 
 The work is not in the rendering. It is in the parameters panel's in-place update
 path: `_applyFormContents` walks top-level items and matches `item.key` against
-the form's registered keys, and `formContentsLayoutSignature` builds its
-signature the same way. Neither descends into a universal row's nested fields, so
-both need to — otherwise the section falls back to a full rebuild on every edit
-and reintroduces the focus loss that entry 21 fixed.
+the form's registered keys, and `formContentsLayoutSignature` builds its signature
+the same way. Neither descends into a universal row's nested fields, so both need
+to — otherwise the section falls back to a full rebuild on every edit and
+reintroduces the focus loss that development log 21 fixed.
 
-Lowest structural cost of the seven, and it reads as the largest improvement per
-line changed.
+---
+
+## 7. Shape-and-easing reframe
+
+**Presentation only.** No field renamed, renested or replaced; the stored model
+is untouched, so there is no migration, no fixture change and no interpolation
+consequence.
+
+Two headers in the serif section of the parameters panel, splitting the seven
+half-fields by what they do:
+
+| Concern | Fields                                                   |
+| ------- | -------------------------------------------------------- |
+| Shape   | `wingLength`, `tipThickness`, `wingSlope`, `tipCutAngle` |
+| Easing  | `reach`, `tension`, `concavity`                          |
+
+`undersideCup` and `straightDepth` are shape but terminal-level; `axisMode` and
+`axisAngle` are neither — they place the terminal rather than form it, and should
+stay in their own group below the divider where they already are.
+
+Sequenced after item 2 because that item may move `reach` from easing to shape,
+or remove the need for it to appear as its own control at all. The reframe is
+cheap enough to redo that this is an ordering preference, not a gate.
 
 ---
 
