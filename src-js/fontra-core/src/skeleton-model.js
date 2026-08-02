@@ -3495,12 +3495,52 @@ export function getSkeletonSegmentHandles(contour, point, role) {
   };
 }
 
+// A terminal that trims the stroke edge — a serif does — emits only the part of
+// the segment that survived the cut, while the curvature pin is reproduced on
+// the whole segment. Measuring the emitted part would therefore report a number
+// the pin does not mean, and the first drag would jump the shape from one to the
+// other. The generator publishes the uncut segment on the inserted point for
+// exactly this; it is stored in side order, so it is turned to face the same way
+// as the emitted segment before being used.
+function untrimmedConstructionSegment(segmentPoints, provenance) {
+  if (segmentPoints?.length !== 4) {
+    return null;
+  }
+  const carrier = provenance?.findIndex(
+    (item) => item?.constructionSegment?.length === 4
+  );
+  if (carrier === undefined || carrier < 0) {
+    return null;
+  }
+  const stored = provenance[carrier].constructionSegment;
+  if (
+    stored.some((point) => !Number.isFinite(point?.x) || !Number.isFinite(point?.y))
+  ) {
+    return null;
+  }
+  // The end that was not cut is still exactly where the generator put it, so it
+  // says which way round the stored segment goes.
+  const anchor = carrier === 0 ? segmentPoints[3] : segmentPoints[0];
+  const anchorIndex = carrier === 0 ? 3 : 0;
+  const near = Math.hypot(
+    stored[anchorIndex].x - anchor.x,
+    stored[anchorIndex].y - anchor.y
+  );
+  const far = Math.hypot(
+    stored[3 - anchorIndex].x - anchor.x,
+    stored[3 - anchorIndex].y - anchor.y
+  );
+  return far < near ? [...stored].reverse() : stored;
+}
+
 // The segment as the generator constructed it. Emitted on-curves carry their
 // nudge and handles never do, so subtracting the published nudge recovers the one
 // space every stored number lives in. Every reader of a generated segment's
 // curvature goes through here — the drag, the equalize command and the label.
 export function generatedSegmentConstructionPoints(segmentPoints, provenance) {
-  return segmentPoints.map((point, index) => {
+  const untrimmed = untrimmedConstructionSegment(segmentPoints, provenance);
+  const points = untrimmed ?? segmentPoints;
+  return points.map((point, index) => {
     if (index !== 0 && index !== 3) {
       return point;
     }

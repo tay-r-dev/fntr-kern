@@ -3251,6 +3251,17 @@ function splitTerminalSideForRoundCap(
   const originalHandle1 = segmentPoints[1];
   const originalHandle2 = segmentPoints[2];
   withRoundCapProvenance(insertedPoint, referenceEndpoint);
+  // Keep the segment the trim was cut out of. The curvature gizmo reads its
+  // number off the segment as emitted, but the pin it writes is reproduced on
+  // the whole untrimmed segment, so on a trimmed terminal the two are talking
+  // about different curves and the first drag snaps the shape from one to the
+  // other. This is what lets the gizmo measure the curve the pin governs.
+  if (insertedPoint._provenance) {
+    insertedPoint._provenance.constructionSegment = segmentPoints.map((point) => ({
+      x: point.x,
+      y: point.y,
+    }));
+  }
   const rewrittenSegment = [
     cloneRoundCapPoint(startPoint),
     withRoundCapProvenance(buildSplitOffCurve(leftPoints[1]), originalHandle1),
