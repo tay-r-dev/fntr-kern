@@ -16,7 +16,7 @@ before it can be planned.
 | #   | Item                                     | Depth               | Origin | Status    |
 | --- | ---------------------------------------- | ------------------- | ------ | --------- |
 | 1   | Axis modes other than perpendicular      | core geometry model | (1)    | undecided |
-| 2   | `reach` and `wingSlope` are redundant    | core geometry model | (4)    | open      |
+| 2   | Rework the easing model                  | core geometry model | (4)    | open      |
 | 3   | Preset storage and editing               | source defaults     | (6.1)  | open      |
 | 4   | Preset apply / create / update           | panel               | (6.2)  | open      |
 | 5   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | open      |
@@ -122,11 +122,12 @@ it from the shape looking right.
 
 ---
 
-## 2. `reach` and `wingSlope` are redundant
+## 2. Rework the easing model
 
 Reported as "I can't figure out what reach does — in practice it's the same as
-slope, with the curve apex changing if there's easing." That is exactly right,
-and it is measurable.
+slope, with the curve apex changing if there's concavity." That is exactly right,
+and it is measurable. The fix is not a repair of `reach`; the easing model is
+replaced. See **Direction** below.
 
 ### Evidence
 
@@ -162,17 +163,54 @@ easing value. Measured above: with slope 15 and reach 0, `control2` equals
 easing, which means **slope alone cannot produce a bracket** — it needs a
 non-zero reach before it does anything visible.
 
-### Direction
+### Direction — two separate easings
 
-Give the release its own height above the foot instead of an offset from the
-corner, leaving `wingSlope` to steer the bracket's departure from the tip and
-nothing else. Clamp the release to stay above the corner, since the corner has to
-lie between the tip and the release for the bracket to run the right way.
+Not a repair of the existing three fields. The easing model is replaced by two
+independently engaged easings.
 
-Small in code — one construction line plus a clamp — but it is a shape change for
-every serif already drawn, so it needs the fixtures regenerated and a note in the
-log. It is a model change, not a panel one: two controls with one effect cannot
-be relabelled apart.
+**Serif easing** — the hollow in the wing's slope. It spans the **whole** slope,
+so the slope's own length is the curve's length and `reach` disappears as a
+field. Signed: negative bulges convex, 0 is a flat chamfer, positive is the
+classic hollow bracket. Two parameters:
+
+| New name  | Was         | Meaning                                  |
+| --------- | ----------- | ---------------------------------------- |
+| `amount`  | `concavity` | how deep the hollow is                   |
+| `balance` | `tension`   | which end of the slope the curve favours |
+
+The current construction is kept as-is — both handles aimed at the wing's inner
+corner, one length split between them (development log 21). Only the names, the
+span and the removal of `reach` change.
+
+**Contour easing** — corner rounding where the serif meets the stem, at the one
+corner on that side. Independent of the hollow: it applies even at serif easing
+0, which is what lets a slab or Didone terminal have a softened junction without
+a bracket. Two parameters, matching the pattern used everywhere else in the
+feature:
+
+| Field       | Meaning                                   |
+| ----------- | ----------------------------------------- |
+| `distance`  | how far back from the corner it starts    |
+| `curvature` | how the rounding bends over that distance |
+
+**Coupling.** Contour easing is disabled across serif easing 0 → −1, and enabled
+again on positive values. A convex wing has no junction to soften; a hollow one
+does.
+
+### Consequences
+
+- `reach` is removed from `SERIF_HALF_FIELDS`. Migration needed for any serif
+  already saved with a non-zero reach, and the golden fixtures regenerate.
+- Two renames and two new fields per half — the inherit-via-null chain,
+  mirroring, the panel and the source defaults all follow.
+- Point-count stability has to be re-established across the new range, including
+  contour easing at zero distance and at the disabled end of the coupling. A
+  disabled contour easing must add no points, the same obligation a wingless half
+  already carries (feature model §8).
+- The coupling is a discontinuity at serif easing 0 if contour easing switches on
+  at a non-zero distance. Decide whether crossing zero ramps the distance in from
+  nothing or snaps it — the latter breaks interpolation between masters that sit
+  either side of zero.
 
 ---
 
@@ -292,21 +330,22 @@ reintroduces the focus loss that development log 21 fixed.
 is untouched, so there is no migration, no fixture change and no interpolation
 consequence.
 
-Two headers in the serif section of the parameters panel, splitting the seven
-half-fields by what they do:
+Headers in the serif section of the parameters panel, grouping the half-fields by
+what they do. Assuming item 2 has landed:
 
-| Concern | Fields                                                   |
-| ------- | -------------------------------------------------------- |
-| Shape   | `wingLength`, `tipThickness`, `wingSlope`, `tipCutAngle` |
-| Easing  | `reach`, `tension`, `concavity`                          |
+| Group          | Fields                                                   |
+| -------------- | -------------------------------------------------------- |
+| Shape          | `wingLength`, `tipThickness`, `wingSlope`, `tipCutAngle` |
+| Serif easing   | `amount`, `balance`                                      |
+| Contour easing | `distance`, `curvature`                                  |
 
 `undersideCup` and `straightDepth` are shape but terminal-level; `axisMode` and
 `axisAngle` are neither — they place the terminal rather than form it, and should
 stay in their own group below the divider where they already are.
 
-Sequenced after item 2 because that item may move `reach` from easing to shape,
-or remove the need for it to appear as its own control at all. The reframe is
-cheap enough to redo that this is an ordering preference, not a gate.
+Sequenced after item 2, which defines the two easing groups this is grouping by.
+The reframe is cheap enough to redo that this is an ordering preference, not a
+gate.
 
 ---
 
