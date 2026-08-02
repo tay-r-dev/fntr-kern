@@ -863,11 +863,12 @@ function collectFixedRibAllowances(
         getSkeletonPointWidth(point, contour?.defaultWidth) - MIN_FIXED_RIB_TOTAL_WIDTH
       );
     }
-    // Linked ribs move BOTH sides by the same amount, so the far side can reach
-    // the floor before the anchor does - and when it does the drag is finished,
-    // because that edge is already down on the skeleton. Without this the far side
-    // pinned at zero while the drag carried on compressing the anchor alone.
-    const sides = point?.width?.linked !== false ? [anchorSide, farSide] : [anchorSide];
+    // A fixed-rib drag moves BOTH sides by the same amount, so the far side can
+    // reach the floor before the anchor does - and when it does the drag is
+    // finished, because that edge is already down on the skeleton. Without this
+    // the far side pinned at zero while the drag carried on compressing the
+    // anchor alone.
+    const sides = [anchorSide, farSide];
     return Math.max(
       0,
       Math.min(
@@ -937,10 +938,18 @@ function applyFixedRibWidthDelta(
     defaultWidth,
     anchorSide,
     Math.max(MIN_FIXED_RIB_HALF_WIDTH, originalHalfWidth + widthDelta),
-    // Linking would move the far half-width by the same amount and so travel the
-    // edge twice as far as the drag.
-    { linked, round }
+    // Both sides always move by the same amount here, whatever the point's own
+    // width link says. The drag holds one edge while the skeleton point follows
+    // the cursor, and that is a statement about the two edges, not about how the
+    // designer chose to type widths in. Taking it out of the anchor side alone
+    // instead - which is what the link flag used to do - leaves the point
+    // lopsided, and on a selection where only some points are linked it leaves
+    // half of them lopsided and the other half not, which is what turns the
+    // panel's per-side and distribution readouts to mixed after one drag.
+    { linked: true, round }
   );
+  // The link flag is the designer's, not the drag's, so put it back.
+  workingPoint.width.linked = linked;
 }
 function getFixedRibAnchorSide(contour, projectedDelta, compress) {
   if (contour.singleSided === "left" || contour.singleSided === "right")
