@@ -1737,3 +1737,63 @@ Replaced the corner-aimed bracket with the single-attractor construction so reac
 
 `f9338db5a` the pin moves handles only; `a476b73e4` the gizmo reads its own
 segment; `f64138557` S/D drags ignore the link flag.
+
+---
+
+## 23. Scale sliders became draggable labels — rework
+
+### 1. Problem
+
+Every serif length and the point's total width carried a relative scale slider on
+the same row as its number. Two costs. Each slider ate a third of the row, and the
+serif section had eleven of them. And the control was indirect: the thumb reported
+a percentage, so setting a length meant knowing what it currently was, working out
+the ratio, and watching the number rather than the slider.
+
+### 2. Solution
+
+The label scrubs. Pressing a parameter's name and moving sideways moves its number
+one step per pixel; shift is ten, control a tenth. Linear, deliberately — an
+accelerating scrub returns a different number for the same hand movement depending
+on how fast the hand moved, so nothing about it can be learned and no round value
+can be landed on without watching the readout.
+
+Three pieces, deliberately separate:
+
+- `number-scrub.js` in fontra-core: pixels, modifiers, step, clamping, rounding.
+  No DOM, which is the only way any of it gets tested — the view packages carry no
+  harness.
+- `_attachScrub` in the shared form component: the pointer events, on the label
+  rather than the input. An input is a place to select text and type into, and a
+  drag starting inside one fights both.
+- The panel routes it. Every number field in the section now scrubs; the routing
+  is checked before the other streaming branches, because a scrubbed number would
+  otherwise be read as an absolute value by whichever branch claims its group.
+
+What travels down the stream is the CHANGE from where the drag started, not a
+value. Adding that change per point is what keeps a mixed selection mixed — a 40
+and a 60 dragged up by 10 become 50 and 70 instead of collapsing onto one number.
+The existing streaming helper already restored the pre-drag skeleton before each
+frame, which is exactly what a relative drag needs, so this was routing rather
+than new machinery. That helper was split so contours can use it too.
+
+### 3. Commits
+
+### 4. Challenges and findings
+
+**Multiplication is gone and that is a real loss.** A scale slider grows a serif as
+a unit, keeping its proportions; a scrub adds a fixed amount to each number and
+changes them. Deliberate, and to be reinstated separately — likely as a modifier on
+the same scrub rather than as a returning slider.
+
+**Two clamps disagreed with the panel.** The nudge floored every serif length at
+zero, copied from the scale path, but `wingSlope` is signed and the whole lower
+half of its range is a real family of shapes. And the number fields declared no
+minimum at all, so a drag past the bottom kept counting down in the box while the
+shape had already stopped, and the number snapped back on release — the same defect
+that had just been fixed on the bracket sliders. Both fixed by putting the bound
+where the panel can see it.
+
+**`resetAfterEdit` died with the sliders.** It existed so a relative thumb returned
+to neutral after a drag; the value-refresh path's exception for it is gone, and the
+rule is now simply that the field the user is in is left alone.

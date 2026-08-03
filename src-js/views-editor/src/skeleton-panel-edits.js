@@ -5,12 +5,17 @@
 // generated geometry (Global Constraints).
 
 import { ChangeCollector } from "@fontra/core/changes.js";
-import { generateFromSkeleton } from "@fontra/core/skeleton-generator.js";
+import {
+  SERIF_HALF_DEFAULTS,
+  generateFromSkeleton,
+} from "@fontra/core/skeleton-generator.js";
 import {
   findGeneratedPathAddress,
   getSkeletonData,
   getSkeletonHandleOffset,
   getSkeletonHandleOffsetKey,
+  getSkeletonPointHalfWidth,
+  getSkeletonPointWidth,
   isSkeletonSideLocked,
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
@@ -206,23 +211,15 @@ export async function setPanelPointDistribution(
   );
 }
 
-// Streaming variant of setPanelPointDistribution: applies slider values to the
-// canvas as they arrive (throttled), while producing exactly ONE undo record
-// spanning the whole drag. Every tick restores the pre-drag layer state and
-// re-applies from there, so the last recorded change IS original -> final.
-// Stream a slider's values onto the selected points in realtime: snapshot the
-// layers, then per throttled tick restore the snapshot and re-apply the
-// current value, so the drag lands as ONE undo record (1.2.2 recipe).
-export async function setPanelPointValuesStream(
-  sceneController,
-  pointAddresses,
-  valueStream,
-  applyToPoint,
-  undoLabel
-) {
-  if (!pointAddresses.length) {
-    return null;
-  }
+// The one streaming edit. Applies a live drag's values to the canvas as they
+// arrive (throttled) while producing exactly ONE undo record spanning the whole
+// drag: every tick restores the pre-drag layer state and re-applies from there,
+// so the last recorded change IS original -> final (1.2.2 recipe). Restoring
+// first is also what lets a RELATIVE drag work — a nudge or a scale re-reads the
+// same starting numbers each frame instead of compounding on its own output.
+//
+// Points and contours both ride on this; only the mutator differs.
+async function streamOntoSkeleton(sceneController, valueStream, mutate, undoLabel) {
   const THROTTLE_MS = 32;
   return await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
     const editingLayers = sceneController.getEditingLayerFromGlyphLayers(glyph.layers);
@@ -252,18 +249,7 @@ export async function setPanelPointValuesStream(
       const allChanges = [];
       for (const [layerName, layerGlyph] of entries) {
         const changes = editSkeleton(layerGlyph, (working) => {
-          for (const address of pointAddresses) {
-            const resolved = resolveSkeletonAddressAcrossLayers(
-              referenceSkeletonData,
-              working,
-              address.contourId,
-              address.pointId
-            );
-            if (!resolved || resolved.point.type) {
-              continue;
-            }
-            applyToPoint(resolved.point, resolved.contour, value);
-          }
+          mutate(working, referenceSkeletonData, value);
         });
         allChanges.push(changes.prefixed(["layers", layerName, "glyph"]));
       }
@@ -297,6 +283,67 @@ export async function setPanelPointValuesStream(
     await sendIncrementalChange(lastCollector.change);
     return { changes: lastCollector, undoLabel, broadcast: true };
   }, SKELETON_PANEL_SENDER);
+}
+
+export async function setPanelPointValuesStream(
+  sceneController,
+  pointAddresses,
+  valueStream,
+  applyToPoint,
+  undoLabel
+) {
+  if (!pointAddresses.length) {
+    return null;
+  }
+  return streamOntoSkeleton(
+    sceneController,
+    valueStream,
+    (working, reference, value) => {
+      for (const address of pointAddresses) {
+        const resolved = resolveSkeletonAddressAcrossLayers(
+          reference,
+          working,
+          address.contourId,
+          address.pointId
+        );
+        if (!resolved || resolved.point.type) {
+          continue;
+        }
+        applyToPoint(resolved.point, resolved.contour, value);
+      }
+    },
+    undoLabel
+  );
+}
+
+export async function setPanelContourValuesStream(
+  sceneController,
+  contourAddresses,
+  valueStream,
+  applyToContour,
+  undoLabel
+) {
+  if (!contourAddresses.length) {
+    return null;
+  }
+  return streamOntoSkeleton(
+    sceneController,
+    valueStream,
+    (working, reference, value) => {
+      for (const address of contourAddresses) {
+        const contour = resolveContourAcrossLayers(
+          reference,
+          working,
+          address.contourId
+        );
+        if (!contour) {
+          continue;
+        }
+        applyToContour(contour, value);
+      }
+    },
+    undoLabel
+  );
 }
 
 export async function setPanelPointDistributionStream(
@@ -348,41 +395,21 @@ export async function setPanelPointTied(
   );
 }
 
-// Scale effective widths by `factor`, keeping a minimum total width of 2.
-export async function scalePanelPointWidth(
+// ---- Scrubbing: move by a change rather than set to a value -----------------
+//
+// Dragging a field's label sends the CHANGE from where the drag started, not a
+// value. Adding that change to each point's own number is what keeps a mixed
+// selection mixed: a 40 and a 60 dragged up by 10 become a 50 and a 70, where
+// setting them both would collapse the difference with no warning.
+//
+// All of these are relative, so they MUST run through the streaming helper,
+// which restores the pre-drag skeleton before every frame. Applied to their own
+// output instead they would compound and run away within a single drag.
+
+export async function nudgePanelPointWidthStream(
   sceneController,
   pointAddresses,
-  factor,
-  undoLabel
-) {
-  return editSelectedSkeletonPoints(
-    sceneController,
-    pointAddresses,
-    (point, _address, { defaultWidth }) =>
-      scaleOnePointWidth(point, defaultWidth, factor),
-    undoLabel
-  );
-}
-
-function scaleOnePointWidth(point, defaultWidth, factor) {
-  const width = point.width || {};
-  const left = Math.max(0, (width.left ?? defaultWidth / 2) * factor);
-  const right = Math.max(0, (width.right ?? defaultWidth / 2) * factor);
-  const total = Math.max(2, left + right);
-  const scale = left + right > 0 ? total / (left + right) : 1;
-  point.width = {
-    left: Math.round(left * scale),
-    right: Math.round(right * scale),
-    linked: width.linked !== false,
-  };
-}
-
-// Streaming variant: the stroke follows the thumb. Each frame restores the
-// skeleton the drag started from before applying, so the factor multiplies the
-// starting widths every time rather than compounding frame over frame.
-export async function scalePanelPointWidthStream(
-  sceneController,
-  pointAddresses,
+  side,
   valueStream,
   undoLabel
 ) {
@@ -390,8 +417,60 @@ export async function scalePanelPointWidthStream(
     sceneController,
     pointAddresses,
     valueStream,
-    (point, contour, value) =>
-      scaleOnePointWidth(point, contour.defaultWidth, (Number(value) || 100) / 100),
+    (point, contour, change) => {
+      const defaultWidth = contour.defaultWidth;
+      if (side === "total") {
+        const current = getSkeletonPointWidth(point, defaultWidth);
+        setSkeletonPointTotalWidth(point, defaultWidth, current + Number(change));
+        return;
+      }
+      const current = getSkeletonPointHalfWidth(point, defaultWidth, side);
+      setSkeletonPointSideWidth(point, defaultWidth, side, current + Number(change), {
+        linked: point?.width?.linked !== false,
+      });
+    },
+    undoLabel
+  );
+}
+
+export async function nudgePanelContourDefaultWidthStream(
+  sceneController,
+  contourAddresses,
+  valueStream,
+  undoLabel
+) {
+  return setPanelContourValuesStream(
+    sceneController,
+    contourAddresses,
+    valueStream,
+    (contour, change) => {
+      setSkeletonContourDefaultWidth(
+        contour,
+        (contour.defaultWidth ?? 0) + Number(change)
+      );
+    },
+    undoLabel
+  );
+}
+
+export async function nudgePanelCapParameterStream(
+  sceneController,
+  pointAddresses,
+  field,
+  valueStream,
+  undoLabel
+) {
+  return setPanelPointValuesStream(
+    sceneController,
+    pointAddresses,
+    valueStream,
+    (point, _contour, change) => {
+      // A cap parameter the point does not store is inheriting, and there is no
+      // resolved value to move away from here. Treat the drag as starting from
+      // zero rather than pinning the point to a default it never chose.
+      const current = Number.isFinite(point[field]) ? point[field] : 0;
+      setSkeletonCapParameters(point, { [field]: current + Number(change) });
+    },
     undoLabel
   );
 }
@@ -551,64 +630,45 @@ export async function setPanelSerifParameters(
   );
 }
 
-// Multiply one serif length by a factor, per point, the way the width scale
-// slider does. Scaling has to happen per point rather than on a panel summary so
-// a mixed selection keeps its differences instead of collapsing to one number.
-//
-// `targets` is a list of {side, field} for half fields, or {field} for the
-// terminal-level ones. A value the point does not store is resolved from the
-// contour first; if neither has one there is nothing to scale and the point is
-// left inheriting rather than being pinned to a scaled default.
-export async function scalePanelSerifValue(
-  sceneController,
-  pointAddresses,
-  targets,
-  factor,
-  undoLabel
-) {
-  return editSelectedSkeletonPoints(
-    sceneController,
-    pointAddresses,
-    (point, _address, { contour }) => {
-      const endpoints = skeletonContourEndpointIndices(contour);
-      if (!endpoints) {
-        return;
-      }
-      const pointIndex = contour.points.indexOf(point);
-      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
-        return;
-      }
-      scaleOnePointSerif(point, contour, targets, factor);
-    },
-    undoLabel
-  );
-}
+// The serif lengths are distances and cannot go below zero — except the wing
+// slope, which is a signed offset: negative tilts the wing's inner face the
+// other way, and the whole lower half of its range is a real family of shapes.
+const SIGNED_SERIF_FIELDS = new Set(["wingSlope"]);
 
-// Serif lengths are font units and the generator quantizes to the grid anyway,
-// so a scale that leaves fractions behind only stores a number the outline
-// never uses — and makes the next scale start from a value the panel isn't
-// showing. Round here instead.
-function scaleOnePointSerif(point, contour, targets, factor) {
+// Move one serif number per point by the drag's change, keeping a mixed
+// selection mixed. `targets` is a list of {side, field} for half fields, or
+// {field} for the terminal-level ones.
+//
+// A value the point does not store is inheriting. The contour is consulted
+// first; past that the drag starts from the generator's own default, which is
+// the number the panel is showing and the terminal is drawn from — starting from
+// zero instead would make the first pixel of the drag jump the shape.
+function nudgeOnePointSerif(point, contour, targets, change) {
   const values = {};
   for (const { side, field } of targets) {
-    const current = side
+    const stored = side
       ? (point.serif?.[side]?.[field] ?? contour.serif?.[side]?.[field])
       : (point.serif?.[field] ?? contour.serif?.[field]);
-    if (!Number.isFinite(current)) {
-      continue;
-    }
-    const scaled = Math.round(Math.max(0, current * factor));
+    const current = Number.isFinite(stored)
+      ? stored
+      : side
+        ? (SERIF_HALF_DEFAULTS[field] ?? 0)
+        : 0;
+    // Serif lengths are font units and the generator quantizes to the grid
+    // anyway, so a fraction left behind only stores a number the outline never
+    // uses — and makes the next drag start from a value the panel isn't showing.
+    const raw = current + change;
+    const moved = Math.round(SIGNED_SERIF_FIELDS.has(field) ? raw : Math.max(0, raw));
     if (side) {
-      values[side] = { ...(values[side] || {}), [field]: scaled };
+      values[side] = { ...(values[side] || {}), [field]: moved };
     } else {
-      values[field] = scaled;
+      values[field] = moved;
     }
   }
   setSkeletonSerifParameters(point, values);
 }
 
-// Streaming variant, same restore-then-apply guarantee as the width scale.
-export async function scalePanelSerifValueStream(
+export async function nudgePanelSerifValueStream(
   sceneController,
   pointAddresses,
   targets,
@@ -619,7 +679,7 @@ export async function scalePanelSerifValueStream(
     sceneController,
     pointAddresses,
     valueStream,
-    (point, contour, value) => {
+    (point, contour, change) => {
       const endpoints = skeletonContourEndpointIndices(contour);
       if (!endpoints) {
         return;
@@ -628,7 +688,7 @@ export async function scalePanelSerifValueStream(
       if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
         return;
       }
-      scaleOnePointSerif(point, contour, targets, (Number(value) || 100) / 100);
+      nudgeOnePointSerif(point, contour, targets, Number(change));
     },
     undoLabel
   );

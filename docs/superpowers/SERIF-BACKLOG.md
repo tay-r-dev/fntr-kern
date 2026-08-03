@@ -15,18 +15,19 @@ lands in the order, and commits and notes referring to an item stay valid.
 Status legend: **open** = agreed, not started · **undecided** = needs a decision
 before it can be planned.
 
-| #   | Item                                     | Depth               | Origin | Status    |
-| --- | ---------------------------------------- | ------------------- | ------ | --------- |
-| 1   | Axis modes other than perpendicular      | core geometry model | (1)    | undecided |
-| 2   | Rework the easing model                  | core geometry model | (4)    | open      |
-| 3   | Lift the minimum-separation clamps       | core geometry       | new    | open      |
-| 9   | Couple a serif's rib to its neighbour    | core geometry model | new    | open      |
-| 4   | Preset storage and editing               | source defaults     | (6.1)  | open      |
-| 5   | Preset apply / create / update           | panel               | (6.2)  | open      |
-| 10  | Cancel a scale drag with right-click     | edit pipeline       | new    | open      |
-| 6   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | **done**  |
-| 7   | Scale sliders inline with inputs         | panel layout        | (2)    | **done**  |
-| 8   | Shape-and-easing reframe                 | panel labels        | (4)    | open      |
+| #   | Item                                     | Depth               | Origin | Status     |
+| --- | ---------------------------------------- | ------------------- | ------ | ---------- |
+| 1   | Axis modes other than perpendicular      | core geometry model | (1)    | undecided  |
+| 2   | Rework the easing model                  | core geometry model | (4)    | open       |
+| 3   | Lift the minimum-separation clamps       | core geometry       | new    | open       |
+| 9   | Couple a serif's rib to its neighbour    | core geometry model | new    | open       |
+| 4   | Preset storage and editing               | source defaults     | (6.1)  | open       |
+| 5   | Preset apply / create / update           | panel               | (6.2)  | open       |
+| 10  | Cancel a drag with right-click           | edit pipeline       | new    | open       |
+| 11  | Multiply, not just add, from a scrub     | edit pipeline       | new    | open       |
+| 6   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | superseded |
+| 7   | Scale sliders inline with inputs         | panel layout        | (2)    | superseded |
+| 8   | Shape-and-easing reframe                 | panel labels        | (4)    | open       |
 
 Blocking: 3 → 2 (the easing rework assumes zero is a legal value for every field,
 which the clamps currently prevent — land 3 first or land them together) · 4 → 5
@@ -327,26 +328,26 @@ maintains — with the drag handler and the panel both landing on it for free.
 
 ---
 
-## 10. Cancel a scale drag with right-click
+## 10. Cancel a drag with right-click
 
-Right mouse button during a scale slider drag abandons the drag and puts the
-values back where they were, rather than committing what the thumb currently
-reads.
+Right mouse button during a drag abandons it and puts the values back where they
+were, rather than committing what the pointer currently reads.
 
 The restore machinery already exists and is exactly what makes this cheap. The
 streaming edit path snapshots every editable layer when the drag opens and
 restores that snapshot before applying each frame — a cancel is that same restore
 with no re-apply, and then no undo record at all rather than a no-op one.
 
-The work is in getting the signal there. The slider component owns the pointer
-interaction and reports values through a stream; the stream has no way to say
-"discarded" as opposed to "ended". So this needs a cancel channel from the
-component through the form to the edit path, and the edit path needs to
+The work is in getting the signal there. The slider component and the label scrub
+both own their pointer interaction and report through a stream; the stream has no
+way to say "discarded" as opposed to "ended". So this needs a cancel channel from
+the component through the form to the edit path, and the edit path needs to
 distinguish the two endings.
 
-Worth doing generally rather than for the scale sliders alone — every streaming
-slider in the panel has the same gap — but the scale sliders are where it is felt,
-because their edit is relative and there is no obvious value to type back.
+Every streaming control in the panel has the same gap, but it is felt most on the
+label scrubs, because their edit is relative and there is no obvious value to type
+back. The scrub already listens for `pointercancel`, which is the same ending;
+right-click needs to reach the same place.
 
 ---
 
@@ -397,7 +398,31 @@ Additive on top of item 4. Two notes:
 
 ---
 
-## 6. Scale sliders: live update and integer step — DONE
+## 11. Multiply, not just add, from a scrub
+
+The scale sliders were removed in favour of dragging a field's label (dev log
+§23). A scrub adds: dragging up by 10 adds 10 to every selected number. The
+sliders multiplied: 110% grew a serif as a unit and kept its proportions.
+
+That is a real operation and it has no replacement right now. The likely shape is
+a modifier on the same scrub — hold a key and the change is a percentage of each
+number rather than a flat amount — rather than bringing a second control back.
+
+Note the two rounding questions the scale path already had, which come with it:
+what to do under `serifUnitsMode: normalized`, where the stored number is a ratio
+of stroke width and an integer is meaningless, and whether a multiply should
+round per point or carry fractions between drags.
+
+---
+
+## 6. Scale sliders: live update and integer step — SUPERSEDED
+
+Both of these landed and both were then removed with the scale sliders themselves
+(dev log §23). Kept for the findings, which outlived the feature: the streaming
+helper's restore-before-apply is what makes any relative drag safe, and it is now
+what the scrub rides on.
+
+### The original entry
 
 Both scale sliders — the serif lengths and the point width — now stream, and both
 round what they store.
@@ -419,7 +444,7 @@ applies to the stored number in both modes.
 
 ---
 
-## 7. Scale sliders inline with inputs — DONE
+## 7. Scale sliders inline with inputs — SUPERSEDED
 
 Each serif length is one row now: label, number input, scale slider. Same for
 point width, where the scale slider sits on the total — the number it actually

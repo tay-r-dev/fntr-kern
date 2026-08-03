@@ -16,12 +16,12 @@ import { Form } from "@fontra/web-components/ui-form.js";
 import Panel from "./panel.js";
 import {
   SKELETON_PANEL_SENDER,
+  nudgePanelCapParameterStream,
+  nudgePanelContourDefaultWidthStream,
+  nudgePanelPointWidthStream,
+  nudgePanelSerifValueStream,
   resetPanelGeneratedHandle,
   resetPanelRibs,
-  scalePanelPointWidth,
-  scalePanelPointWidthStream,
-  scalePanelSerifValue,
-  scalePanelSerifValueStream,
   setPanelCapParameters,
   setPanelCapStyle,
   setPanelContourDefaultWidth,
@@ -207,10 +207,9 @@ function serifHalfValuesFromField(name, value) {
   return values;
 }
 
-// Which stored serif numbers one scale slider multiplies. A slider under a
-// linked half drives both sides, which is what "linked" means everywhere else in
-// this panel.
-function serifScaleTargets(name) {
+// Which stored serif numbers one label scrub moves. A field under a linked half
+// drives both sides, which is what "linked" means everywhere else in this panel.
+function serifNudgeTargets(name) {
   if (name === "cup") {
     return [{ field: "undersideCup" }];
   }
@@ -434,11 +433,9 @@ export default class SkeletonParametersPanel extends Panel {
           continue;
         }
         // Writing back into the input the user just used would fight their next
-        // keystroke, and it already holds the value it reported to us. Scale
-        // sliders are the exception: they are relative, so the thumb has to
-        // return to neutral for the next drag to scale from where the edit
-        // landed rather than compounding from where the thumb was left.
-        if (item.key === this._activeFieldKey && !item.resetAfterEdit) {
+        // keystroke, and it already holds the value it reported to us — a scrub
+        // has been writing the running number into it all along.
+        if (item.key === this._activeFieldKey) {
           continue;
         }
         this.infoForm.setValue(item.key, item.value);
@@ -732,20 +729,19 @@ export default class SkeletonParametersPanel extends Panel {
       label: translate("sidebar.skeleton-parameters.tied"),
       value: summary.tied.mixed ? false : summary.tied.value,
     });
-    // The scale slider rides on the total, which is the number it moves; the
-    // two per-side numbers follow it proportionally.
-    formContents.push({
-      type: "universal-row",
-      label: translate("sidebar.skeleton-parameters.total-width"),
-      field1: { type: "text" },
-      field2: this._summaryNumberField("width:total", summary.total),
-      field3: this._scaleSliderField("width:scale", true),
+    // The minimum is declared here rather than left to the model: without it a
+    // scrub past the bottom of the range keeps counting down in the box while
+    // the stroke has already stopped, and the number snaps back on release.
+    this._pushSummaryNumber(formContents, "width:total", "total-width", summary.total, {
+      minValue: 0,
     });
     // On a single-sided contour the visible edge is the TOTAL, so the per-side
     // numbers and the split between them describe nothing on screen. Greyed and
     // blank rather than hidden: they are still stored, and still what the point
     // goes back to if the contour returns to double-sided.
-    const perSideGate = summary.singleSided ? { disabled: true, blank: true } : {};
+    const perSideGate = summary.singleSided
+      ? { disabled: true, blank: true, minValue: 0 }
+      : { minValue: 0 };
     this._pushSummaryNumber(
       formContents,
       "width:left",
@@ -808,7 +804,8 @@ export default class SkeletonParametersPanel extends Panel {
       formContents,
       "contour:default-width",
       "contour-default-width",
-      summary.defaultWidth
+      summary.defaultWidth,
+      { minValue: 0 }
     );
   }
 
@@ -1163,19 +1160,17 @@ export default class SkeletonParametersPanel extends Panel {
       disabled: !canEdit,
     });
 
-    // Every serif length gets a scale slider on the same line as its number,
-    // working like the point-width one: it always reads 100% and multiplies
-    // what is already there, so it stays useful across a mixed selection. The
-    // slider carries no label of its own — sharing the length's row is what
-    // says which number it scales, and a second label per length pushed the
-    // whole section past a screen.
-    const pushLength = (key, labelKey, summary) => {
-      formContents.push({
-        type: "universal-row",
-        label: translate(`sidebar.skeleton-parameters.${labelKey}`),
-        field1: { type: "text" },
-        field2: this._summaryNumberField(key, summary, { disabled: !canEdit }),
-        field3: this._scaleSliderField(`${key}-scale`, canEdit),
+    // Every serif length is a plain number whose label scrubs, like the rest of
+    // the panel. It used to carry a scale slider on the same line; the scrub
+    // replaced it, and took a row's worth of width back with it.
+    //
+    // The minimum is declared here rather than left to the model: without it a
+    // drag past the bottom of the range keeps counting down in the box while the
+    // shape has already stopped, and the number snaps back on release.
+    const pushLength = (key, labelKey, summary, minValue = 0) => {
+      this._pushSummaryNumber(formContents, key, labelKey, summary, {
+        disabled: !canEdit,
+        ...(minValue == null ? {} : { minValue }),
       });
     };
 
@@ -1194,7 +1189,9 @@ export default class SkeletonParametersPanel extends Panel {
         "serif-tip-thickness",
         half.tipThickness
       );
-      pushLength(`serif:${scope}-wingSlope`, "serif-wing-slope", half.wingSlope);
+      // Signed, unlike the other three: a negative slope tilts the wing's inner
+      // face the other way and is a real family of shapes, not an error.
+      pushLength(`serif:${scope}-wingSlope`, "serif-wing-slope", half.wingSlope, null);
       this._pushSummarySlider(
         formContents,
         `serif:${scope}-tipCutAngle`,
@@ -1326,24 +1323,6 @@ export default class SkeletonParametersPanel extends Panel {
     pushLength("serif:cup", "serif-underside-cup", serif.undersideCup);
   }
 
-  // A relative multiplier, parked at 100% so each drag scales whatever the
-  // selection currently holds rather than pushing one absolute number onto every
-  // point. Same range and step as the point-width scale.
-  _scaleSliderField(key, canEdit) {
-    return {
-      type: "edit-number-slider",
-      key,
-      value: 100,
-      minValue: 20,
-      defaultValue: 100,
-      maxValue: 200,
-      step: 5,
-      allowInputBeyondRange: true,
-      disabled: !canEdit,
-      resetAfterEdit: true,
-    };
-  }
-
   // ---- Field description helpers -------------------------------------------
 
   _pushSummaryNumber(formContents, key, labelKey, summary, options = {}) {
@@ -1355,6 +1334,11 @@ export default class SkeletonParametersPanel extends Panel {
 
   // The number input on its own, so a caller can either give it a row of its
   // own or pack it beside something else.
+  //
+  // Every one of these scrubs: dragging its label sideways moves the number.
+  // On by default rather than per field, so there is no guessing which of the
+  // panel's numbers are draggable — they all are. A caller that wants one inert
+  // passes `scrub: false`.
   _summaryNumberField(key, summary, options = {}) {
     const { blank = false, ...fieldOptions } = options;
     return {
@@ -1362,6 +1346,7 @@ export default class SkeletonParametersPanel extends Panel {
       key,
       value: blank || summary.mixed ? null : summary.value,
       placeholder: blank ? "" : summary.placeholder || undefined,
+      scrub: true,
       ...fieldOptions,
     };
   }
@@ -1404,6 +1389,18 @@ export default class SkeletonParametersPanel extends Panel {
     // interrupt a run of arrow-key increments.
     this._activeFieldKey = fieldItem.key;
     try {
+      // A label scrub streams the CHANGE from where the drag started, not a
+      // value, and only the plain number fields scrub — every slider streams
+      // values. Applying a change per point is what keeps a mixed selection's
+      // differences instead of collapsing them onto one number.
+      //
+      // Checked before every other streaming branch: a scrubbed number would
+      // otherwise be read as an absolute value by whichever branch claims its
+      // group first, and set the field to the size of the drag.
+      if (valueStream && fieldItem.type === "edit-number") {
+        await this._onScrub(group, name, valueStream);
+        return;
+      }
       // Distribution, cap and corner sliders stream onto the canvas while
       // dragging; all other fields apply the committed value once.
       if (group === "width" && name === "distribution" && valueStream) {
@@ -1431,33 +1428,7 @@ export default class SkeletonParametersPanel extends Panel {
           return;
         }
       }
-      // Scale sliders stream too. They multiply what is stored, which would
-      // compound once per frame if applied on top of itself — the stream helper
-      // restores the skeleton the drag started from before each frame, so every
-      // frame scales the same starting numbers and only the last one is kept.
-      if (valueStream && group === "width" && name === "scale") {
-        await scalePanelPointWidthStream(
-          this.sceneController,
-          this._widthPoints(),
-          valueStream,
-          this._undo("scale-width")
-        );
-        return;
-      }
-      if (valueStream && group === "serif" && name.endsWith("-scale")) {
-        const targets = serifScaleTargets(name.slice(0, -"-scale".length));
-        if (targets.length) {
-          await scalePanelSerifValueStream(
-            this.sceneController,
-            this._widthPoints(),
-            targets,
-            valueStream,
-            this._undo("scale-serif")
-          );
-          return;
-        }
-      }
-      if (valueStream && group === "serif" && !name.endsWith("-scale")) {
+      if (valueStream && group === "serif") {
         const makeValues = (streamed) =>
           name === "axisangle"
             ? { axisAngle: Number(streamed) }
@@ -1492,6 +1463,57 @@ export default class SkeletonParametersPanel extends Panel {
       this._forceRebuild = true;
       await this.update();
       this._activeFieldKey = null;
+    }
+  }
+
+  // Route a label scrub to the edit path that moves its number by a change.
+  // Every branch here is relative; nothing sets an absolute value, so a mixed
+  // selection comes out of a drag as mixed as it went in.
+  async _onScrub(group, name, valueStream) {
+    const sc = this.sceneController;
+    if (group === "width") {
+      if (name !== "total" && name !== "left" && name !== "right") {
+        return;
+      }
+      await nudgePanelPointWidthStream(
+        sc,
+        this._widthPoints(),
+        name,
+        valueStream,
+        this._undo("set-width")
+      );
+      return;
+    }
+    if (group === "contour" && name === "default-width") {
+      await nudgePanelContourDefaultWidthStream(
+        sc,
+        this._panelSelection.contours,
+        valueStream,
+        this._undo("set-contour-width")
+      );
+      return;
+    }
+    if (group === "cap" && name === "distance") {
+      await nudgePanelCapParameterStream(
+        sc,
+        this._widthPoints(),
+        "capDistance",
+        valueStream,
+        this._undo("set-cap")
+      );
+      return;
+    }
+    if (group === "serif") {
+      const targets = serifNudgeTargets(name);
+      if (targets.length) {
+        await nudgePanelSerifValueStream(
+          sc,
+          this._widthPoints(),
+          targets,
+          valueStream,
+          this._undo("set-serif")
+        );
+      }
     }
   }
 
@@ -1531,13 +1553,6 @@ export default class SkeletonParametersPanel extends Panel {
         points,
         value,
         this._undo("set-distribution")
-      );
-    } else if (name === "scale") {
-      await scalePanelPointWidth(
-        sc,
-        points,
-        (Number(value) || 100) / 100,
-        this._undo("scale-width")
       );
     }
   }
@@ -1645,19 +1660,6 @@ export default class SkeletonParametersPanel extends Panel {
         this._undo("set-serif")
       );
 
-    if (name.endsWith("-scale")) {
-      const targets = serifScaleTargets(name.slice(0, -"-scale".length));
-      if (targets.length) {
-        await scalePanelSerifValue(
-          this.sceneController,
-          this._widthPoints(),
-          targets,
-          (Number(value) || 100) / 100,
-          this._undo("scale-serif")
-        );
-      }
-      return;
-    }
     if (name === "linked") {
       // Linking copies the left half onto the right, so turning it on gives one
       // symmetric serif rather than silently keeping a difference the panel can

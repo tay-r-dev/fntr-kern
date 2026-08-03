@@ -1,5 +1,10 @@
 import * as html from "@fontra/core/html-utils.js";
 import { SimpleElement } from "@fontra/core/html-utils.js";
+import {
+  SCRUB_THRESHOLD,
+  clampScrubValue,
+  scrubIncrement,
+} from "@fontra/core/number-scrub.js";
 import { QueueIterator } from "@fontra/core/queue-iterator.js";
 import {
   assert,
@@ -32,6 +37,17 @@ export class Form extends SimpleElement {
       text-overflow: ellipsis;
       white-space: nowrap;
       line-height: 1.6em;
+    }
+
+    /* A label that scrubs the number beside it. The arrows are the only thing
+       announcing that the label is draggable at all, so they are not optional.
+       Selection is off because a scrub that highlights the label text as it goes
+       reads as a failed text drag. */
+    .ui-form-label.scrubbable {
+      cursor: ew-resize;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
     }
 
     .ui-form-full-width {
@@ -220,6 +236,11 @@ export class Form extends SimpleElement {
         throw new Error(`Unknown field type: ${fieldItem.type}`);
       }
       this[methodName](valueElement, fieldItem, labelElement);
+      // After the field is built, so its getter and setter exist for the scrub
+      // to read the starting value through and write the running one back.
+      if (fieldItem.type !== "universal-row") {
+        this._attachScrub(labelElement, fieldItem);
+      }
 
       if (fieldItem.onEnterKey) {
         valueElement.addEventListener("keyup", (event) => {
@@ -230,6 +251,100 @@ export class Form extends SimpleElement {
         });
       }
     }
+  }
+
+  // Dragging a field's label sideways scrubs the number beside it. The pointer
+  // events live here; what a pixel is worth lives in number-scrub.js.
+  //
+  // The label is the grab area rather than the input. An input is a place to
+  // select text and type into, and a drag starting inside one fights both — the
+  // dead zone alone is not enough to make that pleasant.
+  //
+  // What goes down the stream is the CHANGE from where the drag started, not the
+  // value under the pointer. That is what lets a listener move every selected
+  // item by the same amount and keep whatever differences it had, and it is the
+  // only thing it can do when the field reads "mixed" and has no value to start
+  // from.
+  _attachScrub(labelElement, fieldItem) {
+    if (!fieldItem?.scrub || fieldItem.disabled || fieldItem.key == null) {
+      return;
+    }
+    const step = fieldItem.scrub === true ? undefined : fieldItem.scrub.step;
+    labelElement.classList.add("scrubbable");
+
+    labelElement.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      // Capture on the label, so a drag that leaves the panel keeps arriving.
+      // Without it the value stops the moment the pointer crosses the edge of a
+      // 32%-wide column, which is most of any real drag.
+      labelElement.setPointerCapture(event.pointerId);
+      event.preventDefault();
+
+      const startX = event.clientX;
+      const startValue = parseFloat(this._fieldGetters[fieldItem.key]?.());
+      // A field showing "mixed" has no value to move away from. The drag still
+      // works — the change is what is being sent — but nothing truthful can be
+      // shown in the box, so it is left alone.
+      const hasStartValue = Number.isFinite(startValue);
+      let lastX = startX;
+      let change = 0;
+      let valueStream = null;
+      let streamStarted = false;
+
+      const onMove = (moveEvent) => {
+        if (!valueStream) {
+          if (Math.abs(moveEvent.clientX - startX) < SCRUB_THRESHOLD) {
+            return;
+          }
+          valueStream = new QueueIterator(5, true);
+          // Everything before the threshold was a click, not travel, so the
+          // drag starts counting from where it crossed rather than from the
+          // press — otherwise the value lurches by the dead zone on the first
+          // move that registers.
+          lastX = moveEvent.clientX;
+        }
+        change += scrubIncrement(moveEvent.clientX - lastX, {
+          step,
+          shiftKey: moveEvent.shiftKey,
+          ctrlKey: moveEvent.ctrlKey,
+          metaKey: moveEvent.metaKey,
+        });
+        lastX = moveEvent.clientX;
+        if (hasStartValue) {
+          const value = clampScrubValue(startValue + change, fieldItem);
+          // Fold the clamp back into the travel, so a drag that has run past the
+          // end of the range turns around the moment the hand does instead of
+          // spending the overshoot first.
+          change = value - startValue;
+          this._fieldSetters[fieldItem.key]?.(value);
+        }
+        if (!streamStarted) {
+          streamStarted = true;
+          this._fieldChanging(fieldItem, change, valueStream);
+        }
+        valueStream.put(change);
+        this._dispatchEvent("doChange", { key: fieldItem.key, value: change });
+      };
+
+      const onUp = () => {
+        labelElement.removeEventListener("pointermove", onMove);
+        labelElement.removeEventListener("pointerup", onUp);
+        labelElement.removeEventListener("pointercancel", onUp);
+        labelElement.releasePointerCapture?.(event.pointerId);
+        if (!valueStream) {
+          // Never crossed the dead zone: this was a click and nothing happened.
+          return;
+        }
+        valueStream.done();
+        this._dispatchEvent("endChange", { key: fieldItem.key });
+      };
+
+      labelElement.addEventListener("pointermove", onMove);
+      labelElement.addEventListener("pointerup", onUp);
+      labelElement.addEventListener("pointercancel", onUp);
+    });
   }
 
   _addUniversalRow(valueElement, fieldItem, labelElement) {
@@ -246,6 +361,9 @@ export class Form extends SimpleElement {
       if (field.auxiliaryElement) {
         element.appendChild(field.auxiliaryElement, field);
       }
+      // A packed row has no label of its own to grab, so a scrubbable field in
+      // one drives from whatever sits in the label column — which is field1.
+      this._attachScrub(labelElement, field);
     }
   }
 
