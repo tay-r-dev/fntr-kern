@@ -676,10 +676,9 @@ Seven fields per half, independent left and right, with a `linked` flag that
 copies left onto right:
 
 `wingLength`, `tipThickness`, `wingSlope`, `tipCutAngle`, `reach`, `tension`,
-`concavity`.
+`concavity`, `easeDistance`, `easeCurvature`.
 
-Terminal-level, shared by both: `axisMode`, `axisAngle`, `undersideCup`,
-`straightDepth`.
+Terminal-level, shared by both: `axisMode`, `axisAngle`, `undersideCup`.
 
 Null means **inherit**, so contour and source defaults stay live consumers
 exactly the way stroke width does (§2). `SERIF_LENGTH_FIELDS` — the four that are

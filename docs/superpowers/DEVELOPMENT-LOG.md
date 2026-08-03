@@ -1731,5 +1731,9 @@ reported rather than fixed as a side effect of serif work. Arch map §7 residue 
 
 ### 5. Commits
 
+### 6. Serif model rework
+
+Replaced the corner-aimed bracket with the single-attractor construction so reach and wing slope produce independent geometry. Removed the straight section and duplicate release on-curve, added optional contour easing, and restored tension/concavity interaction with defaults that make a fresh serif a real bracket.
+
 `f9338db5a` the pin moves handles only; `a476b73e4` the gizmo reads its own
 segment; `f64138557` S/D drags ignore the link flag.
