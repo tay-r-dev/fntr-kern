@@ -80,9 +80,20 @@ export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAng
 }
 
 const MAX_TIP_CUT_ANGLE = 80;
+const MAX_EASE_FRACTION = 0.5;
 
 function lerpUV(a, b, t) {
   return { u: a.u + (b.u - a.u) * t, v: a.v + (b.v - a.v) * t };
+}
+
+function splitCubic(p0, p1, p2, p3, t) {
+  const a = lerpUV(p0, p1, t);
+  const b = lerpUV(p1, p2, t);
+  const c = lerpUV(p2, p3, t);
+  const d = lerpUV(a, b, t);
+  const e = lerpUV(b, c, t);
+  const f = lerpUV(d, e, t);
+  return { first: [p0, a, d, f], second: [f, e, c, p3] };
 }
 
 // One half-serif, entirely in frame coordinates. `side` is +1 for the left half
@@ -148,12 +159,27 @@ export function buildHalfSerif({ side, flankU, params }) {
   const attractor = lerpUV(midChord, corner, concavity);
   const control1 = lerpUV(tipTop, attractor, tension);
   const control2 = lerpUV(junction, attractor, tension);
+  const easeOff = concavity > 0;
+  const easeDistance = easeOff ? 0 : Math.max(params.easeDistance ?? 0, 0);
+  const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
+  const chord = Math.hypot(junction.u - tipTop.u, junction.v - tipTop.v);
+  const easeFraction =
+    chord > 0 ? Math.min(easeDistance / chord, MAX_EASE_FRACTION) : 0;
+  const bracket = splitCubic(tipTop, control1, control2, junction, 1 - easeFraction);
+  const easeOnBracket = bracket.first[3];
+  const release = { u: flankU, v: junction.v + easeDistance };
+  const easeFlankHandle = lerpUV(release, junction, easeCurvature);
+  const easeBracketHandle = lerpUV(easeOnBracket, bracket.second[1], easeCurvature);
 
   return {
     junction,
     corner,
-    control1,
-    control2,
+    release,
+    easeFlankHandle,
+    easeOnBracket,
+    easeBracketHandle,
+    control1: bracket.first[1],
+    control2: bracket.first[2],
     tipTop,
     tipBottom,
     wingInnerV,
@@ -211,9 +237,12 @@ export function buildSerifTerminal({
 
   return {
     halves,
-    // The junction is where the trimmed stroke edge ends.
+    // The release is already supplied by the trimmed stroke edge, so this list
+    // owns its outgoing handle rather than a duplicate on-curve.
     points: [
-      smoothOnCurve(halves.left.junction),
+      control(halves.left.easeFlankHandle),
+      control(halves.left.easeBracketHandle),
+      smoothOnCurve(halves.left.easeOnBracket),
       control(halves.left.control2),
       control(halves.left.control1),
       onCurve(halves.left.tipTop),
@@ -227,7 +256,9 @@ export function buildSerifTerminal({
       onCurve(halves.right.tipTop),
       control(halves.right.control1),
       control(halves.right.control2),
-      smoothOnCurve(halves.right.junction),
+      smoothOnCurve(halves.right.easeOnBracket),
+      control(halves.right.easeBracketHandle),
+      control(halves.right.easeFlankHandle),
     ],
   };
 }

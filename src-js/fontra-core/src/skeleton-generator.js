@@ -4554,7 +4554,7 @@ function buildSerifCap({
   // edge, so dragging one would walk two on-curves along the stroke. The cut only
   // decides how much curve to keep; the handle that survives it absorbs the rest.
   const releaseSide = (side, ribEnd, half) => {
-    const release = frame.toGlyph(half.junction);
+    const release = frame.toGlyph(half.release);
     const split = splitTerminalSideForRoundCap(
       side,
       position,

@@ -252,6 +252,34 @@ describe("half serif in frame coordinates", () => {
     const keys = (params) => Object.keys(build(params)).sort().join(",");
     expect(keys({})).to.equal(keys({ wingLength: 0, reach: 0, concavity: -1 }));
   });
+
+  const eased = (overrides = {}) =>
+    build({ concavity: -0.4, easeDistance: 20, easeCurvature: 0.6, ...overrides });
+
+  it("puts the release back along the flank by the ease distance", () => {
+    const half = eased();
+    expectClose(half.release.u, half.junction.u);
+    expectClose(half.release.v - half.junction.v, 20);
+  });
+
+  it("collapses the rounding onto the junction at ease distance zero", () => {
+    const half = eased({ easeDistance: 0 });
+    for (const point of [
+      half.release,
+      half.easeFlankHandle,
+      half.easeOnBracket,
+      half.easeBracketHandle,
+    ]) {
+      expectClose(point.u, half.junction.u);
+      expectClose(point.v, half.junction.v);
+    }
+  });
+
+  it("snaps the rounding off once the bracket is hollow", () => {
+    const half = build({ concavity: 0.4, easeDistance: 20, easeCurvature: 0.6 });
+    expectClose(half.release.v, half.junction.v);
+    expectClose(half.easeOnBracket.u, half.junction.u);
+  });
 });
 
 describe("serif terminal assembly", () => {
@@ -300,6 +328,18 @@ describe("serif terminal assembly", () => {
     };
     const { points } = terminal({ left: flat, right: flat, undersideCup: 0 });
     expect(points.filter((point) => !point.type)).to.have.length(7);
+  });
+
+  it("keeps seven on-curve points with the rounding switched on", () => {
+    const rounded = { ...half, concavity: -0.4, easeDistance: 20, easeCurvature: 0.6 };
+    const { points } = terminal({ left: rounded, right: rounded });
+    expect(points.filter((point) => !point.type)).to.have.length(7);
+  });
+
+  it("starts and ends with a handle, not an on-curve", () => {
+    const { points } = terminal();
+    expect(points[0].type).to.equal("cubic");
+    expect(points[points.length - 1].type).to.equal("cubic");
   });
 
   it("puts the foot centre on the skeleton endpoint with no cup", () => {
