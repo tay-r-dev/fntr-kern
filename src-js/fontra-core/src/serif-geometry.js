@@ -81,17 +81,6 @@ export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAng
 
 const MAX_TIP_CUT_ANGLE = 80;
 
-// How lopsided the two transition handles are allowed to get. Tension slides the
-// split between them across this range; the bounds keep both of them alive,
-// because a handle of zero length gives up the tangency at its end and turns the
-// release back into a corner.
-const MIN_HANDLE_SHARE = 0.25;
-const MAX_HANDLE_SHARE = 0.75;
-
-// A handle that reaches the corner exactly is the deepest bracket available. Any
-// further and the two controls cross, which loops the curve.
-const MAX_HANDLE_TO_CORNER = 1;
-
 function lerpUV(a, b, t) {
   return { u: a.u + (b.u - a.u) * t, v: a.v + (b.v - a.v) * t };
 }
@@ -104,7 +93,7 @@ function lerpUV(a, b, t) {
 // transition curve bends around, exactly as in the serif-lab mockup. Emitting it
 // would split the sweep from tip to flank into two segments and destroy the
 // bracketed look.
-export function buildHalfSerif({ side, flankU, params, straightDepth }) {
+export function buildHalfSerif({ side, flankU, params }) {
   const wingLength = params.wingLength ?? 0;
   const tipThickness = params.tipThickness ?? 0;
   const wingSlope = params.wingSlope ?? 0;
@@ -116,13 +105,6 @@ export function buildHalfSerif({ side, flankU, params, straightDepth }) {
     MAX_TIP_CUT_ANGLE
   );
 
-  // A half with no wing is a half that is switched off, and it must add nothing
-  // to the outline. The straight section is shared by the terminal, so without
-  // this it would still push a spur out of a disabled side — and since the
-  // section is straight while the edge it leaves is not, that spur lands outside
-  // the stroke.
-  const depthOfStraight =
-    (params.wingLength ?? 0) === 0 ? 0 : Math.max(straightDepth ?? 0, 0);
   const wingInnerV = tipThickness + wingSlope;
   const tipU = flankU + side * wingLength;
   const cutOffset = side * tipThickness * Math.tan((cutAngle * Math.PI) / 180);
@@ -138,10 +120,9 @@ export function buildHalfSerif({ side, flankU, params, straightDepth }) {
   // But then anything that reshapes the edge - a curvature pin above all - slides
   // these two on-curves along the stroke, and a curvature pin is only allowed to
   // change handles. The caller brings the edge to these points instead.
-  const straightTop = { u: flankU, v: wingInnerV + reach + depthOfStraight };
-  const straightBottom = { u: flankU, v: wingInnerV + reach };
+  const junction = { u: flankU, v: wingInnerV + reach };
 
-  // The transition cubic runs straightBottom -> tipTop, and both of its handles
+  // The transition cubic runs junction -> tipTop, and both of its handles
   // lie on the line from their own end toward the wing's inner corner. That is
   // what makes the bracket a bracket: the curve leaves the stroke edge along the
   // stroke edge, and meets the wing along the wing's top surface. Any non-zero
@@ -163,21 +144,14 @@ export function buildHalfSerif({ side, flankU, params, straightDepth }) {
   // With no wing there is no corner to bracket around, since it has collapsed
   // onto the tip. Hollowing toward it only pushes the curve below the foot line
   // and dimples the baseline, so a half turned off this way stays straight.
-  const hollow = wingLength === 0 ? 0 : concavity;
-  const share = MIN_HANDLE_SHARE + (MAX_HANDLE_SHARE - MIN_HANDLE_SHARE) * tension;
-  const clampShare = (amount) =>
-    Math.max(Math.min(amount, MAX_HANDLE_TO_CORNER), -MAX_HANDLE_TO_CORNER);
-  const handle = (from, toward, amount) => lerpUV(from, toward, clampShare(amount));
-
-  // The corner sits directly below straightBottom on the flank, so aiming the
-  // handle at it already runs along the flank - which is the direction the
-  // straight section leaves in, and so the tangent that has to be preserved.
-  const control1 = handle(tipTop, corner, hollow * 2 * (1 - share));
-  const control2 = handle(straightBottom, corner, hollow * 2 * share);
+  const midChord = lerpUV(tipTop, junction, 0.5);
+  const attractor = lerpUV(midChord, corner, concavity);
+  const control1 = lerpUV(tipTop, attractor, tension);
+  const control2 = lerpUV(junction, attractor, tension);
 
   return {
-    straightTop,
-    straightBottom,
+    junction,
+    corner,
     control1,
     control2,
     tipTop,
@@ -202,8 +176,8 @@ function footControls(from, to) {
 }
 
 // One serif terminal: two halves plus the single underside curve that joins
-// them. Emission order is left straightTop -> ... -> foot centre -> ... -> right
-// straightTop, which is the order the generator's assembly wants between the
+// them. Emission order is left junction -> ... -> foot centre -> ... -> right
+// junction, which is the order the generator's assembly wants between the
 // trimmed left side and the reversed right side.
 //
 // The underside is ONE curve across the whole terminal, driven by one cup value.
@@ -217,23 +191,17 @@ export function buildSerifTerminal({
   left,
   right,
   undersideCup,
-  straightDepth,
 }) {
   const halves = {
-    left: buildHalfSerif({ side: 1, flankU: leftFlankU, params: left, straightDepth }),
-    right: buildHalfSerif({
-      side: -1,
-      flankU: rightFlankU,
-      params: right,
-      straightDepth,
-    }),
+    left: buildHalfSerif({ side: 1, flankU: leftFlankU, params: left }),
+    right: buildHalfSerif({ side: -1, flankU: rightFlankU, params: right }),
   };
   const centre = { u: 0, v: Math.max(undersideCup ?? 0, 0) };
 
   const onCurve = (uv) => frame.toGlyph(uv);
   // Both handles at these two run along one line by construction, so the editor
   // should draw them as smooth points and keep them that way when they are
-  // dragged. straightBottom continues the stroke edge into the bracket; the foot
+  // dragged. The junction continues the stroke edge into the bracket; the foot
   // centre sits mid-curve in the single underside sweep.
   const smoothOnCurve = (uv) => ({ ...frame.toGlyph(uv), smooth: true });
   const control = (uv) => ({ ...frame.toGlyph(uv), type: "cubic" });
@@ -243,12 +211,9 @@ export function buildSerifTerminal({
 
   return {
     halves,
-    // straightTop is NOT emitted. It is where the trimmed stroke edge already
-    // ends, so emitting it too would stack a second on-curve on the same spot.
-    // The straight section is the run from that existing point down to
-    // straightBottom.
+    // The junction is where the trimmed stroke edge ends.
     points: [
-      smoothOnCurve(halves.left.straightBottom),
+      smoothOnCurve(halves.left.junction),
       control(halves.left.control2),
       control(halves.left.control1),
       onCurve(halves.left.tipTop),
@@ -262,7 +227,7 @@ export function buildSerifTerminal({
       onCurve(halves.right.tipTop),
       control(halves.right.control1),
       control(halves.right.control2),
-      smoothOnCurve(halves.right.straightBottom),
+      smoothOnCurve(halves.right.junction),
     ],
   };
 }

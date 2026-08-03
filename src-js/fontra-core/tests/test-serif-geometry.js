@@ -120,12 +120,11 @@ describe("half serif in frame coordinates", () => {
     tension: 0.7,
     concavity: 0.8,
   };
-  const build = (overrides = {}, side = 1, straightDepth = 0) =>
+  const build = (overrides = {}, side = 1) =>
     buildHalfSerif({
       side,
       flankU: side * 50,
       params: { ...base, ...overrides },
-      straightDepth,
     });
 
   it("puts the tip bottom on the foot line, out past the flank", () => {
@@ -154,122 +153,104 @@ describe("half serif in frame coordinates", () => {
     expectClose(right.tipTop.v, left.tipTop.v);
   });
 
-  it("ends the transition curve at reach above the wing inner corner", () => {
+  it("puts the junction reach above the wing inner corner, on the flank", () => {
     const half = build({ wingSlope: 12 });
     expectClose(half.wingInnerV, 42);
-    expectClose(half.straightBottom.v, 122);
-    expectClose(half.straightBottom.u, 50);
+    expectClose(half.corner.v, 42);
+    expectClose(half.junction.v, 122);
+    expectClose(half.junction.u, 50);
   });
 
-  it("collapses the straight run at depth zero", () => {
-    const half = build();
-    expect(half.straightTop).to.deep.equal(half.straightBottom);
-  });
-
-  it("raises the straight top by the straight depth, at constant u", () => {
-    const half = build({}, 1, 25);
-    expectClose(half.straightTop.u, half.straightBottom.u);
-    expectClose(half.straightTop.v - half.straightBottom.v, 25);
-  });
-
-  // The midpoint of the transition cubic, which is where the hollow is deepest.
-  const transitionBelly = (half) => {
-    const p = [half.tipTop, half.control1, half.control2, half.straightBottom];
+  const belly = (half) => {
+    const p = [half.tipTop, half.control1, half.control2, half.junction];
     return {
       u: (p[0].u + 3 * p[1].u + 3 * p[2].u + p[3].u) / 8,
       v: (p[0].v + 3 * p[1].v + 3 * p[2].v + p[3].v) / 8,
     };
   };
 
-  it("collapses the transition to a straight line at concavity zero", () => {
+  const chordVAt = (half, u) =>
+    half.tipTop.v +
+    ((u - half.tipTop.u) / (half.junction.u - half.tipTop.u)) *
+      (half.junction.v - half.tipTop.v);
+
+  it("collapses the transition to the chord at concavity zero", () => {
     for (const tension of [0, 0.5, 1]) {
       const half = build({ tension, concavity: 0 });
-      // Every control sits on the chord, so the cubic is the chord, whatever the
-      // tension. Depth is concavity's job alone.
-      const chordV = (u) =>
-        half.tipTop.v +
-        ((u - half.tipTop.u) / (half.straightBottom.u - half.tipTop.u)) *
-          (half.straightBottom.v - half.tipTop.v);
-      expectClose(half.control1.v, chordV(half.control1.u));
-      expectClose(half.control2.v, chordV(half.control2.u));
+      expectClose(half.control1.v, chordVAt(half, half.control1.u));
+      expectClose(half.control2.v, chordVAt(half, half.control2.u));
     }
   });
 
-  it("keeps both transition handles alive at every tension", () => {
-    // Tension only splits the length concavity asked for. If either share could
-    // reach zero, that end would lose its tangent and the release would go back
-    // to being a corner.
-    for (const tension of [0, 0.25, 0.5, 0.75, 1]) {
-      const half = build({ tension, concavity: 0.6 });
-      const toTip = Math.hypot(
-        half.control1.u - half.tipTop.u,
-        half.control1.v - half.tipTop.v
-      );
-      const toRelease = Math.hypot(
-        half.control2.u - half.straightBottom.u,
-        half.control2.v - half.straightBottom.v
-      );
-      expect(toTip, `tip handle at tension ${tension}`).to.be.above(1);
-      expect(toRelease, `release handle at tension ${tension}`).to.be.above(1);
+  it("collapses the transition to the chord at tension zero", () => {
+    for (const concavity of [-1, 0.5, 1]) {
+      const half = build({ tension: 0, concavity });
+      expectClose(half.control1.u, half.tipTop.u);
+      expectClose(half.control1.v, half.tipTop.v);
+      expectClose(half.control2.u, half.junction.u);
+      expectClose(half.control2.v, half.junction.v);
     }
   });
 
-  it("moves where the curve turns with tension, at one hollow depth", () => {
-    const nearTip = build({ tension: 0, concavity: 0.6 });
-    const nearRelease = build({ tension: 1, concavity: 0.6 });
-    // Low tension puts the longer handle on the tip end, so the curve turns later.
-    expect(transitionBelly(nearTip).u).to.not.equal(transitionBelly(nearRelease).u);
+  it("puts both handles on the wing's inner corner at full tension and concavity", () => {
+    const half = build({ tension: 1, concavity: 1 });
+    expectClose(half.control1.u, half.corner.u);
+    expectClose(half.control1.v, half.corner.v);
+    expectClose(half.control2.u, half.corner.u);
+    expectClose(half.control2.v, half.corner.v);
   });
 
-  it("deepens the hollow with concavity", () => {
-    const shallow = transitionBelly(build({ concavity: 0.25 })).v;
-    const deep = transitionBelly(build({ concavity: 1 })).v;
-    const flat = transitionBelly(build({ concavity: 0 })).v;
-    // The inner corner is below the chord, so a deeper hollow means a lower belly.
+  it("leaves the junction tangent to the flank at full concavity", () => {
+    for (const tension of [0.2, 0.6, 1]) {
+      const half = build({ tension, concavity: 1 });
+      expectClose(half.control2.u, half.junction.u, `tension ${tension}`);
+    }
+  });
+
+  it("deepens the bracket with concavity", () => {
+    const flat = belly(build({ concavity: 0 })).v;
+    const shallow = belly(build({ concavity: 0.25 })).v;
+    const deep = belly(build({ concavity: 1 })).v;
     expect(deep).to.be.below(shallow);
     expect(shallow).to.be.below(flat);
   });
 
-  it("leaves both ends of the transition tangent, at every setting", () => {
-    // This is the whole point of aiming the handles at the inner corner: the
-    // bracket leaves the stroke edge along the stroke edge and meets the wing
-    // along the wing's top surface, so both joins are smooth points that stay
-    // smooth when they are dragged.
-    const cross = (a, b) => Math.abs(a.u * b.v - a.v * b.u);
-    for (const tension of [0, 0.5, 1]) {
-      for (const concavity of [1, 0.4, -0.6]) {
-        for (const side of [1, -1]) {
-          const half = build({ tension, concavity }, side);
-          const corner = { u: side * 50, v: half.wingInnerV };
-          const at = (from, control) => ({
-            handle: { u: control.u - from.u, v: control.v - from.v },
-            line: { u: corner.u - from.u, v: corner.v - from.v },
-          });
-          const tip = at(half.tipTop, half.control1);
-          const release = at(half.straightBottom, half.control2);
-          expectClose(cross(tip.handle, tip.line), 0, `tip ${tension}/${concavity}`);
-          expectClose(
-            cross(release.handle, release.line),
-            0,
-            `release ${tension}/${concavity}`
-          );
-        }
-      }
+  it("bulges the transition convex at negative concavity", () => {
+    const bulged = belly(build({ concavity: -0.8 })).v;
+    const flat = belly(build({ concavity: 0 })).v;
+    expect(bulged).to.be.above(flat);
+  });
+
+  it("deepens the bracket with tension, at one attractor", () => {
+    const slack = belly(build({ tension: 0.2, concavity: 0.8 })).v;
+    const taut = belly(build({ tension: 0.9, concavity: 0.8 })).v;
+    expect(taut).to.be.below(slack);
+  });
+
+  it("does not let wing slope and reach stand in for each other", () => {
+    const bySlope = build({ wingSlope: 40, reach: 0, concavity: 0.8 });
+    const byReach = build({ wingSlope: 0, reach: 40, concavity: 0.8 });
+    expectClose(bySlope.junction.v, byReach.junction.v);
+    expect(Math.abs(bySlope.control1.v - byReach.control1.v)).to.be.above(1);
+  });
+
+  it("keeps a wingless half flat on the flank without a special case", () => {
+    const half = build({ wingLength: 0, concavity: 1, tension: 1 });
+    for (const point of [
+      half.tipTop,
+      half.tipBottom,
+      half.corner,
+      half.junction,
+      half.control1,
+      half.control2,
+    ]) {
+      expectClose(point.u, 50);
     }
   });
 
-  it("bulges the transition outward at negative concavity", () => {
-    const hollow = build({ concavity: 0.8 });
-    const bulged = build({ concavity: -0.8 });
-    // Concavity moves the attractor across the chord, so the controls swap sides.
-    expect(bulged.control1.u).to.be.above(hollow.control1.u);
-  });
-
-  it("emits a wingless half without losing any point", () => {
-    const half = build({ wingLength: 0 });
-    expectClose(half.tipBottom.u, 50);
-    expectClose(half.tipTop.u, 50);
-    expect(Object.keys(half)).to.have.length(7);
+  it("returns the same key set at every value", () => {
+    const keys = (params) => Object.keys(build(params)).sort().join(",");
+    expect(keys({})).to.equal(keys({ wingLength: 0, reach: 0, concavity: -1 }));
   });
 });
 
@@ -298,7 +279,6 @@ describe("serif terminal assembly", () => {
       left: half,
       right: half,
       undersideCup: 0,
-      straightDepth: 0,
       ...overrides,
     });
   }
@@ -371,7 +351,7 @@ describe("serif terminal assembly", () => {
 
   it("returns the frame-space halves for the caller's trimming maths", () => {
     const { halves } = terminal();
-    expectClose(halves.left.straightBottom.u, 50);
-    expectClose(halves.right.straightBottom.u, -50);
+    expectClose(halves.left.junction.u, 50);
+    expectClose(halves.right.junction.u, -50);
   });
 });

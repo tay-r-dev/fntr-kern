@@ -4545,8 +4545,6 @@ function buildSerifCap({
     right: rightReach.half,
     undersideCup:
       (pointSerif?.undersideCup ?? contourSerif?.undersideCup ?? 0) * lengthScale,
-    straightDepth:
-      (pointSerif?.straightDepth ?? contourSerif?.straightDepth ?? 0) * lengthScale,
   };
   const terminal = buildSerifTerminal(terminalArgs);
   // The serif releases the stroke at a point of its own choosing, on the flank
@@ -4556,7 +4554,7 @@ function buildSerifCap({
   // edge, so dragging one would walk two on-curves along the stroke. The cut only
   // decides how much curve to keep; the handle that survives it absorbs the rest.
   const releaseSide = (side, ribEnd, half) => {
-    const release = frame.toGlyph(half.straightTop);
+    const release = frame.toGlyph(half.junction);
     const split = splitTerminalSideForRoundCap(
       side,
       position,
