@@ -672,7 +672,7 @@ direction the serif runs. Both apply.
 
 ### The two halves
 
-Seven fields per half, independent left and right, with a `linked` flag that
+Nine fields per half, independent left and right, with a `linked` flag that
 copies left onto right:
 
 `wingLength`, `tipThickness`, `wingSlope`, `tipCutAngle`, `reach`, `tension`,
@@ -681,23 +681,57 @@ copies left onto right:
 Terminal-level, shared by both: `axisMode`, `axisAngle`, `undersideCup`.
 
 Null means **inherit**, so contour and source defaults stay live consumers
-exactly the way stroke width does (§2). `SERIF_LENGTH_FIELDS` — the four that are
+exactly the way stroke width does (§2). `SERIF_LENGTH_FIELDS` — the five that are
 distances — are the only ones scaled by the source's `serifUnitsMode`
 (`absolute` / `normalized`, the latter multiplying by the stroke width).
-`tipCutAngle` is degrees; `tension` and `concavity` are dimensionless in every
-mode and are never scaled.
+`tipCutAngle` is degrees; `tension`, `concavity` and `easeCurvature` are
+dimensionless in every mode and are never scaled.
 
-**`tension` and `concavity` must not multiply.** They shape one cubic, the
-transition from the straight run down to the wing's tip, and both of its handles
-lie on the line from their own end toward the **wing's inner corner**. Concavity
-is the handle length as a fraction of the distance to that corner; tension is the
-balance between the two, bounded so neither can vanish. Aiming both at the corner
-is what makes the bracket a bracket, and it is also what makes the tangents
-unconditional: any non-zero handle length preserves them, so the two sliders are
-free to shape the curve without ever breaking the join. An earlier construction
-multiplied the two, which made either one at zero cancel the other — and since
-both defaulted to zero, a fresh serif was a flat bevel. A fresh serif now starts
-at tension 0.5, concavity 1.
+Because null means inherit, an untouched half stores nothing on any of these, and
+the panel has to park each slider on the generator's own default rather than on
+the slider's minimum. `SERIF_HALF_DEFAULTS` is exported for exactly that: a
+slider showing 0 while the terminal is drawn from 0.8 is a lie, and the first
+touch of the thumb jumps the shape.
+
+**The bracket bends around one attractor.** `concavity` places it: it starts at
+the midpoint of the chord from the wing's tip to the junction with the stem, and
+travels from there toward the **wing's inner corner**. `tension` is how far both
+handles then travel from their own end toward that one point. This is the
+serif-lab construction, ported unchanged.
+
+The two cannot cancel: concavity at 0 leaves the attractor on the chord, so the
+bracket is a straight chamfer whatever tension says, and tension at 0 leaves both
+handles on their ends, which is the same chamfer. Negative concavity sends the
+attractor the other side of the chord and the bracket bulges convex. It is also
+what keeps `wingSlope` and `reach` from standing in for each other: slope moves
+the attractor through the corner, reach moves it through the chord midpoint. An
+earlier construction aimed both handles at the corner and measured reach from it,
+which made those two emit identical geometry.
+
+The cost is that the bracket meets the stem flank tangentially **only at
+concavity 1**. Everywhere else the junction is a corner, which is what contour
+easing is for. A fresh serif starts at tension 0.7, concavity 0.8.
+
+**Contour easing rounds that junction.** `easeDistance` moves the release back
+along the flank and cuts the same amount off the bracket end (a de Casteljau
+split, so the bracket that survives is the same curve, not a redrawn one). The
+rounding that fills the gap has one handle on each surface — along the flank one
+side, along the bracket's own tangent the other — and **both handles are the same
+length**. A rounding is symmetric or it is not a rounding; giving each handle a
+fraction of its own neighbour instead makes the two legs unequal, because the
+split bracket's control leg has nothing to do with the ease distance, and the
+result reads as a lopsided scoop.
+
+`easeCurvature` is the fraction of the way to the corner those two surfaces would
+meet at: 0 leaves both handles on their ends and cuts a straight chamfer, 1
+carries them onto that corner. Near full concavity the two surfaces are nearly
+parallel and that corner runs away, so the reach is bounded by the ease distance
+as well.
+
+Easing switches itself off at concavity 1 and **only** there — that is the one
+value where the bracket already leaves the junction along the flank and there is
+no corner left to round. A partly hollow bracket still meets the flank at an
+angle and wants rounding as much as a bulging one does.
 
 A half with `wingLength === 0` is a half that is **switched off** and must add
 nothing to the outline. Two things follow from that and both were found the hard

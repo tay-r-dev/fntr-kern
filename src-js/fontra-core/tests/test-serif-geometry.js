@@ -275,8 +275,71 @@ describe("half serif in frame coordinates", () => {
     }
   });
 
-  it("snaps the rounding off once the bracket is hollow", () => {
+  const legs = (half) => ({
+    flank: Math.hypot(
+      half.easeFlankHandle.u - half.release.u,
+      half.easeFlankHandle.v - half.release.v
+    ),
+    bracket: Math.hypot(
+      half.easeBracketHandle.u - half.easeOnBracket.u,
+      half.easeBracketHandle.v - half.easeOnBracket.v
+    ),
+  });
+
+  it("gives the rounding two handles of equal length", () => {
+    // A rounding is symmetric or it is not a rounding. Pulling each handle
+    // toward its own neighbour instead makes the two legs different lengths,
+    // because the split bracket's control leg has nothing to do with the ease
+    // distance, and the curve reads as a lopsided scoop.
+    for (const concavity of [-0.9, -0.4, 0, 0.5, 0.95]) {
+      for (const easeCurvature of [0.2, 0.6, 1]) {
+        const half = eased({ concavity, easeCurvature });
+        const { flank, bracket } = legs(half);
+        expectClose(
+          flank,
+          bracket,
+          `concavity ${concavity} curvature ${easeCurvature}`
+        );
+        expect(flank).to.be.above(0);
+      }
+    }
+  });
+
+  it("runs the flank handle along the flank and the other along the bracket", () => {
+    const half = eased();
+    // The flank leg is on the flank line, straight toward the junction.
+    expectClose(half.easeFlankHandle.u, half.release.u);
+    expect(half.easeFlankHandle.v).to.be.below(half.release.v);
+    // The bracket leg continues the bracket's own tangent at the landing point,
+    // which is the direction from its incoming handle to the landing point.
+    const tangent = {
+      u: half.easeOnBracket.u - half.control2.u,
+      v: half.easeOnBracket.v - half.control2.v,
+    };
+    const leg = {
+      u: half.easeBracketHandle.u - half.easeOnBracket.u,
+      v: half.easeBracketHandle.v - half.easeOnBracket.v,
+    };
+    expectClose(tangent.u * leg.v - tangent.v * leg.u, 0);
+  });
+
+  it("collapses both handles onto their own ends at zero curvature", () => {
+    const half = eased({ easeCurvature: 0 });
+    const { flank, bracket } = legs(half);
+    expectClose(flank, 0);
+    expectClose(bracket, 0);
+  });
+
+  it("keeps the rounding on a hollow bracket", () => {
+    // Only a fully scooped wing snaps it off. Anything short of that still has
+    // a corner at the junction and still wants it rounded.
     const half = build({ concavity: 0.4, easeDistance: 20, easeCurvature: 0.6 });
+    expectClose(half.release.v - half.junction.v, 20);
+    expect(legs(half).flank).to.be.above(0);
+  });
+
+  it("snaps the rounding off at full concavity", () => {
+    const half = build({ concavity: 1, easeDistance: 20, easeCurvature: 0.6 });
     expectClose(half.release.v, half.junction.v);
     expectClose(half.easeOnBracket.u, half.junction.u);
   });

@@ -86,6 +86,44 @@ function lerpUV(a, b, t) {
   return { u: a.u + (b.u - a.u) * t, v: a.v + (b.v - a.v) * t };
 }
 
+function subUV(a, b) {
+  return { u: a.u - b.u, v: a.v - b.v };
+}
+
+function lengthUV(a) {
+  return Math.hypot(a.u, a.v);
+}
+
+// Step `distance` from `origin` along `direction`. A zero-length direction has
+// nowhere to go, so it stays put rather than producing NaN — which is the
+// degenerate case at ease distance 0, where the whole rounding collapses.
+function alongUV(origin, direction, distance) {
+  const length = lengthUV(direction);
+  if (!length) {
+    return { u: origin.u, v: origin.v };
+  }
+  return {
+    u: origin.u + (direction.u / length) * distance,
+    v: origin.v + (direction.v / length) * distance,
+  };
+}
+
+// Where two lines meet, given a point and a direction on each. Null when they
+// are too near parallel to name a meeting point: the caller falls back to a
+// bound of its own rather than chasing an intersection at infinity.
+function lineIntersection(originA, directionA, originB, directionB) {
+  const denominator = directionA.u * directionB.v - directionA.v * directionB.u;
+  if (Math.abs(denominator) < 1e-9) {
+    return null;
+  }
+  const delta = subUV(originB, originA);
+  const t = (delta.u * directionB.v - delta.v * directionB.u) / denominator;
+  return {
+    u: originA.u + directionA.u * t,
+    v: originA.v + directionA.v * t,
+  };
+}
+
 function splitCubic(p0, p1, p2, p3, t) {
   const a = lerpUV(p0, p1, t);
   const b = lerpUV(p1, p2, t);
@@ -159,7 +197,11 @@ export function buildHalfSerif({ side, flankU, params }) {
   const attractor = lerpUV(midChord, corner, concavity);
   const control1 = lerpUV(tipTop, attractor, tension);
   const control2 = lerpUV(junction, attractor, tension);
-  const easeOff = concavity > 0;
+  // At full concavity the bracket already leaves the junction along the flank,
+  // so there is no corner left to round and the rounding has nothing to do. Only
+  // then: a partly hollow bracket still meets the flank at an angle, and wants
+  // rounding as much as a bulging one does.
+  const easeOff = concavity >= 1;
   const easeDistance = easeOff ? 0 : Math.max(params.easeDistance ?? 0, 0);
   const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
   const chord = Math.hypot(junction.u - tipTop.u, junction.v - tipTop.v);
@@ -168,8 +210,38 @@ export function buildHalfSerif({ side, flankU, params }) {
   const bracket = splitCubic(tipTop, control1, control2, junction, 1 - easeFraction);
   const easeOnBracket = bracket.first[3];
   const release = { u: flankU, v: junction.v + easeDistance };
-  const easeFlankHandle = lerpUV(release, junction, easeCurvature);
-  const easeBracketHandle = lerpUV(easeOnBracket, bracket.second[1], easeCurvature);
+
+  // The rounding is one curve from the release across to its landing on the
+  // bracket, and each of its handles runs along the surface its own end sits on:
+  // the flank line one side, the bracket's own tangent the other. Both are the
+  // SAME LENGTH. A rounding is symmetric or it is not a rounding — giving each
+  // handle a fraction of its own neighbour instead makes the two legs unequal,
+  // because the split bracket's control leg has nothing to do with the ease
+  // distance, and the result reads as a lopsided scoop.
+  //
+  // The length is measured toward the corner the two surfaces would meet at if
+  // the rounding were not there, which is what the curvature slider is a
+  // fraction of: 0 leaves both handles on their ends and cuts a straight chamfer,
+  // 1 carries them onto that corner for the fullest round. Near full concavity
+  // the two surfaces are nearly parallel and the corner runs away, so the reach
+  // is bounded by the ease distance as well.
+  const flankDirection = subUV(junction, release);
+  const bracketDirection = subUV(bracket.second[1], easeOnBracket);
+  const meeting = lineIntersection(
+    release,
+    flankDirection,
+    easeOnBracket,
+    bracketDirection
+  );
+  const easeReach =
+    easeCurvature *
+    Math.min(
+      meeting ? lengthUV(subUV(meeting, release)) : easeDistance,
+      meeting ? lengthUV(subUV(meeting, easeOnBracket)) : easeDistance,
+      easeDistance
+    );
+  const easeFlankHandle = alongUV(release, flankDirection, easeReach);
+  const easeBracketHandle = alongUV(easeOnBracket, bracketDirection, easeReach);
 
   return {
     junction,

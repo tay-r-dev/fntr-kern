@@ -4452,7 +4452,12 @@ function buildDropCap({
   };
 }
 
-const SERIF_HALF_DEFAULTS = Object.freeze({
+// Exported because the parameter panel has to park an untouched slider on the
+// value the generator is actually drawing with. A stored null means "inherit",
+// so a fresh serif has no number of its own on any of these; a slider that
+// parked at its own minimum instead would claim a shape nobody is looking at,
+// and the first touch of the thumb would jump the terminal.
+export const SERIF_HALF_DEFAULTS = Object.freeze({
   wingLength: 0,
   tipThickness: 0,
   wingSlope: 0,

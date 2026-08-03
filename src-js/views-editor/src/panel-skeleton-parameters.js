@@ -1,5 +1,6 @@
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import { SERIF_HALF_DEFAULTS } from "@fontra/core/skeleton-generator.js";
 import {
   SERIF_HALF_FIELDS,
   SKELETON_SOURCE_DEFAULT_KEYS,
@@ -1205,6 +1206,11 @@ export default class SkeletonParametersPanel extends Panel {
         { step: 1, disabled: !canEdit }
       );
 
+      // An untouched half stores null on every field, and null means "inherit"
+      // — so these three sliders have to park on the generator's own default or
+      // they show a shape that is not on screen, and the first drag jumps.
+      const percentDefault = (field) => Math.round(SERIF_HALF_DEFAULTS[field] * 100);
+
       pushGroup("serif-group-bracket");
       // How far back along the stem flank the transition starts. It moves the
       // junction, which moves the attractor the bracket bends around, so it is
@@ -1219,7 +1225,7 @@ export default class SkeletonParametersPanel extends Panel {
         percentSummary(half.tension),
         0,
         100,
-        0,
+        percentDefault("tension"),
         { step: 1, disabled: !canEdit }
       );
       // Signed, and it places the attractor: negative bulges the transition
@@ -1231,7 +1237,7 @@ export default class SkeletonParametersPanel extends Panel {
         percentSummary(half.concavity),
         -100,
         100,
-        0,
+        percentDefault("concavity"),
         { step: 1, disabled: !canEdit }
       );
 
@@ -1251,7 +1257,7 @@ export default class SkeletonParametersPanel extends Panel {
         percentSummary(half.easeCurvature),
         0,
         100,
-        0,
+        percentDefault("easeCurvature"),
         { step: 1, disabled: !canEdit }
       );
     };

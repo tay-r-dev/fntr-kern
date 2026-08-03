@@ -222,23 +222,31 @@ feature:
 | `distance`  | how far back from the corner it starts    |
 | `curvature` | how the rounding bends over that distance |
 
-**Coupling.** Contour easing is disabled across serif easing 0 → −1, and enabled
-again on positive values. A convex wing has no junction to soften; a hollow one
-does.
+**Coupling.** As built: easing is disabled at concavity 1 and only there. That is
+the single value where the bracket already leaves the junction along the flank,
+so there is no corner left to round. Every other value — hollow, flat chamfer or
+convex bulge — meets the flank at an angle and keeps its rounding.
+
+This paragraph previously said the opposite (disabled across 0 → −1, enabled on
+positive values). That was wrong and was never what was asked for.
 
 ### Consequences
 
-- `reach` is removed from `SERIF_HALF_FIELDS`. Migration needed for any serif
-  already saved with a non-zero reach, and the golden fixtures regenerate.
-- Two renames and two new fields per half — the inherit-via-null chain,
-  mirroring, the panel and the source defaults all follow.
+**Done** (2026-08-03). As built, and differing from the sketch above:
+
+- `reach` was **kept**, not removed. Under the one-attractor construction it and
+  `wingSlope` move the attractor by different routes, so they stop being
+  interchangeable and no migration is needed.
+- `straightDepth` was removed instead, with no migration: the trimmed stroke edge
+  already ends at the release, so the terminal never owned that point.
+- Two new fields per half, `easeDistance` and `easeCurvature` — the
+  inherit-via-null chain, mirroring, the panel and the source defaults all follow.
 - Contour easing emits its points at every setting, including zero distance and
-  the disabled half of the coupling, where they collapse onto the corner. See the
-  ground rule above: disabled means no shape, not no points.
-- The coupling is a shape discontinuity at serif easing 0 if contour easing
-  switches on at a non-zero distance. Topology is unaffected, so this is a
-  drag-feel question, not an interpolation one: decide whether crossing zero ramps
-  the distance in from nothing or snaps it.
+  at concavity 1 where they collapse onto the junction. See the ground rule
+  above: disabled means no shape, not no points.
+- The snap-off is at concavity 1, an endpoint of the range, so there is no
+  discontinuity to walk through mid-slider and the drag-feel question below does
+  not arise.
 
 ---
 
