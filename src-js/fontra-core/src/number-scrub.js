@@ -16,31 +16,33 @@ export const SCRUB_COARSE_FACTOR = 10;
 export const SCRUB_FINE_FACTOR = 0.1;
 
 export function scrubFactor(modifiers = {}) {
-  // Shift wins when both are held: shift already means "more" on the arrow keys
-  // in these same fields, so a hand holding both gets the same answer it gets
-  // there rather than an arbitrary one.
+  // Shift is the fine adjust, which is what it means nearly everywhere else.
+  // Shift also wins when both are held: overshooting is the expensive mistake,
+  // so the tie goes to the slower of the two.
   if (modifiers.shiftKey) {
-    return SCRUB_COARSE_FACTOR;
+    return SCRUB_FINE_FACTOR;
   }
   if (modifiers.ctrlKey || modifiers.metaKey) {
-    return SCRUB_FINE_FACTOR;
+    return SCRUB_COARSE_FACTOR;
   }
   return 1;
 }
 
 // What one pointer move is worth. Charged per move rather than over the whole
-// travel: pressing shift halfway through has to speed up the rest of the drag,
+// travel: changing modifier halfway through has to change the rest of the drag,
 // where multiplying the accumulated travel would retroactively rescale what came
 // before it and jump the value under the hand.
 export function scrubIncrement(pixels, { step, ...modifiers } = {}) {
   return pixels * (step || 1) * scrubFactor(modifiers);
 }
 
-// Bring a scrubbed value inside its field's own bounds. The caller carries the
-// travel unrounded and rounds only here, so ten fine moves under a whole-number
-// field still add up to one instead of each rounding away to nothing.
-export function clampScrubValue(value, { minValue, maxValue, integer } = {}) {
-  let result = integer ? Math.round(value) : value;
+// Bring a scrubbed value inside its field's own bounds. Clamping only, with the
+// rounding split out below it on purpose: the caller has to fold the clamp back
+// into its accumulated travel and must NOT fold the rounding back with it. Doing
+// both at once cancels each fine move before it can add up, and the fine modifier
+// stops moving anything at all.
+export function clampScrubValue(value, { minValue, maxValue } = {}) {
+  let result = value;
   if (minValue != null) {
     result = Math.max(result, Number(minValue));
   }
@@ -48,4 +50,13 @@ export function clampScrubValue(value, { minValue, maxValue, integer } = {}) {
     result = Math.min(result, Number(maxValue));
   }
   return result;
+}
+
+// What the field shows and what gets stored. Whole numbers by default: every
+// number a scrub can reach is in font units, and the generator quantizes to the
+// grid anyway, so a fraction only stores a value the outline never uses — and
+// leaves the next drag starting from a number the panel is not showing. A field
+// that genuinely wants fractions passes `integer: false`.
+export function roundScrubValue(value, { integer = true } = {}) {
+  return integer ? Math.round(value) : value;
 }

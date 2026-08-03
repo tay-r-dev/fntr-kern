@@ -3,6 +3,7 @@ import { SimpleElement } from "@fontra/core/html-utils.js";
 import {
   SCRUB_THRESHOLD,
   clampScrubValue,
+  roundScrubValue,
   scrubIncrement,
 } from "@fontra/core/number-scrub.js";
 import { QueueIterator } from "@fontra/core/queue-iterator.js";
@@ -289,7 +290,11 @@ export class Form extends SimpleElement {
       // shown in the box, so it is left alone.
       const hasStartValue = Number.isFinite(startValue);
       let lastX = startX;
-      let change = 0;
+      // Unrounded, always. What the box shows and what goes down the stream are
+      // rounded off this, never back into it: a fine drag moves a tenth of a unit
+      // per pixel, and rounding the running total would floor every one of those
+      // to nothing before the next could build on it.
+      let travel = 0;
       let valueStream = null;
       let streamStarted = false;
 
@@ -305,20 +310,27 @@ export class Form extends SimpleElement {
           // move that registers.
           lastX = moveEvent.clientX;
         }
-        change += scrubIncrement(moveEvent.clientX - lastX, {
+        travel += scrubIncrement(moveEvent.clientX - lastX, {
           step,
           shiftKey: moveEvent.shiftKey,
           ctrlKey: moveEvent.ctrlKey,
           metaKey: moveEvent.metaKey,
         });
         lastX = moveEvent.clientX;
+        let change;
         if (hasStartValue) {
-          const value = clampScrubValue(startValue + change, fieldItem);
-          // Fold the clamp back into the travel, so a drag that has run past the
-          // end of the range turns around the moment the hand does instead of
-          // spending the overshoot first.
-          change = value - startValue;
-          this._fieldSetters[fieldItem.key]?.(value);
+          const clamped = clampScrubValue(startValue + travel, fieldItem);
+          // Fold the CLAMP back into the travel — and only the clamp — so a drag
+          // that has run past the end of the range turns around the moment the
+          // hand does instead of spending the overshoot first.
+          travel = clamped - startValue;
+          const shown = roundScrubValue(clamped, fieldItem);
+          this._fieldSetters[fieldItem.key]?.(shown);
+          // Send exactly what the box shows, so the number and the shape cannot
+          // disagree by the rounding.
+          change = shown - startValue;
+        } else {
+          change = roundScrubValue(travel, fieldItem);
         }
         if (!streamStarted) {
           streamStarted = true;

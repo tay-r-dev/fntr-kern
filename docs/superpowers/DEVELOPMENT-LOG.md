@@ -1753,10 +1753,15 @@ the ratio, and watching the number rather than the slider.
 ### 2. Solution
 
 The label scrubs. Pressing a parameter's name and moving sideways moves its number
-one step per pixel; shift is ten, control a tenth. Linear, deliberately — an
+one unit per pixel; shift is a tenth, control is ten. Linear, deliberately — an
 accelerating scrub returns a different number for the same hand movement depending
 on how fast the hand moved, so nothing about it can be learned and no round value
 can be landed on without watching the readout.
+
+Whole numbers throughout, whatever the modifier. Everything a scrub reaches is in
+font units and the generator quantizes to the grid anyway, so a fraction only
+stores a value the outline never uses and leaves the next drag starting from a
+number the panel is not showing.
 
 Three pieces, deliberately separate:
 
@@ -1797,3 +1802,18 @@ where the panel can see it.
 **`resetAfterEdit` died with the sliders.** It existed so a relative thumb returned
 to neutral after a drag; the value-refresh path's exception for it is gone, and the
 rule is now simply that the field the user is in is left alone.
+
+**Clamping and rounding cannot be the same call.** They were, and the first pass
+shipped fractions into the boxes because nothing asked for rounding. Turning it on
+in that one function would have broken the fine modifier instead: the caller folds
+the clamped value back into its accumulated travel so an overshoot turns around
+immediately, and folding a ROUNDED value back cancels each fine move before the
+next can build on it — a tenth of a unit per pixel would move nothing at all. They
+are two functions now, and the travel is only ever folded back through the clamp.
+Both halves are pinned by tests.
+
+**Shift is the fine adjust, not the coarse one.** Figma's scrub has it the other
+way and the first pass followed Figma. Shift-as-precision is the stronger
+convention across everything else, and it is what this repo's user expects. Note
+the arrow keys in these same fields still take shift as coarse, from upstream —
+inconsistent, unchanged here because it is shared with every other Fontra panel.
