@@ -1142,9 +1142,11 @@ export default class SkeletonParametersPanel extends Panel {
     });
   }
 
-  // Serif parameters. Seven numbers per half plus four shared by the terminal.
-  // Absolute font units for the lengths; tension and concavity are edited as
-  // percent and stored as ratios. When the halves are linked one set of
+  // Serif parameters. Nine numbers per half plus the axis and the underside cup
+  // shared by the terminal, grouped wing / bracket / contour easing so the panel
+  // reads in the order the shape is built. Absolute font units for the lengths;
+  // tension, concavity and ease curvature are edited as percent and stored as
+  // ratios. When the halves are linked one set of
   // controls is shown and written to both sides — the storage is always two
   // independent halves, linking is only an editing convenience.
   _buildSerifSection(formContents, widthPoints, canEdit) {
@@ -1176,11 +1178,15 @@ export default class SkeletonParametersPanel extends Panel {
       });
     };
 
-    const pushHalf = (scope, half) => {
+    const pushGroup = (labelKey) => {
       formContents.push({
         type: "header",
-        label: translate("sidebar.skeleton-parameters.serif-group-wing"),
+        label: translate(`sidebar.skeleton-parameters.${labelKey}`),
       });
+    };
+
+    const pushHalf = (scope, half) => {
+      pushGroup("serif-group-wing");
       pushLength(`serif:${scope}-wingLength`, "serif-wing-length", half.wingLength);
       pushLength(
         `serif:${scope}-tipThickness`,
@@ -1188,11 +1194,6 @@ export default class SkeletonParametersPanel extends Panel {
         half.tipThickness
       );
       pushLength(`serif:${scope}-wingSlope`, "serif-wing-slope", half.wingSlope);
-      formContents.push({
-        type: "header",
-        label: translate("sidebar.skeleton-parameters.serif-group-bracket"),
-      });
-      pushLength(`serif:${scope}-reach`, "serif-reach", half.reach);
       this._pushSummarySlider(
         formContents,
         `serif:${scope}-tipCutAngle`,
@@ -1203,10 +1204,41 @@ export default class SkeletonParametersPanel extends Panel {
         0,
         { step: 1, disabled: !canEdit }
       );
-      formContents.push({
-        type: "header",
-        label: translate("sidebar.skeleton-parameters.serif-group-easing"),
-      });
+
+      pushGroup("serif-group-bracket");
+      // How far back along the stem flank the transition starts. It moves the
+      // junction, which moves the attractor the bracket bends around, so it is
+      // not a longer version of wing slope.
+      pushLength(`serif:${scope}-reach`, "serif-reach", half.reach);
+      // How far both handles travel toward the attractor. At 0 the bracket is a
+      // straight wedge; there is no separate corner-or-smooth switch.
+      this._pushSummarySlider(
+        formContents,
+        `serif:${scope}-tension`,
+        "serif-tension",
+        percentSummary(half.tension),
+        0,
+        100,
+        0,
+        { step: 1, disabled: !canEdit }
+      );
+      // Signed, and it places the attractor: negative bulges the transition
+      // convex, 0 is a flat chamfer, 100 puts it on the wing's inner corner.
+      this._pushSummarySlider(
+        formContents,
+        `serif:${scope}-concavity`,
+        "serif-concavity",
+        percentSummary(half.concavity),
+        -100,
+        100,
+        0,
+        { step: 1, disabled: !canEdit }
+      );
+
+      pushGroup("serif-group-easing");
+      // Rounds the junction between the flank and the bracket. It switches
+      // itself off on a hollow bracket, which is why these two do nothing at
+      // positive concavity.
       pushLength(
         `serif:${scope}-easeDistance`,
         "serif-ease-distance",
@@ -1218,30 +1250,6 @@ export default class SkeletonParametersPanel extends Panel {
         "serif-ease-curvature",
         percentSummary(half.easeCurvature),
         0,
-        100,
-        0,
-        { step: 1, disabled: !canEdit }
-      );
-      // Tension 0 collapses the transition to a straight line, which is the
-      // angular wedge; there is no separate corner-or-smooth switch.
-      this._pushSummarySlider(
-        formContents,
-        `serif:${scope}-tension`,
-        "serif-tension",
-        percentSummary(half.tension),
-        0,
-        100,
-        0,
-        { step: 1, disabled: !canEdit }
-      );
-      // Signed: negative bulges the transition convex, 0 is a flat chamfer,
-      // positive is the classic hollow bracket.
-      this._pushSummarySlider(
-        formContents,
-        `serif:${scope}-concavity`,
-        "serif-concavity",
-        percentSummary(half.concavity),
-        -100,
         100,
         0,
         { step: 1, disabled: !canEdit }

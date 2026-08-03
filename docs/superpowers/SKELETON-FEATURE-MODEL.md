@@ -736,11 +736,13 @@ that is the serif's reach, not the pin.
 ### Point count
 
 **Seven on-curve points per terminal, at every parameter value**, including every
-degenerate one — a wingless half, zero thickness, zero cup. The straight run's
-top is not among them: it is where the trimmed edge already ends, so emitting it
-too would stack a second on-curve on the same spot. At `straightDepth === 0` the
-run has no length and its two ends coincide; that is a zero-length segment, not a
-missing point, and the count holds. Tested directly ("keeps seven on-curve points
+degenerate one — a wingless half, zero thickness, zero cup. The release is not
+among them: it is where the trimmed edge already ends, so emitting it too would
+stack a second on-curve on the same spot. What the terminal owns instead is that
+release's outgoing handle, which is why its point list opens and closes with a
+control point. At ease distance 0 the rounding has no length and its two ends
+coincide; that is a zero-length segment, not a missing point, and the count
+holds. Tested directly ("keeps seven on-curve points
 at every degenerate value") because this is the interpolation contract (§3).
 
 ### The underside is one curve
