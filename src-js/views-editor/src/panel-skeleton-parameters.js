@@ -184,7 +184,7 @@ function percentSummary(summary) {
 
 // Slider/number-unit -> model-unit for one serif half field.
 function serifHalfValueFromField(field, value) {
-  if (field === "tension" || field === "concavity") {
+  if (field === "tension" || field === "concavity" || field === "easeCurvature") {
     return Number(value) / 100;
   }
   return Number(value);
@@ -212,9 +212,6 @@ function serifHalfValuesFromField(name, value) {
 function serifScaleTargets(name) {
   if (name === "cup") {
     return [{ field: "undersideCup" }];
-  }
-  if (name === "depth") {
-    return [{ field: "straightDepth" }];
   }
   const [scope, field] = String(name).split("-");
   if (!SERIF_HALF_FIELDS.includes(field)) {
@@ -1180,6 +1177,10 @@ export default class SkeletonParametersPanel extends Panel {
     };
 
     const pushHalf = (scope, half) => {
+      formContents.push({
+        type: "header",
+        label: translate("sidebar.skeleton-parameters.serif-group-wing"),
+      });
       pushLength(`serif:${scope}-wingLength`, "serif-wing-length", half.wingLength);
       pushLength(
         `serif:${scope}-tipThickness`,
@@ -1187,6 +1188,10 @@ export default class SkeletonParametersPanel extends Panel {
         half.tipThickness
       );
       pushLength(`serif:${scope}-wingSlope`, "serif-wing-slope", half.wingSlope);
+      formContents.push({
+        type: "header",
+        label: translate("sidebar.skeleton-parameters.serif-group-bracket"),
+      });
       pushLength(`serif:${scope}-reach`, "serif-reach", half.reach);
       this._pushSummarySlider(
         formContents,
@@ -1195,6 +1200,25 @@ export default class SkeletonParametersPanel extends Panel {
         half.tipCutAngle,
         SERIF_TIP_CUT_MIN,
         SERIF_TIP_CUT_MAX,
+        0,
+        { step: 1, disabled: !canEdit }
+      );
+      formContents.push({
+        type: "header",
+        label: translate("sidebar.skeleton-parameters.serif-group-easing"),
+      });
+      pushLength(
+        `serif:${scope}-easeDistance`,
+        "serif-ease-distance",
+        half.easeDistance
+      );
+      this._pushSummarySlider(
+        formContents,
+        `serif:${scope}-easeCurvature`,
+        "serif-ease-curvature",
+        percentSummary(half.easeCurvature),
+        0,
+        100,
         0,
         { step: 1, disabled: !canEdit }
       );
@@ -1286,7 +1310,6 @@ export default class SkeletonParametersPanel extends Panel {
     // One curve across the whole terminal, so this is shared rather than per
     // half: a cup on each half would meet at a break in the middle.
     pushLength("serif:cup", "serif-underside-cup", serif.undersideCup);
-    pushLength("serif:depth", "serif-straight-depth", serif.straightDepth);
   }
 
   // A relative multiplier, parked at 100% so each drag scales whatever the
@@ -1651,10 +1674,6 @@ export default class SkeletonParametersPanel extends Panel {
     }
     if (name === "cup") {
       await apply({ undersideCup: value == null ? null : Number(value) });
-      return;
-    }
-    if (name === "depth") {
-      await apply({ straightDepth: value == null ? null : Number(value) });
       return;
     }
     const values = serifHalfValuesFromField(name, value);

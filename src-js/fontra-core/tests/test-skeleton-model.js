@@ -1024,7 +1024,7 @@ describe("skeleton-model serif schema", () => {
     expect(point.serif.left.wingLength).to.equal(40);
     expect(point.serif.left.tension).to.equal(null);
     expect(point.serif.right.wingLength).to.equal(null);
-    expect(Object.keys(point.serif.left)).to.have.length(7);
+    expect(Object.keys(point.serif.left)).to.have.length(9);
   });
 
   it("defaults the axis mode and the link flag", () => {
@@ -1046,7 +1046,6 @@ describe("skeleton-model serif schema", () => {
   it("leaves terminal-level values null when unset", () => {
     const point = normalizeSkeletonPoint({ x: 0, y: 0 });
     expect(point.serif.undersideCup).to.equal(null);
-    expect(point.serif.straightDepth).to.equal(null);
   });
 
   it("does not put serif data on off-curve points", () => {

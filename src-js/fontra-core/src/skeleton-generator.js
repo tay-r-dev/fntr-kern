@@ -4461,8 +4461,10 @@ const SERIF_HALF_DEFAULTS = Object.freeze({
   // A fresh serif should read as a serif, so the transition starts as a real
   // bracket rather than a straight bevel. Both are dimensionless, so they need
   // no unit scaling.
-  tension: 0.5,
-  concavity: 1,
+  tension: 0.7,
+  concavity: 0.8,
+  easeDistance: 0,
+  easeCurvature: 0.5,
 });
 
 const SERIF_LENGTH_FIELDS = new Set([
@@ -4470,6 +4472,7 @@ const SERIF_LENGTH_FIELDS = new Set([
   "tipThickness",
   "wingSlope",
   "reach",
+  "easeDistance",
 ]);
 
 function resolveSerifHalf(pointSerif, contourSerif, side, context = {}) {
@@ -4527,22 +4530,26 @@ function buildSerifCap({
   // A terminal may only consume its own segment. Clamp before constructing the
   // serif as well as before splitting the outline, otherwise the splice stays
   // local while the emitted straight section still reaches into the next one.
-  const clampReach = (side, half) => {
-    const available = Math.max(getTerminalSegmentLength(side, position) * 0.95, 1);
-    const requested = Math.max(half.reach, 0);
+  const clampTerminalDepth = (side, half) => {
+    const available = getTerminalSegmentLength(side, position) * 0.95;
+    const room = Math.max(available - (half.tipThickness + half.wingSlope), 0);
+    const wantedReach = Math.max(half.reach, 0);
+    const reach = Math.min(wantedReach, room);
+    const wantedEase = Math.max(half.easeDistance, 0);
+    const easeDistance = Math.min(wantedEase, Math.max(room - reach, 0));
     return {
-      half: { ...half, reach: Math.min(requested, available) },
-      clamped: requested > available,
+      half: { ...half, reach, easeDistance },
+      clamped: wantedReach > reach || wantedEase > easeDistance,
     };
   };
-  const leftReach = clampReach(leftSide, left);
-  const rightReach = clampReach(rightSide, right);
+  const leftDepth = clampTerminalDepth(leftSide, left);
+  const rightDepth = clampTerminalDepth(rightSide, right);
   const terminalArgs = {
     frame,
     leftFlankU: frame.toFrame(leftRibEnd).u,
     rightFlankU: frame.toFrame(rightRibEnd).u,
-    left: leftReach.half,
-    right: rightReach.half,
+    left: leftDepth.half,
+    right: rightDepth.half,
     undersideCup:
       (pointSerif?.undersideCup ?? contourSerif?.undersideCup ?? 0) * lengthScale,
   };
@@ -4581,7 +4588,7 @@ function buildSerifCap({
       rightSplit.referenceEndpointIndex
     ),
     capPoints,
-    reachClamped: leftReach.clamped || rightReach.clamped,
+    depthClamped: leftDepth.clamped || rightDepth.clamped,
   };
 }
 

@@ -80,7 +80,8 @@ export const VALID_SERIF_AXIS_MODES = new Set([
 export const VALID_SERIF_UNITS_MODES = new Set(["absolute", "normalized"]);
 
 // One half-serif's shape. Absolute font units unless the source's serif units
-// mode says otherwise; `tipCutAngle` is degrees and `tension`/`concavity` are
+// mode says otherwise; `tipCutAngle` is degrees and `tension`, `concavity` and
+// `easeCurvature` are
 // dimensionless in every mode. Null means "inherit", so the contour and source
 // defaults stay live consumers the way stroke width does.
 export const SERIF_HALF_FIELDS = Object.freeze([
@@ -91,16 +92,14 @@ export const SERIF_HALF_FIELDS = Object.freeze([
   "reach",
   "tension",
   "concavity",
+  "easeDistance",
+  "easeCurvature",
 ]);
 
 // Shared by both halves of one terminal. The underside cup is deliberately NOT
 // per half: the foot is one curve across the whole terminal, and one cup per
 // half produces two scoops meeting at a break in the middle.
-export const SERIF_TERMINAL_FIELDS = Object.freeze([
-  "axisAngle",
-  "undersideCup",
-  "straightDepth",
-]);
+export const SERIF_TERMINAL_FIELDS = Object.freeze(["axisAngle", "undersideCup"]);
 // Corner rounding is the angle-point engine's parameter set — related to caps
 // only in that both live on on-curve points
 export const CORNER_POINT_FIELDS = [
@@ -2050,7 +2049,7 @@ export function setSkeletonSerifParameters(point, values) {
   if ("linked" in values) {
     serif.linked = values.linked === true;
   }
-  for (const field of ["axisAngle", "undersideCup", "straightDepth"]) {
+  for (const field of SERIF_TERMINAL_FIELDS) {
     if (!(field in values)) {
       continue;
     }
@@ -3121,7 +3120,8 @@ function normalizeSerif(serif) {
       : "perpendicular",
   };
   normalized.axisAngle = Number.isFinite(serif?.axisAngle) ? serif.axisAngle : 0;
-  for (const field of ["undersideCup", "straightDepth"]) {
+  for (const field of SERIF_TERMINAL_FIELDS) {
+    if (field === "axisAngle") continue;
     normalized[field] = Number.isFinite(serif?.[field]) ? serif[field] : null;
   }
   return normalized;

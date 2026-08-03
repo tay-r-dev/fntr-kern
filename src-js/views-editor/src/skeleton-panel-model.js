@@ -406,7 +406,6 @@ export function summarizeSkeletonSerifSelection(selectedPoints) {
     axisMode: terminal("axisMode", "perpendicular"),
     axisAngle: terminal("axisAngle", 0),
     undersideCup: terminal("undersideCup"),
-    straightDepth: terminal("straightDepth"),
   };
 }
 
