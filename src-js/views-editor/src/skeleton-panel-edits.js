@@ -5,6 +5,7 @@
 // generated geometry (Global Constraints).
 
 import { ChangeCollector } from "@fontra/core/changes.js";
+import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
 import {
   SERIF_HALF_DEFAULTS,
   generateFromSkeleton,
@@ -630,10 +631,19 @@ export async function setPanelSerifParameters(
   );
 }
 
-// The serif lengths are distances and cannot go below zero — except the wing
-// slope, which is a signed offset: negative tilts the wing's inner face the
-// other way, and the whole lower half of its range is a real family of shapes.
-const SIGNED_SERIF_FIELDS = new Set(["wingSlope"]);
+// What a scrub may move each serif number to, in stored units. Distances cannot
+// go below zero, which is the default. Two exceptions:
+//
+// - `wingSlope` is a signed offset. Negative tilts the wing's inner face the
+//   other way, and that whole half of its range is a real family of shapes.
+// - `tipCutAngle` is signed AND capped, at the geometry's own limit. Without the
+//   cap here the stored number would keep climbing past a shape that had already
+//   stopped moving, and the panel would show an angle the terminal is not at.
+const SERIF_NUDGE_BOUNDS = {
+  wingSlope: { min: null, max: null },
+  tipCutAngle: { min: -MAX_TIP_CUT_ANGLE, max: MAX_TIP_CUT_ANGLE },
+};
+const DEFAULT_SERIF_NUDGE_BOUNDS = { min: 0, max: null };
 
 // Move one serif number per point by the drag's change, keeping a mixed
 // selection mixed. `targets` is a list of {side, field} for half fields, or
@@ -657,8 +667,15 @@ function nudgeOnePointSerif(point, contour, targets, change) {
     // Serif lengths are font units and the generator quantizes to the grid
     // anyway, so a fraction left behind only stores a number the outline never
     // uses — and makes the next drag start from a value the panel isn't showing.
-    const raw = current + change;
-    const moved = Math.round(SIGNED_SERIF_FIELDS.has(field) ? raw : Math.max(0, raw));
+    const bounds = SERIF_NUDGE_BOUNDS[field] ?? DEFAULT_SERIF_NUDGE_BOUNDS;
+    let raw = current + change;
+    if (bounds.min != null) {
+      raw = Math.max(raw, bounds.min);
+    }
+    if (bounds.max != null) {
+      raw = Math.min(raw, bounds.max);
+    }
+    const moved = Math.round(raw);
     if (side) {
       values[side] = { ...(values[side] || {}), [field]: moved };
     } else {

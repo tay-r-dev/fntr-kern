@@ -1,5 +1,6 @@
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
 import { SERIF_HALF_DEFAULTS } from "@fontra/core/skeleton-generator.js";
 import {
   SERIF_HALF_FIELDS,
@@ -125,9 +126,6 @@ function capValuesFromField(name, value) {
   }
   return null;
 }
-
-export const SERIF_TIP_CUT_MIN = -80;
-export const SERIF_TIP_CUT_MAX = 80;
 
 // A row that packs several inputs onto one line carries them as nested fields,
 // and it is those nested fields that own the keys. Flattening the row into its
@@ -1192,15 +1190,19 @@ export default class SkeletonParametersPanel extends Panel {
       // Signed, unlike the other three: a negative slope tilts the wing's inner
       // face the other way and is a real family of shapes, not an error.
       pushLength(`serif:${scope}-wingSlope`, "serif-wing-slope", half.wingSlope, null);
-      this._pushSummarySlider(
+      // Degrees rather than a length, but edited like the other three: a number
+      // whose label scrubs. It was a slider, which made it the odd one out in a
+      // group of four.
+      this._pushSummaryNumber(
         formContents,
         `serif:${scope}-tipCutAngle`,
         "serif-tip-cut",
         half.tipCutAngle,
-        SERIF_TIP_CUT_MIN,
-        SERIF_TIP_CUT_MAX,
-        0,
-        { step: 1, disabled: !canEdit }
+        {
+          disabled: !canEdit,
+          minValue: -MAX_TIP_CUT_ANGLE,
+          maxValue: MAX_TIP_CUT_ANGLE,
+        }
       );
 
       // An untouched half stores null on every field, and null means "inherit"

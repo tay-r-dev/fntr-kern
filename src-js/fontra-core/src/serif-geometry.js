@@ -79,7 +79,12 @@ export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAng
   };
 }
 
-const MAX_TIP_CUT_ANGLE = 80;
+// Past this the tip's outer edge leans so far it crosses the wing. Exported
+// because the panel bounds its field with it and the scrub bounds its drag with
+// it: three copies of the same number would drift, and a panel that kept
+// counting past a shape which had already stopped is exactly the kind of lie
+// that produces.
+export const MAX_TIP_CUT_ANGLE = 80;
 const MAX_EASE_FRACTION = 0.5;
 
 function lerpUV(a, b, t) {
