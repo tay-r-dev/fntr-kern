@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SERIF_PRESET,
   DEFAULT_SKELETON_WIDTH,
   SKELETON_SCHEMA_VERSION,
   allocateSkeletonIds,
@@ -1012,7 +1013,7 @@ describe("skeleton-model transform/translate/id-allocation", () => {
 });
 
 describe("skeleton-model serif schema", () => {
-  it("captures and applies a complete serif preset", () => {
+  it("captures one wing and applies it to both", () => {
     const point = normalizeSkeletonPoint({
       x: 0,
       y: 0,
@@ -1025,11 +1026,38 @@ describe("skeleton-model serif schema", () => {
     });
     const preset = captureSerifPreset(point);
 
-    expect(preset).to.include({ linked: false, undersideCup: 12 });
-    expect(preset).to.not.have.property("axisMode");
-    expect(applySerifPreset(preset)).to.deep.equal(preset);
-    expect(applySerifPreset(preset, { scope: "left" })).to.deep.equal({
-      left: preset.left,
+    expect(preset).to.include({ wingLength: 40, undersideCup: 12 });
+    expect(preset).to.not.have.any.keys("left", "right", "linked", "axisMode");
+
+    const both = applySerifPreset(preset);
+    expect(both.left).to.deep.equal(both.right);
+    expect(both.left.wingLength).to.equal(40);
+    expect(both.left).to.not.have.property("undersideCup");
+    expect(both.undersideCup).to.equal(12);
+    expect(both).to.not.have.property("linked");
+
+    const left = applySerifPreset(preset, { scope: "left" });
+    expect(Object.keys(left)).to.deep.equal(["left"]);
+    expect(left.left.wingLength).to.equal(40);
+  });
+
+  it("reads a preset saved with the old two-wing shape", () => {
+    const applied = applySerifPreset({ left: { wingLength: 40 }, undersideCup: 5 });
+    expect(applied.left.wingLength).to.equal(40);
+    expect(applied.right.wingLength).to.equal(40);
+    expect(applied.undersideCup).to.equal(5);
+  });
+
+  it("starts a new serif on the default preset", () => {
+    expect(DEFAULT_SERIF_PRESET.name).to.equal("Egyptian");
+    expect(DEFAULT_SERIF_PRESET).to.include({
+      wingLength: 20,
+      tipThickness: 20,
+      wingSlope: 20,
+      reach: 0,
+      tension: 0,
+      concavity: 0,
+      undersideCup: 0,
     });
   });
 

@@ -127,12 +127,7 @@ describe("skeleton-source-defaults", () => {
 describe("skeleton source defaults for serifs", () => {
   it("reads the serif seed fallbacks from an empty source", () => {
     const source = makeSource();
-    for (const [key, expected] of [
-      ["SERIF_NEW_WING_LENGTH", 20],
-      ["SERIF_NEW_TIP_THICKNESS", 20],
-      ["SERIF_NEW_WING_SLOPE", 20],
-      ["CUSTOM_SERIFS", []],
-    ]) {
+    for (const [key, expected] of [["CUSTOM_SERIFS", []]]) {
       expect(
         getSourceSkeletonDefaultsValue(
           source,
@@ -145,43 +140,19 @@ describe("skeleton source defaults for serifs", () => {
 
   it("writes and deep-clones serif presets", () => {
     const source = makeSource();
-    const customSerifs = [{ name: "Slab foot", left: { wingLength: 30 } }];
+    const customSerifs = [{ name: "Slab foot", wingLength: 30 }];
     setSourceSkeletonDefaultsValues(source, {
-      [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_LENGTH]: 31,
-      [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_TIP_THICKNESS]: 32,
-      [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_SLOPE]: 33,
       [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: customSerifs,
     });
-    customSerifs[0].left.wingLength = 99;
+    customSerifs[0].wingLength = 99;
 
-    expect(
-      getSourceSkeletonDefaultsValue(
-        source,
-        SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_LENGTH,
-        20
-      )
-    ).to.equal(31);
-    expect(
-      getSourceSkeletonDefaultsValue(
-        source,
-        SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_TIP_THICKNESS,
-        20
-      )
-    ).to.equal(32);
-    expect(
-      getSourceSkeletonDefaultsValue(
-        source,
-        SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_SLOPE,
-        20
-      )
-    ).to.equal(33);
     expect(
       getSourceSkeletonDefaultsValue(
         source,
         SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS,
         []
       )
-    ).to.deep.equal([{ name: "Slab foot", left: { wingLength: 30 } }]);
+    ).to.deep.equal([{ name: "Slab foot", wingLength: 30 }]);
   });
 
   it("defaults to absolute units with collapsed-point removal off", () => {

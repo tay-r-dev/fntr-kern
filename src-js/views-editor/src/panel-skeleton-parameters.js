@@ -1342,19 +1342,30 @@ export default class SkeletonParametersPanel extends Panel {
 
   // ---- Serif presets --------------------------------------------------------
 
+  // The ported built-ins first, then the master's own — the same order the
+  // width and cap selects use. A built-in cannot be updated in place.
   _serifPresetOptions() {
+    const options = SERIF_PRESETS.map((preset, index) => ({
+      id: `builtin:${index}`,
+      label: preset.name,
+      preset,
+      builtin: true,
+    }));
     const list = this._resolveSourceDefault(SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS);
-    if (!Array.isArray(list)) {
-      return [];
+    if (Array.isArray(list)) {
+      list
+        .filter((item) => item && typeof item === "object")
+        .forEach((item, index) => {
+          options.push({
+            id: `custom:${index}`,
+            index,
+            label: item.name || `Serif ${index + 1}`,
+            preset: item,
+            builtin: false,
+          });
+        });
     }
-    return list
-      .filter((item) => item && typeof item === "object")
-      .map((item, index) => ({
-        id: `preset:${index}`,
-        index,
-        label: item.name || `Serif ${index + 1}`,
-        preset: item,
-      }));
+    return options;
   }
 
   // A preset is one shape. Capturing two different terminals into one would
@@ -1404,6 +1415,12 @@ export default class SkeletonParametersPanel extends Panel {
     }
   }
 
+  _customSerifPresets() {
+    return this._serifPresetOptions()
+      .filter((option) => !option.builtin)
+      .map((option) => ({ ...option.preset }));
+  }
+
   _selectedSerifPoint() {
     return this._widthPoints()[0] ?? null;
   }
@@ -1425,12 +1442,12 @@ export default class SkeletonParametersPanel extends Panel {
     if (!entry) {
       return;
     }
-    const next = this._serifPresetOptions().map((option) => option.preset);
+    const next = this._customSerifPresets();
     next.push({
       name: `Serif ${next.length + 1}`,
       ...captureSerifPreset(entry.point),
     });
-    this._serifPresetSelection = `preset:${next.length - 1}`;
+    this._serifPresetSelection = `custom:${next.length - 1}`;
     await this._persistSerifPresetList(next);
     this._forceRebuild = true;
     await this.update();
@@ -1441,7 +1458,7 @@ export default class SkeletonParametersPanel extends Panel {
     if (!entry) {
       return;
     }
-    const next = this._serifPresetOptions().map((item) => item.preset);
+    const next = this._customSerifPresets();
     next[option.index] = {
       name: option.preset.name,
       ...captureSerifPreset(entry.point),
@@ -1518,7 +1535,7 @@ export default class SkeletonParametersPanel extends Panel {
       // looking at.
       const updateButton = html.button(
         {
-          disabled: !canEdit || mixed || !hasPoint || !selected,
+          disabled: !canEdit || mixed || !hasPoint || !selected || selected.builtin,
           onclick: (event) => {
             if (!selected) {
               return;
@@ -1976,21 +1993,6 @@ export default class SkeletonParametersPanel extends Panel {
         ),
         capBallRatio: DEFAULT_CAP_BALL_RATIO,
         capBallShape: DEFAULT_CAP_BALL_SHAPE,
-        serifNewWingLength: resolveEffectiveSourceSkeletonDefault(
-          this.fontController,
-          location,
-          K.SERIF_NEW_WING_LENGTH
-        ),
-        serifNewTipThickness: resolveEffectiveSourceSkeletonDefault(
-          this.fontController,
-          location,
-          K.SERIF_NEW_TIP_THICKNESS
-        ),
-        serifNewWingSlope: resolveEffectiveSourceSkeletonDefault(
-          this.fontController,
-          location,
-          K.SERIF_NEW_WING_SLOPE
-        ),
       };
       await setPanelCapStyle(
         this.sceneController,

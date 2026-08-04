@@ -496,7 +496,6 @@ export const strings = {
   "sidebar.skeleton-parameters.force-apply.confirm":
     "Will overwrite the selected points' values. Press again to apply.",
   "sidebar.skeleton-parameters.default-caps": "Default caps",
-  "sidebar.skeleton-parameters.new-serif": "New serif",
   "sidebar.skeleton-parameters.serif-presets": "Serif presets",
   "sidebar.skeleton-parameters.serif-presets.edit": "Edit shape",
   "sidebar.skeleton-parameters.serif-presets.scope-both": "Both wings",

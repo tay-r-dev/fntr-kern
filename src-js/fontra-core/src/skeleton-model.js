@@ -191,9 +191,6 @@ export const SKELETON_SOURCE_DEFAULT_KEYS = Object.freeze({
   CUSTOM_CAP_ROUNDED: "customCapRounded",
   SERIF_UNITS_MODE: "serifUnitsMode",
   SERIF_REMOVE_COLLAPSED: "serifRemoveCollapsedPoints",
-  SERIF_NEW_WING_LENGTH: "serifNewWingLength",
-  SERIF_NEW_TIP_THICKNESS: "serifNewTipThickness",
-  SERIF_NEW_WING_SLOPE: "serifNewWingSlope",
   CUSTOM_SERIFS: "customSerifs",
 });
 
@@ -216,9 +213,6 @@ export const SKELETON_SOURCE_DEFAULT_FALLBACKS = Object.freeze({
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_UNITS_MODE]: "absolute",
   [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED]: false,
-  [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_LENGTH]: 20,
-  [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_TIP_THICKNESS]: 20,
-  [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_SLOPE]: 20,
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: [],
 });
 
@@ -276,18 +270,6 @@ const SKELETON_SOURCE_DEFAULT_KEY_PATHS = new Map([
   [
     SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED,
     ["serifDefaults", "removeCollapsedPoints"],
-  ],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_LENGTH,
-    ["serifDefaults", "newWingLength"],
-  ],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_TIP_THICKNESS,
-    ["serifDefaults", "newTipThickness"],
-  ],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_SLOPE,
-    ["serifDefaults", "newWingSlope"],
   ],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS, ["serifProfiles"]],
 ]);
@@ -2094,53 +2076,102 @@ export function setSkeletonSerifParameters(point, values) {
   point.serif = serif;
 }
 
+// A preset is ONE wing plus the underside cup, which is per terminal. Applying
+// it writes that wing to both sides. Asymmetry is a decision about the terminal
+// being edited, not about the shape that was saved, so the link flag does not
+// travel with a preset and a preset never stores two different wings.
+export const SERIF_PRESET_FIELDS = Object.freeze([
+  ...SERIF_HALF_FIELDS,
+  "undersideCup",
+]);
+
+function normalizeSerifPreset(preset) {
+  const normalized = {};
+  for (const field of SERIF_PRESET_FIELDS) {
+    // A preset written before the wings collapsed carries a `left` block.
+    const raw = preset?.[field] ?? preset?.left?.[field];
+    const value = Number(raw);
+    normalized[field] = Number.isFinite(value) ? value : 0;
+  }
+  return normalized;
+}
+
+// Ported from the serif lab, whose numbers are drawn at stem width 150 and are
+// already one wing. Lengths divide by 7.5 onto this project's 20-unit scale.
+// The tip cut is an angle and the two bracket numbers are ratios, so all three
+// carry across untouched. The lab predates contour easing, so that pair is 0.
+//
+// Egyptian is the shape a terminal gets when it becomes a serif. It is the
+// plain slab: three 20s and nothing else.
+export const SERIF_PRESETS = Object.freeze(
+  [
+    { name: "Egyptian", wingLength: 20, tipThickness: 20, wingSlope: 20 },
+    {
+      name: "Clarendon",
+      wingLength: 18,
+      tipThickness: 10,
+      wingSlope: 1,
+      reach: 19,
+      tension: 0.9,
+      concavity: 0.85,
+    },
+    {
+      name: "Didone",
+      wingLength: 19,
+      tipThickness: 3,
+      reach: 13,
+      tension: 0.7,
+      concavity: 0.8,
+    },
+    {
+      name: "Old style",
+      wingLength: 15,
+      tipThickness: 5,
+      wingSlope: 7,
+      tipCutAngle: 22,
+      undersideCup: 3,
+      reach: 20,
+      tension: 0.62,
+      concavity: 0.66,
+    },
+    {
+      name: "Wedge",
+      wingLength: 13,
+      tipThickness: 2,
+      wingSlope: 13,
+      reach: 5,
+      tension: 0.05,
+      concavity: -0.18,
+    },
+  ].map((preset) =>
+    Object.freeze({ name: preset.name, ...normalizeSerifPreset(preset) })
+  )
+);
+
+export const DEFAULT_SERIF_PRESET = SERIF_PRESETS[0];
+
+// One wing off a drawn terminal. The left one: a preset holds a single wing, so
+// capturing an asymmetric terminal has to pick, and picking silently is better
+// than refusing a shape the designer can see.
 export function captureSerifPreset(point) {
   const serif = normalizeSerif(point?.serif);
-  return {
-    linked: serif.linked,
-    undersideCup: serif.undersideCup,
-    left: { ...serif.left },
-    right: { ...serif.right },
-  };
+  return normalizeSerifPreset({ ...serif.left, undersideCup: serif.undersideCup });
 }
 
+// The partial the serif writer takes. Scope "both" puts the one wing on both
+// sides; a single side leaves the other wing and the cup alone.
 export function applySerifPreset(preset, { scope = "both" } = {}) {
-  const serif = normalizeSerif(preset);
+  const wing = normalizeSerifPreset(preset);
+  const cup = wing.undersideCup;
+  delete wing.undersideCup;
   if (scope === "left" || scope === "right") {
-    return { [scope]: { ...serif[scope] } };
+    return { [scope]: wing };
   }
-  return {
-    linked: serif.linked,
-    undersideCup: serif.undersideCup,
-    left: { ...serif.left },
-    right: { ...serif.right },
-  };
+  return { left: wing, right: { ...wing }, undersideCup: cup };
 }
 
-// Only three fields have a master default. Everything else on a fresh serif is
-// zero, which is why this maps rather than lists.
-const SERIF_SEED_KEYS = Object.freeze({
-  wingLength: SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_LENGTH,
-  tipThickness: SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_TIP_THICKNESS,
-  wingSlope: SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_SLOPE,
-});
-
-// The one description of a fresh serif. The cap-style seed and the defaults
-// panel's add button both go through it, so they cannot drift apart.
-export function makeSerifSeed(sourceDefaults = {}) {
-  const half = {};
-  for (const field of SERIF_HALF_FIELDS) {
-    const key = SERIF_SEED_KEYS[field];
-    const value = key ? Number(sourceDefaults[key]) : 0;
-    half[field] = Number.isFinite(value)
-      ? value
-      : Number(SKELETON_SOURCE_DEFAULT_FALLBACKS[key]);
-  }
-  return { linked: true, undersideCup: 0, left: half, right: { ...half } };
-}
-
-export function makeSerifPreset(sourceDefaults = {}, name = "Serif") {
-  return { name, ...makeSerifSeed(sourceDefaults) };
+export function makeSerifPreset(name = "Serif") {
+  return { name, ...normalizeSerifPreset(DEFAULT_SERIF_PRESET) };
 }
 
 export function setSkeletonCornerParameters(point, values, { round = null } = {}) {

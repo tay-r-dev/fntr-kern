@@ -12,6 +12,7 @@ import {
   generateFromSkeleton,
 } from "@fontra/core/skeleton-generator.js";
 import {
+  DEFAULT_SERIF_PRESET,
   applySerifPreset,
   findGeneratedPathAddress,
   getSkeletonData,
@@ -20,7 +21,6 @@ import {
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
   isSkeletonSideLocked,
-  makeSerifSeed,
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
   resetSkeletonEditableRibHandles,
@@ -676,11 +676,11 @@ export async function setPanelCapStyle(
       if (Object.keys(seeded).length) {
         setSkeletonCapParameters(point, seeded);
       }
-      // Picking serif applies the master's new-serif numbers. No condition:
-      // the style select only fires on a change, so this is exactly "became a
-      // serif", and picking it is a request for the default shape.
+      // Picking serif applies the default preset. No condition: the style
+      // select only fires on a change, so this is exactly "became a serif",
+      // and picking it is a request for the default shape.
       if (capStyle === "serif") {
-        setSkeletonSerifParameters(point, makeSerifSeed(presetValues));
+        setSkeletonSerifParameters(point, applySerifPreset(DEFAULT_SERIF_PRESET));
       }
       if (capStyle === "round") {
         resetSkeletonEditableRib(point, "left");

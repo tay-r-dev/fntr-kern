@@ -136,25 +136,12 @@ always there and the test can never pass. A first attempt did gate on it, the
 seed never fired once, and every terminal switched to serif came up carrying the
 old fallbacks - 0.7 tension and 0.8 concavity out of nowhere, with no size.
 
-### New source defaults
+### No master numbers for it
 
-Three keys, in the serif defaults block next to the units mode.
-
-| Key                    | Path                            | Fallback |
-| ---------------------- | ------------------------------- | -------- |
-| `serifNewWingLength`   | `serifDefaults.newWingLength`   | 20       |
-| `serifNewTipThickness` | `serifDefaults.newTipThickness` | 20       |
-| `serifNewWingSlope`    | `serifDefaults.newWingSlope`    | 20       |
-
-They seed a new serif. They also seed a new preset row in the defaults panel. One
-number in one place feeds both. They do not split by glyph case. A serif foot is a
-serif foot in either case, and the reason the width defaults split does not apply
-here.
-
-The other six wing fields and the underside cup seed at 0. They get no source
-default, because zero is already the answer. The linked flag seeds **on**, which
-is what it defaults to today, so a new serif is symmetric until a designer
-unlinks it.
+An earlier draft gave the three seed numbers their own master source defaults,
+edited under a "New serif" header. That is gone. The default shape is a preset
+like any other, so a master that wants a different starting serif changes the
+preset, not a second set of numbers describing the same thing.
 
 ---
 
@@ -162,28 +149,63 @@ unlinks it.
 
 ```
 {
-  name: "Slab foot",
-  linked: true,
-  undersideCup: 0,
-  left:  { wingLength, tipThickness, wingSlope, tipCutAngle,
-           reach, tension, concavity, easeDistance, easeCurvature },
-  right: { …the same nine… }
+  name: "Didone",
+  wingLength, tipThickness, wingSlope, tipCutAngle,
+  reach, tension, concavity, easeDistance, easeCurvature,
+  undersideCup
 }
 ```
 
-Twenty numbers, one flag, one name.
+**One wing, ten numbers.** Applying it writes that wing to both sides.
+
+Asymmetry is a decision about the terminal being edited, not about the shape
+that was saved, so the link flag does not travel with a preset and a preset
+never stores two different wings. A preset that held both wings carried twice
+the information it needed and made every symmetric shape say the same thing
+twice.
+
+The underside cup stays. It belongs to the terminal rather than to a wing, and
+it is stored once either way, so it is not part of the duplication.
+
+Capture takes the **left** wing. A preset holds one wing, so capturing an
+asymmetric terminal has to pick, and picking is better than refusing a shape the
+designer can see.
 
 **Excluded, and why:**
 
 - `axisMode` and `axisAngle` place the terminal. A preset captured on an upright
   stem foot would force a slanted terminal back to perpendicular. Without them,
   one preset stays correct on every terminal in the font.
+- `linked` is the asymmetry decision, which now lives only on the terminal.
 - `capStyle` is excluded. The serif section appears only when the terminal is
   already a serif, so a preset never has to change the style.
 
-**Easy to miss:** `undersideCup` belongs to the terminal rather than to one wing,
-and it is shape. The preset holds it. The preset holds `linked` too. A symmetric
-preset must leave a symmetric foot, even on a terminal that was asymmetric.
+### The built-in presets
+
+Ported from the serif lab. Its numbers are already one wing and already this
+project's fields, with projection reading as wing length. The lab draws at stem
+width 150, so lengths divide by 7.5 onto the 20-unit scale. The tip cut is an
+angle and the two bracket numbers are ratios, so all three carry across
+untouched. The lab predates contour easing, so that pair is 0.
+
+|           | wing | tip | slope | cut | cup | reach | tension | concavity |
+| --------- | ---- | --- | ----- | --- | --- | ----- | ------- | --------- |
+| Egyptian  | 20   | 20  | 20    | 0   | 0   | 0     | 0       | 0         |
+| Clarendon | 18   | 10  | 1     | 0   | 0   | 19    | 0.9     | 0.85      |
+| Didone    | 19   | 3   | 0     | 0   | 0   | 13    | 0.7     | 0.8       |
+| Old style | 15   | 5   | 7     | 22  | 3   | 20    | 0.62    | 0.66      |
+| Wedge     | 13   | 2   | 13    | 0   | 0   | 5     | 0.05    | −0.18     |
+
+The lab's "Sans" is dropped. It is all zeros, which is what a serif with no
+shape already draws, so it is a preset for switching the feature off rather than
+for choosing a foot.
+
+**Egyptian is the default.** It is the plain slab — three 20s and nothing else —
+and it is what a terminal gets when it becomes a serif. It replaces the lab's
+own Egyptian numbers, which had a shallow bracket.
+
+The built-ins list first in the preset select, then the master's own, the same
+order the width and cap selects use. A built-in cannot be updated in place.
 
 ### Units
 
