@@ -100,19 +100,13 @@ export const SERIF_HALF_FIELDS = Object.freeze([
 // per half: the foot is one curve across the whole terminal, and one cup per
 // half produces two scoops meeting at a break in the middle.
 export const SERIF_TERMINAL_FIELDS = Object.freeze(["axisAngle", "undersideCup"]);
-// Values written when older serif data omits a field. These preserve the shape
-// that the generator used before serif fields became fully materialized.
-export const SERIF_HALF_MIGRATION = Object.freeze({
-  wingLength: 0,
-  tipThickness: 0,
-  wingSlope: 0,
-  tipCutAngle: 0,
-  reach: 0,
-  tension: 0.7,
-  concavity: 0.8,
-  easeDistance: 0,
-  easeCurvature: 0.5,
-});
+// An unset serif field is zero. Every one of them, with no exceptions: a serif
+// that has never been shaped draws nothing, rather than carrying a bracket
+// nobody asked for. The starting shape comes from the seed at the moment a
+// terminal becomes a serif, not from a fallback under every read.
+export const SERIF_HALF_ZEROS = Object.freeze(
+  Object.fromEntries(SERIF_HALF_FIELDS.map((field) => [field, 0]))
+);
 // Corner rounding is the angle-point engine's parameter set — related to caps
 // only in that both live on on-curve points
 export const CORNER_POINT_FIELDS = [
@@ -2100,6 +2094,23 @@ export function setSkeletonSerifParameters(point, values) {
   point.serif = serif;
 }
 
+// True when a terminal carries no serif shape at all — every wing number and
+// the cup at zero, which draws nothing.
+//
+// This is what "has never been a serif" has to mean. Point normalization
+// materializes a serif block on EVERY on-curve point, so the absence of the
+// block is not a test that can ever pass.
+export function serifIsUnshaped(serif) {
+  for (const side of ["left", "right"]) {
+    for (const field of SERIF_HALF_FIELDS) {
+      if (Number(serif?.[side]?.[field])) {
+        return false;
+      }
+    }
+  }
+  return !Number(serif?.undersideCup);
+}
+
 export function captureSerifPreset(point) {
   const serif = normalizeSerif(point?.serif);
   return {
@@ -3248,9 +3259,7 @@ function normalizeWidth(width) {
 function normalizeSerifHalf(half) {
   const normalized = {};
   for (const field of SERIF_HALF_FIELDS) {
-    normalized[field] = Number.isFinite(half?.[field])
-      ? half[field]
-      : SERIF_HALF_MIGRATION[field];
+    normalized[field] = Number.isFinite(half?.[field]) ? half[field] : 0;
   }
   return normalized;
 }

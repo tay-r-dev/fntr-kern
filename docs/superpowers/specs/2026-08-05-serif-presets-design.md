@@ -66,7 +66,7 @@ editor cannot create one. The level exists in the data model and in three
 readers, and nothing can put a value there.
 
 **Link two, the constants.** A field that no level supplies falls through to a
-default table. That table is **not all zeros**.
+default table. That table is **not all zeros**, which is the trap below.
 
 | Field                                              | Default |
 | -------------------------------------------------- | ------- |
@@ -87,8 +87,8 @@ mixed selection.
 A wing field always holds a number. `null` is not a stored value. Zero is a
 setting, not an absence.
 
-- **Reading.** Serif normalization fills a missing or non-finite field with the
-  migration value below. It never returns `null`.
+- **Reading.** Serif normalization fills a missing or non-finite field with 0.
+  It never returns `null`.
 - **Writing.** The panel writes a number. An empty box writes 0.
 - **Mixed selections.** The panel still shows an empty box for a mixed
   selection. This is a display state that the panel computes from the selection.
@@ -99,15 +99,17 @@ setting, not an absence.
 
 ### Migration
 
-A stored `null` becomes **the value it resolves to today**, not 0. For six fields
-that is 0. For `tension` it is 0.7, for `concavity` 0.8, for `easeCurvature` 0.5.
+**An unset field becomes 0. Every one of them, with no exceptions.**
 
-**No shape moves.** Every serif already drawn keeps its numbers, and no fixture
-needs new values. Migrating to 0 instead would flatten the bracket of every serif
-that had never been touched.
+An earlier draft of this spec had `tension` migrate to 0.7, `concavity` to 0.8
+and `easeCurvature` to 0.5, so that no serif already drawn would move. That
+protected shapes at the cost of the rule the designer asked for, and it was
+wrong twice over.
 
-The default table stops being a live fallback and becomes the migration table.
-Nothing reads it after the migration writes a number.
+- The designer asked for zeros below the first three, and asked for zero
+  concavity and zero tension again after seeing the result. A rule that keeps
+  0.7 under a read is not that rule.
+- It did not work anyway. See below.
 
 ### Where the 20-20-20 goes
 
@@ -121,18 +123,20 @@ route to seed. The point path already carries a preset-values argument for the
 other cap styles, and seeding uses it.
 
 The seed writes **all twenty numbers**, not the three from the source defaults.
-Everything the source defaults do not name seeds at 0. This drops a new serif's
-`tension` from 0.7, its `concavity` from 0.8 and its `easeCurvature` from 0.5,
-all to 0. A new serif is a chamfered slab with no bracket and no rounding. The
-designer asked for zeros below the first three, and this is what that means on
-the three fields that are not zero today.
+Everything the source defaults do not name seeds at 0. A new serif is a chamfered
+slab with no bracket and no rounding.
 
-The seed fires only when the point holds no serif data at all. Switch a terminal
-to butt and back, and it keeps the numbers it had. This matches the cap styles.
+The seed fires when a terminal carries **no serif shape** — every wing number and
+the cup at zero. A terminal that already has a shape keeps it, so switching to
+another cap style and back is not destructive.
 
-A point that has never held serif data draws at zero. It draws nothing. This is
-correct, and the interface cannot reach it, because every route into the serif
-style writes the seed first.
+**"Has no serif data" is not a test that can pass.** Point normalization
+materializes a serif block on every on-curve point in the file, so the block is
+always there. A first attempt tested for its absence, the seed never fired once,
+and every terminal switched to serif came up carrying the old fallbacks —
+0.7 tension and 0.8 concavity out of nowhere, with no size. That is the second
+reason the migration table had to go: it was the only thing those terminals could
+ever show.
 
 ### New source defaults
 

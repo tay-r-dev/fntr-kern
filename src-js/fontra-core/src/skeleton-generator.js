@@ -6,7 +6,7 @@ import {
   CAP_POINT_FIELDS,
   CORNER_POINT_FIELDS,
   DEFAULT_SKELETON_WIDTH,
-  SERIF_HALF_MIGRATION,
+  SERIF_HALF_ZEROS,
   collectSerifTerminals,
   collectTiedRibGroups,
   getEffectiveNormal,
@@ -4594,7 +4594,7 @@ function buildDropCap({
   };
 }
 
-export { SERIF_HALF_MIGRATION as SERIF_HALF_DEFAULTS };
+export { SERIF_HALF_ZEROS as SERIF_HALF_DEFAULTS };
 
 const SERIF_LENGTH_FIELDS = new Set([
   "wingLength",
@@ -4607,8 +4607,8 @@ const SERIF_LENGTH_FIELDS = new Set([
 function resolveSerifHalf(pointSerif, side, context = {}) {
   const scale = context.unitsMode === "normalized" ? context.strokeWidth : 1;
   const resolved = {};
-  for (const field of Object.keys(SERIF_HALF_MIGRATION)) {
-    const value = pointSerif?.[side]?.[field] ?? SERIF_HALF_MIGRATION[field];
+  for (const field of Object.keys(SERIF_HALF_ZEROS)) {
+    const value = pointSerif?.[side]?.[field] ?? 0;
     resolved[field] = SERIF_LENGTH_FIELDS.has(field) ? value * scale : value;
   }
   return resolved;

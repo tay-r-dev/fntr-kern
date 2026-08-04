@@ -24,6 +24,7 @@ import {
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
   resetSkeletonEditableRibHandles,
+  serifIsUnshaped,
   setSkeletonCapParameters,
   setSkeletonContourDefaultWidth,
   setSkeletonContourSingleSided,
@@ -676,9 +677,10 @@ export async function setPanelCapStyle(
       if (Object.keys(seeded).length) {
         setSkeletonCapParameters(point, seeded);
       }
-      // A terminal that has never been a serif has no numbers at all. Seed it
-      // once, from the master. Switching away and back keeps what it had.
-      if (capStyle === "serif" && point.serif == null) {
+      // A terminal with no serif shape draws nothing, so seed it from the
+      // master. One that already has a shape keeps it, which is what makes
+      // switching to another cap style and back non-destructive.
+      if (capStyle === "serif" && serifIsUnshaped(point.serif)) {
         setSkeletonSerifParameters(point, makeSerifSeed(presetValues));
       }
       if (capStyle === "round") {

@@ -28,6 +28,7 @@ import {
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
   resetSkeletonEditableRibHandles,
+  serifIsUnshaped,
   setSkeletonCapParameters,
   setSkeletonContourDefaultWidth,
   setSkeletonContourSingleSided,
@@ -1038,16 +1039,31 @@ describe("skeleton-model serif schema", () => {
     expect(point.capStyle).to.equal("serif");
   });
 
-  it("fills every half field with migration values", () => {
+  it("fills every unset half field with zero", () => {
     const point = normalizeSkeletonPoint({
       x: 0,
       y: 0,
       serif: { left: { wingLength: 40 } },
     });
     expect(point.serif.left.wingLength).to.equal(40);
-    expect(point.serif.left.tension).to.equal(0.7);
+    expect(point.serif.left.tension).to.equal(0);
+    expect(point.serif.left.concavity).to.equal(0);
+    expect(point.serif.left.easeCurvature).to.equal(0);
     expect(point.serif.right.wingLength).to.equal(0);
     expect(Object.keys(point.serif.left)).to.have.length(9);
+  });
+
+  it("reads a materialized serif as unshaped only when nothing is set", () => {
+    const bare = normalizeSkeletonPoint({ x: 0, y: 0 });
+    expect(serifIsUnshaped(bare.serif)).to.equal(true);
+    const shaped = normalizeSkeletonPoint({
+      x: 0,
+      y: 0,
+      serif: { left: { wingLength: 40 } },
+    });
+    expect(serifIsUnshaped(shaped.serif)).to.equal(false);
+    const cupped = normalizeSkeletonPoint({ x: 0, y: 0, serif: { undersideCup: 5 } });
+    expect(serifIsUnshaped(cupped.serif)).to.equal(false);
   });
 
   it("defaults the axis mode and the link flag", () => {
