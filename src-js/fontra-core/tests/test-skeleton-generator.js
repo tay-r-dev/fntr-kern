@@ -1748,7 +1748,7 @@ describe("skeleton-generator serif terminal handles", () => {
             }),
             { id: 6, x: 260, y: 460, type: "cubic" },
             { id: 7, x: 320, y: 600, type: "cubic" },
-            { id: 8, x: 320, y: 800 },
+            { id: 8, x: 320, y: 800, capStyle: "butt" },
           ],
         },
       ],
@@ -1906,5 +1906,25 @@ describe("skeleton-generator serif terminal handles", () => {
     expect(
       moved(emitted(huge, 5, "left", "in"), emitted(bigger, 5, "left", "in"))
     ).to.be.at.most(0.01);
+  });
+
+  it("publishes the axis an authored handle's length is measured along", () => {
+    const result = generateFromSkeleton(serifStem());
+    const find = (pointId, role) =>
+      result.provenance
+        .flatMap((entry) => entry.pointMap)
+        .find(
+          (item) =>
+            item?.skeletonPointId === pointId &&
+            item.side === "left" &&
+            item.role === role
+        );
+    for (const role of ["out", "in"]) {
+      const pointId = role === "out" ? 2 : 5;
+      const axis = find(pointId, role)?.authoredAxis;
+      expect(axis, `${pointId}/${role}`).to.not.equal(undefined);
+      expect(Math.hypot(axis.x, axis.y)).to.be.closeTo(1, 0.001);
+    }
+    expect(find(8, "in")?.authoredAxis).to.equal(undefined);
   });
 });

@@ -679,8 +679,7 @@ function applySerifAuthoredHandles(sidePoints, side, authoredKeys) {
       !isOffCurve(point) ||
       provenance?.side !== side ||
       !authoredKeys.has(`${provenance.skeletonPointId}/${side}/${provenance.role}`) ||
-      !point._axis ||
-      !point._authoredAdjustment
+      !point._axis
     )
       continue;
     const anchorIndex =
@@ -702,7 +701,15 @@ function applySerifAuthoredHandles(sidePoints, side, authoredKeys) {
     const farAxis = points[farHandleIndex]?._axis;
     if (!farAxis) continue;
     const domain = buildHandleDomain(anchor, far, axis, farAxis);
+    const authoredProvenance = {
+      ...provenance,
+      authoredAxis: { x: axis.x, y: axis.y },
+    };
     const adjustment = point._authoredAdjustment;
+    if (!adjustment) {
+      points[index] = { ...point, _provenance: authoredProvenance };
+      continue;
+    }
     const baseLength = adjustment.detached
       ? 0
       : (point.x - anchor.x) * axis.x + (point.y - anchor.y) * axis.y;
@@ -719,6 +726,7 @@ function applySerifAuthoredHandles(sidePoints, side, authoredKeys) {
       ...point,
       x: Math.round(anchor.x + axis.x * clamped),
       y: Math.round(anchor.y + axis.y * clamped),
+      _provenance: authoredProvenance,
     };
   }
   return points;
