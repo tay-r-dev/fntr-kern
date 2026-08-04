@@ -279,6 +279,16 @@ the skeleton.
 **Serif units mode** — whether the serif's five distance settings are fixed units, or a multiple of
 the stroke width so that the serif grows with the weight.
 
+**Serif preset** — a named terminal shape, held in the master. It is **one wing** and the underside
+cup, ten numbers, and applying it puts that wing on both sides. Whether the two wings differ is
+decided on the terminal you are editing, never carried in the preset. It holds no axis either, so
+one preset stays correct on an upright foot and a slanted one alike. Five ship with the editor —
+Egyptian, Clarendon, Didone, Old style, Wedge — and a master keeps its own beside them.
+
+**Egyptian** — the plain slab foot, and the shape a terminal gets the moment you pick serif: wing,
+tip and slope all 20, everything else nothing. A serif starts as a shape you can see, not as an
+invisible one waiting for three numbers.
+
 ### The other features
 
 **Coarse grid** — a snapping grid with presets, coarser than the unit grid, for keeping stems and

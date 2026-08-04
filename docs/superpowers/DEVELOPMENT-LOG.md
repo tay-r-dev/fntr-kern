@@ -2092,3 +2092,95 @@ tangents at the release. With the share clamps gone a handle can reach zero, and
 at zero the release is a corner. That is the correct output under the ground
 rule, but it makes the smooth-release guarantee conditional and the model still
 states it as unconditional.
+
+---
+
+## 28. Serif presets — feature
+
+Backlog items 4 and 5, built together because item 4 exists only to be consumed
+by item 5. [Design](specs/2026-08-05-serif-presets-design.md),
+[plan](plans/2026-08-05-serif-presets.md).
+
+### 1. Problem
+
+A serif terminal held twenty numbers and a flag. Repeating a drawn foot on
+another glyph meant setting all of them by hand, from memory, against a shape
+that is only correct once every number is.
+
+Two things got in the way of a preset, and both were older than the request.
+
+**A serif field could be unset**, and unset resolved through a table that was
+not all zeros — tension 0.7, concavity 0.8, ease curvature 0.5. So a preset that
+stored "unset" meant something different from one that stored a number, on three
+fields, invisibly.
+
+**A fresh serif drew nothing.** Its three size fields defaulted to zero, so
+picking serif from the cap style select produced an invisible terminal with a
+bracket nobody could see.
+
+### 2. Direction
+
+Unset stops existing. Every serif field always holds a number, and zero is a
+setting rather than an absence. The default shape moves out of a fallback table
+and into a **write**, applied the moment a terminal becomes a serif.
+
+A preset is **one wing** plus the underside cup — ten numbers, not twenty-one.
+Applying it writes that wing to both sides. Asymmetry is a decision about the
+terminal being edited, not about the shape that was saved.
+
+Five built-ins ported from the serif lab, whose numbers are already one wing and
+already these fields. It draws at stem width 150, so lengths divide by 7.5 onto
+the 20-unit scale; the tip cut is an angle and the two bracket numbers are
+ratios, so those carry across untouched.
+
+### 3. Result
+
+|           | wing | tip | slope | cut | cup | reach | tension | concavity |
+| --------- | ---- | --- | ----- | --- | --- | ----- | ------- | --------- |
+| Egyptian  | 20   | 20  | 20    | 0   | 0   | 0     | 0       | 0         |
+| Clarendon | 18   | 10  | 1     | 0   | 0   | 19    | 0.9     | 0.85      |
+| Didone    | 19   | 3   | 0     | 0   | 0   | 13    | 0.7     | 0.8       |
+| Old style | 15   | 5   | 7     | 22  | 3   | 20    | 0.62    | 0.66      |
+| Wedge     | 13   | 2   | 13    | 0   | 0   | 5     | 0.05    | −0.18     |
+
+Egyptian is the default and is what a terminal gets when it becomes a serif. The
+master defaults panel lists and edits the master's own presets. The parameters
+panel applies one, with a scope of both wings, left only or right only, and
+captures or overwrites one from the selected terminal. A built-in cannot be
+overwritten. Apply and update both ride the armed force-apply row the width and
+cap profiles already use.
+
+### 4. Challenges and findings
+
+**The seed never fired once.** It tested whether the point held serif data, and
+point normalization materializes a serif block on every on-curve point in the
+file — the block is always there, so the test could not pass. Every terminal
+switched to serif came up with no size and a bracket out of nowhere, which is
+exactly what the fallbacks were. The condition is gone entirely now: picking
+serif applies the default, unconditionally, because the select only fires on a
+change and picking it is a request for the default shape.
+
+**Protecting shapes cost the rule that was asked for.** The stated rule was
+"20-20-20 and all zeroes from down there". This was built with tension migrating
+to 0.7 and concavity to 0.8, so that no serif already drawn would move when the
+field became a real number. That guarantee was never requested, it is what the
+unseeded terminals above were displaying, and it had to be reported wrong twice
+before it came out. A stated requirement softened to fit the existing design is
+still a requirement missed.
+
+**The inherit chain had a level nothing could write.** A contour can hold its own
+serif block and three readers fell through to it — the generator and both panel
+readers — and no code in the tree ever set one. Removed with the null, since
+with every point field filled it could never have fired again. The contour cap
+style has the same shape: read by the generator, written by nothing. Left alone,
+because that is cap work.
+
+**The migration table and the seed were close enough to confuse.** They agree on
+six fields and differ on three, and the field writer reached for the wrong one,
+so emptying a tension box put 0.7 straight back into it. A table for reading old
+data and a table for starting a new shape should not have looked alike.
+
+**A missing import in a panel is a runtime error and nothing before it.** One
+edit missed its anchor, the built-in list was never imported, and the whole serif
+preset section threw on the next panel build. `fontra-core` has the only test
+harness in the tree, so neither panel has anything that would have caught it.

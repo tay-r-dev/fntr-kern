@@ -23,8 +23,8 @@ for its findings.
 | 2   | Rework the easing model                  | core geometry model | (4)    | done       |
 | 3   | Lift the minimum-separation clamps       | core geometry       | new    | done       |
 | 9   | Couple a serif's rib to its neighbour    | core geometry model | new    | done       |
-| 4   | Preset storage and editing               | source defaults     | (6.1)  | planned    |
-| 5   | Preset apply / create / update           | panel               | (6.2)  | planned    |
+| 4   | Preset storage and editing               | source defaults     | (6.1)  | done       |
+| 5   | Preset apply / create / update           | panel               | (6.2)  | done       |
 | 10  | Cancel a drag with right-click           | edit pipeline       | new    | done       |
 | 11  | Multiply, not just add, from a scrub     | edit pipeline       | new    | done       |
 | 12  | Handles on a serifed terminal            | core geometry       | new    | done       |
@@ -345,23 +345,35 @@ serif's own segment being straight, and both ends control the result.
 
 ---
 
-## 4. Preset storage and editing
+## 4. Preset storage and editing — done
 
-**Spec and plan written 2026-08-05:**
-[design](specs/2026-08-05-serif-presets-design.md),
-[plan](plans/2026-08-05-serif-presets.md). They cover items 4 and 5 together and
-supersede both entries as the working description. The open questions below are
-all settled there. Two things the spec added that this entry did not have:
+## 5. Preset apply / create / update — done
 
-- The serif loses its inherit chain first. Every wing field always holds a
-  number, `null` migrates to 0, and no shape moves because the geometry already
-  read `null` as 0.
-- A new serif seeds at wing length 20, tip thickness 20, wing slope 20 — three
-  new master source defaults — so switching a terminal to serif draws something
-  instead of nothing.
+Built together, dev log §28.
+[Design](specs/2026-08-05-serif-presets-design.md),
+[plan](plans/2026-08-05-serif-presets.md).
+
+As built, and differing from the two entries below:
+
+- **A preset is one wing plus the underside cup**, not a whole terminal. Ten
+  numbers. Applying it writes the wing to both sides, and asymmetry stays a
+  decision about the terminal being edited. That answers the first open question
+  below and reverses the answer the spec first gave it.
+- **Five built-ins ship**, ported from the serif lab and scaled onto 20 units.
+  The master's own list sits beside them. A built-in cannot be overwritten.
+- **Egyptian is the default shape**, applied whenever a terminal becomes a
+  serif. There are no separate "new serif" numbers in the master defaults: the
+  default shape is a preset like any other.
+- **No axis**, as the second open question suggested. No `linked` either, since
+  that is the asymmetry decision.
+- **The serif lost its inherit chain** on the way, which was the deepest part of
+  the work and was not in either entry. Every field always holds a number.
 
 Also found: the custom cap lists have a reader and **no writer**. Nothing in the
-editor can create one. Half the precedent this entry cites is dead storage.
+editor can create one. Half the precedent these entries cite is dead storage,
+and it was left alone.
+
+### The original entries
 
 **Per master, in the source defaults.** There is already a working template for
 this and the serif should follow it rather than invent a second mechanism.
@@ -389,20 +401,11 @@ option source in the parameters panel.
   level; a per-master preset can safely store absolute units, but a preset copied
   between masters cannot.
 
----
-
-## 5. Preset apply / create / update
-
-**Spec and plan written 2026-08-05:**
-[design](specs/2026-08-05-serif-presets-design.md) §6,
-[plan](plans/2026-08-05-serif-presets.md) tasks 7 and 9. Both notes below survived
-planning and are built as written. One control was added: a scope select on
-apply, offering both wings, left only or right only.
+### Item 5's original entry
 
 The control in the parameters panel: a select listing the presets, with apply,
-create-new, and a double-press update-in-place.
-
-Additive on top of item 4. Two notes:
+create-new, and a double-press update-in-place. Additive on top of item 4. Two
+notes:
 
 - **Create** needs a name. The defaults panel currently auto-names
   (`Custom ${n + 1}`) and lets the row be renamed afterwards; doing the same here
@@ -413,192 +416,3 @@ Additive on top of item 4. Two notes:
   grammar for the same kind of confirmation.
 
 ---
-
-## 12. Handles on a serifed terminal — done
-
-Built, dev log §24. Kept here for the account of the three faults and for the
-loose end at the bottom, which is not fixed.
-[Design](specs/2026-08-04-serif-terminal-handle-authoring-design.md),
-[plan](plans/2026-08-04-serif-terminal-handle-authoring.md).
-
-Fixing this exposed a fourth fault in shared code that had nothing to do with
-serifs — the curvature gizmo and the generator had never agreed on what a tension
-number means, and a pin jumped the curve by up to 128 units on the first grab.
-Dev log §25.
-
-Three faults, reported as one.
-
-**The trim drops the constructed handle direction.** Every generated handle
-carries the exact direction it was built on, so the smoothing pass never has to
-infer one from a rounded position — inferring makes the direction depend on
-handle length, and rib width sets handle length (feature model §3.6). The trim
-rebuilds its handles bare, so the smooth joint next to a serif falls back to
-inferring, and changing one handle's length swings the handle on the **next**
-segment by 14.7 units. The same edit under a plain cap moves it by nothing,
-which is the oracle. Largest of the three and the cheapest to fix.
-
-**The offset is authored on the wrong curve.** It is consumed against the segment
-the generator solves; the serif then eats the end of that segment, so what the
-designer drags is a piece of it. A piece responds to its parent's control points
-at a fraction of the rate, and both of its handles depend on both of the
-parent's — so the drag arrives fractional and leaks 3.9 units into its
-neighbour. The fix withholds **both** of the terminal segment's offsets from the
-solve and applies them after the splice, which migrates any file that already
-carries an offset there.
-
-**The chord trim measure traded shape for half of the second fault.** Taking the
-cut parameter off the chord between the segment's on-curves rather than walking
-the edge does make it handle-independent, and it moves the drawn serif: 14 units
-on a mild curve, 74 on a strong one, because the chord is far shorter than the
-edge and the same depth then cuts far more curve than it asked for. Reverted.
-With the second fault fixed, nothing a designer drags reaches the construction
-curve, so the edge measure is stable on its own.
-
-**Still open, found while measuring and causing none of it:** every point a serif
-emits is stamped
-with a guessed origin — no side, and an owner picked by counting position along
-the contour — so one serifed stem produces a dozen points claiming to be the same
-handle of the same skeleton point. Nothing reads them, because every lookup
-requires a real side. File separately if it ever matters.
-
----
-
-## 10. Cancel a drag with right-click — done
-
-Right-click while dragging a scrubbed label or a slider abandons the drag: the
-shape returns to where the press found it and **no undo step is recorded**. The
-other hand is already on the mouse, which Escape cannot say for itself mid-drag.
-
-Landing back on the starting value by dragging is not the same thing and must
-stay different — that commits an edit that happens to change nothing, and costs
-an undo to get past. So the stream carries a sentinel rather than a zero: a
-frozen object no amount of dragging can produce by accident.
-
-The streaming edit path already rebuilt from the original every frame, so
-abandoning is that restore plus the rollback notification, and then returning no
-changes — which is the ending a drag that never crossed the dead zone already
-had.
-
-Every consumer that drains a value stream now refuses the sentinel rather than
-committing it as a value, including the two upstream panels that share the
-slider.
-
-### Left open
-
-- **A slider cancelled by a click on its track** returns to the value the drag
-  reported at its start, which for a track click is already the clicked-to one.
-  The shape is correct either way; only the thumb can be a step out until the
-  next panel refresh.
-
----
-
-## 11. Multiply, not just add, from a scrub — done
-
-Every scrub field now carries `× [ratio] [preview - Apply]` in its own row. The
-ratio steps by 0.1 and the button shows where that field's number lands, live, so
-the ratio does not have to be read as a shape: 1.1 says nothing about where a 40
-goes, 44 does.
-
-Applied per point, not against one number. Scaling a mixed selection by 1.1 grows
-each point from its own value, which is the whole reason a multiply is not a
-scrub with the answer worked out in advance.
-
-A scrub and a multiply share their per-point writers and undo labels; only the
-arithmetic differs, so that is the argument. Reaches the same five groups the
-scrub does — the two point widths and the total, contour default width, cap
-distance, and every serif half field.
-
-### Left open
-
-- **Normalized units.** Under `serifUnitsMode: normalized` the stored number is
-  already a ratio of stroke width, and multiplying it multiplies the ratio. That
-  is arguably right, and it was not thought through.
-- **Rounding is per apply.** Each press rounds to the grid, so 1.1 twice is not
-  1.21. No fractions are carried between presses.
-
----
-
-## 6. Scale sliders: live update and integer step — SUPERSEDED
-
-Both of these landed and both were then removed with the scale sliders themselves
-(dev log §23). Kept for the findings, which outlived the feature: the streaming
-helper's restore-before-apply is what makes any relative drag safe, and it is now
-what the scrub rides on.
-
-### The original entry
-
-Both scale sliders — the serif lengths and the point width — now stream, and both
-round what they store.
-
-The predicted drag baseline turned out to already exist. The shared streaming
-helper snapshots every editable layer when the drag opens and restores that
-snapshot before applying each frame, so a relative factor multiplies the values
-the drag started from every time and cannot compound. The exclusion comment was
-describing a hazard the helper had already removed. Streaming a scale slider is
-therefore just routing it through the same helper the absolute sliders use.
-
-Rounding moved into the per-point scale, next to the clamp at zero, so the
-committed path and the streamed path round identically — one function, called
-from both.
-
-Still open: rounding under `serifUnitsMode: normalized`, where the stored number
-is a ratio of stroke width and an integer is meaningless. The rounding as landed
-applies to the stored number in both modes.
-
----
-
-## 7. Scale sliders inline with inputs — SUPERSEDED
-
-Each serif length is one row now: label, number input, scale slider. Same for
-point width, where the scale slider sits on the total — the number it actually
-moves.
-
-The rendering was free, as expected: the shared form component already packs
-several inputs into one row. The work was the parameters panel's in-place update
-path. Both the layout signature and the value refresh walked top-level items
-only, so a packed row read as keyless and every edit fell back to a full rebuild.
-Both now flatten a packed row into its nested fields first, which is what keeps
-the in-place refresh — and so the focus and the live drag — working.
-
----
-
-## 8. Shape-and-easing reframe — done
-
-Built. The panel emits three group headers per half — wing, bracket, easing — and
-the axis fields stay in their own group below the divider. The groups follow the
-fields item 2 actually shipped (`reach`, `tension`, `concavity`, `easeDistance`,
-`easeCurvature`) rather than the renamed set sketched below, since no field was
-renamed.
-
-**Presentation only.** No field renamed, renested or replaced; the stored model
-is untouched, so there is no migration, no fixture change and no interpolation
-consequence.
-
-Headers in the serif section of the parameters panel, grouping the half-fields by
-what they do. Assuming item 2 has landed:
-
-| Group          | Fields                                                   |
-| -------------- | -------------------------------------------------------- |
-| Shape          | `wingLength`, `tipThickness`, `wingSlope`, `tipCutAngle` |
-| Serif easing   | `amount`, `balance`                                      |
-| Contour easing | `distance`, `curvature`                                  |
-
-`undersideCup` and `straightDepth` are shape but terminal-level; `axisMode` and
-`axisAngle` are neither — they place the terminal rather than form it, and should
-stay in their own group below the divider where they already are.
-
-Sequenced after item 2, which defines the two easing groups this is grouping by.
-The reframe is cheap enough to redo that this is an ordering preference, not a
-gate.
-
----
-
-## Cross-references
-
-- Feature model §8 — the serif terminal: frame, halves, the release rule and its
-  cost, point count, the `constructionSegment` obligation.
-- Feature model §9 — dead ends, including reading the release off the cut.
-- Arch map §7 residue #4 — the zero-pin curvature fallback in shared Tunni code.
-  Not serif work, but it is in the path of every curvature pin and is felt at the
-  bottom of the gizmo range on a serif'd stem.
-- Development log 20, 21, 22.

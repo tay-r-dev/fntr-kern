@@ -457,6 +457,11 @@ If the code loses any of these, the product regresses.
 - **A pinned curvature is permanent** (§7). The generator reproduces the stored number through
   skeleton, width and taper edits, and clamps only its output. A pin that drifts makes the control
   pointless.
+- **The release is smooth only while both its handles are non-zero.** The share clamps that used
+  to guarantee this are gone (dev log §27), so a handle can now reach zero, and at zero the release
+  is a corner. That is the correct output under the serif ground rule — points collapse, they do
+  not disappear — but the guarantee is conditional, not unconditional. Do not write a test that
+  asserts tangency across the whole range.
 - **A curvature pin moves handles, and nothing else.** No on-curve may move when only the pin
   changes. Not a rib end, not a terminal's release, not the bottom of a serif's straight run. This
   is what forces the serif's release to be fixed in its own frame (§8). It is also checkable:
@@ -688,16 +693,41 @@ Nine fields per half, independent left and right, with a `linked` flag that copi
 Three fields sit at terminal level and both halves share them: `axisMode`, `axisAngle` and
 `undersideCup`.
 
-Null means **inherit**, so contour and source defaults stay live consumers, exactly the way stroke
-width does (§2). `SERIF_LENGTH_FIELDS` names the five fields that are distances. They are the only
-ones the source's `serifUnitsMode` scales. That mode is `absolute` or `normalized`, and
-`normalized` multiplies by the stroke width. `tipCutAngle` is in degrees. `tension`, `concavity`
-and `easeCurvature` are dimensionless in every mode, and nothing scales them.
+**Every one of these fields always holds a number.** There is no inherit state and no null. An
+unset field is zero, and zero is a setting rather than an absence. This is the one place the serif
+does not follow stroke width, which does inherit (§2).
 
-Because null means inherit, an untouched half stores nothing on any of these fields. So the panel
-must park each slider on the generator's own default, not on the slider's minimum.
-`SERIF_HALF_DEFAULTS` is exported for exactly that. A slider showing 0 while the terminal is drawn
-from 0.8 is a lie, and the first touch of the thumb jumps the shape.
+A contour can still hold a serif block in an old file. Nothing reads it. Point normalization
+materializes a serif on every on-curve point, so a point-level fallthrough can never fire, and a
+fallback that cannot fire is worse than one that is documented.
+
+`SERIF_LENGTH_FIELDS` names the five fields that are distances. They are the only ones the source's
+`serifUnitsMode` scales. That mode is `absolute` or `normalized`, and `normalized` multiplies by
+the stroke width. `tipCutAngle` is in degrees. `tension`, `concavity` and `easeCurvature` are
+dimensionless in every mode, and nothing scales them.
+
+### Presets, and what a fresh serif is
+
+**A serif preset is one wing plus the underside cup.** Ten numbers under a name. Applying it writes
+that wing to both sides. Asymmetry is a decision about the terminal being edited, not about the
+shape that was saved, so `linked` does not travel with a preset and a preset never stores two
+different wings. The cup belongs to the terminal rather than to a wing, and is stored once either
+way.
+
+A preset carries no `axisMode` and no `axisAngle`. Those place the terminal rather than shape it. A
+preset captured on an upright stem foot would otherwise force a slanted terminal back to
+perpendicular, and one preset has to stay correct on every terminal in the font.
+
+Five built-ins ship with the feature: **Egyptian, Clarendon, Didone, Old style, Wedge**. A master
+holds its own list beside them, in the source defaults, per master because absolute lengths do not
+survive a trip between masters.
+
+**Picking serif in the cap style select applies Egyptian**, unconditionally. The select only fires
+on a change, so that is exactly "became a serif", and picking it is a request for the default
+shape. Do not gate that write on the point holding no serif data: the block is always there, so the
+test can never pass, and a terminal seeded by nothing shows whatever the fallbacks happen to be.
+
+Egyptian is the plain slab — wing length, tip thickness and wing slope all 20, everything else 0.
 
 **The bracket bends around one attractor.** `concavity` places the attractor. The attractor starts
 at the midpoint of the chord from the wing's tip to the junction with the stem. From there it
@@ -716,7 +746,8 @@ two fields emit identical geometry.
 
 The cost is that the bracket meets the stem flank tangentially **only at concavity 1**. Everywhere
 else the junction is a corner, and that is what contour easing is for. A fresh serif starts at
-tension 0.7 and concavity 0.8.
+tension 0 and concavity 0, so it arrives as a flat chamfer and the bracket is something the
+designer asks for.
 
 **Contour easing rounds that junction.** `easeDistance` moves the release back along the flank and
 cuts the same amount off the bracket end. The cut is a de Casteljau split, so the surviving bracket
@@ -806,10 +837,10 @@ here so that nobody derives them again from first principles. Several have alrea
 once.
 
 | Idea                                                                  | Why it is closed                                                                                                                                                                                                                                                                                                                                                                                                    |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Restore the old sample-and-fit offset path**                        | An adaptive threshold jumps a step when an input nudges. The output is therefore discontinuous, and two masters land on different answers. Endpoints become free samples, which destroys provenance. A variable curve count destroys point-count stability.                                                                                                                                                          |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Restore the old sample-and-fit offset path**                        | An adaptive threshold jumps a step when an input nudges. The output is therefore discontinuous, and two masters land on different answers. Endpoints become free samples, which destroys provenance. A variable curve count destroys point-count stability.                                                                                                                                                         |
 | **Tilt the generated handle axis to the true offset tangent**         | It recovers nearly all of the taper defect, and we still reject it. The axis is skeleton-owned (§3.2). A single shared tilt recovers under half the gain, and on some cases it is _worse than pinned_.                                                                                                                                                                                                              |
-| **A harmonize pass on generated joints**                              | Measured. Unrounded, the generated contour already reproduces the true offset's joint curvature to within 1.7%, and to floating point where the skeleton is G2. Where a step does exist it is the skeleton's own step, faithfully reproduced. Harmonizing would erase a curvature the designer asked for.                                                                                                            |
+| **A harmonize pass on generated joints**                              | Measured. Unrounded, the generated contour already reproduces the true offset's joint curvature to within 1.7%, and to floating point where the skeleton is G2. Where a step does exist it is the skeleton's own step, faithfully reproduced. Harmonizing would erase a curvature the designer asked for.                                                                                                           |
 | **A post-fit equalization walk, absolute or proportional allowance**  | Removed. It makes the automatic answer depend on whether a candidate crosses an error budget. A fixed trip count makes the search deterministic, and cannot make that threshold map continuous. The skeleton reference now participates in the one convex objective instead.                                                                                                                                        |
 | **Judging or rescaling candidate splits after the fit**               | Removed with the walk. `solveHandleScale` and candidate normalization optimized a second answer on a second objective. The current solver has no candidate family. Fit, reference and bounds produce one minimizer.                                                                                                                                                                                                 |
 | **Measure the pin in rendered (post-nudge) space**                    | Correct while nudges carried handles. Superseded once they stopped. Construction space makes the pin _independent_ of the on-curve gizmo, instead of coupled to it.                                                                                                                                                                                                                                                 |
@@ -819,12 +850,12 @@ once.
 | **Equalize the reaches from the on-curve gizmo**                      | Built, removed. Only the curvature gizmo equalizes. The closed form, if anyone ever wants it: the control's one degree of freedom moves one end by `−s` and the other by `+s`, so `s = (r₀−r₁)/2`.                                                                                                                                                                                                                  |
 | **Hide all generated nodes to stop them looking selected**            | The wrong fix for a real bug. The node iterator read a null index list as "every point", and an empty selection parses to no list. Only off-curve nodes are hidden, and only in gizmo mode.                                                                                                                                                                                                                         |
 | **Delete the tension bound because it never fires**                   | It does fire. Kept, floored at a third of the chord. The instrumentation that answered the question is removed. Its `active` count was not a measure of hard pinning: it counted any touch inside the blend window, and someone misread it once as 34% where the true figure was 2 cases in 118.                                                                                                                    |
-| **Iteratively rematch samples to a candidate cubic**                  | This was the jitter. Where one cubic cannot represent the offset, the least-squares iterate can self-intersect, and Newton projection onto it is multivalued. One sample walked t = 0.907 → 0.200 → 0.319 → 0.635. Bounding the loop reduced the symptoms and did not remove the branch changes. A fixed trip count gives determinism, not continuity. The automatic path now keeps fixed source-parameter samples.  |
-| **Ease the fit's tension ceiling over a blend window**                | It bought C1 continuity where the contract asks only for continuity. The price was landing a few percent under whatever it was given. It is also what forced the ceiling into three variants (eased, exact, exempt) and forced the pin into an exemption. One exact clamp is continuous and 1-Lipschitz. Do not reintroduce a smooth bound to "protect" a stage. Put the stage inside the box instead.               |
+| **Iteratively rematch samples to a candidate cubic**                  | This was the jitter. Where one cubic cannot represent the offset, the least-squares iterate can self-intersect, and Newton projection onto it is multivalued. One sample walked t = 0.907 → 0.200 → 0.319 → 0.635. Bounding the loop reduced the symptoms and did not remove the branch changes. A fixed trip count gives determinism, not continuity. The automatic path now keeps fixed source-parameter samples. |
+| **Ease the fit's tension ceiling over a blend window**                | It bought C1 continuity where the contract asks only for continuity. The price was landing a few percent under whatever it was given. It is also what forced the ceiling into three variants (eased, exact, exempt) and forced the pin into an exemption. One exact clamp is continuous and 1-Lipschitz. Do not reintroduce a smooth bound to "protect" a stage. Put the stage inside the box instead.              |
 | **Judge a split walk by max or RMS sample error**                     | Both metrics belong to the removed threshold search. Max exposed the fault first, because its plateau edge moved abruptly. RMS reduced that symptom and still left a candidate-dependent decision. Neither metric is part of the current automatic path.                                                                                                                                                            |
 | **Clamp how far a generated handle may move between frames**          | It is the only fix that works on a discontinuous geometry function, and it buys continuity by adding history. The output then depends on which direction the designer dragged from, and two masters reaching the same skeleton disagree. Continuity is a property of the construction, or it is nothing.                                                                                                            |
 | **Scale the handles by endpoint parallel-curve speed alone**          | Continuous, and too local to be right. Strong taper or an approaching cusp collapses one handle while the other reads healthy, because neither endpoint can see what the middle of the segment is doing.                                                                                                                                                                                                            |
-| **Blend the fit and the skeleton answer by a representability score** | Three separate faults. The score's steep region lands on tapered segments, which are the most ordinary non-trivial case, and whose error is a direction error that no handle length can absorb. A weight read off the achieved residual closes a feedback path from the answer into how much the answer counts. A steep sigmoid is a threshold with a slope, the same species as the eased ceiling withdrawn twice.  |
+| **Blend the fit and the skeleton answer by a representability score** | Three separate faults. The score's steep region lands on tapered segments, which are the most ordinary non-trivial case, and whose error is a direction error that no handle length can absorb. A weight read off the achieved residual closes a feedback path from the answer into how much the answer counts. A steep sigmoid is a threshold with a slope, the same species as the eased ceiling withdrawn twice. |
 | **Score the system's rank by its normalized determinant**             | Calibrated in the wrong place. Half strength at a determinant of `1e-6` of the squared trace is a condition number near a million, while the answer is already too sensitive at ten thousand. So it does nothing across the whole range where conditioning actually bites. Making the objective strictly convex deletes the quantity it was measuring.                                                              |
 | **Emit several cubics per skeleton cubic**                            | It would improve the approximation. It also changes point topology, provenance, interpolation and every segment-level control at once. Point-count stability is the interpolation contract (§3). The curvature gizmo is the affordance for what one cubic cannot express.                                                                                                                                           |
 | **Keep `handleTensions`' null return for "no reach ahead"**           | The null existed so that its one caller could skip the whole shaping stage. That meant a segment whose tangent rays met behind an endpoint silently got no equalization, no pin and no ceiling. Defining `reach` once, finite and positive (§3.2), deletes the case instead of the check. The function is gone from `tunni-calculations.js`.                                                                        |
