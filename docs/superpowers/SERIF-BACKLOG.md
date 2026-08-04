@@ -19,7 +19,7 @@ before it can be planned · **planned** = spec and plan written, not built ·
 | #   | Item                                     | Depth               | Origin | Status     |
 | --- | ---------------------------------------- | ------------------- | ------ | ---------- |
 | 1   | Axis modes other than perpendicular      | core geometry model | (1)    | undecided  |
-| 2   | Rework the easing model                  | core geometry model | (4)    | open       |
+| 2   | Rework the easing model                  | core geometry model | (4)    | done       |
 | 3   | Lift the minimum-separation clamps       | core geometry       | new    | open       |
 | 9   | Couple a serif's rib to its neighbour    | core geometry model | new    | open       |
 | 4   | Preset storage and editing               | source defaults     | (6.1)  | open       |
@@ -29,11 +29,11 @@ before it can be planned · **planned** = spec and plan written, not built ·
 | 12  | Handles on a serifed terminal            | core geometry       | new    | done       |
 | 6   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | superseded |
 | 7   | Scale sliders inline with inputs         | panel layout        | (2)    | superseded |
-| 8   | Shape-and-easing reframe                 | panel labels        | (4)    | open       |
+| 8   | Shape-and-easing reframe                 | panel labels        | (4)    | done       |
 
-Blocking: 3 → 2 (the easing rework assumes zero is a legal value for every field,
-which the clamps currently prevent — land 3 first or land them together) · 4 → 5
-· 2 → 8 (the reframe groups by the easings item 2 defines).
+Blocking: 4 → 5. Item 2 shipped without item 3 under it, so the clamps are still
+in place and item 3 now stands alone: lifting them is what makes the ground rule
+below actually true, and it reaches past the serif into shared geometry.
 
 Items 6 and 7 both touch the same sliders and should ship as one pass, but they
 are independent of each other and either can land alone.
@@ -154,7 +154,7 @@ it from the shape looking right.
 
 ---
 
-## 2. Rework the easing model
+## 2. Rework the easing model — done
 
 Reported as "I can't figure out what reach does — in practice it's the same as
 slope, with the curve apex changing if there's concavity." That is exactly right,
@@ -510,7 +510,13 @@ the in-place refresh — and so the focus and the live drag — working.
 
 ---
 
-## 8. Shape-and-easing reframe
+## 8. Shape-and-easing reframe — done
+
+Built. The panel emits three group headers per half — wing, bracket, easing — and
+the axis fields stay in their own group below the divider. The groups follow the
+fields item 2 actually shipped (`reach`, `tension`, `concavity`, `easeDistance`,
+`easeCurvature`) rather than the renamed set sketched below, since no field was
+renamed.
 
 **Presentation only.** No field renamed, renested or replaced; the stored model
 is untouched, so there is no migration, no fixture change and no interpolation
