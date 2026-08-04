@@ -6,6 +6,7 @@ import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
 import { SERIF_HALF_DEFAULTS } from "@fontra/core/skeleton-generator.js";
 import {
   SERIF_HALF_FIELDS,
+  SERIF_PRESETS,
   SKELETON_SOURCE_DEFAULT_KEYS,
   VALID_SERIF_AXIS_MODES,
   captureSerifPreset,
