@@ -1,6 +1,7 @@
 import * as html from "@fontra/core/html-utils.js";
 import { SimpleElement } from "@fontra/core/html-utils.js";
 import {
+  SCRUB_CANCELLED,
   SCRUB_THRESHOLD,
   clampScrubValue,
   roundScrubValue,
@@ -345,11 +346,17 @@ export class Form extends SimpleElement {
         this._dispatchEvent("doChange", { key: fieldItem.key, value: change });
       };
 
-      const onUp = () => {
+      const detach = () => {
         labelElement.removeEventListener("pointermove", onMove);
         labelElement.removeEventListener("pointerup", onUp);
         labelElement.removeEventListener("pointercancel", onUp);
+        labelElement.removeEventListener("pointerdown", onSecondButton);
+        labelElement.removeEventListener("contextmenu", onContextMenu);
         labelElement.releasePointerCapture?.(event.pointerId);
+      };
+
+      const onUp = () => {
+        detach();
         if (!valueStream) {
           // Never crossed the dead zone: this was a click and nothing happened.
           return;
@@ -358,9 +365,35 @@ export class Form extends SimpleElement {
         this._dispatchEvent("endChange", { key: fieldItem.key });
       };
 
+      // Right-click while dragging abandons the drag: the shape goes back to
+      // where the press found it and no edit is recorded. The other hand is
+      // already on the mouse, so this costs nothing to reach mid-drag, which
+      // Escape does not.
+      const onSecondButton = (downEvent) => {
+        if (downEvent.button === 0) {
+          return;
+        }
+        downEvent.preventDefault();
+        detach();
+        if (!valueStream) {
+          return;
+        }
+        if (hasStartValue) {
+          this._fieldSetters[fieldItem.key]?.(roundScrubValue(startValue, fieldItem));
+        }
+        valueStream.put(SCRUB_CANCELLED);
+        valueStream.done();
+        this._dispatchEvent("endChange", { key: fieldItem.key });
+      };
+
+      // The press that cancels must not also open the menu over the canvas.
+      const onContextMenu = (menuEvent) => menuEvent.preventDefault();
+
       labelElement.addEventListener("pointermove", onMove);
       labelElement.addEventListener("pointerup", onUp);
       labelElement.addEventListener("pointercancel", onUp);
+      labelElement.addEventListener("pointerdown", onSecondButton);
+      labelElement.addEventListener("contextmenu", onContextMenu);
     });
   }
 
@@ -621,6 +654,7 @@ export class Form extends SimpleElement {
         inputElement.value = value;
         if (event.dragBegin) {
           valueStream = new QueueIterator(5, true);
+          valueAtDragBegin = value;
           this._fieldChanging(fieldItem, value, valueStream);
         }
 
@@ -684,6 +718,26 @@ export class Form extends SimpleElement {
     {
       // Slider change closure
       let valueStream = undefined;
+      let valueAtDragBegin = undefined;
+
+      // Right-click while dragging abandons the drag, the same as on a scrubbed
+      // label: the shape goes back and no edit is recorded.
+      rangeElement.addEventListener("pointerdown", (downEvent) => {
+        if (downEvent.button === 0 || !valueStream) {
+          return;
+        }
+        downEvent.preventDefault();
+        valueStream.put(SCRUB_CANCELLED);
+        valueStream.done();
+        valueStream = undefined;
+        if (valueAtDragBegin !== undefined) {
+          rangeElement.value = valueAtDragBegin;
+        }
+        this._dispatchEvent("endChange", { key: fieldItem.key });
+      });
+      rangeElement.addEventListener("contextmenu", (menuEvent) =>
+        menuEvent.preventDefault()
+      );
 
       rangeElement.onChangeCallback = (event) => {
         const value = event.value;

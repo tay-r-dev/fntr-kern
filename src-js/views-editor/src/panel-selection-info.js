@@ -2,6 +2,7 @@ import { applicationSettingsController } from "@fontra/core/application-settings
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import { rectFromPoints, rectSize, unionRect } from "@fontra/core/rectangle.ts";
 import { compute, nameCapture } from "@fontra/core/simple-compute.js";
 import { getDecomposedIdentity } from "@fontra/core/transform.js";
@@ -867,6 +868,11 @@ export default class SelectionInfoPanel extends Panel {
       if (valueStream) {
         // Continuous changes (eg. slider drag)
         for await (const value of valueStream) {
+          // An abandoned drag has nothing to commit; the rollback below the loop
+          // is what puts the glyph back.
+          if (isScrubCancelled(value)) {
+            return;
+          }
           for (const { layerGlyph, layerGlyphController, orgValue } of layerInfo) {
             if (orgValue !== undefined) {
               setFieldValue(layerGlyph, layerGlyphController, fieldItem, orgValue); // Ensure getting the correct undo change

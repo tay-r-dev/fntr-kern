@@ -1,7 +1,9 @@
 import {
+  SCRUB_CANCELLED,
   SCRUB_COARSE_FACTOR,
   SCRUB_FINE_FACTOR,
   clampScrubValue,
+  isScrubCancelled,
   roundScrubValue,
   scrubFactor,
   scrubIncrement,
@@ -111,5 +113,14 @@ describe("number scrub rounding", () => {
       travel = clampScrubValue(start + travel, { minValue: 0 }) - start;
     }
     expect(roundScrubValue(start + travel)).to.equal(41);
+  });
+});
+
+describe("cancelled scrub", () => {
+  it("is a value the stream can carry and nothing else can be mistaken for", () => {
+    expect(isScrubCancelled(SCRUB_CANCELLED)).to.equal(true);
+    for (const value of [0, -1, 1e9, NaN, null, undefined, "cancel", {}]) {
+      expect(isScrubCancelled(value), String(value)).to.equal(false);
+    }
   });
 });

@@ -60,3 +60,20 @@ export function clampScrubValue(value, { minValue, maxValue } = {}) {
 export function roundScrubValue(value, { integer = true } = {}) {
   return integer ? Math.round(value) : value;
 }
+
+// What a drag sends instead of a number when it is abandoned rather than
+// finished.
+//
+// A stream carries the CHANGE from where the drag started, so zero would be the
+// obvious way to say "put it back" — but zero is also a legal thing to arrive
+// at by dragging, and the two want different endings. Landing on zero commits an
+// edit that happens to change nothing, and takes an undo step to get past.
+// Abandoning commits nothing at all.
+//
+// A unique object rather than a magic number: no amount of dragging can produce
+// it by accident.
+export const SCRUB_CANCELLED = Object.freeze({ scrubCancelled: true });
+
+export function isScrubCancelled(value) {
+  return value === SCRUB_CANCELLED;
+}

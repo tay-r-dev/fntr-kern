@@ -8,6 +8,7 @@ import {
 } from "@fontra/core/changes.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import {
   filterPathByPointIndices,
   getSelectionByContour,
@@ -846,6 +847,10 @@ export default class TransformationPanel extends Panel {
       // behind whatever the slider shows.
       if (valueStream) {
         for await (const streamedValue of valueStream) {
+          // An abandoned drag has nothing to commit.
+          if (isScrubCancelled(streamedValue)) {
+            return;
+          }
           value = streamedValue;
         }
       }

@@ -5,6 +5,7 @@
 // generated geometry (Global Constraints).
 
 import { ChangeCollector } from "@fontra/core/changes.js";
+import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
 import {
   SERIF_HALF_DEFAULTS,
@@ -261,7 +262,12 @@ async function streamOntoSkeleton(sceneController, valueStream, mutate, undoLabe
     let lastApplied = null;
     let lastCollector = null;
     let lastTime = 0;
+    let cancelled = false;
     for await (const value of valueStream) {
+      if (isScrubCancelled(value)) {
+        cancelled = true;
+        break;
+      }
       lastValue = value;
       const now = Date.now();
       if (now - lastTime < THROTTLE_MS) {
@@ -274,6 +280,16 @@ async function streamOntoSkeleton(sceneController, valueStream, mutate, undoLabe
       await sendIncrementalChange(lastCollector.change, true);
     }
 
+    // Abandoned: put the shape back where the drag found it and record nothing.
+    // Returning no changes is what makes it not an undo step — the same ending
+    // a drag that never crossed the dead zone already had.
+    if (cancelled) {
+      if (lastCollector) {
+        restoreOriginals();
+        await sendIncrementalChange(lastCollector.rollbackChange);
+      }
+      return;
+    }
     if (lastValue === null) {
       return;
     }

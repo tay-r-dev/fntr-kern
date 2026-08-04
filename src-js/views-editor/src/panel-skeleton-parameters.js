@@ -1,5 +1,6 @@
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
 import { SERIF_HALF_DEFAULTS } from "@fontra/core/skeleton-generator.js";
 import {
@@ -1506,6 +1507,11 @@ export default class SkeletonParametersPanel extends Panel {
         }
       }
       const finalValue = await this._resolveStreamValue(value, valueStream);
+      // An abandoned drag has already put the shape back; there is no value to
+      // commit and committing one would undo the abandoning.
+      if (isScrubCancelled(finalValue)) {
+        return;
+      }
       if (group === "width") {
         await this._onWidthChange(name, finalValue);
       } else if (group === "contour") {
@@ -1640,6 +1646,9 @@ export default class SkeletonParametersPanel extends Panel {
     }
     let last = value;
     for await (const v of valueStream) {
+      if (isScrubCancelled(v)) {
+        return v;
+      }
       last = v;
     }
     return last;

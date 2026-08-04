@@ -1,6 +1,7 @@
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import {
   DEFAULT_SKELETON_WIDTH,
   SKELETON_SOURCE_DEFAULT_FALLBACKS,
@@ -432,6 +433,10 @@ export default class SkeletonDefaultsPanel extends Panel {
       let finalValue = value;
       if (valueStream) {
         for await (const streamedValue of valueStream) {
+          // An abandoned drag has nothing to commit.
+          if (isScrubCancelled(streamedValue)) {
+            return;
+          }
           finalValue = streamedValue;
         }
       }

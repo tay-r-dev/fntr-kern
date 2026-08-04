@@ -24,7 +24,7 @@ before it can be planned · **planned** = spec and plan written, not built ·
 | 9   | Couple a serif's rib to its neighbour    | core geometry model | new    | done       |
 | 4   | Preset storage and editing               | source defaults     | (6.1)  | open       |
 | 5   | Preset apply / create / update           | panel               | (6.2)  | open       |
-| 10  | Cancel a drag with right-click           | edit pipeline       | new    | open       |
+| 10  | Cancel a drag with right-click           | edit pipeline       | new    | done       |
 | 11  | Multiply, not just add, from a scrub     | edit pipeline       | new    | done       |
 | 12  | Handles on a serifed terminal            | core geometry       | new    | done       |
 | 6   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | superseded |
@@ -423,6 +423,35 @@ with a guessed origin — no side, and an owner picked by counting position alon
 the contour — so one serifed stem produces a dozen points claiming to be the same
 handle of the same skeleton point. Nothing reads them, because every lookup
 requires a real side. File separately if it ever matters.
+
+---
+
+## 10. Cancel a drag with right-click — done
+
+Right-click while dragging a scrubbed label or a slider abandons the drag: the
+shape returns to where the press found it and **no undo step is recorded**. The
+other hand is already on the mouse, which Escape cannot say for itself mid-drag.
+
+Landing back on the starting value by dragging is not the same thing and must
+stay different — that commits an edit that happens to change nothing, and costs
+an undo to get past. So the stream carries a sentinel rather than a zero: a
+frozen object no amount of dragging can produce by accident.
+
+The streaming edit path already rebuilt from the original every frame, so
+abandoning is that restore plus the rollback notification, and then returning no
+changes — which is the ending a drag that never crossed the dead zone already
+had.
+
+Every consumer that drains a value stream now refuses the sentinel rather than
+committing it as a value, including the two upstream panels that share the
+slider.
+
+### Left open
+
+- **A slider cancelled by a click on its track** returns to the value the drag
+  reported at its start, which for a track click is already the clicked-to one.
+  The shape is correct either way; only the thumb can be a step out until the
+  next panel refresh.
 
 ---
 
