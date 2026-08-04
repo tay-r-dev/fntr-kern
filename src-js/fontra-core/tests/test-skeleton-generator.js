@@ -1702,3 +1702,86 @@ describe("skeleton-generator serif stability", () => {
     });
   }
 });
+
+describe("skeleton-generator serif terminal handles", () => {
+  const SERIF_HALF = {
+    wingLength: 120,
+    tipThickness: 30,
+    wingSlope: 0,
+    tipCutAngle: 0,
+    reach: 60,
+    tension: 0.7,
+    concavity: 0.8,
+  };
+
+  function serifStem({ capStyle = "serif", offsets = {}, width = 100 } = {}) {
+    const point = (id, extra) => ({ id, ...extra, handleOffsets: offsets[id] ?? {} });
+    return {
+      version: 1,
+      nextId: 9,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: width,
+          capStyle,
+          points: [
+            point(2, {
+              x: 0,
+              y: 0,
+              editable: { left: true, right: true },
+              serif: {
+                left: SERIF_HALF,
+                right: SERIF_HALF,
+                axisMode: "perpendicular",
+                axisAngle: 0,
+                undersideCup: 0,
+              },
+            }),
+            { id: 3, x: 120, y: 200, type: "cubic" },
+            { id: 4, x: 180, y: 340, type: "cubic" },
+            point(5, {
+              x: 160,
+              y: 400,
+              smooth: true,
+              editable: { left: true, right: true },
+            }),
+            { id: 6, x: 260, y: 460, type: "cubic" },
+            { id: 7, x: 320, y: 600, type: "cubic" },
+            { id: 8, x: 320, y: 800 },
+          ],
+        },
+      ],
+      generated: [],
+    };
+  }
+
+  function emitted(result, pointId, side, role) {
+    for (const entry of result.provenance) {
+      const index = entry.pointMap.findIndex(
+        (point) =>
+          point?.skeletonPointId === pointId &&
+          point.side === side &&
+          point.role === role
+      );
+      if (index >= 0) return result.contours[entry.generatedContourIndex].points[index];
+    }
+    return null;
+  }
+
+  function moved(before, after) {
+    return Math.hypot(after.x - before.x, after.y - before.y);
+  }
+
+  it("measures the serif trim along the edge, not across its chord", () => {
+    const result = generateFromSkeleton(serifStem());
+    const release = emitted(result, 2, "left", "onCurve");
+    const serifSide = emitted(result, 2, "left", "out");
+    const far = emitted(result, 5, "left", "in");
+    expect(release).to.not.equal(null);
+    expect(serifSide).to.not.equal(null);
+    expect(far).to.not.equal(null);
+    expect(serifSide.x).to.be.closeTo(177.01696447669852, 0.5);
+    expect(serifSide.y).to.be.closeTo(217.2822488632268, 0.5);
+  });
+});
