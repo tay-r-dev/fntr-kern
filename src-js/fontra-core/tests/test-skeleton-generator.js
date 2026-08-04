@@ -1927,4 +1927,73 @@ describe("skeleton-generator serif terminal handles", () => {
     }
     expect(find(8, "in")?.authoredAxis).to.equal(undefined);
   });
+
+  it("moves an authored handle continuously across its whole range", () => {
+    const base = generateFromSkeleton(serifStem());
+    const on = emitted(base, 5, "left", "onCurve");
+    const handle = emitted(base, 5, "left", "in");
+    const length = Math.hypot(handle.x - on.x, handle.y - on.y);
+    const axis = { x: (handle.x - on.x) / length, y: (handle.y - on.y) / length };
+    let previous = null;
+    let worstStep = 0;
+    for (let amount = -40; amount <= 120; amount += 1) {
+      const point = emitted(
+        generateFromSkeleton(
+          serifStem({
+            offsets: { 5: { leftIn: { x: axis.x * amount, y: axis.y * amount } } },
+          })
+        ),
+        5,
+        "left",
+        "in"
+      );
+      if (previous) worstStep = Math.max(worstStep, moved(previous, point));
+      previous = point;
+    }
+    expect(worstStep).to.be.at.most(2.5);
+  });
+
+  it("moves no on-curve when only the curvature pin changes, with a serif", () => {
+    const withPin = (pin) => {
+      const skeleton = serifStem({
+        offsets: { 5: { leftIn: { x: 9.49, y: -28.46 } } },
+      });
+      skeleton.contours[0].points[0].leftSegmentCurvature = pin;
+      return generateFromSkeleton(skeleton);
+    };
+    const base = withPin(0.4);
+    const onCurves = (result) =>
+      result.contours[0].points.filter((point) => !point.type);
+    for (let pin = 0.4; pin <= 0.95; pin += 0.01) {
+      const a = onCurves(base);
+      const b = onCurves(withPin(pin));
+      expect(b.length).to.equal(a.length);
+      expect(
+        a.reduce((sum, point, index) => sum + moved(point, b[index]), 0),
+        `pin ${pin.toFixed(2)}`
+      ).to.equal(0);
+    }
+  });
+
+  it("keeps the point count across degenerate serif values with an adjustment", () => {
+    const counts = new Set();
+    for (const half of [
+      { ...SERIF_HALF, wingLength: 0 },
+      { ...SERIF_HALF, tipThickness: 0 },
+      { ...SERIF_HALF, reach: 0 },
+      { ...SERIF_HALF, tension: 0, concavity: 0 },
+      SERIF_HALF,
+    ]) {
+      const skeleton = serifStem({
+        offsets: {
+          2: { leftOut: { x: 0, y: 30 } },
+          5: { leftIn: { x: 9.49, y: -28.46 } },
+        },
+      });
+      skeleton.contours[0].points[0].serif.left = half;
+      skeleton.contours[0].points[0].serif.right = half;
+      counts.add(generateFromSkeleton(skeleton).contours[0].points.length);
+    }
+    expect(counts.size).to.equal(1);
+  });
 });
