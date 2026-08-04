@@ -20,7 +20,7 @@ before it can be planned · **planned** = spec and plan written, not built ·
 | --- | ---------------------------------------- | ------------------- | ------ | ---------- |
 | 1   | Axis modes other than perpendicular      | core geometry model | (1)    | undecided  |
 | 2   | Rework the easing model                  | core geometry model | (4)    | done       |
-| 3   | Lift the minimum-separation clamps       | core geometry       | new    | open       |
+| 3   | Lift the minimum-separation clamps       | core geometry       | new    | done       |
 | 9   | Couple a serif's rib to its neighbour    | core geometry model | new    | done       |
 | 4   | Preset storage and editing               | source defaults     | (6.1)  | open       |
 | 5   | Preset apply / create / update           | panel               | (6.2)  | open       |
@@ -253,7 +253,21 @@ positive values). That was wrong and was never what was asked for.
 
 ---
 
-## 3. Lift the minimum-separation clamps
+## 3. Lift the minimum-separation clamps — done
+
+Not worked on directly. The one-attractor easing rework (item 2, dev log §21)
+removed them on its way past, and the audit below was checked back against the
+code afterwards. Dev log §27 has the row-by-row result.
+
+One divergence: `MAX_HANDLE_TO_CORNER` was to be kept and is gone as a named
+constant — but kept as geometry, since the bracket rounding bounds each handle
+by the distance to the corner its two surfaces would meet at. Same guard against
+a looped curve, spelled as the thing it stood for.
+
+**Still owed:** feature model §5 states the smooth release unconditionally. With
+the share clamps gone a handle can reach zero, and at zero the release is a
+corner — correct under the ground rule, but the model has not been amended to
+say the guarantee is now conditional.
 
 The ground rule above says a serif may collapse any point to zero distance. The
 code does not currently allow it: several clamps exist specifically to stop

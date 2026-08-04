@@ -1976,3 +1976,119 @@ need no correction. Getting this backwards passes most tests.
 between two states about 1.9 units apart, all round caps on one narrow geometry.
 It alternates rather than drifting, so it is grid quantization on the trim rather
 than a residual error in the units. Left alone.
+
+---
+
+## 26. Three more items off the serif backlog — features
+
+Grouped because they are small and independent. Each is a backlog item closed;
+none needed a plan.
+
+### 1. Problem
+
+**A serif and its neighbour disagreed about the stem's width.** A serif sits on
+the end of a straight run of stem, and that run is one wall with one thickness.
+The two skeleton points holding it kept independent widths, so a disagreement
+drew a wall that changed thickness where nothing was drawn to change it.
+
+**Proportional resize had no control.** The scale sliders grew a serif as a unit
+and kept its proportions; the scrubbable labels that replaced them (§23) only
+add, so a 40 and a 60 dragged up by 10 become 50 and 70 — the shape changes
+rather than scaling.
+
+**A drag could not be abandoned.** Once a scrub or a slider was under way the
+only exits were committing it or undoing afterwards, and dragging back to the
+starting value is not the same thing: it commits an edit that happens to change
+nothing and costs an undo to get past.
+
+### 2. Solution
+
+**The serif ties the straight it sits on.** A straight already tied the ribs at
+its two ends when either was a straight-controlled smooth point. A serif terminal
+now qualifies a straight the same way, so the coupling arrives through the rule
+that already existed rather than beside it: rendering and hit-testing read it
+back through the same group lookup, the tied flag is the opt-out, and the rib
+drag carries the group with no editor change at all.
+
+Attached to a **straight** is the whole condition — a serif on a curve has no
+flat wall behind it and ties nothing.
+
+**Every scrub field carries a multiply.** `× [ratio] [preview - Apply]` in the
+same row, ratio stepping by 0.1. The button shows where that field's number
+lands rather than the ratio, because a ratio is not a shape: 1.1 says nothing
+about where a 40 goes, 44 does. Applied per point, so a mixed selection grows
+each point from its own value. A scrub adds to what a point holds and this
+scales it, so the per-point writers, the bounds and the undo labels are shared
+and only the arithmetic is passed in.
+
+**Right-click abandons a drag.** The shape returns to where the press found it
+and nothing is recorded. The streaming path already rebuilt from the original
+every frame, so abandoning is that restore plus the rollback notification, then
+returning no changes — the ending a drag that never crossed the dead zone
+already had.
+
+### 3. Result
+
+| Item | Before                                                  | After                                     |
+| ---- | ------------------------------------------------------- | ----------------------------------------- |
+| 9    | serif and neighbour hold independent widths, wall kinks | one shared width, either end moves it     |
+| 11   | no proportional resize since the sliders were removed   | a ratio and an apply on every scrub field |
+| 10   | a drag can only be committed, then undone               | right-click leaves no undo step at all    |
+
+### 4. Challenges and findings
+
+**The first pass at the rib coupling was a separate width override, and the
+gizmos came off the outline.** Widths are resolved in one place and read back by
+rendering and hit-testing through the same lookup; an override the editor knew
+nothing about drew a correct outline under handles that had stopped describing
+it. Reaching the same result through the existing rule made the editor side
+disappear entirely — which is the argument for the rail, demonstrated rather
+than asserted.
+
+**The condition was wrong twice before it was right.** First "the neighbour is a
+corner where the stem turns", which describes nothing real; then "the neighbour
+is non-smooth", which fires on a neighbour that is non-smooth only because its
+own segment carries handles. The condition is the SERIF's own segment being
+straight. Neither wrong version would have failed a test written from it.
+
+**Cap geometry was reading stored half widths, not resolved ones.** So a cap on
+a tied endpoint sat off the end of the stroke it caps. Nothing could reach it
+before, because an endpoint could not be tied.
+
+**Zero is a legal thing to drag to, so a cancel cannot be one.** The stream
+carries the change from where the drag started, which makes zero the obvious way
+to say "put it back" — and indistinguishable from arriving there by hand. A
+frozen sentinel object instead, which no amount of dragging produces by accident.
+Its cost is that every consumer draining a value stream has to refuse it,
+including two upstream panels that share the slider and know nothing about any
+of this.
+
+---
+
+## 27. The minimum-separation clamps came out with the easing rework — note
+
+Backlog item 3 asked for the clamps that stop a serif collapsing points to zero
+to be lifted, so the ground rule — every point emitted at every parameter value,
+coincident where it has nowhere to go — would actually hold. It was never worked
+on directly. The one-attractor rework (§21, backlog item 2) removed them on its
+way past, and the audit was only checked back against the code afterwards.
+
+| Clamp                             | Item 3 asked for       | What happened                                                                               |
+| --------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------- |
+| `MIN_HANDLE_SHARE` / `MAX_`       | remove                 | gone with the construction that had them                                                    |
+| `clampReach`'s one-unit floor     | remove, keep ownership | gone; the depth clamp floors at zero and still refuses to consume more than its own segment |
+| `MAX_HANDLE_TO_CORNER`            | **keep**               | gone as a named constant, kept as geometry                                                  |
+| `Math.round` on emitted points    | keep                   | kept                                                                                        |
+| `MIN_AXIS_TANGENT_SEPARATION_DEG` | revisit with item 1    | still there, still waiting on item 1                                                        |
+
+The one divergence is the third row, and it is a divergence in spelling rather
+than in behaviour. The bracket rounding bounds each handle by the distance to the
+corner its two surfaces would meet at, and by the ease distance — so neither
+handle can pass the corner and loop the curve, which is what the constant was
+for. Expressed as the geometry it was standing in for rather than as a number.
+
+**Still owed:** feature model §5 says any non-zero handle length preserves both
+tangents at the release. With the share clamps gone a handle can reach zero, and
+at zero the release is a corner. That is the correct output under the ground
+rule, but it makes the smooth-release guarantee conditional and the model still
+states it as unconditional.
