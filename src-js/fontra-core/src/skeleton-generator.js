@@ -6,6 +6,7 @@ import {
   CAP_POINT_FIELDS,
   CORNER_POINT_FIELDS,
   DEFAULT_SKELETON_WIDTH,
+  SERIF_HALF_MIGRATION,
   collectSerifTerminals,
   collectTiedRibGroups,
   getEffectiveNormal,
@@ -1826,7 +1827,6 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         leftHalfWidth: startCapLeftHW,
         rightHalfWidth: startCapRightHW,
         pointSerif: firstOnCurvePoint.serif,
-        contourSerif: skeletonContour.serif,
         ownerPoint: firstOnCurvePoint,
         serifUnitsMode: options.serifUnitsMode,
       });
@@ -2028,7 +2028,6 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         leftHalfWidth: endCapLeftHW,
         rightHalfWidth: endCapRightHW,
         pointSerif: lastOnCurvePoint.serif,
-        contourSerif: skeletonContour.serif,
         ownerPoint: lastOnCurvePoint,
         serifUnitsMode: options.serifUnitsMode,
       });
@@ -4595,25 +4594,7 @@ function buildDropCap({
   };
 }
 
-// Exported because the parameter panel has to park an untouched slider on the
-// value the generator is actually drawing with. A stored null means "inherit",
-// so a fresh serif has no number of its own on any of these; a slider that
-// parked at its own minimum instead would claim a shape nobody is looking at,
-// and the first touch of the thumb would jump the terminal.
-export const SERIF_HALF_DEFAULTS = Object.freeze({
-  wingLength: 0,
-  tipThickness: 0,
-  wingSlope: 0,
-  tipCutAngle: 0,
-  reach: 0,
-  // A fresh serif should read as a serif, so the transition starts as a real
-  // bracket rather than a straight bevel. Both are dimensionless, so they need
-  // no unit scaling.
-  tension: 0.7,
-  concavity: 0.8,
-  easeDistance: 0,
-  easeCurvature: 0.5,
-});
+export { SERIF_HALF_MIGRATION as SERIF_HALF_DEFAULTS };
 
 const SERIF_LENGTH_FIELDS = new Set([
   "wingLength",
@@ -4623,14 +4604,11 @@ const SERIF_LENGTH_FIELDS = new Set([
   "easeDistance",
 ]);
 
-function resolveSerifHalf(pointSerif, contourSerif, side, context = {}) {
+function resolveSerifHalf(pointSerif, side, context = {}) {
   const scale = context.unitsMode === "normalized" ? context.strokeWidth : 1;
   const resolved = {};
-  for (const field of Object.keys(SERIF_HALF_DEFAULTS)) {
-    const value =
-      pointSerif?.[side]?.[field] ??
-      contourSerif?.[side]?.[field] ??
-      SERIF_HALF_DEFAULTS[field];
+  for (const field of Object.keys(SERIF_HALF_MIGRATION)) {
+    const value = pointSerif?.[side]?.[field] ?? SERIF_HALF_MIGRATION[field];
     resolved[field] = SERIF_LENGTH_FIELDS.has(field) ? value * scale : value;
   }
   return resolved;
@@ -4646,7 +4624,6 @@ function buildSerifCap({
   leftHalfWidth,
   rightHalfWidth,
   pointSerif,
-  contourSerif,
   ownerPoint,
   serifUnitsMode,
 }) {
@@ -4656,8 +4633,8 @@ function buildSerifCap({
     endpoint,
     tangent: outward,
     normal,
-    axisMode: pointSerif?.axisMode ?? contourSerif?.axisMode ?? "perpendicular",
-    axisAngle: pointSerif?.axisAngle ?? contourSerif?.axisAngle ?? 0,
+    axisMode: pointSerif?.axisMode ?? "perpendicular",
+    axisAngle: pointSerif?.axisAngle ?? 0,
   });
   const leftRibEnd = {
     x: endpoint.x + normal.x * leftHalfWidth,
@@ -4673,8 +4650,8 @@ function buildSerifCap({
   };
   const lengthScale =
     unitsContext.unitsMode === "normalized" ? unitsContext.strokeWidth : 1;
-  const left = resolveSerifHalf(pointSerif, contourSerif, "left", unitsContext);
-  const right = resolveSerifHalf(pointSerif, contourSerif, "right", unitsContext);
+  const left = resolveSerifHalf(pointSerif, "left", unitsContext);
+  const right = resolveSerifHalf(pointSerif, "right", unitsContext);
   // A terminal may only consume its own segment. Clamp before constructing the
   // serif as well as before splitting the outline, otherwise the splice stays
   // local while the emitted straight section still reaches into the next one.
@@ -4698,8 +4675,7 @@ function buildSerifCap({
     rightFlankU: frame.toFrame(rightRibEnd).u,
     left: leftDepth.half,
     right: rightDepth.half,
-    undersideCup:
-      (pointSerif?.undersideCup ?? contourSerif?.undersideCup ?? 0) * lengthScale,
+    undersideCup: (pointSerif?.undersideCup ?? 0) * lengthScale,
   };
   const terminal = buildSerifTerminal(terminalArgs);
   // The serif releases the stroke at a point of its own choosing, on the flank

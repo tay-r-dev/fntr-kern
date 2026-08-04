@@ -22,4 +22,4 @@ Execution guidelines:
 - Commit after each step of an implemented plan or sufficiently completed task;
 - When commiting - use git add . to stage changes;
 
-When you are finished, write "I'm ready for the next task".
+When you are finished, mirror the contents of this onboarding to me and write "I'm ready for the next task".

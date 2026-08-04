@@ -727,16 +727,11 @@ const DEFAULT_SERIF_NUDGE_BOUNDS = { min: 0, max: null };
 // selection mixed. `targets` is a list of {side, field} for half fields, or
 // {field} for the terminal-level ones.
 //
-// A value the point does not store is inheriting. The contour is consulted
-// first; past that the drag starts from the generator's own default, which is
-// the number the panel is showing and the terminal is drawn from — starting from
-// zero instead would make the first pixel of the drag jump the shape.
+// A value the point does not store starts from the generator's migration value.
 function nudgeOnePointSerif(point, contour, targets, next) {
   const values = {};
   for (const { side, field } of targets) {
-    const stored = side
-      ? (point.serif?.[side]?.[field] ?? contour.serif?.[side]?.[field])
-      : (point.serif?.[field] ?? contour.serif?.[field]);
+    const stored = side ? point.serif?.[side]?.[field] : point.serif?.[field];
     const current = Number.isFinite(stored)
       ? stored
       : side

@@ -83,9 +83,7 @@ export const VALID_SERIF_UNITS_MODES = new Set(["absolute", "normalized"]);
 
 // One half-serif's shape. Absolute font units unless the source's serif units
 // mode says otherwise; `tipCutAngle` is degrees and `tension`, `concavity` and
-// `easeCurvature` are
-// dimensionless in every mode. Null means "inherit", so the contour and source
-// defaults stay live consumers the way stroke width does.
+// `easeCurvature` are dimensionless in every mode.
 export const SERIF_HALF_FIELDS = Object.freeze([
   "wingLength",
   "tipThickness",
@@ -102,6 +100,19 @@ export const SERIF_HALF_FIELDS = Object.freeze([
 // per half: the foot is one curve across the whole terminal, and one cup per
 // half produces two scoops meeting at a break in the middle.
 export const SERIF_TERMINAL_FIELDS = Object.freeze(["axisAngle", "undersideCup"]);
+// Values written when older serif data omits a field. These preserve the shape
+// that the generator used before serif fields became fully materialized.
+export const SERIF_HALF_MIGRATION = Object.freeze({
+  wingLength: 0,
+  tipThickness: 0,
+  wingSlope: 0,
+  tipCutAngle: 0,
+  reach: 0,
+  tension: 0.7,
+  concavity: 0.8,
+  easeDistance: 0,
+  easeCurvature: 0.5,
+});
 // Corner rounding is the angle-point engine's parameter set — related to caps
 // only in that both live on on-curve points
 export const CORNER_POINT_FIELDS = [
@@ -3169,7 +3180,9 @@ function normalizeWidth(width) {
 function normalizeSerifHalf(half) {
   const normalized = {};
   for (const field of SERIF_HALF_FIELDS) {
-    normalized[field] = Number.isFinite(half?.[field]) ? half[field] : null;
+    normalized[field] = Number.isFinite(half?.[field])
+      ? half[field]
+      : SERIF_HALF_MIGRATION[field];
   }
   return normalized;
 }
@@ -3186,7 +3199,7 @@ function normalizeSerif(serif) {
   normalized.axisAngle = Number.isFinite(serif?.axisAngle) ? serif.axisAngle : 0;
   for (const field of SERIF_TERMINAL_FIELDS) {
     if (field === "axisAngle") continue;
-    normalized[field] = Number.isFinite(serif?.[field]) ? serif[field] : null;
+    normalized[field] = Number.isFinite(serif?.[field]) ? serif[field] : 0;
   }
   return normalized;
 }

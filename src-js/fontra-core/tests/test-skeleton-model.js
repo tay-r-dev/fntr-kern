@@ -1015,15 +1015,15 @@ describe("skeleton-model serif schema", () => {
     expect(point.capStyle).to.equal("serif");
   });
 
-  it("fills every half field, leaving unset values null", () => {
+  it("fills every half field with migration values", () => {
     const point = normalizeSkeletonPoint({
       x: 0,
       y: 0,
       serif: { left: { wingLength: 40 } },
     });
     expect(point.serif.left.wingLength).to.equal(40);
-    expect(point.serif.left.tension).to.equal(null);
-    expect(point.serif.right.wingLength).to.equal(null);
+    expect(point.serif.left.tension).to.equal(0.7);
+    expect(point.serif.right.wingLength).to.equal(0);
     expect(Object.keys(point.serif.left)).to.have.length(9);
   });
 
@@ -1043,9 +1043,9 @@ describe("skeleton-model serif schema", () => {
     expect(point.serif.axisMode).to.equal("perpendicular");
   });
 
-  it("leaves terminal-level values null when unset", () => {
+  it("defaults terminal-level values to zero when unset", () => {
     const point = normalizeSkeletonPoint({ x: 0, y: 0 });
-    expect(point.serif.undersideCup).to.equal(null);
+    expect(point.serif.undersideCup).to.equal(0);
   });
 
   it("does not put serif data on off-curve points", () => {

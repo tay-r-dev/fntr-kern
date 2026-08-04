@@ -2,7 +2,11 @@ import {
   generateFromSkeleton,
   outlineContourToPackedPath,
 } from "@fontra/core/skeleton-generator.js";
-import { calculateGeneratedCurvatureEdits } from "@fontra/core/skeleton-model.js";
+import {
+  SERIF_HALF_FIELDS,
+  calculateGeneratedCurvatureEdits,
+  normalizeSkeletonData,
+} from "@fontra/core/skeleton-model.js";
 import { calculateSegmentTension } from "@fontra/core/tunni-calculations.js";
 import { packContour } from "@fontra/core/var-path.js";
 import { expect } from "chai";
@@ -1455,6 +1459,80 @@ describe("skeleton-generator rib angle lock", () => {
 });
 
 describe("skeleton-generator serif field translation", () => {
+  // A stem with a serif on its open start. The fixture stores serif data
+  // verbatim so the migration tests can exercise old null-valued files.
+  function serifStem({ serif = undefined, contourSerif = undefined } = {}) {
+    return {
+      version: 1,
+      nextId: 5,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 100,
+          capStyle: "serif",
+          ...(contourSerif ? { serif: contourSerif } : {}),
+          points: [
+            { id: 2, x: 0, y: 0, ...(serif ? { serif } : {}) },
+            { id: 3, x: 0, y: 400 },
+          ],
+        },
+      ],
+      generated: [],
+    };
+  }
+
+  const ALL_NULL_HALF = Object.fromEntries(
+    SERIF_HALF_FIELDS.map((field) => [field, null])
+  );
+
+  it("keeps a null-valued serif terminal at its recorded shape", () => {
+    const result = generateFromSkeleton(
+      serifStem({ serif: { left: ALL_NULL_HALF, right: ALL_NULL_HALF } })
+    );
+    const terminal = result.contours[0].points.slice(0, 7);
+    expect(terminal).to.deep.equal([
+      { x: 40, y: 0, smooth: true },
+      { x: 40, y: 400, smooth: true },
+      { x: 40, y: 400, type: "cubic" },
+      { x: 40, y: 400, type: "cubic" },
+      { x: 40, y: 400, smooth: true },
+      { x: 40, y: 400, type: "cubic" },
+      { x: 40, y: 400, type: "cubic" },
+    ]);
+  });
+
+  it("normalizes every serif field to a number", () => {
+    const point = normalizeSkeletonData(
+      serifStem({
+        serif: {
+          left: ALL_NULL_HALF,
+          right: ALL_NULL_HALF,
+          undersideCup: null,
+        },
+      })
+    ).contours[0].points[0];
+
+    for (const side of ["left", "right"]) {
+      for (const field of SERIF_HALF_FIELDS) {
+        expect(point.serif[side][field], `${side}.${field}`).to.be.a("number");
+      }
+    }
+    expect(point.serif.undersideCup).to.be.a("number");
+  });
+
+  it("does not read a contour serif after normalization", () => {
+    const serif = { left: ALL_NULL_HALF, right: ALL_NULL_HALF };
+    const contourSerif = {
+      left: { wingLength: 80 },
+      right: { wingLength: 80 },
+    };
+    const baseline = generateFromSkeleton(serifStem({ serif }));
+    const withContourSerif = generateFromSkeleton(serifStem({ serif, contourSerif }));
+
+    expect(withContourSerif.contours).to.deep.equal(baseline.contours);
+  });
+
   it("carries per-point serif values through to generation", () => {
     // A serif cap that draws nothing but a butt cap unless the fields arrive.
     const canonical = {

@@ -371,30 +371,19 @@ export function summarizeSkeletonCapSelection(selectedPoints) {
 
 // Serif parameters for the selected points. Gated exactly like the cap style,
 // because a serif IS a cap style — it is only offered on open-contour endpoints.
-// Every half field falls back point -> contour -> null, and null means the
-// generator's own default rather than a stored zero.
+// Each serif field is stored on its endpoint.
 export function summarizeSkeletonSerifSelection(selectedPoints) {
   const half = (side) => {
     const summary = {};
     for (const field of SERIF_HALF_FIELDS) {
       summary[field] = reduceValues(
-        selectedPoints.map(
-          (entry) =>
-            entry.point.serif?.[side]?.[field] ??
-            entry.contour.serif?.[side]?.[field] ??
-            null
-        )
+        selectedPoints.map((entry) => entry.point.serif?.[side]?.[field] ?? null)
       );
     }
     return summary;
   };
   const terminal = (field, fallback = null) =>
-    reduceValues(
-      selectedPoints.map(
-        (entry) =>
-          entry.point.serif?.[field] ?? entry.contour.serif?.[field] ?? fallback
-      )
-    );
+    reduceValues(selectedPoints.map((entry) => entry.point.serif?.[field] ?? fallback));
   return {
     left: half("left"),
     right: half("right"),
