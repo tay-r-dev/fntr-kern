@@ -499,9 +499,12 @@ export function applyFixedRibDelta(
 function expandToTiedRibGroups(contour, pointIds) {
   const points = contour?.points || [];
   const isClosed = contour?.closed === true;
+  const segments = buildSegmentsFromSkeletonPoints(points, isClosed);
   const groupByPoint = collectTiedRibGroups(
-    buildSegmentsFromSkeletonPoints(points, isClosed),
-    isClosed
+    segments,
+    isClosed,
+    ribTiedByDefault,
+    collectSerifTerminals(segments, isClosed, contour?.capStyle)
   );
   if (!groupByPoint.size) return pointIds;
   const expanded = new Set(pointIds);
@@ -2320,7 +2323,14 @@ export function getTiedRibGroup(contour, point) {
   }
   const isClosed = contour.closed === true;
   const segments = buildSegmentsFromSkeletonPoints(points, isClosed);
-  return collectTiedRibGroups(segments, isClosed).get(point) || null;
+  return (
+    collectTiedRibGroups(
+      segments,
+      isClosed,
+      ribTiedByDefault,
+      collectSerifTerminals(segments, isClosed, contour.capStyle)
+    ).get(point) || null
+  );
 }
 
 // The half-width the generator will actually use for this rib: the stored value,
@@ -2786,6 +2796,31 @@ export function isStraightControlledSmoothPoint(point, straightSegment, curveSeg
 const ribTiedByDefault = (point) => point?.width?.tied !== false;
 
 /**
+ * The end points an open contour draws a serif cap on.
+ *
+ * Cap style resolves per point with the contour's as the fallback, the same way
+ * the generator resolves it. A closed contour has no caps, so it has none of
+ * these.
+ * @param {Array} segments - The contour's segments, in order
+ * @param {boolean} isClosed - Whether the contour is closed
+ * @param {string} contourCapStyle - The contour's own cap style
+ * @returns {Set} skeleton points carrying a serif
+ */
+export function collectSerifTerminals(segments, isClosed, contourCapStyle) {
+  const terminals = new Set();
+  if (isClosed || !segments?.length) {
+    return terminals;
+  }
+  const ends = [segments[0].startPoint, segments[segments.length - 1].endPoint];
+  for (const point of ends) {
+    if ((point?.capStyle ?? contourCapStyle) === "serif") {
+      terminals.add(point);
+    }
+  }
+  return terminals;
+}
+
+/**
  * Does this segment tie the ribs at its two ends to a shared offset?
  *
  * It does when it is a straight carrying at least one straight-controlled smooth
@@ -2796,6 +2831,12 @@ const ribTiedByDefault = (point) => point?.width?.tied !== false;
  * point anywhere on the straight is enough: the whole projected straight has to
  * move as a unit.
  *
+ * It also does when a straight carries a SERIF at either end. A serif sits on
+ * the end of a straight run of stem, and that run is one wall with one
+ * thickness — two widths across it draw a wall that changes thickness where
+ * nothing was drawn to change it. Attached to a straight is the whole condition:
+ * a serif on a curve has no flat wall behind it and ties nothing.
+ *
  * Either end may opt out via its tied flag, which frees the segment. The handles
  * then rotate with width again; that is the accepted cost of asking for
  * independent rib widths here.
@@ -2803,9 +2844,16 @@ const ribTiedByDefault = (point) => point?.width?.tied !== false;
  * @param {Object} prevSegment - Segment before it, or null
  * @param {Object} nextSegment - Segment after it, or null
  * @param {Function} isTied - Reads a point's tied flag
+ * @param {Set} serifTerminals - Points carrying a serif cap
  * @returns {boolean}
  */
-function tiesTheRibsAtItsEnds(segment, prevSegment, nextSegment, isTied) {
+function tiesTheRibsAtItsEnds(
+  segment,
+  prevSegment,
+  nextSegment,
+  isTied,
+  serifTerminals
+) {
   const startPoint = segment?.startPoint;
   const endPoint = segment?.endPoint;
   if (!startPoint || !endPoint || startPoint === endPoint) {
@@ -2813,6 +2861,12 @@ function tiesTheRibsAtItsEnds(segment, prevSegment, nextSegment, isTied) {
   }
   if (!isTied(startPoint) || !isTied(endPoint)) {
     return false;
+  }
+  if (
+    segment.controlPoints.length === 0 &&
+    (serifTerminals.has(startPoint) || serifTerminals.has(endPoint))
+  ) {
+    return true;
   }
   return (
     isStraightControlledSmoothPoint(startPoint, segment, prevSegment) ||
@@ -2833,9 +2887,15 @@ function tiesTheRibsAtItsEnds(segment, prevSegment, nextSegment, isTied) {
  * @param {Array} segments - The contour's segments, in order
  * @param {boolean} isClosed - Whether the contour is closed
  * @param {Function} isTied - Reads a point's tied flag; defaults to the canonical field
+ * @param {Set} serifTerminals - Points carrying a serif cap; empty ties none
  * @returns {Map} skeleton point -> array of skeleton points
  */
-export function collectTiedRibGroups(segments, isClosed, isTied = ribTiedByDefault) {
+export function collectTiedRibGroups(
+  segments,
+  isClosed,
+  isTied = ribTiedByDefault,
+  serifTerminals = new Set()
+) {
   const groupByPoint = new Map();
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
@@ -2843,7 +2903,9 @@ export function collectTiedRibGroups(segments, isClosed, isTied = ribTiedByDefau
       isClosed || i > 0 ? segments[(i - 1 + segments.length) % segments.length] : null;
     const nextSegment =
       isClosed || i < segments.length - 1 ? segments[(i + 1) % segments.length] : null;
-    if (!tiesTheRibsAtItsEnds(segment, prevSegment, nextSegment, isTied)) {
+    if (
+      !tiesTheRibsAtItsEnds(segment, prevSegment, nextSegment, isTied, serifTerminals)
+    ) {
       continue;
     }
     const group = [];

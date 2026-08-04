@@ -6,6 +6,7 @@ import {
   CAP_POINT_FIELDS,
   CORNER_POINT_FIELDS,
   DEFAULT_SKELETON_WIDTH,
+  collectSerifTerminals,
   collectTiedRibGroups,
   getEffectiveNormal,
   isStraightControlledSmoothPoint,
@@ -1472,7 +1473,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
   const leftSide = [];
   const rightSide = [];
 
-  const coupled = coupledHalfWidths(segments, isClosed, defaultWidth);
+  const coupled = coupledHalfWidths(segments, isClosed, defaultWidth, capStyle);
   const firstOnCurvePoint = segments[0].startPoint;
   const lastOnCurvePoint = segments[segments.length - 1].endPoint;
   const startCapStyle = normalizeCapStyle(firstOnCurvePoint.capStyle ?? capStyle);
@@ -1609,10 +1610,13 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
   } else {
     // For open skeleton: ONE contour with caps at ends
     // Get per-point widths for first and last on-curve points
-    let startCapLeftHW = getPointHalfWidth(firstOnCurvePoint, defaultWidth, "left");
-    let startCapRightHW = getPointHalfWidth(firstOnCurvePoint, defaultWidth, "right");
-    let endCapLeftHW = getPointHalfWidth(lastOnCurvePoint, defaultWidth, "left");
-    let endCapRightHW = getPointHalfWidth(lastOnCurvePoint, defaultWidth, "right");
+    // Through the same resolver as every rib: an endpoint whose rib is tied to
+    // its neighbour's draws at the shared width, and a cap built from the stored
+    // one instead would sit off the end of the stroke it caps.
+    let startCapLeftHW = resolveHalfWidth(firstOnCurvePoint, "left");
+    let startCapRightHW = resolveHalfWidth(firstOnCurvePoint, "right");
+    let endCapLeftHW = resolveHalfWidth(lastOnCurvePoint, "left");
+    let endCapRightHW = resolveHalfWidth(lastOnCurvePoint, "right");
 
     // Single-sided mode: redirect all width to one side for caps too
     if (singleSided) {
@@ -2787,11 +2791,12 @@ function generateOffsetPointsForSegment(
  * @param {number} defaultWidth - Contour default width
  * @returns {Map} skeleton point -> {left, right}
  */
-function coupledHalfWidths(segments, isClosed, defaultWidth) {
+function coupledHalfWidths(segments, isClosed, defaultWidth, contourCapStyle) {
   const groups = collectTiedRibGroups(
     segments,
     isClosed,
-    (point) => point.widthTied !== false
+    (point) => point.widthTied !== false,
+    collectSerifTerminals(segments, isClosed, contourCapStyle)
   );
   const sharedByGroup = new Map();
   const coupled = new Map();

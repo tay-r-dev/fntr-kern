@@ -639,3 +639,119 @@ describe("tied rib group", () => {
     }
   });
 });
+
+// A serif sits on the end of a straight run of stem, and that run is one wall
+// with one thickness. So a serif ties the ribs at both ends of the straight it
+// is attached to, the same way a straight-controlled smooth point does — and
+// through the same rule, so the gizmo, the stored width and the outline cannot
+// disagree.
+//
+// Attached to a STRAIGHT is the whole condition. A serif on a curve has no flat
+// wall behind it and ties nothing.
+describe("tied rib group: serif on a straight", () => {
+  const SERIF_HALF = {
+    wingLength: 120,
+    tipThickness: 30,
+    wingSlope: 0,
+    tipCutAngle: 0,
+    reach: 60,
+    tension: 0.7,
+    concavity: 0.8,
+  };
+
+  function makeSerifSkeleton({
+    capStyle = "serif",
+    curved = false,
+    tied = true,
+    neighbourWidth = 20,
+    serifWidth = 50,
+  } = {}) {
+    const onCurve = (id, x, y, halfWidth, extra = {}) => ({
+      id,
+      x,
+      y,
+      type: null,
+      smooth: false,
+      width: { left: halfWidth, right: halfWidth, linked: true, tied },
+      ...extra,
+    });
+    const offCurve = (id, x, y) => ({ id, x, y, type: "cubic" });
+    return normalizeSkeletonData({
+      version: 1,
+      nextId: 10,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 100,
+          capStyle,
+          points: [
+            onCurve(2, 0, 0, serifWidth, {
+              serif: {
+                left: SERIF_HALF,
+                right: SERIF_HALF,
+                axisMode: "perpendicular",
+                axisAngle: 0,
+                undersideCup: 0,
+              },
+            }),
+            ...(curved ? [offCurve(10, 40, 100), offCurve(11, -40, 200)] : []),
+            onCurve(3, 0, 300, neighbourWidth),
+            offCurve(4, 100, 400),
+            offCurve(5, 200, 500),
+            onCurve(6, 300, 600, 20, { capStyle: "butt" }),
+          ],
+        },
+      ],
+    });
+  }
+
+  const pointById = (skeletonData, id) =>
+    skeletonData.contours[0].points.find((point) => point.id === id);
+  const groupIds = (skeletonData, id) =>
+    getTiedRibGroup(skeletonData.contours[0], pointById(skeletonData, id))
+      ?.map((point) => point.id)
+      .sort() ?? null;
+
+  it("ties the straight's two ends when a serif is on one of them", () => {
+    const skeletonData = makeSerifSkeleton();
+    expect(groupIds(skeletonData, 2)).to.deep.equal([2, 3]);
+    expect(groupIds(skeletonData, 3)).to.deep.equal([2, 3]);
+  });
+
+  it("ties nothing when the serif's own segment is a curve", () => {
+    const skeletonData = makeSerifSkeleton({ curved: true });
+    expect(groupIds(skeletonData, 2)).to.equal(null);
+    expect(groupIds(skeletonData, 3)).to.equal(null);
+  });
+
+  it("ties nothing when the terminal is not a serif", () => {
+    const skeletonData = makeSerifSkeleton({ capStyle: "butt" });
+    expect(groupIds(skeletonData, 2)).to.equal(null);
+  });
+
+  it("ties nothing once either point unticks tied ribs", () => {
+    expect(groupIds(makeSerifSkeleton({ tied: false }), 2)).to.equal(null);
+  });
+
+  it("gives both ends one width, which either of them moves", () => {
+    const skeletonData = makeSerifSkeleton();
+    const contour = skeletonData.contours[0];
+    for (const id of [2, 3]) {
+      expect(
+        getEffectiveRibHalfWidth(contour, pointById(skeletonData, id), "left")
+      ).to.equal(35);
+    }
+    const wider = makeSerifSkeleton({ neighbourWidth: 40 });
+    expect(
+      getEffectiveRibHalfWidth(wider.contours[0], pointById(wider, 2), "left")
+    ).to.equal(45);
+  });
+
+  it("draws the outline at the shared width, not at either stored one", () => {
+    expect(generateFromSkeleton(makeSerifSkeleton()).contours).to.deep.equal(
+      generateFromSkeleton(makeSerifSkeleton({ neighbourWidth: 35, serifWidth: 35 }))
+        .contours
+    );
+  });
+});

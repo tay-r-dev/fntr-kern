@@ -21,7 +21,7 @@ before it can be planned · **planned** = spec and plan written, not built ·
 | 1   | Axis modes other than perpendicular      | core geometry model | (1)    | undecided  |
 | 2   | Rework the easing model                  | core geometry model | (4)    | done       |
 | 3   | Lift the minimum-separation clamps       | core geometry       | new    | open       |
-| 9   | Couple a serif's rib to its neighbour    | core geometry model | new    | open       |
+| 9   | Couple a serif's rib to its neighbour    | core geometry model | new    | done       |
 | 4   | Preset storage and editing               | source defaults     | (6.1)  | open       |
 | 5   | Preset apply / create / update           | panel               | (6.2)  | open       |
 | 10  | Cancel a drag with right-click           | edit pipeline       | new    | open       |
@@ -283,73 +283,50 @@ somewhere downstream is worse than one that is documented.
 
 ---
 
-## 9. Couple a serif's rib to its neighbour
+## 9. Couple a serif's rib to its neighbour — done
 
-A serif terminal is normally not alone at the end of a stem: the endpoint carries
-the serif, and the point next to it is a corner — a non-smooth skeleton point
-where the stem turns. Those two points each own their own rib, and today the ribs
-are wholly independent. That is wrong for this configuration, because the two of
-them describe **one stem wall**, and the wall has to be one width.
+**A serif attached to a straight ties the ribs at both ends of that straight.**
 
-Three behaviours, all of the same rule:
+A serif sits on the end of a straight run of stem, and that run is one wall with
+one thickness. Two widths across it draw a wall that changes thickness where
+nothing was drawn to change it.
 
-- Adjusting the corner point's rib adjusts the serif's rib to match.
-- Adjusting the serif's rib adjusts the corner point's rib to match.
-- **On applying a serif** to an endpoint that has a corner point next to it, the
-  corner point's rib is equalized to the endpoint's — on the serifed sides only.
+Attached to a **straight** is the whole condition. A serif on a curve has no flat
+wall behind it and ties nothing.
 
-### Why this is a model change and not an editing convenience
+Both ends control the shared width, as a mean — drag either rib and the wall
+moves. Not one-way from the serif.
 
-Doing it only in the drag handler gives a rule that holds while you drag and not
-otherwise: it would be silently violated by the parameters panel, by a preset
-apply, by an interpolated master, and by any edit that reaches the width through
-another path. Rail R-B says there is one write path; a coupling that only some
-callers honour is the thing that rail exists to prevent.
+### How it is built
 
-So it needs to be a property of the model — an equality the width resolution
-maintains — with the drag handler and the panel both landing on it for free.
+Through the tie-across-a-straight rule that already existed, not beside it. That
+rule tied a straight's two ends when either was a straight-controlled smooth
+point; a serif terminal is now a second thing that qualifies a straight. Which
+means:
 
-### To settle when planning
+- Rendering and hit-testing read the coupling back through the same group
+  lookup, so the rib gizmo, the stored width and the outline cannot disagree.
+  Doing this as a separate width override instead left the gizmos floating off
+  the outline, which is what gave the game away.
+- The tied flag is the opt-out, already in the panel. Untick it on either end
+  and the two ribs are independent again.
+- The rib drag already pulls a tied group along, so dragging either end moves
+  both with no editor change at all.
 
-- **Which side is authoritative.** "Adjust either and the other follows" is
-  symmetric during editing but the equalization on apply names the endpoint as
-  the source. Decide whether the stored state is two equal numbers kept in sync,
-  or one number the corner point defers to (null-means-inherit already exists and
-  would express the second cleanly).
-- **Sides are independent.** A serif can be one-sided — a half with no wing is a
-  half switched off — and the requirement is explicit that only the serifed sides
-  equalize. The coupling is per side, not per point.
-- **What "next to" means.** Directly adjacent in the contour, non-smooth, and
-  presumably only when no off-curve intervenes. A corner two points away, or a
-  smooth point next to the endpoint, is not this case.
-- **What breaks the coupling.** There must be a way to have a serif on an
-  endpoint whose neighbour deliberately differs, or the rule becomes a cage.
-- **Interpolation.** The coupling changes stored widths, so it has to produce the
-  same result in every master or it introduces a cross-master difference where
-  there was none.
+### Fixed on the way
 
----
+Cap geometry was reading each endpoint's **stored** half width rather than the
+resolved one, so a cap on a tied endpoint sat off the end of the stroke it
+caps. Nothing could reach that before, because an endpoint could not be tied.
 
-## 10. Cancel a drag with right-click
+### Left open
 
-Right mouse button during a drag abandons it and puts the values back where they
-were, rather than committing what the pointer currently reads.
+- **Nothing finer than the tied flag.** Opting out frees both ends; there is no
+  way to keep the coupling on one side and not the other.
 
-The restore machinery already exists and is exactly what makes this cheap. The
-streaming edit path snapshots every editable layer when the drag opens and
-restores that snapshot before applying each frame — a cancel is that same restore
-with no re-apply, and then no undo record at all rather than a no-op one.
-
-The work is in getting the signal there. The slider component and the label scrub
-both own their pointer interaction and report through a stream; the stream has no
-way to say "discarded" as opposed to "ended". So this needs a cancel channel from
-the component through the form to the edit path, and the edit path needs to
-distinguish the two endings.
-
-Every streaming control in the panel has the same gap, but it is felt most on the
-label scrubs, because their edit is relative and there is no obvious value to type
-back. The scrub already listens for `pointercancel`, which is the same ending;
-right-click needs to reach the same place.
+An earlier draft of this item described the neighbour as "a corner where the
+stem turns" and made the coupling one-way. Both were wrong. The condition is the
+serif's own segment being straight, and both ends control the result.
 
 ---
 
