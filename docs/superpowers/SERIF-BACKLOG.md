@@ -13,7 +13,7 @@ re-sorted as items arrive, so a new item keeps the next free number wherever it
 lands in the order, and commits and notes referring to an item stay valid.
 
 Status legend: **open** = agreed, not started · **undecided** = needs a decision
-before it can be planned.
+before it can be planned · **planned** = spec and plan written, not built.
 
 | #   | Item                                     | Depth               | Origin | Status     |
 | --- | ---------------------------------------- | ------------------- | ------ | ---------- |
@@ -25,6 +25,7 @@ before it can be planned.
 | 5   | Preset apply / create / update           | panel               | (6.2)  | open       |
 | 10  | Cancel a drag with right-click           | edit pipeline       | new    | open       |
 | 11  | Multiply, not just add, from a scrub     | edit pipeline       | new    | open       |
+| 12  | Handles on a serifed terminal            | core geometry       | new    | planned    |
 | 6   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | superseded |
 | 7   | Scale sliders inline with inputs         | panel layout        | (2)    | superseded |
 | 8   | Shape-and-easing reframe                 | panel labels        | (4)    | open       |
@@ -395,6 +396,49 @@ Additive on top of item 4. Two notes:
   defaults panel already has a confirm-on-second-press idiom for delete
   (`_customDeleteConfirm`); reuse it rather than adding a second interaction
   grammar for the same kind of confirmation.
+
+---
+
+## 12. Handles on a serifed terminal
+
+Dragging one generated handle next to a serif moves its neighbour, and barely
+follows the pointer itself. Specced and planned:
+[design](specs/2026-08-04-serif-terminal-handle-authoring-design.md),
+[plan](plans/2026-08-04-serif-terminal-handle-authoring.md).
+
+Three faults, reported as one.
+
+**The trim drops the constructed handle direction.** Every generated handle
+carries the exact direction it was built on, so the smoothing pass never has to
+infer one from a rounded position — inferring makes the direction depend on
+handle length, and rib width sets handle length (feature model §3.6). The trim
+rebuilds its handles bare, so the smooth joint next to a serif falls back to
+inferring, and changing one handle's length swings the handle on the **next**
+segment by 14.7 units. The same edit under a plain cap moves it by nothing,
+which is the oracle. Largest of the three and the cheapest to fix.
+
+**The offset is authored on the wrong curve.** It is consumed against the segment
+the generator solves; the serif then eats the end of that segment, so what the
+designer drags is a piece of it. A piece responds to its parent's control points
+at a fraction of the rate, and both of its handles depend on both of the
+parent's — so the drag arrives fractional and leaks 3.9 units into its
+neighbour. The fix withholds **both** of the terminal segment's offsets from the
+solve and applies them after the splice, which migrates any file that already
+carries an offset there.
+
+**The chord trim measure traded shape for half of the second fault.** Taking the
+cut parameter off the chord between the segment's on-curves rather than walking
+the edge does make it handle-independent, and it moves the drawn serif: 14 units
+on a mild curve, 74 on a strong one, because the chord is far shorter than the
+edge and the same depth then cuts far more curve than it asked for. Reverted.
+Once the second fault is fixed, nothing a designer drags reaches the construction
+curve, so the edge measure is stable on its own.
+
+Found while measuring, causing none of it: every point a serif emits is stamped
+with a guessed origin — no side, and an owner picked by counting position along
+the contour — so one serifed stem produces a dozen points claiming to be the same
+handle of the same skeleton point. Nothing reads them, because every lookup
+requires a real side. File separately if it ever matters.
 
 ---
 
