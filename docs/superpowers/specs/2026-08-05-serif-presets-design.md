@@ -58,8 +58,26 @@ ruled that this difference must not exist.
 ### Today
 
 Each of the nine wing fields holds a number or `null`. `null` means inherit. The
-geometry then reads every one of them as `params.x ?? 0`. Inherit resolves to
-zero, and no level above the point supplies a value. The chain has one link.
+chain has two links, and neither one is what a first read suggests.
+
+**Link one, the contour.** A contour can hold its own serif block, and the
+generator and both panel readers fall through to it. **No code writes it.** The
+editor cannot create one. The level exists in the data model and in three
+readers, and nothing can put a value there.
+
+**Link two, the constants.** A field that no level supplies falls through to a
+default table. That table is **not all zeros**.
+
+| Field                                              | Default |
+| -------------------------------------------------- | ------- |
+| `wingLength`, `tipThickness`, `wingSlope`, `reach` | 0       |
+| `tipCutAngle`, `easeDistance`                      | 0       |
+| `tension`                                          | 0.7     |
+| `concavity`                                        | 0.8     |
+| `easeCurvature`                                    | 0.5     |
+
+So an untouched serif already carries a bracket. It draws nothing only because
+its three size fields are zero.
 
 The panel uses the same `null` to clear a field. It uses `null` again to report a
 mixed selection.
@@ -69,16 +87,27 @@ mixed selection.
 A wing field always holds a number. `null` is not a stored value. Zero is a
 setting, not an absence.
 
-- **Reading.** Serif normalization fills a missing or non-finite field with 0.
+- **Reading.** Serif normalization fills a missing or non-finite field with the
+  migration value below. It never returns `null`.
 - **Writing.** The panel writes a number. An empty box writes 0.
 - **Mixed selections.** The panel still shows an empty box for a mixed
   selection. This is a display state that the panel computes from the selection.
   The file never holds it.
+- **The contour level goes.** With every point field filled, the contour
+  fallback can never fire. Remove it from the generator and from both panel
+  readers. A fallback that cannot fire is worse than one that is documented.
 
 ### Migration
 
-A stored `null` becomes 0. **No shape moves.** The geometry already read `null` as 0. This renames a state. It does not change a value, and no fixture needs new
-numbers.
+A stored `null` becomes **the value it resolves to today**, not 0. For six fields
+that is 0. For `tension` it is 0.7, for `concavity` 0.8, for `easeCurvature` 0.5.
+
+**No shape moves.** Every serif already drawn keeps its numbers, and no fixture
+needs new values. Migrating to 0 instead would flatten the bracket of every serif
+that had never been touched.
+
+The default table stops being a live fallback and becomes the migration table.
+Nothing reads it after the migration writes a number.
 
 ### Where the 20-20-20 goes
 
@@ -86,17 +115,24 @@ Not into reading. If normalization filled an empty wing length with 20, every
 serif in every existing file would draw a foot on load. Seeding is a **write**.
 It happens at the moment a terminal becomes a serif.
 
-Two paths make a terminal a serif, and both must seed:
+One path makes a terminal a serif: the cap style select on a point. A contour
+also carries a cap style, and nothing writes that either, so there is no second
+route to seed. The point path already carries a preset-values argument for the
+other cap styles, and seeding uses it.
 
-1. The cap style select on a point.
-2. The cap style select on a contour, which serifs both open ends.
+The seed writes **all twenty numbers**, not the three from the source defaults.
+Everything the source defaults do not name seeds at 0. This drops a new serif's
+`tension` from 0.7, its `concavity` from 0.8 and its `easeCurvature` from 0.5,
+all to 0. A new serif is a chamfered slab with no bracket and no rounding. The
+designer asked for zeros below the first three, and this is what that means on
+the three fields that are not zero today.
 
-The point cap style path already carries a preset-values argument for the other
-cap styles. Seeding uses that argument. The contour path needs the same argument.
+The seed fires only when the point holds no serif data at all. Switch a terminal
+to butt and back, and it keeps the numbers it had. This matches the cap styles.
 
 A point that has never held serif data draws at zero. It draws nothing. This is
-correct, and the interface cannot reach it. Every route into the serif style
-writes the seed first.
+correct, and the interface cannot reach it, because every route into the serif
+style writes the seed first.
 
 ### New source defaults
 
@@ -113,8 +149,10 @@ number in one place feeds both. They do not split by glyph case. A serif foot is
 serif foot in either case, and the reason the width defaults split does not apply
 here.
 
-The other six wing fields, the linked flag and the underside cup seed at 0 and
-false. They get no source default, because zero is already the answer.
+The other six wing fields and the underside cup seed at 0. They get no source
+default, because zero is already the answer. The linked flag seeds **on**, which
+is what it defaults to today, so a new serif is symmetric until a designer
+unlinks it.
 
 ---
 
@@ -266,20 +304,24 @@ wrong row.
 
 In the core harness. Write these before the code.
 
-1. Normalization fills a missing wing field with 0 and never returns null.
-2. A stored null becomes 0 and the generated outline does not change.
-3. Set a point's cap style to serif. The write seeds the three fields from the
-   source defaults and zeroes the rest.
-4. Set a contour's cap style to serif. The write seeds both open ends.
-5. The seed reads the master's values, not the fallbacks, when the master holds
+1. Normalization fills a missing wing field with its migration value and never
+   returns null.
+2. A serif that stored nulls generates the same outline before and after the
+   migration. Cover `tension`, `concavity` and `easeCurvature`, the three that do
+   not migrate to 0.
+3. A contour-level serif block no longer reaches the generated outline.
+4. Set a point's cap style to serif. The write seeds the three fields from the
+   source defaults and zeroes the other seventeen.
+5. Set a terminal to butt and back to serif. The numbers survive.
+6. The seed reads the master's values, not the fallbacks, when the master holds
    values.
-6. A capture returns twenty numbers and the flag, and excludes the axis fields.
-7. An apply with scope "both" repeats the captured terminal exactly.
-8. An apply with scope "left" leaves the right wing, the cup and the linked flag
+7. A capture returns twenty numbers and the flag, and excludes the axis fields.
+8. An apply with scope "both" repeats the captured terminal exactly.
+9. An apply with scope "left" leaves the right wing, the cup and the linked flag
    unchanged.
-9. An apply on a linked terminal mirrors the applied wing.
-10. A preset survives a source-default write and read unchanged.
-11. An apply never changes the point count, at every value including all zeros.
+10. An apply on a linked terminal mirrors the applied wing.
+11. A preset survives a source-default write and read unchanged.
+12. An apply never changes the point count, at every value including all zeros.
     The interpolation contract does not relax for a preset.
 
 ---
@@ -317,6 +359,10 @@ The panels have no harness. Test these by hand.
   survive the trip.
 - **The expanded editor in §5 repeats the update button in §6.** The designer
   asked for both. If one must go, it is the editor.
+- **A contour cap style has no writer either.** The generator reads
+  `contour.capStyle` and no editor control sets it. This work removes the contour
+  serif block, which is dead in the same way. It leaves the contour cap style
+  alone, because that is cap work and not serif work. File it if it matters.
 
 ---
 
