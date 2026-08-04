@@ -197,6 +197,10 @@ export const SKELETON_SOURCE_DEFAULT_KEYS = Object.freeze({
   CUSTOM_CAP_ROUNDED: "customCapRounded",
   SERIF_UNITS_MODE: "serifUnitsMode",
   SERIF_REMOVE_COLLAPSED: "serifRemoveCollapsedPoints",
+  SERIF_NEW_WING_LENGTH: "serifNewWingLength",
+  SERIF_NEW_TIP_THICKNESS: "serifNewTipThickness",
+  SERIF_NEW_WING_SLOPE: "serifNewWingSlope",
+  CUSTOM_SERIFS: "customSerifs",
 });
 
 export const SKELETON_SOURCE_DEFAULT_FALLBACKS = Object.freeze({
@@ -218,6 +222,10 @@ export const SKELETON_SOURCE_DEFAULT_FALLBACKS = Object.freeze({
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_UNITS_MODE]: "absolute",
   [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED]: false,
+  [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_LENGTH]: 20,
+  [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_TIP_THICKNESS]: 20,
+  [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_SLOPE]: 20,
+  [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: [],
 });
 
 const SKELETON_SOURCE_DEFAULT_KEY_PATHS = new Map([
@@ -275,6 +283,19 @@ const SKELETON_SOURCE_DEFAULT_KEY_PATHS = new Map([
     SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED,
     ["serifDefaults", "removeCollapsedPoints"],
   ],
+  [
+    SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_LENGTH,
+    ["serifDefaults", "newWingLength"],
+  ],
+  [
+    SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_TIP_THICKNESS,
+    ["serifDefaults", "newTipThickness"],
+  ],
+  [
+    SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_SLOPE,
+    ["serifDefaults", "newWingSlope"],
+  ],
+  [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS, ["serifProfiles"]],
 ]);
 
 function cloneSkeletonDefaultValue(value) {
