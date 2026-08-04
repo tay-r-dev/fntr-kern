@@ -13,7 +13,8 @@ re-sorted as items arrive, so a new item keeps the next free number wherever it
 lands in the order, and commits and notes referring to an item stay valid.
 
 Status legend: **open** = agreed, not started · **undecided** = needs a decision
-before it can be planned · **planned** = spec and plan written, not built.
+before it can be planned · **planned** = spec and plan written, not built ·
+**done** = built and kept here for its findings.
 
 | #   | Item                                     | Depth               | Origin | Status     |
 | --- | ---------------------------------------- | ------------------- | ------ | ---------- |
@@ -25,7 +26,7 @@ before it can be planned · **planned** = spec and plan written, not built.
 | 5   | Preset apply / create / update           | panel               | (6.2)  | open       |
 | 10  | Cancel a drag with right-click           | edit pipeline       | new    | open       |
 | 11  | Multiply, not just add, from a scrub     | edit pipeline       | new    | open       |
-| 12  | Handles on a serifed terminal            | core geometry       | new    | planned    |
+| 12  | Handles on a serifed terminal            | core geometry       | new    | done       |
 | 6   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | superseded |
 | 7   | Scale sliders inline with inputs         | panel layout        | (2)    | superseded |
 | 8   | Shape-and-easing reframe                 | panel labels        | (4)    | open       |
@@ -399,12 +400,17 @@ Additive on top of item 4. Two notes:
 
 ---
 
-## 12. Handles on a serifed terminal
+## 12. Handles on a serifed terminal — done
 
-Dragging one generated handle next to a serif moves its neighbour, and barely
-follows the pointer itself. Specced and planned:
-[design](specs/2026-08-04-serif-terminal-handle-authoring-design.md),
+Built, dev log §24. Kept here for the account of the three faults and for the
+loose end at the bottom, which is not fixed.
+[Design](specs/2026-08-04-serif-terminal-handle-authoring-design.md),
 [plan](plans/2026-08-04-serif-terminal-handle-authoring.md).
+
+Fixing this exposed a fourth fault in shared code that had nothing to do with
+serifs — the curvature gizmo and the generator had never agreed on what a tension
+number means, and a pin jumped the curve by up to 128 units on the first grab.
+Dev log §25.
 
 Three faults, reported as one.
 
@@ -431,10 +437,11 @@ cut parameter off the chord between the segment's on-curves rather than walking
 the edge does make it handle-independent, and it moves the drawn serif: 14 units
 on a mild curve, 74 on a strong one, because the chord is far shorter than the
 edge and the same depth then cuts far more curve than it asked for. Reverted.
-Once the second fault is fixed, nothing a designer drags reaches the construction
+With the second fault fixed, nothing a designer drags reaches the construction
 curve, so the edge measure is stable on its own.
 
-Found while measuring, causing none of it: every point a serif emits is stamped
+**Still open, found while measuring and causing none of it:** every point a serif
+emits is stamped
 with a guessed origin — no side, and an owner picked by counting position along
 the contour — so one serifed stem produces a dozen points claiming to be the same
 handle of the same skeleton point. Nothing reads them, because every lookup

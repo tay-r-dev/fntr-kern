@@ -1817,3 +1817,162 @@ way and the first pass followed Figma. Shift-as-precision is the stronger
 convention across everything else, and it is what this repo's user expects. Note
 the arrow keys in these same fields still take shift as coarse, from upstream —
 inconsistent, unchanged here because it is shared with every other Fontra panel.
+
+---
+
+## 24. Handles on a serifed terminal — fixes
+
+### 1. Problem
+
+Dragging a generated handle next to a serif moved its neighbour and barely
+followed the pointer. Three faults reported as one; measured against a plain cap
+on identical input, which is the oracle.
+
+The trim rebuilt its off-curves bare, dropping the constructed direction every
+generated handle is stamped with. The smooth joint next to a serif therefore fell
+back to inferring a direction from rounded positions, which makes it depend on
+handle length — and rib width sets handle length. A length change swung the
+handle on the next segment by 14.7 units where a plain cap moved it by nothing.
+
+The offset was authored on the wrong curve. It was consumed against the segment
+the generator solves; the serif eats the end of that segment, so what the designer
+drags is a slice of it. A slice answers its parent's control points at a fraction
+of the rate and both of its handles depend on both of the parent's, so the drag
+arrived fractional and leaked 3.9 units sideways.
+
+A prior fix had taken the cut parameter off the chord between the segment's
+on-curves rather than walking the edge. That does make the cut independent of the
+handles, and it moves the drawn serif: 14 units on a mild curve, 74 on a strong
+one, because the chord is far shorter than the edge and the same depth then cuts
+far more curve than it asked for.
+
+### 2. Solution
+
+The constructed axis is carried through the trim, so the smoothing pass keeps
+using the direction the handle was built on rather than estimating one back out
+of the rounded position.
+
+Both of the terminal segment's offsets are withheld from the solve and applied to
+the surviving handles after the splice, along that stamped axis, bounded by the
+emitted segment's own reach. Both, not just the near one: the far handle shapes
+the curve the cut parameter is measured along. Because an offset is a scalar
+length on a fixed axis rather than a free move, the joint stays smooth by
+construction and the solver is untouched — two of the three costs the original
+report predicted do not exist.
+
+The construction curve then no longer depends on anything a designer drags, so
+the chord measure bought nothing and was reverted to the edge walk.
+
+The editor reads the axis from provenance for these handles. Its usual source is
+the skeleton's own handle direction, which is right for every ordinary generated
+handle and wrong for one a serif anchors, because that one runs along the
+terminal's depth axis instead.
+
+Files that already carry an offset on a serifed terminal shift once on reopen.
+That is the migration, and it is the whole of it.
+
+### 3. Result
+
+| Fault | Before                                                      | After                         |
+| ----- | ----------------------------------------------------------- | ----------------------------- |
+| 1     | next segment's handle swings 14.7 units on a length change  | 0.00, same as a plain cap     |
+| 2     | drag arrives fractional, leaks 3.9 units into its neighbour | moves one-for-one, leaks 0.01 |
+| 3     | drawn serif moves 14 units on a mild curve, 74 on a strong  | measure reverted, 0           |
+
+Release and straight run fixed under any adjustment, point count constant, and
+an adjustment past the emitted segment's reach clamps rather than running away.
+
+### 4. Challenges and findings
+
+**The oracle was worth building before the fix.** A width sweep comparing serif
+against plain cap returned zero for both and looked like it disproved the whole
+hypothesis. With no stored offset the two joint handles are already colinear, so
+the inferred direction happens to agree; only a probe carrying an actual offset
+separates them. Two of the three faults were invisible until then.
+
+**The symptom was honest geometry.** While the emitted segment is a slice of a
+constructed curve, a neighbour moving is correct. The defect was handing the
+designer a control on the slice while the write landed on the parent.
+
+**Every point a serif emits carries a guessed origin.** No side, and an owner
+picked by counting position along the contour, so one serifed stem produces a
+dozen points claiming to be the same handle of the same skeleton point. Found
+while measuring, causing none of this, and read by nothing because every lookup
+requires a real side. Backlog item, not fixed here.
+
+---
+
+## 25. Three readers disagreed about what a tension is — fix
+
+### 1. Problem
+
+Grabbing the curvature gizmo and releasing it without moving jumped the curve by
+up to 128 units. Worst on the first grab and quiet afterwards only because the
+error drove the tension to its ceiling and stuck there. Not a serif fault; the
+serif work only made it easy to reach.
+
+A handle's tension is its length over its own distance to the segment's tangent
+intersection, so one is the Tunni point. The gizmo measured exactly that. The
+generator normalizes against a reach clamped to a third of the chord, whose
+ceiling drops below one wherever that clamp bites (§19 built it that way on
+purpose), and applied the pin against that scale. Two different units, so the
+number written was not the number read.
+
+A smooth joint then rotates the drawn handle after the solve, keeping its length
+and moving the intersection — 38 degrees in the case measured. So even in
+matching units, the direction being measured against was never the one the length
+was built on.
+
+And entry 24 had stopped publishing a serif terminal's untrimmed construction
+curve once a handle was authored there, on the reasoning that the gizmo would
+otherwise read stale geometry. It left the gizmo measuring the trimmed piece and
+writing the answer onto the whole curve.
+
+### 2. Solution
+
+The pin is rescaled onto the ceiling before it is applied, where both ends read
+one at the tangent intersection and the gizmo's number means what it says.
+
+Every generated handle already carries the axis it was constructed on. That axis
+is now published with its provenance, and the drawn directions are used for
+nothing — which is the forward-provenance rail applied to a reader that had been
+recovering the direction from geometry all along.
+
+The untrimmed curve stays published. The pin governs the curve the generator
+solves; an authored handle is the later, separate layer, and withdrawing the
+first to describe the second conflated them.
+
+One reader for all three call sites, so the number a drag writes is the number
+the label shows and the number the generator reproduces.
+
+### 3. Result
+
+Grab the gizmo, release without moving. Handle movement in units:
+
+| Case                            | Before | After |
+| ------------------------------- | ------ | ----- |
+| plain cap                       | 128.3  | 1.0   |
+| plain cap, handle dragged first | 112.2  | 1.0   |
+| serif cap                       | 34.8   | 0.8   |
+| serif cap, handle dragged first | 40.1   | 0.8   |
+
+Swept over cap styles, widths, smooth and corner joints, both sides and both
+drag orders: 156 of 162 cases under one unit, the rest at 1.9.
+
+### 4. Challenges and findings
+
+**The saturation hid the size of it.** "First adjustment jumps, then it is
+smooth" reads like a state that gets initialized once. It was the error running
+the tension to its ceiling in two or three grabs and having nowhere further to
+go. Iterating the round trip rather than measuring it once is what showed that.
+
+**The published axis belongs to the emitted handle, not to whatever is being
+measured.** Where the reader substitutes the untrimmed snapshot, the axes are the
+wrong pair — a trim re-aims the handle it anchors onto the terminal's depth axis
+and stamps that. The snapshot predates colinearity, so its own drawn directions
+need no correction. Getting this backwards passes most tests.
+
+**A residual two-unit oscillation remains.** Six of 162 swept cases alternate
+between two states about 1.9 units apart, all round caps on one narrow geometry.
+It alternates rather than drifting, so it is grid quantization on the trim rather
+than a residual error in the units. Left alone.
