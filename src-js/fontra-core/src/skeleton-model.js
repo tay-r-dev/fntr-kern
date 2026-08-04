@@ -2074,8 +2074,10 @@ export function setSkeletonSerifParameters(point, values) {
       if (!(field in values[side])) {
         continue;
       }
+      // Clearing a box stores zero. The migration table is for reading old data
+      // that never held a number, not for a designer who just emptied a field.
       const value = values[side][field];
-      serif[side][field] = Number.isFinite(value) ? value : SERIF_HALF_MIGRATION[field];
+      serif[side][field] = Number.isFinite(value) ? value : 0;
     }
   }
   if (VALID_SERIF_AXIS_MODES.has(values.axisMode)) {
@@ -2121,19 +2123,30 @@ export function applySerifPreset(preset, { scope = "both" } = {}) {
   };
 }
 
-export function makeSerifPreset(seedValues = {}, name = "Serif") {
+// Only three fields have a master default. Everything else on a fresh serif is
+// zero, which is why this maps rather than lists.
+const SERIF_SEED_KEYS = Object.freeze({
+  wingLength: SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_LENGTH,
+  tipThickness: SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_TIP_THICKNESS,
+  wingSlope: SKELETON_SOURCE_DEFAULT_KEYS.SERIF_NEW_WING_SLOPE,
+});
+
+// The one description of a fresh serif. The cap-style seed and the defaults
+// panel's add button both go through it, so they cannot drift apart.
+export function makeSerifSeed(sourceDefaults = {}) {
   const half = {};
   for (const field of SERIF_HALF_FIELDS) {
-    half[field] =
-      field === "wingLength"
-        ? Number(seedValues.newWingLength ?? seedValues.serifNewWingLength ?? 20)
-        : field === "tipThickness"
-          ? Number(seedValues.newTipThickness ?? seedValues.serifNewTipThickness ?? 20)
-          : field === "wingSlope"
-            ? Number(seedValues.newWingSlope ?? seedValues.serifNewWingSlope ?? 20)
-            : 0;
+    const key = SERIF_SEED_KEYS[field];
+    const value = key ? Number(sourceDefaults[key]) : 0;
+    half[field] = Number.isFinite(value)
+      ? value
+      : Number(SKELETON_SOURCE_DEFAULT_FALLBACKS[key]);
   }
-  return { name, linked: true, undersideCup: 0, left: half, right: { ...half } };
+  return { linked: true, undersideCup: 0, left: half, right: { ...half } };
+}
+
+export function makeSerifPreset(sourceDefaults = {}, name = "Serif") {
+  return { name, ...makeSerifSeed(sourceDefaults) };
 }
 
 export function setSkeletonCornerParameters(point, values, { round = null } = {}) {

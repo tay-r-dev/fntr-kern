@@ -12,7 +12,6 @@ import {
   generateFromSkeleton,
 } from "@fontra/core/skeleton-generator.js";
 import {
-  SERIF_HALF_FIELDS,
   findGeneratedPathAddress,
   getSkeletonData,
   getSkeletonHandleOffset,
@@ -20,6 +19,7 @@ import {
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
   isSkeletonSideLocked,
+  makeSerifSeed,
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
   resetSkeletonEditableRibHandles,
@@ -675,24 +675,10 @@ export async function setPanelCapStyle(
       if (Object.keys(seeded).length) {
         setSkeletonCapParameters(point, seeded);
       }
+      // A terminal that has never been a serif has no numbers at all. Seed it
+      // once, from the master. Switching away and back keeps what it had.
       if (capStyle === "serif" && point.serif == null) {
-        const half = {};
-        for (const field of SERIF_HALF_FIELDS) {
-          half[field] =
-            field === "wingLength"
-              ? (presetValues?.serifNewWingLength ?? 20)
-              : field === "tipThickness"
-                ? (presetValues?.serifNewTipThickness ?? 20)
-                : field === "wingSlope"
-                  ? (presetValues?.serifNewWingSlope ?? 20)
-                  : 0;
-        }
-        setSkeletonSerifParameters(point, {
-          left: half,
-          right: { ...half },
-          linked: true,
-          undersideCup: 0,
-        });
+        setSkeletonSerifParameters(point, makeSerifSeed(presetValues));
       }
       if (capStyle === "round") {
         resetSkeletonEditableRib(point, "left");
