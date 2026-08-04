@@ -1339,6 +1339,19 @@ function getGeneratedOutlinePositionForEditing(
   return generated.contours?.[entryIndex]?.points?.[contourPointIndex] || null;
 }
 
+function publishedAuthoredAxis(skeletonData, contourId, pointId, side, role) {
+  const generated = (skeletonData?.generated || []).find(
+    (entry) => entry?.skeletonContourId === contourId
+  );
+  const axis = generated?.pointMap?.find(
+    (provenance) =>
+      provenance?.skeletonPointId === pointId &&
+      provenance.side === side &&
+      provenance.role === role
+  )?.authoredAxis;
+  return axis && Number.isFinite(axis.x) && Number.isFinite(axis.y) ? axis : null;
+}
+
 // Writes each baked offset on top of whatever that handle already stored. Runs
 // inside the mutate, on a working copy rebuilt from the original every frame, so
 // it is idempotent and the values it adds are constants measured once.
@@ -1589,11 +1602,9 @@ function resolveEditableGeneratedHandleAddressAcrossLayersForEditing(
   const point = contour?.points?.[reference.pointIndex];
   if (!contour || !point || point.type || isSkeletonSideLocked(point, side))
     return null;
-  const direction = getSkeletonHandleDirectionForPoint(
-    contour,
-    reference.pointIndex,
-    role
-  );
+  const direction =
+    publishedAuthoredAxis(referenceSkeletonData, contourId, pointId, side, role) ??
+    getSkeletonHandleDirectionForPoint(contour, reference.pointIndex, role);
   if (!direction) return null;
   return {
     contour,
