@@ -2033,6 +2033,21 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
       "right",
       authoredKeys
     );
+    if (
+      [...roundedLeftSide, ...roundedRightSide].some(
+        (point) => point?._authoredAdjustment
+      )
+    ) {
+      const clearConstructionSegment = (points) =>
+        points.map((point) => {
+          if (!point?._provenance?.constructionSegment) return point;
+          const { constructionSegment: _constructionSegment, ...provenance } =
+            point._provenance;
+          return { ...point, _provenance: provenance };
+        });
+      roundedLeftSide = clearConstructionSegment(roundedLeftSide);
+      roundedRightSide = clearConstructionSegment(roundedRightSide);
+    }
 
     const outlinePoints = [];
     // Left side forward

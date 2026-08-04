@@ -1996,4 +1996,21 @@ describe("skeleton-generator serif terminal handles", () => {
     }
     expect(counts.size).to.equal(1);
   });
+
+  it("lets curvature measurement follow an authored serif handle", () => {
+    const constructionSegments = (result) =>
+      result.provenance.flatMap((entry) =>
+        entry.pointMap.filter((point) => point?.constructionSegment)
+      );
+    expect(
+      constructionSegments(generateFromSkeleton(serifStem()))
+    ).to.have.length.above(0);
+    expect(
+      constructionSegments(
+        generateFromSkeleton(
+          serifStem({ offsets: { 5: { leftIn: { x: 9.49, y: -28.46 } } } })
+        )
+      )
+    ).to.have.length(0);
+  });
 });
