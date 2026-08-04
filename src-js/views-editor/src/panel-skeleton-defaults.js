@@ -382,6 +382,14 @@ export default class SkeletonDefaultsPanel extends Panel {
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
+      label: translate("sidebar.skeleton-parameters.new-serif"),
+    });
+    this._pushNumber(formContents, K.SERIF_NEW_WING_LENGTH, "serif-wing-length");
+    this._pushNumber(formContents, K.SERIF_NEW_TIP_THICKNESS, "serif-tip-thickness");
+    this._pushNumber(formContents, K.SERIF_NEW_WING_SLOPE, "serif-wing-slope");
+    formContents.push({ type: "divider" });
+    formContents.push({
+      type: "header",
       label: translate("sidebar.skeleton-parameters.default-caps"),
     });
     formContents.push({
