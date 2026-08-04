@@ -13,8 +13,9 @@ re-sorted as items arrive, so a new item keeps the next free number wherever it
 lands in the order, and commits and notes referring to an item stay valid.
 
 Status legend: **open** = agreed, not started · **undecided** = needs a decision
-before it can be planned · **planned** = spec and plan written, not built ·
-**done** = built and kept here for its findings.
+before it can be planned · **specced** = design written, no task plan yet ·
+**planned** = spec and plan written, not built · **done** = built and kept here
+for its findings.
 
 | #   | Item                                     | Depth               | Origin | Status     |
 | --- | ---------------------------------------- | ------------------- | ------ | ---------- |
@@ -22,8 +23,8 @@ before it can be planned · **planned** = spec and plan written, not built ·
 | 2   | Rework the easing model                  | core geometry model | (4)    | done       |
 | 3   | Lift the minimum-separation clamps       | core geometry       | new    | done       |
 | 9   | Couple a serif's rib to its neighbour    | core geometry model | new    | done       |
-| 4   | Preset storage and editing               | source defaults     | (6.1)  | open       |
-| 5   | Preset apply / create / update           | panel               | (6.2)  | open       |
+| 4   | Preset storage and editing               | source defaults     | (6.1)  | specced    |
+| 5   | Preset apply / create / update           | panel               | (6.2)  | specced    |
 | 10  | Cancel a drag with right-click           | edit pipeline       | new    | done       |
 | 11  | Multiply, not just add, from a scrub     | edit pipeline       | new    | done       |
 | 12  | Handles on a serifed terminal            | core geometry       | new    | done       |
@@ -346,6 +347,22 @@ serif's own segment being straight, and both ends control the result.
 
 ## 4. Preset storage and editing
 
+**Spec written 2026-08-05:**
+[design](specs/2026-08-05-serif-presets-design.md). It covers items 4 and 5
+together and supersedes both entries as the working description. The open
+questions below are all settled there. Two things the spec added that this entry
+did not have:
+
+- The serif loses its inherit chain first. Every wing field always holds a
+  number, `null` migrates to 0, and no shape moves because the geometry already
+  read `null` as 0.
+- A new serif seeds at wing length 20, tip thickness 20, wing slope 20 — three
+  new master source defaults — so switching a terminal to serif draws something
+  instead of nothing.
+
+Also found: the custom cap lists have a reader and **no writer**. Nothing in the
+editor can create one. Half the precedent this entry cites is dead storage.
+
 **Per master, in the source defaults.** There is already a working template for
 this and the serif should follow it rather than invent a second mechanism.
 
@@ -375,6 +392,11 @@ option source in the parameters panel.
 ---
 
 ## 5. Preset apply / create / update
+
+**Spec written 2026-08-05:**
+[design](specs/2026-08-05-serif-presets-design.md), §6. Both notes below survived
+planning and are built as written. One control was added: a scope select on
+apply, offering both wings, left only or right only.
 
 The control in the parameters panel: a select listing the presets, with apply,
 create-new, and a double-press update-in-place.
