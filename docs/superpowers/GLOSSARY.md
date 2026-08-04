@@ -2,13 +2,12 @@
 
 **Date:** 2026-08-04
 
-The words this project uses, in one place. Two groups: the general type-design and
-typography words that the features assume you know, and the words forkra itself
-invented or gave a specific meaning to.
+The words this project uses, in one place. Two groups: the general type-design words that the
+features assume you know, and the words forkra invented or gave a specific meaning to.
 
-Each forkra term gives the one canonical name. If a term has an old name, this doc
-says so and marks the old name dead. Use the canonical name in code, in the user
-interface, and in these docs.
+Every entry starts with what the thing **is** or what you would **see**. The rule or the
+consequence comes after. Where a term has an old name, this doc marks the old name dead. Use the
+canonical name in code, in the interface, and in these docs.
 
 ---
 
@@ -16,114 +15,115 @@ interface, and in these docs.
 
 ### Letter anatomy
 
-**Glyph** — one drawn character in a font. A glyph is not a letter. One letter can
-have many glyphs, and one glyph can carry no letter at all.
+**Glyph** — one drawn character. A glyph is not a letter. The letter **a** can have several
+glyphs, and a glyph such as a comma carries no letter at all.
 
-**Outline** — the filled shape of a glyph, drawn as one or more closed contours.
-The outline is what the renderer fills.
+**Outline** — the black shape of a glyph. It is what gets filled and printed.
 
-**Contour** — one closed loop of points and handles. A glyph outline has an outer
-contour and, where the letter has a hole, one or more inner contours.
+**Contour** — one closed loop of the outline. A **c** is one loop. An **o** is two: the outside
+and the hole.
 
-**Counter** — the enclosed or partly enclosed space inside a letter. The hole in an
-**o** is a counter. In outline terms a counter is an inner contour that winds
-against the outer one.
+**Counter** — the white space a letter encloses. The hole in an **o**, the two holes in a **B**,
+the open bowl of a **c**. In outline terms, a fully enclosed counter is an inner contour.
 
-**Winding** — the direction a contour runs, clockwise or counter-clockwise. The
-renderer uses winding to decide which regions to fill. An inner contour must wind
-against its outer contour or the counter fills solid.
+**Winding** — the direction a loop runs, clockwise or counter-clockwise. The fill rule uses it to
+decide black from white. The hole in an **o** must run the opposite way from the outside, or the
+**o** fills in solid.
 
-**Stem** — the main upright stroke of a letter.
+**Stem** — the main upright of a letter. The vertical of an **l**, the two verticals of an **n**.
 
-**Flank** — the side wall of a stem. The serif work uses this word for the edge the
-terminal attaches to.
+**Flank** — the side wall of a stem. Run your eye up the left edge of an **n**: that is the flank.
 
-**Terminal** — how a stroke ends. A terminal can be plain, or it can carry a shape
-such as a serif or a ball.
+**Terminal** — the end of a stroke. Look at the bottom of an **f**, the top of an **a**, the two
+ends of an **s**. Each can be cut flat, rounded, given a ball, or given a serif.
 
-**Serif** — the small stroke across the end of a main stroke. A serif has two
-**wings**, one each side, joined to the stem by a **bracket**.
+**Serif** — the little cross-stroke at the end of a main stroke. The feet and the head of a Times
+**n**. It has two **wings**, one either side, each joined to the stem by a **bracket**.
 
-**Bracket** — the curve that joins a serif wing to the stem flank.
+**Bracket** — the curved fillet between a serif wing and the stem. It is what makes a serif look
+grown out of the stem rather than glued on.
 
-**Sidebearing** — the space between the glyph outline and the edge of its advance
-width. There is a left sidebearing and a right sidebearing.
+**Sidebearing** — the white margin either side of a glyph. Too much and the word looks loose. Too
+little and the letters touch.
 
-**Advance width** — how far the pen moves after it draws a glyph. Outline plus both
+**Advance width** — the whole horizontal step the pen takes for a glyph: the black, plus both
 sidebearings.
 
-**UPM** (units per em) — the size of the design grid, most often 1000 or 2048. Every
-coordinate in a font is in these units. A measurement that is **UPM-relative** scales
-with the design grid instead of assuming one size.
+**UPM** (units per em) — the size of the square the glyph is drawn in, usually 1000 or 2048 units.
+All coordinates are in these units. A measurement that is **UPM-relative** keeps its proportion
+whatever that square's size is, instead of assuming 1000.
 
-**Alignment zone** — a horizontal band where many glyphs start or stop, such as the
-baseline or the x-height. Feet and terminals sit on these bands.
+**Alignment zone** — a horizontal band where many letters begin or end: the baseline, the
+x-height, the cap height. Feet and terminals sit on these bands so that a line of text looks level.
 
-**Overshoot** — how far a round shape passes an alignment zone, so that it looks the
-same height as a flat shape.
+**Overshoot** — the small amount a round letter passes an alignment zone. An **o** is drawn
+slightly taller than an **x**, because a curve that stopped exactly on the line would look short.
 
 ### Curves and points
 
-**On-curve point** — a point the outline passes through.
+**On-curve point** — a point the outline passes through. It is on the ink edge.
 
-**Off-curve point** (also **control point**, or **handle**) — a point the outline
-does not pass through. It sets the direction and the strength of the curve.
+**Off-curve point**, also **control point** or **handle** — a point the outline does not touch. It
+pulls the curve toward itself. Move it, and the curve leans that way.
 
-**Cubic** — a curve segment with two on-curve ends and two off-curve controls. Every
-curve in forkra is a cubic.
+**Cubic** — a curve with two on-curve ends and two handles. Every curve in forkra is one of these.
 
-**Segment** — the piece of contour between two adjacent on-curve points. A segment
-is either a straight line or a cubic.
+**Segment** — the stretch of outline between two neighbouring on-curve points. It is either a
+straight line or a cubic.
 
-**Smooth point** — an on-curve point where the two handles stay in one straight line
-through it. The outline has no visible corner there.
+**Smooth point** — an on-curve point where the two handles lie in one straight line through it, so
+the curve runs through without a kink. The join at the middle of an **S**.
 
-**Corner point** — an on-curve point that is not smooth. The two sides meet at an
-angle.
+**Corner point** — an on-curve point where the two sides meet at an angle. The bottom corners of an
+**A**.
 
-**Cusp** — a corner so sharp that the two sides almost fold back on each other.
+**Cusp** — a corner so tight the two sides almost fold back on themselves. The inside of the joint
+where the bowl of a **b** meets its stem.
 
-**Tangent** — the direction the curve travels at a point.
+**Tangent** — the direction the curve is travelling as it passes a point. Lay a ruler against the
+curve there.
 
-**Colinear** — on one straight line. A smooth point holds its two handles colinear.
+**Colinear** — lying on one straight line. A smooth point keeps its two handles colinear.
 
-**Curvature** — how tightly a curve bends. The inverse of the radius of the circle
-that best matches the curve at that place.
+**Curvature** — how hard the curve is bending. Fit a circle against the curve at that spot: a
+small circle means high curvature, a big circle means nearly straight.
 
-**G2 continuity** — two segments meet with the same tangent **and** the same
-curvature. A join that is only tangent-continuous can still show a visible break in
-the light along the edge.
+**G2 continuity** — two segments meet with the same direction **and** the same bend. If only the
+direction matches, the join still catches the light as a faint flat spot, which a type designer
+sees immediately at large sizes.
 
-**Tension** — how far a handle reaches from its on-curve point toward the point where
-the two end tangents cross. Tension 0 puts the handle on its own end. Tension 1 puts
-it on the crossing point. A circular arc sits at 0.5523.
+**Tension** — how far a handle is pushed out from its point, as a fraction of the way to where the
+two end tangents cross. At 0 the handle sits on its own point and the segment is straight. At 1 it
+sits on the crossing point and the curve is as full as a single cubic gets. A circle needs 0.5523.
 
-**Tunni point** — the point where the two end tangent rays of a cubic cross. Dragging
-it changes both handles together. Named for Eduardo Tunni.
+**Tunni point** — the spot where the two end tangents of a segment cross. Drag it and both handles
+move together, so the curve fills out or flattens as one. Named for Eduardo Tunni.
 
-**Offset curve** (also **parallel curve**) — the curve you get by moving every point
-of a source curve the same distance along its own normal. A cubic offset of a cubic is
-in general **not** a cubic, which is why forkra fits one instead of computing one.
+**Offset curve**, also **parallel curve** — the line you get by walking along a curve and stepping
+the same distance sideways at every point. It is what a stroke of constant width traces. The catch:
+the offset of a cubic is almost never itself a cubic, so forkra has to fit one to it. That fit is
+where most of the hard math in this project lives.
 
-**Normal** — the direction perpendicular to the tangent.
+**Normal** — the sideways direction at a point, square to the tangent. A rib runs along the normal.
 
-**Miter** — the average of the two normals at a corner point, used to place geometry
-that must serve both sides of the corner.
+**Miter** — at a corner, the average of the two sides' normals. It is the direction that splits the
+corner evenly, the way a mitered picture frame joint does.
 
 ### Fonts and variation
 
-**Master** (also **source**) — one complete drawing of a font at one point in the
-design space, such as Light or Bold.
+**Master**, also **source** — one complete drawing of the font at one design position, such as
+Light or Bold.
 
-**Interpolation** — computing an in-between drawing from two or more masters. Two
-masters interpolate only if their glyphs have the same point count in the same order.
+**Interpolation** — computing the in-between weights from two masters. It works only if the two
+drawings have the same number of points in the same order. This is why point counts matter so much
+in this project.
 
-**Design space** — the set of axes a variable font varies over, such as weight and
-width.
+**Design space** — the axes a variable font moves along: weight, width, optical size.
 
-**Kerning** — a per-pair spacing correction between two glyphs.
+**Kerning** — a spacing correction for one specific pair of letters, such as **AV**.
 
-**Spacing** — the sidebearings of a single glyph, as opposed to kerning between two.
+**Spacing** — the sidebearings of a single glyph, which apply next to every letter. Kerning is the
+exception; spacing is the rule.
 
 ---
 
@@ -131,173 +131,185 @@ width.
 
 ### The skeleton
 
-**Skeleton** — the centerline drawing the designer edits. It is an ordinary path of
-points and handles, plus a stroke width at each on-curve point. It is not the outline.
+**Skeleton** — the centerline you draw instead of the outline. Think of it as the path a broad
+pen nib travels. It is an ordinary path of points and handles, and each on-curve point also carries
+a stroke width.
 
-**Centerline** — one skeleton contour. The line the stroke is built around.
+**Centerline** — one skeleton contour. The spine the stroke is built around.
 
-**Stroke** — the band of ink the generator builds around a centerline.
+**Stroke** — the band of black laid down either side of a centerline.
 
-**Generated contour** — an outline contour that the generator produced from a
-skeleton. It exports, renders and interpolates like a hand-drawn contour. The editor
-knows which contours are generated and protects them.
+**Generated contour** — an outline the machine built from a skeleton. Once built it behaves like
+any hand-drawn outline: it exports, renders and interpolates the same. The editor knows which
+contours are generated and stops you from cutting into them by hand.
 
-**Generator** — the code that turns a skeleton into outline contours. It runs on
-every edit.
+**Generator** — the code that turns a centerline into filled outlines. It reruns on every edit, so
+the outline follows the cursor live.
 
-**Rib** — the stroke width at one skeleton point, drawn as a bar across the
-centerline. A rib has two ends, one each side, and both ends drag.
+**Rib** — the width at one skeleton point, drawn on screen as a bar lying across the centerline,
+like a rung on a ladder. Grab either end and the stroke gets fatter or thinner there.
 
-**Side** — left or right of the centerline, in the direction the contour runs. Every
-per-point width, cap and handle field exists once per side.
+**Side** — left or right of the centerline, taken in the direction the contour runs. Widths, caps
+and handle settings all exist once per side, so a stroke can be fat on one side and thin on the
+other.
 
-**Half-width** — the distance from the centerline to one edge. Two half-widths make
-the full stroke width.
+**Half-width** — the distance from the centerline out to one edge. The two half-widths added
+together are the visible stroke width.
 
-**Width cascade** — the rule that finds a half-width: the point's own side width, or
-half the point's width, or half the contour default. A point that stores nothing
-follows the contour default live.
+**Width cascade** — where a rib's width comes from when you have not set it. The point's own side
+width, or half the point's own width, or half the contour's default. A point that stores nothing
+follows the contour default, so changing one number reweights the whole contour.
 
-**Tied ribs** — two or more ribs forced to one shared offset because a smooth point
-with only one handle sits on the straight between them. That point has no direction of
-its own, so the straight sets it. Turned off per straight with the **Tied ribs** panel
-option.
+**Tied ribs** — two ribs forced to the same offset because the straight between them has a smooth
+point sitting on it with only one handle. That point cannot choose its own direction, so the
+straight dictates it, and the two ends must agree or the straight would come out bent. Turned off
+per straight, with the **Tied ribs** option.
 
-**Single-sided contour** — a contour with all its width on one side. The other edge
-lies exactly on the skeleton.
+**Single-sided contour** — all the width on one side. The other edge lies exactly on the line you
+drew, so the skeleton itself becomes the edge of the letter.
 
-**Collapsed side** — a side under about 0.5 units. It copies the skeleton exactly
-instead of running the offset construction. This is what makes single-sided contours
-exact.
+**Collapsed side** — a side so thin, under about half a unit, that it is treated as lying on the
+skeleton exactly. It is what makes a single-sided stroke come out clean instead of nearly clean.
 
-**Cap** — how an open contour end closes. The five styles are **butt**, **round**,
-**square**, **drop** and **serif**. They are mutually exclusive. forkra added the last
-two.
+**Cap** — how the generator closes an open end: **butt** cut flat, **round**, **square** projecting
+past the end, **drop** swelling into a ball, or **serif**. One end has one cap. forkra added the
+last two.
 
-**Corner rounding** — replacing a sharp generated outline corner with an arc. Set per
-skeleton point, and it can differ per side.
+**Corner rounding** — softening the sharp outline corner that a kinked centerline produces. Set
+per point, and it can differ on the two sides.
 
-**Nudge** — a displacement of a generated on-curve point along its own tangent. It is
-applied after the generator builds the shape, never before.
+**Nudge** — sliding a generated outline point along its own edge, without changing the stroke.
+Applied after the shape is built, so it never disturbs the curve fitting.
 
-**Handle nudge** — the part of a nudge that also carries the adjacent handles. A
-plain nudge leaves them alone.
+**Handle nudge** — the part of a nudge that also drags the neighbouring handles along. A plain
+nudge leaves them behind.
 
-**Editable generated geometry** — a generated point or handle the designer marked
-editable and moved off its computed place. It stays generated.
+**Editable generated geometry** — a generated point or handle you have taken hold of and moved off
+where the machine put it. It stays generated, and the rest of the outline still follows the
+skeleton.
 
-**Detached handle** — a generated handle the designer placed at an absolute position.
-The construction no longer sets it.
+**Detached handle** — a generated handle you have placed by hand at an absolute spot. The
+construction stops setting it.
 
-**Provenance** — the map from a generated point back to the skeleton point, side and
-role that made it. The generator emits it forward. Nothing recovers it by comparing
-coordinates.
+**Provenance** — the label every generated point carries saying where it came from: which skeleton
+point, which side, and what job it does. A point on the outline effectively says "I am the left
+edge of point 3." So when you drag point 3, the editor already knows which outline points are its
+own and moves them. The alternative, which forkra refuses to do, is to guess afterward by looking
+for whichever outline point happens to lie nearest — that guess is what broke the older fork.
 
-**Stable id** — an id on a skeleton contour or point that is never reused. Selection,
-provenance and undo hold ids, not array positions.
+**Stable id** — the permanent name a skeleton point or contour keeps for life, never reused.
+Selections, undo and provenance all refer to points by these names rather than by position in a
+list, so inserting a point in the middle cannot silently make a selection point at its neighbour.
 
-**Modifier behavior** — a named editing behavior held as a key during a drag:
-**D** fixed rib, **S** fixed rib compress, **X** equalize, **Z** tangent-only. They
-are behavior names inside the editing rules, not flags that bypass them.
+**Modifier behavior** — a key held during a drag to change what the drag means: **D** fixed rib,
+**S** fixed rib compress, **X** equalize, **Z** tangent-only. They are named behaviors inside the
+editing rules, not switches that skip the rules.
 
-**Rib angle lock** — forcing a rib onto the horizontal or the vertical axis instead
-of the normal the geometry computes. Offered at open-contour ends.
+**Rib angle lock** — forcing a rib to lie flat horizontal or dead vertical, whatever angle the
+centerline arrives at. Offered at open ends, where it makes a terminal square up with the baseline
+instead of leaning with the stroke.
 
-### The generated-contour controls
+### The controls on a generated outline
 
-**Gizmo** — an on-screen control drawn from geometry and dragged to write a value.
+**Gizmo** — a handle drawn on screen that is not part of the letter. You drag it, and it writes a
+value.
 
-**Curvature gizmo** — the gizmo on a generated cubic that sets the segment curvature.
-It sits on the curve at the halfway point.
+**Curvature gizmo** — the control sitting on the middle of a generated curve. Drag it outward and
+the curve fills out. Drag it inward and the curve flattens.
 
-**Curvature pin** — the tension number a curvature gizmo drag stored. Regeneration
-reproduces the number whatever the skeleton did since. A pin is permanent. Where the
-geometry cannot reach it, the output clamps and the stored number stays.
+**Curvature pin** — the fullness you set with that gizmo, remembered as a number rather than as a
+position. Move the skeleton afterward and the curve keeps that fullness. A pin is permanent: if
+the geometry cannot reach the value, the shape stops at the limit and the stored number waits
+until it can.
 
-**On-curve gizmo** — the gizmo that slides a generated segment's two ends along the
-outline. It sits off the curve, along the outward normal.
+**On-curve gizmo** — the control that slides a generated segment's two ends along the outline,
+spreading them apart or drawing them together. It sits just off the curve so it does not sit on top
+of the curvature gizmo.
 
-**Construction segment** — the full segment the generator solved, published on
-provenance where a terminal trimmed the emitted one shorter. Read a generated
-segment's shape through this, never from the emitted points.
+**Construction segment** — the full curve the generator solved, before a terminal trimmed a piece
+off the end of it. Anything measuring the curve must measure this one. Measuring the trimmed
+leftover gives a number that describes a different curve, which is how a gizmo ends up jumping on
+first touch.
 
-**Natural solver** — the code that picks the two handle lengths of a generated cubic
-automatically. It fits fixed samples of the true offset and pulls toward the
-skeleton's own tension, in one convex problem with one answer.
+**Natural solver** — the code that decides how long the two handles of a generated curve should be.
+It compares its answer against the true parallel curve at five fixed places, and leans it toward
+the shape of the skeleton you drew. It has exactly one answer for any input, which is why the
+outline does not shimmer while you drag.
 
-**Handle domain** — the range each generated handle length may take. The floor is one
-unit. The ceiling is the true forward tangent intersection, which is where the handles
-would start to cross.
+**Handle domain** — how long a generated handle is allowed to be. Never under one unit, and never
+past the point where the two handles would cross and loop the curve.
 
-**Pull ratio** — how strongly the natural solve leans toward the skeleton's own
-tension instead of the offset samples. Computed from the input only. It never reads
-the answer.
+**Pull ratio** — how strongly the solver leans toward the skeleton's own curve shape instead of
+the true parallel curve. It is decided from the skeleton and the widths before the solve, never
+from the result.
 
 ### The serif terminal
 
-**Serif frame** — the coordinate frame the terminal is built in. The origin is the
-skeleton end point. **u** runs along the serif axis toward the left side. **v** is
-depth, back into the stroke.
+**Serif frame** — the little coordinate system the serif is built in, standing at the end of the
+stroke. **u** runs across, along the serif. **v** runs down into the stroke. Everything about the
+serif's shape is described in this frame, not in the glyph's coordinates.
 
-**Serif axis** — the direction the serif runs across the stroke. Set by `axisMode`:
-perpendicular, horizontal, vertical or absolute. It composes with the rib angle lock
-instead of replacing it.
+**Serif axis** — the direction the serif runs across the stroke: square to the stroke, flat
+horizontal, dead vertical, or an angle you name. It works together with the rib angle lock, which
+sets the end the serif is built on.
 
-**Half** — one wing of the serif, left or right, with its own nine fields. A
-**linked** flag copies the left onto the right.
+**Half** — one wing of the serif with its own nine settings. Left and right are independent, and a
+**linked** flag copies one onto the other for a symmetric serif.
 
-**Wing** — one arm of the serif, from the stem out to the tip.
+**Wing** — one arm of the serif, from the stem out to its tip.
 
-**Attractor** — the one point both bracket handles aim at. **Concavity** places it
-between the chord midpoint and the wing inner corner. **Tension** is how far the two
-handles travel toward it.
+**Attractor** — the single point both bracket handles reach toward. **Concavity** decides where
+that point sits, between the straight chamfer line and the inner corner of the wing, so it controls
+whether the bracket is hollow or full. **Tension** decides how far the handles travel toward it, so
+it controls how deep the curve runs.
 
-**Contour easing** — rounding the corner where the bracket meets the stem flank.
-`easeDistance` sets how much of each surface it eats. `easeCurvature` sets how full
-the rounding is.
+**Contour easing** — rounding off the corner where the bracket meets the stem flank.
+`easeDistance` is how much of each surface the rounding eats. `easeCurvature` is how full that
+rounding is.
 
-**Release** — the place the terminal takes over from the stroke edge. It sits on the
-flank line at a depth the serif's own numbers set. The edge is brought to it, never
-the reverse.
+**Release** — the height at which the serif takes over from the stroke edge. It is fixed by the
+serif's own numbers, and the stroke edge is bent to meet it. Never the other way around: build the
+serif off the stroke edge instead, and everything that reshapes the edge starts dragging the serif
+around with it.
 
-**Underside cup** — one curve across the whole foot of the terminal, tip to tip. Its
-center sits on the skeleton, not at the midpoint of the two tips.
+**Underside cup** — the hollow under the foot of the serif, drawn as one curve from tip to tip
+rather than one per wing, so the two sides cannot disagree in the middle. Its lowest point sits on
+the skeleton.
 
-**Serif units mode** — whether the five distance fields are absolute units or a
-multiple of the stroke width.
+**Serif units mode** — whether the serif's five distance settings are fixed units, or a multiple of
+the stroke width so that the serif grows with the weight.
 
-### Other features
+### The other features
 
-**Coarse grid** — a snapping grid with presets, held in application settings and
-never written to a project file.
+**Coarse grid** — a snapping grid with presets, coarser than the unit grid, for keeping stems and
+heights on consistent values.
 
-**Q-measure** — the realtime measurement overlay held on the **Q** key. **Alt+Q**
+**Q-measure** — hold **Q** and the editor measures whatever is under the cursor live. **Alt+Q**
 gives direct mode.
 
-**SpeedPunk** — the curvature comb overlay. It draws a spine off the outline whose
-length tracks curvature, so a break in the light shows as a break in the comb.
+**SpeedPunk** — the curvature comb. It grows a fringe off the outline whose length follows the
+bend, so an uneven curve shows up as a ragged fringe long before the eye finds it in the black.
 
-**Letterspacer** — automatic sidebearings from the shape of the glyph, in the
-HTLetterspacer manner. Its terms are **area**, **depth** and **overshoot**.
+**Letterspacer** — automatic sidebearings, computed from how much black sits near each side of the
+glyph. Its three controls are **area**, **depth** and **overshoot**.
 
-**Point labels** — per-segment distance, tension and angle readouts. Formerly called
-"Tunni Labels". That name is dead. The skeleton has its own separate label layer.
+**Point labels** — the numbers drawn next to each segment: length, tension, angle. Formerly called
+"Tunni Labels". That name is dead. The skeleton has its own separate set.
 
-**Corner overlap** — adding a deliberate overlap at a corner so that the rendered
-join stays clean.
+**Corner overlap** — deliberately overlapping the shapes at a joint so that the rendered corner
+stays clean.
 
 ### Project words
 
-**Donor** — the older fork the skeleton geometry came from. It sits read-only at
-`_external/skeleton`. It is a behavior reference, never a source to copy plumbing
-from.
+**Donor** — the older fork the skeleton math came from. It sits read-only in the tree as a
+reference for how things used to behave. Nothing is copied from it any more.
 
-**Upstream** — the Fontra project forkra is built on.
+**Upstream** — Fontra, the editor forkra is built on.
 
-**Rail** — a constraint every feature obeys, listed in the architecture map. Breaking
-one gives you a regression the tests cannot catch.
+**Rail** — a rule every feature obeys, listed in the architecture map. Breaking one produces the
+kind of fault the tests cannot see.
 
-**Owned file** — a file one feature is responsible for. A **shared file** carries
-hunks from more than one feature.
+**Owned file** — a file one feature is responsible for. A **shared file** has several features'
+work in it, and needs reading before you edit it.
 
-**Workstream** (WS-n) — one numbered block of the build program.
+**Workstream** (WS-n) — one numbered stage of the build program.
