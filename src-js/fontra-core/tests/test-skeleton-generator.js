@@ -1826,4 +1826,85 @@ describe("skeleton-generator serif terminal handles", () => {
     expect(worstStep).to.be.at.most(0.05);
     expect(Math.abs(angleAt(140) - angleAt(60))).to.be.at.most(0.05);
   });
+
+  it("moves a trimmed handle one-for-one with its adjustment", () => {
+    const before = generateFromSkeleton(serifStem());
+    const on = emitted(before, 5, "left", "onCurve");
+    const handle = emitted(before, 5, "left", "in");
+    const axisLength = Math.hypot(handle.x - on.x, handle.y - on.y);
+    const axis = {
+      x: (handle.x - on.x) / axisLength,
+      y: (handle.y - on.y) / axisLength,
+    };
+    const wanted = 30;
+    const after = generateFromSkeleton(
+      serifStem({
+        offsets: { 5: { leftIn: { x: axis.x * wanted, y: axis.y * wanted } } },
+      })
+    );
+    expect(moved(handle, emitted(after, 5, "left", "in"))).to.be.closeTo(wanted, 1.5);
+  });
+
+  it("leaves the other handle of a trimmed segment alone, in both directions", () => {
+    const cases = [
+      {
+        offsets: { 5: { leftIn: { x: 9.49, y: -28.46 } } },
+        dragged: [5, "in"],
+        still: [2, "out"],
+      },
+      {
+        offsets: { 2: { leftOut: { x: 0, y: 30 } } },
+        dragged: [2, "out"],
+        still: [5, "in"],
+      },
+    ];
+    for (const { offsets, dragged, still } of cases) {
+      const before = generateFromSkeleton(serifStem());
+      const after = generateFromSkeleton(serifStem({ offsets }));
+      expect(
+        moved(
+          emitted(before, dragged[0], "left", dragged[1]),
+          emitted(after, dragged[0], "left", dragged[1])
+        ),
+        "dragged"
+      ).to.be.above(1);
+      expect(
+        moved(
+          emitted(before, still[0], "left", still[1]),
+          emitted(after, still[0], "left", still[1])
+        ),
+        "still"
+      ).to.be.at.most(0.01);
+    }
+  });
+
+  it("keeps the release and the straight run fixed under any adjustment", () => {
+    const before = generateFromSkeleton(serifStem());
+    const releaseBefore = emitted(before, 2, "left", "onCurve");
+    for (const offsets of [
+      { 2: { leftOut: { x: 0, y: 40 } } },
+      { 5: { leftIn: { x: 20, y: -60 } } },
+      { 2: { leftOut: { x: 0, y: -40 } }, 5: { leftIn: { x: -20, y: 60 } } },
+    ]) {
+      const after = generateFromSkeleton(serifStem({ offsets }));
+      expect(moved(releaseBefore, emitted(after, 2, "left", "onCurve"))).to.be.at.most(
+        0.01
+      );
+      expect(after.contours[0].points.length).to.equal(
+        before.contours[0].points.length
+      );
+    }
+  });
+
+  it("clamps an authored handle to the emitted segment's own reach", () => {
+    const huge = generateFromSkeleton(
+      serifStem({ offsets: { 5: { leftIn: { x: 300, y: -900 } } } })
+    );
+    const bigger = generateFromSkeleton(
+      serifStem({ offsets: { 5: { leftIn: { x: 600, y: -1800 } } } })
+    );
+    expect(
+      moved(emitted(huge, 5, "left", "in"), emitted(bigger, 5, "left", "in"))
+    ).to.be.at.most(0.01);
+  });
 });

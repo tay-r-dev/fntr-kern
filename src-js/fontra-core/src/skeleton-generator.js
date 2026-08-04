@@ -1,4 +1,5 @@
 import { Bezier } from "bezier-js";
+import { buildHandleDomain } from "./natural-handle-solver.js";
 import { offsetCubicSide } from "./offset-cubic.js";
 import { buildSerifTerminal, computeSerifFrame } from "./serif-geometry.js";
 import {
@@ -110,6 +111,7 @@ function stripPointProvenance(contour) {
     delete point._axis;
     delete point._constructionAnchor;
     delete point._handleNudge;
+    delete point._authoredAdjustment;
   }
 }
 
@@ -642,6 +644,84 @@ function getGeneratedHandleAdjustment(
   }
 
   return null;
+}
+
+function collectSerifAuthoredHandles(segments, isClosed, startCapStyle, endCapStyle) {
+  const keys = new Set();
+  if (isClosed || !segments.length) return keys;
+  const claim = (segment) => {
+    for (const side of ["left", "right"]) {
+      if (segment.startPoint?.id !== undefined)
+        keys.add(`${segment.startPoint.id}/${side}/out`);
+      if (segment.endPoint?.id !== undefined)
+        keys.add(`${segment.endPoint.id}/${side}/in`);
+    }
+  };
+  if (startCapStyle === "serif") claim(segments[0]);
+  if (endCapStyle === "serif") claim(segments[segments.length - 1]);
+  return keys;
+}
+
+function applySerifAuthoredHandles(sidePoints, side, authoredKeys) {
+  if (!authoredKeys?.size) return sidePoints;
+  const points = [...sidePoints];
+  const isOffCurve = (point) => !!point?.type;
+  const nearestOnCurve = (from, step) => {
+    for (let index = from; index >= 0 && index < points.length; index += step) {
+      if (!isOffCurve(points[index])) return index;
+    }
+    return -1;
+  };
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index];
+    const provenance = point?._provenance;
+    if (
+      !isOffCurve(point) ||
+      provenance?.side !== side ||
+      !authoredKeys.has(`${provenance.skeletonPointId}/${side}/${provenance.role}`) ||
+      !point._axis ||
+      !point._authoredAdjustment
+    )
+      continue;
+    const anchorIndex =
+      index > 0 && !isOffCurve(points[index - 1])
+        ? index - 1
+        : index + 1 < points.length && !isOffCurve(points[index + 1])
+          ? index + 1
+          : -1;
+    if (anchorIndex < 0) continue;
+    const farIndex =
+      anchorIndex < index
+        ? nearestOnCurve(index + 1, 1)
+        : nearestOnCurve(index - 1, -1);
+    if (farIndex < 0) continue;
+    const farHandleIndex = anchorIndex < index ? farIndex - 1 : farIndex + 1;
+    const anchor = points[anchorIndex];
+    const far = points[farIndex];
+    const axis = point._axis;
+    const farAxis = points[farHandleIndex]?._axis;
+    if (!farAxis) continue;
+    const domain = buildHandleDomain(anchor, far, axis, farAxis);
+    const adjustment = point._authoredAdjustment;
+    const baseLength = adjustment.detached
+      ? 0
+      : (point.x - anchor.x) * axis.x + (point.y - anchor.y) * axis.y;
+    const adjustmentLength = Math.hypot(adjustment.x || 0, adjustment.y || 0);
+    const adjustmentSign =
+      (adjustment.x || 0) * axis.x + (adjustment.y || 0) * axis.y < 0 ? -1 : 1;
+    const requested = baseLength + adjustmentSign * adjustmentLength;
+    const clamped =
+      Math.min(
+        Math.max(requested / domain.startReach, domain.minStartTension),
+        domain.maxStartTension
+      ) * domain.startReach;
+    points[index] = {
+      ...point,
+      x: Math.round(anchor.x + axis.x * clamped),
+      y: Math.round(anchor.y + axis.y * clamped),
+    };
+  }
+  return points;
 }
 
 const SKELETON_DEBUG_PREFIX = "[SKELETON GEN DEBUG]";
@@ -1367,6 +1447,16 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
   const rightSide = [];
 
   const coupled = coupledHalfWidths(segments, isClosed, defaultWidth);
+  const firstOnCurvePoint = segments[0].startPoint;
+  const lastOnCurvePoint = segments[segments.length - 1].endPoint;
+  const startCapStyle = normalizeCapStyle(firstOnCurvePoint.capStyle ?? capStyle);
+  const endCapStyle = normalizeCapStyle(lastOnCurvePoint.capStyle ?? capStyle);
+  const authoredKeys = collectSerifAuthoredHandles(
+    segments,
+    isClosed,
+    startCapStyle,
+    endCapStyle
+  );
   const resolveHalfWidth = (point, side) =>
     coupled.get(point)?.[side] ?? getPointHalfWidth(point, defaultWidth, side);
 
@@ -1427,7 +1517,8 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         segmentIndex: i,
       },
       singleSided,
-      singleSidedDirection
+      singleSidedDirection,
+      authoredKeys
     );
 
     leftSide.push(...offsetPoints.left);
@@ -1492,8 +1583,6 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
   } else {
     // For open skeleton: ONE contour with caps at ends
     // Get per-point widths for first and last on-curve points
-    const firstOnCurvePoint = segments[0].startPoint;
-    const lastOnCurvePoint = segments[segments.length - 1].endPoint;
     let startCapLeftHW = getPointHalfWidth(firstOnCurvePoint, defaultWidth, "left");
     let startCapRightHW = getPointHalfWidth(firstOnCurvePoint, defaultWidth, "right");
     let endCapLeftHW = getPointHalfWidth(lastOnCurvePoint, defaultWidth, "left");
@@ -1516,11 +1605,6 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         endCapRightHW = endTotal;
       }
     }
-
-    const startCapStyleRaw = firstOnCurvePoint.capStyle ?? capStyle;
-    const endCapStyleRaw = lastOnCurvePoint.capStyle ?? capStyle;
-    const startCapStyle = normalizeCapStyle(startCapStyleRaw);
-    const endCapStyle = normalizeCapStyle(endCapStyleRaw);
 
     const startIsRound = startCapStyle === "round";
     const endIsRound = endCapStyle === "round";
@@ -1935,6 +2019,13 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
       );
     }
 
+    roundedLeftSide = applySerifAuthoredHandles(roundedLeftSide, "left", authoredKeys);
+    roundedRightSide = applySerifAuthoredHandles(
+      roundedRightSide,
+      "right",
+      authoredKeys
+    );
+
     const outlinePoints = [];
     // Left side forward
     outlinePoints.push(...roundedLeftSide);
@@ -2135,7 +2226,8 @@ function generateOffsetPointsForSegment(
   endRightHalfWidth = null,
   debugContext = null,
   singleSided = false,
-  singleSidedDirection = "left"
+  singleSidedDirection = "left",
+  authoredKeys = null
 ) {
   // Use provided half-widths or fall back to width/2
   const halfWidth = width / 2;
@@ -2508,17 +2600,19 @@ function generateOffsetPointsForSegment(
         pinnedTension: isLeftSide
           ? segment.startPoint.leftSegmentCurvature
           : segment.startPoint.rightSegmentCurvature,
-        startAdjustment: startHandleDir
-          ? getGeneratedHandleAdjustment(
-              segment.startPoint,
-              startHandleDir,
-              side,
-              "out"
-            )
-          : null,
-        endAdjustment: endHandleDir
-          ? getGeneratedHandleAdjustment(segment.endPoint, endHandleDir, side, "in")
-          : null,
+        startAdjustment:
+          startHandleDir && !authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
+            ? getGeneratedHandleAdjustment(
+                segment.startPoint,
+                startHandleDir,
+                side,
+                "out"
+              )
+            : null,
+        endAdjustment:
+          endHandleDir && !authoredKeys?.has(`${segment.endPoint?.id}/${side}/in`)
+            ? getGeneratedHandleAdjustment(segment.endPoint, endHandleDir, side, "in")
+            : null,
       });
       if (shouldAddStart)
         output.push(
@@ -2585,6 +2679,10 @@ function generateOffsetPointsForSegment(
         // direction from the rounded position is width-dependent and, on short
         // handles, quantized to the lattice.
         if (axis) generated._axis = { x: axis.x, y: axis.y };
+        if (authoredKeys?.has(`${owner?.id}/${side}/${role}`)) {
+          const adjustment = getGeneratedHandleAdjustment(owner, axis, side, role);
+          if (adjustment) generated._authoredAdjustment = adjustment;
+        }
         if (handleNudge.x || handleNudge.y) {
           generated._handleNudge = handleNudge;
         }
@@ -3028,6 +3126,9 @@ function cloneRoundCapPoint(point) {
 function withRoundCapProvenance(point, sourcePoint) {
   if (point && sourcePoint?._provenance) {
     point._provenance = { ...sourcePoint._provenance };
+  }
+  if (point && sourcePoint?._authoredAdjustment) {
+    point._authoredAdjustment = { ...sourcePoint._authoredAdjustment };
   }
   return point;
 }
