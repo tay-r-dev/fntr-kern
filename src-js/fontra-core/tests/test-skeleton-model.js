@@ -4,8 +4,10 @@ import {
   allocateSkeletonIds,
   appendSkeletonContour,
   appendSkeletonPoint,
+  applySerifPreset,
   buildSegmentsFromSkeletonPoints,
   calculateNormalAtSkeletonPoint,
+  captureSerifPreset,
   clearSkeletonData,
   deleteSkeletonPoints,
   getSkeletonContour,
@@ -1010,6 +1012,27 @@ describe("skeleton-model transform/translate/id-allocation", () => {
 });
 
 describe("skeleton-model serif schema", () => {
+  it("captures and applies a complete serif preset", () => {
+    const point = normalizeSkeletonPoint({
+      x: 0,
+      y: 0,
+      serif: {
+        linked: false,
+        undersideCup: 12,
+        left: { wingLength: 40 },
+        right: { wingLength: 30 },
+      },
+    });
+    const preset = captureSerifPreset(point);
+
+    expect(preset).to.include({ linked: false, undersideCup: 12 });
+    expect(preset).to.not.have.property("axisMode");
+    expect(applySerifPreset(preset)).to.deep.equal(preset);
+    expect(applySerifPreset(preset, { scope: "left" })).to.deep.equal({
+      left: preset.left,
+    });
+  });
+
   it("accepts serif as a cap style", () => {
     const point = normalizeSkeletonPoint({ x: 0, y: 0, capStyle: "serif" });
     expect(point.capStyle).to.equal("serif");

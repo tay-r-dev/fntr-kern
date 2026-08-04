@@ -2060,9 +2060,7 @@ export function setSkeletonCapParameters(point, values, { round = null } = {}) {
 }
 
 // Partial merge into the point's serif data. Only the keys present in `values`
-// are written, so the panel can send one field at a time and everything else
-// keeps inheriting. A half field set to null goes back to inheriting, which is
-// how the panel clears a value rather than storing a zero.
+// are written, so the panel can send one field at a time.
 export function setSkeletonSerifParameters(point, values) {
   if (!values || typeof values !== "object") {
     return;
@@ -2077,7 +2075,7 @@ export function setSkeletonSerifParameters(point, values) {
         continue;
       }
       const value = values[side][field];
-      serif[side][field] = Number.isFinite(value) ? value : null;
+      serif[side][field] = Number.isFinite(value) ? value : SERIF_HALF_MIGRATION[field];
     }
   }
   if (VALID_SERIF_AXIS_MODES.has(values.axisMode)) {
@@ -2091,15 +2089,51 @@ export function setSkeletonSerifParameters(point, values) {
       continue;
     }
     const value = values[field];
-    // axisAngle is never null: it is meaningless without a number, and the mode
-    // decides whether it is consulted at all.
     serif[field] = Number.isFinite(value)
       ? value
       : field === "axisAngle"
         ? serif.axisAngle
-        : null;
+        : 0;
   }
   point.serif = serif;
+}
+
+export function captureSerifPreset(point) {
+  const serif = normalizeSerif(point?.serif);
+  return {
+    linked: serif.linked,
+    undersideCup: serif.undersideCup,
+    left: { ...serif.left },
+    right: { ...serif.right },
+  };
+}
+
+export function applySerifPreset(preset, { scope = "both" } = {}) {
+  const serif = normalizeSerif(preset);
+  if (scope === "left" || scope === "right") {
+    return { [scope]: { ...serif[scope] } };
+  }
+  return {
+    linked: serif.linked,
+    undersideCup: serif.undersideCup,
+    left: { ...serif.left },
+    right: { ...serif.right },
+  };
+}
+
+export function makeSerifPreset(seedValues = {}, name = "Serif") {
+  const half = {};
+  for (const field of SERIF_HALF_FIELDS) {
+    half[field] =
+      field === "wingLength"
+        ? Number(seedValues.newWingLength ?? seedValues.serifNewWingLength ?? 20)
+        : field === "tipThickness"
+          ? Number(seedValues.newTipThickness ?? seedValues.serifNewTipThickness ?? 20)
+          : field === "wingSlope"
+            ? Number(seedValues.newWingSlope ?? seedValues.serifNewWingSlope ?? 20)
+            : 0;
+  }
+  return { name, linked: true, undersideCup: 0, left: half, right: { ...half } };
 }
 
 export function setSkeletonCornerParameters(point, values, { round = null } = {}) {
