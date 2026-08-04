@@ -3032,12 +3032,16 @@ function withRoundCapProvenance(point, sourcePoint) {
   return point;
 }
 
-function buildSplitOffCurve(point) {
-  return {
+function buildSplitOffCurve(point, sourceHandle = null) {
+  const offCurve = {
     x: point.x,
     y: point.y,
     type: "cubic",
   };
+  if (sourceHandle?._axis) {
+    offCurve._axis = { x: sourceHandle._axis.x, y: sourceHandle._axis.y };
+  }
+  return offCurve;
 }
 
 function buildInsertedRoundCapPoint(point) {
@@ -3264,11 +3268,17 @@ function splitTerminalSideForRoundCap(
   }
   const rewrittenSegment = [
     cloneRoundCapPoint(startPoint),
-    withRoundCapProvenance(buildSplitOffCurve(leftPoints[1]), originalHandle1),
+    withRoundCapProvenance(
+      buildSplitOffCurve(leftPoints[1], originalHandle1),
+      originalHandle1
+    ),
     withRoundCapProvenance(buildSplitOffCurve(leftPoints[2]), originalHandle2),
     insertedPoint,
     withRoundCapProvenance(buildSplitOffCurve(rightPoints[1]), originalHandle1),
-    withRoundCapProvenance(buildSplitOffCurve(rightPoints[2]), originalHandle2),
+    withRoundCapProvenance(
+      buildSplitOffCurve(rightPoints[2], originalHandle2),
+      originalHandle2
+    ),
     cloneRoundCapPoint(endPoint),
   ];
   const rewrittenSidePoints = [
@@ -3318,6 +3328,7 @@ function anchorTerminalSplit(split, target, intoStroke, sidePosition) {
       ...handle,
       x: target.x + intoStroke.x * length,
       y: target.y + intoStroke.y * length,
+      _axis: { x: intoStroke.x, y: intoStroke.y },
     };
   }
   return { ...split, sidePoints, insertedPoint };

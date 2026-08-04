@@ -1784,4 +1784,46 @@ describe("skeleton-generator serif terminal handles", () => {
     expect(serifSide.x).to.be.closeTo(177.01696447669852, 0.5);
     expect(serifSide.y).to.be.closeTo(217.2822488632268, 0.5);
   });
+
+  it("leaves the next segment's handle alone when a trimmed handle changes", () => {
+    const adjustment = { 5: { leftIn: { x: 9.49, y: -28.46 } } };
+    for (const capStyle of ["butt", "serif"]) {
+      const before = generateFromSkeleton(serifStem({ capStyle }));
+      const after = generateFromSkeleton(serifStem({ capStyle, offsets: adjustment }));
+      const dragged = {
+        before: emitted(before, 5, "left", "in"),
+        after: emitted(after, 5, "left", "in"),
+      };
+      const neighbour = {
+        before: emitted(before, 5, "left", "out"),
+        after: emitted(after, 5, "left", "out"),
+      };
+      expect(moved(dragged.before, dragged.after), `${capStyle} dragged`).to.be.above(
+        1
+      );
+      expect(
+        moved(neighbour.before, neighbour.after),
+        `${capStyle} neighbour`
+      ).to.be.at.most(0.01);
+    }
+  });
+
+  it("keeps the joint's handle axis independent of stroke width under a serif", () => {
+    const angleAt = (width) => {
+      const result = generateFromSkeleton(serifStem({ width }));
+      const on = emitted(result, 5, "left", "onCurve");
+      const out = emitted(result, 5, "left", "out");
+      return (Math.atan2(out.y - on.y, out.x - on.x) * 180) / Math.PI;
+    };
+    let worstStep = 0;
+    let previous = null;
+    for (let width = 60; width <= 140; width += 1) {
+      const angle = angleAt(width);
+      if (previous !== null)
+        worstStep = Math.max(worstStep, Math.abs(angle - previous));
+      previous = angle;
+    }
+    expect(worstStep).to.be.at.most(0.05);
+    expect(Math.abs(angleAt(140) - angleAt(60))).to.be.at.most(0.05);
+  });
 });
