@@ -126,17 +126,15 @@ The seed writes **all twenty numbers**, not the three from the source defaults.
 Everything the source defaults do not name seeds at 0. A new serif is a chamfered
 slab with no bracket and no rounding.
 
-The seed fires when a terminal carries **no serif shape** — every wing number and
-the cup at zero. A terminal that already has a shape keeps it, so switching to
-another cap style and back is not destructive.
+Picking serif in the style select applies the master's new-serif numbers, with
+no condition attached. The select only fires on a change, so this is exactly
+"became a serif", and picking it is a request for the default shape.
 
-**"Has no serif data" is not a test that can pass.** Point normalization
-materializes a serif block on every on-curve point in the file, so the block is
-always there. A first attempt tested for its absence, the seed never fired once,
-and every terminal switched to serif came up carrying the old fallbacks —
-0.7 tension and 0.8 concavity out of nowhere, with no size. That is the second
-reason the migration table had to go: it was the only thing those terminals could
-ever show.
+**Do not gate the seed on the point holding no serif data.** Point normalization
+materializes a serif block on every on-curve point in the file, so that block is
+always there and the test can never pass. A first attempt did gate on it, the
+seed never fired once, and every terminal switched to serif came up carrying the
+old fallbacks - 0.7 tension and 0.8 concavity out of nowhere, with no size.
 
 ### New source defaults
 

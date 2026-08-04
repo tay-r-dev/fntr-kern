@@ -2094,23 +2094,6 @@ export function setSkeletonSerifParameters(point, values) {
   point.serif = serif;
 }
 
-// True when a terminal carries no serif shape at all — every wing number and
-// the cup at zero, which draws nothing.
-//
-// This is what "has never been a serif" has to mean. Point normalization
-// materializes a serif block on EVERY on-curve point, so the absence of the
-// block is not a test that can ever pass.
-export function serifIsUnshaped(serif) {
-  for (const side of ["left", "right"]) {
-    for (const field of SERIF_HALF_FIELDS) {
-      if (Number(serif?.[side]?.[field])) {
-        return false;
-      }
-    }
-  }
-  return !Number(serif?.undersideCup);
-}
-
 export function captureSerifPreset(point) {
   const serif = normalizeSerif(point?.serif);
   return {
