@@ -418,18 +418,48 @@ export async function nudgePanelPointWidthStream(
     sceneController,
     pointAddresses,
     valueStream,
-    (point, contour, change) => {
-      const defaultWidth = contour.defaultWidth;
-      if (side === "total") {
-        const current = getSkeletonPointWidth(point, defaultWidth);
-        setSkeletonPointTotalWidth(point, defaultWidth, current + Number(change));
-        return;
-      }
-      const current = getSkeletonPointHalfWidth(point, defaultWidth, side);
-      setSkeletonPointSideWidth(point, defaultWidth, side, current + Number(change), {
-        linked: point?.width?.linked !== false,
-      });
-    },
+    (point, contour, change) => moveOnePointWidth(point, contour, side, added(change)),
+    undoLabel
+  );
+}
+
+// Both ways of changing a width land here. A scrub adds to what the point
+// holds; the multiply beside it scales what the point holds. The only
+// difference is the arithmetic, so it is the argument.
+function moveOnePointWidth(point, contour, side, next) {
+  const defaultWidth = contour.defaultWidth;
+  if (side === "total") {
+    setSkeletonPointTotalWidth(
+      point,
+      defaultWidth,
+      next(getSkeletonPointWidth(point, defaultWidth))
+    );
+    return;
+  }
+  setSkeletonPointSideWidth(
+    point,
+    defaultWidth,
+    side,
+    next(getSkeletonPointHalfWidth(point, defaultWidth, side)),
+    { linked: point?.width?.linked !== false }
+  );
+}
+
+const added = (amount) => (current) => current + Number(amount);
+const scaled = (amount) => (current) => Math.round(current * Number(amount));
+
+export async function scalePanelPointWidth(
+  sceneController,
+  pointAddresses,
+  side,
+  factor,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, { contour }) =>
+      moveOnePointWidth(point, contour, side, scaled(factor)),
     undoLabel
   );
 }
@@ -444,12 +474,26 @@ export async function nudgePanelContourDefaultWidthStream(
     sceneController,
     contourAddresses,
     valueStream,
-    (contour, change) => {
+    (contour, change) =>
+      setSkeletonContourDefaultWidth(contour, added(change)(contour.defaultWidth ?? 0)),
+    undoLabel
+  );
+}
+
+export async function scalePanelContourDefaultWidth(
+  sceneController,
+  contourAddresses,
+  factor,
+  undoLabel
+) {
+  return editSelectedSkeletonContours(
+    sceneController,
+    contourAddresses,
+    (contour) =>
       setSkeletonContourDefaultWidth(
         contour,
-        (contour.defaultWidth ?? 0) + Number(change)
-      );
-    },
+        scaled(factor)(contour.defaultWidth ?? 0)
+      ),
     undoLabel
   );
 }
@@ -465,13 +509,31 @@ export async function nudgePanelCapParameterStream(
     sceneController,
     pointAddresses,
     valueStream,
-    (point, _contour, change) => {
-      // A cap parameter the point does not store is inheriting, and there is no
-      // resolved value to move away from here. Treat the drag as starting from
-      // zero rather than pinning the point to a default it never chose.
-      const current = Number.isFinite(point[field]) ? point[field] : 0;
-      setSkeletonCapParameters(point, { [field]: current + Number(change) });
-    },
+    (point, _contour, change) => moveOnePointCapParameter(point, field, added(change)),
+    undoLabel
+  );
+}
+
+// A cap parameter the point does not store is inheriting, and there is no
+// resolved value to move away from here. Treat the change as starting from zero
+// rather than pinning the point to a default it never chose.
+function moveOnePointCapParameter(point, field, next) {
+  setSkeletonCapParameters(point, {
+    [field]: next(Number.isFinite(point[field]) ? point[field] : 0),
+  });
+}
+
+export async function scalePanelCapParameter(
+  sceneController,
+  pointAddresses,
+  field,
+  factor,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point) => moveOnePointCapParameter(point, field, scaled(factor)),
     undoLabel
   );
 }
@@ -653,7 +715,7 @@ const DEFAULT_SERIF_NUDGE_BOUNDS = { min: 0, max: null };
 // first; past that the drag starts from the generator's own default, which is
 // the number the panel is showing and the terminal is drawn from — starting from
 // zero instead would make the first pixel of the drag jump the shape.
-function nudgeOnePointSerif(point, contour, targets, change) {
+function nudgeOnePointSerif(point, contour, targets, next) {
   const values = {};
   for (const { side, field } of targets) {
     const stored = side
@@ -668,7 +730,7 @@ function nudgeOnePointSerif(point, contour, targets, change) {
     // anyway, so a fraction left behind only stores a number the outline never
     // uses — and makes the next drag start from a value the panel isn't showing.
     const bounds = SERIF_NUDGE_BOUNDS[field] ?? DEFAULT_SERIF_NUDGE_BOUNDS;
-    let raw = current + change;
+    let raw = next(current);
     if (bounds.min != null) {
       raw = Math.max(raw, bounds.min);
     }
@@ -705,7 +767,32 @@ export async function nudgePanelSerifValueStream(
       if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
         return;
       }
-      nudgeOnePointSerif(point, contour, targets, Number(change));
+      nudgeOnePointSerif(point, contour, targets, added(change));
+    },
+    undoLabel
+  );
+}
+
+export async function scalePanelSerifValue(
+  sceneController,
+  pointAddresses,
+  targets,
+  factor,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, { contour }) => {
+      const endpoints = skeletonContourEndpointIndices(contour);
+      if (!endpoints) {
+        return;
+      }
+      const pointIndex = contour.points.indexOf(point);
+      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
+        return;
+      }
+      nudgeOnePointSerif(point, contour, targets, scaled(factor));
     },
     undoLabel
   );

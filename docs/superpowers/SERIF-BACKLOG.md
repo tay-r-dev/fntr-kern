@@ -25,7 +25,7 @@ before it can be planned · **planned** = spec and plan written, not built ·
 | 4   | Preset storage and editing               | source defaults     | (6.1)  | open       |
 | 5   | Preset apply / create / update           | panel               | (6.2)  | open       |
 | 10  | Cancel a drag with right-click           | edit pipeline       | new    | open       |
-| 11  | Multiply, not just add, from a scrub     | edit pipeline       | new    | open       |
+| 11  | Multiply, not just add, from a scrub     | edit pipeline       | new    | done       |
 | 12  | Handles on a serifed terminal            | core geometry       | new    | done       |
 | 6   | Scale sliders: live update, integer step | edit pipeline       | (3, 5) | superseded |
 | 7   | Scale sliders inline with inputs         | panel layout        | (2)    | superseded |
@@ -426,20 +426,29 @@ requires a real side. File separately if it ever matters.
 
 ---
 
-## 11. Multiply, not just add, from a scrub
+## 11. Multiply, not just add, from a scrub — done
 
-The scale sliders were removed in favour of dragging a field's label (dev log
-§23). A scrub adds: dragging up by 10 adds 10 to every selected number. The
-sliders multiplied: 110% grew a serif as a unit and kept its proportions.
+Every scrub field now carries `× [ratio] [preview - Apply]` in its own row. The
+ratio steps by 0.1 and the button shows where that field's number lands, live, so
+the ratio does not have to be read as a shape: 1.1 says nothing about where a 40
+goes, 44 does.
 
-That is a real operation and it has no replacement right now. The likely shape is
-a modifier on the same scrub — hold a key and the change is a percentage of each
-number rather than a flat amount — rather than bringing a second control back.
+Applied per point, not against one number. Scaling a mixed selection by 1.1 grows
+each point from its own value, which is the whole reason a multiply is not a
+scrub with the answer worked out in advance.
 
-Note the two rounding questions the scale path already had, which come with it:
-what to do under `serifUnitsMode: normalized`, where the stored number is a ratio
-of stroke width and an integer is meaningless, and whether a multiply should
-round per point or carry fractions between drags.
+A scrub and a multiply share their per-point writers and undo labels; only the
+arithmetic differs, so that is the argument. Reaches the same five groups the
+scrub does — the two point widths and the total, contour default width, cap
+distance, and every serif half field.
+
+### Left open
+
+- **Normalized units.** Under `serifUnitsMode: normalized` the stored number is
+  already a ratio of stroke width, and multiplying it multiplies the ratio. That
+  is arguably right, and it was not thought through.
+- **Rounding is per apply.** Each press rounds to the grid, so 1.1 twice is not
+  1.21. No fractions are carried between presses.
 
 ---
 

@@ -241,6 +241,11 @@ export class Form extends SimpleElement {
       // to read the starting value through and write the running one back.
       if (fieldItem.type !== "universal-row") {
         this._attachScrub(labelElement, fieldItem);
+        // Anything a caller wants packed beside the input rather than under it.
+        // universal-row places its own, further down.
+        if (fieldItem.auxiliaryElement) {
+          valueElement.appendChild(fieldItem.auxiliaryElement);
+        }
       }
 
       if (fieldItem.onEnterKey) {

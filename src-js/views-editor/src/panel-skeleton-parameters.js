@@ -23,6 +23,10 @@ import {
   nudgePanelSerifValueStream,
   resetPanelGeneratedHandle,
   resetPanelRibs,
+  scalePanelCapParameter,
+  scalePanelContourDefaultWidth,
+  scalePanelPointWidth,
+  scalePanelSerifValue,
   setPanelCapParameters,
   setPanelCapStyle,
   setPanelContourDefaultWidth,
@@ -258,6 +262,9 @@ export default class SkeletonParametersPanel extends Panel {
     this._widthSnapshotKey = null;
     this._lastSignature = null;
     this._widthProfileSelection = "base";
+    // Per-field multiply ratios, kept across rebuilds so a rebuild after Apply
+    // does not reset the box the user is working in.
+    this._multiplyFactors = {};
     this._capProfileSelection = "base";
     this._forceApplyArmed = null;
     this._confirmTooltip = null;
@@ -1349,8 +1356,60 @@ export default class SkeletonParametersPanel extends Panel {
       value: blank || summary.mixed ? null : summary.value,
       placeholder: blank ? "" : summary.placeholder || undefined,
       scrub: true,
+      auxiliaryElement: fieldOptions.disabled
+        ? undefined
+        : this._multiplyControl(key, summary),
       ...fieldOptions,
     };
+  }
+
+  // "× 1.1 → 44 Apply", packed into the same row as the number.
+  //
+  // A scrub adds and a multiply scales, and the two want different controls: a
+  // scrub is a continuous drag with the shape under the hand, a multiply is one
+  // ratio applied at once. Hence a field and a button rather than a second drag.
+  //
+  // The button carries the answer because a ratio is not a shape. 1.1 tells you
+  // nothing about where a 40 lands; 44 does.
+  _multiplyControl(key, summary) {
+    const factorOf = () => Number(this._multiplyFactors[key] ?? 1);
+    const preview = () => {
+      const factor = factorOf();
+      if (!Number.isFinite(factor) || summary.mixed || summary.value == null) {
+        return summary.mixed ? "mixed - Apply" : "Apply";
+      }
+      return `${Math.round(summary.value * factor)} - Apply`;
+    };
+    const button = html.button(
+      {
+        style: "white-space: nowrap;",
+        onclick: () => {
+          const factor = factorOf();
+          if (!Number.isFinite(factor) || factor === 1) {
+            return;
+          }
+          const [group, name] = String(key).split(":");
+          this._onMultiply(group, name, factor);
+        },
+      },
+      [preview()]
+    );
+    const input = html.input({
+      type: "number",
+      step: "0.1",
+      value: String(factorOf()),
+      style: "width: 3.5em;",
+      oninput: (event) => {
+        this._multiplyFactors[key] = event.target.value;
+        // Live, so the button always shows where this field's number lands
+        // rather than a stale answer to the previous ratio.
+        button.textContent = preview();
+      },
+    });
+    return html.div(
+      { style: "display:flex; gap:0.25rem; align-items:center; margin-left:auto;" },
+      [html.span({}, ["×"]), input, button]
+    );
   }
 
   _pushSummarySlider(
@@ -1471,6 +1530,60 @@ export default class SkeletonParametersPanel extends Panel {
   // Route a label scrub to the edit path that moves its number by a change.
   // Every branch here is relative; nothing sets an absolute value, so a mixed
   // selection comes out of a drag as mixed as it went in.
+  // The multiply beside each scrub field. Same fields, same per-point writers,
+  // same undo labels — a scrub adds to what a point holds and this scales it, so
+  // the only thing that differs is the arithmetic.
+  //
+  // Per point, not against one number: scaling a mixed selection by 1.1 has to
+  // grow each point from its own value, which is the whole reason a multiply is
+  // not a scrub with the answer worked out in advance.
+  async _onMultiply(group, name, factor) {
+    const sc = this.sceneController;
+    if (group === "width") {
+      if (name !== "total" && name !== "left" && name !== "right") {
+        return;
+      }
+      await scalePanelPointWidth(
+        sc,
+        this._widthPoints(),
+        name,
+        factor,
+        this._undo("set-width")
+      );
+    } else if (group === "contour" && name === "default-width") {
+      await scalePanelContourDefaultWidth(
+        sc,
+        this._panelSelection.contours,
+        factor,
+        this._undo("set-contour-width")
+      );
+    } else if (group === "cap" && name === "distance") {
+      await scalePanelCapParameter(
+        sc,
+        this._widthPoints(),
+        "capDistance",
+        factor,
+        this._undo("set-cap")
+      );
+    } else if (group === "serif") {
+      const targets = serifNudgeTargets(name);
+      if (!targets.length) {
+        return;
+      }
+      await scalePanelSerifValue(
+        sc,
+        this._widthPoints(),
+        targets,
+        factor,
+        this._undo("set-serif")
+      );
+    } else {
+      return;
+    }
+    this._forceRebuild = true;
+    await this.update();
+  }
+
   async _onScrub(group, name, valueStream) {
     const sc = this.sceneController;
     if (group === "width") {
