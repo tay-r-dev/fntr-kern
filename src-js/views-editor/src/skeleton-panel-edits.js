@@ -12,6 +12,7 @@ import {
   generateFromSkeleton,
 } from "@fontra/core/skeleton-generator.js";
 import {
+  applySerifPreset,
   findGeneratedPathAddress,
   getSkeletonData,
   getSkeletonHandleOffset,
@@ -691,6 +692,24 @@ export async function setPanelCapStyle(
 
 // Serif parameters, gated to open-contour endpoints like the cap style is,
 // since a serif is a cap style and is only offered there.
+// Applying a preset is the ordinary serif write with every field at once. The
+// scope decides how much of the preset the write carries, and the model owns
+// that decision — this is not a second write path.
+export async function applyPanelSerifPreset(
+  sceneController,
+  pointAddresses,
+  preset,
+  scope,
+  undoLabel
+) {
+  return setPanelSerifParameters(
+    sceneController,
+    pointAddresses,
+    applySerifPreset(preset, { scope }),
+    undoLabel
+  );
+}
+
 export async function setPanelSerifParameters(
   sceneController,
   pointAddresses,

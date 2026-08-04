@@ -1,3 +1,4 @@
+import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { isScrubCancelled } from "@fontra/core/number-scrub.js";
@@ -7,17 +8,20 @@ import {
   SERIF_HALF_FIELDS,
   SKELETON_SOURCE_DEFAULT_KEYS,
   VALID_SERIF_AXIS_MODES,
+  captureSerifPreset,
   getSkeletonData,
   getSkeletonGlyphCase,
   resolveEffectiveSourceSkeletonDefault,
   setSkeletonCapParameters,
   setSkeletonCornerParameters,
+  setSourceSkeletonDefaultsValues,
 } from "@fontra/core/skeleton-model.js";
 import { throttleCalls } from "@fontra/core/utils.ts";
 import { Form } from "@fontra/web-components/ui-form.js";
 import Panel from "./panel.js";
 import {
   SKELETON_PANEL_SENDER,
+  applyPanelSerifPreset,
   nudgePanelCapParameterStream,
   nudgePanelContourDefaultWidthStream,
   nudgePanelPointWidthStream,
@@ -267,6 +271,8 @@ export default class SkeletonParametersPanel extends Panel {
     // does not reset the box the user is working in.
     this._multiplyFactors = {};
     this._capProfileSelection = "base";
+    this._serifPresetSelection = null;
+    this._serifApplyScope = "both";
     this._forceApplyArmed = null;
     this._confirmTooltip = null;
 
@@ -1331,6 +1337,223 @@ export default class SkeletonParametersPanel extends Panel {
     // One curve across the whole terminal, so this is shared rather than per
     // half: a cup on each half would meet at a break in the middle.
     pushLength("serif:cup", "serif-underside-cup", serif.undersideCup);
+    this._buildSerifPresetControls(formContents, serif, canEdit);
+  }
+
+  // ---- Serif presets --------------------------------------------------------
+
+  _serifPresetOptions() {
+    const list = this._resolveSourceDefault(SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS);
+    if (!Array.isArray(list)) {
+      return [];
+    }
+    return list
+      .filter((item) => item && typeof item === "object")
+      .map((item, index) => ({
+        id: `preset:${index}`,
+        index,
+        label: item.name || `Serif ${index + 1}`,
+        preset: item,
+      }));
+  }
+
+  // A preset is one shape. Capturing two different terminals into one would
+  // produce neither of them, so create and update refuse a mixed selection.
+  _serifSelectionIsMixed(serif) {
+    for (const side of ["left", "right"]) {
+      for (const field of SERIF_HALF_FIELDS) {
+        if (serif[side][field].mixed) {
+          return true;
+        }
+      }
+    }
+    return serif.linked.mixed || serif.undersideCup.mixed;
+  }
+
+  async _persistSerifPresetList(next) {
+    if (this.fontController.readOnly) {
+      return;
+    }
+    const location =
+      this.sceneController.sceneSettings.fontLocationSourceMapped ||
+      this.sceneController.sceneSettings.fontLocationSource ||
+      {};
+    const sourceId =
+      this.fontController.fontSourcesInstancer?.getSourceIdentifierForLocation(
+        location
+      ) || this.fontController.defaultSourceIdentifier;
+    if (!sourceId || !this.fontController.sources?.[sourceId]) {
+      return;
+    }
+    const root = { sources: this.fontController.sources };
+    const changes = recordChanges(root, (root) => {
+      const source = root.sources[sourceId];
+      if (source) {
+        setSourceSkeletonDefaultsValues(source, {
+          [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: next,
+        });
+      }
+    });
+    if (changes.hasChange) {
+      await this.fontController.postChange(
+        changes.change,
+        changes.rollbackChange,
+        translate("sidebar.skeleton-parameters.undo.set-defaults"),
+        this
+      );
+    }
+  }
+
+  _selectedSerifPoint() {
+    return this._widthPoints()[0] ?? null;
+  }
+
+  async _applySerifPreset(option) {
+    await applyPanelSerifPreset(
+      this.sceneController,
+      this._widthPoints(),
+      option.preset,
+      this._serifApplyScope,
+      this._undo("set-serif")
+    );
+    this._forceRebuild = true;
+    await this.update();
+  }
+
+  async _createSerifPreset() {
+    const entry = this._selectedSerifPoint();
+    if (!entry) {
+      return;
+    }
+    const next = this._serifPresetOptions().map((option) => option.preset);
+    next.push({
+      name: `Serif ${next.length + 1}`,
+      ...captureSerifPreset(entry.point),
+    });
+    this._serifPresetSelection = `preset:${next.length - 1}`;
+    await this._persistSerifPresetList(next);
+    this._forceRebuild = true;
+    await this.update();
+  }
+
+  async _updateSerifPreset(option) {
+    const entry = this._selectedSerifPoint();
+    if (!entry) {
+      return;
+    }
+    const next = this._serifPresetOptions().map((item) => item.preset);
+    next[option.index] = {
+      name: option.preset.name,
+      ...captureSerifPreset(entry.point),
+    };
+    await this._persistSerifPresetList(next);
+    this._forceRebuild = true;
+    await this.update();
+  }
+
+  _buildSerifPresetControls(formContents, serif, canEdit) {
+    const options = this._serifPresetOptions();
+    const mixed = this._serifSelectionIsMixed(serif);
+    const hasPoint = !!this._selectedSerifPoint();
+    formContents.push({ type: "divider" });
+    formContents.push({
+      type: "header",
+      label: translate("sidebar.skeleton-parameters.serif-presets"),
+    });
+    if (options.length) {
+      if (!options.some((option) => option.id === this._serifPresetSelection)) {
+        this._serifPresetSelection = options[0].id;
+      }
+      const select = html.select(
+        {
+          style: "min-width: 8em;",
+          disabled: !canEdit,
+          onchange: (event) => {
+            this._serifPresetSelection = event.target.value;
+            this._disarmForceApply();
+            this.update();
+          },
+        },
+        options.map((option) =>
+          html.option(
+            { value: option.id, selected: this._serifPresetSelection === option.id },
+            [option.label]
+          )
+        )
+      );
+      const scopeSelect = html.select(
+        {
+          style: "min-width: 6em;",
+          disabled: !canEdit,
+          onchange: (event) => {
+            this._serifApplyScope = event.target.value;
+            this._disarmForceApply();
+          },
+        },
+        ["both", "left", "right"].map((scope) =>
+          html.option({ value: scope, selected: this._serifApplyScope === scope }, [
+            translate(`sidebar.skeleton-parameters.serif-presets.scope-${scope}`),
+          ])
+        )
+      );
+      const selected = options.find(
+        (option) => option.id === this._serifPresetSelection
+      );
+      const applyButton = html.button(
+        {
+          disabled: !canEdit,
+          onclick: (event) => {
+            if (!selected) {
+              return;
+            }
+            this._confirmThenApply(event, "serif-preset", () =>
+              this._applySerifPreset(selected)
+            );
+          },
+        },
+        [translate("sidebar.skeleton-parameters.force-apply")]
+      );
+      // The name rides on the button, so a select changed between the two
+      // presses cannot aim the overwrite at a preset the designer is not
+      // looking at.
+      const updateButton = html.button(
+        {
+          disabled: !canEdit || mixed || !hasPoint || !selected,
+          onclick: (event) => {
+            if (!selected) {
+              return;
+            }
+            this._confirmThenApply(event, "serif-preset-update", () =>
+              this._updateSerifPreset(selected)
+            );
+          },
+        },
+        [
+          translate(
+            "sidebar.skeleton-parameters.serif-presets.update",
+            selected?.label ?? ""
+          ),
+        ]
+      );
+      formContents.push({
+        type: "single-icon",
+        element: html.div(
+          { style: "display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;" },
+          [select, scopeSelect, applyButton, updateButton]
+        ),
+      });
+    }
+    const createButton = html.button(
+      {
+        disabled: !canEdit || mixed || !hasPoint,
+        onclick: () => this._createSerifPreset(),
+      },
+      [translate("sidebar.skeleton-parameters.serif-presets.create")]
+    );
+    formContents.push({
+      type: "single-icon",
+      element: html.div({}, [createButton]),
+    });
   }
 
   // ---- Field description helpers -------------------------------------------
