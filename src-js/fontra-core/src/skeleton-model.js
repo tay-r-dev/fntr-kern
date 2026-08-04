@@ -10,6 +10,7 @@ import {
   FONTRA_INTERNAL_SECTIONS,
 } from "./fontra-internal-schema.js";
 import { getGlyphInfoFromGlyphName } from "./glyph-data.js";
+import { buildHandleDomain } from "./natural-handle-solver.js";
 import { offsetCubicSide } from "./offset-cubic.js";
 import {
   areTensionsEqualized,
@@ -20,6 +21,7 @@ import {
   calculateOnCurvePointsFromTunni,
   calculateSegmentTension,
   calculateTunniPoint,
+  harmonicMeanTension,
   hasForwardTangentIntersection,
 } from "./tunni-calculations.js";
 import { deepCopyObject, splitGlyphNameExtension } from "./utils.ts";
@@ -3194,6 +3196,53 @@ function asNonNegativeNumber(value, fallback) {
   return Math.max(0, asFiniteNumber(value, fallback));
 }
 
+// One number for a generated segment's curvature, in the unit the generator
+// stores and reads back. Every reader goes through here (R-B), so the number a
+// drag writes is the number the label shows and the number the generator
+// reproduces.
+//
+// A handle's tension is its length over its own distance to the segment's
+// tangent intersection, so one is the Tunni point at either end and the
+// segment's tension is the harmonic mean of the two. Reading that off the drawn
+// handles is only right while a drawn handle still points along the axis it was
+// built on. At a smooth joint colinearity rotates it afterwards, keeping the
+// length and moving the intersection, so the drawn direction is the wrong one to
+// measure against — the generator never used it. The axes are therefore read
+// from provenance and the drawn directions used for nothing.
+//
+// Where no axis was published — caps, line ribs, corner-rounding output — the
+// drawn directions are all there is, which is what every reader had before.
+function generatedSegmentTension(points, axes, controls) {
+  if (!axes) {
+    return calculateSegmentTension(controls[0], points[0], controls[1], points[3]);
+  }
+  const domain = buildHandleDomain(points[0], points[3], axes[0], axes[1]);
+  // reach * maxTension is the real forward intersection: the domain's reach is a
+  // clamped coordinate scale and the ceiling is where the intersection landed on
+  // it, so their product puts one back at the Tunni point on both ends.
+  const tensionAt = (control, anchor, reach, ceiling) =>
+    Math.hypot(control.x - anchor.x, control.y - anchor.y) / (reach * ceiling);
+  return harmonicMeanTension({
+    start: tensionAt(controls[0], points[0], domain.startReach, domain.maxStartTension),
+    end: tensionAt(controls[1], points[3], domain.endReach, domain.maxEndTension),
+  });
+}
+
+// The published axes belong to the EMITTED handles, so they describe the emitted
+// segment and nothing else. Where the segment being measured is the untrimmed
+// construction snapshot instead, they are the wrong pair: a serif's trim re-aims
+// the handle it anchors onto the terminal's depth axis and stamps that. The
+// snapshot is taken before colinearity ever runs, so its own drawn directions
+// are already the ones it was constructed on and need no correction.
+function constructionSegmentAxes(segmentPoints, provenance) {
+  if (untrimmedConstructionSegment(segmentPoints, provenance)) {
+    return null;
+  }
+  const start = provenance?.[1]?.constructionAxis;
+  const end = provenance?.[2]?.constructionAxis;
+  return start && end ? [start, end] : null;
+}
+
 //
 // A curvature-gizmo drag on a generated segment, expressed as skeleton writes.
 //
@@ -3256,11 +3305,10 @@ export function calculateGeneratedCurvatureEdits({
   if (!moved) {
     return null;
   }
-  const tension = calculateSegmentTension(
-    moved[0],
-    constructionPoints[0],
-    moved[1],
-    constructionPoints[3]
+  const tension = generatedSegmentTension(
+    constructionPoints,
+    constructionSegmentAxes(segmentPoints, provenance),
+    moved
   );
   if (!Number.isFinite(tension) || tension <= 0) {
     return null;
@@ -3595,7 +3643,11 @@ export function getGeneratedSegmentCurvature(skeletonData, segment) {
   if (!hasForwardTangentIntersection(points)) {
     return null;
   }
-  const tension = calculateSegmentTension(points[1], points[0], points[2], points[3]);
+  const tension = generatedSegmentTension(
+    points,
+    constructionSegmentAxes(segment?.points, segment?.provenance),
+    [points[1], points[2]]
+  );
   if (!Number.isFinite(tension) || tension <= 0) {
     return null;
   }

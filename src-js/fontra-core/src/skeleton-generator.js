@@ -93,6 +93,7 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
     for (const generatedContour of generatedContours) {
       const generatedContourIndex = contours.length;
       annotateGeneratedContourProvenance(generatedContour, skeletonContour);
+      publishConstructionAxes(generatedContour);
       contours.push(generatedContour);
       provenance.push({
         skeletonContourId: skeletonContour.id,
@@ -112,6 +113,23 @@ function stripPointProvenance(contour) {
     delete point._constructionAnchor;
     delete point._handleNudge;
     delete point._authoredAdjustment;
+  }
+}
+
+// Every generated handle is stamped at emission with the unit direction it was
+// constructed on. Colinearity may then rotate it, keeping its length but not its
+// direction, so the drawn handle no longer says which axis its length was
+// measured along. Publish that axis rather than leave readers to estimate it
+// back out of the rounded position (R-D).
+function publishConstructionAxes(contour) {
+  for (const point of contour.points) {
+    if (!point._axis || !point._provenance) {
+      continue;
+    }
+    point._provenance = {
+      ...point._provenance,
+      constructionAxis: { x: point._axis.x, y: point._axis.y },
+    };
   }
 }
 
@@ -2033,21 +2051,6 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
       "right",
       authoredKeys
     );
-    if (
-      [...roundedLeftSide, ...roundedRightSide].some(
-        (point) => point?._authoredAdjustment
-      )
-    ) {
-      const clearConstructionSegment = (points) =>
-        points.map((point) => {
-          if (!point?._provenance?.constructionSegment) return point;
-          const { constructionSegment: _constructionSegment, ...provenance } =
-            point._provenance;
-          return { ...point, _provenance: provenance };
-        });
-      roundedLeftSide = clearConstructionSegment(roundedLeftSide);
-      roundedRightSide = clearConstructionSegment(roundedRightSide);
-    }
 
     const outlinePoints = [];
     // Left side forward

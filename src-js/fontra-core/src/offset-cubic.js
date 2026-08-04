@@ -70,13 +70,39 @@ function applyAttachedAdjustments(handles, request, domain) {
   );
 }
 
+// A pin is written by the curvature gizmo, which measures each handle against
+// its own true tangent intersection: one is the Tunni point at either end, and
+// the pin is the harmonic mean of the two in that unit.
+//
+// The domain's reach is a stable coordinate scale, not that intersection. Where
+// it is clamped the intersection sits at the end's ceiling instead of at one, so
+// a tension read against the reach is a different number from the one the gizmo
+// wrote. Shifting against the reach therefore aimed at a mean nobody asked for,
+// and the first pin on a segment outside the clamp band snapped the curve; the
+// clamp then hid the rest of the error, so later drags looked well behaved.
+//
+// Rescale onto the ceiling, where both ends read one at the tangent
+// intersection and the gizmo's number means what it says, shift there, and
+// rescale back.
 function applyPinnedTension(handles, pinnedTension, domain) {
   if (!Number.isFinite(pinnedTension)) {
     return handles;
   }
+  const tensions = lengthsToTensions(handles, domain);
+  const shifted = shiftTensionsToMean(
+    {
+      start: tensions.start / domain.maxStartTension,
+      end: tensions.end / domain.maxEndTension,
+    },
+    pinnedTension,
+    1
+  );
   return constrain(
     tensionsToLengths(
-      shiftTensionsToMean(lengthsToTensions(handles, domain), pinnedTension, 1),
+      {
+        start: shifted.start * domain.maxStartTension,
+        end: shifted.end * domain.maxEndTension,
+      },
       domain
     ),
     domain

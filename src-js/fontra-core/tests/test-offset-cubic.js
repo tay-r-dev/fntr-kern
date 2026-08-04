@@ -53,10 +53,41 @@ function changedSkeletonAndWidthRequest() {
   };
 }
 
+// A curve whose tangent intersection sits closer than a third of the chord, so
+// the domain has to clamp one reach and that end's ceiling falls below one.
+function clampedReachRequest() {
+  const p0 = { x: 0, y: 0 };
+  const p1 = { x: 120, y: 200 };
+  const p2 = { x: 180, y: 340 };
+  const p3 = { x: 160, y: 400 };
+  const d0 = 50;
+  const d3 = 50;
+  return {
+    p0,
+    p1,
+    p2,
+    p3,
+    d0,
+    d3,
+    ...ribInputs(p0, p1, p2, p3, d0, d3),
+  };
+}
+
 function harmonicMeanTension(handles, request) {
   const domain = buildHandleDomain(request.q0, request.q3, request.u0, request.u1);
   const start = handles.startLength / domain.startReach;
   const end = handles.endLength / domain.endReach;
+  return (2 * start * end) / (start + end);
+}
+
+// What the curvature gizmo measures off the drawn outline: each handle against
+// its own true tangent intersection, so one is the Tunni point at either end.
+// The domain's reach is a stable coordinate scale rather than that intersection,
+// and where it is clamped the two differ by the end's ceiling.
+function tunniMeanTension(handles, request) {
+  const domain = buildHandleDomain(request.q0, request.q3, request.u0, request.u1);
+  const start = handles.startLength / (domain.startReach * domain.maxStartTension);
+  const end = handles.endLength / (domain.endReach * domain.maxEndTension);
   return (2 * start * end) / (start + end);
 }
 
@@ -81,6 +112,22 @@ describe("offset-cubic: authored handle state", () => {
     };
     const result = offsetCubicSide(request);
     expect(harmonicMeanTension(result, request)).to.be.closeTo(0.55, 1e-9);
+  });
+
+  it("reads a pin in the unit the gizmo wrote it in, on an unclamped reach", () => {
+    const request = { ...authoredBaseRequest(), pinnedTension: 0.55 };
+    expect(tunniMeanTension(offsetCubicSide(request), request)).to.be.closeTo(
+      0.55,
+      1e-9
+    );
+  });
+
+  it("reads a pin in the unit the gizmo wrote it in, on a clamped reach", () => {
+    const request = { ...clampedReachRequest(), pinnedTension: 0.55 };
+    expect(tunniMeanTension(offsetCubicSide(request), request)).to.be.closeTo(
+      0.55,
+      1e-9
+    );
   });
 
   it("keeps detached handles absolute when skeleton and widths change", () => {

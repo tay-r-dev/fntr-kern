@@ -2,6 +2,7 @@ import {
   generateFromSkeleton,
   outlineContourToPackedPath,
 } from "@fontra/core/skeleton-generator.js";
+import { calculateGeneratedCurvatureEdits } from "@fontra/core/skeleton-model.js";
 import { calculateSegmentTension } from "@fontra/core/tunni-calculations.js";
 import { packContour } from "@fontra/core/var-path.js";
 import { expect } from "chai";
@@ -1997,20 +1998,142 @@ describe("skeleton-generator serif terminal handles", () => {
     expect(counts.size).to.equal(1);
   });
 
-  it("lets curvature measurement follow an authored serif handle", () => {
+  // The pin governs the curve the generator solves, which is the untrimmed one,
+  // so that curve stays published whatever the authored handles do to the piece
+  // of it that gets drawn. Withdrawing it left the curvature gizmo measuring the
+  // trimmed piece and writing the answer onto the whole curve, which jumped.
+  it("keeps publishing the untrimmed curve when a serif handle is authored", () => {
     const constructionSegments = (result) =>
       result.provenance.flatMap((entry) =>
         entry.pointMap.filter((point) => point?.constructionSegment)
       );
-    expect(
-      constructionSegments(generateFromSkeleton(serifStem()))
-    ).to.have.length.above(0);
     expect(
       constructionSegments(
         generateFromSkeleton(
           serifStem({ offsets: { 5: { leftIn: { x: 9.49, y: -28.46 } } } })
         )
       )
-    ).to.have.length(0);
+    ).to.have.length.above(0);
   });
+});
+
+// Grabbing the curvature gizmo and releasing it without moving must leave the
+// drawn curve exactly where it was. That holds only if the number the gizmo
+// measures off the outline means, to the generator, the curve it was measured
+// from — which is the whole contract between the two.
+describe("skeleton-generator curvature pin round trip", () => {
+  const SERIF_HALF = {
+    wingLength: 120,
+    tipThickness: 30,
+    wingSlope: 0,
+    tipCutAngle: 0,
+    reach: 60,
+    tension: 0.7,
+    concavity: 0.8,
+  };
+
+  function stem({ capStyle = "butt", pin = null, offsets = {} } = {}) {
+    return {
+      version: 1,
+      nextId: 9,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 100,
+          capStyle,
+          points: [
+            {
+              id: 2,
+              x: 0,
+              y: 0,
+              editable: { left: true, right: true },
+              segmentCurvature: { left: pin, right: null },
+              handleOffsets: offsets[2] ?? {},
+              serif:
+                capStyle === "serif"
+                  ? {
+                      left: SERIF_HALF,
+                      right: SERIF_HALF,
+                      axisMode: "perpendicular",
+                      axisAngle: 0,
+                      undersideCup: 0,
+                    }
+                  : undefined,
+            },
+            { id: 3, x: 120, y: 200, type: "cubic" },
+            { id: 4, x: 180, y: 340, type: "cubic" },
+            {
+              id: 5,
+              x: 160,
+              y: 400,
+              smooth: true,
+              editable: { left: true, right: true },
+              handleOffsets: offsets[5] ?? {},
+            },
+            { id: 6, x: 260, y: 460, type: "cubic" },
+            { id: 7, x: 320, y: 600, type: "cubic" },
+            { id: 8, x: 320, y: 800, capStyle: "butt" },
+          ],
+        },
+      ],
+      generated: [],
+    };
+  }
+
+  function segment(skeleton) {
+    const result = generateFromSkeleton(skeleton);
+    const at = (pointId, role) => {
+      for (const entry of result.provenance) {
+        const index = entry.pointMap.findIndex(
+          (point) =>
+            point?.skeletonPointId === pointId &&
+            point.side === "left" &&
+            point.role === role
+        );
+        if (index >= 0) {
+          return {
+            point: result.contours[entry.generatedContourIndex].points[index],
+            provenance: entry.pointMap[index],
+          };
+        }
+      }
+      throw new Error(`no ${pointId}/left/${role}`);
+    };
+    const entries = [at(2, "onCurve"), at(2, "out"), at(5, "in"), at(5, "onCurve")];
+    return {
+      points: entries.map((entry) => entry.point),
+      provenance: entries.map((entry) => entry.provenance),
+    };
+  }
+
+  const grabMovement = (options) => {
+    const before = segment(stem(options));
+    const edit = calculateGeneratedCurvatureEdits({
+      segmentPoints: before.points,
+      provenance: before.provenance,
+      delta: { x: 0, y: 0 },
+    });
+    const after = segment(stem({ ...options, pin: edit.tension }));
+    return Math.max(
+      ...[1, 2].map((index) =>
+        Math.hypot(
+          after.points[index].x - before.points[index].x,
+          after.points[index].y - before.points[index].y
+        )
+      )
+    );
+  };
+
+  const adjusted = { 5: { leftIn: { x: 9.49, y: -28.46 } } };
+
+  for (const capStyle of ["butt", "serif"]) {
+    it(`stays put when the gizmo is grabbed and not moved, ${capStyle} cap`, () => {
+      expect(grabMovement({ capStyle })).to.be.at.most(1);
+    });
+
+    it(`stays put when a handle was dragged first, ${capStyle} cap`, () => {
+      expect(grabMovement({ capStyle, offsets: adjusted })).to.be.at.most(1);
+    });
+  }
 });
