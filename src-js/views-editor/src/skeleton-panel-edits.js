@@ -12,6 +12,7 @@ import {
   generateFromSkeleton,
 } from "@fontra/core/skeleton-generator.js";
 import {
+  SERIF_HALF_FIELDS,
   findGeneratedPathAddress,
   getSkeletonData,
   getSkeletonHandleOffset,
@@ -673,6 +674,25 @@ export async function setPanelCapStyle(
       }
       if (Object.keys(seeded).length) {
         setSkeletonCapParameters(point, seeded);
+      }
+      if (capStyle === "serif" && point.serif == null) {
+        const half = {};
+        for (const field of SERIF_HALF_FIELDS) {
+          half[field] =
+            field === "wingLength"
+              ? (presetValues?.serifNewWingLength ?? 20)
+              : field === "tipThickness"
+                ? (presetValues?.serifNewTipThickness ?? 20)
+                : field === "wingSlope"
+                  ? (presetValues?.serifNewWingSlope ?? 20)
+                  : 0;
+        }
+        setSkeletonSerifParameters(point, {
+          left: half,
+          right: { ...half },
+          linked: true,
+          undersideCup: 0,
+        });
       }
       if (capStyle === "round") {
         resetSkeletonEditableRib(point, "left");

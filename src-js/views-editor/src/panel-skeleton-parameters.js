@@ -1753,6 +1753,21 @@ export default class SkeletonParametersPanel extends Panel {
         ),
         capBallRatio: DEFAULT_CAP_BALL_RATIO,
         capBallShape: DEFAULT_CAP_BALL_SHAPE,
+        serifNewWingLength: resolveEffectiveSourceSkeletonDefault(
+          this.fontController,
+          location,
+          K.SERIF_NEW_WING_LENGTH
+        ),
+        serifNewTipThickness: resolveEffectiveSourceSkeletonDefault(
+          this.fontController,
+          location,
+          K.SERIF_NEW_TIP_THICKNESS
+        ),
+        serifNewWingSlope: resolveEffectiveSourceSkeletonDefault(
+          this.fontController,
+          location,
+          K.SERIF_NEW_WING_SLOPE
+        ),
       };
       await setPanelCapStyle(
         this.sceneController,
