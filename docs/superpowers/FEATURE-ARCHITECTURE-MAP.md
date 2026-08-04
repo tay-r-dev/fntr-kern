@@ -4,21 +4,21 @@
 **Verified against:** `refactor-simple/ws17-parity-bugs`, diffed against `upstream/main` (`f70e2017f`)
 **Scope:** every file forkra adds or changes on top of upstream Fontra, mapped to the feature that owns it.
 
-This is the **inventory and ownership map**. It answers two questions. What did we build, and
-where does it live? What may I touch? A fresh session or a delegated agent can start work from
-this doc without deriving the architecture again.
+This is the **inventory and ownership map**. It names what we built, where each part lives, and
+what you may touch. A fresh session or a delegated agent can start work from it without deriving
+the architecture again.
 
 We re-integrated the skeleton from an older fork (the "donor") between 2026-07 and now. We ported
 the geometry math and redesigned all of the plumbing. That work is finished. The integration
 roadmap that planned it is retired, and its durable content is now **§9 (skeleton design
-rationale)**. So this file stands alone. It says what everything is, where it lives, and why the
-skeleton has the shape it has.
+rationale)**. So this file stands alone, and §9 covers why the skeleton has the shape it has.
 
-The per-feature design specs and implementation plans are retired the same way. The `specs/` and
+We retired the per-feature design specs and implementation plans the same way. The `specs/` and
 `plans/` folders held the offset construction, the generated-segment gizmos, the curvature pin,
 the continuous natural solver and the true geometric handle ceiling. Those folders are
-**dissolved**. Their durable content is now in this doc and in the feature model. No forward-looking
-statement is left in a plan. If it is still true, it is in one of the three docs below.
+**dissolved**, and their durable content is now in this doc and in the feature model. No plan
+still holds a forward-looking statement. If a statement is still true, it is in one of the docs
+in the table below.
 
 Two files remain under those folders. They are the serif generator's design and plan, dated
 2026-07-30, plus the `serif-lab.html` mockup they were written against. The serif is shipped, so
@@ -36,15 +36,15 @@ way once nothing references them.
 
 ## 0. How to use this doc
 
-- **Starting a feature task?** Find it in §3. That section lists every file you should need, and
-  the seams you must go through.
-- **About to edit a shared file** (`editor.js`, `scene-model.js`, `edit-tools-pointer.js`,
-  `visualization-layer-definitions.js`, `scene-controller.js`, `panel-transformation.js`)?
-  Read §4 first. Several features share those files, and the hunks are not interleaved by accident.
-- **Adding a new feature?** Read §2 (the rails) and §5 (infrastructure you extend instead of
-  duplicate).
-- **Line counts** come from `git diff --numstat` against upstream: `+added / −removed`.
-  For new files, added is the file length.
+- **To start a feature task**, find the feature in §3. That section lists every file you need,
+  and every interface you must call through.
+- **Before you edit a shared file** (`editor.js`, `scene-model.js`, `edit-tools-pointer.js`,
+  `visualization-layer-definitions.js`, `scene-controller.js`, `panel-transformation.js`),
+  read §4. Several features share those files, and the hunks are not interleaved by accident.
+- **To add a new feature**, read §2 for the rails. Then read §5 for the infrastructure you must
+  extend instead of duplicate.
+- **Line counts** come from `git diff --numstat` against upstream, as `+added / −removed`.
+  For a new file, the added count is the file length.
 
 **Totals:** 71 files under `src-js` (+28,809 / −131), 1 backend file, 4 docs, 1 test fixture font.
 212 non-merge commits.
@@ -95,26 +95,26 @@ If a symbol exists anywhere in forkra, import it. This rail exists because the d
 `projectRibPoint` twice and `DEFAULT_SKELETON_WIDTH` five times.
 
 **R-C — Skeleton: one write path.** Every skeleton mutation goes through `editSkeleton`
-(`views-editor/src/skeleton-editing.js:94`). The editing side has no second call site of the
-generator. Nothing writes skeleton customData outside it.
+(`views-editor/src/skeleton-editing.js:94`). On the editing side, nothing else calls the
+generator. Nothing writes skeleton customData outside `editSkeleton`.
 
 **R-D — Skeleton: provenance forward, never recovered.** The generator emits the map from
-skeleton point to generated point. No part of the tree does geometric matching or
-tolerance-based inverse projection.
+skeleton point to generated point. Nothing in the tree recovers that map by geometric matching or
+by tolerance-based inverse projection.
 
 **R-E — No kind-branching in shared emit code.** `makeChangeForDelta` and the code below it must
-not contain `if (skeleton…)`. Kind decisions happen at construction time, through **target
-entries**.
+not contain `if (skeleton…)`. **Target entries** decide the kind at construction time instead.
 
-**R-F — Cross-cutting modifiers are behavior names**, not bypass flags. See `skeleton-model.js`
-for the semantics and `skeleton-editing.js` for the map from events and keys to a behavior name.
-There is no `skeleton-modifiers.js`. An earlier draft of this doc claimed one in core and one in
-the editor. Neither ever existed in the tree.
+**R-F — Cross-cutting modifiers are behavior names**, not bypass flags. `skeleton-model.js` holds
+the semantics. `skeleton-editing.js` maps an event or a key to a behavior name.
 
-**R-G — Test split.** Only `fontra-core` has a harness (mocha + chai, `npm test`).
-`views-editor` has none, so those changes carry a manual test matrix in their plan.
-Every commit runs `node --check` on the touched editor files, then `npx prettier --write`, then
-`npm run bundle` to green.
+> There is no `skeleton-modifiers.js`. An earlier draft of this doc claimed one file in core and
+> one in the editor. Neither has ever existed in the tree.
+
+**R-G — Test split.** Only `fontra-core` has a test harness (mocha + chai, `npm test`).
+`views-editor` has no harness, so a change to `views-editor` carries a manual test matrix in its
+plan. Every commit runs three commands: `node --check` on each touched editor file, then
+`npx prettier --write`, then `npm run bundle`. All three must pass.
 
 ---
 
@@ -150,10 +150,10 @@ Hold **Q** for realtime measurement. Hold **Alt+Q** for direct mode.
 | `views-editor/src/visualization-layer-definitions.js` | (shared)              | `fontra.measure.overlay`, registration-only                                                  |
 | `fontra-core/tests/test-distance-angle.js`            | +84                   | tests                                                                                        |
 
-Skeleton coverage: rib width, centerline segments and skeleton handles all measure (item 4.12,
-fixed 2026-07-22, through `skeletonSegmentAtPoint` and `skeletonHandleAtPoint` in
-`scene-model.js`). The same area still owes two things: the z-order and hit-radius hygiene, and
-the drag-marker affordance on branches 5.1 and 5.2.
+Q-measure also measures the skeleton: rib width, centerline segments and skeleton handles. That
+is item 4.12, fixed 2026-07-22 through `skeletonSegmentAtPoint` and `skeletonHandleAtPoint` in
+`scene-model.js`. Two jobs in the same area are still open. Branch 5.1 owes the z-order and
+hit-radius cleanup. Branch 5.2 owes the drag-marker affordance.
 
 ### F3 — SpeedPunk
 
@@ -225,14 +225,14 @@ It persists through the `fontra.internal` customData section `letterspacer`, at 
 levels: `area`, `depth` and `overshoot` per source, `enabled` per font, and `referenceGlyphName`
 per glyph.
 
-**One skeleton coupling was deliberately left out at port time, and is now back in scope.**
-A sidebearing change should move the skeleton data with it. This is the letterspacer-to-skeleton
-coupling. Verify it before you assume it is wired. See §7 residue #2.
+**The port deliberately left out one coupling, and that coupling is wanted again.** A sidebearing
+change should move the skeleton data with it. Verify whether the code does this before you assume
+it. See §7 residue #2.
 
 ### F7 — Skeleton
 
-The largest feature by an order of magnitude: about 16,300 lines of owned code across 12 owned
-files, plus the tools that had to learn about generated contours (below).
+The largest feature by an order of magnitude. It owns about 16,300 lines across 12 files. Below
+that, it also changed the tools that had to learn about generated contours.
 The design is stroke-based. The designer draws centerlines with per-point widths, and the
 generator builds the filled outline contours live.
 
@@ -312,8 +312,9 @@ generator's own output, not any pre-port reference.
 | `edit-tools-pen.js`   | +125/−2 | Never insert into generated contours; record index shifts via `recordSkeletonContourIndexShift`                       |
 | `edit-tools-shape.js` | +3      | Comment only — `appendPath` appends after the generated block, so no bookkeeping needed                               |
 
-Copy the pattern in that third row. When a tool restructures the contour list, it must either
-update the generated-contour mapping in the same change, or prove that it does not need to.
+Copy the pattern in the `edit-tools-shape.js` row. When a tool restructures the contour list, it
+must do one of two things. It must update the generated-contour mapping in the same change, or it
+must prove that the mapping cannot move.
 
 ### F8 — Carried fork extras
 
@@ -391,9 +392,10 @@ class StaticGlyph:
 Skeleton data is per-layer, and upstream `StaticGlyph` had no `customData`. The change is
 mirrored in `src-js/fontra-core/src/classes.json` (+4).
 
-> ⚠️ `classes.json` is **generated**. If you regenerate it from an ambient Python environment,
-> it silently reverts this. See the memory note on the venv layout. The venv imports this repo's
-> `src`, and ambient `python` may import a stale clone.
+> ⚠️ `classes.json` is **generated**. If you regenerate it from a Python environment outside the
+> venv, the regeneration silently deletes this field again. See the memory note on the venv
+> layout. The venv imports this repo's `src`. A `python` on the ambient path may import a stale
+> clone instead.
 
 ### App-level settings
 
@@ -415,7 +417,7 @@ checks.
 
 ## 6. Test coverage map
 
-Run `cd src-js/fontra-core && npm test`. It currently runs **1690 tests**.
+Run `cd src-js/fontra-core && npm test`. The suite currently holds **1690 tests**.
 
 | Feature                             | Automated                                                                                   | Manual only                                                 |
 | ----------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -427,9 +429,9 @@ Run `cd src-js/fontra-core && npm test`. It currently runs **1690 tests**.
 | Skeleton                            | model, generator (+ golden masters), modifiers, ribs, tunni, source defaults, interpolation | **all interaction** — drag, marquee, transform, tool, panel |
 | Corner overlap / quad / pen-connect | none                                                                                        | all                                                         |
 
-This asymmetry is structural, not an oversight. By forkra convention `views-editor` has no
-harness. That is why every editor-side plan carries an explicit manual test matrix, and why "I
-ran the bundle" is not evidence that an interaction works.
+The gap in that right-hand column is structural, not an oversight. By forkra convention
+`views-editor` has no test harness. That is why every editor-side plan carries an explicit manual
+test matrix, and why "I ran the bundle" is not evidence that an interaction works.
 
 ---
 
@@ -446,10 +448,10 @@ when the doc was last verified, on 2026-07-22. Re-check it against the code befo
 
 **Structural debt, not yet filed as bugs:**
 
-1. **Rib and editable-generated entries do not implement `makeChangeForTransformation`.** They
-   return `null`, verified still true on 2026-07-28. A rib-only marquee selection draws a
-   transform box that does nothing. The skeleton **point** entry does implement it, and it is
-   where the mirror side-swap now hooks in, so the shape of the fix is established.
+1. **Rib and editable-generated entries do not implement `makeChangeForTransformation`.** Both
+   return `null`. We verified this again on 2026-07-28. So a rib-only marquee selection draws a
+   transform box that does nothing. The skeleton **point** entry does implement the method, and
+   the mirror side-swap hooks into that implementation. Copy it.
 2. **Letterspacer-to-skeleton coupling.** Verify whether a sidebearing change moves the skeleton
    data before you assume it works. The sidebearing-variables work must route through this
    coupling. It is not yet in the base margin-set path.
@@ -458,11 +460,12 @@ when the doc was last verified, on 2026-07-22. Re-check it against the code befo
    We built the serif the other way as a deliberate counter-example. Its geometry is a separate
    268-line core module, and only the trimming and splicing live in the generator.
 4. **A pin of exactly zero reads as "no pin"** in `shiftTensionsToMean`
-   (`tunni-calculations.js`). The shape falls back to the natural solve there, while the smallest
-   positive value snaps to nearly-collapsed handles. That is a step of tens of units at the very
-   bottom of the curvature gizmo's range. We measured it on `_external/g.json` and reproduced it
-   with the serif switched off. Every curvature pin in the app shares this code, so we left it
-   alone instead of fixing it as a side effect of serif work. Reported 2026-08-02, undecided.
+   (`tunni-calculations.js`). A pin of zero therefore falls back to the natural solve. The
+   smallest positive pin instead snaps the handles to nearly collapsed. Between those two values
+   the shape steps by tens of units, at the very bottom of the curvature gizmo's range. We
+   measured this on `_external/g.json` and reproduced it with the serif switched off. Every
+   curvature pin in the app shares this code, so we left the code alone instead of changing it as
+   a side effect of serif work. Reported 2026-08-02, undecided.
 
 ---
 
@@ -490,25 +493,42 @@ name, and the behavior executors. `skeleton-model.js` holds the modifier semanti
 it is the wrong fix (R-E).
 
 **"Change generated outline geometry"**
-Use `skeleton-generator.js` with `test-skeleton-generator.js`. For anything that touches cubic
-handle lengths, also use `natural-handle-solver.js` and `offset-cubic.js` with their matching
-tests. TDD is available here, and expected. The feature model holds every hard constraint:
-generated **point-count stability**, or cross-master interpolation breaks; **fixed sample
-identity**, with no projection, refit or candidate search; one **strictly convex objective**,
-whose positive pull comes only from the input skeleton and widths; the existing positive,
-non-crossing **handle domain**; the established **authored-state order**; and **a pinned
-curvature is permanent**.
-Read the feature model's §9 first. It lists what we already tried here and rejected on
-measurement, including two ideas that were re-proposed and reverted twice, and three guards that
-we deleted because the box subsumes them.
+Use `skeleton-generator.js` with `test-skeleton-generator.js`. If the change touches cubic handle
+lengths, also use `natural-handle-solver.js` and `offset-cubic.js` with their matching tests. TDD
+is available here, and expected.
+
+The feature model holds the hard constraints. Every one of them must survive the change:
+
+- **Point-count stability.** The generated point count must not vary, or cross-master
+  interpolation breaks.
+- **Fixed sample identity.** The solve uses the same five source parameters every time. Add no
+  projection, no refit and no candidate search.
+- **One strictly convex objective.** Its positive pull may read only the input skeleton and the
+  input widths.
+- **The positive, non-crossing handle domain.** Keep the existing floor and ceiling.
+- **The authored-state order.** Natural answer, then attached adjustments, then the pinned
+  tension, then detached handles.
+- **A pinned curvature is permanent.** Generation may clamp the output, and may never rewrite the
+  stored number.
+
+Read the feature model's §9 before you start. It lists what we already tried here and rejected on
+measurement. That list includes two ideas we re-proposed and reverted twice, and three guards we
+deleted because the handle domain already enforces them.
+
+**Test a geometry change with a sweep, not an assertion.** Hold the geometry fixed, walk one
+input through its range in fine steps, and measure the worst single-step movement against the
+driver's own step. A per-configuration assertion has missed every fault in this module so far.
+Start the sweep away from degenerate configurations. A sweep that begins at zero-length handles
+reports its own seed as a 700-unit jump.
 
 **"Change the serif terminal"**
 Use `serif-geometry.js` and `test-serif-geometry.js` for anything about the terminal's own shape.
 Use `buildSerifCap` in `skeleton-generator.js` for how it is trimmed onto the stroke and spliced
-in. Keep that split. The geometry module never learns what a stroke is. Read feature model §8
-first, and in particular the release rule: **the terminal's on-curves are fixed in the serif's own
-frame, and the edge is brought to them, never the reverse.** A terminal built off the cut is the
-one mistake this feature has already made and reverted.
+in. Keep that split. The geometry module never learns what a stroke is.
+
+Read feature model §8 first. Read the release rule in particular: **the terminal's on-curves are
+fixed in the serif's own frame, and the edge is brought to them, never the reverse.** A terminal
+built off the cut is the one mistake this feature has already made and reverted.
 
 **"Touch anything a terminal trims"**
 A trimmed terminal makes the emitted segment shorter than the segment the generator solved.
@@ -518,12 +538,6 @@ Anything that measures the emitted one then measures the wrong curve.
 reader that resolves it. Go through that reader. Do not measure a generated segment's shape from
 `segment.points` directly.
 
-**Test this class of change with a sweep, not an assertion.** Hold the geometry fixed, walk one
-input through its range in fine steps, and measure the worst single-step movement against the
-driver's own step. A per-configuration assertion has missed every fault in this module so far.
-Start the sweep away from degenerate configurations. A sweep that begins at zero-length handles
-reports its own seed as a 700-unit jump.
-
 **"Add a visualization"**
 Add a new draw in the feature's `visualization-layer-*.js`. Register it in
 `visualization-layer-definitions.js` with `draw: <importedFn>` only.
@@ -532,10 +546,10 @@ Add a new draw in the feature's `visualization-layer-*.js`. Register it in
 
 ## 9. Skeleton design rationale
 
-This is the durable "why" behind the skeleton, folded in from the retired integration roadmap and
-reframed as it now stands. We **re-integrated** the skeleton, we did not merge it. We ported the
-donor's proven geometry math, and we redesigned every piece of plumbing around four concepts.
-This section explains the rails in §2. It also names what must never creep back.
+This section holds the durable "why" behind the skeleton. It comes from the retired integration
+roadmap, updated to what the code does today. We **re-integrated** the skeleton, we did not merge
+it. We ported the donor's proven geometry math, and we redesigned every piece of plumbing around
+four concepts. This section explains the rails in §2. It also names what must never come back.
 
 ### The four concepts (C1–C4)
 
@@ -543,10 +557,10 @@ Everything in the skeleton is an instance of one of these.
 
 - **C1 — A skeleton is a path.** Skeleton geometry uses the same point representation as glyph
   paths: x, y, on/off-curve type and smooth flag, plus per-point attributes for widths, nudges,
-  flags and handle offsets. So the existing point-editing machinery applies word for word:
-  behavior rules, executors, hit-testing and selection. It is parameterized only by _which_ path
-  is edited and _where_ the change is recorded. On-curve points and handles are **one** selection
-  kind (`skeletonPoint/contour/point`), never split. → rail R-A.
+  flags and handle offsets. So the existing point-editing machinery applies unchanged: behavior
+  rules, executors, hit-testing and selection. That machinery takes only two parameters, _which_
+  path it edits and _where_ it records the change. On-curve points and handles are **one**
+  selection kind (`skeletonPoint/contour/point`), never split. → rail R-A.
 - **C2 — One write path.** `editSkeleton` (`skeleton-editing.js`) is the only caller of the
   generator on the editing side. It applies `mutate()` to a working copy, regenerates, updates
   provenance, and returns one combined change (customData plus path) with rollback. Undo,
@@ -570,8 +584,8 @@ a change must not reintroduce.
 - **P1 — Derived data with no link to its source.** The donor matched generated contours back to
   skeletons by geometry, through inverse projection and a "recovery" routine. → answered by C3
   plus stable ids.
-- **P2 — Selection kinds multiplied beyond the concepts.** Five kinds for about three semantics.
-  Two of them existed only to reverse-map path-point indices. → C1 and C3 dissolve the surplus.
+- **P2 — More selection kinds than concepts.** Five kinds carried about three meanings. Two of
+  them existed only to reverse-map path-point indices. → C1 and C3 dissolve the surplus.
 - **P3 — No single write path.** Mutations came from drag, nudge, transform and a 7,000-line
   panel. Each one re-implemented regeneration, undo and bookkeeping until they drifted. → C2.
 - **P4 — Duplicated geometry.** The donor had `projectRibPoint` twice and `DEFAULT_SKELETON_WIDTH`
@@ -583,24 +597,24 @@ a change must not reintroduce.
 - **P6 — Monolith files.** The donor pointer was 7,496 lines. The fork keeps the pointer thin, but
   `skeleton-generator.js` at about 4,700 lines is the one place this weight still lives (§7
   residue #3).
-- **P7 — In-place rearchitecting.** Four months of refactoring a live donor feature produced two
-  successive architectures and a long regression tail, with no new capability. That is the reason
-  this was a clean re-integration and not a refactor.
+- **P7 — Rebuilding the architecture in place.** Four months of refactoring a live donor feature
+  produced two successive architectures and a long regression tail, with no new capability. That
+  is why we did a clean re-integration instead of a refactor.
 
 ### Schema — stable ids are the load-bearing choice
 
 The data lives at `customData["fontra.internal"].skeleton`. The full field list is in
 `skeleton-model.js`. Skeleton contours and points carry stable ids that are **never reused**.
 Selection, provenance and undo reference those ids instead of array indices, so a structural edit
-cannot silently retarget them. This is what makes C3 cheap. `generatedContourIndices` tracks
-generated contours, together with a per-point provenance map keyed by skeleton id.
+cannot silently retarget them. This is what makes C3 a simple lookup. `generatedContourIndices`
+tracks generated contours, together with a per-point provenance map keyed by skeleton id.
 
-There is one seam outside `editSkeleton`. **Path** contours have no id facility in Fontra, so
-inserting or deleting a non-skeleton contour can still invalidate a generated contour's _index_.
-Every editor operation that restructures the contour list must update the mapping in the same
-change. The knife and pen bookkeeping in §3 F7 is that hook. The donor hit this exact bug twice.
-Ids plus one write path are the structural answer, but the enumeration is real work, not an
-afterthought.
+One case sits outside `editSkeleton`. **Path** contours have no ids in Fontra, so inserting or
+deleting a non-skeleton contour can still invalidate a generated contour's _index_. Every editor
+operation that restructures the contour list must update the mapping in the same change. The
+knife and pen bookkeeping in §3 F7 does exactly that. The donor hit this bug twice. Ids plus one
+write path are the structural answer, but finding every operation that restructures the list is
+real work, not an afterthought.
 
 ### History (for archaeology)
 
