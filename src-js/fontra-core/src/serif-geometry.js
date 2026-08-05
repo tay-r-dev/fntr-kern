@@ -207,12 +207,37 @@ export function buildHalfSerif({ side, flankU, params }) {
   // then: a partly hollow bracket still meets the flank at an angle, and wants
   // rounding as much as a bulging one does.
   const easeOff = concavity >= 1;
-  const easeDistance = easeOff ? 0 : Math.max(params.easeDistance ?? 0, 0);
+  const requestedEase = easeOff ? 0 : Math.max(params.easeDistance ?? 0, 0);
   const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
-  const chord = Math.hypot(junction.u - tipTop.u, junction.v - tipTop.v);
-  const easeFraction =
-    chord > 0 ? Math.min(easeDistance / chord, MAX_EASE_FRACTION) : 0;
-  const bracket = splitCubic(tipTop, control1, control2, junction, 1 - easeFraction);
+  // The rounding is one curve across the corner at the junction, and both of
+  // its ends step back from that corner by the ease distance — the flank end
+  // along the flank, the bracket end along the bracket. The bracket end is
+  // found BY DISTANCE. Taking the ease distance as a fraction of the bracket's
+  // chord and using it as a curve parameter measured neither the same quantity
+  // nor in the same unit, so the two ends grew at different rates, and only the
+  // bracket end ever ran out.
+  const bracketPointAt = (fraction) =>
+    splitCubic(tipTop, control1, control2, junction, 1 - fraction).first[3];
+  const distanceToJunction = (point) => lengthUV(subUV(point, junction));
+  // The rounding may eat at most half the bracket. That bound belongs to both
+  // ends: the flank end stops where the bracket end stops, or the scoop goes
+  // lopsided at exactly the settings where a designer is pushing it hardest.
+  const easeLimit = distanceToJunction(bracketPointAt(MAX_EASE_FRACTION));
+  const easeDistance = Math.min(requestedEase, easeLimit);
+  let low = 0;
+  let high = MAX_EASE_FRACTION;
+  for (let step = 0; step < 32; step++) {
+    const mid = (low + high) / 2;
+    if (distanceToJunction(bracketPointAt(mid)) < easeDistance) low = mid;
+    else high = mid;
+  }
+  const bracket = splitCubic(
+    tipTop,
+    control1,
+    control2,
+    junction,
+    1 - (low + high) / 2
+  );
   const easeOnBracket = bracket.first[3];
   const release = { u: flankU, v: junction.v + easeDistance };
 

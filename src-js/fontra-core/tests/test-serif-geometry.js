@@ -262,6 +262,30 @@ describe("half serif in frame coordinates", () => {
     expectClose(half.release.v - half.junction.v, 20);
   });
 
+  // The rounding is one curve across a corner. Both of its ends step back from
+  // that corner by the ease distance, each along its own surface. One end
+  // measured in units and the other in curve parameter is what made the two
+  // sides of the scoop grow at different rates and stop at different times.
+  it("steps both ends back from the junction by the same distance", () => {
+    const gap = (point, other) => Math.hypot(point.u - other.u, point.v - other.v);
+    for (const easeDistance of [5, 20, 40]) {
+      const half = eased({ easeDistance });
+      expectClose(
+        gap(half.easeOnBracket, half.junction),
+        gap(half.release, half.junction),
+        `ease distance ${easeDistance}`
+      );
+    }
+  });
+
+  it("stops both ends together once the rounding has eaten its limit", () => {
+    const far = eased({ easeDistance: 400 });
+    const further = eased({ easeDistance: 4000 });
+    expectClose(far.release.v, further.release.v);
+    expectClose(far.easeOnBracket.u, further.easeOnBracket.u);
+    expectClose(far.easeOnBracket.v, further.easeOnBracket.v);
+  });
+
   it("collapses the rounding onto the junction at ease distance zero", () => {
     const half = eased({ easeDistance: 0 });
     for (const point of [
