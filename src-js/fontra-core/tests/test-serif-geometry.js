@@ -2,6 +2,7 @@ import {
   buildHalfSerif,
   buildSerifTerminal,
   computeSerifFrame,
+  maxSerifEaseDistance,
 } from "@fontra/core/serif-geometry.js";
 import { expect } from "chai";
 
@@ -278,12 +279,25 @@ describe("half serif in frame coordinates", () => {
     }
   });
 
-  it("stops both ends together once the rounding has eaten its limit", () => {
-    const far = eased({ easeDistance: 400 });
-    const further = eased({ easeDistance: 4000 });
-    expectClose(far.release.v, further.release.v);
-    expectClose(far.easeOnBracket.u, further.easeOnBracket.u);
-    expectClose(far.easeOnBracket.v, further.easeOnBracket.v);
+  // The rounding runs out where the bracket meets the wing, and not before.
+  // The bracket end lands on the top of the tip, having eaten the whole
+  // bracket, and the flank end is the same distance from the junction.
+  it("stops both ends where the bracket meets the wing", () => {
+    const gap = (point, other) => Math.hypot(point.u - other.u, point.v - other.v);
+    const far = eased({ easeDistance: 4000 });
+    expectClose(far.easeOnBracket.u, far.tipTop.u);
+    expectClose(far.easeOnBracket.v, far.tipTop.v);
+    expectClose(far.release.v - far.junction.v, gap(far.tipTop, far.junction));
+  });
+
+  // The scrub reads its ceiling from here, so it has to agree with the shape.
+  it("reports the ease ceiling the geometry actually stops at", () => {
+    const params = { wingLength: 60, wingSlope: 10, reach: 30 };
+    const half = build({ ...params, easeDistance: 4000 });
+    expectClose(
+      maxSerifEaseDistance(params),
+      Math.hypot(half.tipTop.u - half.junction.u, half.tipTop.v - half.junction.v)
+    );
   });
 
   it("collapses the rounding onto the junction at ease distance zero", () => {

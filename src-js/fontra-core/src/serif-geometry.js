@@ -85,7 +85,24 @@ export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAng
 // counting past a shape which had already stopped is exactly the kind of lie
 // that produces.
 export const MAX_TIP_CUT_ANGLE = 80;
-const MAX_EASE_FRACTION = 0.5;
+
+// How far the rounding can step back from the junction before it has eaten the
+// whole bracket. The bracket-side end stops where the bracket meets the wing,
+// at the top of the tip, and the flank end stops at the same distance so the
+// scoop stays symmetric. There is nothing to round past that: the rounding has
+// replaced the bracket entirely.
+//
+// This is the straight-line distance from the junction to the top of the tip,
+// which is what both ends are measured by.
+//
+// Exported for the same reason as the cut-angle limit. The scrub bounds its
+// drag with this, so the stored number stops where the shape does.
+export function maxSerifEaseDistance(params) {
+  const wingLength = params?.wingLength ?? 0;
+  const wingSlope = params?.wingSlope ?? 0;
+  const reach = Math.max(params?.reach ?? 0, 0);
+  return Math.hypot(wingLength, wingSlope + reach);
+}
 
 function lerpUV(a, b, t) {
   return { u: a.u + (b.u - a.u) * t, v: a.v + (b.v - a.v) * t };
@@ -219,13 +236,12 @@ export function buildHalfSerif({ side, flankU, params }) {
   const bracketPointAt = (fraction) =>
     splitCubic(tipTop, control1, control2, junction, 1 - fraction).first[3];
   const distanceToJunction = (point) => lengthUV(subUV(point, junction));
-  // The rounding may eat at most half the bracket. That bound belongs to both
-  // ends: the flank end stops where the bracket end stops, or the scoop goes
-  // lopsided at exactly the settings where a designer is pushing it hardest.
-  const easeLimit = distanceToJunction(bracketPointAt(MAX_EASE_FRACTION));
-  const easeDistance = Math.min(requestedEase, easeLimit);
+  // The rounding runs out where the bracket meets the wing, and the same bound
+  // holds both ends: the flank end stops where the bracket end stops, or the
+  // scoop goes lopsided at exactly the settings a designer is pushing hardest.
+  const easeDistance = Math.min(requestedEase, maxSerifEaseDistance(params));
   let low = 0;
-  let high = MAX_EASE_FRACTION;
+  let high = 1;
   for (let step = 0; step < 32; step++) {
     const mid = (low + high) / 2;
     if (distanceToJunction(bracketPointAt(mid)) < easeDistance) low = mid;

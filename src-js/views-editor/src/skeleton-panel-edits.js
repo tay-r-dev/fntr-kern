@@ -6,7 +6,10 @@
 
 import { ChangeCollector } from "@fontra/core/changes.js";
 import { isScrubCancelled } from "@fontra/core/number-scrub.js";
-import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
+import {
+  MAX_TIP_CUT_ANGLE,
+  maxSerifEaseDistance,
+} from "@fontra/core/serif-geometry.js";
 import {
   SERIF_HALF_DEFAULTS,
   generateFromSkeleton,
@@ -766,7 +769,13 @@ function nudgeOnePointSerif(point, contour, targets, next) {
     // Serif lengths are font units and the generator quantizes to the grid
     // anyway, so a fraction left behind only stores a number the outline never
     // uses — and makes the next drag start from a value the panel isn't showing.
-    const bounds = SERIF_NUDGE_BOUNDS[field] ?? DEFAULT_SERIF_NUDGE_BOUNDS;
+    // The ease distance's ceiling is not a constant: it is the length of the
+    // bracket this half happens to have, so it moves when the wing or the reach
+    // moves. Read it off the same half the geometry will read.
+    const bounds =
+      field === "easeDistance"
+        ? { min: 0, max: maxSerifEaseDistance(point.serif?.[side]) }
+        : (SERIF_NUDGE_BOUNDS[field] ?? DEFAULT_SERIF_NUDGE_BOUNDS);
     let raw = next(current);
     if (bounds.min != null) {
       raw = Math.max(raw, bounds.min);
