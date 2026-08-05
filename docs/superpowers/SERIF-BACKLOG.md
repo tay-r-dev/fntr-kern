@@ -20,6 +20,8 @@ for its findings.
 | #   | Item                                | Depth               | Origin | Status    |
 | --- | ----------------------------------- | ------------------- | ------ | --------- |
 | 1   | Axis modes other than perpendicular | core geometry model | (1)    | undecided |
+| 14  | Drop the points that draw nothing   | generator + panel   | new    | open      |
+| 13  | S and D drag from a rib point       | edit pipeline       | new    | open      |
 
 Items 2 through 12 are all closed. Their entries were deleted rather than kept
 here: what they built is in the feature model, why it was built that way is in
@@ -128,5 +130,61 @@ Point-count stability across the whole parameter range including every axis mode
 and angle — the interpolation contract does not relax for this. Seven on-curves
 per terminal at every setting. Test it directly (feature model §8), do not infer
 it from the shape looking right.
+
+---
+
+## 14. Drop the points that draw nothing
+
+The switch already exists in the source defaults, and the generator honours it.
+**No panel draws a control for it**, so there is no way to turn it on. It reads
+as a missing feature rather than a hidden one.
+
+Three pieces. Any subset can land, but the third is the one with teeth.
+
+**Draw the control**, in the master defaults, beside the other serif-wide
+settings.
+
+**Name it for what it does.** "Delete collapsed points" is a misnomer. The
+option drops points that are not needed to draw the visible outline. Something
+like "Drop points that draw nothing" says it. The interpolation warning belongs
+on it: taking the option forfeits cross-master interpolation for serifed glyphs
+in that master.
+
+**Widen the removal.** Today it walks the outline and drops any on-curve within
+half a unit of the on-curve before it, taking the handles between them along. So
+it already covers stacked on-curves. It does **not** cover a curve segment whose
+two handles both sit on their own on-curves — a straight line by geometry, still
+stored as a curve, carrying two points that draw nothing.
+
+### What the option is for
+
+By default every point that any control could move is emitted, whatever the
+controls are set to. Concavity and tension both at zero still emit the two
+handles of the concave segment, at zero length. That is the ground rule above,
+and it is what makes a master interpolable against another.
+
+The option is for the case where the serif shape is settled and interpolation is
+only expected across a narrower range of the parameters. Then the points that
+never move are dead weight and can go.
+
+### What it costs
+
+Widening the removal changes generator output, so the golden fixtures move for
+every case that has the option on. That is expected, not a regression.
+
+---
+
+## 13. S and D drag from a rib point
+
+The S and D drag on a skeleton point already exists: both modifiers do the same
+thing, and the drag direction decides whether it compresses or expands against
+the opposite rib.
+
+Same mechanism, new entry point. Grab a **rib** point, hold S or D, and the
+skeleton drag runs — skeleton and all. Nothing about the behaviour changes; only
+where the drag can start from.
+
+The rib already has its own drag, which changes width. This is a different
+gesture on the same handle, told apart by the modifier.
 
 ---
