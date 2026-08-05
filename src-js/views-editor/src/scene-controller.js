@@ -981,6 +981,8 @@ export class SceneController {
     const hasRibSelection = !!parsedSelection.skeletonRib?.length;
     const hasGeneratedPointSelection = !!parsedSelection.editableGeneratedPoint?.length;
     const hasRibLikeSelection = hasRibSelection || hasGeneratedPointSelection;
+    const isFixedRibBehavior = (name) =>
+      name === "fixed-rib" || name === "fixed-rib-compress";
     const modifiers = {
       fixedRibMode: this.selectedTool?.fixedRibMode === true,
       fixedRibCompressMode: this.selectedTool?.fixedRibCompressMode === true,
@@ -1014,7 +1016,9 @@ export class SceneController {
               behaviorName,
               modifierOptions
             )
-          : hasRibLikeSelection
+          : // A rib under this modifier pair is an entry point into the
+            // skeleton drag, not the width edit it otherwise means.
+            hasRibLikeSelection && !isFixedRibBehavior(behaviorName)
             ? [
                 ...createSkeletonRibTargetEntries(
                   layerGlyph,

@@ -783,7 +783,15 @@ export class PointerTool extends BaseTool {
             modifierOptions
           );
         }
-        if (hasRibLikeSelection(sceneController.selection)) {
+        // Checked before the rib branch. A rib is the second entry point into
+        // the skeleton drag, so under this modifier pair the selection has to
+        // route to the skeleton point rather than to the width edit that a rib
+        // selection otherwise means.
+        if (
+          hasRibLikeSelection(sceneController.selection) &&
+          name !== "fixed-rib" &&
+          name !== "fixed-rib-compress"
+        ) {
           const targetEntries = [];
           targetEntries.push(
             ...createSkeletonRibTargetEntries(
