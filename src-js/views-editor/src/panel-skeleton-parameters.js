@@ -1875,6 +1875,12 @@ export default class SkeletonParametersPanel extends Panel {
           valueStream,
           this._undo("set-serif")
         );
+        // A scrub that ran into a ceiling stops changing the stored value, so
+        // the last ticks raise no change and nothing asks the panel to redraw.
+        // The field would sit on the number the drag reached rather than the
+        // one the terminal is at, until some unrelated edit refreshed it.
+        this._forceRebuild = true;
+        await this.update();
       }
     }
   }
