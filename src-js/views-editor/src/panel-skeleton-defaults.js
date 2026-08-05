@@ -145,29 +145,6 @@ export default class SkeletonDefaultsPanel extends Panel {
     }
   }
 
-  // The outline is stored, not recomputed on every draw, so a setting that
-  // changes what the generator emits leaves the open glyph showing the old
-  // outline until something edits it. A mutation that changes nothing is enough
-  // to make it regenerate.
-  async _regenerateSelectedGlyph() {
-    const glyphName = this.sceneController.sceneSettings?.selectedGlyphName;
-    if (!glyphName || this.fontController.readOnly) {
-      return;
-    }
-    await this.sceneController.editGlyphAndRecordChanges(
-      (glyph) => {
-        for (const layer of Object.values(glyph.layers || {})) {
-          if (getSkeletonData(layer.glyph)) {
-            editSkeleton(layer.glyph, () => {});
-          }
-        }
-        return translate("sidebar.skeleton-parameters.undo.set-defaults");
-      },
-      this,
-      false
-    );
-  }
-
   async _refreshDesignspacePanel() {
     const panel = this.editorController.getSidebarPanel?.("designspace-navigation");
     if (panel?.refreshSourcesAndStatus) {
@@ -549,29 +526,7 @@ export default class SkeletonDefaultsPanel extends Panel {
       ? K.WIDTH_LOWERCASE_DISTRIBUTION
       : K.WIDTH_CAPITAL_DISTRIBUTION;
 
-    // A generator setting, not a serif setting. It applies to every outline the
-    // generator writes, so it sits above the sections that only apply to one
-    // glyph case or one cap style, and it is drawn whatever is selected.
     const formContents = [
-      {
-        type: "header",
-        label: translate("sidebar.skeleton-parameters.generator"),
-      },
-      {
-        type: "checkbox",
-        key: `default:${K.SERIF_REMOVE_COLLAPSED}`,
-        label: translate("sidebar.skeleton-parameters.drop-dead-points"),
-        value: this._sourceDefault(K.SERIF_REMOVE_COLLAPSED) === true,
-      },
-    ];
-    if (this._sourceDefault(K.SERIF_REMOVE_COLLAPSED) === true) {
-      formContents.push({
-        type: "text",
-        value: translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
-      });
-    }
-    formContents.push(
-      { type: "divider" },
       {
         type: "header",
         label: translate("sidebar.skeleton-parameters.source-defaults"),
@@ -583,8 +538,8 @@ export default class SkeletonDefaultsPanel extends Panel {
             ? "sidebar.skeleton-parameters.case.lowercase"
             : "sidebar.skeleton-parameters.case.uppercase"
         ),
-      }
-    );
+      },
+    ];
     this._pushNumber(formContents, baseKey, "default-base");
     this._pushNumber(formContents, horizKey, "default-horizontal");
     this._pushNumber(formContents, contrastKey, "default-contrast");
@@ -691,9 +646,6 @@ export default class SkeletonDefaultsPanel extends Panel {
         { [name]: storedValue },
         translate("sidebar.skeleton-parameters.undo.set-defaults")
       );
-      if (name === K2.SERIF_REMOVE_COLLAPSED) {
-        await this._regenerateSelectedGlyph();
-      }
       // 1.3: rib widths can follow the master width as mw+offset — offer an
       // opt-in recalculation when the master base width changes
       const delta = Number(finalValue) - Number(oldValue);

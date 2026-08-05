@@ -20,6 +20,7 @@ import {
 import { throttleCalls } from "@fontra/core/utils.ts";
 import { Form } from "@fontra/web-components/ui-form.js";
 import Panel from "./panel.js";
+import { editSkeleton } from "./skeleton-editing.js";
 import {
   SKELETON_PANEL_SENDER,
   applyPanelSerifPreset,
@@ -384,6 +385,25 @@ export default class SkeletonParametersPanel extends Panel {
     const formContents = [
       { type: "header", label: translate("sidebar.skeleton-parameters.title") },
     ];
+    // Above the no-skeleton and no-selection branches, so it is there whatever
+    // is selected. It is a generator setting: it applies to every outline the
+    // generator writes, not to the points that happen to be selected.
+    const dropDeadPoints =
+      this._resolveSourceDefault(
+        SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED
+      ) === true;
+    formContents.push({
+      type: "checkbox",
+      key: `generator:dropDeadPoints`,
+      label: translate("sidebar.skeleton-parameters.drop-dead-points"),
+      value: dropDeadPoints,
+    });
+    if (dropDeadPoints) {
+      formContents.push({
+        type: "text",
+        value: translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
+      });
+    }
 
     if (!skeletonData) {
       formContents.push({
@@ -392,7 +412,10 @@ export default class SkeletonParametersPanel extends Panel {
       });
       this._lastFormLayout = null;
       this.infoForm.setFieldDescriptions(formContents);
-      this.infoForm.onFieldChange = () => {};
+      // The generator switch is in this form even here, so the form still
+      // needs a working handler.
+      this.infoForm.onFieldChange = (fieldItem, value, valueStream) =>
+        this._onFieldChange(fieldItem, value, valueStream);
       return;
     }
 
@@ -1382,7 +1405,38 @@ export default class SkeletonParametersPanel extends Panel {
     return serif.linked.mixed || serif.undersideCup.mixed;
   }
 
-  async _persistSerifPresetList(next) {
+  // The setting lives with the master, because the outline it changes is
+  // written into the master's glyphs. The switch is in this panel because it is
+  // a generator setting a designer reaches for while drawing.
+  async _onGeneratorChange(name, value) {
+    if (name !== "dropDeadPoints") {
+      return;
+    }
+    await this._persistSourceDefaultValues({
+      [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED]: value === true,
+    });
+    // The outline is stored, not recomputed on every draw, so the open glyph
+    // keeps the old one until something edits it. A mutation that changes
+    // nothing is enough to make it regenerate.
+    const glyphName = this.sceneController.sceneSettings?.selectedGlyphName;
+    if (!glyphName || this.fontController.readOnly) {
+      return;
+    }
+    await this.sceneController.editGlyphAndRecordChanges(
+      (glyph) => {
+        for (const layer of Object.values(glyph.layers || {})) {
+          if (getSkeletonData(layer.glyph)) {
+            editSkeleton(layer.glyph, () => {});
+          }
+        }
+        return translate("sidebar.skeleton-parameters.undo.set-defaults");
+      },
+      this,
+      false
+    );
+  }
+
+  async _persistSourceDefaultValues(values) {
     if (this.fontController.readOnly) {
       return;
     }
@@ -1401,9 +1455,7 @@ export default class SkeletonParametersPanel extends Panel {
     const changes = recordChanges(root, (root) => {
       const source = root.sources[sourceId];
       if (source) {
-        setSourceSkeletonDefaultsValues(source, {
-          [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: next,
-        });
+        setSourceSkeletonDefaultsValues(source, values);
       }
     });
     if (changes.hasChange) {
@@ -1414,6 +1466,12 @@ export default class SkeletonParametersPanel extends Panel {
         this
       );
     }
+  }
+
+  async _persistSerifPresetList(next) {
+    await this._persistSourceDefaultValues({
+      [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: next,
+    });
   }
 
   _customSerifPresets() {
@@ -1765,6 +1823,8 @@ export default class SkeletonParametersPanel extends Panel {
         await this._onRibChange(name, finalValue);
       } else if (group === "serif") {
         await this._onSerifChange(name, finalValue);
+      } else if (group === "generator") {
+        await this._onGeneratorChange(name, finalValue);
       }
     } finally {
       this._suppressGlyphChangeUpdate = false;
