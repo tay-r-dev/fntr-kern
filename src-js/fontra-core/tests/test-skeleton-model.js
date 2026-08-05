@@ -42,6 +42,7 @@ import {
   setSkeletonPointTotalWidth,
   setSkeletonPointWidthDistribution,
   setSkeletonPointWidthLinked,
+  setSkeletonSerifParameters,
   transformSkeletonData,
   transformSkeletonPointMetadata,
   translateSkeletonData,
@@ -1078,6 +1079,26 @@ describe("skeleton-model serif schema", () => {
     expect(point.serif.left.easeCurvature).to.equal(0);
     expect(point.serif.right.wingLength).to.equal(0);
     expect(Object.keys(point.serif.left)).to.have.length(9);
+  });
+
+  // Every path into a serif goes through this writer, so the ease ceiling has
+  // to live here. Bounding it further out left the typed field and the preset
+  // able to store a number the terminal was never going to draw.
+  it("stops the ease distance at the end of the bracket", () => {
+    const point = { x: 0, y: 0 };
+    setSkeletonSerifParameters(point, {
+      left: { wingLength: 30, wingSlope: 10, reach: 30, easeDistance: 4000 },
+    });
+    expect(point.serif.left.easeDistance).to.equal(50);
+  });
+
+  it("re-reads the ease ceiling from the bracket in the same write", () => {
+    const point = { x: 0, y: 0 };
+    setSkeletonSerifParameters(point, {
+      left: { wingLength: 30, wingSlope: 10, reach: 30, easeDistance: 50 },
+    });
+    setSkeletonSerifParameters(point, { left: { reach: 0 } });
+    expect(point.serif.left.easeDistance).to.equal(Math.round(Math.hypot(30, 10)));
   });
 
   it("defaults the axis mode and the link flag", () => {

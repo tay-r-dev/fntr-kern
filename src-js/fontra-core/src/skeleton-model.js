@@ -12,6 +12,7 @@ import {
 import { getGlyphInfoFromGlyphName } from "./glyph-data.js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
 import { offsetCubicSide } from "./offset-cubic.js";
+import { maxSerifEaseDistance } from "./serif-geometry.js";
 import {
   areTensionsEqualized,
   calculateControlHandlePoint,
@@ -2055,6 +2056,15 @@ export function setSkeletonSerifParameters(point, values) {
       const value = values[side][field];
       serif[side][field] = Number.isFinite(value) ? value : 0;
     }
+    // The ease distance stops where the rounding runs out of bracket to eat.
+    // Every path into a serif comes through here — the panel field, the scrub,
+    // a preset — so the ceiling belongs here rather than on any one of them,
+    // and it is re-applied on every write because moving the wing or the reach
+    // moves the ceiling.
+    serif[side].easeDistance = Math.min(
+      serif[side].easeDistance,
+      Math.round(maxSerifEaseDistance(serif[side]))
+    );
   }
   if (VALID_SERIF_AXIS_MODES.has(values.axisMode)) {
     serif.axisMode = values.axisMode;
