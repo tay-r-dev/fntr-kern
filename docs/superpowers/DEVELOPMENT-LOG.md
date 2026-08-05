@@ -2184,3 +2184,93 @@ data and a table for starting a new shape should not have looked alike.
 edit missed its anchor, the built-in list was never imported, and the whole serif
 preset section threw on the next panel build. `fontra-core` has the only test
 harness in the tree, so neither panel has anything that would have caught it.
+
+---
+
+## 29. Four reported bugs, and where each bound was written
+
+Not a feature. Four defects reported together, fixed in order. They have one
+thing in common: in every case the code did the right thing in one place and a
+different thing in another, and the two were never compared.
+
+### 1. A serif drew a wing on a side that has no stroke
+
+Single-sided mode moves all the width to one side, so the other side copies the
+skeleton exactly. Every other cap honours that. The serif did not: it built both
+wings from its own numbers, so a default terminal reached twenty units past the
+skeleton onto the dead side.
+
+The collapsed half now resolves to zeros — no shape. It still emits all of its
+points, all collapsed, which is what keeps a single-sided serif interpolable
+against a two-sided one. Checked directly, not inferred from the shape.
+
+### 2. The curvature gizmo could not reach a detached handle
+
+Handle placement ran in three steps: the natural answer, the authored
+adjustments, the pin. Detached placement ran **after** the pin and overwrote it,
+so pinning a segment that had a detached handle on it did nothing to that
+handle.
+
+Both kinds of adjustment place a handle. The pin then states what the segment's
+tension is. So the pin runs last. Detaching a handle takes it off the natural
+answer, not out of the gizmo's reach.
+
+This changes any existing glyph carrying both a pin and a detached handle on one
+segment. No golden fixture had the combination, which is a gap in the fixtures
+rather than evidence the change is inert.
+
+### 3. Contour easing grew at two different rates and stopped at one
+
+The rounding is one curve across the corner where the serif meets the stem. Both
+ends step back from that corner by the ease distance — one along the stem wall,
+one along the bracket.
+
+The wall end did that, in units. The bracket end took the same number, divided
+it by the bracket's chord length, and used the result as a **curve parameter**.
+Different quantity, different unit. The two ends never moved by the same amount
+at any setting. Only the bracket end had a bound, so only it ever stopped.
+
+Both ends are found by distance now, by bisection on the split parameter. The
+bound moved from half the bracket to the whole of it: the rounding runs until it
+has replaced the bracket, ending where the bracket meets the wing.
+
+The reported fix was "clamp at the wing's corner, both points". The wing's inner
+corner sits below the junction, inside the serif, and the wall end travels the
+other way — clamping both there would have stopped the wall end at twice the
+reach from where it belongs. The end of the bracket is the only bound that reads
+as one corner from both ends. Said so rather than substituting quietly.
+
+### 4. The same ceiling, written in three wrong places
+
+Then three rounds on one symptom: the scrub went past the ceiling.
+
+**First attempt — bound the scrub.** The scrub is not the only way a value gets
+in. The typed field and a preset write directly and went around it.
+
+**Second attempt — bound the writer.** Correct, and it is where the bound lives
+now: every serif edit comes through one writer, so the value stops there
+whichever way it is reached. The symptom did not change.
+
+**The actual bug was in neither.** The value _was_ being clamped. The input box
+was showing something else. The panel deliberately refuses to write back into
+the field the user just touched, so an arrow-key run is not interrupted
+mid-keystroke, and that refusal was still on when the refresh ran at the end of
+a drag. A "force a rebuild" added in between was useless for exactly that
+reason: the rebuild ran and skipped the one field that needed it.
+
+A drag is finished by the time that refresh happens, so the field is released
+for a stream and held for a typed change, which is the case the hold-back exists
+for.
+
+**Two attempts were spent fixing the model because the report said the value was
+wrong.** It was not. The stored number was right after the second attempt and
+the report was unchanged, which was the signal that the model was not the
+subject — and it took a third round to read it that way. A panel that can show a
+number the model rejected can make a correct fix look like no fix at all.
+
+### What this run says about the fixtures
+
+Three of the four changed serif or handle geometry. The golden fixtures moved
+for none of them. They carry no case with a non-zero ease distance, and none
+with a pin and a detached handle on one segment. The suite passing is not
+evidence here; the direct measurements are.
