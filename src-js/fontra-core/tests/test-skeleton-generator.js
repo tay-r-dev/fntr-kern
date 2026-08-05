@@ -1725,6 +1725,76 @@ describe("skeleton-generator collapsed serif points", () => {
   });
 });
 
+describe("skeleton-generator single-sided serif", () => {
+  const half = {
+    wingLength: 20,
+    tipThickness: 20,
+    wingSlope: 20,
+    tipCutAngle: 0,
+    reach: 0,
+    tension: 0,
+    concavity: 0,
+    easeDistance: 0,
+    easeCurvature: 0,
+  };
+  const data = (singleSided) => ({
+    version: 1,
+    nextId: 3,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 80,
+        singleSided,
+        capStyle: "serif",
+        points: [
+          {
+            id: 1,
+            x: 400,
+            y: 100,
+            serif: {
+              left: { ...half },
+              right: { ...half },
+              axisMode: "perpendicular",
+              axisAngle: 0,
+              undersideCup: 0,
+            },
+          },
+          { id: 2, x: 400, y: 600 },
+        ],
+      },
+    ],
+    generated: [],
+  });
+  // The collapsed side copies the skeleton exactly. A serif on that side draws
+  // no shape, so no emitted point may cross the skeleton onto the dead side.
+  it("keeps the collapsed side on the skeleton", () => {
+    for (const [singleSided, sign] of [
+      ["left", 1],
+      ["right", -1],
+    ]) {
+      const points = generateFromSkeleton(data(singleSided)).contours.flatMap(
+        (contour) => contour.points
+      );
+      for (const point of points) {
+        expect(
+          (point.x - 400) * sign,
+          `${singleSided} point at x ${point.x}`
+        ).to.be.at.least(0);
+      }
+    }
+  });
+
+  it("emits the same points single-sided as it does two-sided", () => {
+    const signature = (skeleton) =>
+      generateFromSkeleton(skeleton).contours.map((contour) =>
+        contour.points.map((point) => point.type ?? null)
+      );
+    expect(signature(data("left"))).to.deep.equal(signature(data(null)));
+    expect(signature(data("right"))).to.deep.equal(signature(data(null)));
+  });
+});
+
 describe("skeleton-generator serif stability", () => {
   const base = {
     wingLength: 80,

@@ -19,6 +19,10 @@ import { packContour } from "./var-path.js";
 import * as vector from "./vector.js";
 
 const DEFAULT_WIDTH = DEFAULT_SKELETON_WIDTH;
+// Below this the side is collapsed: it copies the skeleton exactly instead of
+// offsetting from it. Single-sided mode reaches it by moving all width to one
+// side, but any side driven under it collapses the same way.
+const COLLAPSED_SIDE_HALF_WIDTH = 0.5;
 const DEFAULT_CAP_RADIUS_RATIO = 1 / 8;
 const MAX_CAP_RADIUS_RATIO = 1 / 4;
 const DEFAULT_CAP_TENSION = 0.55;
@@ -4650,8 +4654,16 @@ function buildSerifCap({
   };
   const lengthScale =
     unitsContext.unitsMode === "normalized" ? unitsContext.strokeWidth : 1;
-  const left = resolveSerifHalf(pointSerif, "left", unitsContext);
-  const right = resolveSerifHalf(pointSerif, "right", unitsContext);
+  // A collapsed side copies the skeleton exactly, so the serif half sitting on
+  // it has no stroke to trim and no wall to lean against. It draws no shape.
+  // It still emits every one of its points, all of them at zero, which is what
+  // keeps a single-sided serif interpolable against a two-sided one.
+  const resolveHalfForSide = (side, halfWidth) =>
+    halfWidth < COLLAPSED_SIDE_HALF_WIDTH
+      ? { ...SERIF_HALF_ZEROS }
+      : resolveSerifHalf(pointSerif, side, unitsContext);
+  const left = resolveHalfForSide("left", leftHalfWidth);
+  const right = resolveHalfForSide("right", rightHalfWidth);
   // A terminal may only consume its own segment. Clamp before constructing the
   // serif as well as before splitting the outline, otherwise the splice stays
   // local while the emitted straight section still reaches into the next one.
