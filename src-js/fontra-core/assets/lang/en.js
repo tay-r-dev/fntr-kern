@@ -503,9 +503,10 @@ export const strings = {
   "sidebar.skeleton-parameters.serif-presets.scope-right": "Right only",
   "sidebar.skeleton-parameters.serif-presets.create": "Create from selection",
   "sidebar.skeleton-parameters.serif-presets.update": "Update “%0”",
-  "sidebar.skeleton-parameters.serif-drop-dead-points": "Drop points that draw nothing",
-  "sidebar.skeleton-parameters.serif-drop-dead-points.warning":
-    "Serifed glyphs in this master stop interpolating with other masters.",
+  "sidebar.skeleton-parameters.generator": "Generator",
+  "sidebar.skeleton-parameters.drop-dead-points": "Drop points that draw nothing",
+  "sidebar.skeleton-parameters.drop-dead-points.warning":
+    "Glyphs in this master stop interpolating with other masters.",
   "sidebar.skeleton-parameters.cap-style": "Cap style",
   "sidebar.skeleton-parameters.cap-style.flat": "Flat",
   "sidebar.skeleton-parameters.cap-style.square": "Square",

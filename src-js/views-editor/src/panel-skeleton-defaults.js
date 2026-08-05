@@ -549,7 +549,29 @@ export default class SkeletonDefaultsPanel extends Panel {
       ? K.WIDTH_LOWERCASE_DISTRIBUTION
       : K.WIDTH_CAPITAL_DISTRIBUTION;
 
+    // A generator setting, not a serif setting. It applies to every outline the
+    // generator writes, so it sits above the sections that only apply to one
+    // glyph case or one cap style, and it is drawn whatever is selected.
     const formContents = [
+      {
+        type: "header",
+        label: translate("sidebar.skeleton-parameters.generator"),
+      },
+      {
+        type: "checkbox",
+        key: `default:${K.SERIF_REMOVE_COLLAPSED}`,
+        label: translate("sidebar.skeleton-parameters.drop-dead-points"),
+        value: this._sourceDefault(K.SERIF_REMOVE_COLLAPSED) === true,
+      },
+    ];
+    if (this._sourceDefault(K.SERIF_REMOVE_COLLAPSED) === true) {
+      formContents.push({
+        type: "text",
+        value: translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
+      });
+    }
+    formContents.push(
+      { type: "divider" },
       {
         type: "header",
         label: translate("sidebar.skeleton-parameters.source-defaults"),
@@ -561,8 +583,8 @@ export default class SkeletonDefaultsPanel extends Panel {
             ? "sidebar.skeleton-parameters.case.lowercase"
             : "sidebar.skeleton-parameters.case.uppercase"
         ),
-      },
-    ];
+      }
+    );
     this._pushNumber(formContents, baseKey, "default-base");
     this._pushNumber(formContents, horizKey, "default-horizontal");
     this._pushNumber(formContents, contrastKey, "default-contrast");
@@ -590,21 +612,6 @@ export default class SkeletonDefaultsPanel extends Panel {
       label: translate("sidebar.skeleton-parameters.serif-presets"),
     });
     this._buildSerifPresetRows(formContents);
-    // A serif emits every point it can emit at every setting, so that two
-    // masters stay interpolable. This trades that away for a smaller outline,
-    // which is worth it only once the shape is settled.
-    formContents.push({
-      type: "checkbox",
-      key: `default:${K.SERIF_REMOVE_COLLAPSED}`,
-      label: translate("sidebar.skeleton-parameters.serif-drop-dead-points"),
-      value: this._sourceDefault(K.SERIF_REMOVE_COLLAPSED) === true,
-    });
-    if (this._sourceDefault(K.SERIF_REMOVE_COLLAPSED) === true) {
-      formContents.push({
-        type: "text",
-        value: translate("sidebar.skeleton-parameters.serif-drop-dead-points.warning"),
-      });
-    }
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
