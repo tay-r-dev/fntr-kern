@@ -1768,6 +1768,15 @@ export default class SkeletonParametersPanel extends Panel {
       }
     } finally {
       this._suppressGlyphChangeUpdate = false;
+      // A stream is a finished drag by the time we get here, so the input has
+      // to take whatever the model settled on — which is not the number the
+      // drag reached, if a bound trimmed it. Holding the field back here is
+      // what left a scrub showing a value the terminal was never at. A typed
+      // or arrow-key change is the case the hold-back is for: that field still
+      // has focus, and writing into it fights the next keystroke.
+      if (valueStream) {
+        this._activeFieldKey = null;
+      }
       this._forceRebuild = true;
       await this.update();
       this._activeFieldKey = null;
@@ -1875,12 +1884,6 @@ export default class SkeletonParametersPanel extends Panel {
           valueStream,
           this._undo("set-serif")
         );
-        // A scrub that ran into a ceiling stops changing the stored value, so
-        // the last ticks raise no change and nothing asks the panel to redraw.
-        // The field would sit on the number the drag reached rather than the
-        // one the terminal is at, until some unrelated edit refreshed it.
-        this._forceRebuild = true;
-        await this.update();
       }
     }
   }
