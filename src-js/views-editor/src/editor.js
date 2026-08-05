@@ -35,11 +35,13 @@ import {
 import { SceneView } from "@fontra/core/scene-view.js";
 import { isSuperset } from "@fontra/core/set-ops.js";
 import {
+  SKELETON_SOURCE_DEFAULT_KEYS,
   allocateSkeletonIds,
   deleteSkeletonPoints,
   getSkeletonContour,
   getSkeletonData,
   getSkeletonPoint,
+  resolveEffectiveSourceSkeletonDefault,
 } from "@fontra/core/skeleton-model.js";
 import { themeController } from "@fontra/core/theme-settings.js";
 import { getDecomposedIdentity } from "@fontra/core/transform.js";
@@ -98,6 +100,7 @@ import {
   makeSkeletonPointKey,
   parseSkeletonPointKey,
   resolveSkeletonAddressAcrossLayers,
+  setSkeletonGenerationOptionsReader,
 } from "./skeleton-editing.js";
 import {
   allGlyphsCleanVisualizationLayerDefinition,
@@ -198,6 +201,28 @@ export class EditorController extends ViewController {
         }
       }
     );
+
+    // Read at regeneration time rather than cached, so switching master or
+    // toggling the option takes effect on the next edit without a refresh.
+    setSkeletonGenerationOptionsReader(() => {
+      const location =
+        this.sceneSettings?.fontLocationSourceMapped ||
+        this.sceneSettings?.fontLocationSource ||
+        {};
+      return {
+        serifUnitsMode: resolveEffectiveSourceSkeletonDefault(
+          this.fontController,
+          location,
+          SKELETON_SOURCE_DEFAULT_KEYS.SERIF_UNITS_MODE
+        ),
+        removeCollapsedPoints:
+          resolveEffectiveSourceSkeletonDefault(
+            this.fontController,
+            location,
+            SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED
+          ) === true,
+      };
+    });
 
     this.cjkDesignFrame = new CJKDesignFrame(this);
 

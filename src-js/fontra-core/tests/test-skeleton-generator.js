@@ -1,6 +1,7 @@
 import {
   generateFromSkeleton,
   outlineContourToPackedPath,
+  removeCollapsedOutlinePoints,
 } from "@fontra/core/skeleton-generator.js";
 import {
   SERIF_HALF_FIELDS,
@@ -1722,6 +1723,76 @@ describe("skeleton-generator collapsed serif points", () => {
     expect(dropped.contours[0].points.length).to.be.below(
       kept.contours[0].points.length
     );
+  });
+
+  // A bracket at zero tension puts each handle on its own on-curve. The segment
+  // is a straight line by geometry, still stored as a curve, and the two points
+  // that make it a curve draw nothing.
+  const straightBracket = {
+    wingLength: 40,
+    tipThickness: 30,
+    wingSlope: 10,
+    tipCutAngle: 0,
+    reach: 60,
+    tension: 0,
+    concavity: 0,
+    easeDistance: 0,
+    easeCurvature: 0,
+  };
+  const bracketData = () => {
+    const skeleton = data();
+    const serif = skeleton.contours[0].points[0].serif;
+    serif.left = { ...straightBracket };
+    serif.right = { ...straightBracket };
+    return skeleton;
+  };
+  // Every curve segment of a closed contour, as [on, off, off, on].
+  const curveSegments = (points) => {
+    const segments = [];
+    for (let index = 0; index < points.length; index++) {
+      const window = [0, 1, 2, 3].map((step) => points[(index + step) % points.length]);
+      if (window[0].type || !window[1].type || !window[2].type || window[3].type)
+        continue;
+      segments.push(window);
+    }
+    return segments;
+  };
+  const isFlat = ([start, first, second, end]) =>
+    Math.abs(first.x - start.x) <= 0.5 &&
+    Math.abs(first.y - start.y) <= 0.5 &&
+    Math.abs(second.x - end.x) <= 0.5 &&
+    Math.abs(second.y - end.y) <= 0.5;
+
+  it("keeps the handles of a straight curve segment by default", () => {
+    const points = generateFromSkeleton(bracketData()).contours[0].points;
+    expect(curveSegments(points).filter(isFlat).length).to.be.above(0);
+  });
+
+  it("drops the handles of a straight curve segment when requested", () => {
+    const points = generateFromSkeleton(bracketData(), {
+      removeCollapsedPoints: true,
+    }).contours[0].points;
+    expect(curveSegments(points).filter(isFlat).length).to.equal(0);
+  });
+
+  // One handle off its on-curve is still a curve, and a curve with a handle at
+  // the wrong end is a different shape, not a straight line.
+  it("leaves a curve with only one collapsed handle alone", () => {
+    const on = (x, y) => ({ x, y });
+    const off = (x, y) => ({ x, y, type: "cubic" });
+    const points = [on(0, 0), off(0, 0), off(50, 40), on(100, 0)];
+    expect(removeCollapsedOutlinePoints(points).length).to.equal(4);
+  });
+
+  it("drops both handles of a straight curve segment", () => {
+    const on = (x, y) => ({ x, y });
+    const off = (x, y) => ({ x, y, type: "cubic" });
+    const points = [on(0, 0), off(0, 0), off(100, 0), on(100, 0), on(100, 200)];
+    expect(removeCollapsedOutlinePoints(points).map((point) => point.type)).to.eql([
+      undefined,
+      undefined,
+      undefined,
+    ]);
   });
 });
 

@@ -133,6 +133,17 @@ export function resolveSkeletonAddressAcrossLayers(
   };
 }
 
+// Master-wide generator settings. Every edit regenerates through one path, and
+// that path has no route back to the font, so the editor hands it a reader for
+// the master it is on. Twenty-five call sites would otherwise each have to
+// carry the settings down, and any one of them forgetting would regenerate the
+// glyph under the wrong master.
+let readSkeletonGenerationOptions = () => ({});
+
+export function setSkeletonGenerationOptionsReader(reader) {
+  readSkeletonGenerationOptions = reader || (() => ({}));
+}
+
 export function editSkeleton(layerGlyph, mutate, options = {}) {
   return recordChanges(layerGlyph, (layerGlyphProxy) => {
     applySkeletonMutation(layerGlyphProxy, mutate, options);
@@ -154,7 +165,7 @@ function applySkeletonMutation(layerGlyph, mutate, options = {}) {
     structuredClone(original || makeEmptySkeletonData())
   );
   mutate(working);
-  const generated = generateFromSkeleton(working);
+  const generated = generateFromSkeleton(working, readSkeletonGenerationOptions());
   replaceGeneratedSkeletonContours(layerGlyph, working, generated);
   setSkeletonData(layerGlyph, working);
 }

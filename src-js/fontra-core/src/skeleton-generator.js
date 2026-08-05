@@ -469,7 +469,45 @@ function stripCornerRoundMetadata(points) {
   });
 }
 
-function removeCollapsedOutlinePoints(points, tolerance = 0.5) {
+// Two kinds of point draw nothing, and the option drops both. An on-curve that
+// landed on the on-curve before it, with the handles between them. And a curve
+// segment whose two handles each sit on their own on-curve: a straight line by
+// geometry, still stored as a curve.
+export function removeCollapsedOutlinePoints(points, tolerance = 0.5) {
+  return removeStraightSegmentHandles(
+    removeCoincidentOnCurves(points, tolerance),
+    tolerance
+  );
+}
+
+// The segment is scanned around the end of the array because the outline is
+// closed: the last on-curve and the first one bound a segment like any other.
+function removeStraightSegmentHandles(points, tolerance) {
+  if (points.length < 4) {
+    return points;
+  }
+  const isNear = (one, other) =>
+    Math.abs(one.x - other.x) <= tolerance && Math.abs(one.y - other.y) <= tolerance;
+  const dropped = new Set();
+  for (let index = 0; index < points.length; index++) {
+    const [start, first, second, end] = [0, 1, 2, 3].map(
+      (step) => points[(index + step) % points.length]
+    );
+    if (start.type || !first.type || !second.type || end.type) {
+      continue;
+    }
+    // Both ends, or neither. One handle off its on-curve still bends the
+    // segment, and dropping it would change the shape rather than simplify it.
+    if (!isNear(first, start) || !isNear(second, end)) {
+      continue;
+    }
+    dropped.add((index + 1) % points.length);
+    dropped.add((index + 2) % points.length);
+  }
+  return points.filter((point, index) => !dropped.has(index));
+}
+
+function removeCoincidentOnCurves(points, tolerance) {
   const kept = [];
   for (const point of points) {
     if (point.type) {
