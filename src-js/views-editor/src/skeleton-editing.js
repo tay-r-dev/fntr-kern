@@ -51,11 +51,15 @@ export function makeSkeletonPointKey(contourId, pointId) {
 
 export { getSkeletonPointAddress, parseSkeletonPointKey };
 
+// A rib is a second entry point into the same drag, not a second drag. Grabbing
+// a rib end and holding the modifier moves the skeleton point that rib belongs
+// to, exactly as grabbing the point itself would.
 export function getSkeletonModifierBehaviorName(event, modifiers = {}, targetKinds) {
-  if (modifiers.fixedRibCompressMode && targetKinds.has("skeletonPoint")) {
+  const canFixRib = targetKinds.has("skeletonPoint") || targetKinds.has("skeletonRib");
+  if (modifiers.fixedRibCompressMode && canFixRib) {
     return "fixed-rib-compress";
   }
-  if (modifiers.fixedRibMode && targetKinds.has("skeletonPoint")) {
+  if (modifiers.fixedRibMode && canFixRib) {
     return "fixed-rib";
   }
   return null;
@@ -489,18 +493,29 @@ export function makeSkeletonPointTargetEntry(
   // resolve them into this layer by structural ordinal (Global Constraints).
   const reference = referenceSkeletonData || skeletonData;
   const selected = collectSkeletonPointSelection(selection, reference, skeletonData);
-  if (!selected.length) return null;
 
   if (behaviorName === "fixed-rib" || behaviorName === "fixed-rib-compress") {
+    // Only this behavior pair reads the ribs. Folding rib owners into the
+    // shared collector would drag the skeleton on a plain rib drag too, which
+    // is the width edit and has to stay where it is.
+    const withRibOwners = withSkeletonRibOwners(
+      selected,
+      selection,
+      reference,
+      skeletonData
+    );
+    if (!withRibOwners.length) return null;
     return makeFixedRibSkeletonPointTargetEntry(
       layer,
       skeletonData,
       reference,
-      selected,
+      withRibOwners,
       behaviorName,
       options
     );
   }
+
+  if (!selected.length) return null;
 
   if (behaviorName === "equalize" || behaviorName === "equalize-constrain") {
     return makeEqualizeSkeletonHandleTargetEntry(
@@ -902,6 +917,48 @@ function makeRibInterpolationAxis(originalLayerGlyph, skeletonData, address) {
     dir: { x: direction.x / length, y: direction.y / length },
     hasHandle: { in: !!handlePositions.in, out: !!handlePositions.out },
   };
+}
+
+// The selected skeleton points, plus the point behind every selected rib. A rib
+// already selected through its own point contributes nothing new: both ends of
+// one point's pair resolve to the same point, and a point cannot be dragged
+// twice in one drag.
+function withSkeletonRibOwners(
+  selected,
+  selection,
+  referenceSkeletonData,
+  targetSkeletonData
+) {
+  const { skeletonRib } = parseSelection([...selection]);
+  if (!skeletonRib?.length) {
+    return selected;
+  }
+  const merged = [...selected];
+  const seen = new Set(merged.map((entry) => `${entry.contourId}/${entry.pointId}`));
+  for (const item of skeletonRib) {
+    const { contourId, pointId } = parseSkeletonRibKey(item);
+    const address = resolveSkeletonAddressAcrossLayers(
+      referenceSkeletonData,
+      targetSkeletonData,
+      contourId,
+      pointId
+    );
+    if (!address) {
+      continue;
+    }
+    const key = `${address.contour.id}/${address.point.id}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push({
+      contourId: address.contour.id,
+      pointId: address.point.id,
+      referenceContourId: contourId,
+      referencePointId: pointId,
+    });
+  }
+  return merged;
 }
 
 function collectSkeletonPointSelection(
