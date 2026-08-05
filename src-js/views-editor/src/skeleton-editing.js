@@ -936,7 +936,12 @@ function withSkeletonRibOwners(
   const merged = [...selected];
   const seen = new Set(merged.map((entry) => `${entry.contourId}/${entry.pointId}`));
   for (const item of skeletonRib) {
-    const { contourId, pointId } = parseSkeletonRibKey(item);
+    // parseSelection hands back the key without its kind prefix, and the rib
+    // parser leaves the two ids as strings while every address lookup compares
+    // them to numbers.
+    const parsed = parseSkeletonRibKey(`skeletonRib/${item}`);
+    const contourId = Number(parsed.contourId);
+    const pointId = Number(parsed.pointId);
     const address = resolveSkeletonAddressAcrossLayers(
       referenceSkeletonData,
       targetSkeletonData,
