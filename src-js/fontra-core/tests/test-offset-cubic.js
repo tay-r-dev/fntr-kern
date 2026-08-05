@@ -143,6 +143,20 @@ describe("offset-cubic: authored handle state", () => {
     expect(first.startLength).to.equal(second.startLength);
   });
 
+  // Detaching a handle takes it off the natural answer, not out of the gizmo's
+  // reach. A pin is a deliberate statement about the whole segment, so it lands
+  // on both handles whatever each one was placed by.
+  it("sets the pinned tension over a detached handle too", () => {
+    const request = {
+      ...authoredBaseRequest(),
+      pinnedTension: 0.55,
+      startAdjustment: { x: 24, y: 0, detached: true },
+      endAdjustment: { x: -4, y: 0, detached: false },
+    };
+    const result = offsetCubicSide(request);
+    expect(harmonicMeanTension(result, request)).to.be.closeTo(0.55, 1e-9);
+  });
+
   it("is deterministic", () => {
     const request = {
       ...authoredBaseRequest(),

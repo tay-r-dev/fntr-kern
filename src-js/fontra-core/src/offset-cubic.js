@@ -138,7 +138,10 @@ export function offsetCubicSide(request) {
     endHandleDirection: request.u1,
     handleDomain: domain,
   });
+  // Both kinds of adjustment place a handle, and the pin then states what the
+  // segment's tension is. Running the detached placement last instead made it
+  // overwrite the pin, so the gizmo did nothing on a detached handle.
   const attached = applyAttachedAdjustments(natural, request, domain);
-  const pinned = applyPinnedTension(attached, request.pinnedTension, domain);
-  return applyDetachedHandles(pinned, request);
+  const placed = applyDetachedHandles(attached, request);
+  return applyPinnedTension(placed, request.pinnedTension, domain);
 }
