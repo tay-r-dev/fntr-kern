@@ -9,6 +9,7 @@ import {
   SERIF_PRESETS,
   SKELETON_SOURCE_DEFAULT_KEYS,
   VALID_SERIF_AXIS_MODES,
+  VALID_SERIF_SIDES,
   captureSerifPreset,
   getSkeletonData,
   getSkeletonGlyphCase,
@@ -1180,20 +1181,42 @@ export default class SkeletonParametersPanel extends Panel {
   // shared by the terminal, grouped wing / bracket / contour easing so the panel
   // reads in the order the shape is built. Absolute font units for the lengths;
   // tension, concavity and ease curvature are edited as percent and stored as
-  // ratios. When the halves are linked one set of
-  // controls is shown and written to both sides — the storage is always two
-  // independent halves, linking is only an editing convenience.
+  // ratios.
+  //
+  // Which sides the terminal is built on is a tab row: both, L or R. A side
+  // outside it generates nothing. From a one-sided terminal a button creates
+  // the opposite side, which is the only route to two independent wings; from
+  // there each section carries a symmetrize that copies itself over the other
+  // and collapses back to one set of controls.
   _buildSerifSection(formContents, widthPoints, canEdit) {
     const serif = summarizeSkeletonSerifSelection(widthPoints);
-    const linked = !serif.linked.mixed && serif.linked.value !== false;
+    const sides = serif.sides.mixed ? null : (serif.sides.value ?? "both");
+    // Two control sets only where both sides exist AND they are not tied
+    // together. A one-sided terminal never shows two.
+    const split =
+      sides === "both" && !serif.linked.mixed && serif.linked.value === false;
 
     formContents.push({
-      type: "checkbox",
-      key: "serif:linked",
-      label: translate("sidebar.skeleton-parameters.serif-linked"),
-      value: linked,
-      indeterminate: serif.linked.mixed,
-      disabled: !canEdit,
+      type: "single-icon",
+      // Which tab is lit shows in the styling, not in the row's text, so the
+      // layout signature would miss an L-to-R switch and leave the highlight
+      // behind. The key carries it instead; nothing reads it as a field.
+      key: `serif:sides-tabs-${sides ?? "mixed"}`,
+      element: html.div({ style: "display:flex; gap:0.25rem; align-items:center;" }, [
+        html.span({ style: "opacity:0.65; margin-right:0.35rem;" }, [
+          translate("sidebar.skeleton-parameters.serif-sides"),
+        ]),
+        ...["both", "left", "right"].map((option) =>
+          html.button(
+            {
+              disabled: !canEdit,
+              style: `min-width:3em; ${sides === option ? "" : "opacity:0.5;"}`,
+              onclick: () => this._onSerifChange("sides", option),
+            },
+            [translate(`sidebar.skeleton-parameters.serif-sides.${option}`)]
+          )
+        ),
+      ]),
     });
 
     // Every serif length is a plain number whose label scrubs, like the rest of
@@ -1299,19 +1322,56 @@ export default class SkeletonParametersPanel extends Panel {
       );
     };
 
-    if (linked) {
-      pushHalf("both", serif.left);
-    } else {
+    // Copies its own side over the other and ties them, so the terminal goes
+    // back to one set of controls. Which shape survives is the designer's pick,
+    // which is why it sits in the section rather than on the "both" tab.
+    const pushSymmetrize = (side) => {
+      formContents.push({
+        type: "single-icon",
+        element: html.div({}, [
+          html.button(
+            {
+              disabled: !canEdit,
+              onclick: () => this._onSerifChange("symmetrize", side),
+            },
+            [translate("sidebar.skeleton-parameters.serif-symmetrize")]
+          ),
+        ]),
+      });
+    };
+
+    if (split) {
       formContents.push({
         type: "header",
         label: translate("sidebar.skeleton-parameters.serif-left"),
       });
       pushHalf("left", serif.left);
+      pushSymmetrize("left");
       formContents.push({
         type: "header",
         label: translate("sidebar.skeleton-parameters.serif-right"),
       });
       pushHalf("right", serif.right);
+      pushSymmetrize("right");
+    } else if (sides === "left" || sides === "right") {
+      // The two halves are held identical while only one is built, so the
+      // fields write to both and switching back to "both" shows the shape that
+      // is on screen rather than whatever the dead side was left holding.
+      pushHalf("both", serif[sides]);
+      formContents.push({
+        type: "single-icon",
+        element: html.div({}, [
+          html.button(
+            {
+              disabled: !canEdit,
+              onclick: () => this._onSerifChange("addOtherSide", sides),
+            },
+            [translate("sidebar.skeleton-parameters.serif-add-other-side")]
+          ),
+        ]),
+      });
+    } else {
+      pushHalf("both", serif.left);
     }
 
     formContents.push({ type: "divider" });
@@ -2094,21 +2154,45 @@ export default class SkeletonParametersPanel extends Panel {
         this._undo("set-serif")
       );
 
-    if (name === "linked") {
-      // Linking copies the left half onto the right, so turning it on gives one
-      // symmetric serif rather than silently keeping a difference the panel can
-      // no longer show.
+    // Copy one summarized half onto the other, so the two are identical and one
+    // set of controls can describe both. A field that is mixed across the
+    // selection stays mixed rather than collapsing onto one number.
+    const mirrorOnto = (serif, from) => {
+      const other = from === "left" ? "right" : "left";
+      const half = {};
+      for (const field of SERIF_HALF_FIELDS) {
+        half[field] = serif[from][field].mixed ? null : serif[from][field].value;
+      }
+      return { [other]: half };
+    };
+
+    if (name === "sides") {
+      if (!VALID_SERIF_SIDES.has(value)) {
+        return;
+      }
       const serif = summarizeSkeletonSerifSelection(this._widthPoints());
-      const values = { linked: value === true };
-      if (value === true) {
-        values.right = {};
-        for (const field of SERIF_HALF_FIELDS) {
-          values.right[field] = serif.left[field].mixed
-            ? null
-            : serif.left[field].value;
-        }
+      // Picking a single side ties the halves and keeps them identical: only
+      // one is built, and the other is what "both" comes back to.
+      const values = { sides: value, linked: true };
+      if (value !== "both") {
+        Object.assign(values, mirrorOnto(serif, value));
       }
       await apply(values);
+      return;
+    }
+    if (name === "addOtherSide") {
+      // The halves already match, so the new side arrives as a copy of the one
+      // that was drawn. Untying them is the whole of it.
+      await apply({ sides: "both", linked: false });
+      return;
+    }
+    if (name === "symmetrize") {
+      const serif = summarizeSkeletonSerifSelection(this._widthPoints());
+      await apply({
+        sides: "both",
+        linked: true,
+        ...mirrorOnto(serif, value),
+      });
       return;
     }
     if (name === "axismode") {

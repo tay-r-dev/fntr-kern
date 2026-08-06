@@ -4696,8 +4696,14 @@ function buildSerifCap({
   // it has no stroke to trim and no wall to lean against. It draws no shape.
   // It still emits every one of its points, all of them at zero, which is what
   // keeps a single-sided serif interpolable against a two-sided one.
+  //
+  // A side the terminal is not built on collapses the same way, for the same
+  // reason: the designer asked for a serif on one wing only.
+  const sides = pointSerif?.sides;
+  const builtOnSide = (side) =>
+    sides !== "left" && sides !== "right" ? true : sides === side;
   const resolveHalfForSide = (side, halfWidth) =>
-    halfWidth < COLLAPSED_SIDE_HALF_WIDTH
+    halfWidth < COLLAPSED_SIDE_HALF_WIDTH || !builtOnSide(side)
       ? { ...SERIF_HALF_ZEROS }
       : resolveSerifHalf(pointSerif, side, unitsContext);
   const left = resolveHalfForSide("left", leftHalfWidth);

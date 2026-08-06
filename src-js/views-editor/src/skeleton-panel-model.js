@@ -392,6 +392,11 @@ export function summarizeSkeletonSerifSelection(selectedPoints) {
     linked: reduceValues(
       selectedPoints.map((entry) => entry.point.serif?.linked !== false)
     ),
+    // Which sides carry a serif at all. Unlike `linked` this IS storage: a side
+    // left out of it generates nothing.
+    sides: reduceValues(
+      selectedPoints.map((entry) => entry.point.serif?.sides ?? "both")
+    ),
     axisMode: terminal("axisMode", "perpendicular"),
     axisAngle: terminal("axisAngle", 0),
     undersideCup: terminal("undersideCup"),

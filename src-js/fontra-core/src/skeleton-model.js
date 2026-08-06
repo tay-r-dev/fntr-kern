@@ -81,6 +81,10 @@ export const VALID_SERIF_AXIS_MODES = new Set([
   "absolute",
 ]);
 export const VALID_SERIF_UNITS_MODES = new Set(["absolute", "normalized"]);
+// Which sides of the terminal the serif is built on. A side left out generates
+// no shape at all — it still emits every one of its points, collapsed, because
+// point count is the interpolation contract.
+export const VALID_SERIF_SIDES = new Set(["both", "left", "right"]);
 
 // One half-serif's shape. Absolute font units unless the source's serif units
 // mode says otherwise; `tipCutAngle` is degrees and `tension`, `concavity` and
@@ -2072,6 +2076,9 @@ export function setSkeletonSerifParameters(point, values) {
   if ("linked" in values) {
     serif.linked = values.linked === true;
   }
+  if (VALID_SERIF_SIDES.has(values.sides)) {
+    serif.sides = values.sides;
+  }
   for (const field of SERIF_TERMINAL_FIELDS) {
     if (!(field in values)) {
       continue;
@@ -2332,6 +2339,11 @@ export function transformSkeletonPointMetadata(point, affine) {
   swapProperties(point.handleOffsets, "leftIn", "rightIn");
   swapProperties(point.handleOffsets, "leftOut", "rightOut");
   point.capBallSide = swapSideName(point.capBallSide);
+  // Swapping the two halves moves the shapes; which sides are built has to
+  // follow them, or a mirrored one-sided serif appears on the wrong wing.
+  if (point.serif && typeof point.serif === "object") {
+    point.serif.sides = swapSideName(point.serif.sides);
+  }
   if (Number.isFinite(point.capAngle)) {
     point.capAngle = -point.capAngle;
   }
@@ -3293,6 +3305,7 @@ function normalizeSerif(serif) {
     left: normalizeSerifHalf(serif?.left),
     right: normalizeSerifHalf(serif?.right),
     linked: serif?.linked !== false,
+    sides: VALID_SERIF_SIDES.has(serif?.sides) ? serif.sides : "both",
     axisMode: VALID_SERIF_AXIS_MODES.has(serif?.axisMode)
       ? serif.axisMode
       : "perpendicular",
