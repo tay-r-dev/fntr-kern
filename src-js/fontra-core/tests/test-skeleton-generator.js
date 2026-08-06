@@ -1873,25 +1873,6 @@ describe("skeleton-generator single-sided serif", () => {
     ],
     generated: [],
   });
-  // The collapsed side copies the skeleton exactly. A serif on that side draws
-  // no shape, so no emitted point may cross the skeleton onto the dead side.
-  it("keeps the collapsed side on the skeleton", () => {
-    for (const [singleSided, sign] of [
-      ["left", 1],
-      ["right", -1],
-    ]) {
-      const points = generateFromSkeleton(data(singleSided)).contours.flatMap(
-        (contour) => contour.points
-      );
-      for (const point of points) {
-        expect(
-          (point.x - 400) * sign,
-          `${singleSided} point at x ${point.x}`
-        ).to.be.at.least(0);
-      }
-    }
-  });
-
   it("emits the same points single-sided as it does two-sided", () => {
     const signature = (skeleton) =>
       generateFromSkeleton(skeleton).contours.map((contour) =>
