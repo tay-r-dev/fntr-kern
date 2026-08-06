@@ -304,18 +304,27 @@ export function buildHalfSerif({ side, flankU, params }) {
   };
 }
 
-// How far along the foot's axis span the underside controls sit.
-const FOOT_CONTROL_FRACTION = 1 / 3;
+// The cup's tension at the shape the foot drew before the control existed, so
+// nothing already drawn moves.
+export const DEFAULT_UNDERSIDE_CUP_TENSION = 2 / 3;
+
+// Tension 1 puts both of a half's controls on the middle of its own span, which
+// is the ceiling for the same reason it is everywhere else in this project: one
+// step further and the two handles of one segment change places and the sweep
+// loops. So the fraction of the span a handle travels is half the tension.
+const FOOT_CONTROL_CEILING = 0.5;
 
 // Each control keeps its own end's depth, so the foot leaves the tip tangent to
 // the baseline and arrives at the centre flat. Putting both controls on the
 // straight chord instead would give a shallow V, not the old-style scoop. At
-// cup 0 both depths are 0 and the foot is a straight line.
-function footControls(from, to) {
+// cup 0 both depths are 0 and the foot is a straight line whatever the tension
+// says, because the two ends are level.
+function footControls(from, to, tension) {
   const span = to.u - from.u;
+  const travel = span * Math.min(Math.max(tension, 0), 1) * FOOT_CONTROL_CEILING;
   return [
-    { u: from.u + span * FOOT_CONTROL_FRACTION, v: from.v },
-    { u: from.u + span * (1 - FOOT_CONTROL_FRACTION), v: to.v },
+    { u: from.u + travel, v: from.v },
+    { u: to.u - travel, v: to.v },
   ];
 }
 
@@ -335,6 +344,7 @@ export function buildSerifTerminal({
   left,
   right,
   undersideCup,
+  undersideCupTension,
 }) {
   const halves = {
     left: buildHalfSerif({ side: 1, flankU: leftFlankU, params: left }),
@@ -350,8 +360,15 @@ export function buildSerifTerminal({
   const smoothOnCurve = (uv) => ({ ...frame.toGlyph(uv), smooth: true });
   const control = (uv) => ({ ...frame.toGlyph(uv), type: "cubic" });
 
-  const [leftCup1, leftCup2] = footControls(halves.left.tipBottom, centre);
-  const [rightCup1, rightCup2] = footControls(centre, halves.right.tipBottom);
+  const cupTension = Number.isFinite(undersideCupTension)
+    ? undersideCupTension
+    : DEFAULT_UNDERSIDE_CUP_TENSION;
+  const [leftCup1, leftCup2] = footControls(halves.left.tipBottom, centre, cupTension);
+  const [rightCup1, rightCup2] = footControls(
+    centre,
+    halves.right.tipBottom,
+    cupTension
+  );
 
   return {
     halves,

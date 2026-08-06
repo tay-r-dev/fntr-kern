@@ -12,7 +12,10 @@ import {
 import { getGlyphInfoFromGlyphName } from "./glyph-data.js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
 import { offsetCubicSide } from "./offset-cubic.js";
-import { maxSerifEaseDistance } from "./serif-geometry.js";
+import {
+  DEFAULT_UNDERSIDE_CUP_TENSION,
+  maxSerifEaseDistance,
+} from "./serif-geometry.js";
 import {
   areTensionsEqualized,
   calculateControlHandlePoint,
@@ -110,7 +113,20 @@ export const SERIF_HALF_FIELDS = Object.freeze([
 // Shared by both halves of one terminal. The underside cup is deliberately NOT
 // per half: the foot is one curve across the whole terminal, and one cup per
 // half produces two scoops meeting at a break in the middle.
-export const SERIF_TERMINAL_FIELDS = Object.freeze(["axisAngle", "undersideCup"]);
+// The cup is two numbers. `undersideCup` is the depth, which places the foot
+// centre. `undersideCupTension` is how long the four handles reaching it are,
+// which used to be a fixed third of the span.
+export const SERIF_TERMINAL_FIELDS = Object.freeze([
+  "axisAngle",
+  "undersideCup",
+  "undersideCupTension",
+]);
+// The one serif field whose zero is not its default. Zero is a sharp V, which
+// is a shape somebody may want, so it cannot double as "never set" — and a
+// terminal drawn before the control existed has to keep the foot it had.
+export const SERIF_FIELD_DEFAULTS = Object.freeze({
+  undersideCupTension: DEFAULT_UNDERSIDE_CUP_TENSION,
+});
 // An unset serif field is zero. Every one of them, with no exceptions: a serif
 // that has never been shaped draws nothing, rather than carrying a bracket
 // nobody asked for. The starting shape comes from the seed at the moment a
@@ -2106,6 +2122,7 @@ export function setSkeletonSerifParameters(point, values) {
 export const SERIF_PRESET_FIELDS = Object.freeze([
   ...SERIF_HALF_FIELDS,
   "undersideCup",
+  "undersideCupTension",
 ]);
 
 function normalizeSerifPreset(preset) {
@@ -2114,7 +2131,11 @@ function normalizeSerifPreset(preset) {
     // A preset written before the wings collapsed carries a `left` block.
     const raw = preset?.[field] ?? preset?.left?.[field];
     const value = Number(raw);
-    normalized[field] = Number.isFinite(value) ? value : 0;
+    // A preset saved before the cup gained its tension keeps the foot it was
+    // captured with, the same as a terminal does.
+    normalized[field] = Number.isFinite(value)
+      ? value
+      : (SERIF_FIELD_DEFAULTS[field] ?? 0);
   }
   return normalized;
 }
@@ -2178,7 +2199,11 @@ export const DEFAULT_SERIF_PRESET = SERIF_PRESETS[0];
 // than refusing a shape the designer can see.
 export function captureSerifPreset(point) {
   const serif = normalizeSerif(point?.serif);
-  return normalizeSerifPreset({ ...serif.left, undersideCup: serif.undersideCup });
+  return normalizeSerifPreset({
+    ...serif.left,
+    undersideCup: serif.undersideCup,
+    undersideCupTension: serif.undersideCupTension,
+  });
 }
 
 // The partial the serif writer takes. Scope "both" puts the one wing on both
@@ -2186,11 +2211,18 @@ export function captureSerifPreset(point) {
 export function applySerifPreset(preset, { scope = "both" } = {}) {
   const wing = normalizeSerifPreset(preset);
   const cup = wing.undersideCup;
+  const cupTension = wing.undersideCupTension;
   delete wing.undersideCup;
+  delete wing.undersideCupTension;
   if (scope === "left" || scope === "right") {
     return { [scope]: wing };
   }
-  return { left: wing, right: { ...wing }, undersideCup: cup };
+  return {
+    left: wing,
+    right: { ...wing },
+    undersideCup: cup,
+    undersideCupTension: cupTension,
+  };
 }
 
 export function makeSerifPreset(name = "Serif") {
@@ -3325,7 +3357,9 @@ function normalizeSerif(serif) {
   normalized.axisAngle = Number.isFinite(serif?.axisAngle) ? serif.axisAngle : 0;
   for (const field of SERIF_TERMINAL_FIELDS) {
     if (field === "axisAngle") continue;
-    normalized[field] = Number.isFinite(serif?.[field]) ? serif[field] : 0;
+    normalized[field] = Number.isFinite(serif?.[field])
+      ? serif[field]
+      : (SERIF_FIELD_DEFAULTS[field] ?? 0);
   }
   return normalized;
 }

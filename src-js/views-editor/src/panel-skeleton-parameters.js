@@ -2,7 +2,10 @@ import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { isScrubCancelled } from "@fontra/core/number-scrub.js";
-import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
+import {
+  DEFAULT_UNDERSIDE_CUP_TENSION,
+  MAX_TIP_CUT_ANGLE,
+} from "@fontra/core/serif-geometry.js";
 import { SERIF_HALF_DEFAULTS } from "@fontra/core/skeleton-generator.js";
 import {
   SERIF_HALF_FIELDS,
@@ -222,6 +225,9 @@ function serifHalfValuesFromField(name, value) {
 function serifNudgeTargets(name) {
   if (name === "cup") {
     return [{ field: "undersideCup" }];
+  }
+  if (name === "cuptension") {
+    return [];
   }
   const [scope, field] = String(name).split("-");
   if (!SERIF_HALF_FIELDS.includes(field)) {
@@ -1458,9 +1464,21 @@ export default class SkeletonParametersPanel extends Panel {
         { step: 1, disabled: !canEdit }
       );
     }
-    // One curve across the whole terminal, so this is shared rather than per
-    // half: a cup on each half would meet at a break in the middle.
+    // One curve across the whole terminal, so these are shared rather than per
+    // half: a cup on each half would meet at a break in the middle. Two
+    // numbers: the depth slides the foot centre, the tension sets how long the
+    // four handles reaching it are.
     pushLength("serif:cup", "serif-underside-cup", serif.undersideCup);
+    this._pushSummarySlider(
+      formContents,
+      "serif:cuptension",
+      "serif-underside-cup-tension",
+      percentSummary(serif.undersideCupTension),
+      0,
+      100,
+      Math.round(DEFAULT_UNDERSIDE_CUP_TENSION * 100),
+      { step: 1, disabled: !canEdit }
+    );
     this._buildSerifPresetControls(formContents, serif, canEdit);
   }
 
@@ -1502,7 +1520,9 @@ export default class SkeletonParametersPanel extends Panel {
         }
       }
     }
-    return serif.sides.mixed || serif.undersideCup.mixed;
+    return (
+      serif.sides.mixed || serif.undersideCup.mixed || serif.undersideCupTension.mixed
+    );
   }
 
   // The setting lives with the master, because the outline it changes is
@@ -1893,7 +1913,9 @@ export default class SkeletonParametersPanel extends Panel {
         const makeValues = (streamed) =>
           name === "axisangle"
             ? { axisAngle: Number(streamed) }
-            : serifHalfValuesFromField(name, streamed);
+            : name === "cuptension"
+              ? { undersideCupTension: Number(streamed) / 100 }
+              : serifHalfValuesFromField(name, streamed);
         if (makeValues(value)) {
           await setPanelSerifParametersStream(
             this.sceneController,
@@ -2255,6 +2277,12 @@ export default class SkeletonParametersPanel extends Panel {
     }
     if (name === "cup") {
       await apply({ undersideCup: value == null ? null : Number(value) });
+      return;
+    }
+    if (name === "cuptension") {
+      await apply({
+        undersideCupTension: value == null ? null : Number(value) / 100,
+      });
       return;
     }
     const values = serifHalfValuesFromField(name, value);

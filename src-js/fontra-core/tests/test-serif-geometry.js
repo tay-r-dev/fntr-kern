@@ -456,6 +456,57 @@ describe("serif terminal assembly", () => {
     expectClose(centre.y, 18);
   });
 
+  // The cup is two numbers: the depth places the foot centre, the tension sets
+  // how long the four handles that reach it are. Tension 1 puts each pair on
+  // the middle of its own half-span, which is as full as the sweep gets before
+  // the two handles of one segment change places.
+  describe("underside cup tension", () => {
+    // The four controls between the two tip bottoms, in emission order.
+    const cupControls = (overrides) =>
+      terminal(overrides)
+        .points.slice(7, 9)
+        .concat(terminal(overrides).points.slice(10, 12));
+
+    it("defaults to the shape it drew before the control existed", () => {
+      const [first] = cupControls({ undersideCup: 18 });
+      const tipBottom = terminal({ undersideCup: 18 }).points.filter(
+        (point) => !point.type
+      )[2];
+      expectClose(first.x, tipBottom.x - (tipBottom.x - 0) * (1 / 3));
+    });
+
+    it("collapses every handle onto its own end at tension 0", () => {
+      const points = terminal({ undersideCup: 18, undersideCupTension: 0 }).points;
+      const onCurve = points.filter((point) => !point.type);
+      expectClose(points[7].x, onCurve[2].x);
+      expectClose(points[8].x, onCurve[3].x);
+      expectClose(points[10].x, onCurve[3].x);
+      expectClose(points[11].x, onCurve[4].x);
+    });
+
+    it("puts both handles of a half on its midpoint at tension 1", () => {
+      const points = terminal({ undersideCup: 18, undersideCupTension: 1 }).points;
+      const onCurve = points.filter((point) => !point.type);
+      const midpoint = (onCurve[2].x + onCurve[3].x) / 2;
+      expectClose(points[7].x, midpoint);
+      expectClose(points[8].x, midpoint);
+    });
+
+    it("keeps each handle at its own end's depth, whatever the tension", () => {
+      const points = terminal({ undersideCup: 18, undersideCupTension: 0.8 }).points;
+      const onCurve = points.filter((point) => !point.type);
+      expectClose(points[7].y, onCurve[2].y);
+      expectClose(points[8].y, onCurve[3].y);
+    });
+
+    it("still emits seven on-curve points at either extreme", () => {
+      for (const undersideCupTension of [0, 1]) {
+        const { points } = terminal({ undersideCup: 18, undersideCupTension });
+        expect(points.filter((point) => !point.type)).to.have.length(7);
+      }
+    });
+  });
+
   it("keeps the foot centre on the skeleton when the halves are unequal", () => {
     const { points } = terminal({
       left: { ...half, wingLength: 20 },

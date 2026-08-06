@@ -4747,6 +4747,8 @@ function buildSerifCap({
     left: leftDepth.half,
     right: rightDepth.half,
     undersideCup: (pointSerif?.undersideCup ?? 0) * lengthScale,
+    // A fraction of the foot's own span, so the units mode does not touch it.
+    undersideCupTension: pointSerif?.undersideCupTension,
   };
   const terminal = buildSerifTerminal(terminalArgs);
   // The serif releases the stroke at a point of its own choosing, on the flank
