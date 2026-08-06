@@ -150,15 +150,39 @@ export function editSkeleton(layerGlyph, mutate, options = {}) {
   });
 }
 
+// Every frame of a drag rebuilds its change from the state captured at
+// mouse-down, and the caller applies those changes one after another without
+// putting the previous frame back first. A frame that only moves points is
+// therefore correct only while the outline still has the shape it had at
+// mouse-down. Once a frame has replaced the contours, it no longer does: a
+// later move-only frame would write its coordinates into the slots of an
+// outline that is gone, and leave the contour boundaries where the replaced
+// outline put them — the points spill across contours and the shape is
+// wrecked until the next edit rebuilds it. So a drag that has replaced its
+// contours once keeps replacing them.
+const dragsThatReplacedContours = new WeakSet();
+
 export function makeEditSkeletonChange(layerGlyph, mutate, options = {}) {
   const scratch = cloneLayerGlyphForSkeletonEdit(layerGlyph);
-  return editSkeleton(scratch, mutate, options);
+  let replacedContours = dragsThatReplacedContours.has(layerGlyph);
+  const changes = recordChanges(scratch, (scratchProxy) => {
+    replacedContours =
+      applySkeletonMutation(scratchProxy, mutate, {
+        ...options,
+        replaceContours: replacedContours,
+      }) || replacedContours;
+  });
+  if (replacedContours) {
+    dragsThatReplacedContours.add(layerGlyph);
+  }
+  return changes;
 }
 
+// Returns whether the generated contours were replaced rather than moved.
 function applySkeletonMutation(layerGlyph, mutate, options = {}) {
   const original = getSkeletonData(layerGlyph);
   if (!original && !options.createIfMissing) {
-    return;
+    return false;
   }
 
   const working = normalizeSkeletonData(
@@ -166,8 +190,14 @@ function applySkeletonMutation(layerGlyph, mutate, options = {}) {
   );
   mutate(working);
   const generated = generateFromSkeleton(working, readSkeletonGenerationOptions());
-  replaceGeneratedSkeletonContours(layerGlyph, working, generated);
+  const replacedContours = replaceGeneratedSkeletonContours(
+    layerGlyph,
+    working,
+    generated,
+    options.replaceContours === true
+  );
   setSkeletonData(layerGlyph, working);
+  return replacedContours;
 }
 
 export function cloneLayerGlyphForSkeletonEdit(layerGlyph) {
@@ -178,7 +208,12 @@ export function cloneLayerGlyphForSkeletonEdit(layerGlyph) {
   };
 }
 
-export function replaceGeneratedSkeletonContours(layerGlyph, skeletonData, generated) {
+export function replaceGeneratedSkeletonContours(
+  layerGlyph,
+  skeletonData,
+  generated,
+  replaceContours = false
+) {
   const previous = (skeletonData.generated || []).filter(
     (entry) =>
       Number.isInteger(entry.pathContourIndex) &&
@@ -186,7 +221,10 @@ export function replaceGeneratedSkeletonContours(layerGlyph, skeletonData, gener
       entry.pathContourIndex < layerGlyph.path.numContours
   );
 
-  if (canUpdateGeneratedContoursInPlace(layerGlyph.path, previous, generated)) {
+  if (
+    !replaceContours &&
+    canUpdateGeneratedContoursInPlace(layerGlyph.path, previous, generated)
+  ) {
     // Steady state (every width/nudge/coordinate drag): write point coordinates
     // in place. pathContourIndex stays stable, per-frame change objects contain
     // only "=xy" point updates, and contour order stays identical across
@@ -204,7 +242,7 @@ export function replaceGeneratedSkeletonContours(layerGlyph, skeletonData, gener
         pointMap: generated.provenance[i].pointMap,
       };
     });
-    return;
+    return false;
   }
 
   // Topology changed: structural replace at stable positions. Delete the old
@@ -235,6 +273,7 @@ export function replaceGeneratedSkeletonContours(layerGlyph, skeletonData, gener
       pointMap: generated.provenance[i].pointMap,
     };
   });
+  return true;
 }
 
 function canUpdateGeneratedContoursInPlace(path, previousEntries, generated) {
