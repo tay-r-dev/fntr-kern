@@ -17,11 +17,12 @@ before it can be planned · **specced** = design written, no task plan yet ·
 **planned** = spec and plan written, not built · **done** = built and kept here
 for its findings.
 
-| #   | Item                                | Depth               | Origin | Status    |
-| --- | ----------------------------------- | ------------------- | ------ | --------- |
-| 1   | Axis modes other than perpendicular | core geometry model | (1)    | undecided |
-| 14  | Drop the points that draw nothing   | generator + panel   | new    | open      |
-| 13  | S and D drag from a rib point       | edit pipeline       | new    | open      |
+| #   | Item                                               | Depth               | Origin | Status    |
+| --- | -------------------------------------------------- | ------------------- | ------ | --------- |
+| 1   | Axis modes other than perpendicular                | core geometry model | (1)    | undecided |
+| 14  | Drop the points that draw nothing                  | generator + panel   | new    | open      |
+| 15  | The cup sits off-center when one side is collapsed | terminal geometry   | new    | open      |
+| 13  | S and D drag from a rib point                      | edit pipeline       | new    | open      |
 
 Items 2 through 12 are all closed. Their entries were deleted rather than kept
 here: what they built is in the feature model, why it was built that way is in
@@ -171,6 +172,53 @@ never move are dead weight and can go.
 
 Widening the removal changes generator output, so the golden fixtures move for
 every case that has the option on. That is expected, not a regression.
+
+---
+
+## 15. The cup sits off-center when one side is collapsed
+
+**Reported bug, not a new feature.** It contradicts a decision the feature model
+states, so read that decision before you change anything.
+
+### What is wrong
+
+The underside cup is one curve across the whole terminal, tip to tip. Its lowest
+point sits on the **skeleton endpoint**. Feature model §8 says so, and gives the
+reason: the axis modes routinely produce unequal halves, and a centre anchored at
+the midpoint of the two tips would drag the contact geometry off the alignment
+zone as the axis rotates.
+
+Single-sided mode breaks that reasoning. All of the width moves to one side, so
+the other side lies on the skeleton and its half of the serif collapses to zeros
+(dev log §29, item 1). The terminal is then entirely on one side of the skeleton
+endpoint. The cup's lowest point lands on the terminal's **edge** instead of its
+middle, and the foot reads as a lopsided scoop.
+
+### Expected
+
+The cup's lowest point sits at the centre of the serif.
+
+### The decision this needs first
+
+Those two rules agree on a symmetric terminal and disagree everywhere else. Pick
+one statement that covers both cases, rather than adding a single-sided branch to
+the cup (rail R-E).
+
+Two candidates:
+
+- **The centre of the foot the serif actually draws.** Correct here. Check it
+  against the case §8 rejected it for: sweep the axis through the tilted modes and
+  measure whether the contact point leaves the alignment zone.
+- **The skeleton, offset by the collapsed side's own half-width.** Keeps the
+  alignment-zone guarantee on a two-sided terminal and re-centres the one-sided
+  one. It is the same number in both cases, which is the sign it may be the rule
+  §8 was reaching for.
+
+### Constraints that still hold
+
+Point-count stability across every parameter value, including a collapsed side and
+a zero cup. Whatever the centre becomes, both wings still emit all of their points.
+Test the count directly (feature model §8), do not infer it from the shape.
 
 ---
 
