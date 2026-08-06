@@ -81,10 +81,16 @@ export const VALID_SERIF_AXIS_MODES = new Set([
   "absolute",
 ]);
 export const VALID_SERIF_UNITS_MODES = new Set(["absolute", "normalized"]);
-// Which sides of the terminal the serif is built on. A side left out generates
-// no shape at all — it still emits every one of its points, collapsed, because
-// point count is the interpolation contract.
-export const VALID_SERIF_SIDES = new Set(["both", "left", "right"]);
+// Which sides of the terminal the serif is built on, and whether the two are
+// edited as one shape. A side left out generates nothing at all — it still
+// emits every one of its points, collapsed, because point count is the
+// interpolation contract.
+//
+// "both" is one shape on two sides. "split" is two wings shaped separately,
+// which only the panel's create-the-other-side button produces. They are one
+// field rather than a side list plus a link flag, because two flags can
+// half-apply and leave a state neither of them describes.
+export const VALID_SERIF_SIDES = new Set(["both", "left", "right", "split"]);
 
 // One half-serif's shape. Absolute font units unless the source's serif units
 // mode says otherwise; `tipCutAngle` is degrees and `tension`, `concavity` and
@@ -3305,7 +3311,13 @@ function normalizeSerif(serif) {
     left: normalizeSerifHalf(serif?.left),
     right: normalizeSerifHalf(serif?.right),
     linked: serif?.linked !== false,
-    sides: VALID_SERIF_SIDES.has(serif?.sides) ? serif.sides : "both",
+    // A file written before the tab row carries the old link flag instead, and
+    // an unlinked terminal is exactly what "split" now means.
+    sides: VALID_SERIF_SIDES.has(serif?.sides)
+      ? serif.sides
+      : serif?.linked === false
+        ? "split"
+        : "both",
     axisMode: VALID_SERIF_AXIS_MODES.has(serif?.axisMode)
       ? serif.axisMode
       : "perpendicular",

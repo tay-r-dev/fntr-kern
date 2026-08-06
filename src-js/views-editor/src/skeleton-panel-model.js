@@ -387,15 +387,15 @@ export function summarizeSkeletonSerifSelection(selectedPoints) {
   return {
     left: half("left"),
     right: half("right"),
-    // Linked is the panel's own convenience: it edits both halves at once. It
-    // is not a storage mode — the two halves are always stored independently.
-    linked: reduceValues(
-      selectedPoints.map((entry) => entry.point.serif?.linked !== false)
-    ),
-    // Which sides carry a serif at all. Unlike `linked` this IS storage: a side
-    // left out of it generates nothing.
+    // Which sides carry a serif, and whether the two are shaped as one. A side
+    // left out of it generates nothing. It falls back through the old link flag
+    // so a file written before the tab row reads the same way it drew.
     sides: reduceValues(
-      selectedPoints.map((entry) => entry.point.serif?.sides ?? "both")
+      selectedPoints.map(
+        (entry) =>
+          entry.point.serif?.sides ??
+          (entry.point.serif?.linked === false ? "split" : "both")
+      )
     ),
     axisMode: terminal("axisMode", "perpendicular"),
     axisAngle: terminal("axisAngle", 0),
