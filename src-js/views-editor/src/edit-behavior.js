@@ -1372,8 +1372,14 @@ const alternateRules = [
   // Two unselected smooth points between two selected off-curves
   [    ANY|NIL,    OFF|SEL,    SMO|UNS,    SMO|UNS,    OFF|SEL,    ANY|NIL,    true,       "Move"],
 
-  // Two selected points locked by angle
-  [    ANY|NIL,    ANY,        SHA|SEL,    SMO|SEL,    OFF|UNS,    OFF|SHA|NIL,false,      "ConstrainMiddle"],
+  // Two selected points locked by angle. Both ends of the straight are held to
+  // the line, whichever way round the contour runs it and whether or not the
+  // far end is the contour's own first or last point (prevPrev may be NIL).
+  // The straight owns the angle of the handle on the smooth point's other
+  // side, and alt leaves that handle where it is, so the pair may only slide
+  // along it.
+  [    ANY|NIL,    ANY|NIL,    SHA|SEL,    SMO|SEL,    OFF|UNS,    OFF|SHA|NIL,false,      "ConstrainMiddle"],
+  [    ANY|NIL,    ANY|NIL,    OFF|UNS,    SMO|SEL,    SHA|SEL,    ANY|NIL,    false,      "ConstrainMiddle"],
   [    ANY|NIL,    ANY,        SMO|SEL,    SHA|SEL,    ANY|NIL,    ANY|NIL,    false,      "ConstrainPrevAngle"],
   [    ANY|NIL,    ANY,        SMO|SEL,    OFF|SEL,    ANY|NIL,    ANY|NIL,    false,      "ConstrainPrevAngle"],
 
