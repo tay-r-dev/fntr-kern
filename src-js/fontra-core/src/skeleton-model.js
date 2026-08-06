@@ -12,6 +12,7 @@ import {
 import { getGlyphInfoFromGlyphName } from "./glyph-data.js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
 import { offsetCubicSide } from "./offset-cubic.js";
+import { alignHandle, alignHandles } from "./path-functions.js";
 import {
   DEFAULT_UNDERSIDE_CUP_TENSION,
   maxSerifEaseDistance,
@@ -1591,6 +1592,25 @@ function rebuildSkeletonContourPoints(points, deleteSet, isClosed, skeletonData)
     }
   }
 
+  // On-curve points that sat next to something the deletion takes away: the
+  // segment on that side changes shape under them, so a smooth flag they carry
+  // now describes a neighbourhood that no longer exists.
+  const disturbedOnCurveIds = new Set();
+  for (const idx of deleteSet) {
+    for (const direction of [-1, 1]) {
+      const neighbor = findSurvivingOnCurve(
+        points,
+        idx,
+        deletedOnCurves,
+        isClosed,
+        direction
+      );
+      if (neighbor !== null) {
+        disturbedOnCurveIds.add(points[neighbor].id);
+      }
+    }
+  }
+
   const newPoints = [];
   const processedSegments = new Set();
 
@@ -1633,7 +1653,7 @@ function rebuildSkeletonContourPoints(points, deleteSet, isClosed, skeletonData)
     }
   }
 
-  fixSkeletonSmoothFlags(newPoints, isClosed);
+  fixSkeletonSmoothFlags(newPoints, isClosed, disturbedOnCurveIds);
   return newPoints;
 }
 
@@ -1652,7 +1672,7 @@ function findSurvivingOnCurve(points, startIdx, deletedOnCurves, isClosed, direc
 }
 
 // A surviving on-curve can only stay smooth with at least one adjacent handle
-function fixSkeletonSmoothFlags(points, isClosed) {
+function fixSkeletonSmoothFlags(points, isClosed, disturbedIds = null) {
   const numPoints = points.length;
   if (numPoints < 2) {
     return;
@@ -1670,7 +1690,43 @@ function fixSkeletonSmoothFlags(points, isClosed) {
     const nextPoint = points[(i + 1) % numPoints];
     if (!prevPoint?.type && !nextPoint?.type) {
       point.smooth = false;
+      continue;
     }
+    // One side is a straight segment now, and the point is still smooth: its
+    // surviving handle has to lie on that segment's continuation. Left where
+    // the deletion found it, the outline generator obeys the smooth flag by
+    // throwing its own handles the other way, and the shape folds over itself
+    // until the next edit realigns the handle.
+    if (
+      (!prevPoint?.type || !nextPoint?.type) &&
+      (!disturbedIds || disturbedIds.has(point.id))
+    ) {
+      alignSkeletonSmoothHandles(point, prevPoint, nextPoint);
+    }
+  }
+}
+
+// Put the off-curve neighbors of a smooth skeleton point into a collinear
+// position, mirroring toggleSmooth's handle fix-up on regular paths.
+export function alignSkeletonSmoothHandles(anchorPoint, prevPoint, nextPoint) {
+  if (prevPoint?.type && nextPoint?.type) {
+    const [newPrevPoint, newNextPoint] = alignHandles(
+      prevPoint,
+      anchorPoint,
+      nextPoint
+    );
+    prevPoint.x = newPrevPoint.x;
+    prevPoint.y = newPrevPoint.y;
+    nextPoint.x = newNextPoint.x;
+    nextPoint.y = newNextPoint.y;
+  } else if (prevPoint?.type) {
+    const newPrevPoint = alignHandle(nextPoint, anchorPoint, prevPoint);
+    prevPoint.x = newPrevPoint.x;
+    prevPoint.y = newPrevPoint.y;
+  } else if (nextPoint?.type) {
+    const newNextPoint = alignHandle(prevPoint, anchorPoint, nextPoint);
+    nextPoint.x = newNextPoint.x;
+    nextPoint.y = newNextPoint.y;
   }
 }
 

@@ -541,6 +541,28 @@ describe("skeleton-model shape-preserving multi-point deletion", () => {
     expect(points.slice(2).filter((point) => point.type === "cubic")).to.have.length(2);
   });
 
+  it("deleting an off-curve realigns the smooth point's surviving handle", () => {
+    const skeleton = makeEmptySkeletonData();
+    const { contour, a, h1, b, h3 } = makeCurveContour(skeleton);
+
+    deleteSkeletonPoints(skeleton, [[contour.id, h1.id]]);
+
+    // A--B is a line now, and B is smooth, so B's surviving handle has to lie
+    // on that line's continuation. Left where it was, the outline generator
+    // honours the smooth flag by throwing its own handle backwards.
+    const points = getSkeletonContour(skeleton, contour.id).points;
+    const survivor = points.find((point) => point.id === h3.id);
+    const along = { x: b.x - a.x, y: b.y - a.y };
+    const out = { x: survivor.x - b.x, y: survivor.y - b.y };
+    // handle positions are rounded to whole units, as everywhere else
+    const offLine =
+      Math.abs(along.x * out.y - along.y * out.x) / Math.hypot(along.x, along.y);
+    expect(offLine).to.be.below(0.5);
+    expect(along.x * out.x + along.y * out.y).to.be.above(0);
+    // realigning turns the handle, it does not stretch it
+    expect(Math.hypot(out.x, out.y)).to.be.closeTo(30, 0.5);
+  });
+
   it("deleting an open-contour endpoint clears its handles and moves cap data", () => {
     const skeleton = makeEmptySkeletonData();
     const { contour, a, b } = makeCurveContour(skeleton);
