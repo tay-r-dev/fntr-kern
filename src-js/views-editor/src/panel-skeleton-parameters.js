@@ -288,13 +288,23 @@ export default class SkeletonParametersPanel extends Panel {
       this._forceRebuild = true;
       this.update();
     }, 100);
+    // An edit that changes WHICH controls the panel shows has to wait for its
+    // own echo. The rebuild we run the moment the edit resolves reads the
+    // positioned glyph, and that has not been recomputed yet — so it renders
+    // the state from before the edit, and the panel sits one action behind
+    // until something else moves. A value edit does not have this problem,
+    // because the input already holds the number it reported to us.
+    this._rebuildOnOwnEcho = false;
     this.sceneController.addCurrentGlyphChangeListener((event) => {
       // Our own edits already rebuild in _onFieldChange; their async echo
       // (postChange broadcast) must not schedule a second rebuild — the
       // trailing rebuild replaces the slider input the user may already be
       // dragging again and can briefly read not-yet-settled values.
       if (event?.senderID === SKELETON_PANEL_SENDER) {
-        return;
+        if (!this._rebuildOnOwnEcho) {
+          return;
+        }
+        this._rebuildOnOwnEcho = false;
       }
       if (!this._suppressGlyphChangeUpdate) {
         this._throttledGlyphChangeUpdate();
@@ -2186,14 +2196,13 @@ export default class SkeletonParametersPanel extends Panel {
 
     // The side control is three buttons and two more below them, none of which
     // is a form field, so nothing on this route passes through the form's own
-    // change handler. Without a rebuild the panel's state signature is
-    // unchanged by a serif edit — the numbers move and the controls that decide
-    // WHICH numbers are shown do not. Every branch that writes `sides` goes
-    // through here.
+    // change handler. These edits also change which controls exist rather than
+    // what they hold, so the rebuild has to happen against settled data —
+    // hence the echo, not an immediate call. Every branch that writes `sides`
+    // goes through here.
     const applyAndRebuild = async (values) => {
+      this._rebuildOnOwnEcho = true;
       await apply(values);
-      this._forceRebuild = true;
-      await this.update();
     };
 
     // Copy one summarized half onto the other, so the two are identical and one
