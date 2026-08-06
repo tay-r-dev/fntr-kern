@@ -488,6 +488,21 @@ function removeStraightSegmentHandles(points, tolerance) {
   }
   const isNear = (one, other) =>
     Math.abs(one.x - other.x) <= tolerance && Math.abs(one.y - other.y) <= tolerance;
+  // On the line the two on-curves span, whatever it does along that line. A
+  // handle sitting on its own on-curve is one case of this; the underside cup
+  // at zero is another, and it puts its controls a third of the way along.
+  // Past an end the curve doubles back before it arrives, and still draws the
+  // same straight line.
+  const isOnChord = (handle, start, end) => {
+    const spanX = end.x - start.x;
+    const spanY = end.y - start.y;
+    const lengthSquared = spanX * spanX + spanY * spanY;
+    if (lengthSquared === 0) {
+      return isNear(handle, start);
+    }
+    const cross = (handle.x - start.x) * spanY - (handle.y - start.y) * spanX;
+    return Math.abs(cross) / Math.sqrt(lengthSquared) <= tolerance;
+  };
   const dropped = new Set();
   for (let index = 0; index < points.length; index++) {
     const [start, first, second, end] = [0, 1, 2, 3].map(
@@ -496,9 +511,9 @@ function removeStraightSegmentHandles(points, tolerance) {
     if (start.type || !first.type || !second.type || end.type) {
       continue;
     }
-    // Both ends, or neither. One handle off its on-curve still bends the
-    // segment, and dropping it would change the shape rather than simplify it.
-    if (!isNear(first, start) || !isNear(second, end)) {
+    // Both ends, or neither. One handle off the line still bends the segment,
+    // and dropping it would change the shape rather than simplify it.
+    if (!isOnChord(first, start, end) || !isOnChord(second, start, end)) {
       continue;
     }
     dropped.add((index + 1) % points.length);

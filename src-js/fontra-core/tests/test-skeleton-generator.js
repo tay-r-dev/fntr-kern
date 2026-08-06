@@ -1794,6 +1794,42 @@ describe("skeleton-generator collapsed serif points", () => {
       undefined,
     ]);
   });
+
+  // The underside cup at 0 puts its two controls a third of the way along the
+  // foot with no depth. That is a straight line drawn as a curve, exactly what
+  // this option is for, and it is not covered by the handles sitting on their
+  // own on-curves.
+  it("drops handles spread along the chord, not only ones on their on-curve", () => {
+    const on = (x, y) => ({ x, y });
+    const off = (x, y) => ({ x, y, type: "cubic" });
+    const points = [on(0, 0), off(33, 0), off(67, 0), on(100, 0), on(100, 200)];
+    expect(removeCollapsedOutlinePoints(points).map((point) => point.type)).to.eql([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("keeps a handle that leaves the chord", () => {
+    const on = (x, y) => ({ x, y });
+    const off = (x, y) => ({ x, y, type: "cubic" });
+    const points = [on(0, 0), off(33, 0), off(67, 9), on(100, 0), on(100, 200)];
+    expect(removeCollapsedOutlinePoints(points).length).to.equal(5);
+  });
+
+  // Along the line but past its end, the segment doubles back on itself before
+  // it arrives. It draws a straight line either way, and dropping the handles
+  // draws the same one.
+  it("drops handles that overshoot the chord along its own direction", () => {
+    const on = (x, y) => ({ x, y });
+    const off = (x, y) => ({ x, y, type: "cubic" });
+    const points = [on(0, 0), off(-40, 0), off(67, 0), on(100, 0), on(100, 200)];
+    expect(removeCollapsedOutlinePoints(points).map((point) => point.type)).to.eql([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
 });
 
 describe("skeleton-generator single-sided serif", () => {
