@@ -2184,6 +2184,18 @@ export default class SkeletonParametersPanel extends Panel {
         this._undo("set-serif")
       );
 
+    // The side control is three buttons and two more below them, none of which
+    // is a form field, so nothing on this route passes through the form's own
+    // change handler. Without a rebuild the panel's state signature is
+    // unchanged by a serif edit — the numbers move and the controls that decide
+    // WHICH numbers are shown do not. Every branch that writes `sides` goes
+    // through here.
+    const applyAndRebuild = async (values) => {
+      await apply(values);
+      this._forceRebuild = true;
+      await this.update();
+    };
+
     // Copy one summarized half onto the other, so the two are identical and one
     // set of controls can describe both. A field that is mixed across the
     // selection stays mixed rather than collapsing onto one number.
@@ -2207,18 +2219,18 @@ export default class SkeletonParametersPanel extends Panel {
       if (value === "left" || value === "right") {
         Object.assign(values, mirrorOnto(serif, value));
       }
-      await apply(values);
+      await applyAndRebuild(values);
       return;
     }
     if (name === "addOtherSide") {
       // The halves already match, so the new side arrives as a copy of the one
       // that was drawn. Shaping them apart is the whole of it.
-      await apply({ sides: "split" });
+      await applyAndRebuild({ sides: "split" });
       return;
     }
     if (name === "symmetrize") {
       const serif = summarizeSkeletonSerifSelection(this._widthPoints());
-      await apply({ sides: "both", ...mirrorOnto(serif, value) });
+      await applyAndRebuild({ sides: "both", ...mirrorOnto(serif, value) });
       return;
     }
     if (name === "axismode") {
