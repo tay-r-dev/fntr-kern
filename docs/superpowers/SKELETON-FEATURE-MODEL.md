@@ -691,8 +691,8 @@ the same answer on an unlocked terminal and the wrong one on a locked one, which
 stem came to draw a slanted foot under a flat rib.
 
 Whenever the axis is not square to the tangent — under a lock, or in any of the three named modes on
-a leaning stroke — the frame's depth stops agreeing with the stroke direction, and everything the
-serif hands back to the stroke has to be found along the stroke instead. See the release rule below.
+a leaning stroke — the frame's depth stops agreeing with the stroke direction, and the whole frame
+leans with the stroke instead. See the release rule below.
 
 ### The two halves
 
@@ -797,14 +797,24 @@ cut in the edge decides only **how much curve to keep**. `anchorTerminalSplit` t
 end onto the release, and turns the surviving handle along the flank. That is what keeps the join a
 real smooth point, instead of a corner that happens to look shallow.
 
-**The flank line runs along the stroke, not up the frame's depth.** The two coincide only while the
-axis is square to the tangent. A rib angle lock, or any of the three named axis modes on a leaning
-stroke, tilts them apart — and the frame reports that tilt as `flankSlope`, which the half-serif
-uses to find the wall at each depth. Placed at the rib end's own `u` at every depth instead, both
-releases slide the same way along the axis, which is inward on one wall and outward on the other:
-the stem changed thickness above a serif that had only been switched on, and the change grew with
-the lean and with the serif's height. The 15 degree floor between axis and tangent bounds the slope,
-so it cannot run away.
+**The frame leans with the stroke.** `u` is measured across the stroke along the serif's axis and
+`v` is depth into it, but a line of constant `u` runs **along the stroke**, not square to the axis.
+`flankSlope` is that lean. The foot line is `v = 0`, so it is untouched, and a terminal whose axis
+is already square to its stroke is unchanged in every part.
+
+A square frame is wrong twice over as soon as the axis is not square to the tangent — which is a rib
+angle lock, or any of the three named modes on a leaning stroke. The stroke's own wall stops being a
+line of constant `u`, so both releases land beside the wall, the same way along the axis, which is
+inward on one wall and outward on the other: **the stem changed thickness above a serif that had
+only been switched on**, by the serif's height times the sine of the lean. And leaning the wall
+alone is not enough either, because then each bracket has a different sideways run to cover and the
+two halves stop matching. Leaning the whole frame answers both, and answers them the way a designer
+draws: everything measured sideways is measured across the stroke, everything measured upward runs
+up the stroke. The 15 degree floor between axis and tangent bounds the lean, so it cannot run away.
+
+One consequence worth stating: **the cupped foot centre now sits on the skeleton's own line**, since
+`u = 0` is that line. Under a square frame it was lifted perpendicular to the foot and drifted off
+the skeleton as the stroke leaned.
 
 Reading the release off the cut instead is the mistake this feature has already made and reverted.
 It is tempting. On a curved approach the edge really has drifted off the flank by the time the

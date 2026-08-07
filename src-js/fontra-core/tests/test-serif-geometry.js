@@ -568,10 +568,21 @@ describe("serif terminal assembly", () => {
 describe("a serif frame the stroke is not square to", () => {
   // A rib angle lock holds the rib flat while the stem leans, and the three
   // named axis modes state a direction outright, so the axis is routinely not
-  // square to the stroke. The wall still leaves the rib end along the stroke.
-  // Everything the serif hands back to the wall therefore has to be found on
-  // that line — measured straight up the frame instead it slides sideways, the
-  // same way on both sides, so one wall moves in and the other out.
+  // square to the stroke. The frame leans with the stroke, which is what keeps
+  // the wall at one u the whole way up and keeps the two halves matching.
+  const params = {
+    wingLength: 40,
+    tipThickness: 20,
+    wingSlope: 20,
+    tipCutAngle: 0,
+    reach: 30,
+    tension: 0.5,
+    concavity: 0.5,
+    easeDistance: 15,
+    easeCurvature: 0.5,
+  };
+  const tilts = [-40, -20, 20, 40];
+
   function tilted(degrees) {
     const radians = (degrees * Math.PI) / 180;
     return {
@@ -586,33 +597,54 @@ describe("a serif frame the stroke is not square to", () => {
     };
   }
 
-  it("reports no wall slope where the axis is square to the stroke", () => {
+  it("does not lean where the axis is square to the stroke", () => {
     expectClose(tilted(0).frame.flankSlope, 0);
   });
 
-  it("keeps the junction, corner and release on the wall", () => {
-    const params = {
-      wingLength: 40,
-      tipThickness: 20,
-      wingSlope: 20,
-      tipCutAngle: 0,
-      reach: 30,
-      tension: 0.5,
-      concavity: 0.5,
-      easeDistance: 15,
-      easeCurvature: 0.5,
-    };
-    for (const degrees of [-40, -20, 20, 40]) {
+  it("runs a line of constant u along the stroke", () => {
+    for (const degrees of tilts) {
+      const { frame, inward } = tilted(degrees);
+      const foot = frame.toGlyph({ u: 50, v: 0 });
+      const up = frame.toGlyph({ u: 50, v: 90 });
+      expectClose(
+        (up.x - foot.x) * inward.y - (up.y - foot.y) * inward.x,
+        0,
+        `constant u left the stroke at ${degrees}`
+      );
+    }
+  });
+
+  it("still measures v as a perpendicular depth off the foot line", () => {
+    for (const degrees of tilts) {
+      const { frame } = tilted(degrees);
+      const point = frame.toGlyph({ u: 50, v: 90 });
+      expectClose(
+        point.x * frame.depth.x + point.y * frame.depth.y,
+        90,
+        `depth drifted at ${degrees}`
+      );
+    }
+  });
+
+  it("round-trips a point through the leaning frame", () => {
+    for (const degrees of tilts) {
+      const { frame } = tilted(degrees);
+      const original = { x: 12.5, y: -8.25 };
+      const back = frame.toGlyph(frame.toFrame(original));
+      expectClose(back.x, original.x, `x at ${degrees}`);
+      expectClose(back.y, original.y, `y at ${degrees}`);
+    }
+  });
+
+  // The wall is where the serif hands the stroke back, so it has to be the
+  // stroke's own wall: the line leaving the rib end along the stroke.
+  it("keeps the junction, corner and release on the stroke's wall", () => {
+    for (const degrees of tilts) {
       const { frame, inward } = tilted(degrees);
       for (const side of [1, -1]) {
         const flankU = side * 50;
         const ribEnd = frame.toGlyph({ u: flankU, v: 0 });
-        const half = buildHalfSerif({
-          side,
-          flankU,
-          flankSlope: frame.flankSlope,
-          params,
-        });
+        const half = buildHalfSerif({ side, flankU, params });
         for (const name of ["corner", "junction", "release"]) {
           const point = frame.toGlyph(half[name]);
           expectClose(
@@ -622,6 +654,47 @@ describe("a serif frame the stroke is not square to", () => {
           );
         }
       }
+    }
+  });
+
+  // Leaning the wall alone would leave each bracket a different sideways run to
+  // cover, and the two halves would stop matching. Every sideways measurement is
+  // taken across the stroke, so a half stands where its own numbers say at any
+  // lean, and two halves given the same numbers are the same shape.
+  it("puts every point at its authored offset across the stroke, at any lean", () => {
+    const named = ["tipBottom", "tipTop", "corner", "junction", "release"];
+    // How far across the stroke a glyph point sits, reading the skeleton's own
+    // line and the foot line as the two directions.
+    const across = (point, inward, axis) => {
+      const determinant = inward.x * axis.y - axis.x * inward.y;
+      return (inward.x * point.y - point.x * inward.y) / determinant;
+    };
+    for (const degrees of [0, ...tilts]) {
+      const { frame, inward } = tilted(degrees);
+      for (const side of [1, -1]) {
+        const half = buildHalfSerif({ side, flankU: side * 50, params });
+        // Wall at 50, wing out another 40, and the cut angle is 0.
+        const expected = [90, 90, 50, 50, 50].map((offset) => side * offset);
+        named.forEach((name, index) => {
+          expectClose(
+            across(frame.toGlyph(half[name]), inward, frame.axis),
+            expected[index],
+            `${name} at ${degrees}, side ${side}`
+          );
+        });
+      }
+    }
+  });
+
+  it("keeps the foot centre on the skeleton, cup and all", () => {
+    for (const degrees of tilts) {
+      const { frame, inward } = tilted(degrees);
+      const centre = frame.toGlyph({ u: 0, v: 25 });
+      expectClose(
+        centre.x * inward.y - centre.y * inward.x,
+        0,
+        `cupped foot centre left the skeleton at ${degrees}`
+      );
     }
   });
 });
