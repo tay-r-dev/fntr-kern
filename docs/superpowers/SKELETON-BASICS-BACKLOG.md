@@ -143,3 +143,8 @@ stroke has no wings and no flank to release onto.
 Serif backlog item 1 asks the deeper version of this question. It splits the foot
 direction from the flank direction, which are still one thing here. This fix does
 not block it and does not answer it.
+
+A follow-up report on this same lock (2026-08-07) hit item 1's gate directly: a
+flat foot under a leaning stem stretches the wing unevenly. That gate is now
+answered in practice — see serif backlog item 1 — but the item itself is still
+open.

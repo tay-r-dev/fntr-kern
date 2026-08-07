@@ -118,6 +118,23 @@ Identical on an upright stem with a perpendicular foot; they only diverge in the
 tilted modes. This is a drawing decision, and it determines the whole
 construction below it, so it is a gate on planning this item.
 
+**The decision was made in practice, once, under the rib-angle-lock case of this
+same conflict.** A flat foot under a leaning stem was found to draw the same
+disagreement this item describes: the wall stands further along the axis by the
+time it reaches the top of the wing. Three answers were built and compared —
+even slab, follow the stem, and slide the whole foot to meet the wall — and
+**even slab** is what shipped (2026-08-07, `_external/c.json`). The other two
+were rejected: following the stem deforms the wing into a parallelogram, and
+sliding the foot moves its centre off the skeleton point. The accepted cost is
+the one this section already names — the wing's join to the stem becomes a
+shallow wedge, and the two slope edges reach unequally, growing with the tilt
+and with wing slope. See feature model §8 for the measured numbers.
+
+This does not close the item. The lock is a two-value special case of the axis
+tilt this item is about, and it was fixed by moving three points to the wall
+rather than by rewriting the frame. The frame itself is still orthonormal and
+still papers over the general case the way described above.
+
 ### Also open
 
 Whether the 15° minimum separation between axis and tangent survives. It exists
