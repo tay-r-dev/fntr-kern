@@ -1679,6 +1679,101 @@ describe("skeleton-generator serif units mode", () => {
   });
 });
 
+describe("skeleton-generator serif on a stroke the axis is not square to", () => {
+  // Switching a serif on may not move the wall above it. The wall is the
+  // stroke's own offset and belongs to the skeleton and its widths; the serif
+  // only replaces what is below the point it lets go at.
+  //
+  // A rib angle lock is the case that exposes it: the rib stays flat while the
+  // stem leans, so the serif's frame is no longer square to the stroke, and the
+  // release found straight up that frame lands off the wall — the same way on
+  // both sides, so one side moves in and the other out by as much.
+  const halfSerif = {
+    wingLength: 40,
+    tipThickness: 20,
+    wingSlope: 20,
+    tipCutAngle: 0,
+    reach: 0,
+    tension: 0.5,
+    concavity: 0.5,
+    easeDistance: 0,
+    easeCurvature: 0,
+  };
+  const stem = (tiltDegrees, { serif = true } = {}) => {
+    const radians = (tiltDegrees * Math.PI) / 180;
+    const width = { left: 40, right: 40, linked: true, tied: true };
+    return {
+      version: 1,
+      nextId: 3,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80,
+          capStyle: "butt",
+          points: [
+            {
+              id: 1,
+              x: 0,
+              y: 0,
+              width,
+              ribAngleLock: "horizontal",
+              capStyle: serif ? "serif" : null,
+              serif: {
+                left: halfSerif,
+                right: halfSerif,
+                axisMode: "perpendicular",
+                axisAngle: 0,
+                undersideCup: 0,
+              },
+            },
+            {
+              id: 2,
+              x: Math.sin(radians) * 400,
+              y: Math.cos(radians) * 400,
+              width,
+              ribAngleLock: "horizontal",
+            },
+          ],
+        },
+      ],
+      generated: [],
+    };
+  };
+
+  // Every on-curve point the two walls own, as a distance from the centerline.
+  // Provenance names them, so nothing here has to guess from position.
+  function wallDistances(data) {
+    const result = generateFromSkeleton(data);
+    const points = result.contours[0].points;
+    const [start, end] = data.contours[0].points;
+    const length = Math.hypot(end.x - start.x, end.y - start.y);
+    const perpendicular = {
+      x: (end.y - start.y) / length,
+      y: -(end.x - start.x) / length,
+    };
+    return result.provenance[0].pointMap
+      .map((entry, index) => ({ entry, point: points[index] }))
+      .filter(({ entry }) => entry.role === "onCurve" && entry.side)
+      .map(({ point }) =>
+        Math.abs(
+          (point.x - start.x) * perpendicular.x + (point.y - start.y) * perpendicular.y
+        )
+      );
+  }
+
+  it("leaves both walls where the stroke alone put them", () => {
+    for (const tilt of [0, 10, 20, 30, 40]) {
+      const [plain] = wallDistances(stem(tilt, { serif: false }));
+      for (const distance of wallDistances(stem(tilt))) {
+        // Half a unit of slack: the rib ends are emitted on the integer grid
+        // and the serif's release is not.
+        expect(Math.abs(distance - plain), `tilt ${tilt}`).to.be.below(0.51);
+      }
+    }
+  });
+});
+
 describe("skeleton-generator collapsed serif points", () => {
   const half = {
     wingLength: 0,

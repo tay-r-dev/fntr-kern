@@ -690,6 +690,10 @@ terminal set to `horizontal` was already horizontal. Squaring the tangent a seco
 the same answer on an unlocked terminal and the wrong one on a locked one, which is how a slanted
 stem came to draw a slanted foot under a flat rib.
 
+Whenever the axis is not square to the tangent — under a lock, or in any of the three named modes on
+a leaning stroke — the frame's depth stops agreeing with the stroke direction, and everything the
+serif hands back to the stroke has to be found along the stroke instead. See the release rule below.
+
 ### The two halves
 
 Nine fields per half, independent left and right, with a `linked` flag that copies left onto right:
@@ -787,12 +791,20 @@ consequences follow, and we found both the hard way.
 **The terminal's on-curves are fixed in the serif's own frame, and the stroke edge is brought to
 them. Never the reverse.**
 
-Two points sit on the flank line, straight up from the rib end, at depths the serif's own numbers
-decide. They are the release, where the serif takes over from the edge, and the bottom of the
-straight run. The cut in the edge decides only **how much curve to keep**. `anchorTerminalSplit`
-then pulls the loose end onto the release, and turns the surviving handle onto the frame's depth
-axis. That is what keeps the join a real smooth point, instead of a corner that happens to look
-shallow.
+Two points sit on the flank line above the rib end, at depths the serif's own numbers decide. They
+are the release, where the serif takes over from the edge, and the bottom of the straight run. The
+cut in the edge decides only **how much curve to keep**. `anchorTerminalSplit` then pulls the loose
+end onto the release, and turns the surviving handle along the flank. That is what keeps the join a
+real smooth point, instead of a corner that happens to look shallow.
+
+**The flank line runs along the stroke, not up the frame's depth.** The two coincide only while the
+axis is square to the tangent. A rib angle lock, or any of the three named axis modes on a leaning
+stroke, tilts them apart — and the frame reports that tilt as `flankSlope`, which the half-serif
+uses to find the wall at each depth. Placed at the rib end's own `u` at every depth instead, both
+releases slide the same way along the axis, which is inward on one wall and outward on the other:
+the stem changed thickness above a serif that had only been switched on, and the change grew with
+the lean and with the serif's height. The 15 degree floor between axis and tangent bounds the slope,
+so it cannot run away.
 
 Reading the release off the cut instead is the mistake this feature has already made and reverted.
 It is tempting. On a curved approach the edge really has drifted off the flank by the time the

@@ -564,3 +564,64 @@ describe("serif terminal assembly", () => {
     expectClose(halves.right.junction.u, -50);
   });
 });
+
+describe("a serif frame the stroke is not square to", () => {
+  // A rib angle lock holds the rib flat while the stem leans, and the three
+  // named axis modes state a direction outright, so the axis is routinely not
+  // square to the stroke. The wall still leaves the rib end along the stroke.
+  // Everything the serif hands back to the wall therefore has to be found on
+  // that line — measured straight up the frame instead it slides sideways, the
+  // same way on both sides, so one wall moves in and the other out.
+  function tilted(degrees) {
+    const radians = (degrees * Math.PI) / 180;
+    return {
+      // Into the stroke, along the wall.
+      inward: { x: Math.sin(radians), y: Math.cos(radians) },
+      frame: computeSerifFrame({
+        endpoint: { x: 0, y: 0 },
+        tangent: { x: -Math.sin(radians), y: -Math.cos(radians) },
+        normal: { x: 1, y: 0 }, // the rib, locked horizontal
+        axisMode: "perpendicular",
+      }),
+    };
+  }
+
+  it("reports no wall slope where the axis is square to the stroke", () => {
+    expectClose(tilted(0).frame.flankSlope, 0);
+  });
+
+  it("keeps the junction, corner and release on the wall", () => {
+    const params = {
+      wingLength: 40,
+      tipThickness: 20,
+      wingSlope: 20,
+      tipCutAngle: 0,
+      reach: 30,
+      tension: 0.5,
+      concavity: 0.5,
+      easeDistance: 15,
+      easeCurvature: 0.5,
+    };
+    for (const degrees of [-40, -20, 20, 40]) {
+      const { frame, inward } = tilted(degrees);
+      for (const side of [1, -1]) {
+        const flankU = side * 50;
+        const ribEnd = frame.toGlyph({ u: flankU, v: 0 });
+        const half = buildHalfSerif({
+          side,
+          flankU,
+          flankSlope: frame.flankSlope,
+          params,
+        });
+        for (const name of ["corner", "junction", "release"]) {
+          const point = frame.toGlyph(half[name]);
+          expectClose(
+            (point.x - ribEnd.x) * inward.y - (point.y - ribEnd.y) * inward.x,
+            0,
+            `${name} off the wall at ${degrees}, side ${side}`
+          );
+        }
+      }
+    }
+  });
+});

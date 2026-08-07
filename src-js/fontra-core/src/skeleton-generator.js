@@ -4749,6 +4749,12 @@ function buildSerifCap({
   // that moves whenever the edge is reshaped - and a curvature pin reshapes the
   // edge, so dragging one would walk two on-curves along the stroke. The cut only
   // decides how much curve to keep; the handle that survives it absorbs the rest.
+  //
+  // The edge leaves that point along the stroke, which is the frame's depth only
+  // while the axis is square to the stroke. Under a rib angle lock it is not, and
+  // aiming the surviving handle down the frame instead tips the whole wall off
+  // the stroke's own offset.
+  const alongWall = { x: -outward.x, y: -outward.y };
   const releaseSide = (side, ribEnd, half) => {
     const release = frame.toGlyph(half.release);
     const split = splitTerminalSideForRoundCap(
@@ -4757,7 +4763,7 @@ function buildSerifCap({
       vector.distance(ribEnd, release),
       { endpointTangent: outward, capTangent: outward }
     );
-    return split ? anchorTerminalSplit(split, release, frame.depth, position) : null;
+    return split ? anchorTerminalSplit(split, release, alongWall, position) : null;
   };
   const leftSplit = releaseSide(leftSide, leftRibEnd, terminal.halves.left);
   const rightSplit = releaseSide(rightSide, rightRibEnd, terminal.halves.right);
