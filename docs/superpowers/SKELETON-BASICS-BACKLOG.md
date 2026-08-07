@@ -24,7 +24,7 @@ its findings.
 | 1.4 | Harmonize accepts skeleton contours            | feature bridge    | open   |
 | 1.5 | Control must not extend a selection            | selection         | open   |
 | 1.6 | Split a skeleton contour at a point            | write path        | open   |
-| 1.7 | A locked rib angle holds the serif upright     | serif geometry    | open   |
+| 1.7 | A locked rib angle holds the serif upright     | serif geometry    | done   |
 
 ---
 
@@ -113,19 +113,33 @@ A rib angle lock forces the rib flat horizontal or dead vertical, whatever angle
 the centerline arrives at. The serif does not follow it. A perpendicular serif
 still runs along the stroke, so a slanted stem draws a slanted foot.
 
-The two properties compose today. The lock sets the rib the cap is built on. The
-axis mode sets the direction the serif runs. Both apply, and the reported behavior
-says that composition is wrong for this case.
+### Done
 
-Expected: with the lock set, the serif stays horizontal or vertical whatever the
-skeleton does.
+**The decision turned out not to be a decision.** The doubt was whether the lock
+overrides the axis mode or only seeds it. Neither. Only one of the four axis modes
+reads the stroke at all, and that is the one the lock belongs in.
 
-The decision this needs first is whether the lock **overrides** the axis mode, or
-whether it seeds a different default. A user who sets a lock and then names an
-absolute axis angle has asked for two things. State which one wins before anybody
-builds it.
+`perpendicular` means "the foot that sits on the rib". It was squaring up the
+tangent to find that rib, which produces the rib only while nothing has locked it.
+It now takes the rib itself. `horizontal`, `vertical` and `absolute` state a
+direction outright, so a lock has nothing to add to them.
 
-Item 1 of the serif backlog is the deeper version of the same question. That item
-rewrites the terminal's coordinate model so the foot direction and the flank
-direction stop being the same thing. Check whether this item survives that
-rewrite, or whether the rewrite subsumes it.
+Measured on a stem swept through five tilts, as the angle of the drawn foot:
+
+| stem tilt | no lock | horizontal lock | vertical lock |
+| --------- | ------- | --------------- | ------------- |
+| 0°        | 172.87  | 172.87          | 67.75         |
+| 10°       | 162.87  | 172.87          | 72.47         |
+| 20°       | 152.87  | 172.87          | 82.87         |
+| 30°       | 142.87  | 172.87          | 82.87         |
+| −20°      | 12.87   | 172.87          | 82.87         |
+
+Unlocked, the foot follows the stem one degree for one. Under a horizontal lock it
+does not move. Under a vertical lock it does not move either, once the stem clears
+the 15° minimum separation between the axis and the tangent. Below that the
+existing clamp pushes the axis off, which is what it is for: a foot along the
+stroke has no wings and no flank to release onto.
+
+Serif backlog item 1 asks the deeper version of this question. It splits the foot
+direction from the flank direction, which are still one thing here. This fix does
+not block it and does not answer it.

@@ -12,7 +12,7 @@ function unitFromDegrees(degrees) {
   return { x: Math.cos(radians), y: Math.sin(radians) };
 }
 
-function rawAxisForMode(axisMode, axisAngle, tangent) {
+function rawAxisForMode(axisMode, axisAngle, tangent, normal) {
   switch (axisMode) {
     case "horizontal":
       return { x: 1, y: 0 };
@@ -21,8 +21,13 @@ function rawAxisForMode(axisMode, axisAngle, tangent) {
     case "absolute":
       return unitFromDegrees(axisAngle ?? 0);
     default:
-      // Perpendicular to the stroke: the ordinary stem foot.
-      return vector.rotateVector90CW(tangent);
+      // Perpendicular to the stroke: the ordinary stem foot, which sits on the
+      // rib. Take the rib rather than square up the tangent again. The two agree
+      // on an ordinary terminal, and only the rib carries a rib angle lock — so
+      // squaring the tangent left a locked terminal leaning with the stroke
+      // while its rib stayed flat. The three named modes state a direction
+      // outright and never consult the stroke, so the lock does not reach them.
+      return normal ?? vector.rotateVector90CW(tangent);
   }
 }
 
@@ -44,7 +49,9 @@ function separateFromTangent(axis, tangent) {
 
 export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAngle }) {
   const outward = vector.normalizeVector(tangent);
-  let axis = vector.normalizeVector(rawAxisForMode(axisMode, axisAngle, outward));
+  let axis = vector.normalizeVector(
+    rawAxisForMode(axisMode, axisAngle, outward, normal)
+  );
   axis = separateFromTangent(axis, outward);
 
   // Positive u points at the contour's left side, matching the generator's own

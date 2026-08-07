@@ -55,6 +55,23 @@ describe("serif frame", () => {
     }
   });
 
+  it("runs the perpendicular axis along the rib, not square to the tangent", () => {
+    // A rib angle lock forces the rib onto an axis whatever way the centerline
+    // arrives. "Perpendicular to the stroke" is the foot that sits on the rib,
+    // so the lock has to reach the serif through it.
+    for (const degrees of [-60, -30, 30, 60]) {
+      const radians = (degrees * Math.PI) / 180;
+      const tangent = { x: Math.sin(radians), y: -Math.cos(radians) };
+      const frame = computeSerifFrame({
+        endpoint: { x: 0, y: 0 },
+        tangent,
+        normal: { x: 1, y: 0 }, // the rib, locked horizontal
+        axisMode: "perpendicular",
+      });
+      expectClose(Math.abs(frame.axis.y), 0, `foot stayed on the rib at ${degrees}`);
+    }
+  });
+
   it("uses the absolute angle when asked", () => {
     const frame = computeSerifFrame({
       ...downTerminal,

@@ -683,6 +683,13 @@ lie along the stroke instead of across it.
 it. The lock sets the rib the cap is built on. The axis sets the direction the serif runs. Both
 apply.
 
+They meet in one place. **`perpendicular` runs the foot along the rib**, and the rib is where a
+lock lands, so a locked terminal keeps its foot flat while the centerline leans. The other three
+modes name a direction outright and never read the stroke, so a lock does not reach them — a
+terminal set to `horizontal` was already horizontal. Squaring the tangent a second time instead is
+the same answer on an unlocked terminal and the wrong one on a locked one, which is how a slanted
+stem came to draw a slanted foot under a flat rib.
+
 ### The two halves
 
 Nine fields per half, independent left and right, with a `linked` flag that copies left onto right:
