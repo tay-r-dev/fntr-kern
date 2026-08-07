@@ -60,8 +60,8 @@ export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAng
     axis = { x: -axis.x, y: -axis.y };
   }
 
-  // Depth measures perpendicular to the axis, not to the tangent, so a depth is
-  // the same distance in every mode. It points back into the stroke.
+  // Depth is perpendicular to the axis, not to the tangent, so the frame stays
+  // orthonormal in every mode. It points back into the stroke.
   let depth = { x: -axis.y, y: axis.x };
   if (depth.x * outward.x + depth.y * outward.y > 0) {
     depth = { x: -depth.x, y: -depth.y };
@@ -69,27 +69,16 @@ export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAng
 
   const origin = { x: endpoint.x, y: endpoint.y };
 
-  // The frame LEANS WITH THE STROKE. u is measured across the stroke along the
-  // serif's axis, v is depth into it — but a line of constant u runs along the
-  // stroke, not square to the axis. `flankSlope` is that lean: u travelled per
-  // unit of v.
-  //
-  // The two only agree while the axis is square to the tangent. A rib angle
-  // lock, or any of the named axis modes on a leaning stroke, tilts them apart,
-  // and then a square frame is wrong twice over. The stroke's own wall stops
-  // being a line of constant u, so the terminal hands its release back to a
-  // point beside the wall — the same way on both sides, which is inward on one
-  // and outward on the other. And the halves stop matching, because the wall
-  // each bracket has to reach has drifted a different way from each tip.
-  //
-  // Leaning the frame answers both at once, and it answers them the way a
-  // designer draws: everything the terminal measures sideways is measured
-  // across the stroke, and everything it measures upward runs up the stroke.
-  // The foot line is v = 0, so it is untouched, and a serif whose axis IS
-  // square to its stroke is unchanged in every part.
+  // How the stroke's wall runs in this frame: u travelled per unit of v, going
+  // into the stroke. The wall leaves the rib end along the stroke, and only a
+  // frame square to the stroke has that running straight up its own depth. A
+  // rib angle lock, or any of the named axis modes on a leaning stroke, tilts
+  // the two apart — and then a point placed straight up the frame from the rib
+  // end lands off the wall, the same way on both sides, so one wall moves in
+  // and the other out by as much.
   //
   // The divisor is the sine of the separation between axis and stroke, which
-  // the 15 degree floor above already holds off zero, so the lean is bounded
+  // the 15 degree floor above already holds off zero, so the slope is bounded
   // and this cannot blow up.
   const inward = { x: -outward.x, y: -outward.y };
   const flankSlope =
@@ -103,14 +92,12 @@ export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAng
     toFrame(point) {
       const dx = point.x - origin.x;
       const dy = point.y - origin.y;
-      const v = dx * depth.x + dy * depth.y;
-      return { u: dx * axis.x + dy * axis.y - flankSlope * v, v };
+      return { u: dx * axis.x + dy * axis.y, v: dx * depth.x + dy * depth.y };
     },
     toGlyph({ u, v }) {
-      const alongAxis = u + flankSlope * v;
       return {
-        x: origin.x + axis.x * alongAxis + depth.x * v,
-        y: origin.y + axis.y * alongAxis + depth.y * v,
+        x: origin.x + axis.x * u + depth.x * v,
+        y: origin.y + axis.y * u + depth.y * v,
       };
     },
   };
@@ -197,15 +184,16 @@ function splitCubic(p0, p1, p2, p3, t) {
 // and -1 for the right, so the same seven numbers describe both and the caller
 // never mirrors anything by hand.
 //
-// `flankU` is where the stroke's wall stands. A line of constant u runs along
-// the stroke, so the wall is at that one u the whole way up and nothing here has
-// to know which way the stroke leans — the frame carries that.
+// `flankU` is where the wall crosses the foot line, and `flankSlope` is how it
+// leans from there — the frame's own reading of the stroke direction. Zero, the
+// default, is a wall running straight up the frame, which is what a frame square
+// to the stroke gives.
 //
 // The wing inner corner is NOT a returned point. It is the attractor the
 // transition curve bends around, exactly as in the serif-lab mockup. Emitting it
 // would split the sweep from tip to flank into two segments and destroy the
 // bracketed look.
-export function buildHalfSerif({ side, flankU, params }) {
+export function buildHalfSerif({ side, flankU, flankSlope = 0, params }) {
   const wingLength = params.wingLength ?? 0;
   const tipThickness = params.tipThickness ?? 0;
   const wingSlope = params.wingSlope ?? 0;
@@ -221,6 +209,12 @@ export function buildHalfSerif({ side, flankU, params }) {
   const tipU = flankU + side * wingLength;
   const cutOffset = side * tipThickness * Math.tan((cutAngle * Math.PI) / 180);
 
+  // The wall, as a line in this frame: where it stands at a given depth. Every
+  // point the serif shares with the stroke is found on it. Taking the rib end's
+  // u at every depth instead only works while the frame is square to the stroke,
+  // and a rib angle lock is exactly the case where it is not.
+  const flankAt = (v) => flankU + flankSlope * v;
+
   const tipBottom = { u: tipU + cutOffset, v: 0 };
   const tipTop = { u: tipU, v: tipThickness };
   // Where the serif lets go of the stroke, and the straight run below it. Both
@@ -232,7 +226,7 @@ export function buildHalfSerif({ side, flankU, params }) {
   // But then anything that reshapes the edge - a curvature pin above all - slides
   // these two on-curves along the stroke, and a curvature pin is only allowed to
   // change handles. The caller brings the edge to these points instead.
-  const junction = { u: flankU, v: wingInnerV + reach };
+  const junction = { u: flankAt(wingInnerV + reach), v: wingInnerV + reach };
 
   // The transition cubic runs junction -> tipTop, and both of its handles
   // lie on the line from their own end toward the wing's inner corner. That is
@@ -252,7 +246,7 @@ export function buildHalfSerif({ side, flankU, params }) {
   //
   // They cannot cancel each other out: tension only ever splits a length that
   // concavity set, and the split is bounded so neither handle can vanish.
-  const corner = { u: flankU, v: wingInnerV };
+  const corner = { u: flankAt(wingInnerV), v: wingInnerV };
   // With no wing there is no corner to bracket around, since it has collapsed
   // onto the tip. Hollowing toward it only pushes the curve below the foot line
   // and dimples the baseline, so a half turned off this way stays straight.
@@ -296,7 +290,10 @@ export function buildHalfSerif({ side, flankU, params }) {
     1 - (low + high) / 2
   );
   const easeOnBracket = bracket.first[3];
-  const release = { u: flankU, v: junction.v + easeDistance };
+  const release = {
+    u: flankAt(junction.v + easeDistance),
+    v: junction.v + easeDistance,
+  };
 
   // The rounding is one curve from the release across to its landing on the
   // bracket, and each of its handles runs along the surface its own end sits on:
@@ -387,9 +384,10 @@ export function buildSerifTerminal({
   undersideCup,
   undersideCupTension,
 }) {
+  const flankSlope = frame.flankSlope ?? 0;
   const halves = {
-    left: buildHalfSerif({ side: 1, flankU: leftFlankU, params: left }),
-    right: buildHalfSerif({ side: -1, flankU: rightFlankU, params: right }),
+    left: buildHalfSerif({ side: 1, flankU: leftFlankU, flankSlope, params: left }),
+    right: buildHalfSerif({ side: -1, flankU: rightFlankU, flankSlope, params: right }),
   };
   const centre = { u: 0, v: Math.max(undersideCup ?? 0, 0) };
 
