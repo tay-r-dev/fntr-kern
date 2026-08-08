@@ -387,14 +387,25 @@ export function buildSerifTerminal({
   right,
   undersideCup,
   undersideCupTension,
+  undersideCupBalance,
 }) {
   const flankSlope = frame.flankSlope ?? 0;
   const halves = {
     left: buildHalfSerif({ side: 1, flankU: leftFlankU, flankSlope, params: left }),
     right: buildHalfSerif({ side: -1, flankU: rightFlankU, flankSlope, params: right }),
   };
+  // The balance slides the centre along the axis, as a fraction of the half-span
+  // between the two tips. A fraction rather than a distance: the foot it divides
+  // is what sets the scale, so one number reads the same on a narrow serif and a
+  // wide one, the units mode never touches it, and a preset carries it between
+  // masters unchanged. At either extreme the centre lands on a tip and one half
+  // of the sweep collapses to nothing, which is a legal shape here - points
+  // collapse, they do not disappear.
+  const midpoint = (halves.left.tipBottom.u + halves.right.tipBottom.u) / 2;
+  const halfSpan = (halves.left.tipBottom.u - halves.right.tipBottom.u) / 2;
+  const balance = Math.min(Math.max(undersideCupBalance ?? 0, -1), 1);
   const centre = {
-    u: (halves.left.tipBottom.u + halves.right.tipBottom.u) / 2,
+    u: midpoint + halfSpan * balance,
     v: Math.max(undersideCup ?? 0, 0),
   };
 

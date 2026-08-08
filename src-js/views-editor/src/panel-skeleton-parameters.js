@@ -226,7 +226,7 @@ function serifNudgeTargets(name) {
   if (name === "cup") {
     return [{ field: "undersideCup" }];
   }
-  if (name === "cuptension") {
+  if (name === "cuptension" || name === "cupbalance") {
     return [];
   }
   const [scope, field] = String(name).split("-");
@@ -1465,10 +1465,21 @@ export default class SkeletonParametersPanel extends Panel {
       );
     }
     // One curve across the whole terminal, so these are shared rather than per
-    // half: a cup on each half would meet at a break in the middle. Two
-    // numbers: the depth slides the foot centre, the tension sets how long the
-    // four handles reaching it are.
+    // half: a cup on each half would meet at a break in the middle. Three
+    // numbers: the depth sets how deep the foot centre sits, the balance slides
+    // that centre from tip to tip, and the tension sets how long the four
+    // handles reaching it are.
     pushLength("serif:cup", "serif-underside-cup", serif.undersideCup);
+    this._pushSummarySlider(
+      formContents,
+      "serif:cupbalance",
+      "serif-underside-cup-balance",
+      percentSummary(serif.undersideCupBalance),
+      -100,
+      100,
+      0,
+      { step: 1, disabled: !canEdit }
+    );
     this._pushSummarySlider(
       formContents,
       "serif:cuptension",
@@ -1521,7 +1532,10 @@ export default class SkeletonParametersPanel extends Panel {
       }
     }
     return (
-      serif.sides.mixed || serif.undersideCup.mixed || serif.undersideCupTension.mixed
+      serif.sides.mixed ||
+      serif.undersideCup.mixed ||
+      serif.undersideCupTension.mixed ||
+      serif.undersideCupBalance.mixed
     );
   }
 
@@ -1915,7 +1929,9 @@ export default class SkeletonParametersPanel extends Panel {
             ? { axisAngle: Number(streamed) }
             : name === "cuptension"
               ? { undersideCupTension: Number(streamed) / 100 }
-              : serifHalfValuesFromField(name, streamed);
+              : name === "cupbalance"
+                ? { undersideCupBalance: Number(streamed) / 100 }
+                : serifHalfValuesFromField(name, streamed);
         if (makeValues(value)) {
           await setPanelSerifParametersStream(
             this.sceneController,
@@ -2282,6 +2298,12 @@ export default class SkeletonParametersPanel extends Panel {
     if (name === "cuptension") {
       await apply({
         undersideCupTension: value == null ? null : Number(value) / 100,
+      });
+      return;
+    }
+    if (name === "cupbalance") {
+      await apply({
+        undersideCupBalance: value == null ? null : Number(value) / 100,
       });
       return;
     }

@@ -401,6 +401,9 @@ export function summarizeSkeletonSerifSelection(selectedPoints) {
     axisAngle: terminal("axisAngle", 0),
     undersideCup: terminal("undersideCup"),
     undersideCupTension: terminal("undersideCupTension"),
+    // Neutral is the midpoint of the two tips, so a terminal drawn before the
+    // control existed reads zero and draws exactly what it drew.
+    undersideCupBalance: terminal("undersideCupBalance", 0),
   };
 }
 

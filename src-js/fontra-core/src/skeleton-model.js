@@ -114,13 +114,15 @@ export const SERIF_HALF_FIELDS = Object.freeze([
 // Shared by both halves of one terminal. The underside cup is deliberately NOT
 // per half: the foot is one curve across the whole terminal, and one cup per
 // half produces two scoops meeting at a break in the middle.
-// The cup is two numbers. `undersideCup` is the depth, which places the foot
+// The cup is three numbers. `undersideCup` is the depth, which places the foot
 // centre. `undersideCupTension` is how long the four handles reaching it are,
-// which used to be a fixed third of the span.
+// which used to be a fixed third of the span. `undersideCupBalance` slides that
+// centre along the foot, from the midpoint of the two tips out onto either one.
 export const SERIF_TERMINAL_FIELDS = Object.freeze([
   "axisAngle",
   "undersideCup",
   "undersideCupTension",
+  "undersideCupBalance",
 ]);
 // The one serif field whose zero is not its default. Zero is a sharp V, which
 // is a shape somebody may want, so it cannot double as "never set" — and a
@@ -2168,6 +2170,11 @@ export function setSkeletonSerifParameters(point, values) {
         ? serif.axisAngle
         : 0;
   }
+  // The balance runs tip to tip and stops there. Bounded here rather than in the
+  // geometry alone, so the number the panel shows is the number that draws: a
+  // field that keeps counting past a shape which has already stopped is the
+  // defect this writer exists to prevent.
+  serif.undersideCupBalance = Math.min(Math.max(serif.undersideCupBalance, -1), 1);
   point.serif = serif;
 }
 
@@ -2179,6 +2186,7 @@ export const SERIF_PRESET_FIELDS = Object.freeze([
   ...SERIF_HALF_FIELDS,
   "undersideCup",
   "undersideCupTension",
+  "undersideCupBalance",
 ]);
 
 function normalizeSerifPreset(preset) {
@@ -2259,6 +2267,7 @@ export function captureSerifPreset(point) {
     ...serif.left,
     undersideCup: serif.undersideCup,
     undersideCupTension: serif.undersideCupTension,
+    undersideCupBalance: serif.undersideCupBalance,
   });
 }
 
@@ -2268,8 +2277,10 @@ export function applySerifPreset(preset, { scope = "both" } = {}) {
   const wing = normalizeSerifPreset(preset);
   const cup = wing.undersideCup;
   const cupTension = wing.undersideCupTension;
+  const cupBalance = wing.undersideCupBalance;
   delete wing.undersideCup;
   delete wing.undersideCupTension;
+  delete wing.undersideCupBalance;
   if (scope === "left" || scope === "right") {
     return { [scope]: wing };
   }
@@ -2278,6 +2289,7 @@ export function applySerifPreset(preset, { scope = "both" } = {}) {
     right: { ...wing },
     undersideCup: cup,
     undersideCupTension: cupTension,
+    undersideCupBalance: cupBalance,
   };
 }
 

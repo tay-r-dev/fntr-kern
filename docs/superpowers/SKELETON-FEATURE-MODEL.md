@@ -701,8 +701,8 @@ Nine fields per half, independent left and right, with a `linked` flag that copi
 `wingLength`, `tipThickness`, `wingSlope`, `tipCutAngle`, `reach`, `tension`, `concavity`,
 `easeDistance`, `easeCurvature`.
 
-Three fields sit at terminal level and both halves share them: `axisMode`, `axisAngle` and
-`undersideCup`.
+Five fields sit at terminal level and both halves share them: `axisMode`, `axisAngle`,
+`undersideCup`, `undersideCupTension` and `undersideCupBalance`.
 
 **Every one of these fields always holds a number.** There is no inherit state and no null. An
 unset field is zero, and zero is a setting rather than an absence. This is the one place the serif
@@ -861,6 +861,15 @@ actually draws, and the two ends of this very curve.
 It used to sit on the skeleton, which reads correctly only while the two halves match. Single-sided
 mode collapses one half to zeros, so the whole terminal stands on one side of the skeleton and the
 cup's lowest point lands on the foot's own edge instead of its middle.
+
+**The balance slides that centre along the foot.** It is a fraction of the half-span between the
+two tips, not a distance: the foot it divides is what sets the scale, so one number reads the same
+on a narrow serif and a wide one, the units mode never touches it, and a preset carries it between
+masters unchanged. Zero is the midpoint, so a terminal drawn before the control existed does not
+move. At either extreme the centre lands on a tip and one half of the sweep collapses to nothing,
+which is the correct output under the ground rule. Positive runs toward the contour's left, which
+is the frame's own convention, so the number agrees with the half the panel calls left. The bound
+is written in the serif writer, so the panel cannot show a value the shape has already refused.
 
 The cost is the one the old rule existed to avoid: unequal halves carry the contact point off the
 skeleton with them, by half of the difference. Measured on a stem leaning up to 30 degrees, as the

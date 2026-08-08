@@ -2330,3 +2330,53 @@ provide it.
 carries an asymmetric terminal, so the corpus cannot see this change at all. The
 same gap was reported one entry earlier for ease distance and for a pin sharing a
 segment with a detached handle.
+
+---
+
+## 31. The cup got a balance — feature
+
+Asked for straight after entry 30, and it is the other half of the same control:
+that entry decided where the foot centre sits by default, and this one hands the
+designer the number.
+
+### 1. Problem
+
+The cup's lowest point was wherever the geometry put it. A foot that wanted its
+scoop nearer one wing than the other could not be drawn.
+
+### 2. Solution
+
+`undersideCupBalance`, a third terminal-level cup number beside the depth and the
+tension, travelling in a preset like they do. Zero is the midpoint of the two
+tips, so nothing already drawn moves. Plus or minus one carries the centre onto a
+tip, where one half of the sweep collapses to nothing — a legal shape under the
+ground rule, and the point count holds.
+
+It is a **fraction of the half-span between the tips**, not a distance. The foot
+it divides sets the scale, so the number reads the same on a narrow serif and a
+wide one, the units mode never touches it, and a preset carries it between masters
+unchanged. The alternative offered was a signed distance in units, which would
+have joined the length fields and changed meaning with the wing size.
+
+The panel shows it as a percentage slider under the cup depth, at the same
+−100…100 range the width distribution already uses.
+
+### 3. Result
+
+Seven tests: neutral draws the midpoint, either extreme lands on a tip, halfway
+lands halfway, past the extremes it stops, depth is unchanged at every value, the
+count holds at both extremes, and each cup handle keeps its own end's depth well
+off centre. Full suite 1,781 passing.
+
+### 4. Challenges and findings
+
+**The field reached the generator with no copy line, which is worth stating
+because it usually does not.** A per-point field is invisible to the generator
+until something copies it across, and that trap has caught this project twice.
+The serif is the exception: its whole block travels as one object, so a new field
+inside it arrives for free. The check is still the same one — look at what the
+flattening actually copies, rather than assuming either answer.
+
+**The bound went in the writer, not the slider.** Entry 29 spent three rounds
+learning that the scrub, the typed field and a preset are three ways into the
+same number, and only the writer sits under all of them.

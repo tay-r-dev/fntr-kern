@@ -576,6 +576,65 @@ describe("serif terminal assembly", () => {
     expect(points.filter((point) => !point.type)).to.have.length(7);
   });
 
+  // The balance slides the centre along the axis, as a fraction of the half-span
+  // between the two tips. Zero is the midpoint, so a foot drawn before the
+  // control existed does not move.
+  describe("underside cup balance", () => {
+    const centreOf = (overrides) =>
+      terminal(overrides).points.filter((point) => !point.type)[3];
+
+    it("draws the midpoint at zero", () => {
+      expectClose(centreOf({ undersideCupBalance: 0 }).x, centreOf({}).x);
+    });
+
+    it("carries the centre onto a tip at either extreme", () => {
+      const onCurve = terminal().points.filter((point) => !point.type);
+      expectClose(centreOf({ undersideCupBalance: 1 }).x, onCurve[2].x);
+      expectClose(centreOf({ undersideCupBalance: -1 }).x, onCurve[4].x);
+    });
+
+    it("moves it a fraction of the half-span in between", () => {
+      const onCurve = terminal().points.filter((point) => !point.type);
+      const middle = (onCurve[2].x + onCurve[4].x) / 2;
+      const halfSpan = (onCurve[2].x - onCurve[4].x) / 2;
+      expectClose(centreOf({ undersideCupBalance: 0.5 }).x, middle + halfSpan / 2);
+    });
+
+    it("stops at the tips rather than running past them", () => {
+      const onCurve = terminal().points.filter((point) => !point.type);
+      expectClose(centreOf({ undersideCupBalance: 4 }).x, onCurve[2].x);
+      expectClose(centreOf({ undersideCupBalance: -4 }).x, onCurve[4].x);
+    });
+
+    it("keeps the centre's depth whatever the balance", () => {
+      for (const undersideCupBalance of [-1, -0.3, 0, 0.6, 1]) {
+        expectClose(centreOf({ undersideCup: 18, undersideCupBalance }).y, 18);
+      }
+    });
+
+    it("keeps seven on-curve points at either extreme", () => {
+      for (const undersideCupBalance of [-1, 1]) {
+        const { points } = terminal({ undersideCup: 18, undersideCupBalance });
+        expect(points.filter((point) => !point.type)).to.have.length(7);
+      }
+    });
+
+    // The sweep's two halves are wildly unequal here, and each handle still
+    // takes its own end's depth, so the foot arrives flat at the centre and
+    // leaves the tips along the baseline however far it is pushed.
+    it("keeps each cup handle at its own end's depth off centre", () => {
+      const points = terminal({
+        undersideCup: 18,
+        undersideCupBalance: 0.8,
+      }).points;
+      const onCurve = points.filter((point) => !point.type);
+      expectClose(points[7].y, onCurve[2].y);
+      expectClose(points[8].y, onCurve[3].y);
+      expectClose(points[10].y, onCurve[3].y);
+      expectClose(points[11].y, onCurve[4].y);
+    });
+  });
+
   it("runs from the left release to the right release", () => {
     const { points } = terminal();
     const onCurve = points.filter((point) => !point.type);

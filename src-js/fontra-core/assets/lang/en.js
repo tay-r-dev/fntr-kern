@@ -512,6 +512,7 @@ export const strings = {
   "sidebar.skeleton-parameters.cap-style.round": "Round",
   "sidebar.skeleton-parameters.cap-style.drop": "Drop",
   "sidebar.skeleton-parameters.cap-style.serif": "Serif",
+  "sidebar.skeleton-parameters.serif-underside-cup-balance": "Cup balance",
   "sidebar.skeleton-parameters.serif-underside-cup-tension": "Cup tension",
   "sidebar.skeleton-parameters.serif-sides": "Sides",
   "sidebar.skeleton-parameters.serif-sides.both": "Both",
