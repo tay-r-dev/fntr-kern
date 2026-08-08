@@ -203,8 +203,19 @@ export function buildHalfSerif({ side, wall, params, maxDepth = Infinity }) {
   // and false of every curved one. On a straight wall the two answers are the
   // same point, so nothing already drawn moves.
   const cornerRay = { u: -side * wingLength, v: wingSlope };
-  const cornerParameter =
-    wingLength > 0
+  // The tip may reach the wall on its own. Where the wall runs outward fast
+  // enough, it stands past the tip's outer edge by the tip's own thickness, and
+  // there is no wing left for a slope to climb: the stem has swallowed it. Then
+  // the corner is where the TIP'S OWN EDGE crosses the wall, and the wing slope
+  // is not emitted at all. Climbing a surface that is not there would carry the
+  // bracket back out into space the stroke already occupies, and the slope would
+  // still be moving the shape after the wing it belongs to had gone.
+  const wallAtTip = wall.pointAt(wall.parameterAtDepth(tipThickness));
+  const tipReachesWall = tipThickness > 0 && side * (tipU - wallAtTip.u) <= 0;
+  const cornerParameter = tipReachesWall
+    ? (wall.meetRay(tipBottom, subUV(tipTop, tipBottom)) ??
+      wall.parameterAtDepth(tipThickness))
+    : wingLength > 0
       ? (wall.meetRay(tipTop, cornerRay) ??
         wall.parameterAtDepth(tipThickness + wingSlope))
       : wall.parameterAtDepth(tipThickness + wingSlope);

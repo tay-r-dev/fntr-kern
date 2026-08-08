@@ -863,3 +863,65 @@ describe("half serif on a wall", () => {
     }
   });
 });
+
+describe("a tip that reaches the wall on its own", () => {
+  const params = {
+    wingLength: 48,
+    tipThickness: 100,
+    wingSlope: 25,
+    tipCutAngle: 0,
+    reach: 20,
+    tension: 0.5,
+    concavity: 0.5,
+    easeDistance: 0,
+    easeCurvature: 0,
+  };
+  // A wall that runs outward fast, so by the tip's own thickness it stands past
+  // the tip's outer edge. The stem has swallowed the wing.
+  const outwardWall = () =>
+    makeSerifWall([
+      { u: 30, v: 0 },
+      { u: 60, v: 60 },
+      { u: 90, v: 120 },
+      { u: 110, v: 180 },
+    ]);
+  const tipU = 30 + 48;
+
+  it("puts the corner where the tip's own edge crosses the wall", () => {
+    const half = buildHalfSerif({
+      side: 1,
+      wall: outwardWall(),
+      params,
+      maxDepth: 400,
+    });
+    expect(Math.abs(half.corner.u - tipU)).to.be.lessThan(0.05);
+    expect(half.corner.v).to.be.lessThan(params.tipThickness);
+  });
+
+  it("does not emit the wing slope there", () => {
+    const build = (wingSlope) =>
+      buildHalfSerif({
+        side: 1,
+        wall: outwardWall(),
+        params: { ...params, wingSlope },
+        maxDepth: 400,
+      });
+    // No wing is left for a slope to climb, so the number cannot move anything.
+    for (const wingSlope of [0, 25, 60]) {
+      expect(Math.abs(build(wingSlope).corner.v - build(0).corner.v)).to.be.lessThan(
+        0.05
+      );
+    }
+  });
+
+  it("still climbs the slope while the wing survives", () => {
+    const build = (wingSlope) =>
+      buildHalfSerif({
+        side: 1,
+        wall: wallAt(30),
+        params: { ...params, tipThickness: 40, wingSlope },
+        maxDepth: 400,
+      });
+    expect(build(25).corner.v - build(0).corner.v).to.be.closeTo(25, 0.05);
+  });
+});

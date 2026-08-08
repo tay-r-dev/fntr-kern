@@ -844,6 +844,12 @@ been switched on.
 **Wing slope is the incline of the wing's top surface**, whose run is decided by where the wall is,
 rather than a rise measured on an assumed line. The two agree on a straight stem.
 
+**A tip that reaches the wall on its own emits no wing slope.** Where the wall runs outward fast
+enough, it stands past the tip's outer edge by the tip's own thickness: the stem has swallowed the
+wing, and there is no surface left to climb. The corner is then where the tip's own edge crosses the
+wall. Climbing a slope there would carry the bracket back out into space the stroke already
+occupies, and would leave the number still moving the shape after the wing it belongs to had gone.
+
 #### What absorbs the lean, and why it is the bracket
 
 A flat foot under a leaning stroke is a genuine conflict, not a bug to be solved away. The wall
