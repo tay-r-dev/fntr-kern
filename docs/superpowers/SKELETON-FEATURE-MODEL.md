@@ -844,11 +844,20 @@ been switched on.
 **Wing slope is the incline of the wing's top surface**, whose run is decided by where the wall is,
 rather than a rise measured on an assumed line. The two agree on a straight stem.
 
-**A tip that reaches the wall on its own emits no wing slope.** Where the wall runs outward fast
-enough, it stands past the tip's outer edge by the tip's own thickness: the stem has swallowed the
-wing, and there is no surface left to climb. The corner is then where the tip's own edge crosses the
-wall. Climbing a slope there would carry the bracket back out into space the stroke already
-occupies, and would leave the number still moving the shape after the wing it belongs to had gone.
+**The tip stops at the wall, and emits no wing slope once it gets there.** The top of the tip stands
+straight above the wing's end, so its limit is where the wall crosses that line. A wall that never
+runs out that far sets no limit, which is the ordinary straight stem. Past the limit the tip's top
+ends up on the far side of the wall and the outline notches where the tip pokes through, so the
+thickness stops there and holds however much further it is pushed.
+
+At the limit the top of the tip and the wing's inner corner are the same point: the wing's top
+surface has no length rather than no existence, and the wing slope is not emitted at all. Climbing a
+surface that is not there would carry the bracket back out into space the stroke already occupies,
+and would leave the slope still moving the shape after the wing it belongs to had gone.
+
+With no wing at all the tip stands on the wall's own foot, so the line it stands on is the wall and
+every depth reads as a crossing. That is a wing already collapsed, not a tip poking through one, and
+the limit does not apply.
 
 #### What absorbs the lean, and why it is the bracket
 

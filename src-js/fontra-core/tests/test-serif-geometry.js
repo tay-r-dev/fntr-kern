@@ -925,3 +925,79 @@ describe("a tip that reaches the wall on its own", () => {
     expect(build(25).corner.v - build(0).corner.v).to.be.closeTo(25, 0.05);
   });
 });
+
+describe("a tip that would push past the wall", () => {
+  const params = {
+    wingLength: 48,
+    tipThickness: 100,
+    wingSlope: 25,
+    tipCutAngle: 0,
+    reach: 20,
+    tension: 0.5,
+    concavity: 0.5,
+    easeDistance: 0,
+    easeCurvature: 0,
+  };
+  const outwardWall = () =>
+    makeSerifWall([
+      { u: 30, v: 0 },
+      { u: 60, v: 60 },
+      { u: 90, v: 120 },
+      { u: 110, v: 180 },
+    ]);
+  const build = (overrides) =>
+    buildHalfSerif({
+      side: 1,
+      wall: outwardWall(),
+      params: { ...params, ...overrides },
+      maxDepth: 400,
+    });
+
+  it("stops the top of the tip at the wall", () => {
+    const half = build({});
+    // The top of the tip sits ON the crossing, not past it. Past it the tip
+    // pokes through the stem wall and the outline notches.
+    expect(half.tipTop.v).to.be.lessThan(params.tipThickness);
+    expect(Math.abs(half.tipTop.v - half.corner.v)).to.be.lessThan(0.05);
+    expect(Math.abs(half.tipTop.u - half.corner.u)).to.be.lessThan(0.05);
+  });
+
+  it("holds there however much further the tip is pushed", () => {
+    const reference = build({ tipThickness: 100 });
+    for (const tipThickness of [140, 200, 400]) {
+      const half = build({ tipThickness });
+      expect(Math.abs(half.tipTop.v - reference.tipTop.v)).to.be.lessThan(0.05);
+    }
+  });
+
+  it("says it was clamped", () => {
+    expect(build({}).depthClamped).to.equal(true);
+  });
+
+  it("leaves a tip that stays inside the wall alone", () => {
+    const half = build({ tipThickness: 20, wingSlope: 0 });
+    expect(half.tipTop.v).to.be.closeTo(20, 1e-6);
+    expect(half.depthClamped).to.equal(false);
+  });
+});
+
+describe("a wingless tip against the wall", () => {
+  it("keeps its thickness, because a collapsed wing is not a notch", () => {
+    const half = buildHalfSerif({
+      side: 1,
+      wall: wallAt(30),
+      maxDepth: 500,
+      params: {
+        wingLength: 0,
+        tipThickness: 30,
+        wingSlope: 0,
+        tipCutAngle: 0,
+        reach: 20,
+        tension: 0.5,
+        concavity: 0.5,
+      },
+    });
+    expect(half.tipTop.v).to.be.closeTo(30, 1e-6);
+    expect(half.depthClamped).to.equal(false);
+  });
+});

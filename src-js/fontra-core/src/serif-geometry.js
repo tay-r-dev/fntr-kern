@@ -179,7 +179,7 @@ function splitCubic(p0, p1, p2, p3, t) {
 // bracketed look.
 export function buildHalfSerif({ side, wall, params, maxDepth = Infinity }) {
   const wingLength = params.wingLength ?? 0;
-  const tipThickness = params.tipThickness ?? 0;
+  const wantedTipThickness = params.tipThickness ?? 0;
   const wingSlope = params.wingSlope ?? 0;
   const tension = Math.min(Math.max(params.tension ?? 0, 0), 1);
   const concavity = Math.min(Math.max(params.concavity ?? 0, -1), 1);
@@ -190,6 +190,27 @@ export function buildHalfSerif({ side, wall, params, maxDepth = Infinity }) {
 
   const footU = wall.pointAt(0).u;
   const tipU = footU + side * wingLength;
+
+  // How thick the tip may get before its top pushes through the stem wall. The
+  // top of the tip stands straight above the wing's end, so the limit is where
+  // the wall crosses that line. A wall that never runs out that far sets no
+  // limit, which is the ordinary straight stem.
+  //
+  // Without this the tip goes on thickening past the crossing, its top ends up
+  // on the far side of the wall, and the outline notches where the tip pokes
+  // through. Points collapse, they do not disappear: at the limit the top of the
+  // tip and the wing's inner corner are the same point, and the wing's top
+  // surface has no length rather than no existence.
+  // With no wing the tip stands on the wall's own foot, so the line it stands on
+  // IS the wall and every depth counts as a crossing. That is a wing already
+  // collapsed, not a tip poking through one, and clamping there would erase a
+  // tip that draws perfectly well against the stroke.
+  const wallCrossesTip =
+    wingLength > 0 ? wall.meetRay({ u: tipU, v: 0 }, { u: 0, v: 1 }) : null;
+  const tipLimit = wallCrossesTip === null ? Infinity : wall.pointAt(wallCrossesTip).v;
+  const tipThickness = Math.min(wantedTipThickness, Math.max(tipLimit, 0));
+  const tipReachesWall = tipThickness >= tipLimit;
+
   const cutOffset = side * tipThickness * Math.tan((cutAngle * Math.PI) / 180);
 
   const tipBottom = { u: tipU + cutOffset, v: 0 };
@@ -203,18 +224,14 @@ export function buildHalfSerif({ side, wall, params, maxDepth = Infinity }) {
   // and false of every curved one. On a straight wall the two answers are the
   // same point, so nothing already drawn moves.
   const cornerRay = { u: -side * wingLength, v: wingSlope };
-  // The tip may reach the wall on its own. Where the wall runs outward fast
-  // enough, it stands past the tip's outer edge by the tip's own thickness, and
-  // there is no wing left for a slope to climb: the stem has swallowed it. Then
-  // the corner is where the TIP'S OWN EDGE crosses the wall, and the wing slope
-  // is not emitted at all. Climbing a surface that is not there would carry the
-  // bracket back out into space the stroke already occupies, and the slope would
-  // still be moving the shape after the wing it belongs to had gone.
-  const wallAtTip = wall.pointAt(wall.parameterAtDepth(tipThickness));
-  const tipReachesWall = tipThickness > 0 && side * (tipU - wallAtTip.u) <= 0;
+  // The tip has reached the wall on its own, so there is no wing left for a
+  // slope to climb: the stem has swallowed it. The corner is the crossing the
+  // tip stopped at, and the wing slope is not emitted at all. Climbing a surface
+  // that is not there would carry the bracket back out into space the stroke
+  // already occupies, and would leave the slope still moving the shape after the
+  // wing it belongs to had gone.
   const cornerParameter = tipReachesWall
-    ? (wall.meetRay(tipBottom, subUV(tipTop, tipBottom)) ??
-      wall.parameterAtDepth(tipThickness))
+    ? wallCrossesTip
     : wingLength > 0
       ? (wall.meetRay(tipTop, cornerRay) ??
         wall.parameterAtDepth(tipThickness + wingSlope))
@@ -240,7 +257,10 @@ export function buildHalfSerif({ side, wall, params, maxDepth = Infinity }) {
     maxSerifEaseDistance(params),
     Math.max(room - reach, 0)
   );
-  const depthClamped = wantedReach > reach || wantedEase > easeDistance;
+  const depthClamped =
+    wantedTipThickness > tipThickness ||
+    wantedReach > reach ||
+    wantedEase > easeDistance;
   const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
 
   // Where the serif lets go of the stroke, and the straight run below it. Both
