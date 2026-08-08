@@ -1,7 +1,9 @@
 # Skeleton basics — open work
 
 Standing reference for the gaps between the skeleton and the ordinary path tools.
-Companion to `SERIF-BACKLOG.md`, which holds the serif terminal's own list.
+The serif terminal had a list of its own. Every item on it is built, so the list
+is retired: what they built is in feature model §8, and why is in the development
+log.
 
 Most items here have the same shape. An ordinary path already has the behavior.
 The skeleton does not have it, or has a different one. Read the ordinary path's
@@ -140,11 +142,11 @@ the 15° minimum separation between the axis and the tangent. Below that the
 existing clamp pushes the axis off, which is what it is for: a foot along the
 stroke has no wings and no flank to release onto.
 
-Serif backlog item 1 asks the deeper version of this question. It splits the foot
-direction from the flank direction, which are still one thing here. This fix does
-not block it and does not answer it.
+The deeper version of this question is what splits the foot direction from the
+flank direction, which are still one thing here. This fix did not answer it.
 
-A follow-up report on this same lock (2026-08-07) hit item 1's gate directly: a
-flat foot under a leaning stem stretches the wing unevenly. That gate is now
-answered in practice — see serif backlog item 1 — but the item itself is still
-open.
+A follow-up report on this same lock (2026-08-07) reached it directly: a flat foot
+under a leaning stem stretches the wing unevenly. That is now settled — the
+serif's own shape stays square to its foot, only the wall follows the stroke, and
+the bracket absorbs the lean. Feature model §8 states the rule and §9 records the
+two constructions tried and withdrawn on the way.

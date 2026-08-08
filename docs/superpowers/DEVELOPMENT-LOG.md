@@ -2279,7 +2279,8 @@ evidence here; the direct measurements are.
 
 ## 30. The cup's lowest point moved to the middle of the foot — fix
 
-Serif backlog item 15, the last one open.
+The last item on the serif backlog, which is retired with this entry: every item
+on it is built, what they built is in the feature model, and why is here.
 
 ### 1. Problem
 
@@ -2304,10 +2305,19 @@ guarantee intact. The designer chose the foot.
 
 ### 3. Result
 
-Contact height over a stem leaning to 30 degrees, old rule against new. The table
-is in the backlog entry. In short: equal halves are identical everywhere; under a
-flat foot every case is identical at every tilt; only the perpendicular mode with
-unequal halves moves, 25 units over that lean against 2.4 before.
+Contact height over a stem leaning to 30 degrees, old rule against new, in the
+perpendicular axis mode:
+
+| wings              | 0°          | 10°         | 20°         | 30°         |
+| ------------------ | ----------- | ----------- | ----------- | ----------- |
+| 60/60              | 18.0 / 18.0 | 17.7 / 17.7 | 16.9 / 16.9 | 15.6 / 15.6 |
+| 20/120             | 18.0 / 18.0 | 17.7 / 26.4 | 16.9 / 34.0 | 15.6 / 40.6 |
+| one half collapsed | 18.0 / 18.0 | 17.7 / 12.5 | 16.9 / 6.7  | 15.6 / 0.6  |
+
+Under a flat foot — the horizontal axis mode — every row is identical before and
+after, at every tilt, because an axis with no rise cannot lift the centre that
+slides along it. So the alignment-zone guarantee survives exactly where it is
+asked for, and what moves is a foot that was leaning with the stem anyway.
 
 Full suite 1,774 passing.
 

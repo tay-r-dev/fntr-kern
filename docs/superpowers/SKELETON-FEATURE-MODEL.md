@@ -667,6 +667,28 @@ The split between the two files is deliberate. Keep it.
 This is the counter-example to defect **P6** (architecture map §9). The generator did not need to
 grow another 300 lines of geometry.
 
+### Ground rule: points collapse, they do not disappear
+
+Every point a serif can emit is emitted at every parameter value, including values where it has
+nowhere to go and lands on top of its neighbour. **A serif is allowed to collapse points to zero
+distance — on-curves and off-curves alike — and the one-unit minimum separation that applies
+elsewhere does not apply inside a terminal.** Coincident points and zero-length segments are the
+correct output, not a degenerate one.
+
+That is what keeps the point count constant across the whole range, which is the cross-master
+interpolation contract. Removing them is opt-in per master through `serifRemoveCollapsedPoints`,
+and taking that option forfeits interpolation for serifed glyphs in that master — already stated
+at the source default.
+
+Three consequences, and they govern anything new added to the terminal:
+
+- A new field never needs a minimum value to keep its points apart. Zero is always a legal setting
+  and must emit the same points as any other setting.
+- "Switched off" means contributing no _shape_, not contributing no _points_ — the obligation a
+  wingless half already carries.
+- A discontinuity in a coupled parameter is a jump in shape only, never a jump in topology. That
+  makes it a drag-feel problem, not an interpolation problem.
+
 ### The frame
 
 The origin is the skeleton endpoint. **u** runs along the serif axis, positive toward the contour's
