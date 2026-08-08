@@ -3926,13 +3926,17 @@ export function getSkeletonSegmentHandles(contour, point, role) {
   };
 }
 
-// A terminal that trims the stroke edge — a serif does — emits only the part of
-// the segment that survived the cut, while the curvature pin is reproduced on
-// the whole segment. Measuring the emitted part would therefore report a number
-// the pin does not mean, and the first drag would jump the shape from one to the
-// other. The generator publishes the uncut segment on the inserted point for
-// exactly this; it is stored in side order, so it is turned to face the same way
-// as the emitted segment before being used.
+// A terminal that trims the stroke edge and reproduces its pin on the WHOLE
+// segment emits only the part that survived the cut. Measuring the emitted part
+// would then report a number the pin does not mean, and the first drag would
+// jump the shape from one curve to the other. Such a terminal publishes the
+// uncut segment on the inserted point, stored in side order, so it is turned to
+// face the same way as the emitted segment before being used.
+//
+// A serif no longer does this. Its pin is applied after the trim, so the piece
+// on screen IS the curve the pin governs and there is nothing to publish. Null
+// here is the ordinary answer, and the caller falls back to the emitted segment,
+// which is the right one to measure.
 function untrimmedConstructionSegment(segmentPoints, provenance) {
   if (segmentPoints?.length !== 4) {
     return null;

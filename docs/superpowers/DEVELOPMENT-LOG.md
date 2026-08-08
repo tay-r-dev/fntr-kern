@@ -2544,3 +2544,115 @@ against duplicated code (R-B) paying for itself rather than being argued for.
 
 **The generated copy of the icons folder is gitignored**, so a new tool icon goes
 in the source assets only. The bundle puts it where the page reads it.
+
+---
+
+## 35. A serif on a curved stem — fix
+
+Reported on `_external/b.json`: a skeleton of one cubic segment with a serif on
+one endpoint. Moving the serif's tip thickness changed the curvature of the stem
+radically.
+
+### 1. Problem
+
+The serif built its terminal on a straight line, running from the rib end along
+the endpoint tangent into the stroke. Every point it shared with the stroke sat
+on that line, at a depth the serif's own numbers decided, and the release's depth
+is tip thickness plus wing slope plus reach plus ease distance. In the reported
+file tip thickness set that depth almost alone.
+
+On a curved stem the real wall departs from that line, and by more the deeper you
+go. The generator cut the real wall at the release's depth, dragged the cut end
+sideways onto the release, and turned the surviving handle onto the endpoint
+tangent. Both corrections grow with the depth. Because the wall is one cubic with
+two handles, moving its end and rotating its handle reshapes the whole segment.
+
+Measured on the reported file, greatest distance from the emitted right-hand stem
+wall to the wall emitted with no tip at all:
+
+| tip thickness | before | after |
+| ------------- | ------ | ----- |
+| 0             | 0.5    | 0.00  |
+| 20            | 2.6    | 0.05  |
+| 40            | 6.0    | 0.05  |
+| 63            | 11.2   | 0.05  |
+| 80            | 16.0   | 0.05  |
+| 100           | 22.8   | 0.06  |
+
+The construction curve's control point never moved through the whole sweep, which
+proved the offset solver innocent and put the fault in the splice.
+
+### 2. Solution
+
+The wall itself, as a curve, replaces the straight line. A new module carries one
+curve in the terminal's own frame and answers four questions about it: where it
+is at a depth, where a ray meets it, which way it runs, and how deep it may be
+consumed. It knows nothing about serifs or strokes.
+
+The wing's top surface is now extended inward from the top of the tip until it
+meets that wall. Where it meets is the wing's inner corner. The junction and the
+release sit at their own depths further up the same wall. The generator cuts at
+the release's own parameter and emits what survives, unchanged. The anchoring
+that dragged the end and turned the handle is deleted, along with the frame's
+lean value, which nothing reads once the wall carries its own shape.
+
+The cut is taken on the wall as solved from the centerline and the widths, before
+any authored layer touches it. All three authored layers — the curvature pin, a
+nudged handle and a detached handle — are applied to the piece that survives. The
+first two already were; the pin moved across in this work.
+
+### 3. Result
+
+Full suite 1,805 passing. No fixture moved, which is the evidence that a straight
+stem is untouched: a straight wall is exactly what the old model assumed, so the
+two answers are the same point. The serif geometry tests kept every one of their
+existing expected numbers for the same reason.
+
+New tests: the emitted stem wall stays within two units of itself across tip
+thickness 20 through 100; the point count holds; sweeping a curvature pin over
+its whole range moves no on-curve point by exactly zero; the pin still moves
+handles; no second curve is published on a serif split.
+
+Two stored numbers change meaning. **The curvature pin on a serifed terminal**
+described the tension of the whole solved wall and now describes the tension of
+the emitted piece, so a file already carrying one shifts once on reopen. That is
+also what lets the gizmo stop being handed a snapshot of a curve it is not
+looking at. **Wing slope** was a rise measured on the assumed line and is now the
+incline of the wing's top surface, whose run is decided by where the wall is. The
+two agree on a straight stem.
+
+### 4. Challenges and findings
+
+**The claim that a pin must move the release was wrong, and the designer caught
+it.** The reasoning was that the release is found on the wall, so anything that
+reshapes the wall moves it. True — but the pin is applied when the wall is
+solved, and the cut is taken afterwards. The coupling is a consequence of the
+order, not of the geometry. Move the cut ahead of the authoring and the release
+is immune. **Check which step runs first before concluding two things are
+coupled.**
+
+**The pin goes last, not first.** The plan put it before the handle placements,
+reasoning that a pin states the tension and placements come after. The solve does
+the opposite — natural answer, attached adjustments, detached placement, pin —
+and it has to: the gizmo measures the drawn curve and writes a pin, and if a
+placement runs after the pin it overwrites it and the measured number cannot be
+reproduced. The round-trip test is what caught this.
+
+**A one-unit floor on the cut is right for a round cap and wrong for a serif.** A
+round cap builds its tip from the direction the leftover piece gives it, so it
+needs a piece. A serif reads no direction off it and may release the stroke at
+the rib end itself, which is a legal shape under the ground rule. Flooring it
+there moved an on-curve nobody asked to move, and a fully collapsed serif on a
+straight stem drifted a unit.
+
+**Deleting the anchoring took the surviving handle's axis with it.** That axis is
+what an authored adjustment moves along and what the editor publishes as the
+handle's construction axis, and three tests went quiet rather than loud. The
+handle at a cut is tangent to the curve there, so its own direction is the axis —
+stamping that is a true statement, and the old one was a fabricated direction.
+
+**The honest axis has less headroom than the fabricated one.** A handle drag that
+used to reach 30 units now stops at 23, because the ceiling is where the
+segment's two handles would cross and the true tangent puts that crossing nearer.
+The clamp was always there; the old axis was pointing somewhere the curve did not
+go.
