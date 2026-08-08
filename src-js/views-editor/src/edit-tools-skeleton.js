@@ -332,7 +332,15 @@ export class SkeletonPenTool extends BaseTool {
       (working, referenceSkeletonData) => {
         const endpoint = this._getSelectedOpenEndpoint(working, referenceSkeletonData);
         if (endpoint) {
-          const point = makeSkeletonPoint(pointData, working);
+          // Continuing a stroke keeps that stroke's width. The point being
+          // extended states it, per layer, so a stroke drawn or tapered to
+          // anything other than the default does not step back to the default
+          // at every new point. Only the width travels: everything else on the
+          // endpoint is that point's own.
+          const point = makeSkeletonPoint(
+            { ...pointData, width: { ...endpoint.point.width } },
+            working
+          );
           if (endpoint.appendMode === "append") {
             endpoint.contour.points.push(point);
           } else {
@@ -342,13 +350,21 @@ export class SkeletonPenTool extends BaseTool {
         }
         // New contours seed their default width from the master (source)
         // defaults for the glyph's case, not the hardcoded model fallback.
+        //
+        // The first point takes it too. A point always carries its own width, so
+        // the contour's number is never read for geometry — set on the contour
+        // alone it would be a label the stroke did not obey.
+        const defaultWidth = this._getMasterDefaultWidth();
         const contour = appendSkeletonContour(working, {
           closed: false,
-          defaultWidth: this._getMasterDefaultWidth(),
+          defaultWidth,
           singleSided: this.newContourSingleSided,
           points: [],
         });
-        const point = appendSkeletonPoint(working, contour.id, pointData);
+        const point = appendSkeletonPoint(working, contour.id, {
+          ...pointData,
+          width: { left: defaultWidth / 2, right: defaultWidth / 2 },
+        });
         return [makeSkeletonPointKey(contour.id, point.id)];
       }
     );
