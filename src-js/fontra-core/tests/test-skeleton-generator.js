@@ -493,6 +493,26 @@ describe("skeleton-generator outline boundary invariants", () => {
     expect(restated.handle.y).to.equal(asked.handle.y);
   });
 
+  // The floor on handle length belongs to the generator's own answer. A hand on
+  // the handle outranks it: zero is a legal place to put a handle.
+  it("lets an authored offset collapse a handle onto its point", () => {
+    const collapsed = nudgedRibGeometry(0, {
+      startHandleOffsets: { leftOut: { x: -400, y: 0, detached: false } },
+    });
+    expect(collapsed.handle.x).to.equal(collapsed.onCurve.x);
+    expect(collapsed.handle.y).to.equal(collapsed.onCurve.y);
+  });
+
+  it("keeps the floor on the generator's own answer", () => {
+    const natural = nudgedRibGeometry(0);
+    expect(
+      Math.hypot(
+        natural.handle.x - natural.onCurve.x,
+        natural.handle.y - natural.onCurve.y
+      )
+    ).to.be.greaterThan(0);
+  });
+
   it("publishes no honored offset for a detached handle", () => {
     const detached = nudgedRibGeometry(0, {
       startHandleOffsets: { leftOut: { x: 400, y: 0, detached: true } },

@@ -277,9 +277,17 @@ system. No stage mistakes the stabilizer for the geometry.
 
 The ordinary lower face is the one-unit handle floor. If a real forward reach is shorter than one
 unit, non-crossing wins and the minimum contracts to the maximum. Creating a loop cannot preserve
-a meaningful grid direction. The automatic fit, the attached adjustments and the pins all consume
-these same per-end limits. Detached handles stay deliberately absolute authored geometry, and the
-code applies them after the constrained construction.
+a meaningful grid direction.
+
+**The floor is the automatic answer's alone.** Below it the solved handle stops holding still and
+starts riding along with the rib end, which is what the floor prevents. A hand on the handle
+outranks that: an attached adjustment, a pinned curvature and a detached placement may all put a
+handle exactly on its point, on the ordinary path and inside a serif terminal alike. Zero is a
+legal setting, and points collapse rather than disappear. The ceiling is not relaxed the same way
+— past it the segment's two handle lines cross and the curve doubles back.
+
+Detached handles stay deliberately absolute authored geometry, and the code applies them after the
+constrained construction.
 
 **Two of the solver's return values are diagnostics.** Beside the two lengths it returns the pull
 ratio it used, and the answer's perpendicular RMS against the true offset. They exist so that a

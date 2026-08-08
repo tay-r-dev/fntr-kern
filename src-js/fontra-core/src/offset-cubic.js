@@ -1,8 +1,11 @@
 import { buildHandleDomain, solveNaturalHandles } from "./natural-handle-solver.js";
 import { shiftTensionsToMean } from "./tunni-calculations.js";
 
-const MIN_HANDLE_LENGTH = 1;
-
+// The floor on handle length is the generator's own, and it holds only for the
+// generator's own answer: below it the solved handle stops holding still and
+// starts riding along with the rib end. A hand on the handle outranks that —
+// an authored offset, a detached placement and a pinned curvature may all put a
+// handle exactly on its point, because zero is a legal setting.
 function clamp(value, minimum, maximum) {
   return Math.min(Math.max(value, minimum), maximum);
 }
@@ -21,12 +24,20 @@ function tensionsToLengths(tensions, domain) {
   };
 }
 
-function constrain(handles, domain) {
+function constrain(handles, domain, { startByHand = false, endByHand = false } = {}) {
   const tensions = lengthsToTensions(handles, domain);
   return tensionsToLengths(
     {
-      start: clamp(tensions.start, domain.minStartTension, domain.maxStartTension),
-      end: clamp(tensions.end, domain.minEndTension, domain.maxEndTension),
+      start: clamp(
+        tensions.start,
+        startByHand ? 0 : domain.minStartTension,
+        domain.maxStartTension
+      ),
+      end: clamp(
+        tensions.end,
+        endByHand ? 0 : domain.minEndTension,
+        domain.maxEndTension
+      ),
     },
     domain
   );
@@ -47,10 +58,9 @@ function placedLength(anchor, direction, adjustment, baseLength = 0) {
 }
 
 function applyAttachedAdjustments(handles, request, domain) {
+  const byHand = (adjustment) => !!adjustment && !adjustment.detached;
   const attached = (adjustment, anchor, direction, length) =>
-    !adjustment || adjustment.detached
-      ? length
-      : placedLength(anchor, direction, adjustment, length);
+    !byHand(adjustment) ? length : placedLength(anchor, direction, adjustment, length);
   return constrain(
     {
       startLength: attached(
@@ -66,7 +76,11 @@ function applyAttachedAdjustments(handles, request, domain) {
         handles.endLength
       ),
     },
-    domain
+    domain,
+    {
+      startByHand: byHand(request.startAdjustment),
+      endByHand: byHand(request.endAdjustment),
+    }
   );
 }
 
@@ -105,23 +119,20 @@ function applyPinnedTension(handles, pinnedTension, domain) {
       },
       domain
     ),
-    domain
+    domain,
+    // A pin is the curvature gizmo's own statement about this segment, so it
+    // may take either handle all the way down.
+    { startByHand: true, endByHand: true }
   );
 }
 
 function applyDetachedHandles(handles, request) {
   return {
     startLength: request.startAdjustment?.detached
-      ? Math.max(
-          placedLength(request.q0, request.u0, request.startAdjustment),
-          MIN_HANDLE_LENGTH
-        )
+      ? Math.max(placedLength(request.q0, request.u0, request.startAdjustment), 0)
       : handles.startLength,
     endLength: request.endAdjustment?.detached
-      ? Math.max(
-          placedLength(request.q3, request.u1, request.endAdjustment),
-          MIN_HANDLE_LENGTH
-        )
+      ? Math.max(placedLength(request.q3, request.u1, request.endAdjustment), 0)
       : handles.endLength,
   };
 }

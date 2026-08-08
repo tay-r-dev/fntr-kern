@@ -795,11 +795,11 @@ function applySerifAuthoredHandles(sidePoints, side, authoredKeys) {
     const adjustmentSign =
       (adjustment.x || 0) * axis.x + (adjustment.y || 0) * axis.y < 0 ? -1 : 1;
     const requested = baseLength + adjustmentSign * adjustmentLength;
+    // No floor: the hand that placed this handle outranks the generator's own
+    // shortest length, and zero is a legal setting.
     const clamped =
-      Math.min(
-        Math.max(requested / domain.startReach, domain.minStartTension),
-        domain.maxStartTension
-      ) * domain.startReach;
+      Math.min(Math.max(requested / domain.startReach, 0), domain.maxStartTension) *
+      domain.startReach;
     points[index] = {
       ...point,
       x: Math.round(anchor.x + axis.x * clamped),
@@ -856,18 +856,14 @@ function applySerifPinnedCurvature(sidePoints, side, authoredKeys, pins) {
       pin,
       1
     );
+    // No floor: a pin is the gizmo's own statement about this segment, and it
+    // may take either handle all the way down.
     const startLength =
-      clamp(
-        shifted.start * domain.maxStartTension,
-        domain.minStartTension,
-        domain.maxStartTension
-      ) * domain.startReach;
+      clamp(shifted.start * domain.maxStartTension, 0, domain.maxStartTension) *
+      domain.startReach;
     const endLength =
-      clamp(
-        shifted.end * domain.maxEndTension,
-        domain.minEndTension,
-        domain.maxEndTension
-      ) * domain.endReach;
+      clamp(shifted.end * domain.maxEndTension, 0, domain.maxEndTension) *
+      domain.endReach;
     points[index + 1] = {
       ...handle1,
       x: Math.round(anchor.x + axis1.x * startLength),
@@ -2772,7 +2768,12 @@ function generateOffsetPointsForSegment(
       };
       const startAdjustment =
         startHandleDir && !authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
-          ? getGeneratedHandleAdjustment(segment.startPoint, startHandleDir, side, "out")
+          ? getGeneratedHandleAdjustment(
+              segment.startPoint,
+              startHandleDir,
+              side,
+              "out"
+            )
           : null;
       const endAdjustment =
         endHandleDir && !authoredKeys?.has(`${segment.endPoint?.id}/${side}/in`)
@@ -2780,35 +2781,35 @@ function generateOffsetPointsForSegment(
           : null;
       const { startLength, endLength, honoredStartAdjustment, honoredEndAdjustment } =
         offsetCubicSide({
-        p0: segment.startPoint,
-        p1: controls[0],
-        p2: controls[controls.length - 1],
-        p3: segment.endPoint,
-        d0: sideSign * startHalfWidth,
-        d3: sideSign * endHalfWidth,
-        q0: fixedStart,
-        q3: fixedEnd,
-        u0: startDir,
-        u1: endDir,
-        // The pin lives on the skeleton segment's start point, so it reads the
-        // same for both sides regardless of which way each side is emitted.
-        // Read off the generator's own flattened point shape, not the canonical
-        // one - by here the points have been through canonicalToGeneratorInput.
-        //
-        // Withheld on a serif terminal's own segment, and applied after the
-        // splice instead. The serif finds its release ON this wall, so a pin
-        // applied here reshapes the wall the release is found on and walks the
-        // whole terminal up and down the stem. The `out` handle at a segment's
-        // start point is claimed for exactly the segments a serif terminal owns,
-        // which is why the same key set gates all three authored layers.
-        pinnedTension: authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
-          ? undefined
-          : isLeftSide
-            ? segment.startPoint.leftSegmentCurvature
-            : segment.startPoint.rightSegmentCurvature,
-        startAdjustment,
-        endAdjustment,
-      });
+          p0: segment.startPoint,
+          p1: controls[0],
+          p2: controls[controls.length - 1],
+          p3: segment.endPoint,
+          d0: sideSign * startHalfWidth,
+          d3: sideSign * endHalfWidth,
+          q0: fixedStart,
+          q3: fixedEnd,
+          u0: startDir,
+          u1: endDir,
+          // The pin lives on the skeleton segment's start point, so it reads the
+          // same for both sides regardless of which way each side is emitted.
+          // Read off the generator's own flattened point shape, not the canonical
+          // one - by here the points have been through canonicalToGeneratorInput.
+          //
+          // Withheld on a serif terminal's own segment, and applied after the
+          // splice instead. The serif finds its release ON this wall, so a pin
+          // applied here reshapes the wall the release is found on and walks the
+          // whole terminal up and down the stem. The `out` handle at a segment's
+          // start point is claimed for exactly the segments a serif terminal owns,
+          // which is why the same key set gates all three authored layers.
+          pinnedTension: authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
+            ? undefined
+            : isLeftSide
+              ? segment.startPoint.leftSegmentCurvature
+              : segment.startPoint.rightSegmentCurvature,
+          startAdjustment,
+          endAdjustment,
+        });
       if (shouldAddStart)
         output.push(
           buildGeneratedOnCurve(
