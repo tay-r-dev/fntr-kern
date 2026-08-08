@@ -21,6 +21,7 @@ import {
   getSkeletonHandleOffsetKey,
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
+  harmonizeSkeletonPoints,
   isSkeletonSideLocked,
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
@@ -644,6 +645,54 @@ export async function splitPanelSkeletonContours(
       }
     }
   );
+}
+
+// Harmonize, for a skeleton. The centerline is an ordinary path and carries its
+// own smooth flags, so the ordinary pass applies to it unchanged. It goes
+// through this module because moving a centerline point changes generated
+// geometry, so it owes the same one write path every other skeleton edit takes.
+//
+// Every editable layer is recomputed from its own handles rather than taking
+// one layer's correction, because the other sources have different handles and
+// therefore a different target.
+//
+// Returns a Map of layer name -> report entries, matching the ordinary path's
+// harmonize, so one caller can present either. Only the edit layer reports:
+// structure is shared across compatible layers, so every layer reaches the same
+// verdict on the same point, and the numbers behind it are the edit layer's.
+export async function harmonizePanelSkeletonPoints(
+  sceneController,
+  pointAddresses,
+  options,
+  undoLabel
+) {
+  if (!pointAddresses.length) {
+    return new Map();
+  }
+  const reports = new Map();
+  await runSkeletonPanelEdit(
+    sceneController,
+    undoLabel,
+    (working, reference, isEditLayer) => {
+      const pointKeys = new Set();
+      for (const address of pointAddresses) {
+        const resolved = resolveSkeletonAddressAcrossLayers(
+          reference,
+          working,
+          address.contourId,
+          address.pointId
+        );
+        if (resolved) {
+          pointKeys.add(`${resolved.contour.id}/${resolved.point.id}`);
+        }
+      }
+      const report = harmonizeSkeletonPoints(working, pointKeys, options);
+      if (isEditLayer) {
+        reports.set(sceneController.sceneSettings?.editLayerName, report);
+      }
+    }
+  );
+  return reports;
 }
 
 // Reverse, from the context menu rather than the panel. It goes through this

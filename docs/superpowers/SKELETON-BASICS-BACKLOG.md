@@ -23,7 +23,7 @@ its findings.
 | 1.1 | Shift constrains the skeleton pen              | tool              | done   |
 | 1.2 | Reverse contour from the skeleton context menu | menu + write path | done   |
 | 1.3 | A single-sided skeleton pen                    | tool + registry   | done   |
-| 1.4 | Harmonize accepts skeleton contours            | feature bridge    | open   |
+| 1.4 | Harmonize accepts skeleton contours            | feature bridge    | done   |
 | 1.5 | Control must not extend a selection            | selection         | done   |
 | 1.6 | Split a skeleton contour at a point            | write path        | done   |
 | 1.7 | A locked rib angle holds the serif upright     | serif geometry    | done   |
@@ -119,6 +119,26 @@ they carry smooth flags, so harmonize applies to them unchanged.
 
 Route the write through the one skeleton write path. Harmonize moves on-curve
 points and handles, so the outline follows for free.
+
+### Done
+
+**The pass itself needed nothing.** The centerline is built as a path, the
+ordinary harmonize runs over it, and the moved points are written back. No
+width, rib or outline code is involved, and the outline follows because the one
+write path regenerates it after every edit.
+
+**A skeleton selection answers the command itself**, the way break and reverse
+already do. Skeleton and ordinary points are never mixed into one pass: that
+would take two write paths and cost two undo steps for one command.
+
+**Every layer is recomputed from its own handles.** The other sources have
+different handles and so a different harmonic target, and propagating one
+layer's correction would put the same numbers everywhere. Only the edit layer
+reports, because structure is shared and every layer reaches the same verdict on
+the same point.
+
+The report entries carry the skeleton address the point came from, not just the
+index into the path built to run the pass — that path is thrown away.
 
 ---
 

@@ -92,6 +92,7 @@ import {
   recordSkeletonContourIndexShift,
 } from "./skeleton-editing.js";
 import {
+  harmonizePanelSkeletonPoints,
   splitPanelSkeletonContours,
   togglePanelContourReversed,
 } from "./skeleton-panel-edits.js";
@@ -2069,6 +2070,23 @@ export class SceneController {
     } = options;
 
     const reports = new Map();
+
+    // A skeleton selection answers this itself, the same way break and reverse
+    // do. The centerline is an ordinary path and harmonize applies to it
+    // unchanged, but it is written through the skeleton's own path so the
+    // outline is regenerated. Skeleton and ordinary points are never mixed into
+    // one pass: that would take two write paths and cost two undo steps.
+    const skeletonPointSelection = parseSelection(this.selection).skeletonPoint || [];
+    if (skeletonPointSelection.length) {
+      return await harmonizePanelSkeletonPoints(
+        this,
+        skeletonPointSelection
+          .map((item) => parseSkeletonPointKey(`${item}`))
+          .filter((address) => address),
+        { handleBias, equalizeTension },
+        translate("action.harmonize")
+      );
+    }
 
     const path = this.sceneModel.getSelectedPositionedGlyph()?.glyph?.path;
     if (!path) {

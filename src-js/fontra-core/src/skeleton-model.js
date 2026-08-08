@@ -10,6 +10,7 @@ import {
   FONTRA_INTERNAL_SECTIONS,
 } from "./fontra-internal-schema.js";
 import { getGlyphInfoFromGlyphName } from "./glyph-data.js";
+import { expandToJoints, harmonizePathInPlace } from "./harmonization.js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
 import { offsetCubicSide } from "./offset-cubic.js";
 import { alignHandle, alignHandles } from "./path-functions.js";
@@ -1362,6 +1363,60 @@ export function appendSkeletonContour(skeletonData, contourData = {}) {
   const contour = makeSkeletonContour(contourData, skeletonData);
   skeletonData.contours.push(contour);
   return contour;
+}
+
+// G2-harmonize the skeleton's own centerline.
+//
+// The skeleton is a path, so the ordinary path's harmonize applies to it
+// unchanged: build the centerline as a path, run the same pass over it, and
+// write the moved points back. Nothing here knows about widths, ribs or the
+// generated outline — the outline follows on its own, because the one skeleton
+// write path regenerates it after every edit.
+//
+// `pointKeys` is a set of "contourId/pointId" strings naming the points to
+// harmonize, or null for the whole skeleton. Passing an empty set does nothing,
+// which is not the same as passing null.
+//
+// Returns the report `harmonizePathInPlace` produced, with each entry's point
+// index replaced by the skeleton address it came from.
+export function harmonizeSkeletonPoints(skeletonData, pointKeys = null, options = {}) {
+  const path = new VarPackedPath();
+  const addresses = [];
+  const selected = [];
+  for (const contour of skeletonData?.contours || []) {
+    path.appendUnpackedContour({
+      points: contour.points.map((point) => ({
+        x: point.x,
+        y: point.y,
+        ...(point.type ? { type: point.type } : {}),
+        ...(point.smooth ? { smooth: true } : {}),
+      })),
+      isClosed: contour.closed === true,
+    });
+    for (const point of contour.points) {
+      if (!pointKeys || pointKeys.has(`${contour.id}/${point.id}`)) {
+        selected.push(addresses.length);
+      }
+      addresses.push({ contourId: contour.id, point });
+    }
+  }
+  if (!selected.length) {
+    return [];
+  }
+  const report = harmonizePathInPlace(path, expandToJoints(path, selected), {
+    roundCoordinates: true,
+    ...options,
+  });
+  for (let index = 0; index < addresses.length; index++) {
+    const moved = path.getPoint(index);
+    addresses[index].point.x = moved.x;
+    addresses[index].point.y = moved.y;
+  }
+  return report.map((entry) => ({
+    ...entry,
+    contourId: addresses[entry.pointIndex]?.contourId,
+    pointId: addresses[entry.pointIndex]?.point.id,
+  }));
 }
 
 // Cut a contour at one of its own on-curve points. A closed contour opens there

@@ -20,6 +20,7 @@ import {
   getSkeletonPointNudge,
   getSkeletonPointWidth,
   getSkeletonRibSidesForPoint,
+  harmonizeSkeletonPoints,
   makeEmptySkeletonData,
   makeSkeletonContour,
   makeSkeletonPoint,
@@ -1389,5 +1390,59 @@ describe("skeleton-model rib angle lock", () => {
     );
     const locked = calculateNormalAtSkeletonPoint(contour, 1);
     expect(locked).to.deep.equal({ x: 0, y: free.y >= 0 ? 1 : -1 });
+  });
+});
+
+// The skeleton is a path, so harmonize applies to its own centerline points
+// unchanged. Only the centerline: the generated outline is derived, and the
+// one write path regenerates it.
+describe("harmonizing a skeleton centerline", () => {
+  function makeKinkedSkeleton() {
+    return {
+      version: SKELETON_SCHEMA_VERSION,
+      nextId: 10,
+      contours: [
+        makeSkeletonContour({
+          id: 1,
+          closed: false,
+          points: [
+            makeSkeletonPoint({ id: 2, x: 0, y: 0 }),
+            makeSkeletonPoint({ id: 3, x: 40, y: 0, type: "cubic" }),
+            makeSkeletonPoint({ id: 4, x: 60, y: 40, type: "cubic" }),
+            makeSkeletonPoint({ id: 5, x: 100, y: 60, smooth: true }),
+            // Colinear with the incoming handle, so the joint is smooth, but
+            // far shorter — the curvature does not match across it.
+            makeSkeletonPoint({ id: 6, x: 120, y: 70, type: "cubic" }),
+            makeSkeletonPoint({ id: 7, x: 190, y: 60, type: "cubic" }),
+            makeSkeletonPoint({ id: 8, x: 200, y: 0 }),
+          ],
+        }),
+      ],
+      generated: [],
+    };
+  }
+
+  it("moves the handles at a smooth centerline joint", () => {
+    const skeleton = makeKinkedSkeleton();
+    const before = skeleton.contours[0].points.map((point) => ({ ...point }));
+    const report = harmonizeSkeletonPoints(skeleton);
+    const after = skeleton.contours[0].points;
+    expect(report.some((entry) => entry.status === "harmonized")).to.equal(true);
+    const moved = after.filter(
+      (point, index) => point.x !== before[index].x || point.y !== before[index].y
+    );
+    expect(moved.length).to.be.greaterThan(0);
+    expect(moved.every((point) => point.type === "cubic")).to.equal(true);
+  });
+
+  it("touches nothing outside the points it was given", () => {
+    const skeleton = makeKinkedSkeleton();
+    const before = skeleton.contours[0].points.map((point) => ({ ...point }));
+    harmonizeSkeletonPoints(skeleton, new Set(["1/2"]));
+    const after = skeleton.contours[0].points;
+    for (let index = 0; index < after.length; index++) {
+      expect(after[index].x).to.equal(before[index].x);
+      expect(after[index].y).to.equal(before[index].y);
+    }
   });
 });

@@ -2656,3 +2656,50 @@ used to reach 30 units now stops at 23, because the ceiling is where the
 segment's two handles would cross and the true tangent puts that crossing nearer.
 The clamp was always there; the old axis was pointing somewhere the curve did not
 go.
+
+## 36. Harmonize accepts a skeleton — feature
+
+Skeleton basics backlog item 1.4.
+
+### 1. Problem
+
+Harmonize reported every skeleton contour as skipped. That is correct for the
+generated outline, which is derived and would be thrown away. It is wrong for
+the skeleton's own centerline, which is an ordinary path carrying ordinary
+smooth flags.
+
+### 2. Solution
+
+Build the centerline as a path, run the ordinary harmonize over it, write the
+moved points back. The pass is untouched, and nothing in the new code knows
+about widths, ribs or the outline.
+
+The write goes through the one skeleton write path, so the outline is
+regenerated for free.
+
+A skeleton selection answers the command itself, the way break and reverse do.
+An ordinary selection takes the path route it always took.
+
+### 3. Result
+
+Full suite 1,826 passing. Two new tests: a smooth centerline joint moves its
+handles and holds its on-curve points, and a point that is not a joint moves
+nothing.
+
+### 4. Challenges and findings
+
+**The first fixture harmonized in one iteration and moved nothing.** Its two
+handles at the smooth point were not just colinear but already equal in
+curvature, so the pass had nothing to correct. A real test needs a joint that is
+smooth and unbalanced: colinear handles of very different length.
+
+**Reports are addressed, not indexed.** The path built to run the pass is thrown
+away, so an index into it means nothing afterwards. Each entry carries the
+contour and point id it came from.
+
+**Only the edit layer reports.** Structure is shared across compatible layers, so
+every layer reaches the same verdict on the same point; the numbers behind it are
+the edit layer's. Each layer is still recomputed from its own handles, because a
+different set of handles has a different harmonic target.
+
+---
