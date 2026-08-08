@@ -60,9 +60,9 @@ function normalize(direction) {
   return { u: direction.u / length, v: direction.v / length };
 }
 
-// The parameter at `fraction` of the curve's own length. A fixed table rather
-// than a solve, for the same reason as everything else here.
-function parameterAtLengthFraction(points, fraction) {
+// One arc-length table for the curve, built once. A fixed table rather than a
+// solve, for the same reason as everything else here.
+function buildLengthTable(points) {
   let total = 0;
   const cumulative = [0];
   let previous = evaluate(points, 0);
@@ -72,10 +72,30 @@ function parameterAtLengthFraction(points, fraction) {
     cumulative.push(total);
     previous = current;
   }
+  return { cumulative, total };
+}
+
+// Length along the curve up to a parameter, by linear reading of the table.
+function lengthAtParameter(table, t) {
+  const scaled = Math.min(Math.max(t, 0), 1) * LENGTH_SAMPLES;
+  const index = Math.min(Math.floor(scaled), LENGTH_SAMPLES - 1);
+  const within = scaled - index;
+  const { cumulative } = table;
+  return cumulative[index] + (cumulative[index + 1] - cumulative[index]) * within;
+}
+
+// The parameter at a length, the same reading run backwards.
+function parameterAtLength(table, target) {
+  const { cumulative, total } = table;
   if (!(total > 0)) {
-    return fraction;
+    return 0;
   }
-  const target = total * fraction;
+  if (target <= 0) {
+    return 0;
+  }
+  if (target >= total) {
+    return 1;
+  }
   for (let i = 1; i <= LENGTH_SAMPLES; i++) {
     if (cumulative[i] >= target) {
       const span = cumulative[i] - cumulative[i - 1];
@@ -108,8 +128,24 @@ function bisect(signAt, low, high) {
  * @param {Array<{u: number, v: number}>} points
  */
 export function makeSerifWall(points) {
-  const maxParameter = parameterAtLengthFraction(points, MAX_CONSUMED_FRACTION);
+  const table = buildLengthTable(points);
+  const maxParameter =
+    table.total > 0
+      ? parameterAtLength(table, table.total * MAX_CONSUMED_FRACTION)
+      : MAX_CONSUMED_FRACTION;
   const maxDepth = evaluate(points, maxParameter).v;
+  const maxLength = lengthAtParameter(table, maxParameter);
+
+  const lengthAt = (t) => lengthAtParameter(table, t);
+  // Advance along the wall by a true distance, not by depth. Reach and ease
+  // distance are lengths in the panel, so they are lengths here: measured as
+  // depth instead, a leaning or curving wall carries the point further than the
+  // number says, by the number divided by the cosine of the lean.
+  const parameterAtDistance = (fromParameter, distance) =>
+    Math.min(
+      parameterAtLength(table, lengthAtParameter(table, fromParameter) + distance),
+      maxParameter
+    );
 
   const pointAt = (t) => evaluate(points, t);
   const tangentAt = (t) => normalize(derivative(points, t));
@@ -170,5 +206,15 @@ export function makeSerifWall(points) {
     return null;
   };
 
-  return { pointAt, tangentAt, parameterAtDepth, meetRay, maxParameter, maxDepth };
+  return {
+    pointAt,
+    tangentAt,
+    parameterAtDepth,
+    parameterAtDistance,
+    lengthAt,
+    meetRay,
+    maxParameter,
+    maxDepth,
+    maxLength,
+  };
 }

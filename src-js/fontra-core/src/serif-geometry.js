@@ -171,13 +171,14 @@ function splitCubic(p0, p1, p2, p3, t) {
 // `wall` is the stem wall in this same frame, running from the rib end into the
 // stroke. Every point the serif shares with the stroke is found ON it, so the
 // caller can cut the wall where the serif meets it and emit what survives
-// unchanged. `maxDepth` is how deep this half may consume.
+// unchanged. The wall states how far it may be consumed, so the half needs no
+// separate limit.
 //
 // The wing inner corner is NOT a returned point. It is the attractor the
 // transition curve bends around, exactly as in the serif-lab mockup. Emitting it
 // would split the sweep from tip to flank into two segments and destroy the
 // bracketed look.
-export function buildHalfSerif({ side, wall, params, maxDepth = Infinity }) {
+export function buildHalfSerif({ side, wall, params }) {
   const wingLength = params.wingLength ?? 0;
   const wantedTipThickness = params.tipThickness ?? 0;
   const wingSlope = params.wingSlope ?? 0;
@@ -238,9 +239,15 @@ export function buildHalfSerif({ side, wall, params, maxDepth = Infinity }) {
       : wall.parameterAtDepth(tipThickness + wingSlope);
   const corner = wall.pointAt(cornerParameter);
 
-  // Reach and ease distance are depths above the corner, as tip thickness is a
-  // depth. Only their sideways position follows the wall.
-  const room = Math.max(maxDepth - corner.v, 0);
+  // Reach and ease distance are LENGTHS ALONG THE WALL above the corner. They
+  // are lengths in the panel, so they are lengths here. Advancing by depth
+  // instead — which is what the straight-line model could measure — carries the
+  // point further along a leaning or curving wall than the number says, by the
+  // number divided by the cosine of the lean, and leaves the rounding lopsided:
+  // its wall end travelled 17.3 for an ease distance of 15 at a lean of 30
+  // degrees, while its other end travelled 15. Tip thickness stays a depth,
+  // because the thickness of the tip is measured square to the foot.
+  const room = Math.max(wall.maxLength - wall.lengthAt(cornerParameter), 0);
   const wantedReach = Math.max(params.reach ?? 0, 0);
   const reach = Math.min(wantedReach, room);
   // At full concavity the bracket already leaves the junction along the flank,
@@ -265,9 +272,9 @@ export function buildHalfSerif({ side, wall, params, maxDepth = Infinity }) {
 
   // Where the serif lets go of the stroke, and the straight run below it. Both
   // sit ON the wall above the corner, at their own depths.
-  const junctionParameter = wall.parameterAtDepth(corner.v + reach);
+  const junctionParameter = wall.parameterAtDistance(cornerParameter, reach);
   const junction = wall.pointAt(junctionParameter);
-  const releaseParameter = wall.parameterAtDepth(junction.v + easeDistance);
+  const releaseParameter = wall.parameterAtDistance(junctionParameter, easeDistance);
   const release = wall.pointAt(releaseParameter);
 
   // The transition cubic runs junction -> tipTop, and both of its handles
@@ -433,8 +440,6 @@ export function buildSerifTerminal({
   frame,
   leftWall,
   rightWall,
-  leftMaxDepth,
-  rightMaxDepth,
   left,
   right,
   undersideCup,
@@ -446,13 +451,11 @@ export function buildSerifTerminal({
       side: 1,
       wall: leftWall,
       params: left,
-      maxDepth: leftMaxDepth,
     }),
     right: buildHalfSerif({
       side: -1,
       wall: rightWall,
       params: right,
-      maxDepth: rightMaxDepth,
     }),
   };
   // The balance slides the centre along the axis, as a fraction of the half-span

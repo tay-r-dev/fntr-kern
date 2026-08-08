@@ -70,3 +70,35 @@ describe("serif wall", () => {
     expect(wall.maxDepth).to.be.lessThan(400);
   });
 });
+
+describe("serif wall arc length", () => {
+  it("advances by true distance along a straight wall", () => {
+    const wall = straight();
+    const from = wall.parameterAtDepth(100);
+    const to = wall.parameterAtDistance(from, 40);
+    close(wall.pointAt(to).v, 140, 1e-3);
+  });
+
+  it("advances by true distance along a curved wall", () => {
+    const wall = curved();
+    const from = wall.parameterAtDepth(100);
+    const a = wall.pointAt(from);
+    const b = wall.pointAt(wall.parameterAtDistance(from, 40));
+    // Straight-line distance is a touch under the arc it travelled, and nowhere
+    // near the 40 of depth the old measurement would have advanced.
+    expect(Math.hypot(b.u - a.u, b.v - a.v)).to.be.greaterThan(39);
+    expect(Math.hypot(b.u - a.u, b.v - a.v)).to.be.at.most(40.001);
+    expect(b.v - a.v).to.be.lessThan(39);
+  });
+
+  it("stops at its own limit", () => {
+    const wall = curved();
+    expect(wall.parameterAtDistance(0, 100000)).to.equal(wall.maxParameter);
+  });
+
+  it("reports the length it may be consumed for", () => {
+    const wall = straight();
+    close(wall.maxLength, 380, 1e-3);
+    close(wall.lengthAt(wall.parameterAtDepth(100)), 100, 1e-3);
+  });
+});

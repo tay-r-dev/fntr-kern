@@ -841,6 +841,16 @@ end's own `u` at every depth instead, both releases slide the same way along the
 inward on one wall and outward on the other: the stem changed thickness above a serif that had only
 been switched on.
 
+**Reach and ease distance are lengths along the wall.** They are lengths in the panel, so they are
+lengths in the shape. The straight-line model could only advance by depth, which on a leaning or
+curving wall carries the point further than the number says — by the number divided by the cosine of
+the lean, so an ease distance of 15 moved its wall end 17.3 at a lean of 30 degrees while its other
+end moved 15. The rounding was lopsided at exactly the leans a designer notices. Tip thickness stays
+a depth, because the thickness of a tip is measured square to its foot.
+
+A wall states how far it may be consumed, in its own length, and the half serif reads that limit off
+the wall rather than being handed one beside it.
+
 **Wing slope is the incline of the wing's top surface**, whose run is decided by where the wall is,
 rather than a rise measured on an assumed line. The two agree on a straight stem.
 

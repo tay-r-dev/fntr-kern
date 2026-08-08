@@ -4917,8 +4917,6 @@ function buildSerifCap({
     frame,
     leftWall,
     rightWall,
-    leftMaxDepth: leftWall.maxDepth,
-    rightMaxDepth: rightWall.maxDepth,
     left,
     right,
     undersideCup: (pointSerif?.undersideCup ?? 0) * lengthScale,

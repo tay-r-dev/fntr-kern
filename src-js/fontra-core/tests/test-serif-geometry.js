@@ -153,7 +153,6 @@ describe("half serif in frame coordinates", () => {
     buildHalfSerif({
       side,
       wall: wallAt(side * 50),
-      maxDepth: 900,
       params: { ...base, ...overrides },
     });
 
@@ -433,8 +432,6 @@ describe("serif terminal assembly", () => {
       frame,
       leftWall: wallAt(50),
       rightWall: wallAt(-50),
-      leftMaxDepth: 900,
-      rightMaxDepth: 900,
       left: half,
       right: half,
       undersideCup: 0,
@@ -724,7 +721,7 @@ describe("a serif frame the stroke is not square to", () => {
     const ribEnd = frame.toGlyph({ u: side * 50, v: 0 });
     const far = { x: ribEnd.x + inward.x * 1000, y: ribEnd.y + inward.y * 1000 };
     const wall = makeSerifWall([frame.toFrame(ribEnd), frame.toFrame(far)]);
-    return buildHalfSerif({ side, wall, params, maxDepth: 900 });
+    return buildHalfSerif({ side, wall, params });
   };
 
   it("keeps the junction, corner and release on the wall", () => {
@@ -799,7 +796,6 @@ describe("half serif on a wall", () => {
       side: 1,
       wall: straightWall(),
       params,
-      maxDepth: 500,
     });
     // Straight up the depth axis, the wing's top surface meets the wall at
     // exactly the old rise: tip thickness plus wing slope.
@@ -809,7 +805,7 @@ describe("half serif on a wall", () => {
 
   it("puts the corner, junction and release on a curved wall", () => {
     const wall = curvedWall();
-    const half = buildHalfSerif({ side: 1, wall, params, maxDepth: 500 });
+    const half = buildHalfSerif({ side: 1, wall, params });
     for (const point of [half.corner, half.junction, half.release]) {
       const onWall = wall.pointAt(wall.parameterAtDepth(point.v));
       expect(Math.abs(onWall.u - point.u)).to.be.lessThan(0.05);
@@ -820,21 +816,25 @@ describe("half serif on a wall", () => {
 
   it("reports the release's own parameter on the wall", () => {
     const wall = curvedWall();
-    const half = buildHalfSerif({ side: 1, wall, params, maxDepth: 500 });
+    const half = buildHalfSerif({ side: 1, wall, params });
     const at = wall.pointAt(half.releaseParameter);
     expect(Math.abs(at.u - half.release.u)).to.be.lessThan(0.05);
     expect(Math.abs(at.v - half.release.v)).to.be.lessThan(0.05);
   });
 
-  it("clamps reach and ease against the depth it may consume", () => {
-    const wall = curvedWall();
+  it("clamps reach and ease against the wall it may consume", () => {
+    // A short wall: the limit is the wall's own, not a number handed in beside
+    // it, so there is one place the terminal's reach can be bounded.
+    const wall = makeSerifWall([
+      { u: 30, v: 0 },
+      { u: 30, v: 200 },
+    ]);
     const half = buildHalfSerif({
       side: 1,
       wall,
       params: { ...params, reach: 900, easeDistance: 900 },
-      maxDepth: 120,
     });
-    expect(half.release.v).to.be.at.most(120.01);
+    expect(half.release.v).to.be.at.most(wall.maxDepth + 0.01);
     expect(half.depthClamped).to.equal(true);
   });
 
@@ -843,7 +843,6 @@ describe("half serif on a wall", () => {
       side: 1,
       wall: curvedWall(),
       params: { ...params, wingLength: 0, tipThickness: 0, wingSlope: 0 },
-      maxDepth: 500,
     });
     for (const key of [
       "junction",
@@ -892,7 +891,6 @@ describe("a tip that reaches the wall on its own", () => {
       side: 1,
       wall: outwardWall(),
       params,
-      maxDepth: 400,
     });
     expect(Math.abs(half.corner.u - tipU)).to.be.lessThan(0.05);
     expect(half.corner.v).to.be.lessThan(params.tipThickness);
@@ -904,7 +902,6 @@ describe("a tip that reaches the wall on its own", () => {
         side: 1,
         wall: outwardWall(),
         params: { ...params, wingSlope },
-        maxDepth: 400,
       });
     // No wing is left for a slope to climb, so the number cannot move anything.
     for (const wingSlope of [0, 25, 60]) {
@@ -920,7 +917,6 @@ describe("a tip that reaches the wall on its own", () => {
         side: 1,
         wall: wallAt(30),
         params: { ...params, tipThickness: 40, wingSlope },
-        maxDepth: 400,
       });
     expect(build(25).corner.v - build(0).corner.v).to.be.closeTo(25, 0.05);
   });
@@ -950,7 +946,6 @@ describe("a tip that would push past the wall", () => {
       side: 1,
       wall: outwardWall(),
       params: { ...params, ...overrides },
-      maxDepth: 400,
     });
 
   it("stops the top of the tip at the wall", () => {
@@ -986,7 +981,6 @@ describe("a wingless tip against the wall", () => {
     const half = buildHalfSerif({
       side: 1,
       wall: wallAt(30),
-      maxDepth: 500,
       params: {
         wingLength: 0,
         tipThickness: 30,
@@ -1015,7 +1009,6 @@ describe("the rounding when the wing has been swallowed", () => {
     buildHalfSerif({
       side: 1,
       wall: outwardWall(),
-      maxDepth: 400,
       params: {
         wingLength: 48,
         tipThickness: 100,
