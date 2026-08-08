@@ -2113,8 +2113,8 @@ describe("skeleton-generator serif terminal handles", () => {
     expect(release).to.not.equal(null);
     expect(serifSide).to.not.equal(null);
     expect(far).to.not.equal(null);
-    expect(serifSide.x).to.be.closeTo(177.01696447669852, 0.5);
-    expect(serifSide.y).to.be.closeTo(217.2822488632268, 0.5);
+    expect(serifSide.x).to.be.closeTo(171.75999148079742, 0.5);
+    expect(serifSide.y).to.be.closeTo(220.00472762674588, 0.5);
   });
 
   it("leaves the next segment's handle alone when a trimmed handle changes", () => {
@@ -2168,7 +2168,10 @@ describe("skeleton-generator serif terminal handles", () => {
       x: (handle.x - on.x) / axisLength,
       y: (handle.y - on.y) / axisLength,
     };
-    const wanted = 30;
+    // Under the domain's own ceiling, which on this curved stem is reached at
+    // about 23 units. Past it the handle stops, as any handle does at the point
+    // where the segment's two handles would cross.
+    const wanted = 20;
     const after = generateFromSkeleton(
       serifStem({
         offsets: { 5: { leftIn: { x: axis.x * wanted, y: axis.y * wanted } } },
@@ -2467,4 +2470,136 @@ describe("skeleton-generator curvature pin round trip", () => {
       expect(grabMovement({ capStyle, offsets: adjusted })).to.be.at.most(1);
     });
   }
+});
+
+// A curved stem with a serif on one end: the configuration the fault was
+// reported from.
+function curvedSerifSkeleton(tipThickness) {
+  const halfParams = {
+    wingLength: 48,
+    tipThickness,
+    wingSlope: 0,
+    tipCutAngle: 0,
+    reach: 0,
+    tension: 0,
+    concavity: 0,
+    easeDistance: 0,
+    easeCurvature: 0,
+  };
+  return {
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 60,
+        points: [
+          {
+            id: 4,
+            x: 372,
+            y: 331,
+            capStyle: "serif",
+            width: { left: 30, right: 30, linked: true, tied: true },
+            serif: {
+              axisMode: "perpendicular",
+              axisAngle: 0,
+              sides: "right",
+              linked: false,
+              undersideCup: 0,
+              undersideCupTension: 2 / 3,
+              undersideCupBalance: 0,
+              left: { ...halfParams },
+              right: { ...halfParams },
+            },
+          },
+          { id: 9, x: 317, y: 457, type: "cubic" },
+          { id: 10, x: 252, y: 492, type: "cubic" },
+          {
+            id: 2,
+            x: 63,
+            y: 492,
+            width: { left: 40, right: 40, linked: true, tied: true },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// The emitted stem wall next to the serif, as a cubic.
+function emittedStemWall(result, side) {
+  const points = result.contours[0].points;
+  const map = result.provenance[0].pointMap;
+  for (let i = 0; i < points.length; i++) {
+    const p = map[i];
+    if (!p || p.role !== "onCurve" || p.skeletonPointId !== 4 || p.side !== side)
+      continue;
+    for (const step of [1, -1]) {
+      const at = (k) => (k + points.length * 4) % points.length;
+      const c1 = points[at(i + step)];
+      const c2 = points[at(i + 2 * step)];
+      const far = points[at(i + 3 * step)];
+      const farProvenance = map[at(i + 3 * step)];
+      if (!c1?.type || !c2?.type || far?.type) continue;
+      if (farProvenance?.skeletonPointId !== 2 || farProvenance?.side !== side)
+        continue;
+      return [points[i], c1, c2, far].map((q) => ({ x: q.x, y: q.y }));
+    }
+  }
+  return null;
+}
+
+function cubicPoint(p, t) {
+  const s = 1 - t;
+  return {
+    x:
+      s ** 3 * p[0].x +
+      3 * s * s * t * p[1].x +
+      3 * s * t * t * p[2].x +
+      t ** 3 * p[3].x,
+    y:
+      s ** 3 * p[0].y +
+      3 * s * s * t * p[1].y +
+      3 * s * t * t * p[2].y +
+      t ** 3 * p[3].y,
+  };
+}
+
+function maxDeviation(a, b) {
+  let worst = 0;
+  for (let i = 0; i <= 100; i++) {
+    const q = cubicPoint(a, i / 100);
+    let nearest = Infinity;
+    for (let j = 0; j <= 2000; j++) {
+      const r = cubicPoint(b, j / 2000);
+      nearest = Math.min(nearest, Math.hypot(r.x - q.x, r.y - q.y));
+    }
+    worst = Math.max(worst, nearest);
+  }
+  return worst;
+}
+
+describe("a serif on a curved stem", () => {
+  it("does not reshape the stem as the tip thickens", () => {
+    const reference = emittedStemWall(
+      generateFromSkeleton(curvedSerifSkeleton(0)),
+      "right"
+    );
+    for (const tip of [20, 40, 63, 80, 100]) {
+      const wall = emittedStemWall(
+        generateFromSkeleton(curvedSerifSkeleton(tip)),
+        "right"
+      );
+      // The emitted piece is a slice of the same curve, so every point on it
+      // lies on the reference wall. Two units covers grid rounding at both
+      // ends and nothing else.
+      expect(maxDeviation(wall, reference), `tip ${tip}`).to.be.lessThan(2);
+    }
+  });
+
+  it("keeps its point count as the tip thickens", () => {
+    const counts = [0, 20, 63, 100].map(
+      (tip) => generateFromSkeleton(curvedSerifSkeleton(tip)).contours[0].points.length
+    );
+    expect(new Set(counts).size).to.equal(1);
+  });
 });

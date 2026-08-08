@@ -2,6 +2,7 @@ import { Bezier } from "bezier-js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
 import { offsetCubicSide } from "./offset-cubic.js";
 import { buildSerifTerminal, computeSerifFrame } from "./serif-geometry.js";
+import { makeSerifWall } from "./serif-wall.js";
 import {
   CAP_POINT_FIELDS,
   CORNER_POINT_FIELDS,
@@ -3302,7 +3303,12 @@ function splitTerminalSideForRoundCap(
   sidePoints,
   sidePosition,
   trimDistance,
-  fallbackDirections
+  fallbackDirections,
+  // How little curve a cut may leave behind. A round cap keeps a unit, because
+  // its tip is built from the direction the leftover piece gives it. A serif
+  // reads no direction off that piece and may release the stroke at the rib end
+  // itself, which is a legal shape — points collapse, they do not disappear.
+  { minimumTrim = 1 } = {}
 ) {
   const terminalSegment = getRoundCapTerminalSegment(sidePoints, sidePosition);
   if (!terminalSegment) {
@@ -3329,8 +3335,8 @@ function splitTerminalSideForRoundCap(
     Math.max(trimDistance, 0),
     terminalSegmentLength
   );
-  if (terminalSegmentLength >= 2 && effectiveTrimDistance < 1) {
-    effectiveTrimDistance = 1;
+  if (terminalSegmentLength >= 2 && effectiveTrimDistance < minimumTrim) {
+    effectiveTrimDistance = minimumTrim;
   }
 
   const synthesizeInsertedPoint = () => {
@@ -3376,7 +3382,10 @@ function splitTerminalSideForRoundCap(
       interpolationT
     );
     let insertedPoint = buildInsertedRoundCapPoint(insertedCoords);
-    if (vector.distance(insertedPoint, referenceEndpoint) < 1) {
+    if (
+      minimumTrim > 0 &&
+      vector.distance(insertedPoint, referenceEndpoint) < minimumTrim
+    ) {
       insertedPoint = buildInsertedRoundCapPoint({
         x: referenceEndpoint.x - fallbackDirection.x,
         y: referenceEndpoint.y - fallbackDirection.y,
@@ -3410,20 +3419,47 @@ function splitTerminalSideForRoundCap(
 
   const bezier = segmentBezier ?? createBezierFromPoints(segmentPoints);
   const splitT = solveTerminalSplitForDistance(bezier, fromEnd, effectiveTrimDistance);
+  return (
+    splitTerminalSideAtT(sidePoints, sidePosition, terminalSegment, bezier, splitT, {
+      fallbackDirection,
+    }) ?? synthesizeInsertedPoint()
+  );
+}
+
+// Cut a terminal side's segment at a parameter and rewrite the side around the
+// cut. Shared by the distance split above and the parameter split below, so the
+// two cannot drift apart on how a cut segment is put back together.
+//
+// Returns null when the cut has no usable tangent, which is the caller's cue to
+// fall back to a synthesized point.
+function splitTerminalSideAtT(
+  sidePoints,
+  sidePosition,
+  terminalSegment,
+  bezier,
+  splitT,
+  { publishConstructionSegment = true, fallbackDirection } = {}
+) {
+  const { segmentStartIndex, segmentEndIndex, segmentPoints } = terminalSegment;
+  const fromEnd = sidePosition === "end";
+  const referenceEndpointIndex = fromEnd ? segmentEndIndex : segmentStartIndex;
+  const referenceEndpoint = cloneRoundCapPoint(sidePoints[referenceEndpointIndex]);
+  const startPoint = segmentPoints[0];
+  const endPoint = segmentPoints[segmentPoints.length - 1];
   const derivative = bezier.derivative(splitT);
   const derivativeDirection = vector.normalizeVector({
     x: derivative.x,
     y: derivative.y,
   });
   if (!isUsableDirection(derivativeDirection)) {
-    return synthesizeInsertedPoint();
+    return null;
   }
 
   const split = bezier.split(splitT);
   const leftPoints = split.left.points.map((point) => ({ x: point.x, y: point.y }));
   const rightPoints = split.right.points.map((point) => ({ x: point.x, y: point.y }));
   let insertedPoint = buildInsertedRoundCapPoint(leftPoints[leftPoints.length - 1]);
-  if (vector.distance(insertedPoint, referenceEndpoint) < 1) {
+  if (fallbackDirection && vector.distance(insertedPoint, referenceEndpoint) < 1) {
     insertedPoint = buildInsertedRoundCapPoint({
       x: referenceEndpoint.x - fallbackDirection.x,
       y: referenceEndpoint.y - fallbackDirection.y,
@@ -3444,21 +3480,42 @@ function splitTerminalSideForRoundCap(
   // the whole untrimmed segment, so on a trimmed terminal the two are talking
   // about different curves and the first drag snaps the shape from one to the
   // other. This is what lets the gizmo measure the curve the pin governs.
-  if (insertedPoint._provenance) {
+  if (publishConstructionSegment && insertedPoint._provenance) {
     insertedPoint._provenance.constructionSegment = segmentPoints.map((point) => ({
       x: point.x,
       y: point.y,
     }));
   }
+  // The two handles either side of the cut are tangent to the curve there, so
+  // each one's own direction is the axis its length is measured along. Stamp it:
+  // a handle carrying no axis leaves every reader estimating one back out of a
+  // rounded position, and an authored adjustment has nothing to move along.
+  const axisFromInserted = (point) => {
+    const direction = vector.normalizeVector({
+      x: point.x - insertedPoint.x,
+      y: point.y - insertedPoint.y,
+    });
+    return isUsableDirection(direction) ? direction : null;
+  };
+  const stampAxis = (offCurve, axis) => {
+    if (axis) offCurve._axis = { x: axis.x, y: axis.y };
+    return offCurve;
+  };
   const rewrittenSegment = [
     cloneRoundCapPoint(startPoint),
     withRoundCapProvenance(
       buildSplitOffCurve(leftPoints[1], originalHandle1),
       originalHandle1
     ),
-    withRoundCapProvenance(buildSplitOffCurve(leftPoints[2]), originalHandle2),
+    withRoundCapProvenance(
+      stampAxis(buildSplitOffCurve(leftPoints[2]), axisFromInserted(leftPoints[2])),
+      originalHandle2
+    ),
     insertedPoint,
-    withRoundCapProvenance(buildSplitOffCurve(rightPoints[1]), originalHandle1),
+    withRoundCapProvenance(
+      stampAxis(buildSplitOffCurve(rightPoints[1]), axisFromInserted(rightPoints[1])),
+      originalHandle1
+    ),
     withRoundCapProvenance(
       buildSplitOffCurve(rightPoints[2], originalHandle2),
       originalHandle2
@@ -3481,41 +3538,62 @@ function splitTerminalSideForRoundCap(
   };
 }
 
-/**
- * Move a terminal split onto an exact point, and re-aim the one handle that
- * survives the trim so the edge still arrives along `intoStroke`.
- *
- * The split itself lands wherever the edge happens to run, which is a function
- * of the edge's shape and therefore of everything that shapes it. A terminal
- * that wants a fixed release cannot take that point; it takes the cut only as a
- * decision about how much curve to keep, then pulls the loose end into place.
- * The handle rotation is what keeps the join smooth: `intoStroke` is the
- * direction the terminal's own straight section leaves in.
- * @param {Object} split - Result of splitTerminalSideForRoundCap
- * @param {Object} target - Where the trimmed edge must end, in glyph space
- * @param {Object} intoStroke - Unit direction away from the terminal
- * @param {string} sidePosition - "start" or "end"
- * @returns {Object} The split, with its inserted point and kept handle moved
- */
-function anchorTerminalSplit(split, target, intoStroke, sidePosition) {
-  const sidePoints = [...split.sidePoints];
-  const insertedIndex = split.insertedPointIndex;
-  const insertedPoint = { ...sidePoints[insertedIndex], x: target.x, y: target.y };
-  sidePoints[insertedIndex] = insertedPoint;
-
-  // The kept side of the cut is whichever side is not the terminal's own.
-  const handleIndex = sidePosition === "end" ? insertedIndex - 1 : insertedIndex + 1;
-  const handle = sidePoints[handleIndex];
-  if (handle?.type) {
-    const length = vector.distance(handle, split.insertedPoint);
-    sidePoints[handleIndex] = {
-      ...handle,
-      x: target.x + intoStroke.x * length,
-      y: target.y + intoStroke.y * length,
-      _axis: { x: intoStroke.x, y: intoStroke.y },
-    };
+// Split a terminal side at a parameter that the caller already knows, rather
+// than at an arc-length distance the split has to solve for. A serif finds its
+// release ON the wall, so the parameter comes with it, and solving for a
+// distance again would only reintroduce the half-unit tolerance that solve
+// carries.
+function splitTerminalSideAtParameter(
+  sidePoints,
+  sidePosition,
+  parameter,
+  fallbackDirections
+) {
+  const terminalSegment = getRoundCapTerminalSegment(sidePoints, sidePosition);
+  if (!terminalSegment) {
+    return null;
   }
-  return { ...split, sidePoints, insertedPoint };
+  const { segmentPoints } = terminalSegment;
+  // A serif on a straight stem has a LINE for its terminal segment, which is the
+  // ordinary case and must keep working. On a line, parameter and distance are
+  // exactly proportional, so the existing distance split is exact there and
+  // there is nothing to solve. Only a cubic needs the parameter carried through.
+  if (segmentPoints.length === 2) {
+    const length = vector.distance(segmentPoints[0], segmentPoints[1]);
+    return splitTerminalSideForRoundCap(
+      sidePoints,
+      sidePosition,
+      parameter * length,
+      fallbackDirections,
+      { minimumTrim: 0 }
+    );
+  }
+  if (segmentPoints.length !== 4) {
+    return null;
+  }
+  const bezier = createBezierFromPoints(segmentPoints);
+  // A start terminal's segment already runs from the rib end into the stroke,
+  // which is the wall's own direction. An end terminal's runs the other way.
+  const splitT = sidePosition === "end" ? 1 - parameter : parameter;
+  // No floor and no nudge away from the endpoint. A collapsed serif releases the
+  // stroke AT the rib end, which is a legal shape here — points collapse, they
+  // do not disappear — and pushing the cut a unit inward instead moves an
+  // on-curve a designer never asked to move. The degenerate piece the cut leaves
+  // behind is discarded by the emission trim in any case.
+  return (
+    splitTerminalSideAtT(sidePoints, sidePosition, terminalSegment, bezier, splitT, {
+      // Still published here. The pin is applied before the trim at this point,
+      // so the curve it governs is the untrimmed one and the gizmo has to be
+      // handed it. Moving the pin behind the cut is what makes the emitted piece
+      // the curve the pin governs, and this goes away with it.
+      publishConstructionSegment: true,
+    }) ??
+    // Only when the cut has no usable tangent, which needs a segment with a
+    // collapsed handle. Then the distance split's synthesized point stands in.
+    splitTerminalSideForRoundCap(sidePoints, sidePosition, 0, fallbackDirections, {
+      minimumTrim: 0,
+    })
+  );
 }
 
 function trimSideForRoundCapEmission(sidePoints, sidePosition, referenceEndpointIndex) {
@@ -4689,14 +4767,6 @@ function buildSerifCap({
     axisMode: pointSerif?.axisMode ?? "perpendicular",
     axisAngle: pointSerif?.axisAngle ?? 0,
   });
-  const leftRibEnd = {
-    x: endpoint.x + normal.x * leftHalfWidth,
-    y: endpoint.y + normal.y * leftHalfWidth,
-  };
-  const rightRibEnd = {
-    x: endpoint.x - normal.x * rightHalfWidth,
-    y: endpoint.y - normal.y * rightHalfWidth,
-  };
   const unitsContext = {
     unitsMode: serifUnitsMode,
     strokeWidth: leftHalfWidth + rightHalfWidth,
@@ -4715,59 +4785,55 @@ function buildSerifCap({
       : { ...SERIF_HALF_ZEROS };
   const left = resolveHalfForSide("left");
   const right = resolveHalfForSide("right");
-  // A terminal may only consume its own segment. Clamp before constructing the
-  // serif as well as before splitting the outline, otherwise the splice stays
-  // local while the emitted straight section still reaches into the next one.
-  const clampTerminalDepth = (side, half) => {
-    const available = getTerminalSegmentLength(side, position) * 0.95;
-    const room = Math.max(available - (half.tipThickness + half.wingSlope), 0);
-    const wantedReach = Math.max(half.reach, 0);
-    const reach = Math.min(wantedReach, room);
-    const wantedEase = Math.max(half.easeDistance, 0);
-    const easeDistance = Math.min(wantedEase, Math.max(room - reach, 0));
-    return {
-      half: { ...half, reach, easeDistance },
-      clamped: wantedReach > reach || wantedEase > easeDistance,
-    };
+  // The wall, in frame coordinates, running from the rib end into the stroke.
+  // A terminal may only consume its own segment, and the wall's own maximum
+  // depth is what states that: the serif clamps its reach and ease against it.
+  // An end terminal's side points run the other way, so its segment is reversed.
+  const wallForSide = (sidePoints) => {
+    const terminalSegment = getRoundCapTerminalSegment(sidePoints, position);
+    if (!terminalSegment) return null;
+    const ordered =
+      position === "end"
+        ? [...terminalSegment.segmentPoints].reverse()
+        : terminalSegment.segmentPoints;
+    return makeSerifWall(ordered.map((point) => frame.toFrame(point)));
   };
-  const leftDepth = clampTerminalDepth(leftSide, left);
-  const rightDepth = clampTerminalDepth(rightSide, right);
-  const terminalArgs = {
+  const leftWall = wallForSide(leftSide);
+  const rightWall = wallForSide(rightSide);
+  if (!leftWall || !rightWall) return null;
+
+  const terminal = buildSerifTerminal({
     frame,
-    leftFlankU: frame.toFrame(leftRibEnd).u,
-    rightFlankU: frame.toFrame(rightRibEnd).u,
-    left: leftDepth.half,
-    right: rightDepth.half,
+    leftWall,
+    rightWall,
+    leftMaxDepth: leftWall.maxDepth,
+    rightMaxDepth: rightWall.maxDepth,
+    left,
+    right,
     undersideCup: (pointSerif?.undersideCup ?? 0) * lengthScale,
     // A fraction of the foot's own span, so the units mode does not touch it.
     undersideCupTension: pointSerif?.undersideCupTension,
     undersideCupBalance: pointSerif?.undersideCupBalance,
-  };
-  const terminal = buildSerifTerminal(terminalArgs);
-  // The serif releases the stroke at a point of its own choosing, on the flank
-  // line, and the edge is brought to that point rather than the reverse. Cutting
-  // the edge and taking whatever point falls out would hand the serif a release
-  // that moves whenever the edge is reshaped - and a curvature pin reshapes the
-  // edge, so dragging one would walk two on-curves along the stroke. The cut only
-  // decides how much curve to keep; the handle that survives it absorbs the rest.
-  //
-  // The edge leaves that point along the stroke, which is the frame's depth only
-  // while the axis is square to the stroke. Under a rib angle lock it is not, and
-  // aiming the surviving handle down the frame instead tips the whole wall off
-  // the stroke's own offset.
-  const alongWall = { x: -outward.x, y: -outward.y };
-  const releaseSide = (side, ribEnd, half) => {
-    const release = frame.toGlyph(half.release);
-    const split = splitTerminalSideForRoundCap(
-      side,
-      position,
-      vector.distance(ribEnd, release),
-      { endpointTangent: outward, capTangent: outward }
-    );
-    return split ? anchorTerminalSplit(split, release, alongWall, position) : null;
-  };
-  const leftSplit = releaseSide(leftSide, leftRibEnd, terminal.halves.left);
-  const rightSplit = releaseSide(rightSide, rightRibEnd, terminal.halves.right);
+  });
+
+  // The release sits ON the wall, so the split lands on it and the surviving
+  // piece is a slice of the curve the generator solved. Nothing is dragged onto
+  // a target and no handle is turned: the old anchoring existed only because
+  // the release was placed off the wall, and bending the wall back to it is
+  // what let tip thickness reshape the stem.
+  const fallbackDirections = { endpointTangent: outward, capTangent: outward };
+  const leftSplit = splitTerminalSideAtParameter(
+    leftSide,
+    position,
+    terminal.halves.left.releaseParameter,
+    fallbackDirections
+  );
+  const rightSplit = splitTerminalSideAtParameter(
+    rightSide,
+    position,
+    terminal.halves.right.releaseParameter,
+    fallbackDirections
+  );
   if (!leftSplit || !rightSplit) return null;
   const capPoints =
     position === "end" ? terminal.points : [...terminal.points].reverse();
@@ -4784,7 +4850,8 @@ function buildSerifCap({
       rightSplit.referenceEndpointIndex
     ),
     capPoints,
-    depthClamped: leftDepth.clamped || rightDepth.clamped,
+    depthClamped:
+      terminal.halves.left.depthClamped || terminal.halves.right.depthClamped,
   };
 }
 
