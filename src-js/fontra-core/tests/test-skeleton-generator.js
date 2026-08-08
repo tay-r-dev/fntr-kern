@@ -2332,11 +2332,11 @@ describe("skeleton-generator serif terminal handles", () => {
     expect(counts.size).to.equal(1);
   });
 
-  // The pin governs the curve the generator solves, which is the untrimmed one,
-  // so that curve stays published whatever the authored handles do to the piece
-  // of it that gets drawn. Withdrawing it left the curvature gizmo measuring the
-  // trimmed piece and writing the answer onto the whole curve, which jumped.
-  it("keeps publishing the untrimmed curve when a serif handle is authored", () => {
+  // The pin governs the piece of the curve that gets drawn, because it is applied
+  // after the trim. So there is no second curve to publish: the gizmo measures
+  // the segment the pin governs. Publishing one would put the gizmo back to
+  // measuring one curve and writing the answer onto another.
+  it("hands the gizmo no second curve when a serif handle is authored", () => {
     const constructionSegments = (result) =>
       result.provenance.flatMap((entry) =>
         entry.pointMap.filter((point) => point?.constructionSegment)
@@ -2347,7 +2347,7 @@ describe("skeleton-generator serif terminal handles", () => {
           serifStem({ offsets: { 5: { leftIn: { x: 9.49, y: -28.46 } } } })
         )
       )
-    ).to.have.length.above(0);
+    ).to.have.length(0);
   });
 });
 
@@ -2601,5 +2601,57 @@ describe("a serif on a curved stem", () => {
       (tip) => generateFromSkeleton(curvedSerifSkeleton(tip)).contours[0].points.length
     );
     expect(new Set(counts).size).to.equal(1);
+  });
+});
+
+describe("a curvature pin on a serifed terminal", () => {
+  function withPin(tension) {
+    const skeleton = curvedSerifSkeleton(63);
+    skeleton.contours[0].points[0].segmentCurvature = {
+      left: null,
+      right: tension,
+    };
+    return skeleton;
+  }
+
+  function onCurvePositions(result) {
+    return result.contours[0].points
+      .filter((point) => !point.type)
+      .map((point) => ({ x: point.x, y: point.y }));
+  }
+
+  it("moves no on-curve point over its whole range", () => {
+    const reference = onCurvePositions(generateFromSkeleton(withPin(0.1)));
+    let travel = 0;
+    for (let step = 1; step <= 40; step++) {
+      const positions = onCurvePositions(
+        generateFromSkeleton(withPin(0.1 + step * 0.02))
+      );
+      expect(positions.length).to.equal(reference.length);
+      for (let i = 0; i < positions.length; i++) {
+        travel += Math.hypot(
+          positions[i].x - reference[i].x,
+          positions[i].y - reference[i].y
+        );
+      }
+    }
+    expect(travel).to.equal(0);
+  });
+
+  it("still changes the handles it is supposed to change", () => {
+    const low = generateFromSkeleton(withPin(0.2)).contours[0].points;
+    const high = generateFromSkeleton(withPin(0.9)).contours[0].points;
+    const moved = low.filter(
+      (point, i) => point.type && (point.x !== high[i].x || point.y !== high[i].y)
+    );
+    expect(moved.length).to.be.greaterThan(0);
+  });
+
+  it("hands the gizmo no second curve to measure", () => {
+    const result = generateFromSkeleton(curvedSerifSkeleton(63));
+    const published = result.provenance[0].pointMap.filter(
+      (entry) => entry?.constructionSegment
+    );
+    expect(published.length).to.equal(0);
   });
 });

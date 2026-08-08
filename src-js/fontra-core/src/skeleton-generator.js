@@ -16,6 +16,7 @@ import {
   normalizeSkeletonData,
   straightSegmentNormal,
 } from "./skeleton-model.js";
+import { shiftTensionsToMean } from "./tunni-calculations.js";
 import { packContour } from "./var-path.js";
 import * as vector from "./vector.js";
 
@@ -806,6 +807,78 @@ function applySerifAuthoredHandles(sidePoints, side, authoredKeys) {
   return points;
 }
 
+// A pin states what a segment's tension is, and the segment it states it about
+// is the one on screen. On a serifed terminal that is the piece left after the
+// trim, not the curve the generator solved, so the pin is applied here — after
+// the splice, alongside the two handle adjustments that already wait for it.
+// Applying it before the cut would let a pin reshape the wall the serif's own
+// release is found on, and walk the terminal up and down the stem.
+function applySerifPinnedCurvature(sidePoints, side, authoredKeys, pins) {
+  if (!authoredKeys?.size || !pins?.size) return sidePoints;
+  const points = [...sidePoints];
+  const isOffCurve = (point) => !!point?.type;
+  const clamp = (value, low, high) => Math.min(Math.max(value, low), high);
+  for (let index = 0; index + 3 < points.length; index++) {
+    const anchor = points[index];
+    const handle1 = points[index + 1];
+    const handle2 = points[index + 2];
+    const far = points[index + 3];
+    if (isOffCurve(anchor) || isOffCurve(far)) continue;
+    if (!isOffCurve(handle1) || !isOffCurve(handle2)) continue;
+    // A pin is keyed on its segment's START point, and the handle leaving that
+    // point is the one the key names. Read the owner off the handle rather than
+    // the anchor: the side arrays run one way for a start terminal and the other
+    // for an end one, so only the handle's own provenance is direction-free.
+    const owner = handle1._provenance?.skeletonPointId;
+    const role = handle1._provenance?.role;
+    if (owner === undefined || !role) continue;
+    if (!authoredKeys.has(`${owner}/${side}/${role}`)) continue;
+    const pin = pins.get(`${owner}/${side}`);
+    if (!Number.isFinite(pin)) continue;
+    const axis1 = handle1._axis;
+    const axis2 = handle2._axis;
+    if (!axis1 || !axis2) continue;
+    const domain = buildHandleDomain(anchor, far, axis1, axis2);
+    if (!(domain.startReach > 0) || !(domain.endReach > 0)) continue;
+    // The gizmo measures each handle against its own true tangent intersection,
+    // and the domain's reach is a stable coordinate scale rather than that
+    // intersection. So rescale onto the ceiling, shift there, and rescale back —
+    // the same three steps the pre-splice path takes, for the same reason.
+    const shifted = shiftTensionsToMean(
+      {
+        start:
+          vector.distance(anchor, handle1) / domain.startReach / domain.maxStartTension,
+        end: vector.distance(far, handle2) / domain.endReach / domain.maxEndTension,
+      },
+      pin,
+      1
+    );
+    const startLength =
+      clamp(
+        shifted.start * domain.maxStartTension,
+        domain.minStartTension,
+        domain.maxStartTension
+      ) * domain.startReach;
+    const endLength =
+      clamp(
+        shifted.end * domain.maxEndTension,
+        domain.minEndTension,
+        domain.maxEndTension
+      ) * domain.endReach;
+    points[index + 1] = {
+      ...handle1,
+      x: Math.round(anchor.x + axis1.x * startLength),
+      y: Math.round(anchor.y + axis1.y * startLength),
+    };
+    points[index + 2] = {
+      ...handle2,
+      x: Math.round(far.x + axis2.x * endLength),
+      y: Math.round(far.y + axis2.y * endLength),
+    };
+  }
+  return points;
+}
+
 const SKELETON_DEBUG_PREFIX = "[SKELETON GEN DEBUG]";
 
 /**
@@ -1539,6 +1612,19 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
     startCapStyle,
     endCapStyle
   );
+  // The stored pin for each segment a serif terminal owns, so the value the
+  // solve no longer applies can be applied to the emitted piece instead.
+  const serifPins = new Map();
+  if (authoredKeys.size) {
+    for (const segment of segments) {
+      const owner = segment.startPoint;
+      if (owner?.id === undefined) continue;
+      if (Number.isFinite(owner.leftSegmentCurvature))
+        serifPins.set(`${owner.id}/left`, owner.leftSegmentCurvature);
+      if (Number.isFinite(owner.rightSegmentCurvature))
+        serifPins.set(`${owner.id}/right`, owner.rightSegmentCurvature);
+    }
+  }
   const resolveHalfWidth = (point, side) =>
     coupled.get(point)?.[side] ?? getPointHalfWidth(point, defaultWidth, side);
 
@@ -2107,6 +2193,22 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
       roundedRightSide,
       "right",
       authoredKeys
+    );
+    // The pin last, which is the order the solve itself uses: the placements say
+    // where each handle sits, the pin then states the tension of the pair. Put
+    // the other way round, an adjusted handle overwrites the pin, and the number
+    // the gizmo measured off the drawn curve cannot be reproduced from it.
+    roundedLeftSide = applySerifPinnedCurvature(
+      roundedLeftSide,
+      "left",
+      authoredKeys,
+      serifPins
+    );
+    roundedRightSide = applySerifPinnedCurvature(
+      roundedRightSide,
+      "right",
+      authoredKeys,
+      serifPins
     );
 
     const outlinePoints = [];
@@ -2680,9 +2782,18 @@ function generateOffsetPointsForSegment(
         // same for both sides regardless of which way each side is emitted.
         // Read off the generator's own flattened point shape, not the canonical
         // one - by here the points have been through canonicalToGeneratorInput.
-        pinnedTension: isLeftSide
-          ? segment.startPoint.leftSegmentCurvature
-          : segment.startPoint.rightSegmentCurvature,
+        //
+        // Withheld on a serif terminal's own segment, and applied after the
+        // splice instead. The serif finds its release ON this wall, so a pin
+        // applied here reshapes the wall the release is found on and walks the
+        // whole terminal up and down the stem. The `out` handle at a segment's
+        // start point is claimed for exactly the segments a serif terminal owns,
+        // which is why the same key set gates all three authored layers.
+        pinnedTension: authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
+          ? undefined
+          : isLeftSide
+            ? segment.startPoint.leftSegmentCurvature
+            : segment.startPoint.rightSegmentCurvature,
         startAdjustment:
           startHandleDir && !authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
             ? getGeneratedHandleAdjustment(
@@ -3582,11 +3693,11 @@ function splitTerminalSideAtParameter(
   // behind is discarded by the emission trim in any case.
   return (
     splitTerminalSideAtT(sidePoints, sidePosition, terminalSegment, bezier, splitT, {
-      // Still published here. The pin is applied before the trim at this point,
-      // so the curve it governs is the untrimmed one and the gizmo has to be
-      // handed it. Moving the pin behind the cut is what makes the emitted piece
-      // the curve the pin governs, and this goes away with it.
-      publishConstructionSegment: true,
+      // A pin on a serifed terminal governs the piece that survives the trim,
+      // not the curve the generator solved, so there is no second curve for a
+      // reader to be handed. Publishing one would leave the gizmo measuring one
+      // curve and writing the answer onto another.
+      publishConstructionSegment: false,
     }) ??
     // Only when the cut has no usable tangent, which needs a segment with a
     // collapsed handle. Then the distance split's synthesized point stands in.
