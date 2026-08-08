@@ -69,26 +69,10 @@ export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAng
 
   const origin = { x: endpoint.x, y: endpoint.y };
 
-  // How the stroke's wall runs in this frame: u travelled per unit of v, going
-  // into the stroke. The wall leaves the rib end along the stroke, and only a
-  // frame square to the stroke has that running straight up its own depth. A
-  // rib angle lock, or any of the named axis modes on a leaning stroke, tilts
-  // the two apart — and then a point placed straight up the frame from the rib
-  // end lands off the wall, the same way on both sides, so one wall moves in
-  // and the other out by as much.
-  //
-  // The divisor is the sine of the separation between axis and stroke, which
-  // the 15 degree floor above already holds off zero, so the slope is bounded
-  // and this cannot blow up.
-  const inward = { x: -outward.x, y: -outward.y };
-  const flankSlope =
-    (inward.x * axis.x + inward.y * axis.y) / (inward.x * depth.x + inward.y * depth.y);
-
   return {
     origin,
     axis,
     depth,
-    flankSlope,
     toFrame(point) {
       const dx = point.x - origin.x;
       const dy = point.y - origin.y;
@@ -184,20 +168,19 @@ function splitCubic(p0, p1, p2, p3, t) {
 // and -1 for the right, so the same seven numbers describe both and the caller
 // never mirrors anything by hand.
 //
-// `flankU` is where the wall crosses the foot line, and `flankSlope` is how it
-// leans from there — the frame's own reading of the stroke direction. Zero, the
-// default, is a wall running straight up the frame, which is what a frame square
-// to the stroke gives.
+// `wall` is the stem wall in this same frame, running from the rib end into the
+// stroke. Every point the serif shares with the stroke is found ON it, so the
+// caller can cut the wall where the serif meets it and emit what survives
+// unchanged. `maxDepth` is how deep this half may consume.
 //
 // The wing inner corner is NOT a returned point. It is the attractor the
 // transition curve bends around, exactly as in the serif-lab mockup. Emitting it
 // would split the sweep from tip to flank into two segments and destroy the
 // bracketed look.
-export function buildHalfSerif({ side, flankU, flankSlope = 0, params }) {
+export function buildHalfSerif({ side, wall, params, maxDepth = Infinity }) {
   const wingLength = params.wingLength ?? 0;
   const tipThickness = params.tipThickness ?? 0;
   const wingSlope = params.wingSlope ?? 0;
-  const reach = Math.max(params.reach ?? 0, 0);
   const tension = Math.min(Math.max(params.tension ?? 0, 0), 1);
   const concavity = Math.min(Math.max(params.concavity ?? 0, -1), 1);
   const cutAngle = Math.min(
@@ -205,28 +188,56 @@ export function buildHalfSerif({ side, flankU, flankSlope = 0, params }) {
     MAX_TIP_CUT_ANGLE
   );
 
-  const wingInnerV = tipThickness + wingSlope;
-  const tipU = flankU + side * wingLength;
+  const footU = wall.pointAt(0).u;
+  const tipU = footU + side * wingLength;
   const cutOffset = side * tipThickness * Math.tan((cutAngle * Math.PI) / 180);
-
-  // The wall, as a line in this frame: where it stands at a given depth. Every
-  // point the serif shares with the stroke is found on it. Taking the rib end's
-  // u at every depth instead only works while the frame is square to the stroke,
-  // and a rib angle lock is exactly the case where it is not.
-  const flankAt = (v) => flankU + flankSlope * v;
 
   const tipBottom = { u: tipU + cutOffset, v: 0 };
   const tipTop = { u: tipU, v: tipThickness };
+
+  // The wing's inner corner is where the wing's top surface reaches the stem.
+  // The surface leaves the top of the tip running inward, rising by the wing
+  // slope over the wing's own length, and it is extended until it MEETS THE
+  // WALL. Placing it at a depth of tipThickness + wingSlope instead assumes the
+  // wall stands straight up from the rib end, which is true of a straight stem
+  // and false of every curved one. On a straight wall the two answers are the
+  // same point, so nothing already drawn moves.
+  const cornerRay = { u: -side * wingLength, v: wingSlope };
+  const cornerParameter =
+    wingLength > 0
+      ? (wall.meetRay(tipTop, cornerRay) ??
+        wall.parameterAtDepth(tipThickness + wingSlope))
+      : wall.parameterAtDepth(tipThickness + wingSlope);
+  const corner = wall.pointAt(cornerParameter);
+
+  // Reach and ease distance are depths above the corner, as tip thickness is a
+  // depth. Only their sideways position follows the wall.
+  const room = Math.max(maxDepth - corner.v, 0);
+  const wantedReach = Math.max(params.reach ?? 0, 0);
+  const reach = Math.min(wantedReach, room);
+  // At full concavity the bracket already leaves the junction along the flank,
+  // so there is no corner left to round and the rounding has nothing to do. Only
+  // then: a partly hollow bracket still meets the flank at an angle, and wants
+  // rounding as much as a bulging one does.
+  const easeOff = concavity >= 1;
+  const wantedEase = easeOff ? 0 : Math.max(params.easeDistance ?? 0, 0);
+  // The rounding runs out where the bracket meets the wing, and the same bound
+  // holds both ends: the flank end stops where the bracket end stops, or the
+  // scoop goes lopsided at exactly the settings a designer is pushing hardest.
+  const easeDistance = Math.min(
+    wantedEase,
+    maxSerifEaseDistance(params),
+    Math.max(room - reach, 0)
+  );
+  const depthClamped = wantedReach > reach || wantedEase > easeDistance;
+  const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
+
   // Where the serif lets go of the stroke, and the straight run below it. Both
-  // sit on the wall line above the rib end, and both are functions of the
-  // serif's own numbers alone.
-  //
-  // Reading them off the stroke edge instead is tempting, because on a curved
-  // approach the edge has drifted off the flank by the time it gets this far.
-  // But then anything that reshapes the edge - a curvature pin above all - slides
-  // these two on-curves along the stroke, and a curvature pin is only allowed to
-  // change handles. The caller brings the edge to these points instead.
-  const junction = { u: flankAt(wingInnerV + reach), v: wingInnerV + reach };
+  // sit ON the wall above the corner, at their own depths.
+  const junctionParameter = wall.parameterAtDepth(corner.v + reach);
+  const junction = wall.pointAt(junctionParameter);
+  const releaseParameter = wall.parameterAtDepth(junction.v + easeDistance);
+  const release = wall.pointAt(releaseParameter);
 
   // The transition cubic runs junction -> tipTop, and both of its handles
   // lie on the line from their own end toward the wing's inner corner. That is
@@ -246,7 +257,6 @@ export function buildHalfSerif({ side, flankU, flankSlope = 0, params }) {
   //
   // They cannot cancel each other out: tension only ever splits a length that
   // concavity set, and the split is bounded so neither handle can vanish.
-  const corner = { u: flankAt(wingInnerV), v: wingInnerV };
   // With no wing there is no corner to bracket around, since it has collapsed
   // onto the tip. Hollowing toward it only pushes the curve below the foot line
   // and dimples the baseline, so a half turned off this way stays straight.
@@ -254,13 +264,6 @@ export function buildHalfSerif({ side, flankU, flankSlope = 0, params }) {
   const attractor = lerpUV(midChord, corner, concavity);
   const control1 = lerpUV(tipTop, attractor, tension);
   const control2 = lerpUV(junction, attractor, tension);
-  // At full concavity the bracket already leaves the junction along the flank,
-  // so there is no corner left to round and the rounding has nothing to do. Only
-  // then: a partly hollow bracket still meets the flank at an angle, and wants
-  // rounding as much as a bulging one does.
-  const easeOff = concavity >= 1;
-  const requestedEase = easeOff ? 0 : Math.max(params.easeDistance ?? 0, 0);
-  const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
   // The rounding is one curve across the corner at the junction, and both of
   // its ends step back from that corner by the ease distance — the flank end
   // along the flank, the bracket end along the bracket. The bracket end is
@@ -271,10 +274,6 @@ export function buildHalfSerif({ side, flankU, flankSlope = 0, params }) {
   const bracketPointAt = (fraction) =>
     splitCubic(tipTop, control1, control2, junction, 1 - fraction).first[3];
   const distanceToJunction = (point) => lengthUV(subUV(point, junction));
-  // The rounding runs out where the bracket meets the wing, and the same bound
-  // holds both ends: the flank end stops where the bracket end stops, or the
-  // scoop goes lopsided at exactly the settings a designer is pushing hardest.
-  const easeDistance = Math.min(requestedEase, maxSerifEaseDistance(params));
   let low = 0;
   let high = 1;
   for (let step = 0; step < 32; step++) {
@@ -290,10 +289,6 @@ export function buildHalfSerif({ side, flankU, flankSlope = 0, params }) {
     1 - (low + high) / 2
   );
   const easeOnBracket = bracket.first[3];
-  const release = {
-    u: flankAt(junction.v + easeDistance),
-    v: junction.v + easeDistance,
-  };
 
   // The rounding is one curve from the release across to its landing on the
   // bracket, and each of its handles runs along the surface its own end sits on:
@@ -309,7 +304,11 @@ export function buildHalfSerif({ side, flankU, flankSlope = 0, params }) {
   // 1 carries them onto that corner for the fullest round. Near full concavity
   // the two surfaces are nearly parallel and the corner runs away, so the reach
   // is bounded by the ease distance as well.
-  const flankDirection = subUV(junction, release);
+  // Out of the stroke along the wall itself. The chord back to the junction is
+  // the same line only while the wall is straight, and a rounding whose handle
+  // leaves off the surface it sits on is not tangent to it.
+  const wallOut = wall.tangentAt(releaseParameter);
+  const flankDirection = { u: -wallOut.u, v: -wallOut.v };
   const bracketDirection = subUV(bracket.second[1], easeOnBracket);
   const meeting = lineIntersection(
     release,
@@ -338,7 +337,8 @@ export function buildHalfSerif({ side, flankU, flankSlope = 0, params }) {
     control2: bracket.first[2],
     tipTop,
     tipBottom,
-    wingInnerV,
+    depthClamped,
+    releaseParameter,
   };
 }
 
@@ -381,18 +381,29 @@ function footControls(from, to, tension) {
 // them, by half of the difference.
 export function buildSerifTerminal({
   frame,
-  leftFlankU,
-  rightFlankU,
+  leftWall,
+  rightWall,
+  leftMaxDepth,
+  rightMaxDepth,
   left,
   right,
   undersideCup,
   undersideCupTension,
   undersideCupBalance,
 }) {
-  const flankSlope = frame.flankSlope ?? 0;
   const halves = {
-    left: buildHalfSerif({ side: 1, flankU: leftFlankU, flankSlope, params: left }),
-    right: buildHalfSerif({ side: -1, flankU: rightFlankU, flankSlope, params: right }),
+    left: buildHalfSerif({
+      side: 1,
+      wall: leftWall,
+      params: left,
+      maxDepth: leftMaxDepth,
+    }),
+    right: buildHalfSerif({
+      side: -1,
+      wall: rightWall,
+      params: right,
+      maxDepth: rightMaxDepth,
+    }),
   };
   // The balance slides the centre along the axis, as a fraction of the half-span
   // between the two tips. A fraction rather than a distance: the foot it divides

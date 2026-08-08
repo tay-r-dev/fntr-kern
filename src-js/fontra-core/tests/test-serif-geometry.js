@@ -4,9 +4,20 @@ import {
   computeSerifFrame,
   maxSerifEaseDistance,
 } from "@fontra/core/serif-geometry.js";
+import { makeSerifWall } from "@fontra/core/serif-wall.js";
 import { expect } from "chai";
 
 const CLOSE = 1e-9;
+
+// A wall standing straight up the frame's depth from `u`. This is exactly what
+// the old straight-flank model assumed, so every test built on it keeps its
+// existing expected numbers — which is the evidence a straight stem does not
+// move.
+const wallAt = (u) =>
+  makeSerifWall([
+    { u, v: 0 },
+    { u, v: 1000 },
+  ]);
 
 function expectClose(actual, expected, message) {
   expect(Math.abs(actual - expected), message).to.be.below(1e-6);
@@ -141,7 +152,8 @@ describe("half serif in frame coordinates", () => {
   const build = (overrides = {}, side = 1) =>
     buildHalfSerif({
       side,
-      flankU: side * 50,
+      wall: wallAt(side * 50),
+      maxDepth: 900,
       params: { ...base, ...overrides },
     });
 
@@ -173,7 +185,6 @@ describe("half serif in frame coordinates", () => {
 
   it("puts the junction reach above the wing inner corner, on the flank", () => {
     const half = build({ wingSlope: 12 });
-    expectClose(half.wingInnerV, 42);
     expectClose(half.corner.v, 42);
     expectClose(half.junction.v, 122);
     expectClose(half.junction.u, 50);
@@ -420,8 +431,10 @@ describe("serif terminal assembly", () => {
     });
     return buildSerifTerminal({
       frame,
-      leftFlankU: 50,
-      rightFlankU: -50,
+      leftWall: wallAt(50),
+      rightWall: wallAt(-50),
+      leftMaxDepth: 900,
+      rightMaxDepth: 900,
       left: half,
       right: half,
       undersideCup: 0,
@@ -552,8 +565,8 @@ describe("serif terminal assembly", () => {
       concavity: 0,
     };
     const { points } = terminal({
-      leftFlankU: 100,
-      rightFlankU: 0,
+      leftWall: wallAt(100),
+      rightWall: wallAt(0),
       right: zeros,
       undersideCup: 18,
     });
@@ -572,7 +585,11 @@ describe("serif terminal assembly", () => {
       tension: 0,
       concavity: 0,
     };
-    const { points } = terminal({ leftFlankU: 100, rightFlankU: 0, right: zeros });
+    const { points } = terminal({
+      leftWall: wallAt(100),
+      rightWall: wallAt(0),
+      right: zeros,
+    });
     expect(points.filter((point) => !point.type)).to.have.length(7);
   });
 
@@ -700,19 +717,22 @@ describe("a serif frame the stroke is not square to", () => {
     easeCurvature: 0.5,
   };
   const tilts = [-40, -20, 20, 40];
-  const half = (frame, side) =>
-    buildHalfSerif({ side, flankU: side * 50, flankSlope: frame.flankSlope, params });
-
-  it("reports no wall slope where the axis is square to the stroke", () => {
-    expectClose(tilted(0).frame.flankSlope, 0);
-  });
+  // The wall leaves the rib end along the stroke, so in the frame it is the line
+  // from the rib end along `inward`. On a lean that is not the frame's own depth
+  // axis, which is the whole point of these tests.
+  const half = (frame, inward, side) => {
+    const ribEnd = frame.toGlyph({ u: side * 50, v: 0 });
+    const far = { x: ribEnd.x + inward.x * 1000, y: ribEnd.y + inward.y * 1000 };
+    const wall = makeSerifWall([frame.toFrame(ribEnd), frame.toFrame(far)]);
+    return buildHalfSerif({ side, wall, params, maxDepth: 900 });
+  };
 
   it("keeps the junction, corner and release on the wall", () => {
     for (const degrees of tilts) {
       const { frame, inward } = tilted(degrees);
       for (const side of [1, -1]) {
         const ribEnd = frame.toGlyph({ u: side * 50, v: 0 });
-        const built = half(frame, side);
+        const built = half(frame, inward, side);
         for (const name of ["corner", "junction", "release"]) {
           const point = frame.toGlyph(built[name]);
           expectClose(
@@ -731,11 +751,11 @@ describe("a serif frame the stroke is not square to", () => {
   // other by the wing slope times the lean, and it never reaches the wing.
   it("keeps the wing square to the foot at every lean", () => {
     for (const degrees of [0, ...tilts]) {
-      const { frame } = tilted(degrees);
+      const { frame, inward } = tilted(degrees);
       const along = (point, other) =>
         (point.x - other.x) * frame.axis.x + (point.y - other.y) * frame.axis.y;
       for (const side of [1, -1]) {
-        const built = half(frame, side);
+        const built = half(frame, inward, side);
         const bottom = frame.toGlyph(built.tipBottom);
         const top = frame.toGlyph(built.tipTop);
         expectClose(along(top, bottom), 0, `tip edge leaned at ${degrees}, ${side}`);
@@ -745,6 +765,101 @@ describe("a serif frame the stroke is not square to", () => {
           `wing length moved at ${degrees}, ${side}`
         );
       }
+    }
+  });
+});
+
+describe("half serif on a wall", () => {
+  const params = {
+    wingLength: 48,
+    tipThickness: 63,
+    wingSlope: 12,
+    tipCutAngle: 0,
+    reach: 10,
+    tension: 0.5,
+    concavity: 0.5,
+    easeDistance: 0,
+    easeCurvature: 0,
+  };
+  const straightWall = () =>
+    makeSerifWall([
+      { u: 30, v: 0 },
+      { u: 30, v: 600 },
+    ]);
+  const curvedWall = () =>
+    makeSerifWall([
+      { u: 30, v: 0 },
+      { u: 24, v: 120 },
+      { u: 4, v: 240 },
+      { u: -40, v: 360 },
+    ]);
+
+  it("places the corner where the old straight model placed it", () => {
+    const half = buildHalfSerif({
+      side: 1,
+      wall: straightWall(),
+      params,
+      maxDepth: 500,
+    });
+    // Straight up the depth axis, the wing's top surface meets the wall at
+    // exactly the old rise: tip thickness plus wing slope.
+    expect(Math.abs(half.corner.u - 30)).to.be.lessThan(0.01);
+    expect(Math.abs(half.corner.v - 75)).to.be.lessThan(0.01);
+  });
+
+  it("puts the corner, junction and release on a curved wall", () => {
+    const wall = curvedWall();
+    const half = buildHalfSerif({ side: 1, wall, params, maxDepth: 500 });
+    for (const point of [half.corner, half.junction, half.release]) {
+      const onWall = wall.pointAt(wall.parameterAtDepth(point.v));
+      expect(Math.abs(onWall.u - point.u)).to.be.lessThan(0.05);
+    }
+    // And it is not where the straight model would have put them.
+    expect(half.release.u).to.be.lessThan(28);
+  });
+
+  it("reports the release's own parameter on the wall", () => {
+    const wall = curvedWall();
+    const half = buildHalfSerif({ side: 1, wall, params, maxDepth: 500 });
+    const at = wall.pointAt(half.releaseParameter);
+    expect(Math.abs(at.u - half.release.u)).to.be.lessThan(0.05);
+    expect(Math.abs(at.v - half.release.v)).to.be.lessThan(0.05);
+  });
+
+  it("clamps reach and ease against the depth it may consume", () => {
+    const wall = curvedWall();
+    const half = buildHalfSerif({
+      side: 1,
+      wall,
+      params: { ...params, reach: 900, easeDistance: 900 },
+      maxDepth: 120,
+    });
+    expect(half.release.v).to.be.at.most(120.01);
+    expect(half.depthClamped).to.equal(true);
+  });
+
+  it("emits every point with a wingless half", () => {
+    const half = buildHalfSerif({
+      side: 1,
+      wall: curvedWall(),
+      params: { ...params, wingLength: 0, tipThickness: 0, wingSlope: 0 },
+      maxDepth: 500,
+    });
+    for (const key of [
+      "junction",
+      "corner",
+      "release",
+      "easeFlankHandle",
+      "easeOnBracket",
+      "easeBracketHandle",
+      "control1",
+      "control2",
+      "tipTop",
+      "tipBottom",
+    ]) {
+      expect(half[key], key).to.be.an("object");
+      expect(Number.isFinite(half[key].u), key).to.equal(true);
+      expect(Number.isFinite(half[key].v), key).to.equal(true);
     }
   });
 });
