@@ -44,6 +44,7 @@ import {
   setSkeletonPointWidthDistribution,
   setSkeletonPointWidthLinked,
   setSkeletonSerifParameters,
+  splitSkeletonContourAtPoint,
   transformSkeletonData,
   transformSkeletonPointMetadata,
   translateSkeletonData,
@@ -51,6 +52,132 @@ import {
 } from "@fontra/core/skeleton-model.js";
 import { Transform } from "@fontra/core/transform.js";
 import { expect } from "chai";
+
+// Splitting a contour at one of its own on-curve points: a closed one opens
+// there, an open one becomes two. The point appears at both ends of the cut.
+describe("splitting a skeleton contour", () => {
+  // Two straight segments with a handle pair on the second, so the tests can
+  // check that handles stay with the half they belong to.
+  function makeOpenSkeleton() {
+    const skeleton = makeEmptySkeletonData();
+    const contour = appendSkeletonContour(skeleton, {
+      closed: false,
+      defaultWidth: 60,
+      singleSided: "left",
+    });
+    for (const data of [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 140, y: 40, type: "cubic" },
+      { x: 160, y: 80, type: "cubic" },
+      { x: 200, y: 100 },
+    ]) {
+      appendSkeletonPoint(skeleton, contour.id, data);
+    }
+    return { skeleton, contour };
+  }
+
+  function makeClosedSkeleton() {
+    const skeleton = makeEmptySkeletonData();
+    const contour = appendSkeletonContour(skeleton, { closed: true });
+    for (const data of [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+    ]) {
+      appendSkeletonPoint(skeleton, contour.id, data);
+    }
+    return { skeleton, contour };
+  }
+
+  it("opens a closed contour at the point, which then appears at both ends", () => {
+    const { skeleton, contour } = makeClosedSkeleton();
+    const middle = contour.points[1];
+    splitSkeletonContourAtPoint(skeleton, contour.id, middle.id);
+
+    expect(skeleton.contours).to.have.length(1);
+    const split = skeleton.contours[0];
+    expect(split.id).to.equal(contour.id);
+    expect(split.closed).to.equal(false);
+    expect(split.points).to.have.length(4);
+    expect(split.points[0]).to.include({ x: 100, y: 0 });
+    expect(split.points.at(-1)).to.include({ x: 100, y: 0 });
+    // Only one of the two can keep the name.
+    expect(split.points[0].id).to.equal(middle.id);
+    expect(split.points.at(-1).id).to.not.equal(middle.id);
+  });
+
+  it("cuts an open contour into two, keeping every segment", () => {
+    const { skeleton, contour } = makeOpenSkeleton();
+    const middle = contour.points[1];
+    splitSkeletonContourAtPoint(skeleton, contour.id, middle.id);
+
+    expect(skeleton.contours).to.have.length(2);
+    const [first, second] = skeleton.contours;
+    expect(first.id).to.equal(contour.id);
+    expect(second.id).to.not.equal(contour.id);
+    // The straight goes left, the curve goes right, and the cut point is on
+    // both: two points one side, four the other.
+    expect(first.points).to.have.length(2);
+    expect(second.points).to.have.length(4);
+    expect(first.points.at(-1)).to.include({ x: 100, y: 0 });
+    expect(second.points[0]).to.include({ x: 100, y: 0 });
+    expect(second.points[1].type).to.equal("cubic");
+    expect(second.points[2].type).to.equal("cubic");
+  });
+
+  it("gives the new contour the old one's own settings", () => {
+    const { skeleton, contour } = makeOpenSkeleton();
+    splitSkeletonContourAtPoint(skeleton, contour.id, contour.points[1].id);
+    const second = skeleton.contours[1];
+    expect(second.defaultWidth).to.equal(60);
+    expect(second.singleSided).to.equal("left");
+    expect(second.closed).to.equal(false);
+  });
+
+  it("carries every setting onto both copies of the cut point", () => {
+    const { skeleton, contour } = makeOpenSkeleton();
+    const middle = contour.points[1];
+    setSkeletonPointSideWidth(middle, 60, "left", 17, { linked: false });
+    splitSkeletonContourAtPoint(skeleton, contour.id, middle.id);
+    const [first, second] = skeleton.contours;
+    expect(getSkeletonPointHalfWidth(first.points.at(-1), 60, "left")).to.equal(17);
+    expect(getSkeletonPointHalfWidth(second.points[0], 60, "left")).to.equal(17);
+  });
+
+  // A smooth point with one handle has no direction of its own, which is what
+  // ties the ribs across a straight. An endpoint made by a cut has one side, so
+  // leaving it smooth would tie a straight the designer never asked to tie.
+  it("leaves neither new end smooth", () => {
+    const { skeleton, contour } = makeOpenSkeleton();
+    const middle = contour.points[1];
+    middle.smooth = true;
+    splitSkeletonContourAtPoint(skeleton, contour.id, middle.id);
+    const [first, second] = skeleton.contours;
+    expect(first.points.at(-1).smooth).to.equal(false);
+    expect(second.points[0].smooth).to.equal(false);
+  });
+
+  it("does nothing at an open contour's own ends", () => {
+    const { skeleton, contour } = makeOpenSkeleton();
+    for (const point of [contour.points[0], contour.points.at(-1)]) {
+      expect(splitSkeletonContourAtPoint(skeleton, contour.id, point.id)).to.equal(
+        null
+      );
+    }
+    expect(skeleton.contours).to.have.length(1);
+    expect(skeleton.contours[0].points).to.have.length(5);
+  });
+
+  it("does nothing at a handle, or at a point that is not there", () => {
+    const { skeleton, contour } = makeOpenSkeleton();
+    expect(
+      splitSkeletonContourAtPoint(skeleton, contour.id, contour.points[2].id)
+    ).to.equal(null);
+    expect(splitSkeletonContourAtPoint(skeleton, contour.id, 999)).to.equal(null);
+    expect(skeleton.contours).to.have.length(1);
+  });
+});
 
 describe("skeleton-model constructors and normalization", () => {
   it("creates an empty skeleton data object", () => {

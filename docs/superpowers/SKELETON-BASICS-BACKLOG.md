@@ -25,7 +25,7 @@ its findings.
 | 1.3 | A single-sided skeleton pen                    | tool + registry   | open   |
 | 1.4 | Harmonize accepts skeleton contours            | feature bridge    | open   |
 | 1.5 | Control must not extend a selection            | selection         | done   |
-| 1.6 | Split a skeleton contour at a point            | write path        | open   |
+| 1.6 | Split a skeleton contour at a point            | write path        | done   |
 | 1.7 | A locked rib angle holds the serif upright     | serif geometry    | done   |
 
 ---
@@ -133,18 +133,40 @@ reaches both, which is what makes it one rule rather than a skeleton exception.
 ## 1.6 Split a skeleton contour at a point
 
 Right-click an ordinary on-curve point and the menu offers to split the contour
-there. A skeleton point offers nothing.
+there. A skeleton point offered nothing.
 
-Give the skeleton the same operation. One closed contour becomes one open contour.
-One open contour becomes two.
+### Done
 
-This restructures the contour list, so it must update the generated-contour
-mapping inside the same change (architecture map §9). The knife and the pen carry
-that bookkeeping already. Copy it.
+The same menu entry the ordinary path uses — **Break Contour** — now answers a
+centerline point. A closed contour opens at that point and stays one contour; an
+open one becomes two. The point sits at both ends of the cut, one copy keeping
+its id and the other taking a fresh one.
 
-Point ids survive a split. Widths, caps and every per-point field travel with
-their point. The point that the split duplicates needs a new id, and the two
-copies each need a cap.
+**Two of the three warnings in the original item did not apply.**
+
+The generated-contour mapping needs no bookkeeping here. The one skeleton write
+path regenerates and replaces the contours whenever the topology changes, which
+is exactly what a split is. Measured: a closed contour's two generated loops
+become one open stroke, and an open one's single stroke becomes two.
+
+Neither new end needs a cap written. Cap style falls through a cascade, so an
+unset one draws butt, the same as every other untouched endpoint.
+
+**Nothing is orphaned, so nothing is dropped.** Rotating a closed contour to
+start at the cut keeps the segment that used to close it, and cutting an open one
+at an on-curve leaves each handle pair on the side it was drawn for.
+
+**The two new ends are made non-smooth.** A smooth point carrying a single handle
+has no direction of its own, which is the condition that ties the ribs across a
+straight. A cut is not a request to tie anything, so leaving the flag would have
+made a split quietly reweight the stroke next to it.
+
+**Ids are resolved for every selected point before the first cut**, because a cut
+changes the structure the cross-layer resolver reads. Each point is then found by
+its own id rather than through the contour it started in: cutting one contour
+twice moves the second point onto the new half, which carries a different contour
+id. Layers may end up with different ids for the new contour, which is already
+how skeleton ids work — they are per layer, matched by position.
 
 ---
 

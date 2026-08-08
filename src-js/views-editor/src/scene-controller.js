@@ -91,7 +91,10 @@ import {
   parseSkeletonPointKey,
   recordSkeletonContourIndexShift,
 } from "./skeleton-editing.js";
-import { togglePanelContourReversed } from "./skeleton-panel-edits.js";
+import {
+  splitPanelSkeletonContours,
+  togglePanelContourReversed,
+} from "./skeleton-panel-edits.js";
 //// grid
 import { toggleMagneticSnap } from "./edit-behavior.js";
 
@@ -723,7 +726,9 @@ export class SceneController {
       "action.break-contour",
       { topic },
       () => this.doBreakSelectedContours(),
-      () => this.contextMenuState.pointSelection?.length
+      () =>
+        this.contextMenuState.pointSelection?.length ||
+        this.contextMenuState.skeletonPointSelection?.length
     );
 
     registerAction(
@@ -1870,7 +1875,31 @@ export class SceneController {
     });
   }
 
+  // Break, for a skeleton: cut the contour at the selected centerline point. A
+  // closed contour opens there, an open one becomes two. The generated outline
+  // follows on its own, because the one write path regenerates it and replaces
+  // the contours whenever the topology changes.
+  async doBreakSelectedSkeletonContours(skeletonPointSelection) {
+    const pointAddresses = skeletonPointSelection
+      .map((item) => parseSkeletonPointKey(`${item}`))
+      .filter((address) => address);
+    if (!pointAddresses.length) {
+      return;
+    }
+    await splitPanelSkeletonContours(
+      this,
+      pointAddresses,
+      translatePlural("action.break-contour", pointAddresses.length)
+    );
+    this.selection = new Set();
+  }
+
   async doBreakSelectedContours() {
+    const skeletonPointSelection = this.contextMenuState.skeletonPointSelection || [];
+    if (skeletonPointSelection.length) {
+      await this.doBreakSelectedSkeletonContours(skeletonPointSelection);
+      return;
+    }
     const { point: pointIndices } = parseSelection(this.selection);
     await this.editLayersAndRecordChanges((layerGlyphs) => {
       let numSplits;

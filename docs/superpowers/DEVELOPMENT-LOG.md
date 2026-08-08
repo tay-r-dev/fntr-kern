@@ -2447,3 +2447,56 @@ not who reads it.
 **The point-key parser refuses a rib key.** It requires exactly two fields and a
 rib carries three. It returns null rather than throwing, so the menu item would
 have been quietly enabled and done nothing on a rib.
+
+---
+
+## 33. Splitting a skeleton contour — feature
+
+Skeleton basics backlog item 1.6.
+
+### 1. Problem
+
+Right-click an ordinary on-curve point and the menu offers to break the contour
+there. A centerline point offered nothing.
+
+### 2. Solution
+
+The same menu entry answers a centerline point now. A closed contour opens at
+that point and stays one contour; an open one becomes two, the second appended.
+The point appears at both ends of the cut, one copy keeping its id and the other
+taking a fresh one, because two points cannot share a name.
+
+The cut itself is one pure function in the model, with the editor supplying only
+the selection. Every per-point setting travels with its point, and both copies of
+the cut point keep all of it.
+
+### 3. Result
+
+Seven tests on the cut. Generation measured across the change: a closed
+contour's two generated loops become one open stroke of 10 points, and an open
+one's single 8-point stroke becomes two of 4 and 6. Full suite 1,789 passing.
+
+The menu wiring carries a manual matrix: cut a closed contour, cut an open one,
+cut the same contour at two points at once, and try it at an open contour's own
+end, where it must do nothing.
+
+### 4. Challenges and findings
+
+**Two of the three warnings the item carried did not apply.** It asked for the
+generated-contour mapping to be updated in the same change, which the ordinary
+path does need — but the skeleton's one write path already replaces the contours
+whenever the topology changes, and a split is exactly that. It also asked for a
+cap on each new end, and cap style falls through a cascade, so an unset one draws
+butt like any other untouched endpoint. Both were true of the donor and are not
+true here. **An item's own warnings are as old as the item.**
+
+**The smooth flag had to be cleared on the two new ends.** A smooth point with a
+single handle has no direction of its own, which is the condition that ties ribs
+across a straight. Carried onto a cut end, a split would have quietly reweighted
+the stroke beside it — a geometry change nobody asked for, from a structural
+command.
+
+**Resolving all the ids before the first cut is what makes multiple splits
+work.** The cross-layer resolver reads structure, and a cut changes it. Each
+point is then found by its own id rather than through its original contour,
+because cutting one contour twice moves the second point onto the new half.

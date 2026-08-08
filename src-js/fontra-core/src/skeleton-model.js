@@ -1364,6 +1364,68 @@ export function appendSkeletonContour(skeletonData, contourData = {}) {
   return contour;
 }
 
+// Cut a contour at one of its own on-curve points. A closed contour opens there
+// and stays one contour; an open one becomes two, and the second is appended.
+// The point sits at both ends of the cut: one copy keeps the id, the other takes
+// a fresh one, because two points can never share a name.
+//
+// Returns the ids of the contours the cut produced, or null when there is
+// nothing to cut — a handle, a point that is not on this contour, or an open
+// contour's own end, which is already where a contour stops.
+//
+// Every segment survives. Rotating a closed contour to start at the cut keeps
+// the segment that used to close it, and cutting an open one at an on-curve
+// leaves each handle pair on the side it was drawn for, so nothing is orphaned
+// and nothing has to be dropped.
+export function splitSkeletonContourAtPoint(skeletonData, contourId, pointId) {
+  const contour = getSkeletonContour(skeletonData, contourId);
+  if (!contour) {
+    return null;
+  }
+  const index = contour.points.findIndex((point) => point.id === pointId);
+  if (index < 0 || contour.points[index].type) {
+    return null;
+  }
+
+  // An end made by a cut has stroke on one side only, so it cannot be smooth:
+  // a smooth point carrying a single handle is what ties the ribs across a
+  // straight, and a cut is not a request to tie anything.
+  const openEnd = (point) => ({ ...deepCopyObject(point), smooth: false });
+  const renamed = (point) => ({
+    ...openEnd(point),
+    id: allocateSkeletonId(skeletonData),
+  });
+
+  if (contour.closed) {
+    contour.points = [
+      openEnd(contour.points[index]),
+      ...contour.points.slice(index + 1),
+      ...contour.points.slice(0, index),
+      renamed(contour.points[index]),
+    ];
+    contour.closed = false;
+    return [contour.id];
+  }
+
+  const onCurveIndices = contour.points
+    .map((point, i) => (point.type ? -1 : i))
+    .filter((i) => i >= 0);
+  if (index === onCurveIndices[0] || index === onCurveIndices.at(-1)) {
+    return null;
+  }
+
+  const tail = [renamed(contour.points[index]), ...contour.points.slice(index + 1)];
+  contour.points = [...contour.points.slice(0, index), openEnd(contour.points[index])];
+  // The new contour is the old one in everything but its points and its name,
+  // so it draws the same stroke on the same terms.
+  const second = appendSkeletonContour(skeletonData, {
+    ...deepCopyObject(contour),
+    id: undefined,
+    points: tail,
+  });
+  return [contour.id, second.id];
+}
+
 export function appendSkeletonPoint(skeletonData, contourId, pointData = {}) {
   const contour = getSkeletonContour(skeletonData, contourId);
   if (!contour) {

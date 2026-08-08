@@ -41,6 +41,7 @@ import {
   setSkeletonPointWidthTied,
   setSkeletonSerifParameters,
   setSkeletonSideLocked,
+  splitSkeletonContourAtPoint,
 } from "@fontra/core/skeleton-model.js";
 import {
   editSkeleton,
@@ -598,6 +599,50 @@ export async function setPanelContourSingleSided(
       setSkeletonContourSingleSided(contour, sideOrNull);
     },
     undoLabel
+  );
+}
+
+// Split every selected point's contour there, from the context menu.
+//
+// Two things make this different from an ordinary contour edit. Ids are resolved
+// for ALL of the selected points before anything is cut, because a cut changes
+// the structure the cross-layer resolver reads. And each point is then found by
+// its own id rather than through the contour it started in: cutting a contour
+// twice moves the second point onto the new half, which carries a different
+// contour id.
+export async function splitPanelSkeletonContours(
+  sceneController,
+  pointAddresses,
+  undoLabel
+) {
+  if (!pointAddresses.length) {
+    return null;
+  }
+  return await runSkeletonPanelEdit(
+    sceneController,
+    undoLabel,
+    (working, reference) => {
+      const pointIds = [];
+      for (const address of pointAddresses) {
+        const resolved = resolveSkeletonAddressAcrossLayers(
+          reference,
+          working,
+          address.contourId,
+          address.pointId
+        );
+        if (resolved && !resolved.point.type) {
+          pointIds.push(resolved.point.id);
+        }
+      }
+      for (const pointId of pointIds) {
+        const contour = working.contours.find((candidate) =>
+          candidate.points.some((point) => point.id === pointId)
+        );
+        if (contour) {
+          splitSkeletonContourAtPoint(working, contour.id, pointId);
+        }
+      }
+    }
   );
 }
 
