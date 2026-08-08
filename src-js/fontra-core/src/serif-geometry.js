@@ -372,9 +372,13 @@ function footControls(from, to, tension) {
 // trimmed left side and the reversed right side.
 //
 // The underside is ONE curve across the whole terminal, driven by one cup value.
-// The foot centre sits on the skeleton, not at the midpoint of the two tips: the
-// axis modes routinely produce unequal halves, and a midpoint-anchored centre
-// would drag the contact geometry off the alignment zone as the axis rotates.
+// The foot centre sits midway between the two tip bottoms - the centre of the
+// foot the serif actually draws, and the two ends of this very curve. Pinning it
+// to the skeleton instead reads correctly only while the two halves match: a
+// collapsed half puts the whole terminal on one side of the skeleton, and the
+// cup's lowest point then lands on the foot's own edge rather than its middle.
+// The cost is that unequal halves carry the contact point off the skeleton with
+// them, by half of the difference.
 export function buildSerifTerminal({
   frame,
   leftFlankU,
@@ -389,7 +393,10 @@ export function buildSerifTerminal({
     left: buildHalfSerif({ side: 1, flankU: leftFlankU, flankSlope, params: left }),
     right: buildHalfSerif({ side: -1, flankU: rightFlankU, flankSlope, params: right }),
   };
-  const centre = { u: 0, v: Math.max(undersideCup ?? 0, 0) };
+  const centre = {
+    u: (halves.left.tipBottom.u + halves.right.tipBottom.u) / 2,
+    v: Math.max(undersideCup ?? 0, 0),
+  };
 
   const onCurve = (uv) => frame.toGlyph(uv);
   // Both handles at these two run along one line by construction, so the editor

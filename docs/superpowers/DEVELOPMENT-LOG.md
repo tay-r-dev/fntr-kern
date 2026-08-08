@@ -2274,3 +2274,59 @@ Three of the four changed serif or handle geometry. The golden fixtures moved
 for none of them. They carry no case with a non-zero ease distance, and none
 with a pin and a detached handle on one segment. The suite passing is not
 evidence here; the direct measurements are.
+
+---
+
+## 30. The cup's lowest point moved to the middle of the foot — fix
+
+Serif backlog item 15, the last one open.
+
+### 1. Problem
+
+The underside cup is one curve across the whole terminal, and its lowest point sat
+on the skeleton endpoint. Single-sided mode moves all of the width to one side, so
+the other half of the serif collapses to zeros and the terminal stands entirely on
+one side of the skeleton. The lowest point then landed on the foot's own edge
+rather than its middle, and the foot read as a lopsided scoop.
+
+### 2. Solution
+
+The centre is the midpoint of the two tip bottoms — the two ends of the cup curve
+itself. One line, no single-sided branch, and the collapsed case falls out of it
+because a collapsed half puts its tip on its own wall.
+
+Depth is untouched. The centre still lifts by the cup amount along the frame's
+depth, and the four cup handles still keep their own end's depth.
+
+The alternative offered was the middle of the two stem walls, which is the same
+number as the skeleton whenever the widths match and would have kept the old
+guarantee intact. The designer chose the foot.
+
+### 3. Result
+
+Contact height over a stem leaning to 30 degrees, old rule against new. The table
+is in the backlog entry. In short: equal halves are identical everywhere; under a
+flat foot every case is identical at every tilt; only the perpendicular mode with
+unequal halves moves, 25 units over that lean against 2.4 before.
+
+Full suite 1,774 passing.
+
+### 4. Challenges and findings
+
+**The first sweep measured nothing, and looked like it measured everything.** It
+rotated the axis toward the stroke instead of leaning the stroke under a fixed
+axis, so most of what it reported was the 15 degree separation clamp pushing the
+axis back off the tangent. The question was about a leaning stem, so the stem is
+what has to move. Same lesson as entries 5 and 16: sweep design decides the
+answer.
+
+**A flat foot cannot be tilted by this change, and that is arithmetic rather than
+luck.** The centre only ever slides along the axis. An axis with no rise has no
+way to carry the contact point off the alignment zone, whatever the halves do. So
+the guarantee the old rule was written for survives in the modes that exist to
+provide it.
+
+**No golden fixture moved, and that is a gap rather than a result.** None of them
+carries an asymmetric terminal, so the corpus cannot see this change at all. The
+same gap was reported one entry earlier for ease distance and for a pin sharing a
+segment with a detached handle.

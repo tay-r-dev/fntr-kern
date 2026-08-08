@@ -19,7 +19,7 @@ for its findings.
 
 | #   | Item                                               | Depth             | Origin | Status |
 | --- | -------------------------------------------------- | ----------------- | ------ | ------ |
-| 15  | The cup sits off-center when one side is collapsed | terminal geometry | new    | open   |
+| 15  | The cup sits off-center when one side is collapsed | terminal geometry | new    | done   |
 
 Items 1 through 14 are all closed. Their entries were deleted rather than kept
 here: what they built is in the feature model, why it was built that way is in
@@ -73,24 +73,32 @@ middle, and the foot reads as a lopsided scoop.
 
 The cup's lowest point sits at the centre of the serif.
 
-### The decision this needs first
+### Done
 
-Those two rules agree on a symmetric terminal and disagree everywhere else. Pick
-one statement that covers both cases, rather than adding a single-sided branch to
-the cup (rail R-E).
+**The centre is the midpoint of the two tips.** The designer chose it over the
+alternative, which was the middle of the two stem walls. One statement covering
+both cases, no single-sided branch.
 
-Two candidates:
+The tips are the two ends of the cup curve itself, so the rule reads off the
+geometry it governs. A collapsed half puts its tip on its own wall, which is where
+the terminal stops, so the one-sided case falls out of the same line.
 
-- **The centre of the foot the serif actually draws.** Correct here. Check it
-  against the case §8 rejected it for: sweep the axis through the tilted modes and
-  measure whether the contact point leaves the alignment zone.
-- **The skeleton, offset by the collapsed side's own half-width.** Keeps the
-  alignment-zone guarantee on a two-sided terminal and re-centres the one-sided
-  one. It is the same number in both cases, which is the sign it may be the rule
-  §8 was reaching for.
+**The cost §8 warned about is real and narrow.** Contact height over a stem
+leaning to 30 degrees, old rule against new:
 
-### Constraints that still hold
+| wings              | 0°          | 10°         | 20°         | 30°         |
+| ------------------ | ----------- | ----------- | ----------- | ----------- |
+| 60/60              | 18.0 / 18.0 | 17.7 / 17.7 | 16.9 / 16.9 | 15.6 / 15.6 |
+| 20/120             | 18.0 / 18.0 | 17.7 / 26.4 | 16.9 / 34.0 | 15.6 / 40.6 |
+| one half collapsed | 18.0 / 18.0 | 17.7 / 12.5 | 16.9 / 6.7  | 15.6 / 0.6  |
 
-Point-count stability across every parameter value, including a collapsed side and
-a zero cup. Whatever the centre becomes, both wings still emit all of their points.
-Test the count directly (feature model §8), do not infer it from the shape.
+That is the perpendicular mode. Under a flat foot — the horizontal axis mode —
+every row is identical before and after, at every tilt, because an axis with no
+rise cannot lift the centre that slides along it. So the alignment-zone guarantee
+survives exactly where it is asked for, and what moves is a foot that was leaning
+with the stem anyway.
+
+Equal halves are unchanged everywhere, which is why no golden fixture moved: none
+of them carries an asymmetric terminal. The suite passing is not the evidence
+here. The measurements are, and the two new tests that assert the centre lands
+between the tips.

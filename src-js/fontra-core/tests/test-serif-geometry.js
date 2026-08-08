@@ -460,10 +460,11 @@ describe("serif terminal assembly", () => {
     expect(points[points.length - 1].type).to.equal("cubic");
   });
 
-  it("puts the foot centre on the skeleton endpoint with no cup", () => {
+  it("puts the foot centre midway between the two tips with no cup", () => {
     const { points } = terminal();
-    const centre = points.filter((point) => !point.type)[3];
-    expect(Math.abs(centre.x)).to.be.below(1e-9);
+    const onCurve = points.filter((point) => !point.type);
+    const centre = onCurve[3];
+    expectClose(centre.x, (onCurve[2].x + onCurve[4].x) / 2);
     expect(Math.abs(centre.y)).to.be.below(1e-9);
   });
 
@@ -524,13 +525,55 @@ describe("serif terminal assembly", () => {
     });
   });
 
-  it("keeps the foot centre on the skeleton when the halves are unequal", () => {
+  it("moves the foot centre with the tips when the halves are unequal", () => {
     const { points } = terminal({
       left: { ...half, wingLength: 20 },
       right: { ...half, wingLength: 120 },
     });
-    const centre = points.filter((point) => !point.type)[3];
-    expect(Math.abs(centre.x)).to.be.below(1e-9);
+    const onCurve = points.filter((point) => !point.type);
+    const centre = onCurve[3];
+    expectClose(centre.x, (onCurve[2].x + onCurve[4].x) / 2);
+    // Left tip at 50 + 20, right tip at −50 − 120: the middle of the drawn foot
+    // sits well off the skeleton.
+    expectClose(centre.x, -50);
+  });
+
+  // Single-sided mode collapses one half to zeros, so the whole terminal sits on
+  // one side of the skeleton. A centre pinned to the skeleton lands on the foot's
+  // own edge there and the cup reads as a lopsided scoop.
+  it("centres the cup on the one wing a collapsed half leaves", () => {
+    const zeros = {
+      wingLength: 0,
+      tipThickness: 0,
+      wingSlope: 0,
+      tipCutAngle: 0,
+      reach: 0,
+      tension: 0,
+      concavity: 0,
+    };
+    const { points } = terminal({
+      leftFlankU: 100,
+      rightFlankU: 0,
+      right: zeros,
+      undersideCup: 18,
+    });
+    const onCurve = points.filter((point) => !point.type);
+    expectClose(onCurve[3].x, (onCurve[2].x + onCurve[4].x) / 2);
+    expectClose(onCurve[3].x, 80);
+  });
+
+  it("keeps seven on-curve points with one half collapsed", () => {
+    const zeros = {
+      wingLength: 0,
+      tipThickness: 0,
+      wingSlope: 0,
+      tipCutAngle: 0,
+      reach: 0,
+      tension: 0,
+      concavity: 0,
+    };
+    const { points } = terminal({ leftFlankU: 100, rightFlankU: 0, right: zeros });
+    expect(points.filter((point) => !point.type)).to.have.length(7);
   });
 
   it("runs from the left release to the right release", () => {

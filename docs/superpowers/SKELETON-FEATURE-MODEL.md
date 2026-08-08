@@ -855,9 +855,20 @@ degenerate value" covers this directly, because this is the interpolation contra
 ### The underside is one curve
 
 One cup value drives a single curve across the whole terminal, tip to tip. It is not one curve per
-half. The foot centre sits on the **skeleton**, not at the midpoint of the two tips. The axis modes
-routinely produce unequal halves, and a midpoint-anchored centre would drag the contact geometry
-off the alignment zone as the axis rotates.
+half. The foot centre sits **midway between the two tips** — the middle of the foot the serif
+actually draws, and the two ends of this very curve.
+
+It used to sit on the skeleton, which reads correctly only while the two halves match. Single-sided
+mode collapses one half to zeros, so the whole terminal stands on one side of the skeleton and the
+cup's lowest point lands on the foot's own edge instead of its middle.
+
+The cost is the one the old rule existed to avoid: unequal halves carry the contact point off the
+skeleton with them, by half of the difference. Measured on a stem leaning up to 30 degrees, as the
+contact height, old rule against new: equal halves are identical at every tilt, and under a flat
+foot — the horizontal axis mode — every case is identical, because an axis with no rise cannot
+lift the centre it slides along. Only the perpendicular mode with unequal halves moves, by 25 units
+over that lean against 2.4 before. That mode leans the whole foot with the stem regardless, so a
+foot wanted on the alignment zone is asked for with the flat modes or the rib angle lock.
 
 ### What a trimmed terminal owes the rest of the editor
 
