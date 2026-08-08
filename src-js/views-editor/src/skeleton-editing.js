@@ -1481,10 +1481,10 @@ function createEditableGeneratedHandleExecutorForEditing(
     originalPath,
     skeletonData
   );
-  const storedOffset = getSkeletonHandleOffset(
-    address.point,
-    address.side,
-    address.role
+  const storedOffset = restatedHandleOffsetForEditing(
+    skeletonData,
+    address,
+    getSkeletonHandleOffset(address.point, address.side, address.role)
   );
   // A detached handle is absolute and never saw the pin, so it has nothing of the
   // pin in its position to preserve.
@@ -1548,6 +1548,33 @@ function createEditableGeneratedHandleExecutorForEditing(
       );
     },
   };
+}
+
+// A stored handle offset is a request, and the ceiling on handle length can
+// refuse most of it. Left alone, the store keeps climbing every time the drag
+// pushes against that ceiling, and the next drag back moves nothing until it
+// has walked all the way down again. So start each drag from the part the
+// generator honored, which is the position on screen.
+//
+// Only an attached offset has a published honored part. A detached handle is
+// absolute and never met the ceiling.
+function restatedHandleOffsetForEditing(skeletonData, address, storedOffset) {
+  if (storedOffset.detached) {
+    return storedOffset;
+  }
+  const generated = (skeletonData?.generated || []).find(
+    (entry) => entry?.skeletonContourId === address.contour.id
+  );
+  const honored = generated?.pointMap?.find(
+    (provenance) =>
+      provenance?.skeletonPointId === address.point.id &&
+      provenance.side === address.side &&
+      provenance.role === address.role
+  )?.honoredAdjustment;
+  if (!honored || !Number.isFinite(honored.x) || !Number.isFinite(honored.y)) {
+    return storedOffset;
+  }
+  return { ...storedOffset, x: Math.round(honored.x), y: Math.round(honored.y) };
 }
 
 function makeEditableGeneratedHandleOffsetForEditing(

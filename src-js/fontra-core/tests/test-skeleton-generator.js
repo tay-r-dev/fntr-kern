@@ -475,6 +475,30 @@ describe("skeleton-generator outline boundary invariants", () => {
     });
     expect(tapered.leftStartHandle).to.deep.equal(narrow.leftStartHandle);
   });
+
+  // A stored handle offset is a request, and the ceiling on handle length can
+  // refuse most of it. Publish the part that was honored, so the editor can
+  // restate the store instead of letting it climb into a dead zone.
+  it("publishes the part of a handle offset it honored", () => {
+    const asked = nudgedRibGeometry(0, {
+      startHandleOffsets: { leftOut: { x: 400, y: 0, detached: false } },
+    });
+    const honored = asked.provenance[1].honoredAdjustment;
+    expect(honored).to.not.equal(undefined);
+    expect(Math.hypot(honored.x, honored.y)).to.be.lessThan(400);
+    const restated = nudgedRibGeometry(0, {
+      startHandleOffsets: { leftOut: { x: honored.x, y: honored.y, detached: false } },
+    });
+    expect(restated.handle.x).to.equal(asked.handle.x);
+    expect(restated.handle.y).to.equal(asked.handle.y);
+  });
+
+  it("publishes no honored offset for a detached handle", () => {
+    const detached = nudgedRibGeometry(0, {
+      startHandleOffsets: { leftOut: { x: 400, y: 0, detached: true } },
+    });
+    expect(detached.provenance[1].honoredAdjustment).to.equal(undefined);
+  });
 });
 
 describe("skeleton-generator corner rounding input", () => {

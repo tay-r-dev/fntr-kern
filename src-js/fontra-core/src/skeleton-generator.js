@@ -2770,7 +2770,16 @@ function generateOffsetPointsForSegment(
         x: -endTangentFallback.x,
         y: -endTangentFallback.y,
       };
-      const { startLength, endLength } = offsetCubicSide({
+      const startAdjustment =
+        startHandleDir && !authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
+          ? getGeneratedHandleAdjustment(segment.startPoint, startHandleDir, side, "out")
+          : null;
+      const endAdjustment =
+        endHandleDir && !authoredKeys?.has(`${segment.endPoint?.id}/${side}/in`)
+          ? getGeneratedHandleAdjustment(segment.endPoint, endHandleDir, side, "in")
+          : null;
+      const { startLength, endLength, honoredStartAdjustment, honoredEndAdjustment } =
+        offsetCubicSide({
         p0: segment.startPoint,
         p1: controls[0],
         p2: controls[controls.length - 1],
@@ -2797,19 +2806,8 @@ function generateOffsetPointsForSegment(
           : isLeftSide
             ? segment.startPoint.leftSegmentCurvature
             : segment.startPoint.rightSegmentCurvature,
-        startAdjustment:
-          startHandleDir && !authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
-            ? getGeneratedHandleAdjustment(
-                segment.startPoint,
-                startHandleDir,
-                side,
-                "out"
-              )
-            : null,
-        endAdjustment:
-          endHandleDir && !authoredKeys?.has(`${segment.endPoint?.id}/${side}/in`)
-            ? getGeneratedHandleAdjustment(segment.endPoint, endHandleDir, side, "in")
-            : null,
+        startAdjustment,
+        endAdjustment,
       });
       if (shouldAddStart)
         output.push(
@@ -2848,13 +2846,15 @@ function generateOffsetPointsForSegment(
         const translated = translateRibPoint(anchor, displacement);
         return { x: translated.x - anchor.x, y: translated.y - anchor.y };
       };
-      for (const [point, owner, role, axis, handleNudge] of [
+      for (const [point, owner, role, axis, handleNudge, adjustment, honored] of [
         [
           adjustedHandle1,
           segment.startPoint,
           "out",
           startDir,
           emittedNudge(fixedStart, startHandleNudge),
+          startAdjustment,
+          honoredStartAdjustment,
         ],
         [
           adjustedHandle2,
@@ -2862,6 +2862,8 @@ function generateOffsetPointsForSegment(
           "in",
           endDir,
           emittedNudge(fixedEnd, endHandleNudge),
+          endAdjustment,
+          honoredEndAdjustment,
         ],
       ]) {
         const generated = {
@@ -2870,6 +2872,22 @@ function generateOffsetPointsForSegment(
           type: "cubic",
         };
         const provenance = pointProvenance(owner, side, role);
+        // How much of this handle's stored offset the ceiling let through. Only
+        // an attached offset that was actually offered here has one: a detached
+        // handle is absolute and never met the ceiling, and a serif terminal's
+        // handles are placed after the splice by their own path.
+        if (
+          provenance &&
+          adjustment &&
+          !adjustment.detached &&
+          (adjustment.x || adjustment.y) &&
+          axis
+        ) {
+          provenance.honoredAdjustment = {
+            x: axis.x * honored,
+            y: axis.y * honored,
+          };
+        }
         if (provenance) generated._provenance = provenance;
         // The exact unit direction this handle was constructed on, before the
         // grid snap above. enforceSmoothColinearity needs it: recovering the

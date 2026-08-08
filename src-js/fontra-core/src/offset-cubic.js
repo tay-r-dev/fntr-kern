@@ -143,5 +143,15 @@ export function offsetCubicSide(request) {
   // overwrite the pin, so the gizmo did nothing on a detached handle.
   const attached = applyAttachedAdjustments(natural, request, domain);
   const placed = applyDetachedHandles(attached, request);
-  return applyPinnedTension(placed, request.pinnedTension, domain);
+  // How much of each attached adjustment survived the ceiling. A stored offset
+  // is a request, and the clamp above can refuse most of it; a caller that
+  // keeps the request has to be able to see what was granted, or the store
+  // climbs past the ceiling and a drag back does nothing until it returns.
+  // Measured before the pin, because the pin is a separate contribution that
+  // its own callers already account for.
+  return {
+    ...applyPinnedTension(placed, request.pinnedTension, domain),
+    honoredStartAdjustment: attached.startLength - natural.startLength,
+    honoredEndAdjustment: attached.endLength - natural.endLength,
+  };
 }
