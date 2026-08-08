@@ -13,6 +13,7 @@ import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
 import { Bezier } from "bezier-js";
 import { BaseTool } from "./edit-tools-base.js";
+import { shiftConstrainPoint } from "./edit-tools-pen.js";
 import {
   editSkeleton,
   getSkeletonPointAddress,
@@ -190,6 +191,17 @@ export class SkeletonPenTool extends BaseTool {
     await this._handleAddSkeletonPoint(eventStream, initialEvent);
   }
 
+  // Where the contour being drawn currently ends, in glyph coordinates, or null
+  // when nothing is being extended.
+  _getDrawingEndpointPosition() {
+    const skeletonData = this._getEditLayerSkeletonData();
+    if (!skeletonData) {
+      return null;
+    }
+    const endpoint = this._getSelectedOpenEndpoint(skeletonData, skeletonData);
+    return endpoint ? { x: endpoint.point.x, y: endpoint.point.y } : null;
+  }
+
   _getDrawingContourId() {
     const skeletonData = this._getEditLayerSkeletonData();
     if (!skeletonData) {
@@ -277,10 +289,21 @@ export class SkeletonPenTool extends BaseTool {
   }
 
   async _handleAddSkeletonPoint(eventStream, initialEvent) {
-    const glyphPoint = this._getGlyphPoint(initialEvent);
+    let glyphPoint = this._getGlyphPoint(initialEvent);
     if (!glyphPoint) {
       eventStream.done();
       return;
+    }
+    // Shift holds the new point on a whole angle from the one it extends, the
+    // same as the ordinary pen. Only while a contour is being drawn: the first
+    // point of a contour has nothing to be square to. The constraint is taken
+    // once, from the edit layer, so every layer receives the same point - which
+    // is what the unconstrained path already did.
+    if (initialEvent.shiftKey) {
+      const previous = this._getDrawingEndpointPosition();
+      if (previous) {
+        glyphPoint = shiftConstrainPoint(previous, glyphPoint);
+      }
     }
     const pointData = {
       x: Math.round(glyphPoint.x),

@@ -31,6 +31,7 @@ import {
   resetSkeletonEditableRibHandles,
   setSkeletonCapParameters,
   setSkeletonContourDefaultWidth,
+  setSkeletonContourReversed,
   setSkeletonContourSingleSided,
   setSkeletonCornerParameters,
   setSkeletonData,
@@ -723,6 +724,20 @@ describe("skeleton-model panel-facing mutators", () => {
     expect(contour.singleSided).to.equal("right");
     setSkeletonContourSingleSided(contour, "bogus");
     expect(contour.singleSided).to.equal(null);
+  });
+
+  // The flag the generator has always read and nothing ever wrote. Reversing a
+  // skeleton contour flips the emitted outline's winding and leaves the drawn
+  // centerline alone.
+  it("reversed is a boolean the contour always holds", () => {
+    const contour = makeSkeletonContour();
+    expect(contour.reversed).to.equal(false);
+    setSkeletonContourReversed(contour, true);
+    expect(contour.reversed).to.equal(true);
+    setSkeletonContourReversed(contour, false);
+    expect(contour.reversed).to.equal(false);
+    setSkeletonContourReversed(contour, "yes");
+    expect(contour.reversed).to.equal(false);
   });
 
   it("contour default width clamps and rounds", () => {

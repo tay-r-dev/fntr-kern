@@ -20,11 +20,11 @@ its findings.
 
 | #   | Item                                           | Depth             | Status |
 | --- | ---------------------------------------------- | ----------------- | ------ |
-| 1.1 | Shift constrains the skeleton pen              | tool              | open   |
-| 1.2 | Reverse contour from the skeleton context menu | menu + write path | open   |
+| 1.1 | Shift constrains the skeleton pen              | tool              | done   |
+| 1.2 | Reverse contour from the skeleton context menu | menu + write path | done   |
 | 1.3 | A single-sided skeleton pen                    | tool + registry   | open   |
 | 1.4 | Harmonize accepts skeleton contours            | feature bridge    | open   |
-| 1.5 | Control must not extend a selection            | selection         | open   |
+| 1.5 | Control must not extend a selection            | selection         | done   |
 | 1.6 | Split a skeleton contour at a point            | write path        | open   |
 | 1.7 | A locked rib angle holds the serif upright     | serif geometry    | done   |
 
@@ -33,25 +33,52 @@ its findings.
 ## 1.1 Shift constrains the skeleton pen
 
 Hold shift with the ordinary pen and the next segment comes out straight, on the
-constrained angle. The skeleton pen ignores shift.
+constrained angle. The skeleton pen ignored shift.
 
-Give the skeleton pen the same mechanic. Take it from the ordinary pen rather
-than write a second one (rail R-B).
+### Done
+
+The ordinary pen's own constraint is now exported and the skeleton pen calls it,
+so there is one rule and the two pens cannot drift apart.
+
+It applies only while a contour is being extended. The first point of a contour
+has nothing to be square to, which is the same condition the ordinary pen
+carries.
+
+The skeleton pen has no drag-to-curve, so there was no second place to apply it,
+and it draws no preview of the next point, so there was nothing that could show
+an unconstrained position while a constrained one was about to land.
 
 ---
 
 ## 1.2 Reverse contour from the skeleton context menu
 
 Right-click an ordinary contour and the menu offers **Reverse contour**. Right-click
-a skeleton object and it does not.
+a skeleton object and it did not.
 
-Offer it on every skeleton object that answers a right-click. That is the
-centerline and the rib today.
+### Done
 
-The skeleton already stores a `reversed` flag per contour, and mirroring already
-swaps the per-side fields. Check what the flag does before you add a second way to
-express the same thing. The write goes through the one skeleton write path
-(rail R-C).
+**The flag was already there and nothing ever wrote it.** `reversed` is stored per
+contour, normalized, and read by the generator, where it flips the winding of the
+emitted outline. No code in the tree set it — the same dead level as the contour
+serif block found in log entry 28. The menu item is its writer.
+
+So reverse means: the letter's fill direction turns over, and the centerline stays
+exactly as drawn. The alternative — reversing the point order, which is what an
+ordinary contour does — was offered and not taken. It swaps which side is left, so
+every per-side field would have to travel with it, which is the surgery mirroring
+already does.
+
+One menu entry, not two: the existing action now answers a skeleton selection as
+well. A rib answers it as much as a centerline point does, since both name a
+contour. Each selected contour flips its own state, which is what reversing a
+mixed selection of ordinary contours does too.
+
+The write goes through the one skeleton write path (rail R-C), by way of the
+module the panel's contour settings already use.
+
+**The point-key parser refuses a rib key**, because a rib carries a third field
+for its side. The contour id is the first field of either key, so the menu takes
+it directly rather than through that parser.
 
 ---
 
@@ -83,11 +110,23 @@ points and handles, so the outline follows for free.
 
 ## 1.5 Control must not extend a selection
 
-Control-click adds to the selection today. It should not.
+Control-click added to the selection. It should not.
 
-Confirm which modifier the editor means to own union before you change anything.
-The ordinary path and the skeleton share one selection mode function, so a change
-here reaches both.
+### Done
+
+**It was not a forkra decision, and it still had to go.** Upstream spells "the
+command key" as command on a Mac and control on Windows, and command-click means
+add to the selection everywhere in the editor. So control-click adding was
+upstream behaviour on this platform.
+
+It conflicts with this fork, which took control for itself twice: control forces
+the coarse grid during a drag, and control with shift is the equalize gesture.
+
+Adding is now the Mac's command key alone. On Windows nothing extends a selection
+with control, and shift builds one up as it always did, so nothing is lost.
+
+The ordinary path and the skeleton share one selection mode function, so this
+reaches both, which is what makes it one rule rather than a skeleton exception.
 
 ---
 

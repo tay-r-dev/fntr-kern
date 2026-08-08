@@ -2103,6 +2103,15 @@ export function setSkeletonContourSingleSided(contour, sideOrNull) {
   contour.singleSided = VALID_SINGLE_SIDED.has(sideOrNull) ? sideOrNull : null;
 }
 
+// Which way round the generated outline runs. It flips the winding of what the
+// generator emits and leaves the centerline exactly as it was drawn, which is
+// what "reverse contour" asks of a stroke: the letter's fill direction changes,
+// the drawing does not. Reversing the point order instead would swap which side
+// is left, and every per-side field would have to travel with it.
+export function setSkeletonContourReversed(contour, reversed) {
+  contour.reversed = reversed === true;
+}
+
 export function setSkeletonCapParameters(point, values, { round = null } = {}) {
   if (!values || typeof values !== "object") {
     return;

@@ -542,7 +542,7 @@ function insertAnchorPoint(context, path, point, shiftKey) {
       context.contourIndex,
       context.contourPointIndex
     );
-    point = shiftConstrain(referencePoint, point);
+    point = shiftConstrainPoint(referencePoint, point);
   }
 
   point = vector.roundVector(point);
@@ -808,7 +808,7 @@ function emptyContour() {
 
 function getHandle(handleOut, anchorPoint, shiftKey) {
   if (shiftKey) {
-    handleOut = shiftConstrain(anchorPoint, handleOut);
+    handleOut = shiftConstrainPoint(anchorPoint, handleOut);
   }
   return vector.roundVector(handleOut);
 }
@@ -820,7 +820,10 @@ function oppositeHandle(anchorPoint, handlePoint) {
   );
 }
 
-function shiftConstrain(anchorPoint, handlePoint) {
+// Hold a point on a whole angle from the one it extends. Exported because the
+// Skeleton Pen holds shift the same way, and one copy of the rule is what keeps
+// the two pens feeling like one tool.
+export function shiftConstrainPoint(anchorPoint, handlePoint) {
   const delta = constrainHorVerDiag(vector.subVectors(handlePoint, anchorPoint));
   return vector.addVectors(anchorPoint, delta);
 }

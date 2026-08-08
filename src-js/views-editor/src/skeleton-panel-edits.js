@@ -1,5 +1,6 @@
-// editSkeleton-backed edit operations for the skeleton parameters panel. This
-// module is the panel's ONLY write path: every function folds one editSkeleton
+// editSkeleton-backed edit operations for the skeleton parameters panel, and
+// for the handful of contour commands the context menu offers. This module is
+// their ONLY write path: every function folds one editSkeleton
 // mutation across all editable layers into a single undo item. It never calls
 // setSkeletonData/regenerateSkeletonContours directly and never recovers
 // generated geometry (Global Constraints).
@@ -26,6 +27,7 @@ import {
   resetSkeletonEditableRibHandles,
   setSkeletonCapParameters,
   setSkeletonContourDefaultWidth,
+  setSkeletonContourReversed,
   setSkeletonContourSingleSided,
   setSkeletonCornerParameters,
   setSkeletonData,
@@ -594,6 +596,27 @@ export async function setPanelContourSingleSided(
     contourAddresses,
     (contour) => {
       setSkeletonContourSingleSided(contour, sideOrNull);
+    },
+    undoLabel
+  );
+}
+
+// Reverse, from the context menu rather than the panel. It goes through this
+// module because the flag changes generated geometry, so it owes the same one
+// write path every other contour setting takes.
+//
+// Each contour flips its own state, which is what reversing a mixed selection
+// of ordinary contours does as well.
+export async function togglePanelContourReversed(
+  sceneController,
+  contourAddresses,
+  undoLabel
+) {
+  return editSelectedSkeletonContours(
+    sceneController,
+    contourAddresses,
+    (contour) => {
+      setSkeletonContourReversed(contour, contour.reversed !== true);
     },
     undoLabel
   );

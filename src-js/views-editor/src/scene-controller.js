@@ -91,6 +91,7 @@ import {
   parseSkeletonPointKey,
   recordSkeletonContourIndexShift,
 } from "./skeleton-editing.js";
+import { togglePanelContourReversed } from "./skeleton-panel-edits.js";
 //// grid
 import { toggleMagneticSnap } from "./edit-behavior.js";
 
@@ -729,7 +730,9 @@ export class SceneController {
       "action.reverse-contour",
       { topic },
       () => this.doReverseSelectedContours(),
-      () => this.contextMenuState.pointSelection?.length
+      () =>
+        this.contextMenuState.pointSelection?.length ||
+        this.contextMenuState.skeletonContourIds?.length
     );
 
     registerAction(
@@ -1148,10 +1151,22 @@ export class SceneController {
       point: pointSelection,
       component: componentSelection,
       skeletonPoint: skeletonPointSelection,
+      skeletonRib: skeletonRibSelection,
     } = parseSelection(relevantSelection);
     this.contextMenuState.pointSelection = pointSelection;
     this.contextMenuState.componentSelection = componentSelection;
     this.contextMenuState.skeletonPointSelection = skeletonPointSelection;
+    // Which skeleton contours the click is about. A rib belongs to its contour
+    // as much as a centerline point does, so both answer a contour command. The
+    // contour id is the first field of either key; the point key parser is no
+    // use here because it refuses a rib's third field.
+    this.contextMenuState.skeletonContourIds = [
+      ...new Set(
+        [...(skeletonPointSelection || []), ...(skeletonRibSelection || [])]
+          .map((item) => Number(`${item}`.split("/")[0]))
+          .filter((contourId) => Number.isInteger(contourId))
+      ),
+    ];
 
     const glyphController = this.sceneModel.getSelectedPositionedGlyph().glyph;
     this.contextMenuState.openContourSelection = glyphController.canEdit
@@ -1727,6 +1742,11 @@ export class SceneController {
   }
 
   async doReverseSelectedContours() {
+    const skeletonContourIds = this.contextMenuState.skeletonContourIds || [];
+    if (skeletonContourIds.length) {
+      await this.doReverseSelectedSkeletonContours(skeletonContourIds);
+      return;
+    }
     const { point: pointSelection } = parseSelection(this.selection);
     await this.editLayersAndRecordChanges((layerGlyphs) => {
       let selection;
@@ -1752,6 +1772,18 @@ export class SceneController {
       this.selection = selection;
       return translate("action.reverse-contour");
     });
+  }
+
+  // Reverse, for a skeleton. It flips the flag the generator already reads, so
+  // the generated outline's winding turns over and the centerline stays exactly
+  // as it was drawn. Each selected contour flips its own state, the same way
+  // reversing a mixed selection of ordinary contours does.
+  async doReverseSelectedSkeletonContours(skeletonContourIds) {
+    await togglePanelContourReversed(
+      this,
+      skeletonContourIds.map((contourId) => ({ contourId })),
+      translate("action.reverse-contour")
+    );
   }
 
   async doSetStartPoint() {

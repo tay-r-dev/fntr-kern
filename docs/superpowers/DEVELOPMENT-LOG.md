@@ -2390,3 +2390,60 @@ flattening actually copies, rather than assuming either answer.
 **The bound went in the writer, not the slider.** Entry 29 spent three rounds
 learning that the scrub, the typed field and a preset are three ways into the
 same number, and only the writer sits under all of them.
+
+---
+
+## 32. Three gaps between the skeleton and the ordinary path — fixes
+
+Skeleton basics backlog items 1.1, 1.2 and 1.5, done together because each is
+small and none touches geometry.
+
+### 1. Problem
+
+- The ordinary pen constrains the next point to a whole angle under shift. The
+  skeleton pen ignored shift.
+- Right-click offers **Reverse contour** on an ordinary contour and offered
+  nothing on a skeleton one.
+- Control-click added to the selection, and control is spoken for in this fork.
+
+### 2. Solution
+
+**Shift.** The ordinary pen's constraint is exported and the skeleton pen calls
+it, so there is one rule. It applies only while a contour is being extended,
+which is the ordinary pen's own condition.
+
+**Reverse.** The `reversed` flag turned out to be a level with a reader and no
+writer: stored per contour, normalized, read by the generator, set by nothing.
+The menu is its writer. Reversing a skeleton therefore flips the emitted
+outline's winding and leaves the centerline as drawn. The existing menu entry now
+answers a skeleton selection too, and a rib answers it as much as a centerline
+point does. Each selected contour flips its own state, matching what an ordinary
+mixed selection does.
+
+**Control.** Adding to a selection is now the Mac's command key alone. Shift
+still builds a selection up on both platforms.
+
+### 3. Result
+
+Full suite 1,782 passing. The three editor changes carry a manual matrix, per the
+test split (rail R-G): draw with shift held from an endpoint and from nothing;
+reverse from a centerline point and from a rib, on one contour and on several;
+and check that control-drag still snaps to the coarse grid while control-click no
+longer extends.
+
+### 4. Challenges and findings
+
+**Two of the three items were not what they said they were.** The reverse item
+asked for a menu entry and the work was almost entirely deciding what reverse
+means for a stroke. The control item read as a forkra defect and was upstream
+behaviour, correct on its own terms, colliding with a modifier this fork had
+taken. Neither could be planned from its own sentence.
+
+**A dead level is worth grepping for before designing around it.** This is the
+third one found: the contour serif block in entry 28, the contour cap style
+beside it, and now this flag. The check is the same each time — who writes it,
+not who reads it.
+
+**The point-key parser refuses a rib key.** It requires exactly two fields and a
+rib carries three. It returns null rather than throwing, so the menu item would
+have been quietly enabled and done nothing on a rib.
