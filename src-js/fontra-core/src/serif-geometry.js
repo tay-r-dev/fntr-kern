@@ -319,7 +319,22 @@ export function buildHalfSerif({ side, wall, params, maxDepth = Infinity }) {
     junction,
     1 - (low + high) / 2
   );
-  const easeOnBracket = bracket.first[3];
+  // With the wing swallowed there is no bracket left to step back along: it runs
+  // from the corner up the wall, so both ends of the rounding would land on the
+  // same surface and the scoop would have nothing to cut. The only corner in the
+  // shape is where the TIP'S OWN EDGE meets the wall, so the rounding moves
+  // there and its far end steps down that edge instead.
+  //
+  // The top of the tip comes down with it. Rounding a corner takes material from
+  // both surfaces, not one, and the tip's top surface has no length here — so the
+  // point where the tip's edge ends and the point the rounding lands on are the
+  // same point. Two on-curves on one spot is the ground rule working: points
+  // collapse, they do not disappear, and the count holds.
+  const tipEdge = subUV(tipBottom, tipTop);
+  const tipEase = tipReachesWall ? Math.min(easeDistance, lengthUV(tipEdge)) : 0;
+  const easeOnBracket = tipReachesWall
+    ? alongUV(tipTop, tipEdge, tipEase)
+    : bracket.first[3];
 
   // The rounding is one curve from the release across to its landing on the
   // bracket, and each of its handles runs along the surface its own end sits on:
@@ -340,7 +355,9 @@ export function buildHalfSerif({ side, wall, params, maxDepth = Infinity }) {
   // leaves off the surface it sits on is not tangent to it.
   const wallOut = wall.tangentAt(releaseParameter);
   const flankDirection = { u: -wallOut.u, v: -wallOut.v };
-  const bracketDirection = subUV(bracket.second[1], easeOnBracket);
+  const bracketDirection = tipReachesWall
+    ? subUV(tipTop, easeOnBracket)
+    : subUV(bracket.second[1], easeOnBracket);
   const meeting = lineIntersection(
     release,
     flankDirection,
@@ -364,9 +381,11 @@ export function buildHalfSerif({ side, wall, params, maxDepth = Infinity }) {
     easeFlankHandle,
     easeOnBracket,
     easeBracketHandle,
-    control1: bracket.first[1],
-    control2: bracket.first[2],
-    tipTop,
+    // The bracket has no length once the wing is swallowed, so its two controls
+    // sit on its own collapsed ends rather than being read off a split of it.
+    control1: tipReachesWall ? easeOnBracket : bracket.first[1],
+    control2: tipReachesWall ? easeOnBracket : bracket.first[2],
+    tipTop: tipReachesWall ? easeOnBracket : tipTop,
     tipBottom,
     depthClamped,
     releaseParameter,

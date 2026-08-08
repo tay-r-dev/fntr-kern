@@ -1001,3 +1001,63 @@ describe("a wingless tip against the wall", () => {
     expect(half.depthClamped).to.equal(false);
   });
 });
+
+describe("the rounding when the wing has been swallowed", () => {
+  const outwardWall = () =>
+    makeSerifWall([
+      { u: 30, v: 0 },
+      { u: 60, v: 60 },
+      { u: 90, v: 120 },
+      { u: 110, v: 180 },
+    ]);
+  const tipU = 30 + 48;
+  const build = (overrides = {}) =>
+    buildHalfSerif({
+      side: 1,
+      wall: outwardWall(),
+      maxDepth: 400,
+      params: {
+        wingLength: 48,
+        tipThickness: 100,
+        wingSlope: 25,
+        tipCutAngle: 0,
+        reach: 20,
+        tension: 0.5,
+        concavity: 0.5,
+        easeDistance: 15,
+        easeCurvature: 0.5,
+        ...overrides,
+      },
+    });
+
+  it("puts the rounding's far end on the tip's own edge", () => {
+    const half = build();
+    // Down the tip's edge from the corner, not back along a bracket that has no
+    // length left to step along.
+    expect(Math.abs(half.easeOnBracket.u - tipU)).to.be.lessThan(0.05);
+    expect(half.corner.v - half.easeOnBracket.v).to.be.closeTo(15, 0.05);
+  });
+
+  it("brings the top of the tip down with it", () => {
+    const half = build();
+    expect(Math.abs(half.tipTop.u - half.easeOnBracket.u)).to.be.lessThan(0.05);
+    expect(Math.abs(half.tipTop.v - half.easeOnBracket.v)).to.be.lessThan(0.05);
+  });
+
+  it("leaves its handle on the tip's edge, pointing at the corner", () => {
+    const half = build();
+    expect(Math.abs(half.easeBracketHandle.u - tipU)).to.be.lessThan(0.05);
+    expect(half.easeBracketHandle.v).to.be.greaterThan(half.easeOnBracket.v);
+    expect(half.easeBracketHandle.v).to.be.at.most(half.corner.v + 0.05);
+  });
+
+  it("cannot eat past the bottom of the tip", () => {
+    const half = build({ easeDistance: 10000 });
+    expect(half.easeOnBracket.v).to.be.at.least(-0.05);
+  });
+
+  it("collapses to the corner at ease distance zero", () => {
+    const half = build({ easeDistance: 0 });
+    expect(Math.abs(half.easeOnBracket.v - half.corner.v)).to.be.lessThan(0.05);
+  });
+});

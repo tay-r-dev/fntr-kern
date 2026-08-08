@@ -855,6 +855,21 @@ surface has no length rather than no existence, and the wing slope is not emitte
 surface that is not there would carry the bracket back out into space the stroke already occupies,
 and would leave the slope still moving the shape after the wing it belongs to had gone.
 
+**The rounding moves to the corner that is left.** Once the wing is swallowed the bracket runs from
+the corner up the wall, so both ends of the rounding would land on the same surface and the scoop
+would have nothing to cut. The only corner in the shape is where the tip's own edge meets the wall,
+so the rounding's far end steps down that edge instead, and the top of the tip comes down with it —
+rounding a corner takes material from both surfaces, not one. The tip's top surface has no length
+there, so the end of the tip's edge and the rounding's landing are the same point.
+
+This is the one place a serif snaps. At the instant the wing is swallowed, the surface the
+rounding's far end steps along turns by about a right angle, from the wing's top surface to the tip's
+edge, and the far end moves by roughly the ease distance — about 15 units at an ease distance of 15,
+more when there is reach as well. The two shapes either side of the instant are each correct; there
+is no in-between surface to slide along, because the wing's top surface does not shrink, it stops
+existing. Carrying the ease step past the end of the bracket and on down the tip's edge would close
+it, at the cost of changing what the ease distance means on every healthy wing.
+
 With no wing at all the tip stands on the wall's own foot, so the line it stands on is the wall and
 every depth reads as a crossing. That is a wing already collapsed, not a tip poking through one, and
 the limit does not apply.
