@@ -744,7 +744,16 @@ function generatedCurvatureWrites(originalPoints, segment, delta) {
   if (!edit) {
     return null;
   }
-  return [[edit.segmentPointIndex, { pinnedTension: edit.tension }]];
+  return [
+    [edit.segmentPointIndex, { pinnedTension: edit.tension }],
+    // Below the pin's floor the drag keeps going on the one handle still off
+    // its point, and that part travels as a displacement — the pin cannot say
+    // it, because its number reads zero for every length the survivor has left.
+    ...edit.collapse.map((entry) => [
+      entry.segmentPointIndex,
+      { offsetDelta: entry.offsetDelta },
+    ]),
+  ];
 }
 
 // On-curve: the two rib ends, tangent-constrained (D12).

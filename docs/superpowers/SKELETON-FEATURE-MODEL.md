@@ -548,6 +548,18 @@ Rules that hold everywhere:
   The pin had to enforce the ceiling itself, and the older bound had to stand down for it. With one
   exact ceiling (§3.2), the pin saturates at tension 1 and so does the box. They now agree by
   construction, and the old "not bounded twice" rule has nothing left to say.
+- **A pin of zero is the bottom of the shared shift, not "no pin".** It puts the shorter handle
+  exactly on its point and leaves the longer one holding the difference. Below that the mean says
+  nothing — it reads zero for every length the survivor could still have — so the drag stops
+  writing the pin there and carries the rest as a displacement on the one handle still off its
+  point. The generator applies that displacement before the pin, and a pin of zero leaves an
+  already-collapsed pair alone, so the two compose without a precedence rule. This is the floor's
+  mirror of the ceiling rule above, and it is what lets one gesture take both handles to zero.
+- **A collapsed segment has no gizmo axis.** With a handle on its point there is no tangent
+  intersection to drag toward, so a drag that ends in the collapsed range cannot be continued by
+  grabbing again. Within one drag the whole range works in both directions, because every frame is
+  measured from the points the drag grabbed. Getting back out afterwards is a reset or a handle
+  drag. Inventing an axis for a straight segment would be a guess, so there is none.
 - **A pin is stored per segment per side, keyed on the segment's START point.** That key is
   direction-independent. This matters because the right-side contour is emitted backwards, and its
   segments carry `in` before `out`. Keying on emission order would therefore address the two sides

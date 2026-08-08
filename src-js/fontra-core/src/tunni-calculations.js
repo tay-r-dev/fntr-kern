@@ -503,8 +503,16 @@ export function shiftTensions(tensions, increment, maxTension = Infinity) {
 const TENSION_SHIFT_STEPS = 40;
 
 export function shiftTensionsToMean(tensions, target, maxTension = Infinity) {
-  if (!(target > TENSION_EPSILON)) {
+  if (!Number.isFinite(target) || target < 0) {
     return tensions;
+  }
+  // Zero is the bottom of the shared shift, not "no mean stated": it puts the
+  // shorter handle exactly on its point and leaves the longer one holding the
+  // difference. The mean says nothing below that — it reads zero for every
+  // length the survivor could have — so that is where the shift ends and a
+  // per-handle displacement takes the survivor the rest of the way down.
+  if (target <= TENSION_EPSILON) {
+    return shiftTensions(tensions, -Math.min(tensions.start, tensions.end), maxTension);
   }
   const saturated = shiftTensions(tensions, Infinity, maxTension);
   target = Math.min(target, harmonicMeanTension(saturated));
@@ -583,10 +591,16 @@ export function calculateCurvatureGizmoAxis(segmentPoints) {
 // independent of an emitted on-curve nudge, so grabbing is a no-op and the
 // ceiling only limits where a positive drag can go.
 //
+// `allowCollapse` opens the same behaviour at the floor: the shared shift ends
+// when the shorter handle lands on its point, and past that the survivor keeps
+// coming down alone until both sit on their points. It is off by default
+// because a caller storing only the shared mean cannot describe that tail —
+// the mean reads zero throughout it.
+//
 export function calculateControlPointsFromCurvatureDelta(
   delta,
   segmentPoints,
-  { maxTension = 1, axisSegmentPoints = segmentPoints } = {}
+  { maxTension = 1, axisSegmentPoints = segmentPoints, allowCollapse = false } = {}
 ) {
   const axis = calculateCurvatureGizmoAxis(axisSegmentPoints);
   if (!axis) {
@@ -621,14 +635,21 @@ export function calculateControlPointsFromCurvatureDelta(
   // one for one.
   let increment = (2 * dotVector(delta, axis)) / (startUnit + endUnit);
 
-  increment = Math.max(increment, -Math.min(startTension, endTension));
+  increment = Math.max(
+    increment,
+    -(allowCollapse
+      ? Math.max(startTension, endTension)
+      : Math.min(startTension, endTension))
+  );
 
   const place = (from, control, unit, tension, reach) => {
     const direction = normalizeVector(subVectors(control, from));
-    const movedTension =
+    const movedTension = Math.max(
       reach > CURVATURE_EPSILON
         ? Math.min(tension + increment, Math.max(tension, maxTension))
-        : tension + increment;
+        : tension + increment,
+      0
+    );
     const length = movedTension * unit;
     return { x: from.x + direction.x * length, y: from.y + direction.y * length };
   };

@@ -3727,19 +3727,29 @@ export function calculateGeneratedCurvatureEdits({
     segmentPoints,
     provenance
   );
+  // Two readings of the same drag. `pinned` is where the shared shift can go —
+  // down to the shorter handle sitting on its point, which is what the stored
+  // mean can still describe. `moved` is where the drag actually asked for,
+  // which past that point takes the surviving handle down on its own.
+  const options = { maxTension, axisSegmentPoints: segmentPoints };
+  const pinned = calculateControlPointsFromCurvatureDelta(
+    delta,
+    constructionPoints,
+    options
+  );
   const moved = calculateControlPointsFromCurvatureDelta(delta, constructionPoints, {
-    maxTension,
-    axisSegmentPoints: segmentPoints,
+    ...options,
+    allowCollapse: true,
   });
-  if (!moved) {
+  if (!pinned || !moved) {
     return null;
   }
   const tension = generatedSegmentTension(
     constructionPoints,
     constructionSegmentAxes(segmentPoints, provenance),
-    moved
+    pinned
   );
-  if (!Number.isFinite(tension) || tension <= 0) {
+  if (!Number.isFinite(tension) || tension < 0) {
     return null;
   }
   // Index 1 is this segment's first off-curve. "out" there means the segment
@@ -3749,6 +3759,32 @@ export function calculateGeneratedCurvatureEdits({
   if (!start || start.role !== "onCurve" || start.skeletonPointId === undefined) {
     return null;
   }
+  // The tail below the pin's floor, if the drag reached it: whatever `moved`
+  // asks for beyond what the pin can hold, carried as a displacement on the one
+  // handle still off its point. It is measured against the pinned reading, not
+  // against the generator's own answer, so the pin's own contribution is not
+  // counted twice — the generator applies the displacement first and the pin
+  // after it, and a pin of zero leaves an already-collapsed pair alone.
+  const collapse = [1, 2]
+    .map((index) => {
+      const address = provenance[index];
+      const offsetDelta = {
+        x: moved[index - 1].x - pinned[index - 1].x,
+        y: moved[index - 1].y - pinned[index - 1].y,
+      };
+      if (!address || (!offsetDelta.x && !offsetDelta.y)) {
+        return null;
+      }
+      return {
+        segmentPointIndex: index,
+        skeletonPointId: address.skeletonPointId,
+        side: address.side,
+        role: address.role,
+        offsetDelta,
+      };
+    })
+    .filter((entry) => entry);
+
   // Not clamped here: the drag above already saturated each construction
   // tension independently at the ceiling.
   return {
@@ -3756,6 +3792,7 @@ export function calculateGeneratedCurvatureEdits({
     skeletonPointId: start.skeletonPointId,
     side: start.side,
     tension,
+    collapse,
   };
 }
 
