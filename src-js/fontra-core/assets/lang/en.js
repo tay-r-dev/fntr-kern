@@ -219,6 +219,8 @@ export const strings = {
   "editor.shape-tool-rectangle": "Rectangle Tool",
   "editor.sidebearing-tool": "Sidebearing Tool",
   "editor.skeleton-pen-tool": "Skeleton Pen Tool",
+  "editor.skeleton-pen-tool-standard": "Skeleton Pen Tool",
+  "editor.skeleton-pen-tool-single-sided": "Skeleton Pen Tool (single-sided)",
   "font-info.copyright": "Copyright",
   "font-info.description": "Description",
   "font-info.designer": "Designer",

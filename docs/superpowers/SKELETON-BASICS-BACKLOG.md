@@ -22,7 +22,7 @@ its findings.
 | --- | ---------------------------------------------- | ----------------- | ------ |
 | 1.1 | Shift constrains the skeleton pen              | tool              | done   |
 | 1.2 | Reverse contour from the skeleton context menu | menu + write path | done   |
-| 1.3 | A single-sided skeleton pen                    | tool + registry   | open   |
+| 1.3 | A single-sided skeleton pen                    | tool + registry   | done   |
 | 1.4 | Harmonize accepts skeleton contours            | feature bridge    | open   |
 | 1.5 | Control must not extend a selection            | selection         | done   |
 | 1.6 | Split a skeleton contour at a point            | write path        | done   |
@@ -84,14 +84,28 @@ it directly rather than through that parser.
 
 ## 1.3 A single-sided skeleton pen
 
-The quadratic pen sits beside the ordinary pen in the same tool dropdown. Add a
-single-sided skeleton pen beside the skeleton pen the same way.
+The quadratic pen sits beside the ordinary pen in the same tool dropdown. A
+single-sided skeleton pen now sits beside the skeleton pen the same way.
 
 It draws exactly what the skeleton pen draws. The one difference is that each new
 contour starts single-sided.
 
-Single-sided already exists as a contour flag, and the panel already toggles it.
-This item is a tool entry, not new geometry.
+### Done
+
+The dropdown is the pen's own arrangement: a wrapper holding the two tools, which
+is what turns one toolbar button into a button that opens. The skeleton pen was
+registered directly before, so it gained a wrapper and moved its own name aside
+for it.
+
+The second pen is the first one with one value changed — which side a new contour
+puts its width on. Everything else is inherited, the same way the quadratic pen
+inherits the whole ordinary pen and changes its curve type.
+
+New contours start on the left, which is the side the generator falls back to
+everywhere else, and the panel flips it afterwards like any other contour.
+
+Single-sided was already a contour flag with a panel control, so no geometry was
+written for this.
 
 ---
 

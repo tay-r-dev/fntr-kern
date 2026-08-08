@@ -2500,3 +2500,47 @@ command.
 work.** The cross-layer resolver reads structure, and a cut changes it. Each
 point is then found by its own id rather than through its original contour,
 because cutting one contour twice moves the second point onto the new half.
+
+---
+
+## 34. A single-sided skeleton pen — feature
+
+Skeleton basics backlog item 1.3.
+
+### 1. Problem
+
+A single-sided contour puts all of its width on one side, so the line drawn is
+the edge of the letter rather than its middle. It was a flag to set after
+drawing, never a way to draw.
+
+### 2. Solution
+
+A second pen beside the first, in a dropdown, laid out exactly as the ordinary
+pen holds its cubic and quadratic pens: a wrapper class naming the two, which is
+what turns one toolbar button into a button that opens.
+
+The second pen is the first with one value changed — which side a new contour is
+born on. It inherits everything else, so the two cannot drift. New contours start
+on the left, the side the generator falls back to everywhere else, and the panel
+flips them afterwards like any other contour.
+
+The skeleton pen was registered directly, so it moved its own name onto the
+wrapper and took a new one for itself. Nothing keyed off that name: it appeared
+in one import and one label.
+
+### 3. Result
+
+Full suite 1,789 passing, which says only that nothing else broke — this is
+entirely editor-side. Manual matrix: both pens appear under one button, each
+draws, and a contour drawn with the second reads as single-sided in the panel
+with its per-side numbers greyed.
+
+### 4. Challenges and findings
+
+**The request was to copy the file and adjust it.** The pattern it pointed at is
+not a copy: the quadratic pen is a twelve-line subclass of the ordinary one. Same
+result, one file, and the two pens cannot fall out of step — which is the rail
+against duplicated code (R-B) paying for itself rather than being argued for.
+
+**The generated copy of the icons folder is gitignored**, so a new tool icon goes
+in the source assets only. The bundle puts it where the page reads it.

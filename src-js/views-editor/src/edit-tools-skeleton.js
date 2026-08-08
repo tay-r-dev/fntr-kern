@@ -23,9 +23,24 @@ import {
   resolveSkeletonAddressAcrossLayers,
 } from "./skeleton-editing.js";
 
+// The dropdown, laid out like the ordinary pen's: one button that opens onto the
+// two pens. They differ in one thing, which is the state a contour they start is
+// born in.
+export class SkeletonPenTools {
+  identifier = "skeleton-pen-tool";
+  subTools = [SkeletonPenTool, SkeletonPenToolSingleSided];
+}
+
 export class SkeletonPenTool extends BaseTool {
   iconPath = "/images/skeleton-pen.svg";
-  identifier = "skeleton-pen-tool";
+  identifier = "skeleton-pen-tool-standard";
+
+  // Which side a new contour puts its width on, or null for both. Everything
+  // else about the two pens is identical, so this is the whole of the subclass
+  // below.
+  get newContourSingleSided() {
+    return null;
+  }
 
   // The edit layer's skeleton data. Selection ids are canonical here (WS-9
   // cross-layer addressing); other editable layers resolve by structural
@@ -330,6 +345,7 @@ export class SkeletonPenTool extends BaseTool {
         const contour = appendSkeletonContour(working, {
           closed: false,
           defaultWidth: this._getMasterDefaultWidth(),
+          singleSided: this.newContourSingleSided,
           points: [],
         });
         const point = appendSkeletonPoint(working, contour.id, pointData);
@@ -836,6 +852,20 @@ export class SkeletonPenTool extends BaseTool {
     this.canvasController.canvas.style.cursor = this.sceneModel.selectedGlyph?.isEditing
       ? "crosshair"
       : "default";
+  }
+}
+
+// Draws exactly what the pen above draws. The one difference is that a contour
+// it starts puts all of its width on one side, so the line drawn is the edge of
+// the letter rather than its middle. Left, which is the side the generator falls
+// back to everywhere else, and the panel flips it afterwards like any other
+// contour.
+export class SkeletonPenToolSingleSided extends SkeletonPenTool {
+  iconPath = "/images/skeleton-pen-single-sided.svg";
+  identifier = "skeleton-pen-tool-single-sided";
+
+  get newContourSingleSided() {
+    return "left";
   }
 }
 
