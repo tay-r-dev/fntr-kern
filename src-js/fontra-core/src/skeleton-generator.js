@@ -1,8 +1,11 @@
 import { Bezier } from "bezier-js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
 import { offsetCubicSide } from "./offset-cubic.js";
-import { buildSerifTerminal, computeSerifFrame } from "./serif-geometry.js";
-import { makeSerifWall } from "./serif-wall.js";
+import {
+  buildSerifTerminal,
+  computeSerifFrame,
+  makeSerifWall,
+} from "./serif-geometry.js";
 import {
   CAP_POINT_FIELDS,
   CORNER_POINT_FIELDS,

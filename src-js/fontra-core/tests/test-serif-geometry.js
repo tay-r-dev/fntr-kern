@@ -2,9 +2,9 @@ import {
   buildHalfSerif,
   buildSerifTerminal,
   computeSerifFrame,
+  makeSerifWall,
   maxSerifEaseDistance,
 } from "@fontra/core/serif-geometry.js";
-import { makeSerifWall } from "@fontra/core/serif-wall.js";
 import { expect } from "chai";
 
 const CLOSE = 1e-9;
@@ -19,8 +19,8 @@ const wallAt = (u) =>
     { u, v: 1000 },
   ]);
 
-function expectClose(actual, expected, message) {
-  expect(Math.abs(actual - expected), message).to.be.below(1e-6);
+function expectClose(actual, expected, message, tolerance = 1e-6) {
+  expect(Math.abs(actual - expected), message).to.be.below(tolerance);
 }
 
 describe("serif frame", () => {
@@ -1052,5 +1052,101 @@ describe("the rounding when the wing has been swallowed", () => {
   it("collapses to the corner at ease distance zero", () => {
     const half = build({ easeDistance: 0 });
     expect(Math.abs(half.easeOnBracket.v - half.corner.v)).to.be.lessThan(0.05);
+  });
+});
+
+// The wall the terminal attaches to, on its own: one curve and the questions
+// the serif asks of it.
+const straightWallSample = () =>
+  makeSerifWall([
+    { u: 50, v: 0 },
+    { u: 50, v: 400 },
+  ]);
+const curvedWallSample = () =>
+  makeSerifWall([
+    { u: 50, v: 0 },
+    { u: 40, v: 100 },
+    { u: 10, v: 200 },
+    { u: -60, v: 300 },
+  ]);
+
+describe("serif wall", () => {
+  it("finds a point at a requested depth on a straight wall", () => {
+    const wall = straightWallSample();
+    const point = wall.pointAt(wall.parameterAtDepth(120));
+    expectClose(point.v, 120, undefined, 1e-4);
+    expectClose(point.u, 50, undefined, 1e-4);
+  });
+
+  it("finds a point at a requested depth on a curved wall", () => {
+    const wall = curvedWallSample();
+    const point = wall.pointAt(wall.parameterAtDepth(120));
+    expectClose(point.v, 120, undefined, 1e-3);
+    // The curved wall has moved inward by that depth, which the straight model
+    // could not see at all.
+    expect(point.u).to.be.lessThan(45);
+  });
+
+  it("clamps a depth request past its own reach to its maximum", () => {
+    const wall = curvedWallSample();
+    expect(wall.parameterAtDepth(100000)).to.equal(wall.maxParameter);
+  });
+
+  it("meets a ray that crosses it", () => {
+    const wall = curvedWallSample();
+    // A ray from out on the wing, running inward and slightly deeper.
+    const t = wall.meetRay({ u: 200, v: 60 }, { u: -1, v: 0.2 });
+    expect(t).to.be.a("number");
+    const hit = wall.pointAt(t);
+    // The hit lies on the ray as well as on the wall.
+    expectClose((hit.u - 200) * 0.2 - (hit.v - 60) * -1, 0, undefined, 1e-3);
+  });
+
+  it("returns null for a ray that runs away from it", () => {
+    const wall = curvedWallSample();
+    expect(wall.meetRay({ u: 200, v: 60 }, { u: 1, v: 0 })).to.equal(null);
+  });
+
+  it("points its tangent into the stroke", () => {
+    const wall = curvedWallSample();
+    expect(wall.tangentAt(0.3).v).to.be.greaterThan(0);
+  });
+
+  it("stops short of consuming its whole segment", () => {
+    const wall = straightWallSample();
+    expect(wall.maxParameter).to.be.lessThan(1);
+    expect(wall.maxDepth).to.be.lessThan(400);
+  });
+});
+
+describe("serif wall arc length", () => {
+  it("advances by true distance along a straight wall", () => {
+    const wall = straightWallSample();
+    const from = wall.parameterAtDepth(100);
+    const to = wall.parameterAtDistance(from, 40);
+    expectClose(wall.pointAt(to).v, 140, undefined, 1e-3);
+  });
+
+  it("advances by true distance along a curved wall", () => {
+    const wall = curvedWallSample();
+    const from = wall.parameterAtDepth(100);
+    const a = wall.pointAt(from);
+    const b = wall.pointAt(wall.parameterAtDistance(from, 40));
+    // Straight-line distance is a touch under the arc it travelled, and nowhere
+    // near the 40 of depth the old measurement would have advanced.
+    expect(Math.hypot(b.u - a.u, b.v - a.v)).to.be.greaterThan(39);
+    expect(Math.hypot(b.u - a.u, b.v - a.v)).to.be.at.most(40.001);
+    expect(b.v - a.v).to.be.lessThan(39);
+  });
+
+  it("stops at its own limit", () => {
+    const wall = curvedWallSample();
+    expect(wall.parameterAtDistance(0, 100000)).to.equal(wall.maxParameter);
+  });
+
+  it("reports the length it may be consumed for", () => {
+    const wall = straightWallSample();
+    expectClose(wall.maxLength, 380, undefined, 1e-3);
+    expectClose(wall.lengthAt(wall.parameterAtDepth(100)), 100, undefined, 1e-3);
   });
 });
