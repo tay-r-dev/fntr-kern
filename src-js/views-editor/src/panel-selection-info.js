@@ -50,6 +50,7 @@ export default class SelectionInfoPanel extends Panel {
         "fontLocationSourceMapped",
         "glyphLocation",
         "editLayerName",
+        "combinedCharacterMap",
       ],
       (event) => this.throttledUpdate()
     );
