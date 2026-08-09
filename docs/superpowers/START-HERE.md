@@ -21,5 +21,6 @@ Execution guidelines:
 - I always run bundle-watch in the background - don't bother with running bundle yourself - I will notify you if there are compilation errors;
 - Commit after each step of an implemented plan or sufficiently completed task;
 - When commiting - use git add . to stage changes;
+- There's no production release, so every concern about existing users' work should be dismissed. Every feature can be reworked from the ground up or significantly altered if that is necessary for better functionality, without the need to adapt old files to the new schemas;
 
 When you are finished, mirror the contents of this onboarding to me and write "I'm ready for the next task".

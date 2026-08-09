@@ -1,4 +1,5 @@
 import {
+  DEFAULT_CORNER_CURVATURE,
   DEFAULT_SERIF_PRESET,
   DEFAULT_SKELETON_WIDTH,
   SKELETON_SCHEMA_VERSION,
@@ -247,8 +248,6 @@ describe("skeleton-model constructors and normalization", () => {
         {
           capStyle: "round",
           reversed: true,
-          cornerTrimRatio: 0.5,
-          cornerRadiusBoost: 1.5,
           points: [
             { x: 0, y: 0, capStyle: "square", capAngle: 30, capDistance: 12 },
             {
@@ -257,8 +256,6 @@ describe("skeleton-model constructors and normalization", () => {
               capStyle: "bogus",
               capRadiusRatio: 0.25,
               capTension: 0.6,
-              roundnessStrength: 0.8,
-              cornerAsymmetry: -0.2,
             },
           ],
         },
@@ -269,8 +266,6 @@ describe("skeleton-model constructors and normalization", () => {
     expect(contour).to.include({
       capStyle: "round",
       reversed: true,
-      cornerTrimRatio: 0.5,
-      cornerRadiusBoost: 1.5,
     });
     expect(contour.points[0]).to.include({
       capStyle: "square",
@@ -281,16 +276,44 @@ describe("skeleton-model constructors and normalization", () => {
     expect(contour.points[1]).to.include({
       capRadiusRatio: 0.25,
       capTension: 0.6,
-      roundnessStrength: 0.8,
-      cornerAsymmetry: -0.2,
     });
   });
 
-  it("preserves point-level corner-rounding fields through normalization", () => {
+  it("normalizes the corner block, per side, linked by default", () => {
     const normalized = normalizeSkeletonData({
       nextId: 1,
       contours: [
         {
+          points: [
+            { x: 0, y: 0, corner: { left: { distance: 12, curvature: 0.3 } } },
+            { x: 50, y: 0 },
+          ],
+        },
+      ],
+    });
+
+    const points = normalized.contours[0].points;
+    expect(points[0].corner).to.deep.equal({
+      linked: true,
+      left: { distance: 12, curvature: 0.3 },
+      right: { distance: 0, curvature: DEFAULT_CORNER_CURVATURE },
+    });
+    // An unset corner is off: distance zero draws the sharp corner it drew
+    // before the control existed.
+    expect(points[1].corner).to.deep.equal({
+      linked: true,
+      left: { distance: 0, curvature: DEFAULT_CORNER_CURVATURE },
+      right: { distance: 0, curvature: DEFAULT_CORNER_CURVATURE },
+    });
+  });
+
+  it("drops the four withdrawn corner fields", () => {
+    const normalized = normalizeSkeletonData({
+      nextId: 1,
+      contours: [
+        {
+          cornerTrimRatio: 0.5,
+          cornerRadiusBoost: 1.5,
           points: [
             {
               x: 0,
@@ -305,12 +328,13 @@ describe("skeleton-model constructors and normalization", () => {
       ],
     });
 
-    expect(normalized.contours[0].points[0]).to.include({
-      cornerRoundness: 0.4,
-      cornerReach: 0.6,
-      roundnessStrength: 1.5,
-      cornerAsymmetry: 0.25,
-    });
+    const contour = normalized.contours[0];
+    expect(contour.cornerTrimRatio).to.equal(undefined);
+    expect(contour.cornerRadiusBoost).to.equal(undefined);
+    expect(contour.points[0].cornerRoundness).to.equal(undefined);
+    expect(contour.points[0].cornerReach).to.equal(undefined);
+    expect(contour.points[0].roundnessStrength).to.equal(undefined);
+    expect(contour.points[0].cornerAsymmetry).to.equal(undefined);
   });
 });
 
@@ -720,10 +744,11 @@ describe("skeleton-model shape-preserving multi-point deletion", () => {
     updateSkeletonPoint(skeleton, contour.id, a.id, {
       capStyle: "square",
       capAngle: 30,
-      cornerRoundness: 0.5,
-      cornerReach: 0.7,
-      roundnessStrength: 2,
-      cornerAsymmetry: 0.3,
+      corner: {
+        linked: true,
+        left: { distance: 12, curvature: 0.5 },
+        right: { distance: 12, curvature: 0.5 },
+      },
     });
 
     deleteSkeletonPoints(skeleton, [[contour.id, a.id]]);
@@ -733,10 +758,8 @@ describe("skeleton-model shape-preserving multi-point deletion", () => {
     expect(newFirst.capStyle).to.equal("square");
     expect(newFirst.capAngle).to.equal(30);
     // corner rounding belongs to the angle-point engine, not to caps
-    expect(newFirst.cornerRoundness).to.equal(undefined);
-    expect(newFirst.cornerReach).to.equal(undefined);
-    expect(newFirst.roundnessStrength).to.equal(undefined);
-    expect(newFirst.cornerAsymmetry).to.equal(undefined);
+    expect(newFirst.corner?.left?.distance ?? 0).to.equal(0);
+    expect(newFirst.corner?.right?.distance ?? 0).to.equal(0);
   });
 
   it("removes a contour once no on-curve points remain", () => {
@@ -902,20 +925,31 @@ describe("skeleton-model panel-facing mutators", () => {
     expect(point.capDistance).to.equal(12);
   });
 
-  it("corner params write canonical corner fields only", () => {
+  it("a linked corner write reaches both sides", () => {
     const point = makePoint();
-    setSkeletonCornerParameters(point, {
-      cornerRoundness: 0.4,
-      cornerReach: 0.6,
-      roundnessStrength: 0.5,
-      cornerAsymmetry: -0.25,
-      cornerTrimRatio: 0.9,
-    });
-    expect(point.cornerRoundness).to.equal(0.4);
-    expect(point.cornerReach).to.equal(0.6);
-    expect(point.roundnessStrength).to.equal(0.5);
-    expect(point.cornerAsymmetry).to.equal(-0.25);
-    expect(point.cornerTrimRatio).to.equal(undefined);
+    setSkeletonCornerParameters(point, { side: "left", distance: 18 });
+    expect(point.corner.left.distance).to.equal(18);
+    expect(point.corner.right.distance).to.equal(18);
+  });
+
+  it("an unlinked corner write reaches one side", () => {
+    const point = makePoint({ corner: { linked: false } });
+    setSkeletonCornerParameters(point, { side: "left", distance: 18 });
+    expect(point.corner.left.distance).to.equal(18);
+    expect(point.corner.right.distance).to.equal(0);
+  });
+
+  it("corner values are bounded where they are written", () => {
+    const point = makePoint();
+    setSkeletonCornerParameters(point, { side: "left", distance: -5, curvature: 4 });
+    expect(point.corner.left.distance).to.equal(0);
+    expect(point.corner.left.curvature).to.equal(1);
+  });
+
+  it("the link flag is written on its own", () => {
+    const point = makePoint();
+    setSkeletonCornerParameters(point, { linked: false });
+    expect(point.corner.linked).to.equal(false);
   });
 
   it("reset rib removes nudge/handle offsets/curvature for one side, leaving locks", () => {
@@ -1024,7 +1058,11 @@ describe("skeleton-model transform/translate/id-allocation", () => {
               segmentCurvature: { left: 0.3, right: 0.8 },
               capBallSide: "left",
               capAngle: 12,
-              cornerAsymmetry: -0.25,
+              corner: {
+                linked: false,
+                left: { distance: 12, curvature: 0.4 },
+                right: { distance: 30, curvature: 0.9 },
+              },
               editable: { left: true, right: false },
               handleOffsets: {
                 leftIn: { x: 10, y: 2, detached: true },
@@ -1119,7 +1157,10 @@ describe("skeleton-model transform/translate/id-allocation", () => {
     });
     expect(point.capBallSide).to.equal("right");
     expect(point.capAngle).to.equal(-12);
-    expect(point.cornerAsymmetry).to.equal(0.25);
+    // A mirror exchanges geometric left and right, so the two corner sides
+    // travel with every other per-side field.
+    expect(point.corner.left).to.deep.equal({ distance: 30, curvature: 0.9 });
+    expect(point.corner.right).to.deep.equal({ distance: 12, curvature: 0.4 });
     expect(contour.singleSided).to.equal("right");
     expect(contour.capBallSide).to.equal("left");
   });
@@ -1143,7 +1184,8 @@ describe("skeleton-model transform/translate/id-allocation", () => {
     });
     expect(point.capBallSide).to.equal("left");
     expect(point.capAngle).to.equal(12);
-    expect(point.cornerAsymmetry).to.equal(-0.25);
+    expect(point.corner.left).to.deep.equal({ distance: 12, curvature: 0.4 });
+    expect(point.corner.right).to.deep.equal({ distance: 30, curvature: 0.9 });
     expect(contour.singleSided).to.equal("left");
     expect(contour.capBallSide).to.equal("right");
   });

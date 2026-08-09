@@ -8,7 +8,7 @@ import {
 } from "./serif-geometry.js";
 import {
   CAP_POINT_FIELDS,
-  CORNER_POINT_FIELDS,
+  DEFAULT_CORNER_CURVATURE,
   DEFAULT_SKELETON_WIDTH,
   SERIF_HALF_ZEROS,
   collectSerifTerminals,
@@ -53,14 +53,10 @@ const NECK_HANDLE_FRACTION = 0.45;
 const MAX_NECK_ARC_BACKOFF = 0.6;
 // Cubic pieces the ball arc is always emitted in, whatever the sweep.
 const DROP_CAP_ARC_PIECES = 4;
-const DEFAULT_CORNER_ROUNDNESS = 0;
-const DEFAULT_CORNER_ASYMMETRY = 0;
-const MIN_CORNER_TRIM = 0.5;
-const MAX_CORNER_TRIM_RATIO = 0.5;
+// A corner trim may run the whole way to the neighbouring on-curve. Two corners
+// sharing one segment are held apart by the pairwise limiter below, which is
+// what a fixed per-corner fraction used to stand in for.
 const MAX_HANDLE_TRIM_RATIO = 0.99;
-const DEFAULT_CORNER_RADIUS_BOOST = 1;
-const MIN_CORNER_RADIUS_BOOST = 0.1;
-const MAX_CORNER_RADIUS_BOOST = 4;
 
 export function generateFromSkeleton(skeletonData, options = {}) {
   const normalized = normalizeSkeletonData(skeletonData);
@@ -215,8 +211,6 @@ function canonicalToGeneratorInput(skeletonData) {
       capBallSide: contour.capBallSide,
       serif: contour.serif ?? null,
       reversed: contour.reversed === true,
-      cornerTrimRatio: contour.cornerTrimRatio,
-      cornerRadiusBoost: contour.cornerRadiusBoost,
       points: contour.points.map(canonicalPointToGeneratorPoint),
     })),
   };
@@ -248,18 +242,16 @@ function canonicalPointToGeneratorPoint(point) {
   // copied across explicitly: the generator never sees the canonical shape, and
   // a field that is not copied here fails silently rather than throwing.
   generatorPoint.serif = point.serif ?? null;
+  // The corner block travels whole, like the serif's. A new field inside it
+  // therefore arrives without a copy line — which is not true of a flat field.
+  generatorPoint.corner = point.corner ?? null;
   generatorPoint.leftLocked = point.locked?.left === true;
   generatorPoint.rightLocked = point.locked?.right === true;
   // The pinned segment tension for the segment STARTING here, per side. Null
   // where the segment is unpinned, which is not the same as zero.
   generatorPoint.leftSegmentCurvature = point.segmentCurvature?.left ?? null;
   generatorPoint.rightSegmentCurvature = point.segmentCurvature?.right ?? null;
-  for (const field of [
-    "capStyle",
-    "capBallSide",
-    ...CAP_POINT_FIELDS,
-    ...CORNER_POINT_FIELDS,
-  ]) {
+  for (const field of ["capStyle", "capBallSide", ...CAP_POINT_FIELDS]) {
     if (point[field] !== null && point[field] !== undefined) {
       generatorPoint[field] = point[field];
     }
@@ -299,20 +291,6 @@ function copyHandleOffsetsToGenerator(generatorPoint, side, offset, inOut) {
   generatorPoint[`${prefix}OffsetX`] = offset.x ?? 0;
   generatorPoint[`${prefix}OffsetY`] = offset.y ?? 0;
   generatorPoint[`${prefix}Detached`] = offset.detached === true;
-}
-
-function clampCornerTrimRatio(value) {
-  if (!Number.isFinite(value)) {
-    return MAX_CORNER_TRIM_RATIO;
-  }
-  return Math.min(Math.max(value, 0.05), 0.99);
-}
-
-function clampCornerRadiusBoost(value) {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_CORNER_RADIUS_BOOST;
-  }
-  return Math.min(Math.max(value, MIN_CORNER_RADIUS_BOOST), MAX_CORNER_RADIUS_BOOST);
 }
 
 /**
@@ -355,26 +333,17 @@ export function getPointHalfWidth(point, defaultWidth, side) {
   return defaultWidth / 2;
 }
 
-function clampCornerRoundness(value) {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_CORNER_ROUNDNESS;
-  }
-  return Math.min(Math.max(value, 0), 1);
-}
-
-function getCornerRoundness(point) {
-  return clampCornerRoundness(point?.cornerRoundness ?? DEFAULT_CORNER_ROUNDNESS);
-}
-
-function clampCornerAsymmetry(value) {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_CORNER_ASYMMETRY;
-  }
-  return Math.min(Math.max(value, -1), 1);
-}
-
-function getCornerAsymmetry(point) {
-  return clampCornerAsymmetry(point?.cornerAsymmetry ?? DEFAULT_CORNER_ASYMMETRY);
+// The corner numbers for one side of the stroke. Resolved at emission, where
+// the side is known, so the rounding pass reads one pair per point and never
+// asks which side it is working on.
+function getCornerSide(point, side) {
+  const corner = point?.corner;
+  const values = side === "right" ? corner?.right : corner?.left;
+  const distance = Math.max(0, Number.isFinite(values?.distance) ? values.distance : 0);
+  const curvature = Number.isFinite(values?.curvature)
+    ? Math.min(Math.max(values.curvature, 0), 1)
+    : DEFAULT_CORNER_CURVATURE;
+  return { distance, curvature };
 }
 
 // Forward provenance for a generated point: which skeleton point/side/role it
@@ -423,23 +392,13 @@ function buildGeneratedOnCurve(
       y: constructionAnchor.y,
     };
   }
-  const cornerRoundness = getCornerRoundness(skeletonPoint);
-  const cornerAsymmetry = getCornerAsymmetry(skeletonPoint);
-  const cornerReach = skeletonPoint?.cornerReach;
-  const roundnessStrength = skeletonPoint?.roundnessStrength;
+  const { distance, curvature } = getCornerSide(skeletonPoint, side);
+  // A collapsed side lies on the skeleton exactly, and rounding it would pull
+  // that edge off the line the designer drew.
   const cornerRoundBase = Math.max(0, cornerRoundBaseOverride ?? halfWidth ?? 0);
-  if (cornerRoundness > 0 && cornerRoundBase >= 0.5) {
-    generatedPoint.cornerRoundness = cornerRoundness;
-    generatedPoint.cornerRoundBase = cornerRoundBase;
-  }
-  if (cornerAsymmetry !== 0) {
-    generatedPoint.cornerAsymmetry = cornerAsymmetry;
-  }
-  if (Number.isFinite(cornerReach)) {
-    generatedPoint.cornerReach = cornerReach;
-  }
-  if (Number.isFinite(roundnessStrength)) {
-    generatedPoint.roundnessStrength = roundnessStrength;
+  if (distance > 0 && cornerRoundBase >= 0.5) {
+    generatedPoint.cornerDistance = distance;
+    generatedPoint.cornerCurvature = curvature;
   }
   return generatedPoint;
 }
@@ -449,21 +408,12 @@ function stripCornerRoundMetadata(points) {
     if (!point || point.type) {
       return point;
     }
-    if (
-      point.cornerRoundness === undefined &&
-      point.cornerRoundBase === undefined &&
-      point.cornerAsymmetry === undefined &&
-      point.cornerReach === undefined &&
-      point.roundnessStrength === undefined
-    ) {
+    if (point.cornerDistance === undefined && point.cornerCurvature === undefined) {
       return point;
     }
     const {
-      cornerRoundness: _cornerRoundness,
-      cornerRoundBase: _cornerRoundBase,
-      cornerAsymmetry: _cornerAsymmetry,
-      cornerReach: _cornerReach,
-      roundnessStrength: _roundnessStrength,
+      cornerDistance: _cornerDistance,
+      cornerCurvature: _cornerCurvature,
       ...rest
     } = point;
     return rest;
@@ -1238,10 +1188,7 @@ function findNextOnCurveIndex(points, index, isClosed) {
   return null;
 }
 
-function roundSharpCornersOnSide(
-  sidePoints,
-  { isClosed, cornerTrimRatio, cornerRadiusBoost, side }
-) {
+function roundSharpCornersOnSide(sidePoints, { isClosed }) {
   const points = sidePoints.map((point) => ({ ...point }));
   if (points.length < 3) {
     return points;
@@ -1260,31 +1207,14 @@ function roundSharpCornersOnSide(
       continue;
     }
 
-    const baseRoundness = clampCornerRoundness(corner.cornerRoundness);
-    const cornerAsymmetry = getCornerAsymmetry(corner);
-    const effectiveCornerTrimRatio = clampCornerTrimRatio(
-      Number.isFinite(corner.cornerReach) ? corner.cornerReach : cornerTrimRatio
-    );
-    const effectiveCornerRadiusBoost = clampCornerRadiusBoost(
-      Number.isFinite(corner.roundnessStrength)
-        ? corner.roundnessStrength
-        : cornerRadiusBoost
-    );
-    let cornerRoundness = baseRoundness;
-    if (cornerRoundness > 0 && side && cornerAsymmetry !== 0) {
-      let scale = 1;
-      if (side === "left" && cornerAsymmetry < 0) {
-        scale = 1 + cornerAsymmetry;
-      } else if (side === "right" && cornerAsymmetry > 0) {
-        scale = 1 - cornerAsymmetry;
-      }
-      scale = Math.min(Math.max(scale, 0), 1);
-      cornerRoundness = cornerRoundness * scale;
-    }
-    const cornerRoundBase = Math.max(0, corner.cornerRoundBase ?? 0);
-    if (cornerRoundness <= 0 || cornerRoundBase < 0.5) {
+    // Stamped at emission, per side, or absent where this side is not rounded.
+    const cornerDistance = corner.cornerDistance;
+    if (!Number.isFinite(cornerDistance) || cornerDistance <= 0) {
       continue;
     }
+    const cornerCurvature = Number.isFinite(corner.cornerCurvature)
+      ? corner.cornerCurvature
+      : DEFAULT_CORNER_CURVATURE;
 
     const prevOnIndex = findPrevOnCurveIndex(points, i, isClosed);
     const nextOnIndex = findNextOnCurveIndex(points, i, isClosed);
@@ -1327,75 +1257,40 @@ function roundSharpCornersOnSide(
     if (!(beta > 1e-4 && beta < Math.PI - 1e-4)) {
       continue;
     }
-    const tanHalf = Math.tan(beta / 2);
-    if (!(tanHalf > 1e-6)) {
-      continue;
-    }
-
-    const distPrevOn = vector.distance(corner, points[prevOnIndex]);
-    const distNextOn = vector.distance(corner, points[nextOnIndex]);
-    const handleTrimRatio = MAX_HANDLE_TRIM_RATIO;
-    const minTrim = 0;
-    let maxTrimIn = distPrevOn * effectiveCornerTrimRatio;
-    let maxTrimOut = distNextOn * effectiveCornerTrimRatio;
+    // How far each arm may give up. An arm ends at its neighbouring on-curve,
+    // and a curved arm stops just short of its handle, because trimming past
+    // the handle inverts the curve it belongs to.
+    let maxTrimIn = vector.distance(corner, points[prevOnIndex]);
+    let maxTrimOut = vector.distance(corner, points[nextOnIndex]);
 
     if (prevHandleIndex !== null) {
       maxTrimIn = Math.min(
         maxTrimIn,
-        vector.distance(corner, points[prevHandleIndex]) * handleTrimRatio
+        vector.distance(corner, points[prevHandleIndex]) * MAX_HANDLE_TRIM_RATIO
       );
     }
     if (nextHandleIndex !== null) {
       maxTrimOut = Math.min(
         maxTrimOut,
-        vector.distance(corner, points[nextHandleIndex]) * handleTrimRatio
+        vector.distance(corner, points[nextHandleIndex]) * MAX_HANDLE_TRIM_RATIO
       );
     }
 
-    const maxTrim = Math.min(maxTrimIn, maxTrimOut);
-    if (!Number.isFinite(maxTrim) || maxTrim <= minTrim) {
+    const trimIn = Math.min(cornerDistance, maxTrimIn);
+    const trimOut = Math.min(cornerDistance, maxTrimOut);
+    if (!Number.isFinite(trimIn) || !Number.isFinite(trimOut)) {
       continue;
     }
-
-    const roundnessRatio = Math.min(
-      Math.max(cornerRoundness * effectiveCornerRadiusBoost, 0),
-      1
-    );
-    if (!(roundnessRatio > 0)) {
+    if (!(trimIn > 0) || !(trimOut > 0)) {
       continue;
     }
-
-    const trimIn = maxTrimIn * roundnessRatio;
-    const trimOut = maxTrimOut * roundnessRatio;
-    if (
-      !Number.isFinite(trimIn) ||
-      !Number.isFinite(trimOut) ||
-      trimIn <= minTrim ||
-      trimOut <= minTrim
-    ) {
-      continue;
-    }
-
-    const maxRadius = maxTrim * tanHalf;
-    const radiusIn = trimIn * tanHalf;
-    const radiusOut = trimOut * tanHalf;
-    const kappa = (4 / 3) * Math.tan(beta / 4);
-    const arcHandleLenIn =
-      Number.isFinite(radiusIn) && Number.isFinite(kappa)
-        ? Math.max(0, radiusIn * kappa)
-        : 0;
-    const arcHandleLenOut =
-      Number.isFinite(radiusOut) && Number.isFinite(kappa)
-        ? Math.max(0, radiusOut * kappa)
-        : 0;
-    const arcHandleLen = Math.max(arcHandleLenIn, arcHandleLenOut);
 
     cornerInfos.set(corner, {
       trimIn,
       trimOut,
       dirInAway,
       dirOutAway,
-      arcHandleLen,
+      curvature: cornerCurvature,
       prevHandlePoint: prevHandleIndex !== null ? points[prevHandleIndex] : null,
       nextHandlePoint: nextHandleIndex !== null ? points[nextHandleIndex] : null,
     });
@@ -1507,26 +1402,21 @@ function roundSharpCornersOnSide(
       x: cornerInfo.dirOutAway.x,
       y: cornerInfo.dirOutAway.y,
     };
-    let handleLengths = computeTunniHandleLengths(
-      startPoint,
-      startTangent,
-      endPoint,
-      { x: -endTangent.x, y: -endTangent.y },
-      DEFAULT_CAP_TENSION
-    );
+    // Curvature is a tension: 0 leaves both handles on their own on-curve and
+    // cuts a straight chamfer, 1 carries both onto the corner point, which is
+    // where the two tangent rays meet. A zero-length handle is the setting
+    // asking for a chamfer, so it is never repaired.
     const chord = vector.distance(startPoint, endPoint);
-    const fallbackLen = cornerInfo.arcHandleLen;
-    if (
-      (!(chord > 1e-3) ||
-        !(handleLengths.startLen > 1e-3) ||
-        !(handleLengths.endLen > 1e-3)) &&
-      fallbackLen > 0
-    ) {
-      handleLengths = {
-        startLen: fallbackLen,
-        endLen: fallbackLen,
-      };
-    }
+    const handleLengths =
+      chord > 1e-3
+        ? computeTunniHandleLengths(
+            startPoint,
+            startTangent,
+            endPoint,
+            { x: -endTangent.x, y: -endTangent.y },
+            cornerInfo.curvature
+          )
+        : { startLen: 0, endLen: 0 };
 
     const handleIn = {
       x: startPoint.x + startTangent.x * handleLengths.startLen,
@@ -1580,8 +1470,6 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
     reversed = false,
     singleSided = false,
     singleSidedDirection = "left",
-    cornerTrimRatio = MAX_CORNER_TRIM_RATIO,
-    cornerRadiusBoost = DEFAULT_CORNER_RADIUS_BOOST,
   } = skeletonContour;
 
   if (points.length < 2) {
@@ -1692,22 +1580,8 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
     rightSide.push(...offsetPoints.right);
   }
 
-  let roundedLeftSide = roundSharpCornersOnSide(leftSide, {
-    isClosed,
-    cornerTrimRatio: clampCornerTrimRatio(options.cornerTrimRatio ?? cornerTrimRatio),
-    cornerRadiusBoost: clampCornerRadiusBoost(
-      options.cornerRadiusBoost ?? cornerRadiusBoost
-    ),
-    side: "left",
-  });
-  let roundedRightSide = roundSharpCornersOnSide(rightSide, {
-    isClosed,
-    cornerTrimRatio: clampCornerTrimRatio(options.cornerTrimRatio ?? cornerTrimRatio),
-    cornerRadiusBoost: clampCornerRadiusBoost(
-      options.cornerRadiusBoost ?? cornerRadiusBoost
-    ),
-    side: "right",
-  });
+  let roundedLeftSide = roundSharpCornersOnSide(leftSide, { isClosed });
+  let roundedRightSide = roundSharpCornersOnSide(rightSide, { isClosed });
 
   if (isClosed) {
     // For closed skeleton: TWO separate contours (outer and inner)

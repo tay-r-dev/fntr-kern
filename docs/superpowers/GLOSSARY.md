@@ -175,8 +175,9 @@ skeleton exactly. It is what makes a single-sided stroke come out clean instead 
 past the end, **drop** swelling into a ball, or **serif**. One end has one cap. forkra added the
 last two.
 
-**Corner rounding** — softening the sharp outline corner that a kinked centerline produces. Set
-per point, and it can differ on the two sides.
+**Corner rounding** — softening the sharp outline corner that a kinked centerline produces. Two
+numbers per side of the stroke: a **distance** back along each arm, in units, and a **curvature**
+saying how full the arc is. The two sides start linked and can be unlinked.
 
 **Nudge** — sliding a generated outline point along its own edge, without changing the stroke.
 Applied after the shape is built, so it never disturbs the curve fitting.

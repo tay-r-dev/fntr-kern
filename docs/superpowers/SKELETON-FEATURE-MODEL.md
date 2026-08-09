@@ -133,7 +133,7 @@ An on-curve point carries:
 - `nudge`, the tangential rib-end displacement.
 - an `editable` flag per side.
 - the cap parameters.
-- the corner parameters: `cornerRoundness`, `cornerAsymmetry` and reach.
+- the corner block: a `distance` and a `curvature` per side, plus a `linked` flag.
 - the rib-angle overrides.
 - the generated handle offsets and the detached flags.
 
@@ -360,6 +360,34 @@ the designer gets the control instead of the collapse.
 on-curves plus their handles. Corner metadata rides on the generated on-curve points
 (`buildGeneratedOnCurve`), and `stripCornerRoundMetadata` removes it before output. A pairwise
 pass shrinks adjacent trims so that they cannot overlap.
+
+**Two numbers per side, and nothing else.** `distance` is how far back along each arm the
+rounding starts, in font units. `curvature` is how full the arc is, on the tension scale the
+serif's contour easing and the curvature gizmo already use: 0 cuts a straight chamfer, 1 puts
+both handles on the corner point, which is where the two tangent rays meet. A distance of zero is
+a sharp corner. The two sides are independent, and a `linked` flag on the block makes one panel
+edit write both.
+
+The side's pair is resolved at emission, where the side is known, so the rounding pass reads one
+pair per point and never asks which side it is working on.
+
+Three clamps hold the distance, and no fixed fraction stands in for them. An arm ends at its
+neighbouring on-curve. A curved arm stops just short of its handle, because trimming past the
+handle inverts the curve. And the pairwise pass splits the run between two corners that share
+one segment.
+
+A side under half a unit is collapsed and is not rounded, because that edge lies on the skeleton
+exactly. Single-sided mode is the deliberate exception: there the collapsed side borrows the live
+side's base and rounds with it, so the two edges of the stroke agree.
+
+**Distance zero emits no arc**, so the generated point count still differs between a rounded
+corner and a sharp one. A corner rounded in one master and sharp in another does not interpolate.
+This predates the two-number model and the serif's collapse rule is not extended here.
+
+This replaced four sliders — roundness, reach, strength and asymmetry. The first three all
+multiplied into the one trim distance. The fourth scaled roundness down on one side, which two
+independent sides say better. The contour-level `cornerTrimRatio` and `cornerRadiusBoost` went
+with them: a fourth dead level, read by the generator and written by nothing.
 
 ### Step 4 — Caps
 
@@ -662,8 +690,8 @@ Generated Curvature", "Reset Generated On-Curves".
 
 A mirror has a negative determinant, so the geometric left of the mirrored centerline is what the
 stored data calls right. On a determinant flip, every per-side field swaps: `width`, `nudge`,
-`handleNudge`, `locked`, `segmentCurvature`, the four handle offsets, and `capBallSide`. `capAngle`
-and `cornerAsymmetry` negate.
+`handleNudge`, `locked`, `segmentCurvature`, `corner`, the four handle offsets, and
+`capBallSide`. `capAngle` negates.
 
 Handle adjustment vectors take the affine's linear part only, never the translation, whether or
 not the sides swap. `reversed` needs no change, because mirroring flips the outline's winding and

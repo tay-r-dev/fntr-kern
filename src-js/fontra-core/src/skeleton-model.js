@@ -139,13 +139,20 @@ export const SERIF_HALF_ZEROS = Object.freeze(
   Object.fromEntries(SERIF_HALF_FIELDS.map((field) => [field, 0]))
 );
 // Corner rounding is the angle-point engine's parameter set — related to caps
-// only in that both live on on-curve points
-export const CORNER_POINT_FIELDS = [
-  "cornerRoundness",
-  "cornerReach",
-  "roundnessStrength",
-  "cornerAsymmetry",
-];
+// only in that both live on on-curve points.
+//
+// Two numbers per side, shaped like `width`. `distance` is how far back along
+// each arm the rounding starts, in font units, and zero is a sharp corner.
+// `curvature` is how full the arc is: 0 draws a straight chamfer, 1 puts both
+// handles on the corner point. This is the same scale the serif's contour
+// easing and the curvature gizmo use, so one number means one thing everywhere.
+//
+// The four fields this replaced — cornerRoundness, cornerReach,
+// roundnessStrength and cornerAsymmetry — all multiplied into the one trim
+// distance, and the contour-level cornerTrimRatio/cornerRadiusBoost were a dead
+// level with a reader and no writer. Nothing reads any of them now, so a corner
+// drawn before this change comes back sharp.
+export const DEFAULT_CORNER_CURVATURE = 0.55;
 
 export function makeEmptySkeletonData() {
   return {
@@ -1300,12 +1307,6 @@ export function normalizeSkeletonContour(contour, skeletonData = null, usedIds =
   if (VALID_CAP_BALL_SIDES.has(contour?.capBallSide)) {
     normalized.capBallSide = contour.capBallSide;
   }
-  if (Number.isFinite(contour?.cornerTrimRatio)) {
-    normalized.cornerTrimRatio = contour.cornerTrimRatio;
-  }
-  if (Number.isFinite(contour?.cornerRadiusBoost)) {
-    normalized.cornerRadiusBoost = contour.cornerRadiusBoost;
-  }
   for (const point of Array.isArray(contour?.points) ? contour.points : []) {
     normalized.points.push(normalizeSkeletonPoint(point, skeletonData, usedIds));
   }
@@ -1330,6 +1331,7 @@ export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = nul
     normalized.locked = normalizeLocked(point?.locked);
     normalized.handleOffsets = normalizeHandleOffsets(point?.handleOffsets);
     normalized.serif = normalizeSerif(point?.serif);
+    normalized.corner = normalizeCorner(point?.corner);
     normalized.capStyle = VALID_CAP_STYLES.has(point?.capStyle) ? point.capStyle : null;
     normalized.capBallSide = VALID_CAP_BALL_SIDES.has(point?.capBallSide)
       ? point.capBallSide
@@ -1337,7 +1339,7 @@ export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = nul
     normalized.ribAngleLock = VALID_RIB_ANGLE_LOCKS.has(point?.ribAngleLock)
       ? (point.ribAngleLock ?? null)
       : null;
-    for (const field of [...CAP_POINT_FIELDS, ...CORNER_POINT_FIELDS]) {
+    for (const field of CAP_POINT_FIELDS) {
       if (Number.isFinite(point?.[field])) {
         normalized[field] = point[field];
       }
@@ -2427,11 +2429,32 @@ export function setSkeletonCornerParameters(point, values, { round = null } = {}
   if (!values || typeof values !== "object") {
     return;
   }
-  for (const field of CORNER_POINT_FIELDS) {
-    if (field in values && Number.isFinite(values[field])) {
-      point[field] = round ? round(values[field]) : values[field];
+  const corner = normalizeCorner(point.corner);
+  if ("linked" in values) {
+    corner.linked = values.linked === true;
+  }
+  // The bound lives here because the scrub, the typed field and a preset are
+  // three ways into the same number, and only the writer sits under all of them
+  // (dev log §29).
+  const sides =
+    corner.linked || !values.side ? ["left", "right"] : [assertCornerSide(values.side)];
+  for (const side of sides) {
+    if (Number.isFinite(values.distance)) {
+      const distance = round ? round(values.distance) : values.distance;
+      corner[side].distance = Math.max(0, distance);
+    }
+    if (Number.isFinite(values.curvature)) {
+      corner[side].curvature = clampCornerCurvature(values.curvature);
     }
   }
+  point.corner = corner;
+}
+
+function assertCornerSide(side) {
+  if (side !== "left" && side !== "right") {
+    throw new Error(`invalid skeleton corner side: ${side}`);
+  }
+  return side;
 }
 
 // Reset one generated handle (side + role) to its derived position, leaving the
@@ -2565,6 +2588,7 @@ export function transformSkeletonPointMetadata(point, affine) {
     "locked",
     "segmentCurvature",
     "serif",
+    "corner",
   ]) {
     swapProperties(point[field], "left", "right");
   }
@@ -2578,9 +2602,6 @@ export function transformSkeletonPointMetadata(point, affine) {
   }
   if (Number.isFinite(point.capAngle)) {
     point.capAngle = -point.capAngle;
-  }
-  if (Number.isFinite(point.cornerAsymmetry)) {
-    point.cornerAsymmetry = -point.cornerAsymmetry;
   }
   // The absolute serif axis angle is a direction in glyph space, so it reflects
   // like capAngle. `axisMode` does not: horizontal stays horizontal under a
@@ -3522,6 +3543,31 @@ function normalizeWidth(width) {
     // allowed but is a deliberate choice — see SKELETON-FEATURE-MODEL.md §3.0.
     tied: width?.tied !== false,
   };
+}
+
+function normalizeCornerSide(side) {
+  return {
+    distance: Math.max(0, asFiniteNumber(side?.distance, 0)),
+    curvature: clampCornerCurvature(side?.curvature),
+  };
+}
+
+// Two sides, linked by default, like `width`. A point that has never been
+// rounded holds two zero distances, so the block is always present and a reader
+// never falls through to a table.
+function normalizeCorner(corner) {
+  return {
+    linked: corner?.linked !== false,
+    left: normalizeCornerSide(corner?.left),
+    right: normalizeCornerSide(corner?.right),
+  };
+}
+
+function clampCornerCurvature(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_CORNER_CURVATURE;
+  }
+  return Math.min(Math.max(value, 0), 1);
 }
 
 function normalizeSerifHalf(half) {

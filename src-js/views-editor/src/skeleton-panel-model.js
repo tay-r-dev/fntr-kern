@@ -407,10 +407,10 @@ export function summarizeSkeletonSerifSelection(selectedPoints) {
   };
 }
 
-// Corner rounding is the angle-point engine (donor "Corner Rounding" section):
-// all four parameters live on the point, and are editable only when EVERY
-// selected point is a non-smooth on-curve that is not an open-contour
-// endpoint — the inverse of the cap gate.
+// Corner rounding is the angle-point engine: two numbers per side of the
+// stroke, live on the point, and editable only when EVERY selected point is a
+// non-smooth on-curve that is not an open-contour endpoint — the inverse of the
+// cap gate.
 export function summarizeSkeletonCornerSelection(selectedPoints) {
   let canEdit = selectedPoints.length > 0;
   for (const entry of selectedPoints) {
@@ -430,20 +430,23 @@ export function summarizeSkeletonCornerSelection(selectedPoints) {
       }
     }
   }
+  const sideValue = (side, field) =>
+    reduceValues(
+      selectedPoints.map((entry) => entry.point.corner?.[side]?.[field] ?? null)
+    );
   return {
     canEdit,
-    cornerRoundness: reduceValues(
-      selectedPoints.map((entry) => entry.point.cornerRoundness ?? null)
+    linked: reduceValues(
+      selectedPoints.map((entry) => entry.point.corner?.linked !== false)
     ),
-    cornerAsymmetry: reduceValues(
-      selectedPoints.map((entry) => entry.point.cornerAsymmetry ?? null)
-    ),
-    cornerReach: reduceValues(
-      selectedPoints.map((entry) => entry.point.cornerReach ?? null)
-    ),
-    roundnessStrength: reduceValues(
-      selectedPoints.map((entry) => entry.point.roundnessStrength ?? null)
-    ),
+    left: {
+      distance: sideValue("left", "distance"),
+      curvature: sideValue("left", "curvature"),
+    },
+    right: {
+      distance: sideValue("right", "distance"),
+      curvature: sideValue("right", "curvature"),
+    },
   };
 }
 
@@ -557,12 +560,12 @@ export function makeSkeletonPanelStateSignature({
         // when a side is locked outside the panel. Handle offsets are
         // deliberately NOT tracked: they change every frame while a generated
         // handle is dragged, which would rebuild the panel per frame.
-        `p:${entry.contourId}/${entry.pointId}:${JSON.stringify(entry.point.width)}:${JSON.stringify(entry.point.nudge)}:${JSON.stringify(entry.point.locked)}:${entry.point.capStyle}:${entry.point.capRadiusRatio}:${entry.point.capTension}:${entry.point.capAngle}:${entry.point.capDistance}:${entry.point.capBallRatio}:${entry.point.capBallShape}:${entry.point.capBallSide}:${entry.point.roundnessStrength}:${entry.point.cornerAsymmetry}:${JSON.stringify(entry.point.serif)}`
+        `p:${entry.contourId}/${entry.pointId}:${JSON.stringify(entry.point.width)}:${JSON.stringify(entry.point.nudge)}:${JSON.stringify(entry.point.locked)}:${entry.point.capStyle}:${entry.point.capRadiusRatio}:${entry.point.capTension}:${entry.point.capAngle}:${entry.point.capDistance}:${entry.point.capBallRatio}:${entry.point.capBallShape}:${entry.point.capBallSide}:${entry.point.corner?.linked}:${JSON.stringify(entry.point.serif)}`
       );
     }
     for (const entry of panelSelection.contours) {
       parts.push(
-        `c:${entry.contourId}:${entry.contour.singleSided}:${entry.contour.defaultWidth}:${entry.contour.cornerTrimRatio}:${entry.contour.cornerRadiusBoost}`
+        `c:${entry.contourId}:${entry.contour.singleSided}:${entry.contour.defaultWidth}`
       );
     }
   }

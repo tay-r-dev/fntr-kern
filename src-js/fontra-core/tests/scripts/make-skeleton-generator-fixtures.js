@@ -23,8 +23,6 @@ const CAP_CORNER_POINT_FIELDS = [
   "capTension",
   "capAngle",
   "capDistance",
-  "roundnessStrength",
-  "cornerAsymmetry",
   {
     name: "serif-slab",
     canonical: serifStem({
@@ -472,8 +470,6 @@ function canonicalToDonor(skeletonData) {
       singleSidedDirection: contour.singleSided || "left",
       capStyle: contour.capStyle || "butt",
       reversed: contour.reversed === true,
-      cornerTrimRatio: contour.cornerTrimRatio,
-      cornerRadiusBoost: contour.cornerRadiusBoost,
       points: contour.points.map(canonicalPointToDonor),
     })),
   };
@@ -496,6 +492,7 @@ function canonicalPointToDonor(point) {
   donorPoint.rightNudge = point.nudge?.right ?? 0;
   donorPoint.leftEditable = point.editable?.left === true;
   donorPoint.rightEditable = point.editable?.right === true;
+  donorPoint.corner = point.corner ?? null;
   for (const field of CAP_CORNER_POINT_FIELDS) {
     if (point[field] !== null && point[field] !== undefined) {
       donorPoint[field] = point[field];

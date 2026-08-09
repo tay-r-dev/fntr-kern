@@ -1027,6 +1027,48 @@ export async function setPanelCornerParameters(
   );
 }
 
+// A scrub carries the CHANGE from where the drag started, so a mixed selection
+// keeps its differences instead of collapsing onto one number. The writer holds
+// the bound and decides whether the linked side travels too.
+export async function nudgePanelCornerDistanceStream(
+  sceneController,
+  pointAddresses,
+  side,
+  valueStream,
+  undoLabel
+) {
+  return setPanelPointValuesStream(
+    sceneController,
+    pointAddresses,
+    valueStream,
+    (point, _contour, change) =>
+      setSkeletonCornerParameters(point, {
+        side,
+        distance: (point.corner?.[side]?.distance ?? 0) + Number(change),
+      }),
+    undoLabel
+  );
+}
+
+export async function scalePanelCornerDistance(
+  sceneController,
+  pointAddresses,
+  side,
+  factor,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point) =>
+      setSkeletonCornerParameters(point, {
+        side,
+        distance: Math.round((point.corner?.[side]?.distance ?? 0) * factor),
+      }),
+    undoLabel
+  );
+}
+
 // ---- Rib / editable-generated handle operations -----------------------------
 
 export async function resetPanelRibs(

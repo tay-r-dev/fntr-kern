@@ -30,12 +30,14 @@ import {
   applyPanelSerifPreset,
   nudgePanelCapParameterStream,
   nudgePanelContourDefaultWidthStream,
+  nudgePanelCornerDistanceStream,
   nudgePanelPointWidthStream,
   nudgePanelSerifValueStream,
   resetPanelGeneratedHandle,
   resetPanelRibs,
   scalePanelCapParameter,
   scalePanelContourDefaultWidth,
+  scalePanelCornerDistance,
   scalePanelPointWidth,
   scalePanelSerifValue,
   setPanelCapParameters,
@@ -239,18 +241,19 @@ function serifNudgeTargets(name) {
   }));
 }
 
+// Corner field keys are "<side>-<parameter>": the side is carried in the key so
+// the linked and unlinked forms reach the same writer, which is what decides
+// whether one side or both take the value.
 function cornerValuesFromField(name, value) {
-  if (name === "roundness") {
-    return { cornerRoundness: Number(value) / 100 };
+  const [side, parameter] = String(name).split("-");
+  if (side !== "left" && side !== "right") {
+    return null;
   }
-  if (name === "asymmetry") {
-    return { cornerAsymmetry: Number(value) };
+  if (parameter === "distance") {
+    return { side, distance: Number(value) };
   }
-  if (name === "reach") {
-    return { cornerReach: Number(value) / 100 };
-  }
-  if (name === "strength") {
-    return { roundnessStrength: Number(value) / 100 };
+  if (parameter === "curvature") {
+    return { side, curvature: Number(value) / 100 };
   }
   return null;
 }
@@ -1071,9 +1074,11 @@ export default class SkeletonParametersPanel extends Panel {
     }
   }
 
-  // Donor "Corner Rounding" section: parameters of the angle-point rounding
-  // engine, NOT cap parameters. All four live on the point; edited in percent
-  // (except asymmetry) and gated to angle points (non-smooth, non-endpoint).
+  // Corner rounding: the angle-point rounding engine, NOT cap parameters. Two
+  // numbers per side of the stroke, gated to angle points (non-smooth,
+  // non-endpoint). Distance is font units and scrubs off its label; curvature
+  // is a percentage on the same scale the serif's easing and the curvature
+  // gizmo use. Linked shows one pair and writes both sides.
   _buildCornerSection(formContents, widthPoints) {
     const corner = summarizeSkeletonCornerSelection(widthPoints);
     formContents.push({ type: "divider" });
@@ -1082,50 +1087,40 @@ export default class SkeletonParametersPanel extends Panel {
       label: translate("sidebar.skeleton-parameters.corner-rounding"),
     });
     const gate = { disabled: !corner.canEdit };
+    formContents.push({
+      type: "checkbox",
+      key: "corner:linked",
+      label: translate("sidebar.skeleton-parameters.linked"),
+      value: corner.linked.mixed ? false : corner.linked.value,
+      ...gate,
+    });
     const asPercent = (summary) => ({
       value: summary.value == null ? null : Math.round(summary.value * 100),
       mixed: summary.mixed,
     });
-    this._pushSummarySlider(
-      formContents,
-      "corner:roundness",
-      "corner-roundness",
-      asPercent(corner.cornerRoundness),
-      0,
-      100,
-      0,
-      { step: 1, ...gate }
-    );
-    this._pushSummarySlider(
-      formContents,
-      "corner:asymmetry",
-      "corner-asymmetry",
-      corner.cornerAsymmetry,
-      -1,
-      1,
-      0,
-      { step: 0.1, ...gate }
-    );
-    this._pushSummarySlider(
-      formContents,
-      "corner:reach",
-      "corner-reach",
-      asPercent(corner.cornerReach),
-      5,
-      99,
-      50,
-      { step: 1, ...gate }
-    );
-    this._pushSummarySlider(
-      formContents,
-      "corner:strength",
-      "corner-strength",
-      asPercent(corner.roundnessStrength),
-      10,
-      400,
-      100,
-      { step: 1, ...gate }
-    );
+    // Linked writes both sides from one pair, so only the left is offered — the
+    // side the key names is the side the writer starts from.
+    const linked = !corner.linked.mixed && corner.linked.value;
+    const sides = linked ? ["left"] : ["left", "right"];
+    for (const side of sides) {
+      this._pushSummaryNumber(
+        formContents,
+        `corner:${side}-distance`,
+        linked ? "corner-distance" : `corner-distance-${side}`,
+        corner[side].distance,
+        { minValue: 0, ...gate }
+      );
+      this._pushSummarySlider(
+        formContents,
+        `corner:${side}-curvature`,
+        linked ? "corner-curvature" : `corner-curvature-${side}`,
+        asPercent(corner[side].curvature),
+        0,
+        100,
+        55,
+        { step: 1, ...gate }
+      );
+    }
   }
 
   _buildRibSection(formContents, ribs, derived = false) {
@@ -2019,6 +2014,18 @@ export default class SkeletonParametersPanel extends Panel {
         factor,
         this._undo("set-cap")
       );
+    } else if (group === "corner") {
+      const side = String(name).split("-")[0];
+      if (side !== "left" && side !== "right") {
+        return;
+      }
+      await scalePanelCornerDistance(
+        sc,
+        this._widthPoints(),
+        side,
+        factor,
+        this._undo("set-corner")
+      );
     } else if (group === "serif") {
       const targets = serifNudgeTargets(name);
       if (!targets.length) {
@@ -2070,6 +2077,19 @@ export default class SkeletonParametersPanel extends Panel {
         valueStream,
         this._undo("set-cap")
       );
+      return;
+    }
+    if (group === "corner") {
+      const side = String(name).split("-")[0];
+      if (side === "left" || side === "right") {
+        await nudgePanelCornerDistanceStream(
+          sc,
+          this._widthPoints(),
+          side,
+          valueStream,
+          this._undo("set-corner")
+        );
+      }
       return;
     }
     if (group === "serif") {
@@ -2314,7 +2334,10 @@ export default class SkeletonParametersPanel extends Panel {
   }
 
   async _onCornerChange(name, value) {
-    const values = cornerValuesFromField(name, value);
+    const values =
+      name === "linked"
+        ? { linked: value === true }
+        : cornerValuesFromField(name, value);
     if (!values) {
       return;
     }

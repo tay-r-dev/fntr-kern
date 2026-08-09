@@ -544,12 +544,175 @@ describe("skeleton-generator corner rounding input", () => {
     };
   }
 
-  it("corner rounding parameters change the generated outline", () => {
+  function cornerBlock(values = {}) {
+    const { linked = true, left = {}, right = {} } = values;
+    return {
+      corner: {
+        linked,
+        left: { distance: 0, curvature: 0.55, ...left },
+        right: { distance: 0, curvature: 0.55, ...right },
+      },
+    };
+  }
+
+  function onCurves(result) {
+    return result.contours.flatMap((contour) =>
+      contour.points.filter((point) => !point.type)
+    );
+  }
+
+  const roundKey = (point) => `${Math.round(point.x)},${Math.round(point.y)}`;
+
+  // The corner on-curves the rounding replaced, and the pairs it put in their
+  // place. Comparing against the sharp outline is what makes each assertion
+  // about the rounding alone rather than about the whole stroke.
+  function cornerDiff(plain, rounded) {
+    const plainKeys = new Set(onCurves(plain).map(roundKey));
+    const roundedKeys = new Set(onCurves(rounded).map(roundKey));
+    return {
+      gone: onCurves(plain).filter((point) => !roundedKeys.has(roundKey(point))),
+      added: onCurves(rounded).filter((point) => !plainKeys.has(roundKey(point))),
+    };
+  }
+
+  function distance(a, b) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  // The four points of one rounded corner, in emission order: the two on-curves
+  // the arc runs between and the two handles between them.
+  function arcRuns(result) {
+    const runs = [];
+    for (const contour of result.contours) {
+      const points = contour.points;
+      for (let i = 0; i + 3 < points.length; i++) {
+        if (
+          !points[i].type &&
+          points[i + 1].type &&
+          points[i + 2].type &&
+          !points[i + 3].type &&
+          points[i].smooth &&
+          points[i + 3].smooth
+        ) {
+          runs.push({
+            start: points[i],
+            handleIn: points[i + 1],
+            handleOut: points[i + 2],
+            end: points[i + 3],
+          });
+        }
+      }
+    }
+    return runs;
+  }
+
+  it("a distance of zero leaves the corner sharp", () => {
+    const plain = generateFromSkeleton(makeAnglePointSkeleton());
+    const off = generateFromSkeleton(makeAnglePointSkeleton(cornerBlock()));
+    expect(off.contours).to.deep.equal(plain.contours);
+  });
+
+  it("trims each arm back by the distance, on both sides", () => {
     const plain = generateFromSkeleton(makeAnglePointSkeleton());
     const rounded = generateFromSkeleton(
-      makeAnglePointSkeleton({ cornerRoundness: 0.8, cornerReach: 0.6 })
+      makeAnglePointSkeleton(
+        cornerBlock({ left: { distance: 20 }, right: { distance: 20 } })
+      )
     );
-    expect(rounded.contours).to.not.deep.equal(plain.contours);
+    const { gone, added } = cornerDiff(plain, rounded);
+    expect(gone).to.have.length(2);
+    expect(added).to.have.length(4);
+    for (const corner of gone) {
+      const near = added.filter((point) => Math.abs(distance(point, corner) - 20) <= 1);
+      expect(near).to.have.length(2);
+    }
+  });
+
+  it("draws a straight chamfer at curvature zero", () => {
+    const rounded = generateFromSkeleton(
+      makeAnglePointSkeleton(
+        cornerBlock({
+          left: { distance: 20, curvature: 0 },
+          right: { distance: 20, curvature: 0 },
+        })
+      )
+    );
+    const runs = arcRuns(rounded);
+    expect(runs).to.have.length(2);
+    for (const run of runs) {
+      expect(distance(run.handleIn, run.start)).to.be.at.most(1);
+      expect(distance(run.handleOut, run.end)).to.be.at.most(1);
+    }
+  });
+
+  it("puts both handles on the corner at curvature one", () => {
+    const plain = generateFromSkeleton(makeAnglePointSkeleton());
+    const rounded = generateFromSkeleton(
+      makeAnglePointSkeleton(
+        cornerBlock({
+          left: { distance: 20, curvature: 1 },
+          right: { distance: 20, curvature: 1 },
+        })
+      )
+    );
+    const { gone } = cornerDiff(plain, rounded);
+    const runs = arcRuns(rounded);
+    expect(runs).to.have.length(2);
+    for (const run of runs) {
+      const corner = gone.find((point) => distance(point, run.start) <= 21);
+      expect(corner).to.not.equal(undefined);
+      expect(distance(run.handleIn, corner)).to.be.at.most(1);
+      expect(distance(run.handleOut, corner)).to.be.at.most(1);
+    }
+  });
+
+  it("rounds one side only when the two sides are unlinked", () => {
+    const plain = generateFromSkeleton(makeAnglePointSkeleton());
+    const rounded = generateFromSkeleton(
+      makeAnglePointSkeleton(
+        cornerBlock({ linked: false, left: { distance: 20 }, right: { distance: 0 } })
+      )
+    );
+    const { gone, added } = cornerDiff(plain, rounded);
+    expect(gone).to.have.length(1);
+    expect(added).to.have.length(2);
+  });
+
+  it("clamps a distance longer than the arm it runs along", () => {
+    const far = generateFromSkeleton(
+      makeAnglePointSkeleton(
+        cornerBlock({ left: { distance: 1000 }, right: { distance: 1000 } })
+      )
+    );
+    const farther = generateFromSkeleton(
+      makeAnglePointSkeleton(
+        cornerBlock({ left: { distance: 10000 }, right: { distance: 10000 } })
+      )
+    );
+    for (const point of onCurves(far)) {
+      expect(Number.isFinite(point.x) && Number.isFinite(point.y)).to.equal(true);
+    }
+    expect(farther.contours).to.deep.equal(far.contours);
+  });
+
+  it("keeps a collapsed side sharp", () => {
+    // A side under half a unit lies on the skeleton exactly, and rounding it
+    // would pull that edge off the line the designer drew. Single-sided mode is
+    // the deliberate exception: there the collapsed side borrows the live
+    // side's base and rounds with it, so both edges of the stroke agree.
+    const withCollapsedSide = (cornerFields) => {
+      const skeleton = makeAnglePointSkeleton(cornerFields);
+      skeleton.contours[0].points[1].width = { left: 40, right: 0.2 };
+      return generateFromSkeleton(skeleton);
+    };
+    const { gone, added } = cornerDiff(
+      withCollapsedSide(),
+      withCollapsedSide(
+        cornerBlock({ left: { distance: 20 }, right: { distance: 20 } })
+      )
+    );
+    expect(gone).to.have.length(1);
+    expect(added).to.have.length(2);
   });
 });
 

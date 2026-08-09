@@ -2703,3 +2703,91 @@ the edit layer's. Each layer is still recomputed from its own handles, because a
 different set of handles has a different harmonic target.
 
 ---
+
+## 37. Corner rounding became distance and curvature — rework
+
+### 1. Problem
+
+Corner rounding had four sliders. Three of them — roundness, reach and strength
+— multiplied into one number, the distance the corner is trimmed back by. Reach
+capped that distance against the neighbouring point, roundness took a fraction
+of the cap, strength scaled roundness again and the product was clamped to one.
+So three controls drove one quantity, at different strengths, and no one of them
+said what the corner would measure.
+
+The fourth, asymmetry, scaled roundness down on the left or the right side of
+the stroke. One number for a thing that is two.
+
+The arc's own fullness was fixed at the default cap tension. There was no
+control for it at all.
+
+### 2. Solution
+
+Two numbers per side of the stroke, shaped like `width`. **Distance** is how far
+back along each arm the rounding starts, in font units. **Curvature** is how full
+the arc is, on the tension scale the serif's contour easing and the curvature
+gizmo already use: 0 cuts a straight chamfer, 1 puts both handles on the corner
+point. The two sides start linked and unlink from a checkbox.
+
+Distance is absolute units rather than a fraction of the arm. A fraction
+rescales itself when a neighbour moves, so the drawn corner changes when nothing
+about the corner changed.
+
+Three clamps hold the distance, and they are the geometry rather than a fixed
+fraction standing in for it: the run to the neighbouring on-curve, the handle on
+a curved arm, and the pairwise pass that splits one segment between the two
+corners sharing it.
+
+The old fields are gone, with no migration, which the designer chose. A corner
+drawn before this change comes back sharp.
+
+### 3. Result
+
+Full suite 1,841 passing. Seven new generator tests: distance zero is byte-equal
+to a sharp corner, each arm trims by its own distance, curvature 0 draws a
+chamfer, curvature 1 lands both handles on the corner, unlinked sides round
+independently, an over-long distance clamps rather than running away, and a
+collapsed side stays sharp. Four model tests cover the linked and unlinked
+writes, the bound, and the mirror swap.
+
+No golden fixture moved. That is a gap rather than a result: the corpus carries
+no rounded corner at all, so it cannot see this change. The same gap was
+reported for ease distance in entry 29 and for the cup centre in entry 30.
+
+Editor side carries a manual matrix, per rail R-G: round a corner from the
+panel, scrub the distance label, unlink and give the two sides different
+numbers, and check that a mirrored corner keeps the wide side on the wide side.
+
+### 4. Challenges and findings
+
+**The half-width gate reads two ways, and the code already chose.** A side under
+half a unit lies on the skeleton, so rounding it pulls that edge off the drawn
+line. Single-sided mode is the deliberate exception: the collapsed side borrows
+the live side's base and rounds with it, so the two edges of the stroke agree.
+The first test asserted the general rule and failed against the exception. The
+test was wrong, not the code — the exception is shipped behaviour and changing
+it was not what was asked for.
+
+**The arc's fallback fired at exactly the setting that wants nothing.** The old
+code repaired a near-zero handle length with a circular-arc estimate. Under a
+curvature control, a zero-length handle is the chamfer the designer asked for.
+The fallback now fires only on a degenerate chord, which is the case it was for.
+
+**A fourth dead level.** The contour-level `cornerTrimRatio` and
+`cornerRadiusBoost` were read by the generator and normalization and written by
+nothing in the tree. That is the fourth found by the same check — who writes it,
+not who reads it — after the contour serif block, the contour cap style and the
+`reversed` flag.
+
+**The point count still varies with the parameter**, because distance zero emits
+no arc. So a corner rounded in one master and sharp in another does not
+interpolate. That predates this work, and the serif's collapse rule was
+deliberately not extended to corners without being asked.
+
+**One thing found and left alone.** `CAP_CORNER_POINT_FIELDS` in the fixture
+script is a field-name list with the serif fixture objects merged into it, so
+those fixtures are never generated and the loop over the list indexes points by
+object. It is a dev script, it predates this work, and fixing it here would be a
+change nobody asked for.
+
+---
