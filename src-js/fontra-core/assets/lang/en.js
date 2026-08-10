@@ -704,6 +704,7 @@ export const strings = {
   "sidebar.user-settings.glyph.lockicon": "Glyph lock icon for non-editing glyphs",
   "sidebar.user-settings.glyph.point.index": "Point indices",
   "sidebar.user-settings.glyph.powerruler": "Power Ruler",
+  "sidebar.user-settings.glyph.skeleton.point.index": "Skeleton point indices",
   "sidebar.user-settings.glyph.referencefont": "Reference font",
   "sidebar.user-settings.glyph.sidebearings": "Sidebearings for non-editing glyphs",
   "sidebar.user-settings.glyph.sidebearings-tool": "Sidebearings (tool)",
