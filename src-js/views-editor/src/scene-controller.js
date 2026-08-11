@@ -1747,13 +1747,33 @@ export class SceneController {
     return undoInfo !== undefined;
   }
 
+  // One command for both kinds of contour. A selection can name skeleton
+  // contours, path contours, or both at once, and each kind is reversed the way
+  // that kind is reversed: a skeleton flips the flag its generator reads, a
+  // path contour has its points turned around. Returning after the skeleton, as
+  // this did, left the path contours in a mixed selection untouched.
   async doReverseSelectedContours() {
-    const skeletonContourIds = this.contextMenuState.skeletonContourIds || [];
+    const {
+      point: pointSelection,
+      skeletonPoint,
+      skeletonRib,
+    } = parseSelection(this.selection);
+    // Same derivation the context menu state uses: the contour id is the first
+    // field of either key, and a rib belongs to its contour as much as a
+    // centerline point does.
+    const skeletonContourIds = [
+      ...new Set(
+        [...(skeletonPoint || []), ...(skeletonRib || [])]
+          .map((item) => Number(`${item}`.split("/")[0]))
+          .filter((contourId) => Number.isInteger(contourId))
+      ),
+    ];
     if (skeletonContourIds.length) {
       await this.doReverseSelectedSkeletonContours(skeletonContourIds);
+    }
+    if (!pointSelection?.length) {
       return;
     }
-    const { point: pointSelection } = parseSelection(this.selection);
     await this.editLayersAndRecordChanges((layerGlyphs) => {
       let selection;
       for (const layerGlyph of Object.values(layerGlyphs)) {
