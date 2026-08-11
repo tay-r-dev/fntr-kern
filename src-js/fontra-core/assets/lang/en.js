@@ -549,6 +549,7 @@ export const strings = {
   "sidebar.skeleton-parameters.cap-distance": "Cap distance",
   "sidebar.skeleton-parameters.cap-ball": "Ball size",
   "sidebar.skeleton-parameters.cap-ball-shape": "Ball shape",
+  "sidebar.skeleton-parameters.cap-ball-easing": "Easing",
   "sidebar.skeleton-parameters.cap-ball-side": "Ball side",
   "sidebar.skeleton-parameters.cap-ball-side.auto": "Auto",
   "sidebar.skeleton-parameters.cap-ball-side.left": "Left",

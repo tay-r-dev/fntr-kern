@@ -416,6 +416,24 @@ plus the tip points. It takes the handle lengths from a tension parameter. The *
 cap that does not simply close the two side ends. It trims a length off each side first, and
 splices its own terminal on. See §8.
 
+The **drop** cap (the bulb) is the other one that trims. Its ball swells off the outer edge and
+crosses the inner edge, and the notch that crossing leaves is softened by **easing**. Easing is a
+0–1 fraction of the run from that crossing back to the next on-curve on the inner edge, and it
+places the neck's far end directly at that fraction. At 1 the far end collapses onto the on-curve.
+Because the number is a fraction of a run that ends at an on-curve, the geometry's stop and the
+panel's top of range are the same fact, and the neck can never eat an on-curve. An earlier version
+inflated a second ball and took whatever crossing that made, which no reading of the number could
+predict.
+
+Exactly one curvature gizmo lives at a bulb's terminal. Without easing it sits on the inner edge
+above the incision: the trim rebuilds that segment's two handles from a bezier split, so they are
+given the original handles' addresses and the crossing on-curve carries the untrimmed segment, the
+same pair the round-cap split publishes. With easing it moves onto the neck. A neck has no skeleton
+segment behind it, so its curvature is stored in `capBallEaseCurvature` on the cap-owning point and
+its four points name that point and that field. Neck points are addressable by the gizmo and by
+nothing else — no on-curve gizmo, no direct handle drag — because they are cap geometry and
+dragging one would move the rib the neck hangs off.
+
 ### Step 5 — Assembly
 
 `left + endCap + reverse(right) + startCap` gives one closed contour, through `reverseContour`. A

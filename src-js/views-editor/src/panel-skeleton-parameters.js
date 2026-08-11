@@ -97,8 +97,11 @@ const DEFAULT_CAP_BALL_SHAPE = 0;
 // stops reading as a terminal. Typing into the field still reaches 100%.
 export const CAP_SHAPE_MIN = 0;
 export const CAP_SHAPE_MAX = 40;
-// Drop-cap tension can be pushed well past 100% for an extra-smooth waist.
-export const CAP_TENSION_DROP_MAX = 300;
+// Bulb easing: a percent of the run from the ball's crossing on the inner edge
+// to the next generated on-curve. 100 collapses the two, and there is nothing
+// past it, so this is a hard end rather than a slider convenience.
+const DEFAULT_CAP_BALL_EASING = 0;
+export const CAP_BALL_EASING_MAX = 100;
 
 export function capRadiusRatioFromIndex(index) {
   const clampedIndex = Math.min(Math.max(index, 0), CAP_RADIUS_POSITIONS - 1);
@@ -137,6 +140,9 @@ function capValuesFromField(name, value) {
   }
   if (name === "ballshape") {
     return { capBallShape: Number(value) / 100 };
+  }
+  if (name === "balleasing") {
+    return { capBallEasing: Math.min(Math.max(Number(value) / 100, 0), 1) };
   }
   if (name === "ballside") {
     return { capBallSide: value };
@@ -624,7 +630,7 @@ export default class SkeletonParametersPanel extends Panel {
         label: translate("sidebar.skeleton-parameters.default-caps"),
         values: {
           capBallRatio: DEFAULT_CAP_BALL_RATIO,
-          capTension: Number(this._resolveSourceDefault(K.CAP_TENSION)),
+          capBallEasing: DEFAULT_CAP_BALL_EASING,
         },
       });
     }
@@ -1017,18 +1023,22 @@ export default class SkeletonParametersPanel extends Panel {
         Math.round(DEFAULT_CAP_BALL_SHAPE * 100),
         { step: 5, allowInputBeyondRange: true }
       );
-      const tensionSummary = {
-        value: Math.round((cap.capTension.value ?? DEFAULT_CAP_TENSION) * 100),
-        mixed: cap.capTension.mixed,
+      // Easing, not tension: this sets how far back along the inner edge the
+      // neck starts, as a percent of the run to the next generated on-curve.
+      // 100 collapses the two, and there is no geometry past it — so the slider
+      // ends there and typing cannot reach beyond it either.
+      const easingSummary = {
+        value: Math.round((cap.capBallEasing.value ?? DEFAULT_CAP_BALL_EASING) * 100),
+        mixed: cap.capBallEasing.mixed,
       };
       this._pushSummarySlider(
         formContents,
-        "cap:tension",
-        "cap-tension",
-        tensionSummary,
+        "cap:balleasing",
+        "cap-ball-easing",
+        easingSummary,
         0,
-        CAP_TENSION_DROP_MAX,
-        Math.round(DEFAULT_CAP_TENSION * 100),
+        CAP_BALL_EASING_MAX,
+        Math.round(DEFAULT_CAP_BALL_EASING * 100),
         { step: 5 }
       );
       formContents.push({

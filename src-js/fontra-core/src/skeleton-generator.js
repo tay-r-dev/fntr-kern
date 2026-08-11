@@ -41,13 +41,18 @@ const DEFAULT_CAP_BALL_SIDE = "auto";
 const DEFAULT_CAP_BALL_SHAPE = 0;
 const MAX_CAP_BALL_SHAPE = 1;
 const BALL_SHAPE_ELONGATION = 1.4;
-// Drop-cap neck tension may run well past 1 for an extra-soft waist (the panel
-// exposes up to 300%); other cap styles keep their own [0, 1] range.
-const MAX_CAP_TENSION_DROP = 3;
-// Drop-cap neck: capTension pulls the inner trim back by up to this fraction of
-// the ball radius (softening the notch into a concave curve); the neck cubic's
-// handles are this fraction of the neck chord.
-const NECK_PULLBACK_FACTOR = 0.6;
+// Drop-cap easing: how far back along the inner edge the neck starts, as a
+// fraction of the run from the plain ball crossing to the next on-curve behind
+// it. 0 is the hard corner, 1 collapses the neck's far end onto that on-curve.
+// A fraction rather than a length, so the geometry's stop and the panel's top of
+// range are one fact and the neck can never eat an on-curve.
+const DEFAULT_CAP_BALL_EASING = 0;
+// The eased neck's own curvature, in the curvature gizmo's unit: 1 puts both
+// handles on the tangent intersection. The gizmo writes it per point; this is
+// what an unset bulb draws.
+const DEFAULT_CAP_BALL_EASE_CURVATURE = 0.55;
+// Fallback neck handle length as a fraction of the neck chord, used only where
+// the two tangents give no intersection to measure against.
 const NECK_HANDLE_FRACTION = 0.45;
 // How far (radians of ball sweep) the neck may back the ball attachment off.
 const MAX_NECK_ARC_BACKOFF = 0.6;
@@ -1815,10 +1820,9 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           firstOnCurvePoint.capBallShape ??
           skeletonContour.capBallShape ??
           DEFAULT_CAP_BALL_SHAPE,
-        capTension:
-          firstOnCurvePoint.capTension ??
-          skeletonContour.capTension ??
-          DEFAULT_CAP_TENSION,
+        capBallEasing: firstOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
+        capBallEaseCurvature:
+          firstOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -2016,10 +2020,9 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           lastOnCurvePoint.capBallShape ??
           skeletonContour.capBallShape ??
           DEFAULT_CAP_BALL_SHAPE,
-        capTension:
-          lastOnCurvePoint.capTension ??
-          skeletonContour.capTension ??
-          DEFAULT_CAP_TENSION,
+        capBallEasing: lastOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
+        capBallEaseCurvature:
+          lastOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -4082,6 +4085,47 @@ function clampCapBallShape(value) {
   return Math.min(Math.max(value, 0), MAX_CAP_BALL_SHAPE);
 }
 
+function clampCapBallEasing(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_CAP_BALL_EASING;
+  }
+  return Math.min(Math.max(value, 0), 1);
+}
+
+// Clamped on output only, like every other curvature the gizmo writes: a stored
+// value the geometry cannot honor today comes back intact once it can.
+function clampCapBallEaseCurvature(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_CAP_BALL_EASE_CURVATURE;
+  }
+  return Math.min(Math.max(value, 0), 1);
+}
+
+// The neck's own provenance. A neck is cap geometry with no skeleton segment
+// behind it, so its curvature cannot live in `segmentCurvature`; it names the
+// cap-owning point and the field instead. `side` is the inner generated side, so
+// the segment walk sees one consistent side across all four points and needs no
+// second rule to accept it.
+function neckProvenance(sourcePoint, side, role) {
+  if (!sourcePoint?._sourcePointId) {
+    return null;
+  }
+  return {
+    skeletonPointId: sourcePoint._sourcePointId,
+    side,
+    role,
+    capCurvatureField: "capBallEaseCurvature",
+  };
+}
+
+function withNeckProvenance(point, sourcePoint, side, role) {
+  const provenance = neckProvenance(sourcePoint, side, role);
+  if (point && provenance) {
+    point._provenance = provenance;
+  }
+  return point;
+}
+
 // Which side the ball swells toward. Explicit capBallSide wins; otherwise the
 // convex (outer) side of the terminal segment's bend. For a CCW-turning
 // terminal the convex side is the left generated edge.
@@ -4163,10 +4207,9 @@ function makeDropCapBall(center, ex, ey, a, b) {
       const { u, v } = this.localOf(point);
       return Math.atan2(v, u);
     },
-    // `inflate` scales both axes, used to pull the neck trim further back.
-    contains(point, inflate = 1) {
+    contains(point) {
       const { u, v } = this.localOf(point);
-      return u * u + v * v < inflate * inflate;
+      return u * u + v * v < 1;
     },
   };
 }
@@ -4262,14 +4305,6 @@ function getSideSegmentsFromTerminal(sidePoints, position) {
     }
   }
   return position === "end" ? segments.reverse() : segments;
-}
-
-// How far back from the terminal a crossing sits, as a 0..1 fraction of its own
-// segment plus the number of whole segments already walked — enough to compare
-// two crossings on the same side.
-function crossingBackness(crossing) {
-  const withinSegment = crossing.fromEnd ? 1 - crossing.tCross : crossing.tCross;
-  return crossing.segmentsFromTerminal + withinSegment;
 }
 
 // Find where a side outline last crosses the ball boundary, scanning backward
@@ -4375,11 +4410,55 @@ function findSideBallCrossing(sidePoints, position, contains) {
   return rearMost;
 }
 
+// The same crossing slid back along its own segment by `easing`, a 0..1 fraction
+// of the run from the crossing to that segment's far on-curve.
+//
+// Staying on the crossing's own segment is what bounds the neck. At easing 1 the
+// far end lands exactly on the on-curve and the two collapse, and there is
+// nowhere past it to go — so the stop is a property of the run rather than a
+// separate clamp that could disagree with the panel's range.
+function crossingAtEasing(crossingInfo, easing) {
+  const { tCross, fromEnd, bezier, segmentPoints } = crossingInfo;
+  const t = fromEnd ? tCross * (1 - easing) : tCross + (1 - tCross) * easing;
+  let crossing;
+  let crossingTangent = null;
+  if (bezier) {
+    const point = bezier.get(t);
+    crossing = { x: point.x, y: point.y };
+    const derivative = bezier.derivative(t);
+    crossingTangent = vector.normalizeVector({ x: derivative.x, y: derivative.y });
+  } else {
+    const last = segmentPoints[segmentPoints.length - 1];
+    crossing = vector.interpolateVectors(segmentPoints[0], last, t);
+    const chord = vector.subVectors(last, segmentPoints[0]);
+    crossingTangent = isUsableDirection(chord) ? vector.normalizeVector(chord) : null;
+  }
+  return {
+    ...crossingInfo,
+    crossing,
+    crossingTangent: isUsableDirection(crossingTangent)
+      ? crossingTangent
+      : crossingInfo.crossingTangent,
+    tCross: t,
+  };
+}
+
 // Rebuild a side outline trimmed at a crossing (from findSideBallCrossing),
 // so its terminal segment stops at the crossing. `smooth` marks the new
 // terminal on-curve (true for a filleted neck that meets the ball tangentially,
 // false for a hard concave corner).
-function rebuildTrimmedSide(sidePoints, crossingInfo, { smooth }) {
+//
+// `addressable` gives the trimmed segment's two rebuilt handles the provenance
+// their originals carried, and stamps the untrimmed segment onto the crossing
+// on-curve. Together those are what the curvature gizmo needs: the addresses let
+// it find the segment at all, and the untrimmed snapshot lets it measure the
+// curve its pin actually governs rather than the piece left after the cut. This
+// is the same pair the round-cap split publishes.
+//
+// It is off for an eased neck on purpose. Exactly one gizmo lives at a bulb's
+// terminal: above the incision when there is no easing, and on the neck itself
+// once there is. Publishing both would put two of them a few units apart.
+function rebuildTrimmedSide(sidePoints, crossingInfo, { smooth, addressable = false }) {
   const {
     crossing,
     segmentStartIndex,
@@ -4395,6 +4474,12 @@ function rebuildTrimmedSide(sidePoints, crossingInfo, { smooth }) {
     { x: Math.round(crossing.x), y: Math.round(crossing.y), smooth },
     provenanceSource
   );
+  if (addressable && isCubic && crossingOnCurve._provenance) {
+    crossingOnCurve._provenance.constructionSegment = segmentPoints.map((point) => ({
+      x: point.x,
+      y: point.y,
+    }));
+  }
 
   let rewrittenSegment;
   if (bezier) {
@@ -4403,18 +4488,27 @@ function rebuildTrimmedSide(sidePoints, crossingInfo, { smooth }) {
       x: p.x,
       y: p.y,
     }));
+    // The rebuilt handles inherit the original handles' provenance in place, so
+    // handle 1 keeps handle 1's address whichever end the cut came from.
+    const splitHandle = (index) =>
+      addressable
+        ? withRoundCapProvenance(
+            buildSplitOffCurve(kept[index], segmentPoints[index]),
+            segmentPoints[index]
+          )
+        : buildSplitOffCurve(kept[index]);
     if (isCubic) {
       rewrittenSegment = fromEnd
         ? [
             cloneRoundCapPoint(segmentPoints[0]),
-            buildSplitOffCurve(kept[1]),
-            buildSplitOffCurve(kept[2]),
+            splitHandle(1),
+            splitHandle(2),
             crossingOnCurve,
           ]
         : [
             crossingOnCurve,
-            buildSplitOffCurve(kept[1]),
-            buildSplitOffCurve(kept[2]),
+            splitHandle(1),
+            splitHandle(2),
             cloneRoundCapPoint(segmentPoints[segmentPoints.length - 1]),
           ];
     } else {
@@ -4532,7 +4626,8 @@ function buildDropCap({
   capWidth,
   capBallRatio,
   capBallShape,
-  capTension,
+  capBallEasing,
+  capBallEaseCurvature,
 }) {
   const forward = vector.normalizeVector(outwardTangent);
   if (!endpoint || !(capWidth > 0.001) || !isUsableDirection(forward)) {
@@ -4544,6 +4639,7 @@ function buildDropCap({
   }
   const outerSideArr = outerSide === "left" ? leftSide : rightSide;
   const innerSideArr = outerSide === "left" ? rightSide : leftSide;
+  const innerSideName = outerSide === "left" ? "right" : "left";
 
   // capBallShape stretches the ball backward along the stroke only: it sets how
   // far back along the outer edge the ball attaches. The trim has to stay on
@@ -4581,10 +4677,8 @@ function buildDropCap({
     split.referenceEndpointIndex
   );
 
-  const tension = Math.min(
-    Math.max(Number.isFinite(capTension) ? capTension : 0, 0),
-    MAX_CAP_TENSION_DROP
-  );
+  const easing = clampCapBallEasing(capBallEasing);
+  const easeCurvature = clampCapBallEaseCurvature(capBallEaseCurvature);
 
   // Where the ball meets the inner edge (the arc ends there). When the ball is
   // too small to reach the inner edge, bridge to the inner terminal instead.
@@ -4592,38 +4686,29 @@ function buildDropCap({
     ball.contains(point)
   );
 
-  // With tension, pull the inner trim back by growing the trim ball: the stroke
-  // edge peels away earlier and eases into the ball, softening the notch into a
-  // concave neck. Back off the inflation until the grown ball still yields a
-  // crossing genuinely behind the plain one — a ball so large that the rear
-  // crossing runs off the side would otherwise report the forward crossing
-  // instead, which folds the neck back over the stroke.
-  let softCross = null;
-  let inflate = 1;
-  if (ballCross && tension > 0.01) {
-    for (let s = 1 + tension * NECK_PULLBACK_FACTOR; s > 1.02; s = 1 + (s - 1) * 0.65) {
-      const candidate = findSideBallCrossing(innerSideArr, position, (point) =>
-        ball.contains(point, s)
-      );
-      if (candidate && crossingBackness(candidate) > crossingBackness(ballCross)) {
-        softCross = candidate;
-        inflate = s;
-        break;
-      }
-    }
-  }
+  // Easing slides the neck's far end back along the inner edge, so the stroke
+  // edge peels away earlier and eases into the ball instead of meeting it at a
+  // notch. The far end is placed directly at its fraction of the run, which is
+  // what lets the value be aimed: an earlier version grew a second, inflated
+  // ball and took whatever crossing that happened to make, and no reading of the
+  // number told you where the neck would land.
+  const easedCross =
+    ballCross && easing > 0 ? crossingAtEasing(ballCross, easing) : null;
 
   let trimmedInnerSide;
   let thetaInner;
   let mode;
   let innerTrim = null;
-  if (softCross) {
-    trimmedInnerSide = rebuildTrimmedSide(innerSideArr, softCross, { smooth: true });
-    innerTrim = softCross.crossing;
+  if (easedCross) {
+    trimmedInnerSide = rebuildTrimmedSide(innerSideArr, easedCross, { smooth: true });
+    innerTrim = easedCross.crossing;
     thetaInner = ball.thetaOf(ballCross.crossing);
     mode = "soft";
   } else if (ballCross) {
-    trimmedInnerSide = rebuildTrimmedSide(innerSideArr, ballCross, { smooth: false });
+    trimmedInnerSide = rebuildTrimmedSide(innerSideArr, ballCross, {
+      smooth: false,
+      addressable: true,
+    });
     thetaInner = ball.thetaOf(ballCross.crossing);
     mode = "corner";
   } else {
@@ -4660,7 +4745,7 @@ function buildDropCap({
   // absolute cap keeps a very soft neck from eating the ball itself: past it
   // the extra tension only reaches further back along the edge.
   const backoff =
-    mode === "soft" ? Math.min(inflate - 1, 0.35 * sweep, MAX_NECK_ARC_BACKOFF) : 0;
+    mode === "soft" ? easing * Math.min(0.35 * sweep, MAX_NECK_ARC_BACKOFF) : 0;
   const thetaArcEnd = thetaInner - backoff;
   const arc = emitDropCapArc(ball, thetaOuter, thetaArcEnd);
 
@@ -4675,22 +4760,47 @@ function buildDropCap({
     const ballAttach = ball.at(thetaArcEnd);
     const sweepTangent = ball.tangentAt(thetaArcEnd);
     const innerTangent = orientDirectionToward(
-      softCross.crossingTangent ?? ex,
+      easedCross.crossingTangent ?? ex,
       vector.subVectors(ballAttach, innerTrim)
     );
     const chord = vector.distance(ballAttach, innerTrim);
-    const handleLen = NECK_HANDLE_FRACTION * chord;
+    const neckLengths = computeTunniHandleLengths(
+      ballAttach,
+      sweepTangent,
+      innerTrim,
+      innerTangent,
+      easeCurvature
+    );
+    const clampNeckLen = (value) =>
+      Math.min(
+        Math.max(Number.isFinite(value) ? value : NECK_HANDLE_FRACTION * chord, 0),
+        chord
+      );
     capForwardToInner = [
       ...arc,
-      dropCapHandle({
-        x: ballAttach.x + sweepTangent.x * handleLen,
-        y: ballAttach.y + sweepTangent.y * handleLen,
-      }),
-      dropCapHandle({
-        x: innerTrim.x + innerTangent.x * handleLen,
-        y: innerTrim.y + innerTangent.y * handleLen,
-      }),
+      withNeckProvenance(
+        dropCapHandle({
+          x: ballAttach.x + sweepTangent.x * clampNeckLen(neckLengths.startLen),
+          y: ballAttach.y + sweepTangent.y * clampNeckLen(neckLengths.startLen),
+        }),
+        endpoint,
+        innerSideName,
+        "out"
+      ),
+      withNeckProvenance(
+        dropCapHandle({
+          x: innerTrim.x + innerTangent.x * clampNeckLen(neckLengths.endLen),
+          y: innerTrim.y + innerTangent.y * clampNeckLen(neckLengths.endLen),
+        }),
+        endpoint,
+        innerSideName,
+        "in"
+      ),
     ];
+    // The arc's last on-curve is the neck's own start. It needs an address for
+    // the segment walk to see the neck at all; the walk takes a segment only
+    // when all four of its points carry one.
+    withNeckProvenance(arc[arc.length - 1], endpoint, innerSideName, "onCurve");
   } else if (mode === "bridge") {
     // Small ball: connect the last arc on-curve to the inner terminal with a
     // short concave neck cubic, scaled by tension.
@@ -4713,21 +4823,32 @@ function buildDropCap({
       ballTangent,
       innerTerminal,
       innerTangent,
-      Math.max(tension, 0.2)
+      easeCurvature
     );
     const clampNeckLen = (value) =>
       Math.min(Math.max(Number.isFinite(value) ? value : 0.4 * chord, 0), 0.6 * chord);
     capForwardToInner = [
       ...arc,
-      dropCapHandle({
-        x: neckPoint.x + ballTangent.x * clampNeckLen(neckLengths.startLen),
-        y: neckPoint.y + ballTangent.y * clampNeckLen(neckLengths.startLen),
-      }),
-      dropCapHandle({
-        x: innerTerminal.x + innerTangent.x * clampNeckLen(neckLengths.endLen),
-        y: innerTerminal.y + innerTangent.y * clampNeckLen(neckLengths.endLen),
-      }),
+      withNeckProvenance(
+        dropCapHandle({
+          x: neckPoint.x + ballTangent.x * clampNeckLen(neckLengths.startLen),
+          y: neckPoint.y + ballTangent.y * clampNeckLen(neckLengths.startLen),
+        }),
+        endpoint,
+        innerSideName,
+        "out"
+      ),
+      withNeckProvenance(
+        dropCapHandle({
+          x: innerTerminal.x + innerTangent.x * clampNeckLen(neckLengths.endLen),
+          y: innerTerminal.y + innerTangent.y * clampNeckLen(neckLengths.endLen),
+        }),
+        endpoint,
+        innerSideName,
+        "in"
+      ),
     ];
+    withNeckProvenance(arc[arc.length - 1], endpoint, innerSideName, "onCurve");
   } else {
     // Hard corner: the trimmed inner side already provides the crossing
     // on-curve, so drop the arc's terminal on-curve to avoid duplicating it.

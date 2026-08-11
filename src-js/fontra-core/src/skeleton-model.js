@@ -78,7 +78,17 @@ export const CAP_POINT_FIELDS = [
   "capDistance",
   "capBallRatio",
   "capBallShape",
+  // Bulb easing: how far back along the inner edge the neck starts, 0..1 as a
+  // fraction of the run to the next on-curve. Its curvature is the neck cubic's
+  // own tension, which the curvature gizmo reads and writes — a neck has no
+  // skeleton segment behind it, so it cannot live in `segmentCurvature`.
+  "capBallEasing",
+  "capBallEaseCurvature",
 ];
+// Where a bulb's neck keeps the number the curvature gizmo writes. Named once
+// here and matched against the provenance the generator stamps, so the two
+// cannot drift apart.
+export const CAP_CURVATURE_FIELDS = new Set(["capBallEaseCurvature"]);
 export const VALID_SERIF_AXIS_MODES = new Set([
   "perpendicular",
   "horizontal",
@@ -3043,6 +3053,7 @@ export function resolveGeneratedPointProvenance(skeletonData, path, pathPointInd
     pointId,
     side: provenance.side,
     role: provenance.role,
+    capCurvatureField: provenance.capCurvatureField ?? null,
     contour,
     contourIndex,
     point: contour.points[pointIndex],
@@ -3057,6 +3068,10 @@ export function resolveEditableGeneratedTarget(skeletonData, path, pathPointInde
     pathPointIndex
   );
   if (!provenance || !EDITABLE_VALID_GENERATED_SIDES.has(provenance.side)) return null;
+  // A bulb's neck names the cap-owning point so its curvature gizmo can find it.
+  // Its points are not that point's rib geometry, though, so they are not
+  // directly editable: dragging one would move the rib the neck hangs off.
+  if (provenance.capCurvatureField) return null;
   if (provenance.point?.type || isSkeletonSideLocked(provenance.point, provenance.side))
     return null;
   const kind =
@@ -3805,6 +3820,22 @@ export function calculateGeneratedCurvatureEdits({
   if (!start || start.role !== "onCurve" || start.skeletonPointId === undefined) {
     return null;
   }
+  // A bulb's neck stores its curvature in a cap field on the cap-owning point,
+  // because there is no skeleton segment behind it to pin. Nothing else about
+  // the drag changes: the same tension is measured the same way. It carries no
+  // collapse tail either — a cap handle has no stored offset to put one on, so
+  // the pin is the whole answer and a drag below its floor simply stops.
+  const capCurvatureField = generatedSegmentCapCurvatureField(provenance);
+  if (capCurvatureField) {
+    return {
+      segmentPointIndex,
+      skeletonPointId: start.skeletonPointId,
+      side: start.side,
+      capCurvatureField,
+      tension,
+      collapse: [],
+    };
+  }
   // The tail below the pin's floor, if the drag reached it: whatever `moved`
   // asks for beyond what the pin can hold, carried as a displacement on the one
   // handle still off its point. It is measured against the pinned reading, not
@@ -3949,6 +3980,12 @@ function findGeneratedSegmentSkeletonContour(skeletonData, segment) {
 function getGeneratedOnCurveMovability(skeletonData, segment) {
   const contour = findGeneratedSegmentSkeletonContour(skeletonData, segment);
   if (!contour) {
+    return [false, false];
+  }
+  // A bulb's neck carries the curvature gizmo and nothing else. Its two ends are
+  // cap geometry — one on the ball, one a trim point — so the on-curve gizmo has
+  // no rib end to slide, and offering it would move the whole rib instead.
+  if (generatedSegmentCapCurvatureField(segment.provenance)) {
     return [false, false];
   }
   const startIndex = contour.points?.findIndex(
@@ -4145,7 +4182,40 @@ export function generatedSegmentPinAddress(skeletonData, segment) {
     entry.skeletonContourId ?? segment.skeletonContourId,
     entry.skeletonPointId
   );
-  return address ? { ...address, side: segment.side } : null;
+  if (!address) {
+    return null;
+  }
+  return {
+    ...address,
+    side: segment.side,
+    capCurvatureField: generatedSegmentCapCurvatureField(segment.provenance),
+  };
+}
+
+// The cap field a segment's curvature is stored in, or null for the ordinary
+// case where it is a side's `segmentCurvature`. A bulb's neck is the one segment
+// with no skeleton segment behind it: both of its handles name the cap-owning
+// point and the field instead. Both must agree, or the segment is not a neck.
+export function generatedSegmentCapCurvatureField(provenance) {
+  const field = provenance?.[1]?.capCurvatureField;
+  if (!field || provenance?.[2]?.capCurvatureField !== field) {
+    return null;
+  }
+  return CAP_CURVATURE_FIELDS.has(field) ? field : null;
+}
+
+export function getSkeletonCapCurvature(point, field) {
+  const value = point?.[field];
+  return Number.isFinite(value) ? value : null;
+}
+
+export function setSkeletonCapCurvature(point, field, tension) {
+  if (!CAP_CURVATURE_FIELDS.has(field)) {
+    return;
+  }
+  point[field] = Number.isFinite(tension)
+    ? Math.min(Math.max(tension, 0), MAX_STORED_SEGMENT_TENSION)
+    : null;
 }
 
 // What the curvature gizmo owns for one generated segment: the construction-space
@@ -4174,7 +4244,11 @@ export function getGeneratedSegmentCurvature(skeletonData, segment) {
     return null;
   }
   const address = generatedSegmentPinAddress(skeletonData, segment);
-  const pin = address ? getSkeletonSegmentCurvature(address.point, address.side) : null;
+  const pin = !address
+    ? null
+    : address.capCurvatureField
+      ? getSkeletonCapCurvature(address.point, address.capCurvatureField)
+      : getSkeletonSegmentCurvature(address.point, address.side);
   return { tension, pinned: pin !== null && pin !== undefined };
 }
 

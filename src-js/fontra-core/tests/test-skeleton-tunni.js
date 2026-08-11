@@ -18,6 +18,7 @@ import {
   makeSkeletonContour,
   makeSkeletonPoint,
   normalizeSkeletonData,
+  resolveEditableGeneratedTarget,
   segmentToTunniPoints,
   setSkeletonData,
   setSkeletonPointSideNudge,
@@ -842,6 +843,155 @@ describe("generated on-curve gizmo edits", () => {
         delta: { x: 5, y: 5 },
       })
     ).to.equal(null);
+  });
+});
+
+// A bulb's terminal carries exactly one curvature gizmo. Without easing it sits
+// on the stroke edge above the incision; with easing it sits on the neck, which
+// is cap geometry with no skeleton segment behind it and therefore stores its
+// number in a cap field instead of in `segmentCurvature`.
+describe("the curvature gizmo at a bulb terminal", () => {
+  function makeBulbGlyph(capFields) {
+    const layer = {
+      path: new VarPackedPath(),
+      components: [],
+      anchors: [],
+      guidelines: [],
+      customData: {},
+    };
+    setSkeletonData(
+      layer,
+      normalizeSkeletonData({
+        contours: [
+          makeSkeletonContour({
+            id: 80,
+            defaultWidth: 80,
+            // Curved, so the inner edge's terminal segment is a cubic. A gizmo
+            // only exists on a cubic, and on a straight stroke that segment is a
+            // line — there would be nothing to address either way.
+            points: [
+              makeSkeletonPoint({ id: 1, x: 60, y: 250 }),
+              makeSkeletonPoint({ id: 2, x: 160, y: 110, type: "cubic" }),
+              makeSkeletonPoint({ id: 3, x: 300, y: 60, type: "cubic" }),
+              makeSkeletonPoint({
+                id: 4,
+                x: 430,
+                y: 90,
+                capStyle: "drop",
+                ...capFields,
+              }),
+            ],
+          }),
+        ],
+      })
+    );
+    editSkeleton(layer, () => {});
+    return layer;
+  }
+
+  function neckSegments(capFields) {
+    const layer = makeBulbGlyph(capFields);
+    const segments = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path);
+    return segments.filter((segment) =>
+      segment.provenance.some((entry) => entry?.capCurvatureField)
+    );
+  }
+
+  it("gives the neck a segment of its own once easing is on", () => {
+    const necks = neckSegments({ capBallEasing: 0.5 });
+    expect(necks).to.have.length(1);
+    for (const entry of necks[0].provenance) {
+      expect(entry.skeletonPointId).to.equal(4);
+    }
+    expect(necks[0].provenance[1].capCurvatureField).to.equal("capBallEaseCurvature");
+    expect(necks[0].provenance[2].capCurvatureField).to.equal("capBallEaseCurvature");
+  });
+
+  it("offers the neck no on-curve gizmo", () => {
+    expect(neckSegments({ capBallEasing: 0.5 })[0].onCurveMovable).to.deep.equal([
+      false,
+      false,
+    ]);
+  });
+
+  it("makes no neck point directly editable", () => {
+    const layer = makeBulbGlyph({ capBallEasing: 0.5 });
+    const skeletonData = getSkeletonData(layer);
+    const neck = buildGeneratedTunniSegments(skeletonData, layer.path).find((segment) =>
+      segment.provenance.some((entry) => entry?.capCurvatureField)
+    );
+    for (let index = 0; index < 3; index++) {
+      const target = resolveEditableGeneratedTarget(
+        skeletonData,
+        layer.path,
+        neck.parentPointIndices[index]
+      );
+      expect(target, `neck point ${index}`).to.equal(null);
+    }
+  });
+
+  it("gives the neck no segment when easing is off", () => {
+    expect(neckSegments({ capBallEasing: 0 })).to.have.length(0);
+  });
+
+  it("addresses a neck drag to the cap field, not to a side's pin", () => {
+    const neck = neckSegments({ capBallEasing: 0.5 })[0];
+    const edit = calculateGeneratedCurvatureEdits({
+      segmentPoints: neck.points,
+      provenance: neck.provenance,
+      delta: { x: 4, y: 4 },
+    });
+    expect(edit.capCurvatureField).to.equal("capBallEaseCurvature");
+    expect(edit.skeletonPointId).to.equal(4);
+    expect(edit.collapse).to.deep.equal([]);
+    expect(edit.tension).to.be.a("number");
+  });
+
+  it("reports the neck's curvature as pinned once the cap field is set", () => {
+    const layer = makeBulbGlyph({ capBallEasing: 0.5, capBallEaseCurvature: 0.4 });
+    const skeletonData = getSkeletonData(layer);
+    const neck = buildGeneratedTunniSegments(skeletonData, layer.path).find((segment) =>
+      segment.provenance.some((entry) => entry?.capCurvatureField)
+    );
+    expect(getGeneratedSegmentCurvature(skeletonData, neck).pinned).to.equal(true);
+  });
+
+  // The trim rewrites this segment's two handles from a bezier split. Without
+  // the original handles' addresses the gizmo cannot find the segment at all,
+  // which is why the edge above a bulb's incision used to have no gizmo.
+  // The outer edge is trimmed too, and its own split has always published these.
+  // What matters is the inner side, where the incision is.
+  function trimmedSides(capFields) {
+    const layer = makeBulbGlyph(capFields);
+    return buildGeneratedTunniSegments(getSkeletonData(layer), layer.path)
+      .filter((segment) =>
+        segment.provenance.some((entry) => entry?.constructionSegment)
+      )
+      .map((segment) => segment.side);
+  }
+
+  it("keeps the edge above the incision addressable when easing is off", () => {
+    const layer = makeBulbGlyph({ capBallEasing: 0 });
+    const skeletonData = getSkeletonData(layer);
+    const trimmed = buildGeneratedTunniSegments(skeletonData, layer.path).filter(
+      (segment) => segment.provenance.some((entry) => entry?.constructionSegment)
+    );
+    // One per side: the outer edge under the ball, and the inner edge above the
+    // incision, which had no gizmo at all before.
+    expect(new Set(trimmed.map((segment) => segment.side)).size).to.equal(2);
+    for (const segment of trimmed) {
+      // Each measures its own untrimmed curve, which is the one its pin governs.
+      const carrier = segment.provenance.find((entry) => entry.constructionSegment);
+      expect(carrier.constructionSegment).to.have.length(4);
+    }
+  });
+
+  it("leaves the edge above the incision without a second gizmo once eased", () => {
+    const crisp = trimmedSides({ capBallEasing: 0 });
+    const eased = trimmedSides({ capBallEasing: 0.5 });
+    // The inner one moves onto the neck, so only the outer edge's is left.
+    expect(eased).to.have.length(crisp.length - 1);
+    expect(eased.every((side) => !side || crisp.includes(side))).to.equal(true);
   });
 });
 

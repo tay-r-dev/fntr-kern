@@ -2886,3 +2886,67 @@ its range, because its drawn handles pass the crossing and the reader declines t
 invent a number rather than report one above the ceiling. That segment offsets 54
 units on a bend tight enough that one cubic cannot hold it, which is the limit the
 curvature gizmo exists for.
+
+## 39. The bulb's neck had a number that could not be aimed and a gizmo that was not there
+
+### 1. Problem
+
+Three faults in one control.
+
+The bulb's easing was named tension, which it is not: it sets how far back along
+the inner edge the neck starts. It was also indirect. The value grew a second,
+inflated ball and took whatever crossing that ball happened to make with the
+inner edge, so no reading of the number told you where the neck would land, and
+the crossing search was free to walk past on-curves and eat whole segments.
+
+The curvature gizmo was absent from the whole terminal region. The segment walk
+takes a segment only when all four of its points carry addresses on one side. Cap
+points carry none, and the trim rebuilt the inner edge's two handles from a
+bezier split without re-attaching theirs. So neither the neck nor the edge above
+the incision had one.
+
+### 2. Solution
+
+Easing is now a 0–1 fraction of the run from the plain ball crossing back to the
+next on-curve on the inner edge, placed directly. At 1 the far end collapses onto
+that on-curve. One run serves both the geometry and the panel's top of range, so
+the stop cannot disagree with the number. The panel keeps a slider, now 0–100.
+
+The trim publishes what the round-cap split already publishes: the original
+handles' addresses on the rebuilt handles, and the untrimmed segment on the
+crossing on-curve. That gives the edge above the incision a gizmo that measures
+the curve its pin governs. It is published only when easing is off, because
+exactly one gizmo belongs at a bulb's terminal.
+
+Once easing is on, the neck gets that gizmo instead. A neck has no skeleton
+segment behind it, so its curvature is stored in `capBallEaseCurvature` on the
+cap-owning point, and its four points name that point and that field. The drag
+measures the tension the same way and writes it there.
+
+### 3. Result
+
+Full suite 1,860 passing. Easing 1 puts the neck's far end on the next on-curve
+to half a unit, the far end moves monotonically across the whole range, and the
+neck's curvature changes its handles without moving either end. No external glyph
+uses a bulb, so nothing else moved.
+
+### 4. Challenges and findings
+
+**The obvious test helper measured two different points.** The rejoin was read as
+the furthest-forward on-curve on the inner edge. Once easing is on, the ball
+attachment also lands near that edge and sits forward of the neck's far end, so
+the helper reported the attachment at small easing and the far end at large.
+The continuity check failed at 0.05 and passed everywhere else, which reads as a
+geometry bug and was a measurement bug.
+
+**A straight stroke cannot test this.** The inner edge's terminal segment is a
+line there, and a line has no curvature gizmo, so the first version of the
+addressability test asserted against geometry that could never satisfy it.
+
+**Naming the point is not the same as owning it.** The neck names the cap-owning
+skeleton point so the gizmo can find it, and that alone made every neck point
+resolve as an editable generated handle — a drag would have moved the rib the
+neck hangs off. Three readers had to be told the difference: the segment walk,
+the on-curve gizmo's eligibility, and the editable-target resolver. Provenance
+that names a point is an address, not a claim of ownership, and each reader
+decides for itself what it may do with one.

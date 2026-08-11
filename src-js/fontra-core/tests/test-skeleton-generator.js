@@ -1008,6 +1008,19 @@ describe("skeleton-generator drop caps", () => {
     return Math.max(...nearEdge.map((p) => p.x));
   }
 
+  // Where the NECK's far end sits on the inner edge. Once easing is on, the ball
+  // attachment also lands near this edge and sits forward of the neck's far end,
+  // so the rejoin above can report either one. The on-curves under the skeleton
+  // points (x=40 and x=240) are excluded, and the rearmost of what is left is the
+  // far end. At full easing the far end collapses onto x=240 and nothing is left.
+  function neckFarEndX(capFields) {
+    const points = generateFromSkeleton(horizontalDrop(capFields)).contours[0].points;
+    const candidates = points
+      .filter((p) => !p.type && Math.abs(p.y - 160) <= 2 && p.x > 241)
+      .map((p) => p.x);
+    return candidates.length ? Math.min(...candidates) : 240;
+  }
+
   // Furthest the outline reaches along the stroke.
   function tipReach(capFields) {
     const points = generateFromSkeleton(horizontalDrop(capFields)).contours[0].points;
@@ -1026,9 +1039,9 @@ describe("skeleton-generator drop caps", () => {
       { capBallRatio: 3 },
       { capBallShape: 0.5 },
       { capBallShape: 1 },
-      { capTension: 0 },
-      { capTension: 3 },
-      { capBallShape: 1, capTension: 3 },
+      { capBallEasing: 0 },
+      { capBallEasing: 1 },
+      { capBallShape: 1, capBallEasing: 1 },
     ]) {
       expect(tipReach(capFields), JSON.stringify(capFields)).to.be.closeTo(
         buttReach,
@@ -1066,22 +1079,22 @@ describe("skeleton-generator drop caps", () => {
     for (const capFields of [
       { capStyle: "drop" },
       { capStyle: "drop", capBallShape: 1 },
-      { capStyle: "drop", capBallRatio: 2, capTension: 1 },
-      { capStyle: "drop", capBallRatio: 3, capBallShape: 1, capTension: 3 },
+      { capStyle: "drop", capBallRatio: 2, capBallEasing: 0.5 },
+      { capStyle: "drop", capBallRatio: 3, capBallShape: 1, capBallEasing: 1 },
     ]) {
       expect(overshoot(capFields), JSON.stringify(capFields)).to.be.lessThan(0.5);
     }
   });
 
-  it("capTension eases the neck further back along the inner edge", () => {
-    // The neck rejoins the inner edge further back as tension rises, and must
+  it("capBallEasing slides the neck further back along the inner edge", () => {
+    // The neck rejoins the inner edge further back as easing rises, and must
     // ease in from above — no valley cutting below the edge.
-    const crisp = neckRejoinX({ capTension: 0 });
-    const soft = neckRejoinX({ capTension: 0.9 });
+    const crisp = neckFarEndX({ capBallEasing: 0 });
+    const soft = neckFarEndX({ capBallEasing: 0.5 });
     expect(soft).to.be.lessThan(crisp - 10);
 
-    const points = generateFromSkeleton(horizontalDrop({ capTension: 0.9 })).contours[0]
-      .points;
+    const points = generateFromSkeleton(horizontalDrop({ capBallEasing: 0.5 }))
+      .contours[0].points;
     // The neck region: behind where the ball leaves the outer edge, and above
     // the skeleton axis (so neither the outer edge at y=80 nor the ball's front
     // arc counts as a "dip").
@@ -1094,13 +1107,45 @@ describe("skeleton-generator drop caps", () => {
     expect(Math.min(...neck.map((p) => p.y))).to.be.gte(159.5);
   });
 
-  it("capTension keeps reaching back well past 1", () => {
-    expect(neckRejoinX({ capTension: 1.5 })).to.be.lessThan(
-      neckRejoinX({ capTension: 1 })
-    );
-    expect(neckRejoinX({ capTension: 3 })).to.be.lessThan(
-      neckRejoinX({ capTension: 1.5 })
-    );
+  it("capBallEasing 1 collapses the neck's far end onto the next on-curve", () => {
+    // The inner edge's terminal segment runs from the on-curve under skeleton
+    // point x=240 to the terminal. Full easing puts the neck's far end exactly
+    // there and no further: that is the whole meaning of the number, and it is
+    // what makes the panel's top of range a real stop rather than a preference.
+    expect(neckFarEndX({ capBallEasing: 1 })).to.be.closeTo(240, 0.5);
+  });
+
+  it("capBallEasing moves the neck's far end continuously across its range", () => {
+    let previous = neckFarEndX({ capBallEasing: 0 });
+    for (let easing = 0.05; easing <= 1.0001; easing += 0.05) {
+      const current = neckFarEndX({ capBallEasing: easing });
+      expect(current, `easing ${easing.toFixed(2)}`).to.be.at.most(previous + 0.5);
+      previous = current;
+    }
+  });
+
+  it("capBallEaseCurvature shapes the eased neck without moving its ends", () => {
+    const neckEnds = (curvature) => {
+      const points = generateFromSkeleton(
+        horizontalDrop({ capBallEasing: 0.6, capBallEaseCurvature: curvature })
+      ).contours[0].points;
+      return points
+        .filter((point) => !point.type)
+        .map((point) => `${point.x},${point.y}`);
+    };
+    const slack = neckEnds(0.3);
+    const taut = neckEnds(0.9);
+    expect(slack).to.deep.equal(taut);
+
+    const handles = (curvature) => {
+      const points = generateFromSkeleton(
+        horizontalDrop({ capBallEasing: 0.6, capBallEaseCurvature: curvature })
+      ).contours[0].points;
+      return points
+        .filter((point) => point.type)
+        .map((point) => `${point.x},${point.y}`);
+    };
+    expect(handles(0.3)).to.not.deep.equal(handles(0.9));
   });
 
   it("capBallShape stretches the ball backward without resizing it", () => {

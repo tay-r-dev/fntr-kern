@@ -16,6 +16,7 @@ import {
   getSkeletonHandleOffset,
   getSkeletonPointNudge,
   isSkeletonSideLocked,
+  setSkeletonCapCurvature,
   setSkeletonHandleDetached,
   setSkeletonHandleOffset,
   setSkeletonPointSideNudge,
@@ -500,7 +501,13 @@ export async function handleGeneratedTunniDrag({
             if (!original || !point || isSkeletonSideLocked(point, original.side)) {
               continue;
             }
-            if (write.pinnedTension !== undefined) {
+            if (write.capCurvature !== undefined) {
+              setSkeletonCapCurvature(
+                point,
+                write.capCurvatureField,
+                write.capCurvature
+              );
+            } else if (write.pinnedTension !== undefined) {
               // Absolute, not a delta: the drag already computed the tension it
               // wants from the geometry it grabbed, and every mousemove restates
               // it against the same original. Accumulating it would compound.
@@ -743,6 +750,15 @@ function generatedCurvatureWrites(originalPoints, segment, delta) {
   });
   if (!edit) {
     return null;
+  }
+  if (edit.capCurvatureField) {
+    // A bulb's neck: one write, into the cap field on the cap-owning point.
+    return [
+      [
+        edit.segmentPointIndex,
+        { capCurvature: edit.tension, capCurvatureField: edit.capCurvatureField },
+      ],
+    ];
   }
   return [
     [edit.segmentPointIndex, { pinnedTension: edit.tension }],

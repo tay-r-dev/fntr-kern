@@ -21,6 +21,8 @@ const CAP_CORNER_POINT_FIELDS = [
   "capStyle",
   "capRadiusRatio",
   "capTension",
+  "capBallEasing",
+  "capBallEaseCurvature",
   "capAngle",
   "capDistance",
   {
