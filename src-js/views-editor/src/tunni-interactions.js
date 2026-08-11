@@ -10,6 +10,7 @@ import {
   calculateSkeletonOnCurveFromTunni,
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
+  generatedSegmentCapCurvatureField,
   generatedSegmentConstructionPoints,
   getGeneratedPathContourIndices,
   getSkeletonData,
@@ -574,6 +575,11 @@ export async function handleGeneratedTunniCommand({
     if (gizmoHit.type !== "generated-curvature") {
       return;
     }
+    // A bulb's neck takes one tension for both of its handles, so it is always
+    // equalized and there is nothing for this gesture to do.
+    if (generatedSegmentCapCurvatureField(segment.provenance)) {
+      return;
+    }
     writes = generatedCurvatureEqualizationWrites(segment);
     undoLabel = "Equalize Generated Handles";
   } else if (gizmoHit.type === "generated-curvature") {
@@ -635,6 +641,14 @@ function generatedCurvatureEqualizationWrites(segment) {
 
 function generatedCurvatureResetWrites(segment) {
   const startIndex = segment.provenance[1]?.role === "out" ? 0 : 3;
+  // A bulb's neck keeps its curvature in a cap field and has no rib handles
+  // behind it, so clearing the field is the whole reset. Sending the ordinary
+  // writes instead cleared a pin the neck never had and zeroed the cap-owning
+  // point's rib handle offsets, which is a different part of the drawing.
+  const capCurvatureField = generatedSegmentCapCurvatureField(segment.provenance);
+  if (capCurvatureField) {
+    return [[startIndex, { capCurvature: null, capCurvatureField }]];
+  }
   return [
     [startIndex, { pinnedTension: null }],
     [1, { resetHandle: true }],
@@ -694,7 +708,9 @@ async function applyGeneratedSegmentWrites(
           ) {
             continue;
           }
-          if (write.pinnedTension !== undefined) {
+          if (write.capCurvature !== undefined) {
+            setSkeletonCapCurvature(point, write.capCurvatureField, write.capCurvature);
+          } else if (write.pinnedTension !== undefined) {
             setSkeletonSegmentCurvature(point, provenance.side, write.pinnedTension);
           } else if (write.resetHandle) {
             setSkeletonHandleDetached(point, provenance.side, false);
