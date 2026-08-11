@@ -102,11 +102,18 @@ function applyPinnedTension(handles, pinnedTension, domain) {
   if (!Number.isFinite(pinnedTension)) {
     return handles;
   }
+  // The unit is the tangent intersection of the curve the generator solved,
+  // which is what the gizmo measured. Not the ceiling: emission can slide a
+  // handle, and the ceiling moves with that slide while the gizmo's number does
+  // not. Rescaling by the ceiling made the pin mean a different thing on any
+  // segment whose handles are nudged.
+  const startUnit = domain.intersectionStartTension ?? domain.maxStartTension;
+  const endUnit = domain.intersectionEndTension ?? domain.maxEndTension;
   const tensions = lengthsToTensions(handles, domain);
   const shifted = shiftTensionsToMean(
     {
-      start: tensions.start / domain.maxStartTension,
-      end: tensions.end / domain.maxEndTension,
+      start: tensions.start / startUnit,
+      end: tensions.end / endUnit,
     },
     pinnedTension,
     1
@@ -114,8 +121,8 @@ function applyPinnedTension(handles, pinnedTension, domain) {
   return constrain(
     tensionsToLengths(
       {
-        start: shifted.start * domain.maxStartTension,
-        end: shifted.end * domain.maxEndTension,
+        start: shifted.start * startUnit,
+        end: shifted.end * endUnit,
       },
       domain
     ),
@@ -138,7 +145,10 @@ function applyDetachedHandles(handles, request) {
 }
 
 export function offsetCubicSide(request) {
-  const domain = buildHandleDomain(request.q0, request.q3, request.u0, request.u1);
+  const domain = buildHandleDomain(request.q0, request.q3, request.u0, request.u1, {
+    startNudge: request.startHandleNudge || 0,
+    endNudge: request.endHandleNudge || 0,
+  });
   const natural = solveNaturalHandles({
     skeletonControlPoints: [request.p0, request.p1, request.p2, request.p3],
     startSignedWidth: request.d0,

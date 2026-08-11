@@ -141,7 +141,20 @@ function objective(system, startTension, endTension) {
   );
 }
 
-export function buildHandleDomain(startPoint, endPoint, startDirection, endDirection) {
+// `startNudge` and `endNudge` are the handle's own emission slide along its
+// direction, in units. The construction runs before that slide, so a ceiling
+// that ignores it bounds a curve nobody is looking at: slid forwards the drawn
+// handle crosses while the constructed one is still legal, and slid backwards
+// the drawn handle is held short of a crossing it is nowhere near. That second
+// case reads as a handle that refuses to move at all, because the one-unit floor
+// is then capped by a ceiling that belongs to a shorter curve.
+export function buildHandleDomain(
+  startPoint,
+  endPoint,
+  startDirection,
+  endDirection,
+  { startNudge = 0, endNudge = 0 } = {}
+) {
   const chordLength = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
   const floor = Math.max(chordLength * REACH_FLOOR_RATIO, MIN_HANDLE_LENGTH);
   const cap = Math.max(chordLength * REACH_CAP_RATIO, floor);
@@ -160,18 +173,28 @@ export function buildHandleDomain(startPoint, endPoint, startDirection, endDirec
   // The clamped reach is a stable coordinate scale, not a substitute tangent
   // intersection. A short real forward reach lowers the normalized maximum so
   // multiplying it by that scale still lands exactly on the geometric ceiling.
-  const projectedDomain = (anchor, direction) => {
-    if (!tunni) return { reach: cap, maxTension: 1 };
+  const projectedDomain = (anchor, direction, nudge) => {
+    if (!tunni) return { reach: cap, maxTension: 1, intersection: 1 };
     const realReach = dot(subtract(tunni, anchor), direction);
-    if (!(realReach > EPSILON)) return { reach: cap, maxTension: 1 };
+    if (!(realReach > EPSILON)) return { reach: cap, maxTension: 1, intersection: 1 };
+    // The scale stays the geometry's own, so the coordinate system every stage
+    // works in does not move when a nudge changes. Only the ceiling shifts.
     const reach = clamp(realReach, floor, cap);
+    // Two jobs, two numbers. `intersection` is where tension 1 sits — the unit
+    // the curvature gizmo reads and writes in, which belongs to the curve the
+    // generator solves. `maxTension` is how far the constructed handle may go
+    // before the DRAWN one crosses, which is the same thing only when emission
+    // slides nothing.
+    const intersection = Math.min(1, realReach / reach);
+    const drawnReach = realReach - nudge;
     return {
       reach,
-      maxTension: Math.min(1, realReach / reach),
+      intersection,
+      maxTension: drawnReach > EPSILON ? Math.min(1, drawnReach / reach) : 0,
     };
   };
-  const start = projectedDomain(startPoint, startDirection);
-  const end = projectedDomain(endPoint, endDirection);
+  const start = projectedDomain(startPoint, startDirection, startNudge);
+  const end = projectedDomain(endPoint, endDirection, endNudge);
   return {
     startReach: start.reach,
     endReach: end.reach,
@@ -180,6 +203,8 @@ export function buildHandleDomain(startPoint, endPoint, startDirection, endDirec
     maxStartTension: start.maxTension,
     minEndTension: Math.min(MIN_HANDLE_LENGTH / end.reach, end.maxTension),
     maxEndTension: end.maxTension,
+    intersectionStartTension: start.intersection,
+    intersectionEndTension: end.intersection,
   };
 }
 

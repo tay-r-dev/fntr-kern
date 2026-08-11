@@ -433,6 +433,51 @@ describe("natural-handle-solver: fixed perpendicular fit", () => {
     expect(domain.minEndTension).to.equal(domain.maxEndTension);
   });
 
+  // The handle nudge slides the emitted handle along its own direction after the
+  // construction. What may not cross is the DRAWN curve, so the ceiling on the
+  // constructed length is the forward reach less that slide. The on-curve's own
+  // nudge cancels out: it moves the drawn end and the drawn intersection by the
+  // same amount along the same line.
+  it("takes the handle's emission nudge off the geometric ceiling", () => {
+    const start = { x: 0, y: 0 };
+    const end = { x: 10, y: 0.5 };
+    const startDirection = { x: 1, y: 0 };
+    const endDirection = unit({ x: -0.1, y: -0.5 });
+    const plain = buildHandleDomain(start, end, startDirection, endDirection);
+    const realEndReach = plain.maxEndTension * plain.endReach;
+
+    // Slid backwards: the drawn handle starts further from the intersection, so
+    // the constructed one may run further before the drawn one crosses.
+    const slack = buildHandleDomain(start, end, startDirection, endDirection, {
+      endNudge: -8,
+    });
+    expect(slack.maxEndTension * slack.endReach).to.be.closeTo(
+      Math.min(realEndReach + 8, slack.endReach),
+      1e-9
+    );
+    expect(slack.maxEndTension).to.be.greaterThan(plain.maxEndTension);
+
+    // Slid forwards: it eats the room instead, which is what stops an untouched
+    // segment rendering past its own ceiling.
+    const tight = buildHandleDomain(
+      { x: 0, y: 0 },
+      { x: 100, y: 60 },
+      { x: 1, y: 0 },
+      { x: 0, y: -1 }
+    );
+    const nudged = buildHandleDomain(
+      { x: 0, y: 0 },
+      { x: 100, y: 60 },
+      { x: 1, y: 0 },
+      { x: 0, y: -1 },
+      { startNudge: 20 }
+    );
+    expect(nudged.maxStartTension * nudged.startReach).to.be.closeTo(
+      tight.maxStartTension * tight.startReach - 20,
+      1e-9
+    );
+  });
+
   it("recovers a circular offset without rematching samples", () => {
     const result = solveNaturalHandles(arcRequest(100, 25));
     expect(result.startLength).to.be.closeTo(125 * KAPPA, 0.1);

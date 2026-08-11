@@ -2653,8 +2653,32 @@ function generateOffsetPointsForSegment(
         endHandleDir && !authoredKeys?.has(`${segment.endPoint?.id}/${side}/in`)
           ? getGeneratedHandleAdjustment(segment.endPoint, endHandleDir, side, "in")
           : null;
+      const startHandleNudge = ribHandleNudgeDisplacement(
+        segment.startPoint,
+        startNormal,
+        side,
+        startHalfWidth
+      );
+      const endHandleNudge = ribHandleNudgeDisplacement(
+        segment.endPoint,
+        endNormal,
+        side,
+        endHalfWidth
+      );
+      const emittedNudge = (anchor, displacement) => {
+        const translated = translateRibPoint(anchor, displacement);
+        return { x: translated.x - anchor.x, y: translated.y - anchor.y };
+      };
+      // How far emission will slide each handle along its own direction. The
+      // ceiling is a statement about the drawn curve, so it has to know.
+      const alongDirection = (anchor, displacement, direction) => {
+        const emitted = emittedNudge(anchor, displacement);
+        return emitted.x * direction.x + emitted.y * direction.y;
+      };
       const { startLength, endLength, honoredStartAdjustment, honoredEndAdjustment } =
         offsetCubicSide({
+          startHandleNudge: alongDirection(fixedStart, startHandleNudge, startDir),
+          endHandleNudge: alongDirection(fixedEnd, endHandleNudge, endDir),
           p0: segment.startPoint,
           p1: controls[0],
           p2: controls[controls.length - 1],
@@ -2704,22 +2728,6 @@ function generateOffsetPointsForSegment(
       const adjustedHandle2 = {
         x: fixedEnd.x + endDir.x * endLength,
         y: fixedEnd.y + endDir.y * endLength,
-      };
-      const startHandleNudge = ribHandleNudgeDisplacement(
-        segment.startPoint,
-        startNormal,
-        side,
-        startHalfWidth
-      );
-      const endHandleNudge = ribHandleNudgeDisplacement(
-        segment.endPoint,
-        endNormal,
-        side,
-        endHalfWidth
-      );
-      const emittedNudge = (anchor, displacement) => {
-        const translated = translateRibPoint(anchor, displacement);
-        return { x: translated.x - anchor.x, y: translated.y - anchor.y };
       };
       for (const [point, owner, role, axis, handleNudge, adjustment, honored] of [
         [
@@ -2775,6 +2783,11 @@ function generateOffsetPointsForSegment(
         }
         if (handleNudge.x || handleNudge.y) {
           generated._handleNudge = handleNudge;
+          // Published for the same reason the on-curve publishes its own nudge:
+          // this displacement is added after the construction, so a reader that
+          // wants the curve the generator solved has to be able to take it back
+          // off. Recovering it from geometry is not available (rail R-D).
+          if (provenance) provenance.handleNudge = { ...handleNudge };
         }
         output.push(generated);
       }

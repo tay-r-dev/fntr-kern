@@ -4114,13 +4114,19 @@ export function generatedSegmentConstructionPoints(segmentPoints, provenance) {
   const untrimmed = untrimmedConstructionSegment(segmentPoints, provenance);
   const points = untrimmed ?? segmentPoints;
   return points.map((point, index) => {
-    if (index !== 0 && index !== 3) {
-      return point;
-    }
-    const nudge = provenance?.[index]?.nudge;
+    // The two ends carry the on-curve nudge; the two handles carry their own,
+    // which is a different amount at the same rib. Subtracting one and not the
+    // other hands the caller an end and a handle from two different curves.
+    // The untrimmed snapshot predates emission, so it carries neither.
+    const displacement =
+      index === 0 || index === 3
+        ? provenance?.[index]?.nudge
+        : untrimmed
+          ? null
+          : provenance?.[index]?.handleNudge;
     return {
-      x: point.x - asFiniteNumber(nudge?.x, 0),
-      y: point.y - asFiniteNumber(nudge?.y, 0),
+      x: point.x - asFiniteNumber(displacement?.x, 0),
+      y: point.y - asFiniteNumber(displacement?.y, 0),
     };
   });
 }

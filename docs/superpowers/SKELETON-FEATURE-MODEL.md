@@ -312,9 +312,29 @@ and carries the off-curves. A later Alt-style edit leaves the earlier carried ha
 intact. This is deliberately separate from `handleOffsets`, because the carry must also work where
 no forward tension reach exists and an attached adjustment therefore cannot apply.
 
-On-curve provenance publishes the nonzero on-curve nudge vector, so a screen-space gizmo can
-subtract it and recover the construction rib end exactly. The `nudged-cubic-endpoints` fixture
-deliberately records the default and Alt contract.
+**Both displacements are published, and both must be taken back off together.** On-curve provenance
+carries the on-curve nudge vector and handle provenance carries the handle's own, so a screen-space
+gizmo recovers the construction segment exactly. The two are different amounts at the same rib, so
+subtracting one and not the other hands the reader an end and a handle from two different curves.
+The curvature gizmo did exactly that: it measured a segment that never existed, wrote that number as
+a pin, and the generator reproduced the pin on the real construction — a 30-unit jump the moment the
+gizmo was grabbed. The `nudged-cubic-endpoints` fixture deliberately records the default and Alt
+contract.
+
+**The handle's slide comes off the ceiling, because the ceiling is a statement about the drawn
+curve.** What may not cross is what the designer sees. So the constructed handle's geometric maximum
+is the forward tangent intersection less that slide. Slid forwards this takes room away, which is
+what stops an untouched segment rendering past its own crossing. Slid backwards it gives room back.
+Withholding that froze a handle solid where the construction's own intersection sat under the
+one-unit floor: the floor was then capped by a ceiling belonging to a curve 51 units shorter, and
+every offset the designer asked for was refused in full. The on-curve nudge does not enter this. It
+moves the drawn end and the drawn intersection by the same amount along the same line, so it cancels.
+
+**The ceiling and the pin's unit are two numbers.** `maxTension` is the non-crossing ceiling and
+moves with the slide. `intersectionTension` is where tension 1 sits on the curve the generator
+solves, which is the unit the curvature gizmo reads and writes in. Rescaling a pin by the ceiling
+makes the stored number mean something different on every nudged segment. This is the same split
+§19 made between the coordinate scale and the ceiling, for the same reason: one number, two jobs.
 
 **The continuity contract governs the automatic answer.** Regeneration runs on every frame of a
 drag, so a one-directional skeleton edit must not reshape the generated segment by jumping or
@@ -482,9 +502,10 @@ If the code loses any of these, the product regresses.
   never read the achieved residual or the answer. Its absolute weight uses a positive unprojected
   influence scale, which cannot vanish with the projected Hessian.
 - **The positive non-crossing handle domain.** Automatic, attached and pinned lengths all stay
-  between the one-unit floor and the true forward tangent intersection. Where that intersection is
-  shorter than one unit, non-crossing wins. The stabilized tension scale never replaces the
-  geometric ceiling.
+  between the one-unit floor and the true forward tangent intersection, less whatever emission
+  slides that handle along its own direction. Where the room that leaves is shorter than one unit,
+  non-crossing wins. The stabilized tension scale never replaces the geometric ceiling, and the
+  geometric ceiling never stands in for the pin's unit.
 - **The authored ordering.** Natural answer, then attached adjustments, then pinned harmonic-mean
   tension, then detached absolute handles.
 - **The three explicit topology and emission events.** They are the collapsed-side threshold, the

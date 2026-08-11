@@ -383,6 +383,39 @@ describe("generated curvature gizmo edits", () => {
     );
   });
 
+  // The handles carry their own emission displacement, separate from the
+  // on-curve's and usually a different amount. Recovering construction space by
+  // subtracting only the on-curve's leaves the handle where emission put it, so
+  // the pair describes no curve the generator ever solved.
+  it("stores construction-space tension when the handles carry their own nudge", () => {
+    const constructionPoints = segmentPoints;
+    const nudgedProvenance = provenance.map((entry, index) =>
+      index === 1
+        ? { ...entry, handleNudge: { x: 9, y: -3 } }
+        : index === 2
+          ? { ...entry, handleNudge: { x: -11, y: 6 } }
+          : entry
+    );
+    const renderedPoints = constructionPoints.map((point, index) => ({
+      x: point.x + (nudgedProvenance[index].handleNudge?.x ?? 0),
+      y: point.y + (nudgedProvenance[index].handleNudge?.y ?? 0),
+    }));
+    const edit = calculateGeneratedCurvatureEdits({
+      segmentPoints: renderedPoints,
+      provenance: nudgedProvenance,
+      delta: { x: 0, y: 0 },
+    });
+    expect(edit.tension).to.be.closeTo(
+      calculateSegmentTension(
+        constructionPoints[1],
+        constructionPoints[0],
+        constructionPoints[2],
+        constructionPoints[3]
+      ),
+      1e-9
+    );
+  });
+
   it("pins a fuller curve for a drag toward the Tunni point", () => {
     expect(drag(10).tension).to.be.above(drag(0).tension);
   });

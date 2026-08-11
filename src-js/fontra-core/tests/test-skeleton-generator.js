@@ -513,6 +513,45 @@ describe("skeleton-generator outline boundary invariants", () => {
     ).to.be.greaterThan(0);
   });
 
+  // A handle carries its own emission slide, and the curvature gizmo has to be
+  // able to take it back off to reach the curve the generator solved. The
+  // on-curve has published its own for exactly this reason all along.
+  it("publishes the emission slide it gave a handle", () => {
+    const slid = nudgedRibGeometry(0, { handleNudge: 25 });
+    const still = nudgedRibGeometry(0);
+    const published = slid.provenance[1].handleNudge;
+    expect(published).to.not.equal(undefined);
+    expect(slid.handle.x - published.x).to.equal(still.handle.x);
+    expect(slid.handle.y - published.y).to.equal(still.handle.y);
+  });
+
+  it("publishes no emission slide for a handle that did not move", () => {
+    expect(nudgedRibGeometry(0).provenance[1].handleNudge).to.equal(undefined);
+  });
+
+  // The ceiling stops the DRAWN handles crossing, so emission's own slide has to
+  // come off it. Forwards it takes room away, which is what keeps an untouched
+  // segment from rendering past its own crossing. The other direction gives room
+  // back, and is stated exactly on the domain itself, where a short forward
+  // reach can be built on purpose.
+  it("takes the handle's emission slide off the ceiling", () => {
+    const asked = { leftOut: { x: 400, y: 0, detached: false } };
+    const still = nudgedRibGeometry(0, { startHandleOffsets: asked });
+    const constructed = (result) =>
+      Math.hypot(
+        result.handle.x - (result.provenance[1].handleNudge?.x ?? 0) - result.onCurve.x,
+        result.handle.y - (result.provenance[1].handleNudge?.y ?? 0) - result.onCurve.y
+      );
+    const base = constructed(still);
+    const forward = nudgedRibGeometry(0, {
+      handleNudge: 40,
+      startHandleOffsets: asked,
+    });
+    expect(constructed(forward)).to.be.closeTo(base - 40, 1);
+    // The drawn handle therefore lands where it would have without the slide.
+    expect(forward.handle.x).to.be.closeTo(still.handle.x, 1);
+  });
+
   it("publishes no honored offset for a detached handle", () => {
     const detached = nudgedRibGeometry(0, {
       startHandleOffsets: { leftOut: { x: 400, y: 0, detached: true } },
@@ -1295,7 +1334,7 @@ function detachedHandleGeometry({ startWidth, endWidth }) {
 // leaving it.
 function nudgedRibGeometry(
   nudge,
-  { pin = null, startHandleOffsets = {}, endHandleOffsets = {} } = {}
+  { pin = null, startHandleOffsets = {}, endHandleOffsets = {}, handleNudge = 0 } = {}
 ) {
   const skeleton = {
     version: 1,
@@ -1315,6 +1354,7 @@ function nudgedRibGeometry(
             smooth: false,
             width: { left: 20, right: 20, linked: true },
             nudge: { left: nudge, right: 0 },
+            handleNudge: { left: handleNudge, right: 0 },
             segmentCurvature: { left: pin, right: null },
             editable: { left: true, right: true },
             handleOffsets: startHandleOffsets,

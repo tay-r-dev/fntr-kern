@@ -2791,3 +2791,98 @@ object. It is a dev script, it predates this work, and fixing it here would be a
 change nobody asked for.
 
 ---
+
+## 38. A nudged handle was measured and bounded on a curve nobody was looking at — fix
+
+Reported on `_external/k.json`, against the fourth point of the skeleton — the
+smooth one where the diagonal meets the stem. Two faults, one origin.
+
+### 1. Problem
+
+**The curvature gizmo jumped.** Grabbing it on the segment to the left of that
+point and releasing without moving moved the two handles 29 and 30 units. Every
+later drag was smooth, so the control worked once it had thrown the shape away.
+
+**The handle to the right of the point would not move.** Every offset the
+designer asked for was refused in full: 5 units asked, 0 honored, at every value
+from 5 to 60.
+
+Both come from the two emission displacements. An on-curve carries `nudge` and
+its handles carry `handleNudge`, and the generator applies both after the
+construction is finished.
+
+For the jump: the reader that recovers construction space subtracted the
+on-curve's displacement, which provenance published, and could not subtract the
+handle's, which nothing published. So it measured an end from one curve and a
+handle from another, wrote that number as a pin, and the generator reproduced
+the pin on the real construction.
+
+For the stuck handle: the ceiling on handle length is the forward tangent
+intersection of the constructed curve. On that segment the intersection sits
+0.76 units from the rib end, so the window closed completely — the one-unit
+floor is capped by the ceiling, and minimum equalled maximum. The curve the
+designer was dragging is not that one. Its on-curve had been nudged 51 units
+back along the same tangent, which leaves the drawn intersection where it was
+and the drawn end 51 units further from it.
+
+### 2. Solution
+
+**Publish the handle's own slide**, the way the on-curve has published its own
+all along, and take both off together when recovering construction space.
+
+**Take that slide off the ceiling**, which is a statement about the drawn curve.
+Forwards it takes room away, which is what stops an untouched segment rendering
+past its own crossing. Backwards it gives room back. The on-curve nudge does not
+enter it and cancels by arithmetic.
+
+That left one number doing two jobs again, so the domain now carries two: the
+ceiling, which moves with the slide, and the intersection tension, which is where
+tension 1 sits on the curve the generator solved and is the unit the gizmo reads
+and writes in. Rescaling a pin by the ceiling was the first attempt and it made
+the jump worse — the stored number then meant something different on every
+nudged segment.
+
+### 3. Result
+
+Measured on the reported file, grabbing each gizmo and releasing without moving:
+
+| segment            | before | after |
+| ------------------ | ------ | ----- |
+| left of the point  | 30.00  | 0.00  |
+| right of the point | 1.00   | 0.00  |
+
+Dragging the left one now tracks the cursor one-for-one in both directions, and
+the number written equals the number read back to three decimals. The stuck
+handle moves one-for-one to 11.7 units and then stops at the drawn curve's own
+crossing, against 0 at every value before.
+
+Full suite 1,850 passing. No golden fixture moved, and that is a gap rather than
+a result: the corpus carries no handle nudge at all, so it cannot see this
+change. The same gap was reported for ease distance in entry 29, the cup centre
+in entry 30 and corner rounding in entry 37.
+
+### 4. Challenges and findings
+
+**The two faults measured as one and were not.** Zeroing the handle nudge made
+the first disappear exactly — a zero-delta grab moving 0.00 — and left the second
+untouched. Zeroing the on-curve nudge as well left the second untouched again.
+That pair of measurements is what separated a reader fault from a bounds fault
+before either was touched.
+
+**Rescaling the pin by the ceiling was built and reverted inside the hour.** It
+is the obvious way to keep one number, and it reintroduced the entry-25 fault at
+larger size: the zero-delta grab went from 0.00 back to 16 units. Two jobs, two
+numbers, stated for the third time in this file.
+
+**The backwards direction is still conservative.** The ceiling is capped at
+tension 1 on a scale that is itself capped at twice the chord, so a backwards
+slide recovers room only where the real intersection sits below that scale —
+which is the frozen case, and is why the fix does what was asked. On ordinary
+geometry a slid handle stops short of its drawn crossing rather than at it. Left
+alone: the handle moves, which was the complaint.
+
+**One segment on that glyph still reports no tension at all** at the far end of
+its range, because its drawn handles pass the crossing and the reader declines to
+invent a number rather than report one above the ceiling. That segment offsets 54
+units on a bend tight enough that one cubic cannot hold it, which is the limit the
+curvature gizmo exists for.
