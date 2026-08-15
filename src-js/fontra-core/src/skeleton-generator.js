@@ -4729,7 +4729,7 @@ function solveDropCapBallOnTerminal({
     const nearT = solveTerminalSplitForDistance(bezier, fromEnd, MIN_BALL_TRIM);
     const farT = solveTerminalSplitForDistance(bezier, fromEnd, maxTrimDistance);
     const paramAt = (s) => nearT + (farT - nearT) * s;
-    frameAt = (s) => {
+    frameAt = (s, radius) => {
       const splitT = paramAt(s);
       const point = bezier.get(splitT);
       const derivative = bezier.derivative(splitT);
@@ -4745,7 +4745,7 @@ function solveDropCapBallOnTerminal({
         edgeTangent: fromEnd ? direction : { x: -direction.x, y: -direction.y },
         endpoint,
         forward,
-        lateralRadius,
+        lateralRadius: radius,
       });
     };
     cutAt = (s) =>
@@ -4764,7 +4764,7 @@ function solveDropCapBallOnTerminal({
         endpointTangent: forward,
         capTangent: forward,
       });
-    frameAt = (s) => {
+    frameAt = (s, radius) => {
       const split = splitAt(s);
       if (!split?.insertedPoint) {
         return null;
@@ -4774,15 +4774,38 @@ function solveDropCapBallOnTerminal({
         edgeTangent: split.tangentToEndpoint,
         endpoint,
         forward,
-        lateralRadius,
+        lateralRadius: radius,
       });
     };
     cutAt = splitAt;
   }
 
-  const chosen = searchDropCapTrim(frameAt, wantedAlongRadius);
+  // The width the ball is asked for can be more than the terminal will hold. A
+  // ball whose sideways swell alone already passes the terminal plane has no
+  // depth that satisfies the pin, at any cut. Narrowing it until one cut does is
+  // what keeps a bulb on the stroke. Refusing instead drops the terminal to a
+  // plain cap, which is a bulb vanishing partway along the ratio slider.
+  let radius = lateralRadius;
+  let chosen = searchDropCapTrim((s) => frameAt(s, radius), wantedAlongRadius);
   if (chosen === null) {
-    return null;
+    let tooWide = lateralRadius;
+    let fits = 0;
+    for (let step = 0; step < DROP_CAP_TRIM_BISECTION_STEPS; step++) {
+      const mid = (fits + tooWide) / 2;
+      if (searchDropCapTrim((s) => frameAt(s, mid), wantedAlongRadius) === null) {
+        tooWide = mid;
+      } else {
+        fits = mid;
+      }
+    }
+    if (!(fits > 0.001)) {
+      return null;
+    }
+    radius = fits;
+    chosen = searchDropCapTrim((s) => frameAt(s, radius), wantedAlongRadius);
+    if (chosen === null) {
+      return null;
+    }
   }
   const split = cutAt(chosen);
   if (!split?.insertedPoint) {
@@ -4796,7 +4819,7 @@ function solveDropCapBallOnTerminal({
     edgeTangent: split.tangentToEndpoint,
     endpoint,
     forward,
-    lateralRadius,
+    lateralRadius: radius,
   });
   if (!frame) {
     return null;
@@ -4812,7 +4835,7 @@ function solveDropCapBallOnTerminal({
       frame.ex,
       frame.ey,
       Math.max(alongRadius, 1),
-      lateralRadius
+      radius
     ),
   };
 }
