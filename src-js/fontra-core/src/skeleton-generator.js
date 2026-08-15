@@ -4630,30 +4630,62 @@ function searchDropCapTrim(frameAt, wantedAlongRadius) {
     previousAlignment = alignment;
   }
 
-  // Walk back from there to bracket the requested depth. Scanning from the deep
-  // end picks the crossing next to the unbounded one, which is the cut where the
-  // ball genuinely sits in the bend.
+  // Walk back from there to bracket the requested depth, and note the deepest
+  // ball the run allows on the way. Scanning from the deep end picks the
+  // crossing next to the unbounded one, which is the cut where the ball
+  // genuinely sits in the bend.
+  const radiusAt = (s) => frameAt(s)?.alongRadius ?? 0;
+  const spacing = hi / DROP_CAP_TRIM_SCAN_STEPS;
+  const deepestReach = radiusAt(hi);
+  let best = { s: hi, alongRadius: deepestReach };
   let bracketLo = null;
   for (let i = DROP_CAP_TRIM_SCAN_STEPS - 1; i >= 0; i--) {
-    const s = (hi * i) / DROP_CAP_TRIM_SCAN_STEPS;
-    if ((frameAt(s)?.alongRadius ?? 0) < wantedAlongRadius) {
+    const s = spacing * i;
+    const alongRadius = radiusAt(s);
+    if (alongRadius > best.alongRadius) {
+      best = { s, alongRadius };
+    }
+    if (bracketLo === null && alongRadius < wantedAlongRadius) {
       bracketLo = s;
-      break;
     }
   }
-  if (bracketLo === null) {
-    return 0;
+
+  if (deepestReach >= wantedAlongRadius) {
+    if (bracketLo === null) {
+      // Every cut on the run allows more depth than was asked for, so the
+      // shallowest one wins and the ball is exactly the shape requested.
+      return 0;
+    }
+    let lo = bracketLo;
+    for (let step = 0; step < DROP_CAP_TRIM_BISECTION_STEPS; step++) {
+      const mid = (lo + hi) / 2;
+      if (radiusAt(mid) < wantedAlongRadius) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return hi;
   }
-  let lo = bracketLo;
+
+  // No cut on the run allows the requested depth, so the deepest ball available
+  // wins. Refining between the samples either side of the best one is what keeps
+  // this moving continuously: the best sample alone steps from grid line to grid
+  // line. The two answers meet where the deepest available reaches the request.
+  if (!(best.alongRadius > 0)) {
+    return null;
+  }
+  let lo = Math.max(best.s - spacing, 0);
+  let high = Math.min(best.s + spacing, hi);
   for (let step = 0; step < DROP_CAP_TRIM_BISECTION_STEPS; step++) {
-    const mid = (lo + hi) / 2;
-    if ((frameAt(mid)?.alongRadius ?? 0) < wantedAlongRadius) {
-      lo = mid;
+    const third = (high - lo) / 3;
+    if (radiusAt(lo + third) < radiusAt(high - third)) {
+      lo += third;
     } else {
-      hi = mid;
+      high -= third;
     }
   }
-  return hi;
+  return (lo + high) / 2;
 }
 
 // Place the ball: trim the outer edge back, sit the ball tangent to it there,
@@ -4749,6 +4781,9 @@ function solveDropCapBallOnTerminal({
   }
 
   const chosen = searchDropCapTrim(frameAt, wantedAlongRadius);
+  if (chosen === null) {
+    return null;
+  }
   const split = cutAt(chosen);
   if (!split?.insertedPoint) {
     return null;
