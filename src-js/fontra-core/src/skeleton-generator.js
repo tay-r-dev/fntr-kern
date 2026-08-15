@@ -58,6 +58,18 @@ const NECK_HANDLE_FRACTION = 0.45;
 const MAX_NECK_ARC_BACKOFF = 0.6;
 // Cubic pieces the ball arc is always emitted in, whatever the sweep.
 const DROP_CAP_ARC_PIECES = 4;
+// The shortest cut the ball may sit on. A round cap keeps a unit for the same
+// reason: the ball reads its own frame off the piece the cut leaves behind.
+const MIN_BALL_TRIM = 1;
+// Divisor floor for the terminal pin. It keeps the arithmetic finite where the
+// outer edge has turned square to the outward tangent. It is not a limit on the
+// answer, because the search never asks for a radius the shape did not request.
+const MIN_BALL_EDGE_ALIGNMENT = 1e-3;
+// Fixed cost of the cut search: a scan for the bracket, then a bisection inside
+// it. Fixed, because a convergence test would make the answer a step function of
+// where the test happens to trip.
+const DROP_CAP_TRIM_SCAN_STEPS = 24;
+const DROP_CAP_TRIM_BISECTION_STEPS = 14;
 // A corner trim may run the whole way to the neighbouring on-curve. Two corners
 // sharing one segment are held apart by the pairwise limiter below, which is
 // what a fixed per-corner fraction used to stand in for.
@@ -4532,80 +4544,242 @@ function rebuildTrimmedSide(sidePoints, crossingInfo, { smooth, addressable = fa
     : [...rewrittenSegment, ...sidePoints.slice(segmentEndIndex + 1)];
 }
 
+// The ball's frame at one cut on the outer edge, and the along-stroke radius the
+// terminal pin allows there.
+//
+// `alongRadius` is how deep the ball may be before its furthest point along the
+// outward tangent breaches the terminal plane. It is zero where the ball's
+// lateral swell alone already breaches it, and it grows without bound as the
+// edge turns square to the outward tangent, because there the ball's reach stops
+// depending on its depth at all. `edgeAlignment` is that agreement, and it falls
+// as the cut moves back.
+function probeDropCapBallFrame({
+  tangency,
+  edgeTangent,
+  endpoint,
+  forward,
+  lateralRadius,
+}) {
+  const ex = isUsableDirection(edgeTangent)
+    ? vector.normalizeVector(edgeTangent)
+    : forward;
+  const ey = orientDirectionToward(
+    vector.rotateVector90CW(ex),
+    vector.subVectors(endpoint, tangency)
+  );
+  if (!isUsableDirection(ey)) {
+    return null;
+  }
+  const center = {
+    x: tangency.x + ey.x * lateralRadius,
+    y: tangency.y + ey.y * lateralRadius,
+  };
+  const edgeAlignment = ex.x * forward.x + ex.y * forward.y;
+  const lateralComponent = lateralRadius * (ey.x * forward.x + ey.y * forward.y);
+  // How far the center sits behind the terminal plane, along the tangent.
+  const room =
+    (endpoint.x - center.x) * forward.x + (endpoint.y - center.y) * forward.y;
+  // Ball extreme along `forward` is hypot(a * edgeAlignment, lateralComponent)
+  // from the center; pin it to `room`.
+  const alongRadius =
+    Math.sqrt(Math.max(room * room - lateralComponent * lateralComponent, 0)) /
+    Math.max(Math.abs(edgeAlignment), MIN_BALL_EDGE_ALIGNMENT);
+  return { ex, ey, center, edgeAlignment, alongRadius };
+}
+
+// Choose where to cut the outer edge. The cut runs from the terminal backward on
+// a normalized parameter, and the search returns the cut that delivers the ball
+// the shape settings asked for.
+//
+// Two facts drive it. The edge's agreement with the outward tangent falls as the
+// cut moves back, so the run of cuts where the edge still runs forward at all is
+// bounded by one crossing. And within that run the allowed depth rises without
+// bound toward the far end, because a ball attached where the edge has turned
+// square reaches forward by its width alone whatever its depth.
+//
+// So the requested depth is a root, and the search bisects for it from the far
+// end. Bisecting is what makes the cut move continuously with the skeleton. The
+// discarded version tested whether a cut merely fit and took the first that did,
+// which lands the flattest ball the geometry permits, and which flips to a
+// different cut entirely when the test trips one sample earlier.
+//
+// Where every cut allows more depth than was asked for, the shallowest wins. The
+// two answers meet exactly where they change over.
+function searchDropCapTrim(frameAt, wantedAlongRadius) {
+  // The deepest cut worth considering: past it the edge runs backward and a ball
+  // hung off it is not on the stroke's end any more.
+  let hi = 1;
+  let previousAlignment = frameAt(0)?.edgeAlignment ?? 0;
+  for (let i = 1; i <= DROP_CAP_TRIM_SCAN_STEPS; i++) {
+    const s = i / DROP_CAP_TRIM_SCAN_STEPS;
+    const alignment = frameAt(s)?.edgeAlignment ?? 0;
+    if (alignment <= 0 && previousAlignment > 0) {
+      let lo = (i - 1) / DROP_CAP_TRIM_SCAN_STEPS;
+      hi = s;
+      for (let step = 0; step < DROP_CAP_TRIM_BISECTION_STEPS; step++) {
+        const mid = (lo + hi) / 2;
+        if ((frameAt(mid)?.edgeAlignment ?? 0) > 0) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      hi = lo;
+      break;
+    }
+    previousAlignment = alignment;
+  }
+
+  // Walk back from there to bracket the requested depth. Scanning from the deep
+  // end picks the crossing next to the unbounded one, which is the cut where the
+  // ball genuinely sits in the bend.
+  let bracketLo = null;
+  for (let i = DROP_CAP_TRIM_SCAN_STEPS - 1; i >= 0; i--) {
+    const s = (hi * i) / DROP_CAP_TRIM_SCAN_STEPS;
+    if ((frameAt(s)?.alongRadius ?? 0) < wantedAlongRadius) {
+      bracketLo = s;
+      break;
+    }
+  }
+  if (bracketLo === null) {
+    return 0;
+  }
+  let lo = bracketLo;
+  for (let step = 0; step < DROP_CAP_TRIM_BISECTION_STEPS; step++) {
+    const mid = (lo + hi) / 2;
+    if ((frameAt(mid)?.alongRadius ?? 0) < wantedAlongRadius) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return hi;
+}
+
 // Place the ball: trim the outer edge back, sit the ball tangent to it there,
 // and pick the along-stroke radius so the ball's furthest point along the
 // outward tangent lands exactly on the terminal plane — the line through the
 // endpoint that a butt cap sits on. That is what keeps a drop cap from
 // lengthening the stroke.
 //
-// On a straight terminal this is trivial (the along-radius is just the trim
-// distance). On a curved one the edge tangent has rotated away from the outward
-// tangent, so the ball's lateral swell reaches forward too; when that alone
-// already breaches the plane, the trim is walked further back until there is
-// room. Returns { split, tangency, ball } or null.
+// On a straight terminal the along-radius is just the trim distance. On a curved
+// one the edge tangent has rotated away from the outward tangent, so the ball's
+// lateral swell reaches forward too and the trim has to go back further to pay
+// for it. How much further is what the search decides.
+//
+// Returns { split, tangency, ball } or null when no cut on the terminal segment
+// leaves room for a ball at all.
 function solveDropCapBallOnTerminal({
   outerSideArr,
   position,
   endpoint,
   forward,
   lateralRadius,
-  trimDistance,
+  wantedAlongRadius,
   maxTrimDistance,
 }) {
-  let trim = trimDistance;
-  let fallback = null;
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const split = splitTerminalSideForRoundCap(outerSideArr, position, trim, {
-      endpointTangent: forward,
-      capTangent: forward,
-    });
-    if (!split?.insertedPoint) {
-      break;
-    }
-    const tangency = split.insertedPoint;
-    const ex = isUsableDirection(split.tangentToEndpoint)
-      ? vector.normalizeVector(split.tangentToEndpoint)
-      : forward;
-    const ey = orientDirectionToward(
-      vector.rotateVector90CW(ex),
-      vector.subVectors(endpoint, tangency)
-    );
-    if (!isUsableDirection(ey)) {
-      break;
-    }
-    const center = {
-      x: tangency.x + ey.x * lateralRadius,
-      y: tangency.y + ey.y * lateralRadius,
-    };
-    const alongComponent = ex.x * forward.x + ex.y * forward.y;
-    const lateralComponent = lateralRadius * (ey.x * forward.x + ey.y * forward.y);
-    // How far the center sits behind the terminal plane, along the tangent.
-    const room =
-      (endpoint.x - center.x) * forward.x + (endpoint.y - center.y) * forward.y;
-    const makeResult = (a) => ({
-      split,
-      tangency,
-      ball: makeDropCapBall(center, ex, ey, Math.max(a, 1), lateralRadius),
-    });
-    if (Math.abs(alongComponent) > 0.2 && room > Math.abs(lateralComponent) + 0.5) {
-      // Ball extreme along `forward` is hypot(a * alongComponent,
-      // lateralComponent) from the center; pin it to `room`.
-      const along =
-        Math.sqrt(room * room - lateralComponent * lateralComponent) /
-        Math.abs(alongComponent);
-      return makeResult(along);
-    }
-    fallback = fallback ?? makeResult(trim);
-    const nextTrim = Math.min(
-      trim + Math.abs(lateralComponent) - room + lateralRadius * 0.5 + 2,
-      maxTrimDistance
-    );
-    if (!(nextTrim > trim + 0.5)) {
-      break;
-    }
-    trim = nextTrim;
+  const terminalSegment = getRoundCapTerminalSegment(outerSideArr, position);
+  if (!terminalSegment) {
+    return null;
   }
-  return fallback;
+  const fromEnd = position === "end";
+  const { segmentPoints } = terminalSegment;
+  const isCubic = segmentPoints.length === 4;
+  const bezier = isCubic ? createBezierFromPoints(segmentPoints) : null;
+
+  // A cubic edge is searched in its own parameter, which costs a point and a
+  // derivative per probe. Resolving a trim distance instead costs a bisection
+  // over arc length per probe, and the search does not need one until it has
+  // chosen. A straight edge has no such distinction and is searched by distance.
+  let frameAt;
+  let cutAt;
+  if (bezier) {
+    const nearT = solveTerminalSplitForDistance(bezier, fromEnd, MIN_BALL_TRIM);
+    const farT = solveTerminalSplitForDistance(bezier, fromEnd, maxTrimDistance);
+    const paramAt = (s) => nearT + (farT - nearT) * s;
+    frameAt = (s) => {
+      const splitT = paramAt(s);
+      const point = bezier.get(splitT);
+      const derivative = bezier.derivative(splitT);
+      const direction = vector.normalizeVector({
+        x: derivative.x,
+        y: derivative.y,
+      });
+      if (!isUsableDirection(direction)) {
+        return null;
+      }
+      return probeDropCapBallFrame({
+        tangency: { x: point.x, y: point.y },
+        edgeTangent: fromEnd ? direction : { x: -direction.x, y: -direction.y },
+        endpoint,
+        forward,
+        lateralRadius,
+      });
+    };
+    cutAt = (s) =>
+      splitTerminalSideAtT(
+        outerSideArr,
+        position,
+        terminalSegment,
+        bezier,
+        paramAt(s),
+        { fallbackDirection: forward }
+      );
+  } else {
+    const trimAt = (s) => MIN_BALL_TRIM + (maxTrimDistance - MIN_BALL_TRIM) * s;
+    const splitAt = (s) =>
+      splitTerminalSideForRoundCap(outerSideArr, position, trimAt(s), {
+        endpointTangent: forward,
+        capTangent: forward,
+      });
+    frameAt = (s) => {
+      const split = splitAt(s);
+      if (!split?.insertedPoint) {
+        return null;
+      }
+      return probeDropCapBallFrame({
+        tangency: split.insertedPoint,
+        edgeTangent: split.tangentToEndpoint,
+        endpoint,
+        forward,
+        lateralRadius,
+      });
+    };
+    cutAt = splitAt;
+  }
+
+  const chosen = searchDropCapTrim(frameAt, wantedAlongRadius);
+  const split = cutAt(chosen);
+  if (!split?.insertedPoint) {
+    return null;
+  }
+  // Measure the frame again on the cut that will actually be emitted. The two
+  // agree except where the cut lands within a unit of the endpoint and the split
+  // substitutes a synthesized point, which is far from anything the search picks.
+  const frame = probeDropCapBallFrame({
+    tangency: split.insertedPoint,
+    edgeTangent: split.tangentToEndpoint,
+    endpoint,
+    forward,
+    lateralRadius,
+  });
+  if (!frame) {
+    return null;
+  }
+  // Never deeper than the shape asked for. The search put the cut where the two
+  // agree; the cap only bites where the whole edge allows more than was wanted.
+  const alongRadius = Math.min(frame.alongRadius, wantedAlongRadius);
+  return {
+    split,
+    tangency: split.insertedPoint,
+    ball: makeDropCapBall(
+      frame.center,
+      frame.ex,
+      frame.ey,
+      Math.max(alongRadius, 1),
+      lateralRadius
+    ),
+  };
 }
 
 // Build a drop cap.
@@ -4641,26 +4815,24 @@ function buildDropCap({
   const innerSideArr = outerSide === "left" ? rightSide : leftSide;
   const innerSideName = outerSide === "left" ? "right" : "left";
 
-  // capBallShape stretches the ball backward along the stroke only: it sets how
-  // far back along the outer edge the ball attaches. The trim has to stay on
-  // the outer side's terminal segment, so a short terminal segment caps how
-  // elongated the ball can get.
+  // capBallShape stretches the ball backward along the stroke only: it sets the
+  // along-stroke radius the ball is asked for. The cut has to stay on the outer
+  // side's terminal segment, so a short terminal segment caps how elongated the
+  // ball can get.
   const shape = clampCapBallShape(capBallShape);
   const outerTerminalLength = getTerminalSegmentLength(outerSideArr, position);
-  const trimDistance = Math.min(
-    lateralRadius * (1 + shape * BALL_SHAPE_ELONGATION),
-    Math.max(outerTerminalLength * 0.95, 1)
-  );
+  const wantedAlongRadius = lateralRadius * (1 + shape * BALL_SHAPE_ELONGATION);
 
-  // Trim the outer edge back by the along-stroke radius; the ball is tangent to
-  // the edge at the inserted point and its tip lands back on the terminal.
+  // Cut the outer edge back far enough to deliver that radius; the ball is
+  // tangent to the edge at the inserted point and its tip lands back on the
+  // terminal.
   const solved = solveDropCapBallOnTerminal({
     outerSideArr,
     position,
     endpoint,
     forward,
     lateralRadius,
-    trimDistance,
+    wantedAlongRadius,
     maxTrimDistance: Math.max(outerTerminalLength * 0.95, 1),
   });
   if (!solved) {

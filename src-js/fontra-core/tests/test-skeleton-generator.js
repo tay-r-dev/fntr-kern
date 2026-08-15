@@ -1086,6 +1086,67 @@ describe("skeleton-generator drop caps", () => {
     }
   });
 
+  it("places the ball continuously as the skeleton moves under a curved terminal", () => {
+    // The ball is cut into a curving outer edge, and the cut has to go further
+    // back the more that edge has turned. Choosing the cut by testing whether a
+    // ball merely fits, and taking the first that does, makes the answer a step
+    // function of where the test happens to trip. It also lands the flattest
+    // ball the geometry permits, because a cut that only just fits leaves almost
+    // no depth. Both showed on the reported glyph: a quarter unit of skeleton
+    // moved the outline 94 units, between a ball 21 units deep and one 75 deep.
+    //
+    // A sweep is the test this needs. No single configuration can see it.
+    const width = { left: 30, linked: true, right: 30, tied: true };
+    const swept = (offset) => ({
+      version: 1,
+      nextId: 10,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 60,
+          singleSided: null,
+          points: [
+            { id: 2, x: 216 + offset, y: 615, type: null, smooth: false, width },
+            { id: 3, x: 316, y: 615, type: "cubic" },
+            { id: 4, x: 382, y: 552, type: "cubic" },
+            {
+              id: 5,
+              x: 360,
+              y: 488,
+              type: null,
+              smooth: false,
+              width,
+              capStyle: "drop",
+              capBallRatio: 1.85,
+              capBallShape: 0.25,
+              capBallEasing: 1,
+            },
+          ],
+        },
+      ],
+      generated: [],
+    });
+    let previous = null;
+    let worstStep = 0;
+    for (let step = -40; step <= 40; step++) {
+      const points = generateFromSkeleton(swept(step / 4)).contours[0].points;
+      if (previous) {
+        expect(points.length).to.equal(previous.length);
+        worstStep = Math.max(
+          ...points.map((point, index) =>
+            Math.hypot(point.x - previous[index].x, point.y - previous[index].y)
+          ),
+          worstStep
+        );
+      }
+      previous = points;
+    }
+    // A quarter-unit driver step, so anything past a few units is a branch
+    // change rather than the outline following the skeleton.
+    expect(worstStep).to.be.lessThan(6);
+  });
+
   it("capBallEasing slides the neck further back along the inner edge", () => {
     // The neck rejoins the inner edge further back as easing rises, and must
     // ease in from above — no valley cutting below the edge.
