@@ -295,10 +295,13 @@ export default class SkeletonParametersPanel extends Panel {
     this._confirmTooltip = null;
 
     this.updateBound = this.update.bind(this);
-    // External glyph edits (e.g. dblclick smooth toggle) must refresh the
-    // panel's gates immediately; our own field edits already rebuild in
-    // _onFieldChange and must NOT trigger a rebuild mid-drag.
-    this._suppressGlyphChangeUpdate = false;
+    // True while one of this panel's own fields is streaming a drag. It stops a
+    // REBUILD mid-drag, which would replace the input under the hand. It does
+    // not stop a refresh: the other fields have to read live, the way they do
+    // under a canvas drag, and _applyFormContents already leaves the active
+    // field alone. Blocking the whole update instead left total, left, right and
+    // distribution disagreeing with the shape until the mouse came off.
+    this._streamingFieldEdit = false;
     this._throttledGlyphChangeUpdate = throttleCalls(() => {
       this._forceRebuild = true;
       this.update();
@@ -316,14 +319,18 @@ export default class SkeletonParametersPanel extends Panel {
       // trailing rebuild replaces the slider input the user may already be
       // dragging again and can briefly read not-yet-settled values.
       if (event?.senderID === SKELETON_PANEL_SENDER) {
+        // A drag on one of our own fields: let it through, so every other field
+        // follows the number being dragged. The pass is values-only.
+        if (this._streamingFieldEdit) {
+          this._throttledGlyphChangeUpdate();
+          return;
+        }
         if (!this._rebuildOnOwnEcho) {
           return;
         }
         this._rebuildOnOwnEcho = false;
       }
-      if (!this._suppressGlyphChangeUpdate) {
-        this._throttledGlyphChangeUpdate();
-      }
+      this._throttledGlyphChangeUpdate();
     });
     this.sceneSettingsController.addKeyListener(
       [
@@ -376,11 +383,6 @@ export default class SkeletonParametersPanel extends Panel {
   // ---- Panel rebuild --------------------------------------------------------
 
   async update() {
-    // A rebuild while a slider streams would replace the input mid-drag and
-    // lock its direction; _onFieldChange rebuilds once the edit completes.
-    if (this._suppressGlyphChangeUpdate) {
-      return;
-    }
     if (!this.infoForm.contentElement.offsetParent) {
       return;
     }
@@ -502,6 +504,13 @@ export default class SkeletonParametersPanel extends Panel {
         }
         this.infoForm.setValue(item.key, item.value);
       }
+      return;
+    }
+    // A rebuild while one of our fields streams would replace the input under
+    // the hand and lock the drag's direction. The layout is stable through a
+    // value drag anyway, so reaching here mid-drag means something else changed
+    // the shape of the panel, and it can wait until the drag ends.
+    if (this._streamingFieldEdit) {
       return;
     }
     this._lastFormLayout = layout;
@@ -1883,7 +1892,7 @@ export default class SkeletonParametersPanel extends Panel {
 
   async _onFieldChange(fieldItem, value, valueStream) {
     const [group, name] = String(fieldItem.key).split(":");
-    this._suppressGlyphChangeUpdate = true;
+    this._streamingFieldEdit = true;
     // Remembered so the refresh at the end of this method leaves this one input
     // alone: it already holds what the user put in it, and writing back would
     // interrupt a run of arrow-key increments.
@@ -1970,7 +1979,7 @@ export default class SkeletonParametersPanel extends Panel {
         await this._onGeneratorChange(name, finalValue);
       }
     } finally {
-      this._suppressGlyphChangeUpdate = false;
+      this._streamingFieldEdit = false;
       // A stream is a finished drag by the time we get here, so the input has
       // to take whatever the model settled on — which is not the number the
       // drag reached, if a bound trimmed it. Holding the field back here is
