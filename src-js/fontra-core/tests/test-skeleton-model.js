@@ -44,6 +44,7 @@ import {
   setSkeletonPointSideWidth,
   setSkeletonPointTotalWidth,
   setSkeletonPointWidthDistribution,
+  setSkeletonPointWidthFromSide,
   setSkeletonPointWidthLinked,
   setSkeletonSerifParameters,
   splitSkeletonContourAtPoint,
@@ -809,11 +810,35 @@ describe("skeleton-model panel-facing mutators", () => {
     expect(point.width.right).to.equal(30);
   });
 
-  it("linked side width preserves an asymmetric distribution", () => {
+  // The same delta on both sides, which holds left − right. This is what the
+  // fixed-rib drag wants, and it is NOT the distribution. A designer's per-side
+  // write goes through setSkeletonPointWidthFromSide instead.
+  it("linked side width moves an asymmetric pair by one delta", () => {
     const point = makePoint({ width: { left: 60, right: 20, linked: true } });
     setSkeletonPointSideWidth(point, 80, "left", 50);
     expect(point.width.left).to.equal(50);
     expect(point.width.right).to.equal(10);
+  });
+
+  it("width from a side keeps the share, not the difference", () => {
+    const point = makePoint({ width: { left: 60, right: 20, linked: true } });
+    setSkeletonPointWidthFromSide(point, 80, "left", 50);
+    expect(point.width.left).to.equal(50);
+    expect(point.width.right).to.equal(17);
+  });
+
+  it("width from a side refuses a side that holds no width", () => {
+    const point = makePoint({ width: { left: 60, right: 0, linked: true } });
+    expect(setSkeletonPointWidthFromSide(point, 80, "right", 20)).to.equal(false);
+    expect(point.width.left).to.equal(60);
+    expect(point.width.right).to.equal(0);
+  });
+
+  it("width from a side states one side when unlinked", () => {
+    const point = makePoint({ width: { left: 60, right: 20, linked: false } });
+    setSkeletonPointWidthFromSide(point, 80, "left", 50);
+    expect(point.width.left).to.equal(50);
+    expect(point.width.right).to.equal(20);
   });
 
   it("linked side width clamps the other side at zero", () => {

@@ -2052,8 +2052,14 @@ export function setSkeletonPointSideWidth(
   const value = Math.max(0, round(halfWidth));
   const otherSide = side === "left" ? "right" : "left";
   if (linked) {
-    // Linked means both sides move by the same delta, preserving the
-    // left/right distribution — it does NOT mean symmetrical (donor parity).
+    // Both sides move by the same delta, which preserves left − right. That is a
+    // statement about the two EDGES, and it is what the fixed-rib drag wants: it
+    // holds one edge while the point follows the cursor.
+    //
+    // It is NOT what the distribution means, and this function is no longer the
+    // one a designer's per-side write goes through. Use
+    // setSkeletonPointWidthFromSide for that — it preserves the share, which is
+    // the distribution the panel shows.
     width[otherSide] = Math.max(0, round(width[otherSide] + value - width[side]));
   }
   width[side] = value;
@@ -2175,20 +2181,22 @@ export function setSkeletonHandleDetached(point, side, detached) {
   point.handleOffsets = handleOffsets;
 }
 
-// One rib end states a new half-width, and the point's distribution decides what
-// that says about the other side. This is the panel's total-width write reached
-// through one side instead of through the total, so a canvas drag and a typed
-// total agree about what the link flag preserves.
+// The one rule for every width write that names a side: the rib gizmo on canvas,
+// the panel's left and right boxes, and the label scrubs on both of them. They
+// are the same statement made three ways, so they go through one function.
 //
 // Linked preserves the SHARE, not the difference. Moving both sides by one delta
 // preserves left − right, which is a different statement: on a 60/0 point it
 // answers a drag of 10 with 70/10, and the distribution the designer set has
-// gone from 100 to 75.
+// gone from 100 to 75. So a linked write states a TOTAL through this side's
+// share, which is the panel's total-width write reached through one side.
+//
+// Unlinked, the two sides are independent numbers and the write states one.
 //
 // A side holding zero has no share, so it cannot state a total: zero times any
 // total is zero. That rib is pinned on the centerline, and only the distribution
-// or the per-side number lifts it off. Returns false there, so the caller can
-// leave the width alone and still apply the drag's nudge.
+// or the total lifts it off. Returns false there, so a caller can leave the
+// width alone and still apply a drag's nudge.
 export function setSkeletonPointWidthFromSide(
   point,
   defaultWidth,
@@ -2197,6 +2205,13 @@ export function setSkeletonPointWidthFromSide(
   { round = Math.round } = {}
 ) {
   assertSkeletonRibSide(side);
+  if (point?.width?.linked === false) {
+    setSkeletonPointSideWidth(point, defaultWidth, side, halfWidth, {
+      linked: false,
+      round,
+    });
+    return true;
+  }
   const width = normalizeWidth(point?.width);
   const otherSide = side === "left" ? "right" : "left";
   const total = width.left + width.right;
@@ -2964,16 +2979,9 @@ export function applySkeletonRibExecutorResult(address, result) {
   const { contour, point, side, defaultWidth } = address;
   if (contour.singleSided === "left" || contour.singleSided === "right") {
     setSingleSidedTotalWidth(point, defaultWidth, side, result.halfWidth);
-  } else if (point?.width?.linked !== false) {
-    // Linked: the drag states a total through this side's share, so the two ribs
-    // move in proportion and the distribution survives. A zero-share side is
-    // pinned and refuses, and the nudge below still applies.
-    setSkeletonPointWidthFromSide(point, defaultWidth, side, result.halfWidth);
   } else {
-    // Unlinked: the two sides are independent numbers, so the drag states one.
-    setSkeletonPointSideWidth(point, defaultWidth, side, result.halfWidth, {
-      linked: false,
-    });
+    // A zero-share side refuses, and the nudge below still applies.
+    setSkeletonPointWidthFromSide(point, defaultWidth, side, result.halfWidth);
   }
   if (!isSkeletonSideLocked(point, side)) {
     setSkeletonPointSideNudge(point, side, result.nudge);

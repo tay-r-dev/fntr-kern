@@ -36,7 +36,7 @@ import {
   setSkeletonHandleDetached,
   setSkeletonHandleOffset,
   setSkeletonPointRibAngleLock,
-  setSkeletonPointSideWidth,
+  setSkeletonPointWidthFromSide,
   setSkeletonPointTotalWidth,
   setSkeletonPointWidthDistribution,
   setSkeletonPointWidthLinked,
@@ -180,9 +180,7 @@ export async function setPanelPointSideWidth(
     sceneController,
     pointAddresses,
     (point, _address, { defaultWidth }) => {
-      setSkeletonPointSideWidth(point, defaultWidth, side, value, {
-        linked: point?.width?.linked !== false,
-      });
+      setSkeletonPointWidthFromSide(point, defaultWidth, side, value);
     },
     undoLabel
   );
@@ -459,12 +457,11 @@ function moveOnePointWidth(point, contour, side, next) {
     );
     return;
   }
-  setSkeletonPointSideWidth(
+  setSkeletonPointWidthFromSide(
     point,
     defaultWidth,
     side,
-    next(getSkeletonPointHalfWidth(point, defaultWidth, side)),
-    { linked: point?.width?.linked !== false }
+    next(getSkeletonPointHalfWidth(point, defaultWidth, side))
   );
 }
 
