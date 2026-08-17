@@ -2145,6 +2145,7 @@ export function getSkeletonHandleOffset(point, side, role) {
     x: asFiniteNumber(offset?.x, 0),
     y: asFiniteNumber(offset?.y, 0),
     detached: offset?.detached === true,
+    collapsedByCurvature: offset?.collapsedByCurvature === true,
   };
 }
 
@@ -2163,8 +2164,25 @@ export function setSkeletonHandleOffset(
       x: round(asFiniteNumber(offset?.x, 0)),
       y: round(asFiniteNumber(offset?.y, 0)),
       detached: offset?.detached === true || existing.detached === true,
+      ...markCollapsedByCurvature(offset?.collapsedByCurvature),
     },
   };
+}
+
+// Which control drove this handle onto its point. The curvature gizmo stores a
+// displacement below the pin's floor, because the pin's number reads zero for
+// every length left down there, and it releases its OWN displacement on the way
+// back up. A handle the designer put on its point by hand carries no mark and is
+// left where it was put.
+//
+// Stored only where it is true, so an ordinary handle offset keeps the shape it
+// always had. The reader reports it as a plain boolean either way.
+//
+// Not OR'd with the existing state, unlike `detached`: any later write that does
+// not claim the mark is a new statement about this handle, and it takes
+// ownership away from the gizmo.
+function markCollapsedByCurvature(collapsedByCurvature) {
+  return collapsedByCurvature === true ? { collapsedByCurvature: true } : {};
 }
 
 export function setSkeletonHandleDetached(point, side, detached) {
@@ -2176,7 +2194,14 @@ export function setSkeletonHandleDetached(point, side, detached) {
   for (const role of ["in", "out"]) {
     const key = getSkeletonHandleOffsetKey(side, role);
     const offset = getSkeletonHandleOffset(point, side, role);
-    handleOffsets[key] = { x: offset.x, y: offset.y, detached: detached === true };
+    handleOffsets[key] = {
+      x: offset.x,
+      y: offset.y,
+      detached: detached === true,
+      // The detach flag says how the handle is placed, not who placed it, so it
+      // carries the collapse mark across unchanged.
+      ...markCollapsedByCurvature(offset.collapsedByCurvature),
+    };
   }
   point.handleOffsets = handleOffsets;
 }
@@ -3774,6 +3799,18 @@ function generatedSegmentTension(points, axes, controls) {
   });
 }
 
+// The axis each of a generated segment's two handles was constructed along, as
+// the generator published it. A handle sitting exactly on its point draws no
+// line of its own, and this is the line it would have drawn — which is what lets
+// the curvature gizmo find its crossing, and its axis, on a segment it has
+// already flattened into a straight bevel.
+//
+// Every reader of a beveled segment needs the same pair (R-B): the layer that
+// draws the gizmo's axis stub, the hit test, and the drag.
+export function generatedSegmentHandleAxes(provenance) {
+  return [provenance?.[1]?.constructionAxis, provenance?.[2]?.constructionAxis];
+}
+
 // The published axes belong to the EMITTED handles, so they describe the emitted
 // segment and nothing else. Where the segment being measured is the untrimmed
 // construction snapshot instead, they are the wrong pair: a serif's trim re-aims
@@ -3848,7 +3885,18 @@ export function calculateGeneratedCurvatureEdits({
   // down to the shorter handle sitting on its point, which is what the stored
   // mean can still describe. `moved` is where the drag actually asked for,
   // which past that point takes the surviving handle down on its own.
-  const options = { maxTension, axisSegmentPoints: segmentPoints };
+  const handleAxes = generatedSegmentHandleAxes(provenance);
+  //
+  // They serve both readings, the emitted segment the gizmo is aimed on and the
+  // construction segment it is measured on. constructionSegmentAxes exists to
+  // correct a handle that colinearity ROTATED, which is a different question and
+  // does not arise here: a handle with no length has no direction to have been
+  // rotated away from.
+  const options = {
+    maxTension,
+    axisSegmentPoints: segmentPoints,
+    handleAxes,
+  };
   const pinned = calculateControlPointsFromCurvatureDelta(
     delta,
     constructionPoints,
@@ -3926,6 +3974,13 @@ export function calculateGeneratedCurvatureEdits({
     side: start.side,
     tension,
     collapse,
+    // Above the floor the pin describes the whole segment on its own, so a
+    // displacement the gizmo stored below the floor has nothing left to say and
+    // is released. Leaving it there would hold one handle short of where the pin
+    // puts it, and would go on holding it as the skeleton, the width or the
+    // taper moved underneath — which is the whole reason curvature is pinned as
+    // a tension rather than kept as a displacement.
+    releaseCollapse: tension > 0,
   };
 }
 

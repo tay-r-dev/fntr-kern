@@ -9,6 +9,7 @@ import {
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
   formatGeneratedCurvature,
+  generatedSegmentHandleAxes,
   getGeneratedSegmentCurvature,
   getSkeletonData,
   getSkeletonHandleOffset,
@@ -695,7 +696,10 @@ registerVisualizationLayerDefinition({
     // curve swells in, and without it the node looks free to go anywhere.
     for (const segment of segments) {
       const anchor = calculateCurvatureGizmoPoint(segment.points);
-      const axis = calculateCurvatureGizmoAxis(segment.points);
+      const axis = calculateCurvatureGizmoAxis(
+        segment.points,
+        generatedSegmentHandleAxes(segment.provenance)
+      );
       if (anchor && axis) {
         strokeLine(
           context,

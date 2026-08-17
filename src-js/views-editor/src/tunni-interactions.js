@@ -513,6 +513,16 @@ export async function handleGeneratedTunniDrag({
               // wants from the geometry it grabbed, and every mousemove restates
               // it against the same original. Accumulating it would compound.
               setSkeletonSegmentCurvature(point, original.side, write.pinnedTension);
+            } else if (write.release && original.offset) {
+              // Only what this gizmo put down. An unmarked offset is the
+              // designer's own placement and is not the gizmo's to undo.
+              if (original.offset.collapsedByCurvature) {
+                setSkeletonHandleOffset(point, original.side, original.role, {
+                  x: 0,
+                  y: 0,
+                  detached: original.offset.detached,
+                });
+              }
             } else if (write.offsetDelta && original.offset) {
               setSkeletonHandleOffset(
                 point,
@@ -522,6 +532,8 @@ export async function handleGeneratedTunniDrag({
                   x: original.offset.x + write.offsetDelta.x,
                   y: original.offset.y + write.offsetDelta.y,
                   detached: original.offset.detached,
+                  collapsedByCurvature:
+                    write.collapsedByCurvature || original.offset.collapsedByCurvature,
                 },
                 { round }
               );
@@ -731,6 +743,7 @@ async function applyGeneratedSegmentWrites(
               x: offset.x + write.offsetDelta.x,
               y: offset.y + write.offsetDelta.y,
               detached: offset.detached,
+              collapsedByCurvature: offset.collapsedByCurvature,
             });
           } else if (write.nudgeDelta !== undefined) {
             setSkeletonPointSideNudge(
@@ -781,10 +794,15 @@ function generatedCurvatureWrites(originalPoints, segment, delta) {
     // Below the pin's floor the drag keeps going on the one handle still off
     // its point, and that part travels as a displacement — the pin cannot say
     // it, because its number reads zero for every length the survivor has left.
+    // It is marked as the gizmo's own, so the drag back up releases it and
+    // leaves a handle the designer collapsed by hand alone.
     ...edit.collapse.map((entry) => [
       entry.segmentPointIndex,
-      { offsetDelta: entry.offsetDelta },
+      { offsetDelta: entry.offsetDelta, collapsedByCurvature: true },
     ]),
+    // Back above the floor: the pin says everything again, so the gizmo's own
+    // displacement goes.
+    ...(edit.releaseCollapse ? [1, 2].map((index) => [index, { release: true }]) : []),
   ];
 }
 

@@ -544,6 +544,51 @@ export function shiftTensionsToMean(tensions, target, maxTension = Infinity) {
 
 const CURVATURE_EPSILON = 1e-10;
 
+// A handle sitting exactly on its point draws no line. The two handle lines then
+// have no crossing, and the curvature gizmo is built entirely on that crossing:
+// it aims at it, and it measures each handle as a fraction of the distance to
+// it. So a segment the gizmo had flattened into a straight bevel had no axis, no
+// scale and no drag — in EITHER direction. The bevel was not a floor the drag
+// rested on. It was a hole it fell into, and only the reset came back out.
+//
+// The direction is not lost, only unmeasurable. Every generated handle publishes
+// the axis it was constructed along, for the separate reason that colinearity
+// may rotate a drawn handle afterwards. Where a drawn handle has no length, that
+// published axis IS its line, and every number downstream is the arithmetic it
+// always was. One collapsed handle is enough to need this: a half-bevel was
+// just as stuck as a full one.
+//
+// Lengths are untouched, so a collapsed handle still reads a tension of zero.
+function handleDirections(segmentPoints, handleAxes) {
+  const [p1, p2, p3, p4] = segmentPoints;
+  const drawn = [subVectors(p2, p1), subVectors(p3, p4)];
+  // normalizeVector hands a zero vector straight back rather than refusing, so
+  // the length is tested here.
+  const asDirection = (vector) =>
+    vector && Math.hypot(vector.x, vector.y) > CURVATURE_EPSILON
+      ? normalizeVector(vector)
+      : null;
+  return drawn.map(
+    (vector, index) => asDirection(vector) ?? asDirection(handleAxes?.[index])
+  );
+}
+
+// The crossing of the two handle lines, with a collapsed handle's line taken
+// from its published axis.
+function tangentIntersection(segmentPoints, handleAxes) {
+  const directions = handleDirections(segmentPoints, handleAxes);
+  if (!directions[0] || !directions[1]) {
+    return null;
+  }
+  const [start, , , end] = segmentPoints;
+  return intersect(
+    start,
+    addVectors(start, directions[0]),
+    end,
+    addVectors(end, directions[1])
+  );
+}
+
 // Where the gizmo sits: the curve at t = 0.5. Writing the Bernstein weights out
 // rather than reaching for a general evaluator, because half is the only
 // parameter this control ever needs.
@@ -557,8 +602,8 @@ export function calculateCurvatureGizmoPoint(segmentPoints) {
 
 // Null when the two handle lines are parallel: there is no Tunni point to aim
 // at, so the control has no axis and must not be offered.
-export function calculateCurvatureGizmoAxis(segmentPoints) {
-  const tunniPoint = calculateTunniPoint(segmentPoints);
+export function calculateCurvatureGizmoAxis(segmentPoints, handleAxes) {
+  const tunniPoint = tangentIntersection(segmentPoints, handleAxes);
   if (!tunniPoint) {
     return null;
   }
@@ -600,13 +645,23 @@ export function calculateCurvatureGizmoAxis(segmentPoints) {
 export function calculateControlPointsFromCurvatureDelta(
   delta,
   segmentPoints,
-  { maxTension = 1, axisSegmentPoints = segmentPoints, allowCollapse = false } = {}
+  {
+    maxTension = 1,
+    axisSegmentPoints = segmentPoints,
+    allowCollapse = false,
+    handleAxes = null,
+    axisHandleAxes = handleAxes,
+  } = {}
 ) {
-  const axis = calculateCurvatureGizmoAxis(axisSegmentPoints);
+  const axis = calculateCurvatureGizmoAxis(axisSegmentPoints, axisHandleAxes);
   if (!axis) {
     return null;
   }
-  const tunniPoint = calculateTunniPoint(segmentPoints);
+  const tunniPoint = tangentIntersection(segmentPoints, handleAxes);
+  const directions = handleDirections(segmentPoints, handleAxes);
+  if (!tunniPoint || !directions[0] || !directions[1]) {
+    return null;
+  }
   const [startPoint, controlPoint1, controlPoint2, endPoint] = segmentPoints;
   // Reach must be measured ALONG the handle axis, not as a plain distance. When
   // the handles splay outward the tangent rays still meet, but behind both ends
@@ -614,8 +669,8 @@ export function calculateControlPointsFromCurvatureDelta(
   // is negative. Taking the distance there invents a tension out of nothing,
   // and the ceiling built from it can pin the control before it has moved.
   // offset-cubic draws the same line: a reach that is not ahead is no limit.
-  const startReach = signedReach(startPoint, controlPoint1, tunniPoint);
-  const endReach = signedReach(endPoint, controlPoint2, tunniPoint);
+  const startReach = signedReach(startPoint, directions[0], tunniPoint);
+  const endReach = signedReach(endPoint, directions[1], tunniPoint);
 
   const startLength = distance(startPoint, controlPoint1);
   const endLength = distance(endPoint, controlPoint2);
@@ -642,8 +697,7 @@ export function calculateControlPointsFromCurvatureDelta(
       : Math.min(startTension, endTension))
   );
 
-  const place = (from, control, unit, tension, reach) => {
-    const direction = normalizeVector(subVectors(control, from));
+  const place = (from, direction, unit, tension, reach) => {
     const movedTension = Math.max(
       reach > CURVATURE_EPSILON
         ? Math.min(tension + increment, Math.max(tension, maxTension))
@@ -654,8 +708,8 @@ export function calculateControlPointsFromCurvatureDelta(
     return { x: from.x + direction.x * length, y: from.y + direction.y * length };
   };
   return [
-    place(startPoint, controlPoint1, startUnit, startTension, startReach),
-    place(endPoint, controlPoint2, endUnit, endTension, endReach),
+    place(startPoint, directions[0], startUnit, startTension, startReach),
+    place(endPoint, directions[1], endUnit, endTension, endReach),
   ];
 }
 
@@ -677,16 +731,19 @@ export function hasForwardTangentIntersection(segmentPoints) {
   if (!tunniPoint) {
     return false;
   }
+  const directions = handleDirections(segmentPoints);
+  if (!directions[0] || !directions[1]) {
+    return false;
+  }
   return (
-    signedReach(startPoint, controlPoint1, tunniPoint) > CURVATURE_EPSILON &&
-    signedReach(endPoint, controlPoint2, tunniPoint) > CURVATURE_EPSILON
+    signedReach(startPoint, directions[0], tunniPoint) > CURVATURE_EPSILON &&
+    signedReach(endPoint, directions[1], tunniPoint) > CURVATURE_EPSILON
   );
 }
 
 // How far the tangent intersection lies ALONG the handle's own axis. Negative
 // when it sits behind the on-curve point, which is the case a plain distance
 // cannot tell apart.
-function signedReach(onCurvePoint, controlPoint, tunniPoint) {
-  const axis = normalizeVector(subVectors(controlPoint, onCurvePoint));
-  return dotVector(subVectors(tunniPoint, onCurvePoint), axis);
+function signedReach(onCurvePoint, direction, tunniPoint) {
+  return dotVector(subVectors(tunniPoint, onCurvePoint), direction);
 }
