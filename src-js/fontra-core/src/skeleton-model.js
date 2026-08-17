@@ -3799,6 +3799,30 @@ function generatedSegmentTension(points, axes, controls) {
   });
 }
 
+// Where one addressed point of a generated result landed. The address is the
+// skeleton contour, the skeleton point, the side and the role — the same four
+// facts provenance publishes — so a caller that regenerates under changed
+// settings can find the same point in the new output and compare.
+export function findGeneratedOutputPosition(generated, contourId, pointId, side, role) {
+  for (const entry of generated?.provenance || []) {
+    if (entry.skeletonContourId !== contourId) {
+      continue;
+    }
+    const pointMap = entry.pointMap || [];
+    for (let i = 0; i < pointMap.length; i++) {
+      const provenance = pointMap[i];
+      if (
+        provenance?.skeletonPointId === pointId &&
+        provenance.side === side &&
+        provenance.role === role
+      ) {
+        return generated.contours[entry.generatedContourIndex]?.points?.[i] || null;
+      }
+    }
+  }
+  return null;
+}
+
 // The axis each of a generated segment's two handles was constructed along, as
 // the generator published it. A handle sitting exactly on its point draws no
 // line of its own, and this is the line it would have drawn — which is what lets

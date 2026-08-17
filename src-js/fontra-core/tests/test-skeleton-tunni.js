@@ -10,6 +10,7 @@ import {
   calculateSkeletonOnCurveFromTunni,
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
+  generatedSegmentHandleAxes,
   generatedTunniHitTest,
   getGeneratedPathContourIndices,
   getGeneratedSegmentCurvature,
@@ -419,6 +420,78 @@ describe("generated curvature gizmo edits", () => {
 
   it("pins a fuller curve for a drag toward the Tunni point", () => {
     expect(drag(10).tension).to.be.above(drag(0).tension);
+  });
+
+  // A segment the gizmo flattened into a straight bevel. Its handles draw no
+  // lines, so without the published axes there is no crossing, no scale and no
+  // drag in either direction — which is the state the reset used to be the only
+  // way out of.
+  describe("a beveled segment", () => {
+    const unit = (from, to) => {
+      const length = Math.hypot(to.x - from.x, to.y - from.y);
+      return { x: (to.x - from.x) / length, y: (to.y - from.y) / length };
+    };
+    const beveled = [
+      segmentPoints[0],
+      { ...segmentPoints[0] },
+      { ...segmentPoints[3] },
+      segmentPoints[3],
+    ];
+    const beveledProvenance = [
+      provenance[0],
+      { ...provenance[1], constructionAxis: unit(segmentPoints[0], segmentPoints[1]) },
+      { ...provenance[2], constructionAxis: unit(segmentPoints[3], segmentPoints[2]) },
+      provenance[3],
+    ];
+    const bevelAxis = () =>
+      calculateCurvatureGizmoAxis(
+        beveled,
+        generatedSegmentHandleAxes(beveledProvenance)
+      );
+    const bevelDrag = (amount) =>
+      calculateGeneratedCurvatureEdits({
+        segmentPoints: beveled,
+        provenance: beveledProvenance,
+        delta: { x: bevelAxis().x * amount, y: bevelAxis().y * amount },
+      });
+
+    it("has no axis of its own", () => {
+      expect(calculateCurvatureGizmoAxis(beveled)).to.equal(null);
+    });
+
+    it("takes its axis from the published construction axes", () => {
+      expect(bevelAxis()).to.not.equal(null);
+    });
+
+    it("reads a tension of zero where it stands", () => {
+      expect(bevelDrag(0).tension).to.equal(0);
+    });
+
+    it("answers a drag away from the bevel", () => {
+      expect(bevelDrag(10).tension).to.be.above(0);
+      expect(bevelDrag(40).tension).to.be.above(bevelDrag(10).tension);
+    });
+
+    it("stays at zero for a drag deeper into it", () => {
+      expect(bevelDrag(-40).tension).to.equal(0);
+    });
+
+    it("releases the collapse it stored once the pin can describe the segment", () => {
+      expect(bevelDrag(10).releaseCollapse).to.equal(true);
+      expect(bevelDrag(-40).releaseCollapse).to.equal(false);
+    });
+
+    it("is just as stuck with only one handle down", () => {
+      const half = [
+        segmentPoints[0],
+        { ...segmentPoints[0] },
+        ...segmentPoints.slice(2),
+      ];
+      expect(calculateCurvatureGizmoAxis(half)).to.equal(null);
+      expect(
+        calculateCurvatureGizmoAxis(half, generatedSegmentHandleAxes(beveledProvenance))
+      ).to.not.equal(null);
+    });
   });
 
   it("declines the drag when the segment has no Tunni point", () => {

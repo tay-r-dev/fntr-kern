@@ -10,8 +10,10 @@ import {
   calculateSkeletonOnCurveFromTunni,
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
+  findGeneratedOutputPosition,
   generatedSegmentCapCurvatureField,
   generatedSegmentConstructionPoints,
+  generatedSegmentHandleAxes,
   getGeneratedPathContourIndices,
   getSkeletonData,
   getSkeletonHandleOffset,
@@ -23,9 +25,12 @@ import {
   setSkeletonPointSideNudge,
   setSkeletonSegmentCurvature,
 } from "@fontra/core/skeleton-model.js";
+import { generateFromSkeleton } from "@fontra/core/skeleton-generator.js";
 import {
   areTensionsEqualized,
   calculateControlHandlePoint,
+  calculateCurvatureDragScale,
+  calculateCurvatureGizmoAxis,
   calculateEqualizedControlPoints,
   calculateTunniPoint,
   snapToGrid,
@@ -383,6 +388,116 @@ export async function handleSkeletonTunniDrag({
 // would need that layer's generated geometry, which is only produced after the
 // skeleton is written — and a delta is what keeps interpolation honest anyway.
 //
+//
+// A drag that starts on a segment the gizmo has already flattened, expressed
+// against the shape it flattened.
+//
+// The gizmo shifts both tensions from where they were when the drag began. On a
+// bevel there is no "where they were": the handles are on their points and the
+// segment remembers nothing of the curve it used to be. The pin alone cannot
+// supply it either — the pin holds the segment's harmonic MEAN, which the
+// shorter handle dominates, so raising it off zero puts the longer handle back
+// most of the way in a single frame. Measured: 0 and 0 units answered the first
+// step up with 83 and 6.
+//
+// The memory is in the stored displacement, and in what the generator would
+// draw without it. So the base is a regeneration with the gizmo's own collapse
+// released, and the drag is seeded with the distance that maps that base onto
+// the bevel on screen. The way up then retraces the way down, step for step,
+// and the released displacement shrinks to nothing exactly as the pin's floor
+// is reached.
+//
+// Only the gizmo's own collapse is released (R-D: the mark says who placed the
+// handle). A handle the designer put on its point by hand is part of the base.
+//
+function collapsedSegmentBase(skeletonData, segment) {
+  const addresses = [segment.provenance?.[1], segment.provenance?.[2]];
+  if (addresses.some((address) => !address)) {
+    return null;
+  }
+  const scratch = structuredClone(skeletonData);
+  const marked = [];
+  for (const address of addresses) {
+    const point = findSkeletonPointById(
+      scratch,
+      address.skeletonContourId ?? segment.skeletonContourId,
+      address.skeletonPointId
+    );
+    const offset = point
+      ? getSkeletonHandleOffset(point, address.side, address.role)
+      : null;
+    if (!offset?.collapsedByCurvature) {
+      marked.push(false);
+      continue;
+    }
+    marked.push(true);
+    setSkeletonHandleOffset(point, address.side, address.role, {
+      x: 0,
+      y: 0,
+      detached: offset.detached,
+    });
+  }
+  if (!marked.some(Boolean)) {
+    return null;
+  }
+
+  const generated = generateFromSkeleton(scratch);
+  const points = segment.provenance.map((address) =>
+    findGeneratedOutputPosition(
+      generated,
+      address.skeletonContourId ?? segment.skeletonContourId,
+      address.skeletonPointId,
+      address.side,
+      address.role
+    )
+  );
+  if (points.some((point) => !point)) {
+    return null;
+  }
+  const basePoints = points.map((point) => ({ x: point.x, y: point.y }));
+  const seed = collapseSeedDelta(basePoints, segment);
+  return seed ? { points: basePoints, seed, marked } : null;
+}
+
+// How far down the axis the segment already sits, as a drag distance from the
+// released base. The gizmo moves both tensions by one shared increment, so the
+// increment is read off whichever handle is still off its point, and off the
+// longer one where both are down.
+function collapseSeedDelta(basePoints, segment) {
+  const handleAxes = generatedSegmentHandleAxes(segment.provenance);
+  const axis = calculateCurvatureGizmoAxis(basePoints, handleAxes);
+  const scale = calculateCurvatureDragScale(basePoints, handleAxes);
+  if (!axis || !scale) {
+    return null;
+  }
+  // The drawn handles read against the BASE's units, because the drag holds its
+  // units fixed from the geometry it started on.
+  const drawn = segment.points;
+  const drops = [
+    distance(drawn[0], drawn[1]) / scale.units[0] - scale.tensions[0],
+    distance(drawn[3], drawn[2]) / scale.units[1] - scale.tensions[1],
+  ];
+  // One shared increment took both handles down, and the deeper drop is the one
+  // that still shows all of it: the shallower handle stopped at its point and
+  // has been reporting zero ever since.
+  const increment = Math.min(...drops);
+  const distanceAlongAxis = (increment * (scale.units[0] + scale.units[1])) / 2;
+  return { x: axis.x * distanceAlongAxis, y: axis.y * distanceAlongAxis };
+}
+
+function findSkeletonPointById(skeletonData, contourId, pointId) {
+  for (const contour of skeletonData?.contours || []) {
+    if (contourId !== undefined && contour.id !== contourId) {
+      continue;
+    }
+    const point = contour.points?.find((entry) => entry.id === pointId);
+    if (point) {
+      return point;
+    }
+  }
+  return null;
+}
+
 export async function handleGeneratedTunniDrag({
   sceneController,
   eventStream,
@@ -394,10 +509,30 @@ export async function handleGeneratedTunniDrag({
     return;
   }
   const segment = gizmoHit.segment;
-  const originalPoints = segment.points.map((point) => ({ x: point.x, y: point.y }));
   const isCurvature = gizmoHit.type === "generated-curvature";
-  const originalTunniPoint = calculateTunniPoint(originalPoints);
-  if (!originalTunniPoint) {
+  // A segment the gizmo flattened is dragged against the shape it flattened,
+  // and the drag is seeded with the distance that already separates them.
+  const collapsed = isCurvature
+    ? collapsedSegmentBase(
+        getSkeletonData(
+          positionedGlyph.varGlyph?.glyph?.layers?.[positionedGlyph.glyph?.layerName]
+            ?.glyph || positionedGlyph.glyph
+        ),
+        segment
+      )
+    : null;
+  const originalPoints =
+    collapsed?.points || segment.points.map((point) => ({ x: point.x, y: point.y }));
+  // The crossing the whole control is built on. For the curvature gizmo a
+  // collapsed handle contributes its published axis rather than a line it cannot
+  // draw — without that a beveled segment refused the drag before it started.
+  const hasCrossing = isCurvature
+    ? !!calculateCurvatureGizmoAxis(
+        originalPoints,
+        generatedSegmentHandleAxes(segment.provenance)
+      )
+    : !!calculateTunniPoint(originalPoints);
+  if (!hasCrossing) {
     return;
   }
 
@@ -475,16 +610,29 @@ export async function handleGeneratedTunniDrag({
         continue;
       }
       const currentPoint = sceneController.localPoint(event);
+      // The seed is where the segment already sits on the axis, measured from
+      // the released base. Zero for every drag that starts on a segment the
+      // gizmo has not flattened.
       const delta = {
-        x: currentPoint.x - positionedGlyph.x - startGlyphPoint.x,
-        y: currentPoint.y - positionedGlyph.y - startGlyphPoint.y,
+        x:
+          currentPoint.x -
+          positionedGlyph.x -
+          startGlyphPoint.x +
+          (collapsed?.seed.x ?? 0),
+        y:
+          currentPoint.y -
+          positionedGlyph.y -
+          startGlyphPoint.y +
+          (collapsed?.seed.y ?? 0),
       };
       const round = sceneController.sceneSettings?.gridSnapEnabled
         ? Math.round
         : (value) => value;
 
       const writes = isCurvature
-        ? generatedCurvatureWrites(originalPoints, segment, delta)
+        ? generatedCurvatureWrites(originalPoints, segment, delta, {
+            fromBase: !!collapsed,
+          })
         : generatedOnCurveWrites(originalPoints, segment, delta);
       if (!writes) {
         continue;
@@ -513,6 +661,19 @@ export async function handleGeneratedTunniDrag({
               // wants from the geometry it grabbed, and every mousemove restates
               // it against the same original. Accumulating it would compound.
               setSkeletonSegmentCurvature(point, original.side, write.pinnedTension);
+            } else if (write.offsetAbsolute && original.offset) {
+              const collapsed = !!(write.offsetAbsolute.x || write.offsetAbsolute.y);
+              setSkeletonHandleOffset(
+                point,
+                original.side,
+                original.role,
+                {
+                  ...write.offsetAbsolute,
+                  detached: original.offset.detached,
+                  collapsedByCurvature: collapsed,
+                },
+                { round }
+              );
             } else if (write.release && original.offset) {
               // Only what this gizmo put down. An unmarked offset is the
               // designer's own placement and is not the gizmo's to undo.
@@ -771,7 +932,7 @@ async function applyGeneratedSegmentWrites(
 
 // Curvature: one pin on the skeleton segment's start point, not two handle
 // displacements. The gizmo sets a number and the generator reproduces it.
-function generatedCurvatureWrites(originalPoints, segment, delta) {
+function generatedCurvatureWrites(originalPoints, segment, delta, { fromBase } = {}) {
   const edit = calculateGeneratedCurvatureEdits({
     segmentPoints: originalPoints,
     provenance: segment.provenance,
@@ -789,19 +950,35 @@ function generatedCurvatureWrites(originalPoints, segment, delta) {
       ],
     ];
   }
+  // Below the pin's floor the drag keeps going on the one handle still off its
+  // point, and that part travels as a displacement — the pin cannot say it,
+  // because its number reads zero for every length the survivor has left. It is
+  // marked as the gizmo's own, so a later drag can release it and leave a handle
+  // the designer collapsed by hand alone.
+  const tail = new Map(
+    edit.collapse.map((entry) => [entry.segmentPointIndex, entry.offsetDelta])
+  );
+  if (fromBase) {
+    // The drag is measured from the released base, so its answer for each handle
+    // is the WHOLE displacement, not an addition to the one on file. Both
+    // handles are written every frame, which is what makes the tail shrink to
+    // nothing as the drag rises and take the mark with it.
+    return [
+      [edit.segmentPointIndex, { pinnedTension: edit.tension }],
+      ...[1, 2].map((index) => [
+        index,
+        { offsetAbsolute: tail.get(index) || { x: 0, y: 0 } },
+      ]),
+    ];
+  }
   return [
     [edit.segmentPointIndex, { pinnedTension: edit.tension }],
-    // Below the pin's floor the drag keeps going on the one handle still off
-    // its point, and that part travels as a displacement — the pin cannot say
-    // it, because its number reads zero for every length the survivor has left.
-    // It is marked as the gizmo's own, so the drag back up releases it and
-    // leaves a handle the designer collapsed by hand alone.
     ...edit.collapse.map((entry) => [
       entry.segmentPointIndex,
       { offsetDelta: entry.offsetDelta, collapsedByCurvature: true },
     ]),
-    // Back above the floor: the pin says everything again, so the gizmo's own
-    // displacement goes.
+    // Above the floor the pin describes the segment on its own again, so a
+    // displacement the gizmo left below the floor has nothing left to say.
     ...(edit.releaseCollapse ? [1, 2].map((index) => [index, { release: true }]) : []),
   ];
 }

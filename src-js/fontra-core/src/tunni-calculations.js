@@ -642,21 +642,15 @@ export function calculateCurvatureGizmoAxis(segmentPoints, handleAxes) {
 // because a caller storing only the shared mean cannot describe that tail —
 // the mean reads zero throughout it.
 //
-export function calculateControlPointsFromCurvatureDelta(
-  delta,
-  segmentPoints,
-  {
-    maxTension = 1,
-    axisSegmentPoints = segmentPoints,
-    allowCollapse = false,
-    handleAxes = null,
-    axisHandleAxes = handleAxes,
-  } = {}
-) {
-  const axis = calculateCurvatureGizmoAxis(axisSegmentPoints, axisHandleAxes);
-  if (!axis) {
-    return null;
-  }
+// What the curvature drag measures in: each handle's direction, the unit its
+// tension is a fraction of, its current tension, and the reach behind that unit.
+//
+// Exported because a caller has to be able to INVERT the drag — to ask what
+// distance along the axis maps one segment onto another. The drag from a base
+// out of a bevel needs exactly that, and re-deriving these four numbers beside
+// this function is how two readers start disagreeing about where the gizmo is
+// (R-B).
+export function calculateCurvatureDragScale(segmentPoints, handleAxes = null) {
   const tunniPoint = tangentIntersection(segmentPoints, handleAxes);
   const directions = handleDirections(segmentPoints, handleAxes);
   if (!tunniPoint || !directions[0] || !directions[1]) {
@@ -669,21 +663,52 @@ export function calculateControlPointsFromCurvatureDelta(
   // is negative. Taking the distance there invents a tension out of nothing,
   // and the ceiling built from it can pin the control before it has moved.
   // offset-cubic draws the same line: a reach that is not ahead is no limit.
-  const startReach = signedReach(startPoint, directions[0], tunniPoint);
-  const endReach = signedReach(endPoint, directions[1], tunniPoint);
-
-  const startLength = distance(startPoint, controlPoint1);
-  const endLength = distance(endPoint, controlPoint2);
+  const reaches = [
+    signedReach(startPoint, directions[0], tunniPoint),
+    signedReach(endPoint, directions[1], tunniPoint),
+  ];
+  const lengths = [
+    distance(startPoint, controlPoint1),
+    distance(endPoint, controlPoint2),
+  ];
   // Where there is no reach ahead, fall back to the handle's own length as the
   // unit, so the control keeps a sensible scale instead of dropping out.
-  const startUnit = startReach > CURVATURE_EPSILON ? startReach : startLength;
-  const endUnit = endReach > CURVATURE_EPSILON ? endReach : endLength;
-  if (!(startUnit > CURVATURE_EPSILON) || !(endUnit > CURVATURE_EPSILON)) {
+  const units = reaches.map((reach, index) =>
+    reach > CURVATURE_EPSILON ? reach : lengths[index]
+  );
+  if (units.some((unit) => !(unit > CURVATURE_EPSILON))) {
     return null;
   }
+  return {
+    directions,
+    reaches,
+    units,
+    lengths,
+    tensions: units.map((unit, index) => lengths[index] / unit),
+  };
+}
 
-  const startTension = startLength / startUnit;
-  const endTension = endLength / endUnit;
+export function calculateControlPointsFromCurvatureDelta(
+  delta,
+  segmentPoints,
+  {
+    maxTension = 1,
+    axisSegmentPoints = segmentPoints,
+    allowCollapse = false,
+    handleAxes = null,
+    axisHandleAxes = handleAxes,
+  } = {}
+) {
+  const axis = calculateCurvatureGizmoAxis(axisSegmentPoints, axisHandleAxes);
+  const scale = calculateCurvatureDragScale(segmentPoints, handleAxes);
+  if (!axis || !scale) {
+    return null;
+  }
+  const { directions, units, tensions } = scale;
+  const [startPoint, , , endPoint] = segmentPoints;
+  const [startReach, endReach] = scale.reaches;
+  const [startUnit, endUnit] = units;
+  const [startTension, endTension] = tensions;
 
   // Half the summed reach converts a distance dragged in glyph units into a
   // tension increment: with the two ends alike, each handle tracks the pointer

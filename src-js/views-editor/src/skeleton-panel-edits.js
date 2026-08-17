@@ -16,6 +16,7 @@ import {
   DEFAULT_SERIF_PRESET,
   applySerifPreset,
   clearSkeletonSegmentCurvatureForHandle,
+  findGeneratedOutputPosition,
   findGeneratedPathAddress,
   getSkeletonData,
   getSkeletonHandleOffset,
@@ -1207,28 +1208,6 @@ export async function resetPanelGeneratedHandle(
     await sendIncrementalChange(combined.change);
     return { changes: combined, undoLabel, broadcast: true };
   });
-}
-
-// Position of a generated point in raw generator output (pre-packing), found
-// by side-bearing provenance.
-function findGeneratedOutputPosition(generated, contourId, pointId, side, role) {
-  for (const entry of generated.provenance || []) {
-    if (entry.skeletonContourId !== contourId) {
-      continue;
-    }
-    const pointMap = entry.pointMap || [];
-    for (let i = 0; i < pointMap.length; i++) {
-      const provenance = pointMap[i];
-      if (
-        provenance?.skeletonPointId === pointId &&
-        provenance.side === side &&
-        provenance.role === role
-      ) {
-        return generated.contours[entry.generatedContourIndex]?.points?.[i] || null;
-      }
-    }
-  }
-  return null;
 }
 
 // Compute position-preserving offset conversions for a detach toggle (donor
