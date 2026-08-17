@@ -2950,3 +2950,233 @@ neck hangs off. Three readers had to be told the difference: the segment walk,
 the on-curve gizmo's eligibility, and the editable-target resolver. Provenance
 that names a point is an address, not a claim of ownership, and each reader
 decides for itself what it may do with one.
+
+
+## 40. Five small items around the skeleton editor — features and fixes
+
+Short entries. None of these carried a design of its own.
+
+**Point indices on a skeleton.** The existing point-indices layer reads the
+glyph path, and a skeleton is not in it. A second switchable layer counts the
+skeleton's own points, on-curves and handles alike, from 0 across every skeleton
+contour. Off by default, drawn in the same box and place as the path layer's
+numbers.
+
+**A continued stroke keeps its own width.** The skeleton pen gave every new point
+the model's fallback width, so extending an existing stroke stepped back to that
+width at the next point. An appended point now takes the width of the endpoint it
+extends. The first point of a new contour takes the master default, which until
+this change landed on the contour alone and was never read for geometry.
+
+**A hand may collapse a generated handle to zero.** The one-unit handle floor
+stops the solved handle riding along with the rib end. That is the automatic
+answer's problem, not the designer's. An attached adjustment, a pinned curvature
+and a detached placement may now put a handle exactly on its point, on the
+ordinary path and inside a serif terminal alike. The ceiling is untouched.
+
+The curvature gizmo follows it down. The shared shift bottoms out when the
+shorter handle lands on its point, and the stored mean cannot describe anything
+past that — it reads zero for every length the survivor still has. So the drag
+writes the pin down to that floor and carries the rest as a displacement on the
+one handle still off its point. The generator applies the displacement first and
+the pin after, and a pin of zero leaves an already-collapsed pair alone, so the
+two compose. A pin of zero also renders now. It used to read as no pin at all,
+which threw the last step of the descent away on reload.
+
+**A handle offset stopped climbing past the ceiling.** A stored offset is a
+request, and the clamp on handle length can refuse most of it. The store kept the
+whole request, so a drag that pushed against the ceiling left a value far beyond
+it, and the next drag back moved nothing until it had walked all the way down.
+The generator now publishes the part of each attached offset it honored, and a
+drag starts from that instead of from the raw store.
+
+**The hosted glyph panels draw on first load.** The letterspacer and the skeleton
+defaults live in host elements that enter the DOM only when the glyph info form
+is rebuilt. Their own update runs when the panel is switched on, which on a fresh
+load happens before that form exists, so both drew nothing and had no later event
+to bring them back. They now refresh on the rebuild that re-attaches their host,
+and only on that one: the form is rebuilt on every selection change, and
+redrawing there would replace a control still under the cursor.
+
+## 41. The bulb's ball was tested for, not solved for — fixes
+
+Three fixes on one control, measured on `_external/skeletron.fontra` glyph `d`.
+
+### 1. Problem
+
+Placing the ball trims the outer edge back and sits the ball tangent there, deep
+enough that its forward extreme lands on the terminal. The trim was guessed,
+tested against a hard fit predicate, and grown until the predicate passed.
+
+Two faults followed. The accepted trim was the first one that passed, and a trim
+that only just passes leaves the ball almost no depth — 21 units deep against 55
+across, on a ball asked for at 75. Past the predicate the search gave up and
+returned its first guess, reusing a trim distance as a ball radius. Which of the
+two a glyph got turned on a margin of two hundredths of a unit.
+
+Two more faults sat behind it. Where no cut on the terminal delivered the
+requested depth, the search ran to the end of the usable run and took whatever
+sat there, which was no depth at all — on a curved terminal at ball ratio 2 and
+above the ball came out one unit deep and the bulb vanished. And a ball whose
+sideways swell alone already passes the terminal plane has no depth that
+satisfies the pin at any cut, so the terminal fell through to a plain cap.
+
+### 2. Solution
+
+The trim is bisected for. The depth the terminal allows rises as the cut moves
+back and runs away where the edge turns square to the stroke, so the requested
+depth is a root, and the search finds it from the deep end. The ball is the shape
+the settings asked for, and the cut moves to deliver it.
+
+Where the request does not fit, the search carries the deepest ball the run
+allows and falls back to it, refined between the samples either side so the
+answer moves rather than stepping. The two answers meet where the deepest
+available reaches the request.
+
+Where the ball is too wide for any cut, it is narrowed until one cut holds it.
+The bulb stops growing past that width and stays a bulb.
+
+### 3. Result
+
+Sweeping the far skeleton point 40 units in quarter-unit steps, worst single-step
+outline movement 93.94 before, 3.00 after.
+
+On the curved terminal at ball shape 0.25:
+
+| ball ratio | before | after the fallback | after the narrowing |
+| ---------- | ------ | ------------------ | ------------------- |
+| 2.00       | 132.6  | 253.8              | —                   |
+| 2.50       | 158.5  | 239.3              | —                   |
+| 3.00       | 187.9  | 239.7              | 239.3               |
+
+Sweeping ratio 0.5 to 3 in 51 steps, 6 steps drew a plain cap before and 0 draw
+one now.
+
+### 4. Challenges and findings
+
+**A predicate answers whether, and the question was how much.** Every fault here
+comes from testing a guess instead of solving for the number. The fit predicate
+was correct and useless: it could confirm a trim and could not rank two.
+
+**One fault is left and is not this one.** Where the ball grows large enough to
+swallow the whole inner edge, the crossing that anchors the neck flips between
+the terminal and the contour's far end. It drives the remaining jumps under a
+ball ratio or ball shape sweep.
+
+## 42. Two bugs the detached flag exposed — fixes
+
+Both reported on `_external/k.json`, on the third skeleton point's rib.
+
+### 1. Problem
+
+**A handle had a limit it should not have.** With the detached flag on, the
+designer placed the handles where they wanted them. With the flag off, the same
+placement was refused: 32 units asked, 7.77 honored, against 55 units of real
+room.
+
+**The detach toggle changed the shape by itself.** With a curvature set through
+the gizmo, turning the flag on moved a handle 4 units. Turning it off moved it
+back.
+
+### 2. Solution
+
+The first is a bound written in the wrong unit. The ceiling on handle length was
+stored as a multiple of the coordinate scale and capped at 1, so it could never
+pass that scale. Where a short real reach floors the scale and a backward handle
+slide moves the drawn crossing far beyond it, the ceiling refused most of an
+authored offset. A detached handle skips the domain entirely, which is why the
+flag made the difference. The ceiling is now bounded by the drawn crossing and by
+the absolute cap of twice the chord, and not by the scale.
+
+The second is a pin counted twice. Detaching converts the handle's position into
+an absolute placement, and it read that position off the screen — after the
+curvature pin had been applied. The generator then applied the pin again to a
+number that already carried it. Because the pin holds the segment's mean rather
+than either handle, it answered the changed input with a different split. The
+conversion now measures against a regeneration with this side's two segment pins
+cleared, so it stores the construction rather than the screen. Re-attaching
+measures the other way round, against a regeneration without this side's offsets,
+because there both sides of the subtraction carry the pin and have to agree.
+
+### 3. Result
+
+Full suite 1,869 passing, with one existing solver test corrected: it asserted
+the old cap, which is the bug written as an expectation. Entry 38 had already
+recorded that cap as conservative and left it alone.
+
+On the reported file the refused handle now moves one-for-one, and the detach
+toggle is a round trip in both directions.
+
+### 4. Challenges and findings
+
+**The conservative note in entry 38 was the bug.** It was recorded as a
+limitation of the backwards direction and dismissed, because the handle moved,
+which was that report's complaint. It was a wrong unit, and it took a second
+report to be read as one.
+
+**One defect is left.** The detach conversion anchors the offset on the emitted
+on-curve, which carries the on-curve nudge, while the generator anchors a
+detached placement on the un-nudged rib point and adds the handle nudge. The two
+agree only where the two nudges are equal. On the reported file both are 45, so
+the fault is invisible there. Provenance already publishes both vectors.
+
+## 43. The width distribution had three writers and two rules — fixes
+
+Reported on `_external/one.json`, on a third skeleton point with a distribution
+of 100.
+
+### 1. Problem
+
+**A rib drag on canvas overrode the distribution.** Setting the width through the
+panel honored it. Dragging the rib applied the same delta to both ribs, which on
+a 60/0 point answers a drag of 10 with 70/10 — a distribution of 75, where the
+designer set 100.
+
+**The panel would not refresh during its own drag.** Under a canvas drag the
+total, left, right and distribution all followed live. Dragging the total in the
+panel left the other three static until the mouse came off.
+
+### 2. Solution
+
+Preserving the difference between the two sides is not preserving the
+distribution. Preserving the SHARE is. A linked write that names one side now
+states a total through that side's share, which is the panel's total-width write
+reached through one side. Unlinked, the two sides are independent and the write
+states one.
+
+One function carries that rule, and all three entry points go through it: the rib
+gizmo on canvas, the panel's left and right boxes, and the label scrubs on both.
+The same-delta rule survives for exactly one caller, the fixed-rib drag, where it
+is the right statement — there one edge is held while the point follows the
+cursor.
+
+A side holding zero has no share, so it cannot state a total. That rib is pinned
+on the centerline, and the drag refuses. Only the distribution or the total lifts
+it off. This was the designer's own decision when asked.
+
+For the panel: it blocked its own update for the whole duration of a field edit,
+to stop a rebuild replacing the input under the hand. The block is now on the
+rebuild alone. The values-only refresh runs, and it already leaves the active
+field alone.
+
+### 3. Result
+
+Full suite 1,869 passing. Seven new tests: four on the rib executor and three
+direct model tests, covering a linked drag at an asymmetric distribution, a zero
+far side, a refused drag on a zero side, and an unlinked drag.
+
+### 4. Challenges and findings
+
+**A comment claimed the rule the code did not implement.** The shared per-side
+writer said it preserved the distribution and preserved the difference. The
+comment now names the edges, which is what that branch is for.
+
+**The first fix touched the canvas path alone.** The panel was left on the old
+rule, reasoning that changing its per-side meaning was more than the report
+asked. That was wrong — the report asked for the two to agree, and one rule in
+one place is the only way they cannot drift apart again. The designer said so.
+
+**The editor-side halves owe a manual test matrix**, per rail R-G. Type into left
+and right with the sides linked and unlinked, scrub both labels, drag both ribs
+at a distribution of 100, and drag the total in the panel while watching the
+other three fields.
