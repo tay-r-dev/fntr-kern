@@ -15,6 +15,7 @@ import {
 import {
   DEFAULT_SERIF_PRESET,
   applySerifPreset,
+  clearSkeletonSegmentCurvatureForHandle,
   findGeneratedPathAddress,
   getSkeletonData,
   getSkeletonHandleOffset,
@@ -1239,6 +1240,16 @@ function findGeneratedOutputPosition(generated, contourId, pointId, side, role) 
 // space (offset = handle − base handle, where the base comes from
 // regenerating with that side's offsets cleared). Either way the handle must
 // not move on canvas when the checkbox is toggled.
+//
+// Both directions therefore measure against a regeneration, and neither may
+// measure against the position on screen. A stored offset is what the pipeline
+// starts from, and the curvature pin runs after it. So the number to store is
+// the CONSTRUCTION position: where the handle sits with this side's pins
+// cleared. Storing the drawn position instead hands the pin its own output as
+// an input. The pin holds the segment's mean rather than either handle, so it
+// answers a changed input with a different split — 4 units on k.json's third
+// point — and the toggle back reverts it, which is what makes it read as the
+// checkbox moving the shape on its own.
 export function computeRibDetachConversions(
   layerGlyph,
   referenceSkeletonData,
@@ -1288,47 +1299,53 @@ export function computeRibDetachConversions(
       continue;
     }
 
-    let basePositions = null;
-    if (!detached) {
-      // Re-attaching: base = regeneration WITHOUT this side's offsets.
-      const scratch = structuredClone(skeletonData);
-      const scratchPoint =
-        scratch.contours[resolved.contourIndex]?.points?.[resolved.pointIndex];
-      if (!scratchPoint) {
-        continue;
+    const scratch = structuredClone(skeletonData);
+    const scratchContour = scratch.contours[resolved.contourIndex];
+    const scratchPoint = scratchContour?.points?.[resolved.pointIndex];
+    if (!scratchPoint) {
+      continue;
+    }
+    if (detached) {
+      // Detaching: measure the construction, so the pin is not counted twice.
+      for (const role of ["in", "out"]) {
+        clearSkeletonSegmentCurvatureForHandle(
+          scratchContour,
+          scratchPoint,
+          address.side,
+          role
+        );
       }
+    } else {
+      // Re-attaching: base = regeneration WITHOUT this side's offsets.
       scratchPoint.handleOffsets = {
         ...scratchPoint.handleOffsets,
         [`${address.side}In`]: { x: 0, y: 0, detached: false },
         [`${address.side}Out`]: { x: 0, y: 0, detached: false },
       };
-      const generated = generateFromSkeleton(scratch);
-      basePositions = {
-        in: findGeneratedOutputPosition(
-          generated,
-          resolved.contour.id,
-          resolved.point.id,
-          address.side,
-          "in"
-        ),
-        out: findGeneratedOutputPosition(
-          generated,
-          resolved.contour.id,
-          resolved.point.id,
-          address.side,
-          "out"
-        ),
-      };
     }
+    const generated = generateFromSkeleton(scratch);
+    const generatedPosition = (role) =>
+      findGeneratedOutputPosition(
+        generated,
+        resolved.contour.id,
+        resolved.point.id,
+        address.side,
+        role
+      );
+    const scratchPositions = {
+      in: generatedPosition("in"),
+      out: generatedPosition("out"),
+      onCurve: generatedPosition("onCurve"),
+    };
 
     const offsets = {};
     for (const role of ["in", "out"]) {
-      const handlePos = positions[role];
-      if (!handlePos) {
-        continue;
-      }
-      const base = detached ? positions.onCurve : basePositions?.[role];
-      if (!base) {
+      // Detaching reads both the handle and its anchor off the pin-cleared
+      // regeneration. Re-attaching reads the handle on screen, because its base
+      // carries the pin too and the two sides of that subtraction have to agree.
+      const handlePos = detached ? scratchPositions[role] : positions[role];
+      const base = detached ? scratchPositions.onCurve : scratchPositions[role];
+      if (!handlePos || !base) {
         continue;
       }
       offsets[role] = {
