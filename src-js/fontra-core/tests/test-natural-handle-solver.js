@@ -451,10 +451,10 @@ describe("natural-handle-solver: fixed perpendicular fit", () => {
     const slack = buildHandleDomain(start, end, startDirection, endDirection, {
       endNudge: -8,
     });
-    expect(slack.maxEndTension * slack.endReach).to.be.closeTo(
-      Math.min(realEndReach + 8, slack.endReach),
-      1e-9
-    );
+    // The room a backward slide gives back is the whole of it. The reach is a
+    // coordinate scale, so stopping at it would refuse a length the drawn curve
+    // has room for, which is a handle that will not move.
+    expect(slack.maxEndTension * slack.endReach).to.be.closeTo(realEndReach + 8, 1e-9);
     expect(slack.maxEndTension).to.be.greaterThan(plain.maxEndTension);
 
     // Slid forwards: it eats the room instead, which is what stops an untouched
@@ -476,6 +476,22 @@ describe("natural-handle-solver: fixed perpendicular fit", () => {
       tight.maxStartTension * tight.startReach - 20,
       1e-9
     );
+  });
+
+  // The absolute cap on handle length stays where it was. A backward slide gives
+  // room back up to that cap and no further, so the one conservatism the domain
+  // states on purpose survives.
+  it("holds a backward slide to the absolute reach cap", () => {
+    const start = { x: 0, y: 0 };
+    const end = { x: 10, y: 0.5 };
+    const startDirection = { x: 1, y: 0 };
+    const endDirection = unit({ x: -0.1, y: -0.5 });
+    const chordLength = Math.hypot(10, 0.5);
+    const domain = buildHandleDomain(start, end, startDirection, endDirection, {
+      endNudge: -1000,
+    });
+
+    expect(domain.maxEndTension * domain.endReach).to.be.closeTo(2 * chordLength, 1e-9);
   });
 
   it("recovers a circular offset without rematching samples", () => {

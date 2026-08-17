@@ -185,12 +185,19 @@ export function buildHandleDomain(
     // generator solves. `maxTension` is how far the constructed handle may go
     // before the DRAWN one crosses, which is the same thing only when emission
     // slides nothing.
+    //
+    // The ceiling is a length, bounded by the drawn crossing and by the absolute
+    // cap. It is NOT bounded by the reach: the reach is a coordinate scale, and
+    // where a short real reach floors it, a backward slide leaves the drawn
+    // crossing far beyond that scale. Capping the ceiling at the scale there
+    // refused most of an authored offset while a detached handle, which skips
+    // the domain, placed the same handle without complaint.
     const intersection = Math.min(1, realReach / reach);
     const drawnReach = realReach - nudge;
     return {
       reach,
       intersection,
-      maxTension: drawnReach > EPSILON ? Math.min(1, drawnReach / reach) : 0,
+      maxTension: drawnReach > EPSILON ? Math.min(cap, drawnReach) / reach : 0,
     };
   };
   const start = projectedDomain(startPoint, startDirection, startNudge);
