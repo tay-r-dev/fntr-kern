@@ -2175,6 +2175,46 @@ export function setSkeletonHandleDetached(point, side, detached) {
   point.handleOffsets = handleOffsets;
 }
 
+// One rib end states a new half-width, and the point's distribution decides what
+// that says about the other side. This is the panel's total-width write reached
+// through one side instead of through the total, so a canvas drag and a typed
+// total agree about what the link flag preserves.
+//
+// Linked preserves the SHARE, not the difference. Moving both sides by one delta
+// preserves left − right, which is a different statement: on a 60/0 point it
+// answers a drag of 10 with 70/10, and the distribution the designer set has
+// gone from 100 to 75.
+//
+// A side holding zero has no share, so it cannot state a total: zero times any
+// total is zero. That rib is pinned on the centerline, and only the distribution
+// or the per-side number lifts it off. Returns false there, so the caller can
+// leave the width alone and still apply the drag's nudge.
+export function setSkeletonPointWidthFromSide(
+  point,
+  defaultWidth,
+  side,
+  halfWidth,
+  { round = Math.round } = {}
+) {
+  assertSkeletonRibSide(side);
+  const width = normalizeWidth(point?.width);
+  const otherSide = side === "left" ? "right" : "left";
+  const total = width.left + width.right;
+  const share = total > 0 ? width[side] / total : 0.5;
+  if (!(share > 0)) {
+    return false;
+  }
+  // The dragged side lands exactly where the cursor put it, and the other side
+  // is derived from the share. The total-width writer rounds the other way round,
+  // because there the total is what was asked for.
+  const value = Math.max(0, round(halfWidth));
+  width[side] = value;
+  width[otherSide] = Math.max(0, round((value * (1 - share)) / share));
+  point.width = width;
+  clearCollapsedRibSides(point);
+  return true;
+}
+
 export function setSkeletonPointTotalWidth(
   point,
   defaultWidth,
@@ -2924,8 +2964,16 @@ export function applySkeletonRibExecutorResult(address, result) {
   const { contour, point, side, defaultWidth } = address;
   if (contour.singleSided === "left" || contour.singleSided === "right") {
     setSingleSidedTotalWidth(point, defaultWidth, side, result.halfWidth);
+  } else if (point?.width?.linked !== false) {
+    // Linked: the drag states a total through this side's share, so the two ribs
+    // move in proportion and the distribution survives. A zero-share side is
+    // pinned and refuses, and the nudge below still applies.
+    setSkeletonPointWidthFromSide(point, defaultWidth, side, result.halfWidth);
   } else {
-    setSkeletonPointSideWidth(point, defaultWidth, side, result.halfWidth);
+    // Unlinked: the two sides are independent numbers, so the drag states one.
+    setSkeletonPointSideWidth(point, defaultWidth, side, result.halfWidth, {
+      linked: false,
+    });
   }
   if (!isSkeletonSideLocked(point, side)) {
     setSkeletonPointSideNudge(point, side, result.nudge);

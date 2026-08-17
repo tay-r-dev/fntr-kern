@@ -181,6 +181,66 @@ describe("skeleton rib executor", () => {
     expect(address.point.nudge.right).to.equal(-5);
     expect(address.point.width.right).to.equal(40);
   });
+
+  // A linked rib drag states a total through its own side's share, the way the
+  // panel's total-width field does. Moving both sides by one delta preserves
+  // left − right instead, which is a different statement and loses the
+  // distribution the designer set.
+  it("a linked rib drag keeps the width distribution", () => {
+    const address = makeAddress("left", {
+      width: { left: 60, right: 20, linked: true },
+    });
+    const executor = createSkeletonRibExecutor(address, "rib-default");
+
+    const result = executor.applyDelta(makeDelta(address, "left", 10, 0));
+    applySkeletonRibExecutorResult(address, result);
+
+    // 70 on a 75/25 split: the far side follows in proportion, not by ten.
+    expect(address.point.width.left).to.equal(70);
+    expect(address.point.width.right).to.equal(23);
+  });
+
+  it("a linked rib drag leaves a zero far side at zero", () => {
+    const address = makeAddress("left", {
+      width: { left: 60, right: 0, linked: true },
+    });
+    const executor = createSkeletonRibExecutor(address, "rib-default");
+
+    const result = executor.applyDelta(makeDelta(address, "left", 10, 0));
+    applySkeletonRibExecutorResult(address, result);
+
+    expect(address.point.width.left).to.equal(70);
+    expect(address.point.width.right).to.equal(0);
+  });
+
+  // A side holding zero has no share, so it cannot state a total. That rib is
+  // pinned on the centerline until the distribution or the per-side number
+  // lifts it off.
+  it("a rib with no width of its own refuses a linked drag", () => {
+    const address = makeAddress("right", {
+      width: { left: 60, right: 0, linked: true },
+    });
+    const executor = createSkeletonRibExecutor(address, "rib-default");
+
+    const result = executor.applyDelta(makeDelta(address, "right", 10, 0));
+    applySkeletonRibExecutorResult(address, result);
+
+    expect(address.point.width.right).to.equal(0);
+    expect(address.point.width.left).to.equal(60);
+  });
+
+  it("an unlinked rib drag still moves one side alone", () => {
+    const address = makeAddress("left", {
+      width: { left: 60, right: 20, linked: false },
+    });
+    const executor = createSkeletonRibExecutor(address, "rib-default");
+
+    const result = executor.applyDelta(makeDelta(address, "left", 10, 0));
+    applySkeletonRibExecutorResult(address, result);
+
+    expect(address.point.width.left).to.equal(70);
+    expect(address.point.width.right).to.equal(20);
+  });
 });
 
 describe("editable generated on-curve drag modes", () => {
