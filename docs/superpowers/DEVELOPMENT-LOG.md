@@ -2951,7 +2951,6 @@ the on-curve gizmo's eligibility, and the editable-target resolver. Provenance
 that names a point is an address, not a claim of ownership, and each reader
 decides for itself what it may do with one.
 
-
 ## 40. Five small items around the skeleton editor — features and fixes
 
 Short entries. None of these carried a design of its own.
@@ -3180,3 +3179,105 @@ one place is the only way they cannot drift apart again. The designer said so.
 and right with the sides linked and unlinked, scrub both labels, drag both ribs
 at a distribution of 100, and drag the total in the panel while watching the
 other three fields.
+
+## 44. Harmonize answered the wrong question — feature
+
+Reported on `_external/skeletron.fontra` glyph `d`, at the joint between the
+two cubic segments.
+
+### 1. Problem
+
+Harmonize was run and the curvature comb kept a deep notch at the joint. The
+report said harmonized.
+
+Two separate things, and the visible one was not a step in curvature.
+
+The two curvature values agreed to 1.6 per cent, 0.005853 arriving against
+0.005949 leaving. The radius differed by 2.77 units on 170.
+
+What did not agree was the rate of change of curvature. It arrived falling at
+0.0000404 per unit of arc and left rising at 0.0000497. The sign reverses, so
+curvature has a local minimum exactly at the joint. Measured along the two
+segments, the comb ran 0.009940 at the middle of the incoming one, 0.005853 at
+the joint and 0.008408 at the middle of the outgoing one. The joint sat 41 per
+cent below the hump behind it.
+
+Matching two curvature values is G2, and G2 was already satisfied. The notch is
+a G3 defect and no setting of the existing operation addressed it.
+
+### 2. Solution
+
+A second construction, tried first, with the old one as its fallback.
+
+**G3 by the two inner handles.** The joint and both outer handles hold still.
+Equal curvature and equal rate are two equations, and the two inner handle
+lengths are two unknowns, so the answer is exact and unique. There is nothing
+to iterate and nothing to choose between. It is Linus Romer's construction from
+`_external/curvatura`, section 6.5 of its documentation, in the arc-length form
+described below.
+
+**The cascade.** G3 runs at every joint. Where it has no admissible answer the
+joint drops to G2, which starts from the geometry as it stands. Two things make
+an answer inadmissible. An inflection, where the construction asks for the
+square root of a negative product. And an answer outside the two limits the G2
+path already obeys, which are the cusp floor on the handle that shrinks and the
+tangent intersection on the handle that grows.
+
+**The repair slide**, between the two rungs and optional. Where holding the
+joint still leaves no admissible answer, the joint slides along its tangent by
+the smallest distance that produces one, and the two inner handles take the
+rest. The search runs outward from zero, so a joint that does not need it does
+not move. Its range is the far on-curve of either segment, measured along the
+tangent, with each direction bounded separately.
+
+**Two checkboxes replace the bias slider.** One picks the target and so the
+cascade. The other says whether the joint itself may move. Under G2 that is the
+whole of the old bias, and under G3 it turns the repair slide on. The values
+between the slider's two ends were never asked for.
+
+### 3. Result
+
+On the reported glyph, with the whole-unit rounding the editor applies:
+
+| run          | joint     | handles             | curvature step | rate step |
+| ------------ | --------- | ------------------- | -------------- | --------- |
+| as drawn     | 399, 598  | 412, 518 / 388, 670 | 9.65e-5        | 9.01e-5   |
+| G2           | unchanged | unchanged           | 9.65e-5        | 9.01e-5   |
+| G3           | unchanged | 410, 530 / 389, 659 | 5.91e-5        | 1.17e-6   |
+| G3 and slide | unchanged | 410, 530 / 389, 659 | 5.91e-5        | 1.17e-6   |
+
+The rate step falls by a factor of 77. The joint does not move, because this
+one never needed the slide. Full suite 1,888 passing.
+
+The editor side owes a manual matrix, per rail R-G. Harmonize a joint with each
+of the four combinations of the two checks. Check that the G3 runs leave the
+on-curve where it is. Check that an inflected joint still reports harmonized and
+names G2 in the hover detail.
+
+### 4. Challenges and findings
+
+**The donor matches the rate per unit of parameter, not per unit of arc.** The
+two segments run through the joint at different speeds, so equal rates in the
+parameter leave a rate mismatch equal to the ratio of the two, which was 10 per
+cent on the reported glyph. The curvature comb is drawn against arc length, and
+arc length is what a designer reads. Solving for the arc-length rate is the same
+shape of closed form, one square root and one division, and the two answers are
+0.03 units of handle apart. The arc form is exact to machine precision on both
+conditions.
+
+**The first three answers about this joint were about a different geometry each
+time.** The glyph was redrawn between the report and each measurement, and the
+same joint was an inflection, then already harmonic to 1.5 per cent, then 38 per
+cent out. Read the file at the moment of the question, and say which state the
+numbers came from.
+
+**G2 reports harmonized while writing nothing.** The correction on the reported
+joint was 0.46 units, and whole-unit rounding discards all of it. That is a real
+defect and it is not fixed here. A correction under half a unit should report
+that it is below the grid.
+
+**The slide's range cannot be bounded by the inner handles.** They are what the
+construction replaces, so their present lengths say nothing about where the
+joint may go. Bounding by them stopped the search 25 units short of the answer
+on the overshoot fixture, where the first admissible slide is about 45 units and
+the shorter inner handle is 20.
