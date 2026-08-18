@@ -322,34 +322,18 @@ export function computeSpeedPunkSamples(path, params = {}) {
     averageCurveLength = curveCount > 0 ? totalLength / curveCount : 0;
   }
 
+  // Sample every curve segment once, and keep the samples. The fringe height
+  // is scaled by the tallest curvature anywhere on the glyph, so the whole
+  // glyph has to be measured before any of it can be drawn.
+  //
+  // The scale is glyph-wide because the comb is read across joints. Scaling
+  // each segment by its own tallest point draws one curvature at two different
+  // lengths wherever two segments peak apart, which puts a step in the fringe
+  // where the curve has none. That is the one reading the comb exists for.
+  const segments = [];
+  let glyphPeakAbs = 0;
   let globalMinAbs = Infinity;
   let globalMaxAbs = -Infinity;
-  if (useGlobalNormalization) {
-    forEachCurveSegment(path, (kind, pts) => {
-      const steps = adaptToCurveLength
-        ? adjustStepsForCurve(
-            stepsPerSegment,
-            estimateCurveLength(...pts),
-            averageCurveLength
-          )
-        : stepsPerSegment;
-      const samples =
-        kind === "cubic"
-          ? calculateCurvatureForSegment(...pts, steps)
-          : calculateCurvatureForQuadraticSegment(...pts, steps);
-      for (const sample of samples) {
-        const absK = Math.abs(sample.curvature);
-        globalMinAbs = Math.min(globalMinAbs, absK);
-        globalMaxAbs = Math.max(globalMaxAbs, absK);
-      }
-    });
-    if (globalMinAbs === Infinity) {
-      globalMinAbs = 0;
-      globalMaxAbs = 1;
-    }
-  }
-
-  const quads = [];
   forEachCurveSegment(path, (kind, pts) => {
     const steps = adaptToCurveLength
       ? adjustStepsForCurve(
@@ -362,13 +346,28 @@ export function computeSpeedPunkSamples(path, params = {}) {
       kind === "cubic"
         ? calculateCurvatureForSegment(...pts, steps)
         : calculateCurvatureForQuadraticSegment(...pts, steps);
+    segments.push({ kind, pts, samples });
+    for (const sample of samples) {
+      const absK = Math.abs(sample.curvature);
+      glyphPeakAbs = Math.max(glyphPeakAbs, absK);
+      globalMinAbs = Math.min(globalMinAbs, absK);
+      globalMaxAbs = Math.max(globalMaxAbs, absK);
+    }
+  });
+  if (globalMinAbs === Infinity) {
+    globalMinAbs = 0;
+    globalMaxAbs = 1;
+  }
+  const heightScale = glyphPeakAbs > 1e-12 ? glyphPeakAbs : 1;
 
+  const quads = [];
+  for (const { kind, pts, samples } of segments) {
+    // Colour keeps its own switch. It says where a segment sits in a range,
+    // which is a per-segment question when the switch is off, and it never
+    // stood in for the height.
     const absVals = samples.map((s) => Math.abs(s.curvature));
-    const minAbsSegment = Math.min(...absVals);
-    const maxAbsSegment = Math.max(...absVals);
-    const segmentPeakAbsCurvature = maxAbsSegment > 1e-12 ? maxAbsSegment : 1;
-    const minAbs = useGlobalNormalization ? globalMinAbs : minAbsSegment;
-    const maxAbs = useGlobalNormalization ? globalMaxAbs : maxAbsSegment;
+    const minAbs = useGlobalNormalization ? globalMinAbs : Math.min(...absVals);
+    const maxAbs = useGlobalNormalization ? globalMaxAbs : Math.max(...absVals);
 
     const onCurve = [];
     const offCurve = [];
@@ -387,8 +386,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
       nx /= mag;
       ny /= mag;
 
-      const rawNormalizedHeight =
-        Math.abs(samples[s].curvature) / segmentPeakAbsCurvature;
+      const rawNormalizedHeight = Math.abs(samples[s].curvature) / heightScale;
       const normalizedHeight = Math.pow(
         Math.max(0, Math.min(1, rawNormalizedHeight)),
         sharpness
@@ -410,7 +408,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
         color: curvatureToColor(Math.abs(a.k), minAbs, maxAbs, colorStops),
       });
     }
-  });
+  }
 
   return quads;
 }
