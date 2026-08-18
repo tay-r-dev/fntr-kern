@@ -3320,6 +3320,10 @@ The fringe height divides by the tallest curvature anywhere on the glyph. One
 scale for the whole outline, so equal curvature draws equal fringe wherever it
 sits, and a step in the fringe means a step in the curve.
 
+That was the first half. The glyph-wide peak is still taken from the drawing, so
+redrawing any one segment rescaled every fringe on the glyph. The scale now comes
+from a setting instead. See entry 46.
+
 Colour keeps its own per-segment switch. Colour says where a segment sits in a
 range, which is a per-segment question when the switch is off. It never stood in
 for the height.
@@ -3367,3 +3371,74 @@ very tight corner takes the whole height and squashes every other fringe on the
 glyph. That is honest, since the corner really is that much tighter. Where it
 gets in the way, the per-segment mode would have to come back as a switch that
 is off by default.
+
+## 46. The comb's scale came off the drawing — rework
+
+Reported straight after entry 45, and it is the other half of the same fault.
+
+### 1. Problem
+
+Entry 45 moved the fringe's scale from the segment's own tallest curvature to
+the glyph's. That made one curvature draw one length across a joint, which was
+the reading being asked for.
+
+The scale still came from the drawing. So redrawing any one segment moved the
+glyph's tallest curvature, and every fringe on the glyph changed length at once.
+The comb breathed under the cursor, and no fringe could be compared against what
+it measured a moment earlier.
+
+It also meant two glyphs were never drawn to the same scale, so a comb on the
+**o** could not be read against a comb on the **n**.
+
+### 2. Solution
+
+The fringe is the curvature times a stated reference tightness. Nothing on the
+outline feeds it.
+
+Four numbers, all in the SpeedPunk accordion:
+
+- **Peak height** is the length drawn where the curve is as tight as the
+  reference radius. It kept its name and its meaning changed from "the tallest
+  fringe on this glyph" to "the fringe at this tightness".
+- **Full height at radius** is that reference, in font units. It defaults to
+  100, and on a 1000 unit em that puts an ordinary bowl in the middle of the
+  range.
+- **Shortest** floors the drawn length. It defaults to zero, so a straight
+  segment still draws nothing.
+- **Longest** caps it. A cusp has no bounded curvature, so without a cap its
+  fringe runs off the screen. It defaults to three times the peak height.
+
+Sharpness keeps its meaning and applies to the same ratio.
+
+### 3. Result
+
+On the reported glyph, with the full height at radius 100, the fringes run 5.91
+to 32.43 units. At the joint they are 7.20 and 9.52, a step of 2.32, which is
+the 23 per cent the two curvatures are apart. After harmonize they are 8.30 and
+8.44, a step of 0.14.
+
+Full suite 1,893 passing. Five new tests: a circle of the reference radius draws
+the full height, half the radius draws twice the length, redrawing one shape does
+not change the fringe on another, the two caps hold, and a straight draws nothing.
+
+The editor side owes a manual matrix, per rail R-G. Change each of the four
+numbers and check the comb answers. Drag a point and check that the fringes on
+the other side of the glyph hold still.
+
+### 4. Challenges and findings
+
+**A normalized readout cannot be read across anything.** The first rule
+normalized per segment and could not compare two segments. The second normalized
+per glyph and could not compare two moments in time, or two glyphs. Each fix
+moved the boundary of what the readout could answer without removing the
+boundary. Only a scale from outside the drawing has none.
+
+**The cost that was accepted in entry 45 is gone with it.** A single tight corner
+no longer squashes every other fringe on the glyph, because no fringe is measured
+against that corner any more. The cap does the job the corner used to do, and it
+sits where the designer can see it.
+
+**A cubic circle is not a circle, and the tests had to say so.** Its curvature
+runs about two per cent either side of the true value, which is what the
+tolerances in the new tests are. A tighter tolerance failed on geometry that was
+correct.
