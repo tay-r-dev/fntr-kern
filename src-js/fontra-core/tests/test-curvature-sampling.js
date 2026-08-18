@@ -112,83 +112,98 @@ describe("computeSpeedPunkSamples", () => {
   });
 });
 
-// --- one height scale for the whole glyph -----------------------------------
+// --- a fixed scale, taken from settings and not from the drawing ------------
 //
-// The fringe used to be scaled to its own segment's tallest point, so the same
-// curvature drew a different length on either side of a joint whenever the two
-// segments peaked at different heights. A comb that reports a step where the
-// curve has none cannot be used to judge continuity, which is the only thing it
-// is for.
-describe("curvature comb: one height scale for the whole glyph", () => {
-  // Two cubics meeting at (100, 0). The first bulges much harder in its middle
-  // than the second, so the two segments peak far apart.
-  const JOINT = [
-    { x: 0, y: 0 },
-    { x: 20, y: 90, type: "cubic" },
-    { x: 80, y: 40, type: "cubic" },
-    { x: 100, y: 0, smooth: true },
-    { x: 120, y: -40, type: "cubic" },
-    { x: 180, y: -55, type: "cubic" },
-    { x: 200, y: 0 },
-  ];
-
-  function unequalPeaks() {
-    return VarPackedPath.fromUnpackedContours([
-      { points: JOINT.map((p) => ({ ...p })), isClosed: false },
-    ]);
+// The fringe is scaled by a stated curve tightness, so nothing on the glyph
+// feeds the scale. Two earlier rules both took it from the outline: the segment
+// its own tallest point, which drew one curvature at two lengths across a
+// joint, and then the glyph its tallest point, which rescaled every fringe on
+// the glyph whenever any one segment was redrawn.
+describe("curvature comb: a fixed scale", () => {
+  // A circle of radius r has curvature 1/r everywhere, so every fringe on it is
+  // the same length and that length is known in advance.
+  function circleContour(r) {
+    const k = 0.5522847498 * r;
+    return {
+      points: [
+        { x: r, y: 0, smooth: true },
+        { x: r, y: k, type: "cubic" },
+        { x: k, y: r, type: "cubic" },
+        { x: 0, y: r, smooth: true },
+        { x: -k, y: r, type: "cubic" },
+        { x: -r, y: k, type: "cubic" },
+        { x: -r, y: 0, smooth: true },
+        { x: -r, y: -k, type: "cubic" },
+        { x: -k, y: -r, type: "cubic" },
+        { x: 0, y: -r, smooth: true },
+        { x: k, y: -r, type: "cubic" },
+        { x: r, y: -k, type: "cubic" },
+      ],
+      isClosed: true,
+    };
   }
 
-  // Fringe length is the distance from each outline point to its own outer
-  // point, which is what the drawing puts on screen.
-  function fringeLengths(path, peakHeightGlyphUnits = 24) {
+  function circle(r) {
+    return VarPackedPath.fromUnpackedContours([circleContour(r)]);
+  }
+
+  function fringeLengths(path, params = {}) {
     return computeSpeedPunkSamples(path, {
-      peakHeightGlyphUnits,
+      peakHeightGlyphUnits: 24,
+      referenceRadius: 100,
       illustrationPosition: "outsideOfCurve",
+      ...params,
     }).map(({ points: [onCurve, , , outer] }) =>
       Math.hypot(outer[0] - onCurve[0], outer[1] - onCurve[1])
     );
   }
 
-  function segmentPeakCurvature(points) {
-    const quad = points.map(({ x, y }) => [x, y]);
-    return Math.max(
-      ...calculateCurvatureForSegment(...quad, 40).map((s) => Math.abs(s.curvature))
-    );
-  }
-
-  it("scales every fringe by the same curvature, whichever segment it is on", () => {
-    const first = segmentPeakCurvature(JOINT.slice(0, 4));
-    const second = segmentPeakCurvature(JOINT.slice(3));
-    // The fixture is only meaningful while the two segments peak apart.
-    expect(Math.max(first, second) / Math.min(first, second)).to.be.greaterThan(1.5);
-
-    const lengths = fringeLengths(unequalPeaks());
-    const half = Math.floor(lengths.length / 2);
-    const drawnFirst = Math.max(...lengths.slice(0, half));
-    const drawnSecond = Math.max(...lengths.slice(half));
-
-    // Each segment's tallest fringe is now in proportion to its own peak
-    // curvature. A per-segment scale would draw both at the full height.
-    expect(drawnFirst / drawnSecond).to.be.closeTo(first / second, 0.05);
+  // A cubic circle is not exactly a circle. Its curvature runs about 2 per cent
+  // either side of the true value, which is what these tolerances are.
+  it("draws the full height where the curve is as tight as the reference", () => {
+    const lengths = fringeLengths(circle(100));
+    expect(Math.max(...lengths)).to.be.closeTo(24, 0.6);
+    expect(Math.min(...lengths)).to.be.closeTo(24, 0.6);
   });
 
-  it("gives the tallest fringe in the glyph the full height", () => {
-    const lengths = fringeLengths(unequalPeaks());
-    expect(Math.max(...lengths)).to.be.closeTo(24, 0.5);
+  it("draws in proportion to curvature", () => {
+    // Half the radius is twice the curvature, so twice the fringe.
+    expect(Math.max(...fringeLengths(circle(50)))).to.be.closeTo(48, 1);
+    // Twice the radius is half the curvature, so half the fringe.
+    expect(Math.max(...fringeLengths(circle(200)))).to.be.closeTo(12, 0.3);
   });
 
-  it("holds that scale when only one segment is redrawn", () => {
-    // Flattening the second segment must not lengthen the first one's fringe.
-    const before = fringeLengths(unequalPeaks());
-    const flattened = JOINT.map((p) => ({ ...p }));
-    flattened[5] = { x: 180, y: -20, type: "cubic" };
-    const after = fringeLengths(
-      VarPackedPath.fromUnpackedContours([{ points: flattened, isClosed: false }])
+  it("does not rescale one shape when another one is redrawn", () => {
+    // Two circles in one glyph. Retightening the second must leave the first
+    // exactly as it was drawn.
+    const together = (second) =>
+      VarPackedPath.fromUnpackedContours([circleContour(100), circleContour(second)]);
+    const before = fringeLengths(together(100)).slice(0, 12);
+    const after = fringeLengths(together(30)).slice(0, 12);
+    expect(after).to.deep.equal(before);
+  });
+
+  it("clamps at the longest and floors at the shortest", () => {
+    const tight = fringeLengths(circle(10), { maxLengthGlyphUnits: 60 });
+    expect(Math.max(...tight)).to.be.closeTo(60, 1e-9);
+    const shallow = fringeLengths(circle(1000), { minLengthGlyphUnits: 5 });
+    expect(Math.min(...shallow)).to.be.closeTo(5, 1e-9);
+  });
+
+  it("leaves the shortest alone by default, so a straight draws nothing", () => {
+    const lengths = fringeLengths(
+      VarPackedPath.fromUnpackedContours([
+        {
+          points: [
+            { x: 0, y: 0 },
+            { x: 100, y: 0, type: "cubic" },
+            { x: 200, y: 0, type: "cubic" },
+            { x: 300, y: 0 },
+          ],
+          isClosed: false,
+        },
+      ])
     );
-    const half = Math.floor(before.length / 2);
-    expect(Math.max(...after.slice(0, half))).to.be.closeTo(
-      Math.max(...before.slice(0, half)),
-      0.5
-    );
+    expect(Math.max(...lengths)).to.be.closeTo(0, 1e-9);
   });
 });

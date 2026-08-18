@@ -1844,6 +1844,9 @@ registerVisualizationLayerDefinition({
     if (!path) return;
 
     const peakHeightGlyphUnits = model.sceneSettings?.speedPunkPeakHeightUpm ?? 24;
+    const referenceRadius = model.sceneSettings?.speedPunkReferenceRadius ?? 100;
+    const minLengthGlyphUnits = model.sceneSettings?.speedPunkMinLength ?? 0;
+    const maxLengthGlyphUnits = model.sceneSettings?.speedPunkMaxLength ?? 72;
     const sharpness = Math.max(0.1, model.sceneSettings?.speedPunkSharpness ?? 1);
     const opacity = Math.max(
       0,
@@ -1852,6 +1855,9 @@ registerVisualizationLayerDefinition({
 
     const quads = computeSpeedPunkSamples(path, {
       peakHeightGlyphUnits,
+      referenceRadius,
+      minLengthGlyphUnits,
+      maxLengthGlyphUnits,
       sharpness,
       illustrationPosition: parameters.illustrationPosition,
       useGlobalNormalization: parameters.globalColorNormalization,

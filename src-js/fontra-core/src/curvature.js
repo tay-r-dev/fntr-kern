@@ -286,6 +286,15 @@ function _segmentKind(t1, t2, t3) {
 
 export function computeSpeedPunkSamples(path, params = {}) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;
+  // The curve tightness that earns the full height, as the radius of the circle
+  // that bends that hard. Every fringe on every glyph is drawn against this one
+  // number, so nothing on the drawing feeds the scale.
+  const referenceRadius = Math.max(1e-6, params.referenceRadius ?? 100);
+  const minLengthGlyphUnits = Math.max(0, params.minLengthGlyphUnits ?? 0);
+  const maxLengthGlyphUnits = Math.max(
+    minLengthGlyphUnits,
+    params.maxLengthGlyphUnits ?? peakHeightGlyphUnits * 3
+  );
   const sharpness = Math.max(0.1, params.sharpness ?? 1);
   const illustrationPosition = params.illustrationPosition ?? "outsideOfCurve";
   const useGlobalNormalization = params.useGlobalNormalization ?? false;
@@ -322,16 +331,14 @@ export function computeSpeedPunkSamples(path, params = {}) {
     averageCurveLength = curveCount > 0 ? totalLength / curveCount : 0;
   }
 
-  // Sample every curve segment once, and keep the samples. The fringe height
-  // is scaled by the tallest curvature anywhere on the glyph, so the whole
-  // glyph has to be measured before any of it can be drawn.
+  // Sample every curve segment once, and keep the samples. Only the colour's
+  // own switch reads across the whole glyph, and it reads this same pass.
   //
-  // The scale is glyph-wide because the comb is read across joints. Scaling
-  // each segment by its own tallest point draws one curvature at two different
-  // lengths wherever two segments peak apart, which puts a step in the fringe
-  // where the curve has none. That is the one reading the comb exists for.
+  // Two earlier rules took the scale from the outline and both had to go. A
+  // per-segment peak drew one curvature at two lengths across a joint, which is
+  // the one reading the comb exists for. A glyph-wide peak fixed that and
+  // rescaled every fringe on the glyph whenever any one segment was redrawn.
   const segments = [];
-  let glyphPeakAbs = 0;
   let globalMinAbs = Infinity;
   let globalMaxAbs = -Infinity;
   forEachCurveSegment(path, (kind, pts) => {
@@ -349,7 +356,6 @@ export function computeSpeedPunkSamples(path, params = {}) {
     segments.push({ kind, pts, samples });
     for (const sample of samples) {
       const absK = Math.abs(sample.curvature);
-      glyphPeakAbs = Math.max(glyphPeakAbs, absK);
       globalMinAbs = Math.min(globalMinAbs, absK);
       globalMaxAbs = Math.max(globalMaxAbs, absK);
     }
@@ -358,8 +364,6 @@ export function computeSpeedPunkSamples(path, params = {}) {
     globalMinAbs = 0;
     globalMaxAbs = 1;
   }
-  const heightScale = glyphPeakAbs > 1e-12 ? glyphPeakAbs : 1;
-
   const quads = [];
   for (const { kind, pts, samples } of segments) {
     // Colour keeps its own switch. It says where a segment sits in a range,
@@ -386,12 +390,17 @@ export function computeSpeedPunkSamples(path, params = {}) {
       nx /= mag;
       ny /= mag;
 
-      const rawNormalizedHeight = Math.abs(samples[s].curvature) / heightScale;
-      const normalizedHeight = Math.pow(
-        Math.max(0, Math.min(1, rawNormalizedHeight)),
+      // Full height at the reference tightness, in proportion below it and
+      // above it, then held between the two caps. A cusp has no bounded
+      // curvature, so the upper cap is what keeps its fringe on the screen.
+      const shaped = Math.pow(
+        Math.abs(samples[s].curvature) * referenceRadius,
         sharpness
       );
-      const h = -normalizedHeight * peakHeightGlyphUnits;
+      const h = -Math.min(
+        maxLengthGlyphUnits,
+        Math.max(minLengthGlyphUnits, shaped * peakHeightGlyphUnits)
+      );
       offCurve.push({ x: x + nx * h, y: y + ny * h });
     }
 
