@@ -3281,3 +3281,89 @@ construction replaces, so their present lengths say nothing about where the
 joint may go. Bounding by them stopped the search 25 units short of the answer
 on the overshoot fixture, where the first admissible slide is about 45 units and
 the shorter inner handle is 20.
+
+## 45. The curvature comb was scaled per segment — fix
+
+Reported as a fault in harmonize, over several rounds, on
+`_external/skeletron.fontra` glyph `d`. Harmonize was not the fault.
+
+### 1. Problem
+
+A joint that measured 23 per cent out was drawn as a continuous comb. The same
+joint, corrected to 1.4 per cent, was drawn with a visible step. Every harmonize
+setting produced the step, so the operation looked broken under all of them.
+
+Each segment's fringe was divided by the tallest curvature **on that segment**.
+So the tallest fringe on every segment was drawn at the full height, whatever
+its curvature actually was. Two segments meeting with equal curvature drew
+unequal fringe wherever their two peaks differed.
+
+On the reported glyph the two segments either side of the joint peak 27 per cent
+apart. That 27 per cent was the whole of the step on screen, and it belonged to
+the middles of the two segments rather than to the joint.
+
+Measured at the joint, before the fix. Curvature gap against the length the comb
+drew:
+
+| state       | curvature gap | drawn step |
+| ----------- | ------------- | ---------- |
+| as reported | 23 %          | 0.16 units |
+| after G2    | 1.4 %         | 2.73 units |
+| after G3    | 2.6 %         | 7.59 units |
+
+The comb reported the opposite of what was there, which is the one reading it
+exists for.
+
+### 2. Solution
+
+The fringe height divides by the tallest curvature anywhere on the glyph. One
+scale for the whole outline, so equal curvature draws equal fringe wherever it
+sits, and a step in the fringe means a step in the curve.
+
+Colour keeps its own per-segment switch. Colour says where a segment sits in a
+range, which is a per-segment question when the switch is off. It never stood in
+for the height.
+
+A glyph-wide scale needs the whole glyph measured before any of it is drawn. The
+samples are now kept from that one pass instead of being taken again, so the
+change costs no second pass over the outline. The existing global-normalization
+option used to run its own extra pass when it was on, and that pass is gone.
+
+### 3. Result
+
+The same measurement, after:
+
+| state       | curvature gap | drawn step |
+| ----------- | ------------- | ---------- |
+| as reported | 23 %          | 1.72 units |
+| after G2    | 1.4 %         | 0.10 units |
+| after G3    | 2.6 %         | 0.04 units |
+
+Full suite 1,891 passing. Three new tests: one curvature draws one fringe height
+across two segments that peak 1.6 times apart, the tallest fringe on the glyph
+gets the full height, and redrawing one segment does not change the fringe on
+its neighbour.
+
+### 4. Challenges and findings
+
+**The instrument was the last thing checked and should have been the first.**
+Four rounds went into measuring the geometry, and the geometry was right every
+time. The report was that the tool produced a jump. It did produce one, on
+screen. Taking the symptom literally means asking what draws it, not only what
+computes it.
+
+**A measured number that keeps agreeing with the code is evidence about the
+instrument.** Three separate runs said the joint was within 1.6 per cent while
+the designer read a step off the screen. That disagreement was the finding, and
+it was treated as a difference of opinion for too long.
+
+**The comb was never usable for continuity, only for fairness within one
+segment.** Per-segment scaling shows where a segment's own curvature rises and
+falls, which is a real reading. It cannot compare two segments, and comparing
+two segments is what a joint is.
+
+**A glyph-wide scale has one cost, and it is stated rather than hidden.** One
+very tight corner takes the whole height and squashes every other fringe on the
+glyph. That is honest, since the corner really is that much tighter. Where it
+gets in the way, the per-segment mode would have to come back as a switch that
+is off by default.
