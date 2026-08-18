@@ -3442,3 +3442,79 @@ sits where the designer can see it.
 runs about two per cent either side of the true value, which is what the
 tolerances in the new tests are. A tighter tolerance failed on geometry that was
 correct.
+
+---
+
+## 47. The comb's scale needed a hand, and clipped — rework
+
+Two commits. `8c689bd19` made the SpeedPunk fields scrubbable, gave them a live
+redraw, and moved colour onto the fixed scale. This one removes three of them.
+
+### 1. The report
+
+Entry 46 put the comb's scale in the panel: a reference radius, a floor and a
+ceiling. The judgment on that was "it is clearly stupid, we do not need manual
+control of the comb's floors and ceilings". Then, on the pre-46 commit, a jump at
+one joint of glyph `d`.
+
+### 2. What the jump was
+
+The joint at 399,599 bends on a radius of 477 coming in and 464 going out. The
+two are 2.7 per cent apart. The pre-46 rule divided each fringe by the peak
+curvature of its own segment. The incoming segment peaks at a radius of 61, so
+the joint drew at 12.9 per cent of the full height. The outgoing segment peaks at
+73, so the same joint drew at 15.6 per cent. A 2.7 per cent difference in the
+curve was drawn as a 21 per cent step in the comb, eight times the thing it
+measures. No amount of harmonizing could remove it.
+
+### 3. Three fields, and why they went
+
+Nothing on the drawing may feed the scale. That still holds. But the scale did
+not have to be typed either.
+
+**The reference radius now comes from the em**, at a quarter of it. It is one
+constant of the font. It is the same for every glyph, it never moves when a point
+moves, and it needs no hand.
+
+**The caps are gone.** A hard ceiling draws two different curvatures at one
+length, which is the same false reading the per-segment divisor gave. Where one
+fringe saturated beside one that did not, the eye read a crease that was not
+there. A floor above zero did it at the other end and hid where a flat ended.
+
+**The height now squeezes.** It rises in proportion at gentle bends, reaches the
+full peak height at the reference tightness, and leans over above it towards
+twice that height without ever arriving. Nothing clips. A cusp has no bounded
+curvature and stays on the screen anyway, because the rule itself has nowhere
+further to go. Sharpness keeps its meaning and applies to the same ratio.
+
+The panel keeps peak height, sharpness and opacity. Those are taste, not scale.
+
+### 4. Result
+
+On the reported glyph the fringes now run 11.98 to 38.54 units. At the joint they
+are 16.51 and 16.80, a step of 0.29.
+
+Full suite 1,895 passing. The two cap tests became four: full height at the
+reference tightness, near proportional where the curve is gentle, never twice the
+peak however tight, and two different curvatures never at one length.
+
+The editor side owes a manual matrix, per rail R-G. Open a font whose em is not
+1000 and check the comb is the same relative height as on a 1000 em. Check the
+panel shows three fields. Check a cusp draws a fringe that stays on the screen.
+
+### 5. Challenges and findings
+
+**A knob is a scale that came off a person instead of the drawing.** Entry 46
+treated "not from the drawing" as the whole requirement and put the number in a
+field. The field was the next thing to remove, not the answer. A readout that
+needs to be tuned before it can be believed is still not a readout.
+
+**A cap is a normalization with one step in it.** Every rule this comb has had
+mapped two different curvatures onto one drawn length: the per-segment peak did
+it across a joint, the glyph peak did it across a redraw, and the ceiling did it
+across the ceiling. The squeeze is the first rule with no such pair.
+
+**The instrument was wrong for longer than the curve was.** Three diagnoses of
+the glyph came and went while the comb was reporting the reverse of the truth.
+The lesson is to measure what the instrument draws, not only what the geometry
+is, before believing either.

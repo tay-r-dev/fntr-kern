@@ -1836,7 +1836,6 @@ registerVisualizationLayerDefinition({
     illustrationPosition: "outsideOfCurve",
     baseSegmentBudget: 400,
     minSegmentsPerCurve: 5,
-    globalColorNormalization: false,
     adaptStepsToCurveLength: false,
   },
   draw: (context, positionedGlyph, parameters, model, controller) => {
@@ -1844,9 +1843,10 @@ registerVisualizationLayerDefinition({
     if (!path) return;
 
     const peakHeightGlyphUnits = model.sceneSettings?.speedPunkPeakHeightUpm ?? 24;
-    const referenceRadius = model.sceneSettings?.speedPunkReferenceRadius ?? 100;
-    const minLengthGlyphUnits = model.sceneSettings?.speedPunkMinLength ?? 0;
-    const maxLengthGlyphUnits = model.sceneSettings?.speedPunkMaxLength ?? 72;
+    // The curve tightness that earns the full height comes from the em, so it
+    // is one constant of the font. Nothing on the drawing feeds the scale, and
+    // no hand sets it either.
+    const referenceRadius = (model.fontController?.unitsPerEm || 1000) / 4;
     const sharpness = Math.max(0.1, model.sceneSettings?.speedPunkSharpness ?? 1);
     const opacity = Math.max(
       0,
@@ -1856,11 +1856,8 @@ registerVisualizationLayerDefinition({
     const quads = computeSpeedPunkSamples(path, {
       peakHeightGlyphUnits,
       referenceRadius,
-      minLengthGlyphUnits,
-      maxLengthGlyphUnits,
       sharpness,
       illustrationPosition: parameters.illustrationPosition,
-      useGlobalNormalization: parameters.globalColorNormalization,
       colorStops: parameters.colorStops,
       baseSegmentBudget: parameters.baseSegmentBudget,
       minSegmentsPerCurve: parameters.minSegmentsPerCurve,

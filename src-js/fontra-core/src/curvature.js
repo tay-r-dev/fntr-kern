@@ -289,12 +289,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
   // The curve tightness that earns the full height, as the radius of the circle
   // that bends that hard. Every fringe on every glyph is drawn against this one
   // number, so nothing on the drawing feeds the scale.
-  const referenceRadius = Math.max(1e-6, params.referenceRadius ?? 100);
-  const minLengthGlyphUnits = Math.max(0, params.minLengthGlyphUnits ?? 0);
-  const maxLengthGlyphUnits = Math.max(
-    minLengthGlyphUnits,
-    params.maxLengthGlyphUnits ?? peakHeightGlyphUnits * 3
-  );
+  const referenceRadius = Math.max(1e-6, params.referenceRadius ?? 250);
   const sharpness = Math.max(0.1, params.sharpness ?? 1);
   const illustrationPosition = params.illustrationPosition ?? "outsideOfCurve";
   const colorStops = params.colorStops ?? ["#8b939c", "#f29400", "#e3004f"];
@@ -376,17 +371,16 @@ export function computeSpeedPunkSamples(path, params = {}) {
       nx /= mag;
       ny /= mag;
 
-      // Full height at the reference tightness, in proportion below it and
-      // above it, then held between the two caps. A cusp has no bounded
-      // curvature, so the upper cap is what keeps its fringe on the screen.
+      // Full height at the reference tightness, in proportion under it, and
+      // leaning over above it towards twice the height. A hard ceiling drew
+      // two different curvatures at one length and creased where one fringe
+      // saturated beside one that did not. This rule never repeats a length,
+      // so a cusp stays on the screen without a cap to hold it.
       const shaped = Math.pow(
         Math.abs(samples[s].curvature) * referenceRadius,
         sharpness
       );
-      const h = -Math.min(
-        maxLengthGlyphUnits,
-        Math.max(minLengthGlyphUnits, shaped * peakHeightGlyphUnits)
-      );
+      const h = -((2 * shaped) / (1 + shaped)) * peakHeightGlyphUnits;
       offCurve.push({ x: x + nx * h, y: y + ny * h });
     }
 

@@ -112,13 +112,15 @@ describe("computeSpeedPunkSamples", () => {
   });
 });
 
-// --- a fixed scale, taken from settings and not from the drawing ------------
+// --- a fixed scale, and a height that squeezes instead of clipping ---------
 //
-// The fringe is scaled by a stated curve tightness, so nothing on the glyph
-// feeds the scale. Two earlier rules both took it from the outline: the segment
-// its own tallest point, which drew one curvature at two lengths across a
-// joint, and then the glyph its tallest point, which rescaled every fringe on
-// the glyph whenever any one segment was redrawn.
+// The fringe is scaled by one curve tightness taken from the em, so nothing on
+// the glyph feeds the scale. Two earlier rules both took it from the outline:
+// the segment its own tallest point, which drew one curvature at two lengths
+// across a joint, and then the glyph its tallest point, which rescaled every
+// fringe on the glyph whenever any one segment was redrawn. A pair of hard caps
+// then drew two different curvatures at one length, so the height now leans
+// over towards twice the peak instead of stopping at a ceiling.
 describe("curvature comb: a fixed scale", () => {
   // A circle of radius r has curvature 1/r everywhere, so every fringe on it is
   // the same length and that length is known in advance.
@@ -166,11 +168,12 @@ describe("curvature comb: a fixed scale", () => {
     expect(Math.min(...lengths)).to.be.closeTo(24, 0.6);
   });
 
-  it("draws in proportion to curvature", () => {
-    // Half the radius is twice the curvature, so twice the fringe.
-    expect(Math.max(...fringeLengths(circle(50)))).to.be.closeTo(48, 1);
-    // Twice the radius is half the curvature, so half the fringe.
-    expect(Math.max(...fringeLengths(circle(200)))).to.be.closeTo(12, 0.3);
+  it("draws close to in proportion where the curve is gentle", () => {
+    // Well under the reference tightness the squeeze is almost straight, so
+    // halving the curvature almost halves the fringe.
+    const gentle = Math.max(...fringeLengths(circle(1000)));
+    const gentler = Math.max(...fringeLengths(circle(2000)));
+    expect(gentle / gentler).to.be.closeTo(1.9, 0.1);
   });
 
   it("does not rescale one shape when another one is redrawn", () => {
@@ -183,11 +186,19 @@ describe("curvature comb: a fixed scale", () => {
     expect(after).to.deep.equal(before);
   });
 
-  it("clamps at the longest and floors at the shortest", () => {
-    const tight = fringeLengths(circle(10), { maxLengthGlyphUnits: 60 });
-    expect(Math.max(...tight)).to.be.closeTo(60, 1e-9);
-    const shallow = fringeLengths(circle(1000), { minLengthGlyphUnits: 5 });
-    expect(Math.min(...shallow)).to.be.closeTo(5, 1e-9);
+  it("never reaches twice the peak height, however tight the curve", () => {
+    // No ceiling holds this. The rule itself has nowhere further to go, so a
+    // cusp stays on the screen without a cap.
+    expect(Math.max(...fringeLengths(circle(1)))).to.be.lessThan(48);
+    expect(Math.max(...fringeLengths(circle(1)))).to.be.greaterThan(47);
+  });
+
+  it("draws two different curvatures at two different lengths, always", () => {
+    // A hard ceiling gave both of these the same fringe, which is the reading
+    // the comb exists to prevent.
+    const tight = Math.max(...fringeLengths(circle(5)));
+    const tighter = Math.max(...fringeLengths(circle(2)));
+    expect(tighter).to.be.greaterThan(tight + 0.5);
   });
 
   it("gives one curvature one colour, whichever segment it is on", () => {
@@ -205,7 +216,7 @@ describe("curvature comb: a fixed scale", () => {
     expect([...tight].some((color) => shallow.has(color))).to.equal(false);
   });
 
-  it("leaves the shortest alone by default, so a straight draws nothing", () => {
+  it("draws nothing on a straight", () => {
     const lengths = fringeLengths(
       VarPackedPath.fromUnpackedContours([
         {
