@@ -183,6 +183,141 @@ export function measureG2Discontinuity(ctx) {
 }
 
 //
+// The derivative control points of a cubic at one of its ends. The first
+// derivative is the quadratic through 3(P1-P0), 3(P2-P1), 3(P3-P2). The second
+// is the linear through twice the differences of those. The third is constant.
+//
+function cubicDerivatives(points, atEnd) {
+  const [p0, p1, p2, p3] = points;
+  const d1 = mulVectorScalar(subVectors(p1, p0), 3);
+  const d2 = mulVectorScalar(subVectors(p2, p1), 3);
+  const d3 = mulVectorScalar(subVectors(p3, p2), 3);
+  return {
+    first: atEnd ? d3 : d1,
+    second: mulVectorScalar(atEnd ? subVectors(d3, d2) : subVectors(d2, d1), 2),
+    third: mulVectorScalar(addVectors(subVectors(d3, mulVectorScalar(d2, 2)), d1), 2),
+  };
+}
+
+// Signed curvature at one end of a cubic, in 1/units.
+function curvatureAt(points, atEnd) {
+  const { first, second } = cubicDerivatives(points, atEnd);
+  const speed = vectorLength(first);
+  return speed ? crossProduct(first, second) / speed ** 3 : Infinity;
+}
+
+// How fast that curvature changes, per unit of arc length. Two segments meeting
+// with the same curvature and the same rate join without a crease in the
+// curvature comb, which is G3.
+function curvatureRateAt(points, atEnd) {
+  const { first, second, third } = cubicDerivatives(points, atEnd);
+  const speed = vectorLength(first);
+  if (!speed) {
+    return Infinity;
+  }
+  return (
+    crossProduct(first, third) / speed ** 4 -
+    (3 * crossProduct(first, second) * dotVector(first, second)) / speed ** 6
+  );
+}
+
+//
+// The two measurements a joint is judged by. Both take the joint's two cubic
+// segments as [onCurve, handle, handle, onCurve], travelling in contour order.
+// Zero exactly when the joint is G2, respectively G3.
+//
+export function curvatureDiscontinuity(incoming, outgoing) {
+  return Math.abs(curvatureAt(incoming, true) - curvatureAt(outgoing, false));
+}
+
+export function curvatureRateDiscontinuity(incoming, outgoing) {
+  return Math.abs(curvatureRateAt(incoming, true) - curvatureRateAt(outgoing, false));
+}
+
+//
+// G3 by moving the two inner handles, with the joint and both outer handles
+// held still. After Linus Romer's construction
+// (_external/curvatura/curvatura-doc.pdf section 6.5), with one correction
+// noted below.
+//
+// In a frame with the joint at the origin and the tangent along one axis, the
+// joint is G3 when the two curvatures agree and their two rates agree. That is
+// two equations, and the two inner handle lengths are two unknowns, so the
+// answer is exact and unique. There is nothing to iterate and nothing to pick
+// between.
+//
+// Write the incoming handle at `-q * reach` and the outgoing one at `reach`.
+// Equal curvature fixes `q` as the square root of the two outer handles'
+// offsets from the tangent, and equal rate then gives `reach` outright.
+//
+// The correction: the donor matches the rate of curvature per unit of the
+// segment's own PARAMETER. The two segments run at different speeds through
+// the joint, so that leaves a rate mismatch equal to the ratio of the two --
+// 10% on the reported glyph. The curvature comb is drawn against arc length,
+// which is what a designer reads, so this matches the rate per unit of ARC.
+// The two answers differ by about 0.03 units of handle and the arc form is
+// exact.
+//
+// It needs the two outer handles on the same side of the tangent. Where they
+// disagree the joint is an inflection: this construction asks for the square
+// root of a negative product, and G2 cannot be reached there either.
+//
+// Returns the new positions of the two inner handles, or null.
+//
+export function calculateG3Targets(incoming, outgoing) {
+  const [A, PP, P, node] = incoming;
+  const [, N, NN, C] = outgoing;
+
+  // The tangent runs between the two inner handles and is anchored on the
+  // joint. A smooth joint keeps those three collinear. Where the drawing has
+  // drifted off that, this direction splits the difference, and the answer puts
+  // both handles back on one line.
+  const span = subVectors(N, P);
+  if (!vectorLength(span)) {
+    return null;
+  }
+  const axis = normalizeVector(span);
+
+  // Frame the stencil on that axis, taking the side the incoming outer handle
+  // is on as positive, so the construction always sees the sign it assumes.
+  const along = (point) => dotVector(subVectors(point, node), axis);
+  const sidedness = (point) => crossProduct(axis, subVectors(point, node));
+  const flip = sidedness(PP) < 0 ? -1 : 1;
+  const across = (point) => flip * sidedness(point);
+
+  const d = across(PP);
+  const l = across(NN);
+  if (!(d > 0) || !(l > 0)) {
+    return null; // an inflection, or an outer handle lying on the tangent
+  }
+
+  const b = across(A);
+  const c = along(PP);
+  const k = along(NN);
+  const n = across(C);
+
+  const ratio = Math.sqrt(d / l);
+  const ratioPow4 = (d / l) ** 2;
+  const denominator = -ratio * (9 * d + b) - ratioPow4 * (n + 9 * l);
+  if (!denominator) {
+    return null;
+  }
+  const reachOut = (6 * (c * d - k * l * ratioPow4)) / denominator;
+  const reachIn = -ratio * reachOut;
+
+  // The incoming handle sits behind the joint and the outgoing one ahead of it.
+  // An answer that puts either on the wrong side is not a handle.
+  if (!(reachIn < 0) || !(reachOut > 0)) {
+    return null;
+  }
+
+  return {
+    P: addVectors(node, mulVectorScalar(axis, reachIn)),
+    N: addVectors(node, mulVectorScalar(axis, reachOut)),
+  };
+}
+
+//
 // Map a point selection onto the on-curve points it implies: a selected handle
 // stands for the joint it belongs to. An empty (or absent) selection means
 // every on-curve point in the path.

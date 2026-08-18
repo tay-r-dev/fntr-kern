@@ -2,7 +2,10 @@ import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
 import {
   HARMONIZE_DEFAULTS,
+  calculateG3Targets,
   calculateHarmonicTarget,
+  curvatureDiscontinuity,
+  curvatureRateDiscontinuity,
   expandToJoints,
   getJointContext,
   harmonizePath,
@@ -686,5 +689,86 @@ describe("harmonization: harmonizePath", () => {
       "not-converged",
       "not-converged",
     ]);
+  });
+});
+
+// --- G3: matching the rate of change of curvature ---------------------------
+//
+// The joint reported on `_external/skeletron.fontra` glyph `d`. Curvature
+// matches across it to 1.6% and its rate reverses sign, so the comb dips to a
+// local minimum exactly at the joint.
+function reportedG3Path() {
+  return makeContour([
+    { x: 285, y: 460 },
+    cubic(363, 460),
+    cubic(412, 518),
+    { x: 399, y: 598, smooth: true },
+    cubic(388, 670),
+    cubic(334, 710),
+    { x: 250, y: 710 },
+  ]);
+}
+
+// the same joint before it was redrawn: the two outer handles sit on opposite
+// sides of the tangent, so the two curvatures disagree in sign
+function inflectedPath() {
+  return makeContour([
+    { x: 361, y: 84 },
+    cubic(361, 235),
+    cubic(335, 278),
+    { x: 217, y: 278, smooth: true },
+    cubic(149, 278),
+    cubic(84, 500),
+    { x: 230, y: 541 },
+  ]);
+}
+
+function jointSegmentPoints(path) {
+  const points = [0, 1, 2, 3, 4, 5, 6].map((i) => {
+    const [x, y] = path.getPointPosition(i);
+    return { x, y };
+  });
+  return { incoming: points.slice(0, 4), outgoing: points.slice(3) };
+}
+
+describe("harmonization: calculateG3Targets", () => {
+  it("matches curvature and its rate on both sides of the joint", () => {
+    const path = reportedG3Path();
+    const { incoming, outgoing } = jointSegmentPoints(path);
+    const targets = calculateG3Targets(incoming, outgoing);
+    expect(targets).to.not.equal(null);
+
+    const solvedIn = [incoming[0], incoming[1], targets.P, incoming[3]];
+    const solvedOut = [outgoing[0], targets.N, outgoing[2], outgoing[3]];
+    expect(measureG2Discontinuity(getJointContext(path, NODE))).to.be.greaterThan(1e-5);
+    expect(curvatureDiscontinuity(solvedIn, solvedOut)).to.be.lessThan(1e-9);
+    expect(curvatureRateDiscontinuity(solvedIn, solvedOut)).to.be.lessThan(1e-9);
+  });
+
+  it("moves the two inner handles and nothing else", () => {
+    const { incoming, outgoing } = jointSegmentPoints(reportedG3Path());
+    const targets = calculateG3Targets(incoming, outgoing);
+    expect(distance(targets.P, incoming[2])).to.be.greaterThan(1);
+    expect(distance(targets.N, outgoing[1])).to.be.greaterThan(1);
+  });
+
+  it("puts both inner handles on one line through the joint", () => {
+    const { incoming, outgoing } = jointSegmentPoints(reportedG3Path());
+    const { P, N } = calculateG3Targets(incoming, outgoing);
+    const node = incoming[3];
+    const cross = (P.x - node.x) * (N.y - node.y) - (P.y - node.y) * (N.x - node.x);
+    expect(Math.abs(cross)).to.be.lessThan(1e-9);
+  });
+
+  it("keeps a symmetric joint symmetric", () => {
+    const { incoming, outgoing } = jointSegmentPoints(symmetricPath());
+    const { P, N } = calculateG3Targets(incoming, outgoing);
+    const node = incoming[3];
+    expect(distance(P, node)).to.be.closeTo(distance(N, node), 1e-9);
+  });
+
+  it("returns null when the two curvatures disagree in sign", () => {
+    const { incoming, outgoing } = jointSegmentPoints(inflectedPath());
+    expect(calculateG3Targets(incoming, outgoing)).to.equal(null);
   });
 });
