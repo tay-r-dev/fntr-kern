@@ -583,6 +583,24 @@ export class SceneController {
       this._updateCoarseGridRuntimeSpacing();
       this.canvasController.requestUpdate();
     });
+
+    //// curvature comb
+    // The comb reads these while it draws, and nothing else was asking for a
+    // redraw when they changed. So a new value sat unused until some other edit
+    // happened to repaint the canvas, and the number in the panel disagreed with
+    // the fringe on screen for as long as that took.
+    for (const key of [
+      "speedPunkPeakHeightUpm",
+      "speedPunkReferenceRadius",
+      "speedPunkMinLength",
+      "speedPunkMaxLength",
+      "speedPunkSharpness",
+      "speedPunkOpacity",
+    ]) {
+      this.sceneSettingsController.addKeyListener(key, () => {
+        this.canvasController.requestUpdate();
+      });
+    }
     this._updateCoarseGridRuntimeSpacing();
 
     this.sceneSettingsController.addKeyListener("selectedGlyph", (event) => {

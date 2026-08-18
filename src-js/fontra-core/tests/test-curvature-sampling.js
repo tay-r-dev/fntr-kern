@@ -190,6 +190,21 @@ describe("curvature comb: a fixed scale", () => {
     expect(Math.min(...shallow)).to.be.closeTo(5, 1e-9);
   });
 
+  it("gives one curvature one colour, whichever segment it is on", () => {
+    // A tight circle and a shallow one in the same glyph. Colour rides the same
+    // fixed scale as the height, so the two never share a colour. Colouring each
+    // segment against its own range would run both through the whole set of
+    // stops and paint two very different curvatures the same.
+    const quads = computeSpeedPunkSamples(
+      VarPackedPath.fromUnpackedContours([circleContour(50), circleContour(400)]),
+      { peakHeightGlyphUnits: 24, referenceRadius: 100 }
+    );
+    const half = quads.length / 2;
+    const tight = new Set(quads.slice(0, half).map((quad) => quad.color));
+    const shallow = new Set(quads.slice(half).map((quad) => quad.color));
+    expect([...tight].some((color) => shallow.has(color))).to.equal(false);
+  });
+
   it("leaves the shortest alone by default, so a straight draws nothing", () => {
     const lengths = fringeLengths(
       VarPackedPath.fromUnpackedContours([

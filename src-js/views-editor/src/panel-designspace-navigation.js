@@ -16,6 +16,12 @@ import {
 import * as html from "@fontra/core/html-utils.js";
 import { htmlToElement } from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import {
+  SCRUB_THRESHOLD,
+  clampScrubValue,
+  roundScrubValue,
+  scrubIncrement,
+} from "@fontra/core/number-scrub.js";
 import { ObservableController, controllerKey } from "@fontra/core/observable-object.ts";
 import {
   labeledCheckbox,
@@ -678,6 +684,107 @@ export default class DesignspaceNavigationPanel extends Panel {
     });
   }
 
+  // Dragging a label sideways scrubs the number beside it. What a pixel is
+  // worth lives in number-scrub.js, the same source the skeleton panel's fields
+  // use, so the two behave alike: a unit per pixel, a tenth under shift, ten
+  // under control.
+  //
+  // The label is the grab area rather than the input, because an input is a
+  // place to select text and type into and a drag starting inside one fights
+  // both.
+  //
+  // Every frame writes the scene setting, so the comb follows the hand. Only the
+  // end of the drag runs the ordinary change handler, which is what normalizes
+  // and persists. Persisting per frame would write to storage sixty times a
+  // second for one adjustment.
+  _attachSpeedPunkScrub(input, options = {}) {
+    if (!input) {
+      return;
+    }
+    const label = this.accordion.querySelector(`label[for="${input.id}"]`);
+    if (!label) {
+      return;
+    }
+    label.style.cursor = "ew-resize";
+    label.style.userSelect = "none";
+
+    label.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      // Capture on the label, so a drag that leaves the narrow label column
+      // keeps arriving.
+      label.setPointerCapture(event.pointerId);
+      event.preventDefault();
+
+      const startX = event.clientX;
+      const startValue = Number(input.value);
+      if (!Number.isFinite(startValue)) {
+        return;
+      }
+      // Unrounded, always. What the box shows is rounded off this and never
+      // back into it: a fine drag moves a tenth of a unit per pixel, and
+      // rounding the running total would floor every one of those to nothing.
+      let travel = 0;
+      let lastX = startX;
+      let started = false;
+
+      const onMove = (moveEvent) => {
+        if (!started) {
+          if (Math.abs(moveEvent.clientX - startX) < SCRUB_THRESHOLD) {
+            return;
+          }
+          started = true;
+          // Everything before the threshold was a click rather than travel.
+          lastX = moveEvent.clientX;
+        }
+        travel += scrubIncrement(moveEvent.clientX - lastX, {
+          step: options.step,
+          shiftKey: moveEvent.shiftKey,
+          ctrlKey: moveEvent.ctrlKey,
+          metaKey: moveEvent.metaKey,
+        });
+        lastX = moveEvent.clientX;
+        const clamped = clampScrubValue(startValue + travel, {
+          minValue: input.min === "" ? null : Number(input.min),
+          maxValue: input.max === "" ? null : Number(input.max),
+        });
+        // Fold the clamp back, so an overshoot turns around at once instead of
+        // spending the whole way back doing nothing. The rounding is never
+        // folded back with it.
+        travel = clamped - startValue;
+        const shown = roundScrubValue(clamped, { integer: options.integer ?? true });
+        input.value = String(shown);
+        this.sceneSettingsController.setItem(options.sceneKey, shown, {
+          senderID: this,
+        });
+      };
+
+      const finish = () => {
+        label.releasePointerCapture(event.pointerId);
+        label.removeEventListener("pointermove", onMove);
+        label.removeEventListener("pointerup", finish);
+        label.removeEventListener("pointercancel", abandon);
+        if (started) {
+          input.dispatchEvent(new Event("change"));
+        }
+      };
+
+      const abandon = () => {
+        input.value = String(startValue);
+        this.sceneSettingsController.setItem(options.sceneKey, startValue, {
+          senderID: this,
+        });
+        started = false;
+        finish();
+      };
+
+      label.addEventListener("pointermove", onMove);
+      label.addEventListener("pointerup", finish);
+      label.addEventListener("pointercancel", abandon);
+    });
+  }
+
   _normalizeSpeedPunkPeakHeightUpm(value) {
     if (!Number.isFinite(value)) return SPEEDPUNK_PEAK_HEIGHT_DEFAULT_UPM;
     return Math.max(
@@ -862,6 +969,29 @@ export default class DesignspaceNavigationPanel extends Panel {
       "opacity",
       "speedPunkOpacity"
     );
+
+    this._attachSpeedPunkScrub(this.speedPunkPeakHeightInput, {
+      sceneKey: "speedPunkPeakHeightUpm",
+    });
+    this._attachSpeedPunkScrub(this.speedPunkReferenceRadiusInput, {
+      sceneKey: "speedPunkReferenceRadius",
+    });
+    this._attachSpeedPunkScrub(this.speedPunkMinLengthInput, {
+      sceneKey: "speedPunkMinLength",
+    });
+    this._attachSpeedPunkScrub(this.speedPunkMaxLengthInput, {
+      sceneKey: "speedPunkMaxLength",
+    });
+    this._attachSpeedPunkScrub(this.speedPunkSharpnessInput, {
+      sceneKey: "speedPunkSharpness",
+      step: 0.1,
+      integer: false,
+    });
+    this._attachSpeedPunkScrub(this.speedPunkOpacityInput, {
+      sceneKey: "speedPunkOpacity",
+      step: 0.02,
+      integer: false,
+    });
 
     const toggle = this.speedPunkDisplayToggle;
     if (toggle) {

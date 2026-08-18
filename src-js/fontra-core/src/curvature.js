@@ -297,7 +297,6 @@ export function computeSpeedPunkSamples(path, params = {}) {
   );
   const sharpness = Math.max(0.1, params.sharpness ?? 1);
   const illustrationPosition = params.illustrationPosition ?? "outsideOfCurve";
-  const useGlobalNormalization = params.useGlobalNormalization ?? false;
   const colorStops = params.colorStops ?? ["#8b939c", "#f29400", "#e3004f"];
   const baseSegmentBudget = params.baseSegmentBudget ?? 400;
   const minSegmentsPerCurve = params.minSegmentsPerCurve ?? 5;
@@ -331,16 +330,13 @@ export function computeSpeedPunkSamples(path, params = {}) {
     averageCurveLength = curveCount > 0 ? totalLength / curveCount : 0;
   }
 
-  // Sample every curve segment once, and keep the samples. Only the colour's
-  // own switch reads across the whole glyph, and it reads this same pass.
+  // Sample every curve segment once, and keep the samples.
   //
   // Two earlier rules took the scale from the outline and both had to go. A
   // per-segment peak drew one curvature at two lengths across a joint, which is
   // the one reading the comb exists for. A glyph-wide peak fixed that and
   // rescaled every fringe on the glyph whenever any one segment was redrawn.
   const segments = [];
-  let globalMinAbs = Infinity;
-  let globalMaxAbs = -Infinity;
   forEachCurveSegment(path, (kind, pts) => {
     const steps = adaptToCurveLength
       ? adjustStepsForCurve(
@@ -354,25 +350,15 @@ export function computeSpeedPunkSamples(path, params = {}) {
         ? calculateCurvatureForSegment(...pts, steps)
         : calculateCurvatureForQuadraticSegment(...pts, steps);
     segments.push({ kind, pts, samples });
-    for (const sample of samples) {
-      const absK = Math.abs(sample.curvature);
-      globalMinAbs = Math.min(globalMinAbs, absK);
-      globalMaxAbs = Math.max(globalMaxAbs, absK);
-    }
   });
-  if (globalMinAbs === Infinity) {
-    globalMinAbs = 0;
-    globalMaxAbs = 1;
-  }
+  // Colour rides the same scale as the height, for the same reason. Colouring
+  // each segment against its own range paints two segments at one curvature two
+  // different colours, which is the same false reading the height used to give.
+  // The range runs from nothing to the reference tightness.
+  const colorMaxAbs = 1 / referenceRadius;
+
   const quads = [];
   for (const { kind, pts, samples } of segments) {
-    // Colour keeps its own switch. It says where a segment sits in a range,
-    // which is a per-segment question when the switch is off, and it never
-    // stood in for the height.
-    const absVals = samples.map((s) => Math.abs(s.curvature));
-    const minAbs = useGlobalNormalization ? globalMinAbs : Math.min(...absVals);
-    const maxAbs = useGlobalNormalization ? globalMaxAbs : Math.max(...absVals);
-
     const onCurve = [];
     const offCurve = [];
     for (let s = 0; s < samples.length; s++) {
@@ -414,7 +400,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
           [offCurve[s + 1].x, offCurve[s + 1].y],
           [offCurve[s].x, offCurve[s].y],
         ],
-        color: curvatureToColor(Math.abs(a.k), minAbs, maxAbs, colorStops),
+        color: curvatureToColor(Math.abs(a.k), 0, colorMaxAbs, colorStops),
       });
     }
   }
