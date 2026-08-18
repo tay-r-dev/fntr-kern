@@ -39,6 +39,14 @@ import {
 } from "./vector.js";
 
 export const HARMONIZE_DEFAULTS = {
+  // "G2" matches curvature across the joint. "G3" also matches its rate of
+  // change, which is what removes the crease from the curvature comb. G3 is
+  // tried first and falls back to G2 wherever it has no admissible answer.
+  continuity: "G2",
+  // Under G3, allow the joint itself to slide along its tangent where holding
+  // it still leaves the construction with no answer inside its bounds. It is a
+  // repair, so a joint that does not need it does not move.
+  slideOnCurve: false,
   handleBias: 1.0, //     0 = move the node, 1 = move the handles
   cuspSafetyMargin: 0.85, // never shrink a handle below 15% of its length
   toleranceUnits: 0.01, // convergence threshold, in font units
@@ -438,6 +446,114 @@ function tensionAfterStep(path, ctx, segments, fixup, handleBias) {
   return worst;
 }
 
+// How many places the repair slide samples before it refines, and how many
+// times it halves afterwards. Both are fixed: the slide is a search, and a
+// search that decides its own trip count cannot be continuous in its input.
+const G3_SLIDE_SAMPLES = 64;
+const G3_SLIDE_REFINEMENTS = 24;
+
+//
+// The joint's two cubic segments, as point quadruples in contour order. Null
+// where an open contour runs out before one of them.
+//
+function jointStencil(path, ctx) {
+  const segments = jointSegments(path, ctx);
+  if (segments.length < 2) {
+    return null;
+  }
+  return {
+    incoming: segmentPositions(path, segments[0].indices),
+    outgoing: segmentPositions(path, segments[1].indices),
+  };
+}
+
+//
+// One G3 attempt, with the joint at `nodePosition`. Returns the two inner
+// handle positions, or null where the construction has no answer or the answer
+// is outside the same two limits the G2 path obeys: the cusp floor on the
+// handle that shrinks, and the tangent intersection on the handle that grows.
+//
+function g3Attempt(stencil, nodePosition, limits) {
+  const [A, PP] = stencil.incoming;
+  const [, , NN, C] = stencil.outgoing;
+  const targets = calculateG3Targets(
+    [A, PP, stencil.incoming[2], nodePosition],
+    [nodePosition, stencil.outgoing[1], NN, C]
+  );
+  if (!targets) {
+    return null;
+  }
+  if (
+    distance(nodePosition, targets.P) < limits.floors.P ||
+    distance(nodePosition, targets.N) < limits.floors.N
+  ) {
+    return null;
+  }
+  const solvedIn = [A, PP, targets.P, nodePosition];
+  const solvedOut = [nodePosition, targets.N, NN, C];
+  if (
+    handleTension(solvedIn, "end") > limits.maxHandleTension ||
+    handleTension(solvedOut, "start") > limits.maxHandleTension
+  ) {
+    return null;
+  }
+  return targets;
+}
+
+//
+// The repair. Where the joint's own position admits no G3 answer, slide it
+// along the tangent by the smallest distance that does, and let the two inner
+// handles take the rest. The slide is a repair and not a preference: it is
+// tried outward from zero, so a joint that never needed it never moves.
+//
+function g3AfterSlide(stencil, limits) {
+  const node = stencil.incoming[3];
+  const span = subVectors(stencil.outgoing[1], stencil.incoming[2]);
+  if (!vectorLength(span)) {
+    return null;
+  }
+  const axis = normalizeVector(span);
+  // The joint may travel as far as the on-curve point at the far end of either
+  // of its two segments, measured along the tangent. Past that it has left the
+  // segment it belongs to. The two directions have their own room, so they are
+  // bounded separately and searched together, nearest first.
+  const along = (point) => dotVector(subVectors(point, node), axis);
+  const room = {
+    "1": Math.max(0, along(stencil.outgoing[3])),
+    "-1": Math.max(0, -along(stencil.incoming[0])),
+  };
+  const step = Math.max(room["1"], room["-1"]) / G3_SLIDE_SAMPLES;
+  if (!step) {
+    return null;
+  }
+  const at = (slide) => addVectors(node, mulVectorScalar(axis, slide));
+
+  for (let sample = 1; sample <= G3_SLIDE_SAMPLES; sample++) {
+    for (const direction of [1, -1]) {
+      if (sample * step > room[direction]) {
+        continue;
+      }
+      let inside = direction * sample * step;
+      if (!g3Attempt(stencil, at(inside), limits)) {
+        continue;
+      }
+      let outside = direction * (sample - 1) * step;
+      for (let i = 0; i < G3_SLIDE_REFINEMENTS; i++) {
+        const middle = (inside + outside) / 2;
+        if (g3Attempt(stencil, at(middle), limits)) {
+          inside = middle;
+        } else {
+          outside = middle;
+        }
+      }
+      const nodePosition = at(inside);
+      const targets = g3Attempt(stencil, nodePosition, limits);
+      return targets ? { node: nodePosition, targets } : null;
+    }
+  }
+  return null;
+}
+
 //
 // Pull the joint's own handles back to the ceiling if they are already over it.
 //
@@ -578,6 +694,8 @@ export function harmonizePath(path, pointIndices, options = {}) {
 //
 export function harmonizePathInPlace(path, pointIndices, options = {}) {
   const {
+    continuity,
+    slideOnCurve,
     handleBias: rawHandleBias,
     cuspSafetyMargin,
     toleranceUnits,
@@ -625,6 +743,8 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       floors: undefined,
       segments: [],
       tensionReduced: false,
+      construction: "g2",
+      mode: continuity === "G3" ? "g3" : "g2",
       done: false,
     };
 
@@ -669,6 +789,47 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       if (ctx.reason) {
         settle(state, "skipped", ctx.reason);
         continue;
+      }
+
+      if (state.mode === "g3") {
+        const stencil = jointStencil(path, ctx);
+        const limits = { floors: state.floors, maxHandleTension };
+        let outcome = null;
+        if (stencil) {
+          const held = g3Attempt(stencil, ctx.node, limits);
+          outcome = held
+            ? { node: null, targets: held }
+            : slideOnCurve
+              ? g3AfterSlide(stencil, limits)
+              : null;
+        }
+        if (outcome) {
+          const movement = Math.max(
+            distance(outcome.targets.P, ctx.P),
+            distance(outcome.targets.N, ctx.N),
+            outcome.node ? distance(outcome.node, ctx.node) : 0
+          );
+          if (movement < toleranceUnits) {
+            if (state.iterations) {
+              settle(state, "harmonized", undefined);
+            } else {
+              settle(state, "skipped", "already-harmonic");
+            }
+            continue;
+          }
+          if (outcome.node) {
+            writePoint(path, touched, state.pointIndex, outcome.node);
+          }
+          writePoint(path, touched, ctx.indices.P, outcome.targets.P);
+          writePoint(path, touched, ctx.indices.N, outcome.targets.N);
+          state.construction = "g3";
+          state.iterations += 1;
+          anyMoved = true;
+          continue;
+        }
+        // No admissible answer here. G2 is the rung below, and it starts from
+        // the geometry as it stands rather than from anything G3 attempted.
+        state.mode = "g2";
       }
 
       const solution = calculateHarmonicTarget(ctx);
@@ -803,13 +964,22 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   }
 
   return states.map(
-    ({ pointIndex, contourIndex, status, reason, iterations, tensionReduced }) => ({
+    ({
       pointIndex,
       contourIndex,
       status,
       reason,
       iterations,
       tensionReduced,
+      construction,
+    }) => ({
+      pointIndex,
+      contourIndex,
+      status,
+      reason,
+      iterations,
+      tensionReduced,
+      construction,
     })
   );
 }

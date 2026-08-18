@@ -772,3 +772,75 @@ describe("harmonization: calculateG3Targets", () => {
     expect(calculateG3Targets(incoming, outgoing)).to.equal(null);
   });
 });
+
+describe("harmonization: the G3 cascade", () => {
+  const G3 = { continuity: "G3" };
+
+  function jointMeasures(path) {
+    const { incoming, outgoing } = jointSegmentPoints(path);
+    return {
+      curvature: curvatureDiscontinuity(incoming, outgoing),
+      rate: curvatureRateDiscontinuity(incoming, outgoing),
+    };
+  }
+
+  it("matches curvature and its rate, and leaves the joint where it is", () => {
+    const path = reportedG3Path();
+    const before = jointMeasures(path);
+    const report = harmonizePathInPlace(path, [NODE], G3);
+    const after = jointMeasures(path);
+
+    expect(report[0].status).to.equal("harmonized");
+    expect(report[0].construction).to.equal("g3");
+    expect(after.curvature).to.be.lessThan(1e-9);
+    expect(after.rate).to.be.lessThan(1e-9);
+    expect(before.rate).to.be.greaterThan(after.rate);
+    expect(nodePos(path)).to.deep.equal({ x: 399, y: 598 });
+  });
+
+  it("falls back to G2 at an inflection, and says so", () => {
+    const path = inflectedPath();
+    const report = harmonizePathInPlace(path, [NODE], G3);
+    expect(report[0].status).to.equal("harmonized");
+    expect(report[0].construction).to.equal("g2");
+  });
+
+  it("falls back to G2 where the answer would cross its own handle lines", () => {
+    const path = overshootPath();
+    const report = harmonizePathInPlace(path, [NODE], G3);
+    expect(report[0].construction).to.equal("g2");
+    expect(report[0].status).to.be.oneOf(["harmonized", "partial"]);
+  });
+
+  it("reaches that joint by sliding the on-curve when the slide is allowed", () => {
+    const path = overshootPath();
+    const report = harmonizePathInPlace(path, [NODE], {
+      ...G3,
+      slideOnCurve: true,
+    });
+    const after = jointMeasures(path);
+    expect(report[0].construction).to.equal("g3");
+    expect(after.curvature).to.be.lessThan(1e-9);
+    expect(after.rate).to.be.lessThan(1e-9);
+    expect(nodePos(path)).to.not.deep.equal({ x: 60, y: 100 });
+  });
+
+  it("does not slide a joint that did not need it", () => {
+    const path = reportedG3Path();
+    harmonizePathInPlace(path, [NODE], { ...G3, slideOnCurve: true });
+    expect(nodePos(path)).to.deep.equal({ x: 399, y: 598 });
+  });
+
+  it("leaves the two outer handles alone", () => {
+    const path = reportedG3Path();
+    const before = [1, 5].map((i) => path.getPointPosition(i));
+    harmonizePathInPlace(path, [NODE], { ...G3, slideOnCurve: true });
+    expect([1, 5].map((i) => path.getPointPosition(i))).to.deep.equal(before);
+  });
+
+  it("is off by default", () => {
+    const path = reportedG3Path();
+    const report = harmonizePathInPlace(path, [NODE], {});
+    expect(report[0].construction).to.equal("g2");
+  });
+});
