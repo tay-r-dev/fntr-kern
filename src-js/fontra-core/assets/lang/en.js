@@ -625,8 +625,12 @@ export const strings = {
   "sidebar.selection-transformation.flip.vertically": "Flip Vertically",
   "sidebar.selection-transformation.harmonize": "Harmonize",
   "sidebar.selection-transformation.harmonize.apply": "Harmonize",
-  "sidebar.selection-transformation.harmonize.handles": "handles",
-  "sidebar.selection-transformation.harmonize.point": "point",
+  "sidebar.selection-transformation.harmonize.g3": "G3 continuity",
+  "sidebar.selection-transformation.harmonize.g3.tooltip":
+    "Also match the rate of change of curvature, which is what removes the crease from the curvature comb. Falls back to G2 where it has no answer.",
+  "sidebar.selection-transformation.harmonize.move-on-curve": "Move the on-curve",
+  "sidebar.selection-transformation.harmonize.move-on-curve.tooltip":
+    "Let the joint carry the correction instead of its two handles. Under G3 it slides only where the handles alone cannot reach an answer.",
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
   "sidebar.selection-transformation.harmonize.equalize-tension": "Equalize tension",
   "sidebar.selection-transformation.harmonize.equalize-tension.tooltip":

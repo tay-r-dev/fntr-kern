@@ -76,12 +76,6 @@ export default class TransformationPanel extends Panel {
     border: 0.15em solid var(--text-input-background-color-dark);
   }
 
-  .harmonize-slider-end {
-    font-size: 0.9em;
-    opacity: 0.7;
-    white-space: nowrap;
-  }
-
   .harmonize-report {
     font-size: 0.9em;
     opacity: 0.7;
@@ -771,32 +765,17 @@ export default class TransformationPanel extends Panel {
     });
 
     formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "auxiliaryElement",
-        auxiliaryElement: html.span(
-          {
-            class: "harmonize-slider-end",
-            title: translate("sidebar.selection-transformation.harmonize.tooltip"),
-          },
-          [translate("sidebar.selection-transformation.harmonize.point")]
-        ),
-      },
-      field2: {
-        type: "edit-number-slider",
-        key: "harmonizeHandleBias",
-        value: applicationSettingsController.model.harmonizeHandleBias,
-        minValue: 0,
-        defaultValue: 1,
-        maxValue: 1,
-        step: 0.05,
-      },
-      field3: {
-        type: "auxiliaryElement",
-        auxiliaryElement: html.span({ class: "harmonize-slider-end" }, [
-          translate("sidebar.selection-transformation.harmonize.handles"),
-        ]),
-      },
+      type: "checkbox",
+      key: "harmonizeG3",
+      label: translate("sidebar.selection-transformation.harmonize.g3"),
+      value: applicationSettingsController.model.harmonizeG3,
+    });
+
+    formContents.push({
+      type: "checkbox",
+      key: "harmonizeMoveOnCurve",
+      label: translate("sidebar.selection-transformation.harmonize.move-on-curve"),
+      value: applicationSettingsController.model.harmonizeMoveOnCurve,
     });
 
     formContents.push({
@@ -869,7 +848,8 @@ export default class TransformationPanel extends Panel {
 
       if (
         [
-          "harmonizeHandleBias",
+          "harmonizeG3",
+          "harmonizeMoveOnCurve",
           "harmonizeOtherSources",
           "harmonizeEqualizeTension",
         ].includes(fieldItem.key)
@@ -946,12 +926,9 @@ export default class TransformationPanel extends Panel {
 
   async doHarmonize() {
     const settings = applicationSettingsController.model;
-    // Read the bias off the slider itself, not off the setting. The setting is
-    // for persistence; the slider is what the user is looking at, and the two
-    // can disagree if a change event is missed. What you see is what applies.
-    const shownBias = this.infoForm.getValue("harmonizeHandleBias");
     const options = {
-      handleBias: Number(shownBias ?? settings.harmonizeHandleBias),
+      useG3: !!settings.harmonizeG3,
+      moveOnCurve: !!settings.harmonizeMoveOnCurve,
       applyToOtherSources: settings.harmonizeOtherSources,
       equalizeTension: settings.harmonizeEqualizeTension,
     };
@@ -1682,7 +1659,8 @@ function summarizeHarmonizeReport(report) {
 // The summary says what happened; this says which point and why.
 function detailHarmonizeReport(reports, options) {
   const lines = [
-    `bias ${Number(options.handleBias).toFixed(2)} (0 = node, 1 = handles)` +
+    `${options.useG3 ? "G3" : "G2"}` +
+      `, move the on-curve: ${options.moveOnCurve ? "on" : "off"}` +
       `, equalize tension: ${options.equalizeTension ? "on" : "off"}` +
       `, other sources: ${options.applyToOtherSources ? "on" : "off"}`,
   ];
@@ -1692,9 +1670,12 @@ function detailHarmonizeReport(reports, options) {
       const reason = entry.reason ? ` / ${entry.reason}` : "";
       const sweeps = entry.iterations ? ` after ${entry.iterations}` : "";
       const reduced = entry.tensionReduced ? ", handle tension reduced" : "";
+      // Which construction did the work. Only worth saying where G3 was asked
+      // for, because otherwise every line would read the same.
+      const by = options.useG3 && entry.construction ? ` by ${entry.construction}` : "";
       lines.push(
         `  point ${entry.pointIndex} (contour ${entry.contourIndex}): ` +
-          `${entry.status}${reason}${sweeps}${reduced}`
+          `${entry.status}${by}${reason}${sweeps}${reduced}`
       );
     }
   }

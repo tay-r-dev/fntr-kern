@@ -2084,10 +2084,18 @@ export class SceneController {
   //
   async doHarmonize(options = {}) {
     const {
-      handleBias = applicationSettingsController.model.harmonizeHandleBias,
+      useG3 = applicationSettingsController.model.harmonizeG3,
+      moveOnCurve = applicationSettingsController.model.harmonizeMoveOnCurve,
       applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
       equalizeTension = applicationSettingsController.model.harmonizeEqualizeTension,
     } = options;
+
+    // Two checks decide three things. The first picks the target and so the
+    // cascade. The second says whether the joint itself may move: under G2 that
+    // is the whole of the old bias, and under G3 it turns the repair slide on.
+    const continuity = useG3 ? "G3" : "G2";
+    const slideOnCurve = !!moveOnCurve;
+    const handleBias = moveOnCurve ? 0 : 1;
 
     const reports = new Map();
 
@@ -2103,7 +2111,7 @@ export class SceneController {
         skeletonPointSelection
           .map((item) => parseSkeletonPointKey(`${item}`))
           .filter((address) => address),
-        { handleBias, equalizeTension },
+        { continuity, slideOnCurve, handleBias, equalizeTension },
         translate("action.harmonize")
       );
     }
@@ -2168,6 +2176,8 @@ export class SceneController {
         // assignment smuggles a live VarPackedPath into the change payload and
         // it does not survive the round trip.
         const report = harmonizePathInPlace(layerGlyph.path, pointIndices, {
+          continuity,
+          slideOnCurve,
           handleBias,
           equalizeTension,
           roundCoordinates: true,
