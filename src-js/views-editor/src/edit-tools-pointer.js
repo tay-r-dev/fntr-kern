@@ -47,6 +47,12 @@ import { MeasureInteraction } from "./measure-interactions.js";
 import { getPinPoint } from "./panel-transformation.js";
 import { equalGlyphSelection } from "./scene-controller.js";
 import {
+  createTensionAwareTargetEntries,
+  getTensionAwareBehaviorName,
+  TENSION_AWARE_BEHAVIOR_NAME,
+  TENSION_AWARE_CONSTRAIN_BEHAVIOR_NAME,
+} from "./tension-aware-editing.js";
+import {
   createEditableGeneratedHandleTargetEntries,
   createEditableGeneratedPointTargetEntries,
   createSkeletonRibTargetEntries,
@@ -85,6 +91,7 @@ const rotationHandleSizeFactor = 1.2;
 const REALTIME_RIB_TANGENT_ACTION = "action.realtime.rib-tangent";
 const REALTIME_FIXED_RIB_ACTION = "action.realtime.fixed-rib";
 const REALTIME_FIXED_RIB_COMPRESS_ACTION = "action.realtime.fixed-rib-compress";
+const REALTIME_TENSION_AWARE_ACTION = "action.realtime.tension-aware";
 
 const REALTIME_MODIFIER_ACTIONS = [
   {
@@ -98,6 +105,10 @@ const REALTIME_MODIFIER_ACTIONS = [
   {
     action: REALTIME_FIXED_RIB_COMPRESS_ACTION,
     modeProperty: "fixedRibCompressMode",
+  },
+  {
+    action: REALTIME_TENSION_AWARE_ACTION,
+    modeProperty: "tensionAwareMode",
   },
 ];
 
@@ -146,6 +157,7 @@ export class PointerTool extends BaseTool {
     this.tangentRibMode = false;
     this.fixedRibMode = false;
     this.fixedRibCompressMode = false;
+    this.tensionAwareMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
     this._boundRealtimeModifierWindowBlur = null;
   }
@@ -746,8 +758,10 @@ export class PointerTool extends BaseTool {
         fixedRibMode: this.fixedRibMode,
         fixedRibCompressMode: this.fixedRibCompressMode,
         tangentRibMode: this.tangentRibMode,
+        tensionAwareMode: this.tensionAwareMode,
       });
       const getSelectionBehaviorName = (event) =>
+        getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds, event) ||
         getSkeletonModifierBehaviorName(event, getRealtimeModifiers(), targetKinds) ||
         getBaseExpandBehaviorName(
           getRealtimeModifiers(),
@@ -787,6 +801,20 @@ export class PointerTool extends BaseTool {
         editingLayers[editLayerName] || Object.values(editingLayers)[0]
       );
       const makeSkeletonTargetEntries = (layerGlyph, name) => {
+        if (
+          name === TENSION_AWARE_BEHAVIOR_NAME ||
+          name === TENSION_AWARE_CONSTRAIN_BEHAVIOR_NAME
+        ) {
+          return createTensionAwareTargetEntries(
+            layerGlyph,
+            sceneController.selection,
+            name,
+            {
+              isGeneratedContour: (contourIndex) =>
+                this.sceneModel.isGeneratedPathContour(contourIndex),
+            }
+          );
+        }
         if (name === BASE_EXPAND_BEHAVIOR_NAME) {
           return createBaseExpandTargetEntries(
             layerGlyph,

@@ -325,6 +325,7 @@ export const strings = {
   "shortcuts.realtime.rib-tangent": "Rib tangent (hold)",
   "shortcuts.realtime.fixed-rib": "Fixed rib (hold)",
   "shortcuts.realtime.fixed-rib-compress": "Fixed rib compress (hold)",
+  "shortcuts.realtime.tension-aware": "Tension aware (hold)",
   "shortcuts.reset-all": "Reset all shortcuts",
   "shortcuts.tooltip.clear": "Clear",
   "shortcuts.tooltip.click-and-record": "Click and record a shortcut",

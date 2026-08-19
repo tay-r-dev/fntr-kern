@@ -735,6 +735,11 @@ export class EditorController extends ViewController {
         titleKey: "shortcuts.realtime.fixed-rib-compress",
         defaultShortCuts: [{ baseKey: "s" }],
       });
+      registerActionInfo("action.realtime.tension-aware", {
+        topic,
+        titleKey: "shortcuts.realtime.tension-aware",
+        defaultShortCuts: [{ baseKey: "x" }],
+      });
     }
 
     {

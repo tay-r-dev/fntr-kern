@@ -1435,6 +1435,19 @@ const behaviorTypes = {
     actions: actionFactories,
   },
 
+  // The ordinary match tree, plus a target entry that corrects handle lengths
+  // afterwards. X changes no angle, so every rule above stays as it is.
+  "tension-aware": {
+    matchTree: buildPointMatchTree(defaultRules),
+    actions: actionFactories,
+  },
+
+  "tension-aware-constrain": {
+    matchTree: buildPointMatchTree(constrainRules),
+    actions: actionFactories,
+    constrainDelta: constrainHorVerDiag,
+  },
+
   // The base expansion drag moves nothing through the point rules: the whole
   // edit is the offset construction, which runs in the target entry. An empty
   // match tree matches no point, so no edit func is built and the path change
