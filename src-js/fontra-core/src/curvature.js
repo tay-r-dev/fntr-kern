@@ -284,6 +284,25 @@ function _segmentKind(t1, t2, t3) {
   return { isCubic, isQuadratic };
 }
 
+// The fringe length a reading earns, in peak heights. In proportion up to the
+// reference tightness, and above it the full height plus the logarithm of how
+// much tighter the curve is. The two branches meet at the reference with the
+// same value and the same slope.
+//
+// A curve tighter than the reference used to be squeezed towards a ceiling of
+// twice the height, and a letter bends tighter than the reference over most of
+// its length, so nearly every fringe sat in the flat part and the comb drew
+// plateaus where the drawing has peaks.
+function heightForReading(reading) {
+  return reading <= 1 ? reading : 1 + Math.log(reading);
+}
+
+// The fringe length that earns the last colour stop, in peak heights. Three is
+// a radius of about a seventh of the reference, which is a genuinely tight
+// corner, so a letter spends the stops over its own range and saturates only
+// where it really turns hard.
+const COLOR_FULL_SCALE = 3;
+
 export function computeSpeedPunkSamples(path, params = {}) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;
   // The curve tightness that earns the full height, as the radius of the circle
@@ -365,11 +384,23 @@ export function computeSpeedPunkSamples(path, params = {}) {
           ? solveCubicBezier(...pts, t)
           : solveQuadraticBezier(...pts, t);
       const [x, y] = r;
-      // The reading, as a number from nothing to one: nothing on a straight, a
-      // half at the reference tightness, approaching one as the bend tightens
-      // without ever getting there. Colour is drawn straight from this.
+      // How tight the curve is here, against the reference tightness. One at
+      // the reference, under one where the curve is gentler.
       const reading = Math.abs(samples[s].curvature) * referenceRadius;
-      const colorRatio = reading / (1 + reading);
+
+      // Colour is the fringe length the reading earns, across the stops. The
+      // whole set of stops is spent over the range a letter actually draws in:
+      // a radius of 200 units sits near the first stop, 60 lands on the middle
+      // one, and 15 is nearly at the last.
+      //
+      // Reading it straight off the reading instead put a radius of 200 at a
+      // third and a radius of 30 at three quarters, so the whole of a letter
+      // came out within a few per cent of the middle stop, which is one colour
+      // to the eye.
+      //
+      // Sharpness is left out of this on purpose: it is the shape of the comb,
+      // and a curve keeps its colour while the comb over it is restyled.
+      const colorRatio = Math.min(1, heightForReading(reading) / COLOR_FULL_SCALE);
       // The height is drawn from the same reading with sharpness applied, so
       // the comb changes shape and the colour under it does not.
       //
@@ -383,8 +414,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
       // flat part and the comb drew plateaus where the drawing has peaks. This
       // rule keeps a real peak: at four times the reference tightness the
       // fringe is 2.4 times the height, not 1.6.
-      const shaped = Math.pow(reading, sharpness);
-      const heightRatio = shaped <= 1 ? shaped : 1 + Math.log(shaped);
+      const heightRatio = heightForReading(Math.pow(reading, sharpness));
       onCurve.push({ x, y, colorRatio });
 
       let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];

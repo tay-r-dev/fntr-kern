@@ -265,6 +265,38 @@ describe("curvature comb: a fixed scale", () => {
     expect(fringe(sharp)).to.not.be.closeTo(fringe(plain), 1);
   });
 
+  it("spends the colour stops over the range a letter draws in", () => {
+    // Every curve on a letter used to come out within a few per cent of the
+    // middle stop, which is one colour to the eye. The three stops are grey,
+    // orange and red; a radius of 60 units is where the middle one belongs.
+    const rgb = (color) => color.match(/\d+/g).slice(0, 3).map(Number);
+    const away = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    const colorsOf = (r) =>
+      computeSpeedPunkSamples(circle(r), {
+        peakHeightGlyphUnits: 24,
+        referenceRadius: 100,
+      }).map((quad) => rgb(quad.color));
+
+    const grey = [0x8b, 0x93, 0x9c];
+    const orange = [0xf2, 0x94, 0x00];
+    const red = [0xe3, 0x00, 0x4f];
+
+    const gentle = colorsOf(400);
+    const middle = colorsOf(60);
+    const tight = colorsOf(15);
+
+    // the gentle one sits near the first stop
+    expect(Math.min(...gentle.map((c) => away(c, grey)))).to.be.lessThan(
+      Math.min(...gentle.map((c) => away(c, orange)))
+    );
+    // the middle one lands on the middle stop
+    expect(Math.min(...middle.map((c) => away(c, orange)))).to.be.lessThan(20);
+    // the tight one sits near the last
+    expect(Math.min(...tight.map((c) => away(c, red)))).to.be.lessThan(
+      Math.min(...tight.map((c) => away(c, orange)))
+    );
+  });
+
   it("draws nothing on a straight", () => {
     const lengths = fringeLengths(
       VarPackedPath.fromUnpackedContours([

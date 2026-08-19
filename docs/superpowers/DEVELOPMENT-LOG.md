@@ -3927,3 +3927,57 @@ measured against.
 
 **A default in two files is a race.** The saved value and the literal were both
 correct on their own. Which one the drawing got depended on construction order.
+
+---
+
+## 54. The comb came out one colour — fix
+
+### 1. The report
+
+The whole comb is yellow.
+
+### 2. Why
+
+Colour was read straight off the curve tightness against the reference, squeezed
+into nought to one. That squeeze has its steep part at the bottom and flattens
+above the reference, and the middle stop sits exactly at the reference. So a
+letter's whole range landed in a narrow band around the middle stop:
+
+| radius | old  | new  |
+| ------ | ---- | ---- |
+| 400    | 0.20 | 0.08 |
+| 200    | 0.33 | 0.17 |
+| 100    | 0.50 | 0.33 |
+| 60     | 0.63 | 0.50 |
+| 30     | 0.77 | 0.73 |
+| 15     | 0.87 | 0.97 |
+
+Radius 200 to radius 30 is the working range of most letters, and the old rule
+spent 0.33 to 0.77 of the stops on it — a walk from just before orange to just
+after it. That is one colour to the eye.
+
+### 3. The fix
+
+Colour is now the fringe length the reading earns, across the stops, with the
+last stop at three times the peak height. Same rule as the height, so a fringe of
+one length is always one colour, and the whole set of stops is spent over the
+range a letter actually draws in. Radius 200 sits near the first stop, 60 lands
+on the middle one, 15 is nearly at the last, and saturation waits for a corner
+tighter than a seventh of the reference.
+
+Sharpness is still left out of the colour. It is the shape of the comb.
+
+### 4. Result
+
+Full suite 1,906 passing, with one new test: a gentle circle is nearer the first
+stop than the middle one, a radius of 60 lands on the middle stop, and a tight
+circle is nearer the last.
+
+### 5. Finding
+
+**Spread is a property of the pair, not of the curve.** The colour rule and the
+height rule have now been wrong together twice: once because they used different
+readings, and once because they used the same reading through different shapes.
+The height's shape was chosen against a real letter's range and the colour's was
+not, which is the whole of this bug. Anything the eye compares has to be checked
+over the range it will be looked at in, not at its endpoints.
