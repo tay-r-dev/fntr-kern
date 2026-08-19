@@ -1483,3 +1483,360 @@ the on-curve nudge, while the generator anchors a detached placement on the
 un-nudged rib point and adds the handle nudge. The two agree only where the two
 nudges are equal. On the file it was found on both are 45, so it is invisible
 there. Provenance already publishes both vectors.
+
+---
+
+## Corner rounding, caps and the bulb (map F7, skeleton)
+
+**State: built, two defects open.**
+
+### Corner rounding is distance and curvature
+
+It had four sliders, and three of them — roundness, reach and strength —
+multiplied into one number, the distance the corner is trimmed back by. Reach
+capped that distance against the neighbouring point, roundness took a fraction of
+the cap, strength scaled roundness again, and the product was clamped to one. So
+three controls drove one quantity at different strengths and no one of them said
+what the corner would measure. The fourth, asymmetry, scaled roundness down on
+one side of the stroke — one number for a thing that is two. The arc's own
+fullness was fixed at the default cap tension, with no control at all.
+
+There are two numbers per side of the stroke now, shaped like width. **Distance**
+is how far back along each arm the rounding starts, in font units. **Curvature**
+is how full the arc is, on the tension scale the contour easing and the curvature
+gizmo already use: 0 cuts a straight chamfer, 1 puts both handles on the corner
+point. The two sides start linked.
+
+Distance is absolute units rather than a fraction of the arm, because a fraction
+rescales itself when a neighbour moves, so the drawn corner would change when
+nothing about the corner changed. Three clamps hold it, and they are the geometry
+rather than a fixed fraction standing in for it: the run to the neighbouring
+on-curve, the handle on a curved arm, and the pairwise pass that splits one
+segment between the two corners sharing it.
+
+The old fields are gone with no migration, which the designer chose. A corner
+drawn before this comes back sharp.
+
+**The half-width gate reads two ways, and the code already chose.** A side under
+half a unit lies on the skeleton, so rounding it pulls that edge off the drawn
+line. Single-sided mode is the deliberate exception: the collapsed side borrows
+the live side's base and rounds with it, so the two edges agree. The first test
+asserted the general rule and failed against the exception. The test was wrong,
+not the code.
+
+**The arc's fallback fired at exactly the setting that wants nothing.** The old
+code repaired a near-zero handle length with a circular-arc estimate. Under a
+curvature control a zero-length handle is the chamfer the designer asked for, so
+the fallback fires only on a degenerate chord now, which is the case it was for.
+
+**A fourth dead level.** Two contour-level corner fields were read by the
+generator and by normalization and written by nothing. Fourth found by the same
+check — who writes it, not who reads it — after the contour serif block, the
+contour cap style and the reversed flag.
+
+**Open: the point count still varies with the parameter**, because distance zero
+emits no arc, so a corner rounded in one master and sharp in another does not
+interpolate. That predates this work, and the serif's collapse rule was
+deliberately not extended to corners without being asked.
+
+**Left alone.** The cap-corner field-name list in the fixture script has the
+serif fixture objects merged into it, so those fixtures are never generated and
+the loop over the list indexes points by object. It is a dev script and it
+predates this work.
+
+### The bulb's ball is solved for, not tested for
+
+Placing the ball trims the outer edge back and sits the ball tangent there, deep
+enough that its forward extreme lands on the terminal. The trim was guessed,
+tested against a hard fit predicate, and grown until the predicate passed.
+
+Two faults followed. The accepted trim was the first that passed, and a trim that
+only just passes leaves the ball almost no depth — 21 units deep against 55
+across, on a ball asked for at 75. Past the predicate the search gave up and
+returned its first guess, reusing a trim distance as a ball radius. Which of the
+two a glyph got turned on a margin of two hundredths of a unit.
+
+Two more sat behind it. Where no cut delivered the requested depth the search ran
+to the end of the usable run and took whatever sat there, which was no depth at
+all: on a curved terminal at ball ratio 2 and above the ball came out one unit
+deep and the bulb vanished. And a ball whose sideways swell alone already passes
+the terminal plane has no depth that satisfies the pin at any cut, so the
+terminal fell through to a plain cap.
+
+The trim is bisected for. The depth the terminal allows rises as the cut moves
+back and runs away where the edge turns square to the stroke, so the requested
+depth is a root and the search finds it from the deep end. The ball is the shape
+the settings asked for, and the cut moves to deliver it. Where the request does
+not fit, the search carries the deepest ball the run allows and falls back to it,
+refined between the samples either side so the answer moves rather than stepping.
+Where the ball is too wide for any cut it is narrowed until one cut holds it.
+
+Sweeping the far skeleton point 40 units in quarter-unit steps, worst single-step
+outline movement 93.94 before and 3.00 after. Sweeping ball ratio 0.5 to 3 in 51
+steps, 6 steps drew a plain cap before and 0 draw one now.
+
+**A predicate answers whether, and the question was how much.** Every fault here
+came from testing a guess instead of solving for the number. The fit predicate
+was correct and useless: it could confirm a trim and could not rank two.
+
+**Open: where the ball grows large enough to swallow the whole inner edge**, the
+crossing that anchors the neck flips between the terminal and the contour's far
+end. That drives the remaining jumps under a ball ratio or ball shape sweep.
+
+### The bulb's neck
+
+Its easing was named tension, which it is not: it sets how far back along the
+inner edge the neck starts. It was also indirect, because the value grew a
+second, inflated ball and took whatever crossing that ball happened to make with
+the inner edge. No reading of the number told you where the neck would land, and
+the crossing search was free to walk past on-curves and eat whole segments.
+Easing is a 0 to 1 fraction of the run from the plain ball crossing back to the
+next on-curve on the inner edge now, placed directly, with one run serving both
+the geometry and the panel's top of range so the stop cannot disagree with the
+number.
+
+The curvature gizmo was absent from the whole terminal region. The segment walk
+takes a segment only when all four of its points carry addresses on one side; cap
+points carry none, and the trim rebuilt the inner edge's two handles from a
+bezier split without re-attaching theirs. The trim publishes what the round-cap
+split already publishes — the original handles' addresses on the rebuilt handles,
+and the untrimmed segment on the crossing on-curve — and only when easing is off,
+because exactly one gizmo belongs at a bulb's terminal. Once easing is on the
+neck gets that gizmo instead; a neck has no skeleton segment behind it, so its
+curvature is stored on the cap-owning point and its four points name that point
+and that field.
+
+**Naming the point is not the same as owning it.** The neck names the cap-owning
+skeleton point so the gizmo can find it, and that alone made every neck point
+resolve as an editable generated handle — a drag would have moved the rib the
+neck hangs off. Three readers had to be told the difference: the segment walk,
+the on-curve gizmo's eligibility, and the editable-target resolver. **Provenance
+that names a point is an address, not a claim of ownership**, and each reader
+decides for itself what it may do with one.
+
+**The obvious test helper measured two different points.** The rejoin was read as
+the furthest-forward on-curve on the inner edge. Once easing is on, the ball
+attachment also lands near that edge and sits forward of the neck's far end, so
+the helper reported the attachment at small easing and the far end at large. The
+continuity check failed at 0.05 and passed everywhere else, which reads as a
+geometry bug and was a measurement bug.
+
+**A straight stroke cannot test this.** The inner edge's terminal segment is a
+line there and a line has no curvature gizmo, so the first version of the
+addressability test asserted against geometry that could never satisfy it.
+
+### Fixture gap
+
+No golden fixture moved for the corner rounding rework, and the corpus carries no
+rounded corner at all, so it cannot see that change. No external glyph uses a
+bulb.
+
+---
+
+## Base-curve expansion (map F9)
+
+**State: shipped.** Holding D or S and dragging an on-curve offsets the stroke.
+It worked on skeleton points only, so an ordinary outline could be moved and not
+expanded. The geometry the gesture needs already existed inside the skeleton's
+fixed-rib drag, and copying it would have put two copies in the tree against rail
+R-B.
+
+The geometry moved to where both features reach it: a core module holding the
+segment walk, the per-point normal, the coupling rule and the offset construction
+itself, none of which reads a width, an id or a cap. The skeleton model keeps its
+exported names as wrappers and adds the three things only a skeleton has — the
+rib tied-flag opt-out, the serif terminals that also couple a straight, and the
+per-point rib-angle override. Ordinary outline points gain no stored field: what
+travels together is the rule that was already there, that a straight carrying a
+tension point holds both its ends to one offset and straights sharing an end
+merge into one group.
+
+Both keys do the same thing here, as they do on a single-sided stroke: the drag
+direction alone decides whether the shape grows or shrinks. The gesture engages
+only where the selection holds no skeleton geometry, so a mixed selection runs
+the skeleton drag exactly as before, and generated contours are never touched.
+
+**There is no floor.** A base curve has no width to run out of, so an inward drag
+follows the cursor as far as it is pushed and cusps where the offset passes the
+local radius. That is ordinary outline geometry, reachable by hand and undoable.
+
+The extraction was behaviour-preserving: core suite 1,894 before and 1,913 after,
+19 new tests, no existing test edited, and the fixed-rib block in the skeleton
+modifier tests — the floor and the past-the-floor idempotence assertions included
+— passed untouched throughout.
+
+**An undo did not fully restore, and the reason was where the change was recorded
+from.** Every frame recorded against the live glyph, which already carried the
+frame before it, so the rollback described one frame rather than the drag, and a
+three-frame drag rolled back to frame two. The skeleton's own entry never had
+this, because it copies the pre-drag glyph once and records each frame against a
+fresh copy of that copy. **A rollback is a statement about the whole gesture, so
+it has to be measured from where the gesture started, not from where the last
+frame did.**
+
+**A corner point took the miter whatever was selected, and that was two separate
+faults.** Selecting one edge of a rectangle and dragging it down 20 sent both its
+corner points diagonally outward: the edge sank 14 and widened by 28, and the two
+side edges slanted.
+
+The first attempt fixed only the distance. It made the corner point travel far
+enough for both its segments to land at the offset, which is right when both
+segments are being offset and wrong when one is not. The designer rejected it and
+named the derivation that settles it: **each segment moves along its own normal
+by its own offset, and the corner point lands where its two moved segments
+cross.** A segment whose far end stays put has an offset of zero, so it does not
+move, the crossing stays on it, and the point travels square to the one segment
+that did move. Measured against that derivation afterwards, the code agrees to
+grid rounding at turns of 90, 63 and 11 degrees, and in the one-edge case.
+
+**The projection axis had the same fault.** The cursor was projected onto the
+clicked point's own normal, which at a corner point read 14 of a 20-unit drag, so
+how far a drag reached depended on the angle of the point it started from. It
+projects onto the direction that point will actually travel in now.
+
+**The crossing needs a bound, and it is the only limit in this drag.** Two
+segments doubling back move to parallel positions and never cross, so the
+distance runs to infinity and at exactly doubled back it is not a number. It is
+held at four times the offset, the standard miter limit, which starts to bite at
+a turn of about 151 degrees. The spec says there are no limits and means the drag
+distance against the curvature radius. This is a different thing and an addition
+to what the spec asked for.
+
+**Stating a construction as a rule instead of as its derivation cost a round
+trip.** "The corner point travels the miter length" names a quantity and explains
+nothing. "Each segment moves along its own normal, and the point lands where they
+cross" is the same number and answers the question.
+
+**The plan's own test asserted the wrong answer once.** Its chaining fixture put
+a curve where the comment said a straight, so it demanded three coupled points
+where the correct answer is one. A curve is never coupled.
+
+**The plan's baseline had drifted by 329 tests** and the coupling collector had
+gained a serif argument since it was written. Neither changed the work. Both are
+the ordinary cost of a plan written four weeks before it was run.
+
+**Still owed.** Four rows of the manual matrix have not been run: the mixed
+selection, the generated contour, the drag started on a handle, and the key
+pressed and released mid-drag. Live use covered the gesture, both keys, the
+direction, the ghost, the readout, undo and the rectangle cases, which is what
+produced the two faults above.
+
+---
+
+## Panel mechanics (map F7, skeleton)
+
+**State: settled.** The scrubbable label replaced eleven relative scale sliders
+in the serif section alone. Each slider ate a third of a row, and the control was
+indirect: the thumb reported a percentage, so setting a length meant knowing what
+it currently was, working out the ratio, and watching the number rather than the
+slider.
+
+Pressing a parameter's name and moving sideways moves its number one unit per
+pixel, shift a tenth, control ten. **Linear, deliberately** — an accelerating
+scrub returns a different number for the same hand movement depending on how fast
+the hand moved, so nothing about it can be learned and no round value can be
+landed on without watching the readout.
+
+Whole numbers throughout, whatever the modifier. Everything a scrub reaches is in
+font units and the generator quantizes to the grid anyway, so a fraction only
+stores a value the outline never uses and leaves the next drag starting from a
+number the panel is not showing.
+
+Three pieces, deliberately separate: the pixels, modifiers, step, clamping and
+rounding live in a core module with no DOM, which is the only way any of it gets
+tested, because the view packages carry no harness (rail R-G); the pointer events
+attach to the **label** rather than the input, because an input is a place to
+select text and type into and a drag starting inside one fights both; and the
+panel routes it, checked before the other streaming branches, because a scrubbed
+number would otherwise be read as an absolute value by whichever branch claims
+its group.
+
+**What travels down the stream is the change from where the drag started, not a
+value.** Adding that change per point is what keeps a mixed selection mixed: a 40
+and a 60 dragged up by 10 become 50 and 70 instead of collapsing onto one number.
+The existing streaming helper already restored the pre-drag skeleton before each
+frame, which is exactly what a relative drag needs, so this was routing rather
+than new machinery.
+
+**Clamping and rounding cannot be the same call.** They were, and the first pass
+shipped fractions into the boxes because nothing asked for rounding. Turning it
+on in that one function would have broken the fine modifier instead: the caller
+folds the clamped value back into its accumulated travel so an overshoot turns
+around immediately, and folding a **rounded** value back cancels each fine move
+before the next can build on it, so a tenth of a unit per pixel would move
+nothing at all. Two functions now, and the travel is only ever folded back
+through the clamp. Both halves are pinned by tests.
+
+**Two clamps disagreed with the panel.** The nudge floored every serif length at
+zero, copied from the scale path, but wing slope is signed and the whole lower
+half of its range is a real family of shapes. And the number fields declared no
+minimum at all, so a drag past the bottom kept counting down in the box while the
+shape had already stopped, and the number snapped back on release. Both fixed by
+putting the bound where the panel can see it.
+
+**Shift is the fine adjust, not the coarse one.** Figma's scrub has it the other
+way and the first pass followed Figma. Shift-as-precision is the stronger
+convention across everything else and is what this repo's user expects. The arrow
+keys in these same fields still take shift as coarse, from upstream —
+inconsistent, and unchanged here because it is shared with every other Fontra
+panel.
+
+**Multiplication was a real loss and was reinstated separately**, as a ratio
+field on the same scrub row. See the serif terminal section.
+
+---
+
+## Modifiers and the early live-use rounds (map F7, skeleton)
+
+**State: settled.** Kept because two of these were arrived at twice.
+
+**Two modifier rearrangements were built and both reverted the same day.**
+Swapping the rib pair, so a plain drag takes the width and the Z key takes the
+tangent slide, ignores why Z exists: a tangential rib move is the *rarer*
+intent, and a plain drag reaching for the width is what the tool is for.
+Dropping Z as the gate on generated geometry removes the safety on derived
+geometry. Both are closed in the feature model's rejected register with their
+reasons.
+
+**A real defect was hiding under the second attempt.** Z carried the adjacent
+handles when the drag came in through the generated on-curve and not when it came
+in through the rib grip — two entry points to the same nudge, at the same place
+on screen, and only one passed the carry flag. The flag is derived from the
+behavior name where both callers pass through now, so they cannot disagree.
+
+**Every basic point rendered black as if selected.** A null index list read as
+"every point" by the node iterator, and an empty selection parses to no list at
+all, so the selected-node layer painted the whole path. Two iterators now, one
+per meaning. **The previous round's fix was to hide all generated points**, which
+is not a fix — it removes the symptom and the feature together.
+
+**A stat that measures the wrong thing is worse than no stat.** The tension-bound
+counter answered its question once and was then read as hard pinning, which it
+never was. Removed with the script that consumed it.
+
+Equalize fired on button-down, so a modified drag was unreachable, and it fired
+on both gizmos rather than only the one that owns the split. It is a click on the
+curvature gizmo, deciding after it sees whether the pointer moves.
+
+---
+
+## The documents themselves
+
+Five design specs and implementation plans, 3,783 lines, all describing work that
+had shipped, were dissolved into the feature model and the architecture map. **A
+plan that outlives its implementation is worse than no plan**: it still reads as
+an instruction, and a reader cannot tell which parts are the design of record and
+which were withdrawn three rounds ago. The part worth having is the register of
+what was tried and rejected on measurement, with the measurement that closed each
+one.
+
+**The map named two editor modules that have never existed**, with line counts,
+which is what made them credible. Same error as a phantom modifiers file
+corrected days earlier, so the map carries a "grep before trusting a filename
+here" note rather than just a fixed row.
+
+**A code comment pointed at a deleted spec for several commits.** Cited paths rot
+silently.
+
+**Documents that were already unformatted are left that way**, here and at the
+segment selection fix, because reformatting buries a change in noise.
