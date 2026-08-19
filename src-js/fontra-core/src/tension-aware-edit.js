@@ -338,9 +338,13 @@ export function slideTensionPoints(
         subVectors(beforePoints[nearIndex], beforePoints[anchorIndex]),
         beforeAxis
       );
+      // Measured on the straight as it stood before the edit. Dragging the
+      // tension point itself tilts the straight, and measuring on the tilted
+      // one reads that tilt as travel along it, which would stand the slide
+      // down exactly when a single-point drag needs it most.
       const alongAfter = dotVector(
         subVectors(afterPoints[nearIndex], afterPoints[anchorIndex]),
-        afterAxis
+        beforeAxis
       );
       if (Math.abs(alongAfter - alongBefore) > EPSILON) {
         continue;
