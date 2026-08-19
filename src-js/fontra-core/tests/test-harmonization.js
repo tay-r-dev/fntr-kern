@@ -309,6 +309,72 @@ describe("harmonization: measureG2Discontinuity", () => {
   });
 });
 
+// --- one call is the whole answer -------------------------------------------
+//
+// Every joint on this contour shares a segment with the two next to it, so
+// correcting any one of them moves the other two off. The sweep has to keep
+// going until the whole ring is quiet. It used to finish a joint the first time
+// that joint's own correction fell under the tolerance, or the first time a
+// step ran into a limit, and never look at it again — so a neighbour's later
+// move was left standing and running the command a second time kept helping.
+function ringPath() {
+  return makeContour([
+    { x: 300, y: 0, smooth: true },
+    cubic(300, 210),
+    cubic(150, 260),
+    { x: 0, y: 300, smooth: true },
+    cubic(-190, 300),
+    cubic(-300, 190),
+    { x: -300, y: 0, smooth: true },
+    cubic(-300, -120),
+    cubic(-120, -300),
+    { x: 0, y: -300, smooth: true },
+    cubic(205, -300),
+    cubic(300, -205),
+  ]);
+}
+
+const RING_JOINTS = [0, 3, 6, 9];
+
+describe("harmonization: a ring of coupled joints", () => {
+  function worstDiscontinuity(path) {
+    return Math.max(
+      ...RING_JOINTS.map((index) =>
+        measureG2Discontinuity(getJointContext(path, index))
+      )
+    );
+  }
+
+  it("settles the whole ring in one call", () => {
+    const path = ringPath();
+    expect(worstDiscontinuity(path)).to.be.greaterThan(1e-4);
+    harmonizePathInPlace(path, RING_JOINTS, {});
+    expect(worstDiscontinuity(path)).to.be.closeTo(0, 1e-6);
+  });
+
+  it("has nothing left for a second call to do", () => {
+    const path = ringPath();
+    harmonizePathInPlace(path, RING_JOINTS, {});
+    const once = [...Array(path.numPoints).keys()].map((index) =>
+      path.getPointPosition(index)
+    );
+    harmonizePathInPlace(path, RING_JOINTS, {});
+    for (let index = 0; index < path.numPoints; index++) {
+      const [x, y] = path.getPointPosition(index);
+      expect(
+        distance({ x, y }, { x: once[index][0], y: once[index][1] })
+      ).to.be.lessThan(0.01);
+    }
+  });
+
+  it("reports every joint harmonized, not partial", () => {
+    const report = harmonizePathInPlace(ringPath(), RING_JOINTS, {});
+    expect(report.map((entry) => entry.status)).to.deep.equal(
+      RING_JOINTS.map(() => "harmonized")
+    );
+  });
+});
+
 // --- expandToJoints ---------------------------------------------------------
 
 describe("harmonization: expandToJoints", () => {

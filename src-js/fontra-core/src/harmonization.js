@@ -665,9 +665,14 @@ function applyFixup(path, ctx, fixup, handleBias, touched) {
 //     {pointIndex, contourIndex, status, reason, iterations}
 //
 //     status  harmonized | partial | skipped
-//     reason  clamped | not-converged                     (partial)
+//     reason  clamped | tension-limited | not-converged   (partial)
 //             not-smooth | not-curve-joint | degenerate
 //             | already-harmonic                          (skipped)
+//
+// A joint's verdict is read at the end of the sweep and not during it. Every
+// joint on a closed contour shares a segment with the two beside it, so a joint
+// that has nothing left to correct can be moved off again by a neighbour on a
+// later pass. Nothing is finished until the whole set is quiet.
 //
 // Total: no geometric situation throws.
 //
@@ -743,6 +748,9 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       floors: undefined,
       segments: [],
       tensionReduced: false,
+      quiet: false,
+      tensionLimited: false,
+      clamped: false,
       construction: "g2",
       mode: continuity === "G3" ? "g3" : "g2",
       done: false,
@@ -810,13 +818,10 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
             outcome.node ? distance(outcome.node, ctx.node) : 0
           );
           if (movement < toleranceUnits) {
-            if (state.iterations) {
-              settle(state, "harmonized", undefined);
-            } else {
-              settle(state, "skipped", "already-harmonic");
-            }
+            state.quiet = true;
             continue;
           }
+          state.quiet = false;
           if (outcome.node) {
             writePoint(path, touched, state.pointIndex, outcome.node);
           }
@@ -840,13 +845,10 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
 
       const fixupLength = vectorLength(solution.fixup);
       if (fixupLength < toleranceUnits) {
-        if (state.iterations) {
-          settle(state, "harmonized", undefined);
-        } else {
-          settle(state, "skipped", "already-harmonic");
-        }
+        state.quiet = true;
         continue;
       }
+      state.quiet = false;
 
       // The node and the handles always end up `fixup` apart no matter how the
       // bias splits the motion, so one handle grows and the other shrinks by
@@ -910,11 +912,12 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
         state.iterations += 1;
         anyMoved = true;
       }
-      if (tensionLimited) {
-        settle(state, "partial", "tension-limited");
-      } else if (clamped) {
-        settle(state, "partial", "clamped");
-      }
+      // A limit shortens this step. It does not finish the joint: the next
+      // pass measures the limit again from where the step landed, and there is
+      // usually more room there. Settling here took one scaled-back step and
+      // stopped, which is why running the command again used to keep helping.
+      state.tensionLimited = state.tensionLimited || tensionLimited;
+      state.clamped = state.clamped || clamped;
     }
 
     if (!anyMoved) {
@@ -922,8 +925,24 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     }
   }
 
+  // The sweep is over. A joint that was quiet on the last pass is finished,
+  // whatever it ran into on the way, because quiet means its own correction is
+  // now under the tolerance.
   for (const state of states) {
-    if (!state.done) {
+    if (state.done) {
+      continue;
+    }
+    if (state.quiet) {
+      if (state.iterations) {
+        settle(state, "harmonized", undefined);
+      } else {
+        settle(state, "skipped", "already-harmonic");
+      }
+    } else if (state.tensionLimited) {
+      settle(state, "partial", "tension-limited");
+    } else if (state.clamped) {
+      settle(state, "partial", "clamped");
+    } else {
       settle(state, "partial", "not-converged");
     }
   }

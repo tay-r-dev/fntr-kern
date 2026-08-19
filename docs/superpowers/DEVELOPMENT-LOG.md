@@ -3641,3 +3641,78 @@ focus. A handover that races the browser's own default loses.
 and height onto a single ratio to stop them drifting apart, and that collapsed a
 control into them too. What has to be shared is the reading. What each drawing
 does with it is its own.
+
+---
+
+## 50. Harmonize stopped before it was finished — fix
+
+### 1. The report
+
+Run harmonize on an unharmonized contour and a jump is left behind. Run it two
+or three more times and the jump goes away. The first run should have given the
+same answer.
+
+### 2. What the sweep did
+
+Every joint on a closed contour shares a segment with the two beside it. Move
+the handles at one joint and the curvature at both neighbours changes. So the
+sweep is a loop: it goes round the joints again and again until the whole ring
+stops moving.
+
+Two things took a joint out of that loop early, permanently.
+
+**A joint that had nothing left to do was called finished.** The moment its own
+correction fell under the tolerance it was marked done and never looked at
+again. A neighbour that moved three passes later put it back out, and nobody
+measured it after that.
+
+**A joint that ran into a limit was called finished too.** When a step would
+push a handle past its cusp floor, or past the point where its segment's handle
+lines cross, the step is scaled back to the largest one that fits. That is a
+smaller step, not the end of the work — but the joint was settled right there,
+after exactly one scaled step.
+
+A second run started over. Fresh limits measured from the new geometry, every
+joint open again. That is why running it repeatedly kept helping.
+
+Measured on a four-joint ring, worst joint of the four:
+
+|                       | worst discontinuity |
+| --------------------- | ------------------- |
+| before                | 86.8%               |
+| after one run, old    | 5.2%                |
+| after two runs, old   | 0.38%               |
+| after three runs, old | 0.38%               |
+| after one run, now    | 0.38%               |
+
+The 0.38 per cent that is left is whole-unit rounding. Without rounding the same
+single run reaches 0.01 per cent.
+
+### 3. The fix
+
+A joint with nothing to do goes quiet instead of finishing. It is measured again
+on every pass, and it moves again the moment a neighbour disturbs it. A joint
+that runs into a limit takes its scaled step and stays open, so the next pass
+measures the limit again from where that step landed.
+
+The sweep ends when no joint moved anywhere, which it already did. The verdict
+for each joint is read at the end rather than at the moment it went quiet:
+quiet at the end means harmonized, quiet from the start means it was already
+harmonic, and anything else reports what stopped it.
+
+### 4. Result
+
+Full suite 1,901 passing. Three new tests on a ring of four coupled joints: one
+call settles the whole ring, a second call has nothing left to move, and every
+joint reports harmonized rather than partial.
+
+### 5. Findings
+
+**A local verdict on a coupled system is not a verdict.** Both early exits were
+correct statements about one joint at one moment. Neither was a statement about
+the contour, and the contour is what was being harmonized.
+
+**A limit is a smaller step.** Treating "this step had to be shortened" as "this
+joint is done" throws away the whole remainder of the correction. The limit is
+re-measured from wherever the shortened step landed, and there is nearly always
+more room there.
