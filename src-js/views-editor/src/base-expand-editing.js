@@ -120,6 +120,14 @@ export function createBaseExpandTargetEntries(
     });
   }
 
+  // The pre-drag path, kept whole. Every frame records against a fresh copy of
+  // it rather than against the live glyph, which already carries the frame
+  // before. Recorded against the live glyph the rollback describes one frame,
+  // so an undo after the drag returns the shape to the second-to-last frame
+  // instead of to where it started. This is the same scratch-per-frame the
+  // skeleton's own entry uses.
+  const originalPath = path.copy();
+
   let rollbackChange = null;
   return [
     {
@@ -127,7 +135,8 @@ export function createBaseExpandTargetEntries(
         return rollbackChange;
       },
       makeChangeForDelta(delta) {
-        const changes = recordChanges(layerGlyph, (layerGlyphProxy) => {
+        const scratch = { ...layerGlyph, path: originalPath.copy() };
+        const changes = recordChanges(scratch, (layerGlyphProxy) => {
           for (const [contourIndex, selectedAbsolute] of byContour) {
             const { contour, startIndex } = originals.get(contourIndex);
             const selectedIndices = new Set(
@@ -164,7 +173,8 @@ export function createBaseExpandTargetEntries(
                 contour.points,
                 contour.isClosed,
                 offsets,
-                workingPoints
+                workingPoints,
+                { miterCorrectTravel: true }
               )
             ) {
               continue;

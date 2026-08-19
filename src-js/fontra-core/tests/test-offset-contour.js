@@ -230,3 +230,86 @@ describe("base-curve expansion offsets", () => {
     expect(offsets.get(3)).to.be.closeTo(-250, 1e-9);
   });
 });
+
+describe("corner travel", () => {
+  // How far an edge actually moved, square to itself.
+  const edgeTravel = (a, b, a2, b2) => {
+    const L = Math.hypot(b.x - a.x, b.y - a.y);
+    const nx = (b.y - a.y) / L;
+    const ny = -(b.x - a.x) / L;
+    return [
+      (a2.x - a.x) * nx + (a2.y - a.y) * ny,
+      (b2.x - b.x) * nx + (b2.y - b.y) * ny,
+    ];
+  };
+
+  it("carries a corner far enough to keep both its edges at the offset", () => {
+    // A right angle. Travelling the offset distance ALONG the miter moves each
+    // edge by only its cosine — 14.1 of a requested 20 — while the far ends of
+    // those edges move the full 20, so the edges tilt instead of offsetting.
+    // The corner has to travel the miter length instead: 20 / cos(45°).
+    const points = [onCurve(0, 0), onCurve(100, 0), onCurve(100, 100)];
+    const working = structuredClone(points);
+
+    offsetContourAlongNormals(
+      points,
+      false,
+      new Map([
+        [0, 20],
+        [1, 20],
+        [2, 20],
+      ]),
+      working,
+      { miterCorrectTravel: true }
+    );
+
+    for (const [i, j] of [
+      [0, 1],
+      [1, 2],
+    ]) {
+      const [startMoved, endMoved] = edgeTravel(
+        points[i],
+        points[j],
+        working[i],
+        working[j]
+      );
+      expect(startMoved).to.be.closeTo(20, 0.5);
+      expect(endMoved).to.be.closeTo(20, 0.5);
+    }
+  });
+
+  it("leaves a smooth point's travel alone", () => {
+    // A smooth point's two directions agree, so its miter is its own tangent
+    // normal and the correction is exactly 1. Turning it on must not move it.
+    const points = makeArc();
+    const plain = structuredClone(points);
+    const corrected = structuredClone(points);
+    const offsets = new Map([
+      [0, 20],
+      [3, 20],
+    ]);
+
+    offsetContourAlongNormals(points, false, offsets, plain);
+    offsetContourAlongNormals(points, false, offsets, corrected, {
+      miterCorrectTravel: true,
+    });
+
+    expect(corrected).to.deep.equal(plain);
+  });
+
+  it("bounds the travel at a cusp instead of emitting infinity", () => {
+    // Two segments doubling back on each other have no miter: the correction
+    // divides by the cosine of a right angle. The bound is what stops the point
+    // leaving the glyph, and it is the only limit in this drag.
+    const points = [onCurve(0, 0), onCurve(100, 0), onCurve(0.0001, 0)];
+    const working = structuredClone(points);
+
+    offsetContourAlongNormals(points, false, new Map([[1, 20]]), working, {
+      miterCorrectTravel: true,
+    });
+
+    expect(Number.isFinite(working[1].x)).to.equal(true);
+    expect(Number.isFinite(working[1].y)).to.equal(true);
+    expect(Math.hypot(working[1].x - 100, working[1].y)).to.be.at.most(20 * 4);
+  });
+});

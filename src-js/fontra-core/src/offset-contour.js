@@ -235,6 +235,56 @@ export function calculateContourNormalAtPoint(points, closed, pointIndex) {
   return rotateVector90CW(bisector);
 }
 
+// A corner cannot both travel the offset distance and leave its two edges at
+// that distance: its normal splits the corner, so travelling along it moves each
+// edge by only the cosine of half the turn. The corner must travel the miter
+// length instead, which is the distance divided by that cosine. A smooth point's
+// two directions agree, so its factor is exactly 1.
+//
+// The bound is what a cusp needs. Two segments doubling back have no miter at
+// all — the cosine goes to zero and the factor to infinity — so past this much
+// the corner is held and its edges fall short instead of the point leaving the
+// glyph. It is the standard miter limit, and it is the only limit in this drag.
+const MITER_TRAVEL_LIMIT = 4;
+
+/**
+ * How far a point must travel along its own normal for its two edges to end up
+ * at the offset distance.
+ * @param {Array} points - The contour's points
+ * @param {boolean} closed - Whether the contour is closed
+ * @param {number} pointIndex - Index of the on-curve point
+ * @returns {number} The multiplier, between 1 and the miter limit
+ */
+export function miterTravelFactor(points, closed, pointIndex) {
+  const point = points?.[pointIndex];
+  if (!point || point.type) {
+    return 1;
+  }
+  const segments = buildContourSegments(points, closed);
+  let incomingSegment = null;
+  let outgoingSegment = null;
+  for (const segment of segments) {
+    if (segment.endPoint === point) incomingSegment = segment;
+    if (segment.startPoint === point) outgoingSegment = segment;
+  }
+  if (!incomingSegment || !outgoingSegment) {
+    return 1;
+  }
+  const dir1 = segmentEndDirection(incomingSegment);
+  const dir2 = segmentStartDirection(outgoingSegment);
+  if (!dir1 || !dir2) {
+    return 1;
+  }
+  const dot = dir1.x * dir2.x + dir1.y * dir2.y;
+  const cross = dir1.x * dir2.y - dir1.y * dir2.x;
+  const halfTurn = Math.atan2(cross, dot) / 2;
+  const cosHalfTurn = Math.abs(Math.cos(halfTurn));
+  if (!(cosHalfTurn > 1 / MITER_TRAVEL_LIMIT)) {
+    return MITER_TRAVEL_LIMIT;
+  }
+  return 1 / cosHalfTurn;
+}
+
 function makeSegment(points, startIdx, endIdx) {
   return {
     startPoint: points[startIdx],
@@ -295,7 +345,12 @@ export function offsetContourAlongNormals(
   closed,
   offsetsByIndex,
   workingPoints,
-  { round = Math.round, normalAt = null, rebuildHandles = true } = {}
+  {
+    round = Math.round,
+    normalAt = null,
+    rebuildHandles = true,
+    miterCorrectTravel = false,
+  } = {}
 ) {
   const pointDeltas = new Map();
   const pointOffsets = new Map();
@@ -307,7 +362,14 @@ export function offsetContourAlongNormals(
     const normal = normalAt
       ? normalAt(pointIndex)
       : calculateContourNormalAtPoint(points, closed, pointIndex);
-    const delta = { x: normal.x * offset, y: normal.y * offset };
+    // The travel and the offset distance are two numbers at a corner. The
+    // handle rebuild wants the offset distance, because that is what the
+    // segment is moving by; the point wants the miter length, because that is
+    // what puts its two edges there.
+    const travel = miterCorrectTravel
+      ? offset * miterTravelFactor(points, closed, pointIndex)
+      : offset;
+    const delta = { x: normal.x * travel, y: normal.y * travel };
     pointDeltas.set(pointIndex, delta);
     pointOffsets.set(pointIndex, offset);
     working.x = round(original.x + delta.x);
