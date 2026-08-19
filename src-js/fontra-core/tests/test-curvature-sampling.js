@@ -168,12 +168,12 @@ describe("curvature comb: a fixed scale", () => {
     expect(Math.min(...lengths)).to.be.closeTo(24, 0.6);
   });
 
-  it("draws close to in proportion where the curve is gentle", () => {
-    // Well under the reference tightness the squeeze is almost straight, so
-    // halving the curvature almost halves the fringe.
+  it("draws in proportion up to the reference tightness", () => {
+    // Under the reference the rule is a straight proportion, so halving the
+    // curvature halves the fringe.
     const gentle = Math.max(...fringeLengths(circle(1000)));
     const gentler = Math.max(...fringeLengths(circle(2000)));
-    expect(gentle / gentler).to.be.closeTo(1.9, 0.1);
+    expect(gentle / gentler).to.be.closeTo(2, 0.05);
   });
 
   it("does not rescale one shape when another one is redrawn", () => {
@@ -186,11 +186,22 @@ describe("curvature comb: a fixed scale", () => {
     expect(after).to.deep.equal(before);
   });
 
-  it("never reaches twice the peak height, however tight the curve", () => {
-    // No ceiling holds this. The rule itself has nowhere further to go, so a
-    // cusp stays on the screen without a cap.
-    expect(Math.max(...fringeLengths(circle(1)))).to.be.lessThan(48);
-    expect(Math.max(...fringeLengths(circle(1)))).to.be.greaterThan(47);
+  it("keeps a peak a peak above the reference tightness", () => {
+    // A squeeze towards a ceiling drew a curve four times tighter than the
+    // reference at 1.6 times the height and one twice as tight again at 1.8,
+    // which is a plateau where the drawing has two different peaks.
+    const atReference = Math.max(...fringeLengths(circle(100)));
+    const fourTimes = Math.max(...fringeLengths(circle(25)));
+    const eightTimes = Math.max(...fringeLengths(circle(12.5)));
+    expect(fourTimes / atReference).to.be.closeTo(2.39, 0.05);
+    expect(eightTimes / fourTimes).to.be.greaterThan(1.25);
+  });
+
+  it("grows without a ceiling, but slowly, so a cusp stays on the screen", () => {
+    // A hundred times the reference tightness is under six times the height.
+    const hundredTimes = Math.max(...fringeLengths(circle(1)));
+    expect(hundredTimes).to.be.greaterThan(5 * 24);
+    expect(hundredTimes).to.be.lessThan(6 * 24);
   });
 
   it("draws two different curvatures at two different lengths, always", () => {

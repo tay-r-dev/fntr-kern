@@ -1846,7 +1846,11 @@ registerVisualizationLayerDefinition({
     // The curve tightness that earns the full height comes from the em, so it
     // is one constant of the font. Nothing on the drawing feeds the scale, and
     // no hand sets it either.
-    const referenceRadius = (model.fontController?.unitsPerEm || 1000) / 4;
+    //
+    // A tenth of the em, which on a 1000 unit em is a radius of 100. That is
+    // about where a letter's gentler curves sit, so the working range of a
+    // drawing lands around the full height rather than far above it.
+    const referenceRadius = (model.fontController?.unitsPerEm || 1000) / 10;
     const sharpness = Math.max(0.1, model.sceneSettings?.speedPunkSharpness ?? 1);
     const opacity = Math.max(
       0,

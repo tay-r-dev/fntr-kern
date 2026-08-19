@@ -372,8 +372,19 @@ export function computeSpeedPunkSamples(path, params = {}) {
       const colorRatio = reading / (1 + reading);
       // The height is drawn from the same reading with sharpness applied, so
       // the comb changes shape and the colour under it does not.
+      //
+      // In proportion up to the reference tightness, and above it the same
+      // height plus the logarithm of how much tighter the curve is. The two
+      // branches meet at the reference with the same value and the same slope.
+      //
+      // A curve tighter than the reference used to be squeezed towards a
+      // ceiling of twice the height, and a letter bends tighter than the
+      // reference over most of its length, so nearly every fringe sat in the
+      // flat part and the comb drew plateaus where the drawing has peaks. This
+      // rule keeps a real peak: at four times the reference tightness the
+      // fringe is 2.4 times the height, not 1.6.
       const shaped = Math.pow(reading, sharpness);
-      const heightRatio = shaped / (1 + shaped);
+      const heightRatio = shaped <= 1 ? shaped : 1 + Math.log(shaped);
       onCurve.push({ x, y, colorRatio });
 
       let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];
@@ -387,7 +398,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
       // two different curvatures at one length and creased where one fringe
       // saturated beside one that did not. This rule never repeats a length,
       // so a cusp stays on the screen without a cap to hold it.
-      const h = -2 * heightRatio * peakHeightGlyphUnits;
+      const h = -heightRatio * peakHeightGlyphUnits;
       offCurve.push({ x: x + nx * h, y: y + ny * h });
     }
 

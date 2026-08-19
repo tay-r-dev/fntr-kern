@@ -3858,3 +3858,72 @@ is where it already is comes back byte for byte identical.
 already said "already-harmonic" for these joints. The undo entry came from the
 writes underneath, which nobody was looking at, because the report is about
 joints and the recorder is about points.
+
+---
+
+## 53. The comb drew plateaus, and the peak height did not stay — fixes
+
+### 1. The reports
+
+1. The comb has more plateaus than peaks, even at a high peak height.
+2. The peak height is not saved.
+
+### 2. Why the shape flattened
+
+Entry 47 replaced a hard ceiling with a squeeze towards twice the peak height. A
+squeeze has a flat part, and the reference tightness was set at a quarter of the
+em, which is a radius of 250 on a 1000 unit em. A letter bends far tighter than
+that over almost all of its length, so almost every fringe was drawn from the
+flat part. Four times the reference tightness drew 1.6 times the height, eight
+times drew 1.8. Two different peaks, one drawn length: a plateau.
+
+Two changes.
+
+**The reference is a tenth of the em**, a radius of 100 on a 1000 unit em. That
+is about where a letter's gentler curves sit, so the working range of a drawing
+lands around the full height instead of far above it. The colour rides the same
+reading, so its spread improves with it.
+
+**The height is a straight proportion up to the reference tightness, and above
+it the full height plus the logarithm of how much tighter the curve is.** The
+two branches meet at the reference with the same value and the same slope. Four
+times the reference now draws 2.39 times the height and eight times draws over
+1.25 times that again, so a peak stays a peak. There is still no ceiling, and
+there does not need to be one: a hundred times the reference tightness is under
+six times the height, so a cusp stays on the screen by itself.
+
+### 3. Why the peak height came back as 24
+
+The scene copy of each SpeedPunk number was seeded from a literal in the scene
+controller, and the saved value only reached it when the panel pushed it across
+at startup. A second set of defaults, sitting in a different file from the first,
+and whichever ran last won.
+
+The scene copy is now seeded from the saved value and follows it afterwards,
+wherever a change comes from. The three keys are one list, used for the seeding,
+the following and the redraw.
+
+### 4. Result
+
+Full suite 1,905 passing. The two ceiling tests became two shape tests: a
+straight proportion below the reference, a peak that stays a peak above it, and
+growth slow enough that a hundredfold tighter curve is under six times the
+height.
+
+Manual matrix owed, per rail R-G. Set a peak height, reload, and check it is
+still there. Look at a round letter and check the comb has peaks where the
+drawing turns hardest.
+
+### 5. Findings
+
+**A soft limit is still a limit if the working range sits inside it.** The
+squeeze was chosen so nothing would clip, and it did not clip. It flattened
+instead, which loses the same information a clip loses and is harder to see.
+
+**Where the scale sits decides whether the scale works.** The rule and the
+reference were chosen in separate steps, and the pair was never checked against
+a real letter. Half the fix is the arithmetic and half is the one number it is
+measured against.
+
+**A default in two files is a race.** The saved value and the literal were both
+correct on their own. Which one the drawing got depended on construction order.
