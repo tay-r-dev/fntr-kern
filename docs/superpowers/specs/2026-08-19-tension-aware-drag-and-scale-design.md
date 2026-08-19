@@ -20,11 +20,14 @@ out on the near side. X removes that.
 **The invariant, in one sentence: no handle turns, every handle keeps its tension, and a tension
 point slides along its straight to keep its segment's tangent corner in proportion.**
 
+Under a scale one more rule applies: **a straight segment is rigid**. It moves and does not stretch,
+so the curves absorb the whole change. That is section 3.
+
 X does not replace any existing behavior. The ordinary rules run first and decide where every point
 and handle goes. X then corrects handle lengths and slides tension points. Smooth points stay
 colinear, straights stay straight, and shift-constrain still constrains, because X touches no angle.
 
-## 2. The three rules
+## 2. The rules for both drag and scale
 
 ### Rule 1 — no handle turns
 
@@ -103,21 +106,68 @@ straight to zero length. Where the bound bites, the slide stops there and the co
 proportion, so the segment's shape is no longer preserved. A point that is itself in the selection
 moves with the edit and does not also slide.
 
-## 3. What this feature is not
+## 3. The scale — straights are rigid
 
-**It is not content-aware scale.** The demonstration in `a.json` narrows an **n** by 20 units while
-both stems keep their 60-unit width. Stem preservation is a one-dimensional layout problem over the
-whole glyph, and it breaks where two runs project onto the same interval of the scale axis — the
-left stem of an **n** and the shoulder above it are the standard case. That is a separate feature
-with its own decision to make. This one scales stem widths like any other scale, and only keeps the
-curves' shape.
+This is the content-aware half. Hold **X** and pull a transform handle: the straights move and keep
+their length, and the curves take the whole change.
 
-Also out of scope: skeleton centerlines, quadratic segments, and generated contours. The first is a
-later decision, because every skeleton write goes through the one skeleton write path and the
-outline regenerates behind it. The second has implied on-curve points that no corner can be measured
-against. The third is derived geometry and no editing tool touches it.
+### Rule 4 — a straight is a rigid link
 
-## 4. Corner cases
+Walk each contour as a chain. A straight segment is a **rigid link**: the vector between its two
+on-curve points is preserved, so it translates and never stretches. Everything between two rigid
+links is an **elastic run**, and a run absorbs whatever the scale asks of it. Inside a run the change
+is distributed proportionally, so each sub-run keeps its share.
+
+**Do not state this as an interval map over the scale axis.** Two runs can occupy the same interval,
+and an interval map cannot answer that. The chain answers it, because a chain has an order.
+
+Worked on the **n** in `_external/skeletron.fontra/glyphs/a.json`, x only, contour 0 of the first
+letter. Walking the loop: three horizontal straights are rigid links of 60, 60 and −60. Between them
+lie two elastic runs — the inner arch at 65 + 65 and the outer arch at 98 + 92.
+
+Pin the box to 230, from 250. The left body holds at 0, so the left inner wall holds at 60. The right
+body lands at 230, so the right inner wall lands at 170. The inner run therefore takes 110 instead of
+130. The outer run takes 170 instead of 190. Two different factors, and neither is free: the rigid
+links fix both.
+
+| point             | this rule | the file |
+| ----------------- | --------- | -------- |
+| inner apex        | 115.0     | 115      |
+| outer apex        | 142.3     | 142      |
+| right inner wall  | 170       | 170      |
+| right outer wall  | 230       | 230      |
+
+The stems keep their 60 units because the bottom straights are rigid. Nothing in the rule mentions a
+stem.
+
+The vertical moves in that file are the tension point slides of rule 3, so the file is this whole
+feature in one picture.
+
+### The two bounds
+
+**A contour with no elastic run scales normally.** A rectangle is rigid links end to end, so nothing
+can absorb the change. Rather than refuse it, the rule stands down for that contour and the ordinary
+scale applies.
+
+**The scale stops at a 2-unit curve.** No curved segment's bounding box may go under 2 units in
+either direction. When the first segment reaches that, the whole scale stops and the drag runs on
+against a shape that stands still. The floor is per segment, so the **n**'s inner run stops at 4
+units of span rather than 2, because it holds two segments.
+
+The drag keeps no floor. An inward drag is ordinary outline geometry that a designer can reach by
+hand and undo, which is the same call base-curve expansion made.
+
+## 4. What is not in scope
+
+Skeleton centerlines, quadratic segments, and generated contours. The first is a later decision,
+because every skeleton write goes through the one skeleton write path and the outline regenerates
+behind it. The second has implied on-curve points that no corner can be measured against. The third
+is derived geometry and no editing tool touches it.
+
+Rigid links belong to the scale only. A drag moves the points the designer chose, so there is nothing
+to distribute.
+
+## 5. Corner cases
 
 | Case                                                      | What X does                                                                   |
 | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -132,6 +182,13 @@ against. The third is derived geometry and no editing tool touches it.
 | Quadratic segment                                         | Left to the ordinary rules                                                    |
 | Generated contour                                         | Skipped                                                                       |
 | X pressed or released mid-drag                            | Read per frame, like the other realtime keys                                  |
+| Corner point at the end of a straight                     | It does not slide. It owns its direction, so it has no corner to keep         |
+| Contour of straights only, under a scale                  | Scales normally. Rule 4 stands down                                           |
+| A curved segment down to 2 units                          | The scale stops there                                                         |
+
+**One gap against the demonstration file.** The outer-left junction of the **n**, where the outer arch
+meets the left stem's outer wall, is a corner point in that drawing rather than a smooth one. It
+cannot slide, so it stays where it is. The file moves it 8.9 units, by hand.
 
 **Grid rounding.** Handles round to whole units on every frame. Every frame must be computed from a
 copy of the path as it stood at mouse-down, never from the frame before it. Otherwise a slow drag
@@ -141,7 +198,7 @@ frame. Base-curve expansion shipped this fault once.
 **Point count is unaffected.** X inserts and removes nothing, so the interpolation contract is not at
 risk.
 
-## 5. Where the code goes
+## 6. Where the code goes
 
 | File                                              | Role                                                                                                          |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -169,7 +226,7 @@ pre-drag path, using the ordinary behavior for the same selection, and corrects 
 correction is written as absolute positions, so applying it after the path change is exact. The
 rollback is recorded against the pre-drag copy, so undo restores the whole gesture.
 
-## 6. Testing
+## 7. Testing
 
 **Core, automated.** The restore and the slide are pure, so they take ordinary unit tests: the
 quarter-ellipse case, a segment with both ends moved, each fallback, each bound, and a tension point
