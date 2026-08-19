@@ -265,10 +265,60 @@ describe("curvature comb: a fixed scale", () => {
     expect(fringe(sharp)).to.not.be.closeTo(fringe(plain), 1);
   });
 
+  it("saves the last colour stop for handles that have crossed", () => {
+    // Handle tension is how far a handle reaches towards the point where its
+    // segment's two handle lines cross. A well-formed arc sits near a half. At
+    // 1 the handles meet, and past that the curve doubles back — so a half must
+    // read cool and well past 1 must read hot.
+    //
+    // A symmetric arc whose tangents leave at sixty degrees. The crossing point
+    // is above the middle of the chord, and the handles are a stated fraction
+    // of the way to it.
+    function arc(tension) {
+      const angle = Math.PI / 3;
+      const reach = Math.hypot(50, 50 * Math.tan(angle));
+      const length = tension * reach;
+      return VarPackedPath.fromUnpackedContours([
+        {
+          points: [
+            { x: 0, y: 0 },
+            { x: Math.cos(angle) * length, y: Math.sin(angle) * length, type: "cubic" },
+            {
+              x: 100 - Math.cos(angle) * length,
+              y: Math.sin(angle) * length,
+              type: "cubic",
+            },
+            { x: 100, y: 0 },
+          ],
+          isClosed: false,
+        },
+      ]);
+    }
+    const hottest = (path) =>
+      Math.max(
+        ...computeSpeedPunkSamples(path, {
+          peakHeightGlyphUnits: 24,
+          referenceRadius: 100,
+        }).map((quad) => quad.color.match(/\d+/g).slice(0, 3).map(Number)[0])
+      );
+    const asRed = (path) => {
+      const colors = computeSpeedPunkSamples(path, {
+        peakHeightGlyphUnits: 24,
+        referenceRadius: 100,
+      }).map((quad) => quad.color);
+      return colors.some((color) => color === "rgba(227, 0, 79, 1)");
+    };
+    expect(asRed(arc(0.5))).to.equal(false);
+    expect(asRed(arc(1))).to.equal(false);
+    expect(asRed(arc(1.5))).to.equal(true);
+    expect(hottest(arc(0.5))).to.be.greaterThan(0); // and it does draw something
+  });
+
   it("spends the colour stops over the range a letter draws in", () => {
     // Every curve on a letter used to come out within a few per cent of the
     // middle stop, which is one colour to the eye. The three stops are grey,
-    // orange and red; a radius of 60 units is where the middle one belongs.
+    // orange and red; against the reference radius of 100 the middle one falls
+    // at a radius of about 22.
     const rgb = (color) => color.match(/\d+/g).slice(0, 3).map(Number);
     const away = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
     const colorsOf = (r) =>
@@ -282,8 +332,8 @@ describe("curvature comb: a fixed scale", () => {
     const red = [0xe3, 0x00, 0x4f];
 
     const gentle = colorsOf(400);
-    const middle = colorsOf(60);
-    const tight = colorsOf(15);
+    const middle = colorsOf(22);
+    const tight = colorsOf(4);
 
     // the gentle one sits near the first stop
     expect(Math.min(...gentle.map((c) => away(c, grey)))).to.be.lessThan(

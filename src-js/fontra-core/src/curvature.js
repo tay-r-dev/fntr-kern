@@ -297,11 +297,20 @@ function heightForReading(reading) {
   return reading <= 1 ? reading : 1 + Math.log(reading);
 }
 
-// The fringe length that earns the last colour stop, in peak heights. Three is
-// a radius of about a seventh of the reference, which is a genuinely tight
-// corner, so a letter spends the stops over its own range and saturates only
-// where it really turns hard.
-const COLOR_FULL_SCALE = 3;
+// The fringe length that earns the last colour stop, in peak heights.
+//
+// Anchored on handle tension, which is how far a handle reaches towards the
+// point where its segment's two handle lines cross. A well-formed arc sits near
+// a half. At 1 the handles meet, and past that the curve doubles back. So the
+// last stop belongs well above 1, and the middle stop belongs near it. Measured
+// on a symmetric arc:
+//
+//     tension   0.5   0.6   0.8   1.0   1.2   1.5
+//     colour   0.34  0.41  0.53  0.64  0.77  1.00
+//
+// At 3 the same arc was already at 0.57 when its handles were only half way
+// out, and fully red at 1. A normal curve came out as hot as a broken one.
+const COLOR_FULL_SCALE = 5;
 
 export function computeSpeedPunkSamples(path, params = {}) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;

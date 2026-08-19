@@ -3981,3 +3981,54 @@ readings, and once because they used the same reading through different shapes.
 The height's shape was chosen against a real letter's range and the colour's was
 not, which is the whole of this bug. Anything the eye compares has to be checked
 over the range it will be looked at in, not at its endpoints.
+
+---
+
+## 55. Red meant a normal curve — fix
+
+### 1. The report
+
+Red should appear where the handle tension is well above 1, meaning the curve is
+very steep. It was appearing everywhere.
+
+### 2. What red meant
+
+Handle tension is how far a handle reaches towards the point where its segment's
+two handle lines cross. A well-formed arc sits near a half. At 1 the handles
+meet. Past that the curve doubles back on itself.
+
+Measured on a symmetric arc, against the last stop at three times the peak
+height, which is what entry 54 set:
+
+| handle tension      | 0.5  | 0.6  | 0.8  | 1.0  | 1.2  | 1.5  |
+| ------------------- | ---- | ---- | ---- | ---- | ---- | ---- |
+| old, last stop at 3 | 0.57 | 0.68 | 0.88 | 1.00 | 1.00 | 1.00 |
+| new, last stop at 5 | 0.34 | 0.41 | 0.53 | 0.64 | 0.77 | 1.00 |
+
+An arc with its handles only half way out was already past the middle stop, and
+one with its handles exactly meeting was fully red. A normal curve came out as
+hot as a broken one, and everything above tension 1 came out the same, so the
+comb could not tell a tight curve from a doubled-back one.
+
+### 3. The fix
+
+The last colour stop is at five times the peak height instead of three. The
+anchor is stated in the code as the tension table above, so the next person to
+move it can see what they are moving.
+
+A well-formed arc now reads a third of the way along the stops, the middle stop
+falls near tension 0.9, and red waits for 1.5.
+
+### 4. Result
+
+Full suite 1,907 passing, with one new test: a symmetric arc at tension 0.5 and
+at tension 1 draws no red, and the same arc at tension 1.5 does.
+
+### 5. Finding
+
+**A scale needs an anchor a person can name.** The last stop was chosen as a
+multiple of the peak height, which is a number about the drawing rule and not
+about the drawing. Handle tension is a thing the designer already reads and
+already has a meaning for, so it is what the stop is quoted against now. The
+previous two colour rules were both picked without one, and both were wrong in
+the same way: nobody could say what the top of the scale was supposed to mean.
