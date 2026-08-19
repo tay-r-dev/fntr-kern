@@ -235,26 +235,28 @@ export function calculateContourNormalAtPoint(points, closed, pointIndex) {
   return rotateVector90CW(bisector);
 }
 
-// A point's travel is owned by the segments that are actually being offset. A
-// segment whose far end stays put is not being offset - it stretches to follow -
-// so it says nothing about where its moving end should go.
+// What moves is the segments, each along its own normal by its own offset. Where
+// a corner point ends up is secondary: it is where its two moved segments cross.
+// Everything below computes that crossing.
 //
-// Where both of a point's segments are offset, the point is a corner OF the
-// offset and takes the miter. It must then travel further than the offset
-// distance, because a normal that splits the corner moves each edge by only the
-// cosine of half the turn. The miter length is the distance divided by that
-// cosine.
+// A segment whose far end stays put has an offset of zero. It does not move, so
+// the crossing is on the segment exactly where it already is, and the point
+// travels square to the segment that did move. This is the rectangle case: drag
+// one edge and the two side segments stay where they are, so the edge sinks by
+// the full distance and keeps its own length, and the sides stretch to reach it.
 //
-// Where one segment is offset and the other only stretches, that one segment
-// owns the direction and the point travels square to it - the same principle as
-// a straight owning the direction of a tension point. Taking a miter there
-// carries the point out along the stretching segment as well, which widens the
-// offset segment and slants its neighbour.
+// Where both segments move, the crossing sits out along the line that splits the
+// corner point, further from the point than the offset distance, because that
+// line points square to neither segment. That distance is the miter length, and
+// it is the answer rather than the rule: the code computes it as the offset
+// divided by the cosine of half the turn, which is the same number the crossing
+// gives, measured to grid rounding at 90, 63 and 11 degree turns.
 //
-// The bound is what a cusp needs. Two segments doubling back have no miter at
-// all - the cosine goes to zero and the miter length to infinity - so past this
-// much the corner is held and its edges fall short instead of the point leaving
-// the glyph. It is the standard miter limit, and the only limit in this drag.
+// The bound is what a cusp needs. Two segments doubling back move to parallel
+// positions and never cross, so there is no crossing to take and the distance
+// runs to infinity. Past this much the corner point is held and its two segments
+// fall short of the offset, rather than the point leaving the glyph. It is the
+// standard miter limit, and the only limit in this drag.
 const MITER_TRAVEL_LIMIT = 4;
 
 // The segments either side of an on-curve point, as indices into `segments`.
