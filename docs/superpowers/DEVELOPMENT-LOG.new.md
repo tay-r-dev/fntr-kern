@@ -91,3 +91,90 @@ We built and measured each one. None is in the tree.
 | Colour straight off the curvature ratio                        | Radius 200 to 30 is the working range of most letters. This rule spent 0.33 to 0.77 of the stops on it, which is one colour to the eye.                                                                                                                                                          |
 | Colour off the fringe length, last stop at three peak heights  | An arc with its handles half way out already sat past the middle stop, and everything above handle tension 1 came out identical.                                                                                                                                                                 |
 | Colour off the fringe length, last stop at five peak heights   | Better: a well-formed arc read a third along and red waited for tension 1.5. Still absolute, so it painted a whole letter one colour like the two before it. Where a letter's curvature sits depends on the letter.                                                                              |
+
+---
+
+## F9 — Harmonize
+
+**State: shipped.** Two constructions, G3 tried first with G2 as its fallback.
+It reaches skeleton centerlines as well as ordinary paths.
+
+### Findings
+
+**G2 and G3 answer different questions, and the eye reads the second one.** The
+reported joint on glyph `d` had curvature agreeing to 1.6 per cent, so G2 was
+already satisfied and no setting of it changed anything. What disagreed was the
+rate of change of curvature: arriving it fell at 0.0000404 per unit of arc,
+leaving it rose at 0.0000497. The sign reverses, so curvature has a local minimum
+at the joint, and the joint sat 41 per cent below the hump behind it. That notch is a G3 defect.
+The G3 construction cut the rate step by a factor of 77.
+
+**Match the rate per unit of arc, not per unit of parameter.** The donor matches
+the parameter. Two segments run through a joint at different speeds, so equal
+rates in the parameter leave a rate mismatch equal to the ratio of the two, which
+was 10 per cent on the reported glyph. A designer reads the curvature comb, and
+the comb runs against arc length. The arc form is the same shape of closed form,
+one square root and one division. It holds to machine precision on both
+conditions.
+
+**The G3 answer is exact and unique, so nothing iterates.** Equal curvature and
+equal rate are two equations. The two inner handle lengths are two unknowns. The joint and both outer handles hold still. Nothing is left to choose between.
+
+**One pass is exact at any bias, on an isolated joint.** The ratio depends only
+on the perpendicular offsets of the two outer points from the tangent line.
+Neither the joint nor the handles moving along the tangent changes those offsets.
+Iteration earns its keep only on coupled joints. There one joint's outer point is
+its neighbour's inner one.
+
+**The five-point stencil is complete.** A cubic's endpoint curvature depends only
+on its last three control points, so the two outer points are inputs and never
+outputs. That is why the default algorithm leaves the outer handles alone, and
+why Tunni equalization, which moves them, has to be a separate opt-in pass.
+
+**A sweep that stops early stops permanently.** Three separate causes took a
+joint out of the loop for good. A cusp floor read the handle it was limiting. A
+tension ceiling ran once at the start instead of each pass. Whole-unit rounding
+nudged a point the sweep never looked at again. Each one left a joint that
+improved on a second press, which is the report.
+
+**Doing nothing is a result that has to be arrived at, not assumed.** The command
+took an undo step on an already-harmonic contour. The report said
+"already-harmonic" for those joints, and The writes underneath recorded the
+change. The sweep writes a point several times on the way to an answer. A joint
+two thirds of a unit out takes a correction, takes another, then rounds back onto
+the coordinate it started from. The code now writes a point only where it is not
+already there, and the editor runs the sweep on a copy and writes back only the
+points that ended up somewhere else.
+
+**Write per point, never a whole path.** Assign `layerGlyph.path` inside the
+change recorder and it records a live class instance. That fails on replay, and
+it broke multi-source editing. This is a general rule for any geometry
+operation, not a harmonize quirk.
+
+**Read the file at the moment of the question.** The first three answers about
+the reported joint each described a different geometry, because the glyph was
+redrawn between the report and each measurement. The same joint was an
+inflection, then harmonic to 1.5 per cent, then 38 per cent out. Say which state
+a number came from.
+
+**Reports are addressed, not indexed.** The path built to run the pass over a
+skeleton centerline is thrown away, so an index into it means nothing afterwards.
+Each entry carries the contour and point id it came from.
+
+**A dragged slider does not deliver its value through the field-change callback.**
+It fires once at the start of the drag, carrying the pre-drag value. Every later value arrives on
+a stream. The stored setting was therefore always one drag stale.
+`displayValue: true` is also not a boolean: it is a placeholder string, and the
+number box read "true".
+
+### Known defect, not fixed
+
+**A correction under half a unit reports harmonized and writes nothing.** The correction on the reported joint was 0.46 units. Whole-unit rounding discards all of it. The report should say the correction is below the grid.
+
+### Rejected
+
+| Idea                                                          | Why it went                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A bias slider between moving the joint and moving the handles | The values between its two ends were never asked for. Two checkboxes replace it: one picks the target and so the cascade, the other says whether the joint may move.                                                                                              |
+| Bound the repair slide's range by the inner handles           | They are what the construction replaces, so their present lengths say nothing about where the joint may go. It stopped the search 25 units short on the overshoot fixture, where the first admissible slide is about 45 units and the shorter inner handle is 20. |
+| Harmonize the generated outline                               | It is derived and would be thrown away on the next regeneration. The skeleton's own centerline is an ordinary path and takes the pass unchanged.                                                                                                                  |
