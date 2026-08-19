@@ -243,7 +243,10 @@ describe("tension-aware edit — continuity", () => {
   });
 });
 
-import { solveRigidLinkScale } from "@fontra/core/tension-aware-edit.js";
+import {
+  solveRigidCurveScale,
+  solveRigidLinkScale,
+} from "@fontra/core/tension-aware-edit.js";
 
 // The whole outer contour of the n, in local coordinates. Two stems of 60 units
 // joined by an inner arch and an outer arch.
@@ -316,5 +319,53 @@ describe("tension-aware edit — the rigid-link scale", () => {
       isClosed: true,
     };
     expect(solveRigidLinkScale([bowl], "x", 0.5, 0)).to.equal(null);
+  });
+});
+
+describe("tension-aware edit — the vertical scale", () => {
+  it("raises the n by 100 and leaves both arches their own shape", () => {
+    const contour = nContour();
+    const [coordinates] = solveRigidCurveScale([contour], "y", 616 / 516, 0);
+    const before = contour.points;
+    const rise = (index) => coordinates.get(index) - before[index].y;
+    // Every on-curve point of both runs takes the same 100 units, so each curve
+    // is the drawing it was, moved up.
+    for (const index of [3, 6, 9, 12, 15, 18]) {
+      expect(rise(index)).to.be.closeTo(100, 0.001);
+    }
+    // The feet stay on the baseline and the stems carry the height.
+    for (const index of [1, 2, 10, 11]) {
+      expect(coordinates.get(index)).to.be.closeTo(0, 0.001);
+    }
+  });
+
+  it("stands down where the contour has no curve", () => {
+    const rectangle = {
+      points: [onCurve(0, 0), onCurve(100, 0), onCurve(100, 50), onCurve(0, 50)],
+      isClosed: true,
+    };
+    expect(solveRigidCurveScale([rectangle], "y", 1.5, 0)).to.equal(null);
+  });
+
+  it("stands down where the curves already fill the axis", () => {
+    // An o: every point belongs to a run, so nothing is left to stretch.
+    const o = {
+      points: [
+        onCurve(100, 0, true),
+        control(155, 0),
+        control(200, 45),
+        onCurve(200, 100, true),
+        control(200, 155),
+        control(155, 200),
+        onCurve(100, 200, true),
+        control(45, 200),
+        control(0, 155),
+        onCurve(0, 100, true),
+        control(0, 45),
+        control(45, 0),
+      ],
+      isClosed: true,
+    };
+    expect(solveRigidCurveScale([o], "y", 1.5, 0)).to.equal(null);
   });
 });
