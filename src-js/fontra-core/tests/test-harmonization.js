@@ -378,6 +378,40 @@ describe("harmonization: a ring of coupled joints", () => {
     expect(Array.from(path.coordinates)).to.deep.equal(once);
   });
 
+  it("leaves the drawing alone when the answer rounds back to it", () => {
+    // The sweep has real work to do here, and every correction it finds is
+    // under half a unit, so the whole-unit answer is where the points already
+    // are. Nothing may be written: in the editor each write is a recorded
+    // change, and a command that changes nothing must not take an undo step.
+    // a ring that is harmonic to start with, nudged by one unit
+    const harmonic = VarPackedPath.fromUnpackedContours([
+      {
+        points: [
+          { x: 300, y: 0, smooth: true },
+          cubic(300, 165),
+          cubic(165, 300),
+          { x: 0, y: 300, smooth: true },
+          cubic(-165, 300),
+          cubic(-300, 165),
+          { x: -300, y: 0, smooth: true },
+          cubic(-300, -165),
+          cubic(-165, -300),
+          { x: 0, y: -300, smooth: true },
+          cubic(165, -300),
+          cubic(300, -165),
+        ],
+        isClosed: true,
+      },
+    ]);
+    harmonic.setPointPosition(1, 300, 166);
+    const before = Array.from(harmonic.coordinates);
+    const report = harmonizePathInPlace(harmonic, RING_JOINTS, {
+      roundCoordinates: true,
+    });
+    expect(report.length).to.equal(RING_JOINTS.length);
+    expect(Array.from(harmonic.coordinates)).to.deep.equal(before);
+  });
+
   it("reports every joint harmonized, not partial", () => {
     const report = harmonizePathInPlace(ringPath(), RING_JOINTS, {});
     expect(report.map((entry) => entry.status)).to.deep.equal(

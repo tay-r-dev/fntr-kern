@@ -3799,3 +3799,62 @@ re-established inside the sweep.
 **The grid is part of the problem, so it belongs inside the loop.** Rounding was
 treated as a presentation step after the answer. It is a move like any other,
 and the answer has to be stable under it.
+
+---
+
+## 52. Harmonize took an undo step for doing nothing — fix
+
+### 1. The report
+
+When there is nothing to harmonize the command should skip, the way it used to,
+and should not put an entry on the undo stack.
+
+### 2. Why it did
+
+Every write to a point is a recorded change, and the sweep writes a point
+several times on the way to an answer. A joint two thirds of a unit out of true
+is corrected, corrected again on the next pass, and then rounded to whole units
+straight back onto the coordinate it started from. Nothing moved, and four
+changes were recorded for it.
+
+The command also wrote points that were already where it wanted them, which is a
+recorded change that sets a number to itself.
+
+### 3. The fix
+
+Three places, smallest first.
+
+A point is only written when it is not already there. That covers a joint the
+sweep finds nothing to do at.
+
+The skeleton route writes each corrected point back into the skeleton data, and
+now does that only where the coordinate differs.
+
+The editor runs the sweep on a copy of the path and writes back only the points
+that ended up somewhere else. That is what covers the case above, where the
+answer is arrived at through several moves and lands back at the start. It keeps
+the fine-grained writes the recorder wants: point by point, never a whole-path
+assignment, which does not survive the round trip.
+
+With no writes there is no change, and the editor already declines to push an
+undo entry for a change that is empty.
+
+### 4. Result
+
+Measured on a harmonic ring nudged by one unit, so the sweep has real work and
+every correction it finds is under half a unit:
+
+|        | change recorded |
+| ------ | --------------- |
+| before | yes             |
+| after  | no              |
+
+Full suite 1,903 passing, with one new test: a drawing whose whole-unit answer
+is where it already is comes back byte for byte identical.
+
+### 5. Finding
+
+**Doing nothing is a result that has to be arrived at, not assumed.** The report
+already said "already-harmonic" for these joints. The undo entry came from the
+writes underneath, which nobody was looking at, because the report is about
+joints and the recorder is about points.

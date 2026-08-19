@@ -1419,10 +1419,18 @@ export function harmonizeSkeletonPoints(skeletonData, pointKeys = null, options 
     roundCoordinates: true,
     ...options,
   });
+  // Only where the point ended up somewhere else. Writing the same number back
+  // is still a recorded change, and a command that had nothing to do would take
+  // an undo step for it.
   for (let index = 0; index < addresses.length; index++) {
     const moved = path.getPoint(index);
-    addresses[index].point.x = moved.x;
-    addresses[index].point.y = moved.y;
+    const point = addresses[index].point;
+    if (point.x !== moved.x) {
+      point.x = moved.x;
+    }
+    if (point.y !== moved.y) {
+      point.y = moved.y;
+    }
   }
   return report.map((entry) => ({
     ...entry,

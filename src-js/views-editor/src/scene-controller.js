@@ -2186,17 +2186,33 @@ export class SceneController {
         // Recompute per layer rather than propagating one layer's correction:
         // the other sources have different handles, hence a different target.
         //
-        // In place, not `layerGlyph.path = newPath`: the recorder turns each
-        // setPointPosition into an `=xy` change, whereas a whole-path
-        // assignment smuggles a live VarPackedPath into the change payload and
-        // it does not survive the round trip.
-        const report = harmonizePathInPlace(layerGlyph.path, pointIndices, {
+        // The sweep runs on a copy and only the points that ended up somewhere
+        // else are written back. It moves a point several times on the way to
+        // an answer, and it rounds at the end, so a joint that was already
+        // harmonic could be written to three times and land exactly where it
+        // started. Every one of those writes is a recorded change, which put an
+        // undo step on the stack for a command that did nothing.
+        //
+        // Written point by point, not `layerGlyph.path = newPath`: the recorder
+        // turns each setPointPosition into an `=xy` change, whereas a
+        // whole-path assignment smuggles a live VarPackedPath into the change
+        // payload and it does not survive the round trip.
+        const path = layerGlyph.path;
+        const working = path.copy();
+        const report = harmonizePathInPlace(working, pointIndices, {
           continuity,
           slideOnCurve,
           handleBias,
           equalizeTension,
           roundCoordinates: true,
         });
+        for (let index = 0; index < path.numPoints; index++) {
+          const [x, y] = path.getPointPosition(index);
+          const [newX, newY] = working.getPointPosition(index);
+          if (newX !== x || newY !== y) {
+            path.setPointPosition(index, newX, newY);
+          }
+        }
         reports.set(layerName, [...report, ...refused]);
       }
 

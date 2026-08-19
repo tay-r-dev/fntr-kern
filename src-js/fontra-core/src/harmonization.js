@@ -75,6 +75,10 @@ export const HARMONIZE_DEFAULTS = {
 // operation actually moved is known at the end — which is what makes rounding
 // possible without disturbing geometry nobody asked to touch.
 function writePoint(path, touched, index, point) {
+  const [x, y] = path.getPointPosition(index);
+  if (x === point.x && y === point.y) {
+    return;
+  }
   path.setPointPosition(index, point.x, point.y);
   touched.add(index);
 }
