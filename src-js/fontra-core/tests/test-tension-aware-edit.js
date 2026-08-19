@@ -205,3 +205,79 @@ describe("tension-aware edit — continuity", () => {
     expect(worst).to.be.at.most(2);
   });
 });
+
+import { solveRigidLinkScale } from "@fontra/core/tension-aware-edit.js";
+
+// The whole outer contour of the n, in local coordinates. Two stems of 60 units
+// joined by an inner arch and an outer arch.
+const nContour = () => ({
+  points: [
+    onCurve(0, 500),
+    onCurve(0, 0),
+    onCurve(60, 0),
+    onCurve(60, 385, true),
+    control(60, 432),
+    control(86, 463),
+    onCurve(125, 463, true),
+    control(164, 463),
+    control(190, 429),
+    onCurve(190, 378, true),
+    onCurve(190, 0),
+    onCurve(250, 0),
+    onCurve(250, 407, true),
+    control(250, 471),
+    control(210, 516),
+    onCurve(152, 516, true),
+    control(108, 516),
+    control(75, 491),
+    onCurve(60, 455),
+    onCurve(60, 500),
+  ],
+  isClosed: true,
+});
+
+describe("tension-aware edit — the rigid-link scale", () => {
+  it("narrows the n to 230 and keeps both stems at 60", () => {
+    const contour = nContour();
+    const [coordinates] = solveRigidLinkScale([contour], "x", 230 / 250, 0);
+    expect(coordinates.get(1)).to.equal(0); // left outer wall
+    expect(coordinates.get(2)).to.equal(60); // left inner wall
+    expect(coordinates.get(9)).to.equal(170); // right inner wall
+    expect(coordinates.get(11)).to.equal(230); // right outer wall
+  });
+
+  it("gives each run its own factor", () => {
+    const contour = nContour();
+    const [coordinates] = solveRigidLinkScale([contour], "x", 230 / 250, 0);
+    // The inner run spans 60 to 190 and takes 110 of 130. The outer run spans
+    // 60 to 250 and takes 170 of 190. The two apexes therefore move by
+    // different amounts.
+    expect(coordinates.get(6)).to.be.closeTo(115, 0.5);
+    expect(coordinates.get(15)).to.be.closeTo(142.3, 0.5);
+  });
+
+  it("stands down where a contour has no elastic run", () => {
+    const rectangle = {
+      points: [onCurve(0, 0), onCurve(100, 0), onCurve(100, 50), onCurve(0, 50)],
+      isClosed: true,
+    };
+    expect(solveRigidLinkScale([rectangle], "x", 0.5, 0)).to.equal(null);
+  });
+
+  it("stands down where every run returns to its own body", () => {
+    // A stem with a bowl hung off it: the bowl's two ends sit on the same run
+    // of straights, so nothing can be distributed.
+    const bowl = {
+      points: [
+        onCurve(0, 0),
+        onCurve(0, 500),
+        onCurve(60, 500),
+        control(200, 500),
+        control(200, 0),
+        onCurve(60, 0),
+      ],
+      isClosed: true,
+    };
+    expect(solveRigidLinkScale([bowl], "x", 0.5, 0)).to.equal(null);
+  });
+});

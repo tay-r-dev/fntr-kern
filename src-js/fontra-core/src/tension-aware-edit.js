@@ -406,3 +406,197 @@ export function applyTensionAwareEdit(beforePoints, afterPoints, closed, options
   const restored = restoreSegmentTensions(beforePoints, afterPoints, closed, options);
   return slid || restored;
 }
+
+// No curved segment's bounding box may go under this in either direction. The
+// scale stops when the first one gets there.
+export const MIN_CURVE_EXTENT = 2;
+
+function bodiesOfContour(points, closed) {
+  const segments = buildIndexedSegments(points, closed);
+  const bodyOf = new Map();
+  const bodies = [];
+  const join = (indexA, indexB) => {
+    const bodyA = bodyOf.get(indexA);
+    const bodyB = bodyOf.get(indexB);
+    if (bodyA && bodyB) {
+      if (bodyA === bodyB) return;
+      for (const index of bodyB) {
+        bodyA.add(index);
+        bodyOf.set(index, bodyA);
+      }
+      bodies.splice(bodies.indexOf(bodyB), 1);
+      return;
+    }
+    const body = bodyA || bodyB || new Set();
+    if (!bodyA && !bodyB) bodies.push(body);
+    for (const index of [indexA, indexB]) {
+      body.add(index);
+      bodyOf.set(index, body);
+    }
+  };
+  for (const segment of segments) {
+    if (!isCubicSegment(segment)) {
+      join(segment.startIndex, segment.endIndex);
+    }
+  }
+  return { segments, bodies, bodyOf };
+}
+
+// A run is a maximal chain of curve segments. Its two ends are on-curve points
+// that belong to bodies, and its interior on-curves belong to no body.
+function runsOfContour(segments, bodyOf) {
+  const runs = [];
+  let current = null;
+  const flush = () => {
+    if (current) runs.push(current);
+    current = null;
+  };
+  for (const segment of segments) {
+    if (!isCubicSegment(segment)) {
+      flush();
+      continue;
+    }
+    if (!current) {
+      current = { startIndex: segment.startIndex, interior: [], endIndex: null };
+    } else {
+      current.interior.push(segment.startIndex);
+    }
+    current.endIndex = segment.endIndex;
+  }
+  flush();
+  // On a closed contour a run that ends where another begins is one run.
+  if (runs.length > 1) {
+    const first = runs[0];
+    const last = runs[runs.length - 1];
+    if (last.endIndex === first.startIndex && !bodyOf.get(first.startIndex)) {
+      last.interior.push(first.startIndex, ...first.interior);
+      last.endIndex = first.endIndex;
+      runs.shift();
+    }
+  }
+  return runs;
+}
+
+/**
+ * Rule 4. Straights are rigid links along the axis being scaled, and the curves
+ * absorb the change.
+ * @param {Array} contours - `[{points, isClosed}]`, the contours in the selection
+ * @param {string} axis - "x" or "y"
+ * @param {number} factor - The scale factor the transform box asks for
+ * @param {number} origin - The coordinate the scale is taken about
+ * @returns {Array|null} One Map per contour of point index to new coordinate,
+ *   or null where the rule has nothing to distribute and must stand down
+ */
+export function solveRigidLinkScale(contours, axis, factor, origin) {
+  const perContour = contours.map(({ points, isClosed }) => {
+    const { segments, bodies, bodyOf } = bodiesOfContour(points, isClosed);
+    return {
+      points,
+      isClosed,
+      segments,
+      bodies,
+      bodyOf,
+      runs: runsOfContour(segments, bodyOf),
+    };
+  });
+
+  const allBodies = [];
+  let hasDistributableRun = false;
+  for (const contour of perContour) {
+    for (const body of contour.bodies) {
+      const coordinates = [...body].map((index) => contour.points[index][axis]);
+      allBodies.push({
+        body,
+        min: Math.min(...coordinates),
+        max: Math.max(...coordinates),
+        displacement: 0,
+      });
+    }
+    for (const run of contour.runs) {
+      if (contour.bodyOf.get(run.startIndex) !== contour.bodyOf.get(run.endIndex)) {
+        hasDistributableRun = true;
+      }
+    }
+  }
+  if (!hasDistributableRun || allBodies.length < 2) {
+    return null;
+  }
+
+  allBodies.sort((a, b) => a.min - b.min);
+  const gaps = [];
+  let gapTotal = 0;
+  for (let i = 0; i < allBodies.length - 1; i++) {
+    const gap = Math.max(0, allBodies[i + 1].min - allBodies[i].max);
+    gaps.push(gap);
+    gapTotal += gap;
+  }
+  if (gapTotal < EPSILON) {
+    return null;
+  }
+
+  const lowest = allBodies[0].min;
+  const highest = allBodies[allBodies.length - 1].max;
+  const scaled = (coordinate) => origin + (coordinate - origin) * factor;
+  const change = scaled(highest) - scaled(lowest) - (highest - lowest);
+
+  allBodies[0].displacement = scaled(lowest) - lowest;
+  for (let i = 0; i < gaps.length; i++) {
+    allBodies[i + 1].displacement =
+      allBodies[i].displacement + (change * gaps[i]) / gapTotal;
+  }
+  const displacementOf = new Map();
+  for (const entry of allBodies) {
+    displacementOf.set(entry.body, entry.displacement);
+  }
+
+  return perContour.map((contour) => {
+    const coordinates = new Map();
+    const place = (index, value) => coordinates.set(index, value);
+    for (const body of contour.bodies) {
+      const displacement = displacementOf.get(body);
+      for (const index of body) {
+        place(index, contour.points[index][axis] + displacement);
+      }
+    }
+    for (const run of contour.runs) {
+      const startBefore = contour.points[run.startIndex][axis];
+      const endBefore = contour.points[run.endIndex][axis];
+      const startAfter = coordinates.get(run.startIndex) ?? startBefore;
+      const endAfter = coordinates.get(run.endIndex) ?? endBefore;
+      const span = endBefore - startBefore;
+      for (const index of run.interior) {
+        if (Math.abs(span) < EPSILON) {
+          place(index, contour.points[index][axis] + (startAfter - startBefore));
+          continue;
+        }
+        const t = (contour.points[index][axis] - startBefore) / span;
+        place(index, startAfter + t * (endAfter - startAfter));
+      }
+    }
+    return coordinates;
+  });
+}
+
+/**
+ * Does every cubic segment still measure at least `MIN_CURVE_EXTENT` in both
+ * directions? The scale stops at the first one that does not.
+ */
+export function curvesAreAboveFloor(points, closed) {
+  for (const segment of buildIndexedSegments(points, closed)) {
+    if (!isCubicSegment(segment)) continue;
+    const involved = [
+      segment.startIndex,
+      ...segment.controlIndices,
+      segment.endIndex,
+    ].map((index) => points[index]);
+    const xs = involved.map((point) => point.x);
+    const ys = involved.map((point) => point.y);
+    if (
+      Math.max(...xs) - Math.min(...xs) < MIN_CURVE_EXTENT &&
+      Math.max(...ys) - Math.min(...ys) < MIN_CURVE_EXTENT
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
