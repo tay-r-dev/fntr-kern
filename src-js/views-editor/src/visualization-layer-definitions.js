@@ -1834,30 +1834,16 @@ registerVisualizationLayerDefinition({
   screenParameters: {
     colorStops: ["#8b939c", "#f29400", "#e3004f"],
     illustrationPosition: "outsideOfCurve",
-    adaptStepsToCurveLength: false,
-  },
-  // How many places to measure each curve. These are counts and not sizes on
-  // the screen, so they belong here rather than among the screen parameters,
-  // where everything is divided by the magnification. Divided there, the count
-  // changed with the view, every segment resampled at once, and the whole comb
-  // changed height with the drawing untouched.
-  glyphParameters: {
     baseSegmentBudget: 400,
     minSegmentsPerCurve: 5,
+    globalColorNormalization: false,
+    adaptStepsToCurveLength: false,
   },
   draw: (context, positionedGlyph, parameters, model, controller) => {
     const path = positionedGlyph.glyph?.path;
     if (!path) return;
 
     const peakHeightGlyphUnits = model.sceneSettings?.speedPunkPeakHeightUpm ?? 24;
-    // The curve tightness that earns the full height comes from the em, so it
-    // is one constant of the font. Nothing on the drawing feeds the scale, and
-    // no hand sets it either.
-    //
-    // A tenth of the em, which on a 1000 unit em is a radius of 100. That is
-    // about where a letter's gentler curves sit, so the working range of a
-    // drawing lands around the full height rather than far above it.
-    const referenceRadius = (model.fontController?.unitsPerEm || 1000) / 10;
     const sharpness = Math.max(0.1, model.sceneSettings?.speedPunkSharpness ?? 1);
     const opacity = Math.max(
       0,
@@ -1866,12 +1852,13 @@ registerVisualizationLayerDefinition({
 
     const quads = computeSpeedPunkSamples(path, {
       peakHeightGlyphUnits,
-      referenceRadius,
       sharpness,
       illustrationPosition: parameters.illustrationPosition,
+      useGlobalNormalization: parameters.globalColorNormalization,
       colorStops: parameters.colorStops,
       baseSegmentBudget: parameters.baseSegmentBudget,
       minSegmentsPerCurve: parameters.minSegmentsPerCurve,
+      zoomFactor: controller.magnification || 1.0,
       adaptStepsToCurveLength: parameters.adaptStepsToCurveLength,
     });
     if (!quads.length) return;

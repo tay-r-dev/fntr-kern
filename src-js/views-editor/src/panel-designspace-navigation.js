@@ -16,12 +16,6 @@ import {
 import * as html from "@fontra/core/html-utils.js";
 import { htmlToElement } from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
-import {
-  SCRUB_THRESHOLD,
-  clampScrubValue,
-  roundScrubValue,
-  scrubIncrement,
-} from "@fontra/core/number-scrub.js";
 import { ObservableController, controllerKey } from "@fontra/core/observable-object.ts";
 import {
   labeledCheckbox,
@@ -78,13 +72,9 @@ const SPEEDPUNK_PEAK_HEIGHT_MAX_UPM = 1000;
 const SPEEDPUNK_SHARPNESS_DEFAULT = 1;
 const SPEEDPUNK_SHARPNESS_MIN = 0.1;
 const SPEEDPUNK_SHARPNESS_MAX = 4;
-// One grid for each fractional field. The box, the drag and the normalizer all
-// round onto it, so the three can never disagree about what a value is.
-const SPEEDPUNK_SHARPNESS_STEP = 0.1;
 const SPEEDPUNK_OPACITY_DEFAULT = 0.5;
 const SPEEDPUNK_OPACITY_MIN = 0;
 const SPEEDPUNK_OPACITY_MAX = 1;
-const SPEEDPUNK_OPACITY_STEP = 0.02;
 
 const LIST_HEADER_ANIMATION_STYLE = `
 .clickable-icon-header {
@@ -368,7 +358,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               type: "number",
               min: SPEEDPUNK_SHARPNESS_MIN,
               max: SPEEDPUNK_SHARPNESS_MAX,
-              step: SPEEDPUNK_SHARPNESS_STEP,
+              step: 0.1,
             }),
             html.label(
               { for: "speedpunk-opacity-input", style: "white-space: nowrap;" },
@@ -379,7 +369,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               type: "number",
               min: SPEEDPUNK_OPACITY_MIN,
               max: SPEEDPUNK_OPACITY_MAX,
-              step: SPEEDPUNK_OPACITY_STEP,
+              step: 0.05,
             }),
           ]
         ),
@@ -633,118 +623,6 @@ export default class DesignspaceNavigationPanel extends Panel {
     });
   }
 
-  // Dragging a label sideways scrubs the number beside it. What a pixel is
-  // worth lives in number-scrub.js, the same source the skeleton panel's fields
-  // use, so the two behave alike: a unit per pixel, a tenth under shift, ten
-  // under control.
-  //
-  // The label is the grab area rather than the input, because an input is a
-  // place to select text and type into and a drag starting inside one fights
-  // both.
-  //
-  // Every frame writes the scene setting, so the comb follows the hand. Only the
-  // end of the drag runs the ordinary change handler, which is what normalizes
-  // and persists. Persisting per frame would write to storage sixty times a
-  // second for one adjustment.
-  _attachSpeedPunkScrub(input, options = {}) {
-    if (!input) {
-      return;
-    }
-    const label = this.accordion.querySelector(`label[for="${input.id}"]`);
-    if (!label) {
-      return;
-    }
-    label.style.cursor = "ew-resize";
-    label.style.userSelect = "none";
-    // A label activates the field it names, and activating a number field puts
-    // the keyboard in it. That happens on click, which arrives after the drag
-    // has already finished and handed the focus back, so it undid the handover
-    // every time. A scrub label is a grab area and not a way into the box.
-    label.addEventListener("click", (event) => {
-      event.preventDefault();
-    });
-
-    label.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) {
-        return;
-      }
-      // Capture on the label, so a drag that leaves the narrow label column
-      // keeps arriving.
-      label.setPointerCapture(event.pointerId);
-      event.preventDefault();
-
-      const startX = event.clientX;
-      const startValue = Number(input.value);
-      if (!Number.isFinite(startValue)) {
-        return;
-      }
-      // Unrounded, always. What the box shows is rounded off this and never
-      // back into it: a fine drag moves a tenth of a unit per pixel, and
-      // rounding the running total would floor every one of those to nothing.
-      let travel = 0;
-      let lastX = startX;
-      let started = false;
-
-      const onMove = (moveEvent) => {
-        if (!started) {
-          if (Math.abs(moveEvent.clientX - startX) < SCRUB_THRESHOLD) {
-            return;
-          }
-          started = true;
-          // Everything before the threshold was a click rather than travel.
-          lastX = moveEvent.clientX;
-        }
-        travel += scrubIncrement(moveEvent.clientX - lastX, {
-          step: options.step,
-          shiftKey: moveEvent.shiftKey,
-          ctrlKey: moveEvent.ctrlKey,
-          metaKey: moveEvent.metaKey,
-        });
-        lastX = moveEvent.clientX;
-        const clamped = clampScrubValue(startValue + travel, {
-          minValue: input.min === "" ? null : Number(input.min),
-          maxValue: input.max === "" ? null : Number(input.max),
-        });
-        // Fold the clamp back, so an overshoot turns around at once instead of
-        // spending the whole way back doing nothing. The rounding is never
-        // folded back with it.
-        travel = clamped - startValue;
-        const shown = roundScrubValue(clamped, {
-          integer: options.integer ?? true,
-          step: options.step ?? 1,
-        });
-        input.value = String(shown);
-        this.sceneSettingsController.setItem(options.sceneKey, shown, {
-          senderID: this,
-        });
-      };
-
-      const finish = () => {
-        label.releasePointerCapture(event.pointerId);
-        label.removeEventListener("pointermove", onMove);
-        label.removeEventListener("pointerup", finish);
-        label.removeEventListener("pointercancel", abandon);
-        if (started) {
-          input.dispatchEvent(new Event("change"));
-        }
-        this._returnFocusToCanvas();
-      };
-
-      const abandon = () => {
-        input.value = String(startValue);
-        this.sceneSettingsController.setItem(options.sceneKey, startValue, {
-          senderID: this,
-        });
-        started = false;
-        finish();
-      };
-
-      label.addEventListener("pointermove", onMove);
-      label.addEventListener("pointerup", finish);
-      label.addEventListener("pointercancel", abandon);
-    });
-  }
-
   _normalizeSpeedPunkPeakHeightUpm(value) {
     if (!Number.isFinite(value)) return SPEEDPUNK_PEAK_HEIGHT_DEFAULT_UPM;
     return Math.max(
@@ -755,25 +633,12 @@ export default class DesignspaceNavigationPanel extends Panel {
 
   _normalizeSpeedPunkSharpness(value) {
     if (!Number.isFinite(value)) return SPEEDPUNK_SHARPNESS_DEFAULT;
-    return roundScrubValue(
-      Math.max(SPEEDPUNK_SHARPNESS_MIN, Math.min(SPEEDPUNK_SHARPNESS_MAX, value)),
-      { integer: false, step: SPEEDPUNK_SHARPNESS_STEP }
-    );
+    return Math.max(SPEEDPUNK_SHARPNESS_MIN, Math.min(SPEEDPUNK_SHARPNESS_MAX, value));
   }
 
   _normalizeSpeedPunkOpacity(value) {
     if (!Number.isFinite(value)) return SPEEDPUNK_OPACITY_DEFAULT;
-    return roundScrubValue(
-      Math.max(SPEEDPUNK_OPACITY_MIN, Math.min(SPEEDPUNK_OPACITY_MAX, value)),
-      { integer: false, step: SPEEDPUNK_OPACITY_STEP }
-    );
-  }
-
-  // A number box keeps the keyboard once it is touched, and the canvas answers
-  // no shortcut while it does. Space-drag is the one that gets noticed, because
-  // a number box eats the space bar and does nothing with it.
-  _returnFocusToCanvas() {
-    this.editorController?.canvasController?.canvas?.focus();
+    return Math.max(SPEEDPUNK_OPACITY_MIN, Math.min(SPEEDPUNK_OPACITY_MAX, value));
   }
 
   _readSpeedPunkSettingsFromApp() {
@@ -841,15 +706,6 @@ export default class DesignspaceNavigationPanel extends Panel {
 
     const bindNumberInput = (input, normalize, appKey, sceneKey) => {
       if (!input) return;
-      // Enter and Escape both mean the box is finished with the keyboard.
-      // Without this the field holds every shortcut until the pointer is
-      // clicked somewhere else.
-      input.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === "Escape") {
-          input.blur();
-          this._returnFocusToCanvas();
-        }
-      });
       input.addEventListener("change", () => {
         const value = normalize(Number(input.value));
         this._speedPunkSettings = {
@@ -859,10 +715,6 @@ export default class DesignspaceNavigationPanel extends Panel {
         input.value = String(value);
         this.sceneSettingsController.setItem(sceneKey, value, { senderID: this });
         this._persistSpeedPunkSettings();
-        // A number field fires this only when the value is committed, never
-        // while digits are being typed, so the keyboard is always free to go
-        // back by the time this runs.
-        this._returnFocusToCanvas();
       });
     };
 
@@ -884,20 +736,6 @@ export default class DesignspaceNavigationPanel extends Panel {
       "opacity",
       "speedPunkOpacity"
     );
-
-    this._attachSpeedPunkScrub(this.speedPunkPeakHeightInput, {
-      sceneKey: "speedPunkPeakHeightUpm",
-    });
-    this._attachSpeedPunkScrub(this.speedPunkSharpnessInput, {
-      sceneKey: "speedPunkSharpness",
-      step: SPEEDPUNK_SHARPNESS_STEP,
-      integer: false,
-    });
-    this._attachSpeedPunkScrub(this.speedPunkOpacityInput, {
-      sceneKey: "speedPunkOpacity",
-      step: SPEEDPUNK_OPACITY_STEP,
-      integer: false,
-    });
 
     const toggle = this.speedPunkDisplayToggle;
     if (toggle) {

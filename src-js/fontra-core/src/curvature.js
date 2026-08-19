@@ -180,24 +180,20 @@ export function curvatureToColor(
 
 // --- SpeedPunk sampling helpers (moved out of visualization-layer-definitions.js) ---
 
-//
-// How many places to measure the curve on each segment. It comes from the
-// glyph and from nothing else.
-//
-// The magnification used to feed this, and the result is a whole number, so it
-// stepped from one count to the next as the view changed. Every segment on the
-// glyph then resampled at once, each fringe moved to a different place on its
-// curve, and the whole comb changed height with the drawing untouched.
-//
 export function calculateSegmentBudget(
   numCurves,
+  zoomFactor,
   baseSegments = 400,
   minSegmentsPerCurve = 5
 ) {
-  return Math.max(
-    Math.floor(baseSegments / Math.max(numCurves, 1)),
+  const zoomAdjustedBudget = Math.ceil(baseSegments * Math.sqrt(zoomFactor));
+
+  const stepsPerSegment = Math.max(
+    Math.floor(zoomAdjustedBudget / Math.max(numCurves, 1)),
     minSegmentsPerCurve
   );
+
+  return stepsPerSegment;
 }
 
 export function estimateCurveLength(p1, p2, p3, p4 = null) {
@@ -290,15 +286,13 @@ function _segmentKind(t1, t2, t3) {
 
 export function computeSpeedPunkSamples(path, params = {}) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;
-  // The curve tightness that earns the full height, as the radius of the circle
-  // that bends that hard. Every fringe on every glyph is drawn against this one
-  // number, so nothing on the drawing feeds the scale.
-  const referenceRadius = Math.max(1e-6, params.referenceRadius ?? 250);
   const sharpness = Math.max(0.1, params.sharpness ?? 1);
   const illustrationPosition = params.illustrationPosition ?? "outsideOfCurve";
+  const useGlobalNormalization = params.useGlobalNormalization ?? false;
   const colorStops = params.colorStops ?? ["#8b939c", "#f29400", "#e3004f"];
   const baseSegmentBudget = params.baseSegmentBudget ?? 400;
   const minSegmentsPerCurve = params.minSegmentsPerCurve ?? 5;
+  const zoomFactor = params.zoomFactor ?? 1;
   const adaptToCurveLength = params.adaptStepsToCurveLength ?? false;
 
   if (!path || !path.numContours) {
@@ -312,6 +306,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
 
   const stepsPerSegment = calculateSegmentBudget(
     totalCurveCount,
+    zoomFactor,
     baseSegmentBudget,
     minSegmentsPerCurve
   );
@@ -327,13 +322,34 @@ export function computeSpeedPunkSamples(path, params = {}) {
     averageCurveLength = curveCount > 0 ? totalLength / curveCount : 0;
   }
 
-  // Sample every curve segment once, and keep the samples.
-  //
-  // Two earlier rules took the scale from the outline and both had to go. A
-  // per-segment peak drew one curvature at two lengths across a joint, which is
-  // the one reading the comb exists for. A glyph-wide peak fixed that and
-  // rescaled every fringe on the glyph whenever any one segment was redrawn.
-  const segments = [];
+  let globalMinAbs = Infinity;
+  let globalMaxAbs = -Infinity;
+  if (useGlobalNormalization) {
+    forEachCurveSegment(path, (kind, pts) => {
+      const steps = adaptToCurveLength
+        ? adjustStepsForCurve(
+            stepsPerSegment,
+            estimateCurveLength(...pts),
+            averageCurveLength
+          )
+        : stepsPerSegment;
+      const samples =
+        kind === "cubic"
+          ? calculateCurvatureForSegment(...pts, steps)
+          : calculateCurvatureForQuadraticSegment(...pts, steps);
+      for (const sample of samples) {
+        const absK = Math.abs(sample.curvature);
+        globalMinAbs = Math.min(globalMinAbs, absK);
+        globalMaxAbs = Math.max(globalMaxAbs, absK);
+      }
+    });
+    if (globalMinAbs === Infinity) {
+      globalMinAbs = 0;
+      globalMaxAbs = 1;
+    }
+  }
+
+  const quads = [];
   forEachCurveSegment(path, (kind, pts) => {
     const steps = adaptToCurveLength
       ? adjustStepsForCurve(
@@ -346,38 +362,14 @@ export function computeSpeedPunkSamples(path, params = {}) {
       kind === "cubic"
         ? calculateCurvatureForSegment(...pts, steps)
         : calculateCurvatureForQuadraticSegment(...pts, steps);
-    segments.push({ kind, pts, samples });
-  });
-  // The two readings answer two different questions, and the donor answers them
-  // the same way (_external/speedpunk, speedpunklib.py).
-  //
-  // Length is absolute. It is the curvature against one stated tightness, so
-  // the same bend draws the same length in every glyph and two letters can be
-  // held side by side.
-  //
-  // Colour is relative to this glyph. The gentlest place on the glyph takes the
-  // first stop and the tightest takes the last, so every glyph uses the whole
-  // set of stops and red always marks where this letter turns hardest. Three
-  // absolute colour scales were tried before this and each one painted a whole
-  // letter a single colour, because where a letter's curvature sits depends on
-  // the letter.
-  // The glyph's own range, for the colour. Every sample on the glyph, gentlest
-  // to tightest.
-  let glyphMinAbs = Infinity;
-  let glyphMaxAbs = 0;
-  for (const { samples } of segments) {
-    for (const sample of samples) {
-      const value = Math.abs(sample.curvature);
-      if (!Number.isFinite(value)) {
-        continue;
-      }
-      glyphMinAbs = Math.min(glyphMinAbs, value);
-      glyphMaxAbs = Math.max(glyphMaxAbs, value);
-    }
-  }
 
-  const quads = [];
-  for (const { kind, pts, samples } of segments) {
+    const absVals = samples.map((s) => Math.abs(s.curvature));
+    const minAbsSegment = Math.min(...absVals);
+    const maxAbsSegment = Math.max(...absVals);
+    const segmentPeakAbsCurvature = maxAbsSegment > 1e-12 ? maxAbsSegment : 1;
+    const minAbs = useGlobalNormalization ? globalMinAbs : minAbsSegment;
+    const maxAbs = useGlobalNormalization ? globalMaxAbs : maxAbsSegment;
+
     const onCurve = [];
     const offCurve = [];
     for (let s = 0; s < samples.length; s++) {
@@ -387,14 +379,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
           ? solveCubicBezier(...pts, t)
           : solveQuadraticBezier(...pts, t);
       const [x, y] = r;
-      // How tight the curve is here, against the reference tightness. One at
-      // the reference, under one where the curve is gentler.
-      const reading = Math.abs(samples[s].curvature) * referenceRadius;
-
-      // Sharpness bends the length and leaves the colour alone, so the comb can
-      // be restyled without repainting the curve under it.
-      const heightRatio = Math.pow(reading, sharpness);
-      onCurve.push({ x, y, k: Math.abs(samples[s].curvature) });
+      onCurve.push({ x, y, k: samples[s].curvature });
 
       let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];
       let ny = illustrationPosition === "outsideOfCurve" ? r1[0] : -r1[0];
@@ -402,13 +387,13 @@ export function computeSpeedPunkSamples(path, params = {}) {
       nx /= mag;
       ny /= mag;
 
-      // Straight proportion: the full height where the curve bends on the
-      // reference radius, half of it at half the tightness, twice at twice.
-      // Nothing is squeezed and nothing is capped, so a peak on the drawing is
-      // a peak on the comb. A squeeze towards a ceiling was tried instead and
-      // drew plateaus, because a letter bends past the reference over most of
-      // its length and that is where a squeeze is flat.
-      const h = -heightRatio * peakHeightGlyphUnits;
+      const rawNormalizedHeight =
+        Math.abs(samples[s].curvature) / segmentPeakAbsCurvature;
+      const normalizedHeight = Math.pow(
+        Math.max(0, Math.min(1, rawNormalizedHeight)),
+        sharpness
+      );
+      const h = -normalizedHeight * peakHeightGlyphUnits;
       offCurve.push({ x: x + nx * h, y: y + ny * h });
     }
 
@@ -422,10 +407,10 @@ export function computeSpeedPunkSamples(path, params = {}) {
           [offCurve[s + 1].x, offCurve[s + 1].y],
           [offCurve[s].x, offCurve[s].y],
         ],
-        color: curvatureToColor(a.k, glyphMinAbs, glyphMaxAbs, colorStops),
+        color: curvatureToColor(Math.abs(a.k), minAbs, maxAbs, colorStops),
       });
     }
-  }
+  });
 
   return quads;
 }

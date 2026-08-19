@@ -4109,3 +4109,61 @@ reading one letter. Length does the first and colour does the second.
 **A count is not a size.** The screen parameters exist so a stroke stays the same
 width on screen at any zoom. A sample count put among them was divided by the
 magnification, which is how the view got into the geometry.
+
+---
+
+## 57. SpeedPunk back to 2242d76b — revert
+
+Entries 45 to 56 reworked the curvature comb and did not settle. The comb is
+back to its state at `2242d76b`. The harmonize work on this branch is untouched.
+
+### 1. What went back
+
+Restored whole from `2242d76b`: the comb sampler and its tests, the comb's
+drawing layer, the scrub arithmetic and its tests, and the designspace panel.
+
+Unpicked by hand from the scene controller: the three comb settings go back to
+literal defaults, and the redraw the comb asked for when one of them changed is
+gone with them. Everything about harmonize in that file stays.
+
+Nothing else changed. The harmonize settings, the harmonize language strings and
+every harmonize source file are as they were.
+
+### 2. What went with it
+
+Three fixes were part of the reverted work and are no longer present.
+
+The comb does not repaint when a comb setting changes. A new peak height,
+sharpness or opacity sits unused until some other edit repaints the canvas.
+
+The comb's three fields no longer scrub, and a number box in that panel keeps
+the keyboard after an edit, so the canvas answers no shortcut until it is
+clicked.
+
+Sharpness and opacity store the full floating point result of a drag.
+
+### 3. Where the restored comb stands against the donor
+
+The donor is in `_external/speedpunk`. It differs in three ways.
+
+**Height.** The donor draws the fringe in straight proportion to curvature,
+against a fixed gain. The restored comb divides each fringe by the tallest
+curvature on its own segment, so every segment's tallest point draws the full
+height whatever that segment's curvature is.
+
+**Colour.** The donor colours against the whole glyph, gentlest to tightest,
+recomputed when the glyph changes. The restored comb colours against each
+segment's own range.
+
+**Sample count.** The donor takes it from the glyph: a budget divided by the
+number of curve segments. The restored comb multiplies that by the square root
+of the magnification, and the drawing layer divides the budget by the
+magnification before passing it in.
+
+### 4. Finding
+
+**Ten entries of a drawing rule is a rule that was never specified.** Each
+change answered the last report and was measured, and none of them were checked
+against the donor, which was in the tree and states both of its choices plainly.
+The revert costs the three fixes above and buys a base that can be compared with
+something.

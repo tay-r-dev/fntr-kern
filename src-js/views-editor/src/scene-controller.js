@@ -118,14 +118,6 @@ const MAX_PIX_PER_UNIT = 200;
 
 export const numQuadraticOffCurvePointsOptions = [1, 2, 3, 4, 5];
 
-// The SpeedPunk numbers the comb draws with. One list: the scene copy is seeded
-// from the saved value, follows it, and asks for a redraw when it changes.
-const SPEEDPUNK_SETTING_KEYS = [
-  "speedPunkPeakHeightUpm",
-  "speedPunkSharpness",
-  "speedPunkOpacity",
-];
-
 export class SceneController {
   constructor(
     fontController,
@@ -141,21 +133,9 @@ export class SceneController {
     this.setupSceneSettings();
     //// grid
     this.sceneSettingsController.setItem("coarseGridSpacing", 10);
-
-    // The scene copy of each SpeedPunk number starts from the saved one, not
-    // from a literal. Literals here were a second set of defaults, and they won
-    // whenever this controller was built after the panel had already pushed the
-    // saved value across — so a peak height the user had set came back as 24.
-    // The saved value also follows any later change, wherever it comes from.
-    for (const key of SPEEDPUNK_SETTING_KEYS) {
-      this.sceneSettingsController.setItem(
-        key,
-        applicationSettingsController.model[key]
-      );
-      applicationSettingsController.addKeyListener(key, (event) => {
-        this.sceneSettingsController.setItem(key, event.newValue);
-      });
-    }
+    this.sceneSettingsController.setItem("speedPunkPeakHeightUpm", 24);
+    this.sceneSettingsController.setItem("speedPunkSharpness", 1);
+    this.sceneSettingsController.setItem("speedPunkOpacity", 0.5);
     this.sceneSettings = this.sceneSettingsController.model;
     this.visualizationLayersSettings = visualizationLayersSettings;
 
@@ -600,17 +580,6 @@ export class SceneController {
       this._updateCoarseGridRuntimeSpacing();
       this.canvasController.requestUpdate();
     });
-
-    //// curvature comb
-    // The comb reads these while it draws, and nothing else was asking for a
-    // redraw when they changed. So a new value sat unused until some other edit
-    // happened to repaint the canvas, and the number in the panel disagreed with
-    // the fringe on screen for as long as that took.
-    for (const key of SPEEDPUNK_SETTING_KEYS) {
-      this.sceneSettingsController.addKeyListener(key, () => {
-        this.canvasController.requestUpdate();
-      });
-    }
     this._updateCoarseGridRuntimeSpacing();
 
     this.sceneSettingsController.addKeyListener("selectedGlyph", (event) => {
