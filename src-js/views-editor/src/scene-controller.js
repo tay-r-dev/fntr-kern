@@ -91,6 +91,11 @@ import {
   parseSkeletonPointKey,
   recordSkeletonContourIndexShift,
 } from "./skeleton-editing.js";
+import {
+  harmonizePanelSkeletonPoints,
+  splitPanelSkeletonContours,
+  togglePanelContourReversed,
+} from "./skeleton-panel-edits.js";
 //// grid
 import { toggleMagneticSnap } from "./edit-behavior.js";
 
@@ -722,14 +727,18 @@ export class SceneController {
       "action.break-contour",
       { topic },
       () => this.doBreakSelectedContours(),
-      () => this.contextMenuState.pointSelection?.length
+      () =>
+        this.contextMenuState.pointSelection?.length ||
+        this.contextMenuState.skeletonPointSelection?.length
     );
 
     registerAction(
       "action.reverse-contour",
       { topic },
       () => this.doReverseSelectedContours(),
-      () => this.contextMenuState.pointSelection?.length
+      () =>
+        this.contextMenuState.pointSelection?.length ||
+        this.contextMenuState.skeletonContourIds?.length
     );
 
     registerAction(
@@ -981,6 +990,8 @@ export class SceneController {
     const hasRibSelection = !!parsedSelection.skeletonRib?.length;
     const hasGeneratedPointSelection = !!parsedSelection.editableGeneratedPoint?.length;
     const hasRibLikeSelection = hasRibSelection || hasGeneratedPointSelection;
+    const isFixedRibBehavior = (name) =>
+      name === "fixed-rib" || name === "fixed-rib-compress";
     const modifiers = {
       fixedRibMode: this.selectedTool?.fixedRibMode === true,
       fixedRibCompressMode: this.selectedTool?.fixedRibCompressMode === true,
@@ -1014,7 +1025,9 @@ export class SceneController {
               behaviorName,
               modifierOptions
             )
-          : hasRibLikeSelection
+          : // A rib under this modifier pair is an entry point into the
+            // skeleton drag, not the width edit it otherwise means.
+            hasRibLikeSelection && !isFixedRibBehavior(behaviorName)
             ? [
                 ...createSkeletonRibTargetEntries(
                   layerGlyph,
@@ -1144,10 +1157,22 @@ export class SceneController {
       point: pointSelection,
       component: componentSelection,
       skeletonPoint: skeletonPointSelection,
+      skeletonRib: skeletonRibSelection,
     } = parseSelection(relevantSelection);
     this.contextMenuState.pointSelection = pointSelection;
     this.contextMenuState.componentSelection = componentSelection;
     this.contextMenuState.skeletonPointSelection = skeletonPointSelection;
+    // Which skeleton contours the click is about. A rib belongs to its contour
+    // as much as a centerline point does, so both answer a contour command. The
+    // contour id is the first field of either key; the point key parser is no
+    // use here because it refuses a rib's third field.
+    this.contextMenuState.skeletonContourIds = [
+      ...new Set(
+        [...(skeletonPointSelection || []), ...(skeletonRibSelection || [])]
+          .map((item) => Number(`${item}`.split("/")[0]))
+          .filter((contourId) => Number.isInteger(contourId))
+      ),
+    ];
 
     const glyphController = this.sceneModel.getSelectedPositionedGlyph().glyph;
     this.contextMenuState.openContourSelection = glyphController.canEdit
@@ -1722,8 +1747,33 @@ export class SceneController {
     return undoInfo !== undefined;
   }
 
+  // One command for both kinds of contour. A selection can name skeleton
+  // contours, path contours, or both at once, and each kind is reversed the way
+  // that kind is reversed: a skeleton flips the flag its generator reads, a
+  // path contour has its points turned around. Returning after the skeleton, as
+  // this did, left the path contours in a mixed selection untouched.
   async doReverseSelectedContours() {
-    const { point: pointSelection } = parseSelection(this.selection);
+    const {
+      point: pointSelection,
+      skeletonPoint,
+      skeletonRib,
+    } = parseSelection(this.selection);
+    // Same derivation the context menu state uses: the contour id is the first
+    // field of either key, and a rib belongs to its contour as much as a
+    // centerline point does.
+    const skeletonContourIds = [
+      ...new Set(
+        [...(skeletonPoint || []), ...(skeletonRib || [])]
+          .map((item) => Number(`${item}`.split("/")[0]))
+          .filter((contourId) => Number.isInteger(contourId))
+      ),
+    ];
+    if (skeletonContourIds.length) {
+      await this.doReverseSelectedSkeletonContours(skeletonContourIds);
+    }
+    if (!pointSelection?.length) {
+      return;
+    }
     await this.editLayersAndRecordChanges((layerGlyphs) => {
       let selection;
       for (const layerGlyph of Object.values(layerGlyphs)) {
@@ -1748,6 +1798,18 @@ export class SceneController {
       this.selection = selection;
       return translate("action.reverse-contour");
     });
+  }
+
+  // Reverse, for a skeleton. It flips the flag the generator already reads, so
+  // the generated outline's winding turns over and the centerline stays exactly
+  // as it was drawn. Each selected contour flips its own state, the same way
+  // reversing a mixed selection of ordinary contours does.
+  async doReverseSelectedSkeletonContours(skeletonContourIds) {
+    await togglePanelContourReversed(
+      this,
+      skeletonContourIds.map((contourId) => ({ contourId })),
+      translate("action.reverse-contour")
+    );
   }
 
   async doSetStartPoint() {
@@ -1834,7 +1896,31 @@ export class SceneController {
     });
   }
 
+  // Break, for a skeleton: cut the contour at the selected centerline point. A
+  // closed contour opens there, an open one becomes two. The generated outline
+  // follows on its own, because the one write path regenerates it and replaces
+  // the contours whenever the topology changes.
+  async doBreakSelectedSkeletonContours(skeletonPointSelection) {
+    const pointAddresses = skeletonPointSelection
+      .map((item) => parseSkeletonPointKey(`${item}`))
+      .filter((address) => address);
+    if (!pointAddresses.length) {
+      return;
+    }
+    await splitPanelSkeletonContours(
+      this,
+      pointAddresses,
+      translatePlural("action.break-contour", pointAddresses.length)
+    );
+    this.selection = new Set();
+  }
+
   async doBreakSelectedContours() {
+    const skeletonPointSelection = this.contextMenuState.skeletonPointSelection || [];
+    if (skeletonPointSelection.length) {
+      await this.doBreakSelectedSkeletonContours(skeletonPointSelection);
+      return;
+    }
     const { point: pointIndices } = parseSelection(this.selection);
     await this.editLayersAndRecordChanges((layerGlyphs) => {
       let numSplits;
@@ -1998,12 +2084,37 @@ export class SceneController {
   //
   async doHarmonize(options = {}) {
     const {
-      handleBias = applicationSettingsController.model.harmonizeHandleBias,
+      useG3 = applicationSettingsController.model.harmonizeG3,
+      moveOnCurve = applicationSettingsController.model.harmonizeMoveOnCurve,
       applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
       equalizeTension = applicationSettingsController.model.harmonizeEqualizeTension,
     } = options;
 
+    // Two checks decide three things. The first picks the target and so the
+    // cascade. The second says whether the joint itself may move: under G2 that
+    // is the whole of the old bias, and under G3 it turns the repair slide on.
+    const continuity = useG3 ? "G3" : "G2";
+    const slideOnCurve = !!moveOnCurve;
+    const handleBias = moveOnCurve ? 0 : 1;
+
     const reports = new Map();
+
+    // A skeleton selection answers this itself, the same way break and reverse
+    // do. The centerline is an ordinary path and harmonize applies to it
+    // unchanged, but it is written through the skeleton's own path so the
+    // outline is regenerated. Skeleton and ordinary points are never mixed into
+    // one pass: that would take two write paths and cost two undo steps.
+    const skeletonPointSelection = parseSelection(this.selection).skeletonPoint || [];
+    if (skeletonPointSelection.length) {
+      return await harmonizePanelSkeletonPoints(
+        this,
+        skeletonPointSelection
+          .map((item) => parseSkeletonPointKey(`${item}`))
+          .filter((address) => address),
+        { continuity, slideOnCurve, handleBias, equalizeTension },
+        translate("action.harmonize")
+      );
+    }
 
     const path = this.sceneModel.getSelectedPositionedGlyph()?.glyph?.path;
     if (!path) {
@@ -2060,15 +2171,33 @@ export class SceneController {
         // Recompute per layer rather than propagating one layer's correction:
         // the other sources have different handles, hence a different target.
         //
-        // In place, not `layerGlyph.path = newPath`: the recorder turns each
-        // setPointPosition into an `=xy` change, whereas a whole-path
-        // assignment smuggles a live VarPackedPath into the change payload and
-        // it does not survive the round trip.
-        const report = harmonizePathInPlace(layerGlyph.path, pointIndices, {
+        // The sweep runs on a copy and only the points that ended up somewhere
+        // else are written back. It moves a point several times on the way to
+        // an answer, and it rounds at the end, so a joint that was already
+        // harmonic could be written to three times and land exactly where it
+        // started. Every one of those writes is a recorded change, which put an
+        // undo step on the stack for a command that did nothing.
+        //
+        // Written point by point, not `layerGlyph.path = newPath`: the recorder
+        // turns each setPointPosition into an `=xy` change, whereas a
+        // whole-path assignment smuggles a live VarPackedPath into the change
+        // payload and it does not survive the round trip.
+        const path = layerGlyph.path;
+        const working = path.copy();
+        const report = harmonizePathInPlace(working, pointIndices, {
+          continuity,
+          slideOnCurve,
           handleBias,
           equalizeTension,
           roundCoordinates: true,
         });
+        for (let index = 0; index < path.numPoints; index++) {
+          const [x, y] = path.getPointPosition(index);
+          const [newX, newY] = working.getPointPosition(index);
+          if (newX !== x || newY !== y) {
+            path.setPointPosition(index, newX, newY);
+          }
+        }
         reports.set(layerName, [...report, ...refused]);
       }
 

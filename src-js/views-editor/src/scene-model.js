@@ -46,6 +46,7 @@ import { calculateCurvatureGizmoPoint } from "@fontra/core/tunni-calculations.js
 import {
   assert,
   consolidateCalls,
+  disambiguateGlyphName,
   enumerate,
   mapObjectKeys,
   objectsEqualSerialized,
@@ -2232,7 +2233,10 @@ class LineSetter {
         glyphInfo.codepoint != 0 || fallbackCodePoint >= MAX_UNICODE
           ? glyphInfo.glyphname
           : (fallbackCharacterMap[fallbackCodePoint] ??
-            getSuggestedGlyphName(fallbackCodePoint));
+            disambiguateGlyphName(
+              getSuggestedGlyphName(fallbackCodePoint),
+              fontController.glyphMap
+            ));
 
       const isSelectedGlyph = glyphIndex == selectedGlyphIndex;
 

@@ -123,3 +123,62 @@ describe("skeleton-source-defaults", () => {
     }
   });
 });
+
+describe("skeleton source defaults for serifs", () => {
+  it("reads the serif seed fallbacks from an empty source", () => {
+    const source = makeSource();
+    for (const [key, expected] of [["CUSTOM_SERIFS", []]]) {
+      expect(
+        getSourceSkeletonDefaultsValue(
+          source,
+          SKELETON_SOURCE_DEFAULT_KEYS[key],
+          SKELETON_SOURCE_DEFAULT_FALLBACKS[SKELETON_SOURCE_DEFAULT_KEYS[key]]
+        )
+      ).to.deep.equal(expected);
+    }
+  });
+
+  it("writes and deep-clones serif presets", () => {
+    const source = makeSource();
+    const customSerifs = [{ name: "Slab foot", wingLength: 30 }];
+    setSourceSkeletonDefaultsValues(source, {
+      [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: customSerifs,
+    });
+    customSerifs[0].wingLength = 99;
+
+    expect(
+      getSourceSkeletonDefaultsValue(
+        source,
+        SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS,
+        []
+      )
+    ).to.deep.equal([{ name: "Slab foot", wingLength: 30 }]);
+  });
+
+  it("defaults to absolute units with collapsed-point removal off", () => {
+    const normalized = normalizeSkeletonSourceDefaults({});
+    expect(normalized.serifDefaults.unitsMode).to.equal("absolute");
+    expect(normalized.serifDefaults.removeCollapsedPoints).to.equal(false);
+  });
+
+  it("keeps a stored units mode", () => {
+    const normalized = normalizeSkeletonSourceDefaults({
+      serifDefaults: { unitsMode: "normalized" },
+    });
+    expect(normalized.serifDefaults.unitsMode).to.equal("normalized");
+  });
+
+  it("rejects an unknown units mode", () => {
+    const normalized = normalizeSkeletonSourceDefaults({
+      serifDefaults: { unitsMode: "percent" },
+    });
+    expect(normalized.serifDefaults.unitsMode).to.equal("absolute");
+  });
+
+  it("coerces collapsed-point removal to a boolean", () => {
+    const normalized = normalizeSkeletonSourceDefaults({
+      serifDefaults: { removeCollapsedPoints: 1 },
+    });
+    expect(normalized.serifDefaults.removeCollapsedPoints).to.equal(true);
+  });
+});

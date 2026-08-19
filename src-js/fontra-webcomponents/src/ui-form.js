@@ -1,5 +1,12 @@
 import * as html from "@fontra/core/html-utils.js";
 import { SimpleElement } from "@fontra/core/html-utils.js";
+import {
+  SCRUB_CANCELLED,
+  SCRUB_THRESHOLD,
+  clampScrubValue,
+  roundScrubValue,
+  scrubIncrement,
+} from "@fontra/core/number-scrub.js";
 import { QueueIterator } from "@fontra/core/queue-iterator.js";
 import {
   assert,
@@ -32,6 +39,17 @@ export class Form extends SimpleElement {
       text-overflow: ellipsis;
       white-space: nowrap;
       line-height: 1.6em;
+    }
+
+    /* A label that scrubs the number beside it. The arrows are the only thing
+       announcing that the label is draggable at all, so they are not optional.
+       Selection is off because a scrub that highlights the label text as it goes
+       reads as a failed text drag. */
+    .ui-form-label.scrubbable {
+      cursor: ew-resize;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
     }
 
     .ui-form-full-width {
@@ -110,6 +128,14 @@ export class Form extends SimpleElement {
       display: flex;
       align-items: center;
       gap: 0.35rem;
+    }
+
+    /* A slider sharing its row with a number input takes whatever the input
+       leaves, rather than its natural width, which would push the row wider
+       than the panel. */
+    .ui-form-value.universal-row range-slider {
+      flex: 1 1 auto;
+      min-width: 0;
     }
 
     .ui-form-value.slider-has-checkbox {
@@ -212,6 +238,16 @@ export class Form extends SimpleElement {
         throw new Error(`Unknown field type: ${fieldItem.type}`);
       }
       this[methodName](valueElement, fieldItem, labelElement);
+      // After the field is built, so its getter and setter exist for the scrub
+      // to read the starting value through and write the running one back.
+      if (fieldItem.type !== "universal-row") {
+        this._attachScrub(labelElement, fieldItem);
+        // Anything a caller wants packed beside the input rather than under it.
+        // universal-row places its own, further down.
+        if (fieldItem.auxiliaryElement) {
+          valueElement.appendChild(fieldItem.auxiliaryElement);
+        }
+      }
 
       if (fieldItem.onEnterKey) {
         valueElement.addEventListener("keyup", (event) => {
@@ -222,6 +258,143 @@ export class Form extends SimpleElement {
         });
       }
     }
+  }
+
+  // Dragging a field's label sideways scrubs the number beside it. The pointer
+  // events live here; what a pixel is worth lives in number-scrub.js.
+  //
+  // The label is the grab area rather than the input. An input is a place to
+  // select text and type into, and a drag starting inside one fights both — the
+  // dead zone alone is not enough to make that pleasant.
+  //
+  // What goes down the stream is the CHANGE from where the drag started, not the
+  // value under the pointer. That is what lets a listener move every selected
+  // item by the same amount and keep whatever differences it had, and it is the
+  // only thing it can do when the field reads "mixed" and has no value to start
+  // from.
+  _attachScrub(labelElement, fieldItem) {
+    if (!fieldItem?.scrub || fieldItem.disabled || fieldItem.key == null) {
+      return;
+    }
+    const step = fieldItem.scrub === true ? undefined : fieldItem.scrub.step;
+    labelElement.classList.add("scrubbable");
+
+    labelElement.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      // Capture on the label, so a drag that leaves the panel keeps arriving.
+      // Without it the value stops the moment the pointer crosses the edge of a
+      // 32%-wide column, which is most of any real drag.
+      labelElement.setPointerCapture(event.pointerId);
+      event.preventDefault();
+
+      const startX = event.clientX;
+      const startValue = parseFloat(this._fieldGetters[fieldItem.key]?.());
+      // A field showing "mixed" has no value to move away from. The drag still
+      // works — the change is what is being sent — but nothing truthful can be
+      // shown in the box, so it is left alone.
+      const hasStartValue = Number.isFinite(startValue);
+      let lastX = startX;
+      // Unrounded, always. What the box shows and what goes down the stream are
+      // rounded off this, never back into it: a fine drag moves a tenth of a unit
+      // per pixel, and rounding the running total would floor every one of those
+      // to nothing before the next could build on it.
+      let travel = 0;
+      let valueStream = null;
+      let streamStarted = false;
+
+      const onMove = (moveEvent) => {
+        if (!valueStream) {
+          if (Math.abs(moveEvent.clientX - startX) < SCRUB_THRESHOLD) {
+            return;
+          }
+          valueStream = new QueueIterator(5, true);
+          // Everything before the threshold was a click, not travel, so the
+          // drag starts counting from where it crossed rather than from the
+          // press — otherwise the value lurches by the dead zone on the first
+          // move that registers.
+          lastX = moveEvent.clientX;
+        }
+        travel += scrubIncrement(moveEvent.clientX - lastX, {
+          step,
+          shiftKey: moveEvent.shiftKey,
+          ctrlKey: moveEvent.ctrlKey,
+          metaKey: moveEvent.metaKey,
+        });
+        lastX = moveEvent.clientX;
+        let change;
+        if (hasStartValue) {
+          const clamped = clampScrubValue(startValue + travel, fieldItem);
+          // Fold the CLAMP back into the travel — and only the clamp — so a drag
+          // that has run past the end of the range turns around the moment the
+          // hand does instead of spending the overshoot first.
+          travel = clamped - startValue;
+          const shown = roundScrubValue(clamped, fieldItem);
+          this._fieldSetters[fieldItem.key]?.(shown);
+          // Send exactly what the box shows, so the number and the shape cannot
+          // disagree by the rounding.
+          change = shown - startValue;
+        } else {
+          change = roundScrubValue(travel, fieldItem);
+        }
+        if (!streamStarted) {
+          streamStarted = true;
+          this._fieldChanging(fieldItem, change, valueStream);
+        }
+        valueStream.put(change);
+        this._dispatchEvent("doChange", { key: fieldItem.key, value: change });
+      };
+
+      const detach = () => {
+        labelElement.removeEventListener("pointermove", onMove);
+        labelElement.removeEventListener("pointerup", onUp);
+        labelElement.removeEventListener("pointercancel", onUp);
+        labelElement.removeEventListener("pointerdown", onSecondButton);
+        labelElement.removeEventListener("contextmenu", onContextMenu);
+        labelElement.releasePointerCapture?.(event.pointerId);
+      };
+
+      const onUp = () => {
+        detach();
+        if (!valueStream) {
+          // Never crossed the dead zone: this was a click and nothing happened.
+          return;
+        }
+        valueStream.done();
+        this._dispatchEvent("endChange", { key: fieldItem.key });
+      };
+
+      // Right-click while dragging abandons the drag: the shape goes back to
+      // where the press found it and no edit is recorded. The other hand is
+      // already on the mouse, so this costs nothing to reach mid-drag, which
+      // Escape does not.
+      const onSecondButton = (downEvent) => {
+        if (downEvent.button === 0) {
+          return;
+        }
+        downEvent.preventDefault();
+        detach();
+        if (!valueStream) {
+          return;
+        }
+        if (hasStartValue) {
+          this._fieldSetters[fieldItem.key]?.(roundScrubValue(startValue, fieldItem));
+        }
+        valueStream.put(SCRUB_CANCELLED);
+        valueStream.done();
+        this._dispatchEvent("endChange", { key: fieldItem.key });
+      };
+
+      // The press that cancels must not also open the menu over the canvas.
+      const onContextMenu = (menuEvent) => menuEvent.preventDefault();
+
+      labelElement.addEventListener("pointermove", onMove);
+      labelElement.addEventListener("pointerup", onUp);
+      labelElement.addEventListener("pointercancel", onUp);
+      labelElement.addEventListener("pointerdown", onSecondButton);
+      labelElement.addEventListener("contextmenu", onContextMenu);
+    });
   }
 
   _addUniversalRow(valueElement, fieldItem, labelElement) {
@@ -238,6 +411,9 @@ export class Form extends SimpleElement {
       if (field.auxiliaryElement) {
         element.appendChild(field.auxiliaryElement, field);
       }
+      // A packed row has no label of its own to grab, so a scrubbable field in
+      // one drives from whatever sits in the label column — which is field1.
+      this._attachScrub(labelElement, field);
     }
   }
 
@@ -478,6 +654,7 @@ export class Form extends SimpleElement {
         inputElement.value = value;
         if (event.dragBegin) {
           valueStream = new QueueIterator(5, true);
+          valueAtDragBegin = value;
           this._fieldChanging(fieldItem, value, valueStream);
         }
 
@@ -541,10 +718,35 @@ export class Form extends SimpleElement {
     {
       // Slider change closure
       let valueStream = undefined;
+      let valueAtDragBegin = undefined;
+
+      // Right-click while dragging abandons the drag, the same as on a scrubbed
+      // label: the shape goes back and no edit is recorded.
+      rangeElement.addEventListener("pointerdown", (downEvent) => {
+        if (downEvent.button === 0 || !valueStream) {
+          return;
+        }
+        downEvent.preventDefault();
+        valueStream.put(SCRUB_CANCELLED);
+        valueStream.done();
+        valueStream = undefined;
+        if (valueAtDragBegin !== undefined) {
+          rangeElement.value = valueAtDragBegin;
+        }
+        this._dispatchEvent("endChange", { key: fieldItem.key });
+      });
+      rangeElement.addEventListener("contextmenu", (menuEvent) =>
+        menuEvent.preventDefault()
+      );
 
       rangeElement.onChangeCallback = (event) => {
         const value = event.value;
         if (event.dragBegin) {
+          // A second begin without an end in between would abandon the first
+          // stream still open, and a listener consuming it keeps its edit open
+          // with it — after which every later edit is refused. Close the old one
+          // rather than letting it strand.
+          valueStream?.done();
           valueStream = new QueueIterator(5, true);
           this._fieldChanging(fieldItem, value, valueStream);
         }

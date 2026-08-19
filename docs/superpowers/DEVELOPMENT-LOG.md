@@ -12,11 +12,10 @@ One entry per feature or fix, newest last. Each entry has the same four parts:
    that isn't obvious from the diff.
 
 Companion docs: `FEATURE-ARCHITECTURE-MAP.md` (what lives where) and
-`SKELETON-FEATURE-MODEL.md` (skeleton mental model). The `specs/` and `plans/`
-folders no longer exist — they were dissolved into those two on 2026-07-28, so
-the design of record is always a doc, never a plan. Where an entry below names a
-spec, that spec's durable content is in the feature model; the spec itself is
-reachable only through git history.
+`SKELETON-FEATURE-MODEL.md` (skeleton mental model). Dated implementation specs
+and plans may exist under `specs/` and `plans/`, but their durable conclusions
+must be folded into these standing documents. Where an older entry names a
+retired spec, its durable content is in the feature model.
 
 ---
 
@@ -74,27 +73,27 @@ editor calls it from `scene-controller.js`; the UI is in
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `4df999813` | docs: add curve harmonization (F9) design spec |
-| `0cbaf2174` | docs: split the two deferred skeleton items in the F9 spec |
-| `fb956451d` | feat: initial implementation |
-| `9dfe9f4ff` | fix(harmonize): write through setPointPosition, not a path assignment |
-| `482a4158c` | feat(harmonize): report why each point was skipped or left partial |
-| `1c4b24b50` | feat(harmonize): optional Tunni equalization, the pass that moves outer handles |
+| Commit      | Subject                                                                               |
+| ----------- | ------------------------------------------------------------------------------------- |
+| `4df999813` | docs: add curve harmonization (F9) design spec                                        |
+| `0cbaf2174` | docs: split the two deferred skeleton items in the F9 spec                            |
+| `fb956451d` | feat: initial implementation                                                          |
+| `9dfe9f4ff` | fix(harmonize): write through setPointPosition, not a path assignment                 |
+| `482a4158c` | feat(harmonize): report why each point was skipped or left partial                    |
+| `1c4b24b50` | feat(harmonize): optional Tunni equalization, the pass that moves outer handles       |
 | `f72e9cebe` | fix(harmonize): drain the slider's valueStream, so the applied bias is the shown bias |
-| `92f660621` | fix(harmonize): show the bias number; rename the slider end to "point" |
-| `e479f706c` | fix(harmonize): apply the bias the slider shows, not the one the model stored |
-| `c1f76ebe1` | feat(harmonize): cap each handle's tension at 1 so handles cannot cross |
-| `aa1adcaa5` | feat(harmonize): pull an over-tension handle back under the ceiling |
-| `251f96cd6` | feat(harmonize): round the moved points to whole units |
+| `92f660621` | fix(harmonize): show the bias number; rename the slider end to "point"                |
+| `e479f706c` | fix(harmonize): apply the bias the slider shows, not the one the model stored         |
+| `c1f76ebe1` | feat(harmonize): cap each handle's tension at 1 so handles cannot cross               |
+| `aa1adcaa5` | feat(harmonize): pull an over-tension handle back under the ceiling                   |
+| `251f96cd6` | feat(harmonize): round the moved points to whole units                                |
 
 ### 4. Challenges and findings
 
 **Harmonization converges in one pass, at any bias.** The spec assumed
 iteration was needed and that a handle-heavy bias would take more passes. It
 doesn't. The ratio depends only on the perpendicular offsets of `PP` and `NN`
-from the tangent line, and neither the joint nor the handles moving *along* the
+from the tangent line, and neither the joint nor the handles moving _along_ the
 tangent changes those offsets. `D`'s own offset cancels out of the formula. So
 one pass is exact regardless of where the bias puts the correction. Iteration
 earns its keep only on **coupled** joints — adjacent smooth points that share a
@@ -116,7 +115,7 @@ rollback (`change-recorder.js:69`). This is a general rule for any future
 geometry operation, not a harmonization quirk.
 
 **A dragged `edit-number-slider` doesn't deliver its value through
-`onFieldChange`.** It fires once at `dragBegin` with the *pre-drag* value; every
+`onFieldChange`.** It fires once at `dragBegin` with the _pre-drag_ value; every
 subsequent value arrives on a `valueStream` `QueueIterator`. So the setting we
 stored was always one drag stale — the node kept moving in full-handle mode
 because the code was reading bias 0.2 while the slider showed 1.0. Two fixes:
@@ -128,12 +127,12 @@ the UI was assumed innocent. The user's console dump of the options object is
 what settled it. When reported behaviour contradicts the math, instrument the
 boundary between them first.
 
-**`displayValue: true` is not a boolean.** It's a placeholder *string* that
+**`displayValue: true` is not a boolean.** It's a placeholder _string_ that
 blanks the number box (`range-slider.js:256-262`), so the box literally read
 "true".
 
 **Supertool moves more handles than its `harmonize:` method does.** The method
-itself only moves the joint's immediate neighbours, but the Harmonize *command*
+itself only moves the joint's immediate neighbours, but the Harmonize _command_
 brackets it with `[self balance]`, which moves the adjacent segments' handles
 too. That's the source of the "it moves adjacent handles" observation, and it
 maps to our optional Tunni equalization pass, not to the core algorithm.
@@ -158,7 +157,7 @@ margin (ceiling 0.98) would remove it if it ever matters.
 
 Clicking a segment selects its two on-curve points. Shift-clicking an adjacent
 segment should have added its two points to the selection, but instead it
-*removed* the point the two segments share — so you could never build a
+_removed_ the point the two segments share — so you could never build a
 selection by walking along a contour.
 
 ### 2. Solution
@@ -178,8 +177,8 @@ unchanged.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
+| Commit      | Subject                                               |
+| ----------- | ----------------------------------------------------- |
 | `f757a2e53` | fix(selection): make shift-clicking segments additive |
 
 Files: `scene-model.js` (two return sites), `edit-tools-pointer.js`
@@ -188,7 +187,7 @@ is symmetric difference).
 
 ### 4. Challenges and findings
 
-**The bug was in the selection *mode*, not the hit test.** `getSelectModeFunction`
+**The bug was in the selection _mode_, not the hit test.** `getSelectModeFunction`
 maps shift to `symmetricDifference`, which is right for a single point and wrong
 for a multi-point hit. The hit test was returning the correct two points all
 along.
@@ -244,35 +243,35 @@ the average-width-then-translate hack for tapered sides.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `1ad572170` | docs: add skeleton offset construction design spec |
-| `6862cd7e7` | docs: bound generated handles by tangent-ray intersection |
-| `91c99f2a8` | docs: pin the offset spec's integration surface |
-| `0b894092d` | docs: withdraw the unrounded-rib-endpoint plan |
-| `9f321429e` | docs: cover collapsed sides and single-sided contours |
-| `055d16ce3` | docs: initial plan |
-| `118e59919` | docs: add skeleton offset construction implementation plan |
-| `b8d189f27` | docs: drop the quadratic-segment handling from the plan |
+| Commit      | Subject                                                                    |
+| ----------- | -------------------------------------------------------------------------- |
+| `1ad572170` | docs: add skeleton offset construction design spec                         |
+| `6862cd7e7` | docs: bound generated handles by tangent-ray intersection                  |
+| `91c99f2a8` | docs: pin the offset spec's integration surface                            |
+| `0b894092d` | docs: withdraw the unrounded-rib-endpoint plan                             |
+| `9f321429e` | docs: cover collapsed sides and single-sided contours                      |
+| `055d16ce3` | docs: initial plan                                                         |
+| `118e59919` | docs: add skeleton offset construction implementation plan                 |
+| `b8d189f27` | docs: drop the quadratic-segment handling from the plan                    |
 | `12c7f5e96` | docs: lock generated handle direction to the skeleton; fix review findings |
-| `2885f91db` | docs: keep the minimum-handle guardrail; measure the tension bound first |
-| `a78c51cda` | docs: reconcile spec drift after the direction-locking revision |
-| `b2c750e5d` | docs: rewrite the implementation plan for the length-only construction |
-| `52346b21a` | docs: drop the donor-parity framing from the fixture work |
-| `4ea94c37e` | fix: generate skeleton fixtures from this generator, not the pre-port one |
-| `864c0bbe9` | refactor: expose the two-handle least-squares solve from fit-cubic |
-| `4acb82a34` | fix(plan): make the cusp floor exactly inert |
-| `c1bd7bc5d` | fix: make the cusp floor exactly inert in offset-cubic |
-| `79d3914e9` | feat: bound generated handle length |
-| `f1510b084` | feat: one fixed correction pass for the offset construction |
-| `5dfdff706` | test: cover continuity of the offset cubic construction |
-| `597038307` | feat: construct generated handle lengths instead of fitting them |
-| `8bdef4f34` | feat: floor the tension limit at a third of the chord |
-| `0479d309d` | docs: retitle generator fixtures and update cubic pipeline |
-| `db2710771` | docs: update the skeleton cubic construction model |
-| `6158aa278` | refactor: remove disabled handle-direction alignment |
-| `be4bd3f55` | refactor: remove superseded offset machinery |
-| `40b6cc12b` | fix: ease the offset correction band |
+| `2885f91db` | docs: keep the minimum-handle guardrail; measure the tension bound first   |
+| `a78c51cda` | docs: reconcile spec drift after the direction-locking revision            |
+| `b2c750e5d` | docs: rewrite the implementation plan for the length-only construction     |
+| `52346b21a` | docs: drop the donor-parity framing from the fixture work                  |
+| `4ea94c37e` | fix: generate skeleton fixtures from this generator, not the pre-port one  |
+| `864c0bbe9` | refactor: expose the two-handle least-squares solve from fit-cubic         |
+| `4acb82a34` | fix(plan): make the cusp floor exactly inert                               |
+| `c1bd7bc5d` | fix: make the cusp floor exactly inert in offset-cubic                     |
+| `79d3914e9` | feat: bound generated handle length                                        |
+| `f1510b084` | feat: one fixed correction pass for the offset construction                |
+| `5dfdff706` | test: cover continuity of the offset cubic construction                    |
+| `597038307` | feat: construct generated handle lengths instead of fitting them           |
+| `8bdef4f34` | feat: floor the tension limit at a third of the chord                      |
+| `0479d309d` | docs: retitle generator fixtures and update cubic pipeline                 |
+| `db2710771` | docs: update the skeleton cubic construction model                         |
+| `6158aa278` | refactor: remove disabled handle-direction alignment                       |
+| `be4bd3f55` | refactor: remove superseded offset machinery                               |
+| `40b6cc12b` | fix: ease the offset correction band                                       |
 
 ### 4. Challenges and findings
 
@@ -345,14 +344,14 @@ the stored one, and a rib drag pulls its whole group into the executor set.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `2ad2b04b1` | fix(skeleton): take the smooth-junction handle axis from the skeleton |
-| `130a75ddf` | fix(skeleton): couple ribs across a mutually-controlled straight segment |
-| `bd572be5c` | feat(skeleton): add a Tied ribs opt-out for coupled straight segments |
-| `8c1b2ea14` | fix(skeleton): make the rib gizmo and drag agree with coupled geometry |
+| Commit      | Subject                                                                    |
+| ----------- | -------------------------------------------------------------------------- |
+| `2ad2b04b1` | fix(skeleton): take the smooth-junction handle axis from the skeleton      |
+| `130a75ddf` | fix(skeleton): couple ribs across a mutually-controlled straight segment   |
+| `bd572be5c` | feat(skeleton): add a Tied ribs opt-out for coupled straight segments      |
+| `8c1b2ea14` | fix(skeleton): make the rib gizmo and drag agree with coupled geometry     |
 | `149a6962d` | fix(skeleton): tie the whole projected straight, not just controlled pairs |
-| `d4d1dcfac` | fix(skeleton): make a nudge carry its generated handles |
+| `d4d1dcfac` | fix(skeleton): make a nudge carry its generated handles                    |
 
 ### 4. Challenges and findings
 
@@ -404,13 +403,13 @@ search. Mean error 3.11 → 0.89 against an achievable 0.67, hard-pinning 2 → 
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `0374a884d` | docs(skeleton): record the curve-quality decisions |
-| `8adb3bb55` | fix(skeleton): fit the offset against the right correspondence |
-| `cbd92a0a9` | docs(skeleton): withdraw the equalize/harmonize step on measurement |
+| Commit      | Subject                                                                |
+| ----------- | ---------------------------------------------------------------------- |
+| `0374a884d` | docs(skeleton): record the curve-quality decisions                     |
+| `8adb3bb55` | fix(skeleton): fit the offset against the right correspondence         |
+| `cbd92a0a9` | docs(skeleton): withdraw the equalize/harmonize step on measurement    |
 | `b8f29354e` | docs(skeleton): pin the handle axis to the skeleton, drop equalize too |
-| `005a6e43c` | docs(skeleton): settle the two gizmo mechanics |
+| `005a6e43c` | docs(skeleton): settle the two gizmo mechanics                         |
 
 ### 4. Challenges and findings
 
@@ -476,19 +475,19 @@ are orthogonal, so the two stored things compose without a precedence rule.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `aba940073` | feat(tunni): add the curvature gizmo geometry |
-| `5bac71b6e` | feat(skeleton): map a curvature drag onto skeleton handle offsets |
-| `b200c00f5` | feat(skeleton): draw the two gizmos on generated segments |
-| `9cad17298` | feat(skeleton): make the generated gizmos draggable |
-| `408dc586b` | feat(skeleton): make gizmo editing the default, direct handles the opt-out |
-| `7008c78c1` | fix(skeleton): stop the gizmo drag throwing, and hide generated handle lines |
-| `b5ba9e25f` | fix(skeleton): unstick the curvature gizmo, respec the on-curve one |
+| Commit      | Subject                                                                          |
+| ----------- | -------------------------------------------------------------------------------- |
+| `aba940073` | feat(tunni): add the curvature gizmo geometry                                    |
+| `5bac71b6e` | feat(skeleton): map a curvature drag onto skeleton handle offsets                |
+| `b200c00f5` | feat(skeleton): draw the two gizmos on generated segments                        |
+| `9cad17298` | feat(skeleton): make the generated gizmos draggable                              |
+| `408dc586b` | feat(skeleton): make gizmo editing the default, direct handles the opt-out       |
+| `7008c78c1` | fix(skeleton): stop the gizmo drag throwing, and hide generated handle lines     |
+| `b5ba9e25f` | fix(skeleton): unstick the curvature gizmo, respec the on-curve one              |
 | `de317addc` | fix(skeleton): unblock reversed-contour gizmos, hold handles on an on-curve drag |
-| `9f2a4173d` | feat(skeleton): pin generated curvature and equalize handle tensions |
-| `c4e7d9069` | fix(skeleton): make the pinned curvature control reach 1 and hold still |
-| `4914a7b0b` | fix(skeleton): stop the curvature gizmo moving the curve when it is grabbed |
+| `9f2a4173d` | feat(skeleton): pin generated curvature and equalize handle tensions             |
+| `c4e7d9069` | fix(skeleton): make the pinned curvature control reach 1 and hold still          |
+| `4914a7b0b` | fix(skeleton): stop the curvature gizmo moving the curve when it is grabbed      |
 
 ### 4. Challenges and findings
 
@@ -565,15 +564,15 @@ restricted to ends that can actually move, and double-click resets.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `e2309c358` | docs: gizmo plan |
+| Commit      | Subject                                                   |
+| ----------- | --------------------------------------------------------- |
+| `e2309c358` | docs: gizmo plan                                          |
 | `7b78a3b32` | fix: preserve skeleton side semantics through gizmo edits |
-| `8ba6546ec` | fix: unify generated handle construction space |
-| `465f878e1` | fix: preserve generated on-curve drag mode semantics |
-| `fc82cb9d8` | fix: stabilize generated gizmo controls |
-| `8764a5df6` | revert: keep observable storage behavior unchanged |
-| `7ce15a04a` | feat: complete generated gizmo controls |
+| `8ba6546ec` | fix: unify generated handle construction space            |
+| `465f878e1` | fix: preserve generated on-curve drag mode semantics      |
+| `fc82cb9d8` | fix: stabilize generated gizmo controls                   |
+| `8764a5df6` | revert: keep observable storage behavior unchanged        |
+| `7ce15a04a` | feat: complete generated gizmo controls                   |
 
 ### 4. Challenges and findings
 
@@ -638,18 +637,18 @@ segment fights the cursor.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `6a4080a1e` | fix: stop an empty selection painting every node as selected |
-| `10515143d` | fix: make the generated equalize a click, on the curvature gizmo only |
-| `537b83eec` | fix: make the S/D drag offset the skeleton instead of shearing it |
+| Commit      | Subject                                                                     |
+| ----------- | --------------------------------------------------------------------------- |
+| `6a4080a1e` | fix: stop an empty selection painting every node as selected                |
+| `10515143d` | fix: make the generated equalize a click, on the curvature gizmo only       |
+| `537b83eec` | fix: make the S/D drag offset the skeleton instead of shearing it           |
 | `dee00f852` | feat: label the curvature gizmo, and hand generated geometry the plain drag |
-| `5f2e0afdc` | docs: record the gizmo and modifier corrections |
-| `f5f172043` | revert: keep the rib modifiers as they were |
-| `aa9f80b41` | fix: restore the modifiers, and make Z carry the handles from either grip |
-| `4aecabf91` | feat: let a direct handle drag discard the curvature it overrules |
-| `0f82e404f` | docs: correct the pin-override exceptions |
-| `36dfc70af` | refactor: drop the tension-bound instrumentation |
+| `5f2e0afdc` | docs: record the gizmo and modifier corrections                             |
+| `f5f172043` | revert: keep the rib modifiers as they were                                 |
+| `aa9f80b41` | fix: restore the modifiers, and make Z carry the handles from either grip   |
+| `4aecabf91` | feat: let a direct handle drag discard the curvature it overrules           |
+| `0f82e404f` | docs: correct the pin-override exceptions                                   |
+| `36dfc70af` | refactor: drop the tension-bound instrumentation                            |
 
 ### 4. Challenges and findings
 
@@ -705,8 +704,8 @@ the use that closed it — including two ideas that were built and reverted twic
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
+| Commit      | Subject                                                       |
+| ----------- | ------------------------------------------------------------- |
 | `9671505ec` | docs: dissolve the plans and specs into the two standing docs |
 
 ### 4. Challenges and findings
@@ -757,11 +756,11 @@ of their own.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
+| Commit      | Subject                                                                                |
+| ----------- | -------------------------------------------------------------------------------------- |
 | `a168b107d` | fix: place the curvature label above its gizmo, scale the on-curve gizmo by the stroke |
-| `fea8aa622` | fix: put the on-curve gizmo at a constant distance from its curve |
-| `f811b0589` | fix: hide the rib width plaque during a tangent slide |
+| `fea8aa622` | fix: put the on-curve gizmo at a constant distance from its curve                      |
+| `f811b0589` | fix: hide the rib width plaque during a tangent slide                                  |
 
 ### 4. Challenges and findings
 
@@ -816,10 +815,10 @@ fit's own answer.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
+| Commit      | Subject                                                                  |
+| ----------- | ------------------------------------------------------------------------ |
 | `53e4d3be8` | fix: preserve the curve when a handle drag discards its pinned curvature |
-| `757a27ab0` | fix: state the tension ceiling exactly for a hand-placed handle |
+| `757a27ab0` | fix: state the tension ceiling exactly for a hand-placed handle          |
 
 ### 4. Challenges and findings
 
@@ -884,9 +883,9 @@ offset by definition.
 
 ### 3. Commits
 
-| Commit | Subject |
-| --- | --- |
-| `61b35caea` | fix: three faults in the fixed-rib drag |
+| Commit      | Subject                                                              |
+| ----------- | -------------------------------------------------------------------- |
+| `61b35caea` | fix: three faults in the fixed-rib drag                              |
 | `efe4d4b2c` | fix: stop the fixed-rib drag's handles and far side at the floor too |
 
 ### 4. Challenges and findings
@@ -917,3 +916,3254 @@ about 1% of distribution. Chasing that would need fractional widths. Rounding bo
 sides independently, which is what the shared total-width mutator did, also missed
 the total itself by a unit and put the visible edge past the cursor; one side is
 now rounded and the other taken as the remainder.
+
+---
+
+## 13. The rib angle lock was never ported — feature
+
+**Branch:** `fix/skeleton-expand-math`
+**Date:** 2026-07-29
+
+### 1. Problem
+
+The donor could force a terminal rib onto an axis, so an open contour's end reads
+flat and horizontal or flat and vertical however the centerline arrives at it.
+The port carried the geometry — `getEffectiveNormal` existed in both the generator
+and the model — but nothing else: no canonical field, no copy across
+`canonicalToGeneratorInput`, no panel control. Both copies read
+`point.forceHorizontal` / `point.forceVertical`, fields the schema drops on
+normalization, so the override could not fire at all.
+
+Exactly the trap the feature model §7 names: a per-point field is invisible to the
+generator until it is copied across explicitly.
+
+### 2. Solution
+
+One canonical field, `ribAngleLock` ∈ `null | "horizontal" | "vertical"`, named for
+the direction the **rib** runs — which is what the designer sees, since a flat
+terminal is drawn along the rib. Normalized in `normalizeSkeletonPoint`, written by
+`setSkeletonPointRibAngleLock`, copied into the generator dialect flat, and moved
+with the cap data when a terminal is deleted, since it describes that terminal.
+
+`getEffectiveNormal` is now one exported copy in `skeleton-model.js` that the
+generator imports (rail R-B); it previously existed twice, and both copies read the
+dead donor field names.
+
+The panel exposes it as a select in the cap section, gated to open-contour
+endpoints like the cap style is. Unlike the donor, where it was only offered on the
+flat cap, it is offered under **every** cap style: it decides the rib the cap is
+built on, so it supersedes the style rather than belonging to one.
+
+### 3. Commits
+
+Single commit on `fix/skeleton-expand-math`.
+
+### 4. Challenges and findings
+
+**Two dead code paths looked like a working feature.** Grepping for the donor's
+field names found the math in place in two files and made the port look half-done
+when in fact none of it could ever run. The check that matters is whether the field
+survives `normalizeSkeletonPoint` and `canonicalToGeneratorInput`, not whether the
+consumer exists.
+
+**Round and drop caps put points past the rib**, so the "every cap style" test can
+only assert the rib line itself on the flat-ended styles; for the others it asserts
+that the lock changes the outline at all.
+
+---
+
+## 14. One generated handle always on a bound — fix
+
+**Branch:** `fix/skeleton-expand-math`
+**Date:** 2026-07-29
+
+### 1. Problem
+
+A glyph with two skeleton contours, identical but for the tension of one curved
+segment's own handles — same endpoints, same tangents, same 40 → 114 taper, and
+both equal-tension to three decimals within themselves. One generated a sound
+outline; the other's inner edge cut straight across the bend, with its handle on
+the 1-unit floor.
+
+The collapse was the visible half. Both contours had the same fault: **one
+generated handle on a bound in every case** — the tension ceiling or the
+collapse floor — from a skeleton whose own two handles were symmetric.
+
+| side        | tensions before | ratio | after         | ratio |
+| ----------- | --------------- | ----- | ------------- | ----- |
+| low, outer  | 0.403 / 0.993   | 2.46  | 0.447 / 0.740 | 1.66  |
+| low, inner  | 0.30 / 0.009    | 33.0  | 0.610 / 0.592 | 1.03  |
+| high, outer | 0.60 / 0.97     | 1.62  | 0.626 / 0.889 | 1.42  |
+| high, inner | 1.00 / 0.345    | 2.90  | 1.000 / 0.638 | 1.57  |
+
+### 2. Solution
+
+The asymmetry is born in the seed: λ = 1 + d·κ is applied per end, and the two
+ends of a cubic have different curvature, so the two handles are scaled by
+different factors — 1.07 and 2.61 here. The band then confines each handle to a
+window around **its own** seed, so neither can migrate toward the other; the
+bound clamps whichever ended up over its reach; and the equalization stage, the
+one thing that could have rebalanced the pair, could not:
+
+- its allowance was an absolute 0.25 units, which is room on a constant-width
+  segment and nothing on a tapered one — and tapered is exactly where the fit
+  comes out lopsided;
+- it judged every candidate split at the fitted magnitude, so a re-split curve
+  was charged for a scale nobody would pair it with.
+
+Both were fixed in that stage. The allowance is now a quarter of the fit's own
+deviation plus the flat quarter unit, and each candidate is measured at its own
+best magnitude, re-solved in closed form by `solveHandleScale` — the same normal
+equations as the two-handle fit collapsed onto one unknown. It is exactly inert
+on the fitted pair, so segments the fit already got right do not move.
+
+### 3. Commits
+
+Single commit on `fix/skeleton-expand-math`.
+
+### 4. Challenges and findings
+
+**Three wrong diagnoses came before the right one, and each was disproved by a
+measurement.** That the offset was geometrically unrepresentable past the cusp —
+disproved by rendering the balanced pair, which produces the waist. That the
+least-squares was ill-conditioned and sliding along a flat direction — disproved
+by the normal matrix, condition number 1.3. That the fit had no information at
+the dead end — true of that one end and irrelevant, since the fault was present
+on the _healthy_ contour too. The report that settled it was the user's: both
+contours show it, so stop explaining the collapsed one.
+
+**A sweep is the test this class of bug needs.** Hold the segment fixed and walk
+its own tension: the generated handle stepped 1, 1, 1, 2, 5, 7, 11, 17, 34 while
+its partner went 104, 70, 163 — a 33.9-unit jump per unit of skeleton handle,
+sitting in the middle of the healthy range where nothing about the skeleton
+jumps. Monotone now, worst step 5.4. No single-configuration assertion would
+have caught either fault.
+
+**Cost, measured per segment against the true offset:** of the four generated
+segments that moved across the fixture set, three improved (7.47 → 6.96,
+13.00 → 12.84, 12.90 → 12.73) and one lost 0.28 units (0.79 → 1.07). That last
+is the allowance being spent, and it is the trade the change exists to make.
+Every accuracy ceiling in the suite still holds unchanged.
+
+---
+
+## 15. A saturated handle dragged its partner backwards — fix
+
+**Branch:** `fix/skeleton-expand-math`
+**Date:** 2026-07-29
+
+### 1. Problem
+
+Follow-up to §14, reported against it. With the collapse gone, one artifact
+remained: sweeping a skeleton segment's own tension, at the step where one
+generated handle reached the tension ceiling, **the other handle moved backwards**
+— 90.6 → 59.4 in one step, then back up through 70.4, 91.4, 110.4. Reaching the
+ceiling is normal in that configuration; the partner reversing is not.
+
+### 2. Solution
+
+The ceiling was applied _after_ the equalization walk. So the walk balanced a pair
+that could never be emitted, and sized the free handle against a partner that was
+about to be truncated. It now measures every candidate through the same bound the
+emitted geometry gets, so it optimizes the curve that will actually be drawn.
+
+Bounding inside the walk also raises the baseline the allowance is a fraction of,
+which loosened the walk by a side effect — the `controlled-straight` fixtures lost
+2.9 units. The ratio came down from 25% to 15% to pay that back: 1.7 units on
+those fixtures, and every side of the reported glyph still inside the balance the
+§14 tests assert.
+
+Backtracking over a 240-step tension sweep, worst step: double-sided 8.1 → 1.2,
+single-sided inside 10.9 → 0.2, single-sided outside 9.5 → 2.5. What is left is
+about 1% of a handle and comes from the allowance itself moving with the driver.
+
+### 3. Commits
+
+Single commit on `fix/skeleton-expand-math`.
+
+### 4. Challenges and findings
+
+**The first version of the test only swept one side and passed while two faults
+were still live.** Sweeping the other side of the same configuration found both.
+When a fault is a property of a sweep, sweep every side and both signs of the
+offset.
+
+**A bounded measurement changes the baseline, not just the answer.** Judging
+candidates by the emitted curve was correct and silently made the allowance more
+generous, because the allowance is a fraction of that same measurement. Two golden
+fixtures caught it; without them the accuracy loss would have shipped as
+"rebalancing".
+
+### 5. Still open
+
+Two faults in single-sided mode, found while investigating and **not fixed here**:
+
+- **The collapse survives at low tension on the inside.** With the full width on
+  one side (−80/−228 on the reported segment) the fit's own answer collapses —
+  analytic start 71.4 → corrected 19.9, end on the cusp floor — and the walk
+  normalizes candidates to the fitted magnitude, so it inherits the collapse and
+  emits (4.5, 2.1) against reaches of 100.7/49.6. It also jumps: at one step
+  further the fit flips to asking for tension 3.0 and the pair becomes (216, 33).
+- **The outside side is the least balanced case anywhere**, 0.43/0.85 on the
+  reported glyph, because doubling the offset distance drives λ per end further
+  apart (1.14 against 4.2) and full equalization there genuinely costs 24.8 → 54.9.
+
+---
+
+## 16. The offset construction was rebuilt around one invariant — rework
+
+**Branch:** `fix/skeleton-tension-overflow`
+**Date:** 2026-07-29
+**Design of record:** `SKELETON-FEATURE-MODEL.md` §3.2 (the feasible box), §7, §8
+
+### 1. Problem
+
+The two faults §15 left open, reported from use on a `U`: two straights joined by
+one curved segment, both joints straight-controlled, the contour single-sided so
+the whole width lands on the inside of the bend. Sweeping the curved segment's
+own tension in **one** direction, the generated handles jumped and rebounded —
+±20 units per step while the skeleton handle moved 1.7.
+
+The wider complaint was structural, and it is the one this entry answers. Each
+fix since the construction shipped had added a guard: a correction band, a chord
+cap, a handle floor, a cusp floor on λ, a tension ceiling in an eased form and an
+exact form and an exemption for pins, a scale band on the magnitude re-solve, a
+rule that a candidate split must be judged as it will be emitted, and a null
+return meaning "this end has no reach, skip the stage". Every one of them was a
+correct answer to a real measurement. Together they were a list of exceptions
+that was still incomplete, because none of them addressed why an infeasible
+answer was being produced in the first place.
+
+### 2. Solution
+
+One invariant, stated once and held everywhere: **both handle lengths are carried
+as tensions, and every stage produces a point inside the feasible box** —
+`[1/reach, 1]` on each axis, where tension 1 is the tangent-ray intersection and
+the lower face is the one-unit grid floor.
+
+`reach` gets a single definition — the tangent-ray distance, floored at a third
+of the chord and capped at twice it — used by the seed, the correction, the
+equalization walk, the hand adjustment, the pin and the emitted length alike.
+Because it is finite and positive by construction, a tension always exists.
+
+The pipeline is then five stages on a compact box, in order: seed (λ = 1 + d·κ),
+correction (four fixed least-squares passes), split (the bounded equalization
+walk), attached adjustment, pin. Every one of the guards above is either the box
+or a consequence of it, and all of them are gone from the source. `handleTensions`
+went with them — its whole purpose was the null return.
+
+### 3. Commits
+
+Single commit on `fix/skeleton-tension-overflow`.
+
+### 4. Challenges and findings
+
+**The jitter was the correction loop reparameterizing against a curve that
+loops.** Where a cubic cannot represent the offset — and on the reported segment
+it cannot, the fit's own deviation running to ~90 units — the least squares asks
+for a start handle at 2.4× its reach and a **negative** end handle. The band
+clamped the negative one and left the other free, so the loop's iterate was
+self-intersecting, and Newton's root find on a self-intersecting curve is
+multivalued: one sample's parameter walked 0.907 → 0.200 → 0.319 → 0.635 across
+the four passes, and a one-unit move of the skeleton sent it down a different
+branch. That magnitude then reached the outline through the equalization walk,
+which normalizes candidates to the fit's own magnitude.
+
+**A fixed trip count buys determinism, not continuity.** This is the correction
+to the contract as it was written down after entry §3. Fixed count, fixed seed,
+no convergence test and no threshold search were all satisfied here, and the
+output still jumped, because the map being iterated was not continuous in its
+input. The box is what makes the iterated map well-behaved; the trip count only
+stops the loop from _deciding_ when to stop. Both are required and neither
+implies the other.
+
+**The eased ceiling was the root of the three-variant bound.** It was introduced
+so the fit's answer would be C1, but the contract only asks for continuity, and a
+clamp is continuous and 1-Lipschitz. Easing cost a few percent of whatever it was
+given — which is wrong for a hand-placed length, hence the exact variant, and
+wrong for a pin, hence the exemption. One exact ceiling collapses three cases
+into one.
+
+**Measured, on every cubic side the fixture set and the reported glyph generate
+(33 sides, 13 moved by more than half a unit):** 8 improved against the true
+offset, 5 lost, net −1.10 units of deviation, worst single loss 0.68. One side of
+`open-smooth-cubic-junction` had a handle sitting on the 1-unit collapse floor at
+52.8/1.1 and now comes out 62.1/20.8 — the §14 fault, still live on a fixture
+after §14 shipped. Three of eleven golden fixtures moved and were regenerated.
+
+**Worst single-step movement of any generated point, sweeping the reported glyph
+in every mode** (200 steps; driver step in brackets):
+
+| driver          | mode               | before | after |
+| --------------- | ------------------ | ------ | ----- |
+| segment tension | single-sided right | 36.67  | 2.15  |
+| segment tension | single-sided left  | 196.00 | 4.12  |
+| segment tension | double-sided       | 122.00 | 15.00 |
+| segment tension | pinned curvature   | 1.85   | 1.85  |
+| rib width       | single-sided right | 53.01  | 16.03 |
+| rib width       | double-sided       | 35.00  | 10.43 |
+| rib width       | pinned curvature   | 69.01  | 20.02 |
+| on-curve drag   | single-sided right | 14.35  | 2.00  |
+| on-curve drag   | double-sided       | 11.25  | 12.69 |
+| on-curve drag   | pinned curvature   | 300.00 | 2.00  |
+
+**A sweep harness that starts at a degenerate configuration lies.** The first
+run of that table drove the segment's tension from zero-length skeleton handles
+and reported 765- and 625-unit steps in both the old and new code — all of it the
+first step out of the degenerate seed. Re-run from 30% of the drawn handle, the
+same sweep tells the story above. This is the same lesson as §5's synthetic
+sweep: sweep design decides the answer.
+
+**What is left is the cusp, and it is not jitter.** The residual 16 and 10-unit
+steps under a width drag land where `1 + d·κ` crosses zero — the offset genuinely
+cusps there and the handle genuinely collapses. Both are ~3.3× better than
+before, and chasing them further means representing a cusp with one cubic, which
+is the limit the curvature gizmo exists for.
+
+---
+
+## 17. The equalization walk was bisecting a plateau — fix
+
+**Branch:** `fix/skeleton-tension-overflow`
+**Date:** 2026-07-29
+**Design of record:** `SKELETON-FEATURE-MODEL.md` §7 (equalization of the split)
+
+### 1. Problem
+
+Reported against §16. On the same glyph, converting the contour to single-sided
+was quiet, and converting it **back** to double-sided brought the jumps back —
+11 units of generated handle per 1.7 units of skeleton.
+
+The toggle was innocent: `setSkeletonContourSingleSided` writes one flag and
+nothing else, and a single → double → single round trip was verified
+byte-identical. Double-sided simply still jittered on its own, and §16's own
+measurements had said so — 15.00 in the mode table, reported and not chased.
+
+### 2. Solution
+
+The fault was the metric the equalization walk bisects on. `offsetDeviation`
+returned the **max** over its five samples, and a max is exactly flat in
+whichever handle does not own the current worst sample. So the walk was
+bisecting a plateau and converging on its **edge** — the amount at which the max
+changes owner, which is a kink whose position slides fast when the two branches
+run close.
+
+It now returns an RMS. That has a nonzero gradient in both handles everywhere,
+and it is the norm the fit itself minimizes, so the walk judges candidates by the
+same measure that produced the one it started from.
+
+### 3. Commits
+
+Single commit on `fix/skeleton-tension-overflow`.
+
+### 4. Challenges and findings
+
+**A bisection is only as continuous as the function under it.** This is the
+sharper form of the contract, and §16's version of it was not sharp enough.
+Fixed trip count, fixed seed, no convergence test and no threshold search were
+all satisfied — and the search was still over a plateau, which makes the answer a
+step function of where the plateau's edge happens to be. Measured: the end
+tension moved 0.097 → 0.353, more than tripling one handle, without shifting the
+max in the fourth decimal; `affordable` then stepped 0.984 → 0.906 → 0.813 →
+0.750 → 0.688 on a smoothly moving input.
+
+**The allowance floor is not a free parameter — it is stated in a norm.** An RMS
+over five samples is between 0.447× and 1× the max over the same five, so the
+0.25-unit floor restates into 0.11–0.25. At 0.25 one accuracy ceiling failed
+(1.043 against 1); 0.20 holds every ceiling **and** gives the lowest jitter of
+the values tried. Values below it were both looser on accuracy and slightly worse
+on jitter, which is the sign that this is a real optimum rather than a fudge.
+
+**The regression test was watched failing against the metric it replaced**, on
+the inner side only — the outer side of the same contour passed throughout. Same
+lesson as §15: when a fault is a property of a sweep, sweep every side.
+
+**Worst single-step movement, sweeping the glyph in every mode** — original,
+after §16, after this:
+
+| driver          | mode               | orig   | §16   | now   |
+| --------------- | ------------------ | ------ | ----- | ----- |
+| segment tension | single-sided right | 36.67  | 2.15  | 2.15  |
+| segment tension | single-sided left  | 196.00 | 4.12  | 3.13  |
+| segment tension | double-sided       | 122.00 | 15.00 | 5.00  |
+| rib width       | single-sided right | 53.01  | 16.03 | 8.00  |
+| rib width       | double-sided       | 35.00  | 10.43 | 6.00  |
+| rib width       | pinned curvature   | 69.01  | 20.02 | 11.05 |
+| on-curve drag   | single-sided right | 14.35  | 2.00  | 2.00  |
+| on-curve drag   | double-sided       | 11.25  | 12.69 | 5.67  |
+
+The one row §16 made worse (on-curve drag, double-sided) is fixed by the same
+change. Accuracy across the fixture corpus improved again: of 16 sides that
+moved, 8 better and 8 worse, net −1.84 units against the true offset, worst
+single loss 0.68.
+
+**One self-inflicted detour worth recording.** A `git checkout` of the source
+file, run to strip debug instrumentation, silently discarded the uncommitted fix
+along with it — the file was clean of instrumentation and also clean of the work.
+Check what a revert actually reverted when the fix is not yet committed.
+
+---
+
+## 18. Cubic outline construction became one continuous solve — rework
+
+**Branch:** `fix/skeleton-continuous-outline-solver`
+**Date:** 2026-07-29
+**Design of record:** `SKELETON-FEATURE-MODEL.md` §3.2, §5, §7, §8
+
+### 1. Problem
+
+The boxed five-stage construction from §§16–17 was deterministic and still not
+continuous. Its fixed correction loop rematched samples to the candidate cubic,
+and its split walk selected the last candidate inside an error allowance. Both
+operations could change branch while the skeleton moved smoothly.
+
+On the fixed U¹ tension sweep, the old automatic path passed single-sided right
+but failed the other generated sides: single-sided left reached a 3.139117-unit
+step/backtrack, double-sided outer backtracked 1.43315 units, and double-sided
+inner reached a 4.77523-unit step with 2.07709 units of backtracking. The last
+two fixes had reduced the visible failures without removing the decision
+structure that caused them.
+
+### 2. Solution
+
+`natural-handle-solver.js` now builds one quadratic from five fixed
+source-parameter offset samples. It minimizes perpendicular error in normalized
+tension space together with a pull toward the skeleton's own tension, inside the
+positive non-crossing rectangle. The pull ratio reads only the skeleton and
+widths; its absolute weight uses a positive unprojected frame-influence scale.
+The exact answer is the best interior, edge, or corner point on that one
+strictly convex objective.
+
+`offset-cubic.js` is now only the authored orchestrator: natural answer,
+attached grid adjustment, pinned harmonic-mean tension, detached absolute
+handle. The correction/refit loop, split bisection, candidate magnitude
+re-solve, and their tests were removed. Generator ownership of ribs, axes,
+collapsed sides, topology, provenance, nudges, caps, corners, and grid emission
+did not move.
+
+The calibrated global constants are:
+
+| constant   | value |
+| ---------- | ----: |
+| pull floor | 0.001 |
+| cusp gain  | 0.005 |
+| taper gain |     1 |
+| cusp gate  |  0.05 |
+
+Every tuple tried before the first pass used `floor=0.001` and
+`cuspGain=0.005`:
+
+| taper gain | cusp gates tried            | first failure                                                                 |
+| ---------: | --------------------------- | ----------------------------------------------------------------------------- |
+|       0.05 | 0.05, 0.075, 0.1, 0.15, 0.2 | single-sided right backtrack 1.314095 at every gate                           |
+|        0.1 | 0.05, 0.075, 0.1, 0.15, 0.2 | single-sided right backtrack 0.746824 at every gate                           |
+|        0.2 | 0.05, 0.075, 0.1, 0.15, 0.2 | single-sided right backtrack 0.198037 at every gate                           |
+|        0.5 | 0.05, 0.075, 0.1, 0.15, 0.2 | double-sided outer backtrack 0.110314, 0.110314, 0.110314, 0.110314, 0.110313 |
+|          1 | 0.05                        | PASS                                                                          |
+
+This is the lexicographically first passing tuple; no glyph, side, or fixture
+has its own constants.
+
+### 3. Measurements
+
+Final U¹ sweep results, all with zero backtracking:
+
+| generated side     | worst adjacent step |
+| ------------------ | ------------------: |
+| single-sided right |            2.174284 |
+| single-sided left  |            2.250511 |
+| double-sided outer |            2.477796 |
+| double-sided inner |            2.703904 |
+
+The additional taper sweeps measured 0.710573 left and 0.484189 right. The
+near-cusp normalized tension split peaked at 1.0000000000000078, below the
+3-to-1 ceiling.
+
+Independent true-offset deviation before and after routing production:
+
+| case                  |    before |     after |      delta |
+| --------------------- | --------: | --------: | ---------: |
+| circular outward      |  0.029513 |  0.029534 |  +0.000021 |
+| circular inward       |  0.047331 |  0.047254 |  -0.000077 |
+| S-curve left          |  1.999582 |  2.405062 |  +0.405481 |
+| S-curve right         |  1.999582 |  2.405062 |  +0.405481 |
+| tight inward turn     |  0.687162 |  0.523590 |  -0.163571 |
+| shallow wide offset   |  0.353324 |  0.191762 |  -0.161561 |
+| unequal handles       |  0.920123 |  0.331487 |  -0.588636 |
+| moderate taper, left  |  3.460796 |  7.062596 |  +3.601801 |
+| moderate taper, right |  8.734695 |  8.794356 |  +0.059661 |
+| strong taper, left    |  9.801322 | 24.071712 | +14.270390 |
+| strong taper, right   | 46.403016 | 46.403016 |   0.000000 |
+
+Four cases improved, six lost, and one was unchanged; the summed change in the
+eleven maximum deviations is +17.828989, with the strong left taper the worst
+single loss at +14.270390. The seven inherited constant-width ceilings all
+remain green. Taper intentionally has no implementation-derived ceiling: its
+skeleton-owned handle axes cannot reproduce the true tapered-offset tangents,
+and the stronger pull is what removes backtracking. The ledger makes that
+stability/accuracy trade explicit rather than hiding it in regenerated fixtures.
+
+### 4. Commits
+
+Implementation and evidence, oldest first:
+
+- `5a82b84b3` — reproduce the U¹ failure;
+- `03005198b`, `99ad000c6` — fixed quadratic fit and handle domain;
+- `8af4bec45` — skeleton-tension reference pull;
+- `669a280b0` — calibrated accuracy, perturbation, U¹, taper, and cusp suites;
+- `88837b1ae` — production routing and authored ordering;
+- `e423466ac` — generator/provenance/interpolation invariants;
+- `04d6e14dd` — reviewed natural-outline fixtures.
+
+The predictor redesign and review corrections are recorded in `b4f759bf8`,
+`6b2344863`, `03e62bc62`, and `ed7ae10ed`.
+
+### 5. Verification and fixture review
+
+- `natural-handle-solver`: 42 passing.
+- `offset-cubic`: 27 passing.
+- architecture suite excluding golden masters: 1,612 passing.
+- full `fontra-core`: 1,624 passing.
+- `npm.cmd run bundle`: passed; only the repository's existing asset and
+  entrypoint size warnings remain.
+
+Five cubic fixtures changed: `open-cubic-round-cap`,
+`open-cubic-butt-cap`, `open-smooth-cubic-junction`,
+`mutually-controlled-straight`, and `one-ended-controlled-straight`. The audit
+found zero structural changes: canonical inputs, contour counts, point counts,
+point types, line fixtures, and non-round on-curves are unchanged. The round-cap
+fixture also moves its existing derived trim on-curves and cap controls because
+that cap is split from the terminal side cubic; its topology and provenance
+ownership remain unchanged.
+
+### 6. Challenges and findings
+
+**A cusp-only predictor could not satisfy both accuracy and continuity.** The
+reported U¹ taper remains healthy by the cusp factor, so it needed a separate
+input-only taper signal.
+
+**One shared cusp/taper strength also could not pass.** Enough shared authority
+to stabilize the tapered side made the inward near-cusp transition too steep.
+Independent global gains preserve one deterministic model without coupling the
+two failure modes.
+
+**The first fixture-review rule was too strict for split-outline round caps.**
+Those caps intentionally compute trim points and tangents from the terminal side
+cubic. Changing the cubic must move those derived on-curves and cap controls.
+The correct preservation boundary is their topology, provenance, and cap inputs,
+not frozen derived coordinates.
+
+---
+
+## 19. Stabilized reach was mistaken for the geometric ceiling — fix
+
+**Branch:** `fix/skeleton-continuous-outline-solver`
+**Date:** 2026-07-30
+**Design of record:** `2026-07-30-true-geometric-handle-ceiling-design.md`
+
+### 1. Problem
+
+The handle domain used one number for two jobs: a stable scale for normalized
+tension and the maximum non-crossing length. A short positive tangent reach was
+floored to a third of the chord, so a solver answer at tension 1 could be almost
+twice the real reach. The refreshed `c.json` exposed left-side individual
+tensions of `1.002/1.993` and `0.837/1.473`; their harmonic segment tensions
+were `1.334` and `1.068`.
+
+The label reader separately called `calculateSegmentTension` with its first
+on-curve and control point reversed. It displayed `3.968`, `1.389`, `2.291`, and
+`1.266` for four segments whose correctly ordered means were `1.334`, `0.820`,
+`1.068`, and `0.775`.
+
+### 2. Solution
+
+`buildHandleDomain` keeps the floored/capped reach as the quadratic's stable
+coordinate scale. For a real positive forward reach below that scale, its
+per-end maximum becomes `realReach / scaleReach`; multiplying the two lands
+exactly on the true intersection. The minimum is capped by the maximum, so
+non-crossing wins if a real reach is shorter than the ordinary one-unit floor.
+Parallel and behind intersections retain the chord-cap fallback because they
+have no forward crossing ceiling.
+
+`getGeneratedSegmentCurvature` now passes
+`control1, onCurve1, control2, onCurve2` to the canonical tension calculation.
+It neither clamps nor hides the result.
+
+### 3. Result
+
+Regenerating both supplied configurations gives harmonic segment tensions
+`0.9995`, `0.8198`, `0.9817`, and `0.7752`. The only individual values still
+fractionally above 1 are `1.0024` and `1.0044`, both caused by final integer-grid
+emission at the boundary; grid rounding was deliberately left unchanged.
+
+Two straight-controlled golden fixtures moved only their four affected handle
+coordinates. Focused regression coverage includes the reported short-forward
+geometry, a real reach below one unit, canonical label argument order, and the
+existing solver/generator architecture suites.
+
+---
+
+## 20. The serif cap style — feature
+
+**Branch:** `feature/skeleton-serif-generator`
+**Dates:** 2026-07-30 – 2026-08-02
+**Spec / plan:** `specs/2026-07-30-serif-generator-design.md`,
+`plans/2026-07-30-serif-generator.md`, `serif-lab.html` (the mockup they were
+written against). Durable content is now feature model §8.
+
+### 1. Problem
+
+Open ends could close four ways — butt, round, square, drop — all of which just
+cap the two side ends. None of them can draw a serif, which is not a cap over the
+stroke's end but a terminal that **consumes** some of the stroke and replaces it
+with its own shape: two wings, a bracketed transition into each, and one
+underside curve across the foot.
+
+### 2. Solution
+
+A fifth cap style, `serif`, mutually exclusive with the rest and offered only on
+open-contour endpoints.
+
+The terminal's shape is a new pure core module, `serif-geometry.js` (268 lines):
+a frame with the origin on the skeleton endpoint, `u` along the serif axis and
+`v` into the stroke, then `buildHalfSerif` and `buildSerifTerminal` on top of it.
+That module has never heard of a stroke, a rib or a contour. Everything about
+attaching the shape to a stroke — trimming each side, bringing the loose end to
+the terminal, splicing — is `buildSerifCap` in the generator.
+
+Two independent halves of seven fields each (`wingLength`, `tipThickness`,
+`wingSlope`, `tipCutAngle`, `reach`, `tension`, `concavity`) with a `linked` flag,
+plus four terminal-level values (`axisMode`, `axisAngle`, `undersideCup`,
+`straightDepth`). Null means inherit, so contour and source defaults stay live
+consumers the way stroke width does.
+
+The axis is its own property with four modes and composes with `ribAngleLock`
+rather than replacing it; it is held at least 15° off the tangent. A source-level
+`serifUnitsMode` scales the four distance fields by stroke width when set to
+`normalized`. Panel controls live in the skeleton parameters sidebar.
+
+### 3. Commits
+
+`ecd436f1d` schema and cap style; `3d0782dac` mirroring; `eda8270b6` source-level
+units mode and the collapsed-point switch; `e767c2a93` the frame; `f4928aafb` the
+half; `461954d6f` terminal assembly; `9563fe0c1` trimming and splicing;
+`773d53273` reach clamping; `250084ed4` normalized units; `d853f85f3` opt-in
+collapsed-point removal; `5d89ddb31` stability sweeps and fixtures;
+`52ce5c9e7` panel controls.
+
+### 4. Challenges and findings
+
+**Point-count stability is harder for a terminal than for a cap.** Seven
+on-curves per terminal at _every_ parameter value, including a wingless half,
+zero thickness and zero cup. The straight run's top is not one of them — it is
+where the trimmed edge already ends — and at `straightDepth === 0` the run has no
+length and its two ends coincide, which is a zero-length segment rather than a
+missing point. Tested directly rather than inferred.
+
+**A half with no wing must add nothing.** Two separate leaks: the shared straight
+run still pushed a spur out of the disabled side, and since the run is straight
+while the edge it leaves is not, that spur landed _outside_ the stroke; and the
+hollow still bent toward a corner that had collapsed onto the tip, dimpling the
+foot line by half a unit.
+
+**The underside is one curve across the whole terminal, not one per half**, and
+its centre sits on the skeleton rather than midway between the two tips. The axis
+modes routinely produce unequal halves, and a midpoint-anchored centre drags the
+contact geometry off the alignment zone as the axis rotates.
+
+---
+
+## 21. The serif under live use — fixes
+
+**Branch:** `feature/skeleton-serif-generator`
+**Date:** 2026-07-30
+
+### 1. Problem
+
+Six rounds of reports from drawing with it. Two were shape, four were the panel.
+
+- `tension` and `concavity` did not emit sensible off-curves. Both defaulted to
+  zero, and a fresh serif drew a flat bevel.
+- Arrow keys in a numeric field moved the value once and then lost focus.
+- Each length wanted a relative scale slider beside it, like stroke width has.
+- The tip-cut, tension and concavity sliders did not update live, and got stuck
+  on the value they had when the point was selected.
+- The scale sliders held their thumb position after a drag instead of returning
+  to neutral, so the next drag re-applied the old factor.
+- The release point drew as a square, not a dot.
+
+### 2. Solution
+
+**Shape.** `tension` and `concavity` were multiplying: the off-chord component of
+both handles was `tension · concavity · (corner − mid)`, so either at zero
+cancelled the other. They are now two independent readings of one construction —
+both transition handles lie on the line from their own end toward the wing's
+inner corner; concavity is the handle length as a fraction of the distance to
+that corner, tension is the balance between the two, bounded so neither can
+vanish. Aiming both at the corner is also what makes the tangents unconditional.
+Defaults moved to tension 0.5, concavity 1, so a fresh serif reads as a serif.
+
+`wingSlope` and `reach` were reported as indistinguishable and are not: slope
+raises the wing's inner corner above the tip, reach is the run of stroke edge
+above that corner before the transition starts.
+
+**Panel.** Every field change rebuilt the whole form through
+`setFieldDescriptions`, which clears `innerHTML` — so the edit destroyed the
+input it came from. The panel now compares a layout signature and writes values
+in place when only values changed, skipping whichever field the user is in. The
+serif sliders were missing from the streaming branch entirely, so they only
+committed on release; they stream now, with the scale sliders deliberately
+excluded because they multiply what is stored and streaming would compound the
+factor once per frame. Scale sliders carry `resetAfterEdit`, which the width
+scale slider needed too.
+
+### 3. Commits
+
+`76229419c` tension/concavity; `d15ac81b8` focus, streaming and scale sliders;
+`67a9a6fa5` scale sliders return to neutral; `9b84e6cac` the release's smooth
+flag.
+
+### 4. Challenges and findings
+
+**The transition was not actually tangent, at any ordinary setting** — 10–37° off,
+and exactly tangent only where an unrelated clamp happened to pin it. Nobody
+reported that; it was found while checking a report that the release _point_
+should be smooth. The corner-aimed construction fixes both, and the `smooth` flag
+was separately never being set.
+
+**A depth clamp is the wrong tool for a degenerate half.** Killing the half-unit
+baseline dimple that way broke ordinary serif shapes, because it bit at concavity
+0.5–1 with no wing slope. The narrow fix — no hollow when there is no wing — is
+the correct one.
+
+**`7055e87cd` in this range was reverted by entry 22.** It made the terminal read
+its release off the cut it made in the edge, which fixes a real step on a curved
+approach and introduces a worse problem. Recorded in feature model §9 so it is
+not re-derived.
+
+---
+
+## 22. Three faults the serif exposed in shared code — fixes
+
+**Branch:** `feature/skeleton-serif-generator`
+**Date:** 2026-08-02
+
+### 1. Problem
+
+All three were reported as serif bugs. None of them was.
+
+The serif is more sensitive to the rest of the pipeline than any previous cap,
+because it _derives_ geometry from the trimmed stroke edge rather than closing an
+endpoint — so it leans on shared code that nothing else was leaning on hard
+enough to notice.
+
+1. Dragging the curvature gizmo moved the serif's release and the bottom of its
+   straight run along the stroke. A curvature pin is supposed to change handle
+   tension and nothing else.
+2. Grabbing the curvature gizmo on a segment with no pin yet jumped the shape,
+   then dragged smoothly, and jumped again after every reset back to generated.
+3. An S/D (fixed-rib) drag turned the panel's per-side widths, total and
+   distribution to mixed, differently depending on drag direction — and kept
+   doing it after the serif was switched off and its values cleared.
+
+### 2. Solution
+
+**1 — the terminal is fixed in its own frame.** The release and the straight
+run's bottom are back to being functions of the serif's own numbers, on the flank
+line. The cut in the edge now only decides how much curve to keep;
+`anchorTerminalSplit` pulls the loose end onto the release and turns the
+surviving handle onto the frame's depth axis, so the join stays smooth and the
+pin has nothing left to move but handle lengths.
+
+**2 — the gizmo reads the segment its pin governs.** A trim makes the emitted
+segment shorter than the one the generator solved, so the number read and the
+number written described different curves. `splitTerminalSideForRoundCap` now
+publishes the uncut segment on the inserted point's provenance as
+`constructionSegment`, and `generatedSegmentConstructionPoints` resolves it for
+every reader — the drag, the label and equalize.
+
+**3 — a drag does not consult the panel's link flag.** `applyFixedRibDelta` took
+its width out of the anchor side alone when `width.linked` was false and out of
+both sides when it was true. Both sides now always move, and the flag is put back
+afterwards instead of being overwritten by the write that moved them.
+
+### 3. Result
+
+Measured on `_external/g.json`.
+
+| Fault | Before                                                                    | After                                         |
+| ----- | ------------------------------------------------------------------------- | --------------------------------------------- |
+| 1     | release and straight-run bottom travel 25.7 and 22.4 units over the range | total on-curve travel 0.000000 over 400 steps |
+| 1     | join at the release opened as the pin moved                               | 0.0000° at every pin value                    |
+| 2     | gizmo reads 0.7487 for a stroke whose own value is 0.8725                 | reads 0.8725, same as the serif switched off  |
+| 2     | setting the number it displayed moved the handles 9.0 and 7.8 units       | moves nothing                                 |
+| 3     | three points at 20/20, middle one unlinked: 30/20 against 30/30, mirrored | all three 30/30, both drag directions         |
+
+Full suite 1690 passing throughout. Fault 3's fix changed no test, which is a
+decent sign the linked path was the intended semantics all along.
+
+### 4. Challenges and findings
+
+**Fault 1 has a cost, and it is stated rather than hidden.** Where the stroke wall
+has curved off the flank by the height the serif grabs at, the wall is now bent
+back to meet the terminal — 2.6 units on that G as drawn, up to ~32 at the very
+bottom of the curvature range, where the wall is a chord nowhere near the flank.
+The lever for that is the serif's reach, not the pin.
+
+**Fault 2 was present on round caps too, at 0.0002.** They trim a sliver; the
+serif trims 83 units. Same defect, four orders of magnitude apart, which is why
+it had survived this long.
+
+**Faults chased in the wrong order.** Before fault 2 was found, the same report
+was attributed twice to smaller defects that are real but were not causing it: a
+half-unit tolerance in the split bisection, and integer grid snapping on the edge
+handles the trim solves against. Both were measured — the release moved in steps
+up to 0.91 units that reversed direction at every grid snap — and neither was
+what was being reported. The lesson, now in memory: take a reported symptom
+literally instead of matching it to the nearest defect already in hand.
+
+**One finding left alone deliberately.** `shiftTensionsToMean` treats a pin of
+exactly 0 as "no pin", so the shape falls back to the natural solve there while
+the smallest positive value snaps to nearly-collapsed handles — tens of units of
+jump at the very bottom of the gizmo's range. Verified identical with the serif
+switched off. It is in the code path of every curvature pin in the app, so it was
+reported rather than fixed as a side effect of serif work. Arch map §7 residue #4.
+
+### 5. Commits
+
+### 6. Serif model rework
+
+Replaced the corner-aimed bracket with the single-attractor construction so reach and wing slope produce independent geometry. Removed the straight section and duplicate release on-curve, added optional contour easing, and restored tension/concavity interaction with defaults that make a fresh serif a real bracket.
+
+`f9338db5a` the pin moves handles only; `a476b73e4` the gizmo reads its own
+segment; `f64138557` S/D drags ignore the link flag.
+
+---
+
+## 23. Scale sliders became draggable labels — rework
+
+### 1. Problem
+
+Every serif length and the point's total width carried a relative scale slider on
+the same row as its number. Two costs. Each slider ate a third of the row, and the
+serif section had eleven of them. And the control was indirect: the thumb reported
+a percentage, so setting a length meant knowing what it currently was, working out
+the ratio, and watching the number rather than the slider.
+
+### 2. Solution
+
+The label scrubs. Pressing a parameter's name and moving sideways moves its number
+one unit per pixel; shift is a tenth, control is ten. Linear, deliberately — an
+accelerating scrub returns a different number for the same hand movement depending
+on how fast the hand moved, so nothing about it can be learned and no round value
+can be landed on without watching the readout.
+
+Whole numbers throughout, whatever the modifier. Everything a scrub reaches is in
+font units and the generator quantizes to the grid anyway, so a fraction only
+stores a value the outline never uses and leaves the next drag starting from a
+number the panel is not showing.
+
+Three pieces, deliberately separate:
+
+- `number-scrub.js` in fontra-core: pixels, modifiers, step, clamping, rounding.
+  No DOM, which is the only way any of it gets tested — the view packages carry no
+  harness.
+- `_attachScrub` in the shared form component: the pointer events, on the label
+  rather than the input. An input is a place to select text and type into, and a
+  drag starting inside one fights both.
+- The panel routes it. Every number field in the section now scrubs; the routing
+  is checked before the other streaming branches, because a scrubbed number would
+  otherwise be read as an absolute value by whichever branch claims its group.
+
+What travels down the stream is the CHANGE from where the drag started, not a
+value. Adding that change per point is what keeps a mixed selection mixed — a 40
+and a 60 dragged up by 10 become 50 and 70 instead of collapsing onto one number.
+The existing streaming helper already restored the pre-drag skeleton before each
+frame, which is exactly what a relative drag needs, so this was routing rather
+than new machinery. That helper was split so contours can use it too.
+
+### 3. Commits
+
+### 4. Challenges and findings
+
+**Multiplication is gone and that is a real loss.** A scale slider grows a serif as
+a unit, keeping its proportions; a scrub adds a fixed amount to each number and
+changes them. Deliberate, and to be reinstated separately — likely as a modifier on
+the same scrub rather than as a returning slider.
+
+**Two clamps disagreed with the panel.** The nudge floored every serif length at
+zero, copied from the scale path, but `wingSlope` is signed and the whole lower
+half of its range is a real family of shapes. And the number fields declared no
+minimum at all, so a drag past the bottom kept counting down in the box while the
+shape had already stopped, and the number snapped back on release — the same defect
+that had just been fixed on the bracket sliders. Both fixed by putting the bound
+where the panel can see it.
+
+**`resetAfterEdit` died with the sliders.** It existed so a relative thumb returned
+to neutral after a drag; the value-refresh path's exception for it is gone, and the
+rule is now simply that the field the user is in is left alone.
+
+**Clamping and rounding cannot be the same call.** They were, and the first pass
+shipped fractions into the boxes because nothing asked for rounding. Turning it on
+in that one function would have broken the fine modifier instead: the caller folds
+the clamped value back into its accumulated travel so an overshoot turns around
+immediately, and folding a ROUNDED value back cancels each fine move before the
+next can build on it — a tenth of a unit per pixel would move nothing at all. They
+are two functions now, and the travel is only ever folded back through the clamp.
+Both halves are pinned by tests.
+
+**Shift is the fine adjust, not the coarse one.** Figma's scrub has it the other
+way and the first pass followed Figma. Shift-as-precision is the stronger
+convention across everything else, and it is what this repo's user expects. Note
+the arrow keys in these same fields still take shift as coarse, from upstream —
+inconsistent, unchanged here because it is shared with every other Fontra panel.
+
+---
+
+## 24. Handles on a serifed terminal — fixes
+
+### 1. Problem
+
+Dragging a generated handle next to a serif moved its neighbour and barely
+followed the pointer. Three faults reported as one; measured against a plain cap
+on identical input, which is the oracle.
+
+The trim rebuilt its off-curves bare, dropping the constructed direction every
+generated handle is stamped with. The smooth joint next to a serif therefore fell
+back to inferring a direction from rounded positions, which makes it depend on
+handle length — and rib width sets handle length. A length change swung the
+handle on the next segment by 14.7 units where a plain cap moved it by nothing.
+
+The offset was authored on the wrong curve. It was consumed against the segment
+the generator solves; the serif eats the end of that segment, so what the designer
+drags is a slice of it. A slice answers its parent's control points at a fraction
+of the rate and both of its handles depend on both of the parent's, so the drag
+arrived fractional and leaked 3.9 units sideways.
+
+A prior fix had taken the cut parameter off the chord between the segment's
+on-curves rather than walking the edge. That does make the cut independent of the
+handles, and it moves the drawn serif: 14 units on a mild curve, 74 on a strong
+one, because the chord is far shorter than the edge and the same depth then cuts
+far more curve than it asked for.
+
+### 2. Solution
+
+The constructed axis is carried through the trim, so the smoothing pass keeps
+using the direction the handle was built on rather than estimating one back out
+of the rounded position.
+
+Both of the terminal segment's offsets are withheld from the solve and applied to
+the surviving handles after the splice, along that stamped axis, bounded by the
+emitted segment's own reach. Both, not just the near one: the far handle shapes
+the curve the cut parameter is measured along. Because an offset is a scalar
+length on a fixed axis rather than a free move, the joint stays smooth by
+construction and the solver is untouched — two of the three costs the original
+report predicted do not exist.
+
+The construction curve then no longer depends on anything a designer drags, so
+the chord measure bought nothing and was reverted to the edge walk.
+
+The editor reads the axis from provenance for these handles. Its usual source is
+the skeleton's own handle direction, which is right for every ordinary generated
+handle and wrong for one a serif anchors, because that one runs along the
+terminal's depth axis instead.
+
+Files that already carry an offset on a serifed terminal shift once on reopen.
+That is the migration, and it is the whole of it.
+
+### 3. Result
+
+| Fault | Before                                                      | After                         |
+| ----- | ----------------------------------------------------------- | ----------------------------- |
+| 1     | next segment's handle swings 14.7 units on a length change  | 0.00, same as a plain cap     |
+| 2     | drag arrives fractional, leaks 3.9 units into its neighbour | moves one-for-one, leaks 0.01 |
+| 3     | drawn serif moves 14 units on a mild curve, 74 on a strong  | measure reverted, 0           |
+
+Release and straight run fixed under any adjustment, point count constant, and
+an adjustment past the emitted segment's reach clamps rather than running away.
+
+### 4. Challenges and findings
+
+**The oracle was worth building before the fix.** A width sweep comparing serif
+against plain cap returned zero for both and looked like it disproved the whole
+hypothesis. With no stored offset the two joint handles are already colinear, so
+the inferred direction happens to agree; only a probe carrying an actual offset
+separates them. Two of the three faults were invisible until then.
+
+**The symptom was honest geometry.** While the emitted segment is a slice of a
+constructed curve, a neighbour moving is correct. The defect was handing the
+designer a control on the slice while the write landed on the parent.
+
+**Every point a serif emits carries a guessed origin.** No side, and an owner
+picked by counting position along the contour, so one serifed stem produces a
+dozen points claiming to be the same handle of the same skeleton point. Found
+while measuring, causing none of this, and read by nothing because every lookup
+requires a real side. Backlog item, not fixed here.
+
+---
+
+## 25. Three readers disagreed about what a tension is — fix
+
+### 1. Problem
+
+Grabbing the curvature gizmo and releasing it without moving jumped the curve by
+up to 128 units. Worst on the first grab and quiet afterwards only because the
+error drove the tension to its ceiling and stuck there. Not a serif fault; the
+serif work only made it easy to reach.
+
+A handle's tension is its length over its own distance to the segment's tangent
+intersection, so one is the Tunni point. The gizmo measured exactly that. The
+generator normalizes against a reach clamped to a third of the chord, whose
+ceiling drops below one wherever that clamp bites (§19 built it that way on
+purpose), and applied the pin against that scale. Two different units, so the
+number written was not the number read.
+
+A smooth joint then rotates the drawn handle after the solve, keeping its length
+and moving the intersection — 38 degrees in the case measured. So even in
+matching units, the direction being measured against was never the one the length
+was built on.
+
+And entry 24 had stopped publishing a serif terminal's untrimmed construction
+curve once a handle was authored there, on the reasoning that the gizmo would
+otherwise read stale geometry. It left the gizmo measuring the trimmed piece and
+writing the answer onto the whole curve.
+
+### 2. Solution
+
+The pin is rescaled onto the ceiling before it is applied, where both ends read
+one at the tangent intersection and the gizmo's number means what it says.
+
+Every generated handle already carries the axis it was constructed on. That axis
+is now published with its provenance, and the drawn directions are used for
+nothing — which is the forward-provenance rail applied to a reader that had been
+recovering the direction from geometry all along.
+
+The untrimmed curve stays published. The pin governs the curve the generator
+solves; an authored handle is the later, separate layer, and withdrawing the
+first to describe the second conflated them.
+
+One reader for all three call sites, so the number a drag writes is the number
+the label shows and the number the generator reproduces.
+
+### 3. Result
+
+Grab the gizmo, release without moving. Handle movement in units:
+
+| Case                            | Before | After |
+| ------------------------------- | ------ | ----- |
+| plain cap                       | 128.3  | 1.0   |
+| plain cap, handle dragged first | 112.2  | 1.0   |
+| serif cap                       | 34.8   | 0.8   |
+| serif cap, handle dragged first | 40.1   | 0.8   |
+
+Swept over cap styles, widths, smooth and corner joints, both sides and both
+drag orders: 156 of 162 cases under one unit, the rest at 1.9.
+
+### 4. Challenges and findings
+
+**The saturation hid the size of it.** "First adjustment jumps, then it is
+smooth" reads like a state that gets initialized once. It was the error running
+the tension to its ceiling in two or three grabs and having nowhere further to
+go. Iterating the round trip rather than measuring it once is what showed that.
+
+**The published axis belongs to the emitted handle, not to whatever is being
+measured.** Where the reader substitutes the untrimmed snapshot, the axes are the
+wrong pair — a trim re-aims the handle it anchors onto the terminal's depth axis
+and stamps that. The snapshot predates colinearity, so its own drawn directions
+need no correction. Getting this backwards passes most tests.
+
+**A residual two-unit oscillation remains.** Six of 162 swept cases alternate
+between two states about 1.9 units apart, all round caps on one narrow geometry.
+It alternates rather than drifting, so it is grid quantization on the trim rather
+than a residual error in the units. Left alone.
+
+---
+
+## 26. Three more items off the serif backlog — features
+
+Grouped because they are small and independent. Each is a backlog item closed;
+none needed a plan.
+
+### 1. Problem
+
+**A serif and its neighbour disagreed about the stem's width.** A serif sits on
+the end of a straight run of stem, and that run is one wall with one thickness.
+The two skeleton points holding it kept independent widths, so a disagreement
+drew a wall that changed thickness where nothing was drawn to change it.
+
+**Proportional resize had no control.** The scale sliders grew a serif as a unit
+and kept its proportions; the scrubbable labels that replaced them (§23) only
+add, so a 40 and a 60 dragged up by 10 become 50 and 70 — the shape changes
+rather than scaling.
+
+**A drag could not be abandoned.** Once a scrub or a slider was under way the
+only exits were committing it or undoing afterwards, and dragging back to the
+starting value is not the same thing: it commits an edit that happens to change
+nothing and costs an undo to get past.
+
+### 2. Solution
+
+**The serif ties the straight it sits on.** A straight already tied the ribs at
+its two ends when either was a straight-controlled smooth point. A serif terminal
+now qualifies a straight the same way, so the coupling arrives through the rule
+that already existed rather than beside it: rendering and hit-testing read it
+back through the same group lookup, the tied flag is the opt-out, and the rib
+drag carries the group with no editor change at all.
+
+Attached to a **straight** is the whole condition — a serif on a curve has no
+flat wall behind it and ties nothing.
+
+**Every scrub field carries a multiply.** `× [ratio] [preview - Apply]` in the
+same row, ratio stepping by 0.1. The button shows where that field's number
+lands rather than the ratio, because a ratio is not a shape: 1.1 says nothing
+about where a 40 goes, 44 does. Applied per point, so a mixed selection grows
+each point from its own value. A scrub adds to what a point holds and this
+scales it, so the per-point writers, the bounds and the undo labels are shared
+and only the arithmetic is passed in.
+
+**Right-click abandons a drag.** The shape returns to where the press found it
+and nothing is recorded. The streaming path already rebuilt from the original
+every frame, so abandoning is that restore plus the rollback notification, then
+returning no changes — the ending a drag that never crossed the dead zone
+already had.
+
+### 3. Result
+
+| Item | Before                                                  | After                                     |
+| ---- | ------------------------------------------------------- | ----------------------------------------- |
+| 9    | serif and neighbour hold independent widths, wall kinks | one shared width, either end moves it     |
+| 11   | no proportional resize since the sliders were removed   | a ratio and an apply on every scrub field |
+| 10   | a drag can only be committed, then undone               | right-click leaves no undo step at all    |
+
+### 4. Challenges and findings
+
+**The first pass at the rib coupling was a separate width override, and the
+gizmos came off the outline.** Widths are resolved in one place and read back by
+rendering and hit-testing through the same lookup; an override the editor knew
+nothing about drew a correct outline under handles that had stopped describing
+it. Reaching the same result through the existing rule made the editor side
+disappear entirely — which is the argument for the rail, demonstrated rather
+than asserted.
+
+**The condition was wrong twice before it was right.** First "the neighbour is a
+corner where the stem turns", which describes nothing real; then "the neighbour
+is non-smooth", which fires on a neighbour that is non-smooth only because its
+own segment carries handles. The condition is the SERIF's own segment being
+straight. Neither wrong version would have failed a test written from it.
+
+**Cap geometry was reading stored half widths, not resolved ones.** So a cap on
+a tied endpoint sat off the end of the stroke it caps. Nothing could reach it
+before, because an endpoint could not be tied.
+
+**Zero is a legal thing to drag to, so a cancel cannot be one.** The stream
+carries the change from where the drag started, which makes zero the obvious way
+to say "put it back" — and indistinguishable from arriving there by hand. A
+frozen sentinel object instead, which no amount of dragging produces by accident.
+Its cost is that every consumer draining a value stream has to refuse it,
+including two upstream panels that share the slider and know nothing about any
+of this.
+
+---
+
+## 27. The minimum-separation clamps came out with the easing rework — note
+
+Backlog item 3 asked for the clamps that stop a serif collapsing points to zero
+to be lifted, so the ground rule — every point emitted at every parameter value,
+coincident where it has nowhere to go — would actually hold. It was never worked
+on directly. The one-attractor rework (§21, backlog item 2) removed them on its
+way past, and the audit was only checked back against the code afterwards.
+
+| Clamp                             | Item 3 asked for       | What happened                                                                               |
+| --------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------- |
+| `MIN_HANDLE_SHARE` / `MAX_`       | remove                 | gone with the construction that had them                                                    |
+| `clampReach`'s one-unit floor     | remove, keep ownership | gone; the depth clamp floors at zero and still refuses to consume more than its own segment |
+| `MAX_HANDLE_TO_CORNER`            | **keep**               | gone as a named constant, kept as geometry                                                  |
+| `Math.round` on emitted points    | keep                   | kept                                                                                        |
+| `MIN_AXIS_TANGENT_SEPARATION_DEG` | revisit with item 1    | still there, still waiting on item 1                                                        |
+
+The one divergence is the third row, and it is a divergence in spelling rather
+than in behaviour. The bracket rounding bounds each handle by the distance to the
+corner its two surfaces would meet at, and by the ease distance — so neither
+handle can pass the corner and loop the curve, which is what the constant was
+for. Expressed as the geometry it was standing in for rather than as a number.
+
+**Still owed:** feature model §5 says any non-zero handle length preserves both
+tangents at the release. With the share clamps gone a handle can reach zero, and
+at zero the release is a corner. That is the correct output under the ground
+rule, but it makes the smooth-release guarantee conditional and the model still
+states it as unconditional.
+
+---
+
+## 28. Serif presets — feature
+
+Backlog items 4 and 5, built together because item 4 exists only to be consumed
+by item 5. [Design](specs/2026-08-05-serif-presets-design.md),
+[plan](plans/2026-08-05-serif-presets.md).
+
+### 1. Problem
+
+A serif terminal held twenty numbers and a flag. Repeating a drawn foot on
+another glyph meant setting all of them by hand, from memory, against a shape
+that is only correct once every number is.
+
+Two things got in the way of a preset, and both were older than the request.
+
+**A serif field could be unset**, and unset resolved through a table that was
+not all zeros — tension 0.7, concavity 0.8, ease curvature 0.5. So a preset that
+stored "unset" meant something different from one that stored a number, on three
+fields, invisibly.
+
+**A fresh serif drew nothing.** Its three size fields defaulted to zero, so
+picking serif from the cap style select produced an invisible terminal with a
+bracket nobody could see.
+
+### 2. Direction
+
+Unset stops existing. Every serif field always holds a number, and zero is a
+setting rather than an absence. The default shape moves out of a fallback table
+and into a **write**, applied the moment a terminal becomes a serif.
+
+A preset is **one wing** plus the underside cup — ten numbers, not twenty-one.
+Applying it writes that wing to both sides. Asymmetry is a decision about the
+terminal being edited, not about the shape that was saved.
+
+Five built-ins ported from the serif lab, whose numbers are already one wing and
+already these fields. It draws at stem width 150, so lengths divide by 7.5 onto
+the 20-unit scale; the tip cut is an angle and the two bracket numbers are
+ratios, so those carry across untouched.
+
+### 3. Result
+
+|           | wing | tip | slope | cut | cup | reach | tension | concavity |
+| --------- | ---- | --- | ----- | --- | --- | ----- | ------- | --------- |
+| Egyptian  | 20   | 20  | 20    | 0   | 0   | 0     | 0       | 0         |
+| Clarendon | 18   | 10  | 1     | 0   | 0   | 19    | 0.9     | 0.85      |
+| Didone    | 19   | 3   | 0     | 0   | 0   | 13    | 0.7     | 0.8       |
+| Old style | 15   | 5   | 7     | 22  | 3   | 20    | 0.62    | 0.66      |
+| Wedge     | 13   | 2   | 13    | 0   | 0   | 5     | 0.05    | −0.18     |
+
+Egyptian is the default and is what a terminal gets when it becomes a serif. The
+master defaults panel lists and edits the master's own presets. The parameters
+panel applies one, with a scope of both wings, left only or right only, and
+captures or overwrites one from the selected terminal. A built-in cannot be
+overwritten. Apply and update both ride the armed force-apply row the width and
+cap profiles already use.
+
+### 4. Challenges and findings
+
+**The seed never fired once.** It tested whether the point held serif data, and
+point normalization materializes a serif block on every on-curve point in the
+file — the block is always there, so the test could not pass. Every terminal
+switched to serif came up with no size and a bracket out of nowhere, which is
+exactly what the fallbacks were. The condition is gone entirely now: picking
+serif applies the default, unconditionally, because the select only fires on a
+change and picking it is a request for the default shape.
+
+**Protecting shapes cost the rule that was asked for.** The stated rule was
+"20-20-20 and all zeroes from down there". This was built with tension migrating
+to 0.7 and concavity to 0.8, so that no serif already drawn would move when the
+field became a real number. That guarantee was never requested, it is what the
+unseeded terminals above were displaying, and it had to be reported wrong twice
+before it came out. A stated requirement softened to fit the existing design is
+still a requirement missed.
+
+**The inherit chain had a level nothing could write.** A contour can hold its own
+serif block and three readers fell through to it — the generator and both panel
+readers — and no code in the tree ever set one. Removed with the null, since
+with every point field filled it could never have fired again. The contour cap
+style has the same shape: read by the generator, written by nothing. Left alone,
+because that is cap work.
+
+**The migration table and the seed were close enough to confuse.** They agree on
+six fields and differ on three, and the field writer reached for the wrong one,
+so emptying a tension box put 0.7 straight back into it. A table for reading old
+data and a table for starting a new shape should not have looked alike.
+
+**A missing import in a panel is a runtime error and nothing before it.** One
+edit missed its anchor, the built-in list was never imported, and the whole serif
+preset section threw on the next panel build. `fontra-core` has the only test
+harness in the tree, so neither panel has anything that would have caught it.
+
+---
+
+## 29. Four reported bugs, and where each bound was written
+
+Not a feature. Four defects reported together, fixed in order. They have one
+thing in common: in every case the code did the right thing in one place and a
+different thing in another, and the two were never compared.
+
+### 1. A serif drew a wing on a side that has no stroke
+
+Single-sided mode moves all the width to one side, so the other side copies the
+skeleton exactly. Every other cap honours that. The serif did not: it built both
+wings from its own numbers, so a default terminal reached twenty units past the
+skeleton onto the dead side.
+
+The collapsed half now resolves to zeros — no shape. It still emits all of its
+points, all collapsed, which is what keeps a single-sided serif interpolable
+against a two-sided one. Checked directly, not inferred from the shape.
+
+### 2. The curvature gizmo could not reach a detached handle
+
+Handle placement ran in three steps: the natural answer, the authored
+adjustments, the pin. Detached placement ran **after** the pin and overwrote it,
+so pinning a segment that had a detached handle on it did nothing to that
+handle.
+
+Both kinds of adjustment place a handle. The pin then states what the segment's
+tension is. So the pin runs last. Detaching a handle takes it off the natural
+answer, not out of the gizmo's reach.
+
+This changes any existing glyph carrying both a pin and a detached handle on one
+segment. No golden fixture had the combination, which is a gap in the fixtures
+rather than evidence the change is inert.
+
+### 3. Contour easing grew at two different rates and stopped at one
+
+The rounding is one curve across the corner where the serif meets the stem. Both
+ends step back from that corner by the ease distance — one along the stem wall,
+one along the bracket.
+
+The wall end did that, in units. The bracket end took the same number, divided
+it by the bracket's chord length, and used the result as a **curve parameter**.
+Different quantity, different unit. The two ends never moved by the same amount
+at any setting. Only the bracket end had a bound, so only it ever stopped.
+
+Both ends are found by distance now, by bisection on the split parameter. The
+bound moved from half the bracket to the whole of it: the rounding runs until it
+has replaced the bracket, ending where the bracket meets the wing.
+
+The reported fix was "clamp at the wing's corner, both points". The wing's inner
+corner sits below the junction, inside the serif, and the wall end travels the
+other way — clamping both there would have stopped the wall end at twice the
+reach from where it belongs. The end of the bracket is the only bound that reads
+as one corner from both ends. Said so rather than substituting quietly.
+
+### 4. The same ceiling, written in three wrong places
+
+Then three rounds on one symptom: the scrub went past the ceiling.
+
+**First attempt — bound the scrub.** The scrub is not the only way a value gets
+in. The typed field and a preset write directly and went around it.
+
+**Second attempt — bound the writer.** Correct, and it is where the bound lives
+now: every serif edit comes through one writer, so the value stops there
+whichever way it is reached. The symptom did not change.
+
+**The actual bug was in neither.** The value _was_ being clamped. The input box
+was showing something else. The panel deliberately refuses to write back into
+the field the user just touched, so an arrow-key run is not interrupted
+mid-keystroke, and that refusal was still on when the refresh ran at the end of
+a drag. A "force a rebuild" added in between was useless for exactly that
+reason: the rebuild ran and skipped the one field that needed it.
+
+A drag is finished by the time that refresh happens, so the field is released
+for a stream and held for a typed change, which is the case the hold-back exists
+for.
+
+**Two attempts were spent fixing the model because the report said the value was
+wrong.** It was not. The stored number was right after the second attempt and
+the report was unchanged, which was the signal that the model was not the
+subject — and it took a third round to read it that way. A panel that can show a
+number the model rejected can make a correct fix look like no fix at all.
+
+### What this run says about the fixtures
+
+Three of the four changed serif or handle geometry. The golden fixtures moved
+for none of them. They carry no case with a non-zero ease distance, and none
+with a pin and a detached handle on one segment. The suite passing is not
+evidence here; the direct measurements are.
+
+---
+
+## 30. The cup's lowest point moved to the middle of the foot — fix
+
+The last item on the serif backlog, which is retired with this entry: every item
+on it is built, what they built is in the feature model, and why is here.
+
+### 1. Problem
+
+The underside cup is one curve across the whole terminal, and its lowest point sat
+on the skeleton endpoint. Single-sided mode moves all of the width to one side, so
+the other half of the serif collapses to zeros and the terminal stands entirely on
+one side of the skeleton. The lowest point then landed on the foot's own edge
+rather than its middle, and the foot read as a lopsided scoop.
+
+### 2. Solution
+
+The centre is the midpoint of the two tip bottoms — the two ends of the cup curve
+itself. One line, no single-sided branch, and the collapsed case falls out of it
+because a collapsed half puts its tip on its own wall.
+
+Depth is untouched. The centre still lifts by the cup amount along the frame's
+depth, and the four cup handles still keep their own end's depth.
+
+The alternative offered was the middle of the two stem walls, which is the same
+number as the skeleton whenever the widths match and would have kept the old
+guarantee intact. The designer chose the foot.
+
+### 3. Result
+
+Contact height over a stem leaning to 30 degrees, old rule against new, in the
+perpendicular axis mode:
+
+| wings              | 0°          | 10°         | 20°         | 30°         |
+| ------------------ | ----------- | ----------- | ----------- | ----------- |
+| 60/60              | 18.0 / 18.0 | 17.7 / 17.7 | 16.9 / 16.9 | 15.6 / 15.6 |
+| 20/120             | 18.0 / 18.0 | 17.7 / 26.4 | 16.9 / 34.0 | 15.6 / 40.6 |
+| one half collapsed | 18.0 / 18.0 | 17.7 / 12.5 | 16.9 / 6.7  | 15.6 / 0.6  |
+
+Under a flat foot — the horizontal axis mode — every row is identical before and
+after, at every tilt, because an axis with no rise cannot lift the centre that
+slides along it. So the alignment-zone guarantee survives exactly where it is
+asked for, and what moves is a foot that was leaning with the stem anyway.
+
+Full suite 1,774 passing.
+
+### 4. Challenges and findings
+
+**The first sweep measured nothing, and looked like it measured everything.** It
+rotated the axis toward the stroke instead of leaning the stroke under a fixed
+axis, so most of what it reported was the 15 degree separation clamp pushing the
+axis back off the tangent. The question was about a leaning stem, so the stem is
+what has to move. Same lesson as entries 5 and 16: sweep design decides the
+answer.
+
+**A flat foot cannot be tilted by this change, and that is arithmetic rather than
+luck.** The centre only ever slides along the axis. An axis with no rise has no
+way to carry the contact point off the alignment zone, whatever the halves do. So
+the guarantee the old rule was written for survives in the modes that exist to
+provide it.
+
+**No golden fixture moved, and that is a gap rather than a result.** None of them
+carries an asymmetric terminal, so the corpus cannot see this change at all. The
+same gap was reported one entry earlier for ease distance and for a pin sharing a
+segment with a detached handle.
+
+---
+
+## 31. The cup got a balance — feature
+
+Asked for straight after entry 30, and it is the other half of the same control:
+that entry decided where the foot centre sits by default, and this one hands the
+designer the number.
+
+### 1. Problem
+
+The cup's lowest point was wherever the geometry put it. A foot that wanted its
+scoop nearer one wing than the other could not be drawn.
+
+### 2. Solution
+
+`undersideCupBalance`, a third terminal-level cup number beside the depth and the
+tension, travelling in a preset like they do. Zero is the midpoint of the two
+tips, so nothing already drawn moves. Plus or minus one carries the centre onto a
+tip, where one half of the sweep collapses to nothing — a legal shape under the
+ground rule, and the point count holds.
+
+It is a **fraction of the half-span between the tips**, not a distance. The foot
+it divides sets the scale, so the number reads the same on a narrow serif and a
+wide one, the units mode never touches it, and a preset carries it between masters
+unchanged. The alternative offered was a signed distance in units, which would
+have joined the length fields and changed meaning with the wing size.
+
+The panel shows it as a percentage slider under the cup depth, at the same
+−100…100 range the width distribution already uses.
+
+### 3. Result
+
+Seven tests: neutral draws the midpoint, either extreme lands on a tip, halfway
+lands halfway, past the extremes it stops, depth is unchanged at every value, the
+count holds at both extremes, and each cup handle keeps its own end's depth well
+off centre. Full suite 1,781 passing.
+
+### 4. Challenges and findings
+
+**The field reached the generator with no copy line, which is worth stating
+because it usually does not.** A per-point field is invisible to the generator
+until something copies it across, and that trap has caught this project twice.
+The serif is the exception: its whole block travels as one object, so a new field
+inside it arrives for free. The check is still the same one — look at what the
+flattening actually copies, rather than assuming either answer.
+
+**The bound went in the writer, not the slider.** Entry 29 spent three rounds
+learning that the scrub, the typed field and a preset are three ways into the
+same number, and only the writer sits under all of them.
+
+---
+
+## 32. Three gaps between the skeleton and the ordinary path — fixes
+
+Skeleton basics backlog items 1.1, 1.2 and 1.5, done together because each is
+small and none touches geometry.
+
+### 1. Problem
+
+- The ordinary pen constrains the next point to a whole angle under shift. The
+  skeleton pen ignored shift.
+- Right-click offers **Reverse contour** on an ordinary contour and offered
+  nothing on a skeleton one.
+- Control-click added to the selection, and control is spoken for in this fork.
+
+### 2. Solution
+
+**Shift.** The ordinary pen's constraint is exported and the skeleton pen calls
+it, so there is one rule. It applies only while a contour is being extended,
+which is the ordinary pen's own condition.
+
+**Reverse.** The `reversed` flag turned out to be a level with a reader and no
+writer: stored per contour, normalized, read by the generator, set by nothing.
+The menu is its writer. Reversing a skeleton therefore flips the emitted
+outline's winding and leaves the centerline as drawn. The existing menu entry now
+answers a skeleton selection too, and a rib answers it as much as a centerline
+point does. Each selected contour flips its own state, matching what an ordinary
+mixed selection does.
+
+**Control.** Adding to a selection is now the Mac's command key alone. Shift
+still builds a selection up on both platforms.
+
+### 3. Result
+
+Full suite 1,782 passing. The three editor changes carry a manual matrix, per the
+test split (rail R-G): draw with shift held from an endpoint and from nothing;
+reverse from a centerline point and from a rib, on one contour and on several;
+and check that control-drag still snaps to the coarse grid while control-click no
+longer extends.
+
+### 4. Challenges and findings
+
+**Two of the three items were not what they said they were.** The reverse item
+asked for a menu entry and the work was almost entirely deciding what reverse
+means for a stroke. The control item read as a forkra defect and was upstream
+behaviour, correct on its own terms, colliding with a modifier this fork had
+taken. Neither could be planned from its own sentence.
+
+**A dead level is worth grepping for before designing around it.** This is the
+third one found: the contour serif block in entry 28, the contour cap style
+beside it, and now this flag. The check is the same each time — who writes it,
+not who reads it.
+
+**The point-key parser refuses a rib key.** It requires exactly two fields and a
+rib carries three. It returns null rather than throwing, so the menu item would
+have been quietly enabled and done nothing on a rib.
+
+---
+
+## 33. Splitting a skeleton contour — feature
+
+Skeleton basics backlog item 1.6.
+
+### 1. Problem
+
+Right-click an ordinary on-curve point and the menu offers to break the contour
+there. A centerline point offered nothing.
+
+### 2. Solution
+
+The same menu entry answers a centerline point now. A closed contour opens at
+that point and stays one contour; an open one becomes two, the second appended.
+The point appears at both ends of the cut, one copy keeping its id and the other
+taking a fresh one, because two points cannot share a name.
+
+The cut itself is one pure function in the model, with the editor supplying only
+the selection. Every per-point setting travels with its point, and both copies of
+the cut point keep all of it.
+
+### 3. Result
+
+Seven tests on the cut. Generation measured across the change: a closed
+contour's two generated loops become one open stroke of 10 points, and an open
+one's single 8-point stroke becomes two of 4 and 6. Full suite 1,789 passing.
+
+The menu wiring carries a manual matrix: cut a closed contour, cut an open one,
+cut the same contour at two points at once, and try it at an open contour's own
+end, where it must do nothing.
+
+### 4. Challenges and findings
+
+**Two of the three warnings the item carried did not apply.** It asked for the
+generated-contour mapping to be updated in the same change, which the ordinary
+path does need — but the skeleton's one write path already replaces the contours
+whenever the topology changes, and a split is exactly that. It also asked for a
+cap on each new end, and cap style falls through a cascade, so an unset one draws
+butt like any other untouched endpoint. Both were true of the donor and are not
+true here. **An item's own warnings are as old as the item.**
+
+**The smooth flag had to be cleared on the two new ends.** A smooth point with a
+single handle has no direction of its own, which is the condition that ties ribs
+across a straight. Carried onto a cut end, a split would have quietly reweighted
+the stroke beside it — a geometry change nobody asked for, from a structural
+command.
+
+**Resolving all the ids before the first cut is what makes multiple splits
+work.** The cross-layer resolver reads structure, and a cut changes it. Each
+point is then found by its own id rather than through its original contour,
+because cutting one contour twice moves the second point onto the new half.
+
+---
+
+## 34. A single-sided skeleton pen — feature
+
+Skeleton basics backlog item 1.3.
+
+### 1. Problem
+
+A single-sided contour puts all of its width on one side, so the line drawn is
+the edge of the letter rather than its middle. It was a flag to set after
+drawing, never a way to draw.
+
+### 2. Solution
+
+A second pen beside the first, in a dropdown, laid out exactly as the ordinary
+pen holds its cubic and quadratic pens: a wrapper class naming the two, which is
+what turns one toolbar button into a button that opens.
+
+The second pen is the first with one value changed — which side a new contour is
+born on. It inherits everything else, so the two cannot drift. New contours start
+on the left, the side the generator falls back to everywhere else, and the panel
+flips them afterwards like any other contour.
+
+The skeleton pen was registered directly, so it moved its own name onto the
+wrapper and took a new one for itself. Nothing keyed off that name: it appeared
+in one import and one label.
+
+### 3. Result
+
+Full suite 1,789 passing, which says only that nothing else broke — this is
+entirely editor-side. Manual matrix: both pens appear under one button, each
+draws, and a contour drawn with the second reads as single-sided in the panel
+with its per-side numbers greyed.
+
+### 4. Challenges and findings
+
+**The request was to copy the file and adjust it.** The pattern it pointed at is
+not a copy: the quadratic pen is a twelve-line subclass of the ordinary one. Same
+result, one file, and the two pens cannot fall out of step — which is the rail
+against duplicated code (R-B) paying for itself rather than being argued for.
+
+**The generated copy of the icons folder is gitignored**, so a new tool icon goes
+in the source assets only. The bundle puts it where the page reads it.
+
+---
+
+## 35. A serif on a curved stem — fix
+
+Reported on `_external/b.json`: a skeleton of one cubic segment with a serif on
+one endpoint. Moving the serif's tip thickness changed the curvature of the stem
+radically.
+
+### 1. Problem
+
+The serif built its terminal on a straight line, running from the rib end along
+the endpoint tangent into the stroke. Every point it shared with the stroke sat
+on that line, at a depth the serif's own numbers decided, and the release's depth
+is tip thickness plus wing slope plus reach plus ease distance. In the reported
+file tip thickness set that depth almost alone.
+
+On a curved stem the real wall departs from that line, and by more the deeper you
+go. The generator cut the real wall at the release's depth, dragged the cut end
+sideways onto the release, and turned the surviving handle onto the endpoint
+tangent. Both corrections grow with the depth. Because the wall is one cubic with
+two handles, moving its end and rotating its handle reshapes the whole segment.
+
+Measured on the reported file, greatest distance from the emitted right-hand stem
+wall to the wall emitted with no tip at all:
+
+| tip thickness | before | after |
+| ------------- | ------ | ----- |
+| 0             | 0.5    | 0.00  |
+| 20            | 2.6    | 0.05  |
+| 40            | 6.0    | 0.05  |
+| 63            | 11.2   | 0.05  |
+| 80            | 16.0   | 0.05  |
+| 100           | 22.8   | 0.06  |
+
+The construction curve's control point never moved through the whole sweep, which
+proved the offset solver innocent and put the fault in the splice.
+
+### 2. Solution
+
+The wall itself, as a curve, replaces the straight line. A new module carries one
+curve in the terminal's own frame and answers four questions about it: where it
+is at a depth, where a ray meets it, which way it runs, and how deep it may be
+consumed. It knows nothing about serifs or strokes.
+
+The wing's top surface is now extended inward from the top of the tip until it
+meets that wall. Where it meets is the wing's inner corner. The junction and the
+release sit at their own depths further up the same wall. The generator cuts at
+the release's own parameter and emits what survives, unchanged. The anchoring
+that dragged the end and turned the handle is deleted, along with the frame's
+lean value, which nothing reads once the wall carries its own shape.
+
+The cut is taken on the wall as solved from the centerline and the widths, before
+any authored layer touches it. All three authored layers — the curvature pin, a
+nudged handle and a detached handle — are applied to the piece that survives. The
+first two already were; the pin moved across in this work.
+
+### 3. Result
+
+Full suite 1,805 passing. No fixture moved, which is the evidence that a straight
+stem is untouched: a straight wall is exactly what the old model assumed, so the
+two answers are the same point. The serif geometry tests kept every one of their
+existing expected numbers for the same reason.
+
+New tests: the emitted stem wall stays within two units of itself across tip
+thickness 20 through 100; the point count holds; sweeping a curvature pin over
+its whole range moves no on-curve point by exactly zero; the pin still moves
+handles; no second curve is published on a serif split.
+
+Two stored numbers change meaning. **The curvature pin on a serifed terminal**
+described the tension of the whole solved wall and now describes the tension of
+the emitted piece, so a file already carrying one shifts once on reopen. That is
+also what lets the gizmo stop being handed a snapshot of a curve it is not
+looking at. **Wing slope** was a rise measured on the assumed line and is now the
+incline of the wing's top surface, whose run is decided by where the wall is. The
+two agree on a straight stem.
+
+### 4. Challenges and findings
+
+**The claim that a pin must move the release was wrong, and the designer caught
+it.** The reasoning was that the release is found on the wall, so anything that
+reshapes the wall moves it. True — but the pin is applied when the wall is
+solved, and the cut is taken afterwards. The coupling is a consequence of the
+order, not of the geometry. Move the cut ahead of the authoring and the release
+is immune. **Check which step runs first before concluding two things are
+coupled.**
+
+**The pin goes last, not first.** The plan put it before the handle placements,
+reasoning that a pin states the tension and placements come after. The solve does
+the opposite — natural answer, attached adjustments, detached placement, pin —
+and it has to: the gizmo measures the drawn curve and writes a pin, and if a
+placement runs after the pin it overwrites it and the measured number cannot be
+reproduced. The round-trip test is what caught this.
+
+**A one-unit floor on the cut is right for a round cap and wrong for a serif.** A
+round cap builds its tip from the direction the leftover piece gives it, so it
+needs a piece. A serif reads no direction off it and may release the stroke at
+the rib end itself, which is a legal shape under the ground rule. Flooring it
+there moved an on-curve nobody asked to move, and a fully collapsed serif on a
+straight stem drifted a unit.
+
+**Deleting the anchoring took the surviving handle's axis with it.** That axis is
+what an authored adjustment moves along and what the editor publishes as the
+handle's construction axis, and three tests went quiet rather than loud. The
+handle at a cut is tangent to the curve there, so its own direction is the axis —
+stamping that is a true statement, and the old one was a fabricated direction.
+
+**The honest axis has less headroom than the fabricated one.** A handle drag that
+used to reach 30 units now stops at 23, because the ceiling is where the
+segment's two handles would cross and the true tangent puts that crossing nearer.
+The clamp was always there; the old axis was pointing somewhere the curve did not
+go.
+
+## 36. Harmonize accepts a skeleton — feature
+
+Skeleton basics backlog item 1.4.
+
+### 1. Problem
+
+Harmonize reported every skeleton contour as skipped. That is correct for the
+generated outline, which is derived and would be thrown away. It is wrong for
+the skeleton's own centerline, which is an ordinary path carrying ordinary
+smooth flags.
+
+### 2. Solution
+
+Build the centerline as a path, run the ordinary harmonize over it, write the
+moved points back. The pass is untouched, and nothing in the new code knows
+about widths, ribs or the outline.
+
+The write goes through the one skeleton write path, so the outline is
+regenerated for free.
+
+A skeleton selection answers the command itself, the way break and reverse do.
+An ordinary selection takes the path route it always took.
+
+### 3. Result
+
+Full suite 1,826 passing. Two new tests: a smooth centerline joint moves its
+handles and holds its on-curve points, and a point that is not a joint moves
+nothing.
+
+### 4. Challenges and findings
+
+**The first fixture harmonized in one iteration and moved nothing.** Its two
+handles at the smooth point were not just colinear but already equal in
+curvature, so the pass had nothing to correct. A real test needs a joint that is
+smooth and unbalanced: colinear handles of very different length.
+
+**Reports are addressed, not indexed.** The path built to run the pass is thrown
+away, so an index into it means nothing afterwards. Each entry carries the
+contour and point id it came from.
+
+**Only the edit layer reports.** Structure is shared across compatible layers, so
+every layer reaches the same verdict on the same point; the numbers behind it are
+the edit layer's. Each layer is still recomputed from its own handles, because a
+different set of handles has a different harmonic target.
+
+---
+
+## 37. Corner rounding became distance and curvature — rework
+
+### 1. Problem
+
+Corner rounding had four sliders. Three of them — roundness, reach and strength
+— multiplied into one number, the distance the corner is trimmed back by. Reach
+capped that distance against the neighbouring point, roundness took a fraction
+of the cap, strength scaled roundness again and the product was clamped to one.
+So three controls drove one quantity, at different strengths, and no one of them
+said what the corner would measure.
+
+The fourth, asymmetry, scaled roundness down on the left or the right side of
+the stroke. One number for a thing that is two.
+
+The arc's own fullness was fixed at the default cap tension. There was no
+control for it at all.
+
+### 2. Solution
+
+Two numbers per side of the stroke, shaped like `width`. **Distance** is how far
+back along each arm the rounding starts, in font units. **Curvature** is how full
+the arc is, on the tension scale the serif's contour easing and the curvature
+gizmo already use: 0 cuts a straight chamfer, 1 puts both handles on the corner
+point. The two sides start linked and unlink from a checkbox.
+
+Distance is absolute units rather than a fraction of the arm. A fraction
+rescales itself when a neighbour moves, so the drawn corner changes when nothing
+about the corner changed.
+
+Three clamps hold the distance, and they are the geometry rather than a fixed
+fraction standing in for it: the run to the neighbouring on-curve, the handle on
+a curved arm, and the pairwise pass that splits one segment between the two
+corners sharing it.
+
+The old fields are gone, with no migration, which the designer chose. A corner
+drawn before this change comes back sharp.
+
+### 3. Result
+
+Full suite 1,841 passing. Seven new generator tests: distance zero is byte-equal
+to a sharp corner, each arm trims by its own distance, curvature 0 draws a
+chamfer, curvature 1 lands both handles on the corner, unlinked sides round
+independently, an over-long distance clamps rather than running away, and a
+collapsed side stays sharp. Four model tests cover the linked and unlinked
+writes, the bound, and the mirror swap.
+
+No golden fixture moved. That is a gap rather than a result: the corpus carries
+no rounded corner at all, so it cannot see this change. The same gap was
+reported for ease distance in entry 29 and for the cup centre in entry 30.
+
+Editor side carries a manual matrix, per rail R-G: round a corner from the
+panel, scrub the distance label, unlink and give the two sides different
+numbers, and check that a mirrored corner keeps the wide side on the wide side.
+
+### 4. Challenges and findings
+
+**The half-width gate reads two ways, and the code already chose.** A side under
+half a unit lies on the skeleton, so rounding it pulls that edge off the drawn
+line. Single-sided mode is the deliberate exception: the collapsed side borrows
+the live side's base and rounds with it, so the two edges of the stroke agree.
+The first test asserted the general rule and failed against the exception. The
+test was wrong, not the code — the exception is shipped behaviour and changing
+it was not what was asked for.
+
+**The arc's fallback fired at exactly the setting that wants nothing.** The old
+code repaired a near-zero handle length with a circular-arc estimate. Under a
+curvature control, a zero-length handle is the chamfer the designer asked for.
+The fallback now fires only on a degenerate chord, which is the case it was for.
+
+**A fourth dead level.** The contour-level `cornerTrimRatio` and
+`cornerRadiusBoost` were read by the generator and normalization and written by
+nothing in the tree. That is the fourth found by the same check — who writes it,
+not who reads it — after the contour serif block, the contour cap style and the
+`reversed` flag.
+
+**The point count still varies with the parameter**, because distance zero emits
+no arc. So a corner rounded in one master and sharp in another does not
+interpolate. That predates this work, and the serif's collapse rule was
+deliberately not extended to corners without being asked.
+
+**One thing found and left alone.** `CAP_CORNER_POINT_FIELDS` in the fixture
+script is a field-name list with the serif fixture objects merged into it, so
+those fixtures are never generated and the loop over the list indexes points by
+object. It is a dev script, it predates this work, and fixing it here would be a
+change nobody asked for.
+
+---
+
+## 38. A nudged handle was measured and bounded on a curve nobody was looking at — fix
+
+Reported on `_external/k.json`, against the fourth point of the skeleton — the
+smooth one where the diagonal meets the stem. Two faults, one origin.
+
+### 1. Problem
+
+**The curvature gizmo jumped.** Grabbing it on the segment to the left of that
+point and releasing without moving moved the two handles 29 and 30 units. Every
+later drag was smooth, so the control worked once it had thrown the shape away.
+
+**The handle to the right of the point would not move.** Every offset the
+designer asked for was refused in full: 5 units asked, 0 honored, at every value
+from 5 to 60.
+
+Both come from the two emission displacements. An on-curve carries `nudge` and
+its handles carry `handleNudge`, and the generator applies both after the
+construction is finished.
+
+For the jump: the reader that recovers construction space subtracted the
+on-curve's displacement, which provenance published, and could not subtract the
+handle's, which nothing published. So it measured an end from one curve and a
+handle from another, wrote that number as a pin, and the generator reproduced
+the pin on the real construction.
+
+For the stuck handle: the ceiling on handle length is the forward tangent
+intersection of the constructed curve. On that segment the intersection sits
+0.76 units from the rib end, so the window closed completely — the one-unit
+floor is capped by the ceiling, and minimum equalled maximum. The curve the
+designer was dragging is not that one. Its on-curve had been nudged 51 units
+back along the same tangent, which leaves the drawn intersection where it was
+and the drawn end 51 units further from it.
+
+### 2. Solution
+
+**Publish the handle's own slide**, the way the on-curve has published its own
+all along, and take both off together when recovering construction space.
+
+**Take that slide off the ceiling**, which is a statement about the drawn curve.
+Forwards it takes room away, which is what stops an untouched segment rendering
+past its own crossing. Backwards it gives room back. The on-curve nudge does not
+enter it and cancels by arithmetic.
+
+That left one number doing two jobs again, so the domain now carries two: the
+ceiling, which moves with the slide, and the intersection tension, which is where
+tension 1 sits on the curve the generator solved and is the unit the gizmo reads
+and writes in. Rescaling a pin by the ceiling was the first attempt and it made
+the jump worse — the stored number then meant something different on every
+nudged segment.
+
+### 3. Result
+
+Measured on the reported file, grabbing each gizmo and releasing without moving:
+
+| segment            | before | after |
+| ------------------ | ------ | ----- |
+| left of the point  | 30.00  | 0.00  |
+| right of the point | 1.00   | 0.00  |
+
+Dragging the left one now tracks the cursor one-for-one in both directions, and
+the number written equals the number read back to three decimals. The stuck
+handle moves one-for-one to 11.7 units and then stops at the drawn curve's own
+crossing, against 0 at every value before.
+
+Full suite 1,850 passing. No golden fixture moved, and that is a gap rather than
+a result: the corpus carries no handle nudge at all, so it cannot see this
+change. The same gap was reported for ease distance in entry 29, the cup centre
+in entry 30 and corner rounding in entry 37.
+
+### 4. Challenges and findings
+
+**The two faults measured as one and were not.** Zeroing the handle nudge made
+the first disappear exactly — a zero-delta grab moving 0.00 — and left the second
+untouched. Zeroing the on-curve nudge as well left the second untouched again.
+That pair of measurements is what separated a reader fault from a bounds fault
+before either was touched.
+
+**Rescaling the pin by the ceiling was built and reverted inside the hour.** It
+is the obvious way to keep one number, and it reintroduced the entry-25 fault at
+larger size: the zero-delta grab went from 0.00 back to 16 units. Two jobs, two
+numbers, stated for the third time in this file.
+
+**The backwards direction is still conservative.** The ceiling is capped at
+tension 1 on a scale that is itself capped at twice the chord, so a backwards
+slide recovers room only where the real intersection sits below that scale —
+which is the frozen case, and is why the fix does what was asked. On ordinary
+geometry a slid handle stops short of its drawn crossing rather than at it. Left
+alone: the handle moves, which was the complaint.
+
+**One segment on that glyph still reports no tension at all** at the far end of
+its range, because its drawn handles pass the crossing and the reader declines to
+invent a number rather than report one above the ceiling. That segment offsets 54
+units on a bend tight enough that one cubic cannot hold it, which is the limit the
+curvature gizmo exists for.
+
+## 39. The bulb's neck had a number that could not be aimed and a gizmo that was not there
+
+### 1. Problem
+
+Three faults in one control.
+
+The bulb's easing was named tension, which it is not: it sets how far back along
+the inner edge the neck starts. It was also indirect. The value grew a second,
+inflated ball and took whatever crossing that ball happened to make with the
+inner edge, so no reading of the number told you where the neck would land, and
+the crossing search was free to walk past on-curves and eat whole segments.
+
+The curvature gizmo was absent from the whole terminal region. The segment walk
+takes a segment only when all four of its points carry addresses on one side. Cap
+points carry none, and the trim rebuilt the inner edge's two handles from a
+bezier split without re-attaching theirs. So neither the neck nor the edge above
+the incision had one.
+
+### 2. Solution
+
+Easing is now a 0–1 fraction of the run from the plain ball crossing back to the
+next on-curve on the inner edge, placed directly. At 1 the far end collapses onto
+that on-curve. One run serves both the geometry and the panel's top of range, so
+the stop cannot disagree with the number. The panel keeps a slider, now 0–100.
+
+The trim publishes what the round-cap split already publishes: the original
+handles' addresses on the rebuilt handles, and the untrimmed segment on the
+crossing on-curve. That gives the edge above the incision a gizmo that measures
+the curve its pin governs. It is published only when easing is off, because
+exactly one gizmo belongs at a bulb's terminal.
+
+Once easing is on, the neck gets that gizmo instead. A neck has no skeleton
+segment behind it, so its curvature is stored in `capBallEaseCurvature` on the
+cap-owning point, and its four points name that point and that field. The drag
+measures the tension the same way and writes it there.
+
+### 3. Result
+
+Full suite 1,860 passing. Easing 1 puts the neck's far end on the next on-curve
+to half a unit, the far end moves monotonically across the whole range, and the
+neck's curvature changes its handles without moving either end. No external glyph
+uses a bulb, so nothing else moved.
+
+### 4. Challenges and findings
+
+**The obvious test helper measured two different points.** The rejoin was read as
+the furthest-forward on-curve on the inner edge. Once easing is on, the ball
+attachment also lands near that edge and sits forward of the neck's far end, so
+the helper reported the attachment at small easing and the far end at large.
+The continuity check failed at 0.05 and passed everywhere else, which reads as a
+geometry bug and was a measurement bug.
+
+**A straight stroke cannot test this.** The inner edge's terminal segment is a
+line there, and a line has no curvature gizmo, so the first version of the
+addressability test asserted against geometry that could never satisfy it.
+
+**Naming the point is not the same as owning it.** The neck names the cap-owning
+skeleton point so the gizmo can find it, and that alone made every neck point
+resolve as an editable generated handle — a drag would have moved the rib the
+neck hangs off. Three readers had to be told the difference: the segment walk,
+the on-curve gizmo's eligibility, and the editable-target resolver. Provenance
+that names a point is an address, not a claim of ownership, and each reader
+decides for itself what it may do with one.
+
+## 40. Five small items around the skeleton editor — features and fixes
+
+Short entries. None of these carried a design of its own.
+
+**Point indices on a skeleton.** The existing point-indices layer reads the
+glyph path, and a skeleton is not in it. A second switchable layer counts the
+skeleton's own points, on-curves and handles alike, from 0 across every skeleton
+contour. Off by default, drawn in the same box and place as the path layer's
+numbers.
+
+**A continued stroke keeps its own width.** The skeleton pen gave every new point
+the model's fallback width, so extending an existing stroke stepped back to that
+width at the next point. An appended point now takes the width of the endpoint it
+extends. The first point of a new contour takes the master default, which until
+this change landed on the contour alone and was never read for geometry.
+
+**A hand may collapse a generated handle to zero.** The one-unit handle floor
+stops the solved handle riding along with the rib end. That is the automatic
+answer's problem, not the designer's. An attached adjustment, a pinned curvature
+and a detached placement may now put a handle exactly on its point, on the
+ordinary path and inside a serif terminal alike. The ceiling is untouched.
+
+The curvature gizmo follows it down. The shared shift bottoms out when the
+shorter handle lands on its point, and the stored mean cannot describe anything
+past that — it reads zero for every length the survivor still has. So the drag
+writes the pin down to that floor and carries the rest as a displacement on the
+one handle still off its point. The generator applies the displacement first and
+the pin after, and a pin of zero leaves an already-collapsed pair alone, so the
+two compose. A pin of zero also renders now. It used to read as no pin at all,
+which threw the last step of the descent away on reload.
+
+**A handle offset stopped climbing past the ceiling.** A stored offset is a
+request, and the clamp on handle length can refuse most of it. The store kept the
+whole request, so a drag that pushed against the ceiling left a value far beyond
+it, and the next drag back moved nothing until it had walked all the way down.
+The generator now publishes the part of each attached offset it honored, and a
+drag starts from that instead of from the raw store.
+
+**The hosted glyph panels draw on first load.** The letterspacer and the skeleton
+defaults live in host elements that enter the DOM only when the glyph info form
+is rebuilt. Their own update runs when the panel is switched on, which on a fresh
+load happens before that form exists, so both drew nothing and had no later event
+to bring them back. They now refresh on the rebuild that re-attaches their host,
+and only on that one: the form is rebuilt on every selection change, and
+redrawing there would replace a control still under the cursor.
+
+## 41. The bulb's ball was tested for, not solved for — fixes
+
+Three fixes on one control, measured on `_external/skeletron.fontra` glyph `d`.
+
+### 1. Problem
+
+Placing the ball trims the outer edge back and sits the ball tangent there, deep
+enough that its forward extreme lands on the terminal. The trim was guessed,
+tested against a hard fit predicate, and grown until the predicate passed.
+
+Two faults followed. The accepted trim was the first one that passed, and a trim
+that only just passes leaves the ball almost no depth — 21 units deep against 55
+across, on a ball asked for at 75. Past the predicate the search gave up and
+returned its first guess, reusing a trim distance as a ball radius. Which of the
+two a glyph got turned on a margin of two hundredths of a unit.
+
+Two more faults sat behind it. Where no cut on the terminal delivered the
+requested depth, the search ran to the end of the usable run and took whatever
+sat there, which was no depth at all — on a curved terminal at ball ratio 2 and
+above the ball came out one unit deep and the bulb vanished. And a ball whose
+sideways swell alone already passes the terminal plane has no depth that
+satisfies the pin at any cut, so the terminal fell through to a plain cap.
+
+### 2. Solution
+
+The trim is bisected for. The depth the terminal allows rises as the cut moves
+back and runs away where the edge turns square to the stroke, so the requested
+depth is a root, and the search finds it from the deep end. The ball is the shape
+the settings asked for, and the cut moves to deliver it.
+
+Where the request does not fit, the search carries the deepest ball the run
+allows and falls back to it, refined between the samples either side so the
+answer moves rather than stepping. The two answers meet where the deepest
+available reaches the request.
+
+Where the ball is too wide for any cut, it is narrowed until one cut holds it.
+The bulb stops growing past that width and stays a bulb.
+
+### 3. Result
+
+Sweeping the far skeleton point 40 units in quarter-unit steps, worst single-step
+outline movement 93.94 before, 3.00 after.
+
+On the curved terminal at ball shape 0.25:
+
+| ball ratio | before | after the fallback | after the narrowing |
+| ---------- | ------ | ------------------ | ------------------- |
+| 2.00       | 132.6  | 253.8              | —                   |
+| 2.50       | 158.5  | 239.3              | —                   |
+| 3.00       | 187.9  | 239.7              | 239.3               |
+
+Sweeping ratio 0.5 to 3 in 51 steps, 6 steps drew a plain cap before and 0 draw
+one now.
+
+### 4. Challenges and findings
+
+**A predicate answers whether, and the question was how much.** Every fault here
+comes from testing a guess instead of solving for the number. The fit predicate
+was correct and useless: it could confirm a trim and could not rank two.
+
+**One fault is left and is not this one.** Where the ball grows large enough to
+swallow the whole inner edge, the crossing that anchors the neck flips between
+the terminal and the contour's far end. It drives the remaining jumps under a
+ball ratio or ball shape sweep.
+
+## 42. Two bugs the detached flag exposed — fixes
+
+Both reported on `_external/k.json`, on the third skeleton point's rib.
+
+### 1. Problem
+
+**A handle had a limit it should not have.** With the detached flag on, the
+designer placed the handles where they wanted them. With the flag off, the same
+placement was refused: 32 units asked, 7.77 honored, against 55 units of real
+room.
+
+**The detach toggle changed the shape by itself.** With a curvature set through
+the gizmo, turning the flag on moved a handle 4 units. Turning it off moved it
+back.
+
+### 2. Solution
+
+The first is a bound written in the wrong unit. The ceiling on handle length was
+stored as a multiple of the coordinate scale and capped at 1, so it could never
+pass that scale. Where a short real reach floors the scale and a backward handle
+slide moves the drawn crossing far beyond it, the ceiling refused most of an
+authored offset. A detached handle skips the domain entirely, which is why the
+flag made the difference. The ceiling is now bounded by the drawn crossing and by
+the absolute cap of twice the chord, and not by the scale.
+
+The second is a pin counted twice. Detaching converts the handle's position into
+an absolute placement, and it read that position off the screen — after the
+curvature pin had been applied. The generator then applied the pin again to a
+number that already carried it. Because the pin holds the segment's mean rather
+than either handle, it answered the changed input with a different split. The
+conversion now measures against a regeneration with this side's two segment pins
+cleared, so it stores the construction rather than the screen. Re-attaching
+measures the other way round, against a regeneration without this side's offsets,
+because there both sides of the subtraction carry the pin and have to agree.
+
+### 3. Result
+
+Full suite 1,869 passing, with one existing solver test corrected: it asserted
+the old cap, which is the bug written as an expectation. Entry 38 had already
+recorded that cap as conservative and left it alone.
+
+On the reported file the refused handle now moves one-for-one, and the detach
+toggle is a round trip in both directions.
+
+### 4. Challenges and findings
+
+**The conservative note in entry 38 was the bug.** It was recorded as a
+limitation of the backwards direction and dismissed, because the handle moved,
+which was that report's complaint. It was a wrong unit, and it took a second
+report to be read as one.
+
+**One defect is left.** The detach conversion anchors the offset on the emitted
+on-curve, which carries the on-curve nudge, while the generator anchors a
+detached placement on the un-nudged rib point and adds the handle nudge. The two
+agree only where the two nudges are equal. On the reported file both are 45, so
+the fault is invisible there. Provenance already publishes both vectors.
+
+## 43. The width distribution had three writers and two rules — fixes
+
+Reported on `_external/one.json`, on a third skeleton point with a distribution
+of 100.
+
+### 1. Problem
+
+**A rib drag on canvas overrode the distribution.** Setting the width through the
+panel honored it. Dragging the rib applied the same delta to both ribs, which on
+a 60/0 point answers a drag of 10 with 70/10 — a distribution of 75, where the
+designer set 100.
+
+**The panel would not refresh during its own drag.** Under a canvas drag the
+total, left, right and distribution all followed live. Dragging the total in the
+panel left the other three static until the mouse came off.
+
+### 2. Solution
+
+Preserving the difference between the two sides is not preserving the
+distribution. Preserving the SHARE is. A linked write that names one side now
+states a total through that side's share, which is the panel's total-width write
+reached through one side. Unlinked, the two sides are independent and the write
+states one.
+
+One function carries that rule, and all three entry points go through it: the rib
+gizmo on canvas, the panel's left and right boxes, and the label scrubs on both.
+The same-delta rule survives for exactly one caller, the fixed-rib drag, where it
+is the right statement — there one edge is held while the point follows the
+cursor.
+
+A side holding zero has no share, so it cannot state a total. That rib is pinned
+on the centerline, and the drag refuses. Only the distribution or the total lifts
+it off. This was the designer's own decision when asked.
+
+For the panel: it blocked its own update for the whole duration of a field edit,
+to stop a rebuild replacing the input under the hand. The block is now on the
+rebuild alone. The values-only refresh runs, and it already leaves the active
+field alone.
+
+### 3. Result
+
+Full suite 1,869 passing. Seven new tests: four on the rib executor and three
+direct model tests, covering a linked drag at an asymmetric distribution, a zero
+far side, a refused drag on a zero side, and an unlinked drag.
+
+### 4. Challenges and findings
+
+**A comment claimed the rule the code did not implement.** The shared per-side
+writer said it preserved the distribution and preserved the difference. The
+comment now names the edges, which is what that branch is for.
+
+**The first fix touched the canvas path alone.** The panel was left on the old
+rule, reasoning that changing its per-side meaning was more than the report
+asked. That was wrong — the report asked for the two to agree, and one rule in
+one place is the only way they cannot drift apart again. The designer said so.
+
+**The editor-side halves owe a manual test matrix**, per rail R-G. Type into left
+and right with the sides linked and unlinked, scrub both labels, drag both ribs
+at a distribution of 100, and drag the total in the panel while watching the
+other three fields.
+
+## 44. Harmonize answered the wrong question — feature
+
+Reported on `_external/skeletron.fontra` glyph `d`, at the joint between the
+two cubic segments.
+
+### 1. Problem
+
+Harmonize was run and the curvature comb kept a deep notch at the joint. The
+report said harmonized.
+
+Two separate things, and the visible one was not a step in curvature.
+
+The two curvature values agreed to 1.6 per cent, 0.005853 arriving against
+0.005949 leaving. The radius differed by 2.77 units on 170.
+
+What did not agree was the rate of change of curvature. It arrived falling at
+0.0000404 per unit of arc and left rising at 0.0000497. The sign reverses, so
+curvature has a local minimum exactly at the joint. Measured along the two
+segments, the comb ran 0.009940 at the middle of the incoming one, 0.005853 at
+the joint and 0.008408 at the middle of the outgoing one. The joint sat 41 per
+cent below the hump behind it.
+
+Matching two curvature values is G2, and G2 was already satisfied. The notch is
+a G3 defect and no setting of the existing operation addressed it.
+
+### 2. Solution
+
+A second construction, tried first, with the old one as its fallback.
+
+**G3 by the two inner handles.** The joint and both outer handles hold still.
+Equal curvature and equal rate are two equations, and the two inner handle
+lengths are two unknowns, so the answer is exact and unique. There is nothing
+to iterate and nothing to choose between. It is Linus Romer's construction from
+`_external/curvatura`, section 6.5 of its documentation, in the arc-length form
+described below.
+
+**The cascade.** G3 runs at every joint. Where it has no admissible answer the
+joint drops to G2, which starts from the geometry as it stands. Two things make
+an answer inadmissible. An inflection, where the construction asks for the
+square root of a negative product. And an answer outside the two limits the G2
+path already obeys, which are the cusp floor on the handle that shrinks and the
+tangent intersection on the handle that grows.
+
+**The repair slide**, between the two rungs and optional. Where holding the
+joint still leaves no admissible answer, the joint slides along its tangent by
+the smallest distance that produces one, and the two inner handles take the
+rest. The search runs outward from zero, so a joint that does not need it does
+not move. Its range is the far on-curve of either segment, measured along the
+tangent, with each direction bounded separately.
+
+**Two checkboxes replace the bias slider.** One picks the target and so the
+cascade. The other says whether the joint itself may move. Under G2 that is the
+whole of the old bias, and under G3 it turns the repair slide on. The values
+between the slider's two ends were never asked for.
+
+### 3. Result
+
+On the reported glyph, with the whole-unit rounding the editor applies:
+
+| run          | joint     | handles             | curvature step | rate step |
+| ------------ | --------- | ------------------- | -------------- | --------- |
+| as drawn     | 399, 598  | 412, 518 / 388, 670 | 9.65e-5        | 9.01e-5   |
+| G2           | unchanged | unchanged           | 9.65e-5        | 9.01e-5   |
+| G3           | unchanged | 410, 530 / 389, 659 | 5.91e-5        | 1.17e-6   |
+| G3 and slide | unchanged | 410, 530 / 389, 659 | 5.91e-5        | 1.17e-6   |
+
+The rate step falls by a factor of 77. The joint does not move, because this
+one never needed the slide. Full suite 1,888 passing.
+
+The editor side owes a manual matrix, per rail R-G. Harmonize a joint with each
+of the four combinations of the two checks. Check that the G3 runs leave the
+on-curve where it is. Check that an inflected joint still reports harmonized and
+names G2 in the hover detail.
+
+### 4. Challenges and findings
+
+**The donor matches the rate per unit of parameter, not per unit of arc.** The
+two segments run through the joint at different speeds, so equal rates in the
+parameter leave a rate mismatch equal to the ratio of the two, which was 10 per
+cent on the reported glyph. The curvature comb is drawn against arc length, and
+arc length is what a designer reads. Solving for the arc-length rate is the same
+shape of closed form, one square root and one division, and the two answers are
+0.03 units of handle apart. The arc form is exact to machine precision on both
+conditions.
+
+**The first three answers about this joint were about a different geometry each
+time.** The glyph was redrawn between the report and each measurement, and the
+same joint was an inflection, then already harmonic to 1.5 per cent, then 38 per
+cent out. Read the file at the moment of the question, and say which state the
+numbers came from.
+
+**G2 reports harmonized while writing nothing.** The correction on the reported
+joint was 0.46 units, and whole-unit rounding discards all of it. That is a real
+defect and it is not fixed here. A correction under half a unit should report
+that it is below the grid.
+
+**The slide's range cannot be bounded by the inner handles.** They are what the
+construction replaces, so their present lengths say nothing about where the
+joint may go. Bounding by them stopped the search 25 units short of the answer
+on the overshoot fixture, where the first admissible slide is about 45 units and
+the shorter inner handle is 20.
+
+## 45. The curvature comb was scaled per segment — fix
+
+Reported as a fault in harmonize, over several rounds, on
+`_external/skeletron.fontra` glyph `d`. Harmonize was not the fault.
+
+### 1. Problem
+
+A joint that measured 23 per cent out was drawn as a continuous comb. The same
+joint, corrected to 1.4 per cent, was drawn with a visible step. Every harmonize
+setting produced the step, so the operation looked broken under all of them.
+
+Each segment's fringe was divided by the tallest curvature **on that segment**.
+So the tallest fringe on every segment was drawn at the full height, whatever
+its curvature actually was. Two segments meeting with equal curvature drew
+unequal fringe wherever their two peaks differed.
+
+On the reported glyph the two segments either side of the joint peak 27 per cent
+apart. That 27 per cent was the whole of the step on screen, and it belonged to
+the middles of the two segments rather than to the joint.
+
+Measured at the joint, before the fix. Curvature gap against the length the comb
+drew:
+
+| state       | curvature gap | drawn step |
+| ----------- | ------------- | ---------- |
+| as reported | 23 %          | 0.16 units |
+| after G2    | 1.4 %         | 2.73 units |
+| after G3    | 2.6 %         | 7.59 units |
+
+The comb reported the opposite of what was there, which is the one reading it
+exists for.
+
+### 2. Solution
+
+The fringe height divides by the tallest curvature anywhere on the glyph. One
+scale for the whole outline, so equal curvature draws equal fringe wherever it
+sits, and a step in the fringe means a step in the curve.
+
+That was the first half. The glyph-wide peak is still taken from the drawing, so
+redrawing any one segment rescaled every fringe on the glyph. The scale now comes
+from a setting instead. See entry 46.
+
+Colour keeps its own per-segment switch. Colour says where a segment sits in a
+range, which is a per-segment question when the switch is off. It never stood in
+for the height.
+
+A glyph-wide scale needs the whole glyph measured before any of it is drawn. The
+samples are now kept from that one pass instead of being taken again, so the
+change costs no second pass over the outline. The existing global-normalization
+option used to run its own extra pass when it was on, and that pass is gone.
+
+### 3. Result
+
+The same measurement, after:
+
+| state       | curvature gap | drawn step |
+| ----------- | ------------- | ---------- |
+| as reported | 23 %          | 1.72 units |
+| after G2    | 1.4 %         | 0.10 units |
+| after G3    | 2.6 %         | 0.04 units |
+
+Full suite 1,891 passing. Three new tests: one curvature draws one fringe height
+across two segments that peak 1.6 times apart, the tallest fringe on the glyph
+gets the full height, and redrawing one segment does not change the fringe on
+its neighbour.
+
+### 4. Challenges and findings
+
+**The instrument was the last thing checked and should have been the first.**
+Four rounds went into measuring the geometry, and the geometry was right every
+time. The report was that the tool produced a jump. It did produce one, on
+screen. Taking the symptom literally means asking what draws it, not only what
+computes it.
+
+**A measured number that keeps agreeing with the code is evidence about the
+instrument.** Three separate runs said the joint was within 1.6 per cent while
+the designer read a step off the screen. That disagreement was the finding, and
+it was treated as a difference of opinion for too long.
+
+**The comb was never usable for continuity, only for fairness within one
+segment.** Per-segment scaling shows where a segment's own curvature rises and
+falls, which is a real reading. It cannot compare two segments, and comparing
+two segments is what a joint is.
+
+**A glyph-wide scale has one cost, and it is stated rather than hidden.** One
+very tight corner takes the whole height and squashes every other fringe on the
+glyph. That is honest, since the corner really is that much tighter. Where it
+gets in the way, the per-segment mode would have to come back as a switch that
+is off by default.
+
+## 46. The comb's scale came off the drawing — rework
+
+Reported straight after entry 45, and it is the other half of the same fault.
+
+### 1. Problem
+
+Entry 45 moved the fringe's scale from the segment's own tallest curvature to
+the glyph's. That made one curvature draw one length across a joint, which was
+the reading being asked for.
+
+The scale still came from the drawing. So redrawing any one segment moved the
+glyph's tallest curvature, and every fringe on the glyph changed length at once.
+The comb breathed under the cursor, and no fringe could be compared against what
+it measured a moment earlier.
+
+It also meant two glyphs were never drawn to the same scale, so a comb on the
+**o** could not be read against a comb on the **n**.
+
+### 2. Solution
+
+The fringe is the curvature times a stated reference tightness. Nothing on the
+outline feeds it.
+
+Four numbers, all in the SpeedPunk accordion:
+
+- **Peak height** is the length drawn where the curve is as tight as the
+  reference radius. It kept its name and its meaning changed from "the tallest
+  fringe on this glyph" to "the fringe at this tightness".
+- **Full height at radius** is that reference, in font units. It defaults to
+  100, and on a 1000 unit em that puts an ordinary bowl in the middle of the
+  range.
+- **Shortest** floors the drawn length. It defaults to zero, so a straight
+  segment still draws nothing.
+- **Longest** caps it. A cusp has no bounded curvature, so without a cap its
+  fringe runs off the screen. It defaults to three times the peak height.
+
+Sharpness keeps its meaning and applies to the same ratio.
+
+### 3. Result
+
+On the reported glyph, with the full height at radius 100, the fringes run 5.91
+to 32.43 units. At the joint they are 7.20 and 9.52, a step of 2.32, which is
+the 23 per cent the two curvatures are apart. After harmonize they are 8.30 and
+8.44, a step of 0.14.
+
+Full suite 1,893 passing. Five new tests: a circle of the reference radius draws
+the full height, half the radius draws twice the length, redrawing one shape does
+not change the fringe on another, the two caps hold, and a straight draws nothing.
+
+The editor side owes a manual matrix, per rail R-G. Change each of the four
+numbers and check the comb answers. Drag a point and check that the fringes on
+the other side of the glyph hold still.
+
+### 4. Challenges and findings
+
+**A normalized readout cannot be read across anything.** The first rule
+normalized per segment and could not compare two segments. The second normalized
+per glyph and could not compare two moments in time, or two glyphs. Each fix
+moved the boundary of what the readout could answer without removing the
+boundary. Only a scale from outside the drawing has none.
+
+**The cost that was accepted in entry 45 is gone with it.** A single tight corner
+no longer squashes every other fringe on the glyph, because no fringe is measured
+against that corner any more. The cap does the job the corner used to do, and it
+sits where the designer can see it.
+
+**A cubic circle is not a circle, and the tests had to say so.** Its curvature
+runs about two per cent either side of the true value, which is what the
+tolerances in the new tests are. A tighter tolerance failed on geometry that was
+correct.
+
+---
+
+## 47. The comb's scale needed a hand, and clipped — rework
+
+Two commits. `8c689bd19` made the SpeedPunk fields scrubbable, gave them a live
+redraw, and moved colour onto the fixed scale. This one removes three of them.
+
+### 1. The report
+
+Entry 46 put the comb's scale in the panel: a reference radius, a floor and a
+ceiling. The judgment on that was "it is clearly stupid, we do not need manual
+control of the comb's floors and ceilings". Then, on the pre-46 commit, a jump at
+one joint of glyph `d`.
+
+### 2. What the jump was
+
+The joint at 399,599 bends on a radius of 477 coming in and 464 going out. The
+two are 2.7 per cent apart. The pre-46 rule divided each fringe by the peak
+curvature of its own segment. The incoming segment peaks at a radius of 61, so
+the joint drew at 12.9 per cent of the full height. The outgoing segment peaks at
+73, so the same joint drew at 15.6 per cent. A 2.7 per cent difference in the
+curve was drawn as a 21 per cent step in the comb, eight times the thing it
+measures. No amount of harmonizing could remove it.
+
+### 3. Three fields, and why they went
+
+Nothing on the drawing may feed the scale. That still holds. But the scale did
+not have to be typed either.
+
+**The reference radius now comes from the em**, at a quarter of it. It is one
+constant of the font. It is the same for every glyph, it never moves when a point
+moves, and it needs no hand.
+
+**The caps are gone.** A hard ceiling draws two different curvatures at one
+length, which is the same false reading the per-segment divisor gave. Where one
+fringe saturated beside one that did not, the eye read a crease that was not
+there. A floor above zero did it at the other end and hid where a flat ended.
+
+**The height now squeezes.** It rises in proportion at gentle bends, reaches the
+full peak height at the reference tightness, and leans over above it towards
+twice that height without ever arriving. Nothing clips. A cusp has no bounded
+curvature and stays on the screen anyway, because the rule itself has nowhere
+further to go. Sharpness keeps its meaning and applies to the same ratio.
+
+The panel keeps peak height, sharpness and opacity. Those are taste, not scale.
+
+### 4. Result
+
+On the reported glyph the fringes now run 11.98 to 38.54 units. At the joint they
+are 16.51 and 16.80, a step of 0.29.
+
+Full suite 1,895 passing. The two cap tests became four: full height at the
+reference tightness, near proportional where the curve is gentle, never twice the
+peak however tight, and two different curvatures never at one length.
+
+The editor side owes a manual matrix, per rail R-G. Open a font whose em is not
+1000 and check the comb is the same relative height as on a 1000 em. Check the
+panel shows three fields. Check a cusp draws a fringe that stays on the screen.
+
+### 5. Challenges and findings
+
+**A knob is a scale that came off a person instead of the drawing.** Entry 46
+treated "not from the drawing" as the whole requirement and put the number in a
+field. The field was the next thing to remove, not the answer. A readout that
+needs to be tuned before it can be believed is still not a readout.
+
+**A cap is a normalization with one step in it.** Every rule this comb has had
+mapped two different curvatures onto one drawn length: the per-segment peak did
+it across a joint, the glyph peak did it across a redraw, and the ceiling did it
+across the ceiling. The squeeze is the first rule with no such pair.
+
+**The instrument was wrong for longer than the curve was.** Three diagnoses of
+the glyph came and went while the comb was reporting the reverse of the truth.
+The lesson is to measure what the instrument draws, not only what the geometry
+is, before believing either.
+
+---
+
+## 48. Three reports on the reworked comb — fixes
+
+### 1. The reports
+
+1. The colour was almost all red.
+2. Space-drag stopped working after any SpeedPunk field was touched.
+3. Sharpness and opacity had no rounding.
+
+### 2. Colour ran out before the curve did
+
+Entry 47 gave the height a squeeze and left the colour on a flat range that ran
+from nothing to the reference tightness. Everything at or above that tightness
+landed on the last stop. The reference is a quarter of the em, and a normal
+letter bends much tighter than that over most of its length, so most of the glyph
+came out one colour and every difference inside it was hidden.
+
+Colour now rides the same squeeze the height does. There is one ratio per sample:
+nothing on a straight, a half at the reference tightness, approaching one as the
+bend tightens and never arriving. The height is twice that ratio in peak heights.
+The colour is that ratio across the stops. Neither can saturate, and the two
+always agree about which of two points is the tighter.
+
+### 3. A number box keeps the keyboard
+
+The canvas answers no shortcut while a panel field holds the focus, and a number
+box eats the space bar without doing anything with it. Space-drag is the shortcut
+that gets noticed, but every other one was gone too.
+
+Both paths out of a field now hand the focus back to the canvas: the typed edit
+when it commits, and the label drag when the pointer is released. The Display
+checkbox is left alone, because the space bar belongs to a checkbox.
+
+### 4. A step is one number or it is three
+
+`roundScrubValue` rounded to a whole number or not at all, so a tenth-per-pixel
+drag stored 1.2000000000000002 and the box showed every digit. It now takes the
+field's step and rounds onto that grid, then trims the binary residue the
+multiply leaves.
+
+The step is now one constant per field. The box, the drag and the normalizer all
+read it, so the three cannot disagree about what a value is. Opacity moves by two
+hundredths in the box as well as under the pointer, where the box used to move by
+five hundredths.
+
+### 5. Result
+
+Full suite 1,897 passing. Two new tests: a fractional field rounds onto its own
+step, and a curve well tighter than the reference does not share a colour with one
+four times tighter.
+
+Manual matrix owed, per rail R-G. Touch a field and check that space-drag still
+works. Drag sharpness and check the box shows one decimal. Look at a round letter
+and check the comb runs through the stops rather than sitting on the last one.
+
+### 6. Findings
+
+**Two readouts off one number, or they will drift apart.** The height and the
+colour have now disagreed twice, in entry 46 and again here, both times because
+one was changed and the other was left on the old mapping. They are computed from
+a single ratio now, so there is nothing left to keep in step by hand.
+
+**A default that means "do nothing" cannot be the useful one.** Giving
+`roundScrubValue` a step of 1 by default would have rounded every existing
+fractional caller to whole numbers. The default has to be no grid at all, and the
+grid has to be asked for.
+
+---
+
+## 49. Sharpness coloured the curve, and a label took the keyboard — fixes
+
+### 1. The reports
+
+1. Sharpness changed the colour distribution. It should only change the shape of
+   the comb.
+2. The panel still took the keyboard after a field was adjusted, so space-drag
+   did not work.
+
+### 2. One reading, two drawings
+
+Entry 48 put the colour and the height on one ratio, and that ratio had sharpness
+already applied. So restyling the comb repainted the curve under it.
+
+The reading is now separated from the two drawings of it. The reading is the
+curvature against the reference tightness, squeezed to a number from nothing to
+one. Colour comes straight off that. The height comes off the same reading with
+sharpness applied. A curve keeps its colour while the comb over it is restyled,
+and the two can still never disagree about which of two points is the tighter.
+
+### 3. A label activates the field it names
+
+Entry 48 handed the focus back to the canvas at the end of a label drag, and the
+browser took it away again a moment later. A `<label for=...>` activates its
+field on click, and activating a number field puts the keyboard in it. The click
+arrives after the pointerup, so the handover was undone every single time.
+
+A scrub label is a grab area and not a way into the box, so it no longer
+activates anything. Two more ways out were added with it: Enter and Escape both
+release the field, and the commit path releases it unconditionally now. A number
+field fires its change only when the value is committed, never while digits are
+being typed, so there is no mid-typing case to protect.
+
+### 4. Result
+
+Full suite 1,897 passing, with one new test: sharpness changes the fringe length
+and leaves every colour exactly as it was.
+
+Manual matrix owed, per rail R-G. Drag a label, then press space and drag. Click
+into a box, press Enter, then press space and drag. Change sharpness and check
+that the colours do not move.
+
+### 5. Findings
+
+**Handing the focus back is not the same as not taking it.** The fix in entry 48
+was correct and had no effect, because it ran before the thing that took the
+focus. A handover that races the browser's own default loses.
+
+**One number to compute a reading, one drawing each.** Entry 48 collapsed colour
+and height onto a single ratio to stop them drifting apart, and that collapsed a
+control into them too. What has to be shared is the reading. What each drawing
+does with it is its own.
+
+---
+
+## 50. Harmonize stopped before it was finished — fix
+
+### 1. The report
+
+Run harmonize on an unharmonized contour and a jump is left behind. Run it two
+or three more times and the jump goes away. The first run should have given the
+same answer.
+
+### 2. What the sweep did
+
+Every joint on a closed contour shares a segment with the two beside it. Move
+the handles at one joint and the curvature at both neighbours changes. So the
+sweep is a loop: it goes round the joints again and again until the whole ring
+stops moving.
+
+Two things took a joint out of that loop early, permanently.
+
+**A joint that had nothing left to do was called finished.** The moment its own
+correction fell under the tolerance it was marked done and never looked at
+again. A neighbour that moved three passes later put it back out, and nobody
+measured it after that.
+
+**A joint that ran into a limit was called finished too.** When a step would
+push a handle past its cusp floor, or past the point where its segment's handle
+lines cross, the step is scaled back to the largest one that fits. That is a
+smaller step, not the end of the work — but the joint was settled right there,
+after exactly one scaled step.
+
+A second run started over. Fresh limits measured from the new geometry, every
+joint open again. That is why running it repeatedly kept helping.
+
+Measured on a four-joint ring, worst joint of the four:
+
+|                       | worst discontinuity |
+| --------------------- | ------------------- |
+| before                | 86.8%               |
+| after one run, old    | 5.2%                |
+| after two runs, old   | 0.38%               |
+| after three runs, old | 0.38%               |
+| after one run, now    | 0.38%               |
+
+The 0.38 per cent that is left is whole-unit rounding. Without rounding the same
+single run reaches 0.01 per cent.
+
+### 3. The fix
+
+A joint with nothing to do goes quiet instead of finishing. It is measured again
+on every pass, and it moves again the moment a neighbour disturbs it. A joint
+that runs into a limit takes its scaled step and stays open, so the next pass
+measures the limit again from where that step landed.
+
+The sweep ends when no joint moved anywhere, which it already did. The verdict
+for each joint is read at the end rather than at the moment it went quiet:
+quiet at the end means harmonized, quiet from the start means it was already
+harmonic, and anything else reports what stopped it.
+
+### 4. Result
+
+Full suite 1,901 passing. Three new tests on a ring of four coupled joints: one
+call settles the whole ring, a second call has nothing left to move, and every
+joint reports harmonized rather than partial.
+
+### 5. Findings
+
+**A local verdict on a coupled system is not a verdict.** Both early exits were
+correct statements about one joint at one moment. Neither was a statement about
+the contour, and the contour is what was being harmonized.
+
+**A limit is a smaller step.** Treating "this step had to be shortened" as "this
+joint is done" throws away the whole remainder of the correction. The limit is
+re-measured from wherever the shortened step landed, and there is nearly always
+more room there.
+
+---
+
+## 51. Harmonize still improved on the second press — three more causes
+
+Entry 50 fixed one reason the command had to be run more than once. The report
+came straight back: it still allows multiple steps and each step does something.
+Three more causes, all found by running the command ten times over four hundred
+random four-joint rings and measuring what still moved.
+
+### 1. The cusp floor was measured from the handle it was limiting
+
+A handle may not be shrunk past a floor, so a curve is never collapsed into a
+cusp. The floor was 15 per cent of that handle's own length, read at the moment
+the command started. Run the command again and the floor is read again, from the
+handle that was just cut, and another 85 per cent of what is left may go. Ten
+presses walked a handle down to nothing. On one test ring an off-curve point
+landed exactly on its on-curve neighbour.
+
+The floor is now a fraction of the chord between the segment's two on-curve
+points. Those two points do not move while handles are being corrected, so it is
+the same number on every run. Half a chord is about the handle length of a
+well-formed quarter arc, so the margin keeps the meaning it had.
+
+### 2. The tension ceiling was enforced once, at the start
+
+A handle may not reach past the point where its segment's two handle lines
+cross. Each joint limits its own step against that ceiling, but the handle it
+moves belongs to a segment the next joint along shares. A neighbour's step could
+push it back over, and nothing looked again until the next run. That one
+over-tension handle then blocked its joint for the rest of the sweep, and
+released a move of a hundred units the moment the command was pressed again.
+
+The ceiling is now enforced on every pass.
+
+### 3. Rounding to whole units is a nudge the sweep never saw
+
+The sweep settles on fractional coordinates. The editor rounds them, and from
+the rounded drawing there is a real correction to make again — which is exactly
+what the second press of the button did.
+
+The command now does that itself: run the sweep, round, and run it again from
+the rounded drawing, until a drawing comes round a second time. On almost
+everything that is two attempts. Every state it lands on is scored, and the best
+one is what it leaves behind. The drawing it was handed counts as one of the
+candidates, so a command that can only make things worse leaves the drawing
+alone — which is what makes the second press a no-op.
+
+A handle over the tension ceiling outranks any amount of curvature in that
+score. An over-tension handle is a defect and not a trade.
+
+### 4. Result
+
+Over four hundred random rings, ten calls each:
+
+|        | still moving after the first call |
+| ------ | --------------------------------- |
+| before | essentially all of them           |
+| after  | 2 of 400                          |
+
+The mean worst discontinuity after one call is now 1.506e-3 against 1.492e-3
+after ten, so the first call is within one per cent of everything ten calls can
+reach. No ring ends worse than it started.
+
+Full suite 1,902 passing. Two new tests: the clamp floor is the same on a second
+call, and a rounded ring lands on the same whole units when the command is run
+twice.
+
+### 5. Findings
+
+**A limit measured from the thing it limits is a rate, not a limit.** The cusp
+floor allowed the same proportional cut every time it was asked, because it was
+re-read from what it had just cut. A limit has to be anchored to something the
+operation does not move.
+
+**An invariant established at setup is an assumption by the second pass.** The
+tension ceiling was true when the sweep started and was not true a pass later,
+because a neighbour had moved. Anything the sweep relies on has to be
+re-established inside the sweep.
+
+**The grid is part of the problem, so it belongs inside the loop.** Rounding was
+treated as a presentation step after the answer. It is a move like any other,
+and the answer has to be stable under it.
+
+---
+
+## 52. Harmonize took an undo step for doing nothing — fix
+
+### 1. The report
+
+When there is nothing to harmonize the command should skip, the way it used to,
+and should not put an entry on the undo stack.
+
+### 2. Why it did
+
+Every write to a point is a recorded change, and the sweep writes a point
+several times on the way to an answer. A joint two thirds of a unit out of true
+is corrected, corrected again on the next pass, and then rounded to whole units
+straight back onto the coordinate it started from. Nothing moved, and four
+changes were recorded for it.
+
+The command also wrote points that were already where it wanted them, which is a
+recorded change that sets a number to itself.
+
+### 3. The fix
+
+Three places, smallest first.
+
+A point is only written when it is not already there. That covers a joint the
+sweep finds nothing to do at.
+
+The skeleton route writes each corrected point back into the skeleton data, and
+now does that only where the coordinate differs.
+
+The editor runs the sweep on a copy of the path and writes back only the points
+that ended up somewhere else. That is what covers the case above, where the
+answer is arrived at through several moves and lands back at the start. It keeps
+the fine-grained writes the recorder wants: point by point, never a whole-path
+assignment, which does not survive the round trip.
+
+With no writes there is no change, and the editor already declines to push an
+undo entry for a change that is empty.
+
+### 4. Result
+
+Measured on a harmonic ring nudged by one unit, so the sweep has real work and
+every correction it finds is under half a unit:
+
+|        | change recorded |
+| ------ | --------------- |
+| before | yes             |
+| after  | no              |
+
+Full suite 1,903 passing, with one new test: a drawing whose whole-unit answer
+is where it already is comes back byte for byte identical.
+
+### 5. Finding
+
+**Doing nothing is a result that has to be arrived at, not assumed.** The report
+already said "already-harmonic" for these joints. The undo entry came from the
+writes underneath, which nobody was looking at, because the report is about
+joints and the recorder is about points.
+
+---
+
+## 53. The comb drew plateaus, and the peak height did not stay — fixes
+
+### 1. The reports
+
+1. The comb has more plateaus than peaks, even at a high peak height.
+2. The peak height is not saved.
+
+### 2. Why the shape flattened
+
+Entry 47 replaced a hard ceiling with a squeeze towards twice the peak height. A
+squeeze has a flat part, and the reference tightness was set at a quarter of the
+em, which is a radius of 250 on a 1000 unit em. A letter bends far tighter than
+that over almost all of its length, so almost every fringe was drawn from the
+flat part. Four times the reference tightness drew 1.6 times the height, eight
+times drew 1.8. Two different peaks, one drawn length: a plateau.
+
+Two changes.
+
+**The reference is a tenth of the em**, a radius of 100 on a 1000 unit em. That
+is about where a letter's gentler curves sit, so the working range of a drawing
+lands around the full height instead of far above it. The colour rides the same
+reading, so its spread improves with it.
+
+**The height is a straight proportion up to the reference tightness, and above
+it the full height plus the logarithm of how much tighter the curve is.** The
+two branches meet at the reference with the same value and the same slope. Four
+times the reference now draws 2.39 times the height and eight times draws over
+1.25 times that again, so a peak stays a peak. There is still no ceiling, and
+there does not need to be one: a hundred times the reference tightness is under
+six times the height, so a cusp stays on the screen by itself.
+
+### 3. Why the peak height came back as 24
+
+The scene copy of each SpeedPunk number was seeded from a literal in the scene
+controller, and the saved value only reached it when the panel pushed it across
+at startup. A second set of defaults, sitting in a different file from the first,
+and whichever ran last won.
+
+The scene copy is now seeded from the saved value and follows it afterwards,
+wherever a change comes from. The three keys are one list, used for the seeding,
+the following and the redraw.
+
+### 4. Result
+
+Full suite 1,905 passing. The two ceiling tests became two shape tests: a
+straight proportion below the reference, a peak that stays a peak above it, and
+growth slow enough that a hundredfold tighter curve is under six times the
+height.
+
+Manual matrix owed, per rail R-G. Set a peak height, reload, and check it is
+still there. Look at a round letter and check the comb has peaks where the
+drawing turns hardest.
+
+### 5. Findings
+
+**A soft limit is still a limit if the working range sits inside it.** The
+squeeze was chosen so nothing would clip, and it did not clip. It flattened
+instead, which loses the same information a clip loses and is harder to see.
+
+**Where the scale sits decides whether the scale works.** The rule and the
+reference were chosen in separate steps, and the pair was never checked against
+a real letter. Half the fix is the arithmetic and half is the one number it is
+measured against.
+
+**A default in two files is a race.** The saved value and the literal were both
+correct on their own. Which one the drawing got depended on construction order.
+
+---
+
+## 54. The comb came out one colour — fix
+
+### 1. The report
+
+The whole comb is yellow.
+
+### 2. Why
+
+Colour was read straight off the curve tightness against the reference, squeezed
+into nought to one. That squeeze has its steep part at the bottom and flattens
+above the reference, and the middle stop sits exactly at the reference. So a
+letter's whole range landed in a narrow band around the middle stop:
+
+| radius | old  | new  |
+| ------ | ---- | ---- |
+| 400    | 0.20 | 0.08 |
+| 200    | 0.33 | 0.17 |
+| 100    | 0.50 | 0.33 |
+| 60     | 0.63 | 0.50 |
+| 30     | 0.77 | 0.73 |
+| 15     | 0.87 | 0.97 |
+
+Radius 200 to radius 30 is the working range of most letters, and the old rule
+spent 0.33 to 0.77 of the stops on it — a walk from just before orange to just
+after it. That is one colour to the eye.
+
+### 3. The fix
+
+Colour is now the fringe length the reading earns, across the stops, with the
+last stop at three times the peak height. Same rule as the height, so a fringe of
+one length is always one colour, and the whole set of stops is spent over the
+range a letter actually draws in. Radius 200 sits near the first stop, 60 lands
+on the middle one, 15 is nearly at the last, and saturation waits for a corner
+tighter than a seventh of the reference.
+
+Sharpness is still left out of the colour. It is the shape of the comb.
+
+### 4. Result
+
+Full suite 1,906 passing, with one new test: a gentle circle is nearer the first
+stop than the middle one, a radius of 60 lands on the middle stop, and a tight
+circle is nearer the last.
+
+### 5. Finding
+
+**Spread is a property of the pair, not of the curve.** The colour rule and the
+height rule have now been wrong together twice: once because they used different
+readings, and once because they used the same reading through different shapes.
+The height's shape was chosen against a real letter's range and the colour's was
+not, which is the whole of this bug. Anything the eye compares has to be checked
+over the range it will be looked at in, not at its endpoints.
+
+---
+
+## 55. Red meant a normal curve — fix
+
+### 1. The report
+
+Red should appear where the handle tension is well above 1, meaning the curve is
+very steep. It was appearing everywhere.
+
+### 2. What red meant
+
+Handle tension is how far a handle reaches towards the point where its segment's
+two handle lines cross. A well-formed arc sits near a half. At 1 the handles
+meet. Past that the curve doubles back on itself.
+
+Measured on a symmetric arc, against the last stop at three times the peak
+height, which is what entry 54 set:
+
+| handle tension      | 0.5  | 0.6  | 0.8  | 1.0  | 1.2  | 1.5  |
+| ------------------- | ---- | ---- | ---- | ---- | ---- | ---- |
+| old, last stop at 3 | 0.57 | 0.68 | 0.88 | 1.00 | 1.00 | 1.00 |
+| new, last stop at 5 | 0.34 | 0.41 | 0.53 | 0.64 | 0.77 | 1.00 |
+
+An arc with its handles only half way out was already past the middle stop, and
+one with its handles exactly meeting was fully red. A normal curve came out as
+hot as a broken one, and everything above tension 1 came out the same, so the
+comb could not tell a tight curve from a doubled-back one.
+
+### 3. The fix
+
+The last colour stop is at five times the peak height instead of three. The
+anchor is stated in the code as the tension table above, so the next person to
+move it can see what they are moving.
+
+A well-formed arc now reads a third of the way along the stops, the middle stop
+falls near tension 0.9, and red waits for 1.5.
+
+### 4. Result
+
+Full suite 1,907 passing, with one new test: a symmetric arc at tension 0.5 and
+at tension 1 draws no red, and the same arc at tension 1.5 does.
+
+### 5. Finding
+
+**A scale needs an anchor a person can name.** The last stop was chosen as a
+multiple of the peak height, which is a number about the drawing rule and not
+about the drawing. Handle tension is a thing the designer already reads and
+already has a meaning for, so it is what the stop is quoted against now. The
+previous two colour rules were both picked without one, and both were wrong in
+the same way: nobody could say what the top of the scale was supposed to mean.
+
+---
+
+## 56. Read the donor, and take its two rules — rework
+
+The comb was reported as one colour, and as changing height on its own with no
+input. The original Speed Punk is now in `_external/speedpunk`. It answers both.
+
+### 1. What the donor does
+
+**Length is absolute.** The fringe is the curvature times a fixed gain times the
+em squared. Straight proportion. No ceiling, no squeeze, no floor. A tighter
+curve always draws a longer fringe, and the gain is the one control.
+
+**Colour is relative to the glyph.** The gentlest place on the glyph takes the
+first stop, the tightest takes the last, and the range is recomputed only when
+the glyph changes. Red means "this is where this letter turns hardest".
+
+**The sample count comes from the glyph.** A budget divided by the number of
+curve segments, floored at a minimum. The view is not part of it.
+
+### 2. The height that jumped on its own
+
+The sample count was taken from the magnification, twice: once by dividing the
+budget by it, because the budget sat among the parameters that are scaled to
+stay a constant size on screen, and once by multiplying by its square root
+inside the count itself. The count is a whole number, so it stepped from one
+value to the next as the view changed. Every segment on the glyph then resampled
+at once, each fringe moved to a different place on its curve, and the comb
+changed height with the drawing untouched.
+
+The count now comes from the glyph and from nothing else. The budget moved out
+of the screen parameters, because it is a count and not a size.
+
+### 3. The colour that was one colour
+
+Three absolute colour scales were tried, in entries 48, 54 and 55, and each one
+painted a whole letter a single colour: red, then yellow, then grey. The scale
+was moved each time and the shape of the problem never changed, because where a
+letter's curvature sits depends on the letter. An absolute scale cannot be right
+for every letter at once.
+
+Colour is now the glyph's own range, as in the donor. Every glyph uses the whole
+set of stops. Length stays absolute, so two letters can still be compared by
+fringe length — the two readings answer two different questions and are allowed
+to.
+
+### 4. The plateaus
+
+The height was a squeeze towards a ceiling of twice the peak. A letter bends
+past the reference over most of its length, which is where a squeeze is flat, so
+the comb drew plateaus. It is a straight proportion now, as in the donor: four
+times the reference tightness draws four times the height, eight times draws
+eight.
+
+### 5. Result
+
+Full suite 1,906 passing. Tests changed: the budget no longer takes a
+magnification, a fringe is exactly proportional at any tightness, the comb is
+the same at a fifth of the sample budget, the last stop lands on the tightest
+place on the glyph, and both a small glyph and one ten times its size use the
+whole set of stops.
+
+### 6. Findings
+
+**The donor was in the tree the whole time.** Five entries were spent inventing
+scales for a readout whose original makes both choices explicitly. The first
+question about a ported feature is what the original does, not what would be
+reasonable.
+
+**Absolute and relative are not competing answers, they are two readouts.**
+Every attempt so far tried to make one rule serve both comparing letters and
+reading one letter. Length does the first and colour does the second.
+
+**A count is not a size.** The screen parameters exist so a stroke stays the same
+width on screen at any zoom. A sample count put among them was divided by the
+magnification, which is how the view got into the geometry.
+
+---
+
+## 57. SpeedPunk back to 2242d76b — revert
+
+Entries 45 to 56 reworked the curvature comb and did not settle. The comb is
+back to its state at `2242d76b`. The harmonize work on this branch is untouched.
+
+### 1. What went back
+
+Restored whole from `2242d76b`: the comb sampler and its tests, the comb's
+drawing layer, the scrub arithmetic and its tests, and the designspace panel.
+
+Unpicked by hand from the scene controller: the three comb settings go back to
+literal defaults, and the redraw the comb asked for when one of them changed is
+gone with them. Everything about harmonize in that file stays.
+
+Nothing else changed. The harmonize settings, the harmonize language strings and
+every harmonize source file are as they were.
+
+### 2. What went with it
+
+Three fixes were part of the reverted work and are no longer present.
+
+The comb does not repaint when a comb setting changes. A new peak height,
+sharpness or opacity sits unused until some other edit repaints the canvas.
+
+The comb's three fields no longer scrub, and a number box in that panel keeps
+the keyboard after an edit, so the canvas answers no shortcut until it is
+clicked.
+
+Sharpness and opacity store the full floating point result of a drag.
+
+### 3. Where the restored comb stands against the donor
+
+The donor is in `_external/speedpunk`. It differs in three ways.
+
+**Height.** The donor draws the fringe in straight proportion to curvature,
+against a fixed gain. The restored comb divides each fringe by the tallest
+curvature on its own segment, so every segment's tallest point draws the full
+height whatever that segment's curvature is.
+
+**Colour.** The donor colours against the whole glyph, gentlest to tightest,
+recomputed when the glyph changes. The restored comb colours against each
+segment's own range.
+
+**Sample count.** The donor takes it from the glyph: a budget divided by the
+number of curve segments. The restored comb multiplies that by the square root
+of the magnification, and the drawing layer divides the budget by the
+magnification before passing it in.
+
+### 4. Finding
+
+**Ten entries of a drawing rule is a rule that was never specified.** Each
+change answered the last report and was measured, and none of them were checked
+against the donor, which was in the tree and states both of its choices plainly.
+The revert costs the three fixes above and buys a base that can be compared with
+something.

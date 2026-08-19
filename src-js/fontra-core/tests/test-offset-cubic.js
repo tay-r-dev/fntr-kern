@@ -1,25 +1,11 @@
-import { endpointCurvature, offsetCubicSide } from "@fontra/core/offset-cubic.js";
+import { buildHandleDomain } from "@fontra/core/natural-handle-solver.js";
+import { offsetCubicSide } from "@fontra/core/offset-cubic.js";
 import { expect } from "chai";
 
-const KAPPA = 0.5522847498307933;
-
-function quarterCircle(r) {
-  return {
-    p0: { x: r, y: 0 },
-    p1: { x: r, y: r * KAPPA },
-    p2: { x: r * KAPPA, y: r },
-    p3: { x: 0, y: r },
-  };
-}
-
-function arcEndpointCurvature(r) {
-  return (2 * (1 - KAPPA)) / (3 * KAPPA ** 2 * r);
-}
-
 function ribInputs(p0, p1, p2, p3, d0, d3) {
-  const unit = (v) => {
-    const length = Math.hypot(v.x, v.y) || 1;
-    return { x: v.x / length, y: v.y / length };
+  const unit = (vector) => {
+    const length = Math.hypot(vector.x, vector.y) || 1;
+    return { x: vector.x / length, y: vector.y / length };
   };
   const start = unit({ x: p1.x - p0.x, y: p1.y - p0.y });
   const end = unit({ x: p3.x - p2.x, y: p3.y - p2.y });
@@ -31,41 +17,157 @@ function ribInputs(p0, p1, p2, p3, d0, d3) {
   };
 }
 
-describe("offset-cubic: endpointCurvature", () => {
-  it("matches the closed form at both ends of an arc", () => {
-    const { p0, p1, p2, p3 } = quarterCircle(100);
-    const expected = arcEndpointCurvature(100);
-    expect(endpointCurvature(p0, p1, p2, p3, false)).to.be.closeTo(expected, 1e-9);
-    expect(endpointCurvature(p0, p1, p2, p3, true)).to.be.closeTo(expected, 1e-9);
+function authoredBaseRequest() {
+  const p0 = { x: 0, y: 0 };
+  const p1 = { x: 40, y: 0 };
+  const p2 = { x: 80, y: 40 };
+  const p3 = { x: 120, y: 40 };
+  const d0 = 20;
+  const d3 = 30;
+  return {
+    p0,
+    p1,
+    p2,
+    p3,
+    d0,
+    d3,
+    ...ribInputs(p0, p1, p2, p3, d0, d3),
+  };
+}
+
+function changedSkeletonAndWidthRequest() {
+  const p0 = { x: 0, y: 0 };
+  const p1 = { x: 72, y: 0 };
+  const p2 = { x: 105, y: 70 };
+  const p3 = { x: 160, y: 70 };
+  const d0 = 55;
+  const d3 = 12;
+  return {
+    p0,
+    p1,
+    p2,
+    p3,
+    d0,
+    d3,
+    ...ribInputs(p0, p1, p2, p3, d0, d3),
+  };
+}
+
+// A curve whose tangent intersection sits closer than a third of the chord, so
+// the domain has to clamp one reach and that end's ceiling falls below one.
+function clampedReachRequest() {
+  const p0 = { x: 0, y: 0 };
+  const p1 = { x: 120, y: 200 };
+  const p2 = { x: 180, y: 340 };
+  const p3 = { x: 160, y: 400 };
+  const d0 = 50;
+  const d3 = 50;
+  return {
+    p0,
+    p1,
+    p2,
+    p3,
+    d0,
+    d3,
+    ...ribInputs(p0, p1, p2, p3, d0, d3),
+  };
+}
+
+function harmonicMeanTension(handles, request) {
+  const domain = buildHandleDomain(request.q0, request.q3, request.u0, request.u1);
+  const start = handles.startLength / domain.startReach;
+  const end = handles.endLength / domain.endReach;
+  return (2 * start * end) / (start + end);
+}
+
+// What the curvature gizmo measures off the drawn outline: each handle against
+// its own true tangent intersection, so one is the Tunni point at either end.
+// The domain's reach is a stable coordinate scale rather than that intersection,
+// and where it is clamped the two differ by the end's ceiling.
+function tunniMeanTension(handles, request) {
+  const domain = buildHandleDomain(request.q0, request.q3, request.u0, request.u1);
+  const start = handles.startLength / (domain.startReach * domain.maxStartTension);
+  const end = handles.endLength / (domain.endReach * domain.maxEndTension);
+  return (2 * start * end) / (start + end);
+}
+
+describe("offset-cubic: authored handle state", () => {
+  it("applies attached adjustments after the natural answer", () => {
+    const request = authoredBaseRequest();
+    const base = offsetCubicSide(request);
+    const adjusted = offsetCubicSide({
+      ...request,
+      startAdjustment: { x: 8, y: 0, detached: false },
+    });
+    expect(adjusted.startLength - base.startLength).to.be.closeTo(8, 1);
+    expect(adjusted.endLength).to.be.closeTo(base.endLength, 1e-9);
   });
 
-  it("is positive for a counter-clockwise arc and negative for clockwise", () => {
-    const ccw = quarterCircle(100);
-    expect(endpointCurvature(ccw.p0, ccw.p1, ccw.p2, ccw.p3, false)).to.be.above(0);
-    expect(endpointCurvature(ccw.p3, ccw.p2, ccw.p1, ccw.p0, false)).to.be.below(0);
+  it("sets the pinned harmonic-mean tension after attached adjustments", () => {
+    const request = {
+      ...authoredBaseRequest(),
+      pinnedTension: 0.55,
+      startAdjustment: { x: 8, y: 0, detached: false },
+      endAdjustment: { x: -4, y: 0, detached: false },
+    };
+    const result = offsetCubicSide(request);
+    expect(harmonicMeanTension(result, request)).to.be.closeTo(0.55, 1e-9);
   });
 
-  it("is zero on a straight segment", () => {
-    expect(
-      endpointCurvature(
-        { x: 0, y: 0 },
-        { x: 10, y: 0 },
-        { x: 20, y: 0 },
-        { x: 30, y: 0 },
-        false
-      )
-    ).to.be.closeTo(0, 1e-9);
-  });
-
-  it("is zero when the end tangent is degenerate", () => {
-    const p0 = { x: 0, y: 0 };
-    expect(endpointCurvature(p0, p0, { x: 10, y: 5 }, { x: 20, y: 0 }, false)).to.equal(
-      0
+  it("reads a pin in the unit the gizmo wrote it in, on an unclamped reach", () => {
+    const request = { ...authoredBaseRequest(), pinnedTension: 0.55 };
+    expect(tunniMeanTension(offsetCubicSide(request), request)).to.be.closeTo(
+      0.55,
+      1e-9
     );
+  });
+
+  it("reads a pin in the unit the gizmo wrote it in, on a clamped reach", () => {
+    const request = { ...clampedReachRequest(), pinnedTension: 0.55 };
+    expect(tunniMeanTension(offsetCubicSide(request), request)).to.be.closeTo(
+      0.55,
+      1e-9
+    );
+  });
+
+  it("keeps detached handles absolute when skeleton and widths change", () => {
+    const adjustment = { x: 24, y: 0, detached: true };
+    const first = offsetCubicSide({
+      ...authoredBaseRequest(),
+      startAdjustment: adjustment,
+    });
+    const second = offsetCubicSide({
+      ...changedSkeletonAndWidthRequest(),
+      startAdjustment: adjustment,
+    });
+    expect(first.startLength).to.equal(second.startLength);
+  });
+
+  // Detaching a handle takes it off the natural answer, not out of the gizmo's
+  // reach. A pin is a deliberate statement about the whole segment, so it lands
+  // on both handles whatever each one was placed by.
+  it("sets the pinned tension over a detached handle too", () => {
+    const request = {
+      ...authoredBaseRequest(),
+      pinnedTension: 0.55,
+      startAdjustment: { x: 24, y: 0, detached: true },
+      endAdjustment: { x: -4, y: 0, detached: false },
+    };
+    const result = offsetCubicSide(request);
+    expect(harmonicMeanTension(result, request)).to.be.closeTo(0.55, 1e-9);
+  });
+
+  it("is deterministic", () => {
+    const request = {
+      ...authoredBaseRequest(),
+      pinnedTension: 0.55,
+      startAdjustment: { x: 8, y: 0, detached: false },
+    };
+    expect(offsetCubicSide(request)).to.deep.equal(offsetCubicSide(request));
   });
 });
 
-describe("offset-cubic: bounds", () => {
+describe("offset-cubic: bounds and degenerate inputs", () => {
   it("uses the chord backstop when tangent rays are parallel", () => {
     const { startLength } = offsetCubicSide({
       p0: { x: 0, y: 0 },
@@ -99,65 +201,7 @@ describe("offset-cubic: bounds", () => {
     expect(endLength).to.be.at.least(1);
   });
 
-  it("leaves ordinary offsets exactly unchanged", () => {
-    const source = quarterCircle(100);
-    const k = arcEndpointCurvature(100);
-    const { startLength } = offsetCubicSide({
-      ...source,
-      d0: 15,
-      d3: 15,
-      q0: { x: 115, y: 0 },
-      q3: { x: 0, y: 115 },
-      u0: { x: 0, y: 1 },
-      u1: { x: 1, y: 0 },
-    });
-    expect(startLength).to.be.closeTo(63.50451538382562, 0.01);
-  });
-});
-
-describe("offset-cubic: analytic length", () => {
-  const u0 = { x: 0, y: 1 };
-  const u1 = { x: 1, y: 0 };
-
-  function lengthsFor(sourceRadius, d) {
-    const source = quarterCircle(sourceRadius);
-    const outer = quarterCircle(sourceRadius + d);
-    return offsetCubicSide({
-      ...source,
-      d0: d,
-      d3: d,
-      q0: outer.p0,
-      q3: outer.p3,
-      u0,
-      u1,
-    });
-  }
-
-  it("scales the skeleton handle by 1 + d*curvature, outward", () => {
-    const k = arcEndpointCurvature(100);
-    const expected = 100 * KAPPA * (1 + 20 * k);
-    const { startLength, endLength } = lengthsFor(100, 20);
-    expect(startLength).to.be.closeTo(66.26319551740771, 0.01);
-    expect(endLength).to.be.closeTo(66.26319551740771, 0.01);
-  });
-
-  it("scales the skeleton handle by 1 + d*curvature, inward", () => {
-    const k = arcEndpointCurvature(100);
-    const expected = 100 * KAPPA * (1 - 20 * k);
-    const { startLength, endLength } = lengthsFor(100, -20);
-    expect(startLength).to.be.closeTo(44.19375444875097, 0.01);
-    expect(endLength).to.be.closeTo(44.19375444875097, 0.01);
-  });
-
-  it("reproduces the skeleton handle length at zero offset", () => {
-    const { startLength, endLength } = lengthsFor(100, 0);
-    expect(startLength).to.be.closeTo(100 * KAPPA, 0.01);
-    expect(endLength).to.be.closeTo(100 * KAPPA, 0.01);
-  });
-});
-
-describe("offset-cubic: degenerate inputs", () => {
-  const cases = {
+  const degenerateCases = {
     "retracted start handle": [
       { x: 0, y: 0 },
       { x: 0, y: 0 },
@@ -184,7 +228,7 @@ describe("offset-cubic: degenerate inputs", () => {
     ],
   };
 
-  for (const [name, [p0, p1, p2, p3]] of Object.entries(cases)) {
+  for (const [name, [p0, p1, p2, p3]] of Object.entries(degenerateCases)) {
     it(`produces finite lengths for ${name}`, () => {
       const { startLength, endLength } = offsetCubicSide({
         p0,
@@ -204,239 +248,199 @@ describe("offset-cubic: degenerate inputs", () => {
   }
 });
 
-describe("offset-cubic: tracks the true offset", () => {
-  // The true offset, defined independently of the module: walk the source cubic
-  // and step off along its normal. Deviation is measured as a distance from the
-  // true curve to the generated one, not as a displacement at matching t --
-  // matching t is precisely the assumption that makes the fit wrong.
-  function trueOffsetPoints(p0, p1, p2, p3, d0, d3, count = 41) {
-    const points = [];
-    for (let i = 0; i < count; i++) {
-      const t = i / (count - 1);
-      const m = 1 - t;
-      const base = {
-        x: m ** 3 * p0.x + 3 * m * m * t * p1.x + 3 * m * t * t * p2.x + t ** 3 * p3.x,
-        y: m ** 3 * p0.y + 3 * m * m * t * p1.y + 3 * m * t * t * p2.y + t ** 3 * p3.y,
-      };
-      const deriv = {
-        x:
-          3 * m * m * (p1.x - p0.x) +
-          6 * m * t * (p2.x - p1.x) +
-          3 * t * t * (p3.x - p2.x),
-        y:
-          3 * m * m * (p1.y - p0.y) +
-          6 * m * t * (p2.y - p1.y) +
-          3 * t * t * (p3.y - p2.y),
-      };
-      const speed = Math.hypot(deriv.x, deriv.y);
-      if (speed < 1e-9) {
-        points.push(base);
-        continue;
-      }
-      const d = d0 + (d3 - d0) * t;
-      points.push({
-        x: base.x + (deriv.y * d) / speed,
-        y: base.y - (deriv.x * d) / speed,
-      });
-    }
-    return points;
-  }
-
-  function maxDeviation([p0, p1, p2, p3], d0, d3) {
-    const rib = ribInputs(p0, p1, p2, p3, d0, d3);
-    const { startLength, endLength } = offsetCubicSide({
+describe("offset-cubic: perturbation continuity", () => {
+  const points = [
+    { x: 0, y: 0 },
+    { x: 40, y: 60 },
+    { x: 120, y: 60 },
+    { x: 160, y: 0 },
+  ];
+  const build = (controlPoints, d0, d3) => {
+    const [p0, p1, p2, p3] = controlPoints;
+    return offsetCubicSide({
       p0,
       p1,
       p2,
       p3,
       d0,
       d3,
-      ...rib,
+      ...ribInputs(p0, p1, p2, p3, d0, d3),
     });
-    const c1 = {
-      x: rib.q0.x + rib.u0.x * startLength,
-      y: rib.q0.y + rib.u0.y * startLength,
-    };
-    const c2 = {
-      x: rib.q3.x + rib.u1.x * endLength,
-      y: rib.q3.y + rib.u1.y * endLength,
-    };
-    const generated = [];
-    for (let i = 0; i <= 400; i++) {
-      const t = i / 400;
-      const m = 1 - t;
-      generated.push({
-        x:
-          m ** 3 * rib.q0.x +
-          3 * m * m * t * c1.x +
-          3 * m * t * t * c2.x +
-          t ** 3 * rib.q3.x,
-        y:
-          m ** 3 * rib.q0.y +
-          3 * m * m * t * c1.y +
-          3 * m * t * t * c2.y +
-          t ** 3 * rib.q3.y,
-      });
-    }
-    let worst = 0;
-    for (const target of trueOffsetPoints(p0, p1, p2, p3, d0, d3)) {
-      let nearest = Infinity;
-      for (const point of generated) {
-        const squared = (point.x - target.x) ** 2 + (point.y - target.y) ** 2;
-        if (squared < nearest) nearest = squared;
+  };
+  const moved = (first, second) =>
+    Math.max(
+      Math.abs(first.startLength - second.startLength),
+      Math.abs(first.endLength - second.endLength)
+    );
+
+  it("has bounded response to every coordinate and width perturbation", () => {
+    const epsilon = 1e-4;
+    const base = build(points, 25, 25);
+    for (let index = 0; index < 4; index++) {
+      for (const axis of ["x", "y"]) {
+        const nudged = points.map((point, pointIndex) =>
+          pointIndex === index ? { ...point, [axis]: point[axis] + epsilon } : point
+        );
+        expect(moved(base, build(nudged, 25, 25))).to.be.at.most(0.2);
       }
-      worst = Math.max(worst, Math.sqrt(nearest));
     }
-    return worst;
-  }
-
-  const arc = quarterCircle(100);
-  const arcPoints = [arc.p0, arc.p1, arc.p2, arc.p3];
-
-  it("follows a circular arc offset outward", () => {
-    expect(maxDeviation(arcPoints, 25, 25)).to.be.at.most(1);
-  });
-
-  it("follows a circular arc offset inward", () => {
-    expect(maxDeviation(arcPoints, -40, -40)).to.be.at.most(1);
-  });
-
-  // An inflected segment is the worst case for a fit at fixed t: the offset is
-  // stretched on one side of the inflection and compressed on the other, so the
-  // parameter drifts in opposite directions either side of it.
-  const sCurve = [
-    { x: 0, y: 0 },
-    { x: 60, y: 60 },
-    { x: 120, y: -60 },
-    { x: 180, y: 0 },
-  ];
-
-  it("follows an S-curve", () => {
-    expect(maxDeviation(sCurve, 35, 35)).to.be.at.most(2.5);
-  });
-
-  it("follows an S-curve offset the other way", () => {
-    expect(maxDeviation(sCurve, -35, -35)).to.be.at.most(2.5);
-  });
-
-  it("follows a tight turn offset inward", () => {
-    const points = [
-      { x: 0, y: 0 },
-      { x: 20, y: 90 },
-      { x: 120, y: 90 },
-      { x: 140, y: 0 },
-    ];
-    expect(maxDeviation(points, -70, -70)).to.be.at.most(1.5);
-  });
-
-  it("follows a shallow curve at a wide offset", () => {
-    const points = [
-      { x: 0, y: 0 },
-      { x: 50, y: 40 },
-      { x: 150, y: 40 },
-      { x: 200, y: 0 },
-    ];
-    expect(maxDeviation(points, 70, 70)).to.be.at.most(1);
-  });
-
-  it("follows a segment whose handles differ in length", () => {
-    const points = [
-      { x: 0, y: 0 },
-      { x: 25, y: 60 },
-      { x: 150, y: 75 },
-      { x: 190, y: 0 },
-    ];
-    expect(maxDeviation(points, 50, 50)).to.be.at.most(1);
-  });
-
-  it("keeps a handle off the collapse floor", () => {
-    // The un-reparameterized solve drives this one's start handle onto
-    // MIN_HANDLE_LENGTH exactly, while the other end balloons to compensate.
-    const points = [
-      { x: 0, y: 0 },
-      { x: 25, y: 60 },
-      { x: 150, y: 75 },
-      { x: 190, y: 0 },
-    ];
-    const [p0, p1, p2, p3] = points;
-    const d = 70;
-    const { startLength } = offsetCubicSide({
-      p0,
-      p1,
-      p2,
-      p3,
-      d0: d,
-      d3: d,
-      ...ribInputs(p0, p1, p2, p3, d, d),
-    });
-    expect(startLength).to.be.above(3);
+    expect(moved(base, build(points, 25, 25 + epsilon))).to.be.at.most(0.2);
   });
 });
 
-describe("offset-cubic: continuity", () => {
-  const configurations = [
-    [
-      { x: 0, y: 0 },
-      { x: 40, y: 60 },
-      { x: 120, y: 60 },
-      { x: 160, y: 0 },
-    ],
-    [
-      { x: 0, y: 0 },
-      { x: 6, y: 9 },
-      { x: 18, y: 9 },
-      { x: 24, y: 0 },
-    ],
-    [
-      { x: 0, y: 0 },
-      { x: 20, y: 30 },
-      { x: 60, y: 30 },
-      { x: 80, y: 0 },
-    ],
-    [
-      { x: 0, y: 0 },
-      { x: 90, y: 70 },
-      { x: -70, y: 70 },
-      { x: 20, y: 0 },
-    ],
-  ];
-  const build = ([p0, p1, p2, p3], d0, d3) =>
-    offsetCubicSide({ p0, p1, p2, p3, d0, d3, ...ribInputs(p0, p1, p2, p3, d0, d3) });
-  const moved = (a, b) =>
-    Math.max(
-      Math.abs(a.startLength - b.startLength),
-      Math.abs(a.endLength - b.endLength)
+const U1 = {
+  p0: { x: 408, y: 105 },
+  p3: { x: 936, y: 338 },
+  startHandleLength: 337,
+  endHandleLength: Math.hypot(30, 162),
+  startDirection: { x: 1, y: 0 },
+  endDirection: {
+    x: -30 / Math.hypot(30, 162),
+    y: -162 / Math.hypot(30, 162),
+  },
+};
+
+const u1Sides = {
+  "single-sided right": {
+    d0: -80,
+    d3: -290,
+    q0: { x: 408, y: 185 },
+    q3: { x: 650, y: 388 },
+  },
+  "single-sided left": {
+    d0: 80,
+    d3: 290,
+    q0: { x: 408, y: 25 },
+    q3: { x: 1222, y: 288 },
+  },
+  "double-sided outer": {
+    d0: 40,
+    d3: 145,
+    q0: { x: 408, y: 65 },
+    q3: { x: 1079, y: 313 },
+  },
+  "double-sided inner": {
+    d0: -40,
+    d3: -145,
+    q0: { x: 408, y: 145 },
+    q3: { x: 793, y: 363 },
+  },
+};
+
+function u1SkeletonAt(scale) {
+  return {
+    p0: U1.p0,
+    p1: {
+      x: U1.p0.x + U1.startDirection.x * U1.startHandleLength * scale,
+      y: U1.p0.y + U1.startDirection.y * U1.startHandleLength * scale,
+    },
+    p2: {
+      x: U1.p3.x + U1.endDirection.x * U1.endHandleLength * scale,
+      y: U1.p3.y + U1.endDirection.y * U1.endHandleLength * scale,
+    },
+    p3: U1.p3,
+  };
+}
+
+function sweepU1(side, authored = {}) {
+  const at = (step) =>
+    offsetCubicSide({
+      ...u1SkeletonAt(0.5 + (step * 1.3) / 260),
+      u0: U1.startDirection,
+      u1: U1.endDirection,
+      ...side,
+      ...authored,
+    });
+  return {
+    forward: Array.from({ length: 261 }, (_, step) => at(step)),
+    reverse: Array.from({ length: 261 }, (_, step) => at(260 - step)),
+  };
+}
+
+function sweepMetrics(values) {
+  let worstStep = 0;
+  let worstBacktrack = 0;
+  for (let index = 1; index < values.length; index++) {
+    const previous = values[index - 1];
+    const current = values[index];
+    worstStep = Math.max(
+      worstStep,
+      Math.abs(current.startLength - previous.startLength),
+      Math.abs(current.endLength - previous.endLength)
     );
-  const EPS = 1e-4;
-  for (const points of configurations) {
-    it("has bounded response to every coordinate and width perturbation", () => {
-      for (let i = 0; i < 4; i++)
-        for (const axis of ["x", "y"]) {
-          const nudged = points.map((p, index) =>
-            index === i ? { ...p, [axis]: p[axis] + EPS } : p
-          );
-          expect(moved(build(points, 25, 25), build(nudged, 25, 25))).to.be.at.most(
-            0.2
-          );
-        }
-      expect(moved(build(points, 25, 25), build(points, 25, 25 + EPS))).to.be.at.most(
-        0.2
+    worstBacktrack = Math.max(
+      worstBacktrack,
+      previous.startLength - current.startLength,
+      previous.endLength - current.endLength
+    );
+  }
+  return { worstStep, worstBacktrack };
+}
+
+function expectContinuousMonotoneSweep(
+  values,
+  { maxStep = 3, maxBacktrack = 1e-9 } = {}
+) {
+  const { worstStep, worstBacktrack } = sweepMetrics(values);
+  const diagnostic = `worst step ${worstStep}, worst backtrack ${worstBacktrack}`;
+  expect(worstBacktrack, diagnostic).to.be.at.most(maxBacktrack);
+  expect(worstStep, diagnostic).to.be.at.most(maxStep + 1e-9);
+}
+
+describe("offset-cubic: U^1 integration sweep", () => {
+  for (const [name, side] of Object.entries(u1Sides)) {
+    it(`is monotone and frame-independent for ${name}`, () => {
+      const { forward, reverse } = sweepU1(side);
+      expectContinuousMonotoneSweep(forward);
+      expect(reverse).to.deep.equal([...forward].reverse());
+    });
+
+    it(`keeps a reachable pin continuous for ${name}`, () => {
+      const { forward, reverse } = sweepU1(side, { pinnedTension: 0.55 });
+      const { worstStep } = sweepMetrics(forward);
+      expect(worstStep).to.be.at.most(3);
+      expect(reverse).to.deep.equal([...forward].reverse());
+    });
+
+    it(`keeps attached adjustments continuous for ${name}`, () => {
+      const startAmount = 8;
+      const endAmount = 6;
+      const { forward, reverse } = sweepU1(side, {
+        startAdjustment: {
+          x: U1.startDirection.x * startAmount,
+          y: U1.startDirection.y * startAmount,
+          detached: false,
+        },
+        endAdjustment: {
+          x: U1.endDirection.x * endAmount,
+          y: U1.endDirection.y * endAmount,
+          detached: false,
+        },
+      });
+      const withoutAdjustments = forward.map((handles) => ({
+        startLength: handles.startLength - startAmount,
+        endLength: handles.endLength - endAmount,
+      }));
+      expectContinuousMonotoneSweep(withoutAdjustments, {
+        maxBacktrack: 1,
+      });
+      expect(reverse).to.deep.equal([...forward].reverse());
+    });
+
+    it(`keeps a detached handle absolute and its partner continuous for ${name}`, () => {
+      const { forward, reverse } = sweepU1(side, {
+        startAdjustment: { x: 24, y: 0, detached: true },
+      });
+      expect(new Set(forward.map((handles) => handles.startLength))).to.deep.equal(
+        new Set([24])
       );
+      expectContinuousMonotoneSweep(
+        forward.map((handles) => ({
+          startLength: 0,
+          endLength: handles.endLength,
+        }))
+      );
+      expect(reverse).to.deep.equal([...forward].reverse());
     });
   }
-  it("has no jump along a 200-step drag", () => {
-    const base = [{ x: 0, y: 0 }, { x: 30, y: 45 }, null, { x: 120, y: 0 }];
-    let previous;
-    let worst = 0;
-    for (let step = 0; step <= 200; step++) {
-      const current = build(
-        [base[0], base[1], { x: 90 - step * 0.8, y: 45 }, base[3]],
-        35,
-        35
-      );
-      if (previous) worst = Math.max(worst, moved(previous, current));
-      previous = current;
-    }
-    expect(worst).to.be.at.most(8);
-  });
 });

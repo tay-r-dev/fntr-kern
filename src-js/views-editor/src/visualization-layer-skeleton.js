@@ -9,6 +9,7 @@ import {
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
   formatGeneratedCurvature,
+  generatedSegmentHandleAxes,
   getGeneratedSegmentCurvature,
   getSkeletonData,
   getSkeletonHandleOffset,
@@ -695,7 +696,10 @@ registerVisualizationLayerDefinition({
     // curve swells in, and without it the node looks free to go anywhere.
     for (const segment of segments) {
       const anchor = calculateCurvatureGizmoPoint(segment.points);
-      const axis = calculateCurvatureGizmoAxis(segment.points);
+      const axis = calculateCurvatureGizmoAxis(
+        segment.points,
+        generatedSegmentHandleAxes(segment.provenance)
+      );
       if (anchor && axis) {
         strokeLine(
           context,
@@ -915,5 +919,57 @@ registerVisualizationLayerDefinition({
         }
       }
     }
+  },
+});
+
+// The skeleton is not in the glyph path, so "fontra.point.index" cannot see it.
+// This layer counts the skeleton's own points, in its own run: one sequence
+// across every skeleton contour, on-curves and handles alike, starting at 0.
+// The numbers are deliberately unrelated to the path point indices.
+registerVisualizationLayerDefinition({
+  identifier: "fontra.skeleton.point-index",
+  name: "sidebar.user-settings.glyph.skeleton.point.index",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: false,
+  zIndex: 600,
+  screenParameters: { fontSize: 10 },
+  colors: { boxColor: "#FFFB", color: "#000" },
+  colorsDarkMode: { boxColor: "#1118", color: "#FFF" },
+  draw: (context, positionedGlyph, parameters, model) => {
+    const { selected } = getSkeletonPointSelectionSets(model);
+    if (!selected.size) {
+      return;
+    }
+
+    const fontSize = parameters.fontSize;
+    const margin = 0.2 * fontSize;
+    const boxHeight = (1.68 * fontSize) / 2;
+    const bottomY = -0.75 * fontSize * 2;
+
+    context.font = `${fontSize}px fontra-ui-regular, sans-serif`;
+    context.textAlign = "center";
+    context.scale(1, -1);
+
+    let pointIndex = 0;
+    forEachSkeletonContour(positionedGlyph, model, (contour) => {
+      for (const point of contour.points) {
+        const index = pointIndex++;
+        if (!selected.has(`${contour.id}/${point.id}`)) {
+          continue;
+        }
+        const label = `${index}`;
+        const width = context.measureText(label).width + 2 * margin;
+        context.fillStyle = parameters.boxColor;
+        context.fillRect(
+          point.x - width / 2,
+          -point.y - bottomY + margin,
+          width,
+          -boxHeight - 2 * margin
+        );
+        context.fillStyle = parameters.color;
+        context.fillText(label, point.x, -point.y - bottomY);
+      }
+    });
   },
 });

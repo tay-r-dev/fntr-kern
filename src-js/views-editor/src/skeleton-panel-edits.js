@@ -1,33 +1,50 @@
-// editSkeleton-backed edit operations for the skeleton parameters panel. This
-// module is the panel's ONLY write path: every function folds one editSkeleton
+// editSkeleton-backed edit operations for the skeleton parameters panel, and
+// for the handful of contour commands the context menu offers. This module is
+// their ONLY write path: every function folds one editSkeleton
 // mutation across all editable layers into a single undo item. It never calls
 // setSkeletonData/regenerateSkeletonContours directly and never recovers
 // generated geometry (Global Constraints).
 
 import { ChangeCollector } from "@fontra/core/changes.js";
-import { generateFromSkeleton } from "@fontra/core/skeleton-generator.js";
+import { isScrubCancelled } from "@fontra/core/number-scrub.js";
+import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
 import {
+  SERIF_HALF_DEFAULTS,
+  generateFromSkeleton,
+} from "@fontra/core/skeleton-generator.js";
+import {
+  DEFAULT_SERIF_PRESET,
+  applySerifPreset,
+  clearSkeletonSegmentCurvatureForHandle,
+  findGeneratedOutputPosition,
   findGeneratedPathAddress,
   getSkeletonData,
   getSkeletonHandleOffset,
   getSkeletonHandleOffsetKey,
+  getSkeletonPointHalfWidth,
+  getSkeletonPointWidth,
+  harmonizeSkeletonPoints,
   isSkeletonSideLocked,
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
   resetSkeletonEditableRibHandles,
   setSkeletonCapParameters,
   setSkeletonContourDefaultWidth,
+  setSkeletonContourReversed,
   setSkeletonContourSingleSided,
   setSkeletonCornerParameters,
   setSkeletonData,
   setSkeletonHandleDetached,
   setSkeletonHandleOffset,
-  setSkeletonPointSideWidth,
+  setSkeletonPointRibAngleLock,
+  setSkeletonPointWidthFromSide,
   setSkeletonPointTotalWidth,
   setSkeletonPointWidthDistribution,
   setSkeletonPointWidthLinked,
   setSkeletonPointWidthTied,
+  setSkeletonSerifParameters,
   setSkeletonSideLocked,
+  splitSkeletonContourAtPoint,
 } from "@fontra/core/skeleton-model.js";
 import {
   editSkeleton,
@@ -164,9 +181,7 @@ export async function setPanelPointSideWidth(
     sceneController,
     pointAddresses,
     (point, _address, { defaultWidth }) => {
-      setSkeletonPointSideWidth(point, defaultWidth, side, value, {
-        linked: point?.width?.linked !== false,
-      });
+      setSkeletonPointWidthFromSide(point, defaultWidth, side, value);
     },
     undoLabel
   );
@@ -204,23 +219,15 @@ export async function setPanelPointDistribution(
   );
 }
 
-// Streaming variant of setPanelPointDistribution: applies slider values to the
-// canvas as they arrive (throttled), while producing exactly ONE undo record
-// spanning the whole drag. Every tick restores the pre-drag layer state and
-// re-applies from there, so the last recorded change IS original -> final.
-// Stream a slider's values onto the selected points in realtime: snapshot the
-// layers, then per throttled tick restore the snapshot and re-apply the
-// current value, so the drag lands as ONE undo record (1.2.2 recipe).
-export async function setPanelPointValuesStream(
-  sceneController,
-  pointAddresses,
-  valueStream,
-  applyToPoint,
-  undoLabel
-) {
-  if (!pointAddresses.length) {
-    return null;
-  }
+// The one streaming edit. Applies a live drag's values to the canvas as they
+// arrive (throttled) while producing exactly ONE undo record spanning the whole
+// drag: every tick restores the pre-drag layer state and re-applies from there,
+// so the last recorded change IS original -> final (1.2.2 recipe). Restoring
+// first is also what lets a RELATIVE drag work — a nudge or a scale re-reads the
+// same starting numbers each frame instead of compounding on its own output.
+//
+// Points and contours both ride on this; only the mutator differs.
+async function streamOntoSkeleton(sceneController, valueStream, mutate, undoLabel) {
   const THROTTLE_MS = 32;
   return await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
     const editingLayers = sceneController.getEditingLayerFromGlyphLayers(glyph.layers);
@@ -250,18 +257,7 @@ export async function setPanelPointValuesStream(
       const allChanges = [];
       for (const [layerName, layerGlyph] of entries) {
         const changes = editSkeleton(layerGlyph, (working) => {
-          for (const address of pointAddresses) {
-            const resolved = resolveSkeletonAddressAcrossLayers(
-              referenceSkeletonData,
-              working,
-              address.contourId,
-              address.pointId
-            );
-            if (!resolved || resolved.point.type) {
-              continue;
-            }
-            applyToPoint(resolved.point, resolved.contour, value);
-          }
+          mutate(working, referenceSkeletonData, value);
         });
         allChanges.push(changes.prefixed(["layers", layerName, "glyph"]));
       }
@@ -272,7 +268,12 @@ export async function setPanelPointValuesStream(
     let lastApplied = null;
     let lastCollector = null;
     let lastTime = 0;
+    let cancelled = false;
     for await (const value of valueStream) {
+      if (isScrubCancelled(value)) {
+        cancelled = true;
+        break;
+      }
       lastValue = value;
       const now = Date.now();
       if (now - lastTime < THROTTLE_MS) {
@@ -285,6 +286,16 @@ export async function setPanelPointValuesStream(
       await sendIncrementalChange(lastCollector.change, true);
     }
 
+    // Abandoned: put the shape back where the drag found it and record nothing.
+    // Returning no changes is what makes it not an undo step — the same ending
+    // a drag that never crossed the dead zone already had.
+    if (cancelled) {
+      if (lastCollector) {
+        restoreOriginals();
+        await sendIncrementalChange(lastCollector.rollbackChange);
+      }
+      return;
+    }
     if (lastValue === null) {
       return;
     }
@@ -295,6 +306,67 @@ export async function setPanelPointValuesStream(
     await sendIncrementalChange(lastCollector.change);
     return { changes: lastCollector, undoLabel, broadcast: true };
   }, SKELETON_PANEL_SENDER);
+}
+
+export async function setPanelPointValuesStream(
+  sceneController,
+  pointAddresses,
+  valueStream,
+  applyToPoint,
+  undoLabel
+) {
+  if (!pointAddresses.length) {
+    return null;
+  }
+  return streamOntoSkeleton(
+    sceneController,
+    valueStream,
+    (working, reference, value) => {
+      for (const address of pointAddresses) {
+        const resolved = resolveSkeletonAddressAcrossLayers(
+          reference,
+          working,
+          address.contourId,
+          address.pointId
+        );
+        if (!resolved || resolved.point.type) {
+          continue;
+        }
+        applyToPoint(resolved.point, resolved.contour, value);
+      }
+    },
+    undoLabel
+  );
+}
+
+export async function setPanelContourValuesStream(
+  sceneController,
+  contourAddresses,
+  valueStream,
+  applyToContour,
+  undoLabel
+) {
+  if (!contourAddresses.length) {
+    return null;
+  }
+  return streamOntoSkeleton(
+    sceneController,
+    valueStream,
+    (working, reference, value) => {
+      for (const address of contourAddresses) {
+        const contour = resolveContourAcrossLayers(
+          reference,
+          working,
+          address.contourId
+        );
+        if (!contour) {
+          continue;
+        }
+        applyToContour(contour, value);
+      }
+    },
+    undoLabel
+  );
 }
 
 export async function setPanelPointDistributionStream(
@@ -346,28 +418,143 @@ export async function setPanelPointTied(
   );
 }
 
-// Scale effective widths by `factor`, keeping a minimum total width of 2.
+// ---- Scrubbing: move by a change rather than set to a value -----------------
+//
+// Dragging a field's label sends the CHANGE from where the drag started, not a
+// value. Adding that change to each point's own number is what keeps a mixed
+// selection mixed: a 40 and a 60 dragged up by 10 become a 50 and a 70, where
+// setting them both would collapse the difference with no warning.
+//
+// All of these are relative, so they MUST run through the streaming helper,
+// which restores the pre-drag skeleton before every frame. Applied to their own
+// output instead they would compound and run away within a single drag.
+
+export async function nudgePanelPointWidthStream(
+  sceneController,
+  pointAddresses,
+  side,
+  valueStream,
+  undoLabel
+) {
+  return setPanelPointValuesStream(
+    sceneController,
+    pointAddresses,
+    valueStream,
+    (point, contour, change) => moveOnePointWidth(point, contour, side, added(change)),
+    undoLabel
+  );
+}
+
+// Both ways of changing a width land here. A scrub adds to what the point
+// holds; the multiply beside it scales what the point holds. The only
+// difference is the arithmetic, so it is the argument.
+function moveOnePointWidth(point, contour, side, next) {
+  const defaultWidth = contour.defaultWidth;
+  if (side === "total") {
+    setSkeletonPointTotalWidth(
+      point,
+      defaultWidth,
+      next(getSkeletonPointWidth(point, defaultWidth))
+    );
+    return;
+  }
+  setSkeletonPointWidthFromSide(
+    point,
+    defaultWidth,
+    side,
+    next(getSkeletonPointHalfWidth(point, defaultWidth, side))
+  );
+}
+
+const added = (amount) => (current) => current + Number(amount);
+const scaled = (amount) => (current) => Math.round(current * Number(amount));
+
 export async function scalePanelPointWidth(
   sceneController,
   pointAddresses,
+  side,
   factor,
   undoLabel
 ) {
   return editSelectedSkeletonPoints(
     sceneController,
     pointAddresses,
-    (point, _address, { defaultWidth }) => {
-      const width = point.width || {};
-      const left = Math.max(0, (width.left ?? defaultWidth / 2) * factor);
-      const right = Math.max(0, (width.right ?? defaultWidth / 2) * factor);
-      const total = Math.max(2, left + right);
-      const scale = left + right > 0 ? total / (left + right) : 1;
-      point.width = {
-        left: Math.round(left * scale),
-        right: Math.round(right * scale),
-        linked: width.linked !== false,
-      };
-    },
+    (point, _address, { contour }) =>
+      moveOnePointWidth(point, contour, side, scaled(factor)),
+    undoLabel
+  );
+}
+
+export async function nudgePanelContourDefaultWidthStream(
+  sceneController,
+  contourAddresses,
+  valueStream,
+  undoLabel
+) {
+  return setPanelContourValuesStream(
+    sceneController,
+    contourAddresses,
+    valueStream,
+    (contour, change) =>
+      setSkeletonContourDefaultWidth(contour, added(change)(contour.defaultWidth ?? 0)),
+    undoLabel
+  );
+}
+
+export async function scalePanelContourDefaultWidth(
+  sceneController,
+  contourAddresses,
+  factor,
+  undoLabel
+) {
+  return editSelectedSkeletonContours(
+    sceneController,
+    contourAddresses,
+    (contour) =>
+      setSkeletonContourDefaultWidth(
+        contour,
+        scaled(factor)(contour.defaultWidth ?? 0)
+      ),
+    undoLabel
+  );
+}
+
+export async function nudgePanelCapParameterStream(
+  sceneController,
+  pointAddresses,
+  field,
+  valueStream,
+  undoLabel
+) {
+  return setPanelPointValuesStream(
+    sceneController,
+    pointAddresses,
+    valueStream,
+    (point, _contour, change) => moveOnePointCapParameter(point, field, added(change)),
+    undoLabel
+  );
+}
+
+// A cap parameter the point does not store is inheriting, and there is no
+// resolved value to move away from here. Treat the change as starting from zero
+// rather than pinning the point to a default it never chose.
+function moveOnePointCapParameter(point, field, next) {
+  setSkeletonCapParameters(point, {
+    [field]: next(Number.isFinite(point[field]) ? point[field] : 0),
+  });
+}
+
+export async function scalePanelCapParameter(
+  sceneController,
+  pointAddresses,
+  field,
+  factor,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point) => moveOnePointCapParameter(point, field, scaled(factor)),
     undoLabel
   );
 }
@@ -410,6 +597,119 @@ export async function setPanelContourSingleSided(
     contourAddresses,
     (contour) => {
       setSkeletonContourSingleSided(contour, sideOrNull);
+    },
+    undoLabel
+  );
+}
+
+// Split every selected point's contour there, from the context menu.
+//
+// Two things make this different from an ordinary contour edit. Ids are resolved
+// for ALL of the selected points before anything is cut, because a cut changes
+// the structure the cross-layer resolver reads. And each point is then found by
+// its own id rather than through the contour it started in: cutting a contour
+// twice moves the second point onto the new half, which carries a different
+// contour id.
+export async function splitPanelSkeletonContours(
+  sceneController,
+  pointAddresses,
+  undoLabel
+) {
+  if (!pointAddresses.length) {
+    return null;
+  }
+  return await runSkeletonPanelEdit(
+    sceneController,
+    undoLabel,
+    (working, reference) => {
+      const pointIds = [];
+      for (const address of pointAddresses) {
+        const resolved = resolveSkeletonAddressAcrossLayers(
+          reference,
+          working,
+          address.contourId,
+          address.pointId
+        );
+        if (resolved && !resolved.point.type) {
+          pointIds.push(resolved.point.id);
+        }
+      }
+      for (const pointId of pointIds) {
+        const contour = working.contours.find((candidate) =>
+          candidate.points.some((point) => point.id === pointId)
+        );
+        if (contour) {
+          splitSkeletonContourAtPoint(working, contour.id, pointId);
+        }
+      }
+    }
+  );
+}
+
+// Harmonize, for a skeleton. The centerline is an ordinary path and carries its
+// own smooth flags, so the ordinary pass applies to it unchanged. It goes
+// through this module because moving a centerline point changes generated
+// geometry, so it owes the same one write path every other skeleton edit takes.
+//
+// Every editable layer is recomputed from its own handles rather than taking
+// one layer's correction, because the other sources have different handles and
+// therefore a different target.
+//
+// Returns a Map of layer name -> report entries, matching the ordinary path's
+// harmonize, so one caller can present either. Only the edit layer reports:
+// structure is shared across compatible layers, so every layer reaches the same
+// verdict on the same point, and the numbers behind it are the edit layer's.
+export async function harmonizePanelSkeletonPoints(
+  sceneController,
+  pointAddresses,
+  options,
+  undoLabel
+) {
+  if (!pointAddresses.length) {
+    return new Map();
+  }
+  const reports = new Map();
+  await runSkeletonPanelEdit(
+    sceneController,
+    undoLabel,
+    (working, reference, isEditLayer) => {
+      const pointKeys = new Set();
+      for (const address of pointAddresses) {
+        const resolved = resolveSkeletonAddressAcrossLayers(
+          reference,
+          working,
+          address.contourId,
+          address.pointId
+        );
+        if (resolved) {
+          pointKeys.add(`${resolved.contour.id}/${resolved.point.id}`);
+        }
+      }
+      const report = harmonizeSkeletonPoints(working, pointKeys, options);
+      if (isEditLayer) {
+        reports.set(sceneController.sceneSettings?.editLayerName, report);
+      }
+    }
+  );
+  return reports;
+}
+
+// Reverse, from the context menu rather than the panel. It goes through this
+// module because the flag changes generated geometry, so it owes the same one
+// write path every other contour setting takes.
+//
+// Each contour flips its own state, which is what reversing a mixed selection
+// of ordinary contours does as well.
+export async function togglePanelContourReversed(
+  sceneController,
+  contourAddresses,
+  undoLabel
+) {
+  return editSelectedSkeletonContours(
+    sceneController,
+    contourAddresses,
+    (contour) => {
+      setSkeletonContourReversed(contour, contour.reversed !== true);
     },
     undoLabel
   );
@@ -466,7 +766,7 @@ export async function setPanelCapStyle(
       : capStyle === "square"
         ? ["capAngle", "capDistance"]
         : capStyle === "drop"
-          ? ["capBallRatio", "capBallShape", "capTension"]
+          ? ["capBallRatio", "capBallShape", "capBallEasing", "capBallEaseCurvature"]
           : [];
   return editSelectedSkeletonPoints(
     sceneController,
@@ -492,10 +792,219 @@ export async function setPanelCapStyle(
       if (Object.keys(seeded).length) {
         setSkeletonCapParameters(point, seeded);
       }
+      // Picking serif applies the default preset. No condition: the style
+      // select only fires on a change, so this is exactly "became a serif",
+      // and picking it is a request for the default shape.
+      if (capStyle === "serif") {
+        setSkeletonSerifParameters(point, applySerifPreset(DEFAULT_SERIF_PRESET));
+      }
       if (capStyle === "round") {
         resetSkeletonEditableRib(point, "left");
         resetSkeletonEditableRib(point, "right");
       }
+    },
+    undoLabel
+  );
+}
+
+// Serif parameters, gated to open-contour endpoints like the cap style is,
+// since a serif is a cap style and is only offered there.
+// Applying a preset is the ordinary serif write with every field at once. The
+// scope decides how much of the preset the write carries, and the model owns
+// that decision — this is not a second write path.
+export async function applyPanelSerifPreset(
+  sceneController,
+  pointAddresses,
+  preset,
+  scope,
+  undoLabel
+) {
+  return setPanelSerifParameters(
+    sceneController,
+    pointAddresses,
+    applySerifPreset(preset, { scope }),
+    undoLabel
+  );
+}
+
+export async function setPanelSerifParameters(
+  sceneController,
+  pointAddresses,
+  values,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, { contour }) => {
+      const endpoints = skeletonContourEndpointIndices(contour);
+      if (!endpoints) {
+        return;
+      }
+      const pointIndex = contour.points.indexOf(point);
+      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
+        return;
+      }
+      setSkeletonSerifParameters(point, values);
+    },
+    undoLabel
+  );
+}
+
+// What a scrub may move each serif number to, in stored units. Distances cannot
+// go below zero, which is the default. Two exceptions:
+//
+// - `wingSlope` is a signed offset. Negative tilts the wing's inner face the
+//   other way, and that whole half of its range is a real family of shapes.
+// - `tipCutAngle` is signed AND capped, at the geometry's own limit. Without the
+//   cap here the stored number would keep climbing past a shape that had already
+//   stopped moving, and the panel would show an angle the terminal is not at.
+const SERIF_NUDGE_BOUNDS = {
+  wingSlope: { min: null, max: null },
+  tipCutAngle: { min: -MAX_TIP_CUT_ANGLE, max: MAX_TIP_CUT_ANGLE },
+};
+const DEFAULT_SERIF_NUDGE_BOUNDS = { min: 0, max: null };
+
+// Move one serif number per point by the drag's change, keeping a mixed
+// selection mixed. `targets` is a list of {side, field} for half fields, or
+// {field} for the terminal-level ones.
+//
+// A value the point does not store starts from the generator's migration value.
+function nudgeOnePointSerif(point, contour, targets, next) {
+  const values = {};
+  for (const { side, field } of targets) {
+    const stored = side ? point.serif?.[side]?.[field] : point.serif?.[field];
+    const current = Number.isFinite(stored)
+      ? stored
+      : side
+        ? (SERIF_HALF_DEFAULTS[field] ?? 0)
+        : 0;
+    // Serif lengths are font units and the generator quantizes to the grid
+    // anyway, so a fraction left behind only stores a number the outline never
+    // uses — and makes the next drag start from a value the panel isn't showing.
+    // The ease distance is not bounded here. Its ceiling is the bracket's own
+    // length, so it moves with the wing and the reach, and the writer applies
+    // it on every write — a second copy of that rule would only drift.
+    const bounds = SERIF_NUDGE_BOUNDS[field] ?? DEFAULT_SERIF_NUDGE_BOUNDS;
+    let raw = next(current);
+    if (bounds.min != null) {
+      raw = Math.max(raw, bounds.min);
+    }
+    if (bounds.max != null) {
+      raw = Math.min(raw, bounds.max);
+    }
+    const moved = Math.round(raw);
+    if (side) {
+      values[side] = { ...(values[side] || {}), [field]: moved };
+    } else {
+      values[field] = moved;
+    }
+  }
+  setSkeletonSerifParameters(point, values);
+}
+
+export async function nudgePanelSerifValueStream(
+  sceneController,
+  pointAddresses,
+  targets,
+  valueStream,
+  undoLabel
+) {
+  return setPanelPointValuesStream(
+    sceneController,
+    pointAddresses,
+    valueStream,
+    (point, contour, change) => {
+      const endpoints = skeletonContourEndpointIndices(contour);
+      if (!endpoints) {
+        return;
+      }
+      const pointIndex = contour.points.indexOf(point);
+      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
+        return;
+      }
+      nudgeOnePointSerif(point, contour, targets, added(change));
+    },
+    undoLabel
+  );
+}
+
+export async function scalePanelSerifValue(
+  sceneController,
+  pointAddresses,
+  targets,
+  factor,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, { contour }) => {
+      const endpoints = skeletonContourEndpointIndices(contour);
+      if (!endpoints) {
+        return;
+      }
+      const pointIndex = contour.points.indexOf(point);
+      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
+        return;
+      }
+      nudgeOnePointSerif(point, contour, targets, scaled(factor));
+    },
+    undoLabel
+  );
+}
+
+// Streaming variant, for the serif sliders: the terminal redraws under the
+// thumb instead of jumping once on release. Same endpoint gate as the committed
+// path, applied per point rather than up front because the stream helper hands
+// the contour over one point at a time.
+export async function setPanelSerifParametersStream(
+  sceneController,
+  pointAddresses,
+  valueStream,
+  makeValues,
+  undoLabel
+) {
+  return setPanelPointValuesStream(
+    sceneController,
+    pointAddresses,
+    valueStream,
+    (point, contour, value) => {
+      const endpoints = skeletonContourEndpointIndices(contour);
+      if (!endpoints) {
+        return;
+      }
+      const pointIndex = contour.points.indexOf(point);
+      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
+        return;
+      }
+      setSkeletonSerifParameters(point, makeValues(value));
+    },
+    undoLabel
+  );
+}
+
+// Lock the ribs of selected open-contour endpoints to an axis (or clear it).
+// Gated to endpoints like the cap style is, since that is where it is offered.
+export async function setPanelRibAngleLock(
+  sceneController,
+  pointAddresses,
+  ribAngleLock,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, { contour }) => {
+      const endpoints = skeletonContourEndpointIndices(contour);
+      if (!endpoints) {
+        return;
+      }
+      const pointIndex = contour.points.indexOf(point);
+      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
+        return;
+      }
+      setSkeletonPointRibAngleLock(point, ribAngleLock);
     },
     undoLabel
   );
@@ -513,6 +1022,48 @@ export async function setPanelCornerParameters(
     (point) => {
       setSkeletonCornerParameters(point, values);
     },
+    undoLabel
+  );
+}
+
+// A scrub carries the CHANGE from where the drag started, so a mixed selection
+// keeps its differences instead of collapsing onto one number. The writer holds
+// the bound and decides whether the linked side travels too.
+export async function nudgePanelCornerDistanceStream(
+  sceneController,
+  pointAddresses,
+  side,
+  valueStream,
+  undoLabel
+) {
+  return setPanelPointValuesStream(
+    sceneController,
+    pointAddresses,
+    valueStream,
+    (point, _contour, change) =>
+      setSkeletonCornerParameters(point, {
+        side,
+        distance: (point.corner?.[side]?.distance ?? 0) + Number(change),
+      }),
+    undoLabel
+  );
+}
+
+export async function scalePanelCornerDistance(
+  sceneController,
+  pointAddresses,
+  side,
+  factor,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point) =>
+      setSkeletonCornerParameters(point, {
+        side,
+        distance: Math.round((point.corner?.[side]?.distance ?? 0) * factor),
+      }),
     undoLabel
   );
 }
@@ -659,34 +1210,22 @@ export async function resetPanelGeneratedHandle(
   });
 }
 
-// Position of a generated point in raw generator output (pre-packing), found
-// by side-bearing provenance.
-function findGeneratedOutputPosition(generated, contourId, pointId, side, role) {
-  for (const entry of generated.provenance || []) {
-    if (entry.skeletonContourId !== contourId) {
-      continue;
-    }
-    const pointMap = entry.pointMap || [];
-    for (let i = 0; i < pointMap.length; i++) {
-      const provenance = pointMap[i];
-      if (
-        provenance?.skeletonPointId === pointId &&
-        provenance.side === side &&
-        provenance.role === role
-      ) {
-        return generated.contours[entry.generatedContourIndex]?.points?.[i] || null;
-      }
-    }
-  }
-  return null;
-}
-
 // Compute position-preserving offset conversions for a detach toggle (donor
 // parity): detaching rewrites each handle offset into rib-point space
 // (offset = handle − rib point); re-attaching rewrites it into control-point
 // space (offset = handle − base handle, where the base comes from
 // regenerating with that side's offsets cleared). Either way the handle must
 // not move on canvas when the checkbox is toggled.
+//
+// Both directions therefore measure against a regeneration, and neither may
+// measure against the position on screen. A stored offset is what the pipeline
+// starts from, and the curvature pin runs after it. So the number to store is
+// the CONSTRUCTION position: where the handle sits with this side's pins
+// cleared. Storing the drawn position instead hands the pin its own output as
+// an input. The pin holds the segment's mean rather than either handle, so it
+// answers a changed input with a different split — 4 units on k.json's third
+// point — and the toggle back reverts it, which is what makes it read as the
+// checkbox moving the shape on its own.
 export function computeRibDetachConversions(
   layerGlyph,
   referenceSkeletonData,
@@ -736,47 +1275,53 @@ export function computeRibDetachConversions(
       continue;
     }
 
-    let basePositions = null;
-    if (!detached) {
-      // Re-attaching: base = regeneration WITHOUT this side's offsets.
-      const scratch = structuredClone(skeletonData);
-      const scratchPoint =
-        scratch.contours[resolved.contourIndex]?.points?.[resolved.pointIndex];
-      if (!scratchPoint) {
-        continue;
+    const scratch = structuredClone(skeletonData);
+    const scratchContour = scratch.contours[resolved.contourIndex];
+    const scratchPoint = scratchContour?.points?.[resolved.pointIndex];
+    if (!scratchPoint) {
+      continue;
+    }
+    if (detached) {
+      // Detaching: measure the construction, so the pin is not counted twice.
+      for (const role of ["in", "out"]) {
+        clearSkeletonSegmentCurvatureForHandle(
+          scratchContour,
+          scratchPoint,
+          address.side,
+          role
+        );
       }
+    } else {
+      // Re-attaching: base = regeneration WITHOUT this side's offsets.
       scratchPoint.handleOffsets = {
         ...scratchPoint.handleOffsets,
         [`${address.side}In`]: { x: 0, y: 0, detached: false },
         [`${address.side}Out`]: { x: 0, y: 0, detached: false },
       };
-      const generated = generateFromSkeleton(scratch);
-      basePositions = {
-        in: findGeneratedOutputPosition(
-          generated,
-          resolved.contour.id,
-          resolved.point.id,
-          address.side,
-          "in"
-        ),
-        out: findGeneratedOutputPosition(
-          generated,
-          resolved.contour.id,
-          resolved.point.id,
-          address.side,
-          "out"
-        ),
-      };
     }
+    const generated = generateFromSkeleton(scratch);
+    const generatedPosition = (role) =>
+      findGeneratedOutputPosition(
+        generated,
+        resolved.contour.id,
+        resolved.point.id,
+        address.side,
+        role
+      );
+    const scratchPositions = {
+      in: generatedPosition("in"),
+      out: generatedPosition("out"),
+      onCurve: generatedPosition("onCurve"),
+    };
 
     const offsets = {};
     for (const role of ["in", "out"]) {
-      const handlePos = positions[role];
-      if (!handlePos) {
-        continue;
-      }
-      const base = detached ? positions.onCurve : basePositions?.[role];
-      if (!base) {
+      // Detaching reads both the handle and its anchor off the pin-cleared
+      // regeneration. Re-attaching reads the handle on screen, because its base
+      // carries the pin too and the two sides of that subtraction have to agree.
+      const handlePos = detached ? scratchPositions[role] : positions[role];
+      const base = detached ? scratchPositions.onCurve : scratchPositions[role];
+      if (!handlePos || !base) {
         continue;
       }
       offsets[role] = {

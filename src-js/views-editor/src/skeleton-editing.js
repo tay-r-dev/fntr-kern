@@ -1,11 +1,11 @@
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
-import { alignHandle, alignHandles } from "@fontra/core/path-functions.js";
 import {
   generateFromSkeleton,
   outlineContourToPackedPath,
 } from "@fontra/core/skeleton-generator.js";
 import {
+  alignSkeletonSmoothHandles,
   applyFixedRibDelta,
   applySkeletonRibExecutorResult,
   clearSkeletonSegmentCurvatureForHandle,
@@ -51,11 +51,15 @@ export function makeSkeletonPointKey(contourId, pointId) {
 
 export { getSkeletonPointAddress, parseSkeletonPointKey };
 
+// A rib is a second entry point into the same drag, not a second drag. Grabbing
+// a rib end and holding the modifier moves the skeleton point that rib belongs
+// to, exactly as grabbing the point itself would.
 export function getSkeletonModifierBehaviorName(event, modifiers = {}, targetKinds) {
-  if (modifiers.fixedRibCompressMode && targetKinds.has("skeletonPoint")) {
+  const canFixRib = targetKinds.has("skeletonPoint") || targetKinds.has("skeletonRib");
+  if (modifiers.fixedRibCompressMode && canFixRib) {
     return "fixed-rib-compress";
   }
-  if (modifiers.fixedRibMode && targetKinds.has("skeletonPoint")) {
+  if (modifiers.fixedRibMode && canFixRib) {
     return "fixed-rib";
   }
   return null;
@@ -129,30 +133,71 @@ export function resolveSkeletonAddressAcrossLayers(
   };
 }
 
+// Master-wide generator settings. Every edit regenerates through one path, and
+// that path has no route back to the font, so the editor hands it a reader for
+// the master it is on. Twenty-five call sites would otherwise each have to
+// carry the settings down, and any one of them forgetting would regenerate the
+// glyph under the wrong master.
+let readSkeletonGenerationOptions = () => ({});
+
+export function setSkeletonGenerationOptionsReader(reader) {
+  readSkeletonGenerationOptions = reader || (() => ({}));
+}
+
 export function editSkeleton(layerGlyph, mutate, options = {}) {
   return recordChanges(layerGlyph, (layerGlyphProxy) => {
     applySkeletonMutation(layerGlyphProxy, mutate, options);
   });
 }
 
+// Every frame of a drag rebuilds its change from the state captured at
+// mouse-down, and the caller applies those changes one after another without
+// putting the previous frame back first. A frame that only moves points is
+// therefore correct only while the outline still has the shape it had at
+// mouse-down. Once a frame has replaced the contours, it no longer does: a
+// later move-only frame would write its coordinates into the slots of an
+// outline that is gone, and leave the contour boundaries where the replaced
+// outline put them — the points spill across contours and the shape is
+// wrecked until the next edit rebuilds it. So a drag that has replaced its
+// contours once keeps replacing them.
+const dragsThatReplacedContours = new WeakSet();
+
 export function makeEditSkeletonChange(layerGlyph, mutate, options = {}) {
   const scratch = cloneLayerGlyphForSkeletonEdit(layerGlyph);
-  return editSkeleton(scratch, mutate, options);
+  let replacedContours = dragsThatReplacedContours.has(layerGlyph);
+  const changes = recordChanges(scratch, (scratchProxy) => {
+    replacedContours =
+      applySkeletonMutation(scratchProxy, mutate, {
+        ...options,
+        replaceContours: replacedContours,
+      }) || replacedContours;
+  });
+  if (replacedContours) {
+    dragsThatReplacedContours.add(layerGlyph);
+  }
+  return changes;
 }
 
+// Returns whether the generated contours were replaced rather than moved.
 function applySkeletonMutation(layerGlyph, mutate, options = {}) {
   const original = getSkeletonData(layerGlyph);
   if (!original && !options.createIfMissing) {
-    return;
+    return false;
   }
 
   const working = normalizeSkeletonData(
     structuredClone(original || makeEmptySkeletonData())
   );
   mutate(working);
-  const generated = generateFromSkeleton(working);
-  replaceGeneratedSkeletonContours(layerGlyph, working, generated);
+  const generated = generateFromSkeleton(working, readSkeletonGenerationOptions());
+  const replacedContours = replaceGeneratedSkeletonContours(
+    layerGlyph,
+    working,
+    generated,
+    options.replaceContours === true
+  );
   setSkeletonData(layerGlyph, working);
+  return replacedContours;
 }
 
 export function cloneLayerGlyphForSkeletonEdit(layerGlyph) {
@@ -163,7 +208,12 @@ export function cloneLayerGlyphForSkeletonEdit(layerGlyph) {
   };
 }
 
-export function replaceGeneratedSkeletonContours(layerGlyph, skeletonData, generated) {
+export function replaceGeneratedSkeletonContours(
+  layerGlyph,
+  skeletonData,
+  generated,
+  replaceContours = false
+) {
   const previous = (skeletonData.generated || []).filter(
     (entry) =>
       Number.isInteger(entry.pathContourIndex) &&
@@ -171,7 +221,10 @@ export function replaceGeneratedSkeletonContours(layerGlyph, skeletonData, gener
       entry.pathContourIndex < layerGlyph.path.numContours
   );
 
-  if (canUpdateGeneratedContoursInPlace(layerGlyph.path, previous, generated)) {
+  if (
+    !replaceContours &&
+    canUpdateGeneratedContoursInPlace(layerGlyph.path, previous, generated)
+  ) {
     // Steady state (every width/nudge/coordinate drag): write point coordinates
     // in place. pathContourIndex stays stable, per-frame change objects contain
     // only "=xy" point updates, and contour order stays identical across
@@ -189,7 +242,7 @@ export function replaceGeneratedSkeletonContours(layerGlyph, skeletonData, gener
         pointMap: generated.provenance[i].pointMap,
       };
     });
-    return;
+    return false;
   }
 
   // Topology changed: structural replace at stable positions. Delete the old
@@ -220,6 +273,7 @@ export function replaceGeneratedSkeletonContours(layerGlyph, skeletonData, gener
       pointMap: generated.provenance[i].pointMap,
     };
   });
+  return true;
 }
 
 function canUpdateGeneratedContoursInPlace(path, previousEntries, generated) {
@@ -288,7 +342,7 @@ export function toggleSkeletonSmooth(layer, selection, forceValue = null) {
       }
       address.point.smooth = newValue;
       if (newValue) {
-        snapSkeletonHandlesCollinear(address.point, prevPoint, nextPoint);
+        alignSkeletonSmoothHandles(address.point, prevPoint, nextPoint);
       }
     }
   });
@@ -308,30 +362,6 @@ function skeletonNeighborPoints(contour, pointIndex) {
   const nextPoint =
     nextIndex < numPoints && nextIndex !== pointIndex ? points[nextIndex] : undefined;
   return [prevPoint, nextPoint];
-}
-
-// Snap the off-curve neighbors of a freshly-smoothed skeleton point into a
-// collinear position, mirroring toggleSmooth's handle fix-up on regular paths.
-function snapSkeletonHandlesCollinear(anchorPoint, prevPoint, nextPoint) {
-  if (prevPoint?.type && nextPoint?.type) {
-    const [newPrevPoint, newNextPoint] = alignHandles(
-      prevPoint,
-      anchorPoint,
-      nextPoint
-    );
-    prevPoint.x = newPrevPoint.x;
-    prevPoint.y = newPrevPoint.y;
-    nextPoint.x = newNextPoint.x;
-    nextPoint.y = newNextPoint.y;
-  } else if (prevPoint?.type) {
-    const newPrevPoint = alignHandle(nextPoint, anchorPoint, prevPoint);
-    prevPoint.x = newPrevPoint.x;
-    prevPoint.y = newPrevPoint.y;
-  } else if (nextPoint?.type) {
-    const newNextPoint = alignHandle(prevPoint, anchorPoint, nextPoint);
-    nextPoint.x = newNextPoint.x;
-    nextPoint.y = newNextPoint.y;
-  }
 }
 
 // Shift generated-contour path indices when a non-skeleton structural path edit
@@ -489,18 +519,29 @@ export function makeSkeletonPointTargetEntry(
   // resolve them into this layer by structural ordinal (Global Constraints).
   const reference = referenceSkeletonData || skeletonData;
   const selected = collectSkeletonPointSelection(selection, reference, skeletonData);
-  if (!selected.length) return null;
 
   if (behaviorName === "fixed-rib" || behaviorName === "fixed-rib-compress") {
+    // Only this behavior pair reads the ribs. Folding rib owners into the
+    // shared collector would drag the skeleton on a plain rib drag too, which
+    // is the width edit and has to stay where it is.
+    const withRibOwners = withSkeletonRibOwners(
+      selected,
+      selection,
+      reference,
+      skeletonData
+    );
+    if (!withRibOwners.length) return null;
     return makeFixedRibSkeletonPointTargetEntry(
       layer,
       skeletonData,
       reference,
-      selected,
+      withRibOwners,
       behaviorName,
       options
     );
   }
+
+  if (!selected.length) return null;
 
   if (behaviorName === "equalize" || behaviorName === "equalize-constrain") {
     return makeEqualizeSkeletonHandleTargetEntry(
@@ -902,6 +943,53 @@ function makeRibInterpolationAxis(originalLayerGlyph, skeletonData, address) {
     dir: { x: direction.x / length, y: direction.y / length },
     hasHandle: { in: !!handlePositions.in, out: !!handlePositions.out },
   };
+}
+
+// The selected skeleton points, plus the point behind every selected rib. A rib
+// already selected through its own point contributes nothing new: both ends of
+// one point's pair resolve to the same point, and a point cannot be dragged
+// twice in one drag.
+function withSkeletonRibOwners(
+  selected,
+  selection,
+  referenceSkeletonData,
+  targetSkeletonData
+) {
+  const { skeletonRib } = parseSelection([...selection]);
+  if (!skeletonRib?.length) {
+    return selected;
+  }
+  const merged = [...selected];
+  const seen = new Set(merged.map((entry) => `${entry.contourId}/${entry.pointId}`));
+  for (const item of skeletonRib) {
+    // parseSelection hands back the key without its kind prefix, and the rib
+    // parser leaves the two ids as strings while every address lookup compares
+    // them to numbers.
+    const parsed = parseSkeletonRibKey(`skeletonRib/${item}`);
+    const contourId = Number(parsed.contourId);
+    const pointId = Number(parsed.pointId);
+    const address = resolveSkeletonAddressAcrossLayers(
+      referenceSkeletonData,
+      targetSkeletonData,
+      contourId,
+      pointId
+    );
+    if (!address) {
+      continue;
+    }
+    const key = `${address.contour.id}/${address.point.id}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push({
+      contourId: address.contour.id,
+      pointId: address.point.id,
+      referenceContourId: contourId,
+      referencePointId: pointId,
+    });
+  }
+  return merged;
 }
 
 function collectSkeletonPointSelection(
@@ -1339,6 +1427,19 @@ function getGeneratedOutlinePositionForEditing(
   return generated.contours?.[entryIndex]?.points?.[contourPointIndex] || null;
 }
 
+function publishedAuthoredAxis(skeletonData, contourId, pointId, side, role) {
+  const generated = (skeletonData?.generated || []).find(
+    (entry) => entry?.skeletonContourId === contourId
+  );
+  const axis = generated?.pointMap?.find(
+    (provenance) =>
+      provenance?.skeletonPointId === pointId &&
+      provenance.side === side &&
+      provenance.role === role
+  )?.authoredAxis;
+  return axis && Number.isFinite(axis.x) && Number.isFinite(axis.y) ? axis : null;
+}
+
 // Writes each baked offset on top of whatever that handle already stored. Runs
 // inside the mutate, on a working copy rebuilt from the original every frame, so
 // it is idempotent and the values it adds are constants measured once.
@@ -1380,10 +1481,10 @@ function createEditableGeneratedHandleExecutorForEditing(
     originalPath,
     skeletonData
   );
-  const storedOffset = getSkeletonHandleOffset(
-    address.point,
-    address.side,
-    address.role
+  const storedOffset = restatedHandleOffsetForEditing(
+    skeletonData,
+    address,
+    getSkeletonHandleOffset(address.point, address.side, address.role)
   );
   // A detached handle is absolute and never saw the pin, so it has nothing of the
   // pin in its position to preserve.
@@ -1447,6 +1548,33 @@ function createEditableGeneratedHandleExecutorForEditing(
       );
     },
   };
+}
+
+// A stored handle offset is a request, and the ceiling on handle length can
+// refuse most of it. Left alone, the store keeps climbing every time the drag
+// pushes against that ceiling, and the next drag back moves nothing until it
+// has walked all the way down again. So start each drag from the part the
+// generator honored, which is the position on screen.
+//
+// Only an attached offset has a published honored part. A detached handle is
+// absolute and never met the ceiling.
+function restatedHandleOffsetForEditing(skeletonData, address, storedOffset) {
+  if (storedOffset.detached) {
+    return storedOffset;
+  }
+  const generated = (skeletonData?.generated || []).find(
+    (entry) => entry?.skeletonContourId === address.contour.id
+  );
+  const honored = generated?.pointMap?.find(
+    (provenance) =>
+      provenance?.skeletonPointId === address.point.id &&
+      provenance.side === address.side &&
+      provenance.role === address.role
+  )?.honoredAdjustment;
+  if (!honored || !Number.isFinite(honored.x) || !Number.isFinite(honored.y)) {
+    return storedOffset;
+  }
+  return { ...storedOffset, x: Math.round(honored.x), y: Math.round(honored.y) };
 }
 
 function makeEditableGeneratedHandleOffsetForEditing(
@@ -1589,11 +1717,9 @@ function resolveEditableGeneratedHandleAddressAcrossLayersForEditing(
   const point = contour?.points?.[reference.pointIndex];
   if (!contour || !point || point.type || isSkeletonSideLocked(point, side))
     return null;
-  const direction = getSkeletonHandleDirectionForPoint(
-    contour,
-    reference.pointIndex,
-    role
-  );
+  const direction =
+    publishedAuthoredAxis(referenceSkeletonData, contourId, pointId, side, role) ??
+    getSkeletonHandleDirectionForPoint(contour, reference.pointIndex, role);
   if (!direction) return null;
   return {
     contour,

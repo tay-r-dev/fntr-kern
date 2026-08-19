@@ -21,10 +21,58 @@ const CAP_CORNER_POINT_FIELDS = [
   "capStyle",
   "capRadiusRatio",
   "capTension",
+  "capBallEasing",
+  "capBallEaseCurvature",
   "capAngle",
   "capDistance",
-  "roundnessStrength",
-  "cornerAsymmetry",
+  {
+    name: "serif-slab",
+    canonical: serifStem({
+      wingLength: 80,
+      tipThickness: 90,
+      wingSlope: 0,
+      tipCutAngle: 0,
+      reach: 20,
+      tension: 0.15,
+      concavity: -0.05,
+    }),
+  },
+  {
+    name: "serif-didone",
+    canonical: serifStem({
+      wingLength: 90,
+      tipThickness: 18,
+      wingSlope: 0,
+      tipCutAngle: 0,
+      reach: 70,
+      tension: 0.7,
+      concavity: 0.8,
+    }),
+  },
+  {
+    name: "serif-one-sided",
+    canonical: serifStem(
+      {
+        wingLength: 90,
+        tipThickness: 18,
+        wingSlope: 0,
+        tipCutAngle: 0,
+        reach: 70,
+        tension: 0.7,
+        concavity: 0.8,
+      },
+      {
+        wingLength: 0,
+        tipThickness: 0,
+        wingSlope: 0,
+        tipCutAngle: 0,
+        reach: 40,
+        tension: 0.6,
+        concavity: 0.5,
+      }
+    ),
+  },
+  { name: "serif-horizontal-axis-curve-terminal", canonical: serifCurveTerminal() },
 ];
 
 const fixtures = [
@@ -344,6 +392,73 @@ function point(id, x, y, extra = {}) {
   };
 }
 
+function serifStem(left, right = left) {
+  return {
+    version: 1,
+    nextId: 4,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 100,
+        capStyle: "serif",
+        points: [
+          point(2, 0, 0, {
+            serif: {
+              left,
+              right,
+              axisMode: "perpendicular",
+              axisAngle: 0,
+              undersideCup: 0,
+            },
+          }),
+          point(3, 0, 400),
+        ],
+      },
+    ],
+    generated: [],
+  };
+}
+
+function serifCurveTerminal() {
+  const half = {
+    wingLength: 80,
+    tipThickness: 24,
+    wingSlope: 0,
+    tipCutAngle: 0,
+    reach: 30,
+    tension: 0.7,
+    concavity: 0.8,
+  };
+  return {
+    version: 1,
+    nextId: 6,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 100,
+        capStyle: "serif",
+        points: [
+          point(2, 0, 0, {
+            serif: {
+              left: half,
+              right: half,
+              axisMode: "horizontal",
+              axisAngle: 0,
+              undersideCup: 0,
+            },
+          }),
+          offCurve(3, 10, 20),
+          offCurve(4, 30, 40),
+          point(5, 60, 60),
+        ],
+      },
+    ],
+    generated: [],
+  };
+}
+
 function offCurve(id, x, y) {
   return { id, x, y, type: "cubic", smooth: false };
 }
@@ -357,8 +472,6 @@ function canonicalToDonor(skeletonData) {
       singleSidedDirection: contour.singleSided || "left",
       capStyle: contour.capStyle || "butt",
       reversed: contour.reversed === true,
-      cornerTrimRatio: contour.cornerTrimRatio,
-      cornerRadiusBoost: contour.cornerRadiusBoost,
       points: contour.points.map(canonicalPointToDonor),
     })),
   };
@@ -381,6 +494,7 @@ function canonicalPointToDonor(point) {
   donorPoint.rightNudge = point.nudge?.right ?? 0;
   donorPoint.leftEditable = point.editable?.left === true;
   donorPoint.rightEditable = point.editable?.right === true;
+  donorPoint.corner = point.corner ?? null;
   for (const field of CAP_CORNER_POINT_FIELDS) {
     if (point[field] !== null && point[field] !== undefined) {
       donorPoint[field] = point[field];

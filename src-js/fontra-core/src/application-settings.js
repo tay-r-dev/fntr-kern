@@ -18,7 +18,8 @@ export const applicationSettingsController = new ObservableController({
   speedPunkSharpness: 1,
   speedPunkOpacity: 0.5,
   // fork: harmonize panel settings (app-level, per D9 — not written to project files)
-  harmonizeHandleBias: 1,
+  harmonizeG3: false,
+  harmonizeMoveOnCurve: false,
   harmonizeOtherSources: true,
   harmonizeEqualizeTension: false,
 });

@@ -2,7 +2,10 @@ import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
 import {
   HARMONIZE_DEFAULTS,
+  calculateG3Targets,
   calculateHarmonicTarget,
+  curvatureDiscontinuity,
+  curvatureRateDiscontinuity,
   expandToJoints,
   getJointContext,
   harmonizePath,
@@ -59,7 +62,7 @@ function asymmetricPath() {
 }
 
 // outgoing outer handle is nearly degenerate: the harmonic target sits far
-// past the 15% floor of the outgoing handle -> clamping territory
+// past the floor of the outgoing handle -> clamping territory
 function clampPath() {
   return makeContour([
     { x: 0, y: 0 },
@@ -306,6 +309,117 @@ describe("harmonization: measureG2Discontinuity", () => {
   });
 });
 
+// --- one call is the whole answer -------------------------------------------
+//
+// Every joint on this contour shares a segment with the two next to it, so
+// correcting any one of them moves the other two off. The sweep has to keep
+// going until the whole ring is quiet. It used to finish a joint the first time
+// that joint's own correction fell under the tolerance, or the first time a
+// step ran into a limit, and never look at it again — so a neighbour's later
+// move was left standing and running the command a second time kept helping.
+function ringPath() {
+  return makeContour([
+    { x: 300, y: 0, smooth: true },
+    cubic(300, 210),
+    cubic(150, 260),
+    { x: 0, y: 300, smooth: true },
+    cubic(-190, 300),
+    cubic(-300, 190),
+    { x: -300, y: 0, smooth: true },
+    cubic(-300, -120),
+    cubic(-120, -300),
+    { x: 0, y: -300, smooth: true },
+    cubic(205, -300),
+    cubic(300, -205),
+  ]);
+}
+
+const RING_JOINTS = [0, 3, 6, 9];
+
+describe("harmonization: a ring of coupled joints", () => {
+  function worstDiscontinuity(path) {
+    return Math.max(
+      ...RING_JOINTS.map((index) =>
+        measureG2Discontinuity(getJointContext(path, index))
+      )
+    );
+  }
+
+  it("settles the whole ring in one call", () => {
+    const path = ringPath();
+    expect(worstDiscontinuity(path)).to.be.greaterThan(1e-4);
+    harmonizePathInPlace(path, RING_JOINTS, {});
+    expect(worstDiscontinuity(path)).to.be.closeTo(0, 1e-6);
+  });
+
+  it("has nothing left for a second call to do", () => {
+    const path = ringPath();
+    harmonizePathInPlace(path, RING_JOINTS, {});
+    const once = [...Array(path.numPoints).keys()].map((index) =>
+      path.getPointPosition(index)
+    );
+    harmonizePathInPlace(path, RING_JOINTS, {});
+    for (let index = 0; index < path.numPoints; index++) {
+      const [x, y] = path.getPointPosition(index);
+      expect(
+        distance({ x, y }, { x: once[index][0], y: once[index][1] })
+      ).to.be.lessThan(0.01);
+    }
+  });
+
+  it("lands on the same whole units when it is run twice", () => {
+    // The editor rounds to whole units, and rounding is a nudge the sweep never
+    // saw, so from the rounded drawing there is a real correction to make
+    // again. That is what the second press of the button used to do.
+    const path = ringPath();
+    harmonizePathInPlace(path, RING_JOINTS, { roundCoordinates: true });
+    const once = Array.from(path.coordinates);
+    harmonizePathInPlace(path, RING_JOINTS, { roundCoordinates: true });
+    expect(Array.from(path.coordinates)).to.deep.equal(once);
+  });
+
+  it("leaves the drawing alone when the answer rounds back to it", () => {
+    // The sweep has real work to do here, and every correction it finds is
+    // under half a unit, so the whole-unit answer is where the points already
+    // are. Nothing may be written: in the editor each write is a recorded
+    // change, and a command that changes nothing must not take an undo step.
+    // a ring that is harmonic to start with, nudged by one unit
+    const harmonic = VarPackedPath.fromUnpackedContours([
+      {
+        points: [
+          { x: 300, y: 0, smooth: true },
+          cubic(300, 165),
+          cubic(165, 300),
+          { x: 0, y: 300, smooth: true },
+          cubic(-165, 300),
+          cubic(-300, 165),
+          { x: -300, y: 0, smooth: true },
+          cubic(-300, -165),
+          cubic(-165, -300),
+          { x: 0, y: -300, smooth: true },
+          cubic(165, -300),
+          cubic(300, -165),
+        ],
+        isClosed: true,
+      },
+    ]);
+    harmonic.setPointPosition(1, 300, 166);
+    const before = Array.from(harmonic.coordinates);
+    const report = harmonizePathInPlace(harmonic, RING_JOINTS, {
+      roundCoordinates: true,
+    });
+    expect(report.length).to.equal(RING_JOINTS.length);
+    expect(Array.from(harmonic.coordinates)).to.deep.equal(before);
+  });
+
+  it("reports every joint harmonized, not partial", () => {
+    const report = harmonizePathInPlace(ringPath(), RING_JOINTS, {});
+    expect(report.map((entry) => entry.status)).to.deep.equal(
+      RING_JOINTS.map(() => "harmonized")
+    );
+  });
+});
+
 // --- expandToJoints ---------------------------------------------------------
 
 describe("harmonization: expandToJoints", () => {
@@ -391,23 +505,23 @@ describe("harmonization: harmonizePath", () => {
     expect(Array.from(path.coordinates)).to.deep.equal(before);
   });
 
+  // The floor is a fraction of the chord between the segment's two on-curve
+  // points, and half a chord is about the handle length of a well-formed arc.
+  // Taking it from the handle instead made it a different number every time the
+  // command ran, because the handle it was measured from had just been cut.
+  const CLAMP_FLOOR =
+    ((1 - HARMONIZE_DEFAULTS.cuspSafetyMargin) / 2) *
+    distance({ x: 110, y: 100 }, { x: 200, y: 0 }); // outgoing chord
+
   it("clamps instead of collapsing a handle, and reports partial", () => {
-    const path = clampPath();
-    const b0 = distance(
-      { x: 150, y: 100 },
-      { x: 110, y: 100 } // outgoing handle length before: 40
-    );
-    const result = harmonizePath(path, [NODE], { handleBias: 1 });
+    const result = harmonizePath(clampPath(), [NODE], { handleBias: 1 });
 
     expect(result.report[0].status).to.equal("partial");
     expect(result.report[0].reason).to.equal("clamped");
 
     const ctx = getJointContext(result.path, NODE);
     const remaining = distance(ctx.node, ctx.N);
-    expect(remaining).to.be.closeTo(
-      (1 - HARMONIZE_DEFAULTS.cuspSafetyMargin) * b0,
-      1e-6
-    );
+    expect(remaining).to.be.closeTo(CLAMP_FLOOR, 1e-6);
     expect(remaining).to.be.greaterThan(0);
   });
 
@@ -415,7 +529,22 @@ describe("harmonization: harmonizePath", () => {
     const result = harmonizePath(clampPath(), [NODE], { handleBias: 0 });
     expect(result.report[0].status).to.equal("partial");
     const ctx = getJointContext(result.path, NODE);
-    expect(distance(ctx.node, ctx.N)).to.be.closeTo(0.15 * 40, 1e-6);
+    expect(distance(ctx.node, ctx.N)).to.be.closeTo(CLAMP_FLOOR, 1e-6);
+  });
+
+  it("stops in the same place when it is run twice", () => {
+    // The floor does not move when the handle it limits is cut, so a second
+    // call has nothing left to take. Measured from the handle, each call
+    // allowed another cut of the same fraction and ten calls left nothing.
+    const path = clampPath();
+    const handleLength = () => {
+      const ctx = getJointContext(path, NODE);
+      return distance(ctx.node, ctx.N);
+    };
+    harmonizePathInPlace(path, [NODE], {});
+    const afterOne = handleLength();
+    harmonizePathInPlace(path, [NODE], {});
+    expect(handleLength()).to.be.closeTo(afterOne, 1e-9);
   });
 
   it("reports degenerate for parallel outer handle lines", () => {
@@ -686,5 +815,158 @@ describe("harmonization: harmonizePath", () => {
       "not-converged",
       "not-converged",
     ]);
+  });
+});
+
+// --- G3: matching the rate of change of curvature ---------------------------
+//
+// The joint reported on `_external/skeletron.fontra` glyph `d`. Curvature
+// matches across it to 1.6% and its rate reverses sign, so the comb dips to a
+// local minimum exactly at the joint.
+function reportedG3Path() {
+  return makeContour([
+    { x: 285, y: 460 },
+    cubic(363, 460),
+    cubic(412, 518),
+    { x: 399, y: 598, smooth: true },
+    cubic(388, 670),
+    cubic(334, 710),
+    { x: 250, y: 710 },
+  ]);
+}
+
+// the same joint before it was redrawn: the two outer handles sit on opposite
+// sides of the tangent, so the two curvatures disagree in sign
+function inflectedPath() {
+  return makeContour([
+    { x: 361, y: 84 },
+    cubic(361, 235),
+    cubic(335, 278),
+    { x: 217, y: 278, smooth: true },
+    cubic(149, 278),
+    cubic(84, 500),
+    { x: 230, y: 541 },
+  ]);
+}
+
+function jointSegmentPoints(path) {
+  const points = [0, 1, 2, 3, 4, 5, 6].map((i) => {
+    const [x, y] = path.getPointPosition(i);
+    return { x, y };
+  });
+  return { incoming: points.slice(0, 4), outgoing: points.slice(3) };
+}
+
+describe("harmonization: calculateG3Targets", () => {
+  it("matches curvature and its rate on both sides of the joint", () => {
+    const path = reportedG3Path();
+    const { incoming, outgoing } = jointSegmentPoints(path);
+    const targets = calculateG3Targets(incoming, outgoing);
+    expect(targets).to.not.equal(null);
+
+    const solvedIn = [incoming[0], incoming[1], targets.P, incoming[3]];
+    const solvedOut = [outgoing[0], targets.N, outgoing[2], outgoing[3]];
+    expect(measureG2Discontinuity(getJointContext(path, NODE))).to.be.greaterThan(1e-5);
+    expect(curvatureDiscontinuity(solvedIn, solvedOut)).to.be.lessThan(1e-9);
+    expect(curvatureRateDiscontinuity(solvedIn, solvedOut)).to.be.lessThan(1e-9);
+  });
+
+  it("moves the two inner handles and nothing else", () => {
+    const { incoming, outgoing } = jointSegmentPoints(reportedG3Path());
+    const targets = calculateG3Targets(incoming, outgoing);
+    expect(distance(targets.P, incoming[2])).to.be.greaterThan(1);
+    expect(distance(targets.N, outgoing[1])).to.be.greaterThan(1);
+  });
+
+  it("puts both inner handles on one line through the joint", () => {
+    const { incoming, outgoing } = jointSegmentPoints(reportedG3Path());
+    const { P, N } = calculateG3Targets(incoming, outgoing);
+    const node = incoming[3];
+    const cross = (P.x - node.x) * (N.y - node.y) - (P.y - node.y) * (N.x - node.x);
+    expect(Math.abs(cross)).to.be.lessThan(1e-9);
+  });
+
+  it("keeps a symmetric joint symmetric", () => {
+    const { incoming, outgoing } = jointSegmentPoints(symmetricPath());
+    const { P, N } = calculateG3Targets(incoming, outgoing);
+    const node = incoming[3];
+    expect(distance(P, node)).to.be.closeTo(distance(N, node), 1e-9);
+  });
+
+  it("returns null when the two curvatures disagree in sign", () => {
+    const { incoming, outgoing } = jointSegmentPoints(inflectedPath());
+    expect(calculateG3Targets(incoming, outgoing)).to.equal(null);
+  });
+});
+
+describe("harmonization: the G3 cascade", () => {
+  const G3 = { continuity: "G3" };
+
+  function jointMeasures(path) {
+    const { incoming, outgoing } = jointSegmentPoints(path);
+    return {
+      curvature: curvatureDiscontinuity(incoming, outgoing),
+      rate: curvatureRateDiscontinuity(incoming, outgoing),
+    };
+  }
+
+  it("matches curvature and its rate, and leaves the joint where it is", () => {
+    const path = reportedG3Path();
+    const before = jointMeasures(path);
+    const report = harmonizePathInPlace(path, [NODE], G3);
+    const after = jointMeasures(path);
+
+    expect(report[0].status).to.equal("harmonized");
+    expect(report[0].construction).to.equal("g3");
+    expect(after.curvature).to.be.lessThan(1e-9);
+    expect(after.rate).to.be.lessThan(1e-9);
+    expect(before.rate).to.be.greaterThan(after.rate);
+    expect(nodePos(path)).to.deep.equal({ x: 399, y: 598 });
+  });
+
+  it("falls back to G2 at an inflection, and says so", () => {
+    const path = inflectedPath();
+    const report = harmonizePathInPlace(path, [NODE], G3);
+    expect(report[0].status).to.equal("harmonized");
+    expect(report[0].construction).to.equal("g2");
+  });
+
+  it("falls back to G2 where the answer would cross its own handle lines", () => {
+    const path = overshootPath();
+    const report = harmonizePathInPlace(path, [NODE], G3);
+    expect(report[0].construction).to.equal("g2");
+    expect(report[0].status).to.be.oneOf(["harmonized", "partial"]);
+  });
+
+  it("reaches that joint by sliding the on-curve when the slide is allowed", () => {
+    const path = overshootPath();
+    const report = harmonizePathInPlace(path, [NODE], {
+      ...G3,
+      slideOnCurve: true,
+    });
+    const after = jointMeasures(path);
+    expect(report[0].construction).to.equal("g3");
+    expect(after.curvature).to.be.lessThan(1e-9);
+    expect(after.rate).to.be.lessThan(1e-9);
+    expect(nodePos(path)).to.not.deep.equal({ x: 60, y: 100 });
+  });
+
+  it("does not slide a joint that did not need it", () => {
+    const path = reportedG3Path();
+    harmonizePathInPlace(path, [NODE], { ...G3, slideOnCurve: true });
+    expect(nodePos(path)).to.deep.equal({ x: 399, y: 598 });
+  });
+
+  it("leaves the two outer handles alone", () => {
+    const path = reportedG3Path();
+    const before = [1, 5].map((i) => path.getPointPosition(i));
+    harmonizePathInPlace(path, [NODE], { ...G3, slideOnCurve: true });
+    expect([1, 5].map((i) => path.getPointPosition(i))).to.deep.equal(before);
+  });
+
+  it("is off by default", () => {
+    const path = reportedG3Path();
+    const report = harmonizePathInPlace(path, [NODE], {});
+    expect(report[0].construction).to.equal("g2");
   });
 });

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+  <!-- Single-sided skeleton pen tool icon: the same pen, with the width
+       indicator reaching to one side only, because the line drawn is the edge
+       of the letter rather than its middle. -->
+  <!-- Pen shape -->
+  <path d="M779 326 640 187 594 232 733 371ZM814 107C777 70 721 68 679 110L161 628C148 641 143 652 141 663L114 816C110 840 122 861 153 856L308 830C319 828 330 823 343 810L861 293C908 247 904 197 864 157ZM820 201C834 215 835 228 815 248L300 764L176 790L204 672L722 155C739 138 755 136 770 151Z"/>
+  <!-- Stroke width indicator lines, one side only -->
+  <line x1="400" y1="500" x2="400" y2="600" stroke="currentColor" stroke-width="30"/>
+  <line x1="400" y1="550" x2="500" y2="550" stroke="currentColor" stroke-width="15"/>
+</svg>

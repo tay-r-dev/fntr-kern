@@ -1,14 +1,17 @@
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import {
   DEFAULT_SKELETON_WIDTH,
+  SERIF_PRESET_FIELDS,
   SKELETON_SOURCE_DEFAULT_FALLBACKS,
   SKELETON_SOURCE_DEFAULT_KEYS,
   getSkeletonData,
   getSkeletonGlyphCase,
   getSkeletonPointWidth,
   getSourceSkeletonDefaultsValue,
+  makeSerifPreset,
   setSkeletonPointTotalWidth,
   setSourceSkeletonDefaultsValues,
 } from "@fontra/core/skeleton-model.js";
@@ -38,6 +41,20 @@ const CAP_DISPLAY_CONVERTERS = {
   },
 };
 
+// One name for one thing: the preset editor borrows the parameters panel's own
+// field labels rather than inventing a second set.
+const SERIF_FIELD_LABELS = {
+  wingLength: "serif-wing-length",
+  tipThickness: "serif-tip-thickness",
+  wingSlope: "serif-wing-slope",
+  tipCutAngle: "serif-tip-cut",
+  reach: "serif-reach",
+  tension: "serif-tension",
+  concavity: "serif-concavity",
+  easeDistance: "serif-ease-distance",
+  easeCurvature: "serif-ease-curvature",
+};
+
 // Master-wide skeleton defaults (1.3/1.4): per-source base widths (by glyph
 // case) and cap parameter presets. Hosted in the glyph panel below the
 // letterspacer; formerly a section of the skeleton parameters panel.
@@ -48,6 +65,9 @@ export default class SkeletonDefaultsPanel extends Panel {
   constructor(editorController) {
     super(editorController);
     this._customDeleteConfirm = null;
+    // Only one preset shows its fields at a time. Twenty numbers per preset
+    // makes an all-open list unreadable.
+    this._expandedSerifPreset = null;
     this.infoForm = new Form();
     this.contentElement.appendChild(
       html.div(
@@ -243,6 +263,169 @@ export default class SkeletonDefaultsPanel extends Panel {
     });
   }
 
+  // ---- Serif presets --------------------------------------------------------
+
+  // One named terminal shape per entry, held in the master. Same storage shape
+  // as the custom width list; the interface differs because a width preset is
+  // one number and a serif is twenty.
+  _getSerifPresetList() {
+    const list = this._sourceDefault(SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS);
+    if (!Array.isArray(list)) {
+      return [];
+    }
+    return list
+      .filter((item) => item && typeof item === "object")
+      .map((item) => {
+        const preset = { name: typeof item.name === "string" ? item.name : "" };
+        for (const field of SERIF_PRESET_FIELDS) {
+          // A preset saved before the wings collapsed carries a `left` block.
+          const value = Number(item[field] ?? item.left?.[field]);
+          preset[field] = Number.isFinite(value) ? value : 0;
+        }
+        return preset;
+      });
+  }
+
+  async _persistSerifPresets(next) {
+    await this._persistSourceDefaults(
+      { [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: next },
+      translate("sidebar.skeleton-parameters.undo.set-defaults")
+    );
+    await this.update();
+  }
+
+  _buildSerifPresetRows(formContents) {
+    const list = this._getSerifPresetList();
+    list.forEach((item, index) => {
+      const rowId = `serifPreset:${index}`;
+      const isConfirming = this._customDeleteConfirm === rowId;
+      const isExpanded = this._expandedSerifPreset === index;
+      const nameInput = html.input({
+        type: "text",
+        value: item.name,
+        style: "width: 7em;",
+        onchange: async (event) => {
+          const next = this._getSerifPresetList();
+          if (!next[index]) {
+            return;
+          }
+          next[index] = { ...next[index], name: String(event.target.value ?? "") };
+          this._customDeleteConfirm = null;
+          await this._persistSerifPresets(next);
+        },
+      });
+      const expandButton = html.createDomElement("icon-button", {
+        "src": isExpanded
+          ? "/tabler-icons/chevron-up.svg"
+          : "/tabler-icons/chevron-right.svg",
+        "style": "width: 1.1em; height: 1.1em;",
+        "data-tooltip": translate("sidebar.skeleton-parameters.serif-presets.edit"),
+        "data-tooltipposition": "left",
+        "onclick": async () => {
+          this._expandedSerifPreset = isExpanded ? null : index;
+          this._customDeleteConfirm = null;
+          await this.update();
+        },
+      });
+      const deleteButton = html.createDomElement("icon-button", {
+        "src": isConfirming ? "/tabler-icons/x.svg" : "/tabler-icons/trash.svg",
+        "style": "width: 1.1em; height: 1.1em;",
+        "data-tooltip": translate(
+          isConfirming
+            ? "sidebar.skeleton-parameters.custom-widths.confirm-delete"
+            : "sidebar.skeleton-parameters.custom-widths.delete"
+        ),
+        "data-tooltipposition": "left",
+        "onclick": async () => {
+          if (this._customDeleteConfirm !== rowId) {
+            this._customDeleteConfirm = rowId;
+            await this.update();
+            return;
+          }
+          const next = this._getSerifPresetList();
+          if (!next[index]) {
+            return;
+          }
+          next.splice(index, 1);
+          this._customDeleteConfirm = null;
+          this._expandedSerifPreset = null;
+          await this._persistSerifPresets(next);
+        },
+      });
+      formContents.push({
+        type: "single-icon",
+        element: html.div({ style: "display:flex; gap:0.35rem; align-items:center;" }, [
+          expandButton,
+          nameInput,
+          deleteButton,
+        ]),
+      });
+      if (isExpanded) {
+        this._pushSerifPresetFields(formContents, index, item);
+      }
+    });
+    formContents.push({
+      type: "single-icon",
+      element: html.div({}, [
+        html.button(
+          {
+            onclick: async () => {
+              const next = this._getSerifPresetList();
+              next.push(makeSerifPreset(`Serif ${next.length + 1}`));
+              this._customDeleteConfirm = null;
+              this._expandedSerifPreset = next.length - 1;
+              await this._persistSerifPresets(next);
+            },
+          },
+          [translate("sidebar.skeleton-parameters.custom-widths.add")]
+        ),
+      ]),
+    });
+  }
+
+  // The same grouping the parameters panel uses, so one shape reads the same
+  // way whether it is drawn on a glyph or stored in the master.
+  _pushSerifPresetFields(formContents, index, preset) {
+    const groups = [
+      ["serif-group-wing", ["wingLength", "tipThickness", "wingSlope", "tipCutAngle"]],
+      ["serif-group-bracket", ["reach", "tension", "concavity"]],
+      ["serif-group-easing", ["easeDistance", "easeCurvature"]],
+    ];
+    for (const [groupKey, fields] of groups) {
+      formContents.push({
+        type: "text",
+        value: translate(`sidebar.skeleton-parameters.${groupKey}`),
+      });
+      for (const field of fields) {
+        formContents.push({
+          type: "edit-number",
+          key: `serifPreset:${index}:${field}`,
+          label: translate(`sidebar.skeleton-parameters.${SERIF_FIELD_LABELS[field]}`),
+          value: preset[field],
+        });
+      }
+    }
+    formContents.push({
+      type: "edit-number",
+      key: `serifPreset:${index}:undersideCup`,
+      label: translate("sidebar.skeleton-parameters.serif-underside-cup"),
+      value: preset.undersideCup,
+    });
+  }
+
+  async _onSerifPresetFieldChange(index, field, value) {
+    const next = this._getSerifPresetList();
+    if (!next[index]) {
+      return;
+    }
+    const numeric = Number(value);
+    next[index] = {
+      ...next[index],
+      [field]: Number.isFinite(numeric) ? numeric : 0,
+    };
+    await this._persistSerifPresets(next);
+  }
+
   // ---- Form ----------------------------------------------------------------
 
   _pushNumber(formContents, key, labelKey) {
@@ -381,6 +564,12 @@ export default class SkeletonDefaultsPanel extends Panel {
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
+      label: translate("sidebar.skeleton-parameters.serif-presets"),
+    });
+    this._buildSerifPresetRows(formContents);
+    formContents.push({ type: "divider" });
+    formContents.push({
+      type: "header",
       label: translate("sidebar.skeleton-parameters.default-caps"),
     });
     formContents.push({
@@ -425,13 +614,21 @@ export default class SkeletonDefaultsPanel extends Panel {
 
     this.infoForm.setFieldDescriptions(formContents);
     this.infoForm.onFieldChange = async (fieldItem, value, valueStream) => {
-      const [group, name] = String(fieldItem.key).split(":");
+      const [group, name, field] = String(fieldItem.key).split(":");
+      if (group === "serifPreset") {
+        await this._onSerifPresetFieldChange(Number(name), field, value);
+        return;
+      }
       if (group !== "default") {
         return;
       }
       let finalValue = value;
       if (valueStream) {
         for await (const streamedValue of valueStream) {
+          // An abandoned drag has nothing to commit.
+          if (isScrubCancelled(streamedValue)) {
+            return;
+          }
           finalValue = streamedValue;
         }
       }

@@ -1,21 +1,45 @@
+import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import {
+  DEFAULT_UNDERSIDE_CUP_TENSION,
+  MAX_TIP_CUT_ANGLE,
+} from "@fontra/core/serif-geometry.js";
+import { SERIF_HALF_DEFAULTS } from "@fontra/core/skeleton-generator.js";
+import {
+  SERIF_HALF_FIELDS,
+  SERIF_PRESETS,
   SKELETON_SOURCE_DEFAULT_KEYS,
+  VALID_SERIF_AXIS_MODES,
+  VALID_SERIF_SIDES,
+  captureSerifPreset,
   getSkeletonData,
   getSkeletonGlyphCase,
   resolveEffectiveSourceSkeletonDefault,
   setSkeletonCapParameters,
   setSkeletonCornerParameters,
+  setSourceSkeletonDefaultsValues,
 } from "@fontra/core/skeleton-model.js";
 import { throttleCalls } from "@fontra/core/utils.ts";
 import { Form } from "@fontra/web-components/ui-form.js";
 import Panel from "./panel.js";
+import { editSkeleton } from "./skeleton-editing.js";
 import {
   SKELETON_PANEL_SENDER,
+  applyPanelSerifPreset,
+  nudgePanelCapParameterStream,
+  nudgePanelContourDefaultWidthStream,
+  nudgePanelCornerDistanceStream,
+  nudgePanelPointWidthStream,
+  nudgePanelSerifValueStream,
   resetPanelGeneratedHandle,
   resetPanelRibs,
+  scalePanelCapParameter,
+  scalePanelContourDefaultWidth,
+  scalePanelCornerDistance,
   scalePanelPointWidth,
+  scalePanelSerifValue,
   setPanelCapParameters,
   setPanelCapStyle,
   setPanelContourDefaultWidth,
@@ -28,8 +52,11 @@ import {
   setPanelPointTied,
   setPanelPointTotalWidth,
   setPanelPointValuesStream,
+  setPanelRibAngleLock,
   setPanelRibDetached,
   setPanelRibLocked,
+  setPanelSerifParameters,
+  setPanelSerifParametersStream,
 } from "./skeleton-panel-edits.js";
 import {
   collectRibEditTargets,
@@ -43,6 +70,7 @@ import {
   summarizeSkeletonCornerSelection,
   summarizeSkeletonPointWidths,
   summarizeSkeletonRibSelection,
+  summarizeSkeletonSerifSelection,
 } from "./skeleton-panel-model.js";
 
 // Cap parameter UI constants (donor parity: panel-skeleton-parameters.js).
@@ -69,8 +97,11 @@ const DEFAULT_CAP_BALL_SHAPE = 0;
 // stops reading as a terminal. Typing into the field still reaches 100%.
 export const CAP_SHAPE_MIN = 0;
 export const CAP_SHAPE_MAX = 40;
-// Drop-cap tension can be pushed well past 100% for an extra-smooth waist.
-export const CAP_TENSION_DROP_MAX = 300;
+// Bulb easing: a percent of the run from the ball's crossing on the inner edge
+// to the next generated on-curve. 100 collapses the two, and there is nothing
+// past it, so this is a hard end rather than a slider convenience.
+const DEFAULT_CAP_BALL_EASING = 0;
+export const CAP_BALL_EASING_MAX = 100;
 
 export function capRadiusRatioFromIndex(index) {
   const clampedIndex = Math.min(Math.max(index, 0), CAP_RADIUS_POSITIONS - 1);
@@ -110,24 +141,125 @@ function capValuesFromField(name, value) {
   if (name === "ballshape") {
     return { capBallShape: Number(value) / 100 };
   }
+  if (name === "balleasing") {
+    return { capBallEasing: Math.min(Math.max(Number(value) / 100, 0), 1) };
+  }
   if (name === "ballside") {
     return { capBallSide: value };
   }
   return null;
 }
 
+// A row that packs several inputs onto one line carries them as nested fields,
+// and it is those nested fields that own the keys. Flattening the row into its
+// parts is what lets both the layout signature and the in-place value refresh
+// treat a packed row exactly like the separate rows it replaced — without it,
+// every packed row reads as keyless and the section falls back to a full
+// rebuild on each edit, which is what loses focus mid-drag.
+function formFieldsOf(item) {
+  if (item?.type !== "universal-row") {
+    return [item];
+  }
+  // The row itself stays in the list so its own label still counts as layout;
+  // it carries no key, so the value refresh skips it.
+  return [item, item.field1, item.field2, item.field3].filter((field) => field);
+}
+
+// Everything about a set of field descriptions EXCEPT the values. Two form
+// contents with the same signature can share one set of DOM inputs, so the panel
+// can push new values into the existing form instead of rebuilding it.
+export function formContentsLayoutSignature(formContents) {
+  return formContents
+    .flatMap((item) => formFieldsOf(item))
+    .map((item) =>
+      [
+        item.type,
+        item.key ?? "",
+        item.label ?? "",
+        // A field switching between a real value and "mixed", or gaining a
+        // placeholder, changes what the input shows independently of its value,
+        // so those belong to the layout rather than to the value.
+        item.displayValue ?? "",
+        item.placeholder ?? "",
+        item.disabled ? "1" : "",
+        item.minValue ?? "",
+        item.maxValue ?? "",
+        item.step ?? "",
+        (item.options || []).map((option) => option.value).join(","),
+        // Button and dropdown rows carry no key, so they cannot be refreshed in
+        // place: their live click handlers close over the values they were built
+        // with. Folding their text in makes any change to what they offer count
+        // as a layout change, which rebuilds them.
+        item.element?.textContent ?? "",
+      ].join("")
+    )
+    .join("");
+}
+
+// Ratio-stored fields are edited as percent, like cap tension.
+function percentSummary(summary) {
+  return {
+    value: summary.value == null ? null : Math.round(summary.value * 100),
+    mixed: summary.mixed,
+  };
+}
+
+// Slider/number-unit -> model-unit for one serif half field.
+function serifHalfValueFromField(field, value) {
+  if (field === "tension" || field === "concavity" || field === "easeCurvature") {
+    return Number(value) / 100;
+  }
+  return Number(value);
+}
+
+// A `<scope>-<field>` half-serif field name and its panel-unit value, turned
+// into the partial serif object the model mutator takes. Null for anything that
+// is not a half field, so the caller can fall through to the shared ones.
+function serifHalfValuesFromField(name, value) {
+  const [scope, field] = String(name).split("-");
+  if (!SERIF_HALF_FIELDS.includes(field)) {
+    return null;
+  }
+  const resolved = value == null ? null : serifHalfValueFromField(field, value);
+  const values = {};
+  for (const side of scope === "both" ? ["left", "right"] : [scope]) {
+    values[side] = { [field]: resolved };
+  }
+  return values;
+}
+
+// Which stored serif numbers one label scrub moves. A field shown under the
+// shared controls drives both sides, the same as typing into it does.
+function serifNudgeTargets(name) {
+  if (name === "cup") {
+    return [{ field: "undersideCup" }];
+  }
+  if (name === "cuptension" || name === "cupbalance") {
+    return [];
+  }
+  const [scope, field] = String(name).split("-");
+  if (!SERIF_HALF_FIELDS.includes(field)) {
+    return [];
+  }
+  return (scope === "both" ? ["left", "right"] : [scope]).map((side) => ({
+    side,
+    field,
+  }));
+}
+
+// Corner field keys are "<side>-<parameter>": the side is carried in the key so
+// the linked and unlinked forms reach the same writer, which is what decides
+// whether one side or both take the value.
 function cornerValuesFromField(name, value) {
-  if (name === "roundness") {
-    return { cornerRoundness: Number(value) / 100 };
+  const [side, parameter] = String(name).split("-");
+  if (side !== "left" && side !== "right") {
+    return null;
   }
-  if (name === "asymmetry") {
-    return { cornerAsymmetry: Number(value) };
+  if (parameter === "distance") {
+    return { side, distance: Number(value) };
   }
-  if (name === "reach") {
-    return { cornerReach: Number(value) / 100 };
-  }
-  if (name === "strength") {
-    return { roundnessStrength: Number(value) / 100 };
+  if (parameter === "curvature") {
+    return { side, curvature: Number(value) / 100 };
   }
   return null;
 }
@@ -153,30 +285,52 @@ export default class SkeletonParametersPanel extends Panel {
     this._widthSnapshotKey = null;
     this._lastSignature = null;
     this._widthProfileSelection = "base";
+    // Per-field multiply ratios, kept across rebuilds so a rebuild after Apply
+    // does not reset the box the user is working in.
+    this._multiplyFactors = {};
     this._capProfileSelection = "base";
+    this._serifPresetSelection = null;
+    this._serifApplyScope = "both";
     this._forceApplyArmed = null;
     this._confirmTooltip = null;
 
     this.updateBound = this.update.bind(this);
-    // External glyph edits (e.g. dblclick smooth toggle) must refresh the
-    // panel's gates immediately; our own field edits already rebuild in
-    // _onFieldChange and must NOT trigger a rebuild mid-drag.
-    this._suppressGlyphChangeUpdate = false;
+    // True while one of this panel's own fields is streaming a drag. It stops a
+    // REBUILD mid-drag, which would replace the input under the hand. It does
+    // not stop a refresh: the other fields have to read live, the way they do
+    // under a canvas drag, and _applyFormContents already leaves the active
+    // field alone. Blocking the whole update instead left total, left, right and
+    // distribution disagreeing with the shape until the mouse came off.
+    this._streamingFieldEdit = false;
     this._throttledGlyphChangeUpdate = throttleCalls(() => {
       this._forceRebuild = true;
       this.update();
     }, 100);
+    // An edit that changes WHICH controls the panel shows has to wait for its
+    // own echo. The rebuild we run the moment the edit resolves reads the
+    // positioned glyph, and that has not been recomputed yet — so it renders
+    // the state from before the edit, and the panel sits one action behind
+    // until something else moves. A value edit does not have this problem,
+    // because the input already holds the number it reported to us.
+    this._rebuildOnOwnEcho = false;
     this.sceneController.addCurrentGlyphChangeListener((event) => {
       // Our own edits already rebuild in _onFieldChange; their async echo
       // (postChange broadcast) must not schedule a second rebuild — the
       // trailing rebuild replaces the slider input the user may already be
       // dragging again and can briefly read not-yet-settled values.
       if (event?.senderID === SKELETON_PANEL_SENDER) {
-        return;
+        // A drag on one of our own fields: let it through, so every other field
+        // follows the number being dragged. The pass is values-only.
+        if (this._streamingFieldEdit) {
+          this._throttledGlyphChangeUpdate();
+          return;
+        }
+        if (!this._rebuildOnOwnEcho) {
+          return;
+        }
+        this._rebuildOnOwnEcho = false;
       }
-      if (!this._suppressGlyphChangeUpdate) {
-        this._throttledGlyphChangeUpdate();
-      }
+      this._throttledGlyphChangeUpdate();
     });
     this.sceneSettingsController.addKeyListener(
       [
@@ -229,11 +383,6 @@ export default class SkeletonParametersPanel extends Panel {
   // ---- Panel rebuild --------------------------------------------------------
 
   async update() {
-    // A rebuild while a slider streams would replace the input mid-drag and
-    // lock its direction; _onFieldChange rebuilds once the edit completes.
-    if (this._suppressGlyphChangeUpdate) {
-      return;
-    }
     if (!this.infoForm.contentElement.offsetParent) {
       return;
     }
@@ -264,14 +413,37 @@ export default class SkeletonParametersPanel extends Panel {
     const formContents = [
       { type: "header", label: translate("sidebar.skeleton-parameters.title") },
     ];
+    // Above the no-skeleton and no-selection branches, so it is there whatever
+    // is selected. It is a generator setting: it applies to every outline the
+    // generator writes, not to the points that happen to be selected.
+    const dropDeadPoints =
+      this._resolveSourceDefault(
+        SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED
+      ) === true;
+    formContents.push({
+      type: "checkbox",
+      key: `generator:dropDeadPoints`,
+      label: translate("sidebar.skeleton-parameters.drop-dead-points"),
+      value: dropDeadPoints,
+    });
+    if (dropDeadPoints) {
+      formContents.push({
+        type: "text",
+        value: translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
+      });
+    }
 
     if (!skeletonData) {
       formContents.push({
         type: "text",
         value: translate("sidebar.skeleton-parameters.no-skeleton"),
       });
+      this._lastFormLayout = null;
       this.infoForm.setFieldDescriptions(formContents);
-      this.infoForm.onFieldChange = () => {};
+      // The generator switch is in this form even here, so the form still
+      // needs a working handler.
+      this.infoForm.onFieldChange = (fieldItem, value, valueStream) =>
+        this._onFieldChange(fieldItem, value, valueStream);
       return;
     }
 
@@ -306,9 +478,43 @@ export default class SkeletonParametersPanel extends Panel {
 
     formContents.push({ type: "spacer" });
 
-    this.infoForm.setFieldDescriptions(formContents);
+    this._applyFormContents(formContents);
     this.infoForm.onFieldChange = (fieldItem, value, valueStream) =>
       this._onFieldChange(fieldItem, value, valueStream);
+  }
+
+  // Handing the form a new set of field descriptions rebuilds every input from
+  // scratch, which throws away focus and any in-flight interaction: an arrow key
+  // in a number input applied once and then stopped, and a slider went dead until
+  // the selection was cycled. When only the VALUES moved — which is the common
+  // case, since editing a parameter is what triggers the update — the existing
+  // inputs are still the right ones and just need their values pushed in.
+  _applyFormContents(formContents) {
+    const layout = formContentsLayoutSignature(formContents);
+    if (layout === this._lastFormLayout) {
+      for (const item of formContents.flatMap((row) => formFieldsOf(row))) {
+        if (item.key == null || !this.infoForm.hasKey(item.key)) {
+          continue;
+        }
+        // Writing back into the input the user just used would fight their next
+        // keystroke, and it already holds the value it reported to us — a scrub
+        // has been writing the running number into it all along.
+        if (item.key === this._activeFieldKey) {
+          continue;
+        }
+        this.infoForm.setValue(item.key, item.value);
+      }
+      return;
+    }
+    // A rebuild while one of our fields streams would replace the input under
+    // the hand and lock the drag's direction. The layout is stable through a
+    // value drag anyway, so reaching here mid-drag means something else changed
+    // the shape of the panel, and it can wait until the drag ends.
+    if (this._streamingFieldEdit) {
+      return;
+    }
+    this._lastFormLayout = layout;
+    this.infoForm.setFieldDescriptions(formContents);
   }
 
   // ---- Master default profiles (force-apply) --------------------------------
@@ -433,7 +639,7 @@ export default class SkeletonParametersPanel extends Panel {
         label: translate("sidebar.skeleton-parameters.default-caps"),
         values: {
           capBallRatio: DEFAULT_CAP_BALL_RATIO,
-          capTension: Number(this._resolveSourceDefault(K.CAP_TENSION)),
+          capBallEasing: DEFAULT_CAP_BALL_EASING,
         },
       });
     }
@@ -594,12 +800,19 @@ export default class SkeletonParametersPanel extends Panel {
       label: translate("sidebar.skeleton-parameters.tied"),
       value: summary.tied.mixed ? false : summary.tied.value,
     });
-    this._pushSummaryNumber(formContents, "width:total", "total-width", summary.total);
+    // The minimum is declared here rather than left to the model: without it a
+    // scrub past the bottom of the range keeps counting down in the box while
+    // the stroke has already stopped, and the number snaps back on release.
+    this._pushSummaryNumber(formContents, "width:total", "total-width", summary.total, {
+      minValue: 0,
+    });
     // On a single-sided contour the visible edge is the TOTAL, so the per-side
     // numbers and the split between them describe nothing on screen. Greyed and
     // blank rather than hidden: they are still stored, and still what the point
     // goes back to if the contour returns to double-sided.
-    const perSideGate = summary.singleSided ? { disabled: true, blank: true } : {};
+    const perSideGate = summary.singleSided
+      ? { disabled: true, blank: true, minValue: 0 }
+      : { minValue: 0 };
     this._pushSummaryNumber(
       formContents,
       "width:left",
@@ -626,19 +839,6 @@ export default class SkeletonParametersPanel extends Panel {
         ? { step: 10, disabled: true, displayValue: "" }
         : { step: 10 }
     );
-    // Donor: scale 0.2–2.0 in 0.2 steps, shown here in percent; the number
-    // input accepts values beyond the slider range.
-    formContents.push({
-      type: "edit-number-slider",
-      key: "width:scale",
-      label: translate("sidebar.skeleton-parameters.scale"),
-      value: 100,
-      minValue: 20,
-      defaultValue: 100,
-      maxValue: 200,
-      step: 20,
-      allowInputBeyondRange: true,
-    });
     // Force-apply a master width profile to the selected points (two-click
     // confirm; the dropdown picks base/horizontal/contrast or a custom width).
     this._buildForceApplyRow(formContents, {
@@ -675,7 +875,8 @@ export default class SkeletonParametersPanel extends Panel {
       formContents,
       "contour:default-width",
       "contour-default-width",
-      summary.defaultWidth
+      summary.defaultWidth,
+      { minValue: 0 }
     );
   }
 
@@ -710,6 +911,37 @@ export default class SkeletonParametersPanel extends Panel {
         {
           value: "drop",
           label: translate("sidebar.skeleton-parameters.cap-style.drop"),
+        },
+        {
+          value: "serif",
+          label: translate("sidebar.skeleton-parameters.cap-style.serif"),
+        },
+      ],
+    });
+    // The rib angle lock is offered for every cap style, not just the flat one
+    // as in the donor: it decides the rib the cap is built on, so it supersedes
+    // the style rather than belonging to one.
+    formContents.push({
+      type: "select",
+      key: "cap:ribanglelock",
+      label: translate("sidebar.skeleton-parameters.rib-angle-lock"),
+      value: cap.ribAngleLock.mixed ? "" : (cap.ribAngleLock.value ?? "auto"),
+      disabled: !capStyle.canEdit,
+      options: [
+        ...(cap.ribAngleLock.mixed
+          ? [{ value: "", label: "mixed", disabled: true }]
+          : []),
+        {
+          value: "auto",
+          label: translate("sidebar.skeleton-parameters.rib-angle-lock.auto"),
+        },
+        {
+          value: "horizontal",
+          label: translate("sidebar.skeleton-parameters.rib-angle-lock.horizontal"),
+        },
+        {
+          value: "vertical",
+          label: translate("sidebar.skeleton-parameters.rib-angle-lock.vertical"),
         },
       ],
     });
@@ -800,18 +1032,22 @@ export default class SkeletonParametersPanel extends Panel {
         Math.round(DEFAULT_CAP_BALL_SHAPE * 100),
         { step: 5, allowInputBeyondRange: true }
       );
-      const tensionSummary = {
-        value: Math.round((cap.capTension.value ?? DEFAULT_CAP_TENSION) * 100),
-        mixed: cap.capTension.mixed,
+      // Easing, not tension: this sets how far back along the inner edge the
+      // neck starts, as a percent of the run to the next generated on-curve.
+      // 100 collapses the two, and there is no geometry past it — so the slider
+      // ends there and typing cannot reach beyond it either.
+      const easingSummary = {
+        value: Math.round((cap.capBallEasing.value ?? DEFAULT_CAP_BALL_EASING) * 100),
+        mixed: cap.capBallEasing.mixed,
       };
       this._pushSummarySlider(
         formContents,
-        "cap:tension",
-        "cap-tension",
-        tensionSummary,
+        "cap:balleasing",
+        "cap-ball-easing",
+        easingSummary,
         0,
-        CAP_TENSION_DROP_MAX,
-        Math.round(DEFAULT_CAP_TENSION * 100),
+        CAP_BALL_EASING_MAX,
+        Math.round(DEFAULT_CAP_BALL_EASING * 100),
         { step: 5 }
       );
       formContents.push({
@@ -838,9 +1074,12 @@ export default class SkeletonParametersPanel extends Panel {
           },
         ],
       });
+    } else if (styleValue === "serif") {
+      this._buildSerifSection(formContents, widthPoints, capStyle.canEdit);
     }
     // Force-apply master cap defaults (or a custom cap profile) to the
-    // selected endpoints, two-click confirm.
+    // selected endpoints, two-click confirm. Serifs have no profile library
+    // yet, so they are not offered here.
     if (
       (styleValue === "round" || styleValue === "square" || styleValue === "drop") &&
       capStyle.canEdit
@@ -854,9 +1093,11 @@ export default class SkeletonParametersPanel extends Panel {
     }
   }
 
-  // Donor "Corner Rounding" section: parameters of the angle-point rounding
-  // engine, NOT cap parameters. All four live on the point; edited in percent
-  // (except asymmetry) and gated to angle points (non-smooth, non-endpoint).
+  // Corner rounding: the angle-point rounding engine, NOT cap parameters. Two
+  // numbers per side of the stroke, gated to angle points (non-smooth,
+  // non-endpoint). Distance is font units and scrubs off its label; curvature
+  // is a percentage on the same scale the serif's easing and the curvature
+  // gizmo use. Linked shows one pair and writes both sides.
   _buildCornerSection(formContents, widthPoints) {
     const corner = summarizeSkeletonCornerSelection(widthPoints);
     formContents.push({ type: "divider" });
@@ -865,50 +1106,40 @@ export default class SkeletonParametersPanel extends Panel {
       label: translate("sidebar.skeleton-parameters.corner-rounding"),
     });
     const gate = { disabled: !corner.canEdit };
+    formContents.push({
+      type: "checkbox",
+      key: "corner:linked",
+      label: translate("sidebar.skeleton-parameters.linked"),
+      value: corner.linked.mixed ? false : corner.linked.value,
+      ...gate,
+    });
     const asPercent = (summary) => ({
       value: summary.value == null ? null : Math.round(summary.value * 100),
       mixed: summary.mixed,
     });
-    this._pushSummarySlider(
-      formContents,
-      "corner:roundness",
-      "corner-roundness",
-      asPercent(corner.cornerRoundness),
-      0,
-      100,
-      0,
-      { step: 1, ...gate }
-    );
-    this._pushSummarySlider(
-      formContents,
-      "corner:asymmetry",
-      "corner-asymmetry",
-      corner.cornerAsymmetry,
-      -1,
-      1,
-      0,
-      { step: 0.1, ...gate }
-    );
-    this._pushSummarySlider(
-      formContents,
-      "corner:reach",
-      "corner-reach",
-      asPercent(corner.cornerReach),
-      5,
-      99,
-      50,
-      { step: 1, ...gate }
-    );
-    this._pushSummarySlider(
-      formContents,
-      "corner:strength",
-      "corner-strength",
-      asPercent(corner.roundnessStrength),
-      10,
-      400,
-      100,
-      { step: 1, ...gate }
-    );
+    // Linked writes both sides from one pair, so only the left is offered — the
+    // side the key names is the side the writer starts from.
+    const linked = !corner.linked.mixed && corner.linked.value;
+    const sides = linked ? ["left"] : ["left", "right"];
+    for (const side of sides) {
+      this._pushSummaryNumber(
+        formContents,
+        `corner:${side}-distance`,
+        linked ? "corner-distance" : `corner-distance-${side}`,
+        corner[side].distance,
+        { minValue: 0, ...gate }
+      );
+      this._pushSummarySlider(
+        formContents,
+        `corner:${side}-curvature`,
+        linked ? "corner-curvature" : `corner-curvature-${side}`,
+        asPercent(corner[side].curvature),
+        0,
+        100,
+        55,
+        { step: 1, ...gate }
+      );
+    }
   }
 
   _buildRibSection(formContents, ribs, derived = false) {
@@ -976,18 +1207,657 @@ export default class SkeletonParametersPanel extends Panel {
     });
   }
 
+  // Serif parameters. Nine numbers per half plus the axis and the underside cup
+  // shared by the terminal, grouped wing / bracket / contour easing so the panel
+  // reads in the order the shape is built. Absolute font units for the lengths;
+  // tension, concavity and ease curvature are edited as percent and stored as
+  // ratios.
+  //
+  // Which sides the terminal is built on is a segmented control: both, L or R.
+  // A side outside it generates nothing. From a one-sided terminal a button
+  // creates the opposite side, which is the only route to two wings shaped
+  // apart; from there each section carries a symmetrize that copies itself over
+  // the other and collapses back to one set of controls.
+  _buildSerifSection(formContents, widthPoints, canEdit) {
+    const serif = summarizeSkeletonSerifSelection(widthPoints);
+    const sides = serif.sides.mixed ? null : (serif.sides.value ?? "both");
+    const split = sides === "split";
+    // Collapsing two wings the designer has actually shaped would throw one of
+    // them away, so "both" stops being offered once they differ. Symmetrize is
+    // the way back from there, because it says which shape survives.
+    const halvesDiffer = SERIF_HALF_FIELDS.some((field) => {
+      const left = serif.left[field];
+      const right = serif.right[field];
+      return left.mixed || right.mixed || left.value !== right.value;
+    });
+
+    // A segmented control, not three loose buttons: joined, with the live
+    // segment filled.
+    const tab = (option, label, disabled) =>
+      html.button(
+        {
+          disabled: disabled || !canEdit,
+          style: `
+            flex: 1 1 0; min-width: 3em; margin: 0; border-radius: 0;
+            border: 1px solid var(--horizontal-rule-color, #8888);
+            ${option === "both" ? "border-radius: 4px 0 0 4px;" : "border-left: none;"}
+            ${option === "right" ? "border-radius: 0 4px 4px 0;" : ""}
+            ${
+              sides === option || (option === "both" && split)
+                ? "background: var(--editor-text-entry-input-background-color, #8884); font-weight: bold;"
+                : "background: transparent; opacity: 0.6;"
+            }
+          `,
+          onclick: () => this._onSerifChange("sides", option),
+        },
+        [label]
+      );
+
+    formContents.push({
+      type: "single-icon",
+      // Which segment is lit shows in the styling, not in the row's text, so the
+      // layout signature would miss an L-to-R switch and leave the highlight
+      // behind. The key carries it instead; nothing reads it as a field.
+      key: `serif:sides-tabs-${sides ?? "mixed"}-${halvesDiffer ? "differ" : "same"}`,
+      element: html.div({ style: "display:flex; align-items:center; gap:0.5rem;" }, [
+        html.span({ style: "opacity:0.65;" }, [
+          translate("sidebar.skeleton-parameters.serif-sides"),
+        ]),
+        html.div({ style: "display:flex; flex: 1 1 auto;" }, [
+          tab(
+            "both",
+            translate("sidebar.skeleton-parameters.serif-sides.both"),
+            split && halvesDiffer
+          ),
+          tab("left", translate("sidebar.skeleton-parameters.serif-sides.left"), false),
+          tab(
+            "right",
+            translate("sidebar.skeleton-parameters.serif-sides.right"),
+            false
+          ),
+        ]),
+      ]),
+    });
+
+    // Every serif length is a plain number whose label scrubs, like the rest of
+    // the panel. It used to carry a scale slider on the same line; the scrub
+    // replaced it, and took a row's worth of width back with it.
+    //
+    // The minimum is declared here rather than left to the model: without it a
+    // drag past the bottom of the range keeps counting down in the box while the
+    // shape has already stopped, and the number snaps back on release.
+    const pushLength = (key, labelKey, summary, minValue = 0) => {
+      this._pushSummaryNumber(formContents, key, labelKey, summary, {
+        disabled: !canEdit,
+        ...(minValue == null ? {} : { minValue }),
+      });
+    };
+
+    const pushGroup = (labelKey) => {
+      formContents.push({
+        type: "header",
+        label: translate(`sidebar.skeleton-parameters.${labelKey}`),
+      });
+    };
+
+    const pushHalf = (scope, half) => {
+      pushGroup("serif-group-wing");
+      pushLength(`serif:${scope}-wingLength`, "serif-wing-length", half.wingLength);
+      pushLength(
+        `serif:${scope}-tipThickness`,
+        "serif-tip-thickness",
+        half.tipThickness
+      );
+      // Signed, unlike the other three: a negative slope tilts the wing's inner
+      // face the other way and is a real family of shapes, not an error.
+      pushLength(`serif:${scope}-wingSlope`, "serif-wing-slope", half.wingSlope, null);
+      // Degrees rather than a length, but edited like the other three: a number
+      // whose label scrubs. It was a slider, which made it the odd one out in a
+      // group of four.
+      this._pushSummaryNumber(
+        formContents,
+        `serif:${scope}-tipCutAngle`,
+        "serif-tip-cut",
+        half.tipCutAngle,
+        {
+          disabled: !canEdit,
+          minValue: -MAX_TIP_CUT_ANGLE,
+          maxValue: MAX_TIP_CUT_ANGLE,
+        }
+      );
+
+      // An untouched half stores null on every field, and null means "inherit"
+      // — so these three sliders have to park on the generator's own default or
+      // they show a shape that is not on screen, and the first drag jumps.
+      const percentDefault = (field) => Math.round(SERIF_HALF_DEFAULTS[field] * 100);
+
+      pushGroup("serif-group-bracket");
+      // How far back along the stem flank the transition starts. It moves the
+      // junction, which moves the attractor the bracket bends around, so it is
+      // not a longer version of wing slope.
+      pushLength(`serif:${scope}-reach`, "serif-reach", half.reach);
+      // How far both handles travel toward the attractor. At 0 the bracket is a
+      // straight wedge; there is no separate corner-or-smooth switch.
+      this._pushSummarySlider(
+        formContents,
+        `serif:${scope}-tension`,
+        "serif-tension",
+        percentSummary(half.tension),
+        0,
+        100,
+        percentDefault("tension"),
+        { step: 1, disabled: !canEdit }
+      );
+      // Signed, and it places the attractor: negative bulges the transition
+      // convex, 0 is a flat chamfer, 100 puts it on the wing's inner corner.
+      this._pushSummarySlider(
+        formContents,
+        `serif:${scope}-concavity`,
+        "serif-concavity",
+        percentSummary(half.concavity),
+        -100,
+        100,
+        percentDefault("concavity"),
+        { step: 1, disabled: !canEdit }
+      );
+
+      pushGroup("serif-group-easing");
+      // Rounds the junction between the flank and the bracket. It switches
+      // itself off on a hollow bracket, which is why these two do nothing at
+      // positive concavity.
+      pushLength(
+        `serif:${scope}-easeDistance`,
+        "serif-ease-distance",
+        half.easeDistance
+      );
+      this._pushSummarySlider(
+        formContents,
+        `serif:${scope}-easeCurvature`,
+        "serif-ease-curvature",
+        percentSummary(half.easeCurvature),
+        0,
+        100,
+        percentDefault("easeCurvature"),
+        { step: 1, disabled: !canEdit }
+      );
+    };
+
+    // Copies its own side over the other and ties them, so the terminal goes
+    // back to one set of controls. Which shape survives is the designer's pick,
+    // which is why it sits in the section rather than on the "both" tab.
+    const pushSymmetrize = (side) => {
+      formContents.push({
+        type: "single-icon",
+        element: html.div({}, [
+          html.button(
+            {
+              disabled: !canEdit,
+              onclick: () => this._onSerifChange("symmetrize", side),
+            },
+            [translate("sidebar.skeleton-parameters.serif-symmetrize")]
+          ),
+        ]),
+      });
+    };
+
+    if (split) {
+      formContents.push({
+        type: "header",
+        label: translate("sidebar.skeleton-parameters.serif-left"),
+      });
+      pushHalf("left", serif.left);
+      pushSymmetrize("left");
+      formContents.push({
+        type: "header",
+        label: translate("sidebar.skeleton-parameters.serif-right"),
+      });
+      pushHalf("right", serif.right);
+      pushSymmetrize("right");
+    } else if (sides === "left" || sides === "right") {
+      // The two halves are held identical while only one is built, so the
+      // fields write to both and switching back to "both" shows the shape that
+      // is on screen rather than whatever the dead side was left holding.
+      pushHalf("both", serif[sides]);
+      formContents.push({
+        type: "single-icon",
+        element: html.div({}, [
+          html.button(
+            {
+              disabled: !canEdit,
+              onclick: () => this._onSerifChange("addOtherSide", sides),
+            },
+            [translate("sidebar.skeleton-parameters.serif-add-other-side")]
+          ),
+        ]),
+      });
+    } else {
+      pushHalf("both", serif.left);
+    }
+
+    formContents.push({ type: "divider" });
+    // The serif axis is independent of the rib angle lock above: the lock sets
+    // the rib the cap is built on, this sets which way the wings run. Both
+    // apply at once.
+    formContents.push({
+      type: "select",
+      key: "serif:axismode",
+      label: translate("sidebar.skeleton-parameters.serif-axis"),
+      value: serif.axisMode.mixed ? "" : (serif.axisMode.value ?? "perpendicular"),
+      disabled: !canEdit,
+      options: [
+        ...(serif.axisMode.mixed
+          ? [{ value: "", label: "mixed", disabled: true }]
+          : []),
+        {
+          value: "perpendicular",
+          label: translate("sidebar.skeleton-parameters.serif-axis.perpendicular"),
+        },
+        {
+          value: "horizontal",
+          label: translate("sidebar.skeleton-parameters.serif-axis.horizontal"),
+        },
+        {
+          value: "vertical",
+          label: translate("sidebar.skeleton-parameters.serif-axis.vertical"),
+        },
+        {
+          value: "absolute",
+          label: translate("sidebar.skeleton-parameters.serif-axis.absolute"),
+        },
+      ],
+    });
+    if (serif.axisMode.value === "absolute" && !serif.axisMode.mixed) {
+      this._pushSummarySlider(
+        formContents,
+        "serif:axisangle",
+        "serif-axis-angle",
+        serif.axisAngle,
+        -90,
+        90,
+        0,
+        { step: 1, disabled: !canEdit }
+      );
+    }
+    // One curve across the whole terminal, so these are shared rather than per
+    // half: a cup on each half would meet at a break in the middle. Three
+    // numbers: the depth sets how deep the foot centre sits, the balance slides
+    // that centre from tip to tip, and the tension sets how long the four
+    // handles reaching it are.
+    pushLength("serif:cup", "serif-underside-cup", serif.undersideCup);
+    this._pushSummarySlider(
+      formContents,
+      "serif:cupbalance",
+      "serif-underside-cup-balance",
+      percentSummary(serif.undersideCupBalance),
+      -100,
+      100,
+      0,
+      { step: 1, disabled: !canEdit }
+    );
+    this._pushSummarySlider(
+      formContents,
+      "serif:cuptension",
+      "serif-underside-cup-tension",
+      percentSummary(serif.undersideCupTension),
+      0,
+      100,
+      Math.round(DEFAULT_UNDERSIDE_CUP_TENSION * 100),
+      { step: 1, disabled: !canEdit }
+    );
+    this._buildSerifPresetControls(formContents, serif, canEdit);
+  }
+
+  // ---- Serif presets --------------------------------------------------------
+
+  // The ported built-ins first, then the master's own — the same order the
+  // width and cap selects use. A built-in cannot be updated in place.
+  _serifPresetOptions() {
+    const options = SERIF_PRESETS.map((preset, index) => ({
+      id: `builtin:${index}`,
+      label: preset.name,
+      preset,
+      builtin: true,
+    }));
+    const list = this._resolveSourceDefault(SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS);
+    if (Array.isArray(list)) {
+      list
+        .filter((item) => item && typeof item === "object")
+        .forEach((item, index) => {
+          options.push({
+            id: `custom:${index}`,
+            index,
+            label: item.name || `Serif ${index + 1}`,
+            preset: item,
+            builtin: false,
+          });
+        });
+    }
+    return options;
+  }
+
+  // A preset is one shape. Capturing two different terminals into one would
+  // produce neither of them, so create and update refuse a mixed selection.
+  _serifSelectionIsMixed(serif) {
+    for (const side of ["left", "right"]) {
+      for (const field of SERIF_HALF_FIELDS) {
+        if (serif[side][field].mixed) {
+          return true;
+        }
+      }
+    }
+    return (
+      serif.sides.mixed ||
+      serif.undersideCup.mixed ||
+      serif.undersideCupTension.mixed ||
+      serif.undersideCupBalance.mixed
+    );
+  }
+
+  // The setting lives with the master, because the outline it changes is
+  // written into the master's glyphs. The switch is in this panel because it is
+  // a generator setting a designer reaches for while drawing.
+  async _onGeneratorChange(name, value) {
+    if (name !== "dropDeadPoints") {
+      return;
+    }
+    await this._persistSourceDefaultValues({
+      [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED]: value === true,
+    });
+    // The outline is stored, not recomputed on every draw, so the open glyph
+    // keeps the old one until something edits it. A mutation that changes
+    // nothing is enough to make it regenerate.
+    const glyphName = this.sceneController.sceneSettings?.selectedGlyphName;
+    if (!glyphName || this.fontController.readOnly) {
+      return;
+    }
+    await this.sceneController.editGlyphAndRecordChanges(
+      (glyph) => {
+        for (const layer of Object.values(glyph.layers || {})) {
+          if (getSkeletonData(layer.glyph)) {
+            editSkeleton(layer.glyph, () => {});
+          }
+        }
+        return translate("sidebar.skeleton-parameters.undo.set-defaults");
+      },
+      this,
+      false
+    );
+  }
+
+  async _persistSourceDefaultValues(values) {
+    if (this.fontController.readOnly) {
+      return;
+    }
+    const location =
+      this.sceneController.sceneSettings.fontLocationSourceMapped ||
+      this.sceneController.sceneSettings.fontLocationSource ||
+      {};
+    const sourceId =
+      this.fontController.fontSourcesInstancer?.getSourceIdentifierForLocation(
+        location
+      ) || this.fontController.defaultSourceIdentifier;
+    if (!sourceId || !this.fontController.sources?.[sourceId]) {
+      return;
+    }
+    const root = { sources: this.fontController.sources };
+    const changes = recordChanges(root, (root) => {
+      const source = root.sources[sourceId];
+      if (source) {
+        setSourceSkeletonDefaultsValues(source, values);
+      }
+    });
+    if (changes.hasChange) {
+      await this.fontController.postChange(
+        changes.change,
+        changes.rollbackChange,
+        translate("sidebar.skeleton-parameters.undo.set-defaults"),
+        this
+      );
+    }
+  }
+
+  async _persistSerifPresetList(next) {
+    await this._persistSourceDefaultValues({
+      [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: next,
+    });
+  }
+
+  _customSerifPresets() {
+    return this._serifPresetOptions()
+      .filter((option) => !option.builtin)
+      .map((option) => ({ ...option.preset }));
+  }
+
+  _selectedSerifPoint() {
+    return this._widthPoints()[0] ?? null;
+  }
+
+  async _applySerifPreset(option) {
+    await applyPanelSerifPreset(
+      this.sceneController,
+      this._widthPoints(),
+      option.preset,
+      this._serifApplyScope,
+      this._undo("set-serif")
+    );
+    this._forceRebuild = true;
+    await this.update();
+  }
+
+  async _createSerifPreset() {
+    const entry = this._selectedSerifPoint();
+    if (!entry) {
+      return;
+    }
+    const next = this._customSerifPresets();
+    next.push({
+      name: `Serif ${next.length + 1}`,
+      ...captureSerifPreset(entry.point),
+    });
+    this._serifPresetSelection = `custom:${next.length - 1}`;
+    await this._persistSerifPresetList(next);
+    this._forceRebuild = true;
+    await this.update();
+  }
+
+  async _updateSerifPreset(option) {
+    const entry = this._selectedSerifPoint();
+    if (!entry) {
+      return;
+    }
+    const next = this._customSerifPresets();
+    next[option.index] = {
+      name: option.preset.name,
+      ...captureSerifPreset(entry.point),
+    };
+    await this._persistSerifPresetList(next);
+    this._forceRebuild = true;
+    await this.update();
+  }
+
+  _buildSerifPresetControls(formContents, serif, canEdit) {
+    const options = this._serifPresetOptions();
+    const mixed = this._serifSelectionIsMixed(serif);
+    const hasPoint = !!this._selectedSerifPoint();
+    formContents.push({ type: "divider" });
+    formContents.push({
+      type: "header",
+      label: translate("sidebar.skeleton-parameters.serif-presets"),
+    });
+    if (options.length) {
+      if (!options.some((option) => option.id === this._serifPresetSelection)) {
+        this._serifPresetSelection = options[0].id;
+      }
+      const select = html.select(
+        {
+          style: "min-width: 8em;",
+          disabled: !canEdit,
+          onchange: (event) => {
+            this._serifPresetSelection = event.target.value;
+            this._disarmForceApply();
+            this.update();
+          },
+        },
+        options.map((option) =>
+          html.option(
+            { value: option.id, selected: this._serifPresetSelection === option.id },
+            [option.label]
+          )
+        )
+      );
+      const scopeSelect = html.select(
+        {
+          style: "min-width: 6em;",
+          disabled: !canEdit,
+          onchange: (event) => {
+            this._serifApplyScope = event.target.value;
+            this._disarmForceApply();
+          },
+        },
+        ["both", "left", "right"].map((scope) =>
+          html.option({ value: scope, selected: this._serifApplyScope === scope }, [
+            translate(`sidebar.skeleton-parameters.serif-presets.scope-${scope}`),
+          ])
+        )
+      );
+      const selected = options.find(
+        (option) => option.id === this._serifPresetSelection
+      );
+      const applyButton = html.button(
+        {
+          disabled: !canEdit,
+          onclick: (event) => {
+            if (!selected) {
+              return;
+            }
+            this._confirmThenApply(event, "serif-preset", () =>
+              this._applySerifPreset(selected)
+            );
+          },
+        },
+        [translate("sidebar.skeleton-parameters.force-apply")]
+      );
+      // The name rides on the button, so a select changed between the two
+      // presses cannot aim the overwrite at a preset the designer is not
+      // looking at.
+      const updateButton = html.button(
+        {
+          disabled: !canEdit || mixed || !hasPoint || !selected || selected.builtin,
+          onclick: (event) => {
+            if (!selected) {
+              return;
+            }
+            this._confirmThenApply(event, "serif-preset-update", () =>
+              this._updateSerifPreset(selected)
+            );
+          },
+        },
+        [
+          translate(
+            "sidebar.skeleton-parameters.serif-presets.update",
+            selected?.label ?? ""
+          ),
+        ]
+      );
+      formContents.push({
+        type: "single-icon",
+        element: html.div(
+          { style: "display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;" },
+          [select, scopeSelect, applyButton, updateButton]
+        ),
+      });
+    }
+    const createButton = html.button(
+      {
+        disabled: !canEdit || mixed || !hasPoint,
+        onclick: () => this._createSerifPreset(),
+      },
+      [translate("sidebar.skeleton-parameters.serif-presets.create")]
+    );
+    formContents.push({
+      type: "single-icon",
+      element: html.div({}, [createButton]),
+    });
+  }
+
   // ---- Field description helpers -------------------------------------------
 
   _pushSummaryNumber(formContents, key, labelKey, summary, options = {}) {
-    const { blank = false, ...fieldOptions } = options;
     formContents.push({
+      label: translate(`sidebar.skeleton-parameters.${labelKey}`),
+      ...this._summaryNumberField(key, summary, options),
+    });
+  }
+
+  // The number input on its own, so a caller can either give it a row of its
+  // own or pack it beside something else.
+  //
+  // Every one of these scrubs: dragging its label sideways moves the number.
+  // On by default rather than per field, so there is no guessing which of the
+  // panel's numbers are draggable — they all are. A caller that wants one inert
+  // passes `scrub: false`.
+  _summaryNumberField(key, summary, options = {}) {
+    const { blank = false, ...fieldOptions } = options;
+    return {
       type: "edit-number",
       key,
-      label: translate(`sidebar.skeleton-parameters.${labelKey}`),
       value: blank || summary.mixed ? null : summary.value,
       placeholder: blank ? "" : summary.placeholder || undefined,
+      scrub: true,
+      auxiliaryElement: fieldOptions.disabled
+        ? undefined
+        : this._multiplyControl(key, summary),
       ...fieldOptions,
+    };
+  }
+
+  // "× 1.1 → 44 Apply", packed into the same row as the number.
+  //
+  // A scrub adds and a multiply scales, and the two want different controls: a
+  // scrub is a continuous drag with the shape under the hand, a multiply is one
+  // ratio applied at once. Hence a field and a button rather than a second drag.
+  //
+  // The button carries the answer because a ratio is not a shape. 1.1 tells you
+  // nothing about where a 40 lands; 44 does.
+  _multiplyControl(key, summary) {
+    const factorOf = () => Number(this._multiplyFactors[key] ?? 1);
+    const preview = () => {
+      const factor = factorOf();
+      if (!Number.isFinite(factor) || summary.mixed || summary.value == null) {
+        return summary.mixed ? "mixed - Apply" : "Apply";
+      }
+      return `${Math.round(summary.value * factor)} - Apply`;
+    };
+    const button = html.button(
+      {
+        style: "white-space: nowrap;",
+        onclick: () => {
+          const factor = factorOf();
+          if (!Number.isFinite(factor) || factor === 1) {
+            return;
+          }
+          const [group, name] = String(key).split(":");
+          this._onMultiply(group, name, factor);
+        },
+      },
+      [preview()]
+    );
+    const input = html.input({
+      type: "number",
+      step: "0.1",
+      value: String(factorOf()),
+      style: "width: 3.5em;",
+      oninput: (event) => {
+        this._multiplyFactors[key] = event.target.value;
+        // Live, so the button always shows where this field's number lands
+        // rather than a stale answer to the previous ratio.
+        button.textContent = preview();
+      },
     });
+    return html.div(
+      { style: "display:flex; gap:0.25rem; align-items:center; margin-left:auto;" },
+      [html.span({}, ["×"]), input, button]
+    );
   }
 
   _pushSummarySlider(
@@ -1022,8 +1892,24 @@ export default class SkeletonParametersPanel extends Panel {
 
   async _onFieldChange(fieldItem, value, valueStream) {
     const [group, name] = String(fieldItem.key).split(":");
-    this._suppressGlyphChangeUpdate = true;
+    this._streamingFieldEdit = true;
+    // Remembered so the refresh at the end of this method leaves this one input
+    // alone: it already holds what the user put in it, and writing back would
+    // interrupt a run of arrow-key increments.
+    this._activeFieldKey = fieldItem.key;
     try {
+      // A label scrub streams the CHANGE from where the drag started, not a
+      // value, and only the plain number fields scrub — every slider streams
+      // values. Applying a change per point is what keeps a mixed selection's
+      // differences instead of collapsing them onto one number.
+      //
+      // Checked before every other streaming branch: a scrubbed number would
+      // otherwise be read as an absolute value by whichever branch claims its
+      // group first, and set the field to the size of the drag.
+      if (valueStream && fieldItem.type === "edit-number") {
+        await this._onScrub(group, name, valueStream);
+        return;
+      }
       // Distribution, cap and corner sliders stream onto the canvas while
       // dragging; all other fields apply the committed value once.
       if (group === "width" && name === "distribution" && valueStream) {
@@ -1051,7 +1937,32 @@ export default class SkeletonParametersPanel extends Panel {
           return;
         }
       }
+      if (valueStream && group === "serif") {
+        const makeValues = (streamed) =>
+          name === "axisangle"
+            ? { axisAngle: Number(streamed) }
+            : name === "cuptension"
+              ? { undersideCupTension: Number(streamed) / 100 }
+              : name === "cupbalance"
+                ? { undersideCupBalance: Number(streamed) / 100 }
+                : serifHalfValuesFromField(name, streamed);
+        if (makeValues(value)) {
+          await setPanelSerifParametersStream(
+            this.sceneController,
+            this._widthPoints(),
+            valueStream,
+            makeValues,
+            this._undo("set-serif")
+          );
+          return;
+        }
+      }
       const finalValue = await this._resolveStreamValue(value, valueStream);
+      // An abandoned drag has already put the shape back; there is no value to
+      // commit and committing one would undo the abandoning.
+      if (isScrubCancelled(finalValue)) {
+        return;
+      }
       if (group === "width") {
         await this._onWidthChange(name, finalValue);
       } else if (group === "contour") {
@@ -1062,11 +1973,155 @@ export default class SkeletonParametersPanel extends Panel {
         await this._onCornerChange(name, finalValue);
       } else if (group === "rib") {
         await this._onRibChange(name, finalValue);
+      } else if (group === "serif") {
+        await this._onSerifChange(name, finalValue);
+      } else if (group === "generator") {
+        await this._onGeneratorChange(name, finalValue);
       }
     } finally {
-      this._suppressGlyphChangeUpdate = false;
+      this._streamingFieldEdit = false;
+      // A stream is a finished drag by the time we get here, so the input has
+      // to take whatever the model settled on — which is not the number the
+      // drag reached, if a bound trimmed it. Holding the field back here is
+      // what left a scrub showing a value the terminal was never at. A typed
+      // or arrow-key change is the case the hold-back is for: that field still
+      // has focus, and writing into it fights the next keystroke.
+      if (valueStream) {
+        this._activeFieldKey = null;
+      }
       this._forceRebuild = true;
       await this.update();
+      this._activeFieldKey = null;
+    }
+  }
+
+  // Route a label scrub to the edit path that moves its number by a change.
+  // Every branch here is relative; nothing sets an absolute value, so a mixed
+  // selection comes out of a drag as mixed as it went in.
+  // The multiply beside each scrub field. Same fields, same per-point writers,
+  // same undo labels — a scrub adds to what a point holds and this scales it, so
+  // the only thing that differs is the arithmetic.
+  //
+  // Per point, not against one number: scaling a mixed selection by 1.1 has to
+  // grow each point from its own value, which is the whole reason a multiply is
+  // not a scrub with the answer worked out in advance.
+  async _onMultiply(group, name, factor) {
+    const sc = this.sceneController;
+    if (group === "width") {
+      if (name !== "total" && name !== "left" && name !== "right") {
+        return;
+      }
+      await scalePanelPointWidth(
+        sc,
+        this._widthPoints(),
+        name,
+        factor,
+        this._undo("set-width")
+      );
+    } else if (group === "contour" && name === "default-width") {
+      await scalePanelContourDefaultWidth(
+        sc,
+        this._panelSelection.contours,
+        factor,
+        this._undo("set-contour-width")
+      );
+    } else if (group === "cap" && name === "distance") {
+      await scalePanelCapParameter(
+        sc,
+        this._widthPoints(),
+        "capDistance",
+        factor,
+        this._undo("set-cap")
+      );
+    } else if (group === "corner") {
+      const side = String(name).split("-")[0];
+      if (side !== "left" && side !== "right") {
+        return;
+      }
+      await scalePanelCornerDistance(
+        sc,
+        this._widthPoints(),
+        side,
+        factor,
+        this._undo("set-corner")
+      );
+    } else if (group === "serif") {
+      const targets = serifNudgeTargets(name);
+      if (!targets.length) {
+        return;
+      }
+      await scalePanelSerifValue(
+        sc,
+        this._widthPoints(),
+        targets,
+        factor,
+        this._undo("set-serif")
+      );
+    } else {
+      return;
+    }
+    this._forceRebuild = true;
+    await this.update();
+  }
+
+  async _onScrub(group, name, valueStream) {
+    const sc = this.sceneController;
+    if (group === "width") {
+      if (name !== "total" && name !== "left" && name !== "right") {
+        return;
+      }
+      await nudgePanelPointWidthStream(
+        sc,
+        this._widthPoints(),
+        name,
+        valueStream,
+        this._undo("set-width")
+      );
+      return;
+    }
+    if (group === "contour" && name === "default-width") {
+      await nudgePanelContourDefaultWidthStream(
+        sc,
+        this._panelSelection.contours,
+        valueStream,
+        this._undo("set-contour-width")
+      );
+      return;
+    }
+    if (group === "cap" && name === "distance") {
+      await nudgePanelCapParameterStream(
+        sc,
+        this._widthPoints(),
+        "capDistance",
+        valueStream,
+        this._undo("set-cap")
+      );
+      return;
+    }
+    if (group === "corner") {
+      const side = String(name).split("-")[0];
+      if (side === "left" || side === "right") {
+        await nudgePanelCornerDistanceStream(
+          sc,
+          this._widthPoints(),
+          side,
+          valueStream,
+          this._undo("set-corner")
+        );
+      }
+      return;
+    }
+    if (group === "serif") {
+      const targets = serifNudgeTargets(name);
+      if (targets.length) {
+        await nudgePanelSerifValueStream(
+          sc,
+          this._widthPoints(),
+          targets,
+          valueStream,
+          this._undo("set-serif")
+        );
+      }
     }
   }
 
@@ -1078,6 +2133,9 @@ export default class SkeletonParametersPanel extends Panel {
     }
     let last = value;
     for await (const v of valueStream) {
+      if (isScrubCancelled(v)) {
+        return v;
+      }
       last = v;
     }
     return last;
@@ -1106,13 +2164,6 @@ export default class SkeletonParametersPanel extends Panel {
         points,
         value,
         this._undo("set-distribution")
-      );
-    } else if (name === "scale") {
-      await scalePanelPointWidth(
-        sc,
-        points,
-        (Number(value) || 100) / 100,
-        this._undo("scale-width")
       );
     }
   }
@@ -1145,8 +2196,20 @@ export default class SkeletonParametersPanel extends Panel {
   }
 
   async _onCapChange(name, value) {
+    if (name === "ribanglelock") {
+      if (!["auto", "horizontal", "vertical"].includes(value)) {
+        return;
+      }
+      await setPanelRibAngleLock(
+        this.sceneController,
+        this._widthPoints(),
+        value === "auto" ? null : value,
+        this._undo("set-rib-angle-lock")
+      );
+      return;
+    }
     if (name === "style") {
-      if (!["butt", "square", "round", "drop"].includes(value)) {
+      if (!["butt", "square", "round", "drop", "serif"].includes(value)) {
         return;
       }
       const location =
@@ -1199,8 +2262,101 @@ export default class SkeletonParametersPanel extends Panel {
     );
   }
 
+  async _onSerifChange(name, value) {
+    const apply = (values) =>
+      setPanelSerifParameters(
+        this.sceneController,
+        this._widthPoints(),
+        values,
+        this._undo("set-serif")
+      );
+
+    // The side control is three buttons and two more below them, none of which
+    // is a form field, so nothing on this route passes through the form's own
+    // change handler. These edits also change which controls exist rather than
+    // what they hold, so the rebuild has to happen against settled data —
+    // hence the echo, not an immediate call. Every branch that writes `sides`
+    // goes through here.
+    const applyAndRebuild = async (values) => {
+      this._rebuildOnOwnEcho = true;
+      await apply(values);
+    };
+
+    // Copy one summarized half onto the other, so the two are identical and one
+    // set of controls can describe both. A field that is mixed across the
+    // selection stays mixed rather than collapsing onto one number.
+    const mirrorOnto = (serif, from) => {
+      const other = from === "left" ? "right" : "left";
+      const half = {};
+      for (const field of SERIF_HALF_FIELDS) {
+        half[field] = serif[from][field].mixed ? null : serif[from][field].value;
+      }
+      return { [other]: half };
+    };
+
+    if (name === "sides") {
+      if (!VALID_SERIF_SIDES.has(value)) {
+        return;
+      }
+      const serif = summarizeSkeletonSerifSelection(this._widthPoints());
+      // Picking a single side keeps the halves identical: only one is built,
+      // and the other is what "both" comes back to.
+      const values = { sides: value };
+      if (value === "left" || value === "right") {
+        Object.assign(values, mirrorOnto(serif, value));
+      }
+      await applyAndRebuild(values);
+      return;
+    }
+    if (name === "addOtherSide") {
+      // The halves already match, so the new side arrives as a copy of the one
+      // that was drawn. Shaping them apart is the whole of it.
+      await applyAndRebuild({ sides: "split" });
+      return;
+    }
+    if (name === "symmetrize") {
+      const serif = summarizeSkeletonSerifSelection(this._widthPoints());
+      await applyAndRebuild({ sides: "both", ...mirrorOnto(serif, value) });
+      return;
+    }
+    if (name === "axismode") {
+      if (!VALID_SERIF_AXIS_MODES.has(value)) {
+        return;
+      }
+      await apply({ axisMode: value });
+      return;
+    }
+    if (name === "axisangle") {
+      await apply({ axisAngle: Number(value) });
+      return;
+    }
+    if (name === "cup") {
+      await apply({ undersideCup: value == null ? null : Number(value) });
+      return;
+    }
+    if (name === "cuptension") {
+      await apply({
+        undersideCupTension: value == null ? null : Number(value) / 100,
+      });
+      return;
+    }
+    if (name === "cupbalance") {
+      await apply({
+        undersideCupBalance: value == null ? null : Number(value) / 100,
+      });
+      return;
+    }
+    const values = serifHalfValuesFromField(name, value);
+    if (values) {
+      await apply(values);
+    }
+  }
+
   async _onCornerChange(name, value) {
-    const values = cornerValuesFromField(name, value);
+    const values =
+      name === "linked"
+        ? { linked: value === true }
+        : cornerValuesFromField(name, value);
     if (!values) {
       return;
     }

@@ -27,6 +27,7 @@ import {
   boolInt,
   commandKeyProperty,
   enumerate,
+  isMac,
   modulo,
   parseSelection,
   range,
@@ -783,7 +784,15 @@ export class PointerTool extends BaseTool {
             modifierOptions
           );
         }
-        if (hasRibLikeSelection(sceneController.selection)) {
+        // Checked before the rib branch. A rib is the second entry point into
+        // the skeleton drag, so under this modifier pair the selection has to
+        // route to the skeleton point rather than to the width edit that a rib
+        // selection otherwise means.
+        if (
+          hasRibLikeSelection(sceneController.selection) &&
+          name !== "fixed-rib" &&
+          name !== "fixed-rib-compress"
+        ) {
           const targetEntries = [];
           targetEntries.push(
             ...createSkeletonRibTargetEntries(
@@ -1444,12 +1453,22 @@ function toggleSegmentSelection(currentSelection, segmentSelection) {
     : union(currentSelection, segmentSelection);
 }
 
+// Adding to a selection is the command key's job, and on this fork that means
+// the Mac's command key only. Upstream spells the command key as control on
+// Windows, but control is already the coarse-grid modifier during a drag, and
+// control with shift is the equalize gesture. Shift on its own still builds a
+// selection up on either platform, so nothing is lost by leaving control to the
+// grid.
+function extendsSelection(event) {
+  return isMac ? event.metaKey : false;
+}
+
 function getSelectModeFunction(event) {
   return event.shiftKey
-    ? event[commandKeyProperty]
+    ? extendsSelection(event)
       ? difference
       : symmetricDifference
-    : event[commandKeyProperty]
+    : extendsSelection(event)
       ? union
       : replace;
 }

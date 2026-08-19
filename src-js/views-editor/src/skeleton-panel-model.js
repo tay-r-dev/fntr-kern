@@ -4,6 +4,7 @@
 // through skeleton-panel-edits.js -> editSkeleton (Global Constraints).
 
 import {
+  SERIF_HALF_FIELDS,
   getSkeletonHandleOffset,
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
@@ -357,16 +358,62 @@ export function summarizeSkeletonCapSelection(selectedPoints) {
     capBallShape: reduceValues(
       selectedPoints.map((entry) => entry.point.capBallShape ?? null)
     ),
+    capBallEasing: reduceValues(
+      selectedPoints.map((entry) => entry.point.capBallEasing ?? null)
+    ),
     capBallSide: reduceValues(
       selectedPoints.map((entry) => entry.point.capBallSide ?? null)
+    ),
+    // Not a cap parameter — it sets the rib the cap is built on — but it is
+    // edited beside the cap style, and gated the same way.
+    ribAngleLock: reduceValues(
+      selectedPoints.map((entry) => entry.point.ribAngleLock ?? null)
     ),
   };
 }
 
-// Corner rounding is the angle-point engine (donor "Corner Rounding" section):
-// all four parameters live on the point, and are editable only when EVERY
-// selected point is a non-smooth on-curve that is not an open-contour
-// endpoint — the inverse of the cap gate.
+// Serif parameters for the selected points. Gated exactly like the cap style,
+// because a serif IS a cap style — it is only offered on open-contour endpoints.
+// Each serif field is stored on its endpoint.
+export function summarizeSkeletonSerifSelection(selectedPoints) {
+  const half = (side) => {
+    const summary = {};
+    for (const field of SERIF_HALF_FIELDS) {
+      summary[field] = reduceValues(
+        selectedPoints.map((entry) => entry.point.serif?.[side]?.[field] ?? null)
+      );
+    }
+    return summary;
+  };
+  const terminal = (field, fallback = null) =>
+    reduceValues(selectedPoints.map((entry) => entry.point.serif?.[field] ?? fallback));
+  return {
+    left: half("left"),
+    right: half("right"),
+    // Which sides carry a serif, and whether the two are shaped as one. A side
+    // left out of it generates nothing. It falls back through the old link flag
+    // so a file written before the tab row reads the same way it drew.
+    sides: reduceValues(
+      selectedPoints.map(
+        (entry) =>
+          entry.point.serif?.sides ??
+          (entry.point.serif?.linked === false ? "split" : "both")
+      )
+    ),
+    axisMode: terminal("axisMode", "perpendicular"),
+    axisAngle: terminal("axisAngle", 0),
+    undersideCup: terminal("undersideCup"),
+    undersideCupTension: terminal("undersideCupTension"),
+    // Neutral is the midpoint of the two tips, so a terminal drawn before the
+    // control existed reads zero and draws exactly what it drew.
+    undersideCupBalance: terminal("undersideCupBalance", 0),
+  };
+}
+
+// Corner rounding is the angle-point engine: two numbers per side of the
+// stroke, live on the point, and editable only when EVERY selected point is a
+// non-smooth on-curve that is not an open-contour endpoint — the inverse of the
+// cap gate.
 export function summarizeSkeletonCornerSelection(selectedPoints) {
   let canEdit = selectedPoints.length > 0;
   for (const entry of selectedPoints) {
@@ -386,20 +433,23 @@ export function summarizeSkeletonCornerSelection(selectedPoints) {
       }
     }
   }
+  const sideValue = (side, field) =>
+    reduceValues(
+      selectedPoints.map((entry) => entry.point.corner?.[side]?.[field] ?? null)
+    );
   return {
     canEdit,
-    cornerRoundness: reduceValues(
-      selectedPoints.map((entry) => entry.point.cornerRoundness ?? null)
+    linked: reduceValues(
+      selectedPoints.map((entry) => entry.point.corner?.linked !== false)
     ),
-    cornerAsymmetry: reduceValues(
-      selectedPoints.map((entry) => entry.point.cornerAsymmetry ?? null)
-    ),
-    cornerReach: reduceValues(
-      selectedPoints.map((entry) => entry.point.cornerReach ?? null)
-    ),
-    roundnessStrength: reduceValues(
-      selectedPoints.map((entry) => entry.point.roundnessStrength ?? null)
-    ),
+    left: {
+      distance: sideValue("left", "distance"),
+      curvature: sideValue("left", "curvature"),
+    },
+    right: {
+      distance: sideValue("right", "distance"),
+      curvature: sideValue("right", "curvature"),
+    },
   };
 }
 
@@ -513,12 +563,12 @@ export function makeSkeletonPanelStateSignature({
         // when a side is locked outside the panel. Handle offsets are
         // deliberately NOT tracked: they change every frame while a generated
         // handle is dragged, which would rebuild the panel per frame.
-        `p:${entry.contourId}/${entry.pointId}:${JSON.stringify(entry.point.width)}:${JSON.stringify(entry.point.nudge)}:${JSON.stringify(entry.point.locked)}:${entry.point.capStyle}:${entry.point.capRadiusRatio}:${entry.point.capTension}:${entry.point.capAngle}:${entry.point.capDistance}:${entry.point.capBallRatio}:${entry.point.capBallShape}:${entry.point.capBallSide}:${entry.point.roundnessStrength}:${entry.point.cornerAsymmetry}`
+        `p:${entry.contourId}/${entry.pointId}:${JSON.stringify(entry.point.width)}:${JSON.stringify(entry.point.nudge)}:${JSON.stringify(entry.point.locked)}:${entry.point.capStyle}:${entry.point.capRadiusRatio}:${entry.point.capTension}:${entry.point.capAngle}:${entry.point.capDistance}:${entry.point.capBallRatio}:${entry.point.capBallShape}:${entry.point.capBallEasing}:${entry.point.capBallSide}:${entry.point.corner?.linked}:${JSON.stringify(entry.point.serif)}`
       );
     }
     for (const entry of panelSelection.contours) {
       parts.push(
-        `c:${entry.contourId}:${entry.contour.singleSided}:${entry.contour.defaultWidth}:${entry.contour.cornerTrimRatio}:${entry.contour.cornerRadiusBoost}`
+        `c:${entry.contourId}:${entry.contour.singleSided}:${entry.contour.defaultWidth}`
       );
     }
   }

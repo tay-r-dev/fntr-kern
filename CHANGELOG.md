@@ -1,5 +1,21 @@
 # Changelog for Fontra
 
+## 2026-07-?? [version 2026.7.3]
+
+### New features
+
+- Optionally show handles and nodes in background layers. To toggle, use the "Nodes and handles for background layers" menu in "View -> Glyph editor appearance". [PR 2733](https://github.com/fontra/fontra/pull/2733)
+- Initial Italian translation. [PR 2732](https://github.com/fontra/fontra/pull/2732)
+- Separate Spanish for Spain and Latin America. [PR 2732](https://github.com/fontra/fontra/pull/2732)
+
+### Fixes
+
+- Fixes behavior when a character is not encoded, but the (suggested) glyph name for it does exist in the font. [PR 2724](https://github.com/fontra/fontra/pull/2724)
+
+### Improvements
+
+- Spanish, Portuguese, Chinese, French improvements. [PR 2732](https://github.com/fontra/fontra/pull/2732)
+
 ## 2026-07-23 [version 2026.7.2]
 
 ### New features

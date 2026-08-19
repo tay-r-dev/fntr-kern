@@ -17,7 +17,9 @@ function zeros(length, ...rest) {
   }
 }
 
-export function solveHandleLengths(points, parameters, leftTangent, rightTangent) {
+// The shared normal equations behind the two-handle fit used by
+// solveHandleLengths.
+export function handleFitSystem(points, parameters, leftTangent, rightTangent) {
   const bezierLinear = new Bezier(
     points[0],
     points[0],
@@ -43,7 +45,11 @@ export function solveHandleLengths(points, parameters, leftTangent, rightTangent
     X[0] += dotVector(A[i][0], tmp);
     X[1] += dotVector(A[i][1], tmp);
   }
+  return { C, X };
+}
 
+export function solveHandleLengths(points, parameters, leftTangent, rightTangent) {
+  const { C, X } = handleFitSystem(points, parameters, leftTangent, rightTangent);
   const C0_C1 = C[0][0] * C[1][1] - C[1][0] * C[0][1];
   const C0_X = C[0][0] * X[1] - C[1][0] * X[0];
   const X_C1 = X[0] * C[1][1] - X[1] * C[0][1];

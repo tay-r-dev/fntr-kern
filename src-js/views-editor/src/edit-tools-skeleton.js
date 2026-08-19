@@ -13,6 +13,7 @@ import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
 import { Bezier } from "bezier-js";
 import { BaseTool } from "./edit-tools-base.js";
+import { shiftConstrainPoint } from "./edit-tools-pen.js";
 import {
   editSkeleton,
   getSkeletonPointAddress,
@@ -22,9 +23,24 @@ import {
   resolveSkeletonAddressAcrossLayers,
 } from "./skeleton-editing.js";
 
+// The dropdown, laid out like the ordinary pen's: one button that opens onto the
+// two pens. They differ in one thing, which is the state a contour they start is
+// born in.
+export class SkeletonPenTools {
+  identifier = "skeleton-pen-tool";
+  subTools = [SkeletonPenTool, SkeletonPenToolSingleSided];
+}
+
 export class SkeletonPenTool extends BaseTool {
   iconPath = "/images/skeleton-pen.svg";
-  identifier = "skeleton-pen-tool";
+  identifier = "skeleton-pen-tool-standard";
+
+  // Which side a new contour puts its width on, or null for both. Everything
+  // else about the two pens is identical, so this is the whole of the subclass
+  // below.
+  get newContourSingleSided() {
+    return null;
+  }
 
   // The edit layer's skeleton data. Selection ids are canonical here (WS-9
   // cross-layer addressing); other editable layers resolve by structural
@@ -190,6 +206,17 @@ export class SkeletonPenTool extends BaseTool {
     await this._handleAddSkeletonPoint(eventStream, initialEvent);
   }
 
+  // Where the contour being drawn currently ends, in glyph coordinates, or null
+  // when nothing is being extended.
+  _getDrawingEndpointPosition() {
+    const skeletonData = this._getEditLayerSkeletonData();
+    if (!skeletonData) {
+      return null;
+    }
+    const endpoint = this._getSelectedOpenEndpoint(skeletonData, skeletonData);
+    return endpoint ? { x: endpoint.point.x, y: endpoint.point.y } : null;
+  }
+
   _getDrawingContourId() {
     const skeletonData = this._getEditLayerSkeletonData();
     if (!skeletonData) {
@@ -277,10 +304,21 @@ export class SkeletonPenTool extends BaseTool {
   }
 
   async _handleAddSkeletonPoint(eventStream, initialEvent) {
-    const glyphPoint = this._getGlyphPoint(initialEvent);
+    let glyphPoint = this._getGlyphPoint(initialEvent);
     if (!glyphPoint) {
       eventStream.done();
       return;
+    }
+    // Shift holds the new point on a whole angle from the one it extends, the
+    // same as the ordinary pen. Only while a contour is being drawn: the first
+    // point of a contour has nothing to be square to. The constraint is taken
+    // once, from the edit layer, so every layer receives the same point - which
+    // is what the unconstrained path already did.
+    if (initialEvent.shiftKey) {
+      const previous = this._getDrawingEndpointPosition();
+      if (previous) {
+        glyphPoint = shiftConstrainPoint(previous, glyphPoint);
+      }
     }
     const pointData = {
       x: Math.round(glyphPoint.x),
@@ -294,7 +332,15 @@ export class SkeletonPenTool extends BaseTool {
       (working, referenceSkeletonData) => {
         const endpoint = this._getSelectedOpenEndpoint(working, referenceSkeletonData);
         if (endpoint) {
-          const point = makeSkeletonPoint(pointData, working);
+          // Continuing a stroke keeps that stroke's width. The point being
+          // extended states it, per layer, so a stroke drawn or tapered to
+          // anything other than the default does not step back to the default
+          // at every new point. Only the width travels: everything else on the
+          // endpoint is that point's own.
+          const point = makeSkeletonPoint(
+            { ...pointData, width: { ...endpoint.point.width } },
+            working
+          );
           if (endpoint.appendMode === "append") {
             endpoint.contour.points.push(point);
           } else {
@@ -304,12 +350,21 @@ export class SkeletonPenTool extends BaseTool {
         }
         // New contours seed their default width from the master (source)
         // defaults for the glyph's case, not the hardcoded model fallback.
+        //
+        // The first point takes it too. A point always carries its own width, so
+        // the contour's number is never read for geometry — set on the contour
+        // alone it would be a label the stroke did not obey.
+        const defaultWidth = this._getMasterDefaultWidth();
         const contour = appendSkeletonContour(working, {
           closed: false,
-          defaultWidth: this._getMasterDefaultWidth(),
+          defaultWidth,
+          singleSided: this.newContourSingleSided,
           points: [],
         });
-        const point = appendSkeletonPoint(working, contour.id, pointData);
+        const point = appendSkeletonPoint(working, contour.id, {
+          ...pointData,
+          width: { left: defaultWidth / 2, right: defaultWidth / 2 },
+        });
         return [makeSkeletonPointKey(contour.id, point.id)];
       }
     );
@@ -813,6 +868,20 @@ export class SkeletonPenTool extends BaseTool {
     this.canvasController.canvas.style.cursor = this.sceneModel.selectedGlyph?.isEditing
       ? "crosshair"
       : "default";
+  }
+}
+
+// Draws exactly what the pen above draws. The one difference is that a contour
+// it starts puts all of its width on one side, so the line drawn is the edge of
+// the letter rather than its middle. Left, which is the side the generator falls
+// back to everywhere else, and the panel flips it afterwards like any other
+// contour.
+export class SkeletonPenToolSingleSided extends SkeletonPenTool {
+  iconPath = "/images/skeleton-pen-single-sided.svg";
+  identifier = "skeleton-pen-tool-single-sided";
+
+  get newContourSingleSided() {
+    return "left";
   }
 }
 

@@ -1,15 +1,25 @@
 import { Bezier } from "bezier-js";
+import { buildHandleDomain } from "./natural-handle-solver.js";
 import { offsetCubicSide } from "./offset-cubic.js";
 import {
+  buildSerifTerminal,
+  computeSerifFrame,
+  makeSerifWall,
+} from "./serif-geometry.js";
+import {
   CAP_POINT_FIELDS,
-  CORNER_POINT_FIELDS,
+  DEFAULT_CORNER_CURVATURE,
   DEFAULT_SKELETON_WIDTH,
+  SERIF_HALF_ZEROS,
+  collectSerifTerminals,
   collectTiedRibGroups,
+  getEffectiveNormal,
   isStraightControlledSmoothPoint,
   meanHalfWidth,
   normalizeSkeletonData,
   straightSegmentNormal,
 } from "./skeleton-model.js";
+import { shiftTensionsToMean } from "./tunni-calculations.js";
 import { packContour } from "./var-path.js";
 import * as vector from "./vector.js";
 
@@ -31,31 +41,44 @@ const DEFAULT_CAP_BALL_SIDE = "auto";
 const DEFAULT_CAP_BALL_SHAPE = 0;
 const MAX_CAP_BALL_SHAPE = 1;
 const BALL_SHAPE_ELONGATION = 1.4;
-// Drop-cap neck tension may run well past 1 for an extra-soft waist (the panel
-// exposes up to 300%); other cap styles keep their own [0, 1] range.
-const MAX_CAP_TENSION_DROP = 3;
-// Drop-cap neck: capTension pulls the inner trim back by up to this fraction of
-// the ball radius (softening the notch into a concave curve); the neck cubic's
-// handles are this fraction of the neck chord.
-const NECK_PULLBACK_FACTOR = 0.6;
+// Drop-cap easing: how far back along the inner edge the neck starts, as a
+// fraction of the run from the plain ball crossing to the next on-curve behind
+// it. 0 is the hard corner, 1 collapses the neck's far end onto that on-curve.
+// A fraction rather than a length, so the geometry's stop and the panel's top of
+// range are one fact and the neck can never eat an on-curve.
+const DEFAULT_CAP_BALL_EASING = 0;
+// The eased neck's own curvature, in the curvature gizmo's unit: 1 puts both
+// handles on the tangent intersection. The gizmo writes it per point; this is
+// what an unset bulb draws.
+const DEFAULT_CAP_BALL_EASE_CURVATURE = 0.55;
+// Fallback neck handle length as a fraction of the neck chord, used only where
+// the two tangents give no intersection to measure against.
 const NECK_HANDLE_FRACTION = 0.45;
 // How far (radians of ball sweep) the neck may back the ball attachment off.
 const MAX_NECK_ARC_BACKOFF = 0.6;
 // Cubic pieces the ball arc is always emitted in, whatever the sweep.
 const DROP_CAP_ARC_PIECES = 4;
-const DEFAULT_CORNER_ROUNDNESS = 0;
-const DEFAULT_CORNER_ASYMMETRY = 0;
-const MIN_CORNER_TRIM = 0.5;
-const MAX_CORNER_TRIM_RATIO = 0.5;
+// The shortest cut the ball may sit on. A round cap keeps a unit for the same
+// reason: the ball reads its own frame off the piece the cut leaves behind.
+const MIN_BALL_TRIM = 1;
+// Divisor floor for the terminal pin. It keeps the arithmetic finite where the
+// outer edge has turned square to the outward tangent. It is not a limit on the
+// answer, because the search never asks for a radius the shape did not request.
+const MIN_BALL_EDGE_ALIGNMENT = 1e-3;
+// Fixed cost of the cut search: a scan for the bracket, then a bisection inside
+// it. Fixed, because a convergence test would make the answer a step function of
+// where the test happens to trip.
+const DROP_CAP_TRIM_SCAN_STEPS = 24;
+const DROP_CAP_TRIM_BISECTION_STEPS = 14;
+// A corner trim may run the whole way to the neighbouring on-curve. Two corners
+// sharing one segment are held apart by the pairwise limiter below, which is
+// what a fixed per-corner fraction used to stand in for.
 const MAX_HANDLE_TRIM_RATIO = 0.99;
-const DEFAULT_CORNER_RADIUS_BOOST = 1;
-const MIN_CORNER_RADIUS_BOOST = 0.1;
-const MAX_CORNER_RADIUS_BOOST = 4;
 
-export function generateFromSkeleton(skeletonData) {
+export function generateFromSkeleton(skeletonData, options = {}) {
   const normalized = normalizeSkeletonData(skeletonData);
   const generatorInput = canonicalToGeneratorInput(normalized);
-  const generated = generateContoursFromGeneratorInput(generatorInput);
+  const generated = generateContoursFromGeneratorInput(generatorInput, options);
   return {
     contours: generated.contours,
     provenance: generated.provenance,
@@ -66,7 +89,7 @@ export function generateContoursFromSkeleton(skeletonData) {
   return generateFromSkeleton(skeletonData).contours;
 }
 
-function generateContoursFromGeneratorInput(generatorInput) {
+function generateContoursFromGeneratorInput(generatorInput, options = {}) {
   if (!generatorInput?.contours?.length) {
     return { contours: [], provenance: [] };
   }
@@ -84,10 +107,13 @@ function generateContoursFromGeneratorInput(generatorInput) {
     const generatedContours = generateOutlineFromSkeletonContour(skeletonContour, {
       contourIndex,
       skeletonContourId: skeletonContour.id,
+      serifUnitsMode: options.serifUnitsMode ?? "absolute",
+      removeCollapsedPoints: options.removeCollapsedPoints === true,
     });
     for (const generatedContour of generatedContours) {
       const generatedContourIndex = contours.length;
       annotateGeneratedContourProvenance(generatedContour, skeletonContour);
+      publishConstructionAxes(generatedContour);
       contours.push(generatedContour);
       provenance.push({
         skeletonContourId: skeletonContour.id,
@@ -106,6 +132,24 @@ function stripPointProvenance(contour) {
     delete point._axis;
     delete point._constructionAnchor;
     delete point._handleNudge;
+    delete point._authoredAdjustment;
+  }
+}
+
+// Every generated handle is stamped at emission with the unit direction it was
+// constructed on. Colinearity may then rotate it, keeping its length but not its
+// direction, so the drawn handle no longer says which axis its length was
+// measured along. Publish that axis rather than leave readers to estimate it
+// back out of the rounded position (R-D).
+function publishConstructionAxes(contour) {
+  for (const point of contour.points) {
+    if (!point._axis || !point._provenance) {
+      continue;
+    }
+    point._provenance = {
+      ...point._provenance,
+      constructionAxis: { x: point._axis.x, y: point._axis.y },
+    };
   }
 }
 
@@ -182,9 +226,8 @@ function canonicalToGeneratorInput(skeletonData) {
       capBallRatio: contour.capBallRatio,
       capBallShape: contour.capBallShape,
       capBallSide: contour.capBallSide,
+      serif: contour.serif ?? null,
       reversed: contour.reversed === true,
-      cornerTrimRatio: contour.cornerTrimRatio,
-      cornerRadiusBoost: contour.cornerRadiusBoost,
       points: contour.points.map(canonicalPointToGeneratorPoint),
     })),
   };
@@ -209,18 +252,23 @@ function canonicalPointToGeneratorPoint(point) {
   generatorPoint.rightNudge = point.nudge?.right ?? 0;
   generatorPoint.leftHandleNudge = point.handleNudge?.left ?? 0;
   generatorPoint.rightHandleNudge = point.handleNudge?.right ?? 0;
+  // The rib angle lock has to be copied across explicitly like every other
+  // per-point field: the generator never sees the canonical shape (§7).
+  generatorPoint.ribAngleLock = point.ribAngleLock ?? null;
+  // Serif parameters travel as one object. Like ribAngleLock, they have to be
+  // copied across explicitly: the generator never sees the canonical shape, and
+  // a field that is not copied here fails silently rather than throwing.
+  generatorPoint.serif = point.serif ?? null;
+  // The corner block travels whole, like the serif's. A new field inside it
+  // therefore arrives without a copy line — which is not true of a flat field.
+  generatorPoint.corner = point.corner ?? null;
   generatorPoint.leftLocked = point.locked?.left === true;
   generatorPoint.rightLocked = point.locked?.right === true;
   // The pinned segment tension for the segment STARTING here, per side. Null
   // where the segment is unpinned, which is not the same as zero.
   generatorPoint.leftSegmentCurvature = point.segmentCurvature?.left ?? null;
   generatorPoint.rightSegmentCurvature = point.segmentCurvature?.right ?? null;
-  for (const field of [
-    "capStyle",
-    "capBallSide",
-    ...CAP_POINT_FIELDS,
-    ...CORNER_POINT_FIELDS,
-  ]) {
+  for (const field of ["capStyle", "capBallSide", ...CAP_POINT_FIELDS]) {
     if (point[field] !== null && point[field] !== undefined) {
       generatorPoint[field] = point[field];
     }
@@ -260,20 +308,6 @@ function copyHandleOffsetsToGenerator(generatorPoint, side, offset, inOut) {
   generatorPoint[`${prefix}OffsetX`] = offset.x ?? 0;
   generatorPoint[`${prefix}OffsetY`] = offset.y ?? 0;
   generatorPoint[`${prefix}Detached`] = offset.detached === true;
-}
-
-function clampCornerTrimRatio(value) {
-  if (!Number.isFinite(value)) {
-    return MAX_CORNER_TRIM_RATIO;
-  }
-  return Math.min(Math.max(value, 0.05), 0.99);
-}
-
-function clampCornerRadiusBoost(value) {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_CORNER_RADIUS_BOOST;
-  }
-  return Math.min(Math.max(value, MIN_CORNER_RADIUS_BOOST), MAX_CORNER_RADIUS_BOOST);
 }
 
 /**
@@ -316,26 +350,17 @@ export function getPointHalfWidth(point, defaultWidth, side) {
   return defaultWidth / 2;
 }
 
-function clampCornerRoundness(value) {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_CORNER_ROUNDNESS;
-  }
-  return Math.min(Math.max(value, 0), 1);
-}
-
-function getCornerRoundness(point) {
-  return clampCornerRoundness(point?.cornerRoundness ?? DEFAULT_CORNER_ROUNDNESS);
-}
-
-function clampCornerAsymmetry(value) {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_CORNER_ASYMMETRY;
-  }
-  return Math.min(Math.max(value, -1), 1);
-}
-
-function getCornerAsymmetry(point) {
-  return clampCornerAsymmetry(point?.cornerAsymmetry ?? DEFAULT_CORNER_ASYMMETRY);
+// The corner numbers for one side of the stroke. Resolved at emission, where
+// the side is known, so the rounding pass reads one pair per point and never
+// asks which side it is working on.
+function getCornerSide(point, side) {
+  const corner = point?.corner;
+  const values = side === "right" ? corner?.right : corner?.left;
+  const distance = Math.max(0, Number.isFinite(values?.distance) ? values.distance : 0);
+  const curvature = Number.isFinite(values?.curvature)
+    ? Math.min(Math.max(values.curvature, 0), 1)
+    : DEFAULT_CORNER_CURVATURE;
+  return { distance, curvature };
 }
 
 // Forward provenance for a generated point: which skeleton point/side/role it
@@ -384,23 +409,13 @@ function buildGeneratedOnCurve(
       y: constructionAnchor.y,
     };
   }
-  const cornerRoundness = getCornerRoundness(skeletonPoint);
-  const cornerAsymmetry = getCornerAsymmetry(skeletonPoint);
-  const cornerReach = skeletonPoint?.cornerReach;
-  const roundnessStrength = skeletonPoint?.roundnessStrength;
+  const { distance, curvature } = getCornerSide(skeletonPoint, side);
+  // A collapsed side lies on the skeleton exactly, and rounding it would pull
+  // that edge off the line the designer drew.
   const cornerRoundBase = Math.max(0, cornerRoundBaseOverride ?? halfWidth ?? 0);
-  if (cornerRoundness > 0 && cornerRoundBase >= 0.5) {
-    generatedPoint.cornerRoundness = cornerRoundness;
-    generatedPoint.cornerRoundBase = cornerRoundBase;
-  }
-  if (cornerAsymmetry !== 0) {
-    generatedPoint.cornerAsymmetry = cornerAsymmetry;
-  }
-  if (Number.isFinite(cornerReach)) {
-    generatedPoint.cornerReach = cornerReach;
-  }
-  if (Number.isFinite(roundnessStrength)) {
-    generatedPoint.roundnessStrength = roundnessStrength;
+  if (distance > 0 && cornerRoundBase >= 0.5) {
+    generatedPoint.cornerDistance = distance;
+    generatedPoint.cornerCurvature = curvature;
   }
   return generatedPoint;
 }
@@ -410,25 +425,90 @@ function stripCornerRoundMetadata(points) {
     if (!point || point.type) {
       return point;
     }
-    if (
-      point.cornerRoundness === undefined &&
-      point.cornerRoundBase === undefined &&
-      point.cornerAsymmetry === undefined &&
-      point.cornerReach === undefined &&
-      point.roundnessStrength === undefined
-    ) {
+    if (point.cornerDistance === undefined && point.cornerCurvature === undefined) {
       return point;
     }
     const {
-      cornerRoundness: _cornerRoundness,
-      cornerRoundBase: _cornerRoundBase,
-      cornerAsymmetry: _cornerAsymmetry,
-      cornerReach: _cornerReach,
-      roundnessStrength: _roundnessStrength,
+      cornerDistance: _cornerDistance,
+      cornerCurvature: _cornerCurvature,
       ...rest
     } = point;
     return rest;
   });
+}
+
+// Two kinds of point draw nothing, and the option drops both. An on-curve that
+// landed on the on-curve before it, with the handles between them. And a curve
+// segment whose two handles each sit on their own on-curve: a straight line by
+// geometry, still stored as a curve.
+export function removeCollapsedOutlinePoints(points, tolerance = 0.5) {
+  return removeStraightSegmentHandles(
+    removeCoincidentOnCurves(points, tolerance),
+    tolerance
+  );
+}
+
+// The segment is scanned around the end of the array because the outline is
+// closed: the last on-curve and the first one bound a segment like any other.
+function removeStraightSegmentHandles(points, tolerance) {
+  if (points.length < 4) {
+    return points;
+  }
+  const isNear = (one, other) =>
+    Math.abs(one.x - other.x) <= tolerance && Math.abs(one.y - other.y) <= tolerance;
+  // On the line the two on-curves span, whatever it does along that line. A
+  // handle sitting on its own on-curve is one case of this; the underside cup
+  // at zero is another, and it puts its controls a third of the way along.
+  // Past an end the curve doubles back before it arrives, and still draws the
+  // same straight line.
+  const isOnChord = (handle, start, end) => {
+    const spanX = end.x - start.x;
+    const spanY = end.y - start.y;
+    const lengthSquared = spanX * spanX + spanY * spanY;
+    if (lengthSquared === 0) {
+      return isNear(handle, start);
+    }
+    const cross = (handle.x - start.x) * spanY - (handle.y - start.y) * spanX;
+    return Math.abs(cross) / Math.sqrt(lengthSquared) <= tolerance;
+  };
+  const dropped = new Set();
+  for (let index = 0; index < points.length; index++) {
+    const [start, first, second, end] = [0, 1, 2, 3].map(
+      (step) => points[(index + step) % points.length]
+    );
+    if (start.type || !first.type || !second.type || end.type) {
+      continue;
+    }
+    // Both ends, or neither. One handle off the line still bends the segment,
+    // and dropping it would change the shape rather than simplify it.
+    if (!isOnChord(first, start, end) || !isOnChord(second, start, end)) {
+      continue;
+    }
+    dropped.add((index + 1) % points.length);
+    dropped.add((index + 2) % points.length);
+  }
+  return points.filter((point, index) => !dropped.has(index));
+}
+
+function removeCoincidentOnCurves(points, tolerance) {
+  const kept = [];
+  for (const point of points) {
+    if (point.type) {
+      kept.push(point);
+      continue;
+    }
+    const previous = [...kept].reverse().find((candidate) => !candidate.type);
+    if (
+      previous &&
+      Math.abs(previous.x - point.x) <= tolerance &&
+      Math.abs(previous.y - point.y) <= tolerance
+    ) {
+      while (kept.length && kept[kept.length - 1].type) kept.pop();
+      continue;
+    }
+    kept.push(point);
+  }
+  return kept;
 }
 
 /**
@@ -609,6 +689,160 @@ function getGeneratedHandleAdjustment(
   }
 
   return null;
+}
+
+function collectSerifAuthoredHandles(segments, isClosed, startCapStyle, endCapStyle) {
+  const keys = new Set();
+  if (isClosed || !segments.length) return keys;
+  const claim = (segment) => {
+    for (const side of ["left", "right"]) {
+      if (segment.startPoint?.id !== undefined)
+        keys.add(`${segment.startPoint.id}/${side}/out`);
+      if (segment.endPoint?.id !== undefined)
+        keys.add(`${segment.endPoint.id}/${side}/in`);
+    }
+  };
+  if (startCapStyle === "serif") claim(segments[0]);
+  if (endCapStyle === "serif") claim(segments[segments.length - 1]);
+  return keys;
+}
+
+function applySerifAuthoredHandles(sidePoints, side, authoredKeys) {
+  if (!authoredKeys?.size) return sidePoints;
+  const points = [...sidePoints];
+  const isOffCurve = (point) => !!point?.type;
+  const nearestOnCurve = (from, step) => {
+    for (let index = from; index >= 0 && index < points.length; index += step) {
+      if (!isOffCurve(points[index])) return index;
+    }
+    return -1;
+  };
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index];
+    const provenance = point?._provenance;
+    if (
+      !isOffCurve(point) ||
+      provenance?.side !== side ||
+      !authoredKeys.has(`${provenance.skeletonPointId}/${side}/${provenance.role}`) ||
+      !point._axis
+    )
+      continue;
+    const anchorIndex =
+      index > 0 && !isOffCurve(points[index - 1])
+        ? index - 1
+        : index + 1 < points.length && !isOffCurve(points[index + 1])
+          ? index + 1
+          : -1;
+    if (anchorIndex < 0) continue;
+    const farIndex =
+      anchorIndex < index
+        ? nearestOnCurve(index + 1, 1)
+        : nearestOnCurve(index - 1, -1);
+    if (farIndex < 0) continue;
+    const farHandleIndex = anchorIndex < index ? farIndex - 1 : farIndex + 1;
+    const anchor = points[anchorIndex];
+    const far = points[farIndex];
+    const axis = point._axis;
+    const farAxis = points[farHandleIndex]?._axis;
+    if (!farAxis) continue;
+    const domain = buildHandleDomain(anchor, far, axis, farAxis);
+    const authoredProvenance = {
+      ...provenance,
+      authoredAxis: { x: axis.x, y: axis.y },
+    };
+    const adjustment = point._authoredAdjustment;
+    if (!adjustment) {
+      points[index] = { ...point, _provenance: authoredProvenance };
+      continue;
+    }
+    const baseLength = adjustment.detached
+      ? 0
+      : (point.x - anchor.x) * axis.x + (point.y - anchor.y) * axis.y;
+    const adjustmentLength = Math.hypot(adjustment.x || 0, adjustment.y || 0);
+    const adjustmentSign =
+      (adjustment.x || 0) * axis.x + (adjustment.y || 0) * axis.y < 0 ? -1 : 1;
+    const requested = baseLength + adjustmentSign * adjustmentLength;
+    // No floor: the hand that placed this handle outranks the generator's own
+    // shortest length, and zero is a legal setting.
+    const clamped =
+      Math.min(Math.max(requested / domain.startReach, 0), domain.maxStartTension) *
+      domain.startReach;
+    points[index] = {
+      ...point,
+      x: Math.round(anchor.x + axis.x * clamped),
+      y: Math.round(anchor.y + axis.y * clamped),
+      _provenance: authoredProvenance,
+    };
+  }
+  return points;
+}
+
+// A pin states what a segment's tension is, and the segment it states it about
+// is the one on screen. On a serifed terminal that is the piece left after the
+// trim, not the curve the generator solved, so the pin is applied here — after
+// the splice, alongside the two handle adjustments that already wait for it.
+// Applying it before the cut would let a pin reshape the wall the serif's own
+// release is found on, and walk the terminal up and down the stem.
+function applySerifPinnedCurvature(sidePoints, side, authoredKeys, pins) {
+  if (!authoredKeys?.size || !pins?.size) return sidePoints;
+  const points = [...sidePoints];
+  const isOffCurve = (point) => !!point?.type;
+  const clamp = (value, low, high) => Math.min(Math.max(value, low), high);
+  for (let index = 0; index + 3 < points.length; index++) {
+    const anchor = points[index];
+    const handle1 = points[index + 1];
+    const handle2 = points[index + 2];
+    const far = points[index + 3];
+    if (isOffCurve(anchor) || isOffCurve(far)) continue;
+    if (!isOffCurve(handle1) || !isOffCurve(handle2)) continue;
+    // A pin is keyed on its segment's START point, and the handle leaving that
+    // point is the one the key names. Read the owner off the handle rather than
+    // the anchor: the side arrays run one way for a start terminal and the other
+    // for an end one, so only the handle's own provenance is direction-free.
+    const owner = handle1._provenance?.skeletonPointId;
+    const role = handle1._provenance?.role;
+    if (owner === undefined || !role) continue;
+    if (!authoredKeys.has(`${owner}/${side}/${role}`)) continue;
+    const pin = pins.get(`${owner}/${side}`);
+    if (!Number.isFinite(pin)) continue;
+    const axis1 = handle1._axis;
+    const axis2 = handle2._axis;
+    if (!axis1 || !axis2) continue;
+    const domain = buildHandleDomain(anchor, far, axis1, axis2);
+    if (!(domain.startReach > 0) || !(domain.endReach > 0)) continue;
+    // The gizmo measures each handle against its own true tangent intersection,
+    // and the domain's reach is a stable coordinate scale rather than that
+    // intersection. So rescale onto the ceiling, shift there, and rescale back —
+    // the same three steps the pre-splice path takes, for the same reason.
+    const shifted = shiftTensionsToMean(
+      {
+        start:
+          vector.distance(anchor, handle1) / domain.startReach / domain.maxStartTension,
+        end: vector.distance(far, handle2) / domain.endReach / domain.maxEndTension,
+      },
+      pin,
+      1
+    );
+    // No floor: a pin is the gizmo's own statement about this segment, and it
+    // may take either handle all the way down.
+    const startLength =
+      clamp(shifted.start * domain.maxStartTension, 0, domain.maxStartTension) *
+      domain.startReach;
+    const endLength =
+      clamp(shifted.end * domain.maxEndTension, 0, domain.maxEndTension) *
+      domain.endReach;
+    points[index + 1] = {
+      ...handle1,
+      x: Math.round(anchor.x + axis1.x * startLength),
+      y: Math.round(anchor.y + axis1.y * startLength),
+    };
+    points[index + 2] = {
+      ...handle2,
+      x: Math.round(far.x + axis2.x * endLength),
+      y: Math.round(far.y + axis2.y * endLength),
+    };
+  }
+  return points;
 }
 
 const SKELETON_DEBUG_PREFIX = "[SKELETON GEN DEBUG]";
@@ -971,10 +1205,7 @@ function findNextOnCurveIndex(points, index, isClosed) {
   return null;
 }
 
-function roundSharpCornersOnSide(
-  sidePoints,
-  { isClosed, cornerTrimRatio, cornerRadiusBoost, side }
-) {
+function roundSharpCornersOnSide(sidePoints, { isClosed }) {
   const points = sidePoints.map((point) => ({ ...point }));
   if (points.length < 3) {
     return points;
@@ -993,31 +1224,14 @@ function roundSharpCornersOnSide(
       continue;
     }
 
-    const baseRoundness = clampCornerRoundness(corner.cornerRoundness);
-    const cornerAsymmetry = getCornerAsymmetry(corner);
-    const effectiveCornerTrimRatio = clampCornerTrimRatio(
-      Number.isFinite(corner.cornerReach) ? corner.cornerReach : cornerTrimRatio
-    );
-    const effectiveCornerRadiusBoost = clampCornerRadiusBoost(
-      Number.isFinite(corner.roundnessStrength)
-        ? corner.roundnessStrength
-        : cornerRadiusBoost
-    );
-    let cornerRoundness = baseRoundness;
-    if (cornerRoundness > 0 && side && cornerAsymmetry !== 0) {
-      let scale = 1;
-      if (side === "left" && cornerAsymmetry < 0) {
-        scale = 1 + cornerAsymmetry;
-      } else if (side === "right" && cornerAsymmetry > 0) {
-        scale = 1 - cornerAsymmetry;
-      }
-      scale = Math.min(Math.max(scale, 0), 1);
-      cornerRoundness = cornerRoundness * scale;
-    }
-    const cornerRoundBase = Math.max(0, corner.cornerRoundBase ?? 0);
-    if (cornerRoundness <= 0 || cornerRoundBase < 0.5) {
+    // Stamped at emission, per side, or absent where this side is not rounded.
+    const cornerDistance = corner.cornerDistance;
+    if (!Number.isFinite(cornerDistance) || cornerDistance <= 0) {
       continue;
     }
+    const cornerCurvature = Number.isFinite(corner.cornerCurvature)
+      ? corner.cornerCurvature
+      : DEFAULT_CORNER_CURVATURE;
 
     const prevOnIndex = findPrevOnCurveIndex(points, i, isClosed);
     const nextOnIndex = findNextOnCurveIndex(points, i, isClosed);
@@ -1060,75 +1274,40 @@ function roundSharpCornersOnSide(
     if (!(beta > 1e-4 && beta < Math.PI - 1e-4)) {
       continue;
     }
-    const tanHalf = Math.tan(beta / 2);
-    if (!(tanHalf > 1e-6)) {
-      continue;
-    }
-
-    const distPrevOn = vector.distance(corner, points[prevOnIndex]);
-    const distNextOn = vector.distance(corner, points[nextOnIndex]);
-    const handleTrimRatio = MAX_HANDLE_TRIM_RATIO;
-    const minTrim = 0;
-    let maxTrimIn = distPrevOn * effectiveCornerTrimRatio;
-    let maxTrimOut = distNextOn * effectiveCornerTrimRatio;
+    // How far each arm may give up. An arm ends at its neighbouring on-curve,
+    // and a curved arm stops just short of its handle, because trimming past
+    // the handle inverts the curve it belongs to.
+    let maxTrimIn = vector.distance(corner, points[prevOnIndex]);
+    let maxTrimOut = vector.distance(corner, points[nextOnIndex]);
 
     if (prevHandleIndex !== null) {
       maxTrimIn = Math.min(
         maxTrimIn,
-        vector.distance(corner, points[prevHandleIndex]) * handleTrimRatio
+        vector.distance(corner, points[prevHandleIndex]) * MAX_HANDLE_TRIM_RATIO
       );
     }
     if (nextHandleIndex !== null) {
       maxTrimOut = Math.min(
         maxTrimOut,
-        vector.distance(corner, points[nextHandleIndex]) * handleTrimRatio
+        vector.distance(corner, points[nextHandleIndex]) * MAX_HANDLE_TRIM_RATIO
       );
     }
 
-    const maxTrim = Math.min(maxTrimIn, maxTrimOut);
-    if (!Number.isFinite(maxTrim) || maxTrim <= minTrim) {
+    const trimIn = Math.min(cornerDistance, maxTrimIn);
+    const trimOut = Math.min(cornerDistance, maxTrimOut);
+    if (!Number.isFinite(trimIn) || !Number.isFinite(trimOut)) {
       continue;
     }
-
-    const roundnessRatio = Math.min(
-      Math.max(cornerRoundness * effectiveCornerRadiusBoost, 0),
-      1
-    );
-    if (!(roundnessRatio > 0)) {
+    if (!(trimIn > 0) || !(trimOut > 0)) {
       continue;
     }
-
-    const trimIn = maxTrimIn * roundnessRatio;
-    const trimOut = maxTrimOut * roundnessRatio;
-    if (
-      !Number.isFinite(trimIn) ||
-      !Number.isFinite(trimOut) ||
-      trimIn <= minTrim ||
-      trimOut <= minTrim
-    ) {
-      continue;
-    }
-
-    const maxRadius = maxTrim * tanHalf;
-    const radiusIn = trimIn * tanHalf;
-    const radiusOut = trimOut * tanHalf;
-    const kappa = (4 / 3) * Math.tan(beta / 4);
-    const arcHandleLenIn =
-      Number.isFinite(radiusIn) && Number.isFinite(kappa)
-        ? Math.max(0, radiusIn * kappa)
-        : 0;
-    const arcHandleLenOut =
-      Number.isFinite(radiusOut) && Number.isFinite(kappa)
-        ? Math.max(0, radiusOut * kappa)
-        : 0;
-    const arcHandleLen = Math.max(arcHandleLenIn, arcHandleLenOut);
 
     cornerInfos.set(corner, {
       trimIn,
       trimOut,
       dirInAway,
       dirOutAway,
-      arcHandleLen,
+      curvature: cornerCurvature,
       prevHandlePoint: prevHandleIndex !== null ? points[prevHandleIndex] : null,
       nextHandlePoint: nextHandleIndex !== null ? points[nextHandleIndex] : null,
     });
@@ -1240,26 +1419,21 @@ function roundSharpCornersOnSide(
       x: cornerInfo.dirOutAway.x,
       y: cornerInfo.dirOutAway.y,
     };
-    let handleLengths = computeTunniHandleLengths(
-      startPoint,
-      startTangent,
-      endPoint,
-      { x: -endTangent.x, y: -endTangent.y },
-      DEFAULT_CAP_TENSION
-    );
+    // Curvature is a tension: 0 leaves both handles on their own on-curve and
+    // cuts a straight chamfer, 1 carries both onto the corner point, which is
+    // where the two tangent rays meet. A zero-length handle is the setting
+    // asking for a chamfer, so it is never repaired.
     const chord = vector.distance(startPoint, endPoint);
-    const fallbackLen = cornerInfo.arcHandleLen;
-    if (
-      (!(chord > 1e-3) ||
-        !(handleLengths.startLen > 1e-3) ||
-        !(handleLengths.endLen > 1e-3)) &&
-      fallbackLen > 0
-    ) {
-      handleLengths = {
-        startLen: fallbackLen,
-        endLen: fallbackLen,
-      };
-    }
+    const handleLengths =
+      chord > 1e-3
+        ? computeTunniHandleLengths(
+            startPoint,
+            startTangent,
+            endPoint,
+            { x: -endTangent.x, y: -endTangent.y },
+            cornerInfo.curvature
+          )
+        : { startLen: 0, endLen: 0 };
 
     const handleIn = {
       x: startPoint.x + startTangent.x * handleLengths.startLen,
@@ -1313,8 +1487,6 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
     reversed = false,
     singleSided = false,
     singleSidedDirection = "left",
-    cornerTrimRatio = MAX_CORNER_TRIM_RATIO,
-    cornerRadiusBoost = DEFAULT_CORNER_RADIUS_BOOST,
   } = skeletonContour;
 
   if (points.length < 2) {
@@ -1333,7 +1505,30 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
   const leftSide = [];
   const rightSide = [];
 
-  const coupled = coupledHalfWidths(segments, isClosed, defaultWidth);
+  const coupled = coupledHalfWidths(segments, isClosed, defaultWidth, capStyle);
+  const firstOnCurvePoint = segments[0].startPoint;
+  const lastOnCurvePoint = segments[segments.length - 1].endPoint;
+  const startCapStyle = normalizeCapStyle(firstOnCurvePoint.capStyle ?? capStyle);
+  const endCapStyle = normalizeCapStyle(lastOnCurvePoint.capStyle ?? capStyle);
+  const authoredKeys = collectSerifAuthoredHandles(
+    segments,
+    isClosed,
+    startCapStyle,
+    endCapStyle
+  );
+  // The stored pin for each segment a serif terminal owns, so the value the
+  // solve no longer applies can be applied to the emitted piece instead.
+  const serifPins = new Map();
+  if (authoredKeys.size) {
+    for (const segment of segments) {
+      const owner = segment.startPoint;
+      if (owner?.id === undefined) continue;
+      if (Number.isFinite(owner.leftSegmentCurvature))
+        serifPins.set(`${owner.id}/left`, owner.leftSegmentCurvature);
+      if (Number.isFinite(owner.rightSegmentCurvature))
+        serifPins.set(`${owner.id}/right`, owner.rightSegmentCurvature);
+    }
+  }
   const resolveHalfWidth = (point, side) =>
     coupled.get(point)?.[side] ?? getPointHalfWidth(point, defaultWidth, side);
 
@@ -1394,29 +1589,16 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         segmentIndex: i,
       },
       singleSided,
-      singleSidedDirection
+      singleSidedDirection,
+      authoredKeys
     );
 
     leftSide.push(...offsetPoints.left);
     rightSide.push(...offsetPoints.right);
   }
 
-  let roundedLeftSide = roundSharpCornersOnSide(leftSide, {
-    isClosed,
-    cornerTrimRatio: clampCornerTrimRatio(options.cornerTrimRatio ?? cornerTrimRatio),
-    cornerRadiusBoost: clampCornerRadiusBoost(
-      options.cornerRadiusBoost ?? cornerRadiusBoost
-    ),
-    side: "left",
-  });
-  let roundedRightSide = roundSharpCornersOnSide(rightSide, {
-    isClosed,
-    cornerTrimRatio: clampCornerTrimRatio(options.cornerTrimRatio ?? cornerTrimRatio),
-    cornerRadiusBoost: clampCornerRadiusBoost(
-      options.cornerRadiusBoost ?? cornerRadiusBoost
-    ),
-    side: "right",
-  });
+  let roundedLeftSide = roundSharpCornersOnSide(leftSide, { isClosed });
+  let roundedRightSide = roundSharpCornersOnSide(rightSide, { isClosed });
 
   if (isClosed) {
     // For closed skeleton: TWO separate contours (outer and inner)
@@ -1459,12 +1641,13 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
   } else {
     // For open skeleton: ONE contour with caps at ends
     // Get per-point widths for first and last on-curve points
-    const firstOnCurvePoint = segments[0].startPoint;
-    const lastOnCurvePoint = segments[segments.length - 1].endPoint;
-    let startCapLeftHW = getPointHalfWidth(firstOnCurvePoint, defaultWidth, "left");
-    let startCapRightHW = getPointHalfWidth(firstOnCurvePoint, defaultWidth, "right");
-    let endCapLeftHW = getPointHalfWidth(lastOnCurvePoint, defaultWidth, "left");
-    let endCapRightHW = getPointHalfWidth(lastOnCurvePoint, defaultWidth, "right");
+    // Through the same resolver as every rib: an endpoint whose rib is tied to
+    // its neighbour's draws at the shared width, and a cap built from the stored
+    // one instead would sit off the end of the stroke it caps.
+    let startCapLeftHW = resolveHalfWidth(firstOnCurvePoint, "left");
+    let startCapRightHW = resolveHalfWidth(firstOnCurvePoint, "right");
+    let endCapLeftHW = resolveHalfWidth(lastOnCurvePoint, "left");
+    let endCapRightHW = resolveHalfWidth(lastOnCurvePoint, "right");
 
     // Single-sided mode: redirect all width to one side for caps too
     if (singleSided) {
@@ -1484,17 +1667,14 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
       }
     }
 
-    const startCapStyleRaw = firstOnCurvePoint.capStyle ?? capStyle;
-    const endCapStyleRaw = lastOnCurvePoint.capStyle ?? capStyle;
-    const startCapStyle = normalizeCapStyle(startCapStyleRaw);
-    const endCapStyle = normalizeCapStyle(endCapStyleRaw);
-
     const startIsRound = startCapStyle === "round";
     const endIsRound = endCapStyle === "round";
     const startIsSquare = startCapStyle === "square";
     const endIsSquare = endCapStyle === "square";
     const startIsDrop = startCapStyle === "drop";
     const endIsDrop = endCapStyle === "drop";
+    const startIsSerif = startCapStyle === "serif";
+    const endIsSerif = endCapStyle === "serif";
 
     let startCap = [];
     let endCap = [];
@@ -1652,15 +1832,37 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           firstOnCurvePoint.capBallShape ??
           skeletonContour.capBallShape ??
           DEFAULT_CAP_BALL_SHAPE,
-        capTension:
-          firstOnCurvePoint.capTension ??
-          skeletonContour.capTension ??
-          DEFAULT_CAP_TENSION,
+        capBallEasing: firstOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
+        capBallEaseCurvature:
+          firstOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
         roundedRightSide = drop.rightSide;
         startCap = drop.capPoints;
+      }
+    } else if (startIsSerif) {
+      const startTangent = getSegmentTangent(segments[0], "start");
+      const serifCap = buildSerifCap({
+        position: "start",
+        endpoint: firstOnCurvePoint,
+        tangent: { x: -startTangent.x, y: -startTangent.y },
+        normal: getEffectiveNormal(
+          firstOnCurvePoint,
+          vector.rotateVector90CW(startTangent)
+        ),
+        leftSide: roundedLeftSide,
+        rightSide: roundedRightSide,
+        leftHalfWidth: startCapLeftHW,
+        rightHalfWidth: startCapRightHW,
+        pointSerif: firstOnCurvePoint.serif,
+        ownerPoint: firstOnCurvePoint,
+        serifUnitsMode: options.serifUnitsMode,
+      });
+      if (serifCap) {
+        roundedLeftSide = serifCap.leftSide;
+        roundedRightSide = serifCap.rightSide;
+        startCap = serifCap.capPoints;
       }
     } else {
       startCap = generateCap(
@@ -1830,15 +2032,37 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           lastOnCurvePoint.capBallShape ??
           skeletonContour.capBallShape ??
           DEFAULT_CAP_BALL_SHAPE,
-        capTension:
-          lastOnCurvePoint.capTension ??
-          skeletonContour.capTension ??
-          DEFAULT_CAP_TENSION,
+        capBallEasing: lastOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
+        capBallEaseCurvature:
+          lastOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
         roundedRightSide = drop.rightSide;
         endCap = drop.capPoints;
+      }
+    } else if (endIsSerif) {
+      const endTangent = getSegmentTangent(segments[segments.length - 1], "end");
+      const serifCap = buildSerifCap({
+        position: "end",
+        endpoint: lastOnCurvePoint,
+        tangent: endTangent,
+        normal: getEffectiveNormal(
+          lastOnCurvePoint,
+          vector.rotateVector90CW(endTangent)
+        ),
+        leftSide: roundedLeftSide,
+        rightSide: roundedRightSide,
+        leftHalfWidth: endCapLeftHW,
+        rightHalfWidth: endCapRightHW,
+        pointSerif: lastOnCurvePoint.serif,
+        ownerPoint: lastOnCurvePoint,
+        serifUnitsMode: options.serifUnitsMode,
+      });
+      if (serifCap) {
+        roundedLeftSide = serifCap.leftSide;
+        roundedRightSide = serifCap.rightSide;
+        endCap = serifCap.capPoints;
       }
     } else {
       endCap = generateCap(
@@ -1851,6 +2075,29 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         endCapRightHW
       );
     }
+
+    roundedLeftSide = applySerifAuthoredHandles(roundedLeftSide, "left", authoredKeys);
+    roundedRightSide = applySerifAuthoredHandles(
+      roundedRightSide,
+      "right",
+      authoredKeys
+    );
+    // The pin last, which is the order the solve itself uses: the placements say
+    // where each handle sits, the pin then states the tension of the pair. Put
+    // the other way round, an adjusted handle overwrites the pin, and the number
+    // the gizmo measured off the drawn curve cannot be reproduced from it.
+    roundedLeftSide = applySerifPinnedCurvature(
+      roundedLeftSide,
+      "left",
+      authoredKeys,
+      serifPins
+    );
+    roundedRightSide = applySerifPinnedCurvature(
+      roundedRightSide,
+      "right",
+      authoredKeys,
+      serifPins
+    );
 
     const outlinePoints = [];
     // Left side forward
@@ -1865,7 +2112,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
     // DISABLED for performance testing - alignHandleDirections is O(n³)
     // const alignedOutlinePoints = alignHandleDirections(outlinePoints, segments, null);
 
-    const finalPoints = enforceSmoothColinearity(
+    const colinearPoints = enforceSmoothColinearity(
       stripCornerRoundMetadata(outlinePoints),
       true,
       {
@@ -1873,6 +2120,9 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         maxHandleRotationDeg: 60,
       }
     );
+    const finalPoints = options.removeCollapsedPoints
+      ? removeCollapsedOutlinePoints(colinearPoints)
+      : colinearPoints;
     let contour = { points: finalPoints, isClosed: true };
 
     // Apply reverse if flag is set
@@ -2017,25 +2267,6 @@ function logSkeletonDebug(debugContext, payload) {
 }
 
 /**
- * Apply angle override to a calculated normal if the point has forceHorizontal or forceVertical set.
- * Preserves the sign (direction) of the original normal to maintain left/right orientation.
- * @param {Object} point - The skeleton point
- * @param {Object} calculatedNormal - The normal calculated from curve geometry {x, y}
- * @returns {Object} The effective normal (possibly overridden)
- */
-export function getEffectiveNormal(point, calculatedNormal) {
-  if (point.forceHorizontal) {
-    // Horizontal ribs: normal points up or down based on original sign
-    return { x: 0, y: calculatedNormal.y >= 0 ? 1 : -1 };
-  }
-  if (point.forceVertical) {
-    // Vertical ribs: normal points left or right based on original sign
-    return { x: calculatedNormal.x >= 0 ? 1 : -1, y: 0 };
-  }
-  return calculatedNormal;
-}
-
-/**
  * Generate offset points for a segment.
  * For open skeletons: first segment adds start, all segments add end
  * For closed skeletons: all segments add start (end connects to next start)
@@ -2068,7 +2299,8 @@ function generateOffsetPointsForSegment(
   endRightHalfWidth = null,
   debugContext = null,
   singleSided = false,
-  singleSidedDirection = "left"
+  singleSidedDirection = "left",
+  authoredKeys = null
 ) {
   // Use provided half-widths or fall back to width/2
   const halfWidth = width / 2;
@@ -2423,36 +2655,74 @@ function generateOffsetPointsForSegment(
         x: -endTangentFallback.x,
         y: -endTangentFallback.y,
       };
-      const { startLength, endLength } = offsetCubicSide({
-        p0: segment.startPoint,
-        p1: controls[0],
-        p2: controls[controls.length - 1],
-        p3: segment.endPoint,
-        d0: sideSign * startHalfWidth,
-        d3: sideSign * endHalfWidth,
-        q0: fixedStart,
-        q3: fixedEnd,
-        u0: startDir,
-        u1: endDir,
-        // The pin lives on the skeleton segment's start point, so it reads the
-        // same for both sides regardless of which way each side is emitted.
-        // Read off the generator's own flattened point shape, not the canonical
-        // one - by here the points have been through canonicalToGeneratorInput.
-        pinnedTension: isLeftSide
-          ? segment.startPoint.leftSegmentCurvature
-          : segment.startPoint.rightSegmentCurvature,
-        startAdjustment: startHandleDir
+      const startAdjustment =
+        startHandleDir && !authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
           ? getGeneratedHandleAdjustment(
               segment.startPoint,
               startHandleDir,
               side,
               "out"
             )
-          : null,
-        endAdjustment: endHandleDir
+          : null;
+      const endAdjustment =
+        endHandleDir && !authoredKeys?.has(`${segment.endPoint?.id}/${side}/in`)
           ? getGeneratedHandleAdjustment(segment.endPoint, endHandleDir, side, "in")
-          : null,
-      });
+          : null;
+      const startHandleNudge = ribHandleNudgeDisplacement(
+        segment.startPoint,
+        startNormal,
+        side,
+        startHalfWidth
+      );
+      const endHandleNudge = ribHandleNudgeDisplacement(
+        segment.endPoint,
+        endNormal,
+        side,
+        endHalfWidth
+      );
+      const emittedNudge = (anchor, displacement) => {
+        const translated = translateRibPoint(anchor, displacement);
+        return { x: translated.x - anchor.x, y: translated.y - anchor.y };
+      };
+      // How far emission will slide each handle along its own direction. The
+      // ceiling is a statement about the drawn curve, so it has to know.
+      const alongDirection = (anchor, displacement, direction) => {
+        const emitted = emittedNudge(anchor, displacement);
+        return emitted.x * direction.x + emitted.y * direction.y;
+      };
+      const { startLength, endLength, honoredStartAdjustment, honoredEndAdjustment } =
+        offsetCubicSide({
+          startHandleNudge: alongDirection(fixedStart, startHandleNudge, startDir),
+          endHandleNudge: alongDirection(fixedEnd, endHandleNudge, endDir),
+          p0: segment.startPoint,
+          p1: controls[0],
+          p2: controls[controls.length - 1],
+          p3: segment.endPoint,
+          d0: sideSign * startHalfWidth,
+          d3: sideSign * endHalfWidth,
+          q0: fixedStart,
+          q3: fixedEnd,
+          u0: startDir,
+          u1: endDir,
+          // The pin lives on the skeleton segment's start point, so it reads the
+          // same for both sides regardless of which way each side is emitted.
+          // Read off the generator's own flattened point shape, not the canonical
+          // one - by here the points have been through canonicalToGeneratorInput.
+          //
+          // Withheld on a serif terminal's own segment, and applied after the
+          // splice instead. The serif finds its release ON this wall, so a pin
+          // applied here reshapes the wall the release is found on and walks the
+          // whole terminal up and down the stem. The `out` handle at a segment's
+          // start point is claimed for exactly the segments a serif terminal owns,
+          // which is why the same key set gates all three authored layers.
+          pinnedTension: authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
+            ? undefined
+            : isLeftSide
+              ? segment.startPoint.leftSegmentCurvature
+              : segment.startPoint.rightSegmentCurvature,
+          startAdjustment,
+          endAdjustment,
+        });
       if (shouldAddStart)
         output.push(
           buildGeneratedOnCurve(
@@ -2474,29 +2744,15 @@ function generateOffsetPointsForSegment(
         x: fixedEnd.x + endDir.x * endLength,
         y: fixedEnd.y + endDir.y * endLength,
       };
-      const startHandleNudge = ribHandleNudgeDisplacement(
-        segment.startPoint,
-        startNormal,
-        side,
-        startHalfWidth
-      );
-      const endHandleNudge = ribHandleNudgeDisplacement(
-        segment.endPoint,
-        endNormal,
-        side,
-        endHalfWidth
-      );
-      const emittedNudge = (anchor, displacement) => {
-        const translated = translateRibPoint(anchor, displacement);
-        return { x: translated.x - anchor.x, y: translated.y - anchor.y };
-      };
-      for (const [point, owner, role, axis, handleNudge] of [
+      for (const [point, owner, role, axis, handleNudge, adjustment, honored] of [
         [
           adjustedHandle1,
           segment.startPoint,
           "out",
           startDir,
           emittedNudge(fixedStart, startHandleNudge),
+          startAdjustment,
+          honoredStartAdjustment,
         ],
         [
           adjustedHandle2,
@@ -2504,6 +2760,8 @@ function generateOffsetPointsForSegment(
           "in",
           endDir,
           emittedNudge(fixedEnd, endHandleNudge),
+          endAdjustment,
+          honoredEndAdjustment,
         ],
       ]) {
         const generated = {
@@ -2512,14 +2770,39 @@ function generateOffsetPointsForSegment(
           type: "cubic",
         };
         const provenance = pointProvenance(owner, side, role);
+        // How much of this handle's stored offset the ceiling let through. Only
+        // an attached offset that was actually offered here has one: a detached
+        // handle is absolute and never met the ceiling, and a serif terminal's
+        // handles are placed after the splice by their own path.
+        if (
+          provenance &&
+          adjustment &&
+          !adjustment.detached &&
+          (adjustment.x || adjustment.y) &&
+          axis
+        ) {
+          provenance.honoredAdjustment = {
+            x: axis.x * honored,
+            y: axis.y * honored,
+          };
+        }
         if (provenance) generated._provenance = provenance;
         // The exact unit direction this handle was constructed on, before the
         // grid snap above. enforceSmoothColinearity needs it: recovering the
         // direction from the rounded position is width-dependent and, on short
         // handles, quantized to the lattice.
         if (axis) generated._axis = { x: axis.x, y: axis.y };
+        if (authoredKeys?.has(`${owner?.id}/${side}/${role}`)) {
+          const adjustment = getGeneratedHandleAdjustment(owner, axis, side, role);
+          if (adjustment) generated._authoredAdjustment = adjustment;
+        }
         if (handleNudge.x || handleNudge.y) {
           generated._handleNudge = handleNudge;
+          // Published for the same reason the on-curve publishes its own nudge:
+          // this displacement is added after the construction, so a reader that
+          // wants the curve the generator solved has to be able to take it back
+          // off. Recovering it from geometry is not available (rail R-D).
+          if (provenance) provenance.handleNudge = { ...handleNudge };
         }
         output.push(generated);
       }
@@ -2596,11 +2879,12 @@ function generateOffsetPointsForSegment(
  * @param {number} defaultWidth - Contour default width
  * @returns {Map} skeleton point -> {left, right}
  */
-function coupledHalfWidths(segments, isClosed, defaultWidth) {
+function coupledHalfWidths(segments, isClosed, defaultWidth, contourCapStyle) {
   const groups = collectTiedRibGroups(
     segments,
     isClosed,
-    (point) => point.widthTied !== false
+    (point) => point.widthTied !== false,
+    collectSerifTerminals(segments, isClosed, contourCapStyle)
   );
   const sharedByGroup = new Map();
   const coupled = new Map();
@@ -2962,15 +3246,22 @@ function withRoundCapProvenance(point, sourcePoint) {
   if (point && sourcePoint?._provenance) {
     point._provenance = { ...sourcePoint._provenance };
   }
+  if (point && sourcePoint?._authoredAdjustment) {
+    point._authoredAdjustment = { ...sourcePoint._authoredAdjustment };
+  }
   return point;
 }
 
-function buildSplitOffCurve(point) {
-  return {
+function buildSplitOffCurve(point, sourceHandle = null) {
+  const offCurve = {
     x: point.x,
     y: point.y,
     type: "cubic",
   };
+  if (sourceHandle?._axis) {
+    offCurve._axis = { x: sourceHandle._axis.x, y: sourceHandle._axis.y };
+  }
+  return offCurve;
 }
 
 function buildInsertedRoundCapPoint(point) {
@@ -3047,7 +3338,12 @@ function splitTerminalSideForRoundCap(
   sidePoints,
   sidePosition,
   trimDistance,
-  fallbackDirections
+  fallbackDirections,
+  // How little curve a cut may leave behind. A round cap keeps a unit, because
+  // its tip is built from the direction the leftover piece gives it. A serif
+  // reads no direction off that piece and may release the stroke at the rib end
+  // itself, which is a legal shape — points collapse, they do not disappear.
+  { minimumTrim = 1 } = {}
 ) {
   const terminalSegment = getRoundCapTerminalSegment(sidePoints, sidePosition);
   if (!terminalSegment) {
@@ -3074,8 +3370,8 @@ function splitTerminalSideForRoundCap(
     Math.max(trimDistance, 0),
     terminalSegmentLength
   );
-  if (terminalSegmentLength >= 2 && effectiveTrimDistance < 1) {
-    effectiveTrimDistance = 1;
+  if (terminalSegmentLength >= 2 && effectiveTrimDistance < minimumTrim) {
+    effectiveTrimDistance = minimumTrim;
   }
 
   const synthesizeInsertedPoint = () => {
@@ -3121,7 +3417,10 @@ function splitTerminalSideForRoundCap(
       interpolationT
     );
     let insertedPoint = buildInsertedRoundCapPoint(insertedCoords);
-    if (vector.distance(insertedPoint, referenceEndpoint) < 1) {
+    if (
+      minimumTrim > 0 &&
+      vector.distance(insertedPoint, referenceEndpoint) < minimumTrim
+    ) {
       insertedPoint = buildInsertedRoundCapPoint({
         x: referenceEndpoint.x - fallbackDirection.x,
         y: referenceEndpoint.y - fallbackDirection.y,
@@ -3155,20 +3454,47 @@ function splitTerminalSideForRoundCap(
 
   const bezier = segmentBezier ?? createBezierFromPoints(segmentPoints);
   const splitT = solveTerminalSplitForDistance(bezier, fromEnd, effectiveTrimDistance);
+  return (
+    splitTerminalSideAtT(sidePoints, sidePosition, terminalSegment, bezier, splitT, {
+      fallbackDirection,
+    }) ?? synthesizeInsertedPoint()
+  );
+}
+
+// Cut a terminal side's segment at a parameter and rewrite the side around the
+// cut. Shared by the distance split above and the parameter split below, so the
+// two cannot drift apart on how a cut segment is put back together.
+//
+// Returns null when the cut has no usable tangent, which is the caller's cue to
+// fall back to a synthesized point.
+function splitTerminalSideAtT(
+  sidePoints,
+  sidePosition,
+  terminalSegment,
+  bezier,
+  splitT,
+  { publishConstructionSegment = true, fallbackDirection } = {}
+) {
+  const { segmentStartIndex, segmentEndIndex, segmentPoints } = terminalSegment;
+  const fromEnd = sidePosition === "end";
+  const referenceEndpointIndex = fromEnd ? segmentEndIndex : segmentStartIndex;
+  const referenceEndpoint = cloneRoundCapPoint(sidePoints[referenceEndpointIndex]);
+  const startPoint = segmentPoints[0];
+  const endPoint = segmentPoints[segmentPoints.length - 1];
   const derivative = bezier.derivative(splitT);
   const derivativeDirection = vector.normalizeVector({
     x: derivative.x,
     y: derivative.y,
   });
   if (!isUsableDirection(derivativeDirection)) {
-    return synthesizeInsertedPoint();
+    return null;
   }
 
   const split = bezier.split(splitT);
   const leftPoints = split.left.points.map((point) => ({ x: point.x, y: point.y }));
   const rightPoints = split.right.points.map((point) => ({ x: point.x, y: point.y }));
   let insertedPoint = buildInsertedRoundCapPoint(leftPoints[leftPoints.length - 1]);
-  if (vector.distance(insertedPoint, referenceEndpoint) < 1) {
+  if (fallbackDirection && vector.distance(insertedPoint, referenceEndpoint) < 1) {
     insertedPoint = buildInsertedRoundCapPoint({
       x: referenceEndpoint.x - fallbackDirection.x,
       y: referenceEndpoint.y - fallbackDirection.y,
@@ -3184,13 +3510,51 @@ function splitTerminalSideForRoundCap(
   const originalHandle1 = segmentPoints[1];
   const originalHandle2 = segmentPoints[2];
   withRoundCapProvenance(insertedPoint, referenceEndpoint);
+  // Keep the segment the trim was cut out of. The curvature gizmo reads its
+  // number off the segment as emitted, but the pin it writes is reproduced on
+  // the whole untrimmed segment, so on a trimmed terminal the two are talking
+  // about different curves and the first drag snaps the shape from one to the
+  // other. This is what lets the gizmo measure the curve the pin governs.
+  if (publishConstructionSegment && insertedPoint._provenance) {
+    insertedPoint._provenance.constructionSegment = segmentPoints.map((point) => ({
+      x: point.x,
+      y: point.y,
+    }));
+  }
+  // The two handles either side of the cut are tangent to the curve there, so
+  // each one's own direction is the axis its length is measured along. Stamp it:
+  // a handle carrying no axis leaves every reader estimating one back out of a
+  // rounded position, and an authored adjustment has nothing to move along.
+  const axisFromInserted = (point) => {
+    const direction = vector.normalizeVector({
+      x: point.x - insertedPoint.x,
+      y: point.y - insertedPoint.y,
+    });
+    return isUsableDirection(direction) ? direction : null;
+  };
+  const stampAxis = (offCurve, axis) => {
+    if (axis) offCurve._axis = { x: axis.x, y: axis.y };
+    return offCurve;
+  };
   const rewrittenSegment = [
     cloneRoundCapPoint(startPoint),
-    withRoundCapProvenance(buildSplitOffCurve(leftPoints[1]), originalHandle1),
-    withRoundCapProvenance(buildSplitOffCurve(leftPoints[2]), originalHandle2),
+    withRoundCapProvenance(
+      buildSplitOffCurve(leftPoints[1], originalHandle1),
+      originalHandle1
+    ),
+    withRoundCapProvenance(
+      stampAxis(buildSplitOffCurve(leftPoints[2]), axisFromInserted(leftPoints[2])),
+      originalHandle2
+    ),
     insertedPoint,
-    withRoundCapProvenance(buildSplitOffCurve(rightPoints[1]), originalHandle1),
-    withRoundCapProvenance(buildSplitOffCurve(rightPoints[2]), originalHandle2),
+    withRoundCapProvenance(
+      stampAxis(buildSplitOffCurve(rightPoints[1]), axisFromInserted(rightPoints[1])),
+      originalHandle1
+    ),
+    withRoundCapProvenance(
+      buildSplitOffCurve(rightPoints[2], originalHandle2),
+      originalHandle2
+    ),
     cloneRoundCapPoint(endPoint),
   ];
   const rewrittenSidePoints = [
@@ -3207,6 +3571,64 @@ function splitTerminalSideForRoundCap(
     referenceEndpoint,
     tangentToEndpoint,
   };
+}
+
+// Split a terminal side at a parameter that the caller already knows, rather
+// than at an arc-length distance the split has to solve for. A serif finds its
+// release ON the wall, so the parameter comes with it, and solving for a
+// distance again would only reintroduce the half-unit tolerance that solve
+// carries.
+function splitTerminalSideAtParameter(
+  sidePoints,
+  sidePosition,
+  parameter,
+  fallbackDirections
+) {
+  const terminalSegment = getRoundCapTerminalSegment(sidePoints, sidePosition);
+  if (!terminalSegment) {
+    return null;
+  }
+  const { segmentPoints } = terminalSegment;
+  // A serif on a straight stem has a LINE for its terminal segment, which is the
+  // ordinary case and must keep working. On a line, parameter and distance are
+  // exactly proportional, so the existing distance split is exact there and
+  // there is nothing to solve. Only a cubic needs the parameter carried through.
+  if (segmentPoints.length === 2) {
+    const length = vector.distance(segmentPoints[0], segmentPoints[1]);
+    return splitTerminalSideForRoundCap(
+      sidePoints,
+      sidePosition,
+      parameter * length,
+      fallbackDirections,
+      { minimumTrim: 0 }
+    );
+  }
+  if (segmentPoints.length !== 4) {
+    return null;
+  }
+  const bezier = createBezierFromPoints(segmentPoints);
+  // A start terminal's segment already runs from the rib end into the stroke,
+  // which is the wall's own direction. An end terminal's runs the other way.
+  const splitT = sidePosition === "end" ? 1 - parameter : parameter;
+  // No floor and no nudge away from the endpoint. A collapsed serif releases the
+  // stroke AT the rib end, which is a legal shape here — points collapse, they
+  // do not disappear — and pushing the cut a unit inward instead moves an
+  // on-curve a designer never asked to move. The degenerate piece the cut leaves
+  // behind is discarded by the emission trim in any case.
+  return (
+    splitTerminalSideAtT(sidePoints, sidePosition, terminalSegment, bezier, splitT, {
+      // A pin on a serifed terminal governs the piece that survives the trim,
+      // not the curve the generator solved, so there is no second curve for a
+      // reader to be handed. Publishing one would leave the gizmo measuring one
+      // curve and writing the answer onto another.
+      publishConstructionSegment: false,
+    }) ??
+    // Only when the cut has no usable tangent, which needs a segment with a
+    // collapsed handle. Then the distance split's synthesized point stands in.
+    splitTerminalSideForRoundCap(sidePoints, sidePosition, 0, fallbackDirections, {
+      minimumTrim: 0,
+    })
+  );
 }
 
 function trimSideForRoundCapEmission(sidePoints, sidePosition, referenceEndpointIndex) {
@@ -3675,6 +4097,47 @@ function clampCapBallShape(value) {
   return Math.min(Math.max(value, 0), MAX_CAP_BALL_SHAPE);
 }
 
+function clampCapBallEasing(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_CAP_BALL_EASING;
+  }
+  return Math.min(Math.max(value, 0), 1);
+}
+
+// Clamped on output only, like every other curvature the gizmo writes: a stored
+// value the geometry cannot honor today comes back intact once it can.
+function clampCapBallEaseCurvature(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_CAP_BALL_EASE_CURVATURE;
+  }
+  return Math.min(Math.max(value, 0), 1);
+}
+
+// The neck's own provenance. A neck is cap geometry with no skeleton segment
+// behind it, so its curvature cannot live in `segmentCurvature`; it names the
+// cap-owning point and the field instead. `side` is the inner generated side, so
+// the segment walk sees one consistent side across all four points and needs no
+// second rule to accept it.
+function neckProvenance(sourcePoint, side, role) {
+  if (!sourcePoint?._sourcePointId) {
+    return null;
+  }
+  return {
+    skeletonPointId: sourcePoint._sourcePointId,
+    side,
+    role,
+    capCurvatureField: "capBallEaseCurvature",
+  };
+}
+
+function withNeckProvenance(point, sourcePoint, side, role) {
+  const provenance = neckProvenance(sourcePoint, side, role);
+  if (point && provenance) {
+    point._provenance = provenance;
+  }
+  return point;
+}
+
 // Which side the ball swells toward. Explicit capBallSide wins; otherwise the
 // convex (outer) side of the terminal segment's bend. For a CCW-turning
 // terminal the convex side is the left generated edge.
@@ -3756,10 +4219,9 @@ function makeDropCapBall(center, ex, ey, a, b) {
       const { u, v } = this.localOf(point);
       return Math.atan2(v, u);
     },
-    // `inflate` scales both axes, used to pull the neck trim further back.
-    contains(point, inflate = 1) {
+    contains(point) {
       const { u, v } = this.localOf(point);
-      return u * u + v * v < inflate * inflate;
+      return u * u + v * v < 1;
     },
   };
 }
@@ -3855,14 +4317,6 @@ function getSideSegmentsFromTerminal(sidePoints, position) {
     }
   }
   return position === "end" ? segments.reverse() : segments;
-}
-
-// How far back from the terminal a crossing sits, as a 0..1 fraction of its own
-// segment plus the number of whole segments already walked — enough to compare
-// two crossings on the same side.
-function crossingBackness(crossing) {
-  const withinSegment = crossing.fromEnd ? 1 - crossing.tCross : crossing.tCross;
-  return crossing.segmentsFromTerminal + withinSegment;
 }
 
 // Find where a side outline last crosses the ball boundary, scanning backward
@@ -3968,11 +4422,55 @@ function findSideBallCrossing(sidePoints, position, contains) {
   return rearMost;
 }
 
+// The same crossing slid back along its own segment by `easing`, a 0..1 fraction
+// of the run from the crossing to that segment's far on-curve.
+//
+// Staying on the crossing's own segment is what bounds the neck. At easing 1 the
+// far end lands exactly on the on-curve and the two collapse, and there is
+// nowhere past it to go — so the stop is a property of the run rather than a
+// separate clamp that could disagree with the panel's range.
+function crossingAtEasing(crossingInfo, easing) {
+  const { tCross, fromEnd, bezier, segmentPoints } = crossingInfo;
+  const t = fromEnd ? tCross * (1 - easing) : tCross + (1 - tCross) * easing;
+  let crossing;
+  let crossingTangent = null;
+  if (bezier) {
+    const point = bezier.get(t);
+    crossing = { x: point.x, y: point.y };
+    const derivative = bezier.derivative(t);
+    crossingTangent = vector.normalizeVector({ x: derivative.x, y: derivative.y });
+  } else {
+    const last = segmentPoints[segmentPoints.length - 1];
+    crossing = vector.interpolateVectors(segmentPoints[0], last, t);
+    const chord = vector.subVectors(last, segmentPoints[0]);
+    crossingTangent = isUsableDirection(chord) ? vector.normalizeVector(chord) : null;
+  }
+  return {
+    ...crossingInfo,
+    crossing,
+    crossingTangent: isUsableDirection(crossingTangent)
+      ? crossingTangent
+      : crossingInfo.crossingTangent,
+    tCross: t,
+  };
+}
+
 // Rebuild a side outline trimmed at a crossing (from findSideBallCrossing),
 // so its terminal segment stops at the crossing. `smooth` marks the new
 // terminal on-curve (true for a filleted neck that meets the ball tangentially,
 // false for a hard concave corner).
-function rebuildTrimmedSide(sidePoints, crossingInfo, { smooth }) {
+//
+// `addressable` gives the trimmed segment's two rebuilt handles the provenance
+// their originals carried, and stamps the untrimmed segment onto the crossing
+// on-curve. Together those are what the curvature gizmo needs: the addresses let
+// it find the segment at all, and the untrimmed snapshot lets it measure the
+// curve its pin actually governs rather than the piece left after the cut. This
+// is the same pair the round-cap split publishes.
+//
+// It is off for an eased neck on purpose. Exactly one gizmo lives at a bulb's
+// terminal: above the incision when there is no easing, and on the neck itself
+// once there is. Publishing both would put two of them a few units apart.
+function rebuildTrimmedSide(sidePoints, crossingInfo, { smooth, addressable = false }) {
   const {
     crossing,
     segmentStartIndex,
@@ -3988,6 +4486,12 @@ function rebuildTrimmedSide(sidePoints, crossingInfo, { smooth }) {
     { x: Math.round(crossing.x), y: Math.round(crossing.y), smooth },
     provenanceSource
   );
+  if (addressable && isCubic && crossingOnCurve._provenance) {
+    crossingOnCurve._provenance.constructionSegment = segmentPoints.map((point) => ({
+      x: point.x,
+      y: point.y,
+    }));
+  }
 
   let rewrittenSegment;
   if (bezier) {
@@ -3996,18 +4500,27 @@ function rebuildTrimmedSide(sidePoints, crossingInfo, { smooth }) {
       x: p.x,
       y: p.y,
     }));
+    // The rebuilt handles inherit the original handles' provenance in place, so
+    // handle 1 keeps handle 1's address whichever end the cut came from.
+    const splitHandle = (index) =>
+      addressable
+        ? withRoundCapProvenance(
+            buildSplitOffCurve(kept[index], segmentPoints[index]),
+            segmentPoints[index]
+          )
+        : buildSplitOffCurve(kept[index]);
     if (isCubic) {
       rewrittenSegment = fromEnd
         ? [
             cloneRoundCapPoint(segmentPoints[0]),
-            buildSplitOffCurve(kept[1]),
-            buildSplitOffCurve(kept[2]),
+            splitHandle(1),
+            splitHandle(2),
             crossingOnCurve,
           ]
         : [
             crossingOnCurve,
-            buildSplitOffCurve(kept[1]),
-            buildSplitOffCurve(kept[2]),
+            splitHandle(1),
+            splitHandle(2),
             cloneRoundCapPoint(segmentPoints[segmentPoints.length - 1]),
           ];
     } else {
@@ -4031,80 +4544,300 @@ function rebuildTrimmedSide(sidePoints, crossingInfo, { smooth }) {
     : [...rewrittenSegment, ...sidePoints.slice(segmentEndIndex + 1)];
 }
 
+// The ball's frame at one cut on the outer edge, and the along-stroke radius the
+// terminal pin allows there.
+//
+// `alongRadius` is how deep the ball may be before its furthest point along the
+// outward tangent breaches the terminal plane. It is zero where the ball's
+// lateral swell alone already breaches it, and it grows without bound as the
+// edge turns square to the outward tangent, because there the ball's reach stops
+// depending on its depth at all. `edgeAlignment` is that agreement, and it falls
+// as the cut moves back.
+function probeDropCapBallFrame({
+  tangency,
+  edgeTangent,
+  endpoint,
+  forward,
+  lateralRadius,
+}) {
+  const ex = isUsableDirection(edgeTangent)
+    ? vector.normalizeVector(edgeTangent)
+    : forward;
+  const ey = orientDirectionToward(
+    vector.rotateVector90CW(ex),
+    vector.subVectors(endpoint, tangency)
+  );
+  if (!isUsableDirection(ey)) {
+    return null;
+  }
+  const center = {
+    x: tangency.x + ey.x * lateralRadius,
+    y: tangency.y + ey.y * lateralRadius,
+  };
+  const edgeAlignment = ex.x * forward.x + ex.y * forward.y;
+  const lateralComponent = lateralRadius * (ey.x * forward.x + ey.y * forward.y);
+  // How far the center sits behind the terminal plane, along the tangent.
+  const room =
+    (endpoint.x - center.x) * forward.x + (endpoint.y - center.y) * forward.y;
+  // Ball extreme along `forward` is hypot(a * edgeAlignment, lateralComponent)
+  // from the center; pin it to `room`.
+  const alongRadius =
+    Math.sqrt(Math.max(room * room - lateralComponent * lateralComponent, 0)) /
+    Math.max(Math.abs(edgeAlignment), MIN_BALL_EDGE_ALIGNMENT);
+  return { ex, ey, center, edgeAlignment, alongRadius };
+}
+
+// Choose where to cut the outer edge. The cut runs from the terminal backward on
+// a normalized parameter, and the search returns the cut that delivers the ball
+// the shape settings asked for.
+//
+// Two facts drive it. The edge's agreement with the outward tangent falls as the
+// cut moves back, so the run of cuts where the edge still runs forward at all is
+// bounded by one crossing. And within that run the allowed depth rises without
+// bound toward the far end, because a ball attached where the edge has turned
+// square reaches forward by its width alone whatever its depth.
+//
+// So the requested depth is a root, and the search bisects for it from the far
+// end. Bisecting is what makes the cut move continuously with the skeleton. The
+// discarded version tested whether a cut merely fit and took the first that did,
+// which lands the flattest ball the geometry permits, and which flips to a
+// different cut entirely when the test trips one sample earlier.
+//
+// Where every cut allows more depth than was asked for, the shallowest wins. The
+// two answers meet exactly where they change over.
+function searchDropCapTrim(frameAt, wantedAlongRadius) {
+  // The deepest cut worth considering: past it the edge runs backward and a ball
+  // hung off it is not on the stroke's end any more.
+  let hi = 1;
+  let previousAlignment = frameAt(0)?.edgeAlignment ?? 0;
+  for (let i = 1; i <= DROP_CAP_TRIM_SCAN_STEPS; i++) {
+    const s = i / DROP_CAP_TRIM_SCAN_STEPS;
+    const alignment = frameAt(s)?.edgeAlignment ?? 0;
+    if (alignment <= 0 && previousAlignment > 0) {
+      let lo = (i - 1) / DROP_CAP_TRIM_SCAN_STEPS;
+      hi = s;
+      for (let step = 0; step < DROP_CAP_TRIM_BISECTION_STEPS; step++) {
+        const mid = (lo + hi) / 2;
+        if ((frameAt(mid)?.edgeAlignment ?? 0) > 0) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      hi = lo;
+      break;
+    }
+    previousAlignment = alignment;
+  }
+
+  // Walk back from there to bracket the requested depth, and note the deepest
+  // ball the run allows on the way. Scanning from the deep end picks the
+  // crossing next to the unbounded one, which is the cut where the ball
+  // genuinely sits in the bend.
+  const radiusAt = (s) => frameAt(s)?.alongRadius ?? 0;
+  const spacing = hi / DROP_CAP_TRIM_SCAN_STEPS;
+  const deepestReach = radiusAt(hi);
+  let best = { s: hi, alongRadius: deepestReach };
+  let bracketLo = null;
+  for (let i = DROP_CAP_TRIM_SCAN_STEPS - 1; i >= 0; i--) {
+    const s = spacing * i;
+    const alongRadius = radiusAt(s);
+    if (alongRadius > best.alongRadius) {
+      best = { s, alongRadius };
+    }
+    if (bracketLo === null && alongRadius < wantedAlongRadius) {
+      bracketLo = s;
+    }
+  }
+
+  if (deepestReach >= wantedAlongRadius) {
+    if (bracketLo === null) {
+      // Every cut on the run allows more depth than was asked for, so the
+      // shallowest one wins and the ball is exactly the shape requested.
+      return 0;
+    }
+    let lo = bracketLo;
+    for (let step = 0; step < DROP_CAP_TRIM_BISECTION_STEPS; step++) {
+      const mid = (lo + hi) / 2;
+      if (radiusAt(mid) < wantedAlongRadius) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return hi;
+  }
+
+  // No cut on the run allows the requested depth, so the deepest ball available
+  // wins. Refining between the samples either side of the best one is what keeps
+  // this moving continuously: the best sample alone steps from grid line to grid
+  // line. The two answers meet where the deepest available reaches the request.
+  if (!(best.alongRadius > 0)) {
+    return null;
+  }
+  let lo = Math.max(best.s - spacing, 0);
+  let high = Math.min(best.s + spacing, hi);
+  for (let step = 0; step < DROP_CAP_TRIM_BISECTION_STEPS; step++) {
+    const third = (high - lo) / 3;
+    if (radiusAt(lo + third) < radiusAt(high - third)) {
+      lo += third;
+    } else {
+      high -= third;
+    }
+  }
+  return (lo + high) / 2;
+}
+
 // Place the ball: trim the outer edge back, sit the ball tangent to it there,
 // and pick the along-stroke radius so the ball's furthest point along the
 // outward tangent lands exactly on the terminal plane — the line through the
 // endpoint that a butt cap sits on. That is what keeps a drop cap from
 // lengthening the stroke.
 //
-// On a straight terminal this is trivial (the along-radius is just the trim
-// distance). On a curved one the edge tangent has rotated away from the outward
-// tangent, so the ball's lateral swell reaches forward too; when that alone
-// already breaches the plane, the trim is walked further back until there is
-// room. Returns { split, tangency, ball } or null.
+// On a straight terminal the along-radius is just the trim distance. On a curved
+// one the edge tangent has rotated away from the outward tangent, so the ball's
+// lateral swell reaches forward too and the trim has to go back further to pay
+// for it. How much further is what the search decides.
+//
+// Returns { split, tangency, ball } or null when no cut on the terminal segment
+// leaves room for a ball at all.
 function solveDropCapBallOnTerminal({
   outerSideArr,
   position,
   endpoint,
   forward,
   lateralRadius,
-  trimDistance,
+  wantedAlongRadius,
   maxTrimDistance,
 }) {
-  let trim = trimDistance;
-  let fallback = null;
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const split = splitTerminalSideForRoundCap(outerSideArr, position, trim, {
-      endpointTangent: forward,
-      capTangent: forward,
-    });
-    if (!split?.insertedPoint) {
-      break;
-    }
-    const tangency = split.insertedPoint;
-    const ex = isUsableDirection(split.tangentToEndpoint)
-      ? vector.normalizeVector(split.tangentToEndpoint)
-      : forward;
-    const ey = orientDirectionToward(
-      vector.rotateVector90CW(ex),
-      vector.subVectors(endpoint, tangency)
-    );
-    if (!isUsableDirection(ey)) {
-      break;
-    }
-    const center = {
-      x: tangency.x + ey.x * lateralRadius,
-      y: tangency.y + ey.y * lateralRadius,
-    };
-    const alongComponent = ex.x * forward.x + ex.y * forward.y;
-    const lateralComponent = lateralRadius * (ey.x * forward.x + ey.y * forward.y);
-    // How far the center sits behind the terminal plane, along the tangent.
-    const room =
-      (endpoint.x - center.x) * forward.x + (endpoint.y - center.y) * forward.y;
-    const makeResult = (a) => ({
-      split,
-      tangency,
-      ball: makeDropCapBall(center, ex, ey, Math.max(a, 1), lateralRadius),
-    });
-    if (Math.abs(alongComponent) > 0.2 && room > Math.abs(lateralComponent) + 0.5) {
-      // Ball extreme along `forward` is hypot(a * alongComponent,
-      // lateralComponent) from the center; pin it to `room`.
-      const along =
-        Math.sqrt(room * room - lateralComponent * lateralComponent) /
-        Math.abs(alongComponent);
-      return makeResult(along);
-    }
-    fallback = fallback ?? makeResult(trim);
-    const nextTrim = Math.min(
-      trim + Math.abs(lateralComponent) - room + lateralRadius * 0.5 + 2,
-      maxTrimDistance
-    );
-    if (!(nextTrim > trim + 0.5)) {
-      break;
-    }
-    trim = nextTrim;
+  const terminalSegment = getRoundCapTerminalSegment(outerSideArr, position);
+  if (!terminalSegment) {
+    return null;
   }
-  return fallback;
+  const fromEnd = position === "end";
+  const { segmentPoints } = terminalSegment;
+  const isCubic = segmentPoints.length === 4;
+  const bezier = isCubic ? createBezierFromPoints(segmentPoints) : null;
+
+  // A cubic edge is searched in its own parameter, which costs a point and a
+  // derivative per probe. Resolving a trim distance instead costs a bisection
+  // over arc length per probe, and the search does not need one until it has
+  // chosen. A straight edge has no such distinction and is searched by distance.
+  let frameAt;
+  let cutAt;
+  if (bezier) {
+    const nearT = solveTerminalSplitForDistance(bezier, fromEnd, MIN_BALL_TRIM);
+    const farT = solveTerminalSplitForDistance(bezier, fromEnd, maxTrimDistance);
+    const paramAt = (s) => nearT + (farT - nearT) * s;
+    frameAt = (s, radius) => {
+      const splitT = paramAt(s);
+      const point = bezier.get(splitT);
+      const derivative = bezier.derivative(splitT);
+      const direction = vector.normalizeVector({
+        x: derivative.x,
+        y: derivative.y,
+      });
+      if (!isUsableDirection(direction)) {
+        return null;
+      }
+      return probeDropCapBallFrame({
+        tangency: { x: point.x, y: point.y },
+        edgeTangent: fromEnd ? direction : { x: -direction.x, y: -direction.y },
+        endpoint,
+        forward,
+        lateralRadius: radius,
+      });
+    };
+    cutAt = (s) =>
+      splitTerminalSideAtT(
+        outerSideArr,
+        position,
+        terminalSegment,
+        bezier,
+        paramAt(s),
+        { fallbackDirection: forward }
+      );
+  } else {
+    const trimAt = (s) => MIN_BALL_TRIM + (maxTrimDistance - MIN_BALL_TRIM) * s;
+    const splitAt = (s) =>
+      splitTerminalSideForRoundCap(outerSideArr, position, trimAt(s), {
+        endpointTangent: forward,
+        capTangent: forward,
+      });
+    frameAt = (s, radius) => {
+      const split = splitAt(s);
+      if (!split?.insertedPoint) {
+        return null;
+      }
+      return probeDropCapBallFrame({
+        tangency: split.insertedPoint,
+        edgeTangent: split.tangentToEndpoint,
+        endpoint,
+        forward,
+        lateralRadius: radius,
+      });
+    };
+    cutAt = splitAt;
+  }
+
+  // The width the ball is asked for can be more than the terminal will hold. A
+  // ball whose sideways swell alone already passes the terminal plane has no
+  // depth that satisfies the pin, at any cut. Narrowing it until one cut does is
+  // what keeps a bulb on the stroke. Refusing instead drops the terminal to a
+  // plain cap, which is a bulb vanishing partway along the ratio slider.
+  let radius = lateralRadius;
+  let chosen = searchDropCapTrim((s) => frameAt(s, radius), wantedAlongRadius);
+  if (chosen === null) {
+    let tooWide = lateralRadius;
+    let fits = 0;
+    for (let step = 0; step < DROP_CAP_TRIM_BISECTION_STEPS; step++) {
+      const mid = (fits + tooWide) / 2;
+      if (searchDropCapTrim((s) => frameAt(s, mid), wantedAlongRadius) === null) {
+        tooWide = mid;
+      } else {
+        fits = mid;
+      }
+    }
+    if (!(fits > 0.001)) {
+      return null;
+    }
+    radius = fits;
+    chosen = searchDropCapTrim((s) => frameAt(s, radius), wantedAlongRadius);
+    if (chosen === null) {
+      return null;
+    }
+  }
+  const split = cutAt(chosen);
+  if (!split?.insertedPoint) {
+    return null;
+  }
+  // Measure the frame again on the cut that will actually be emitted. The two
+  // agree except where the cut lands within a unit of the endpoint and the split
+  // substitutes a synthesized point, which is far from anything the search picks.
+  const frame = probeDropCapBallFrame({
+    tangency: split.insertedPoint,
+    edgeTangent: split.tangentToEndpoint,
+    endpoint,
+    forward,
+    lateralRadius: radius,
+  });
+  if (!frame) {
+    return null;
+  }
+  // Never deeper than the shape asked for. The search put the cut where the two
+  // agree; the cap only bites where the whole edge allows more than was wanted.
+  const alongRadius = Math.min(frame.alongRadius, wantedAlongRadius);
+  return {
+    split,
+    tangency: split.insertedPoint,
+    ball: makeDropCapBall(
+      frame.center,
+      frame.ex,
+      frame.ey,
+      Math.max(alongRadius, 1),
+      radius
+    ),
+  };
 }
 
 // Build a drop cap.
@@ -4125,7 +4858,8 @@ function buildDropCap({
   capWidth,
   capBallRatio,
   capBallShape,
-  capTension,
+  capBallEasing,
+  capBallEaseCurvature,
 }) {
   const forward = vector.normalizeVector(outwardTangent);
   if (!endpoint || !(capWidth > 0.001) || !isUsableDirection(forward)) {
@@ -4137,27 +4871,26 @@ function buildDropCap({
   }
   const outerSideArr = outerSide === "left" ? leftSide : rightSide;
   const innerSideArr = outerSide === "left" ? rightSide : leftSide;
+  const innerSideName = outerSide === "left" ? "right" : "left";
 
-  // capBallShape stretches the ball backward along the stroke only: it sets how
-  // far back along the outer edge the ball attaches. The trim has to stay on
-  // the outer side's terminal segment, so a short terminal segment caps how
-  // elongated the ball can get.
+  // capBallShape stretches the ball backward along the stroke only: it sets the
+  // along-stroke radius the ball is asked for. The cut has to stay on the outer
+  // side's terminal segment, so a short terminal segment caps how elongated the
+  // ball can get.
   const shape = clampCapBallShape(capBallShape);
   const outerTerminalLength = getTerminalSegmentLength(outerSideArr, position);
-  const trimDistance = Math.min(
-    lateralRadius * (1 + shape * BALL_SHAPE_ELONGATION),
-    Math.max(outerTerminalLength * 0.95, 1)
-  );
+  const wantedAlongRadius = lateralRadius * (1 + shape * BALL_SHAPE_ELONGATION);
 
-  // Trim the outer edge back by the along-stroke radius; the ball is tangent to
-  // the edge at the inserted point and its tip lands back on the terminal.
+  // Cut the outer edge back far enough to deliver that radius; the ball is
+  // tangent to the edge at the inserted point and its tip lands back on the
+  // terminal.
   const solved = solveDropCapBallOnTerminal({
     outerSideArr,
     position,
     endpoint,
     forward,
     lateralRadius,
-    trimDistance,
+    wantedAlongRadius,
     maxTrimDistance: Math.max(outerTerminalLength * 0.95, 1),
   });
   if (!solved) {
@@ -4174,10 +4907,8 @@ function buildDropCap({
     split.referenceEndpointIndex
   );
 
-  const tension = Math.min(
-    Math.max(Number.isFinite(capTension) ? capTension : 0, 0),
-    MAX_CAP_TENSION_DROP
-  );
+  const easing = clampCapBallEasing(capBallEasing);
+  const easeCurvature = clampCapBallEaseCurvature(capBallEaseCurvature);
 
   // Where the ball meets the inner edge (the arc ends there). When the ball is
   // too small to reach the inner edge, bridge to the inner terminal instead.
@@ -4185,38 +4916,29 @@ function buildDropCap({
     ball.contains(point)
   );
 
-  // With tension, pull the inner trim back by growing the trim ball: the stroke
-  // edge peels away earlier and eases into the ball, softening the notch into a
-  // concave neck. Back off the inflation until the grown ball still yields a
-  // crossing genuinely behind the plain one — a ball so large that the rear
-  // crossing runs off the side would otherwise report the forward crossing
-  // instead, which folds the neck back over the stroke.
-  let softCross = null;
-  let inflate = 1;
-  if (ballCross && tension > 0.01) {
-    for (let s = 1 + tension * NECK_PULLBACK_FACTOR; s > 1.02; s = 1 + (s - 1) * 0.65) {
-      const candidate = findSideBallCrossing(innerSideArr, position, (point) =>
-        ball.contains(point, s)
-      );
-      if (candidate && crossingBackness(candidate) > crossingBackness(ballCross)) {
-        softCross = candidate;
-        inflate = s;
-        break;
-      }
-    }
-  }
+  // Easing slides the neck's far end back along the inner edge, so the stroke
+  // edge peels away earlier and eases into the ball instead of meeting it at a
+  // notch. The far end is placed directly at its fraction of the run, which is
+  // what lets the value be aimed: an earlier version grew a second, inflated
+  // ball and took whatever crossing that happened to make, and no reading of the
+  // number told you where the neck would land.
+  const easedCross =
+    ballCross && easing > 0 ? crossingAtEasing(ballCross, easing) : null;
 
   let trimmedInnerSide;
   let thetaInner;
   let mode;
   let innerTrim = null;
-  if (softCross) {
-    trimmedInnerSide = rebuildTrimmedSide(innerSideArr, softCross, { smooth: true });
-    innerTrim = softCross.crossing;
+  if (easedCross) {
+    trimmedInnerSide = rebuildTrimmedSide(innerSideArr, easedCross, { smooth: true });
+    innerTrim = easedCross.crossing;
     thetaInner = ball.thetaOf(ballCross.crossing);
     mode = "soft";
   } else if (ballCross) {
-    trimmedInnerSide = rebuildTrimmedSide(innerSideArr, ballCross, { smooth: false });
+    trimmedInnerSide = rebuildTrimmedSide(innerSideArr, ballCross, {
+      smooth: false,
+      addressable: true,
+    });
     thetaInner = ball.thetaOf(ballCross.crossing);
     mode = "corner";
   } else {
@@ -4253,7 +4975,7 @@ function buildDropCap({
   // absolute cap keeps a very soft neck from eating the ball itself: past it
   // the extra tension only reaches further back along the edge.
   const backoff =
-    mode === "soft" ? Math.min(inflate - 1, 0.35 * sweep, MAX_NECK_ARC_BACKOFF) : 0;
+    mode === "soft" ? easing * Math.min(0.35 * sweep, MAX_NECK_ARC_BACKOFF) : 0;
   const thetaArcEnd = thetaInner - backoff;
   const arc = emitDropCapArc(ball, thetaOuter, thetaArcEnd);
 
@@ -4268,22 +4990,47 @@ function buildDropCap({
     const ballAttach = ball.at(thetaArcEnd);
     const sweepTangent = ball.tangentAt(thetaArcEnd);
     const innerTangent = orientDirectionToward(
-      softCross.crossingTangent ?? ex,
+      easedCross.crossingTangent ?? ex,
       vector.subVectors(ballAttach, innerTrim)
     );
     const chord = vector.distance(ballAttach, innerTrim);
-    const handleLen = NECK_HANDLE_FRACTION * chord;
+    const neckLengths = computeTunniHandleLengths(
+      ballAttach,
+      sweepTangent,
+      innerTrim,
+      innerTangent,
+      easeCurvature
+    );
+    const clampNeckLen = (value) =>
+      Math.min(
+        Math.max(Number.isFinite(value) ? value : NECK_HANDLE_FRACTION * chord, 0),
+        chord
+      );
     capForwardToInner = [
       ...arc,
-      dropCapHandle({
-        x: ballAttach.x + sweepTangent.x * handleLen,
-        y: ballAttach.y + sweepTangent.y * handleLen,
-      }),
-      dropCapHandle({
-        x: innerTrim.x + innerTangent.x * handleLen,
-        y: innerTrim.y + innerTangent.y * handleLen,
-      }),
+      withNeckProvenance(
+        dropCapHandle({
+          x: ballAttach.x + sweepTangent.x * clampNeckLen(neckLengths.startLen),
+          y: ballAttach.y + sweepTangent.y * clampNeckLen(neckLengths.startLen),
+        }),
+        endpoint,
+        innerSideName,
+        "out"
+      ),
+      withNeckProvenance(
+        dropCapHandle({
+          x: innerTrim.x + innerTangent.x * clampNeckLen(neckLengths.endLen),
+          y: innerTrim.y + innerTangent.y * clampNeckLen(neckLengths.endLen),
+        }),
+        endpoint,
+        innerSideName,
+        "in"
+      ),
     ];
+    // The arc's last on-curve is the neck's own start. It needs an address for
+    // the segment walk to see the neck at all; the walk takes a segment only
+    // when all four of its points carry one.
+    withNeckProvenance(arc[arc.length - 1], endpoint, innerSideName, "onCurve");
   } else if (mode === "bridge") {
     // Small ball: connect the last arc on-curve to the inner terminal with a
     // short concave neck cubic, scaled by tension.
@@ -4306,21 +5053,32 @@ function buildDropCap({
       ballTangent,
       innerTerminal,
       innerTangent,
-      Math.max(tension, 0.2)
+      easeCurvature
     );
     const clampNeckLen = (value) =>
       Math.min(Math.max(Number.isFinite(value) ? value : 0.4 * chord, 0), 0.6 * chord);
     capForwardToInner = [
       ...arc,
-      dropCapHandle({
-        x: neckPoint.x + ballTangent.x * clampNeckLen(neckLengths.startLen),
-        y: neckPoint.y + ballTangent.y * clampNeckLen(neckLengths.startLen),
-      }),
-      dropCapHandle({
-        x: innerTerminal.x + innerTangent.x * clampNeckLen(neckLengths.endLen),
-        y: innerTerminal.y + innerTangent.y * clampNeckLen(neckLengths.endLen),
-      }),
+      withNeckProvenance(
+        dropCapHandle({
+          x: neckPoint.x + ballTangent.x * clampNeckLen(neckLengths.startLen),
+          y: neckPoint.y + ballTangent.y * clampNeckLen(neckLengths.startLen),
+        }),
+        endpoint,
+        innerSideName,
+        "out"
+      ),
+      withNeckProvenance(
+        dropCapHandle({
+          x: innerTerminal.x + innerTangent.x * clampNeckLen(neckLengths.endLen),
+          y: innerTerminal.y + innerTangent.y * clampNeckLen(neckLengths.endLen),
+        }),
+        endpoint,
+        innerSideName,
+        "in"
+      ),
     ];
+    withNeckProvenance(arc[arc.length - 1], endpoint, innerSideName, "onCurve");
   } else {
     // Hard corner: the trimmed inner side already provides the crossing
     // on-curve, so drop the arc's terminal on-curve to avoid duplicating it.
@@ -4335,6 +5093,134 @@ function buildDropCap({
     leftSide: outerSide === "left" ? trimmedOuterSide : trimmedInnerSide,
     rightSide: outerSide === "left" ? trimmedInnerSide : trimmedOuterSide,
     capPoints,
+  };
+}
+
+export { SERIF_HALF_ZEROS as SERIF_HALF_DEFAULTS };
+
+const SERIF_LENGTH_FIELDS = new Set([
+  "wingLength",
+  "tipThickness",
+  "wingSlope",
+  "reach",
+  "easeDistance",
+]);
+
+function resolveSerifHalf(pointSerif, side, context = {}) {
+  const scale = context.unitsMode === "normalized" ? context.strokeWidth : 1;
+  const resolved = {};
+  for (const field of Object.keys(SERIF_HALF_ZEROS)) {
+    const value = pointSerif?.[side]?.[field] ?? 0;
+    resolved[field] = SERIF_LENGTH_FIELDS.has(field) ? value * scale : value;
+  }
+  return resolved;
+}
+
+function buildSerifCap({
+  position,
+  endpoint,
+  tangent,
+  normal,
+  leftSide,
+  rightSide,
+  leftHalfWidth,
+  rightHalfWidth,
+  pointSerif,
+  ownerPoint,
+  serifUnitsMode,
+}) {
+  const outward = vector.normalizeVector(tangent);
+  if (!isUsableDirection(outward)) return null;
+  const frame = computeSerifFrame({
+    endpoint,
+    tangent: outward,
+    normal,
+    axisMode: pointSerif?.axisMode ?? "perpendicular",
+    axisAngle: pointSerif?.axisAngle ?? 0,
+  });
+  const unitsContext = {
+    unitsMode: serifUnitsMode,
+    strokeWidth: leftHalfWidth + rightHalfWidth,
+  };
+  const lengthScale =
+    unitsContext.unitsMode === "normalized" ? unitsContext.strokeWidth : 1;
+  // A side the terminal is not built on draws no shape. It still emits every
+  // one of its points, all of them at zero, which is what keeps a one-winged
+  // serif interpolable against a two-winged one.
+  const sides = pointSerif?.sides;
+  const builtOnSide = (side) =>
+    sides !== "left" && sides !== "right" ? true : sides === side;
+  const resolveHalfForSide = (side) =>
+    builtOnSide(side)
+      ? resolveSerifHalf(pointSerif, side, unitsContext)
+      : { ...SERIF_HALF_ZEROS };
+  const left = resolveHalfForSide("left");
+  const right = resolveHalfForSide("right");
+  // The wall, in frame coordinates, running from the rib end into the stroke.
+  // A terminal may only consume its own segment, and the wall's own maximum
+  // depth is what states that: the serif clamps its reach and ease against it.
+  // An end terminal's side points run the other way, so its segment is reversed.
+  const wallForSide = (sidePoints) => {
+    const terminalSegment = getRoundCapTerminalSegment(sidePoints, position);
+    if (!terminalSegment) return null;
+    const ordered =
+      position === "end"
+        ? [...terminalSegment.segmentPoints].reverse()
+        : terminalSegment.segmentPoints;
+    return makeSerifWall(ordered.map((point) => frame.toFrame(point)));
+  };
+  const leftWall = wallForSide(leftSide);
+  const rightWall = wallForSide(rightSide);
+  if (!leftWall || !rightWall) return null;
+
+  const terminal = buildSerifTerminal({
+    frame,
+    leftWall,
+    rightWall,
+    left,
+    right,
+    undersideCup: (pointSerif?.undersideCup ?? 0) * lengthScale,
+    // A fraction of the foot's own span, so the units mode does not touch it.
+    undersideCupTension: pointSerif?.undersideCupTension,
+    undersideCupBalance: pointSerif?.undersideCupBalance,
+  });
+
+  // The release sits ON the wall, so the split lands on it and the surviving
+  // piece is a slice of the curve the generator solved. Nothing is dragged onto
+  // a target and no handle is turned: the old anchoring existed only because
+  // the release was placed off the wall, and bending the wall back to it is
+  // what let tip thickness reshape the stem.
+  const fallbackDirections = { endpointTangent: outward, capTangent: outward };
+  const leftSplit = splitTerminalSideAtParameter(
+    leftSide,
+    position,
+    terminal.halves.left.releaseParameter,
+    fallbackDirections
+  );
+  const rightSplit = splitTerminalSideAtParameter(
+    rightSide,
+    position,
+    terminal.halves.right.releaseParameter,
+    fallbackDirections
+  );
+  if (!leftSplit || !rightSplit) return null;
+  const capPoints =
+    position === "end" ? terminal.points : [...terminal.points].reverse();
+  for (const point of capPoints) withRoundCapProvenance(point, ownerPoint);
+  return {
+    leftSide: trimSideForRoundCapEmission(
+      leftSplit.sidePoints,
+      position,
+      leftSplit.referenceEndpointIndex
+    ),
+    rightSide: trimSideForRoundCapEmission(
+      rightSplit.sidePoints,
+      position,
+      rightSplit.referenceEndpointIndex
+    ),
+    capPoints,
+    depthClamped:
+      terminal.halves.left.depthClamped || terminal.halves.right.depthClamped,
   };
 }
 

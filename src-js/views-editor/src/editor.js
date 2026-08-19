@@ -35,11 +35,13 @@ import {
 import { SceneView } from "@fontra/core/scene-view.js";
 import { isSuperset } from "@fontra/core/set-ops.js";
 import {
+  SKELETON_SOURCE_DEFAULT_KEYS,
   allocateSkeletonIds,
   deleteSkeletonPoints,
   getSkeletonContour,
   getSkeletonData,
   getSkeletonPoint,
+  resolveEffectiveSourceSkeletonDefault,
 } from "@fontra/core/skeleton-model.js";
 import { themeController } from "@fontra/core/theme-settings.js";
 import { getDecomposedIdentity } from "@fontra/core/transform.js";
@@ -84,7 +86,7 @@ import { PenTool } from "./edit-tools-pen.js";
 import { PointerTools } from "./edit-tools-pointer.js";
 import { PowerRulerTool } from "./edit-tools-power-ruler.js";
 import { ShapeTool } from "./edit-tools-shape.js";
-import { SkeletonPenTool } from "./edit-tools-skeleton.js";
+import { SkeletonPenTools } from "./edit-tools-skeleton.js";
 import {
   SceneController,
   numQuadraticOffCurvePointsOptions,
@@ -98,6 +100,7 @@ import {
   makeSkeletonPointKey,
   parseSkeletonPointKey,
   resolveSkeletonAddressAcrossLayers,
+  setSkeletonGenerationOptionsReader,
 } from "./skeleton-editing.js";
 import {
   allGlyphsCleanVisualizationLayerDefinition,
@@ -198,6 +201,28 @@ export class EditorController extends ViewController {
         }
       }
     );
+
+    // Read at regeneration time rather than cached, so switching master or
+    // toggling the option takes effect on the next edit without a refresh.
+    setSkeletonGenerationOptionsReader(() => {
+      const location =
+        this.sceneSettings?.fontLocationSourceMapped ||
+        this.sceneSettings?.fontLocationSource ||
+        {};
+      return {
+        serifUnitsMode: resolveEffectiveSourceSkeletonDefault(
+          this.fontController,
+          location,
+          SKELETON_SOURCE_DEFAULT_KEYS.SERIF_UNITS_MODE
+        ),
+        removeCollapsedPoints:
+          resolveEffectiveSourceSkeletonDefault(
+            this.fontController,
+            location,
+            SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED
+          ) === true,
+      };
+    });
 
     this.cjkDesignFrame = new CJKDesignFrame(this);
 
@@ -1011,7 +1036,7 @@ export class EditorController extends ViewController {
     const editToolClasses = [
       PointerTools,
       PenTool,
-      SkeletonPenTool,
+      SkeletonPenTools,
       KnifeTool,
       ShapeTool,
       MetricsTool,
@@ -2359,24 +2384,33 @@ export class EditorController extends ViewController {
             (skeletonDataByLayer && skeletonDataByLayer[layerName]) ||
             defaultSkeletonPaste;
           if (pasteSkeleton?.contours?.length) {
-            editSkeleton(layerGlyph, (working) => {
-              const { data, nextId } = allocateSkeletonIds(
-                { contours: structuredClone(pasteSkeleton.contours), generated: [] },
-                working.nextId
-              );
-              working.contours.push(...data.contours);
-              working.nextId = nextId;
-              if (layerName === selectionLayerName) {
-                // Selection ids are canonical in the edit layer (WS-9).
-                for (const contour of data.contours) {
-                  for (const point of contour.points || []) {
-                    if (!point.type) {
-                      selection.add(`skeletonPoint/${contour.id}/${point.id}`);
+            // createIfMissing: a glyph with no skeleton block yet has nothing
+            // for editSkeleton to clone, and without this it returns without
+            // mutating — so pasting a skeleton onto an empty glyph silently
+            // did nothing until some other skeleton geometry had created the
+            // block first.
+            editSkeleton(
+              layerGlyph,
+              (working) => {
+                const { data, nextId } = allocateSkeletonIds(
+                  { contours: structuredClone(pasteSkeleton.contours), generated: [] },
+                  working.nextId
+                );
+                working.contours.push(...data.contours);
+                working.nextId = nextId;
+                if (layerName === selectionLayerName) {
+                  // Selection ids are canonical in the edit layer (WS-9).
+                  for (const contour of data.contours) {
+                    for (const point of contour.points || []) {
+                      if (!point.type) {
+                        selection.add(`skeletonPoint/${contour.id}/${point.id}`);
+                      }
                     }
                   }
                 }
-              }
-            });
+              },
+              { createIfMissing: true }
+            );
           }
         }
         this.sceneController.selection = selection;
@@ -2627,13 +2661,11 @@ export class EditorController extends ViewController {
       if (!editedAnchorName.length) {
         warnings.push(`⚠️ ${translate("warning.name-must-not-be-empty")}`);
       }
-      if (
-        !(
-          nameController.model.anchorName ||
-          nameController.model.anchorX ||
-          nameController.model.anchorY
-        )
-      ) {
+      if (!(
+        nameController.model.anchorName ||
+        nameController.model.anchorX ||
+        nameController.model.anchorY
+      )) {
         warnings.push("");
       }
       for (const n of ["X", "Y"]) {
