@@ -2,6 +2,8 @@ import {
   buildContourSegments,
   calculateContourNormalAtPoint,
   collectCoupledPointGroups,
+  computeContourExpandOffsets,
+  expandIndicesToCoupledGroups,
   offsetContourAlongNormals,
 } from "@fontra/core/offset-contour.js";
 import { expect } from "chai";
@@ -145,5 +147,86 @@ describe("offsetContourAlongNormals", () => {
     });
 
     expect(working[0]).to.include({ x: 10, y: 0 });
+  });
+});
+
+describe("base-curve expansion offsets", () => {
+  // Point 1 is smooth with a single handle, so the straight 0-1 owns its
+  // direction and both its ends must travel. Point 4 is free.
+  const makeTensionContour = () => [
+    onCurve(0, 0),
+    onCurve(100, 0, true),
+    control(150, 0),
+    control(200, 50),
+    onCurve(200, 100),
+  ];
+
+  it("carries a tension point's whole straight, not just the dragged end", () => {
+    const points = makeTensionContour();
+    expect([
+      ...expandIndicesToCoupledGroups(points, false, new Set([0])),
+    ]).to.have.members([0, 1]);
+    expect([
+      ...expandIndicesToCoupledGroups(points, false, new Set([1])),
+    ]).to.have.members([0, 1]);
+  });
+
+  it("leaves a plain straight between two corners free to taper", () => {
+    const points = [onCurve(0, 0), onCurve(100, 0), onCurve(100, 100)];
+    expect([
+      ...expandIndicesToCoupledGroups(points, false, new Set([0])),
+    ]).to.have.members([0]);
+  });
+
+  it("chains coupling through a shared point", () => {
+    // Two straights, 3-4 and 4-5. Point 3 is smooth with its only handle on the
+    // curve behind it and point 5 is smooth with its only handle on the curve
+    // ahead, so each straight carries a tension point and is coupled. They share
+    // point 4, which has one position and cannot sit at two offsets, so the two
+    // groups merge and all three on-curves travel as one. Point 0 is a free
+    // corner behind a curve, and a curve is never coupled.
+    const chained = [
+      onCurve(0, 200),
+      control(0, 130),
+      control(0, 70),
+      onCurve(0, 0, true),
+      onCurve(100, 0),
+      onCurve(200, 0, true),
+      control(230, 40),
+      control(250, 70),
+      onCurve(250, 100),
+    ];
+    expect(
+      [...expandIndicesToCoupledGroups(chained, false, new Set([3]))].sort()
+    ).to.deep.equal([3, 4, 5]);
+    expect([
+      ...expandIndicesToCoupledGroups(chained, false, new Set([0])),
+    ]).to.have.members([0]);
+  });
+
+  it("gives every affected point the drag projected on the clicked normal", () => {
+    const points = makeTensionContour();
+    // The clicked point's normal is (0, -1): straight 0-1 runs along +x. A drag
+    // of (5, -20) projects to 20 units of outward travel.
+    const offsets = computeContourExpandOffsets(points, false, new Set([0]), 0, {
+      x: 5,
+      y: -20,
+    });
+    expect([...offsets.keys()].sort()).to.deep.equal([0, 1]);
+    expect(offsets.get(0)).to.be.closeTo(20, 1e-9);
+    expect(offsets.get(1)).to.be.closeTo(20, 1e-9);
+  });
+
+  it("does not clamp an inward drag past the curvature radius", () => {
+    // A quarter arc of radius 100 pushed 250 units inward. There is no width to
+    // run out of on a base curve, so the drag simply follows the cursor and the
+    // result cusps - ordinary outline geometry, reachable by hand and undoable.
+    const points = makeArc();
+    const offsets = computeContourExpandOffsets(points, false, new Set([0, 3]), 0, {
+      x: -250,
+      y: 0,
+    });
+    expect(offsets.get(0)).to.be.closeTo(-250, 1e-9);
+    expect(offsets.get(3)).to.be.closeTo(-250, 1e-9);
   });
 });

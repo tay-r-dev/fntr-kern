@@ -470,3 +470,69 @@ function getControlPointIndicesBetween(points, startIndex, endIndex, closed) {
 }
 
 const interpolateDelta = (a, b, t) => a + (b - a) * t;
+
+/**
+ * Grow a set of on-curve indices to include every point coupled to one of them.
+ * A segment carrying a tension point — a smooth on-curve with a single handle —
+ * has no direction of its own, so moving one of its ends alone would rotate it
+ * rather than offset it. Groups sharing a point merge, so the coupling chains.
+ * @param {Array} points - The contour's points
+ * @param {boolean} closed - Whether the contour is closed
+ * @param {Set} pointIndices - Selected on-curve indices
+ * @returns {Set} The expanded index set
+ */
+export function expandIndicesToCoupledGroups(points, closed, pointIndices) {
+  const groupByPoint = collectCoupledPointGroups(
+    buildContourSegments(points, closed),
+    closed
+  );
+  const expanded = new Set(pointIndices);
+  if (!groupByPoint.size) return expanded;
+  for (const pointIndex of pointIndices) {
+    for (const member of groupByPoint.get(points[pointIndex]) || []) {
+      const memberIndex = points.indexOf(member);
+      if (memberIndex >= 0) expanded.add(memberIndex);
+    }
+  }
+  return expanded;
+}
+
+/**
+ * The signed distance each affected on-curve travels for one frame of a base
+ * expansion drag: the cursor's travel projected onto the clicked point's normal,
+ * given to every point in the expanded selection.
+ *
+ * There is no floor. A base curve has no width to run out of, so an inward drag
+ * follows the cursor as far as it is pushed and cusps where the offset distance
+ * passes the local radius — ordinary outline geometry, and undoable.
+ * @param {Array} points - The contour's points
+ * @param {boolean} closed - Whether the contour is closed
+ * @param {Set} selectedIndices - Selected on-curve indices in this contour
+ * @param {number} clickedIndex - Index of the point under the cursor, or -1
+ * @param {Object} delta - Cursor travel {x, y} since mousedown
+ * @returns {Map} Point index -> signed distance
+ */
+export function computeContourExpandOffsets(
+  points,
+  closed,
+  selectedIndices,
+  clickedIndex,
+  delta
+) {
+  const offsets = new Map();
+  const clicked = points?.[clickedIndex];
+  if (!clicked || clicked.type || !selectedIndices?.size) return offsets;
+  const normal = calculateContourNormalAtPoint(points, closed, clickedIndex);
+  if (!(Math.hypot(normal.x, normal.y) > 1e-6)) return offsets;
+  const projected = delta.x * normal.x + delta.y * normal.y;
+  for (const pointIndex of expandIndicesToCoupledGroups(
+    points,
+    closed,
+    selectedIndices
+  )) {
+    if (points[pointIndex] && !points[pointIndex].type) {
+      offsets.set(pointIndex, projected);
+    }
+  }
+  return offsets;
+}
