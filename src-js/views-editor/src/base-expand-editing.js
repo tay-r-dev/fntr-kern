@@ -174,7 +174,7 @@ export function createBaseExpandTargetEntries(
                 contour.isClosed,
                 offsets,
                 workingPoints,
-                { miterCorrectTravel: true }
+                { offsetCorners: true }
               )
             ) {
               continue;

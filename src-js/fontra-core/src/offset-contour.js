@@ -235,54 +235,116 @@ export function calculateContourNormalAtPoint(points, closed, pointIndex) {
   return rotateVector90CW(bisector);
 }
 
-// A corner cannot both travel the offset distance and leave its two edges at
-// that distance: its normal splits the corner, so travelling along it moves each
-// edge by only the cosine of half the turn. The corner must travel the miter
-// length instead, which is the distance divided by that cosine. A smooth point's
-// two directions agree, so its factor is exactly 1.
+// A point's travel is owned by the segments that are actually being offset. A
+// segment whose far end stays put is not being offset - it stretches to follow -
+// so it says nothing about where its moving end should go.
+//
+// Where both of a point's segments are offset, the point is a corner OF the
+// offset and takes the miter. It must then travel further than the offset
+// distance, because a normal that splits the corner moves each edge by only the
+// cosine of half the turn. The miter length is the distance divided by that
+// cosine.
+//
+// Where one segment is offset and the other only stretches, that one segment
+// owns the direction and the point travels square to it - the same principle as
+// a straight owning the direction of a tension point. Taking a miter there
+// carries the point out along the stretching segment as well, which widens the
+// offset segment and slants its neighbour.
 //
 // The bound is what a cusp needs. Two segments doubling back have no miter at
-// all — the cosine goes to zero and the factor to infinity — so past this much
-// the corner is held and its edges fall short instead of the point leaving the
-// glyph. It is the standard miter limit, and it is the only limit in this drag.
+// all - the cosine goes to zero and the miter length to infinity - so past this
+// much the corner is held and its edges fall short instead of the point leaving
+// the glyph. It is the standard miter limit, and the only limit in this drag.
 const MITER_TRAVEL_LIMIT = 4;
 
+// The segments either side of an on-curve point, as indices into `segments`.
+function adjacentSegments(points, closed, pointIndex) {
+  const onCurveIndices = [];
+  for (let i = 0; i < points.length; i++) {
+    if (!points[i].type) onCurveIndices.push(i);
+  }
+  const position = onCurveIndices.indexOf(pointIndex);
+  const count = onCurveIndices.length;
+  if (position < 0 || count < 2) {
+    return null;
+  }
+  const segments = buildContourSegments(points, closed);
+  const incoming = closed
+    ? segments[(position - 1 + count) % count]
+    : position > 0
+      ? segments[position - 1]
+      : null;
+  const outgoing = closed
+    ? segments[position]
+    : position < count - 1
+      ? segments[position]
+      : null;
+  const endsOf = (segment) =>
+    segment
+      ? [points.indexOf(segment.startPoint), points.indexOf(segment.endPoint)]
+      : null;
+  return {
+    incoming,
+    outgoing,
+    incomingEnds: endsOf(incoming),
+    outgoingEnds: endsOf(outgoing),
+  };
+}
+
 /**
- * How far a point must travel along its own normal for its two edges to end up
- * at the offset distance.
+ * The direction an on-curve travels, and how far along it, for one offset.
  * @param {Array} points - The contour's points
  * @param {boolean} closed - Whether the contour is closed
  * @param {number} pointIndex - Index of the on-curve point
- * @returns {number} The multiplier, between 1 and the miter limit
+ * @param {Object} fallbackNormal - The point's own normal, used where no
+ *   adjacent segment is being offset
+ * @param {Function} isTravelling - Whether the point at an index is travelling
+ * @returns {Object} `{normal, factor}`
  */
-export function miterTravelFactor(points, closed, pointIndex) {
-  const point = points?.[pointIndex];
-  if (!point || point.type) {
-    return 1;
+export function resolveOffsetTravel(
+  points,
+  closed,
+  pointIndex,
+  fallbackNormal,
+  isTravelling
+) {
+  const adjacent = adjacentSegments(points, closed, pointIndex);
+  if (!adjacent) {
+    return { normal: fallbackNormal, factor: 1 };
   }
-  const segments = buildContourSegments(points, closed);
-  let incomingSegment = null;
-  let outgoingSegment = null;
-  for (const segment of segments) {
-    if (segment.endPoint === point) incomingSegment = segment;
-    if (segment.startPoint === point) outgoingSegment = segment;
+  const isOffset = (ends) =>
+    !!ends && ends.every((end) => end >= 0 && isTravelling(end));
+  const incomingOffset = isOffset(adjacent.incomingEnds);
+  const outgoingOffset = isOffset(adjacent.outgoingEnds);
+
+  if (incomingOffset && outgoingOffset) {
+    const dir1 = segmentEndDirection(adjacent.incoming);
+    const dir2 = segmentStartDirection(adjacent.outgoing);
+    if (!dir1 || !dir2) {
+      return { normal: fallbackNormal, factor: 1 };
+    }
+    const dot = dir1.x * dir2.x + dir1.y * dir2.y;
+    const cross = dir1.x * dir2.y - dir1.y * dir2.x;
+    const cosHalfTurn = Math.abs(Math.cos(Math.atan2(cross, dot) / 2));
+    return {
+      normal: fallbackNormal,
+      factor:
+        cosHalfTurn > 1 / MITER_TRAVEL_LIMIT ? 1 / cosHalfTurn : MITER_TRAVEL_LIMIT,
+    };
   }
-  if (!incomingSegment || !outgoingSegment) {
-    return 1;
+  if (incomingOffset) {
+    return {
+      normal: rotateVector90CW(segmentEndDirection(adjacent.incoming)),
+      factor: 1,
+    };
   }
-  const dir1 = segmentEndDirection(incomingSegment);
-  const dir2 = segmentStartDirection(outgoingSegment);
-  if (!dir1 || !dir2) {
-    return 1;
+  if (outgoingOffset) {
+    return {
+      normal: rotateVector90CW(segmentStartDirection(adjacent.outgoing)),
+      factor: 1,
+    };
   }
-  const dot = dir1.x * dir2.x + dir1.y * dir2.y;
-  const cross = dir1.x * dir2.y - dir1.y * dir2.x;
-  const halfTurn = Math.atan2(cross, dot) / 2;
-  const cosHalfTurn = Math.abs(Math.cos(halfTurn));
-  if (!(cosHalfTurn > 1 / MITER_TRAVEL_LIMIT)) {
-    return MITER_TRAVEL_LIMIT;
-  }
-  return 1 / cosHalfTurn;
+  return { normal: fallbackNormal, factor: 1 };
 }
 
 function makeSegment(points, startIdx, endIdx) {
@@ -349,7 +411,7 @@ export function offsetContourAlongNormals(
     round = Math.round,
     normalAt = null,
     rebuildHandles = true,
-    miterCorrectTravel = false,
+    offsetCorners = false,
   } = {}
 ) {
   const pointDeltas = new Map();
@@ -366,10 +428,13 @@ export function offsetContourAlongNormals(
     // handle rebuild wants the offset distance, because that is what the
     // segment is moving by; the point wants the miter length, because that is
     // what puts its two edges there.
-    const travel = miterCorrectTravel
-      ? offset * miterTravelFactor(points, closed, pointIndex)
-      : offset;
-    const delta = { x: normal.x * travel, y: normal.y * travel };
+    const travel = offsetCorners
+      ? resolveOffsetTravel(points, closed, pointIndex, normal, (index) =>
+          offsetsByIndex.has(index)
+        )
+      : { normal, factor: 1 };
+    const distance = offset * travel.factor;
+    const delta = { x: travel.normal.x * distance, y: travel.normal.y * distance };
     pointDeltas.set(pointIndex, delta);
     pointOffsets.set(pointIndex, offset);
     working.x = round(original.x + delta.x);
@@ -584,14 +649,22 @@ export function computeContourExpandOffsets(
   const offsets = new Map();
   const clicked = points?.[clickedIndex];
   if (!clicked || clicked.type || !selectedIndices?.size) return offsets;
-  const normal = calculateContourNormalAtPoint(points, closed, clickedIndex);
-  if (!(Math.hypot(normal.x, normal.y) > 1e-6)) return offsets;
-  const projected = delta.x * normal.x + delta.y * normal.y;
-  for (const pointIndex of expandIndicesToCoupledGroups(
+  const travelling = expandIndicesToCoupledGroups(points, closed, selectedIndices);
+  // The axis is the direction the clicked point will actually travel in, which
+  // at a corner is decided by which of its segments are being offset. Projecting
+  // on the corner's own miter instead makes the shape lag the cursor by the
+  // cosine of half the corner, so how far a drag reaches would depend on the
+  // angle of the point it was started from.
+  const { normal } = resolveOffsetTravel(
     points,
     closed,
-    selectedIndices
-  )) {
+    clickedIndex,
+    calculateContourNormalAtPoint(points, closed, clickedIndex),
+    (index) => travelling.has(index)
+  );
+  if (!(Math.hypot(normal.x, normal.y) > 1e-6)) return offsets;
+  const projected = delta.x * normal.x + delta.y * normal.y;
+  for (const pointIndex of travelling) {
     if (points[pointIndex] && !points[pointIndex].type) {
       offsets.set(pointIndex, projected);
     }

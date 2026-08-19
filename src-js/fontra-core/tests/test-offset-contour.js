@@ -260,7 +260,7 @@ describe("corner travel", () => {
         [2, 20],
       ]),
       working,
-      { miterCorrectTravel: true }
+      { offsetCorners: true }
     );
 
     for (const [i, j] of [
@@ -291,7 +291,7 @@ describe("corner travel", () => {
 
     offsetContourAlongNormals(points, false, offsets, plain);
     offsetContourAlongNormals(points, false, offsets, corrected, {
-      miterCorrectTravel: true,
+      offsetCorners: true,
     });
 
     expect(corrected).to.deep.equal(plain);
@@ -305,11 +305,88 @@ describe("corner travel", () => {
     const working = structuredClone(points);
 
     offsetContourAlongNormals(points, false, new Map([[1, 20]]), working, {
-      miterCorrectTravel: true,
+      offsetCorners: true,
     });
 
     expect(Number.isFinite(working[1].x)).to.equal(true);
     expect(Number.isFinite(working[1].y)).to.equal(true);
     expect(Math.hypot(working[1].x - 100, working[1].y)).to.be.at.most(20 * 4);
+  });
+});
+
+describe("which segments own a point's travel", () => {
+  // A plain rectangle: four corners, four straights, no smooth points.
+  const makeRect = () => [
+    onCurve(0, 0),
+    onCurve(200, 0),
+    onCurve(200, 100),
+    onCurve(0, 100),
+  ];
+
+  it("moves an edge's corners square to that edge when only it is offset", () => {
+    // The two side edges are not being offset - their far ends stay put and they
+    // simply stretch to follow. So the bottom edge owns both its corners, and
+    // they travel square to it. A miter here would carry them outward as well,
+    // widening the edge by twice the offset and slanting both sides.
+    const points = makeRect();
+    const working = structuredClone(points);
+
+    offsetContourAlongNormals(
+      points,
+      true,
+      new Map([
+        [0, 20],
+        [1, 20],
+      ]),
+      working,
+      { offsetCorners: true }
+    );
+
+    expect(working[0]).to.include({ x: 0, y: -20 });
+    expect(working[1]).to.include({ x: 200, y: -20 });
+    expect(working[2]).to.include({ x: 200, y: 100 });
+    expect(working[3]).to.include({ x: 0, y: 100 });
+  });
+
+  it("miters a corner whose two segments are both offset", () => {
+    // Now every edge is being offset, so each corner is a corner OF the offset
+    // and takes the miter, far enough that all four edges move the full 20.
+    const points = makeRect();
+    const working = structuredClone(points);
+
+    offsetContourAlongNormals(
+      points,
+      true,
+      new Map([
+        [0, 20],
+        [1, 20],
+        [2, 20],
+        [3, 20],
+      ]),
+      working,
+      { offsetCorners: true }
+    );
+
+    expect(working[0]).to.include({ x: -20, y: -20 });
+    expect(working[1]).to.include({ x: 220, y: -20 });
+    expect(working[2]).to.include({ x: 220, y: 120 });
+    expect(working[3]).to.include({ x: -20, y: 120 });
+  });
+});
+
+describe("the clicked point's projection axis", () => {
+  it("follows the cursor when one segment owns the clicked corner", () => {
+    // Grab a rectangle's bottom-left corner with only the bottom edge selected
+    // and pull straight down 20. That edge owns the corner, so the axis is the
+    // edge's own normal and the edge follows the cursor exactly. Projecting on
+    // the corner's raw miter instead reads 14 of the 20, and the shape lags the
+    // cursor by a factor that changes with the corner's angle.
+    const points = [onCurve(0, 0), onCurve(200, 0), onCurve(200, 100), onCurve(0, 100)];
+    const offsets = computeContourExpandOffsets(points, true, new Set([0, 1]), 0, {
+      x: 0,
+      y: -20,
+    });
+    expect(offsets.get(0)).to.be.closeTo(20, 1e-9);
+    expect(offsets.get(1)).to.be.closeTo(20, 1e-9);
   });
 });
