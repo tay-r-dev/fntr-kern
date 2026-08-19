@@ -70,7 +70,17 @@ export function createTensionAwareTargetEntries(
       get rollbackChange() {
         return rollbackChange;
       },
-      makeChangeForDelta(delta) {
+      makeChangeForDelta(rawDelta) {
+        // One point on its own has no second point to state a direction with,
+        // so the drag states it: the larger of the two components wins and the
+        // other is dropped. It removes the ambiguity between a shape the
+        // designer is narrowing and one they are lowering.
+        const delta =
+          pointSelection.length === 1
+            ? Math.abs(rawDelta.x) >= Math.abs(rawDelta.y)
+              ? { x: rawDelta.x, y: 0 }
+              : { x: 0, y: rawDelta.y }
+            : rawDelta;
         const scratch = { ...layerGlyph, path: originalPath.copy() };
         const changes = recordChanges(scratch, (layerGlyphProxy) => {
           // What the ordinary rules do with this delta, on its own copy.

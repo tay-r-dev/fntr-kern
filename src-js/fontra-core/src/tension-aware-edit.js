@@ -386,6 +386,13 @@ export function slideTensionPoints(
       if (!beforeReaches || !afterReaches) {
         continue;
       }
+      // The near leg answers to the far leg and to nothing else. Where the far
+      // leg is the length it was, the corner asks for no travel, even though
+      // the crossing itself may have moved: dragging an apex straight down
+      // shortens the arch and leaves the stem's top where the designer put it.
+      if (Math.abs(afterReaches.endReach - beforeReaches.endReach) < EPSILON) {
+        continue;
+      }
       const ratio = afterReaches.endReach / beforeReaches.endReach;
       const nearReach = beforeReaches.startReach * ratio;
       const wanted = subVectors(
