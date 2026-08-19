@@ -35,6 +35,11 @@ import {
 import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import * as vector from "@fontra/core/vector.js";
+import {
+  BASE_EXPAND_BEHAVIOR_NAME,
+  createBaseExpandTargetEntries,
+  getBaseExpandBehaviorName,
+} from "./base-expand-editing.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
 import { handlesEqual } from "./edit-tools-pen.js";
@@ -743,6 +748,11 @@ export class PointerTool extends BaseTool {
       });
       const getSelectionBehaviorName = (event) =>
         getSkeletonModifierBehaviorName(event, getRealtimeModifiers(), targetKinds) ||
+        getBaseExpandBehaviorName(
+          getRealtimeModifiers(),
+          targetKinds,
+          sceneController.selection
+        ) ||
         (hasRibLikeSelection(sceneController.selection)
           ? getSkeletonRibBehaviorName(event, getRealtimeModifiers())
           : hasEditableGeneratedHandleSelection(sceneController.selection)
@@ -765,6 +775,17 @@ export class PointerTool extends BaseTool {
         editingLayers[editLayerName] || Object.values(editingLayers)[0]
       );
       const makeSkeletonTargetEntries = (layerGlyph, name) => {
+        if (name === BASE_EXPAND_BEHAVIOR_NAME) {
+          return createBaseExpandTargetEntries(
+            layerGlyph,
+            sceneController.selection,
+            sceneController.sceneModel.initialClickedPointIndex,
+            {
+              isGeneratedContour: (contourIndex) =>
+                this.sceneModel.isGeneratedPathContour(contourIndex),
+            }
+          );
+        }
         const modifierOptions = makeSkeletonModifierOptions(name, {
           referenceSkeletonData,
           clickedSkeletonPointKey:
