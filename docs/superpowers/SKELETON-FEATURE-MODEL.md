@@ -172,7 +172,12 @@ to a miter average (`isStraightControlledSmoothPoint` → `straightSegmentNormal
 
 **One such point anywhere on a straight ties the ribs at _both_ ends of that straight** to a
 shared offset. The whole projected straight then moves as a unit. `collectTiedRibGroups` is the
-single definition of the rule. `coupledHalfWidths` then gives every point in a group the mean of
+single definition of the rule. It is a thin wrapper now: the collector itself is generic and lives
+in `offset-contour.js`, where the base-curve expansion drag reads the same rule off ordinary
+outlines (log entry 58). What the wrapper adds is the two things only a skeleton point carries —
+the `width.tied` opt-out below, and the serif terminals, which the generic collector takes as
+"points that couple a straight they end" and never learns the word for. The reason the coupling
+exists is unchanged and is stated here. `coupledHalfWidths` then gives every point in a group the mean of
 the group's stored half-widths, per side, so adjusting any one width moves them all. We chose the
 mean because it is symmetric and continuous in every input.
 

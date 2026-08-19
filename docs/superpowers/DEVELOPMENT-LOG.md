@@ -4167,3 +4167,135 @@ change answered the last report and was measured, and none of them were checked
 against the donor, which was in the tree and states both of its choices plainly.
 The revert costs the three fixes above and buys a base that can be compared with
 something.
+
+---
+
+## 58. The expansion drag reaches ordinary outlines — feature
+
+**Branch:** `feature/base-curve-interpolation`
+**Spec:** `specs/2026-07-29-base-curve-expansion-design.md`
+**Plan:** `plans/2026-07-29-base-curve-expansion.md`
+
+### 1. Problem
+
+Holding D or S and dragging an on-curve offsets the stroke. It worked on
+skeleton points only. A contour with no skeleton behind it had no such gesture,
+so an ordinary outline could be moved but not expanded.
+
+The geometry the gesture needs already existed, inside the skeleton's fixed-rib
+drag. Copying it would have put two copies in the tree, against rail R-B.
+
+### 2. Solution
+
+The gesture now runs on ordinary outline points. Both keys do the same thing,
+as they do on a single-sided stroke: the drag direction alone decides whether
+the shape grows or shrinks. It engages only where the selection holds no
+skeleton geometry, so a mixed selection runs the skeleton drag exactly as
+before. Generated contours are never touched.
+
+**The geometry moved to where both features reach it.** `offset-contour.js` is a
+new core module holding the segment walk, the per-point normal, the coupling
+rule and the offset construction itself. None of it reads a width, an id or a
+cap. `skeleton-model.js` keeps its exported names as wrappers and adds the three
+things only a skeleton has: the rib tied-flag opt-out, the serif terminals that
+also couple a straight, and the per-point rib-angle override.
+
+**What travels together is the rule that was already there.** A straight
+carrying a tension point holds both its ends to one offset, and straights
+sharing an end merge into one group. Ordinary outline points gain no stored
+field for this.
+
+**There is no floor.** A base curve has no width to run out of, so an inward
+drag follows the cursor as far as it is pushed and cusps where the offset passes
+the local radius. That is ordinary outline geometry, reachable by hand and
+undoable.
+
+**The pre-drag shape is ghosted underneath** for the length of the gesture, and
+the readout reports the offset distance. In the single-sided case the centerline
+is a stationary reference the outline moves away from; a base curve has none
+until one is drawn.
+
+### 3. Commits
+
+| Commit      | Subject                                                              |
+| ----------- | -------------------------------------------------------------------- |
+| `ca33c4d47` | lift contour segments, normals and coupling out of the skeleton      |
+| `7b55867aa` | move the offset construction beside the geometry it uses             |
+| `416f67f3b` | offsets map for the base-curve expansion drag                        |
+| `6f51907f6` | base expansion behavior name and path target entry                   |
+| `147d552c8` | dispatch the base expansion drag from the pointer                    |
+| `fed28d170` | ghost the pre-drag shape during a base expansion                     |
+| `179989cc5` | report the offset distance during a base expansion drag              |
+| `33a568daa` | a corner travels its miter length, and the rollback returns to start |
+| `4340d1ff8` | the segments being offset own where a corner travels                 |
+| `45b30ea0b` | state the corner rule as the crossing it is derived from             |
+
+Core suite 1,894 before, 1,913 after, with 19 new tests and no existing test
+edited. The extraction is behaviour-preserving, and the fixed-rib block in
+`test-skeleton-modifiers.js` — the floor and the past-the-floor idempotence
+assertions included — passed untouched throughout.
+
+### 4. Challenges and findings
+
+**An undo did not fully restore, and the reason was where the change was
+recorded from.** Every frame recorded against the live glyph, which already
+carried the frame before it, so the rollback described one frame rather than the
+drag. A three-frame drag rolled back to frame two. The skeleton's own entry
+never had this: it copies the pre-drag glyph once and records each frame against
+a fresh copy of that copy. The base entry does the same now. **A rollback is a
+statement about the whole gesture, so it has to be measured from where the
+gesture started, not from where the last frame did.**
+
+**A corner point took the miter whatever was selected, and that was two separate
+faults.** Select one edge of a rectangle, drag it down 20, and both its corner
+points went diagonally outward: the edge sank 14 and widened by 28, and the two
+side edges slanted.
+
+The first attempt fixed only the distance. It made the corner point travel far
+enough for both its segments to land at the offset, which is right when both
+segments are being offset and wrong when one of them is not. The user rejected
+it, and named the derivation that settles it: each segment moves along its own
+normal by its own offset, and the corner point lands where its two moved
+segments cross. A segment whose far end stays put has an offset of zero. It does
+not move, so the crossing stays on it, and the point travels square to the one
+segment that did move.
+
+Measured against that derivation afterwards, the code agrees to grid rounding at
+turns of 90, 63 and 11 degrees, and in the one-edge case as well.
+
+**The projection axis had the same fault.** The cursor was projected onto the
+clicked point's own normal. At a corner point that read 14 of a 20-unit drag, so
+how far a drag reached depended on the angle of the point it was started from.
+It projects onto the direction that point will actually travel in now.
+
+**The crossing needs a bound, and it is the only limit in this drag.** Two
+segments doubling back move to parallel positions and never cross. The distance
+runs to infinity, and at exactly doubled back it is not a number. It is held at
+four times the offset, the standard miter limit, which starts to bite at a turn
+of about 151 degrees. The spec says there are no limits, and means the drag
+distance against the curvature radius; this is a different thing and is an
+addition to what the spec asked for.
+
+**Stating a construction as a rule instead of as its derivation cost a round
+trip.** "The corner point travels the miter length" names a quantity and
+explains nothing. "Each segment moves along its own normal, and the point lands
+where they cross" is the same number and answers the question. The comments in
+the module say the second now.
+
+**The plan's own test asserted the wrong answer once.** Its chaining fixture put
+a curve where the comment said a straight, so it demanded three coupled points
+where the correct answer is one. A curve is never coupled. The fixture is now
+two straights sharing a point, each carrying a tension point, which is what the
+test is named for.
+
+**The plan's baseline had drifted by 329 tests**, and the coupling collector had
+gained a serif argument since it was written. Neither changed the work. Both are
+the ordinary cost of a plan written four weeks before it was run.
+
+### 5. Still owed
+
+The manual matrix in the plan's task 8 has not been run in full. Live use
+covered the gesture, both keys, the direction, the ghost, the readout, undo and
+the rectangle cases, which is what produced the two faults above. The remaining
+rows are the mixed selection, the generated contour, the drag started on a
+handle, and the key pressed and released mid-drag.

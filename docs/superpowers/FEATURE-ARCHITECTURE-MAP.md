@@ -53,16 +53,17 @@ way once nothing references them.
 
 ## 1. Feature inventory
 
-| #   | Feature                 | Status                          | Origin                         | Owned files                                              | Entry point                                 |
-| --- | ----------------------- | ------------------------------- | ------------------------------ | -------------------------------------------------------- | ------------------------------------------- |
-| F1  | **Coarse grid**         | shipped (WS-1)                  | donor panel + forkra mechanics | 1 new core, 1 panel                                      | `fontra.coarse.grid` layer, `f`/`g` actions |
-| F2  | **Q-measure**           | shipped (WS-2)                  | donor port                     | 1 new editor module                                      | hold **Q** / **Alt+Q**                      |
-| F3  | **SpeedPunk**           | shipped (WS-3)                  | fork-original + donor panel    | `curvature.js`                                           | `fontra.curvature` layer                    |
-| F4  | **Tunni**               | shipped (WS-4)                  | fork-original, refactored      | 1 core + 1 editor module                                 | `fontra.tunni.*` layers                     |
-| F5  | **Point labels**        | shipped (WS-4.5)                | fork-original, relocated       | inside `distance-angle.js`                               | `fontra.point.labels` layer                 |
-| F6  | **Letterspacer**        | shipped (WS-5)                  | donor port                     | engine + panel + overlay                                 | Selection-info sidebar                      |
-| F7  | **Skeleton**            | shipped WS-6…WS-17              | re-integrated from donor       | 5 core + 7 editor + panel set                            | Skeleton Pen tool, right sidebar            |
-| F8  | **Carried fork extras** | shipped, pre-dating the program | fork-original                  | `corner-overlap.js`, quad handles, equalize, pen-connect | scattered — see §3.8                        |
+| #   | Feature                  | Status                          | Origin                         | Owned files                                              | Entry point                                 |
+| --- | ------------------------ | ------------------------------- | ------------------------------ | -------------------------------------------------------- | ------------------------------------------- |
+| F1  | **Coarse grid**          | shipped (WS-1)                  | donor panel + forkra mechanics | 1 new core, 1 panel                                      | `fontra.coarse.grid` layer, `f`/`g` actions |
+| F2  | **Q-measure**            | shipped (WS-2)                  | donor port                     | 1 new editor module                                      | hold **Q** / **Alt+Q**                      |
+| F3  | **SpeedPunk**            | shipped (WS-3)                  | fork-original + donor panel    | `curvature.js`                                           | `fontra.curvature` layer                    |
+| F4  | **Tunni**                | shipped (WS-4)                  | fork-original, refactored      | 1 core + 1 editor module                                 | `fontra.tunni.*` layers                     |
+| F5  | **Point labels**         | shipped (WS-4.5)                | fork-original, relocated       | inside `distance-angle.js`                               | `fontra.point.labels` layer                 |
+| F6  | **Letterspacer**         | shipped (WS-5)                  | donor port                     | engine + panel + overlay                                 | Selection-info sidebar                      |
+| F7  | **Skeleton**             | shipped WS-6…WS-17              | re-integrated from donor       | 5 core + 7 editor + panel set                            | Skeleton Pen tool, right sidebar            |
+| F8  | **Carried fork extras**  | shipped, pre-dating the program | fork-original                  | `corner-overlap.js`, quad handles, equalize, pen-connect | scattered — see §3.8                        |
+| F9  | **Base-curve expansion** | shipped                         | fork-original                  | 1 core + 1 editor module                                 | hold **D**/**S**, drag an outline on-curve  |
 
 Feature sizes, owned code only. Shared-file hunks are excluded.
 
@@ -71,6 +72,7 @@ Skeleton      ██████████████████████
 Letterspacer  █████                                      ~1,900
 Tunni         █████                                      ~1,850
 Measure+labels████                                       ~2,050  (F2 + F5 share distance-angle.js)
+Base expansion██▏                                         ~875  (shared with the skeleton's drag)
 SpeedPunk     █▌                                           ~460
 Corner overlap█                                            ~350
 Coarse grid   ▏                                             ~66
@@ -329,28 +331,63 @@ thin documentation. This section flags them so nobody mistakes them for upstream
 | **Pen connect**          | `edit-tools-pen.js:_getPathConnectTargetPoint`                                                                                 | Connect to an open contour's endpoint                                        |
 | **Distance / Manhattan** | `distance-angle.js`, two layers                                                                                                | Frozen — superseded by Q-measure, kept because `distance-angle.js` is shared |
 
+### F9 — Base-curve expansion
+
+The D/S expansion drag on contours with no skeleton behind them. The offset
+geometry is shared with the skeleton's fixed-rib drag, and lives in one copy.
+
+| File                                                  | +/−      | Role                                                                                                                          |
+| ----------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/offset-contour.js`                   | +675     | **NEW** — segment walk, per-point normal, coupling groups, the on-curve travel and handle rebuild, and the drag's offsets map |
+| `views-editor/src/base-expand-editing.js`             | +198     | **NEW** — behavior-name resolution and the path target entry                                                                  |
+| `fontra-core/src/skeleton-model.js`                   | +41/−411 | Keeps its exported names as wrappers over the shared module                                                                   |
+| `views-editor/src/edit-tools-pointer.js`              | (shared) | Dispatch, plus publishing and clearing the ghost                                                                              |
+| `views-editor/src/edit-behavior.js`                   | (shared) | The `base-expand` behavior type, with an empty match tree                                                                     |
+| `views-editor/src/scene-model.js`                     | (shared) | The offset-distance readout                                                                                                   |
+| `views-editor/src/visualization-layer-definitions.js` | (shared) | `fontra.base-expand.ghost`, render-only                                                                                       |
+| `fontra-core/tests/test-offset-contour.js`            | +392     | tests                                                                                                                         |
+
+**The shared module knows nothing about a skeleton.** It reads positions,
+handles and the smooth flag, which every contour has. Three things stay on the
+skeleton's side of it, because only a skeleton point carries them: the rib
+tied-flag opt-out, the serif terminals that also couple a straight, and the
+per-point rib-angle override. The generic collector takes the serif set as
+"these points couple a straight they end", so the concept does not leak into it.
+
+**The behavior's point rules move nothing.** The match tree is empty and the
+whole edit runs in the target entry, which is where the kind decision belongs
+(R-E). The entry records every frame against a fresh copy of the pre-drag path,
+so the rollback describes the gesture rather than its last frame.
+
+**A corner point lands where its two moved segments cross.** A segment that is
+not being offset has an offset of zero and does not move, so the crossing stays
+on it. The one bound is the standard miter limit of 4, for two segments doubling
+back, which never cross at all.
+
+---
+
 ---
 
 ## 4. Shared-file reverse index
 
 Twelve files carry hunks from more than one feature. **Read this before you edit them.**
 
-| File                                                  | +/−      | Feature split                                                                                                             |
-| ----------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `views-editor/src/scene-model.js`                     | +604/−9  | **Skeleton** (6 `*AtPoint` methods, generated-contour predicate) ≫ **Q-measure** (hover state) > Tunni                    |
-| `views-editor/src/edit-tools-pointer.js`              | +507/−19 | **Skeleton** (drag/marquee/transform dispatch) > **Tunni** (thin hooks) > measure, equalize. Must stay a dispatcher (R-A) |
-| `views-editor/src/panel-designspace-navigation.js`    | +503/−0  | **Coarse grid** ≈ **SpeedPunk**. Pure insertion — two accordions                                                          |
-| `views-editor/src/visualization-layer-definitions.js` | +415/−0  | **Tunni** > **Coarse grid** > SpeedPunk, measure, labels, quad handles. Registration + render-only                        |
-| `views-editor/src/scene-controller.js`                | +345/−11 | **Skeleton** ≫ **Coarse grid**. Also corner-overlap action, labels, speedpunk                                             |
-| `views-editor/src/editor.js`                          | +318/−18 | **Skeleton** (tool + panel + actions) ≫ measure actions, letterspacer                                                     |
-| `views-editor/src/panel-transformation.js`            | +259/−24 | **Skeleton** ≈ **point labels**                                                                                           |
-| `views-editor/src/edit-behavior.js`                   | +167/−15 | **Coarse grid** (snapping) > ribs, equalize. Kept close to upstream on purpose (R-E)                                      |
-| `views-editor/src/edit-tools-pen.js`                  | +125/−2  | **Quad handles** + **pen connect** + skeleton index bookkeeping                                                           |
-| `fontra-core/src/glyph-controller.js`                 | +67/−0   | **Skeleton** only — selection bounds parse skeleton keys                                                                  |
-| `fontra-webcomponents/src/range-slider.js`            | +53/−10  | **Skeleton panel** — `allowInputBeyondRange`, `displayValue`, `values`, `step`                                            |
-| `fontra-webcomponents/src/ui-form.js`                 | +56/−0   | **Skeleton panel** — passes those slider options through; adds checkbox with indeterminate                                |
-| `views-editor/src/panel-selection-info.js`            | +24/−1   | Hosts **letterspacer** + **skeleton-defaults** sub-panels                                                                 |
-| `fontra-core/assets/lang/en.js`                       | +107/−0  | skeleton-parameters 73, designspace-navigation 11, letterspacer 7, realtime shortcuts 5, skeleton tool 6                  |
+| File                                                  | +/−      | Feature split                                                                                                                      |
+| ----------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `views-editor/src/scene-model.js`                     | +604/−9  | **Skeleton** (6 `*AtPoint` methods, generated-contour predicate) ≫ **Q-measure** (hover state) > Tunni > base expansion            |
+| `views-editor/src/edit-tools-pointer.js`              | +507/−19 | **Skeleton** (drag/marquee/transform dispatch) > **Tunni** (thin hooks) > measure, equalize, base expansion. Dispatcher only (R-A) |
+| `views-editor/src/panel-designspace-navigation.js`    | +503/−0  | **Coarse grid** ≈ **SpeedPunk**. Pure insertion — two accordions                                                                   |
+| `views-editor/src/visualization-layer-definitions.js` | +415/−0  | **Tunni** > **Coarse grid** > SpeedPunk, measure, labels, quad handles, base-expansion ghost. Registration + render-only           |
+| `views-editor/src/scene-controller.js`                | +345/−11 | **Skeleton** ≫ **Coarse grid**. Also corner-overlap action, labels, speedpunk                                                      |
+| `views-editor/src/editor.js`                          | +318/−18 | **Skeleton** (tool + panel + actions) ≫ measure actions, letterspacer                                                              |
+| `views-editor/src/panel-transformation.js`            | +259/−24 | **Skeleton** ≈ **point labels**                                                                                                    |
+| `views-editor/src/edit-behavior.js`                   | +167/−15 | **Coarse grid** (snapping) > ribs, equalize, base expansion. Kept close to upstream on purpose (R-E)                               |
+| `views-editor/src/edit-tools-pen.js`                  | +125/−2  | **Quad handles** + **pen connect** + skeleton index bookkeeping                                                                    |
+| `fontra-core/src/glyph-controller.js`                 | +67/−0   | **Skeleton** only — selection bounds parse skeleton keys                                                                           |
+| `fontra-webcomponents/src/range-slider.js`            | +53/−10  | **Skeleton panel** — `allowInputBeyondRange`, `displayValue`, `values`, `step`                                                     |
+| `fontra-webcomponents/src/ui-form.js`                 | +56/−0   | **Skeleton panel** — passes those slider options through; adds checkbox with indeterminate                                         |
+| `views-editor/src/panel-selection-info.js`            | +24/−1   | Hosts **letterspacer** + **skeleton-defaults** sub-panels                                                                          |
+| `fontra-core/assets/lang/en.js`                       | +107/−0  | skeleton-parameters 73, designspace-navigation 11, letterspacer 7, realtime shortcuts 5, skeleton tool 6                           |
 
 Small shared edits worth knowing about:
 
