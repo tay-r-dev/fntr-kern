@@ -113,10 +113,15 @@ their length, and the curves take the whole change.
 
 ### Rule 4 — a straight is a rigid link
 
-Walk each contour as a chain. A straight segment is a **rigid link**: the vector between its two
-on-curve points is preserved, so it translates and never stretches. Everything between two rigid
+Walk each contour as a chain. A straight segment is a **rigid link**: its extent along the axis being
+scaled is preserved, so the scale translates it and never stretches it. Everything between two rigid
 links is an **elastic run**, and a run absorbs whatever the scale asks of it. Inside a run the change
 is distributed proportionally, so each sub-run keeps its share.
+
+A rigid link is rigid **across** the scale axis only. Its length along its own direction may still
+change, because the tension point at its end slides under rule 3. In the file the left wall grew 10
+units taller while the 60 units of stem width held. A link that was rigid in every direction would
+forbid the slide.
 
 **Do not state this as an interval map over the scale axis.** Two runs can occupy the same interval,
 and an interval map cannot answer that. The chain answers it, because a chain has an order.
