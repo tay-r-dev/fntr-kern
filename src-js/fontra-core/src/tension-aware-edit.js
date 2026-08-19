@@ -1,4 +1,3 @@
-import { isStraightControlledSmoothPoint } from "./offset-contour.js";
 import { calculateTunniPoint } from "./tunni-calculations.js";
 import {
   addVectors,
@@ -263,14 +262,6 @@ export function restoreSegmentTensions(
 // A straight may not be run below this, and a slide may not cross its far end.
 const MIN_STRAIGHT_LENGTH = 1;
 
-// The shape `isStraightControlledSmoothPoint` reads: it wants the segments as
-// point objects, and this module carries them as indices.
-function segmentAsPoints(points, segment) {
-  return {
-    controlPoints: segment.controlIndices.map((index) => points[index]),
-  };
-}
-
 // The segment on the other side of `pointIndex` from `segment`.
 function neighbourSegment(segments, segmentIndex, atStart, closed) {
   const count = segments.length;
@@ -317,26 +308,59 @@ export function slideTensionPoints(
       const farIndex = atStart ? segment.endIndex : segment.startIndex;
       const nearControl = segment.controlIndices[atStart ? 0 : 1];
       const farControl = segment.controlIndices[atStart ? 1 : 0];
+      // The straight is what the point slides on, so a curve on that side rules
+      // the point out. A corner point qualifies as well as a smooth one: the
+      // straight gives it a line to travel, and its own handle direction is
+      // never read from the straight, so travel along the line leaves the
+      // corner's angle as the designer drew it.
+      if (isCubicSegment(straight)) {
+        continue;
+      }
+      const anchorIndex =
+        straight.startIndex === nearIndex ? straight.endIndex : straight.startIndex;
+      const beforeAxis = handleDirection(
+        beforePoints[nearIndex],
+        beforePoints[anchorIndex]
+      );
+      const afterAxis = handleDirection(
+        afterPoints[nearIndex],
+        afterPoints[anchorIndex]
+      );
+      if (!beforeAxis || !afterAxis) {
+        continue;
+      }
+      // The slide owns one number: how far the point sits from the straight's
+      // far end. Where the edit changed that number itself, the designer moved
+      // the point along its own straight and that position stands. Where the
+      // edit moved the point some other way, the slide still applies, which is
+      // what lets a whole stem carry its tension points with it.
+      const alongBefore = dotVector(
+        subVectors(beforePoints[nearIndex], beforePoints[anchorIndex]),
+        beforeAxis
+      );
+      const alongAfter = dotVector(
+        subVectors(afterPoints[nearIndex], afterPoints[anchorIndex]),
+        afterAxis
+      );
+      if (Math.abs(alongAfter - alongBefore) > EPSILON) {
+        continue;
+      }
+      // The corner the slide answers to is made by both ends. It changes when
+      // either end moves, so the near end moving sideways calls for a slide as
+      // surely as the far end moving does. Only a segment that took the same
+      // delta at both ends is unchanged, and that one keeps its drawing already.
+      const nearDelta = subVectors(afterPoints[nearIndex], beforePoints[nearIndex]);
+      const farDelta = subVectors(afterPoints[farIndex], beforePoints[farIndex]);
       if (
-        !isStraightControlledSmoothPoint(
-          beforePoints[nearIndex],
-          segmentAsPoints(beforePoints, straight),
-          segmentAsPoints(beforePoints, segment)
-        )
+        Math.abs(nearDelta.x - farDelta.x) < EPSILON &&
+        Math.abs(nearDelta.y - farDelta.y) < EPSILON
       ) {
         continue;
       }
-      // A point the edit already moved travels with the edit. It does not also
-      // slide. A far end that did not move asks for no slide at all.
-      if (!samePosition(beforePoints[nearIndex], afterPoints[nearIndex])) {
-        continue;
-      }
-      if (samePosition(beforePoints[farIndex], afterPoints[farIndex])) {
-        continue;
-      }
       const nearPoint = beforePoints[nearIndex];
+      const afterNear = afterPoints[nearIndex];
       const nearDirection =
-        handleDirection(afterPoints[nearControl], nearPoint) ||
+        handleDirection(afterPoints[nearControl], afterNear) ||
         handleDirection(beforePoints[nearControl], nearPoint);
       const beforeFar = beforePoints[farIndex];
       const afterFar = afterPoints[farIndex];
@@ -350,7 +374,7 @@ export function slideTensionPoints(
         beforeFarDirection
       );
       const afterReaches = tangentReaches(
-        nearPoint,
+        afterNear,
         nearDirection,
         afterFar,
         afterFarDirection
@@ -360,21 +384,20 @@ export function slideTensionPoints(
       }
       const ratio = afterReaches.endReach / beforeReaches.endReach;
       const nearReach = beforeReaches.startReach * ratio;
-      let target = subVectors(
+      const wanted = subVectors(
         afterReaches.crossing,
         mulVectorScalar(nearDirection, nearReach)
       );
-      // The straight's far end holds the slide. Keep the straight at least one
-      // unit long and on the side it started.
-      const anchor =
-        straight.startIndex === nearIndex
-          ? beforePoints[straight.endIndex]
-          : beforePoints[straight.startIndex];
-      const axis = normalizeVector(subVectors(nearPoint, anchor));
-      const travel = dotVector(subVectors(target, anchor), axis);
-      if (travel < MIN_STRAIGHT_LENGTH) {
-        target = addVectors(anchor, mulVectorScalar(axis, MIN_STRAIGHT_LENGTH));
-      }
+      // The point may leave the straight under no rule, so the answer is the
+      // straight's own line, at the distance the corner asks for. A corner
+      // point's handle is not parallel to the straight, so this projection is
+      // what keeps it on the line.
+      const anchor = afterPoints[anchorIndex];
+      const travel = Math.max(
+        dotVector(subVectors(wanted, anchor), afterAxis),
+        MIN_STRAIGHT_LENGTH
+      );
+      const target = addVectors(anchor, mulVectorScalar(afterAxis, travel));
       const x = round(target.x);
       const y = round(target.y);
       if (afterPoints[nearIndex].x !== x || afterPoints[nearIndex].y !== y) {

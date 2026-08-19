@@ -146,13 +146,50 @@ describe("tension-aware edit — the slide", () => {
     expect(after[1].y).to.equal(390);
   });
 
-  it("does not slide a corner point", () => {
+  it("slides a corner point too, along its own straight", () => {
+    // A corner point on a straight has a line to travel and keeps its own
+    // handle angle while it travels, so it slides like a smooth one.
     const before = archContour();
-    before[1] = onCurve(60, 385); // no smooth flag, so it owns its direction
+    before[1] = onCurve(60, 385); // no smooth flag
     const after = copy(before);
+    after[3] = control(76, 463);
     after[4] = onCurve(115, 463, true);
     slideTensionPoints(before, after, false);
-    expect(after[1].y).to.equal(385);
+    expect(after[1].x).to.equal(60);
+    expect(after[1].y).to.equal(397);
+  });
+
+  it("slides a tension point the edit moved across its own straight", () => {
+    // The right stem of the b: both of its on-curve points are in the drag, so
+    // the ordinary rules carry the tension point sideways. The slide still owes
+    // it the travel up the stem, because the edit changed no distance along it.
+    const before = [
+      onCurve(173, 464, true),
+      control(207, 464),
+      control(228, 433),
+      onCurve(228, 389, true),
+      onCurve(228, 1),
+    ];
+    const after = copy(before);
+    for (const index of [2, 3, 4]) {
+      after[index] = { ...after[index], x: after[index].x - 20 };
+    }
+    slideTensionPoints(before, after, false);
+    expect(after[3].x).to.equal(208); // the drag's own 20 units
+    // The arch's horizontal leg goes 55 -> 35, so its vertical leg goes 75 ->
+    // 48 and the tension point climbs the stem to meet it.
+    expect(after[3].y).to.equal(416);
+  });
+
+  it("leaves a tension point the edit moved along its own straight", () => {
+    const before = archContour();
+    const after = copy(before);
+    after[3] = control(76, 463);
+    after[4] = onCurve(115, 463, true);
+    after[1] = onCurve(60, 390, true);
+    after[2] = control(60, 437);
+    slideTensionPoints(before, after, false);
+    expect(after[1].y).to.equal(390);
   });
 
   it("does not slide past the far end of its own straight", () => {
