@@ -22,15 +22,15 @@ in the table below.
 
 Two files remain under those folders. They are the serif generator's design and plan, dated
 2026-07-30, plus the `serif-lab.html` mockup they were written against. The serif is shipped, so
-their durable content is now in feature model §8 and in log entries 20–22. Retire them the same
+their durable content is now in feature model §8 and in the log's serif section. Retire them the same
 way once nothing references them.
 
-| Doc                         | Answers                                                                                                                        |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `SKELETON-FEATURE-MODEL.md` | The conceptual **mental model** of forkra's skeleton: what the feature is, how the generation pipeline works, what to preserve |
-| `DEVELOPMENT-LOG.md`        | **What happened, in order**: one entry per feature or fix, with what went wrong on the way                                     |
-| `GLOSSARY.md`               | **What the words mean**: type-design terms, plus every term forkra invented or redefined                                       |
-| **this doc**                | Where everything **is**, who owns it, and (§9) why the skeleton is built this way                                              |
+| Doc                  | Answers                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| `FEATURE-MODEL.md`   | The conceptual **mental model** of each feature: what it is, how it works, what to preserve |
+| `DEVELOPMENT-LOG.md` | One dossier per feature: the faults that came back, the measurements, the withdrawn ideas   |
+| `GLOSSARY.md`        | **What the words mean**: type-design terms, plus every term forkra invented or redefined    |
+| **this doc**         | Where everything **is**, who owns it, and (§9) why the skeleton is built this way           |
 
 ---
 

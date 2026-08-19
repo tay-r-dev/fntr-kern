@@ -6,17 +6,18 @@ Read these four documents. They are the project's reference set.
 
 @GLOSSARY.md
 @FEATURE-ARCHITECTURE-MAP.md
-@SKELETON-FEATURE-MODEL.md
+@FEATURE-MODEL.md
 @DEVELOPMENT-LOG.md
 
 - `GLOSSARY.md` gives the words. Read it first.
 - `FEATURE-ARCHITECTURE-MAP.md` gives the files, the owners and the rails.
-- `SKELETON-FEATURE-MODEL.md` gives the mental model of the skeleton.
-- `DEVELOPMENT-LOG.md` gives the history, in order.
+- `FEATURE-MODEL.md` gives the mental model of each feature: how it works and why it is built that way.
+- `DEVELOPMENT-LOG.md` gives one dossier per feature: the faults that came back, the measurements that settle a question, and the ideas that were built and withdrawn.
 
 Then apply the `ste-writing` when writing documents, and ESPECIALLY - when you respond to me directly.
 
 Execution guidelines:
+
 - Don't deploy subagents and don't use worktrees. Do everything on a branch;
 - I always run bundle-watch in the background - don't bother with running bundle yourself - I will notify you if there are compilation errors;
 - Commit after each step of an implemented plan or sufficiently completed task;

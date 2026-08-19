@@ -1,21 +1,22 @@
-# Skeleton Feature Model (forkra)
+# Feature Model (forkra)
 
-**Reframed:** 2026-07-25. It was a review of donor code. It is now a description of **forkra's
-own** skeleton code, verified against the tree.
+**Companion to `FEATURE-ARCHITECTURE-MAP.md`.** That doc says _where_ the files are and _who owns
+them_. This doc is the conceptual **mental model** of each feature: what it is, how it works, and
+which behaviors you must preserve when you touch it. The design _rationale_ (C1-C4, and the defects
+they answer) lives in §9 of the architecture map. `GLOSSARY.md` defines the terms both docs use.
+`DEVELOPMENT-LOG.md` holds what this doc does not: the faults that came back, the measurements that
+settle a question, and the ideas that were built and withdrawn.
 
-**Companion to `FEATURE-ARCHITECTURE-MAP.md`.** That doc says _where_ the skeleton files are and
-_who owns them_. This doc is the conceptual **mental model**: what the feature is, how the
-generation pipeline works, and which behaviors you must preserve when you touch it. The design
-_rationale_ (C1–C4, and the defects they answer) lives in §9 of the architecture map. `GLOSSARY.md`
-defines the terms both docs use.
+**§1 to §9 are the skeleton**, which is the largest feature and the one every other section refers
+back to. §10 onward take one feature each. Section numbers here are cited from code comments and
+from the architecture map, so **do not renumber §1 to §9**; add at the end.
 
 We **dissolved** the design specs and implementation plans that produced the offset construction,
 the generated-segment gizmos, the curvature pin, the continuous natural solver and the true
-geometric handle ceiling. Sections §3.2, §7, §8 and §9 here carry their durable content. §9 in
+geometric handle ceiling. Sections §3.2, §7, §8 and §9 carry their durable content. §9 in
 particular is the register of what we tried and rejected. The serif's own spec and plan are the
 last two still on disk, under `docs/superpowers/{specs,plans}/`. Their durable content is §8.
 Apart from those two, a statement that is still true is either here or in the architecture map.
-`DEVELOPMENT-LOG.md` tells the story of how each piece landed.
 
 Line numbers drift. **Function names are the durable anchors here.** Verify any specific location
 against the code before you rely on it. `skeleton-generator.js` alone is about 4,700 lines.
@@ -174,7 +175,7 @@ to a miter average (`isStraightControlledSmoothPoint` → `straightSegmentNormal
 shared offset. The whole projected straight then moves as a unit. `collectTiedRibGroups` is the
 single definition of the rule. It is a thin wrapper now: the collector itself is generic and lives
 in `offset-contour.js`, where the base-curve expansion drag reads the same rule off ordinary
-outlines (log entry 58). What the wrapper adds is the two things only a skeleton point carries —
+outlines (§12). What the wrapper adds is the two things only a skeleton point carries —
 the `width.tied` opt-out below, and the serif terminals, which the generic collector takes as
 "points that couple a straight they end" and never learns the word for. The reason the coupling
 exists is unchanged and is stated here. `coupledHalfWidths` then gives every point in a group the mean of
@@ -538,7 +539,7 @@ If the code loses any of these, the product regresses.
   skeleton, width and taper edits, and clamps only its output. A pin that drifts makes the control
   pointless.
 - **The release is smooth only while both its handles are non-zero.** The share clamps that used
-  to guarantee this are gone (dev log §27), so a handle can now reach zero, and at zero the release
+  to guarantee this are gone, so a handle can now reach zero, and at zero the release
   is a corner. That is the correct output under the serif ground rule — points collapse, they do
   not disappear — but the guarantee is conditional, not unconditional. Do not write a test that
   asserts tangency across the whole range.
@@ -1092,3 +1093,216 @@ once.
 | **Let `tension` and `concavity` scale each other**                            | Built, reverted. Two sliders over one product means that either one at zero cancels the other. Both defaulted to zero, so a fresh serif drew a flat bevel and neither slider appeared to do anything. They are now a length and a balance over the same corner-aimed construction, and they are independent.                                                                                                                                                                                                |
 | **Rebuild the parameter form on every field change**                          | `setFieldDescriptions` exists for this, and it clears `innerHTML`. So an arrow-key edit destroyed the input it came from and took the focus with it, one increment per click. The panel now compares a layout signature, and writes values in place when only values changed, skipping whichever field the user is currently in.                                                                                                                                                                            |
 | **Read a generated segment's curvature from its emitted points**              | Correct until a terminal trimmed one. The generator reproduces the pin on the whole segment, while the emitted part can be much shorter, by 83 units on a real serif. The gizmo therefore displayed a number that meant something else, and the first drag jumped the shape. `constructionSegment` on the inserted point's provenance is the fix. Every reader goes through `generatedSegmentConstructionPoints`.                                                                                           |
+
+---
+
+## 10. Harmonize
+
+### 10.1 What it is
+
+A smooth on-curve point guarantees only G1 continuity. The two handles are
+collinear, so the tangent direction matches across the joint, and the curvature
+usually jumps. That jump shows as a crease under a reflection or under the
+curvature comb. Harmonize moves geometry at the joint until the jump is gone.
+
+It is on F9, in the context menu, and in the Transformation sidebar panel. The
+math is pure and lives in `harmonization.js`. The editor calls it from the scene
+controller.
+
+### 10.2 The two constructions, as a cascade
+
+**G3 by the two inner handles, tried first.** The joint and both outer handles
+hold still. Equal curvature and equal rate of change of curvature are two
+equations, and the two inner handle lengths are two unknowns, so the answer is
+exact and unique. There is nothing to iterate and nothing to choose between. It
+is Linus Romer's construction from `_external/curvatura`, section 6.5 of its
+documentation, solved for the **arc-length** rate rather than the parameter rate.
+
+The two segments run through a joint at different speeds, so equal rates in the
+parameter leave a rate mismatch equal to the ratio of the two speeds — 10 per
+cent on the glyph this was found on. The comb is drawn against arc length and arc
+length is what a designer reads. The arc form is the same shape of closed form,
+one square root and one division, and it is exact to machine precision on both
+conditions.
+
+**G2 by the five-point stencil, as the fallback.** Over the stencil `PP P node N
+NN`, intersect the two outer handle lines to get `D`, take the square root of the
+product of two length ratios, and place the harmonic target by that ratio between
+`N` and `P`. This is Simon Cozens' construction. It matches two curvature values,
+which is all G2 asks.
+
+**Where G3 is inadmissible**, the joint drops to G2, starting from the geometry
+as it stands. Two things make an answer inadmissible: an inflection, where the
+construction asks for the square root of a negative product; and an answer
+outside the two limits the G2 path already obeys, which are the cusp floor on the
+handle that shrinks and the tangent intersection on the handle that grows.
+
+**The repair slide** sits between the two rungs and is optional. Where holding
+the joint still leaves no admissible answer, the joint slides along its tangent
+by the smallest distance that produces one, and the two inner handles take the
+rest. The search runs outward from zero, so a joint that does not need it does
+not move. Its range is the far on-curve of either segment measured along the
+tangent, bounded separately in each direction. **It cannot be bounded by the
+inner handles**, because they are what the construction replaces, so their
+present lengths say nothing about where the joint may go.
+
+**Two checkboxes, not a bias slider.** One picks the target and so the cascade;
+the other says whether the joint itself may move. Under G2 that second one is the
+whole of the old bias — at one end the on-curve moves and the handles hold, at
+the other the handles move and the on-curve holds, and the relative displacement
+is identical either way, so the curve is the same shape and only its position at
+the joint differs. Under G3 it turns the repair slide on. The values between the
+old slider's two ends were never asked for.
+
+### 10.3 The sweep
+
+Every joint on a closed contour shares a segment with the two beside it, so
+moving the handles at one joint changes the curvature at both neighbours. The
+sweep therefore loops over the ring until nothing moves anywhere.
+
+- **A joint with nothing to do goes quiet, not finished.** It is measured again
+  on every pass and moves again the moment a neighbour disturbs it.
+- **A joint that runs into a limit takes its scaled step and stays open.** A
+  limit is a smaller step, not the end of the work, and the limit is re-measured
+  from wherever that step landed.
+- **The cusp floor is a fraction of the chord** between the segment's two
+  on-curve points, which do not move while handles are corrected. A floor read
+  from the handle it limits is a rate, not a limit: it allows the same
+  proportional cut every time it is asked.
+- **The tension ceiling is enforced on every pass.** No handle may reach past the
+  point where its segment's two handle lines cross. A neighbour's step can push a
+  handle back over, so an invariant established at setup is only an assumption by
+  the second pass.
+- **Grid rounding is inside the loop.** The sweep settles on fractional
+  coordinates, and from the rounded drawing there is a real correction to make
+  again. The command runs the sweep, rounds, and runs again from the rounded
+  drawing until a drawing comes round a second time — on almost everything, two
+  attempts. Every state is scored and the best is kept, and the drawing it was
+  handed counts as a candidate, so a command that can only make things worse
+  leaves the drawing alone. A handle over the tension ceiling outranks any amount
+  of curvature in that score, because an over-tension handle is a defect and not
+  a trade.
+- **The verdict is read at the end**, not at the moment a joint went quiet. Quiet
+  at the end means harmonized; quiet from the start means already harmonic;
+  anything else reports what stopped it.
+
+### 10.4 A skeleton centerline is ordinary geometry
+
+Harmonize is correct to skip a generated outline, which is derived and would be
+thrown away. It is wrong to skip the skeleton's own centerline, which is an
+ordinary path carrying ordinary smooth flags. The centerline is built as a path,
+the ordinary pass runs over it, and the moved points are written back through the
+one skeleton write path (rail R-C), so the outline regenerates for free. Nothing
+in that route knows about widths, ribs or the outline.
+
+**Reports are addressed, not indexed**, because the path built to run the pass is
+thrown away. Each entry carries the contour and point id it came from.
+
+**Only the edit layer reports.** Structure is shared across compatible layers, so
+every layer reaches the same verdict on the same point, and the numbers behind it
+are the edit layer's. Each layer is still recomputed from its own handles,
+because a different set of handles has a different harmonic target.
+
+### 10.5 What must be preserved
+
+- **Write per point, never a whole path.** Assigning a new path inside
+  `recordChanges` does not survive the round trip: the recorder wraps the subject
+  in a proxy and records the assignment as a live class instance, which fails on
+  replay. This is a general rule for any geometry operation, not a harmonize
+  quirk.
+- **A point is written only when it is not already there**, in the model, on the
+  skeleton route, and in the editor, which runs the sweep on a copy and writes
+  back only what ended up somewhere else. Otherwise a joint corrected twice and
+  rounded back onto its starting coordinate records four changes and takes an
+  undo step for doing nothing.
+- **The five-point stencil is complete.** Endpoint curvature of a cubic depends
+  only on its last three control points, so `PP` and `NN` are inputs and never
+  outputs. That is why the G2 path does not touch the outer handles, and why
+  Tunni equalization, which does touch them, has to be a separate opt-in pass.
+- **Points that cannot be harmonized are reported with a reason**: corners,
+  non-curve joints, degenerate geometry, generated contours.
+
+### 10.6 Known defects
+
+- **A correction under half a unit reports harmonized and writes nothing.**
+  Whole-unit rounding discards it. It should report that it is below the grid.
+- **Rounding happens after the tension ceiling**, so a handle at exactly tension
+  1 can land a fraction over it. Sub-unit. A ceiling of 0.98 would remove it.
+
+---
+
+## 11. The curvature comb
+
+**Reverted to its state at `2242d76b`.** Ten rounds of rework did not settle, and
+the log's comb section carries what each attempt cost. What the tree holds now:
+
+- **Fringe length** is curvature divided by the tallest curvature on its own
+  segment, so every segment's peak draws the full height. The donor
+  (`_external/speedpunk`) instead uses curvature times a fixed gain, with no
+  ceiling and no floor.
+- **Colour** comes from each segment's own range. The donor uses the glyph's own
+  range, gentlest to tightest, recomputed when the glyph changes.
+- **Sample count** is a budget divided by the number of curve segments, times the
+  square root of the magnification, with the budget divided by the magnification
+  first. The donor uses the budget divided by the segment count alone.
+
+Three fixes went out with the revert and are not present: the comb does not
+repaint when a comb setting changes, the three fields do not scrub and a number
+box in that panel keeps the keyboard after an edit, and sharpness and opacity
+store the full floating point result of a drag.
+
+**The rule this feature keeps re-learning: absolute and relative are two
+readouts, not two answers to one question.** Length answers "compare two
+letters". Colour answers "read one letter". A normalized readout cannot compare
+across whatever it normalizes over — per segment it cannot compare two segments,
+and comparing two segments is what a joint is.
+
+---
+
+## 12. Base-curve expansion
+
+**What it is.** Holding D or S and dragging an ordinary outline on-curve offsets
+the stroke, the same gesture the skeleton's fixed-rib drag provides. Both keys do
+the same thing, as they do on a single-sided stroke: the drag direction alone
+decides whether the shape grows or shrinks.
+
+**Where the geometry lives.** `offset-contour.js` in `fontra-core` holds the
+segment walk, the per-point normal, the coupling rule and the offset construction
+itself. None of it reads a width, an id or a cap. `skeleton-model.js` keeps its
+exported names as wrappers over that module and adds the three things only a
+skeleton has: the rib tied-flag opt-out, the serif terminals that also couple a
+straight, and the per-point rib-angle override. This is rail R-B — one copy of
+every geometry function.
+
+**Dispatch.** The gesture engages only where the selection holds no skeleton
+geometry, so a mixed selection runs the skeleton drag exactly as before.
+Generated contours are never touched.
+
+**What travels together** is the rule that already existed: a straight carrying a
+tension point holds both its ends to one offset, and straights sharing an end
+merge into one group. Ordinary outline points gain no stored field.
+
+**Where a corner point goes.** Each segment moves along its own normal by its own
+offset, and the corner point lands where its two moved segments cross. A segment
+whose far end stays put has an offset of zero, so it does not move, the crossing
+stays on it, and the point travels square to the one segment that did move. State
+it that way rather than as a miter length: the length is what falls out, the
+crossing is the construction.
+
+The crossing needs one bound, and it is the only limit in this drag. Two segments
+doubling back move to parallel positions and never cross, so the distance runs to
+infinity and is not a number at exactly doubled back. It is held at four times
+the offset, the standard miter limit, which starts to bite at a turn of about 151
+degrees.
+
+**The projection axis** is the direction the clicked point will actually travel
+in, not that point's own normal. Otherwise how far a drag reaches depends on the
+angle of the point it was started from.
+
+**There is no floor.** A base curve has no width to run out of, so an inward drag
+follows the cursor as far as it is pushed and cusps where the offset passes the
+local radius. That is ordinary outline geometry, reachable by hand and undoable.
+
+**What must be preserved.** Every frame is recorded against a fresh copy of the
+pre-drag path, never against the live glyph. A rollback is a statement about the
+whole gesture, so it has to be measured from where the gesture started.
