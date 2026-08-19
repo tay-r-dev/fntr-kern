@@ -2,7 +2,9 @@ import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
 import {
   applyTensionAwareEdit,
+  buildIndexedSegments,
   curvesAreAboveFloor,
+  isCubicSegment,
   solveRigidLinkScale,
 } from "@fontra/core/tension-aware-edit.js";
 import { parseSelection } from "@fontra/core/utils.ts";
@@ -220,8 +222,27 @@ function buildFrames(originals, solved, axis) {
   return originals.map(({ contour }, i) => {
     const before = contour.points;
     const after = before.map((point) => ({ ...point }));
+    // Which on-curve point each handle belongs to. A handle travels with its
+    // own point, exactly as the point rules carry it under a drag. Left behind,
+    // a handle stops being collinear with the straight its point stands on, and
+    // the tension point's joint breaks.
+    const ownerOfHandle = new Map();
+    for (const segment of buildIndexedSegments(before, contour.isClosed)) {
+      if (!isCubicSegment(segment)) continue;
+      ownerOfHandle.set(segment.controlIndices[0], segment.startIndex);
+      ownerOfHandle.set(segment.controlIndices[1], segment.endIndex);
+    }
+    const displacement = new Map();
     for (const [index, coordinate] of solved[i]) {
-      after[index][axis] = Math.round(coordinate);
+      const rounded = Math.round(coordinate);
+      displacement.set(index, rounded - before[index][axis]);
+      after[index][axis] = rounded;
+    }
+    for (const [handleIndex, ownerIndex] of ownerOfHandle) {
+      const moved = displacement.get(ownerIndex);
+      if (moved) {
+        after[handleIndex][axis] = before[handleIndex][axis] + moved;
+      }
     }
     applyTensionAwareEdit(before, after, contour.isClosed);
     return { points: after, isClosed: contour.isClosed };
