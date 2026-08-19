@@ -143,6 +143,26 @@ stem.
 The vertical moves in that file are the tension point slides of rule 3, so the file is this whole
 feature in one picture.
 
+### One axis at a time, and what the second axis costs
+
+The rule reads the extent along the axis being scaled. A corner handle scales both axes at once, so
+it bypasses the mode and scales normally. A side handle scales one axis, and the mode runs.
+
+**Both axes are built, and the vertical one is known to distort.** The rule freezes straights and
+spends curves, which works while the curves carry enough of the dimension to spend.
+
+Across the **n**, 250 units wide: the two feet carry 120, the two arches carry 130. Take 20 off and
+the curves give 20 out of 130. They shrink 15 percent and keep their shape.
+
+Up the **n**, 516 units tall: the four walls carry up to 500, the outer shoulder carries 61. Ask for
+600 and the curves must give 84 out of 61. The shoulder rises from 455 to 600 instead of to 516 and
+stretches 2.4 times, which is the distortion the whole feature exists to prevent.
+
+The vertical axis ships anyway, so that the behavior can be judged in use rather than on paper. The
+alternative wants a stored flag on ordinary outline points saying which straights are protected,
+because nothing local separates a stem wall, which must stretch, from the end of an E's bar, which
+must not. Both are vertical straights.
+
 ### The two bounds
 
 **A contour with no elastic run scales normally.** A rectangle is rigid links end to end, so nothing
@@ -185,6 +205,7 @@ to distribute.
 | Corner point at the end of a straight                     | It does not slide. It owns its direction, so it has no corner to keep         |
 | Contour of straights only, under a scale                  | Scales normally. Rule 4 stands down                                           |
 | A curved segment down to 2 units                          | The scale stops there                                                         |
+| Corner handle on the transform box                        | Both axes at once. The mode bypasses and the ordinary scale applies           |
 
 **One gap against the demonstration file.** The outer-left junction of the **n**, where the outer arch
 meets the left stem's outer wall, is a corner point in that drawing rather than a smooth one. It
