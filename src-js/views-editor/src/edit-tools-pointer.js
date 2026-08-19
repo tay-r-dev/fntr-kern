@@ -564,6 +564,7 @@ export class PointerTool extends BaseTool {
       delete this.sceneController.sceneModel.initialClickedSkeletonRibKey;
       delete this.sceneController.sceneModel.initialClickedGeneratedKey;
       delete this.sceneController.sceneModel.skeletonDragBehaviorName;
+      delete this.sceneController.sceneModel.baseExpandGhostPath;
       return result;
     }
   }
@@ -764,6 +765,17 @@ export class PointerTool extends BaseTool {
       // pressed or released mid-drag is reflected on the next frame.
       sceneController.sceneModel.skeletonDragBehaviorName = behaviorName;
 
+      // A base curve has no centerline to read the offset against, so the shape
+      // as it stood at mousedown is drawn underneath for the length of the drag.
+      // Captured from the edit layer only - the ghost is a reading aid, not
+      // geometry, and there is one cursor.
+      const publishGhost = (name) => {
+        sceneController.sceneModel.baseExpandGhostPath =
+          name === BASE_EXPAND_BEHAVIOR_NAME
+            ? layerInfo[0]?.layerGlyph?.path?.copy()
+            : undefined;
+      };
+
       // Read the edit layer's skeleton data once; every layer's skeleton target
       // entry resolves selection ids against this single reference by structural
       // ordinal (cross-layer addressing).
@@ -872,6 +884,7 @@ export class PointerTool extends BaseTool {
       assert(layerInfo.length >= 1, "no layer to edit");
 
       layerInfo[0].isPrimaryLayer = true;
+      publishGhost(behaviorName);
 
       this.sceneController.scrollAdjustBehavior = "pin-glyph-origin";
       let editChange;
@@ -904,6 +917,7 @@ export class PointerTool extends BaseTool {
             );
             layer.editBehavior = layer.behaviorFactory.getBehavior(behaviorName);
           }
+          publishGhost(behaviorName);
           await sendIncrementalChange(consolidateChanges(rollbackChanges));
         }
         const currentPoint = sceneController.selectedGlyphPoint(event);

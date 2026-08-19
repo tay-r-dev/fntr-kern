@@ -1226,6 +1226,35 @@ registerVisualizationLayerDefinition({
 });
 
 registerVisualizationLayerDefinition({
+  identifier: "fontra.base-expand.ghost",
+  name: "Base expansion ghost",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: false,
+  defaultOn: true,
+  zIndex: 440,
+  screenParameters: {
+    lineWidth: 1,
+  },
+  colors: {
+    strokeColor: "rgba(120, 120, 120, 0.55)",
+  },
+  colorsDarkMode: {
+    strokeColor: "rgba(190, 190, 190, 0.5)",
+  },
+  draw: (context, positionedGlyph, parameters, model) => {
+    const ghostPath = model.baseExpandGhostPath;
+    if (!ghostPath) {
+      return;
+    }
+    context.lineWidth = parameters.lineWidth;
+    context.strokeStyle = parameters.strokeColor;
+    const path2d = new Path2D();
+    ghostPath.drawToPath2d(path2d);
+    context.stroke(path2d);
+  },
+});
+
+registerVisualizationLayerDefinition({
   identifier: "fontra.component.nodes",
   name: "sidebar.user-settings.component.nodes",
   selectionFunc: glyphSelector("editing"),
