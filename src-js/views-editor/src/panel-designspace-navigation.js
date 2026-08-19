@@ -656,6 +656,13 @@ export default class DesignspaceNavigationPanel extends Panel {
     }
     label.style.cursor = "ew-resize";
     label.style.userSelect = "none";
+    // A label activates the field it names, and activating a number field puts
+    // the keyboard in it. That happens on click, which arrives after the drag
+    // has already finished and handed the focus back, so it undid the handover
+    // every time. A scrub label is a grab area and not a way into the box.
+    label.addEventListener("click", (event) => {
+      event.preventDefault();
+    });
 
     label.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) {
@@ -834,6 +841,15 @@ export default class DesignspaceNavigationPanel extends Panel {
 
     const bindNumberInput = (input, normalize, appKey, sceneKey) => {
       if (!input) return;
+      // Enter and Escape both mean the box is finished with the keyboard.
+      // Without this the field holds every shortcut until the pointer is
+      // clicked somewhere else.
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === "Escape") {
+          input.blur();
+          this._returnFocusToCanvas();
+        }
+      });
       input.addEventListener("change", () => {
         const value = normalize(Number(input.value));
         this._speedPunkSettings = {
@@ -843,6 +859,9 @@ export default class DesignspaceNavigationPanel extends Panel {
         input.value = String(value);
         this.sceneSettingsController.setItem(sceneKey, value, { senderID: this });
         this._persistSpeedPunkSettings();
+        // A number field fires this only when the value is committed, never
+        // while digits are being typed, so the keyboard is always free to go
+        // back by the time this runs.
         this._returnFocusToCanvas();
       });
     };

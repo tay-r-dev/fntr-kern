@@ -346,10 +346,14 @@ export function computeSpeedPunkSamples(path, params = {}) {
         : calculateCurvatureForQuadraticSegment(...pts, steps);
     segments.push({ kind, pts, samples });
   });
-  // Colour rides the same squeeze as the height, so the two agree everywhere
-  // and neither one saturates. Colouring against a flat range instead put every
-  // curvature at or above the reference on the last stop, which paints most of
-  // a normal glyph one colour and hides every difference inside it.
+  // Colour rides the same squeeze as the height, so neither one saturates.
+  // Colouring against a flat range instead put every curvature at or above the
+  // reference on the last stop, which paints most of a normal glyph one colour
+  // and hides every difference inside it.
+  //
+  // Sharpness is the one thing the two do not share. It is the shape of the
+  // comb, so it bends the fringe and leaves the colour where it was. A curve
+  // keeps its colour while the comb over it is restyled.
   const quads = [];
   for (const { kind, pts, samples } of segments) {
     const onCurve = [];
@@ -361,15 +365,16 @@ export function computeSpeedPunkSamples(path, params = {}) {
           ? solveCubicBezier(...pts, t)
           : solveQuadraticBezier(...pts, t);
       const [x, y] = r;
-      // The one ratio both the height and the colour are drawn from. It is
-      // nothing on a straight, a half at the reference tightness, and it
-      // approaches one as the bend tightens without ever getting there.
-      const shaped = Math.pow(
-        Math.abs(samples[s].curvature) * referenceRadius,
-        sharpness
-      );
-      const ratio = shaped / (1 + shaped);
-      onCurve.push({ x, y, ratio });
+      // The reading, as a number from nothing to one: nothing on a straight, a
+      // half at the reference tightness, approaching one as the bend tightens
+      // without ever getting there. Colour is drawn straight from this.
+      const reading = Math.abs(samples[s].curvature) * referenceRadius;
+      const colorRatio = reading / (1 + reading);
+      // The height is drawn from the same reading with sharpness applied, so
+      // the comb changes shape and the colour under it does not.
+      const shaped = Math.pow(reading, sharpness);
+      const heightRatio = shaped / (1 + shaped);
+      onCurve.push({ x, y, colorRatio });
 
       let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];
       let ny = illustrationPosition === "outsideOfCurve" ? r1[0] : -r1[0];
@@ -382,7 +387,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
       // two different curvatures at one length and creased where one fringe
       // saturated beside one that did not. This rule never repeats a length,
       // so a cusp stays on the screen without a cap to hold it.
-      const h = -2 * ratio * peakHeightGlyphUnits;
+      const h = -2 * heightRatio * peakHeightGlyphUnits;
       offCurve.push({ x: x + nx * h, y: y + ny * h });
     }
 
@@ -396,7 +401,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
           [offCurve[s + 1].x, offCurve[s + 1].y],
           [offCurve[s].x, offCurve[s].y],
         ],
-        color: curvatureToColor(a.ratio, 0, 1, colorStops),
+        color: curvatureToColor(a.colorRatio, 0, 1, colorStops),
       });
     }
   }

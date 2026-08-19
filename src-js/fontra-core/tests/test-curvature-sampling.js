@@ -232,6 +232,28 @@ describe("curvature comb: a fixed scale", () => {
     expect([...tight].some((color) => tighter.has(color))).to.equal(false);
   });
 
+  it("restyles the comb with sharpness and leaves the colour alone", () => {
+    // Sharpness is the shape of the comb. A curve keeps its colour while the
+    // comb over it is restyled, so the two readings cannot contradict.
+    const sample = (sharpness) =>
+      computeSpeedPunkSamples(circle(40), {
+        peakHeightGlyphUnits: 24,
+        referenceRadius: 100,
+        sharpness,
+      });
+    const plain = sample(1);
+    const sharp = sample(2.5);
+    expect(sharp.map((quad) => quad.color)).to.deep.equal(
+      plain.map((quad) => quad.color)
+    );
+    const fringe = (quads) =>
+      Math.hypot(
+        quads[0].points[3][0] - quads[0].points[0][0],
+        quads[0].points[3][1] - quads[0].points[0][1]
+      );
+    expect(fringe(sharp)).to.not.be.closeTo(fringe(plain), 1);
+  });
+
   it("draws nothing on a straight", () => {
     const lengths = fringeLengths(
       VarPackedPath.fromUnpackedContours([

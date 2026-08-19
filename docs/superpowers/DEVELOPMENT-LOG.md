@@ -3586,3 +3586,58 @@ a single ratio now, so there is nothing left to keep in step by hand.
 `roundScrubValue` a step of 1 by default would have rounded every existing
 fractional caller to whole numbers. The default has to be no grid at all, and the
 grid has to be asked for.
+
+---
+
+## 49. Sharpness coloured the curve, and a label took the keyboard — fixes
+
+### 1. The reports
+
+1. Sharpness changed the colour distribution. It should only change the shape of
+   the comb.
+2. The panel still took the keyboard after a field was adjusted, so space-drag
+   did not work.
+
+### 2. One reading, two drawings
+
+Entry 48 put the colour and the height on one ratio, and that ratio had sharpness
+already applied. So restyling the comb repainted the curve under it.
+
+The reading is now separated from the two drawings of it. The reading is the
+curvature against the reference tightness, squeezed to a number from nothing to
+one. Colour comes straight off that. The height comes off the same reading with
+sharpness applied. A curve keeps its colour while the comb over it is restyled,
+and the two can still never disagree about which of two points is the tighter.
+
+### 3. A label activates the field it names
+
+Entry 48 handed the focus back to the canvas at the end of a label drag, and the
+browser took it away again a moment later. A `<label for=...>` activates its
+field on click, and activating a number field puts the keyboard in it. The click
+arrives after the pointerup, so the handover was undone every single time.
+
+A scrub label is a grab area and not a way into the box, so it no longer
+activates anything. Two more ways out were added with it: Enter and Escape both
+release the field, and the commit path releases it unconditionally now. A number
+field fires its change only when the value is committed, never while digits are
+being typed, so there is no mid-typing case to protect.
+
+### 4. Result
+
+Full suite 1,897 passing, with one new test: sharpness changes the fringe length
+and leaves every colour exactly as it was.
+
+Manual matrix owed, per rail R-G. Drag a label, then press space and drag. Click
+into a box, press Enter, then press space and drag. Change sharpness and check
+that the colours do not move.
+
+### 5. Findings
+
+**Handing the focus back is not the same as not taking it.** The fix in entry 48
+was correct and had no effect, because it ran before the thing that took the
+focus. A handover that races the browser's own default loses.
+
+**One number to compute a reading, one drawing each.** Entry 48 collapsed colour
+and height onto a single ratio to stop them drifting apart, and that collapsed a
+control into them too. What has to be shared is the reading. What each drawing
+does with it is its own.
