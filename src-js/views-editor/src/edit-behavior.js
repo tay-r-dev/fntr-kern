@@ -1435,6 +1435,15 @@ const behaviorTypes = {
     actions: actionFactories,
   },
 
+  // The base expansion drag moves nothing through the point rules: the whole
+  // edit is the offset construction, which runs in the target entry. An empty
+  // match tree matches no point, so no edit func is built and the path change
+  // comes entirely from the entry (R-E - the kind decision is at construction).
+  "base-expand": {
+    matchTree: buildPointMatchTree([]),
+    actions: actionFactories,
+  },
+
   "equalize": {
     matchTree: buildPointMatchTree(defaultRules),
     actions: actionFactories,
