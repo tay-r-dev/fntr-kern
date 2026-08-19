@@ -1218,3 +1218,268 @@ Per rail R-G, the editor halves of this work carry manual matrices rather than
 tests. Outstanding: type into left and right with the sides linked and unlinked,
 scrub both labels, drag both ribs at a distribution of 100, and drag the total in
 the panel while watching the other three fields.
+
+---
+
+## The generated-segment gizmos and the curvature pin (map F7, skeleton)
+
+**State: settled, one defect open.** Six rounds. This is the designer's control
+over the output the offset construction cannot get right on its own.
+
+### Why a control exists at all
+
+Where the automatic answer cannot be right — taper, and offsets a single cubic
+cannot express — the generator collapsed instead of deferring. There was no way
+to say "make this segment rounder".
+
+There are two gizmos per generated segment. A **curvature** gizmo on the curve,
+dragged along the axis toward the tangent intersection, and an **on-curve** gizmo
+that slides the segment's two ends along the outline. The second stores nothing
+new: it writes the same nudge the panel writes.
+
+### What the pin stores, and why it is a number
+
+The first version of the curvature control stored a positional handle
+displacement, so a later change to the skeleton, the width or the taper moved the
+base handle, left the displacement behind and drifted the curvature: the designer
+set a number and the model stored a nudge.
+
+The gizmo stores **the segment tension it arrived at**. Regeneration reproduces
+it whatever the skeleton has done since, and where the geometry cannot express it
+the output clamps while the stored value is never rewritten, so the segment
+returns to exactly what was set once the skeleton comes back into range.
+
+What makes that clean is an identity: **a segment's tension is exactly the
+harmonic mean of its two handles' tensions.** Two handle lengths therefore
+decompose into a magnitude, which the pin owns, and a split, which per-handle
+adjustments own. They are orthogonal, so the two stored things compose without a
+precedence rule.
+
+**A new per-point field is invisible to the generator until it is copied across
+explicitly.** Points are flattened into a different shape before generation and
+the model's own accessors do not work on the far side of that translation. This
+failed *silently*: the pin stored, read back correctly, and did nothing, because
+the generator saw an undefined value on every segment.
+
+**Reproducing a pinned mean by scaling both tensions cannot work.** A preserved
+ratio caps the reachable mean at twice the ratio over one plus the ratio — 0.6 on
+a 0.3/0.7 split — so the control stopped at a value that was neither 1 nor
+stable, and moved whenever the geometry moved. It is also not what the drag does:
+the drag adds one shared increment to both ends, and reproduction has to do the
+same or the number cannot round-trip.
+
+**Saturating both handles at the leading one's ceiling hides part of the range.**
+When the leading handle reaches tension 1 it stays; the trailing one must remain
+responsive until it reaches 1 too.
+
+**A zero-delta grab must be exactly a no-op, and it was not.** The underlying math
+equalizes two coupled tensions regardless of the delta, so differencing against
+the incoming geometry fired that equalization the moment the gizmo was grabbed —
+a 152-unit jump before the pointer moved. Fixed by differencing against the same
+call at zero drag. This same symptom returns twice more below, from two different
+causes.
+
+### One construction space, because two mechanisms were cancelling
+
+Grabbing the curvature gizmo moved the curve, its reachable range looked
+arbitrary, and dragging a generated on-curve moved the neighbouring off-curves.
+All three were one fault. Three things wrote a generated handle's length — the
+fit, the pin, and stored per-handle adjustments — and the nudge translated each
+handle along with its rib end, so the on-curve drag had to store an equal and
+opposite adjustment to hold the handle still. The moment the on-curve gizmo was
+touched that adjustment existed and overwrote the pin. It behaved only while no
+on-curve had ever been touched, which was exactly the report.
+
+The nudge stopped carrying the handle and became a pure emission post-step:
+handles are emitted from un-nudged geometry and on-curves carry their nudge. Net
+rendered geometry is identical to what the two mechanisms produced while they
+worked. The difference is that there is one mechanism instead of two that cancel,
+so nothing is stored to make the cancellation happen and nothing downstream can
+defeat it. Ordinary carry-the-handles semantics survive as a separately
+accumulated scalar, emitted after construction and never entering the math.
+
+**This reversed a decision made one day earlier, and both were right in turn.**
+Measuring the pin in rendered space was necessary while the nudge carried
+handles; once it stopped, construction space became strictly better, because it
+makes the pin independent of the on-curve gizmo. **Fix the mechanics, then choose
+the space, not the other way round.**
+
+**A nudge could push a rendered tension past the ceiling on an untouched
+segment** — 1.18 at nudge 20, 1.48 at nudge 40 — because the length was preserved
+while the reach shrank. Sliding a rib end toward its handle reduces both now, and
+the ratio stays under 1 by arithmetic.
+
+**Mirroring was verified by construction, not by eye.** Generate-then-mirror and
+mirror-then-generate must produce the same point set. A mirror has negative
+determinant, so the geometric left of the mirrored centerline is what the stored
+data calls right; swapping the per-side fields by hand on the mirrored data made
+the two agree exactly, which confirmed the swap was the whole fix. Contour-wide
+side ownership can only be swapped when the entire contour is selected, so a
+partial selection deliberately leaves it.
+
+**Hiding the on-curve points along with the handle lines would have been wrong.**
+On-curve points say where the outline is; off-curve points with no lines are
+floating circles. Only the off-curves are hidden.
+
+### Three readers disagreed about what a tension is
+
+Grabbing the curvature gizmo and releasing without moving jumped the curve by up
+to 128 units. Worst on the first grab, and quiet afterwards only because the
+error drove the tension to its ceiling and stuck there.
+
+A handle's tension is its length over its own distance to the segment's tangent
+intersection, so one is the Tunni point. The gizmo measured exactly that. The
+generator normalizes against a reach clamped to a third of the chord, whose
+ceiling drops below one wherever that clamp bites, and applied the pin against
+that scale. Two different units, so the number written was not the number read.
+
+A smooth joint then rotates the drawn handle after the solve, keeping its length
+and moving the intersection — 38 degrees in the case measured — so even in
+matching units the direction being measured against was never the one the length
+was built on.
+
+The pin is rescaled onto the ceiling before it is applied, so both ends read one
+at the tangent intersection. Every generated handle already carries the axis it
+was constructed on; that axis is published with its provenance now and the drawn
+directions are used for nothing, which is rail R-D applied to a reader that had
+been recovering direction from geometry all along. One reader serves all three
+call sites, so the number a drag writes is the number the label shows and the
+number the generator reproduces.
+
+Handle movement on a grab-and-release with no movement:
+
+| case                            | before | after |
+| ------------------------------- | ------ | ----- |
+| plain cap                       | 128.3  | 1.0   |
+| plain cap, handle dragged first | 112.2  | 1.0   |
+| serif cap                       | 34.8   | 0.8   |
+| serif cap, handle dragged first | 40.1   | 0.8   |
+
+Swept over cap styles, widths, smooth and corner joints, both sides and both drag
+orders: 156 of 162 cases under one unit, the rest at 1.9.
+
+**The saturation hid the size of it.** "First adjustment jumps, then it is
+smooth" reads like a state that gets initialized once. It was the error running
+the tension to its ceiling in two or three grabs and having nowhere further to
+go. Iterating the round trip rather than measuring it once is what showed that.
+
+**The published axis belongs to the emitted handle, not to whatever is being
+measured.** Where the reader substitutes the untrimmed snapshot the axes are the
+wrong pair, because a trim re-aims the handle it anchors onto the terminal's
+depth axis and stamps that, while the snapshot predates colinearity and needs no
+correction. Getting this backwards passes most tests.
+
+**A residual two-unit oscillation remains.** Six of 162 swept cases alternate
+between two states about 1.9 units apart, all round caps on one narrow geometry.
+It alternates rather than drifting, so it is grid quantization on the trim rather
+than a residual error in the units. Left alone.
+
+### A pin must survive the hand that overrules it
+
+Set a curvature with the gizmo, switch to direct handle editing, drag a handle:
+the handles jumped back to where the automatic fit had put them, and the drag
+continued from a position the designer never chose. Fixed once, and the first
+drag after a curvature adjustment still dragged heavy and then broke loose, while
+every drag after it was smooth. Two causes, one behind the other.
+
+A direct handle drag discards the pin on its own segment, which is right — the
+hand is the later and more specific answer. But the discard was destructive,
+because the pin contributes length to both of the segment's handles. The pin is
+**baked** before it is dropped: one regeneration with it cleared measures how far
+each handle moves, and that difference is stored as a per-handle offset, so
+rendered geometry is unchanged across the clear.
+
+Underneath that, a pinned segment bypasses the ordinary tension ceiling because
+the pin saturates its own tensions at 1. Clearing the pin put that ceiling back,
+and it eased into its limit over a blend window, so it re-shaved exactly what the
+bake had restored and the drag spent its first units of travel inside the window.
+
+**The eased ceiling is right for the fit and wrong for a hand.** The fit's answer
+has to be a continuous function of the skeleton; a length the designer chose has
+no such obligation, and easing lands a few percent short of what was asked. It
+measured 5.0 units short at tension 1, which also meant a hand-dragged handle
+could never quite reach the tangent intersection. (The three ceiling variants
+this produced were later collapsed back to one exact clamp — see the offset
+construction section, round 5.)
+
+**"From the correct position, but a jump."** The report distinguished a wrong
+starting position from a wrong first movement, and that distinction separated the
+two causes. The first fix was verified by a zero-delta drag, which proves the
+start position and says nothing about travel, so it passed while the second fault
+was live.
+
+**Both handles, not just the dragged one.** The pin sets the two lengths together
+and only one is ever under the cursor, so baking the dragged handle alone would
+have held half the segment still and moved the other half.
+
+**Measured, not reasoned.** The residual was 0.00 units below a pin of 0.8 and
+grew to 5.0 at 1.0, which is why it presented as intermittent: it depended
+entirely on how far the curvature had been pushed.
+
+### Two bugs the detached flag exposed
+
+**A handle had a limit it should not have.** With the detached flag on the
+designer placed the handles where they wanted them; with it off the same
+placement was refused, 32 units asked and 7.77 honored against 55 units of real
+room. The ceiling was stored as a multiple of the coordinate scale and capped at
+1, so it could never pass that scale. Where a short real reach floors the scale
+and a backward handle slide moves the drawn crossing far beyond it, the ceiling
+refused most of an authored offset. A detached handle skips the domain entirely,
+which is why the flag made the difference. The ceiling is bounded by the drawn
+crossing and by the absolute cap of twice the chord now, not by the scale.
+
+**The conservative note in the previous round was the bug.** It had been recorded
+as a limitation of the backwards direction and dismissed, because the handle
+moved, which was that report's complaint. It was a wrong unit, and it took a
+second report to be read as one.
+
+**The detach toggle changed the shape by itself**, moving a handle 4 units on and
+back off. Detaching converts the handle's position into an absolute placement and
+read that position off the screen, after the pin had been applied, so the
+generator applied the pin again to a number that already carried it. Because the
+pin holds the segment's mean rather than either handle, it answered the changed
+input with a different split. The conversion measures against a regeneration with
+this side's two segment pins cleared now, so it stores the construction rather
+than the screen. Re-attaching measures the other way round, against a
+regeneration without this side's offsets, because there both sides of the
+subtraction carry the pin and have to agree.
+
+One existing solver test was corrected in that round: it asserted the old cap,
+which is the bug written as an expectation.
+
+### Placement and readout
+
+The curvature label sits straight above the node. An offset that follows the
+gizmo's own axis also swings the number around as the segment turns, and a label
+the eye has to hunt for is worse than one that occasionally crosses the stub.
+
+The on-curve gizmo's distance from its curve is one constant in glyph units. A
+screen constant holds its pixel size at every zoom and grows without bound in
+glyph space, so zoomed out the control sat a large fraction of the letter from
+its segment. **Scaling it by the local stroke half-width is the better-argued
+design and was rejected on sight of it** — the gap then moves with every width
+edit. Worth recording as a decision rather than a mistake, because the argument
+will be just as convincing next time.
+
+The rib width plaque appeared during a tangent slide, which changes no width at
+all. It reads the drag's behavior name now, which the pointer tool publishes on
+the scene model, because the readouts have no route to the realtime modifier
+state of their own.
+
+**The suppression predicate had to be narrowed after it was written.** "Not one
+of the two width behaviors" and "is one of the two tangent behaviors" look
+equivalent and are not: a rib drag can carry a fixed-rib behavior instead, and
+that one does change widths, so the broader form would have silenced a plaque
+that was telling the truth.
+
+**Publishing the behavior name where it is set** rather than at drag start is
+what makes a key pressed mid-drag take effect on the next frame instead of the
+next drag.
+
+### One defect open
+
+The detach conversion anchors the offset on the emitted on-curve, which carries
+the on-curve nudge, while the generator anchors a detached placement on the
+un-nudged rib point and adds the handle nudge. The two agree only where the two
+nudges are equal. On the file it was found on both are 45, so it is invisible
+there. Provenance already publishes both vectors.
