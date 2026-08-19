@@ -57,6 +57,7 @@ import {
 } from "@fontra/core/utils.ts";
 import { normalizeLocation, unnormalizeLocation } from "@fontra/core/var-model.js";
 import * as vector from "@fontra/core/vector.js";
+import { BASE_EXPAND_BEHAVIOR_NAME } from "./base-expand-editing.js";
 import {
   getSkeletonPointAddress,
   makeSkeletonPointKey,
@@ -1056,6 +1057,10 @@ export class SceneModel {
     if (curvatureReadout) {
       return [curvatureReadout];
     }
+    const baseExpandReadout = this._getBaseExpandDragReadout(positionedGlyph);
+    if (baseExpandReadout) {
+      return [baseExpandReadout];
+    }
     const ribReadout = this._getRibDragReadout(positionedGlyph);
     if (ribReadout) {
       return [ribReadout];
@@ -1100,6 +1105,33 @@ export class SceneModel {
       y: anchor.y,
       kind: "skeleton",
       label: formatGeneratedCurvature(curvature),
+    };
+  }
+
+  // How far the base expansion drag has travelled, beside the point under the
+  // cursor. Measured against the ghost rather than against the drag's own delta,
+  // so it reports what the geometry actually did - the same rule the other
+  // readouts follow (re-read from live geometry, not captured at mousedown).
+  _getBaseExpandDragReadout(positionedGlyph) {
+    if (this.skeletonDragBehaviorName !== BASE_EXPAND_BEHAVIOR_NAME) {
+      return null;
+    }
+    const ghostPath = this.baseExpandGhostPath;
+    const pointIndex = this.initialClickedPointIndex;
+    const path = positionedGlyph?.glyph?.path;
+    if (!ghostPath || !path || pointIndex === undefined) {
+      return null;
+    }
+    const before = ghostPath.getPoint(pointIndex);
+    const after = path.getPoint(pointIndex);
+    if (!before || !after) {
+      return null;
+    }
+    return {
+      x: after.x,
+      y: after.y,
+      kind: "skeleton",
+      label: Math.hypot(after.x - before.x, after.y - before.y).toFixed(1),
     };
   }
 
