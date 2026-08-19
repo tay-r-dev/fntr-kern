@@ -915,3 +915,306 @@ collapses. That is not jitter.
 
 The corpus carries no handle nudge at all, so it cannot see round 9. No golden
 fixture moved for it, which is a gap rather than a result.
+
+---
+
+## Rib and skeleton editing (map F7, skeleton)
+
+**State: settled.** Nine rounds of editor and model work around the centerline
+itself: what a rib is worth, who may write it, and what the skeleton pen can do.
+
+### The rule the width distribution is stated in
+
+Three writers held two rules. A rib drag on canvas applied the same delta to both
+ribs, so a point at 60/0 answered a drag of 10 with 70/10 — a distribution of 75
+where the designer had set 100. The panel honoured the distribution instead.
+
+**Preserving the difference between the two sides is not preserving the
+distribution. Preserving the SHARE is.** A linked write that names one side
+states a total through that side's share, which is the panel's total-width write
+reached through one side. Unlinked, the two sides are independent and the write
+states one side. One function carries the rule and all three entry points go
+through it: the rib gizmo, the panel's left and right boxes, and the label scrubs
+on both.
+
+The same-delta rule survives for exactly one caller, the fixed-rib drag, where it
+is the right statement, because there one edge is held while the point follows
+the cursor.
+
+A side holding zero has no share, so it cannot state a total. That rib is pinned
+on the centerline and the drag refuses; only the distribution or the total lifts
+it off. This was the designer's decision when asked.
+
+**A comment claimed the rule the code did not implement.** The shared per-side
+writer said it preserved the distribution and preserved the difference.
+
+**The first fix touched the canvas path alone**, on the reasoning that changing
+the panel's per-side meaning was more than the report asked. That was wrong: the
+report asked for the two to agree, and one rule in one place is the only way they
+cannot drift apart again. The designer said so.
+
+### Ribs tied across a straight
+
+A smooth skeleton point with a single handle has no direction of its own, because
+smoothness forces the handle collinear with the straight on its other side, so
+the straight owns the direction. But the ribs at the two ends of that straight
+sat at independent offsets, which tilts the generated rib-to-rib line away from
+the skeleton straight, and the generated handle was then re-collinearized against
+the tilted line. Changing a rib width therefore rotated handles: 8.5 degrees over
+a half-width sweep with both ends controlled, about 16 with one.
+
+Separately the smoothing pass estimated its axis from handle **lengths**, and rib
+width sets handle length, so width rotated the axis there too — 1.1 degrees mean
+and 12.5 worst per single unit of width.
+
+The junction axis comes from the skeleton now: when both handles descend from the
+same skeleton point they carry the axis they were constructed on. And the ribs at
+both ends of a straight controlled by a tension point are tied to one shared
+offset, so the whole projected straight moves as a unit. Tied groups merge where
+straights share an end point, because a shared point has one rib and cannot sit
+at two offsets. A "Tied ribs" opt-out is on by default, and untying deliberately
+brings the rotation back in exchange for independent widths.
+
+**Deriving a direction from rounded coordinates inherits a width dependence.** A
+handle emitted at the rounded anchor plus axis times length carries its axis only
+to within about the arctangent of 0.7 over the length: 1.3 degrees at 32 units, 4
+at 10, 45 at 1. Any later stage that re-derives a direction from emitted points
+is therefore length-dependent, and width sets the length. That is the general
+trap behind both faults here.
+
+**The first coupling rule was too narrow.** Tying only *pairs* of controlled
+points missed the common case: one tension point anywhere on a straight ties the
+ribs at both of its ends, and the far end does not have to be controlled itself.
+An ordinary corner or a contour terminal is tied just the same, because what
+forces the coupling is the controlled point, not the pair.
+
+**Skipping the coupled accessor in the gizmo produced the original report** — the
+dragged gizmo travelled twice as far as the outline and its partner did not move
+at all. Coupling that only the generator knows about is worse than no coupling.
+
+**One residual tilt was measured and deliberately left.** At a corner far end the
+miter normal is the straight's normal rotated by a quarter of the turn, which
+leaves a second-order term of twice the half-width times the square of the sine
+of a quarter turn: 0.4 units at the widest end of the sweep, under the 0.3
+degrees the grid itself imposes on a handle that long.
+
+### The fixed-rib drag
+
+Three faults. **Single-sided drags rewrote the width distribution**: a
+single-sided contour renders the sum of its two half-widths on the visible side,
+so the split is nothing the drag should touch, but it wrote one side and left the
+other. That split is what the point returns to when the contour goes back to
+double-sided, so the drag was changing a shape the designer cannot see while they
+work. Single-sided drags write the **total** now, which preserves the split by
+construction. The panel greys the per-side numbers rather than hiding them, so
+they read as kept rather than lost.
+
+**The single-sided floor was on the wrong quantity**, flooring one side at a
+half-width of one and stopping the visible edge a whole far-side width from the
+skeleton — 41 units short of the centerline on a 40-unit far side. The floor is
+on the width the designer can see now, at two units.
+
+**The drag did not stop.** Widths clamped and everything else carried on, so past
+the floor the anchor edge the drag exists to pin walked away with it. One
+allowance is computed per point — how much of the drag that point's ribs can pay
+for — and everything travelling with the drag is held to it: the point's own
+movement, both sides' widths, and the segment's handles. Points are independent,
+so a narrow one cannot hold up a wide one, and the drag stands completely still
+only when every affected rib is at the floor. A tied group is held to whichever
+member gets there first, since the group shares one offset by definition.
+
+**A straight-skeleton test cannot see a handle bug.** The first tests used a
+two-point line fixture, so the handle-scaling path never ran: the fix tested
+green and was still wrong in the editor, because every real skeleton has curves.
+The property that catches it is idempotence past the floor — a drag far past it
+must produce geometry identical to one exactly at it — now asserted on the arc
+fixture.
+
+**Three things travel with one drag and each leaked separately**: the point's
+position, the far side's width, and the handles. Fixing them one at a time meant
+three rounds of "still does not stop". Enumerate what a clamp has to cover before
+clamping anything.
+
+**Linked ribs move both sides by one amount**, so with an uneven distribution the
+far side reaches the floor while the anchor still has room.
+
+**The test asserted the wrong direction twice.** Plain fixed-rib anchors the far
+side, which grows; only compress anchors the side the drag moves toward, and only
+that side shrinks. Nothing hits a floor without compress.
+
+**The distribution can only be preserved to within grid rounding.** Whole-unit
+sides cannot hold 60/20 at a total of 90 — it wants 67.5/22.5 and lands on 68/22,
+about 1 percent of distribution. Chasing that needs fractional widths. Rounding
+both sides independently, which the shared total-width mutator did, also missed
+the total itself by a unit and put the visible edge past the cursor. One side is
+rounded now and the other taken as the remainder.
+
+### The rib angle lock was never ported
+
+The donor could force a terminal rib onto an axis, so an open contour's end reads
+flat however the centerline arrives at it. The port carried the geometry — the
+effective-normal function existed in both the generator and the model — and
+nothing else: no canonical field, no copy across the generator dialect, no panel
+control. Both copies read donor field names that the schema drops on
+normalization, so the override could not fire at all.
+
+The canonical field is named for the direction the **rib** runs, which is what
+the designer sees, since a flat terminal is drawn along the rib. It is offered
+under **every** cap style, unlike the donor, where it was only offered on the
+flat cap: it decides the rib the cap is built on, so it supersedes the style
+rather than belonging to one. The effective-normal function is now one exported
+copy that the generator imports, per rail R-B.
+
+**Two dead code paths looked like a working feature.** Grepping for the donor's
+field names found the math in place in two files and made the port look
+half-done, when in fact none of it could ever run. The check that matters is
+whether the field survives normalization and the generator dialect copy, not
+whether a consumer exists.
+
+**Round and drop caps put points past the rib**, so the "every cap style" test
+can only assert the rib line itself on the flat-ended styles; for the others it
+asserts that the lock changes the outline at all.
+
+### Segment selection
+
+Clicking a segment selects its two on-curve points, and shift-clicking an
+adjacent segment *removed* the point the two shared, so a selection could never
+be built by walking along a contour. The fault was in the selection **mode**, not
+the hit test: shift maps to symmetric difference, which is right for a single
+point and wrong for a multi-point hit. The hit test was returning the correct two
+points all along.
+
+Shift-click toggles the segment as a unit now — add its points unless all are
+already selected, in which case remove them. Plain union would have fixed the
+report and removed any way to shift-click a segment off again.
+
+Path and skeleton segment hits both return from one hit-test function and the
+pointer tool is the only entry point for either, so one flag covered both
+geometry kinds with no second code path to patch.
+
+Left alone: the pointer tool reads the global event object at the mode-function
+call site while a local parameter holds the event. It works and it is fragile.
+
+### Three gaps between the skeleton and the ordinary path
+
+The skeleton pen ignored shift. The ordinary pen's whole-angle constraint is
+exported and the skeleton pen calls it, so there is one rule, applied only while
+a contour is being extended.
+
+**Reverse contour** offered nothing on a skeleton. The reversed flag was a level
+with a reader and no writer — stored per contour, normalized, read by the
+generator, set by nothing. The menu is its writer. Reversing a skeleton flips the
+emitted outline's winding and leaves the centerline as drawn.
+
+Control-click added to the selection, and control is spoken for in this fork.
+Adding is the Mac's command key alone now.
+
+**Two of the three items were not what they said they were.** The reverse item
+asked for a menu entry, and the work was almost entirely deciding what reverse
+means for a stroke. The control item read as a forkra defect and was upstream
+behaviour, correct on its own terms, colliding with a modifier this fork had
+taken. Neither could be planned from its own sentence.
+
+**A dead level is worth grepping for before designing around it.** Third one
+found: the contour serif block, the contour cap style beside it, and this flag.
+The check is the same each time — who writes it, not who reads it.
+
+**The point-key parser refuses a rib key**, because it requires exactly two
+fields and a rib carries three. It returns null rather than throwing, so a menu
+item would have been quietly enabled and done nothing on a rib.
+
+### Splitting a skeleton contour
+
+The break-contour menu entry answers a centerline point now. A closed contour
+opens at that point and stays one contour; an open one becomes two. The point
+appears at both ends of the cut, one copy keeping its id and the other taking a
+fresh one, because two points cannot share a name. The cut is one pure function
+in the model, with the editor supplying only the selection.
+
+Measured across the change: a closed contour's two generated loops become one
+open stroke of 10 points, and an open one's single 8-point stroke becomes two of
+4 and 6.
+
+**Two of the three warnings the item carried did not apply.** It asked for the
+generated-contour mapping to be updated in the same change, which the ordinary
+path does need — but the skeleton's one write path already replaces the contours
+whenever the topology changes, and a split is exactly that. It also asked for a
+cap on each new end, and cap style falls through a cascade, so an unset one draws
+butt like any other untouched endpoint. Both were true of the donor and are not
+true here. **An item's own warnings are as old as the item.**
+
+**The smooth flag had to be cleared on the two new ends.** A smooth point with a
+single handle has no direction of its own, which is the condition that ties ribs
+across a straight. Carried onto a cut end, a split would have quietly reweighted
+the stroke beside it — a geometry change nobody asked for, from a structural
+command.
+
+**Resolving all the ids before the first cut is what makes multiple splits
+work.** The cross-layer resolver reads structure and a cut changes it, so each
+point is found by its own id rather than through its original contour: cutting
+one contour twice moves the second point onto the new half.
+
+### A single-sided skeleton pen
+
+A single-sided contour puts all of its width on one side, so the line drawn is
+the edge of the letter rather than its middle. It was a flag to set after
+drawing, never a way to draw. There is a second pen in a dropdown now, laid out
+as the ordinary pen holds its cubic and quadratic pens. It is the first pen with
+one value changed — which side a new contour is born on — and it inherits
+everything else, so the two cannot drift.
+
+**The request was to copy the file and adjust it.** The pattern it pointed at is
+not a copy: the quadratic pen is a twelve-line subclass of the ordinary one. Same
+result, one file, and the two pens cannot fall out of step, which is rail R-B
+paying for itself rather than being argued for.
+
+**The generated copy of the icons folder is gitignored**, so a new tool icon goes
+in the source assets only. The bundle puts it where the page reads it.
+
+### Five small items
+
+**Point indices on a skeleton.** The existing point-indices layer reads the glyph
+path and a skeleton is not in it, so a second switchable layer counts the
+skeleton's own points, on-curves and handles alike, from 0 across every skeleton
+contour.
+
+**A continued stroke keeps its own width.** The pen gave every new point the
+model's fallback width, so extending a stroke stepped back to that width at the
+next point. An appended point takes the width of the endpoint it extends.
+
+**A hand may collapse a generated handle to zero.** The one-unit floor stops the
+solved handle riding along with the rib end, and that is the automatic answer's
+problem rather than the designer's. An attached adjustment, a pinned curvature
+and a detached placement may now put a handle exactly on its point. The ceiling
+is untouched.
+
+The curvature gizmo follows it down. The shared shift bottoms out when the
+shorter handle lands on its point, and the stored mean cannot describe anything
+past that — it reads zero for every length the survivor still has. So the drag
+writes the pin down to that floor and carries the rest as a displacement on the
+one handle still off its point. The generator applies the displacement first and
+the pin after, and a pin of zero leaves an already-collapsed pair alone, so the
+two compose. **A pin of zero also renders now**; it used to read as no pin at
+all, which threw the last step of the descent away on reload.
+
+**A handle offset stopped climbing past the ceiling.** A stored offset is a
+request and the clamp can refuse most of it. The store kept the whole request, so
+a drag that pushed against the ceiling left a value far beyond it and the next
+drag back moved nothing until it had walked all the way down. The generator
+publishes the part of each attached offset it honored, and a drag starts from
+that.
+
+**The hosted glyph panels draw on first load.** The letterspacer and the skeleton
+defaults live in host elements that enter the DOM only when the glyph info form
+is rebuilt. Their own update runs when the panel is switched on, which on a fresh
+load happens before that form exists, so both drew nothing and had no later event
+to bring them back. They refresh on the rebuild that re-attaches their host, and
+only on that one: the form is rebuilt on every selection change, and redrawing
+there would replace a control still under the cursor.
+
+### Manual matrices owed
+
+Per rail R-G, the editor halves of this work carry manual matrices rather than
+tests. Outstanding: type into left and right with the sides linked and unlinked,
+scrub both labels, drag both ribs at a distribution of 100, and drag the total in
+the panel while watching the other three fields.
