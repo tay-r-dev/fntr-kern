@@ -13,6 +13,13 @@ import { getGlyphInfoFromGlyphName } from "./glyph-data.js";
 import { expandToJoints, harmonizePathInPlace } from "./harmonization.js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
 import { offsetCubicSide } from "./offset-cubic.js";
+import {
+  buildContourSegments,
+  calculateContourNormalAtPoint,
+  collectCoupledPointGroups,
+  isStraightControlledSmoothPoint,
+  straightSegmentNormal,
+} from "./offset-contour.js";
 import { alignHandle, alignHandles } from "./path-functions.js";
 import {
   DEFAULT_UNDERSIDE_CUP_TENSION,
@@ -42,6 +49,8 @@ import {
   subVectors,
   vectorLength,
 } from "./vector.js";
+
+export { isStraightControlledSmoothPoint, straightSegmentNormal };
 
 export const SKELETON_SCHEMA_VERSION = 1;
 export const DEFAULT_SKELETON_WIDTH = 80;
@@ -3234,46 +3243,7 @@ function getNextGeneratedContourPointIndex(contour, pointIndex) {
 }
 
 export function buildSegmentsFromSkeletonPoints(points, closed) {
-  const segments = [];
-  const onCurveIndices = [];
-  for (let i = 0; i < points.length; i++) {
-    if (!points[i].type) {
-      onCurveIndices.push(i);
-    }
-  }
-  if (onCurveIndices.length < 2) {
-    return segments;
-  }
-  for (let i = 0; i < onCurveIndices.length - 1; i++) {
-    segments.push(makeSegment(points, onCurveIndices[i], onCurveIndices[i + 1]));
-  }
-  if (closed) {
-    const lastIdx = onCurveIndices[onCurveIndices.length - 1];
-    const firstIdx = onCurveIndices[0];
-    segments.push(makeWrappingSegment(points, lastIdx, firstIdx));
-  }
-  return segments;
-}
-
-/**
- * Is this on-curve point a smooth point whose only handle sits on `curveSegment`,
- * with a straight segment on the other side?
- *
- * Such a point cannot take its direction from its own handle: smoothness means
- * the handle has to be colinear with the straight segment, so the straight sets
- * the direction and the handle follows. Shared by contour generation and by rib
- * rendering/hit-testing, which must agree.
- * @param {Object} point - The shared on-curve skeleton point
- * @param {Object} straightSegment - The segment with no control points
- * @param {Object} curveSegment - The segment carrying the point's one handle
- * @returns {boolean}
- */
-export function isStraightControlledSmoothPoint(point, straightSegment, curveSegment) {
-  return (
-    point?.smooth === true &&
-    straightSegment?.controlPoints.length === 0 &&
-    curveSegment?.controlPoints.length > 0
-  );
+  return buildContourSegments(points, closed);
 }
 
 const ribTiedByDefault = (point) => point?.width?.tied !== false;
@@ -3303,181 +3273,34 @@ export function collectSerifTerminals(segments, isClosed, contourCapStyle) {
   return terminals;
 }
 
-/**
- * Does this segment tie the ribs at its two ends to a shared offset?
- *
- * It does when it is a straight carrying at least one straight-controlled smooth
- * point (above). Such a point's rib is perpendicular to the straight, and the
- * generated handle leaving it stays colinear with the projected straight to keep
- * the outline smooth — so unless the far rib sits at the same offset, the
- * projected straight tilts with width and takes the handle with it. One such
- * point anywhere on the straight is enough: the whole projected straight has to
- * move as a unit.
- *
- * It also does when a straight carries a SERIF at either end. A serif sits on
- * the end of a straight run of stem, and that run is one wall with one
- * thickness — two widths across it draw a wall that changes thickness where
- * nothing was drawn to change it. Attached to a straight is the whole condition:
- * a serif on a curve has no flat wall behind it and ties nothing.
- *
- * Either end may opt out via its tied flag, which frees the segment. The handles
- * then rotate with width again; that is the accepted cost of asking for
- * independent rib widths here.
- * @param {Object} segment - Candidate segment
- * @param {Object} prevSegment - Segment before it, or null
- * @param {Object} nextSegment - Segment after it, or null
- * @param {Function} isTied - Reads a point's tied flag
- * @param {Set} serifTerminals - Points carrying a serif cap
- * @returns {boolean}
- */
-function tiesTheRibsAtItsEnds(
-  segment,
-  prevSegment,
-  nextSegment,
-  isTied,
-  serifTerminals
-) {
-  const startPoint = segment?.startPoint;
-  const endPoint = segment?.endPoint;
-  if (!startPoint || !endPoint || startPoint === endPoint) {
-    return false;
-  }
-  if (!isTied(startPoint) || !isTied(endPoint)) {
-    return false;
-  }
-  if (
-    segment.controlPoints.length === 0 &&
-    (serifTerminals.has(startPoint) || serifTerminals.has(endPoint))
-  ) {
-    return true;
-  }
-  return (
-    isStraightControlledSmoothPoint(startPoint, segment, prevSegment) ||
-    isStraightControlledSmoothPoint(endPoint, segment, nextSegment)
-  );
-}
-
-/**
- * On-curve points whose ribs must share one offset, keyed by point. Each value
- * is the whole group, the key point included; points with an independent rib are
- * absent.
- *
- * The rule is per straight segment (above); segments that share an end point
- * merge, because that shared point has one rib and cannot sit at two offsets at
- * once. This is the single definition of the coupling — the generator resolves
- * widths through it, and rendering and hit-testing read it back through
- * getTiedRibGroup, so the outline and the gizmo cannot disagree.
- * @param {Array} segments - The contour's segments, in order
- * @param {boolean} isClosed - Whether the contour is closed
- * @param {Function} isTied - Reads a point's tied flag; defaults to the canonical field
- * @param {Set} serifTerminals - Points carrying a serif cap; empty ties none
- * @returns {Map} skeleton point -> array of skeleton points
- */
+// The single definition of the coupling lives in offset-contour.js. What the
+// skeleton adds is its own opt-out — `width.tied` on either end frees a straight
+// from the shared offset — and its serif terminals, both of which are fields a
+// base contour does not have.
 export function collectTiedRibGroups(
   segments,
   isClosed,
   isTied = ribTiedByDefault,
   serifTerminals = new Set()
 ) {
-  const groupByPoint = new Map();
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
-    const prevSegment =
-      isClosed || i > 0 ? segments[(i - 1 + segments.length) % segments.length] : null;
-    const nextSegment =
-      isClosed || i < segments.length - 1 ? segments[(i + 1) % segments.length] : null;
-    if (
-      !tiesTheRibsAtItsEnds(segment, prevSegment, nextSegment, isTied, serifTerminals)
-    ) {
-      continue;
-    }
-    const group = [];
-    for (const point of [
-      ...(groupByPoint.get(segment.startPoint) || [segment.startPoint]),
-      ...(groupByPoint.get(segment.endPoint) || [segment.endPoint]),
-    ]) {
-      if (!group.includes(point)) {
-        group.push(point);
-      }
-    }
-    for (const point of group) {
-      groupByPoint.set(point, group);
-    }
-  }
-  return groupByPoint;
+  return collectCoupledPointGroups(segments, isClosed, isTied, serifTerminals);
 }
 
-/**
- * The rib normal for a point whose direction comes from a straight segment:
- * perpendicular to that segment, with no miter averaging against the handle.
- * @param {Object} straightSegment - The straight segment setting the direction
- * @returns {Object} Normal {x, y}
- */
-export function straightSegmentNormal(straightSegment) {
-  return rotateVector90CW(
-    normalizeVector(subVectors(straightSegment.endPoint, straightSegment.startPoint))
-  );
-}
-
+// The generic normal plus the skeleton's per-point rib-angle override, which is
+// a pure post-transform of the result and so composes after it.
 export function calculateNormalAtSkeletonPoint(skeletonContour, pointIndexOrPointId) {
   const points = skeletonContour?.points || [];
-  if (points.length < 2) {
-    return { x: 0, y: 1 };
-  }
   const pointIndex =
     pointIndexOrPointId >= 0 && pointIndexOrPointId < points.length
       ? pointIndexOrPointId
       : points.findIndex((point) => point.id === pointIndexOrPointId);
+  const normal = calculateContourNormalAtPoint(
+    points,
+    skeletonContour?.closed,
+    pointIndex
+  );
   const point = points[pointIndex];
-  if (!point || point.type) {
-    return { x: 0, y: 1 };
-  }
-
-  const segments = buildSegmentsFromSkeletonPoints(points, skeletonContour.closed);
-  let incomingSegment = null;
-  let outgoingSegment = null;
-  for (const segment of segments) {
-    if (segment.endPoint === point) {
-      incomingSegment = segment;
-    }
-    if (segment.startPoint === point) {
-      outgoingSegment = segment;
-    }
-  }
-
-  const dir1 = incomingSegment ? segmentEndDirection(incomingSegment) : null;
-  const dir2 = outgoingSegment ? segmentStartDirection(outgoingSegment) : null;
-
-  if (!dir1 && dir2) {
-    return getEffectiveNormal(point, rotateVector90CW(dir2));
-  }
-  if (dir1 && !dir2) {
-    return getEffectiveNormal(point, rotateVector90CW(dir1));
-  }
-  if (!dir1 && !dir2) {
-    return getEffectiveNormal(point, { x: 0, y: 1 });
-  }
-
-  // A smooth point with one handle takes its direction from the straight segment
-  // on the other side, matching contour generation (SKELETON-FEATURE-MODEL §3.0).
-  // Without this the rib gizmo sits at a miter angle the outline never uses.
-  if (isStraightControlledSmoothPoint(point, incomingSegment, outgoingSegment)) {
-    return getEffectiveNormal(point, straightSegmentNormal(incomingSegment));
-  }
-  if (isStraightControlledSmoothPoint(point, outgoingSegment, incomingSegment)) {
-    return getEffectiveNormal(point, straightSegmentNormal(outgoingSegment));
-  }
-
-  const dot = dir1.x * dir2.x + dir1.y * dir2.y;
-  const cross = dir1.x * dir2.y - dir1.y * dir2.x;
-  const halfAngle = Math.atan2(cross, dot) / 2;
-  const cosH = Math.cos(halfAngle);
-  const sinH = Math.sin(halfAngle);
-  const bisector = normalizeVector({
-    x: dir1.x * cosH - dir1.y * sinH,
-    y: dir1.x * sinH + dir1.y * cosH,
-  });
-  return getEffectiveNormal(point, rotateVector90CW(bisector));
+  return point && !point.type ? getEffectiveNormal(point, normal) : normal;
 }
 
 export function projectSkeletonRibPoint(point, normal, halfWidth, side, nudge = 0) {
@@ -3549,47 +3372,6 @@ export function clearSkeletonData(layer) {
     return;
   }
   deleteFontraInternalSection(layer, FONTRA_INTERNAL_SECTIONS.SKELETON);
-}
-
-function makeSegment(points, startIdx, endIdx) {
-  return {
-    startPoint: points[startIdx],
-    endPoint: points[endIdx],
-    controlPoints: points.slice(startIdx + 1, endIdx).filter((point) => point.type),
-  };
-}
-
-function makeWrappingSegment(points, lastIdx, firstIdx) {
-  return {
-    startPoint: points[lastIdx],
-    endPoint: points[firstIdx],
-    controlPoints: [
-      ...points.slice(lastIdx + 1).filter((point) => point.type),
-      ...points.slice(0, firstIdx).filter((point) => point.type),
-    ],
-  };
-}
-
-function segmentStartDirection(segment) {
-  if (!segment.controlPoints.length) {
-    return normalizeVector(subVectors(segment.endPoint, segment.startPoint));
-  }
-  const bezier = createBezierFromSegment(segment);
-  const deriv = bezier.derivative(0);
-  return normalizeVector({ x: deriv.x, y: deriv.y });
-}
-
-function segmentEndDirection(segment) {
-  if (!segment.controlPoints.length) {
-    return normalizeVector(subVectors(segment.endPoint, segment.startPoint));
-  }
-  const bezier = createBezierFromSegment(segment);
-  const deriv = bezier.derivative(1);
-  return normalizeVector({ x: deriv.x, y: deriv.y });
-}
-
-function createBezierFromSegment(segment) {
-  return new Bezier(segment.startPoint, ...segment.controlPoints, segment.endPoint);
 }
 
 // Apply a point's rib angle lock to a computed normal, keeping the sign of the
