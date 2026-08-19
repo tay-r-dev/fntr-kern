@@ -3716,3 +3716,86 @@ the contour, and the contour is what was being harmonized.
 joint is done" throws away the whole remainder of the correction. The limit is
 re-measured from wherever the shortened step landed, and there is nearly always
 more room there.
+
+---
+
+## 51. Harmonize still improved on the second press — three more causes
+
+Entry 50 fixed one reason the command had to be run more than once. The report
+came straight back: it still allows multiple steps and each step does something.
+Three more causes, all found by running the command ten times over four hundred
+random four-joint rings and measuring what still moved.
+
+### 1. The cusp floor was measured from the handle it was limiting
+
+A handle may not be shrunk past a floor, so a curve is never collapsed into a
+cusp. The floor was 15 per cent of that handle's own length, read at the moment
+the command started. Run the command again and the floor is read again, from the
+handle that was just cut, and another 85 per cent of what is left may go. Ten
+presses walked a handle down to nothing. On one test ring an off-curve point
+landed exactly on its on-curve neighbour.
+
+The floor is now a fraction of the chord between the segment's two on-curve
+points. Those two points do not move while handles are being corrected, so it is
+the same number on every run. Half a chord is about the handle length of a
+well-formed quarter arc, so the margin keeps the meaning it had.
+
+### 2. The tension ceiling was enforced once, at the start
+
+A handle may not reach past the point where its segment's two handle lines
+cross. Each joint limits its own step against that ceiling, but the handle it
+moves belongs to a segment the next joint along shares. A neighbour's step could
+push it back over, and nothing looked again until the next run. That one
+over-tension handle then blocked its joint for the rest of the sweep, and
+released a move of a hundred units the moment the command was pressed again.
+
+The ceiling is now enforced on every pass.
+
+### 3. Rounding to whole units is a nudge the sweep never saw
+
+The sweep settles on fractional coordinates. The editor rounds them, and from
+the rounded drawing there is a real correction to make again — which is exactly
+what the second press of the button did.
+
+The command now does that itself: run the sweep, round, and run it again from
+the rounded drawing, until a drawing comes round a second time. On almost
+everything that is two attempts. Every state it lands on is scored, and the best
+one is what it leaves behind. The drawing it was handed counts as one of the
+candidates, so a command that can only make things worse leaves the drawing
+alone — which is what makes the second press a no-op.
+
+A handle over the tension ceiling outranks any amount of curvature in that
+score. An over-tension handle is a defect and not a trade.
+
+### 4. Result
+
+Over four hundred random rings, ten calls each:
+
+|        | still moving after the first call |
+| ------ | --------------------------------- |
+| before | essentially all of them           |
+| after  | 2 of 400                          |
+
+The mean worst discontinuity after one call is now 1.506e-3 against 1.492e-3
+after ten, so the first call is within one per cent of everything ten calls can
+reach. No ring ends worse than it started.
+
+Full suite 1,902 passing. Two new tests: the clamp floor is the same on a second
+call, and a rounded ring lands on the same whole units when the command is run
+twice.
+
+### 5. Findings
+
+**A limit measured from the thing it limits is a rate, not a limit.** The cusp
+floor allowed the same proportional cut every time it was asked, because it was
+re-read from what it had just cut. A limit has to be anchored to something the
+operation does not move.
+
+**An invariant established at setup is an assumption by the second pass.** The
+tension ceiling was true when the sweep started and was not true a pass later,
+because a neighbour had moved. Anything the sweep relies on has to be
+re-established inside the sweep.
+
+**The grid is part of the problem, so it belongs inside the loop.** Rounding was
+treated as a presentation step after the answer. It is a move like any other,
+and the answer has to be stable under it.

@@ -48,7 +48,10 @@ export const HARMONIZE_DEFAULTS = {
   // repair, so a joint that does not need it does not move.
   slideOnCurve: false,
   handleBias: 1.0, //     0 = move the node, 1 = move the handles
-  cuspSafetyMargin: 0.85, // never shrink a handle below 15% of its length
+  // Never shrink a handle below 15% of a nominal handle for its segment, which
+  // is measured from the segment's chord and not from the handle itself. See
+  // `cuspFloors`.
+  cuspSafetyMargin: 0.85,
   toleranceUnits: 0.01, // convergence threshold, in font units
   // Sweeps over the whole candidate set, not passes per point. An isolated
   // joint is solved in one; a ring of coupled joints (an 'o') takes ~8. The
@@ -398,6 +401,36 @@ function jointSegments(path, ctx) {
   );
 }
 
+//
+// The shortest a handle at this joint may ever get.
+//
+// The floor is a fraction of the chord between its segment's two on-curve
+// points, not of the handle itself. Two on-curve points do not move while
+// handles are being corrected, so this is the same number every time the
+// command runs. A floor taken from the handle was measured again from the
+// shortened handle on the next call and allowed another cut of the same size,
+// so running harmonize repeatedly walked a handle down to nothing.
+//
+// Half a chord is about the handle length of a well-formed quarter arc, so the
+// margin keeps the meaning it had: a fraction of a nominal handle.
+//
+function cuspFloors(path, ctx, segments, cuspSafetyMargin) {
+  const fraction = (1 - cuspSafetyMargin) / 2;
+  const floorFor = (nearSide, handleLength) => {
+    const segment = segments.find((candidate) => candidate.nearSide === nearSide);
+    if (!segment) {
+      // No segment on this side to take a chord from: fall back to the handle.
+      return (1 - cuspSafetyMargin) * handleLength;
+    }
+    const points = segmentPositions(path, segment.indices);
+    return fraction * distance(points[0], points[3]);
+  };
+  return {
+    P: floorFor("end", distance(ctx.node, ctx.P)),
+    N: floorFor("start", distance(ctx.node, ctx.N)),
+  };
+}
+
 function segmentPositions(path, indices) {
   return indices.map((index) => {
     const [x, y] = path.getPointPosition(index);
@@ -697,6 +730,15 @@ export function harmonizePath(path, pointIndices, options = {}) {
 // comes back out the other side is a plain object with plain arrays — which
 // then fails interpolation with `coordinates.addItemwise is not a function`.
 //
+// How many times the sweep may be run and rounded before it gives up on
+// reaching a whole-unit answer that stays put. Each attempt starts from the
+// rounded geometry the previous one produced, and the loop stops as soon as a
+// state comes round a second time — which on almost every drawing is the second
+// attempt. The budget only matters where the grid and the handle limits push
+// the geometry round a long orbit: over 400 random rings it takes 11 of them
+// out of the 0.5 per cent that still move after one call at a budget of 12.
+const ROUNDING_SETTLE_ATTEMPTS = 40;
+
 export function harmonizePathInPlace(path, pointIndices, options = {}) {
   const {
     continuity,
@@ -728,257 +770,353 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     ? [...new Set(pointIndices)].sort((a, b) => a - b)
     : expandToJoints(path, undefined);
 
-  if (equalizeTension) {
-    // donor order: balance, harmonize, balance (SuperTool+Harmonize.m:61,75)
+  // The whole thing may have to run more than once, and only because of the
+  // grid. The sweep settles on fractional coordinates. Rounding them to whole
+  // units is a nudge the sweep never saw, and from the rounded geometry there
+  // is a real correction to make again. Running it here is what the user used
+  // to do by pressing the button again.
+  //
+  // Rounding is still applied once per attempt and never inside the sweep: a
+  // residual that is rounded mid-sweep sits permanently above the convergence
+  // tolerance and nothing ever settles.
+  //
+  // Rounding can also put the geometry into a short cycle rather than onto a
+  // fixed point: attempt A rounds to B, and B rounds back to A. Every state the
+  // loop lands on is kept, the loop stops the moment one comes round again, and
+  // the best of them is what the command leaves behind. Picking the best of a
+  // cycle deterministically is what makes running the command twice a no-op.
+  //
+  const attempts = roundCoordinates ? ROUNDING_SETTLE_ATTEMPTS : 1;
+  const seen = new Set();
+  let states = [];
+  let best = null;
+  let bestStates = null;
+
+  // How far the drawing is from what the command is trying to reach. A handle
+  // over the tension ceiling is a defect and not a trade, so any number of them
+  // outranks any amount of curvature discontinuity.
+  const jointResidual = () => {
+    let violations = 0;
+    let residual = 0;
     for (const pointIndex of candidates) {
       const ctx = getJointContext(path, pointIndex);
-      if (!ctx.reason) {
-        equalizeJointSegments(path, ctx, touched);
+      if (ctx.reason) {
+        continue;
+      }
+      const discontinuity = measureG2Discontinuity(ctx);
+      residual += Number.isFinite(discontinuity) ? discontinuity : 0;
+      for (const { nearSide, indices } of jointSegments(path, ctx)) {
+        if (
+          handleTension(segmentPositions(path, indices), nearSide) > maxHandleTension
+        ) {
+          violations += 1;
+        }
       }
     }
-  }
+    return { violations, residual };
+  };
 
-  const states = candidates.map((pointIndex) => {
-    const state = {
-      pointIndex,
-      contourIndex: path.getContourIndex(pointIndex),
-      status: undefined,
-      reason: undefined,
-      iterations: 0,
-      floors: undefined,
-      segments: [],
-      tensionReduced: false,
-      quiet: false,
-      tensionLimited: false,
-      clamped: false,
-      construction: "g2",
-      mode: continuity === "G3" ? "g3" : "g2",
-      done: false,
-    };
+  const isBetter = (candidate, incumbent) =>
+    candidate.violations !== incumbent.violations
+      ? candidate.violations < incumbent.violations
+      : candidate.residual < incumbent.residual;
 
-    let ctx = getJointContext(path, pointIndex);
-    if (ctx.reason) {
+  best = { score: jointResidual(), coordinates: Array.from(path.coordinates) };
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (equalizeTension) {
+      // donor order: balance, harmonize, balance (SuperTool+Harmonize.m:61,75)
+      for (const pointIndex of candidates) {
+        const ctx = getJointContext(path, pointIndex);
+        if (!ctx.reason) {
+          equalizeJointSegments(path, ctx, touched);
+        }
+      }
+    }
+
+    states = candidates.map((pointIndex) => {
+      const state = {
+        pointIndex,
+        contourIndex: path.getContourIndex(pointIndex),
+        status: undefined,
+        reason: undefined,
+        iterations: 0,
+        floors: undefined,
+        segments: [],
+        tensionReduced: false,
+        quiet: false,
+        tensionLimited: false,
+        clamped: false,
+        construction: "g2",
+        mode: continuity === "G3" ? "g3" : "g2",
+        done: false,
+      };
+
+      let ctx = getJointContext(path, pointIndex);
+      if (ctx.reason) {
+        return state;
+      }
+
+      // An over-tension handle is a defect to correct, not a state to preserve:
+      // shorten it back to the ceiling first, so the sweep starts from a joint
+      // whose handle lines do not cross.
+      state.tensionReduced = enforceHandleTension(path, ctx, maxHandleTension, touched);
+      if (state.tensionReduced) {
+        ctx = getJointContext(path, pointIndex);
+      }
+
+      state.segments = jointSegments(path, ctx);
+      // A handle may never end up shorter than this, however many passes it takes
+      // and however many times the command is run.
+      state.floors = cuspFloors(path, ctx, state.segments, cuspSafetyMargin);
       return state;
+    });
+
+    function settle(state, status, reason) {
+      state.status = status;
+      state.reason = reason;
+      state.done = true;
     }
 
-    // An over-tension handle is a defect to correct, not a state to preserve:
-    // shorten it back to the ceiling first, so the sweep starts from a joint
-    // whose handle lines do not cross.
-    state.tensionReduced = enforceHandleTension(path, ctx, maxHandleTension, touched);
-    if (state.tensionReduced) {
-      ctx = getJointContext(path, pointIndex);
+    for (let pass = 0; pass < maxIterations; pass++) {
+      let anyMoved = false;
+
+      for (const state of states) {
+        if (state.done) {
+          continue;
+        }
+
+        let ctx = getJointContext(path, state.pointIndex);
+        if (ctx.reason) {
+          settle(state, "skipped", ctx.reason);
+          continue;
+        }
+
+        // The ceiling is enforced on every pass, not only at setup. Each joint
+        // limits its own step, but the handle it shortens belongs to a segment
+        // the next joint along shares, so a neighbour's step can push it back
+        // over. Left until the next call, that one over-tension handle blocked
+        // this joint for the rest of the sweep and then released a large move as
+        // soon as the command was run again.
+        if (enforceHandleTension(path, ctx, maxHandleTension, touched)) {
+          state.tensionReduced = true;
+          state.quiet = false;
+          anyMoved = true;
+          ctx = getJointContext(path, state.pointIndex);
+          if (ctx.reason) {
+            settle(state, "skipped", ctx.reason);
+            continue;
+          }
+        }
+
+        if (state.mode === "g3") {
+          const stencil = jointStencil(path, ctx);
+          const limits = { floors: state.floors, maxHandleTension };
+          let outcome = null;
+          if (stencil) {
+            const held = g3Attempt(stencil, ctx.node, limits);
+            outcome = held
+              ? { node: null, targets: held }
+              : slideOnCurve
+                ? g3AfterSlide(stencil, limits)
+                : null;
+          }
+          if (outcome) {
+            const movement = Math.max(
+              distance(outcome.targets.P, ctx.P),
+              distance(outcome.targets.N, ctx.N),
+              outcome.node ? distance(outcome.node, ctx.node) : 0
+            );
+            if (movement < toleranceUnits) {
+              state.quiet = true;
+              continue;
+            }
+            state.quiet = false;
+            if (outcome.node) {
+              writePoint(path, touched, state.pointIndex, outcome.node);
+            }
+            writePoint(path, touched, ctx.indices.P, outcome.targets.P);
+            writePoint(path, touched, ctx.indices.N, outcome.targets.N);
+            state.construction = "g3";
+            state.iterations += 1;
+            anyMoved = true;
+            continue;
+          }
+          // No admissible answer here. G2 is the rung below, and it starts from
+          // the geometry as it stands rather than from anything G3 attempted.
+          state.mode = "g2";
+        }
+
+        const solution = calculateHarmonicTarget(ctx);
+        if (!solution) {
+          settle(state, "skipped", "degenerate");
+          continue;
+        }
+
+        const fixupLength = vectorLength(solution.fixup);
+        if (fixupLength < toleranceUnits) {
+          state.quiet = true;
+          continue;
+        }
+        state.quiet = false;
+
+        // The node and the handles always end up `fixup` apart no matter how the
+        // bias splits the motion, so one handle grows and the other shrinks by
+        // exactly |fixup|. Scale the whole step back if that would take the
+        // shrinking one past its floor.
+        let scale = 1;
+        for (const name of ["P", "N"]) {
+          const length = distance(ctx.node, ctx[name]);
+          const shrunk = distance(ctx.node, addVectors(ctx[name], solution.fixup));
+          if (shrunk < state.floors[name]) {
+            scale = Math.min(scale, (length - state.floors[name]) / fixupLength);
+          }
+        }
+        const clamped = scale < 1;
+        scale = Math.max(scale, 0);
+
+        // Second limit, on the handle that *grows*: never let it reach past its
+        // segment's Tunni point, where the segment's two handle lines cross each
+        // other. The tension is monotone in the step size, so bisect for the
+        // largest admissible step rather than case-analysing the sign.
+        let tensionLimited = false;
+        if (
+          scale > 0 &&
+          tensionAfterStep(
+            path,
+            ctx,
+            state.segments,
+            mulVectorScalar(solution.fixup, scale),
+            handleBias
+          ) > maxHandleTension
+        ) {
+          let low = 0;
+          let high = scale;
+          for (let step = 0; step < 24; step++) {
+            const mid = (low + high) / 2;
+            const tension = tensionAfterStep(
+              path,
+              ctx,
+              state.segments,
+              mulVectorScalar(solution.fixup, mid),
+              handleBias
+            );
+            if (tension > maxHandleTension) {
+              high = mid;
+            } else {
+              low = mid;
+            }
+          }
+          scale = low;
+          tensionLimited = true;
+        }
+
+        if (scale > 0) {
+          applyFixup(
+            path,
+            ctx,
+            mulVectorScalar(solution.fixup, scale),
+            handleBias,
+            touched
+          );
+          state.iterations += 1;
+          anyMoved = true;
+        }
+        // A limit shortens this step. It does not finish the joint: the next
+        // pass measures the limit again from where the step landed, and there is
+        // usually more room there. Settling here took one scaled-back step and
+        // stopped, which is why running the command again used to keep helping.
+        state.tensionLimited = state.tensionLimited || tensionLimited;
+        state.clamped = state.clamped || clamped;
+      }
+
+      if (!anyMoved) {
+        break;
+      }
     }
 
-    state.segments = jointSegments(path, ctx);
-    // Floors are captured up front, from the geometry the sweep starts with: a
-    // handle may never end up shorter than this, however many passes it takes.
-    state.floors = {
-      P: (1 - cuspSafetyMargin) * distance(ctx.node, ctx.P),
-      N: (1 - cuspSafetyMargin) * distance(ctx.node, ctx.N),
-    };
-    return state;
-  });
-
-  function settle(state, status, reason) {
-    state.status = status;
-    state.reason = reason;
-    state.done = true;
-  }
-
-  for (let pass = 0; pass < maxIterations; pass++) {
-    let anyMoved = false;
-
+    // The sweep is over. A joint that was quiet on the last pass is finished,
+    // whatever it ran into on the way, because quiet means its own correction is
+    // now under the tolerance.
     for (const state of states) {
       if (state.done) {
         continue;
       }
-
-      const ctx = getJointContext(path, state.pointIndex);
-      if (ctx.reason) {
-        settle(state, "skipped", ctx.reason);
-        continue;
-      }
-
-      if (state.mode === "g3") {
-        const stencil = jointStencil(path, ctx);
-        const limits = { floors: state.floors, maxHandleTension };
-        let outcome = null;
-        if (stencil) {
-          const held = g3Attempt(stencil, ctx.node, limits);
-          outcome = held
-            ? { node: null, targets: held }
-            : slideOnCurve
-              ? g3AfterSlide(stencil, limits)
-              : null;
+      if (state.quiet) {
+        if (state.iterations) {
+          settle(state, "harmonized", undefined);
+        } else {
+          settle(state, "skipped", "already-harmonic");
         }
-        if (outcome) {
-          const movement = Math.max(
-            distance(outcome.targets.P, ctx.P),
-            distance(outcome.targets.N, ctx.N),
-            outcome.node ? distance(outcome.node, ctx.node) : 0
-          );
-          if (movement < toleranceUnits) {
-            state.quiet = true;
-            continue;
-          }
-          state.quiet = false;
-          if (outcome.node) {
-            writePoint(path, touched, state.pointIndex, outcome.node);
-          }
-          writePoint(path, touched, ctx.indices.P, outcome.targets.P);
-          writePoint(path, touched, ctx.indices.N, outcome.targets.N);
-          state.construction = "g3";
-          state.iterations += 1;
-          anyMoved = true;
+      } else if (state.tensionLimited) {
+        settle(state, "partial", "tension-limited");
+      } else if (state.clamped) {
+        settle(state, "partial", "clamped");
+      } else {
+        settle(state, "partial", "not-converged");
+      }
+    }
+
+    if (equalizeTension) {
+      for (const state of states) {
+        if (state.status === "skipped") {
           continue;
         }
-        // No admissible answer here. G2 is the rung below, and it starts from
-        // the geometry as it stands rather than from anything G3 attempted.
-        state.mode = "g2";
-      }
-
-      const solution = calculateHarmonicTarget(ctx);
-      if (!solution) {
-        settle(state, "skipped", "degenerate");
-        continue;
-      }
-
-      const fixupLength = vectorLength(solution.fixup);
-      if (fixupLength < toleranceUnits) {
-        state.quiet = true;
-        continue;
-      }
-      state.quiet = false;
-
-      // The node and the handles always end up `fixup` apart no matter how the
-      // bias splits the motion, so one handle grows and the other shrinks by
-      // exactly |fixup|. Scale the whole step back if that would take the
-      // shrinking one past its floor.
-      let scale = 1;
-      for (const name of ["P", "N"]) {
-        const length = distance(ctx.node, ctx[name]);
-        const shrunk = distance(ctx.node, addVectors(ctx[name], solution.fixup));
-        if (shrunk < state.floors[name]) {
-          scale = Math.min(scale, (length - state.floors[name]) / fixupLength);
+        const ctx = getJointContext(path, state.pointIndex);
+        if (!ctx.reason) {
+          equalizeJointSegments(path, ctx, touched);
+          // balance averages the two tensions of a segment, and that average can
+          // itself land above the ceiling — so the invariant is re-established
+          // here rather than assumed to have survived
+          state.tensionReduced =
+            enforceHandleTension(
+              path,
+              getJointContext(path, state.pointIndex),
+              maxHandleTension,
+              touched
+            ) || state.tensionReduced;
         }
       }
-      const clamped = scale < 1;
-      scale = Math.max(scale, 0);
-
-      // Second limit, on the handle that *grows*: never let it reach past its
-      // segment's Tunni point, where the segment's two handle lines cross each
-      // other. The tension is monotone in the step size, so bisect for the
-      // largest admissible step rather than case-analysing the sign.
-      let tensionLimited = false;
-      if (
-        scale > 0 &&
-        tensionAfterStep(
-          path,
-          ctx,
-          state.segments,
-          mulVectorScalar(solution.fixup, scale),
-          handleBias
-        ) > maxHandleTension
-      ) {
-        let low = 0;
-        let high = scale;
-        for (let step = 0; step < 24; step++) {
-          const mid = (low + high) / 2;
-          const tension = tensionAfterStep(
-            path,
-            ctx,
-            state.segments,
-            mulVectorScalar(solution.fixup, mid),
-            handleBias
-          );
-          if (tension > maxHandleTension) {
-            high = mid;
-          } else {
-            low = mid;
-          }
-        }
-        scale = low;
-        tensionLimited = true;
-      }
-
-      if (scale > 0) {
-        applyFixup(
-          path,
-          ctx,
-          mulVectorScalar(solution.fixup, scale),
-          handleBias,
-          touched
-        );
-        state.iterations += 1;
-        anyMoved = true;
-      }
-      // A limit shortens this step. It does not finish the joint: the next
-      // pass measures the limit again from where the step landed, and there is
-      // usually more room there. Settling here took one scaled-back step and
-      // stopped, which is why running the command again used to keep helping.
-      state.tensionLimited = state.tensionLimited || tensionLimited;
-      state.clamped = state.clamped || clamped;
     }
 
-    if (!anyMoved) {
+    if (roundCoordinates) {
+      // Once, at the end, and only on points this operation moved. Rounding
+      // during the sweep would put the residual permanently above the
+      // convergence tolerance, so nothing would ever settle.
+      for (const index of [...touched].sort((a, b) => a - b)) {
+        const [x, y] = path.getPointPosition(index);
+        const rounded = roundVector({ x, y });
+        if (rounded.x !== x || rounded.y !== y) {
+          path.setPointPosition(index, rounded.x, rounded.y);
+        }
+      }
+    }
+
+    const coordinates = Array.from(path.coordinates);
+    const score = jointResidual();
+    if (isBetter(score, best.score)) {
+      best = { score, coordinates };
+      bestStates = states;
+    }
+    const key = coordinates.join(",");
+    if (seen.has(key)) {
       break;
     }
+    seen.add(key);
   }
 
-  // The sweep is over. A joint that was quiet on the last pass is finished,
-  // whatever it ran into on the way, because quiet means its own correction is
-  // now under the tolerance.
-  for (const state of states) {
-    if (state.done) {
-      continue;
-    }
-    if (state.quiet) {
-      if (state.iterations) {
-        settle(state, "harmonized", undefined);
-      } else {
-        settle(state, "skipped", "already-harmonic");
-      }
-    } else if (state.tensionLimited) {
-      settle(state, "partial", "tension-limited");
-    } else if (state.clamped) {
-      settle(state, "partial", "clamped");
-    } else {
-      settle(state, "partial", "not-converged");
-    }
-  }
-
-  if (equalizeTension) {
-    for (const state of states) {
-      if (state.status === "skipped") {
-        continue;
-      }
-      const ctx = getJointContext(path, state.pointIndex);
-      if (!ctx.reason) {
-        equalizeJointSegments(path, ctx, touched);
-        // balance averages the two tensions of a segment, and that average can
-        // itself land above the ceiling — so the invariant is re-established
-        // here rather than assumed to have survived
-        state.tensionReduced =
-          enforceHandleTension(
-            path,
-            getJointContext(path, state.pointIndex),
-            maxHandleTension,
-            touched
-          ) || state.tensionReduced;
-      }
-    }
-  }
-
-  if (roundCoordinates) {
-    // Once, at the end, and only on points this operation moved. Rounding
-    // during the sweep would put the residual permanently above the
-    // convergence tolerance, so nothing would ever settle.
-    for (const index of [...touched].sort((a, b) => a - b)) {
-      const [x, y] = path.getPointPosition(index);
-      const rounded = roundVector({ x, y });
-      if (rounded.x !== x || rounded.y !== y) {
-        path.setPointPosition(index, rounded.x, rounded.y);
-      }
+  // Put the best state back if the loop wandered off it. The geometry the
+  // command was handed counts as one of the candidates, so a command that can
+  // only make things worse leaves the drawing alone — which is what makes
+  // running it a second time do nothing.
+  states = bestStates ?? states;
+  for (let index = 0; index < path.numPoints; index++) {
+    const [x, y] = path.getPointPosition(index);
+    const bestX = best.coordinates[index * 2];
+    const bestY = best.coordinates[index * 2 + 1];
+    if (bestX !== x || bestY !== y) {
+      path.setPointPosition(index, bestX, bestY);
+      touched.add(index);
     }
   }
 

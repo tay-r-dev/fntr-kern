@@ -62,7 +62,7 @@ function asymmetricPath() {
 }
 
 // outgoing outer handle is nearly degenerate: the harmonic target sits far
-// past the 15% floor of the outgoing handle -> clamping territory
+// past the floor of the outgoing handle -> clamping territory
 function clampPath() {
   return makeContour([
     { x: 0, y: 0 },
@@ -367,6 +367,17 @@ describe("harmonization: a ring of coupled joints", () => {
     }
   });
 
+  it("lands on the same whole units when it is run twice", () => {
+    // The editor rounds to whole units, and rounding is a nudge the sweep never
+    // saw, so from the rounded drawing there is a real correction to make
+    // again. That is what the second press of the button used to do.
+    const path = ringPath();
+    harmonizePathInPlace(path, RING_JOINTS, { roundCoordinates: true });
+    const once = Array.from(path.coordinates);
+    harmonizePathInPlace(path, RING_JOINTS, { roundCoordinates: true });
+    expect(Array.from(path.coordinates)).to.deep.equal(once);
+  });
+
   it("reports every joint harmonized, not partial", () => {
     const report = harmonizePathInPlace(ringPath(), RING_JOINTS, {});
     expect(report.map((entry) => entry.status)).to.deep.equal(
@@ -460,23 +471,23 @@ describe("harmonization: harmonizePath", () => {
     expect(Array.from(path.coordinates)).to.deep.equal(before);
   });
 
+  // The floor is a fraction of the chord between the segment's two on-curve
+  // points, and half a chord is about the handle length of a well-formed arc.
+  // Taking it from the handle instead made it a different number every time the
+  // command ran, because the handle it was measured from had just been cut.
+  const CLAMP_FLOOR =
+    ((1 - HARMONIZE_DEFAULTS.cuspSafetyMargin) / 2) *
+    distance({ x: 110, y: 100 }, { x: 200, y: 0 }); // outgoing chord
+
   it("clamps instead of collapsing a handle, and reports partial", () => {
-    const path = clampPath();
-    const b0 = distance(
-      { x: 150, y: 100 },
-      { x: 110, y: 100 } // outgoing handle length before: 40
-    );
-    const result = harmonizePath(path, [NODE], { handleBias: 1 });
+    const result = harmonizePath(clampPath(), [NODE], { handleBias: 1 });
 
     expect(result.report[0].status).to.equal("partial");
     expect(result.report[0].reason).to.equal("clamped");
 
     const ctx = getJointContext(result.path, NODE);
     const remaining = distance(ctx.node, ctx.N);
-    expect(remaining).to.be.closeTo(
-      (1 - HARMONIZE_DEFAULTS.cuspSafetyMargin) * b0,
-      1e-6
-    );
+    expect(remaining).to.be.closeTo(CLAMP_FLOOR, 1e-6);
     expect(remaining).to.be.greaterThan(0);
   });
 
@@ -484,7 +495,22 @@ describe("harmonization: harmonizePath", () => {
     const result = harmonizePath(clampPath(), [NODE], { handleBias: 0 });
     expect(result.report[0].status).to.equal("partial");
     const ctx = getJointContext(result.path, NODE);
-    expect(distance(ctx.node, ctx.N)).to.be.closeTo(0.15 * 40, 1e-6);
+    expect(distance(ctx.node, ctx.N)).to.be.closeTo(CLAMP_FLOOR, 1e-6);
+  });
+
+  it("stops in the same place when it is run twice", () => {
+    // The floor does not move when the handle it limits is cut, so a second
+    // call has nothing left to take. Measured from the handle, each call
+    // allowed another cut of the same fraction and ten calls left nothing.
+    const path = clampPath();
+    const handleLength = () => {
+      const ctx = getJointContext(path, NODE);
+      return distance(ctx.node, ctx.N);
+    };
+    harmonizePathInPlace(path, [NODE], {});
+    const afterOne = handleLength();
+    harmonizePathInPlace(path, [NODE], {});
+    expect(handleLength()).to.be.closeTo(afterOne, 1e-9);
   });
 
   it("reports degenerate for parallel outer handle lines", () => {
