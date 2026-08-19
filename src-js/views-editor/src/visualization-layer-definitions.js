@@ -1834,9 +1834,16 @@ registerVisualizationLayerDefinition({
   screenParameters: {
     colorStops: ["#8b939c", "#f29400", "#e3004f"],
     illustrationPosition: "outsideOfCurve",
+    adaptStepsToCurveLength: false,
+  },
+  // How many places to measure each curve. These are counts and not sizes on
+  // the screen, so they belong here rather than among the screen parameters,
+  // where everything is divided by the magnification. Divided there, the count
+  // changed with the view, every segment resampled at once, and the whole comb
+  // changed height with the drawing untouched.
+  glyphParameters: {
     baseSegmentBudget: 400,
     minSegmentsPerCurve: 5,
-    adaptStepsToCurveLength: false,
   },
   draw: (context, positionedGlyph, parameters, model, controller) => {
     const path = positionedGlyph.glyph?.path;
@@ -1865,7 +1872,6 @@ registerVisualizationLayerDefinition({
       colorStops: parameters.colorStops,
       baseSegmentBudget: parameters.baseSegmentBudget,
       minSegmentsPerCurve: parameters.minSegmentsPerCurve,
-      zoomFactor: controller.magnification || 1.0,
       adaptStepsToCurveLength: parameters.adaptStepsToCurveLength,
     });
     if (!quads.length) return;

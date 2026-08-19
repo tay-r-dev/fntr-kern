@@ -180,20 +180,24 @@ export function curvatureToColor(
 
 // --- SpeedPunk sampling helpers (moved out of visualization-layer-definitions.js) ---
 
+//
+// How many places to measure the curve on each segment. It comes from the
+// glyph and from nothing else.
+//
+// The magnification used to feed this, and the result is a whole number, so it
+// stepped from one count to the next as the view changed. Every segment on the
+// glyph then resampled at once, each fringe moved to a different place on its
+// curve, and the whole comb changed height with the drawing untouched.
+//
 export function calculateSegmentBudget(
   numCurves,
-  zoomFactor,
   baseSegments = 400,
   minSegmentsPerCurve = 5
 ) {
-  const zoomAdjustedBudget = Math.ceil(baseSegments * Math.sqrt(zoomFactor));
-
-  const stepsPerSegment = Math.max(
-    Math.floor(zoomAdjustedBudget / Math.max(numCurves, 1)),
+  return Math.max(
+    Math.floor(baseSegments / Math.max(numCurves, 1)),
     minSegmentsPerCurve
   );
-
-  return stepsPerSegment;
 }
 
 export function estimateCurveLength(p1, p2, p3, p4 = null) {
@@ -284,34 +288,6 @@ function _segmentKind(t1, t2, t3) {
   return { isCubic, isQuadratic };
 }
 
-// The fringe length a reading earns, in peak heights. In proportion up to the
-// reference tightness, and above it the full height plus the logarithm of how
-// much tighter the curve is. The two branches meet at the reference with the
-// same value and the same slope.
-//
-// A curve tighter than the reference used to be squeezed towards a ceiling of
-// twice the height, and a letter bends tighter than the reference over most of
-// its length, so nearly every fringe sat in the flat part and the comb drew
-// plateaus where the drawing has peaks.
-function heightForReading(reading) {
-  return reading <= 1 ? reading : 1 + Math.log(reading);
-}
-
-// The fringe length that earns the last colour stop, in peak heights.
-//
-// Anchored on handle tension, which is how far a handle reaches towards the
-// point where its segment's two handle lines cross. A well-formed arc sits near
-// a half. At 1 the handles meet, and past that the curve doubles back. So the
-// last stop belongs well above 1, and the middle stop belongs near it. Measured
-// on a symmetric arc:
-//
-//     tension   0.5   0.6   0.8   1.0   1.2   1.5
-//     colour   0.34  0.41  0.53  0.64  0.77  1.00
-//
-// At 3 the same arc was already at 0.57 when its handles were only half way
-// out, and fully red at 1. A normal curve came out as hot as a broken one.
-const COLOR_FULL_SCALE = 5;
-
 export function computeSpeedPunkSamples(path, params = {}) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;
   // The curve tightness that earns the full height, as the radius of the circle
@@ -323,7 +299,6 @@ export function computeSpeedPunkSamples(path, params = {}) {
   const colorStops = params.colorStops ?? ["#8b939c", "#f29400", "#e3004f"];
   const baseSegmentBudget = params.baseSegmentBudget ?? 400;
   const minSegmentsPerCurve = params.minSegmentsPerCurve ?? 5;
-  const zoomFactor = params.zoomFactor ?? 1;
   const adaptToCurveLength = params.adaptStepsToCurveLength ?? false;
 
   if (!path || !path.numContours) {
@@ -337,7 +312,6 @@ export function computeSpeedPunkSamples(path, params = {}) {
 
   const stepsPerSegment = calculateSegmentBudget(
     totalCurveCount,
-    zoomFactor,
     baseSegmentBudget,
     minSegmentsPerCurve
   );
@@ -374,14 +348,34 @@ export function computeSpeedPunkSamples(path, params = {}) {
         : calculateCurvatureForQuadraticSegment(...pts, steps);
     segments.push({ kind, pts, samples });
   });
-  // Colour rides the same squeeze as the height, so neither one saturates.
-  // Colouring against a flat range instead put every curvature at or above the
-  // reference on the last stop, which paints most of a normal glyph one colour
-  // and hides every difference inside it.
+  // The two readings answer two different questions, and the donor answers them
+  // the same way (_external/speedpunk, speedpunklib.py).
   //
-  // Sharpness is the one thing the two do not share. It is the shape of the
-  // comb, so it bends the fringe and leaves the colour where it was. A curve
-  // keeps its colour while the comb over it is restyled.
+  // Length is absolute. It is the curvature against one stated tightness, so
+  // the same bend draws the same length in every glyph and two letters can be
+  // held side by side.
+  //
+  // Colour is relative to this glyph. The gentlest place on the glyph takes the
+  // first stop and the tightest takes the last, so every glyph uses the whole
+  // set of stops and red always marks where this letter turns hardest. Three
+  // absolute colour scales were tried before this and each one painted a whole
+  // letter a single colour, because where a letter's curvature sits depends on
+  // the letter.
+  // The glyph's own range, for the colour. Every sample on the glyph, gentlest
+  // to tightest.
+  let glyphMinAbs = Infinity;
+  let glyphMaxAbs = 0;
+  for (const { samples } of segments) {
+    for (const sample of samples) {
+      const value = Math.abs(sample.curvature);
+      if (!Number.isFinite(value)) {
+        continue;
+      }
+      glyphMinAbs = Math.min(glyphMinAbs, value);
+      glyphMaxAbs = Math.max(glyphMaxAbs, value);
+    }
+  }
+
   const quads = [];
   for (const { kind, pts, samples } of segments) {
     const onCurve = [];
@@ -397,34 +391,10 @@ export function computeSpeedPunkSamples(path, params = {}) {
       // the reference, under one where the curve is gentler.
       const reading = Math.abs(samples[s].curvature) * referenceRadius;
 
-      // Colour is the fringe length the reading earns, across the stops. The
-      // whole set of stops is spent over the range a letter actually draws in:
-      // a radius of 200 units sits near the first stop, 60 lands on the middle
-      // one, and 15 is nearly at the last.
-      //
-      // Reading it straight off the reading instead put a radius of 200 at a
-      // third and a radius of 30 at three quarters, so the whole of a letter
-      // came out within a few per cent of the middle stop, which is one colour
-      // to the eye.
-      //
-      // Sharpness is left out of this on purpose: it is the shape of the comb,
-      // and a curve keeps its colour while the comb over it is restyled.
-      const colorRatio = Math.min(1, heightForReading(reading) / COLOR_FULL_SCALE);
-      // The height is drawn from the same reading with sharpness applied, so
-      // the comb changes shape and the colour under it does not.
-      //
-      // In proportion up to the reference tightness, and above it the same
-      // height plus the logarithm of how much tighter the curve is. The two
-      // branches meet at the reference with the same value and the same slope.
-      //
-      // A curve tighter than the reference used to be squeezed towards a
-      // ceiling of twice the height, and a letter bends tighter than the
-      // reference over most of its length, so nearly every fringe sat in the
-      // flat part and the comb drew plateaus where the drawing has peaks. This
-      // rule keeps a real peak: at four times the reference tightness the
-      // fringe is 2.4 times the height, not 1.6.
-      const heightRatio = heightForReading(Math.pow(reading, sharpness));
-      onCurve.push({ x, y, colorRatio });
+      // Sharpness bends the length and leaves the colour alone, so the comb can
+      // be restyled without repainting the curve under it.
+      const heightRatio = Math.pow(reading, sharpness);
+      onCurve.push({ x, y, k: Math.abs(samples[s].curvature) });
 
       let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];
       let ny = illustrationPosition === "outsideOfCurve" ? r1[0] : -r1[0];
@@ -432,11 +402,12 @@ export function computeSpeedPunkSamples(path, params = {}) {
       nx /= mag;
       ny /= mag;
 
-      // Full height at the reference tightness, in proportion under it, and
-      // leaning over above it towards twice the height. A hard ceiling drew
-      // two different curvatures at one length and creased where one fringe
-      // saturated beside one that did not. This rule never repeats a length,
-      // so a cusp stays on the screen without a cap to hold it.
+      // Straight proportion: the full height where the curve bends on the
+      // reference radius, half of it at half the tightness, twice at twice.
+      // Nothing is squeezed and nothing is capped, so a peak on the drawing is
+      // a peak on the comb. A squeeze towards a ceiling was tried instead and
+      // drew plateaus, because a letter bends past the reference over most of
+      // its length and that is where a squeeze is flat.
       const h = -heightRatio * peakHeightGlyphUnits;
       offCurve.push({ x: x + nx * h, y: y + ny * h });
     }
@@ -451,7 +422,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
           [offCurve[s + 1].x, offCurve[s + 1].y],
           [offCurve[s].x, offCurve[s].y],
         ],
-        color: curvatureToColor(a.colorRatio, 0, 1, colorStops),
+        color: curvatureToColor(a.k, glyphMinAbs, glyphMaxAbs, colorStops),
       });
     }
   }

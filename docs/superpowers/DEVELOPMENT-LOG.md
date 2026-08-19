@@ -4032,3 +4032,80 @@ about the drawing. Handle tension is a thing the designer already reads and
 already has a meaning for, so it is what the stop is quoted against now. The
 previous two colour rules were both picked without one, and both were wrong in
 the same way: nobody could say what the top of the scale was supposed to mean.
+
+---
+
+## 56. Read the donor, and take its two rules — rework
+
+The comb was reported as one colour, and as changing height on its own with no
+input. The original Speed Punk is now in `_external/speedpunk`. It answers both.
+
+### 1. What the donor does
+
+**Length is absolute.** The fringe is the curvature times a fixed gain times the
+em squared. Straight proportion. No ceiling, no squeeze, no floor. A tighter
+curve always draws a longer fringe, and the gain is the one control.
+
+**Colour is relative to the glyph.** The gentlest place on the glyph takes the
+first stop, the tightest takes the last, and the range is recomputed only when
+the glyph changes. Red means "this is where this letter turns hardest".
+
+**The sample count comes from the glyph.** A budget divided by the number of
+curve segments, floored at a minimum. The view is not part of it.
+
+### 2. The height that jumped on its own
+
+The sample count was taken from the magnification, twice: once by dividing the
+budget by it, because the budget sat among the parameters that are scaled to
+stay a constant size on screen, and once by multiplying by its square root
+inside the count itself. The count is a whole number, so it stepped from one
+value to the next as the view changed. Every segment on the glyph then resampled
+at once, each fringe moved to a different place on its curve, and the comb
+changed height with the drawing untouched.
+
+The count now comes from the glyph and from nothing else. The budget moved out
+of the screen parameters, because it is a count and not a size.
+
+### 3. The colour that was one colour
+
+Three absolute colour scales were tried, in entries 48, 54 and 55, and each one
+painted a whole letter a single colour: red, then yellow, then grey. The scale
+was moved each time and the shape of the problem never changed, because where a
+letter's curvature sits depends on the letter. An absolute scale cannot be right
+for every letter at once.
+
+Colour is now the glyph's own range, as in the donor. Every glyph uses the whole
+set of stops. Length stays absolute, so two letters can still be compared by
+fringe length — the two readings answer two different questions and are allowed
+to.
+
+### 4. The plateaus
+
+The height was a squeeze towards a ceiling of twice the peak. A letter bends
+past the reference over most of its length, which is where a squeeze is flat, so
+the comb drew plateaus. It is a straight proportion now, as in the donor: four
+times the reference tightness draws four times the height, eight times draws
+eight.
+
+### 5. Result
+
+Full suite 1,906 passing. Tests changed: the budget no longer takes a
+magnification, a fringe is exactly proportional at any tightness, the comb is
+the same at a fifth of the sample budget, the last stop lands on the tightest
+place on the glyph, and both a small glyph and one ten times its size use the
+whole set of stops.
+
+### 6. Findings
+
+**The donor was in the tree the whole time.** Five entries were spent inventing
+scales for a readout whose original makes both choices explicitly. The first
+question about a ported feature is what the original does, not what would be
+reasonable.
+
+**Absolute and relative are not competing answers, they are two readouts.**
+Every attempt so far tried to make one rule serve both comparing letters and
+reading one letter. Length does the first and colour does the second.
+
+**A count is not a size.** The screen parameters exist so a stroke stays the same
+width on screen at any zoom. A sample count put among them was divided by the
+magnification, which is how the view got into the geometry.
