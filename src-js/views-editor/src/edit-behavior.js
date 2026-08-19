@@ -1448,6 +1448,13 @@ const behaviorTypes = {
     constrainDelta: constrainHorVerDiag,
   },
 
+  // The entry is the only writer under an X scale, so the match tree matches no
+  // point (R-E, the same shape as base-expand).
+  "tension-aware-scale": {
+    matchTree: buildPointMatchTree([]),
+    actions: actionFactories,
+  },
+
   // The base expansion drag moves nothing through the point rules: the whole
   // edit is the offset construction, which runs in the target entry. An empty
   // match tree matches no point, so no edit func is built and the path change

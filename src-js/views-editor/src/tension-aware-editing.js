@@ -1,6 +1,10 @@
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
-import { applyTensionAwareEdit } from "@fontra/core/tension-aware-edit.js";
+import {
+  applyTensionAwareEdit,
+  curvesAreAboveFloor,
+  solveRigidLinkScale,
+} from "@fontra/core/tension-aware-edit.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 
@@ -103,4 +107,123 @@ export function createTensionAwareTargetEntries(
       },
     },
   ];
+}
+
+export const TENSION_AWARE_SCALE_BEHAVIOR_NAME = "tension-aware-scale";
+
+/**
+ * The transform-box half. It reads the transformation's factor and origin on
+ * the one axis being scaled, solves the rigid links, then runs the same slide
+ * and restore the drag uses.
+ *
+ * It keeps the last solve that passed the curve floor and emits that again
+ * where the current one fails, so the shape stands still while the drag runs on.
+ * @param {string} axis - "x" or "y"
+ */
+export function createTensionAwareTransformEntries(
+  layerGlyph,
+  selection,
+  axis,
+  { isGeneratedContour = null } = {}
+) {
+  const { point: pointSelection } = parseSelection(selection || new Set());
+  if (!pointSelection?.length || !layerGlyph?.path) return [];
+
+  const originalPath = layerGlyph.path.copy();
+  // Only a contour that holds a selected point takes part. A contour outside
+  // the selection is not the box's to move, and it must not join the solve
+  // either: its bodies would take a share of the change.
+  const selectedContours = new Set(
+    pointSelection.map(
+      (pointIndex) => originalPath.getContourAndPointIndex(pointIndex)[0]
+    )
+  );
+  const contourIndices = [];
+  for (const i of selectedContours) {
+    if (!isGeneratedContour?.(i)) contourIndices.push(i);
+  }
+  contourIndices.sort((a, b) => a - b);
+  if (!contourIndices.length) return [];
+  const originals = contourIndices.map((contourIndex) => ({
+    contourIndex,
+    startIndex: originalPath.getAbsolutePointIndex(contourIndex, 0),
+    contour: originalPath.getUnpackedContour(contourIndex),
+  }));
+
+  let rollbackChange = null;
+  let lastGood = null;
+  return [
+    {
+      get rollbackChange() {
+        return rollbackChange;
+      },
+      makeChangeForDelta() {
+        return null;
+      },
+      makeChangeForTransformation(transformation) {
+        // The box hands over a full affine, already pinned about its own
+        // point. On one axis it is a scale plus a shift, which are the only two
+        // numbers this rule reads: `new = factor * old + shift`, so the fixed
+        // coordinate is `shift / (1 - factor)`.
+        const factor = axis === "x" ? transformation.xx : transformation.yy;
+        const shift = axis === "x" ? transformation.dx : transformation.dy;
+        if (Math.abs(factor - 1) < 1e-9) {
+          return null;
+        }
+        const origin = shift / (1 - factor);
+
+        const solved = solveRigidLinkScale(
+          originals.map(({ contour }) => contour),
+          axis,
+          factor,
+          origin
+        );
+        const frames = solved ? buildFrames(originals, solved, axis) : null;
+        if (
+          frames &&
+          frames.every(({ points, isClosed }) => curvesAreAboveFloor(points, isClosed))
+        ) {
+          lastGood = frames;
+        }
+        if (!lastGood) {
+          return null;
+        }
+        const scratch = { ...layerGlyph, path: originalPath.copy() };
+        const changes = recordChanges(scratch, (layerGlyphProxy) => {
+          lastGood.forEach(({ points }, i) => {
+            const { startIndex, contour } = originals[i];
+            for (let p = 0; p < points.length; p++) {
+              if (
+                points[p].x === contour.points[p].x &&
+                points[p].y === contour.points[p].y
+              ) {
+                continue;
+              }
+              layerGlyphProxy.path.setPointPosition(
+                startIndex + p,
+                points[p].x,
+                points[p].y
+              );
+            }
+          });
+        });
+        rollbackChange = changes.rollbackChange;
+        return changes.change;
+      },
+    },
+  ];
+}
+
+// Move every on-curve to its solved coordinate on the scaled axis, then run the
+// slide and the restore over the result.
+function buildFrames(originals, solved, axis) {
+  return originals.map(({ contour }, i) => {
+    const before = contour.points;
+    const after = before.map((point) => ({ ...point }));
+    for (const [index, coordinate] of solved[i]) {
+      after[index][axis] = Math.round(coordinate);
+    }
+    applyTensionAwareEdit(before, after, contour.isClosed);
+    return { points: after, isClosed: contour.isClosed };
+  });
 }

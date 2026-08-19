@@ -48,9 +48,11 @@ import { getPinPoint } from "./panel-transformation.js";
 import { equalGlyphSelection } from "./scene-controller.js";
 import {
   createTensionAwareTargetEntries,
+  createTensionAwareTransformEntries,
   getTensionAwareBehaviorName,
   TENSION_AWARE_BEHAVIOR_NAME,
   TENSION_AWARE_CONSTRAIN_BEHAVIOR_NAME,
+  TENSION_AWARE_SCALE_BEHAVIOR_NAME,
 } from "./tension-aware-editing.js";
 import {
   createEditableGeneratedHandleTargetEntries,
@@ -1080,6 +1082,16 @@ export class PointerTool extends BaseTool {
         editingLayers[editLayerName] || Object.values(editingLayers)[0]
       );
 
+      // A corner handle scales both axes at once, so the mode bypasses and the
+      // ordinary scale applies.
+      const tensionAwareAxis = !this.tensionAwareMode
+        ? null
+        : clickedHandle.includes("middle")
+          ? "x"
+          : clickedHandle.includes("center")
+            ? "y"
+            : null;
+
       const layerInfo = Object.entries(editingLayers).map(([layerName, layerGlyph]) => {
         const skeletonEntry = makeSkeletonPointTargetEntry(
           layerGlyph,
@@ -1088,11 +1100,27 @@ export class PointerTool extends BaseTool {
           referenceSkeletonData,
           makeSkeletonModifierOptions("default", { referenceSkeletonData })
         );
+        const tensionAwareEntries = tensionAwareAxis
+          ? createTensionAwareTransformEntries(
+              layerGlyph,
+              sceneController.selection,
+              tensionAwareAxis,
+              {
+                isGeneratedContour: (contourIndex) =>
+                  this.sceneModel.isGeneratedPathContour(contourIndex),
+              }
+            )
+          : [];
         const behaviorFactory = new EditBehaviorFactory(
           layerGlyph,
           sceneController.selection,
           this.scalingEditBehavior,
-          { targetEntries: skeletonEntry ? [skeletonEntry] : [] }
+          {
+            targetEntries: [
+              ...(skeletonEntry ? [skeletonEntry] : []),
+              ...tensionAwareEntries,
+            ],
+          }
         );
         const layerBounds = (
           staticGlyphControllers[layerName] || glyphController
@@ -1105,7 +1133,9 @@ export class PointerTool extends BaseTool {
           layerName,
           changePath: ["layers", layerName, "glyph"],
           layerGlyph: layerGlyph,
-          editBehavior: behaviorFactory.getTransformBehavior("default"),
+          editBehavior: behaviorFactory.getTransformBehavior(
+            tensionAwareEntries.length ? TENSION_AWARE_SCALE_BEHAVIOR_NAME : "default"
+          ),
           regularPinPoint: getPinPoint(layerBounds, origin.x, origin.y),
           altPinPoint: getPinPoint(layerBounds, undefined, undefined),
           regularPinPointSelectedLayer: regularPinPointSelectedLayer,
