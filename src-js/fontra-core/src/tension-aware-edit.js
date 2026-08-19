@@ -1,3 +1,4 @@
+import { isStraightControlledSmoothPoint } from "./offset-contour.js";
 import { calculateTunniPoint } from "./tunni-calculations.js";
 import {
   addVectors,
@@ -257,4 +258,151 @@ export function restoreSegmentTensions(
       ) || changed;
   }
   return changed;
+}
+
+// A straight may not be run below this, and a slide may not cross its far end.
+const MIN_STRAIGHT_LENGTH = 1;
+
+// The shape `isStraightControlledSmoothPoint` reads: it wants the segments as
+// point objects, and this module carries them as indices.
+function segmentAsPoints(points, segment) {
+  return {
+    controlPoints: segment.controlIndices.map((index) => points[index]),
+  };
+}
+
+// The segment on the other side of `pointIndex` from `segment`.
+function neighbourSegment(segments, segmentIndex, atStart, closed) {
+  const count = segments.length;
+  if (atStart) {
+    if (segmentIndex === 0 && !closed) {
+      return null;
+    }
+    return segments[(segmentIndex - 1 + count) % count];
+  }
+  if (segmentIndex === count - 1 && !closed) {
+    return null;
+  }
+  return segments[(segmentIndex + 1) % count];
+}
+
+/**
+ * Rule 3. A smooth on-curve point with one handle and a straight on its other
+ * side owns no direction of its own, so it may slide along that straight. It
+ * slides until its segment's tangent corner is back in proportion: the near leg
+ * takes the same ratio the far leg took.
+ *
+ * `afterPoints` is mutated. `beforePoints` is read only.
+ * @returns {boolean} Whether anything moved
+ */
+export function slideTensionPoints(
+  beforePoints,
+  afterPoints,
+  closed,
+  { round = Math.round } = {}
+) {
+  const segments = buildIndexedSegments(beforePoints, closed);
+  let changed = false;
+  for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+    const segment = segments[segmentIndex];
+    if (!isCubicSegment(segment)) {
+      continue;
+    }
+    for (const atStart of [true, false]) {
+      const straight = neighbourSegment(segments, segmentIndex, atStart, closed);
+      if (!straight) {
+        continue;
+      }
+      const nearIndex = atStart ? segment.startIndex : segment.endIndex;
+      const farIndex = atStart ? segment.endIndex : segment.startIndex;
+      const nearControl = segment.controlIndices[atStart ? 0 : 1];
+      const farControl = segment.controlIndices[atStart ? 1 : 0];
+      if (
+        !isStraightControlledSmoothPoint(
+          beforePoints[nearIndex],
+          segmentAsPoints(beforePoints, straight),
+          segmentAsPoints(beforePoints, segment)
+        )
+      ) {
+        continue;
+      }
+      // A point the edit already moved travels with the edit. It does not also
+      // slide. A far end that did not move asks for no slide at all.
+      if (!samePosition(beforePoints[nearIndex], afterPoints[nearIndex])) {
+        continue;
+      }
+      if (samePosition(beforePoints[farIndex], afterPoints[farIndex])) {
+        continue;
+      }
+      const nearPoint = beforePoints[nearIndex];
+      const nearDirection =
+        handleDirection(afterPoints[nearControl], nearPoint) ||
+        handleDirection(beforePoints[nearControl], nearPoint);
+      const beforeFar = beforePoints[farIndex];
+      const afterFar = afterPoints[farIndex];
+      const beforeFarDirection = handleDirection(beforePoints[farControl], beforeFar);
+      const afterFarDirection =
+        handleDirection(afterPoints[farControl], afterFar) || beforeFarDirection;
+      const beforeReaches = tangentReaches(
+        nearPoint,
+        nearDirection,
+        beforeFar,
+        beforeFarDirection
+      );
+      const afterReaches = tangentReaches(
+        nearPoint,
+        nearDirection,
+        afterFar,
+        afterFarDirection
+      );
+      if (!beforeReaches || !afterReaches) {
+        continue;
+      }
+      const ratio = afterReaches.endReach / beforeReaches.endReach;
+      const nearReach = beforeReaches.startReach * ratio;
+      let target = subVectors(
+        afterReaches.crossing,
+        mulVectorScalar(nearDirection, nearReach)
+      );
+      // The straight's far end holds the slide. Keep the straight at least one
+      // unit long and on the side it started.
+      const anchor =
+        straight.startIndex === nearIndex
+          ? beforePoints[straight.endIndex]
+          : beforePoints[straight.startIndex];
+      const axis = normalizeVector(subVectors(nearPoint, anchor));
+      const travel = dotVector(subVectors(target, anchor), axis);
+      if (travel < MIN_STRAIGHT_LENGTH) {
+        target = addVectors(anchor, mulVectorScalar(axis, MIN_STRAIGHT_LENGTH));
+      }
+      const x = round(target.x);
+      const y = round(target.y);
+      if (afterPoints[nearIndex].x !== x || afterPoints[nearIndex].y !== y) {
+        // The point carries its own handle, the same way the ordinary rules do.
+        // A handle left behind would end up on the wrong side of its point and
+        // the restore would then rebuild it pointing backwards.
+        const slide = subVectors({ x, y }, afterPoints[nearIndex]);
+        afterPoints[nearIndex] = { ...afterPoints[nearIndex], x, y };
+        const handle = afterPoints[nearControl];
+        afterPoints[nearControl] = {
+          ...handle,
+          x: handle.x + slide.x,
+          y: handle.y + slide.y,
+        };
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+/**
+ * The whole correction, in the order it has to run: the slide moves an on-curve
+ * point, and the restore reads every on-curve position, so the slide goes first.
+ * @returns {boolean} Whether anything moved
+ */
+export function applyTensionAwareEdit(beforePoints, afterPoints, closed, options = {}) {
+  const slid = slideTensionPoints(beforePoints, afterPoints, closed, options);
+  const restored = restoreSegmentTensions(beforePoints, afterPoints, closed, options);
+  return slid || restored;
 }

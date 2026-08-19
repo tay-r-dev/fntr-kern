@@ -107,3 +107,101 @@ describe("tension-aware edit — the restore", () => {
     expect(changed).to.equal(false);
   });
 });
+
+import {
+  applyTensionAwareEdit,
+  slideTensionPoints,
+} from "@fontra/core/tension-aware-edit.js";
+
+// The inner arch of the n in _external/skeletron.fontra/glyphs/a.json, in local
+// coordinates with the left stem's outer wall at x = 0. Point 0 is the foot of
+// the stem's inner wall, point 1 is the tension point at the top of that wall,
+// and the arch runs from there to the apex at point 4.
+const archContour = () => [
+  onCurve(60, 0),
+  onCurve(60, 385, true),
+  control(60, 432),
+  control(86, 463),
+  onCurve(125, 463, true),
+];
+
+describe("tension-aware edit — the slide", () => {
+  it("slides the tension point to keep the corner in proportion", () => {
+    const before = archContour();
+    const after = copy(before);
+    after[4] = onCurve(115, 463, true); // the apex dragged 10 units left
+    slideTensionPoints(before, after, false);
+    // The horizontal leg goes 65 -> 55, a ratio of 0.846. The vertical leg goes
+    // 78 -> 66, so the tension point rises 12 units.
+    expect(after[1].x).to.equal(60);
+    expect(after[1].y).to.equal(397);
+  });
+
+  it("leaves a tension point that is itself in the edit", () => {
+    const before = archContour();
+    const after = copy(before);
+    after[4] = onCurve(115, 463, true);
+    after[1] = onCurve(60, 390, true); // the ordinary edit already moved it
+    slideTensionPoints(before, after, false);
+    expect(after[1].y).to.equal(390);
+  });
+
+  it("does not slide a corner point", () => {
+    const before = archContour();
+    before[1] = onCurve(60, 385); // no smooth flag, so it owns its direction
+    const after = copy(before);
+    after[4] = onCurve(115, 463, true);
+    slideTensionPoints(before, after, false);
+    expect(after[1].y).to.equal(385);
+  });
+
+  it("does not slide past the far end of its own straight", () => {
+    const before = archContour();
+    const after = copy(before);
+    after[4] = onCurve(1000, 463, true); // an absurd pull outward
+    slideTensionPoints(before, after, false);
+    // The straight runs from y = 0 up to the tension point, so the slide stops
+    // one unit short of its far end rather than crossing it.
+    expect(after[1].y).to.be.at.least(1);
+  });
+
+  it("slides first and restores the handles after", () => {
+    const before = archContour();
+    const after = copy(before);
+    after[4] = onCurve(115, 463, true);
+    applyTensionAwareEdit(before, after, false);
+    // The whole segment is the same drawing at 0.846 of the size: the vertical
+    // handle is 47 * 0.846 and the horizontal one is 39 * 0.846.
+    expect(after[1].y).to.equal(397);
+    expect(after[2].y).to.equal(397 + 40);
+    expect(after[3].x).to.equal(115 - 33);
+  });
+});
+
+describe("tension-aware edit — continuity", () => {
+  it("moves no point by more than the step that drove it, over a 200-step sweep", () => {
+    let worst = 0;
+    let previous = null;
+    for (let step = 0; step <= 200; step++) {
+      const apexX = 125 - step * 0.25; // 50 units of travel in quarter units
+      const before = archContour();
+      const after = copy(before);
+      // The ordinary rules carry the apex's own handle with it.
+      after[3] = control(86 - step * 0.25, 463);
+      after[4] = onCurve(apexX, 463, true);
+      applyTensionAwareEdit(before, after, false);
+      if (previous) {
+        for (let i = 0; i < after.length; i++) {
+          const moved = Math.hypot(
+            after[i].x - previous[i].x,
+            after[i].y - previous[i].y
+          );
+          worst = Math.max(worst, moved);
+        }
+      }
+      previous = after;
+    }
+    // A quarter unit of input, plus whole-unit grid rounding on both axes.
+    expect(worst).to.be.at.most(2);
+  });
+});
