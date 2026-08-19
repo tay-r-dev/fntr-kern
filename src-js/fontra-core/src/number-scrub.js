@@ -57,8 +57,18 @@ export function clampScrubValue(value, { minValue, maxValue } = {}) {
 // grid anyway, so a fraction only stores a value the outline never uses — and
 // leaves the next drag starting from a number the panel is not showing. A field
 // that genuinely wants fractions passes `integer: false`.
-export function roundScrubValue(value, { integer = true } = {}) {
-  return integer ? Math.round(value) : value;
+export function roundScrubValue(value, { integer = true, step = null } = {}) {
+  if (integer) {
+    return Math.round(value);
+  }
+  if (!(step > 0)) {
+    return value;
+  }
+  // A drag of a tenth per pixel lands on 1.2000000000000002 without this, and
+  // the box shows every one of those digits. Round onto the step's own grid,
+  // then trim the binary residue the multiply leaves behind.
+  const decimals = Math.max(0, Math.ceil(-Math.log10(step)));
+  return Number((Math.round(value / step) * step).toFixed(decimals));
 }
 
 // What a drag sends instead of a number when it is abandoned rather than

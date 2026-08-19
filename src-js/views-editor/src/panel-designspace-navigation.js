@@ -78,9 +78,13 @@ const SPEEDPUNK_PEAK_HEIGHT_MAX_UPM = 1000;
 const SPEEDPUNK_SHARPNESS_DEFAULT = 1;
 const SPEEDPUNK_SHARPNESS_MIN = 0.1;
 const SPEEDPUNK_SHARPNESS_MAX = 4;
+// One grid for each fractional field. The box, the drag and the normalizer all
+// round onto it, so the three can never disagree about what a value is.
+const SPEEDPUNK_SHARPNESS_STEP = 0.1;
 const SPEEDPUNK_OPACITY_DEFAULT = 0.5;
 const SPEEDPUNK_OPACITY_MIN = 0;
 const SPEEDPUNK_OPACITY_MAX = 1;
+const SPEEDPUNK_OPACITY_STEP = 0.02;
 
 const LIST_HEADER_ANIMATION_STYLE = `
 .clickable-icon-header {
@@ -364,7 +368,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               type: "number",
               min: SPEEDPUNK_SHARPNESS_MIN,
               max: SPEEDPUNK_SHARPNESS_MAX,
-              step: 0.1,
+              step: SPEEDPUNK_SHARPNESS_STEP,
             }),
             html.label(
               { for: "speedpunk-opacity-input", style: "white-space: nowrap;" },
@@ -375,7 +379,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               type: "number",
               min: SPEEDPUNK_OPACITY_MIN,
               max: SPEEDPUNK_OPACITY_MAX,
-              step: 0.05,
+              step: SPEEDPUNK_OPACITY_STEP,
             }),
           ]
         ),
@@ -698,7 +702,10 @@ export default class DesignspaceNavigationPanel extends Panel {
         // spending the whole way back doing nothing. The rounding is never
         // folded back with it.
         travel = clamped - startValue;
-        const shown = roundScrubValue(clamped, { integer: options.integer ?? true });
+        const shown = roundScrubValue(clamped, {
+          integer: options.integer ?? true,
+          step: options.step ?? 1,
+        });
         input.value = String(shown);
         this.sceneSettingsController.setItem(options.sceneKey, shown, {
           senderID: this,
@@ -713,6 +720,7 @@ export default class DesignspaceNavigationPanel extends Panel {
         if (started) {
           input.dispatchEvent(new Event("change"));
         }
+        this._returnFocusToCanvas();
       };
 
       const abandon = () => {
@@ -740,12 +748,25 @@ export default class DesignspaceNavigationPanel extends Panel {
 
   _normalizeSpeedPunkSharpness(value) {
     if (!Number.isFinite(value)) return SPEEDPUNK_SHARPNESS_DEFAULT;
-    return Math.max(SPEEDPUNK_SHARPNESS_MIN, Math.min(SPEEDPUNK_SHARPNESS_MAX, value));
+    return roundScrubValue(
+      Math.max(SPEEDPUNK_SHARPNESS_MIN, Math.min(SPEEDPUNK_SHARPNESS_MAX, value)),
+      { integer: false, step: SPEEDPUNK_SHARPNESS_STEP }
+    );
   }
 
   _normalizeSpeedPunkOpacity(value) {
     if (!Number.isFinite(value)) return SPEEDPUNK_OPACITY_DEFAULT;
-    return Math.max(SPEEDPUNK_OPACITY_MIN, Math.min(SPEEDPUNK_OPACITY_MAX, value));
+    return roundScrubValue(
+      Math.max(SPEEDPUNK_OPACITY_MIN, Math.min(SPEEDPUNK_OPACITY_MAX, value)),
+      { integer: false, step: SPEEDPUNK_OPACITY_STEP }
+    );
+  }
+
+  // A number box keeps the keyboard once it is touched, and the canvas answers
+  // no shortcut while it does. Space-drag is the one that gets noticed, because
+  // a number box eats the space bar and does nothing with it.
+  _returnFocusToCanvas() {
+    this.editorController?.canvasController?.canvas?.focus();
   }
 
   _readSpeedPunkSettingsFromApp() {
@@ -822,6 +843,7 @@ export default class DesignspaceNavigationPanel extends Panel {
         input.value = String(value);
         this.sceneSettingsController.setItem(sceneKey, value, { senderID: this });
         this._persistSpeedPunkSettings();
+        this._returnFocusToCanvas();
       });
     };
 
@@ -849,12 +871,12 @@ export default class DesignspaceNavigationPanel extends Panel {
     });
     this._attachSpeedPunkScrub(this.speedPunkSharpnessInput, {
       sceneKey: "speedPunkSharpness",
-      step: 0.1,
+      step: SPEEDPUNK_SHARPNESS_STEP,
       integer: false,
     });
     this._attachSpeedPunkScrub(this.speedPunkOpacityInput, {
       sceneKey: "speedPunkOpacity",
-      step: 0.02,
+      step: SPEEDPUNK_OPACITY_STEP,
       integer: false,
     });
 

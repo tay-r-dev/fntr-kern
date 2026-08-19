@@ -3518,3 +3518,71 @@ across the ceiling. The squeeze is the first rule with no such pair.
 the glyph came and went while the comb was reporting the reverse of the truth.
 The lesson is to measure what the instrument draws, not only what the geometry
 is, before believing either.
+
+---
+
+## 48. Three reports on the reworked comb — fixes
+
+### 1. The reports
+
+1. The colour was almost all red.
+2. Space-drag stopped working after any SpeedPunk field was touched.
+3. Sharpness and opacity had no rounding.
+
+### 2. Colour ran out before the curve did
+
+Entry 47 gave the height a squeeze and left the colour on a flat range that ran
+from nothing to the reference tightness. Everything at or above that tightness
+landed on the last stop. The reference is a quarter of the em, and a normal
+letter bends much tighter than that over most of its length, so most of the glyph
+came out one colour and every difference inside it was hidden.
+
+Colour now rides the same squeeze the height does. There is one ratio per sample:
+nothing on a straight, a half at the reference tightness, approaching one as the
+bend tightens and never arriving. The height is twice that ratio in peak heights.
+The colour is that ratio across the stops. Neither can saturate, and the two
+always agree about which of two points is the tighter.
+
+### 3. A number box keeps the keyboard
+
+The canvas answers no shortcut while a panel field holds the focus, and a number
+box eats the space bar without doing anything with it. Space-drag is the shortcut
+that gets noticed, but every other one was gone too.
+
+Both paths out of a field now hand the focus back to the canvas: the typed edit
+when it commits, and the label drag when the pointer is released. The Display
+checkbox is left alone, because the space bar belongs to a checkbox.
+
+### 4. A step is one number or it is three
+
+`roundScrubValue` rounded to a whole number or not at all, so a tenth-per-pixel
+drag stored 1.2000000000000002 and the box showed every digit. It now takes the
+field's step and rounds onto that grid, then trims the binary residue the
+multiply leaves.
+
+The step is now one constant per field. The box, the drag and the normalizer all
+read it, so the three cannot disagree about what a value is. Opacity moves by two
+hundredths in the box as well as under the pointer, where the box used to move by
+five hundredths.
+
+### 5. Result
+
+Full suite 1,897 passing. Two new tests: a fractional field rounds onto its own
+step, and a curve well tighter than the reference does not share a colour with one
+four times tighter.
+
+Manual matrix owed, per rail R-G. Touch a field and check that space-drag still
+works. Drag sharpness and check the box shows one decimal. Look at a round letter
+and check the comb runs through the stops rather than sitting on the last one.
+
+### 6. Findings
+
+**Two readouts off one number, or they will drift apart.** The height and the
+colour have now disagreed twice, in entry 46 and again here, both times because
+one was changed and the other was left on the old mapping. They are computed from
+a single ratio now, so there is nothing left to keep in step by hand.
+
+**A default that means "do nothing" cannot be the useful one.** Giving
+`roundScrubValue` a step of 1 by default would have rounded every existing
+fractional caller to whole numbers. The default has to be no grid at all, and the
+grid has to be asked for.

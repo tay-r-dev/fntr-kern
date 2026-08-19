@@ -91,6 +91,18 @@ describe("number scrub rounding", () => {
     expect(roundScrubValue(42.4, { integer: false })).to.equal(42.4);
   });
 
+  it("rounds a fractional field onto its own step", () => {
+    // Without this a tenth-per-pixel drag lands on 1.2000000000000002 and the
+    // box shows every digit of it.
+    expect(roundScrubValue(1.2000000000000002, { integer: false, step: 0.1 })).to.equal(
+      1.2
+    );
+    expect(roundScrubValue(0.53, { integer: false, step: 0.02 })).to.equal(0.54);
+    expect(
+      roundScrubValue(0.7300000000000001, { integer: false, step: 0.02 })
+    ).to.equal(0.74);
+  });
+
   it("keeps a fine drag from vanishing", () => {
     // The caller carries the travel unrounded and rounds only on the way out, so
     // ten one-tenth moves add up to one. Rounding each move on its own would

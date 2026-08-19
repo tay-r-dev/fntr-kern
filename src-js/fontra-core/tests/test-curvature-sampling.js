@@ -216,6 +216,22 @@ describe("curvature comb: a fixed scale", () => {
     expect([...tight].some((color) => shallow.has(color))).to.equal(false);
   });
 
+  it("does not run out of colour on a tight curve", () => {
+    // Colour rides the same squeeze as the height. Against a flat range every
+    // curvature at or above the reference sat on the last stop, so most of a
+    // normal glyph came out one colour.
+    const colorsOf = (r) =>
+      new Set(
+        computeSpeedPunkSamples(circle(r), {
+          peakHeightGlyphUnits: 24,
+          referenceRadius: 100,
+        }).map((quad) => quad.color)
+      );
+    const tight = colorsOf(20);
+    const tighter = colorsOf(5);
+    expect([...tight].some((color) => tighter.has(color))).to.equal(false);
+  });
+
   it("draws nothing on a straight", () => {
     const lengths = fringeLengths(
       VarPackedPath.fromUnpackedContours([

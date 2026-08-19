@@ -346,12 +346,10 @@ export function computeSpeedPunkSamples(path, params = {}) {
         : calculateCurvatureForQuadraticSegment(...pts, steps);
     segments.push({ kind, pts, samples });
   });
-  // Colour rides the same scale as the height, for the same reason. Colouring
-  // each segment against its own range paints two segments at one curvature two
-  // different colours, which is the same false reading the height used to give.
-  // The range runs from nothing to the reference tightness.
-  const colorMaxAbs = 1 / referenceRadius;
-
+  // Colour rides the same squeeze as the height, so the two agree everywhere
+  // and neither one saturates. Colouring against a flat range instead put every
+  // curvature at or above the reference on the last stop, which paints most of
+  // a normal glyph one colour and hides every difference inside it.
   const quads = [];
   for (const { kind, pts, samples } of segments) {
     const onCurve = [];
@@ -363,7 +361,15 @@ export function computeSpeedPunkSamples(path, params = {}) {
           ? solveCubicBezier(...pts, t)
           : solveQuadraticBezier(...pts, t);
       const [x, y] = r;
-      onCurve.push({ x, y, k: samples[s].curvature });
+      // The one ratio both the height and the colour are drawn from. It is
+      // nothing on a straight, a half at the reference tightness, and it
+      // approaches one as the bend tightens without ever getting there.
+      const shaped = Math.pow(
+        Math.abs(samples[s].curvature) * referenceRadius,
+        sharpness
+      );
+      const ratio = shaped / (1 + shaped);
+      onCurve.push({ x, y, ratio });
 
       let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];
       let ny = illustrationPosition === "outsideOfCurve" ? r1[0] : -r1[0];
@@ -376,11 +382,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
       // two different curvatures at one length and creased where one fringe
       // saturated beside one that did not. This rule never repeats a length,
       // so a cusp stays on the screen without a cap to hold it.
-      const shaped = Math.pow(
-        Math.abs(samples[s].curvature) * referenceRadius,
-        sharpness
-      );
-      const h = -((2 * shaped) / (1 + shaped)) * peakHeightGlyphUnits;
+      const h = -2 * ratio * peakHeightGlyphUnits;
       offCurve.push({ x: x + nx * h, y: y + ny * h });
     }
 
@@ -394,7 +396,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
           [offCurve[s + 1].x, offCurve[s + 1].y],
           [offCurve[s].x, offCurve[s].y],
         ],
-        color: curvatureToColor(Math.abs(a.k), 0, colorMaxAbs, colorStops),
+        color: curvatureToColor(a.ratio, 0, 1, colorStops),
       });
     }
   }
