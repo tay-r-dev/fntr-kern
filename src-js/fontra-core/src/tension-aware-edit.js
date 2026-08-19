@@ -625,124 +625,24 @@ export function curvesAreAboveFloor(points, closed) {
 }
 
 /**
- * The vertical rule, which is the horizontal one with its two parts exchanged.
- *
- * Across the x axis a stem is 60 units of width and 500 units of length: the
- * width is the drawn detail and the length is free, so the straights hold and
- * the curves take the change. Along the y axis the same stem is the length, and
- * holding it rigid would forbid the height change the scale asks for. So the
- * curves hold instead. Every curved run keeps its extent along the axis and
- * translates, and the straights carry the whole change.
- *
- * The answer is one remapping of the axis: inside a band that a curved run
- * occupies the slope is 1, and everywhere else it is whatever the change needs.
+ * The vertical rule. Along the y axis a straight is the length the scale has to
+ * change, so holding it rigid would forbid the change. Every on-curve point
+ * takes the plain scale instead, and the handles are rebuilt afterwards to keep
+ * each curve's tension. A curve therefore keeps its tangents and its tension
+ * but not its proportions: a round shoulder squashed in height flattens, and
+ * the glyph's width never changes.
  * @param {Array} contours - `[{points, isClosed}]`
  * @param {string} axis - "x" or "y"
  * @param {number} factor - The scale factor the transform box asks for
  * @param {number} origin - The coordinate the scale is taken about
- * @returns {Array|null} One Map per contour of point index to new coordinate,
- *   or null where the rule has nothing to stretch and must stand down
+ * @returns {Array} One Map per contour of on-curve point index to new coordinate
  */
-export function solveRigidCurveScale(contours, axis, factor, origin) {
-  const perContour = contours.map(({ points, isClosed }) => {
-    const segments = buildIndexedSegments(points, isClosed);
-    const bodyOf = bodiesOfContour(points, isClosed).bodyOf;
-    return { points, segments, runs: runsOfContour(segments, bodyOf) };
-  });
-
-  // A run's band is the extent its own points occupy on the axis. Handles count
-  // as well: a handle outside the band would be stretched away from the curve
-  // it belongs to.
-  const bands = [];
-  const runMembers = perContour.map(() => new Set());
-  perContour.forEach((contour, contourIndex) => {
-    for (const run of contour.runs) {
-      const indices = [run.startIndex, ...run.interior, run.endIndex];
-      const withHandles = [...indices];
-      for (const segment of contour.segments) {
-        if (!isCubicSegment(segment)) continue;
-        if (
-          indices.includes(segment.startIndex) &&
-          indices.includes(segment.endIndex)
-        ) {
-          withHandles.push(...segment.controlIndices);
-        }
-      }
-      for (const index of indices) {
-        runMembers[contourIndex].add(index);
-      }
-      const coordinates = withHandles.map((index) => contour.points[index][axis]);
-      bands.push({ min: Math.min(...coordinates), max: Math.max(...coordinates) });
-    }
-  });
-  if (!bands.length) {
-    return null;
-  }
-
-  bands.sort((a, b) => a.min - b.min);
-  const merged = [bands[0]];
-  for (const band of bands.slice(1)) {
-    const last = merged[merged.length - 1];
-    if (band.min <= last.max) {
-      last.max = Math.max(last.max, band.max);
-    } else {
-      merged.push({ ...band });
-    }
-  }
-
-  const everyCoordinate = [];
-  for (const contour of perContour) {
-    for (const point of contour.points) {
-      everyCoordinate.push(point[axis]);
-    }
-  }
-  const lowest = Math.min(...everyCoordinate);
-  const highest = Math.max(...everyCoordinate);
-  const span = highest - lowest;
-  if (span < EPSILON) {
-    return null;
-  }
-  let rigidLength = 0;
-  for (const band of merged) {
-    rigidLength += Math.min(band.max, highest) - Math.max(band.min, lowest);
-  }
-  const elasticLength = span - rigidLength;
-  if (elasticLength < EPSILON) {
-    return null;
-  }
-  const scaled = (coordinate) => origin + (coordinate - origin) * factor;
-  const change = scaled(highest) - scaled(lowest) - span;
-  const stretch = (elasticLength + change) / elasticLength;
-  if (stretch < EPSILON) {
-    return null;
-  }
-
-  // The remapping, walked once from the lowest coordinate up.
-  const remap = (coordinate) => {
-    let output = scaled(lowest);
-    let cursor = lowest;
-    for (const band of merged) {
-      const bandStart = Math.max(band.min, lowest);
-      const bandEnd = Math.min(band.max, highest);
-      if (coordinate <= bandStart) {
-        return output + (coordinate - cursor) * stretch;
-      }
-      output += (bandStart - cursor) * stretch;
-      cursor = bandStart;
-      if (coordinate <= bandEnd) {
-        return output + (coordinate - cursor);
-      }
-      output += bandEnd - cursor;
-      cursor = bandEnd;
-    }
-    return output + (coordinate - cursor) * stretch;
-  };
-
-  return perContour.map((contour) => {
+export function solvePlainAxisScale(contours, axis, factor, origin) {
+  return contours.map(({ points }) => {
     const coordinates = new Map();
-    for (let index = 0; index < contour.points.length; index++) {
-      if (contour.points[index].type) continue;
-      coordinates.set(index, remap(contour.points[index][axis]));
+    for (let index = 0; index < points.length; index++) {
+      if (points[index].type) continue;
+      coordinates.set(index, origin + (points[index][axis] - origin) * factor);
     }
     return coordinates;
   });

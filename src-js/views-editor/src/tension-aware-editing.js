@@ -5,7 +5,7 @@ import {
   buildIndexedSegments,
   curvesAreAboveFloor,
   isCubicSegment,
-  solveRigidCurveScale,
+  solvePlainAxisScale,
   solveRigidLinkScale,
 } from "@fontra/core/tension-aware-edit.js";
 import { parseSelection } from "@fontra/core/utils.ts";
@@ -177,9 +177,9 @@ export function createTensionAwareTransformEntries(
 
         // The two axes read the same shape differently. Across x a straight is
         // the drawn width and holds, while the curves take the change. Along y
-        // a straight is the length the scale has to change, so the curves hold
-        // instead and the straights carry it.
-        const solve = axis === "x" ? solveRigidLinkScale : solveRigidCurveScale;
+        // a straight is the length the scale has to change, so every point
+        // takes the plain scale and the tension correction holds the curves.
+        const solve = axis === "x" ? solveRigidLinkScale : solvePlainAxisScale;
         const solved = solve(
           originals.map(({ contour }) => contour),
           axis,
