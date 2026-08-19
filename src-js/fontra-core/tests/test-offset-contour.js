@@ -2,6 +2,7 @@ import {
   buildContourSegments,
   calculateContourNormalAtPoint,
   collectCoupledPointGroups,
+  offsetContourAlongNormals,
 } from "@fontra/core/offset-contour.js";
 import { expect } from "chai";
 
@@ -61,5 +62,88 @@ describe("offset-contour geometry", () => {
       false
     );
     expect(groups.size).to.equal(0);
+  });
+});
+
+// A quarter-circle cubic of radius 100 about the origin, in the same form the
+// skeleton fixtures use. kappa = 0.5522847498 is the standard circular constant.
+const K = 0.5522847498307936;
+const makeArc = () => [
+  onCurve(100, 0),
+  control(100, 100 * K),
+  control(100 * K, 100),
+  onCurve(0, 100),
+];
+
+const midRadius = (points) => {
+  // The cubic's own midpoint, by de Casteljau at t = 0.5: (p0 + 3p1 + 3p2 + p3)/8.
+  const [p0, p1, p2, p3] = points;
+  const x = (p0.x + 3 * p1.x + 3 * p2.x + p3.x) / 8;
+  const y = (p0.y + 3 * p1.y + 3 * p2.y + p3.y) / 8;
+  return Math.hypot(x, y);
+};
+
+describe("offsetContourAlongNormals", () => {
+  it("offsets a curved segment instead of shearing its handles", () => {
+    const points = makeArc();
+    const working = structuredClone(points);
+    const radiusBefore = midRadius(points);
+
+    const changed = offsetContourAlongNormals(
+      points,
+      false,
+      new Map([
+        [0, 20],
+        [3, 20],
+      ]),
+      working
+    );
+
+    expect(changed).to.equal(true);
+    expect(working[0]).to.include({ x: 120, y: 0 });
+    expect(working[3]).to.include({ x: 0, y: 120 });
+    // The middle of the arc has to travel the same 20 units as its ends.
+    // Displacing the handles by an interpolation of the two endpoint deltas
+    // leaves it about 6 units short, because that can never lengthen a handle.
+    expect(midRadius(working) - radiusBefore).to.be.closeTo(20, 0.6);
+  });
+
+  it("tapers a segment when only one of its ends is offset", () => {
+    const points = makeArc();
+    const working = structuredClone(points);
+
+    offsetContourAlongNormals(points, false, new Map([[0, 20]]), working);
+
+    expect(working[0]).to.include({ x: 120, y: 0 });
+    expect(working[3]).to.include({ x: 0, y: 100 });
+  });
+
+  it("offsets a straight segment into a parallel straight", () => {
+    const points = [onCurve(0, 0), onCurve(100, 0)];
+    const working = structuredClone(points);
+
+    offsetContourAlongNormals(
+      points,
+      false,
+      new Map([
+        [0, 10],
+        [1, 10],
+      ]),
+      working
+    );
+
+    expect(working[0]).to.include({ x: 0, y: -10 });
+    expect(working[1]).to.include({ x: 100, y: -10 });
+  });
+
+  it("uses a caller-supplied normal when one is given", () => {
+    const points = [onCurve(0, 0), onCurve(100, 0)];
+    const working = structuredClone(points);
+
+    offsetContourAlongNormals(points, false, new Map([[0, 10]]), working, {
+      normalAt: () => ({ x: 1, y: 0 }),
+    });
+
+    expect(working[0]).to.include({ x: 10, y: 0 });
   });
 });

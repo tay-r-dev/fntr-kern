@@ -17,6 +17,7 @@ import {
   buildContourSegments,
   calculateContourNormalAtPoint,
   collectCoupledPointGroups,
+  offsetContourAlongNormals,
   isStraightControlledSmoothPoint,
   straightSegmentNormal,
 } from "./offset-contour.js";
@@ -492,12 +493,10 @@ export function applyFixedRibDelta(
     // flat edge off the skeleton it is defined to lie on.
     const singleSided =
       originalContour.singleSided === "left" || originalContour.singleSided === "right";
-    const pointDeltas = new Map();
-    // The same allowance again, as the signed distance each end actually travelled.
-    // The handle construction needs it as a scalar per end, and it must be the
-    // clamped one: handles scaled by the raw drag kept the shape moving after the
+    // The signed distance each end actually travels, which must be the clamped
+    // allowance: handles scaled by the raw drag kept the shape moving after the
     // on-curves had stopped, which on a curved skeleton is the whole shape.
-    const pointOffsets = new Map();
+    const offsetsByIndex = new Map();
     const affected = expandToTiedRibGroups(originalContour, pointIds);
     const allowed = collectFixedRibAllowances(
       originalContour,
@@ -520,18 +519,7 @@ export function applyFixedRibDelta(
       // the drag has nothing left to move and stands still.
       const allowedDelta = allowed.has(pointId) ? allowed.get(pointId) : projectedDelta;
       if (!singleSided) {
-        const normal = calculateNormalAtSkeletonPoint(
-          originalContour,
-          originalPointIndex
-        );
-        const pointDelta = {
-          x: normal.x * allowedDelta,
-          y: normal.y * allowedDelta,
-        };
-        pointDeltas.set(originalPointIndex, pointDelta);
-        pointOffsets.set(originalPointIndex, allowedDelta);
-        workingPoint.x = round(originalPoint.x + pointDelta.x);
-        workingPoint.y = round(originalPoint.y + pointDelta.y);
+        offsetsByIndex.set(originalPointIndex, allowedDelta);
       }
       applyFixedRibWidthDelta(
         workingPoint,
@@ -544,14 +532,20 @@ export function applyFixedRibDelta(
       );
       changed = true;
     }
-    if (scaleControlPoints && pointDeltas.size)
-      offsetControlPointsWithFixedRibSegments(
-        originalContour,
-        workingContour,
-        pointDeltas,
-        pointOffsets,
-        round
+    if (offsetsByIndex.size) {
+      offsetContourAlongNormals(
+        originalContour.points,
+        originalContour.closed,
+        offsetsByIndex,
+        workingContour.points,
+        {
+          round,
+          rebuildHandles: scaleControlPoints,
+          normalAt: (pointIndex) =>
+            calculateNormalAtSkeletonPoint(originalContour, pointIndex),
+        }
       );
+    }
   }
   return changed;
 }
@@ -581,152 +575,6 @@ function expandToTiedRibGroups(contour, pointIds) {
   }
   return expanded;
 }
-
-// Every moved on-curve travels the same distance along its own normal, so an
-// affected segment is a constant-distance offset of itself — or a tapered one
-// where only one of its ends moved. Both are what the outline generator already
-// constructs, so the drag runs the same construction on the centerline: handle
-// directions are preserved and their lengths scale by 1 + d·kappa.
-//
-// Displacing the handles by an interpolation of the two endpoint deltas instead
-// shears the segment, because it can never lengthen a handle. On a quarter arc of
-// radius 100 pushed out 20 units the middle of the curve came up 6 units short of
-// its ends, which is the curvature loss the whole tool is supposed to avoid.
-function offsetControlPointsWithFixedRibSegments(
-  originalContour,
-  workingContour,
-  pointDeltas,
-  pointOffsets,
-  round
-) {
-  const points = originalContour.points || [];
-  const onCurveIndices = points
-    .map((point, index) => (point?.type ? null : index))
-    .filter((index) => index !== null);
-  const segmentCount = originalContour.closed
-    ? onCurveIndices.length
-    : onCurveIndices.length - 1;
-  for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
-    const startIndex = onCurveIndices[segmentIndex];
-    const endIndex = onCurveIndices[(segmentIndex + 1) % onCurveIndices.length];
-    const startMoved = pointDeltas.has(startIndex);
-    const endMoved = pointDeltas.has(endIndex);
-    if (!startMoved && !endMoved) continue;
-    const controlIndices = getControlPointIndicesBetween(
-      points,
-      startIndex,
-      endIndex,
-      originalContour.closed
-    );
-    if (!controlIndices.length) continue;
-    if (
-      controlIndices.length !== 2 ||
-      !offsetFixedRibSegmentHandles(
-        points,
-        workingContour,
-        startIndex,
-        endIndex,
-        controlIndices,
-        startMoved ? pointOffsets.get(startIndex) || 0 : 0,
-        endMoved ? pointOffsets.get(endIndex) || 0 : 0,
-        round
-      )
-    ) {
-      // A segment with a single handle has no second length to receive, and a
-      // degenerate one has no direction to keep. Carry those along with the
-      // endpoints instead, which at least holds their relative position.
-      interpolateFixedRibSegmentHandles(
-        points,
-        workingContour,
-        controlIndices,
-        pointDeltas.get(startIndex),
-        pointDeltas.get(endIndex),
-        round
-      );
-    }
-  }
-}
-
-function offsetFixedRibSegmentHandles(
-  points,
-  workingContour,
-  startIndex,
-  endIndex,
-  controlIndices,
-  d0,
-  d3,
-  round
-) {
-  const p0 = points[startIndex];
-  const p3 = points[endIndex];
-  const p1 = points[controlIndices[0]];
-  const p2 = points[controlIndices[1]];
-  const q0 = workingContour.points?.[startIndex];
-  const q3 = workingContour.points?.[endIndex];
-  const handle1 = workingContour.points?.[controlIndices[0]];
-  const handle2 = workingContour.points?.[controlIndices[1]];
-  if (!p0 || !p1 || !p2 || !p3 || !q0 || !q3 || !handle1 || !handle2) return false;
-  const u0 = normalizeVector(subVectors(p1, p0));
-  const u1 = normalizeVector(subVectors(p2, p3));
-  if (!vectorLength(u0) || !vectorLength(u1)) return false;
-  const { startLength, endLength } = offsetCubicSide({
-    p0,
-    p1,
-    p2,
-    p3,
-    d0,
-    d3,
-    q0,
-    q3,
-    u0,
-    u1,
-  });
-  handle1.x = round(q0.x + u0.x * startLength);
-  handle1.y = round(q0.y + u0.y * startLength);
-  handle2.x = round(q3.x + u1.x * endLength);
-  handle2.y = round(q3.y + u1.y * endLength);
-  return true;
-}
-
-function interpolateFixedRibSegmentHandles(
-  points,
-  workingContour,
-  controlIndices,
-  startDelta,
-  endDelta,
-  round
-) {
-  for (let i = 0; i < controlIndices.length; i++) {
-    const controlIndex = controlIndices[i];
-    const originalPoint = points[controlIndex];
-    const workingPoint = workingContour.points?.[controlIndex];
-    if (!originalPoint || !workingPoint) continue;
-    const t = controlIndices.length === 1 ? 0.5 : i / (controlIndices.length - 1);
-    workingPoint.x = round(
-      originalPoint.x + interpolateDelta(startDelta?.x || 0, endDelta?.x || 0, t)
-    );
-    workingPoint.y = round(
-      originalPoint.y + interpolateDelta(startDelta?.y || 0, endDelta?.y || 0, t)
-    );
-  }
-}
-
-function getControlPointIndicesBetween(points, startIndex, endIndex, closed) {
-  const indices = [];
-  let index = startIndex + 1;
-  while (index !== endIndex) {
-    if (index >= points.length) {
-      if (!closed) break;
-      index = 0;
-      if (index === endIndex) break;
-    }
-    if (points[index]?.type) indices.push(index);
-    index++;
-  }
-  return indices;
-}
-
-const interpolateDelta = (a, b, t) => a + (b - a) * t;
 
 export function getSkeletonHandleEqualizeInfo(contour, pointIdOrIndex) {
   const points = contour?.points || [];
