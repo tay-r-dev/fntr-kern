@@ -1824,10 +1824,10 @@ curvature gizmo, deciding after it sees whether the pointer moves.
 
 **State: built, in live use, unfinished.** Hold X and every curved segment the
 edit reaches keeps its drawn shape instead of going slack or pinching. The drag
-works. Both directions of the scale work. Nothing here has been through a full
-manual matrix, and the session that built it ended with bugs still expected.
-The spec and the plan stay in place for the next round, against the usual
-practice of retiring them at the end.
+works, both directions of the scale work, and the arrow keys run the same
+correction. Nothing here has been through a manual matrix. The spec and the plan
+stay in place for the next round, against the usual practice of retiring them at
+the end.
 
 The geometry is one core module with mocha tests. The interaction is one editor
 module holding a target entry, in the shape base-curve expansion already uses.
@@ -1838,19 +1838,85 @@ an empty match tree, so the entry is the only writer.
 
 No handle turns. Every handle keeps its tension, which is its length as a
 fraction of the way to the segment's tangent crossing. A tension point slides
-along its own straight until its segment's corner is back in proportion. Under a
-scale a straight is a rigid link across the axis being scaled, and its extent
-along that axis is free.
+along its own straight until its segment's corner is back in proportion — **under
+the scale only**, for the reason below. Under a scale a straight is a rigid link
+across the axis being scaled, and its extent along that axis is free.
 
 The invariant was settled by measurement, not by preference. On the n's inner
 arch narrowed to 0.846, no slide gives an apex radius of 52.7 and equal travel
 gives 60.5, against an original 73.6. The similar corner gives 62.3, which is
 the original radius at the new size. That is the rule.
 
+### The slide belongs to the scale, and not to the drag
+
+Every curve in the n has exactly one end that can travel:
+
+```
+curve  0 ->  3   ends: 0 slides,  3 STUCK
+curve  3 ->  6   ends: 3 STUCK,   6 slides
+curve  9 -> 12   ends: 9 slides, 12 STUCK
+curve 12 -> 15   ends: 12 STUCK, 15 slides
+```
+
+The four stem-side points sit on a straight and travel on it. The two apexes
+have curves on both sides and have no rail. So under a drag the rule fired on
+one end of a curve and never the other, and the same gesture read as corrected
+from one grip and ignored from the opposite one. Pulling the apex sideways slid
+the springing point and put the corner back in proportion. Pulling the springing
+point owed the same travel at the apex and could not pay it: the arch went 40
+units taller with one leg scaled by 1.29 and the other untouched.
+
+A scale is where the rule belongs. It states a size and nothing else, so the
+slide is the only thing that can restore a corner, and it has the whole
+selection's straights to work with. A drag states a position, and the point
+under the cursor is usually the one the slide would have moved.
+
+The drag keeps the rest. A dragged tension point still carries its whole
+straight, its handle still ends up on that straight, and every segment the edit
+reaches still keeps its tension. What that last part is worth, on the n's outer
+arch with the springing point pulled 40 down its own stem: without it the handle
+stays 69 units while the leg it fills grows, tension falls 0.496 to 0.385, and
+the apex radius collapses 158 to 101. Pushed 80 the other way the handle passes
+the tangent crossing at tension 1.169 and the segment doubles back on itself.
+Tension is the coordinate in which the springing point can travel its whole
+range and still describe a curve. It holds proportion and not shape, and that is
+all a single grip has to distribute.
+
+**The extension that would restore shape, unbuilt:** let a stuck point slide
+along its own tangent, a straight being the case where a segment happens to lie
+on that tangent. The apex's tangent is shared with the next curve, so moving it
+changes that curve's reach and asks its far end to slide in turn. On the n the
+cascade terminates one step later at a point that does have a straight. Whether
+it always terminates is unproven, and a closed contour of nothing but curves has
+no stuck-free end anywhere.
+
+### A frame states the whole answer, or it states a lie
+
+The entry wrote only the points whose correction differed from what the match
+tree put there, and that set changed from frame to frame:
+
+```
+raw x=46 y=5  -> writes [0,1,2,3]
+raw x=24 y=21 -> writes [0,1,2,3]
+raw x=16 y=22 -> writes [1,2]      <- 0 and 3 go stale
+raw x=2  y=6  -> writes [1,2]
+```
+
+Every frame is measured from the pre-drag path, so a point dropped from the set
+kept whatever an abandoned frame left on it, and the last frame's rollback never
+named it. The undo restored part of the drag and left the rest, which is how it
+was reported. It also reads as a lag, because a point can sit a frame or more
+behind the cursor. A point written once is written on every frame after it, in
+the drag entry and in the transform entry alike.
+
+**This is a general trap for any target entry whose write set depends on its
+input.** The base-expand entry writes the same points every frame and does not
+have it.
+
 ### Every rule that fires has to say what carries with it
 
-Five separate faults, all the same shape. A point moved and something that
-belongs to it stayed behind.
+Six separate faults, all the same shape. A point moved and something that
+belongs to it stayed behind, or a handle was turned and nothing turned it back.
 
 The slide moved a tension point and left its handle. The point rose past the
 handle, the handle then sat below the point, and the restore rebuilt it pointing
@@ -1859,10 +1925,61 @@ down instead of up — a 36-unit flip on a quarter-unit step, caught by the
 moved on-curve points through the entry, where no point rule runs, and left
 every handle behind, which broke collinearity at each tension point. Two tests
 in the plan moved an on-curve point without its handle and measured a state the
-editor never produces. The remedy is the same in all of them: whatever moves a
-point moves its handles, exactly as the point rules do.
+editor never produces.
+
+The sixth runs the other way and took the longest to see. **The ordinary point
+rules keep a tension point's handle collinear themselves**: `RotateNext` turns it
+onto the line from the far end of the straight to the point. They turn it onto
+the straight as they see it, with the far end still standing where it was, so on
+a drag across, that line is tilted. The coupling then moves the far end and takes
+the tilt back out, and nothing turned the handle back. On `n.json`, dragging the
+tenth node 30 units across left a 4.1 degree kink at a smooth point, and a sweep
+of the whole range reached 6.1. The handle now goes back onto the straight after
+the coupling has settled where the straight is, at whatever length it has. That
+turns no handle a designer placed — it undoes a turn the ordinary rules made
+against a tilt this module removes, which is why it runs after the coupling and
+not before.
+
+The remedy in all six: whatever moves a point moves its handles, and whatever
+un-tilts a line squares what was turned onto it.
+
+### The axis lock, and two writers with one baseline
+
+X states an axis. The larger component wins and the other is dropped, whatever
+the selection holds. The correction reads a shape one axis at a time — the chain
+walk sorts bodies along the axis being scaled, and a tension point travels on its
+own straight — so a diagonal asks it two questions at once and neither answer is
+the one the designer is watching.
+
+**The axis is the drag's, not the frame's.** Deciding it per frame let a later
+reach across overrule an earlier reach along, halfway through a gesture. It
+latches once the pointer leaves a two-unit dead zone, so the opening frame cannot
+settle it on a jitter.
+
+**X+Shift is just X.** An axis is the stronger of the two constraints and
+0/45/90 has no diagonal left to offer under it. The variant is deleted rather
+than exempted — behavior name, table entry, base-name mapping and all — and the
+resolver no longer reads the event.
+
+**Two writers need one baseline.** The lock was in the code and never reached
+the canvas. The match tree writes first with the raw delta, the entry writes on
+top, and the entry wrote only where its result differed from a baseline it
+computed from the **locked** delta. For the dragged point those two agreed, so
+nothing was written and the raw diagonal position stood. Horizontal drags looked
+locked because the correction rewrites the arch points anyway. Vertical drags had
+no such cover and moved freely, which is how it was found. The baseline has to be
+what the other writer actually wrote.
+
+The same fault a second time, in a second parameter: the entry builds its own
+copy of the ordinary behavior to measure against, and built it with scaling off
+while its caller may have built the live one with scaling on. On the scale
+sub-tool that is a baseline the glyph never held. The flag is passed in from
+both call sites now. **Anything the caller's factory was built with, the entry's
+copy must be built with too.**
 
 ### Which points may slide, three times wrong
+
+History of the slide, which now runs under the scale alone.
 
 The first gate demanded a smooth point, on the reasoning that a corner owns its
 own tangent. The reasoning does not hold. The slide never reads a point's handle
@@ -1872,12 +1989,9 @@ travels with it, so the drawn angle survives. Corner points slide.
 The second gate skipped a point the edit had already moved. But the slide owns
 exactly one number, how far the point sits from the far end of its straight, and
 a drag that carries a whole stem sideways changes that number not at all. It is
-skipped only where the edit changed that distance itself, which means the
-designer dragged the point along its own straight and their position stands.
-That distance is measured on the straight **as it stood before the edit**:
-dragging the tension point alone tilts the straight, and measuring on the tilted
-one reads the tilt as travel and stands the slide down exactly when a
-single-point drag needs it most.
+skipped only where the edit changed that distance itself. That distance is
+measured on the straight **as it stood before the edit**: measuring on the tilted
+one reads the tilt as travel.
 
 The third gate asked the far end of the curve to move. Dragging a stem moves the
 near ends and leaves the apexes still, so the gate stood down on the commonest
@@ -1889,9 +2003,7 @@ same delta at both ends is unchanged, and that one already keeps its drawing.
 Pulling an apex straight down carried the tangent crossing down with it, so both
 tension points followed and the whole arch travelled as one piece. The near leg
 answers to the far leg and to nothing else. Where the far leg is the length it
-was, the corner asks for no travel, whatever the crossing did. Dragging the n's
-apex down now leaves both stem tops where the designer put them and rebuilds
-four handles.
+was, the corner asks for no travel, whatever the crossing did.
 
 ### The coupling rule already existed
 
@@ -1939,17 +2051,17 @@ distribute: a contour with no elastic run, a contour where every run returns to
 the body it started from — a stem with a bowl hung off it — and a gap total of
 zero.
 
-### Two writers, one baseline
+### The arrow keys
 
-A single-point X-drag locks to an axis, because one point has no second point to
-state a direction with and the larger component wins. The lock was in the code
-and never reached the canvas. The match tree writes first with the raw delta, the
-entry writes on top, and the entry wrote only where its result differed from a
-baseline it computed from the **locked** delta. For the dragged point those two
-agreed, so nothing was written and the raw diagonal position stood. Horizontal
-drags looked locked because the correction rewrites the arch points anyway.
-Vertical drags had no such cover and moved freely, which is how it was found. The
-baseline has to be what the other writer actually wrote.
+An arrow key is a drag of one grid step, so X means there what it means under the
+pointer, and the nudge runs the same target entry. It needs no lock, because an
+arrow key names its own axis. Shift stays the step size: the event goes to the
+behavior-name resolver without its modifiers, so it cannot be read as the
+pointer's constrain.
+
+`scene-controller.handleArrowKeys` builds its own target entries and had never
+reached this one. Anything added to the pointer's dispatch has a second dispatch
+to be added to, and the two are 300 lines apart in different files.
 
 ### Open
 
@@ -1957,12 +2069,17 @@ baseline has to be what the other writer actually wrote.
   it during a box drag does nothing until the next drag. The pointer drag
   re-reads it every frame, because it rebuilds its factory on a behavior change.
 - The slide's along-the-straight gate may now be redundant. It exists because a
-  straight could tilt under a drag, and the coupling stops that.
-- No manual matrix has been run for either half. The plan carries two, of eight
-  rows each.
+  straight could tilt under a drag, the coupling stops that, and the drag no
+  longer slides at all.
+- No manual matrix has been run for any of the three halves — drag, scale, arrow
+  keys. The plan carries two, of eight rows each, and neither covers the keys.
 - The outer-left junction of the n is a corner the demonstration file moved by
-  hand, 8.9 units. It slides now, and whether it lands where the hand put it is
-  unmeasured.
+  hand, 8.9 units. It no longer slides under a drag, so the question of whether
+  it lands where the hand put it now belongs to the scale.
+- The architecture map has no F10 row. The inventory in §1 stops at F9, and this
+  feature's files are in neither the per-feature map nor the shared-file reverse
+  index.
+
 
 ## The documents themselves
 
