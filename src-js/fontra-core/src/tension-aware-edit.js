@@ -1,3 +1,4 @@
+import { buildContourSegments, collectCoupledPointGroups } from "./offset-contour.js";
 import { calculateTunniPoint } from "./tunni-calculations.js";
 import {
   addVectors,
@@ -436,9 +437,12 @@ export function slideTensionPoints(
  * @returns {boolean} Whether anything moved
  */
 export function applyTensionAwareEdit(beforePoints, afterPoints, closed, options = {}) {
+  // The coupling runs first: it decides where the straights are, and the slide
+  // travels on them.
+  const carried = carryCoupledStraights(beforePoints, afterPoints, closed, options);
   const slid = slideTensionPoints(beforePoints, afterPoints, closed, options);
   const restored = restoreSegmentTensions(beforePoints, afterPoints, closed, options);
-  return slid || restored;
+  return carried || slid || restored;
 }
 
 // No curved segment's bounding box may go under this in either direction. The
@@ -657,4 +661,91 @@ export function solvePlainAxisScale(contours, axis, factor, origin) {
     }
     return coordinates;
   });
+}
+
+// Move an on-curve point and the handles that belong to it, the way the point
+// rules carry a handle with its own point.
+function moveOnCurveWithHandles(points, segments, index, delta, round) {
+  const target = addVectors(points[index], delta);
+  const x = round(target.x);
+  const y = round(target.y);
+  if (points[index].x === x && points[index].y === y) {
+    return false;
+  }
+  const applied = subVectors({ x, y }, points[index]);
+  points[index] = { ...points[index], x, y };
+  for (const segment of segments) {
+    if (!isCubicSegment(segment)) continue;
+    for (const [end, control] of [
+      [segment.startIndex, segment.controlIndices[0]],
+      [segment.endIndex, segment.controlIndices[1]],
+    ]) {
+      if (end !== index) continue;
+      points[control] = {
+        ...points[control],
+        x: points[control].x + applied.x,
+        y: points[control].y + applied.y,
+      };
+    }
+  }
+  return true;
+}
+
+/**
+ * The coupling rule, read off the one collector that owns it. A smooth on-curve
+ * point with a single handle cannot own its direction: smoothness holds the
+ * handle collinear with the straight on the point's other side, so the straight
+ * states the direction and the point follows. One such point ties both ends of
+ * its straight, and the whole straight travels as a unit.
+ *
+ * Only the part of the move across the straight is carried. The part along it is
+ * the straight growing or shrinking, which the straight is free to do. So a
+ * tension point dragged sideways takes its stem with it and the stem stays
+ * upright, while the same point dragged up the stem only shortens it.
+ *
+ * `afterPoints` is mutated. `beforePoints` is read only.
+ * @returns {boolean} Whether anything moved
+ */
+export function carryCoupledStraights(
+  beforePoints,
+  afterPoints,
+  closed,
+  { round = Math.round } = {}
+) {
+  const pointSegments = buildContourSegments(beforePoints, closed);
+  const groups = collectCoupledPointGroups(pointSegments, closed);
+  if (!groups.size) {
+    return false;
+  }
+  const indexOfPoint = new Map(beforePoints.map((point, index) => [point, index]));
+  const segments = buildIndexedSegments(beforePoints, closed);
+  const seen = new Set();
+  let changed = false;
+  for (const group of groups.values()) {
+    const indices = group.map((point) => indexOfPoint.get(point));
+    const key = [...indices].sort((a, b) => a - b).join(",");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const deltas = indices.map((index) =>
+      subVectors(afterPoints[index], beforePoints[index])
+    );
+    const movedAt = deltas.findIndex((delta) => Math.hypot(delta.x, delta.y) > EPSILON);
+    if (movedAt < 0) continue;
+    const source = deltas[movedAt];
+    for (let i = 0; i < indices.length; i++) {
+      if (Math.hypot(deltas[i].x, deltas[i].y) > EPSILON) continue;
+      const direction = handleDirection(
+        beforePoints[indices[movedAt]],
+        beforePoints[indices[i]]
+      );
+      const across = direction
+        ? subVectors(source, mulVectorScalar(direction, dotVector(source, direction)))
+        : source;
+      if (Math.hypot(across.x, across.y) < EPSILON) continue;
+      changed =
+        moveOnCurveWithHandles(afterPoints, segments, indices[i], across, round) ||
+        changed;
+    }
+  }
+  return changed;
 }

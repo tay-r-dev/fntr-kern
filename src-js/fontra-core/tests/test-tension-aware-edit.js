@@ -110,6 +110,7 @@ describe("tension-aware edit — the restore", () => {
 
 import {
   applyTensionAwareEdit,
+  carryCoupledStraights,
   slideTensionPoints,
 } from "@fontra/core/tension-aware-edit.js";
 
@@ -352,5 +353,51 @@ describe("tension-aware edit — the vertical scale", () => {
     const tensionAfter = segmentTensions(after, buildIndexedSegments(after, true)[3]);
     expect(tensionAfter.start).to.be.closeTo(tensionBefore.start, 0.02);
     expect(tensionAfter.end).to.be.closeTo(tensionBefore.end, 0.02);
+  });
+});
+
+describe("tension-aware edit — the coupled straight", () => {
+  // The left stem of the b: a corner at the foot, a tension point at the top,
+  // and the arch leaving that tension point.
+  const stemContour = () => [
+    onCurve(117, 0),
+    onCurve(117, 396, true),
+    control(117, 437),
+    control(138, 464),
+    onCurve(173, 464, true),
+  ];
+
+  it("carries the whole straight when its tension point moves across it", () => {
+    const before = stemContour();
+    const after = copy(before);
+    after[1] = onCurve(97, 396, true);
+    after[2] = control(97, 437);
+    carryCoupledStraights(before, after, false);
+    // The foot follows, so the stem stays upright instead of tilting.
+    expect(after[0].x).to.equal(97);
+    expect(after[0].y).to.equal(0);
+  });
+
+  it("leaves the straight alone when its tension point moves along it", () => {
+    const before = stemContour();
+    const after = copy(before);
+    after[1] = onCurve(117, 376, true);
+    after[2] = control(117, 417);
+    carryCoupledStraights(before, after, false);
+    // Along the straight is the straight getting shorter, which it may do.
+    expect(after[0].x).to.equal(117);
+    expect(after[0].y).to.equal(0);
+  });
+
+  it("couples no straight that has no tension point on it", () => {
+    const rectangle = [
+      onCurve(0, 0),
+      onCurve(100, 0),
+      onCurve(100, 50),
+      onCurve(0, 50),
+    ];
+    const after = copy(rectangle);
+    after[1] = onCurve(120, 0);
+    expect(carryCoupledStraights(rectangle, after, true)).to.equal(false);
   });
 });
