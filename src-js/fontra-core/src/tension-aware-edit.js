@@ -432,6 +432,84 @@ export function slideTensionPoints(
 }
 
 /**
+ * A smooth on-curve point with one handle and a straight on its other side owns
+ * no direction: the straight states it, and the handle lies on it. The ordinary
+ * point rules keep that invariant themselves, by turning the handle onto the
+ * straight as the drag goes — but they turn it onto the straight as they see
+ * it, with the far end still standing where it was. The coupling then moves
+ * that far end and takes the tilt back out, and the handle is left on the angle
+ * of a straight that no longer exists.
+ *
+ * So the handle goes back onto the straight, at whatever length it now has.
+ * This turns no handle the designer placed. It undoes a turn the ordinary rules
+ * made against a tilt this module removes, and it runs after the coupling for
+ * exactly that reason.
+ *
+ * `afterPoints` is mutated. `beforePoints` is read only.
+ * @returns {boolean} Whether anything moved
+ */
+export function recollinearizeStraightHandles(
+  beforePoints,
+  afterPoints,
+  closed,
+  { round = Math.round } = {}
+) {
+  const segments = buildIndexedSegments(beforePoints, closed);
+  let changed = false;
+  for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+    const segment = segments[segmentIndex];
+    if (!isCubicSegment(segment)) {
+      continue;
+    }
+    for (const atStart of [true, false]) {
+      const straight = neighbourSegment(segments, segmentIndex, atStart, closed);
+      if (!straight || isCubicSegment(straight)) {
+        continue;
+      }
+      const pointIndex = atStart ? segment.startIndex : segment.endIndex;
+      // Only a smooth point. A corner owns its own direction, and its handle is
+      // not on the straight to begin with.
+      if (!beforePoints[pointIndex].smooth) {
+        continue;
+      }
+      const controlIndex = segment.controlIndices[atStart ? 0 : 1];
+      const anchorIndex =
+        straight.startIndex === pointIndex ? straight.endIndex : straight.startIndex;
+      const beforeAxis = handleDirection(
+        beforePoints[pointIndex],
+        beforePoints[anchorIndex]
+      );
+      const beforeHandle = handleDirection(
+        beforePoints[controlIndex],
+        beforePoints[pointIndex]
+      );
+      const afterAxis = handleDirection(
+        afterPoints[pointIndex],
+        afterPoints[anchorIndex]
+      );
+      if (!beforeAxis || !beforeHandle || !afterAxis) {
+        continue;
+      }
+      // The handle leaves the point on the far side from the anchor, but a
+      // drawing may have it the other way, and the axis carries no sign of its
+      // own. Take the sign the drawing had.
+      const sign = dotVector(beforeHandle, beforeAxis) >= 0 ? 1 : -1;
+      const length = distance(afterPoints[controlIndex], afterPoints[pointIndex]);
+      changed =
+        writeHandle(
+          afterPoints,
+          controlIndex,
+          afterPoints[pointIndex],
+          mulVectorScalar(afterAxis, sign),
+          length,
+          round
+        ) || changed;
+    }
+  }
+  return changed;
+}
+
+/**
  * The whole correction, in the order it has to run: the slide moves an on-curve
  * point, and the restore reads every on-curve position, so the slide goes first.
  * @returns {boolean} Whether anything moved
@@ -440,9 +518,17 @@ export function applyTensionAwareEdit(beforePoints, afterPoints, closed, options
   // The coupling runs first: it decides where the straights are, and the slide
   // travels on them.
   const carried = carryCoupledStraights(beforePoints, afterPoints, closed, options);
+  // Then the straights are where they will finally be, which is the only state
+  // a handle lying on one can be squared against.
+  const squared = recollinearizeStraightHandles(
+    beforePoints,
+    afterPoints,
+    closed,
+    options
+  );
   const slid = slideTensionPoints(beforePoints, afterPoints, closed, options);
   const restored = restoreSegmentTensions(beforePoints, afterPoints, closed, options);
-  return carried || slid || restored;
+  return carried || squared || slid || restored;
 }
 
 // No curved segment's bounding box may go under this in either direction. The

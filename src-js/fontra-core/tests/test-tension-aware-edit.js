@@ -1,5 +1,6 @@
 import {
   buildIndexedSegments,
+  recollinearizeStraightHandles,
   restoreSegmentTensions,
   segmentTensions,
 } from "@fontra/core/tension-aware-edit.js";
@@ -399,5 +400,78 @@ describe("tension-aware edit — the coupled straight", () => {
     const after = copy(rectangle);
     after[1] = onCurve(120, 0);
     expect(carryCoupledStraights(rectangle, after, true)).to.equal(false);
+  });
+});
+
+describe("tension-aware edit — the handle on a straight", () => {
+  // The right stem of the n and the arch leaving it: a corner at the foot, a
+  // tension point at the top, and the tension point's handle standing on the
+  // straight.
+  const stemContour = () => [
+    onCurve(347, 1),
+    onCurve(347, 377, true),
+    control(347, 446),
+    control(296, 516),
+    onCurve(210, 516, true),
+  ];
+
+  const kink = (points) => {
+    const straight = Math.atan2(points[1].y - points[0].y, points[1].x - points[0].x);
+    const handle = Math.atan2(points[2].y - points[1].y, points[2].x - points[1].x);
+    let degrees = ((handle - straight) * 180) / Math.PI;
+    while (degrees > 180) degrees -= 360;
+    while (degrees < -180) degrees += 360;
+    return degrees;
+  };
+
+  it("puts the handle back on a straight the coupling un-tilted", () => {
+    const before = stemContour();
+    const after = copy(before);
+    // What the ordinary point rules leave behind on a drag across: the point
+    // has moved, the foot has not yet, and the handle has been turned onto the
+    // tilted straight.
+    after[0] = onCurve(377, 1);
+    after[1] = onCurve(377, 377, true);
+    after[2] = control(382, 446);
+    expect(Math.abs(kink(after))).to.be.greaterThan(3);
+    expect(recollinearizeStraightHandles(before, after, false)).to.equal(true);
+    expect(Math.abs(kink(after))).to.be.lessThan(0.01);
+  });
+
+  it("keeps the handle's length while it squares it", () => {
+    const before = stemContour();
+    const after = copy(before);
+    after[0] = onCurve(377, 1);
+    after[1] = onCurve(377, 377, true);
+    after[2] = control(382, 446);
+    const length = Math.hypot(after[2].x - after[1].x, after[2].y - after[1].y);
+    recollinearizeStraightHandles(before, after, false);
+    const squared = Math.hypot(after[2].x - after[1].x, after[2].y - after[1].y);
+    expect(Math.abs(squared - length)).to.be.lessThan(1);
+  });
+
+  it("leaves a corner point's handle alone", () => {
+    const before = stemContour();
+    before[1] = onCurve(347, 377);
+    const after = copy(before);
+    after[0] = onCurve(377, 1);
+    after[1] = onCurve(377, 377);
+    after[2] = control(382, 446);
+    expect(recollinearizeStraightHandles(before, after, false)).to.equal(false);
+  });
+
+  it("leaves a handle alone where both sides of its point are curves", () => {
+    const before = [
+      onCurve(0, 0),
+      control(0, 55),
+      control(45, 100),
+      onCurve(100, 100, true),
+      control(155, 100),
+      control(200, 55),
+      onCurve(200, 0),
+    ];
+    const after = copy(before);
+    after[3] = onCurve(100, 120, true);
+    expect(recollinearizeStraightHandles(before, after, false)).to.equal(false);
   });
 });
