@@ -81,9 +81,14 @@ export function createTensionAwareTargetEntries(
               ? { x: rawDelta.x, y: 0 }
               : { x: 0, y: rawDelta.y }
             : rawDelta;
+        // What the match tree wrote to the glyph, which is the raw delta and
+        // knows nothing of the lock. Every comparison below is against this,
+        // because this is the state the entry's own change lands on top of.
+        const written = { ...layerGlyph, path: originalPath.copy() };
+        applyChange(written, baseBehavior.makeChangeForDelta(rawDelta));
         const scratch = { ...layerGlyph, path: originalPath.copy() };
         const changes = recordChanges(scratch, (layerGlyphProxy) => {
-          // What the ordinary rules do with this delta, on its own copy.
+          // What the ordinary rules do with the locked delta, on its own copy.
           const moved = { ...layerGlyph, path: originalPath.copy() };
           applyChange(moved, baseBehavior.makeChangeForDelta(delta));
           for (
@@ -94,18 +99,14 @@ export function createTensionAwareTargetEntries(
             if (isGeneratedContour?.(contourIndex)) continue;
             const before = originalPath.getUnpackedContour(contourIndex);
             const after = moved.path.getUnpackedContour(contourIndex);
-            // What the ordinary rules alone left, kept for the comparison below.
-            const uncorrected = after.points.map((point) => ({
-              x: point.x,
-              y: point.y,
-            }));
+            const uncorrected = written.path.getUnpackedContour(contourIndex).points;
             applyTensionAwareEdit(before.points, after.points, after.isClosed);
             const startIndex = moved.path.getAbsolutePointIndex(contourIndex, 0);
             for (let i = 0; i < after.points.length; i++) {
               const point = after.points[i];
-              // The match tree already wrote the uncorrected position. Write
-              // only where the correction disagrees with it, which includes a
-              // correction that puts a point back where it started.
+              // Write wherever this differs from what the match tree put
+              // there. That covers a correction that puts a point back where it
+              // started, and the axis lock, which the match tree never saw.
               if (point.x === uncorrected[i].x && point.y === uncorrected[i].y)
                 continue;
               layerGlyphProxy.path.setPointPosition(startIndex + i, point.x, point.y);
