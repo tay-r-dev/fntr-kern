@@ -107,7 +107,12 @@ export function createTensionAwareTargetEntries(
             const before = originalPath.getUnpackedContour(contourIndex);
             const after = moved.path.getUnpackedContour(contourIndex);
             const uncorrected = written.path.getUnpackedContour(contourIndex).points;
-            applyTensionAwareEdit(before.points, after.points, after.isClosed);
+            // No slide under a drag: the designer's own placement stands, and
+            // the tension is what the correction holds. See the note on
+            // `applyTensionAwareEdit`.
+            applyTensionAwareEdit(before.points, after.points, after.isClosed, {
+              slide: false,
+            });
             const startIndex = moved.path.getAbsolutePointIndex(contourIndex, 0);
             for (let i = 0; i < after.points.length; i++) {
               const point = after.points[i];

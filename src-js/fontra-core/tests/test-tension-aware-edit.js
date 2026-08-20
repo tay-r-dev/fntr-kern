@@ -475,3 +475,59 @@ describe("tension-aware edit — the handle on a straight", () => {
     expect(recollinearizeStraightHandles(before, after, false)).to.equal(false);
   });
 });
+
+describe("tension-aware edit — the drag does not slide", () => {
+  // The n's right stem and the arch leaving it: a corner at the foot, the
+  // springing point at the top, and the apex, which has curves on both sides.
+  const stemAndArch = () => [
+    onCurve(347, 1),
+    onCurve(347, 377, true),
+    control(347, 446),
+    control(296, 516),
+    onCurve(210, 516, true),
+    control(143, 516),
+    control(77, 473),
+    onCurve(77, 358),
+  ];
+
+  it("leaves every on-curve where the drag put it", () => {
+    const before = stemAndArch();
+    const after = copy(before);
+    // The springing point pulled 40 down its own straight, handle carried.
+    after[1] = onCurve(347, 337, true);
+    after[2] = control(347, 406);
+    applyTensionAwareEdit(before, after, false, { slide: false });
+    for (let i = 0; i < after.length; i++) {
+      if (after[i].type) continue;
+      if (i === 1) continue;
+      expect(after[i].x).to.equal(before[i].x);
+      expect(after[i].y).to.equal(before[i].y);
+    }
+  });
+
+  it("still holds the segment's tension", () => {
+    const before = stemAndArch();
+    const after = copy(before);
+    after[1] = onCurve(347, 337, true);
+    after[2] = control(347, 406);
+    const segment = buildIndexedSegments(before, false).find(
+      (candidate) => candidate.startIndex === 1
+    );
+    const wanted = segmentTensions(before, segment);
+    applyTensionAwareEdit(before, after, false, { slide: false });
+    const got = segmentTensions(after, segment);
+    expect(Math.abs(got.start - wanted.start)).to.be.lessThan(0.01);
+    expect(Math.abs(got.end - wanted.end)).to.be.lessThan(0.01);
+  });
+
+  it("still carries the straight when the springing point goes across it", () => {
+    const before = stemAndArch();
+    const after = copy(before);
+    after[1] = onCurve(377, 377, true);
+    after[2] = control(382, 446);
+    applyTensionAwareEdit(before, after, false, { slide: false });
+    // The foot follows, and the handle goes back on the straight.
+    expect(after[0].x).to.equal(377);
+    expect(after[2].x).to.equal(377);
+  });
+});

@@ -512,9 +512,21 @@ export function recollinearizeStraightHandles(
 /**
  * The whole correction, in the order it has to run: the slide moves an on-curve
  * point, and the restore reads every on-curve position, so the slide goes first.
+ *
+ * **The slide belongs to the scale, not to the drag.** A scale states a size and
+ * nothing else, so the slide is the only thing that can put the corner back in
+ * proportion, and it has a whole selection of straights to travel on. A drag
+ * states a position, and the point the designer is holding is usually the one
+ * the slide would have moved. What is left for it there is the far end of the
+ * curve, which on a stem-and-arch drawing is an apex with curves on both sides
+ * and no straight to travel on: the rule fires on one end of a curve and never
+ * the other, and the same gesture reads as corrected from one grip and ignored
+ * from the opposite one. So the drag keeps the tension and leaves the on-curve
+ * points where they were put. `slide` is off there and on everywhere else.
  * @returns {boolean} Whether anything moved
  */
 export function applyTensionAwareEdit(beforePoints, afterPoints, closed, options = {}) {
+  const { slide = true } = options;
   // The coupling runs first: it decides where the straights are, and the slide
   // travels on them.
   const carried = carryCoupledStraights(beforePoints, afterPoints, closed, options);
@@ -526,7 +538,9 @@ export function applyTensionAwareEdit(beforePoints, afterPoints, closed, options
     closed,
     options
   );
-  const slid = slideTensionPoints(beforePoints, afterPoints, closed, options);
+  const slid = slide
+    ? slideTensionPoints(beforePoints, afterPoints, closed, options)
+    : false;
   const restored = restoreSegmentTensions(beforePoints, afterPoints, closed, options);
   return carried || squared || slid || restored;
 }
