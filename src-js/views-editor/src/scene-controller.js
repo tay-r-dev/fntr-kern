@@ -96,6 +96,10 @@ import {
   splitPanelSkeletonContours,
   togglePanelContourReversed,
 } from "./skeleton-panel-edits.js";
+import {
+  createTensionAwareTargetEntries,
+  getTensionAwareBehaviorName,
+} from "./tension-aware-editing.js";
 //// grid
 import { toggleMagneticSnap } from "./edit-behavior.js";
 
@@ -996,13 +1000,17 @@ export class SceneController {
       fixedRibMode: this.selectedTool?.fixedRibMode === true,
       fixedRibCompressMode: this.selectedTool?.fixedRibCompressMode === true,
       tangentRibMode: this.selectedTool?.tangentRibMode === true,
+      tensionAwareMode: this.selectedTool?.tensionAwareMode === true,
     };
+    const targetKinds = getSelectionTargetKinds(this.selection);
+    // An arrow key is a drag of one grid step, so X means here what it means
+    // under the pointer. It needs no axis lock: an arrow key names its axis.
+    // The event goes in without its modifiers, because Shift on an arrow key is
+    // the step size and not the 0/45/90 constrain the pointer reads it as.
+    const tensionAwareName = getTensionAwareBehaviorName(modifiers, targetKinds, {});
     const behaviorName =
-      getSkeletonModifierBehaviorName(
-        event,
-        modifiers,
-        getSelectionTargetKinds(this.selection)
-      ) ||
+      tensionAwareName ||
+      getSkeletonModifierBehaviorName(event, modifiers, targetKinds) ||
       (hasRibLikeSelection
         ? getSkeletonRibBehaviorName(event, modifiers)
         : event.altKey
@@ -1018,39 +1026,50 @@ export class SceneController {
         const modifierOptions = makeSkeletonModifierOptions(behaviorName, {
           referenceSkeletonData,
         });
-        const targetEntries = hasGeneratedHandleSelection
-          ? createEditableGeneratedHandleTargetEntries(
+        const targetEntries = tensionAwareName
+          ? createTensionAwareTargetEntries(
               layerGlyph,
               this.selection,
-              behaviorName,
-              modifierOptions
+              tensionAwareName,
+              {
+                isGeneratedContour: (contourIndex) =>
+                  this.sceneModel.isGeneratedPathContour(contourIndex),
+                scalingEditBehavior: this.selectedTool.scalingEditBehavior,
+              }
             )
-          : // A rib under this modifier pair is an entry point into the
-            // skeleton drag, not the width edit it otherwise means.
-            hasRibLikeSelection && !isFixedRibBehavior(behaviorName)
-            ? [
-                ...createSkeletonRibTargetEntries(
-                  layerGlyph,
-                  this.selection,
-                  behaviorName,
-                  modifierOptions
-                ),
-                ...createEditableGeneratedPointTargetEntries(
-                  layerGlyph,
-                  this.selection,
-                  behaviorName,
-                  modifierOptions
-                ),
-              ]
-            : [
-                makeSkeletonPointTargetEntry(
-                  layerGlyph,
-                  this.selection,
-                  behaviorName,
-                  referenceSkeletonData,
-                  modifierOptions
-                ),
-              ].filter((entry) => entry);
+          : hasGeneratedHandleSelection
+            ? createEditableGeneratedHandleTargetEntries(
+                layerGlyph,
+                this.selection,
+                behaviorName,
+                modifierOptions
+              )
+            : // A rib under this modifier pair is an entry point into the
+              // skeleton drag, not the width edit it otherwise means.
+              hasRibLikeSelection && !isFixedRibBehavior(behaviorName)
+              ? [
+                  ...createSkeletonRibTargetEntries(
+                    layerGlyph,
+                    this.selection,
+                    behaviorName,
+                    modifierOptions
+                  ),
+                  ...createEditableGeneratedPointTargetEntries(
+                    layerGlyph,
+                    this.selection,
+                    behaviorName,
+                    modifierOptions
+                  ),
+                ]
+              : [
+                  makeSkeletonPointTargetEntry(
+                    layerGlyph,
+                    this.selection,
+                    behaviorName,
+                    referenceSkeletonData,
+                    modifierOptions
+                  ),
+                ].filter((entry) => entry);
         const behaviorFactory = new EditBehaviorFactory(
           layerGlyph,
           this.selection,

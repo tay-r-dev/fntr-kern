@@ -814,6 +814,7 @@ export class PointerTool extends BaseTool {
             {
               isGeneratedContour: (contourIndex) =>
                 this.sceneModel.isGeneratedPathContour(contourIndex),
+              scalingEditBehavior: this.scalingEditBehavior,
             }
           );
         }

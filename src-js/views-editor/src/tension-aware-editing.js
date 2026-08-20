@@ -49,24 +49,32 @@ export function createTensionAwareTargetEntries(
   layerGlyph,
   selection,
   behaviorName,
-  { isGeneratedContour = null } = {}
+  { isGeneratedContour = null, scalingEditBehavior = false } = {}
 ) {
   const { point: pointSelection } = parseSelection(selection || new Set());
   if (!pointSelection?.length || !layerGlyph?.path) return [];
 
   const originalPath = layerGlyph.path.copy();
+  // The same flag the caller built its own factory with. The entry measures
+  // every write against what that factory put on the glyph, so a factory built
+  // on the other setting hands it a baseline the glyph never held.
   const baseFactory = new EditBehaviorFactory(
     { ...layerGlyph, path: originalPath },
     selection,
-    false
+    scalingEditBehavior
   );
   const baseBehavior = baseFactory.getBehavior(
     BASE_BEHAVIOR_NAMES[behaviorName] || "default"
   );
 
   let rollbackChange = null;
-  // The axis a single-point drag latches onto, held for the whole gesture.
-  const lockDeltaToAxis = makeAxisLock();
+  // The axis the drag latches onto, held for the whole gesture. X+Shift is the
+  // way out: it keeps the ordinary 0/45/90 constrain, so a diagonal is still
+  // reachable under the correction.
+  const lockDeltaToAxis =
+    behaviorName === TENSION_AWARE_CONSTRAIN_BEHAVIOR_NAME
+      ? (rawDelta) => rawDelta
+      : makeAxisLock();
   // Every point this entry has ever written during the gesture. See the write
   // loop below for why it has to remember them.
   const touched = new Set();
@@ -76,18 +84,19 @@ export function createTensionAwareTargetEntries(
         return rollbackChange;
       },
       makeChangeForDelta(rawDelta) {
-        // One point on its own has no second point to state a direction with,
-        // so the drag states it: the larger of the two components wins and the
-        // other is dropped. It removes the ambiguity between a shape the
-        // designer is narrowing and one they are lowering.
+        // X states an axis. The larger of the two components wins and the other
+        // is dropped, whatever the selection holds. The correction reads a
+        // shape one axis at a time — the chain walk sorts bodies along the axis
+        // being scaled, and a tension point travels on its own straight — so a
+        // diagonal asks it two questions at once and neither answer is the one
+        // the designer is watching.
         //
         // The axis is the drag's, not the frame's. Once the pointer has left
         // the dead zone the choice is latched, so reaching further across than
         // the drag ever went along cannot turn a narrowing into a lowering
         // halfway through. Inside the dead zone nothing is settled yet, and the
         // larger component still leads.
-        const delta =
-          pointSelection.length === 1 ? lockDeltaToAxis(rawDelta) : rawDelta;
+        const delta = lockDeltaToAxis(rawDelta);
         // What the match tree wrote to the glyph, which is the raw delta and
         // knows nothing of the lock. Every comparison below is against this,
         // because this is the state the entry's own change lands on top of.
