@@ -1820,6 +1820,150 @@ curvature gizmo, deciding after it sees whether the pointer moves.
 
 ---
 
+## Tension-aware drag and scale (map F10)
+
+**State: built, in live use, unfinished.** Hold X and every curved segment the
+edit reaches keeps its drawn shape instead of going slack or pinching. The drag
+works. Both directions of the scale work. Nothing here has been through a full
+manual matrix, and the session that built it ended with bugs still expected.
+The spec and the plan stay in place for the next round, against the usual
+practice of retiring them at the end.
+
+The geometry is one core module with mocha tests. The interaction is one editor
+module holding a target entry, in the shape base-curve expansion already uses.
+The drag keeps the ordinary match tree and corrects on top of it. The scale runs
+an empty match tree, so the entry is the only writer.
+
+### The four rules
+
+No handle turns. Every handle keeps its tension, which is its length as a
+fraction of the way to the segment's tangent crossing. A tension point slides
+along its own straight until its segment's corner is back in proportion. Under a
+scale a straight is a rigid link across the axis being scaled, and its extent
+along that axis is free.
+
+The invariant was settled by measurement, not by preference. On the n's inner
+arch narrowed to 0.846, no slide gives an apex radius of 52.7 and equal travel
+gives 60.5, against an original 73.6. The similar corner gives 62.3, which is
+the original radius at the new size. That is the rule.
+
+### Every rule that fires has to say what carries with it
+
+Five separate faults, all the same shape. A point moved and something that
+belongs to it stayed behind.
+
+The slide moved a tension point and left its handle. The point rose past the
+handle, the handle then sat below the point, and the restore rebuilt it pointing
+down instead of up — a 36-unit flip on a quarter-unit step, caught by the
+200-step continuity sweep rather than by any assertion written for it. The scale
+moved on-curve points through the entry, where no point rule runs, and left
+every handle behind, which broke collinearity at each tension point. Two tests
+in the plan moved an on-curve point without its handle and measured a state the
+editor never produces. The remedy is the same in all of them: whatever moves a
+point moves its handles, exactly as the point rules do.
+
+### Which points may slide, three times wrong
+
+The first gate demanded a smooth point, on the reasoning that a corner owns its
+own tangent. The reasoning does not hold. The slide never reads a point's handle
+angle off the straight — it moves the point along the straight and the handle
+travels with it, so the drawn angle survives. Corner points slide.
+
+The second gate skipped a point the edit had already moved. But the slide owns
+exactly one number, how far the point sits from the far end of its straight, and
+a drag that carries a whole stem sideways changes that number not at all. It is
+skipped only where the edit changed that distance itself, which means the
+designer dragged the point along its own straight and their position stands.
+That distance is measured on the straight **as it stood before the edit**:
+dragging the tension point alone tilts the straight, and measuring on the tilted
+one reads the tilt as travel and stands the slide down exactly when a
+single-point drag needs it most.
+
+The third gate asked the far end of the curve to move. Dragging a stem moves the
+near ends and leaves the apexes still, so the gate stood down on the commonest
+gesture of all. The corner is made by both ends. Only a segment that took the
+same delta at both ends is unchanged, and that one already keeps its drawing.
+
+### The slide answers to the far leg alone
+
+Pulling an apex straight down carried the tangent crossing down with it, so both
+tension points followed and the whole arch travelled as one piece. The near leg
+answers to the far leg and to nothing else. Where the far leg is the length it
+was, the corner asks for no travel, whatever the crossing did. Dragging the n's
+apex down now leaves both stem tops where the designer put them and rebuilds
+four handles.
+
+### The coupling rule already existed
+
+A tension point dragged sideways tilted its own stem, because the foot stayed.
+The rule that fixes it was written twice before, for the skeleton ribs and for
+base-curve expansion: a smooth point with one handle cannot own its direction,
+so the straight states it, and one such point ties both ends of that straight.
+The first cut here walked neighbours by hand instead of calling
+`collectCoupledPointGroups`, which is rail R-B, and it was wrong.
+
+Only the part of the move across the straight is carried. The part along it is
+the straight growing or shrinking, which a straight may do. So the same point
+dragged sideways takes its stem with it and dragged upward only shortens it.
+
+### Content-aware scale: the chain walk, and why the axes differ
+
+Across x the construction is a chain walk. On-curve points joined by straights
+form a body. A maximal chain of curves is a run. Bodies sort along the axis, the
+gaps between them share the change in proportion, and each run's interior
+interpolates between its own two moved ends. That last part is what lets two
+runs between the same pair of bodies take different factors: on the n narrowed
+to 230 the inner run takes 0.846 and the outer 0.895, putting the apexes at 115
+and 142.3 against the hand-drawn 115 and 142.
+
+An earlier reading of the same idea, mapping intervals of the axis rather than
+walking the chain, does break — two runs project onto one interval and the outer
+arch's points inside the right stem's interval freeze. The chain walk does not
+have that fault, and the file the feature was designed against reproduces to the
+unit.
+
+**Along y the rule cannot hold straights rigid, and this is not a defect.** A
+stem is 60 units of width across x and 500 units of length along y. Across x the
+width is the drawn detail and the length is free. Along y the same stem is the
+length the scale has to change, and in the n the tallest straight body already
+spans 500 of the glyph's 516, so freezing it forbids nearly all of the change.
+The first vertical build held the curves rigid instead and slid them whole,
+which is arithmetically sound and was rejected on sight: it moves the curves and
+compresses nothing. What ships is the plain height scale on every on-curve point
+with the tension correction on top. A curve keeps its tangents and its tension
+but not its proportions, so a round shoulder squashed in height flattens, and
+the glyph's width never changes.
+
+Three stand-downs on the horizontal solve, each meaning the rule has nothing to
+distribute: a contour with no elastic run, a contour where every run returns to
+the body it started from — a stem with a bowl hung off it — and a gap total of
+zero.
+
+### Two writers, one baseline
+
+A single-point X-drag locks to an axis, because one point has no second point to
+state a direction with and the larger component wins. The lock was in the code
+and never reached the canvas. The match tree writes first with the raw delta, the
+entry writes on top, and the entry wrote only where its result differed from a
+baseline it computed from the **locked** delta. For the dragged point those two
+agreed, so nothing was written and the raw diagonal position stood. Horizontal
+drags looked locked because the correction rewrites the arch points anyway.
+Vertical drags had no such cover and moved freely, which is how it was found. The
+baseline has to be what the other writer actually wrote.
+
+### Open
+
+- The transform box reads the X state once, at mouse-down. Pressing or releasing
+  it during a box drag does nothing until the next drag. The pointer drag
+  re-reads it every frame, because it rebuilds its factory on a behavior change.
+- The slide's along-the-straight gate may now be redundant. It exists because a
+  straight could tilt under a drag, and the coupling stops that.
+- No manual matrix has been run for either half. The plan carries two, of eight
+  rows each.
+- The outer-left junction of the n is a corner the demonstration file moved by
+  hand, 8.9 units. It slides now, and whether it lands where the hand put it is
+  unmeasured.
+
 ## The documents themselves
 
 Five design specs and implementation plans, 3,783 lines, all describing work that
