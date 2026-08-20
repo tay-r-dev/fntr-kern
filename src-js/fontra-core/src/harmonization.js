@@ -486,7 +486,11 @@ function tensionAfterStep(path, ctx, segments, fixup, handleBias) {
 // times it halves afterwards. Both are fixed: the slide is a search, and a
 // search that decides its own trip count cannot be continuous in its input.
 const G3_SLIDE_SAMPLES = 64;
-const G3_SLIDE_REFINEMENTS = 24;
+
+// Two slide positions this close in error are the same answer, and the tie goes
+// to whichever moves the joint less. Without a tolerance, floating-point dust
+// decides, and a joint already standing at the best place walks off it.
+const GRID_TIE_UNITS = 1e-9;
 
 //
 // The joint's two cubic segments, as point quadruples in contour order. Null
@@ -581,12 +585,35 @@ function g3Attempt(stencil, nodePosition, limits) {
 }
 
 //
-// The repair. Where the joint's own position admits no G3 answer, slide it
-// along the tangent by the smallest distance that does, and let the two inner
-// handles take the rest. The slide is a repair and not a preference: it is
-// tried outward from zero, so a joint that never needed it never moves.
+// The answer with the joint held where it is, in the shape the caller consumes.
 //
-function g3AfterSlide(stencil, limits) {
+function g3HeldSolve(stencil, limits) {
+  const targets = g3Attempt(stencil, stencil.incoming[3], limits);
+  return targets ? { node: null, targets } : null;
+}
+
+//
+// Where the joint goes when it is allowed to move.
+//
+// The G3 construction is exact at EVERY admissible position on the tangent, so
+// in exact arithmetic there is nothing to choose between them and the joint
+// would never have a reason to move. What separates them is the grid: the
+// command's answer lands on whole units, and how much of the exact answer
+// survives that depends on where the joint sits. Measured on the outer arch of
+// `n`, held at its drawn position the best whole-unit joint available is a 15.6%
+// rate step; two units along the tangent it is 1.2%, and five units 0.51%.
+//
+// So each candidate is judged as it will be EMITTED, on the grid, which is the
+// same rule the offset construction arrived at for its own candidates. The
+// bracket search in `snapToGrid` polishes the winner afterwards; this stage only
+// has to pick the position.
+//
+// Sampling is at whole units along the tangent, because that is the resolution
+// the answer is stored at, with a fixed cap so a long range cannot buy itself
+// more search. A search that picks its own trip count cannot be continuous in
+// its input.
+//
+function g3BestSlide(stencil, limits, continuity, snapToWholeUnits) {
   const node = stencil.incoming[3];
   const span = subVectors(stencil.outgoing[1], stencil.incoming[2]);
   if (!vectorLength(span)) {
@@ -595,43 +622,70 @@ function g3AfterSlide(stencil, limits) {
   const axis = normalizeVector(span);
   // The joint may travel as far as the on-curve point at the far end of either
   // of its two segments, measured along the tangent. Past that it has left the
-  // segment it belongs to. The two directions have their own room, so they are
-  // bounded separately and searched together, nearest first.
+  // segment it belongs to. The two directions have their own room.
   const along = (point) => dotVector(subVectors(point, node), axis);
   const room = {
     "1": Math.max(0, along(stencil.outgoing[3])),
     "-1": Math.max(0, -along(stencil.incoming[0])),
   };
-  const step = Math.max(room["1"], room["-1"]) / G3_SLIDE_SAMPLES;
-  if (!step) {
-    return null;
-  }
+  const reach = Math.max(room[1], room["-1"]);
+  const step = Math.max(1, reach / G3_SLIDE_SAMPLES);
   const at = (slide) => addVectors(node, mulVectorScalar(axis, slide));
 
+  // As it will be emitted. Where the caller is not rounding, that is the exact
+  // answer, which is exactly G3 at every admissible position — so nothing
+  // separates them, the tie-break takes over and the joint stays where it is.
+  const place = snapToWholeUnits
+    ? (point) => ({ x: Math.round(point.x), y: Math.round(point.y) })
+    : (point) => point;
+  const [A, PP] = stencil.incoming;
+  const [, , NN, C] = stencil.outgoing;
+
+  const errorAsEmitted = (nodePosition, targets) => {
+    const placed = place(nodePosition);
+    return jointError(
+      {
+        incoming: [A, PP, place(targets.P), placed],
+        outgoing: [placed, place(targets.N), NN, C],
+      },
+      continuity
+    );
+  };
+
+  let best = null;
+  const consider = (slide) => {
+    const nodePosition = at(slide);
+    const targets = g3Attempt(stencil, nodePosition, limits);
+    if (!targets) {
+      return;
+    }
+    const error = errorAsEmitted(nodePosition, targets);
+    const travel = Math.abs(slide);
+    // Least error, and where two positions are equally good the one that moves
+    // the joint least — so a joint already standing at the best place stays.
+    if (
+      !best ||
+      error < best.error - GRID_TIE_UNITS ||
+      (error < best.error + GRID_TIE_UNITS && travel < best.travel)
+    ) {
+      best = { error, travel, node: nodePosition, targets };
+    }
+  };
+
+  consider(0);
   for (let sample = 1; sample <= G3_SLIDE_SAMPLES; sample++) {
+    const slide = sample * step;
     for (const direction of [1, -1]) {
-      if (sample * step > room[direction]) {
-        continue;
+      if (slide <= room[direction]) {
+        consider(direction * slide);
       }
-      let inside = direction * sample * step;
-      if (!g3Attempt(stencil, at(inside), limits)) {
-        continue;
-      }
-      let outside = direction * (sample - 1) * step;
-      for (let i = 0; i < G3_SLIDE_REFINEMENTS; i++) {
-        const middle = (inside + outside) / 2;
-        if (g3Attempt(stencil, at(middle), limits)) {
-          inside = middle;
-        } else {
-          outside = middle;
-        }
-      }
-      const nodePosition = at(inside);
-      const targets = g3Attempt(stencil, nodePosition, limits);
-      return targets ? { node: nodePosition, targets } : null;
     }
   }
-  return null;
+
+  if (!best) {
+    return null;
+  }
+  return { node: best.travel ? best.node : null, targets: best.targets };
 }
 
 //
@@ -1045,12 +1099,14 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
           const limits = { floors: state.floors, maxHandleTension };
           let outcome = null;
           if (stencil) {
-            const held = g3Attempt(stencil, ctx.node, limits);
-            outcome = held
-              ? { node: null, targets: held }
-              : slideOnCurve
-                ? g3AfterSlide(stencil, limits)
-                : null;
+            // The slide is opt-in, and when it is on it is the whole search:
+            // every admissible position on the tangent including the one the
+            // joint already holds. It is not a fallback for when holding the
+            // joint still fails, because holding it still almost never fails —
+            // so as a fallback the option did nothing on any healthy joint.
+            outcome = slideOnCurve
+              ? g3BestSlide(stencil, limits, continuity, roundCoordinates)
+              : g3HeldSolve(stencil, limits);
           }
           if (outcome) {
             const movement = Math.max(
