@@ -1221,13 +1221,35 @@ because a different set of handles has a different harmonic target.
   Tunni equalization, which does touch them, has to be a separate opt-in pass.
 - **Points that cannot be harmonized are reported with a reason**: corners,
   non-curve joints, degenerate geometry, generated contours.
+- **The grid position is chosen, not taken.** Harmonization does not state a
+  pair of positions. It states the ratio between the two handles either side of
+  the joint, because curvature at a cubic's end is the outer handle's offset
+  over the square of the inner handle's length. So rounding the two ends
+  independently to their own nearest whole unit can put that ratio back exactly
+  where it started, and on the arch of `n` it did — to four digits. The command
+  snaps to the nearest position and then lets each moved point try the
+  whole-unit positions bracketing its own exact answer, keeping whatever scores
+  best. Three fixed passes: a search that picks its own trip count cannot be
+  continuous in its input.
+- **A verdict describes the drawing that was kept.** A joint can converge
+  exactly and still have nothing to write, because its correction was smaller
+  than the grid can hold and the position it already sits on is the best one
+  available. That reports `skipped` with reason `below-grid`. Reading the
+  verdict off a state the best-state gate had discarded is what made an
+  unchanged drawing report "1 harmonized".
 
 ### 10.6 Known defects
 
-- **A correction under half a unit reports harmonized and writes nothing.**
-  Whole-unit rounding discards it. It should report that it is below the grid.
 - **Rounding happens after the tension ceiling**, so a handle at exactly tension
   1 can land a fraction over it. Sub-unit. A ceiling of 0.98 would remove it.
+  The grid search counts ceiling violations ahead of curvature, so it will not
+  choose a position that crosses one, but it cannot undo an overshoot that
+  every candidate shares.
+- **Equalize still runs after the solve and overwrites it.** On the arch joint
+  it takes the G3 rate step from 5.3e-6 to 5.8e-5. This is SuperTool's
+  `balance, harmonize, balance` order and the checkbox says it trades away an
+  exact curvature match. Curvatura keeps its tunnify a separate command
+  instead, which is the better model.
 
 ---
 

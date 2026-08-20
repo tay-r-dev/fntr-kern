@@ -167,9 +167,96 @@ a stream. The stored setting was therefore always one drag stale.
 `displayValue: true` is also not a boolean: it is a placeholder string, and the
 number box read "true".
 
+### The grid was eating the whole answer, and the report was covering for it
+
+Reported on the outer arch of `n`: a visible step in the comb, and harmonize
+saying "1 harmonized" while nothing moved, under every combination of the three
+checkboxes. Two defects, and the second is what made the first take three
+sessions to find.
+
+**A harmonic answer is a ratio, so rounding the two ends independently can undo
+all of it.** Curvature at a cubic's end is the outer handle's offset over the
+square of the inner handle's length, so the entire correction lives in the ratio
+of the two inner handles. On the reported joint the exact G2 answer is a move of
+**0.344 units** — small because the handles are only 51 and 38 units long, and
+the square doubles the sensitivity: 0.344 is 0.67% of one handle and 1.35% of
+its curvature, 0.90% of the other and 1.80% of its curvature, in opposite
+senses. Those add to 3.15%, which is the mismatch exactly.
+
+Rounded to the nearest whole unit the ratio came back as **51/40 = 1.2750**
+against the drawn **65/51 = 1.2745**. Four digits. The answer was gone.
+
+| state                | mismatch |
+| -------------------- | -------- |
+| as drawn             | 3.156%   |
+| nearest whole units  | 3.537%   |
+| best bracketing pair | 0.430%   |
+| exact                | 0%       |
+
+Nearest rounding lands **worse than doing nothing**, the best-state gate then
+reverts the lot, and the command writes nothing. The grid position is chosen now
+rather than taken: snap to nearest, then let each moved point try the whole-unit
+positions bracketing its own exact answer. Arch joint 3.156% → 0.423%. A ring
+whose every correction is sub-grid, 6.42e-5 → 4.90e-5.
+
+**A verdict read off a discarded state is worse than no verdict.** When no
+attempt beat the drawing, `bestStates` stayed null and the report came from the
+last attempt's states, which said `harmonized`. So the one instrument pointing at
+the fault was reporting success. The verdict is read against the drawing as it
+arrived now, and a joint whose stencil did not move reports `skipped` with reason
+`below-grid`.
+
+**Three sessions went into the rounding because the rounding is where the chain
+starts, not where it ends.** Grid rounding forces a scoring gate, because a
+rounded answer can be worse than the drawing; the gate then reverts silently; and
+the report describes the reverted state. Every session found a link and treated
+it as the cause.
+
+### Two things the donors settled
+
+**The G2 construction is confirmed from two independent directions.** SuperTool
+intersects the outer handle lines at `D` and takes
+`r = sqrt((|PP−P|/|P−D|)·(|D−N|/|N−NN|))`. Curvatura never builds `D`: it takes
+the perpendicular offsets `d2`, `l2` of the two outer handles from the tangent and
+uses `t = (d2 − sqrt(d2·l2))/(d2 − l2)`. They are the same construction —
+`PP` lies on `P→D`, so `d2 = h·|PP−P|/|D−P|` and `l2 = h·|NN−N|/|D−N|`, hence
+`r = sqrt(d2/l2)` — and both place the joint so that
+`dist(node,N)/dist(P,node) = sqrt(l2/d2)`. Ours agrees. The target was never the
+bug, and that now rests on the donors as well as on measurement.
+
+**Romer removed the G3 algorithm we run.** Curvatura's documentation, section 6.5:
+"the handles may exceed the tangent triangle, which means that an additional
+inflection point occurs on the segment. Therefore, this algorithm has been removed
+from Curvatura." Exceeding the tangent triangle is exactly what `maxHandleTension`
+forbids — a handle past its segment's Tunni point, where the two handle lines
+cross. So we run an algorithm its author withdrew, and the ceiling in `g3Attempt`
+is the guard he did not have. Not a defect to chase; the reason the algorithm is
+usable here. He also records that Fontlab 6 and 7 implement it for single nodes.
+
+**Neither donor refuses a joint because a neighbouring on-curve is a corner**, and
+neither do we — `jointSegments` checks only that the far point is an on-curve.
+Both donors do refuse a joint where a straight meets a curve, as we do: SuperTool
+needs all four neighbours `OFFCURVE`, and Curvatura's `segments_selected_cubic`
+needs both neighbouring segments to be cubics. On `n` that rules out points 1, 7
+and 10, the springing points where the stems meet the arches. Matching a straight's
+zero curvature means flattening the curve, not harmonizing it.
+
+### The glyph was redrawn in the middle of the investigation
+
+`n.json` went from two contours with integer coordinates to one 20-point contour
+carrying fractional ones, and the reported joint moved from index 16 to index 13,
+while the session was running. Every number measured before that described a
+drawing that no longer existed. Same lesson as the first harmonize round, and it
+cost a full round of wrong conclusions: **read the file at the moment of the
+question, and say which state a number came from.**
+
 ### Known defect, not fixed
 
-**A correction under half a unit reports harmonized and writes nothing.** The correction on the reported joint was 0.46 units. Whole-unit rounding discards all of it. The report should say the correction is below the grid.
+**Equalize still runs after the solve and overwrites it.** On the arch joint it
+takes the G3 rate step from 5.3e-6 to 5.8e-5. It is SuperTool's
+`balance, harmonize, balance` order, the checkbox says it trades away an exact
+curvature match, and Curvatura keeps its tunnify a separate command instead —
+which is the better model and the likely fix.
 
 ### Rejected
 
