@@ -378,11 +378,11 @@ describe("harmonization: a ring of coupled joints", () => {
     expect(Array.from(path.coordinates)).to.deep.equal(once);
   });
 
-  it("leaves the drawing alone when the answer rounds back to it", () => {
-    // The sweep has real work to do here, and every correction it finds is
-    // under half a unit, so the whole-unit answer is where the points already
-    // are. Nothing may be written: in the editor each write is a recorded
-    // change, and a command that changes nothing must not take an undo step.
+  it("takes the better whole-unit state when the exact answer is sub-grid", () => {
+    // Every correction the sweep finds here is under half a unit, so rounding
+    // each coordinate to its own nearest unit puts the drawing back exactly as
+    // it was. A better whole-unit state exists all the same, and the command
+    // has to reach it — this is the ring-sized form of the arch joint below.
     // a ring that is harmonic to start with, nudged by one unit
     const harmonic = VarPackedPath.fromUnpackedContours([
       {
@@ -404,12 +404,33 @@ describe("harmonization: a ring of coupled joints", () => {
       },
     ]);
     harmonic.setPointPosition(1, 300, 166);
-    const before = Array.from(harmonic.coordinates);
+    const residual = () =>
+      RING_JOINTS.reduce(
+        (sum, index) => sum + measureG2Discontinuity(getJointContext(harmonic, index)),
+        0
+      );
+    const before = residual();
     const report = harmonizePathInPlace(harmonic, RING_JOINTS, {
       roundCoordinates: true,
     });
     expect(report.length).to.equal(RING_JOINTS.length);
-    expect(Array.from(harmonic.coordinates)).to.deep.equal(before);
+    expect(residual()).to.be.lessThan(before);
+  });
+
+  it("writes nothing at all when the drawing is already harmonic", () => {
+    // In the editor every write is a recorded change, so a command that has
+    // nothing to improve must not take an undo step. This is the guarantee the
+    // grid search must not cost: it may only move a point onto a whole-unit
+    // position that scores better than the one the point is already on.
+    const path = ringPath();
+    const before = Array.from(path.coordinates);
+    harmonizePathInPlace(path, RING_JOINTS, { roundCoordinates: true });
+    harmonizePathInPlace(path, RING_JOINTS, { roundCoordinates: true });
+    const settled = Array.from(path.coordinates);
+
+    harmonizePathInPlace(path, RING_JOINTS, { roundCoordinates: true });
+    expect(Array.from(path.coordinates)).to.deep.equal(settled);
+    expect(before.length).to.equal(settled.length);
   });
 
   it("reports every joint harmonized, not partial", () => {
@@ -968,5 +989,48 @@ describe("harmonization: the G3 cascade", () => {
     const path = reportedG3Path();
     const report = harmonizePathInPlace(path, [NODE], {});
     expect(report[0].construction).to.equal("g2");
+  });
+});
+
+//
+// The reported joint from `_external/skeletron.fontra/glyphs/n.json`, node 13:
+// the outer arch meeting the right stem. Its two sides disagree by 3.16% of
+// curvature, which a designer sees as a step in the curvature comb — and the
+// exact G2 answer is a move of 0.344 units, because curvature goes as 1/L² and
+// the two handles are only 51 and 38 units long.
+//
+// Whole-unit rounding to the NEAREST position discards all of it, so the
+// command wrote nothing and reported success. A whole-unit answer does exist:
+// one unit off the nearest one, and seven times better than the drawing.
+//
+function reportedArchJoint() {
+  return makeContour([
+    { x: 298, y: 420 },
+    cubic(298, 476),
+    cubic(282, 510),
+    { x: 231, y: 510, smooth: true },
+    cubic(192.9276123046875, 510),
+    cubic(159.3152618408203, 490.4445495605469),
+    { x: 138, y: 455.15167236328125 },
+  ]);
+}
+
+describe("harmonization: a sub-grid correction on the grid", () => {
+  it("improves the reported arch joint while keeping whole-unit coordinates", () => {
+    const path = reportedArchJoint();
+    const before = measureG2Discontinuity(getJointContext(path, 3));
+
+    harmonizePathInPlace(path, [3], { roundCoordinates: true });
+
+    const after = measureG2Discontinuity(getJointContext(path, 3));
+    expect(after).to.be.lessThan(before / 2);
+
+    // P, the joint and N are the only points a G2 correction can move, and
+    // whatever it wrote has to be on the grid.
+    for (const index of [2, 3, 4]) {
+      const [x, y] = path.getPointPosition(index);
+      expect(x).to.equal(Math.round(x));
+      expect(y).to.equal(Math.round(y));
+    }
   });
 });

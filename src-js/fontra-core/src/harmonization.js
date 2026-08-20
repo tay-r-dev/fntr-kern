@@ -33,7 +33,6 @@ import {
   intersect,
   mulVectorScalar,
   normalizeVector,
-  roundVector,
   subVectors,
   vectorLength,
 } from "./vector.js";
@@ -743,6 +742,78 @@ export function harmonizePath(path, pointIndices, options = {}) {
 // out of the 0.5 per cent that still move after one call at a budget of 12.
 const ROUNDING_SETTLE_ATTEMPTS = 40;
 
+// How many times the grid search sweeps the points it may move. Fixed, not
+// chosen: a search that decides its own trip count cannot be continuous in its
+// input. Three is one pass to place every point and two to let them answer each
+// other; the reported joint settles on the first.
+const GRID_SEARCH_PASSES = 3;
+
+//
+// Put the answer on the grid, choosing the whole-unit position rather than
+// taking the nearest one.
+//
+// The sweep settles on fractional coordinates and the document wants whole
+// units. Rounding each coordinate to its own nearest unit looks like the
+// obvious way to get there and is not, because harmonization does not state a
+// pair of positions — it states a RATIO between the two handles either side of
+// the joint. Curvature at a cubic's end goes as the outer handle's offset over
+// the square of the inner handle's length, so the whole correction lives in
+// that ratio, and rounding the two ends independently can put it back exactly
+// where it started.
+//
+// Measured on the arch joint of `n`: the exact answer is a move of 0.344 units,
+// which takes a 3.156% curvature mismatch to zero. Rounded to the nearest unit
+// the mismatch comes back at 3.537% — worse than the drawing, and the
+// best-state gate then reverts the lot, which is why the command wrote nothing
+// and still reported success. One unit away sits a whole-unit state at 0.430%.
+//
+// So: snap to the nearest position, then let each moved point try the
+// whole-unit positions bracketing its own exact answer, keeping whatever scores
+// best. The starting drawing is still a candidate through the caller's own
+// best-state gate, so a command that can only make things worse leaves the
+// drawing alone.
+//
+function snapToGrid(path, touched, jointResidual, isBetter) {
+  const exact = new Map();
+  for (const index of touched) {
+    const [x, y] = path.getPointPosition(index);
+    exact.set(index, { x, y });
+    path.setPointPosition(index, Math.round(x), Math.round(y));
+  }
+
+  const indices = [...touched].sort((a, b) => a - b);
+  let best = jointResidual();
+
+  for (let pass = 0; pass < GRID_SEARCH_PASSES; pass++) {
+    let improved = false;
+    for (const index of indices) {
+      const { x, y } = exact.get(index);
+      const [heldX, heldY] = path.getPointPosition(index);
+      let chosenX = heldX;
+      let chosenY = heldY;
+      for (const candidateX of [Math.floor(x), Math.ceil(x)]) {
+        for (const candidateY of [Math.floor(y), Math.ceil(y)]) {
+          if (candidateX === chosenX && candidateY === chosenY) {
+            continue;
+          }
+          path.setPointPosition(index, candidateX, candidateY);
+          const score = jointResidual();
+          if (isBetter(score, best)) {
+            best = score;
+            chosenX = candidateX;
+            chosenY = candidateY;
+            improved = true;
+          }
+        }
+      }
+      path.setPointPosition(index, chosenX, chosenY);
+    }
+    if (!improved) {
+      break;
+    }
+  }
+}
+
 export function harmonizePathInPlace(path, pointIndices, options = {}) {
   const {
     continuity,
@@ -1087,13 +1158,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       // Once, at the end, and only on points this operation moved. Rounding
       // during the sweep would put the residual permanently above the
       // convergence tolerance, so nothing would ever settle.
-      for (const index of [...touched].sort((a, b) => a - b)) {
-        const [x, y] = path.getPointPosition(index);
-        const rounded = roundVector({ x, y });
-        if (rounded.x !== x || rounded.y !== y) {
-          path.setPointPosition(index, rounded.x, rounded.y);
-        }
-      }
+      snapToGrid(path, touched, jointResidual, isBetter);
     }
 
     const coordinates = Array.from(path.coordinates);
