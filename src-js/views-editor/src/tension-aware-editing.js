@@ -65,6 +65,11 @@ export function createTensionAwareTargetEntries(
   );
 
   let rollbackChange = null;
+  // The axis a single-point drag latches onto, held for the whole gesture.
+  const lockDeltaToAxis = makeAxisLock();
+  // Every point this entry has ever written during the gesture. See the write
+  // loop below for why it has to remember them.
+  const touched = new Set();
   return [
     {
       get rollbackChange() {
@@ -75,12 +80,14 @@ export function createTensionAwareTargetEntries(
         // so the drag states it: the larger of the two components wins and the
         // other is dropped. It removes the ambiguity between a shape the
         // designer is narrowing and one they are lowering.
+        //
+        // The axis is the drag's, not the frame's. Once the pointer has left
+        // the dead zone the choice is latched, so reaching further across than
+        // the drag ever went along cannot turn a narrowing into a lowering
+        // halfway through. Inside the dead zone nothing is settled yet, and the
+        // larger component still leads.
         const delta =
-          pointSelection.length === 1
-            ? Math.abs(rawDelta.x) >= Math.abs(rawDelta.y)
-              ? { x: rawDelta.x, y: 0 }
-              : { x: 0, y: rawDelta.y }
-            : rawDelta;
+          pointSelection.length === 1 ? lockDeltaToAxis(rawDelta) : rawDelta;
         // What the match tree wrote to the glyph, which is the raw delta and
         // knows nothing of the lock. Every comparison below is against this,
         // because this is the state the entry's own change lands on top of.
@@ -104,12 +111,27 @@ export function createTensionAwareTargetEntries(
             const startIndex = moved.path.getAbsolutePointIndex(contourIndex, 0);
             for (let i = 0; i < after.points.length; i++) {
               const point = after.points[i];
+              const absoluteIndex = startIndex + i;
               // Write wherever this differs from what the match tree put
               // there. That covers a correction that puts a point back where it
               // started, and the axis lock, which the match tree never saw.
-              if (point.x === uncorrected[i].x && point.y === uncorrected[i].y)
+              //
+              // A point this entry has written once is written on every frame
+              // after it, even where it now agrees with the match tree. Each
+              // frame is measured from the pre-drag path, so a frame states the
+              // whole answer or it states a lie: a point dropped from the set
+              // keeps whatever an abandoned frame left on it, and the last
+              // frame's rollback never names it, so the undo restores part of
+              // the drag and leaves the rest.
+              if (
+                !touched.has(absoluteIndex) &&
+                point.x === uncorrected[i].x &&
+                point.y === uncorrected[i].y
+              ) {
                 continue;
-              layerGlyphProxy.path.setPointPosition(startIndex + i, point.x, point.y);
+              }
+              touched.add(absoluteIndex);
+              layerGlyphProxy.path.setPointPosition(absoluteIndex, point.x, point.y);
             }
           }
         });
@@ -121,6 +143,27 @@ export function createTensionAwareTargetEntries(
       },
     },
   ];
+}
+
+// A single-point drag states its own axis, and the dead zone is how far the
+// pointer must travel before it counts as having stated it. Two units, so the
+// first frame of a drag cannot settle the gesture on a jitter.
+const AXIS_LOCK_DEADZONE = 2;
+
+function makeAxisLock() {
+  let axis = null;
+  return (rawDelta) => {
+    const leading = Math.abs(rawDelta.x) >= Math.abs(rawDelta.y) ? "x" : "y";
+    if (
+      !axis &&
+      Math.max(Math.abs(rawDelta.x), Math.abs(rawDelta.y)) >= AXIS_LOCK_DEADZONE
+    ) {
+      axis = leading;
+    }
+    return (axis || leading) === "x"
+      ? { x: rawDelta.x, y: 0 }
+      : { x: 0, y: rawDelta.y };
+  };
 }
 
 export const TENSION_AWARE_SCALE_BEHAVIOR_NAME = "tension-aware-scale";
@@ -166,6 +209,8 @@ export function createTensionAwareTransformEntries(
 
   let rollbackChange = null;
   let lastGood = null;
+  // Same rule as the drag entry: once written, written on every frame after.
+  const touched = new Set();
   return [
     {
       get rollbackChange() {
@@ -212,14 +257,17 @@ export function createTensionAwareTransformEntries(
           lastGood.forEach(({ points }, i) => {
             const { startIndex, contour } = originals[i];
             for (let p = 0; p < points.length; p++) {
+              const absoluteIndex = startIndex + p;
               if (
+                !touched.has(absoluteIndex) &&
                 points[p].x === contour.points[p].x &&
                 points[p].y === contour.points[p].y
               ) {
                 continue;
               }
+              touched.add(absoluteIndex);
               layerGlyphProxy.path.setPointPosition(
-                startIndex + p,
+                absoluteIndex,
                 points[p].x,
                 points[p].y
               );
