@@ -1034,3 +1034,24 @@ describe("harmonization: a sub-grid correction on the grid", () => {
     }
   });
 });
+
+describe("harmonization: an honest report", () => {
+  it("reports a correction the grid discarded instead of claiming success", () => {
+    // Moving only the joint, the arch's correction is 0.344 units along the
+    // tangent, and the whole-unit position it is already on is the best one
+    // available. Nothing is written, so nothing may be reported as harmonized:
+    // "1 harmonized" on an unchanged drawing is what sent this whole
+    // investigation down the wrong path.
+    const path = reportedArchJoint();
+    const before = Array.from(path.coordinates);
+
+    const report = harmonizePathInPlace(path, [3], {
+      handleBias: 0,
+      roundCoordinates: true,
+    });
+
+    expect(Array.from(path.coordinates)).to.deep.equal(before);
+    expect(report[0].status).to.not.equal("harmonized");
+    expect(report[0].reason).to.equal("below-grid");
+  });
+});

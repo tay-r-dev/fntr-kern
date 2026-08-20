@@ -639,6 +639,8 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.other-sources": "Other sources",
   "sidebar.selection-transformation.harmonize.reason.already-harmonic":
     "already harmonic",
+  "sidebar.selection-transformation.harmonize.reason.below-grid":
+    "correction smaller than the grid",
   "sidebar.selection-transformation.harmonize.reason.clamped": "clamped",
   "sidebar.selection-transformation.harmonize.reason.degenerate":
     "handles are parallel",

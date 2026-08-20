@@ -896,6 +896,10 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       ? candidate.violations < incumbent.violations
       : candidate.residual < incumbent.residual;
 
+  // The drawing exactly as it arrived. The verdict at the end is read against
+  // this, so a joint can only be called harmonized if something actually moved.
+  const original = Array.from(path.coordinates);
+
   best = { score: jointResidual(), coordinates: Array.from(path.coordinates) };
 
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -1186,6 +1190,31 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     if (bestX !== x || bestY !== y) {
       path.setPointPosition(index, bestX, bestY);
       touched.add(index);
+    }
+  }
+
+  // A verdict describes the drawing that was kept, never one that was computed
+  // and then dropped. The sweep works in floats and the answer has to land on
+  // the grid, so a joint can converge exactly and still have nothing to write:
+  // its correction was smaller than the grid can hold, and the whole-unit
+  // position it already sits on is the best one available. That is a real
+  // outcome and the report has to say so, rather than claiming success on a
+  // drawing it did not change.
+  for (const state of states) {
+    if (state.status !== "harmonized") {
+      continue;
+    }
+    const ctx = getJointContext(path, state.pointIndex);
+    const stencil = ctx.reason
+      ? [state.pointIndex]
+      : [state.pointIndex, ...Object.values(ctx.indices)];
+    const moved = stencil.some((index) => {
+      const [x, y] = path.getPointPosition(index);
+      return original[index * 2] !== x || original[index * 2 + 1] !== y;
+    });
+    if (!moved) {
+      state.status = "skipped";
+      state.reason = "below-grid";
     }
   }
 
