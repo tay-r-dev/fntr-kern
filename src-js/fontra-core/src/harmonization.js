@@ -504,6 +504,50 @@ function jointStencil(path, ctx) {
 }
 
 //
+// How far a joint sits from the condition the command is trying to establish.
+//
+// Two properties matter and neither is decoration. It is **relative**, because a
+// selection holds joints of every size and an absolute curvature difference lets
+// the tightest one own the whole score. And it measures the condition the caller
+// asked for: under G3 the rate of change of curvature is half of what is being
+// solved for, so a score that leaves it out judges a G3 answer by how well it
+// does at G2. That is not a near miss. Measured on the outer arch of `n`, all
+// four whole-unit placements bracketing the exact G3 answer score worse on
+// curvature alone than the drawing they came from, so all four were reverted and
+// G3 could never take over from a G2-harmonic joint.
+//
+// Curvature carries units of 1/length and its rate 1/length², so both are made
+// dimensionless by the joint's own size — the mean of its two segments' chords.
+// The two terms are then errors in the same unit and the total is their sum,
+// with no weight to choose.
+//
+// The scale is the joint's LENGTH and deliberately not its curvature. Dividing
+// by the curvature reads 2 at every inflection, whatever the drawing does,
+// because the two curvatures have opposite signs there and the ratio saturates.
+// A score with no gradient at an inflection cannot tell the G2 fallback's answer
+// from the drawing it started on, and reverts it.
+//
+function jointError(stencil, continuity) {
+  const { incoming, outgoing } = stencil;
+  const length =
+    (distance(incoming[0], incoming[3]) + distance(outgoing[0], outgoing[3])) / 2;
+  if (!length || !Number.isFinite(length)) {
+    return 0;
+  }
+
+  const curvatureIn = curvatureAt(incoming, true);
+  const curvatureOut = curvatureAt(outgoing, false);
+  let error = Math.abs(curvatureIn - curvatureOut) * length;
+
+  if (continuity === "G3") {
+    const rateIn = curvatureRateAt(incoming, true);
+    const rateOut = curvatureRateAt(outgoing, false);
+    error += Math.abs(rateIn - rateOut) * length ** 2;
+  }
+  return Number.isFinite(error) ? error : 0;
+}
+
+//
 // One G3 attempt, with the joint at `nodePosition`. Returns the two inner
 // handle positions, or null where the construction has no answer or the answer
 // is outside the same two limits the G2 path obeys: the cusp floor on the
@@ -878,8 +922,16 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       if (ctx.reason) {
         continue;
       }
-      const discontinuity = measureG2Discontinuity(ctx);
-      residual += Number.isFinite(discontinuity) ? discontinuity : 0;
+      // The seven-point stencil where the joint has both of its segments, which
+      // is what the rate needs. Where an open contour runs out before one of
+      // them there is no rate to measure and the five-point curvature stands.
+      const stencil = jointStencil(path, ctx);
+      if (stencil) {
+        residual += jointError(stencil, continuity);
+      } else {
+        const discontinuity = measureG2Discontinuity(ctx);
+        residual += Number.isFinite(discontinuity) ? discontinuity : 0;
+      }
       for (const { nearSide, indices } of jointSegments(path, ctx)) {
         if (
           handleTension(segmentPositions(path, indices), nearSide) > maxHandleTension

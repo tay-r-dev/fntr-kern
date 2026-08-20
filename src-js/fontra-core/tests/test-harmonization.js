@@ -1055,3 +1055,109 @@ describe("harmonization: an honest report", () => {
     expect(report[0].reason).to.equal("below-grid");
   });
 });
+
+// --- what the grid search is allowed to trade away --------------------------
+//
+// The three faults reported on `n` on 2026-08-20. Each one is a case where the
+// command reaches an answer and then throws it away, because the number it
+// scores itself by does not measure what it is supposed to preserve.
+
+// A joint whose tangent is NOT axis-aligned. Rounding the three points to whole
+// units moves them off the tangent line, so the smooth point stops being smooth
+// unless something scores that.
+function diagonalJointPath() {
+  return makeContour([
+    { x: 0, y: 0 },
+    cubic(40, 10),
+    cubic(80, 40),
+    { x: 120, y: 90, smooth: true },
+    cubic(157, 136),
+    cubic(210, 160),
+    { x: 260, y: 160 },
+  ]);
+}
+
+// The outer arch of `n`, as it stands after one press with every option off --
+// which is the state the report was made from. G2 is satisfied there to 0.53%,
+// and the rate of curvature across the joint is not.
+function reportedArchPath() {
+  return makeContour([
+    { x: 298, y: 420, smooth: true },
+    cubic(298, 480),
+    cubic(274, 515),
+    { x: 227, y: 515, smooth: true },
+    cubic(189, 515),
+    cubic(160, 492),
+    { x: 138, y: 455.15167236328125 },
+  ]);
+}
+
+// The angle between the two inner handles at the joint. Zero is a smooth point.
+function jointKinkDegrees(path) {
+  const [px, py] = path.getPointPosition(NODE - 1);
+  const [nx, ny] = path.getPointPosition(NODE);
+  const [qx, qy] = path.getPointPosition(NODE + 1);
+  const incoming = { x: nx - px, y: ny - py };
+  const outgoing = { x: qx - nx, y: qy - ny };
+  return Math.abs(
+    (Math.atan2(
+      incoming.x * outgoing.y - incoming.y * outgoing.x,
+      incoming.x * outgoing.x + incoming.y * outgoing.y
+    ) *
+      180) /
+      Math.PI
+  );
+}
+
+function jointRateStep(path) {
+  const { incoming, outgoing } = jointSegmentPoints(path);
+  return curvatureRateDiscontinuity(incoming, outgoing);
+}
+
+describe("harmonization: what the grid search may not trade away", () => {
+  it("keeps a smooth joint collinear through grid rounding", () => {
+    const path = diagonalJointPath();
+    const before = jointKinkDegrees(path);
+    harmonizePathInPlace(path, [NODE], {
+      continuity: "G2",
+      handleBias: 1,
+      roundCoordinates: true,
+    });
+    // The exact answer is collinear. Whole units cannot hold that exactly, but
+    // the best placement bracketing the exact answer reaches 0.031 degrees and
+    // the worst reaches 1.625, so the grid is not what decides this.
+    expect(before).to.be.below(0.2);
+    expect(jointKinkDegrees(path)).to.be.below(0.5);
+  });
+
+  it("improves the rate of curvature at a joint that is already G2-harmonic", () => {
+    const path = reportedArchPath();
+    const before = jointRateStep(path);
+    harmonizePathInPlace(path, [NODE], {
+      continuity: "G3",
+      handleBias: 1,
+      roundCoordinates: true,
+    });
+    expect(jointRateStep(path)).to.be.below(before);
+  });
+
+  it("slides the on-curve to a better joint, rather than only where it is stuck", () => {
+    const held = reportedArchPath();
+    harmonizePathInPlace(held, [NODE], {
+      continuity: "G3",
+      slideOnCurve: false,
+      roundCoordinates: true,
+    });
+
+    const slid = reportedArchPath();
+    harmonizePathInPlace(slid, [NODE], {
+      continuity: "G3",
+      slideOnCurve: true,
+      roundCoordinates: true,
+    });
+
+    // The slide is opt-in, so when it is on it looks for the best joint on the
+    // tangent instead of waiting for the held solve to fail.
+    expect(jointRateStep(slid)).to.be.below(jointRateStep(held));
+  });
+});
