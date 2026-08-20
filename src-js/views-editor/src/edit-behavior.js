@@ -1436,16 +1436,12 @@ const behaviorTypes = {
   },
 
   // The ordinary match tree, plus a target entry that corrects handle lengths
-  // afterwards. X changes no angle, so every rule above stays as it is.
+  // afterwards. X changes no angle, so every rule above stays as it is. There
+  // is no shift variant: X states an axis itself, and 0/45/90 has no diagonal
+  // left to offer under it.
   "tension-aware": {
     matchTree: buildPointMatchTree(defaultRules),
     actions: actionFactories,
-  },
-
-  "tension-aware-constrain": {
-    matchTree: buildPointMatchTree(constrainRules),
-    actions: actionFactories,
-    constrainDelta: constrainHorVerDiag,
   },
 
   // The entry is the only writer under an X scale, so the match tree matches no

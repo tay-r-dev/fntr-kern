@@ -12,30 +12,28 @@ import { parseSelection } from "@fontra/core/utils.ts";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 
 export const TENSION_AWARE_BEHAVIOR_NAME = "tension-aware";
-export const TENSION_AWARE_CONSTRAIN_BEHAVIOR_NAME = "tension-aware-constrain";
 
 /**
  * X drives the correction wherever the selection is ordinary path geometry.
  * A selection holding skeleton geometry keeps the skeleton drag, which has its
  * own width semantics.
+ *
+ * Shift adds nothing. X already states an axis, which is the stronger of the
+ * two constraints, and 0/45/90 has no diagonal left to offer under it.
  * @param {Object} modifiers - Realtime modifier state from the pointer tool
  * @param {Set} targetKinds - Selection kinds present, from getSelectionTargetKinds
- * @param {Object} event - The pointer event, for shift-constrain
  * @returns {string|null} The behavior name, or null
  */
-export function getTensionAwareBehaviorName(modifiers, targetKinds, event) {
+export function getTensionAwareBehaviorName(modifiers, targetKinds) {
   if (!modifiers?.tensionAwareMode) return null;
   if (targetKinds?.has("skeletonPoint") || targetKinds?.has("skeletonRib")) return null;
-  return event?.shiftKey
-    ? TENSION_AWARE_CONSTRAIN_BEHAVIOR_NAME
-    : TENSION_AWARE_BEHAVIOR_NAME;
+  return TENSION_AWARE_BEHAVIOR_NAME;
 }
 
-// The ordinary behavior name behind each of ours. The correction runs on top of
-// what the ordinary rules produce, so the rules have to run somewhere.
+// The ordinary behavior name behind ours. The correction runs on top of what
+// the ordinary rules produce, so the rules have to run somewhere.
 const BASE_BEHAVIOR_NAMES = {
   [TENSION_AWARE_BEHAVIOR_NAME]: "default",
-  [TENSION_AWARE_CONSTRAIN_BEHAVIOR_NAME]: "constrain",
 };
 
 /**
@@ -68,13 +66,8 @@ export function createTensionAwareTargetEntries(
   );
 
   let rollbackChange = null;
-  // The axis the drag latches onto, held for the whole gesture. X+Shift is the
-  // way out: it keeps the ordinary 0/45/90 constrain, so a diagonal is still
-  // reachable under the correction.
-  const lockDeltaToAxis =
-    behaviorName === TENSION_AWARE_CONSTRAIN_BEHAVIOR_NAME
-      ? (rawDelta) => rawDelta
-      : makeAxisLock();
+  // The axis the drag latches onto, held for the whole gesture.
+  const lockDeltaToAxis = makeAxisLock();
   // Every point this entry has ever written during the gesture. See the write
   // loop below for why it has to remember them.
   const touched = new Set();

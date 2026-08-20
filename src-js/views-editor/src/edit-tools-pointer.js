@@ -51,7 +51,6 @@ import {
   createTensionAwareTransformEntries,
   getTensionAwareBehaviorName,
   TENSION_AWARE_BEHAVIOR_NAME,
-  TENSION_AWARE_CONSTRAIN_BEHAVIOR_NAME,
   TENSION_AWARE_SCALE_BEHAVIOR_NAME,
 } from "./tension-aware-editing.js";
 import {
@@ -763,7 +762,7 @@ export class PointerTool extends BaseTool {
         tensionAwareMode: this.tensionAwareMode,
       });
       const getSelectionBehaviorName = (event) =>
-        getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds, event) ||
+        getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds) ||
         getSkeletonModifierBehaviorName(event, getRealtimeModifiers(), targetKinds) ||
         getBaseExpandBehaviorName(
           getRealtimeModifiers(),
@@ -803,10 +802,7 @@ export class PointerTool extends BaseTool {
         editingLayers[editLayerName] || Object.values(editingLayers)[0]
       );
       const makeSkeletonTargetEntries = (layerGlyph, name) => {
-        if (
-          name === TENSION_AWARE_BEHAVIOR_NAME ||
-          name === TENSION_AWARE_CONSTRAIN_BEHAVIOR_NAME
-        ) {
+        if (name === TENSION_AWARE_BEHAVIOR_NAME) {
           return createTensionAwareTargetEntries(
             layerGlyph,
             sceneController.selection,
