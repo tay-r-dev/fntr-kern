@@ -1109,6 +1109,38 @@ function jointKinkDegrees(path) {
   );
 }
 
+// The most the whole-unit grid can bend a joint that is exactly straight: each
+// end of a handle can land sqrt(2)/2 off in any direction, so each of the two
+// handle directions can swing by atan(sqrt(2) / its length).
+function gridKinkAllowanceDegrees(path) {
+  const [px, py] = path.getPointPosition(NODE - 1);
+  const [nx, ny] = path.getPointPosition(NODE);
+  const [qx, qy] = path.getPointPosition(NODE + 1);
+  return (
+    ((Math.atan(Math.SQRT2 / Math.hypot(nx - px, ny - py)) +
+      Math.atan(Math.SQRT2 / Math.hypot(qx - nx, qy - ny))) *
+      180) /
+    Math.PI
+  );
+}
+
+// The worst joint found by sweeping 2000 randomly generated well-formed ones.
+// It arrives 0.541 degrees off straight -- inside what the grid can excuse --
+// and its correction is large enough to be tension-limited, so it takes many
+// attempts, and every one of them used to trade a little more of the tangent
+// for a little less curvature discontinuity. It finished at 13.1 degrees.
+function creasingJointPath() {
+  return makeContour([
+    { x: 28, y: 604 },
+    cubic(73, 572),
+    cubic(82, 464),
+    { x: 103, y: 361, smooth: true },
+    cubic(131, 230),
+    cubic(196, 121),
+    { x: 205, y: 101 },
+  ]);
+}
+
 function jointRateStep(path) {
   const { incoming, outgoing } = jointSegmentPoints(path);
   return curvatureRateDiscontinuity(incoming, outgoing);
@@ -1159,5 +1191,23 @@ describe("harmonization: what the grid search may not trade away", () => {
     // The slide is opt-in, so when it is on it looks for the best joint on the
     // tangent instead of waiting for the held solve to fail.
     expect(jointRateStep(slid)).to.be.below(jointRateStep(held));
+  });
+
+  it("will not buy curvature with a crease the grid cannot excuse", () => {
+    const path = creasingJointPath();
+    const before = measureG2Discontinuity(getJointContext(path, NODE));
+    expect(jointKinkDegrees(path)).to.be.below(gridKinkAllowanceDegrees(path));
+
+    harmonizePathInPlace(path, [NODE], {
+      continuity: "G2",
+      handleBias: 1,
+      roundCoordinates: true,
+    });
+
+    // Both, and not one at the other's expense: curvature continuity across a
+    // joint with no common tangent does not mean anything, so the bend is a
+    // limit on the search rather than another term in it.
+    expect(jointKinkDegrees(path)).to.be.below(gridKinkAllowanceDegrees(path));
+    expect(measureG2Discontinuity(getJointContext(path, NODE))).to.be.below(before);
   });
 });
