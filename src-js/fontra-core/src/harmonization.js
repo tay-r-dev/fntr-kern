@@ -1504,16 +1504,6 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   best = { score: jointResidual(), coordinates: Array.from(path.coordinates) };
 
   for (let attempt = 0; attempt < attempts; attempt++) {
-    if (equalizeTension) {
-      // donor order: balance, harmonize, balance (SuperTool+Harmonize.m:61,75)
-      for (const pointIndex of candidates) {
-        const ctx = getJointContext(path, pointIndex);
-        if (!ctx.reason) {
-          equalizeJointSegments(path, ctx, touched);
-        }
-      }
-    }
-
     states = candidates.map((pointIndex) => {
       const state = {
         pointIndex,
@@ -1768,28 +1758,6 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       }
     }
 
-    if (equalizeTension) {
-      for (const state of states) {
-        if (state.status === "skipped") {
-          continue;
-        }
-        const ctx = getJointContext(path, state.pointIndex);
-        if (!ctx.reason) {
-          equalizeJointSegments(path, ctx, touched);
-          // balance averages the two tensions of a segment, and that average can
-          // itself land above the ceiling — so the invariant is re-established
-          // here rather than assumed to have survived
-          state.tensionReduced =
-            enforceHandleTension(
-              path,
-              getJointContext(path, state.pointIndex),
-              maxHandleTension,
-              touched
-            ) || state.tensionReduced;
-        }
-      }
-    }
-
     if (roundCoordinates) {
       // Once, at the end, and only on points this operation moved. Rounding
       // during the sweep would put the residual permanently above the
@@ -1880,6 +1848,61 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     if (!moved) {
       state.status = "skipped";
       state.reason = state.everMoved ? "reverted" : "below-grid";
+    }
+  }
+
+  //
+  // Equalize, last, and outside everything above.
+  //
+  // It used to run inside the scored attempt -- once before the sweep and once
+  // after, which is the donor's `balance, harmonize, balance`
+  // (SuperTool+Harmonize.m:61,75). That put it inside the best-state gate, and
+  // the gate judges a state by the joint and the curve, which is not what
+  // equalizing is for. So a run whose harmonic answer the gate declined threw
+  // the equalization out with it, and the tick did nothing at all: on `n` node
+  // 13, G2 + on-curve + equalize wrote not one point and reported
+  // `skipped/reverted`.
+  //
+  // It is a convenience: even out the two segments at each joint, because a
+  // designer asked for that. It is not a proposal about continuity and has no
+  // business being scored against one. So it runs on whatever the gate kept,
+  // it is kept whatever it does to the residual, and it runs on every joint --
+  // including the ones harmonization skipped, which are exactly the joints
+  // where the old code refused to run it.
+  //
+  // The verdicts above are already fixed, and they still describe
+  // harmonization: `skipped` means nothing was harmonized there, not that
+  // nothing moved.
+  //
+  // The ceiling is re-established afterwards and not assumed: balance averages
+  // the two tensions of a segment and the average can itself land over it.
+  //
+  if (equalizeTension) {
+    const equalized = new Set();
+    for (const state of states) {
+      const ctx = getJointContext(path, state.pointIndex);
+      if (ctx.reason) {
+        continue;
+      }
+      equalizeJointSegments(path, ctx, equalized);
+      state.tensionReduced =
+        enforceHandleTension(
+          path,
+          getJointContext(path, state.pointIndex),
+          maxHandleTension,
+          equalized
+        ) || state.tensionReduced;
+    }
+    // Whole units, by rounding and not by searching. The search above is for
+    // choosing between answers; this pass is not offering one.
+    if (roundCoordinates) {
+      for (const index of equalized) {
+        const [x, y] = path.getPointPosition(index);
+        path.setPointPosition(index, Math.round(x), Math.round(y));
+      }
+    }
+    for (const index of equalized) {
+      touched.add(index);
     }
   }
 
