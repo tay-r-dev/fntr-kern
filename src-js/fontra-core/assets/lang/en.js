@@ -629,9 +629,12 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.g3": "G3 continuity",
   "sidebar.selection-transformation.harmonize.g3.tooltip":
     "Also match the rate of change of curvature, which is what removes the crease from the curvature comb. Falls back to G2 where it has no answer.",
+  "sidebar.selection-transformation.harmonize.handles-only": "Handle lengths only",
+  "sidebar.selection-transformation.harmonize.handles-only.tooltip":
+    "Solve the two handle LENGTHS of every segment against a curvature shared by both sides of each node, instead of sliding anything along a tangent. Handles keep their directions, so a smooth point cannot be bent; an inflection is flattened rather than averaged across. Curvatura’s Harmonize Handles.",
   "sidebar.selection-transformation.harmonize.move-on-curve": "Move the on-curve",
   "sidebar.selection-transformation.harmonize.move-on-curve.tooltip":
-    "Let the joint carry the correction instead of its two handles. Under G3 it slides only where the handles alone cannot reach an answer.",
+    "Let the joint carry the correction instead of its two handles. Under G3 it searches the whole tangent between the neighbouring points for the best position, and stays put only if it is already there.",
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
   "sidebar.selection-transformation.harmonize.equalize-tension": "Equalize tension",
   "sidebar.selection-transformation.harmonize.equalize-tension.tooltip":

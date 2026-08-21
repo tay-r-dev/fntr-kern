@@ -20,6 +20,7 @@ export const applicationSettingsController = new ObservableController({
   // fork: harmonize panel settings (app-level, per D9 — not written to project files)
   harmonizeG3: false,
   harmonizeMoveOnCurve: false,
+  harmonizeHandlesOnly: false,
   harmonizeOtherSources: true,
   harmonizeEqualizeTension: false,
 });

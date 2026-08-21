@@ -780,6 +780,13 @@ export default class TransformationPanel extends Panel {
 
     formContents.push({
       type: "checkbox",
+      key: "harmonizeHandlesOnly",
+      label: translate("sidebar.selection-transformation.harmonize.handles-only"),
+      value: applicationSettingsController.model.harmonizeHandlesOnly,
+    });
+
+    formContents.push({
+      type: "checkbox",
       key: "harmonizeEqualizeTension",
       label: translate("sidebar.selection-transformation.harmonize.equalize-tension"),
       value: applicationSettingsController.model.harmonizeEqualizeTension,
@@ -850,6 +857,7 @@ export default class TransformationPanel extends Panel {
         [
           "harmonizeG3",
           "harmonizeMoveOnCurve",
+          "harmonizeHandlesOnly",
           "harmonizeOtherSources",
           "harmonizeEqualizeTension",
         ].includes(fieldItem.key)
@@ -929,6 +937,7 @@ export default class TransformationPanel extends Panel {
     const options = {
       useG3: !!settings.harmonizeG3,
       moveOnCurve: !!settings.harmonizeMoveOnCurve,
+      handlesOnly: !!settings.harmonizeHandlesOnly,
       applyToOtherSources: settings.harmonizeOtherSources,
       equalizeTension: settings.harmonizeEqualizeTension,
     };

@@ -46,6 +46,12 @@ export const HARMONIZE_DEFAULTS = {
   // it still leaves the construction with no answer inside its bounds. It is a
   // repair, so a joint that does not need it does not move.
   slideOnCurve: false,
+  // Solve the two handle LENGTHS of every segment against a curvature shared by
+  // both sides of each node, which is Curvatura's other command, instead of
+  // sliding anything along a tangent. A different construction rather than a
+  // variation on this one -- see `harmonizeHandlesInPlace`. It ignores
+  // `continuity`, `slideOnCurve` and `handleBias`, which have no meaning in it.
+  handlesOnly: false,
   handleBias: 1.0, //     0 = move the node, 1 = move the handles
   // Never shrink a handle below 15% of a nominal handle for its segment, which
   // is measured from the segment's chord and not from the handle itself. See
@@ -597,6 +603,63 @@ function jointKink(P, node, N) {
 }
 
 //
+// How far a drawing is from what the command is trying to reach, over the whole
+// candidate set.
+//
+// Two numbers, ranked, not one. A handle past the tension ceiling and a crease
+// at a smooth point are defects rather than trades, so any number of them
+// outranks any amount of curvature discontinuity: nothing may be bought with
+// one. Below that the residual is the sum of `jointError` over the joints.
+//
+// Both commands in this module score themselves with this, so "better" means
+// the same thing to the grid search, to the best-state gate, and across the two
+// of them.
+//
+function scoreJoints(path, candidates, continuity, maxHandleTension) {
+  let violations = 0;
+  let residual = 0;
+  for (const pointIndex of candidates) {
+    const ctx = getJointContext(path, pointIndex);
+    if (ctx.reason) {
+      continue;
+    }
+    // The seven-point stencil where the joint has both of its segments, which
+    // is what the rate needs. Where an open contour runs out before one of
+    // them there is no rate to measure and the five-point curvature stands.
+    const stencil = jointStencil(path, ctx);
+    if (stencil) {
+      residual += jointError(stencil, continuity);
+    } else {
+      const discontinuity = measureG2Discontinuity(ctx);
+      residual += Number.isFinite(discontinuity) ? discontinuity : 0;
+    }
+    // A crease at a smooth point is a defect and not a trade. Curvature
+    // continuity across a joint that has no common tangent does not mean
+    // anything, so no amount of it may buy a bend past what the grid can
+    // excuse -- and the search will buy it, given the chance: on the worst of
+    // 2000 random joints the residual fell from 31.7 to 1.1 while the joint
+    // creased from 0.5 degrees to 13.1, one attempt at a time, and every step
+    // of that scored as an improvement.
+    if (jointKink(ctx.P, ctx.node, ctx.N) > gridKinkAllowance(ctx.P, ctx.node, ctx.N)) {
+      violations += 1;
+    }
+
+    for (const { nearSide, indices } of jointSegments(path, ctx)) {
+      if (handleTension(segmentPositions(path, indices), nearSide) > maxHandleTension) {
+        violations += 1;
+      }
+    }
+  }
+  return { violations, residual };
+}
+
+function isBetter(candidate, incumbent) {
+  return candidate.violations !== incumbent.violations
+    ? candidate.violations < incumbent.violations
+    : candidate.residual < incumbent.residual;
+}
+
+//
 // One G3 attempt, with the joint at `nodePosition`. Returns the two inner
 // handle positions, or null where the construction has no answer or the answer
 // is outside the same two limits the G2 path obeys: the cusp floor on the
@@ -958,6 +1021,13 @@ function snapToGrid(path, touched, jointResidual, isBetter) {
 }
 
 export function harmonizePathInPlace(path, pointIndices, options = {}) {
+  // One entry point, two constructions. Dispatching here rather than at each
+  // call site is what lets the editor, the skeleton panel and the tests all
+  // reach the second one by passing an option along with the rest.
+  if (options.handlesOnly) {
+    return harmonizeHandlesInPlace(path, pointIndices, options);
+  }
+
   const {
     continuity,
     slideOnCurve,
@@ -1013,52 +1083,8 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   // How far the drawing is from what the command is trying to reach. A handle
   // over the tension ceiling is a defect and not a trade, so any number of them
   // outranks any amount of curvature discontinuity.
-  const jointResidual = () => {
-    let violations = 0;
-    let residual = 0;
-    for (const pointIndex of candidates) {
-      const ctx = getJointContext(path, pointIndex);
-      if (ctx.reason) {
-        continue;
-      }
-      // The seven-point stencil where the joint has both of its segments, which
-      // is what the rate needs. Where an open contour runs out before one of
-      // them there is no rate to measure and the five-point curvature stands.
-      const stencil = jointStencil(path, ctx);
-      if (stencil) {
-        residual += jointError(stencil, continuity);
-      } else {
-        const discontinuity = measureG2Discontinuity(ctx);
-        residual += Number.isFinite(discontinuity) ? discontinuity : 0;
-      }
-      // A crease at a smooth point is a defect and not a trade. Curvature
-      // continuity across a joint that has no common tangent does not mean
-      // anything, so no amount of it may buy a bend past what the grid can
-      // excuse -- and the search will buy it, given the chance: on the worst of
-      // 2000 random joints the residual fell from 31.7 to 1.1 while the joint
-      // creased from 0.5 degrees to 13.1, one attempt at a time, and every step
-      // of that scored as an improvement.
-      if (
-        jointKink(ctx.P, ctx.node, ctx.N) > gridKinkAllowance(ctx.P, ctx.node, ctx.N)
-      ) {
-        violations += 1;
-      }
-
-      for (const { nearSide, indices } of jointSegments(path, ctx)) {
-        if (
-          handleTension(segmentPositions(path, indices), nearSide) > maxHandleTension
-        ) {
-          violations += 1;
-        }
-      }
-    }
-    return { violations, residual };
-  };
-
-  const isBetter = (candidate, incumbent) =>
-    candidate.violations !== incumbent.violations
-      ? candidate.violations < incumbent.violations
-      : candidate.residual < incumbent.residual;
+  const jointResidual = () =>
+    scoreJoints(path, candidates, continuity, maxHandleTension);
 
   // The drawing exactly as it arrived. The verdict at the end is read against
   // this, so a joint can only be called harmonized if something actually moved.
@@ -1403,4 +1429,563 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       construction,
     })
   );
+}
+
+// --- the donors' other command: harmonize by handle LENGTH -------------------
+//
+// Everything above answers "fix this joint": it takes one smooth point and
+// slides something along its tangent until the two sides agree there. Curvatura
+// ships a second command that answers a different question -- "make these
+// curves harmonious" -- and it is not a variation on the first
+// (_external/curvatura/Curvatura.py:519, `harmonizehandles_contour`).
+//
+// It works in two halves:
+//
+//   1. Every selected node is given a TARGET curvature: the mean of the two
+//      magnitudes it currently has, one on each side, with each side keeping
+//      its own sign. At an inflection, where the two signs disagree, there is
+//      no magnitude they can share and the target is zero -- which is what an
+//      inflection ought to be anyway.
+//
+//   2. Every segment then has BOTH of its handle lengths solved so that it
+//      reaches its own two ends' targets. Two unknowns, two equations, and no
+//      choice left to make: `scaleHandles` below.
+//
+// Two things follow from that, and they are why the port is worth having. The
+// handles keep their DIRECTIONS, so this construction cannot bend a joint --
+// G1 holds by the shape of the answer rather than by a check. And because the
+// target is shared between the two sides of a node instead of derived from one
+// of them, a whole run of segments is pulled onto one curvature profile at
+// once, rather than each joint being repaired against whatever its neighbour
+// happens to be doing at the time.
+//
+// The price is that a node's target depends on its neighbours' curvature, which
+// the previous round has just changed, so it takes the donor's five rounds to
+// settle rather than converging on its own.
+//
+
+//
+// The real roots of a polynomial of degree at most four, highest power first.
+//
+// The donor runs Newton from zero and divides out each root it finds
+// (Curvatura.py:145). Deflation folds the error of every root already found
+// into the next one, and Newton from a fixed start reaches whichever root it
+// reaches -- on a quartic with two admissible roots there is no telling which,
+// and the caller is choosing between them by bending energy. So the roots are
+// bracketed instead. Between two consecutive turning points a polynomial is
+// monotone and holds at most one root, so the derivative's roots plus a bound
+// on the root radius cut the line into intervals that bisection resolves
+// exactly. No starting guess, a fixed trip count, and either every real root or
+// none.
+//
+function realRoots(coefficients) {
+  const poly = [...coefficients];
+  while (poly.length && !poly[0]) {
+    poly.shift();
+  }
+  if (poly.some((value) => !Number.isFinite(value))) {
+    return [];
+  }
+  const degree = poly.length - 1;
+  if (degree < 1) {
+    return [];
+  }
+  if (degree === 1) {
+    return [-poly[1] / poly[0]];
+  }
+  if (degree === 2) {
+    const [a, b, c] = poly;
+    const discriminant = b * b - 4 * a * c;
+    if (discriminant < 0) {
+      return [];
+    }
+    if (!discriminant) {
+      return [-b / (2 * a)];
+    }
+    // The pair that does not cancel: one root from the formula, the other from
+    // the product of the two.
+    const q = -0.5 * (b + Math.sign(b || 1) * Math.sqrt(discriminant));
+    return [q / a, c / q].sort((x, y) => x - y);
+  }
+
+  const bound =
+    1 + Math.max(...poly.slice(1).map((value) => Math.abs(value / poly[0])));
+  const turning = realRoots(derivePolynomial(poly)).filter(
+    (value) => value > -bound && value < bound
+  );
+  const knots = [-bound, ...turning, bound].sort((x, y) => x - y);
+
+  const roots = [];
+  const keep = (root) => {
+    if (Number.isFinite(root) && !roots.includes(root)) {
+      roots.push(root);
+    }
+  };
+  for (let i = 0; i < knots.length - 1; i++) {
+    const low = knots[i];
+    const high = knots[i + 1];
+    const atLow = evaluatePolynomial(poly, low);
+    const atHigh = evaluatePolynomial(poly, high);
+    if (!atLow) {
+      keep(low);
+      continue;
+    }
+    if (!atHigh) {
+      keep(high);
+      continue;
+    }
+    if (atLow < 0 !== atHigh < 0) {
+      keep(bisectPolynomial(poly, low, high, atLow));
+    }
+  }
+  return roots.sort((x, y) => x - y);
+}
+
+function evaluatePolynomial(poly, x) {
+  let value = poly[0];
+  for (let i = 1; i < poly.length; i++) {
+    value = value * x + poly[i];
+  }
+  return value;
+}
+
+function derivePolynomial(poly) {
+  const degree = poly.length - 1;
+  return poly.slice(0, degree).map((value, i) => value * (degree - i));
+}
+
+// Enough halvings to take any bracket this module produces down to the last bit
+// of a double, and the same number every time.
+const BISECTION_STEPS = 80;
+
+function bisectPolynomial(poly, low, high, atLow) {
+  let lo = low;
+  let hi = high;
+  const negativeAtLo = atLow < 0;
+  for (let step = 0; step < BISECTION_STEPS; step++) {
+    const mid = (lo + hi) / 2;
+    if (mid === lo || mid === hi) {
+      break;
+    }
+    if (evaluatePolynomial(poly, mid) < 0 === negativeAtLo) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return (lo + hi) / 2;
+}
+
+//
+// The bending energy of a cubic from (0,0) to (1,0) whose handles leave at
+// angles `alpha` and `beta` with lengths `a` and `b`: the integral of squared
+// curvature, by Simpson's rule over ten intervals (Curvatura.py:66).
+//
+// It only ever chooses between two exact answers, so the accuracy of the
+// quadrature does not enter the geometry. It breaks a tie.
+//
+function bendingEnergy(alpha, beta, a, b) {
+  const sa = Math.sin(alpha);
+  const sb = Math.sin(beta);
+  const ca = Math.cos(alpha);
+  const cb = Math.cos(beta);
+  const dx = [3 * b * cb + 3 * a * ca - 2, -2 * b * cb - 4 * a * ca + 2, a * ca];
+  const dy = [-3 * b * sb + 3 * a * sa, -4 * a * sa + 2 * b * sb, a * sa];
+  const ddx = [3 * b * cb + 3 * a * ca - 2, -b * cb - 2 * a * ca + 1];
+  const ddy = [-3 * b * sb + 3 * a * sa, b * sb - 2 * a * sa];
+
+  const squaredCurvature = (t) => {
+    const x1 = 3 * (dx[0] * t * t + dx[1] * t + dx[2]);
+    const y1 = 3 * (dy[0] * t * t + dy[1] * t + dy[2]);
+    const x2 = 6 * (ddx[0] * t + ddx[1]);
+    const y2 = 6 * (ddy[0] * t + ddy[1]);
+    const speed = x1 * x1 + y1 * y1;
+    return speed ? (x1 * y2 - x2 * y1) ** 2 / speed ** 2.5 : Infinity;
+  };
+
+  let integral = 0;
+  let atStart = squaredCurvature(0);
+  for (let step = 1; step <= 10; step++) {
+    const t = step / 10;
+    const atEnd = squaredCurvature(t);
+    integral += (0.1 / 6) * (atStart + 4 * squaredCurvature(t - 0.05) + atEnd);
+    atStart = atEnd;
+  }
+  return integral / 10;
+}
+
+function safeSqrt(value) {
+  return value >= 0 ? Math.sqrt(value) : NaN;
+}
+
+//
+// The two handle lengths that give a cubic from (0,0) to (1,0), leaving at
+// angles `alpha` and `beta`, the curvature `ka` at its start and `kb` at its
+// end. Lengths are in chord units. Null where there is no admissible answer.
+//
+// Writing the handles as a*(cos alpha, sin alpha) and (1,0) + b*(-cos beta,
+// sin beta), the curvature at the start comes out as
+//
+//     ka = (2/3) * (b*sin(alpha+beta) - sin(alpha)) / a^2
+//
+// and by symmetry the same with the two ends swapped. Eliminating `a` between
+// the two leaves a quartic in `b`, which is the polynomial below -- the donor's
+// coefficients (Curvatura.py:437), rederived here rather than trusted, and they
+// agree.
+//
+// Where the two tangents are parallel the quartic degenerates: sin(alpha+beta)
+// is zero, the coupling term with it, and each handle is then fixed by its own
+// end's curvature alone.
+//
+// A quartic can leave two admissible roots, and both are exact answers to the
+// question asked. The tie goes to the one that bends less, which is the donor's
+// rule and the only one available that does not need a preference invented for
+// it.
+//
+function scaleHandles(alpha, beta, ka, kb) {
+  const sa = Math.sin(alpha);
+  const sb = Math.sin(beta);
+  const sba = Math.sin(alpha + beta);
+  const solutions = [];
+
+  if (Math.abs(sba) < 1e-12) {
+    const a = ka ? safeSqrt((-2 * sa) / (3 * ka)) : Math.cos(alpha);
+    const b = kb ? safeSqrt((2 * sa) / (3 * kb)) : Math.cos(beta);
+    if (a > 0 && b > 0) {
+      solutions.push([a, b]);
+    }
+  } else {
+    const roots = realRoots([
+      27 * ka * kb * kb,
+      0,
+      36 * ka * sb * kb,
+      -8 * sba ** 3,
+      8 * sa * sba * sba + 12 * ka * sb * sb,
+    ]);
+    for (const b of roots) {
+      if (!(b > 0)) {
+        continue;
+      }
+      const a = (sb + 1.5 * kb * b * b) / sba;
+      if (a > 0) {
+        solutions.push([a, b]);
+      }
+    }
+  }
+
+  if (!solutions.length) {
+    return null;
+  }
+  let best = solutions[0];
+  let bestEnergy = bendingEnergy(alpha, beta, best[0], best[1]);
+  for (const [a, b] of solutions.slice(1)) {
+    const energy = bendingEnergy(alpha, beta, a, b);
+    if (energy < bestEnergy) {
+      best = [a, b];
+      bestEnergy = energy;
+    }
+  }
+  return { a: best[0], b: best[1] };
+}
+
+//
+// A segment's chord length, the signed angles its two handles make with that
+// chord, and the two unit directions those handles leave along. The direction
+// at an end whose handle sits on top of its on-curve point falls back to the
+// next point along, so it is never the zero vector (Curvatura.py:46).
+//
+function chordFrame(points) {
+  const [p0, p1, p2, p3] = points;
+  const chord = subVectors(p3, p0);
+  const length = vectorLength(chord);
+  if (!length) {
+    return null;
+  }
+  const direction = (from, ...candidates) => {
+    for (const candidate of candidates) {
+      const step = subVectors(candidate, from);
+      if (vectorLength(step)) {
+        return normalizeVector(step);
+      }
+    }
+    return null;
+  };
+  const start = direction(p0, p1, p2, p3);
+  const end = direction(p3, p2, p1, p0);
+  if (!start || !end) {
+    return null;
+  }
+  const angle = (unit) =>
+    Math.asin(Math.min(1, Math.max(-1, crossProduct(chord, unit) / length)));
+  return { length, alpha: angle(start), beta: angle(end), start, end };
+}
+
+//
+// The segment's two handles, rescaled along their own directions so that it
+// reaches `kStart` at its first on-curve point and `kEnd` at its last. Null
+// where there is no admissible answer, in which case the caller leaves the
+// segment as it found it -- the donor's behaviour too.
+//
+export function adjustHandles(points, kStart, kEnd) {
+  const frame = chordFrame(points);
+  if (!frame) {
+    return null;
+  }
+  const solved = scaleHandles(
+    frame.alpha,
+    frame.beta,
+    kStart * frame.length,
+    kEnd * frame.length
+  );
+  if (!solved) {
+    return null;
+  }
+  const handles = [
+    addVectors(points[0], mulVectorScalar(frame.start, solved.a * frame.length)),
+    addVectors(points[3], mulVectorScalar(frame.end, solved.b * frame.length)),
+  ];
+  return handles.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    ? handles
+    : null;
+}
+
+// The donor's count (Curvatura.py:524).
+const HARMONIZE_HANDLES_ROUNDS = 5;
+
+//
+// The curvature each selected node is being pulled towards, and the two
+// segments it is pulled through. Recomputed every round, because the previous
+// round moved the handles these are read from.
+//
+function handleTargets(path, candidates) {
+  const targets = new Map();
+  for (const pointIndex of candidates) {
+    const ctx = getJointContext(path, pointIndex);
+    if (ctx.reason) {
+      continue;
+    }
+    const segments = jointSegments(path, ctx);
+    if (segments.length < 2) {
+      continue;
+    }
+    const incoming = segmentPositions(path, segments[0].indices);
+    const outgoing = segmentPositions(path, segments[1].indices);
+    const before = curvatureAt(incoming, true);
+    const after = curvatureAt(outgoing, false);
+    if (!Number.isFinite(before) || !Number.isFinite(after)) {
+      continue;
+    }
+    // An inflection is the one node where the two sides cannot share a
+    // magnitude: they curve opposite ways, so the only curvature they can both
+    // hold is none. That is also what an inflection is supposed to be.
+    const inflection = before * after < 0;
+    const mean = (Math.abs(before) + Math.abs(after)) / 2;
+    targets.set(pointIndex, {
+      before: inflection ? 0 : before < 0 ? -mean : mean,
+      after: inflection ? 0 : after < 0 ? -mean : mean,
+      incoming: segments[0].indices,
+      outgoing: segments[1].indices,
+    });
+  }
+  return targets;
+}
+
+//
+// Write one segment's solved handles, or refuse the whole segment.
+//
+// The donor has no limits and does not need them: it is not competing with a
+// tension ceiling or a cusp floor. This module has both, and they are
+// invariants rather than preferences -- a handle past its segment's Tunni point
+// has crossed the other one and the curve doubles back. The answer here is one
+// pair, not a direction to step along, so there is nothing to scale back: it is
+// taken whole or not at all, and the joint reports that it was limited.
+//
+function writeSolvedHandles(path, indices, solved, cuspSafetyMargin, maxHandleTension) {
+  const points = segmentPositions(path, indices);
+  const floor = ((1 - cuspSafetyMargin) / 2) * distance(points[0], points[3]);
+  const settled = [points[0], solved[0], solved[1], points[3]];
+  if (
+    distance(points[0], solved[0]) < floor ||
+    distance(points[3], solved[1]) < floor
+  ) {
+    return { refused: "clamped" };
+  }
+  if (
+    handleTension(settled, "start") > maxHandleTension ||
+    handleTension(settled, "end") > maxHandleTension
+  ) {
+    return { refused: "tension-limited" };
+  }
+  return { settled };
+}
+
+//
+// Harmonize by handle length. Same call shape and same report shape as
+// `harmonizePathInPlace`, so the editor can put the two behind one command.
+//
+export function harmonizeHandlesInPlace(path, pointIndices, options = {}) {
+  const { cuspSafetyMargin, maxHandleTension, roundCoordinates } = {
+    ...HARMONIZE_DEFAULTS,
+    ...options,
+  };
+
+  const touched = new Set();
+  const candidates = pointIndices?.length
+    ? [...new Set(pointIndices)].sort((a, b) => a - b)
+    : expandToJoints(path, undefined);
+
+  const states = candidates.map((pointIndex) => ({
+    pointIndex,
+    contourIndex: path.getContourIndex(pointIndex),
+    status: "skipped",
+    reason: undefined,
+    iterations: 0,
+    tensionReduced: false,
+    construction: "handles",
+    limited: false,
+  }));
+  const byIndex = new Map(states.map((state) => [state.pointIndex, state]));
+
+  for (const state of states) {
+    const ctx = getJointContext(path, state.pointIndex);
+    if (ctx.reason) {
+      state.reason = ctx.reason;
+    } else if (jointSegments(path, ctx).length < 2) {
+      state.reason = "not-curve-joint";
+    }
+  }
+  const solvable = states
+    .filter((state) => !state.reason)
+    .map((state) => state.pointIndex);
+  if (!solvable.length) {
+    return states.map(report);
+  }
+
+  // The drawing as it arrived is one of the candidates, so a run that can only
+  // make things worse leaves it alone and the second press does nothing.
+  const original = Array.from(path.coordinates);
+  const scored = () => scoreJoints(path, solvable, "G2", maxHandleTension);
+  const originalScore = scored();
+
+  for (let round = 0; round < HARMONIZE_HANDLES_ROUNDS; round++) {
+    const targets = handleTargets(path, solvable);
+
+    const apply = (indices, kStart, kEnd, owners) => {
+      const solved = adjustHandles(segmentPositions(path, indices), kStart, kEnd);
+      const outcome = solved
+        ? writeSolvedHandles(path, indices, solved, cuspSafetyMargin, maxHandleTension)
+        : { refused: "degenerate" };
+      if (outcome.refused) {
+        for (const owner of owners) {
+          const state = byIndex.get(owner);
+          if (state) {
+            state.limited = outcome.refused;
+          }
+        }
+        return;
+      }
+      writePoint(path, touched, indices[1], outcome.settled[1]);
+      writePoint(path, touched, indices[2], outcome.settled[2]);
+      for (const owner of owners) {
+        const state = byIndex.get(owner);
+        if (state) {
+          state.iterations += 1;
+        }
+      }
+    };
+
+    for (const [pointIndex, target] of targets) {
+      // The segment arriving at this node. Where its far end is selected too,
+      // that end's own target is what this segment has to reach there -- which
+      // is how a run of segments ends up on one profile instead of each joint
+      // pulling its neighbour about.
+      const arriving = segmentPositions(path, target.incoming);
+      const startNode = target.incoming[0];
+      const kStart = targets.has(startNode)
+        ? targets.get(startNode).after
+        : curvatureAt(arriving, false);
+      apply(target.incoming, kStart, target.before, [pointIndex, startNode]);
+
+      // The segment leaving it is the next node's arriving segment, so it is
+      // only solved here when there is no next node to do it -- at the far end
+      // of the selection, where the curvature it has now is what it keeps.
+      const endNode = target.outgoing[3];
+      if (!targets.has(endNode)) {
+        const leaving = segmentPositions(path, target.outgoing);
+        apply(target.outgoing, target.after, curvatureAt(leaving, true), [pointIndex]);
+      }
+    }
+  }
+
+  if (roundCoordinates) {
+    snapToGrid(path, touched, scored, isBetter);
+  }
+
+  if (!isBetter(scored(), originalScore)) {
+    for (let index = 0; index < path.numPoints; index++) {
+      const [x, y] = path.getPointPosition(index);
+      if (original[index * 2] !== x || original[index * 2 + 1] !== y) {
+        path.setPointPosition(index, original[index * 2], original[index * 2 + 1]);
+      }
+    }
+    for (const state of states) {
+      state.iterations = 0;
+    }
+  }
+
+  for (const state of states) {
+    if (state.reason) {
+      continue;
+    }
+    // A verdict describes the drawing that was kept, never one that was
+    // computed and then dropped: below the grid, or beaten by the drawing it
+    // started from.
+    const ctx = getJointContext(path, state.pointIndex);
+    const stencil = ctx.reason
+      ? [state.pointIndex]
+      : [state.pointIndex, ...Object.values(ctx.indices)];
+    const moved = stencil.some((index) => {
+      const [x, y] = path.getPointPosition(index);
+      return original[index * 2] !== x || original[index * 2 + 1] !== y;
+    });
+    if (moved) {
+      state.status = state.limited ? "partial" : "harmonized";
+      state.reason = state.limited || undefined;
+    } else if (state.iterations) {
+      // Solved, and then not kept: the correction was smaller than the grid can
+      // hold, or the drawing it started from scored better than the answer.
+      state.status = "skipped";
+      state.reason = "below-grid";
+    } else {
+      // Nothing was written at all. Saying "already harmonic" here would be a
+      // lie whenever every solve was refused by a limit, which is exactly the
+      // case a designer needs told: the answer exists and this module will not
+      // draw it, because reaching it would put a handle under its cusp floor or
+      // past its segment's Tunni point.
+      state.status = "skipped";
+      state.reason = state.limited || "already-harmonic";
+    }
+  }
+
+  return states.map(report);
+}
+
+function report({
+  pointIndex,
+  contourIndex,
+  status,
+  reason,
+  iterations,
+  tensionReduced,
+  construction,
+}) {
+  return {
+    pointIndex,
+    contourIndex,
+    status,
+    reason,
+    iterations,
+    tensionReduced,
+    construction,
+  };
 }
