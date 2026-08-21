@@ -1109,7 +1109,7 @@ It is on F9, in the context menu, and in the Transformation sidebar panel. The
 math is pure and lives in `harmonization.js`. The editor calls it from the scene
 controller.
 
-### 10.2 The two constructions, as a cascade
+### 10.2 The three constructions
 
 **G3 by the two inner handles, tried first.** The joint and both outer handles
 hold still. Equal curvature and equal rate of change of curvature are two
@@ -1137,22 +1137,59 @@ construction asks for the square root of a negative product; and an answer
 outside the two limits the G2 path already obeys, which are the cusp floor on the
 handle that shrinks and the tangent intersection on the handle that grows.
 
-**The repair slide** sits between the two rungs and is optional. Where holding
-the joint still leaves no admissible answer, the joint slides along its tangent
-by the smallest distance that produces one, and the two inner handles take the
-rest. The search runs outward from zero, so a joint that does not need it does
-not move. Its range is the far on-curve of either segment measured along the
-tangent, bounded separately in each direction. **It cannot be bounded by the
-inner handles**, because they are what the construction replaces, so their
-present lengths say nothing about where the joint may go.
+**The on-curve slide, under G3, is a search and not a repair.** When it is
+switched on it is the whole search: every admissible position on the tangent,
+including the one the joint already holds. It is not a fallback for when holding
+the joint still fails, because holding it still almost never fails — as a
+fallback the option did nothing on any healthy joint, and G3 with it on and off
+produced byte-identical output.
 
-**Two checkboxes, not a bias slider.** One picks the target and so the cascade;
-the other says whether the joint itself may move. Under G2 that second one is the
-whole of the old bias — at one end the on-curve moves and the handles hold, at
-the other the handles move and the on-curve holds, and the relative displacement
-is identical either way, so the curve is the same shape and only its position at
-the joint differs. Under G3 it turns the repair slide on. The values between the
-old slider's two ends were never asked for.
+The construction is exact at every admissible position, so in exact arithmetic
+there is nothing to choose between them and the joint would never have reason to
+move. What separates them is the grid: how much of the exact answer survives
+whole-unit rounding depends on where the joint sits. Each candidate is therefore
+judged **as it will be emitted**, on the grid — the same rule the offset
+construction arrived at for its own candidates. Sampling is at whole units along
+the tangent with a fixed cap, and where two positions score alike the tie goes to
+whichever moves the joint less, so a joint already standing at the best place
+stays. Where the caller is not rounding every position ties, and the joint does
+not move at all.
+
+Its range is the far on-curve of either segment measured along the tangent,
+bounded separately in each direction. **It cannot be bounded by the inner
+handles**, because they are what the construction replaces, so their present
+lengths say nothing about where the joint may go.
+
+**Handle lengths only, as a third construction.** Curvatura ships two commands
+and this is the second one (`harmonizehandles_contour`). It does not slide
+anything along a tangent. Every selected node is given a target curvature — the
+mean of the two magnitudes it has now, each side keeping its own sign, and zero
+at an inflection where the two signs disagree and there is no magnitude they can
+share. Every segment then has **both** of its handle lengths solved so that it
+reaches its own two ends' targets: two unknowns, two equations, a quartic, and
+where that leaves two admissible roots the tie goes to the one that bends less.
+Five rounds, because a node's target is read off handles the previous round
+moved.
+
+Two properties follow and are the reason it is here. The handles keep their
+**directions**, so this construction cannot bend a joint at all. And the target
+is shared between the two sides of a node rather than derived from one of them,
+so a run of segments is pulled onto one curvature profile instead of each joint
+being repaired against whatever its neighbour is doing.
+
+It ignores the continuity, slide and bias settings, which have no meaning in it.
+Its answer is one pair of lengths rather than a direction to step along, so there
+is nothing to scale back when it meets the cusp floor or the tension ceiling: it
+is taken whole or refused, and a refusal is reported as `clamped`,
+`tension-limited` or `degenerate` — never as "already harmonic".
+
+**Checkboxes, not a bias slider.** One picks the target and so the cascade; one
+says whether the joint itself may move; one swaps the construction outright.
+Under G2 the second is the whole of the old bias — at one end the on-curve moves
+and the handles hold, at the other the handles move and the on-curve holds, and
+the relative displacement is identical either way, so the curve is the same shape
+and only its position at the joint differs. Under G3 it turns the slide on. The
+values between the old slider's two ends were never asked for.
 
 ### 10.3 The sweep
 
@@ -1179,9 +1216,7 @@ sweep therefore loops over the ring until nothing moves anywhere.
   drawing until a drawing comes round a second time — on almost everything, two
   attempts. Every state is scored and the best is kept, and the drawing it was
   handed counts as a candidate, so a command that can only make things worse
-  leaves the drawing alone. A handle over the tension ceiling outranks any amount
-  of curvature in that score, because an over-tension handle is a defect and not
-  a trade.
+  leaves the drawing alone.
 - **The verdict is read at the end**, not at the moment a joint went quiet. Quiet
   at the end means harmonized; quiet from the start means already harmonic;
   anything else reports what stopped it.
@@ -1231,6 +1266,30 @@ because a different set of handles has a different harmonic target.
   whole-unit positions bracketing its own exact answer, keeping whatever scores
   best. Three fixed passes: a search that picks its own trip count cannot be
   continuous in its input.
+- **The score measures the condition the command was asked for.** Under G3 the
+  rate of change of curvature is half of what is being solved, so a score that
+  leaves it out judges a G3 answer by how well it does at G2 — which is not a
+  near miss. It is also **relative**: a selection holds joints of every size, and
+  an absolute curvature difference lets the tightest one own the whole number.
+  Curvature carries 1/length and its rate 1/length², so both are made
+  dimensionless by the joint's own size, the mean of its two segments' chords.
+  The scale is the joint's length and deliberately not its curvature: dividing by
+  the curvature reads 2 at every inflection whatever the drawing does, because
+  the two curvatures have opposite signs there and the ratio saturates, and a
+  score with no gradient at an inflection cannot tell the G2 fallback's answer
+  from the drawing it started on.
+- **Two defects rank above any amount of residual, and are not tradeable.** A
+  handle over the tension ceiling is one. A crease at a smooth point is the
+  other: curvature continuity across a joint with no common tangent does not mean
+  anything, so no amount of it may buy a bend. Every construction here moves
+  points along the tangent and so preserves G1 exactly — but the answer is
+  rounded to whole units, the next attempt reads the tangent off those rounded
+  handles, and the search will walk the joint off G1 one attempt at a time if
+  nothing scores it. The line is the grid's own worst case, `atan(sqrt(2)/L)` per
+  handle: inside it the bend is the coordinate space, past it the bend was
+  chosen. Collinearity is also scored below that line, in radians alongside the
+  other two terms — curvature times length is the angle a segment turns through,
+  so all three are angles and there is no weight to pick.
 - **A verdict describes the drawing that was kept.** A joint can converge
   exactly and still have nothing to write, because its correction was smaller
   than the grid can hold and the position it already sits on is the best one

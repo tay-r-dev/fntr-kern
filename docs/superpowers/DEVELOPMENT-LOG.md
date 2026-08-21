@@ -96,8 +96,9 @@ We built and measured each one. None is in the tree.
 
 ## Harmonize (map F8, carried fork extras)
 
-**State: shipped.** Two constructions, G3 tried first with G2 as its fallback.
-It reaches skeleton centerlines as well as ordinary paths.
+**State: shipped.** Three constructions: G3 tried first with G2 as its fallback,
+and Curvatura's handle-length solve as a separate check that replaces both. It
+reaches skeleton centerlines as well as ordinary paths.
 
 ### Findings
 
@@ -212,6 +213,120 @@ rounded answer can be worse than the drawing; the gate then reverts silently; an
 the report describes the reverted state. Every session found a link and treated
 it as the cause.
 
+### The score was measuring the wrong thing, twice
+
+Reported on `n` node 13, across all seven combinations of the checkboxes: press
+once and two points move by a unit each; press again, and again, and nothing is
+written at all, every joint reporting `skipped/below-grid`. Four faults behind
+it, all measured, and two of them are the same fault — the number the command
+scores itself by did not measure what the command was doing.
+
+**The score had no rate term, so G3 was judged on G2.** `jointResidual` summed
+the curvature discontinuity only, and it drives both the grid search and the
+best-state gate. From a G2-optimised drawing, all four whole-unit placements
+bracketing the exact G3 answer score **worse on curvature alone** than the
+drawing they came from — so all four were reverted, and G3 could never take over
+from a joint that was already G2-harmonic. The score now measures the condition
+it was asked for.
+
+The first attempt at that term normalised by the joint's curvature and broke the
+inflection fallback: `|dk| / mean(|k|)` saturates at exactly 2 at every
+inflection, because the two curvatures have opposite signs there. A score with no
+gradient at an inflection cannot tell the G2 fallback's answer from the drawing
+it started on. Normalising by the joint's **length** instead makes every term an
+angle — curvature times length is the angle a segment turns through — so the
+three terms add with no weight to choose.
+
+**The slide was a fallback, so it never ran.** `g3AfterSlide` was reached only
+when holding the joint still returned null, which on a healthy joint does not
+happen: G3 with the slide on and off produced byte-identical output. It is
+opt-in, so when it is on it is now the whole search.
+
+**G1 was preserved by definition and therefore never checked.** Every
+construction moves points along the tangent, so the tangent survives — until the
+answer is rounded, the next attempt reads the tangent off the rounded handles,
+and the grid search, scoring curvature alone, buys another bend with another
+sliver of continuity. On the worst of 2000 random well-formed joints the residual
+fell from 31.7 to 1.1 while the joint creased from 0.5 to 13.1 degrees, one
+attempt at a time, and every step of it scored as an improvement. 17.9% of that
+population finished bent past anything the grid could account for.
+
+| over the grid's allowance, 2000 joints | before | after                        |
+| -------------------------------------- | ------ | ---------------------------- |
+| count                                  | 358    | 0                            |
+| the worst one                          | 13.1°  | 0.95° (its allowance: 1.91°) |
+
+That worst joint now finishes straight **and** with its curvature discontinuity
+42x smaller than the drawing's. The cost is real and worth naming: mean curvature
+discontinuity after the command rises from 6.8e-3 to 7.7e-3 over the same
+population, because some of what the old number called an improvement was a
+crease.
+
+**Freezing the tangent was the wrong fix, and the trace said so.** The first
+attempt held each joint's tangent from the drawing as it arrived and projected
+every correction onto it. It broke the coupled-ring tests, because on a ring the
+tangent legitimately rotates as neighbours move and a frozen axis is a stale one.
+The per-attempt trace then showed the drift was not coming from the construction
+at all: the residual fell monotonically while the kink grew, which is a search
+choosing bent candidates because nothing scored the bend.
+
+**The attempt loop earns its keep.** Mean residual over 2000 well-formed joints
+is 1.52 at 40 attempts and 3.27 at one, so deleting it is not the fix for what it
+does to the tangent — putting G1 in the score is.
+
+**The comb fabricates the step a designer reads.** `computeSpeedPunkSamples`
+normalises each segment's fringe by that segment's own peak curvature. At joint
+13 after G2, a true mismatch of 0.53% draws as a 6.96-unit, 38.9% step; after an
+**exact** G3 answer it still draws 2.54 units and 11.2%. At joint 4 it draws 0.66
+units over a 22.37% mismatch, and 3.73 units after the mismatch is fixed to
+2.36% — the reverse of the truth. Not fixed, at the user's instruction; recorded
+here so it is not re-derived.
+
+### The second donor command, and what it is for
+
+`harmonize_contour` answers "fix this joint". `harmonizehandles_contour`
+(Curvatura.py:519) answers "make these curves harmonious", and is not a variation
+on the first: it gives every node a target curvature — the mean of its two
+magnitudes, zero at an inflection — and then solves **both** handle lengths of
+every segment to reach its own two ends' targets. Handles keep their directions,
+so it cannot bend a joint at all, which is the property the joint command had to
+have a scoring rule added to guarantee.
+
+**Roots are bracketed, not Newton-from-zero with deflation.** The donor's
+`newton_roots` folds each root's error into the next, and Newton from a fixed
+start reaches whichever root it reaches — on a quartic with two admissible
+answers there is no telling which, and the caller is choosing between them by
+bending energy. Between two turning points a polynomial is monotone, so the
+derivative's roots and a root-radius bound cut the line into intervals bisection
+resolves exactly. Fixed trip count, no starting guess.
+
+**The quartic was rederived rather than trusted, and the donor is right.**
+Writing the handles as `a(cos A, sin A)` and `(1,0) + b(-cos B, sin B)` gives
+`ka = (2/3)(b*sin(A+B) - sin A)/a^2`, and eliminating `a` between that and its
+mirror reproduces the donor's five coefficients exactly.
+
+**It is refused more often than the joint command, and says so.** The answer is
+one pair of lengths, not a direction to step along, so a cusp floor or a tension
+ceiling cannot be met by scaling back — it is taken whole or not at all. Where
+every solve is refused, the report says `clamped`, `tension-limited` or
+`degenerate`; saying "already harmonic" there would be a lie about a joint whose
+answer exists and was not drawn.
+
+Measured on `n`. On the outer arch joint it takes the two curvatures, 1.0563e-2
+and 1.0619e-2, to their mean exactly on both sides. Per joint, against the other
+two constructions, whole-unit output:
+
+| joint | as drawn | G2                   | G3 + slide  | handle lengths    |
+| ----- | -------- | -------------------- | ----------- | ----------------- |
+| 4     | 1.44e-4  | 1.44e-4 (below grid) | 6.61e-4     | **9.08e-5**       |
+| 13    | 4.30e-3  | 4.81e-5              | **6.73e-6** | 1.15e-4           |
+| 33    | 2.73e-2  | 4.81e-5              | **6.73e-6** | 1.30e-2 (refused) |
+
+No construction wins everywhere, which is why it is a third check rather than a
+replacement. Joint 4 is the case that matters: the joint command's answer is
+smaller than the grid can hold and G3 leaves the curvature step larger than it
+found it, and only the handle solve improves it.
+
 ### Two things the donors settled
 
 **The G2 construction is confirmed from two independent directions.** SuperTool
@@ -262,8 +377,10 @@ which is the better model and the likely fix.
 
 | Idea                                                          | Why it went                                                                                                                                                                                                                                                       |
 | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A bias slider between moving the joint and moving the handles | The values between its two ends were never asked for. Two checkboxes replace it: one picks the target and so the cascade, the other says whether the joint may move.                                                                                              |
-| Bound the repair slide's range by the inner handles           | They are what the construction replaces, so their present lengths say nothing about where the joint may go. It stopped the search 25 units short on the overshoot fixture, where the first admissible slide is about 45 units and the shorter inner handle is 20. |
+| A bias slider between moving the joint and moving the handles | The values between its two ends were never asked for. Checkboxes replace it: one picks the target and so the cascade, one says whether the joint may move, one swaps the construction outright.                                                                   |
+| Freezing each joint's tangent from the arriving drawing       | On a ring the tangent legitimately rotates as neighbours move, so a frozen axis is a stale one and the coupled-ring fixtures stopped converging. The drift it was aimed at was the grid search buying bends, not the construction drifting.                       |
+| The on-curve slide as a fallback for a failed held solve      | Holding the joint still almost never fails, so the option did nothing on any healthy joint - G3 with it on and off produced byte-identical output. It is opt-in, so when it is on it is the whole search.                                                         |
+| Bound the on-curve slide's range by the inner handles         | They are what the construction replaces, so their present lengths say nothing about where the joint may go. It stopped the search 25 units short on the overshoot fixture, where the first admissible slide is about 45 units and the shorter inner handle is 20. |
 | Harmonize the generated outline                               | It is derived and would be thrown away on the next regeneration. The skeleton's own centerline is an ordinary path and takes the pass unchanged.                                                                                                                  |
 
 ---
@@ -2166,7 +2283,6 @@ to be added to, and the two are 300 lines apart in different files.
 - The architecture map has no F10 row. The inventory in §1 stops at F9, and this
   feature's files are in neither the per-feature map nor the shared-file reverse
   index.
-
 
 ## The documents themselves
 
