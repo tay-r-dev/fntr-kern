@@ -691,7 +691,19 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
     // them there is no rate to measure and the five-point curvature stands.
     const stencil = jointStencil(path, ctx);
     if (stencil) {
+      // Both, and in this order of magnitude on purpose. Joint continuity is
+      // held by the `stepped` rank above, which will not let a visible break
+      // through whatever this says; below that line the curve decides. That is
+      // the ordering the reported glyph settled: a hand-made answer at 0.72%
+      // across the joint against a drawn 0.48% was the better curve by every
+      // measure of shape, and the old score -- which was joint continuity and
+      // nothing else -- reverted it as 1.5x worse.
+      const length =
+        (distance(stencil.incoming[0], stencil.incoming[3]) +
+          distance(stencil.outgoing[0], stencil.outgoing[3])) /
+        2;
       residual += jointError(stencil, continuity);
+      residual += jointUnfairness(stencil, length);
     } else {
       const discontinuity = measureG2Discontinuity(ctx);
       residual += Number.isFinite(discontinuity) ? discontinuity : 0;
@@ -796,6 +808,57 @@ function combHasNotch(points) {
 }
 
 //
+// The bending energy of one cubic: the integral of squared curvature along it.
+//
+// This is the classical measure of a fair curve, and it is the only thing in
+// this module that reads the curve BETWEEN its on-curve points. Everything else
+// is taken at the joint, which is why a joint could be exactly G2 while the
+// segment behind it carried a lump six times its own curvature and every
+// measurement here reported success.
+//
+// Integrated against arc length, not parameter, for the same reason the G3
+// solve matches the arc-length rate: the parameter runs at different speeds
+// through different parts of a segment and the eye does not.
+//
+function bendingEnergyOf(points) {
+  let total = 0;
+  let previous = null;
+  for (let i = 0; i <= COMB_SAMPLES; i++) {
+    const t = i / COMB_SAMPLES;
+    const curvature = curvatureAtParameter(points, t);
+    const speed = vectorLength(cubicVelocity(points, t));
+    const value = curvature * curvature * speed;
+    if (previous !== null) {
+      total += (previous + value) / 2 / COMB_SAMPLES;
+    }
+    previous = value;
+  }
+  return Number.isFinite(total) ? total : 0;
+}
+
+function cubicVelocity([p0, p1, p2, p3], t) {
+  const u = 1 - t;
+  return {
+    x: 3 * (u * u * (p1.x - p0.x) + 2 * u * t * (p2.x - p1.x) + t * t * (p3.x - p2.x)),
+    y: 3 * (u * u * (p1.y - p0.y) + 2 * u * t * (p2.y - p1.y) + t * t * (p3.y - p2.y)),
+  };
+}
+
+//
+// How unfair the curve either side of a joint is, made dimensionless by the
+// joint's own size the same way the other terms are. Energy carries 1/length,
+// so one factor of length does it.
+//
+function jointUnfairness(stencil, length) {
+  if (!length || !Number.isFinite(length)) {
+    return 0;
+  }
+  return (
+    (bendingEnergyOf(stencil.incoming) + bendingEnergyOf(stencil.outgoing)) * length
+  );
+}
+
+//
 // One G3 attempt, with the joint at `nodePosition`. Returns the two inner
 // handle positions, or null where the construction has no answer or the answer
 // is outside the same two limits the G2 path obeys: the cusp floor on the
@@ -826,6 +889,99 @@ function g3Attempt(stencil, nodePosition, limits) {
     return null;
   }
   return targets;
+}
+
+//
+// Where the joint goes under G2 when it is allowed to move.
+//
+// There is a free parameter here and the module has never used it. The harmonic
+// ratio depends only on the two outer handles' offsets from the tangent, and
+// sliding the joint along that tangent changes neither -- so EVERY position on
+// it is exactly as G2 as every other. The construction has nothing to say about
+// which, the old score had nothing to say about which, and so the joint stayed
+// where it was and the command reported that there was nothing to do. On the
+// reported glyph a designer used exactly this freedom by hand, slid the joint
+// 22 units, and got a visibly better curve without changing how G2 the joint
+// was at all.
+//
+// What separates the positions is the shape of the curve either side, which
+// `scoreJoints` now measures. So this walks the tangent, builds the answer at
+// each whole unit, and asks the same question the caller will ask at the end.
+//
+// The construction at a given position: the harmonic target is a fixed point on
+// the tangent, so placing the joint at `here` and moving both handles by
+// `here - target` satisfies G2 there exactly. The two outer on-curve points do
+// not move, so each position gives a genuinely different pair of segments.
+//
+function g2BestSlide(path, ctx, state, options) {
+  const target = calculateHarmonicTarget(ctx);
+  if (!target) {
+    return null;
+  }
+  const axis = normalizeVector(subVectors(ctx.N, ctx.P));
+  if (!vectorLength(axis)) {
+    return null;
+  }
+  const segments = jointSegments(path, ctx);
+  if (segments.length < 2) {
+    return null;
+  }
+  const [A] = segmentPositions(path, segments[0].indices);
+  const C = segmentPositions(path, segments[1].indices)[3];
+
+  const along = (point) => dotVector(subVectors(point, ctx.node), axis);
+  const room = { "1": Math.max(0, along(C)), "-1": Math.max(0, -along(A)) };
+  const reach = Math.max(room[1], room["-1"]);
+  const step = Math.max(1, reach / G3_SLIDE_SAMPLES);
+  const place = options.roundCoordinates
+    ? (point) => ({ x: Math.round(point.x), y: Math.round(point.y) })
+    : (point) => point;
+
+  let best = null;
+  const consider = (slide) => {
+    const here = addVectors(ctx.node, mulVectorScalar(axis, slide));
+    const shift = subVectors(here, target.target);
+    const P = addVectors(ctx.P, shift);
+    const N = addVectors(ctx.N, shift);
+    if (distance(here, P) < state.floors.P || distance(here, N) < state.floors.N) {
+      return;
+    }
+    const node = place(here);
+    const stencil = {
+      incoming: [A, ctx.PP, place(P), node],
+      outgoing: [node, place(N), ctx.NN, C],
+    };
+    if (
+      handleTension(stencil.incoming, "end") > options.maxHandleTension ||
+      handleTension(stencil.outgoing, "start") > options.maxHandleTension
+    ) {
+      return;
+    }
+    const length =
+      (distance(stencil.incoming[0], stencil.incoming[3]) +
+        distance(stencil.outgoing[0], stencil.outgoing[3])) /
+      2;
+    const error = jointError(stencil, "G2") + jointUnfairness(stencil, length);
+    const travel = Math.abs(slide);
+    if (
+      !best ||
+      error < best.error - GRID_TIE_UNITS ||
+      (error < best.error + GRID_TIE_UNITS && travel < best.travel)
+    ) {
+      best = { error, travel, node: here, P, N };
+    }
+  };
+
+  consider(along(target.target));
+  for (let sample = 0; sample <= G3_SLIDE_SAMPLES; sample++) {
+    const slide = sample * step;
+    for (const direction of [1, -1]) {
+      if (slide <= room[direction]) {
+        consider(direction * slide);
+      }
+    }
+  }
+  return best;
 }
 
 //
@@ -1379,6 +1535,34 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
           // No admissible answer here. G2 is the rung below, and it starts from
           // the geometry as it stands rather than from anything G3 attempted.
           state.mode = "g2";
+        }
+
+        // Opt-in, and when it is on it is the whole search -- the same rule the
+        // G3 slide arrived at. Under G2 the bias has nothing left to decide,
+        // because the search chooses where the joint goes outright.
+        if (slideOnCurve) {
+          const slid = g2BestSlide(path, ctx, state, {
+            roundCoordinates,
+            maxHandleTension,
+          });
+          if (slid) {
+            const movement = Math.max(
+              distance(slid.node, ctx.node),
+              distance(slid.P, ctx.P),
+              distance(slid.N, ctx.N)
+            );
+            if (movement < toleranceUnits) {
+              state.quiet = true;
+              continue;
+            }
+            state.quiet = false;
+            writePoint(path, touched, state.pointIndex, slid.node);
+            writePoint(path, touched, ctx.indices.P, slid.P);
+            writePoint(path, touched, ctx.indices.N, slid.N);
+            state.iterations += 1;
+            anyMoved = true;
+            continue;
+          }
         }
 
         const solution = calculateHarmonicTarget(ctx);

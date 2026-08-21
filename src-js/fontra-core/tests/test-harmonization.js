@@ -548,11 +548,27 @@ describe("harmonization: harmonizePath", () => {
     expect(remaining).to.be.greaterThan(0);
   });
 
-  it("clamps at handleBias 0 as well - the node slides toward the handle", () => {
+  it("keeps the drawing at handleBias 0, where the clamped answer is a worse curve", () => {
+    // The clamp takes the handle down to its cusp floor, and a handle at its
+    // floor carries a curvature spike. Since the score reads the shape of the
+    // curve and not only the joint, the drawing wins and is kept.
+    //
+    // The report still says `partial`, which is a verdict on a drawing that was
+    // not written. `harmonized` is downgraded to `skipped/below-grid` when
+    // nothing moved and `partial` is not; extending that needs a reason of its
+    // own -- "computed, and the drawing scored better" is not "below grid".
+    const before = clampPath();
     const result = harmonizePath(clampPath(), [NODE], { handleBias: 0 });
-    expect(result.report[0].status).to.equal("partial");
     const ctx = getJointContext(result.path, NODE);
-    expect(distance(ctx.node, ctx.N)).to.be.closeTo(CLAMP_FLOOR, 1e-6);
+    expect(distance(ctx.node, ctx.N)).to.be.closeTo(
+      distance(
+        ...[NODE, NODE + 1].map((i) => {
+          const [x, y] = before.getPointPosition(i);
+          return { x, y };
+        })
+      ),
+      1e-6
+    );
   });
 
   it("stops in the same place when it is run twice", () => {
@@ -1161,7 +1177,10 @@ describe("harmonization: what the grid search may not trade away", () => {
     // the best placement bracketing the exact answer reaches 0.031 degrees and
     // the worst reaches 1.625, so the grid is not what decides this.
     expect(before).to.be.below(0.2);
-    expect(jointKinkDegrees(path)).to.be.below(0.5);
+    // Against the grid's own allowance at the handle lengths this joint ends
+    // with, not against a number picked by eye. My first bound here was 0.5
+    // degrees, which is tighter than whole units can hold.
+    expect(jointKinkDegrees(path)).to.be.below(gridKinkAllowanceDegrees(path));
   });
 
   it("improves the rate of curvature at a joint that is already G2-harmonic", () => {
@@ -1523,5 +1542,128 @@ describe("harmonization: the curve either side of the joint", () => {
     // units, where the incoming comb sagged to 0.30 of its own end. The
     // notch-free positions start five units further along.
     expect(combSag(path, [0, 1, 2, 3])).to.be.above(0.5);
+  });
+});
+
+// --- the curve, not only the joint ------------------------------------------
+//
+// Reported on `n`. A designer built a second copy of the glyph beside the
+// original and harmonized the analogous joint by hand in about ten seconds:
+// slid it along its tangent, adjusted the handles, equalized. The result is a
+// better curve and is WORSE across the joint -- 0.72% against the drawn 0.48%
+// -- and joint continuity was the only thing the score measured, so the command
+// could not have produced that answer: it would have reverted it as 1.5x worse.
+//
+// Their words: a direction, not a target. So the bar is their energy, and the
+// command is expected to reach it or beat it.
+
+function bendingEnergyAcross(path, index) {
+  const at = (i) => {
+    const [x, y] = path.getPointPosition(i);
+    return { x, y };
+  };
+  let total = 0;
+  for (const pts of [
+    [at(index - 3), at(index - 2), at(index - 1), at(index)],
+    [at(index), at(index + 1), at(index + 2), at(index + 3)],
+  ]) {
+    const [p0, p1, p2, p3] = pts;
+    for (let i = 0; i < 40; i++) {
+      const sample = (t) => {
+        const u = 1 - t;
+        const d1 = {
+          x:
+            3 *
+            (u * u * (p1.x - p0.x) + 2 * u * t * (p2.x - p1.x) + t * t * (p3.x - p2.x)),
+          y:
+            3 *
+            (u * u * (p1.y - p0.y) + 2 * u * t * (p2.y - p1.y) + t * t * (p3.y - p2.y)),
+        };
+        const d2 = {
+          x: 6 * (u * (p2.x - 2 * p1.x + p0.x) + t * (p3.x - 2 * p2.x + p1.x)),
+          y: 6 * (u * (p2.y - 2 * p1.y + p0.y) + t * (p3.y - 2 * p2.y + p1.y)),
+        };
+        const speed = Math.hypot(d1.x, d1.y);
+        if (!speed) return 0;
+        const k = (d1.x * d2.y - d1.y * d2.x) / speed ** 3;
+        return k * k * speed;
+      };
+      total += (sample(i / 40) + sample((i + 1) / 40)) / 2 / 40;
+    }
+  }
+  return total;
+}
+
+// `n` point 13, untouched, and point 33 -- the same joint corrected by hand.
+const reportedArch = () =>
+  makeContour([
+    { x: 298, y: 420, smooth: true },
+    cubic(298, 473),
+    cubic(248, 515),
+    { x: 187, y: 515, smooth: true },
+    cubic(164, 515),
+    cubic(159, 509),
+    { x: 138, y: 455 },
+  ]);
+const correctedByHand = () =>
+  makeContour([
+    { x: 298, y: 420, smooth: true },
+    cubic(298, 480),
+    cubic(265, 515),
+    { x: 209, y: 515, smooth: true },
+    cubic(171, 515),
+    cubic(153, 499),
+    { x: 138, y: 455 },
+  ]);
+
+describe("harmonization: the curve either side, not only the joint", () => {
+  it("the hand-made answer is the better curve and the worse joint", () => {
+    // Both halves of the trap, stated as a fixture so it cannot come back.
+    const drawn = reportedArch();
+    const hand = correctedByHand();
+    expect(bendingEnergyAcross(hand, NODE)).to.be.below(
+      bendingEnergyAcross(drawn, NODE)
+    );
+    expect(measureG2Discontinuity(getJointContext(hand, NODE))).to.be.above(
+      measureG2Discontinuity(getJointContext(drawn, NODE))
+    );
+  });
+
+  it("reaches the hand-made answer's fairness, or better", () => {
+    const bar = bendingEnergyAcross(correctedByHand(), NODE);
+    const path = reportedArch();
+    const report = harmonizePathInPlace(path, [NODE], {
+      continuity: "G2",
+      handleBias: 0,
+      slideOnCurve: true,
+      equalizeTension: true,
+      roundCoordinates: true,
+    });
+    expect(report[0].status).to.equal("harmonized");
+    expect(bendingEnergyAcross(path, NODE)).to.be.at.most(bar);
+  });
+
+  it("slides under G2, where every position on the tangent is equally harmonic", () => {
+    // The ratio depends only on the outer handles' offsets from the tangent,
+    // which sliding does not change -- so G2 alone has no reason to prefer any
+    // position, and before this the tick did not slide at all: it only chose
+    // whether the joint or its handles absorbed a third of a unit.
+    const held = reportedArch();
+    harmonizePathInPlace(held, [NODE], {
+      continuity: "G2",
+      handleBias: 0,
+      roundCoordinates: true,
+    });
+    const slid = reportedArch();
+    harmonizePathInPlace(slid, [NODE], {
+      continuity: "G2",
+      handleBias: 0,
+      slideOnCurve: true,
+      roundCoordinates: true,
+    });
+    expect(nodePos(slid)).to.not.deep.equal(nodePos(held));
+    expect(bendingEnergyAcross(slid, NODE)).to.be.below(
+      bendingEnergyAcross(held, NODE)
+    );
   });
 });
