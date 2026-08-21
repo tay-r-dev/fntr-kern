@@ -1432,6 +1432,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
         floors: undefined,
         segments: [],
         tensionReduced: false,
+        everMoved: false,
         quiet: false,
         tensionLimited: false,
         clamped: false,
@@ -1705,6 +1706,26 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     }
 
     const coordinates = Array.from(path.coordinates);
+
+    // Per joint, whether ANY attempt ever put it somewhere else -- which is
+    // what separates "the correction was smaller than the grid can hold" from
+    // "an answer was drawn and the drawing beat it". Recorded here, before the
+    // best-state gate below can put the drawing back.
+    for (const state of states) {
+      if (state.everMoved) {
+        continue;
+      }
+      const ctx = getJointContext(path, state.pointIndex);
+      const stencil = ctx.reason
+        ? [state.pointIndex]
+        : [state.pointIndex, ...Object.values(ctx.indices)];
+      state.everMoved = stencil.some(
+        (index) =>
+          original[index * 2] !== coordinates[index * 2] ||
+          original[index * 2 + 1] !== coordinates[index * 2 + 1]
+      );
+    }
+
     const score = jointResidual();
     if (isBetter(score, best.score)) {
       best = { score, coordinates };
@@ -1739,8 +1760,21 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   // position it already sits on is the best one available. That is a real
   // outcome and the report has to say so, rather than claiming success on a
   // drawing it did not change.
+  //
+  // `partial` is read here as well as `harmonized`. A clamped or unconverged
+  // answer can be reverted whole by the gate -- a handle at its cusp floor
+  // carries a spike the fairness term reads as the worse curve -- and it used
+  // to go on reporting `partial/clamped` about a drawing nothing had touched.
+  //
+  // Two ways to end up unchanged and they are not the same news. `below-grid`
+  // means the correction was real and smaller than a whole unit, so the
+  // position the joint already sits on is the best one available. `reverted`
+  // means an answer was drawn, on the grid, and the drawing scored better than
+  // it -- which is the one a designer needs to see, because it says the command
+  // looked and decided against, not that it had nothing to do.
+  //
   for (const state of states) {
-    if (state.status !== "harmonized") {
+    if (state.status !== "harmonized" && state.status !== "partial") {
       continue;
     }
     const ctx = getJointContext(path, state.pointIndex);
@@ -1753,7 +1787,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     });
     if (!moved) {
       state.status = "skipped";
-      state.reason = "below-grid";
+      state.reason = state.everMoved ? "reverted" : "below-grid";
     }
   }
 

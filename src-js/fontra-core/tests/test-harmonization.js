@@ -845,15 +845,36 @@ describe("harmonization: harmonizePath", () => {
   });
 
   it("reports not-converged when the iteration budget runs out", () => {
+    // Two passes, not one: after a single pass the answer is still worse than
+    // the drawing it came from, so the best-state gate keeps the drawing and
+    // the verdict below applies instead.
     const result = harmonizePath(coupledPath(), [3, 6], {
       handleBias: 1,
-      maxIterations: 1,
+      maxIterations: 2,
     });
     expect(result.report.map((e) => e.status)).to.deep.equal(["partial", "partial"]);
     expect(result.report.map((e) => e.reason)).to.deep.equal([
       "not-converged",
       "not-converged",
     ]);
+  });
+
+  it("says so when it drew an answer and kept the drawing instead", () => {
+    // One pass on a coupled ring leaves both joints part-corrected, which is a
+    // worse curve than either was to start with. Nothing is written -- and
+    // saying `not-converged` about a drawing that was never touched is a
+    // verdict on a state that was thrown away. `below-grid` would be wrong too:
+    // the correction was not sub-unit, it was refused.
+    const before = coupledPath();
+    const result = harmonizePath(coupledPath(), [3, 6], {
+      handleBias: 1,
+      maxIterations: 1,
+    });
+    expect(result.report.map((e) => e.status)).to.deep.equal(["skipped", "skipped"]);
+    expect(result.report.map((e) => e.reason)).to.deep.equal(["reverted", "reverted"]);
+    expect(Array.from(result.path.coordinates)).to.deep.equal(
+      Array.from(before.coordinates)
+    );
   });
 });
 
