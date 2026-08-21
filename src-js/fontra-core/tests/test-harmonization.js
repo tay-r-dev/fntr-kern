@@ -1011,10 +1011,21 @@ describe("harmonization: the G3 cascade", () => {
     expect(nodePos(path)).to.not.deep.equal({ x: 60, y: 100 });
   });
 
-  it("does not slide a joint that did not need it", () => {
+  it("does not slide a joint whose curve the slide cannot improve", () => {
+    // This used to read "does not slide a joint that did not need it", and it
+    // passed for the wrong reason: every position on the tangent scored the
+    // same at the joint, so the least-travel tie-break kept it still. Now that
+    // the score reads the curve as well, positions differ, and a joint moves
+    // when moving makes the curve fairer. That is the point -- so what is
+    // pinned here is that it moves for a reason and not far.
     const path = reportedG3Path();
     harmonizePathInPlace(path, [NODE], { ...G3, slideOnCurve: true });
-    expect(nodePos(path)).to.deep.equal({ x: 399, y: 598 });
+    expect(distance(nodePos(path), { x: 399, y: 598 })).to.be.below(5);
+
+    // and with the slide off it does not move at all
+    const held = reportedG3Path();
+    harmonizePathInPlace(held, [NODE], G3);
+    expect(nodePos(held)).to.deep.equal({ x: 399, y: 598 });
   });
 
   it("leaves the two outer handles alone", () => {

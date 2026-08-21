@@ -582,7 +582,18 @@ function jointError(stencil, continuity) {
   // step with a crease, and the best-state gate has no reason to refuse it.
   error += jointKink(incoming[2], incoming[3], outgoing[1]);
 
-  return Number.isFinite(error) ? error : 0;
+  // Infinity, and deliberately not zero.
+  //
+  // A joint whose handle has collapsed onto its on-curve point has no defined
+  // curvature, and reading that as zero error made it the best answer available
+  // -- so the grid search went looking for cusps, because they scored perfect.
+  // On one joint in 2000 it found one: it put the handle exactly on the node
+  // and every measurement in this file agreed that was an improvement.
+  //
+  // Infinity is the honest reading and it also ranks correctly: no state with
+  // one can beat a state without, and a drawing that arrives degenerate can
+  // still be improved, because a finite candidate beats an infinite incumbent.
+  return Number.isFinite(error) ? error : Infinity;
 }
 
 //
@@ -629,17 +640,28 @@ function relativeCurvatureStep(path, ctx) {
     return 0;
   }
   const step = Math.abs(inside - outside) / scale;
-  return Number.isFinite(step) ? step : 0;
+  return Number.isFinite(step) ? step : Infinity;
 }
 
 function jointKink(P, node, N) {
   const incoming = subVectors(node, P);
   const outgoing = subVectors(N, node);
+
+  // A handle sitting on its own on-curve point has no direction, and atan2 of
+  // two zeros is zero -- so a collapsed handle read as PERFECTLY smooth and won
+  // this rank outright against any honest drawing with a kink in it. That is
+  // how a joint that arrived 10.5 degrees out ended up with its handle written
+  // exactly onto the node: the degenerate state was the only one scoring no
+  // crease at all.
+  if (!vectorLength(incoming) || !vectorLength(outgoing)) {
+    return Infinity;
+  }
+
   const kink = Math.atan2(
     Math.abs(crossProduct(incoming, outgoing)),
     dotVector(incoming, outgoing)
   );
-  return Number.isFinite(kink) ? kink : 0;
+  return Number.isFinite(kink) ? kink : Infinity;
 }
 
 //
@@ -656,6 +678,7 @@ function jointKink(P, node, N) {
 // of them.
 //
 function scoreJoints(path, candidates, continuity, limits, arrival) {
+  let broken = 0;
   let crossed = 0;
   let creased = 0;
   let stepped = 0;
@@ -663,6 +686,32 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
   for (const pointIndex of candidates) {
     const ctx = getJointContext(path, pointIndex);
     if (ctx.reason) {
+      // A joint that arrived readable and is not readable any more has been
+      // destroyed, and skipping it here scored that as flawless -- it simply
+      // stopped contributing. Every other rank agreed: a handle sitting on its
+      // own on-curve point has no curvature to be discontinuous and no
+      // direction to be bent. So the search could always improve its score by
+      // collapsing a handle, and on one joint in 2000 it did exactly that.
+      //
+      // A joint that was already unreadable when the command was handed the
+      // drawing is not this module's doing and is not counted.
+      if (arrival?.has(pointIndex)) {
+        broken += 1;
+      }
+      continue;
+    }
+
+    // Still readable, and still destroyed. A handle sitting on its own on-curve
+    // point survives `getJointContext`, and then every rank below reads it as
+    // flawless: no curvature to be discontinuous, no direction to be bent, and
+    // no length to be over the tension ceiling. So it beat a drawing that
+    // honestly reported a kink and a tight handle, and the search had a
+    // standing incentive to collapse one.
+    if (
+      !vectorLength(subVectors(ctx.node, ctx.P)) ||
+      !vectorLength(subVectors(ctx.node, ctx.N))
+    ) {
+      broken += 1;
       continue;
     }
 
@@ -728,7 +777,7 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
       }
     }
   }
-  return { crossed, creased, stepped, residual };
+  return { broken, crossed, creased, stepped, residual };
 }
 
 // Ranked, and deliberately not added up.
@@ -740,12 +789,13 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
 // so a handle whose lines crossed was left crossed. Each rank is a defect the
 // one below it may not be traded for.
 //
+//   broken    a joint that arrived readable and can no longer be measured
 //   crossed   a handle past its segment's Tunni point: the curve doubles back
 //   creased   a smooth point that is not smooth, past what the grid can excuse
 //   stepped   a curvature break the eye can see, so the answer is not G3
-//   residual  how far the joint is from the condition, once all three hold
+//   residual  how far the joint is from the condition, once all four hold
 //
-const SCORE_RANKS = ["crossed", "creased", "stepped", "residual"];
+const SCORE_RANKS = ["broken", "crossed", "creased", "stepped", "residual"];
 
 function isBetter(candidate, incumbent) {
   for (const rank of SCORE_RANKS) {
@@ -833,7 +883,7 @@ function bendingEnergyOf(points) {
     }
     previous = value;
   }
-  return Number.isFinite(total) ? total : 0;
+  return Number.isFinite(total) ? total : Infinity;
 }
 
 function cubicVelocity([p0, p1, p2, p3], t) {
@@ -1041,15 +1091,22 @@ function g3BestSlide(stencil, limits, continuity, snapToWholeUnits) {
   const [A, PP] = stencil.incoming;
   const [, , NN, C] = stencil.outgoing;
 
+  // The same question the caller asks at the end, and not a smaller one. Judged
+  // on the joint alone, this search walked a node 221 units down its tangent on
+  // one of 2000 random joints -- taking the incoming chord from 238 units to 46
+  // -- because the joint it left there was fractionally more exact. The curve
+  // it left behind carried 450,000 times the bending energy it started with.
   const errorAsEmitted = (nodePosition, targets) => {
     const placed = place(nodePosition);
-    return jointError(
-      {
-        incoming: [A, PP, place(targets.P), placed],
-        outgoing: [placed, place(targets.N), NN, C],
-      },
-      continuity
-    );
+    const stencil = {
+      incoming: [A, PP, place(targets.P), placed],
+      outgoing: [placed, place(targets.N), NN, C],
+    };
+    const length =
+      (distance(stencil.incoming[0], stencil.incoming[3]) +
+        distance(stencil.outgoing[0], stencil.outgoing[3])) /
+      2;
+    return jointError(stencil, continuity) + jointUnfairness(stencil, length);
   };
 
   let best = null;
