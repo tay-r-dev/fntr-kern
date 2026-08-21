@@ -683,6 +683,7 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
   let creased = 0;
   let stepped = 0;
   let residual = 0;
+  let unfair = 0;
   for (const pointIndex of candidates) {
     const ctx = getJointContext(path, pointIndex);
     if (ctx.reason) {
@@ -752,7 +753,7 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
           distance(stencil.outgoing[0], stencil.outgoing[3])) /
         2;
       residual += jointError(stencil, continuity);
-      residual += jointUnfairness(stencil, length);
+      unfair += jointUnfairness(stencil, length);
     } else {
       const discontinuity = measureG2Discontinuity(ctx);
       residual += Number.isFinite(discontinuity) ? discontinuity : 0;
@@ -777,7 +778,24 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
       }
     }
   }
-  return { broken, crossed, creased, stepped, residual };
+  //
+  // Which of the two the caller is here for decides how they combine, and they
+  // are not commensurable: bending energy runs twenty to fifty times the size
+  // of the joint terms, so summing them is a decision about which one wins.
+  //
+  // Under G2 there is no rate to chase and the curve is the whole of the
+  // answer, so the two are summed and the curve carries it -- which is what
+  // lets a joint go from 0.48% to 0.72% in exchange for a curve worth having.
+  //
+  // Under G3 the caller has asked for the rate by name. It gets its own rank
+  // and the curve ranks below it, breaking ties rather than outvoting it.
+  // Folded together instead, the median rate step left behind on 500 random
+  // joints with equalization on went from 8.4% to 20.3%: the rate term was
+  // still in the sum and was simply too small to be heard.
+  //
+  return continuity === "G3"
+    ? { broken, crossed, creased, stepped, residual, unfair }
+    : { broken, crossed, creased, stepped, residual: residual + unfair, unfair: 0 };
 }
 
 // Ranked, and deliberately not added up.
@@ -794,8 +812,10 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
 //   creased   a smooth point that is not smooth, past what the grid can excuse
 //   stepped   a curvature break the eye can see, so the answer is not G3
 //   residual  how far the joint is from the condition, once all four hold
+//   unfair    the bending energy of the curve either side, under G3 only --
+//             under G2 it is folded into the residual instead, see below
 //
-const SCORE_RANKS = ["broken", "crossed", "creased", "stepped", "residual"];
+const SCORE_RANKS = ["broken", "crossed", "creased", "stepped", "residual", "unfair"];
 
 function isBetter(candidate, incumbent) {
   for (const rank of SCORE_RANKS) {
@@ -1106,7 +1126,13 @@ function g3BestSlide(stencil, limits, continuity, snapToWholeUnits) {
       (distance(stencil.incoming[0], stencil.incoming[3]) +
         distance(stencil.outgoing[0], stencil.outgoing[3])) /
       2;
-    return jointError(stencil, continuity) + jointUnfairness(stencil, length);
+    // Same split as `scoreJoints`: under G3 the rate leads and the curve breaks
+    // ties, so the two are returned separately rather than added.
+    const error = jointError(stencil, continuity);
+    const unfairness = jointUnfairness(stencil, length);
+    return continuity === "G3"
+      ? { error, unfairness }
+      : { error: error + unfairness, unfairness: 0 };
   };
 
   let best = null;
@@ -1116,7 +1142,7 @@ function g3BestSlide(stencil, limits, continuity, snapToWholeUnits) {
     if (!targets) {
       return;
     }
-    const error = errorAsEmitted(nodePosition, targets);
+    const { error, unfairness } = errorAsEmitted(nodePosition, targets);
     const travel = Math.abs(slide);
 
     // The shape of the comb across both segments, ranked ahead of how exactly
@@ -1132,14 +1158,23 @@ function g3BestSlide(stencil, limits, continuity, snapToWholeUnits) {
     // Least notched, then least error, and where two positions are equally good
     // the one that moves the joint least -- so a joint already standing at the
     // best place stays.
+    const ranked = [notched, error, unfairness, travel];
     const better =
       !best ||
-      notched < best.notched ||
-      (notched === best.notched &&
-        (error < best.error - GRID_TIE_UNITS ||
-          (error < best.error + GRID_TIE_UNITS && travel < best.travel)));
+      (() => {
+        for (let i = 0; i < ranked.length; i++) {
+          const tolerance = i === 3 ? 0 : GRID_TIE_UNITS;
+          if (ranked[i] < best.ranked[i] - tolerance) {
+            return true;
+          }
+          if (ranked[i] > best.ranked[i] + tolerance) {
+            return false;
+          }
+        }
+        return false;
+      })();
     if (better) {
-      best = { notched, error, travel, node: nodePosition, targets };
+      best = { ranked, travel, node: nodePosition, targets };
     }
   };
 
