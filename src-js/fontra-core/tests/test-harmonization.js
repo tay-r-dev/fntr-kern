@@ -1339,3 +1339,116 @@ describe("harmonization: solving handle lengths", () => {
     }
   });
 });
+
+// --- G3 may not be bought with G2 -------------------------------------------
+//
+// Reported on `n` node 13 as it stood on 2026-08-21. The joint arrives with its
+// curvature agreeing to 0.35% and its rate 1920% out, so the whole defect is
+// G3. Ticking G3 used to move P by 31 units and leave the curvature 18.38% out
+// -- a visible break in the comb -- and report it as harmonized. The grid was
+// offering 2.23% at the same joint and the score passed over it, because it
+// added the curvature error to the rate error and a 1920% rate makes buying
+// curvature cheap.
+
+// The curvature jump as a fraction of the joint's own curvature, which is the
+// step the comb draws.
+function combStep(path) {
+  const at = (i) => {
+    const [x, y] = path.getPointPosition(i);
+    return { x, y };
+  };
+  const incoming = [at(NODE - 3), at(NODE - 2), at(NODE - 1), at(NODE)];
+  const outgoing = [at(NODE), at(NODE + 1), at(NODE + 2), at(NODE + 3)];
+  const end = (pts) => {
+    const [, p1, p2, p3] = pts;
+    const d1 = { x: p3.x - p2.x, y: p3.y - p2.y };
+    const d2 = { x: p3.x - 2 * p2.x + p1.x, y: p3.y - 2 * p2.y + p1.y };
+    return ((2 / 3) * (d1.x * d2.y - d1.y * d2.x)) / Math.hypot(d1.x, d1.y) ** 3;
+  };
+  const start = (pts) => {
+    const [p0, p1, p2] = pts;
+    const d1 = { x: p1.x - p0.x, y: p1.y - p0.y };
+    const d2 = { x: p2.x - 2 * p1.x + p0.x, y: p2.y - 2 * p1.y + p0.y };
+    return ((2 / 3) * (d1.x * d2.y - d1.y * d2.x)) / Math.hypot(d1.x, d1.y) ** 3;
+  };
+  const a = end(incoming);
+  const b = start(outgoing);
+  return Math.abs(a - b) / ((Math.abs(a) + Math.abs(b)) / 2);
+}
+
+// `n` node 13, verbatim. Short handles on the outgoing side: 23 units against a
+// 78-unit chord, with its outer handle only 6 units off the tangent. Whole
+// units cannot express a G3 answer there -- half a unit on one point of the
+// exact answer costs 96% of the curvature.
+function reportedRateDefectPath() {
+  return makeContour([
+    { x: 298, y: 420, smooth: true },
+    cubic(298, 473),
+    cubic(248, 515),
+    { x: 187, y: 515, smooth: true },
+    cubic(164, 515),
+    cubic(159, 509),
+    { x: 138, y: 455 },
+  ]);
+}
+
+describe("harmonization: G3 contains G2", () => {
+  it("does not buy a better rate with a curvature step the eye can see", () => {
+    const path = reportedRateDefectPath();
+    const before = combStep(path);
+    expect(before).to.be.below(0.01); // 0.35%: G2 is already satisfied here
+
+    harmonizePathInPlace(path, [NODE], {
+      continuity: "G3",
+      handleBias: 1,
+      roundCoordinates: true,
+    });
+
+    // The grid cannot hold the exact answer at this joint, so some step is
+    // unavoidable. What is not allowed is trading the visible condition for the
+    // invisible one: this used to land at 18.38%.
+    expect(combStep(path)).to.be.at.most(HARMONIZE_DEFAULTS.maxCurvatureStep);
+  });
+
+  it("still improves the rate it was asked to improve", () => {
+    const at = (path, i) => {
+      const [x, y] = path.getPointPosition(i);
+      return { x, y };
+    };
+    const rate = (path) =>
+      curvatureRateDiscontinuity(
+        [at(path, NODE - 3), at(path, NODE - 2), at(path, NODE - 1), at(path, NODE)],
+        [at(path, NODE), at(path, NODE + 1), at(path, NODE + 2), at(path, NODE + 3)]
+      );
+
+    const path = reportedRateDefectPath();
+    const before = rate(path);
+    harmonizePathInPlace(path, [NODE], {
+      continuity: "G3",
+      slideOnCurve: true,
+      handleBias: 0,
+      roundCoordinates: true,
+    });
+    // The ceiling is a constraint on the answer, not a reason to stop looking
+    // for one: with the slide on, the joint finds a place where the grid can
+    // hold both conditions at once.
+    expect(rate(path)).to.be.below(before / 100);
+    expect(combStep(path)).to.be.at.most(HARMONIZE_DEFAULTS.maxCurvatureStep);
+  });
+
+  it("does not forbid improving a joint that arrives worse than the ceiling", () => {
+    // A joint 40% out on curvature may be left at 30% -- the ceiling is the
+    // worse of the bound and what the drawing already had, so a bad drawing is
+    // never locked out of getting better.
+    const path = reportedArchPath();
+    const before = combStep(path);
+    harmonizePathInPlace(path, [NODE], {
+      continuity: "G3",
+      handleBias: 1,
+      roundCoordinates: true,
+    });
+    expect(combStep(path)).to.be.at.most(
+      Math.max(before, HARMONIZE_DEFAULTS.maxCurvatureStep)
+    );
+  });
+});

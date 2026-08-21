@@ -70,6 +70,22 @@ export const HARMONIZE_DEFAULTS = {
   // At 1 it lands exactly on it; past 1 the segment's two handle lines cross
   // each other and the curve doubles back.
   maxHandleTension: 1,
+  // The largest curvature step G3 may leave behind at a joint that arrived
+  // better than this, as a fraction of the joint's own curvature.
+  //
+  // It is a perceptual bound, and it is named rather than derived because the
+  // thing it bounds is perceptual: the comb draws fringe length against
+  // curvature, so this IS the step in the comb, and "when does a designer see a
+  // break" has no answer in the geometry. Three per cent was set against
+  // judgement on `n` node 13 -- an answer at 2.34% reads as a good curve there
+  // and one at 18.38% reads as broken. It is here as a setting rather than a
+  // constant so it can be argued with.
+  //
+  // A ceiling and never a target: each joint's ceiling is the WORSE of this and
+  // what the drawing arrived with, so a joint already 40% out is not forbidden
+  // from being improved to 30%, and a joint that arrives clean cannot be
+  // dirtied past it.
+  maxCurvatureStep: 0.03,
   // Round the points this operation moved to whole units, once, at the end.
   // Off here so the math stays exact and testable; the editor turns it on,
   // because a document wants integer coordinates and the sweep does not.
@@ -592,6 +608,30 @@ function gridKinkAllowance(P, node, N) {
   );
 }
 
+// The joint's curvature discontinuity as a fraction of its own curvature --
+// which is exactly the step a designer sees in the curvature comb, the fringe
+// on one side against the fringe on the other.
+//
+// This normalisation saturates at 2 across an inflection, where the two
+// curvatures have opposite signs. That makes it useless as a gradient, which is
+// why the residual does not use it. As a threshold it is fine: an inflection
+// reads 200%, the drawing it arrived as reads 200% too, and the ceiling below
+// simply does not bind.
+function relativeCurvatureStep(path, ctx) {
+  const stencil = jointStencil(path, ctx);
+  if (!stencil) {
+    return 0;
+  }
+  const inside = curvatureAt(stencil.incoming, true);
+  const outside = curvatureAt(stencil.outgoing, false);
+  const scale = (Math.abs(inside) + Math.abs(outside)) / 2;
+  if (!scale || !Number.isFinite(scale)) {
+    return 0;
+  }
+  const step = Math.abs(inside - outside) / scale;
+  return Number.isFinite(step) ? step : 0;
+}
+
 function jointKink(P, node, N) {
   const incoming = subVectors(node, P);
   const outgoing = subVectors(N, node);
@@ -615,13 +655,36 @@ function jointKink(P, node, N) {
 // the same thing to the grid search, to the best-state gate, and across the two
 // of them.
 //
-function scoreJoints(path, candidates, continuity, maxHandleTension) {
-  let violations = 0;
+function scoreJoints(path, candidates, continuity, limits, arrival) {
+  let crossed = 0;
+  let creased = 0;
+  let stepped = 0;
   let residual = 0;
   for (const pointIndex of candidates) {
     const ctx = getJointContext(path, pointIndex);
     if (ctx.reason) {
       continue;
+    }
+
+    // G3 contains G2, so it may not be reached by giving G2 up.
+    //
+    // The two terms below are added, which lets the search pay for a better
+    // rate with a worse curvature -- and where the drawing arrives with a large
+    // rate error, that payment is cheap. Measured on `n` node 13 as it was
+    // drawn: arriving at 0.35% curvature and 1920% rate, the whole-unit answer
+    // the sum picked was 18.38% curvature and 70% rate, and the command called
+    // it harmonized. An 18% step is a visible break in the comb. It is not a G3
+    // answer, whatever its rate does -- and the same grid was offering 2.23% at
+    // that joint, which the sum passed over.
+    //
+    // So the curvature step is capped, ranked above any amount of residual, at
+    // the worse of the perceptual bound and what the drawing already had.
+    const arrived = arrival?.get(pointIndex);
+    if (arrived !== undefined) {
+      const ceiling = Math.max(arrived, limits.maxCurvatureStep);
+      if (relativeCurvatureStep(path, ctx) > ceiling) {
+        stepped += 1;
+      }
     }
     // The seven-point stencil where the joint has both of its segments, which
     // is what the rate needs. Where an open contour runs out before one of
@@ -641,22 +704,44 @@ function scoreJoints(path, candidates, continuity, maxHandleTension) {
     // creased from 0.5 degrees to 13.1, one attempt at a time, and every step
     // of that scored as an improvement.
     if (jointKink(ctx.P, ctx.node, ctx.N) > gridKinkAllowance(ctx.P, ctx.node, ctx.N)) {
-      violations += 1;
+      creased += 1;
     }
 
     for (const { nearSide, indices } of jointSegments(path, ctx)) {
-      if (handleTension(segmentPositions(path, indices), nearSide) > maxHandleTension) {
-        violations += 1;
+      if (
+        handleTension(segmentPositions(path, indices), nearSide) >
+        limits.maxHandleTension
+      ) {
+        crossed += 1;
       }
     }
   }
-  return { violations, residual };
+  return { crossed, creased, stepped, residual };
 }
 
+// Ranked, and deliberately not added up.
+//
+// These are four different kinds of wrong and one number cannot hold them: when
+// the crease count and the tension count shared a counter, a state that brought
+// an over-tension handle back under the ceiling and cost a crease scored level
+// with the drawing that had neither fixed, and the tie fell to the residual --
+// so a handle whose lines crossed was left crossed. Each rank is a defect the
+// one below it may not be traded for.
+//
+//   crossed   a handle past its segment's Tunni point: the curve doubles back
+//   creased   a smooth point that is not smooth, past what the grid can excuse
+//   stepped   a curvature break the eye can see, so the answer is not G3
+//   residual  how far the joint is from the condition, once all three hold
+//
+const SCORE_RANKS = ["crossed", "creased", "stepped", "residual"];
+
 function isBetter(candidate, incumbent) {
-  return candidate.violations !== incumbent.violations
-    ? candidate.violations < incumbent.violations
-    : candidate.residual < incumbent.residual;
+  for (const rank of SCORE_RANKS) {
+    if (candidate[rank] !== incumbent[rank]) {
+      return candidate[rank] < incumbent[rank];
+    }
+  }
+  return false;
 }
 
 //
@@ -1037,6 +1122,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     maxIterations,
     equalizeTension,
     maxHandleTension,
+    maxCurvatureStep,
     roundCoordinates,
   } = {
     ...HARMONIZE_DEFAULTS,
@@ -1083,8 +1169,20 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   // How far the drawing is from what the command is trying to reach. A handle
   // over the tension ceiling is a defect and not a trade, so any number of them
   // outranks any amount of curvature discontinuity.
+  // What each joint's curvature discontinuity was when the command was handed
+  // the drawing. Captured once, before anything moves, because it is a ceiling
+  // on the answer and not a running measurement.
+  const arrivalCurvature = new Map();
+  for (const pointIndex of candidates) {
+    const ctx = getJointContext(path, pointIndex);
+    if (!ctx.reason) {
+      arrivalCurvature.set(pointIndex, relativeCurvatureStep(path, ctx));
+    }
+  }
+
+  const scoreLimits = { maxHandleTension, maxCurvatureStep };
   const jointResidual = () =>
-    scoreJoints(path, candidates, continuity, maxHandleTension);
+    scoreJoints(path, candidates, continuity, scoreLimits, arrivalCurvature);
 
   // The drawing exactly as it arrived. The verdict at the end is read against
   // this, so a joint can only be called harmonized if something actually moved.
@@ -1824,7 +1922,7 @@ function writeSolvedHandles(path, indices, solved, cuspSafetyMargin, maxHandleTe
 // `harmonizePathInPlace`, so the editor can put the two behind one command.
 //
 export function harmonizeHandlesInPlace(path, pointIndices, options = {}) {
-  const { cuspSafetyMargin, maxHandleTension, roundCoordinates } = {
+  const { cuspSafetyMargin, maxHandleTension, maxCurvatureStep, roundCoordinates } = {
     ...HARMONIZE_DEFAULTS,
     ...options,
   };
@@ -1864,7 +1962,8 @@ export function harmonizeHandlesInPlace(path, pointIndices, options = {}) {
   // The drawing as it arrived is one of the candidates, so a run that can only
   // make things worse leaves it alone and the second press does nothing.
   const original = Array.from(path.coordinates);
-  const scored = () => scoreJoints(path, solvable, "G2", maxHandleTension);
+  const scored = () =>
+    scoreJoints(path, solvable, "G2", { maxHandleTension, maxCurvatureStep });
   const originalScore = scored();
 
   for (let round = 0; round < HARMONIZE_HANDLES_ROUNDS; round++) {
