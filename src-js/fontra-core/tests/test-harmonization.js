@@ -1452,3 +1452,76 @@ describe("harmonization: G3 contains G2", () => {
     );
   });
 });
+
+// --- the shape of the comb, not only the joint ------------------------------
+//
+// Reported on `n` node 13: the joint was G2/G3-continuous and the curve either
+// side of it was not. Every other measurement in this file is taken AT the
+// joint, and a joint can be exactly G3 while sitting on a spike with a hollow
+// behind it.
+
+// Signed curvature at parameter t, so the middle of a segment can be asked
+// about and not only its ends.
+function curvatureAlong([p0, p1, p2, p3], t) {
+  const u = 1 - t;
+  const d1 = {
+    x: 3 * (u * u * (p1.x - p0.x) + 2 * u * t * (p2.x - p1.x) + t * t * (p3.x - p2.x)),
+    y: 3 * (u * u * (p1.y - p0.y) + 2 * u * t * (p2.y - p1.y) + t * t * (p3.y - p2.y)),
+  };
+  const d2 = {
+    x: 6 * (u * (p2.x - 2 * p1.x + p0.x) + t * (p3.x - 2 * p2.x + p1.x)),
+    y: 6 * (u * (p2.y - 2 * p1.y + p0.y) + t * (p3.y - 2 * p2.y + p1.y)),
+  };
+  const speed = Math.hypot(d1.x, d1.y);
+  return speed ? (d1.x * d2.y - d1.y * d2.x) / speed ** 3 : 0;
+}
+
+// How far the comb sags in the middle of a segment, against the shallower of
+// its two ends. Above 1 the middle is the highest point, which is fine; well
+// below 1 the segment slackens and tightens again, which is not.
+function combSag(path, indices) {
+  const pts = indices.map((i) => {
+    const [x, y] = path.getPointPosition(i);
+    return { x, y };
+  });
+  const samples = [];
+  for (let i = 0; i <= 20; i++) samples.push(Math.abs(curvatureAlong(pts, i / 20)));
+  const ends = Math.min(samples[0], samples[20]);
+  return ends ? Math.min(...samples.slice(2, 19)) / ends : 1;
+}
+
+describe("harmonization: the curve either side of the joint", () => {
+  // `n` node 13 as it was drawn on 2026-08-21. The exact G3 answer here wants
+  // the joint's outgoing handle at 15% of its chord, where a well-formed arc
+  // sits near 55%, and a handle that short forces a curvature spike at the
+  // joint with a hollow behind it.
+  function reportedCombPath() {
+    return makeContour([
+      { x: 298, y: 420, smooth: true },
+      cubic(298, 473),
+      cubic(248, 515),
+      { x: 187, y: 515, smooth: true },
+      cubic(164, 515),
+      cubic(159, 509),
+      { x: 138, y: 455 },
+    ]);
+  }
+
+  it("slides to a position whose comb does not sag, not merely to the best-scoring one", () => {
+    const drawn = reportedCombPath();
+    expect(combSag(drawn, [0, 1, 2, 3])).to.be.above(0.5);
+
+    const path = reportedCombPath();
+    harmonizePathInPlace(path, [NODE], {
+      continuity: "G3",
+      slideOnCurve: true,
+      handleBias: 0,
+      roundCoordinates: true,
+    });
+
+    // Ranking the slide's candidates on grid accuracy alone stopped it at +21
+    // units, where the incoming comb sagged to 0.30 of its own end. The
+    // notch-free positions start five units further along.
+    expect(combSag(path, [0, 1, 2, 3])).to.be.above(0.5);
+  });
+});

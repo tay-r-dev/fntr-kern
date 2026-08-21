@@ -745,6 +745,57 @@ function isBetter(candidate, incumbent) {
 }
 
 //
+// Signed curvature at parameter `t` of a cubic. The end values agree with
+// `curvatureAt`; this one can be asked about the middle.
+//
+function curvatureAtParameter([p0, p1, p2, p3], t) {
+  const u = 1 - t;
+  const first = {
+    x: 3 * (u * u * (p1.x - p0.x) + 2 * u * t * (p2.x - p1.x) + t * t * (p3.x - p2.x)),
+    y: 3 * (u * u * (p1.y - p0.y) + 2 * u * t * (p2.y - p1.y) + t * t * (p3.y - p2.y)),
+  };
+  const second = {
+    x: 6 * (u * (p2.x - 2 * p1.x + p0.x) + t * (p3.x - 2 * p2.x + p1.x)),
+    y: 6 * (u * (p2.y - 2 * p1.y + p0.y) + t * (p3.y - 2 * p2.y + p1.y)),
+  };
+  const speed = vectorLength(first);
+  return speed ? crossProduct(first, second) / speed ** 3 : 0;
+}
+
+// How many places the comb is read at when judging a segment's shape. Fixed,
+// like every other trip count here.
+const COMB_SAMPLES = 20;
+
+// A comb that slackens in the middle of a segment and tightens again at both
+// ends. It is the defect a designer names first and it is invisible to every
+// measurement above, all of which are taken AT the joint: a joint can be
+// exactly G3 and sit at the top of a spike with a hollow behind it.
+//
+// Measured on `n` node 13: every position on the tangent from -30 to +20 units
+// leaves the incoming segment notched, and the slide was stopping at +21
+// because it ranked candidates on how well whole units hold the condition at
+// the point. Five units further on the notch is gone.
+//
+function combHasNotch(points) {
+  let lowest = Infinity;
+  let lowestAt = 0;
+  const samples = [];
+  for (let i = 0; i <= COMB_SAMPLES; i++) {
+    const value = Math.abs(curvatureAtParameter(points, i / COMB_SAMPLES));
+    samples.push(value);
+    if (value < lowest) {
+      lowest = value;
+      lowestAt = i;
+    }
+  }
+  if (lowestAt < 2 || lowestAt > COMB_SAMPLES - 2) {
+    return false;
+  }
+  // Below BOTH ends, and by enough that a flat comb does not register as one.
+  return lowest < 0.99 * Math.min(samples[0], samples[COMB_SAMPLES]);
+}
+
+//
 // One G3 attempt, with the joint at `nodePosition`. Returns the two inner
 // handle positions, or null where the construction has no answer or the answer
 // is outside the same two limits the G2 path obeys: the cusp floor on the
@@ -854,14 +905,28 @@ function g3BestSlide(stencil, limits, continuity, snapToWholeUnits) {
     }
     const error = errorAsEmitted(nodePosition, targets);
     const travel = Math.abs(slide);
-    // Least error, and where two positions are equally good the one that moves
-    // the joint least — so a joint already standing at the best place stays.
-    if (
+
+    // The shape of the comb across both segments, ranked ahead of how exactly
+    // the grid holds the condition at the joint. A notch is a defect the eye
+    // reads immediately; a fraction of a per cent at the point is not visible
+    // at all. Ranked and not added, for the same reason the score above ranks:
+    // they are different kinds of wrong.
+    const placed = place(nodePosition);
+    const notched =
+      (combHasNotch([A, PP, place(targets.P), placed]) ? 1 : 0) +
+      (combHasNotch([placed, place(targets.N), NN, C]) ? 1 : 0);
+
+    // Least notched, then least error, and where two positions are equally good
+    // the one that moves the joint least -- so a joint already standing at the
+    // best place stays.
+    const better =
       !best ||
-      error < best.error - GRID_TIE_UNITS ||
-      (error < best.error + GRID_TIE_UNITS && travel < best.travel)
-    ) {
-      best = { error, travel, node: nodePosition, targets };
+      notched < best.notched ||
+      (notched === best.notched &&
+        (error < best.error - GRID_TIE_UNITS ||
+          (error < best.error + GRID_TIE_UNITS && travel < best.travel)));
+    if (better) {
+      best = { notched, error, travel, node: nodePosition, targets };
     }
   };
 
