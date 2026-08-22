@@ -46,12 +46,6 @@ export const HARMONIZE_DEFAULTS = {
   // it still leaves the construction with no answer inside its bounds. It is a
   // repair, so a joint that does not need it does not move.
   slideOnCurve: false,
-  // Solve the two handle LENGTHS of every segment against a curvature shared by
-  // both sides of each node, which is Curvatura's other command, instead of
-  // sliding anything along a tangent. A different construction rather than a
-  // variation on this one -- see `harmonizeHandlesInPlace`. It ignores
-  // `continuity`, `slideOnCurve` and `handleBias`, which have no meaning in it.
-  handlesOnly: false,
   handleBias: 1.0, //     0 = move the node, 1 = move the handles
   // Never shrink a handle below 15% of a nominal handle for its segment, which
   // is measured from the segment's chord and not from the handle itself. See
@@ -1418,14 +1412,12 @@ function snapToGrid(path, touched, jointResidual, isBetter) {
   }
 }
 
-export function harmonizePathInPlace(path, pointIndices, options = {}) {
-  // One entry point, two constructions. Dispatching here rather than at each
-  // call site is what lets the editor, the skeleton panel and the tests all
-  // reach the second one by passing an option along with the rest.
-  if (options.handlesOnly) {
-    return harmonizeHandlesInPlace(path, pointIndices, options);
-  }
-
+//
+// The joint construction: G3 where it has an answer, G2 where it does not.
+// Reached through `harmonizePathInPlace`, which runs it against the other
+// candidate and keeps whichever the score prefers.
+//
+function harmonizeByJointInPlace(path, pointIndices, options = {}) {
   const {
     continuity,
     slideOnCurve,
@@ -1851,6 +1843,117 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     }
   }
 
+  return states.map(
+    ({
+      pointIndex,
+      contourIndex,
+      status,
+      reason,
+      iterations,
+      tensionReduced,
+      construction,
+    }) => ({
+      pointIndex,
+      contourIndex,
+      status,
+      reason,
+      iterations,
+      tensionReduced,
+      construction,
+    })
+  );
+}
+
+//
+// Harmonize the given joints.
+//
+// Two constructions can answer, and which of them is right is a question about
+// the drawing rather than about the designer's intent, so it is not asked as a
+// checkbox. The joint construction slides points along the tangent -- it can
+// trade length between a joint's two handles, or move the whole joint, but the
+// sum of the two lengths is fixed and the outer handles are never touched. The
+// handle-length construction rescales both handles of every segment against a
+// curvature target shared by the two sides of each node, so it is the only one
+// that can change the two lengths independently, and it does move the outer
+// handles.
+//
+// Measured on `n` joint 4: the joint construction has no answer above the grid
+// and writes nothing, G3 leaves the curvature step larger than it found it, and
+// the handle-length solve takes it from 1.4e-4 to 1.8e-5 -- by shortening one
+// handle from 28 units to 7 while lengthening the other, which no amount of
+// sliding can express.
+//
+// So both are run and the score picks, which is what the G3 cascade has always
+// done between G3 and G2. It is only honest because the score reads the shape
+// of the curve now and not just the joint; while it measured one point it could
+// not have been trusted with this. The report names the construction that ran.
+//
+// The ticks say what is wanted -- G2 or G3, whether the joint may move, whether
+// to equalize afterwards -- and never how to compute it.
+//
+export function harmonizePathInPlace(path, pointIndices, options = {}) {
+  const {
+    continuity,
+    equalizeTension,
+    maxHandleTension,
+    maxCurvatureStep,
+    roundCoordinates,
+  } = {
+    ...HARMONIZE_DEFAULTS,
+    ...options,
+  };
+
+  const candidates = pointIndices?.length
+    ? [...new Set(pointIndices)].sort((a, b) => a - b)
+    : expandToJoints(path, undefined);
+
+  // Read once, from the drawing as it arrived, so both candidates are judged
+  // against the same thing.
+  const arrival = new Map();
+  for (const pointIndex of candidates) {
+    const ctx = getJointContext(path, pointIndex);
+    if (!ctx.reason) {
+      arrival.set(pointIndex, relativeCurvatureStep(path, ctx));
+    }
+  }
+  const limits = { maxHandleTension, maxCurvatureStep };
+  const scoreOf = (candidate) =>
+    scoreJoints(candidate, candidates, continuity, limits, arrival);
+
+  const byJoint = path.copy();
+  const jointReport = harmonizeByJointInPlace(byJoint, candidates, options);
+
+  // The handle-length candidate is only admissible where moving the outer
+  // handles is. A cubic's end curvature depends only on its last three control
+  // points, so `PP` and `NN` are inputs to the joint construction and never
+  // outputs -- and that is a rule this module keeps, not an accident: it is why
+  // equalizing is an opt-in pass rather than part of the default press.
+  //
+  // The handle-length solve rescales both handles of every segment, so it does
+  // move them. `equalizeTension` is already the tick that says the outer
+  // handles may move, so it is the tick that admits this candidate too. With it
+  // off there is one candidate and the default press moves exactly what it
+  // always moved.
+  let winner = { path: byJoint, report: jointReport };
+  if (equalizeTension) {
+    const byHandles = path.copy();
+    const handleReport = harmonizeHandlesInPlace(byHandles, candidates, options);
+    if (isBetter(scoreOf(byHandles), scoreOf(byJoint))) {
+      winner = { path: byHandles, report: handleReport };
+    }
+  }
+
+  const touched = new Set();
+  for (let index = 0; index < path.numPoints; index++) {
+    const [x, y] = path.getPointPosition(index);
+    const [newX, newY] = winner.path.getPointPosition(index);
+    if (newX !== x || newY !== y) {
+      path.setPointPosition(index, newX, newY);
+      touched.add(index);
+    }
+  }
+
+  const states = winner.report;
   //
   // Equalize, last, and outside everything above.
   //
@@ -1906,25 +2009,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     }
   }
 
-  return states.map(
-    ({
-      pointIndex,
-      contourIndex,
-      status,
-      reason,
-      iterations,
-      tensionReduced,
-      construction,
-    }) => ({
-      pointIndex,
-      contourIndex,
-      status,
-      reason,
-      iterations,
-      tensionReduced,
-      construction,
-    })
-  );
+  return states;
 }
 
 // --- the donors' other command: harmonize by handle LENGTH -------------------

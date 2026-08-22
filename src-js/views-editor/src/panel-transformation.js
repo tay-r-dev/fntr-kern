@@ -780,13 +780,6 @@ export default class TransformationPanel extends Panel {
 
     formContents.push({
       type: "checkbox",
-      key: "harmonizeHandlesOnly",
-      label: translate("sidebar.selection-transformation.harmonize.handles-only"),
-      value: applicationSettingsController.model.harmonizeHandlesOnly,
-    });
-
-    formContents.push({
-      type: "checkbox",
       key: "harmonizeEqualizeTension",
       label: translate("sidebar.selection-transformation.harmonize.equalize-tension"),
       value: applicationSettingsController.model.harmonizeEqualizeTension,
@@ -857,7 +850,6 @@ export default class TransformationPanel extends Panel {
         [
           "harmonizeG3",
           "harmonizeMoveOnCurve",
-          "harmonizeHandlesOnly",
           "harmonizeOtherSources",
           "harmonizeEqualizeTension",
         ].includes(fieldItem.key)
@@ -937,7 +929,6 @@ export default class TransformationPanel extends Panel {
     const options = {
       useG3: !!settings.harmonizeG3,
       moveOnCurve: !!settings.harmonizeMoveOnCurve,
-      handlesOnly: !!settings.harmonizeHandlesOnly,
       applyToOtherSources: settings.harmonizeOtherSources,
       equalizeTension: settings.harmonizeEqualizeTension,
     };
@@ -1679,9 +1670,11 @@ function detailHarmonizeReport(reports, options) {
       const reason = entry.reason ? ` / ${entry.reason}` : "";
       const sweeps = entry.iterations ? ` after ${entry.iterations}` : "";
       const reduced = entry.tensionReduced ? ", handle tension reduced" : "";
-      // Which construction did the work. Only worth saying where G3 was asked
-      // for, because otherwise every line would read the same.
-      const by = options.useG3 && entry.construction ? ` by ${entry.construction}` : "";
+      // Which construction did the work. Named every time, because the command
+      // chooses it: G3 falls back to G2 where it has no answer, and with
+      // equalization on the handle-length solve is a candidate too. A report
+      // that leaves it out is a report you have to guess at.
+      const by = entry.construction ? ` by ${entry.construction}` : "";
       lines.push(
         `  point ${entry.pointIndex} (contour ${entry.contourIndex}): ` +
           `${entry.status}${by}${reason}${sweeps}${reduced}`

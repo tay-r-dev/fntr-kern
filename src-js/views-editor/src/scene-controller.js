@@ -2103,7 +2103,6 @@ export class SceneController {
     const {
       useG3 = applicationSettingsController.model.harmonizeG3,
       moveOnCurve = applicationSettingsController.model.harmonizeMoveOnCurve,
-      handlesOnly = applicationSettingsController.model.harmonizeHandlesOnly,
       applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
       equalizeTension = applicationSettingsController.model.harmonizeEqualizeTension,
     } = options;
@@ -2114,12 +2113,6 @@ export class SceneController {
     const continuity = useG3 ? "G3" : "G2";
     const slideOnCurve = !!moveOnCurve;
     const handleBias = moveOnCurve ? 0 : 1;
-    // The third check picks the construction outright rather than tuning this
-    // one: Curvatura's other command solves handle lengths against a shared
-    // curvature and has no use for a tangent, a bias or a slide. The other two
-    // checks are left in the options anyway, so unticking this one puts the
-    // panel back exactly where it was.
-    const constructHandles = !!handlesOnly;
 
     const reports = new Map();
 
@@ -2140,7 +2133,6 @@ export class SceneController {
           slideOnCurve,
           handleBias,
           equalizeTension,
-          handlesOnly: constructHandles,
         },
         translate("action.harmonize")
       );
@@ -2219,7 +2211,6 @@ export class SceneController {
           slideOnCurve,
           handleBias,
           equalizeTension,
-          handlesOnly: constructHandles,
           roundCoordinates: true,
         });
         for (let index = 0; index < path.numPoints; index++) {

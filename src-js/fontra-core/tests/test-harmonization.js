@@ -1699,3 +1699,65 @@ describe("harmonization: the curve either side, not only the joint", () => {
     );
   });
 });
+
+// --- which construction runs is the command's decision -----------------------
+//
+// The handle-length solve used to be a checkbox, which asked a designer to pick
+// an algorithm. It is a candidate now: both constructions run and the score
+// keeps the better, the way the G3 cascade has always chosen between G3 and G2.
+//
+// It is admitted only where the outer handles may move. A cubic's end curvature
+// depends on its last three control points, so PP and NN are inputs to the
+// joint construction and never outputs -- and the handle-length solve rescales
+// both handles of every segment, so it moves them. `equalizeTension` is the
+// tick that says they may move.
+
+describe("harmonization: choosing the construction", () => {
+  // `n` joint 4, where the joint construction has no answer above the grid and
+  // the handle-length solve takes the curvature step from 1.4e-4 to 1.8e-5 by
+  // shortening one handle and lengthening the other -- which no amount of
+  // sliding along the tangent can express, because sliding preserves both
+  // lengths and translating trades one against the other at a fixed sum.
+  function independentHandlesPath() {
+    return makeContour([
+      { x: 138, y: 358, smooth: true },
+      cubic(138, 424),
+      cubic(154, 455),
+      { x: 192, y: 455, smooth: true },
+      cubic(220, 455),
+      cubic(238, 438),
+      { x: 238, y: 404, smooth: true },
+    ]);
+  }
+
+  const outerHandles = (path) => [1, 5].map((i) => [...path.getPointPosition(i)]);
+
+  it("leaves the outer handles alone when equalization is off", () => {
+    const path = independentHandlesPath();
+    const before = outerHandles(path);
+    harmonizePathInPlace(path, [NODE], {
+      continuity: "G2",
+      handleBias: 1,
+      roundCoordinates: true,
+    });
+    expect(outerHandles(path)).to.deep.equal(before);
+  });
+
+  it("picks the handle-length construction where it is the better answer", () => {
+    const path = independentHandlesPath();
+    const before = Array.from(path.coordinates);
+    const report = harmonizePathInPlace(path, [NODE], {
+      continuity: "G2",
+      handleBias: 1,
+      equalizeTension: true,
+      roundCoordinates: true,
+    });
+
+    // The command chose it; nobody ticked it. And the report names which ran,
+    // because with more than one construction a verdict that does not name one
+    // is a verdict you have to guess at.
+    expect(report[0].construction).to.equal("handles");
+    expect(report[0].status).to.equal("harmonized");
+    expect(Array.from(path.coordinates)).to.not.deep.equal(before);
+  });
+});
