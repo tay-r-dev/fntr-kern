@@ -14,7 +14,10 @@ import {
   harmonizePathInPlace,
   measureG2Discontinuity,
 } from "@fontra/core/harmonization.js";
-import { calculateTunniPoint } from "@fontra/core/tunni-calculations.js";
+import {
+  balanceSegment,
+  calculateTunniPoint,
+} from "@fontra/core/tunni-calculations.js";
 import VarArray from "@fontra/core/var-array.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { distance } from "@fontra/core/vector.js";
@@ -828,9 +831,11 @@ describe("harmonization: harmonizePath", () => {
     expect(result.path.getPointPosition(5)).to.not.deep.equal([200, 50]);
   });
 
-  it("tension equalization costs exactness at the joint", () => {
-    // the donor's trailing balance changes handle lengths after the fact, which
-    // perturbs the curvature match harmonization just established
+  it("gives the solve the last word over equalization", () => {
+    // Equalization prepares the drawing; it is not a proposal about
+    // continuity. Running it after the solve threw the exact answer away --
+    // the joint came out worse for asking for both. It runs first now, so the
+    // joint is as exact with it on as with it off.
     const exact = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
     const equalized = harmonizePath(asymmetricPath(), [NODE], {
       handleBias: 1,
@@ -841,7 +846,28 @@ describe("harmonization: harmonizePath", () => {
       getJointContext(equalized.path, NODE)
     );
     expect(exactError).to.be.lessThan(1e-9);
-    expect(equalizedError).to.be.greaterThan(exactError);
+    expect(equalizedError).to.be.lessThan(1e-9);
+  });
+
+  it("balances the segments off the arriving drawing, not off the answer", () => {
+    // Equalization prepares the drawing for the solve, so it reads the
+    // handles the designer drew. Running it afterwards balanced each segment
+    // against inner handles the solve had just moved, and that is what
+    // overwrote the answer.
+    const path = asymmetricPath();
+    const arriving = [0, 1, 2, 3].map((index) => {
+      const [x, y] = path.getPointPosition(index);
+      return { x, y };
+    });
+    const expected = balanceSegment(arriving)[1];
+
+    const result = harmonizePath(path, [NODE], {
+      handleBias: 1,
+      equalizeTension: true,
+    });
+
+    const [x, y] = result.path.getPointPosition(1);
+    expect(distance({ x, y }, expected)).to.be.lessThan(1e-9);
   });
 
   it("reports not-converged when the iteration budget runs out", () => {
@@ -1759,5 +1785,170 @@ describe("harmonization: choosing the construction", () => {
     expect(report[0].construction).to.equal("handles");
     expect(report[0].status).to.equal("harmonized");
     expect(Array.from(path.coordinates)).to.not.deep.equal(before);
+  });
+});
+
+describe("harmonization: realigning a joint before it is solved", () => {
+  // A smooth flag is a claim about the drawing: the two handles and the joint
+  // lie on one line. Where the drawing has drifted off that, every
+  // construction here is solving against a tangent that is not there.
+
+  function positionsOf(path, indices) {
+    return indices.map((index) => {
+      const [x, y] = path.getPointPosition(index);
+      return { x, y };
+    });
+  }
+
+  // How far the joint is bent, in degrees. Zero when P, the joint and N are
+  // collinear, which is what the smooth flag says.
+  function bendAt(path, pointIndex) {
+    const [P, node, N] = positionsOf(path, [
+      pointIndex - 1,
+      pointIndex,
+      pointIndex + 1,
+    ]);
+    const incoming = { x: node.x - P.x, y: node.y - P.y };
+    const outgoing = { x: N.x - node.x, y: N.y - node.y };
+    const cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+    const dot = incoming.x * outgoing.x + incoming.y * outgoing.y;
+    return Math.abs((Math.atan2(cross, dot) * 180) / Math.PI);
+  }
+
+  // both handles are off-curve and neither runs along an axis
+  function bentJoint() {
+    return makeContour([
+      { x: 0, y: 0 },
+      cubic(0, 40),
+      cubic(50, 90),
+      { x: 100, y: 100, smooth: true },
+      cubic(160, 115),
+      cubic(200, 60),
+      { x: 200, y: 0 },
+    ]);
+  }
+
+  // the outgoing handle runs dead horizontal off the joint
+  function bentJointWithFlatHandle() {
+    return makeContour([
+      { x: 0, y: 0 },
+      cubic(0, 40),
+      cubic(50, 90),
+      { x: 100, y: 100, smooth: true },
+      cubic(160, 100),
+      cubic(200, 60),
+      { x: 200, y: 0 },
+    ]);
+  }
+
+  // a curve running into a straight: harmonize refuses this joint, realigning
+  // it does not
+  function bentTensionPoint() {
+    return makeContour([
+      { x: 0, y: 0 },
+      cubic(0, 50),
+      cubic(50, 100),
+      { x: 100, y: 100, smooth: true },
+      { x: 200, y: 60 },
+    ]);
+  }
+
+  it("is off unless it is asked for", () => {
+    // a curve running into a straight, which harmonize itself refuses: with
+    // the pass off, nothing in the command touches this joint at all
+    const path = bentTensionPoint();
+    const before = positionsOf(path, [2, 3, 4]);
+    harmonizePathInPlace(path, [3], {});
+    expect(bendAt(path, 3)).to.be.greaterThan(1);
+    expect(positionsOf(path, [2, 3, 4])).to.deep.equal(before);
+  });
+
+  it("puts the joint back on one line", () => {
+    const path = bentJoint();
+    expect(bendAt(path, 3)).to.be.greaterThan(1);
+    harmonizePathInPlace(path, [3], { realignHandles: true });
+    expect(bendAt(path, 3)).to.be.lessThan(1e-6);
+  });
+
+  it("brings the joint to the handles when neither runs along an axis", () => {
+    const path = bentJoint();
+    const before = positionsOf(path, [2, 4]);
+    harmonizePathInPlace(path, [3], { realignHandles: true, maxIterations: 0 });
+    // both handles are where the designer drew them; the joint moved onto them
+    expect(positionsOf(path, [2, 4])).to.deep.equal(before);
+    expect(positionsOf(path, [3])).to.not.deep.equal([{ x: 100, y: 100 }]);
+  });
+
+  it("keeps an axis-aligned handle and turns the other onto it", () => {
+    // a handle drawn flat marks an extreme of the curve. It is the one piece
+    // of the joint that is certainly deliberate, so it is what the rest is
+    // squared up against.
+    const path = bentJointWithFlatHandle();
+    harmonizePathInPlace(path, [3], { realignHandles: true, maxIterations: 0 });
+    expect(positionsOf(path, [3])).to.deep.equal([{ x: 100, y: 100 }]);
+    expect(positionsOf(path, [4])).to.deep.equal([{ x: 160, y: 100 }]);
+    const [P] = positionsOf(path, [2]);
+    expect(P.y).to.be.closeTo(100, 1e-9);
+    expect(P.x).to.be.lessThan(100);
+  });
+
+  it("keeps the length of a handle it turns", () => {
+    const path = bentJointWithFlatHandle();
+    const [beforeP, node] = positionsOf(path, [2, 3]);
+    harmonizePathInPlace(path, [3], { realignHandles: true, maxIterations: 0 });
+    const [afterP] = positionsOf(path, [2]);
+    expect(distance(afterP, node)).to.be.closeTo(distance(beforeP, node), 1e-9);
+  });
+
+  it("turns the handle onto the straight at a curve-to-line joint", () => {
+    // harmonize itself refuses this joint, so without the pass nothing here
+    // is ever squared up
+    const path = bentTensionPoint();
+    expect(getJointContext(path, 3).reason).to.equal("not-curve-joint");
+
+    harmonizePathInPlace(path, [3], { realignHandles: true });
+
+    expect(positionsOf(path, [3])).to.deep.equal([{ x: 100, y: 100 }]);
+    expect(positionsOf(path, [4])).to.deep.equal([{ x: 200, y: 60 }]);
+    expect(bendAt(path, 3)).to.be.lessThan(1e-6);
+  });
+
+  it("leaves a joint that is already on one line exactly alone", () => {
+    const path = symmetricPath();
+    const before = positionsOf(path, [2, 3, 4]);
+    harmonizePathInPlace(path, [3], { realignHandles: true, maxIterations: 0 });
+    expect(positionsOf(path, [2, 3, 4])).to.deep.equal(before);
+  });
+
+  it("does not square up a corner", () => {
+    const corner = makeContour([
+      { x: 0, y: 0 },
+      cubic(0, 40),
+      cubic(50, 90),
+      { x: 100, y: 100 },
+      cubic(160, 115),
+      cubic(200, 60),
+      { x: 200, y: 0 },
+    ]);
+    const before = positionsOf(corner, [2, 3, 4]);
+    harmonizePathInPlace(corner, [3], { realignHandles: true });
+    expect(positionsOf(corner, [2, 3, 4])).to.deep.equal(before);
+  });
+
+  it("keeps a flat handle flat, which the joint repair does not", () => {
+    // Harmonize squares the joint up itself, by translating both handles
+    // together. That is a repair, and it carries a horizontal handle off the
+    // horizontal -- the extreme of the curve moves off the joint. Realigning
+    // first turns the other handle onto the flat one instead, so the extreme
+    // stays where the designer put it.
+    const repaired = bentJointWithFlatHandle();
+    harmonizePathInPlace(repaired, [3], {});
+    expect(positionsOf(repaired, [4])[0].y).to.not.be.closeTo(100, 1e-6);
+
+    const realigned = bentJointWithFlatHandle();
+    harmonizePathInPlace(realigned, [3], { realignHandles: true });
+    expect(positionsOf(realigned, [4])[0].y).to.be.closeTo(100, 1e-6);
+    expect(positionsOf(realigned, [2])[0].y).to.be.closeTo(100, 1e-6);
+    expect(bendAt(realigned, 3)).to.be.lessThan(1e-6);
   });
 });

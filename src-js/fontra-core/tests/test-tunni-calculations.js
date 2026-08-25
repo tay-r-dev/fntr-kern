@@ -1,5 +1,6 @@
 import {
   areTensionsEqualized,
+  balanceSegment,
   calculateControlHandlePoint,
   calculateControlPointsFromCurvatureDelta,
   calculateCurvatureGizmoAxis,
@@ -9,6 +10,7 @@ import {
   hasForwardTangentIntersection,
   shiftTensionsToMean,
 } from "@fontra/core/tunni-calculations.js";
+import { distance } from "@fontra/core/vector.js";
 import { expect } from "chai";
 
 describe("tunni-calculations: hasForwardTangentIntersection", () => {
@@ -384,5 +386,142 @@ describe("tunni-calculations: curvature gizmo reach sign", () => {
       Math.hypot(moved[0].x - ahead[0].x, moved[0].y - ahead[0].y) /
       Math.hypot(tunni.x - ahead[0].x, tunni.y - ahead[0].y);
     expect(tension).to.be.at.most(1 + 1e-9);
+  });
+});
+
+describe("tunni-calculations: balanceSegment", () => {
+  function tensions(points) {
+    const [p0, p1, p2, p3] = points;
+    const tunniPoint = calculateTunniPoint(points);
+    return [
+      distance(p0, p1) / distance(p0, tunniPoint),
+      distance(p3, p2) / distance(p3, tunniPoint),
+    ];
+  }
+
+  function pointOnCurve([p0, p1, p2, p3], t) {
+    const s = 1 - t;
+    return {
+      x: s ** 3 * p0.x + 3 * s * s * t * p1.x + 3 * s * t * t * p2.x + t ** 3 * p3.x,
+      y: s ** 3 * p0.y + 3 * s * s * t * p1.y + 3 * s * t * t * p2.y + t ** 3 * p3.y,
+    };
+  }
+
+  // The worst the curve moves anywhere along its length.
+  function deviation(before, after) {
+    let worst = 0;
+    for (let i = 0; i <= 200; i++) {
+      const t = i / 200;
+      worst = Math.max(
+        worst,
+        distance(pointOnCurve(before, t), pointOnCurve(after, t))
+      );
+    }
+    return worst;
+  }
+
+  // Both handles set to one fraction of the way to the Tunni point, which is
+  // what every balanced segment looks like. This is the old rule: the plain
+  // mean of the two tensions.
+  function balancedByPlainMean(points) {
+    const [p0, , , p3] = points;
+    const tunniPoint = calculateTunniPoint(points);
+    const [tensionStart, tensionEnd] = tensions(points);
+    const mean = (tensionStart + tensionEnd) / 2;
+    const along = (from) => ({
+      x: from.x + mean * (tunniPoint.x - from.x),
+      y: from.y + mean * (tunniPoint.y - from.y),
+    });
+    return [p0, along(p0), along(p3), p3];
+  }
+
+  // a lopsided quarter turn: one handle far out, the other short
+  const lopsided = [
+    { x: 0, y: 0 },
+    { x: 80, y: 0 },
+    { x: 100, y: 30 },
+    { x: 100, y: 100 },
+  ];
+
+  // one end reaches much further toward the Tunni point than the other
+  const unevenReach = [
+    { x: 0, y: 0 },
+    { x: 10, y: 70 },
+    { x: 60, y: 120 },
+    { x: 180, y: 130 },
+  ];
+
+  it("puts both handles at one tension", () => {
+    const [tensionStart, tensionEnd] = tensions(balanceSegment(lopsided));
+    expect(Math.abs(tensionStart - tensionEnd)).to.be.lessThan(1e-9);
+  });
+
+  it("holds a segment that is already balanced exactly still", () => {
+    const arc = [
+      { x: 0, y: 100 },
+      { x: 55.228, y: 100 },
+      { x: 100, y: 55.228 },
+      { x: 100, y: 0 },
+    ];
+    for (const [i, point] of balanceSegment(arc).entries()) {
+      expect(distance(point, arc[i]), `point ${i}`).to.be.lessThan(1e-6);
+    }
+  });
+
+  it("is the plain mean where the two ends reach equally far", () => {
+    // both tangent rays are 100 units long here, so the weights match and the
+    // answer is the average of 0.8 and 0.7
+    const [tensionStart] = tensions(balanceSegment(lopsided));
+    expect(tensionStart).to.be.closeTo(0.75, 1e-9);
+  });
+
+  it("moves the curve less than the plain mean does", () => {
+    const balanced = deviation(unevenReach, balanceSegment(unevenReach));
+    const plainMean = deviation(unevenReach, balancedByPlainMean(unevenReach));
+    expect(balanced).to.be.lessThan(plainMean);
+  });
+
+  it("lands between the two tensions it balances", () => {
+    for (const segment of [lopsided, unevenReach]) {
+      const [before, after] = [tensions(segment), tensions(balanceSegment(segment))];
+      expect(after[0]).to.be.at.least(Math.min(...before) - 1e-9);
+      expect(after[0]).to.be.at.most(Math.max(...before) + 1e-9);
+    }
+  });
+
+  it("leaves the two on-curve points where they are", () => {
+    const balanced = balanceSegment(lopsided);
+    expect(balanced[0]).to.deep.equal(lopsided[0]);
+    expect(balanced[3]).to.deep.equal(lopsided[3]);
+  });
+
+  it("refuses a segment whose handles sit on opposite sides of the chord", () => {
+    // an S-shaped segment: no one tension describes it, so balancing it fights
+    // the drawing rather than tidying it
+    const inflected = [
+      { x: 0, y: 0 },
+      { x: 60, y: 40 },
+      { x: 40, y: -40 },
+      { x: 100, y: 0 },
+    ];
+    expect(balanceSegment(inflected)).to.deep.equal(inflected);
+  });
+
+  it("refuses a segment whose handle lines are parallel", () => {
+    const parallel = [
+      { x: 0, y: 0 },
+      { x: 30, y: 0 },
+      { x: 70, y: 0 },
+      { x: 100, y: 0 },
+    ];
+    expect(balanceSegment(parallel)).to.deep.equal(parallel);
+  });
+
+  it("gives the same answer whichever way round the segment runs", () => {
+    const forward = balanceSegment(unevenReach);
+    const backward = balanceSegment([...unevenReach].reverse());
+    for (const [i, point] of forward.entries()) {
+      expect(distance(point, backward[3 - i]), `point ${i}`).to.be.lessThan(1e-9);
+    }
   });
 });

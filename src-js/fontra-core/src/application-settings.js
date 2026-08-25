@@ -22,6 +22,7 @@ export const applicationSettingsController = new ObservableController({
   harmonizeMoveOnCurve: false,
   harmonizeOtherSources: true,
   harmonizeEqualizeTension: false,
+  harmonizeRealignHandles: false,
 });
 
 applicationSettingsController.synchronizeWithLocalStorage(

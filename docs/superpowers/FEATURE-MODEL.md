@@ -1183,6 +1183,29 @@ is nothing to scale back when it meets the cusp floor or the tension ceiling: it
 is taken whole or refused, and a refusal is reported as `clamped`,
 `tension-limited` or `degenerate` — never as "already harmonic".
 
+**Two preparation passes come before any of this, and both are opt-in.**
+
+**Realign** puts a smooth joint back on one line. A smooth flag is a claim that
+the joint and its two neighbours are collinear, and nudging, interpolating and
+changing the grid all break that claim without clearing the flag. Every
+construction here solves against the tangent at the joint, and the score refuses
+to buy a bend, so a joint that arrives bent limits the answer for the whole
+press. Where one handle runs dead horizontal or dead vertical off the joint it
+marks an extreme of the curve, so that handle is kept and the other is turned
+onto it at its own length. Otherwise both handles stay where they were drawn and
+the joint comes to them. Where a curve meets a straight the straight states the
+direction and the handle turns. That last case is the one nothing else reaches:
+harmonize refuses such a joint outright, so without this pass it is never
+squared up. The rule is mekkablue's Realign BCPs, carried unchanged.
+
+Harmonize squares a cubic joint up on its own as a side effect, by translating
+both handles together, which is why the pass is not needed for continuity. What
+it buys is the flat handle: the translation carries a horizontal handle off the
+horizontal and the extreme of the curve off the joint.
+
+**Equalize** balances the two segments at each joint, and it runs **before** the
+joint is solved, so the solve has the last word. See §10.5.
+
 **Checkboxes, not a bias slider.** One picks the target and so the cascade; one
 says whether the joint itself may move; one swaps the construction outright.
 Under G2 the second is the whole of the old bias — at one end the on-curve moves
@@ -1290,6 +1313,26 @@ because a different set of handles has a different harmonic target.
   chosen. Collinearity is also scored below that line, in radians alongside the
   other two terms — curvature times length is the angle a segment turns through,
   so all three are angles and there is no weight to pick.
+- **Equalization prepares the drawing; it never finishes it.** Balancing is a
+  statement about the two handles of one segment. It is not a proposal about
+  continuity and has no business being scored against one, so it runs first and
+  the solve has the last word. Running it last balanced each segment against
+  inner handles the solve had just placed, which overwrote the exact answer —
+  on the arch joint it took the G3 rate step from 5.3e-6 to 5.8e-5, against
+  1.6e-19 now. It also sat inside the best-state gate, so a harmonic answer the
+  gate declined took the equalization out with it and the tick did nothing at
+  all. The cost of the order is that the drawing does not end balanced: the
+  solve moves the inner handles afterwards. That is the same trade both other
+  donors make.
+- **A balance lands between the two tensions, and moves the drawing as little
+  as a balance can.** Both handles go to one fraction of the way to the Tunni
+  point, and that fraction is the only free number left. It is chosen by least
+  squares over the whole segment, which has a closed form: the two tensions
+  averaged by how much of the curve each tangent ray shapes. Where the two rays
+  reach equally far it is the plain mean, which is what the donors do. It parts
+  from the plain mean only where one end reaches much further, which is exactly
+  where the plain mean moves the drawing most. A segment whose two handles sit
+  on opposite sides of its chord is refused: no one tension describes an S.
 - **A verdict describes the drawing that was kept.** A joint can converge
   exactly and still have nothing to write, because its correction was smaller
   than the grid can hold and the position it already sits on is the best one
@@ -1304,11 +1347,6 @@ because a different set of handles has a different harmonic target.
   The grid search counts ceiling violations ahead of curvature, so it will not
   choose a position that crosses one, but it cannot undo an overshoot that
   every candidate shares.
-- **Equalize still runs after the solve and overwrites it.** On the arch joint
-  it takes the G3 rate step from 5.3e-6 to 5.8e-5. This is SuperTool's
-  `balance, harmonize, balance` order and the checkbox says it trades away an
-  exact curvature match. Curvatura keeps its tunnify a separate command
-  instead, which is the better model.
 
 ---
 

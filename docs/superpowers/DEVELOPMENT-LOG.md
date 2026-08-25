@@ -98,7 +98,8 @@ We built and measured each one. None is in the tree.
 
 **State: shipped.** Three constructions: G3 tried first with G2 as its fallback,
 and Curvatura's handle-length solve as a separate check that replaces both. It
-reaches skeleton centerlines as well as ordinary paths.
+reaches skeleton centerlines as well as ordinary paths. Two opt-in preparation
+passes run ahead of the solve: realign, then equalize.
 
 ### Findings
 
@@ -365,13 +366,97 @@ drawing that no longer existed. Same lesson as the first harmonize round, and it
 cost a full round of wrong conclusions: **read the file at the moment of the
 question, and say which state a number came from.**
 
-### Known defect, not fixed
+### Three donors read side by side, and what came of it
 
-**Equalize still runs after the solve and overwrites it.** On the arch joint it
-takes the G3 rate step from 5.3e-6 to 5.8e-5. It is SuperTool's
-`balance, harmonize, balance` order, the checkbox says it trades away an exact
-curvature match, and Curvatura keeps its tunnify a separate command instead —
-which is the better model and the likely fix.
+Five more donors were read against ours: Green Harmony, Grey Harmony, Curve
+Equalizer, and the Bezier Fixer and Positional Harmonize scripts. Three of them
+carry constructions we already run, function for function.
+
+- **Green Harmony** is our G2 target reached by moving the on-curve.
+- **Grey Harmony** is the same target reached by translating both handles.
+  Those two are our second checkbox, and their equivalence is the reason it is
+  a checkbox and not a slider.
+- **Curve Equalizer's Balance** was our equalize exactly: the plain mean of the
+  two tensions.
+
+So the G2 target now rests on four independent sources. Two things were new.
+
+**Equalize belongs before the solve.** The Bezier Fixer panel runs realign,
+then tunnify, then harmonize. Curvatura keeps its tunnify a separate command.
+Two donors putting the balance first is what closed the defect this section
+carried: ours ran last, inside the best-state gate. It balanced each segment
+against inner handles the solve had just placed, so it overwrote the exact
+answer, and a harmonic answer the gate declined took the equalization out with
+it. On the arch joint the G3 rate step goes from 5.8e-5 to 1.6e-19, and the
+curvature step to 1.4e-17.
+
+The stated cost is that the drawing does not end balanced. The solve moves the
+two inner handles after the balance, so the tick now means "start from balanced
+segments" rather than "finish with them". Both other donors accept the same
+trade.
+
+**A balance has one free number, and the plain mean is not always it.** Both
+handles go to one fraction of the way to the Tunni point. The fraction that
+moves the drawing least is a least-squares fit over the whole segment, and it
+has a closed form — every point of the curve is a straight line in the
+fraction, so the answer is one projection with nothing to search:
+
+```
+    (4|u|² + 3 u·v) t₁  +  (4|v|² + 3 u·v) t₂
+    ------------------------------------------
+             4|u|² + 6 u·v + 4|v|²
+```
+
+where `u` and `v` are the two tangent rays. Where they reach equally far this
+IS the plain mean, so the donors' rule is the symmetric case of it. The gain is
+small and honest: on the worst deviation from the drawn curve, 5.44 against
+5.67 units on an uneven-reach fixture, 0.891 against 0.913 on a flatter one.
+The denominator is positive for every pair of rays, because 4a + 4b always
+exceeds 6√(ab). The answer is clamped into the span of the two tensions, since
+a fraction outside that span is not a balance.
+
+Two guards came with it. A segment whose two handles sit on opposite sides of
+its chord is refused, which Curve Equalizer also does: no one tension describes
+an S. And an already-balanced segment returns itself, so a second press moves
+nothing.
+
+**The midpoint form was built and dropped inside the hour.** Bezier Fixer picks
+the fraction whose curve comes closest to the original point at t = 0.5,
+searched over a fixed sweep. The same idea has a closed form, and it was built
+before the least-squares one — it is worse on every fixture measured, because
+one sample is not the curve. It was also written into a test as "keeps the
+curve's own midpoint", which is false: the balanced midpoints lie on a line the
+original midpoint is not on, so the answer is the nearest point and not the
+point. **A test that asserts an exact identity for a least-squares answer is
+asserting the thing least squares exists because you cannot have.**
+
+### Realign, and what it is actually worth
+
+The pass squares a smooth joint up before anything is solved. mekkablue's rule,
+carried unchanged: a handle running dead horizontal or vertical off the joint
+is kept and the other is turned onto it, otherwise both handles hold and the
+joint comes to them, and where a curve meets a straight the straight states the
+direction.
+
+**The obvious argument for it is wrong, and the measurement said so.** The
+reasoning was that a joint arriving bent is solved against a tangent that is
+not there. It is not: every construction here re-collinearizes the joint itself
+as a side effect. Under G2 the two handles translate by one delta, so the line
+through them translates with them and the joint lands on it whatever the bias
+is. Two tests written from that reasoning failed against a joint that came out
+straight to 6e-15 without the pass.
+
+What the pass is actually worth is two things.
+
+1. **It keeps a flat handle flat.** Harmonize's own repair translates both
+   handles, which carries a horizontal handle off the horizontal and the
+   extreme of the curve off the joint. On the bent fixture the outgoing handle
+   lands at y = 104.955 without the pass and at 100 with it.
+2. **It reaches joints harmonize refuses.** A curve running into a straight has
+   no five-point stencil, so the command declines it outright. Nothing else in
+   the tree ever squares one up.
+
+It is a fifth checkbox, off by default, so no existing press changes.
 
 ### Rejected
 
@@ -382,6 +467,7 @@ which is the better model and the likely fix.
 | The on-curve slide as a fallback for a failed held solve      | Holding the joint still almost never fails, so the option did nothing on any healthy joint - G3 with it on and off produced byte-identical output. It is opt-in, so when it is on it is the whole search.                                                         |
 | Bound the on-curve slide's range by the inner handles         | They are what the construction replaces, so their present lengths say nothing about where the joint may go. It stopped the search 25 units short on the overshoot fixture, where the first admissible slide is about 45 units and the shorter inner handle is 20. |
 | Harmonize the generated outline                               | It is derived and would be thrown away on the next regeneration. The skeleton's own centerline is an ordinary path and takes the pass unchanged.                                                                                                                  |
+| Pick the balanced fraction by the curve's midpoint alone      | Built, dropped the same hour. It is the Bezier Fixer rule, and it has a closed form rather than the donor's sweep. One sample is not the curve: least squares over the whole segment beats it on every fixture measured, and is the same shape of answer.         |
 
 ---
 

@@ -2,10 +2,17 @@ import {
   addVectors,
   distance,
   dotVector,
+  interpolateVectors,
   intersect,
   normalizeVector,
   subVectors,
+  vectorLength,
 } from "./vector.js";
+
+// The 2D cross product, which is positive when B turns left off A.
+function cross(vectorA, vectorB) {
+  return vectorA.x * vectorB.y - vectorA.y * vectorB.x;
+}
 
 // Grid Snap Utility Function
 export function snapToGrid(point) {
@@ -266,42 +273,85 @@ export function calculateEqualizedControlPoints(segmentPoints) {
 }
 
 export function balanceSegment(segmentPoints) {
+  const [p1, p2, p3, p4] = segmentPoints;
+  const unchanged = [p1, p2, p3, p4];
+
   const tunniPoint = calculateTunniPoint(segmentPoints);
   if (!tunniPoint) {
-    const [p1, p2, p3, p4] = segmentPoints;
-    return [p1, p2, p3, p4]; // Can't balance if lines are parallel
+    return unchanged; // parallel handle lines: they never cross
   }
 
-  const [p1, p2, p3, p4] = segmentPoints;
-
-  // Calculate distances
-  const sDistance = distance(p1, tunniPoint);
-  const eDistance = distance(p4, tunniPoint);
-
-  // If either distance is zero, we can't balance
-  if (sDistance <= 0 || eDistance <= 0) {
-    return [p1, p2, p3, p4];
+  // An S-shaped segment has its two handles on opposite sides of the chord.
+  // There is no common tension that describes it, so balancing fights the
+  // drawing instead of tidying it. Curve EQ refuses the same case.
+  const chord = subVectors(p4, p1);
+  const sideOfStart = cross(chord, subVectors(p2, p1));
+  const sideOfEnd = cross(chord, subVectors(p3, p1));
+  if (sideOfStart * sideOfEnd < 0) {
+    return unchanged;
   }
 
-  // Calculate percentages
-  const xPercent = distance(p1, p2) / sDistance;
-  const yPercent = distance(p3, p4) / eDistance;
+  // Balanced means both handles at one fraction of the way to the Tunni
+  // point, and that fraction is the only free number left. It is chosen so the
+  // balanced curve stays as close to the drawn one as a balanced curve can get
+  // -- least squares over the whole segment, not at one sample.
+  //
+  // Every point of the curve is a straight line in the fraction, so the answer
+  // is one projection: exact, continuous, and nothing to search. Writing the
+  // two tangent rays as `u` and `v` and integrating the two Bernstein weights
+  // over the segment, it comes out as the two tensions averaged by how much of
+  // the curve each ray actually shapes:
+  //
+  //     (4|u|^2 + 3 u.v) t1  +  (4|v|^2 + 3 u.v) t2
+  //     --------------------------------------------
+  //              4|u|^2 + 6 u.v + 4|v|^2
+  //
+  // Where the two rays reach equally far this is the plain mean of the two
+  // tensions, which is what the code did before and what both donors do. It
+  // parts from that mean only where one end reaches much further than the
+  // other, which is exactly where the plain mean moves the drawing most.
+  const rayStart = subVectors(tunniPoint, p1);
+  const rayEnd = subVectors(tunniPoint, p4);
+  const reachStart = vectorLength(rayStart);
+  const reachEnd = vectorLength(rayEnd);
+  if (!reachStart || !reachEnd) {
+    return unchanged;
+  }
 
-  // Calculate average percentage
-  const avgPercent = (xPercent + yPercent) / 2;
+  const tensionStart = distance(p1, p2) / reachStart;
+  const tensionEnd = distance(p4, p3) / reachEnd;
 
-  // Calculate new control points
-  const newP2 = {
-    x: p1.x + avgPercent * (tunniPoint.x - p1.x),
-    y: p1.y + avgPercent * (tunniPoint.y - p1.y),
-  };
+  const startSquared = reachStart * reachStart;
+  const endSquared = reachEnd * reachEnd;
+  const between = dotVector(rayStart, rayEnd);
+  // Positive for every pair of rays: 4a + 4b is always more than 6*sqrt(a*b).
+  const weightTotal = 4 * startSquared + 6 * between + 4 * endSquared;
+  if (!weightTotal) {
+    return unchanged;
+  }
 
-  const newP3 = {
-    x: p4.x + avgPercent * (tunniPoint.x - p4.x),
-    y: p4.y + avgPercent * (tunniPoint.y - p4.y),
-  };
+  const balanced =
+    ((4 * startSquared + 3 * between) * tensionStart +
+      (4 * endSquared + 3 * between) * tensionEnd) /
+    weightTotal;
 
-  return [p1, newP2, newP3, p4];
+  // A balance lands between the two tensions it is balancing. The least-squares
+  // answer can step outside that span where one ray is much the longer and the
+  // two point sharply apart, and a fraction outside the span is not a balance.
+  const ratio = Math.min(
+    Math.max(balanced, Math.min(tensionStart, tensionEnd)),
+    Math.max(tensionStart, tensionEnd)
+  );
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    return unchanged;
+  }
+
+  return [
+    p1,
+    interpolateVectors(p1, tunniPoint, ratio),
+    interpolateVectors(p4, tunniPoint, ratio),
+    p4,
+  ];
 }
 
 /**

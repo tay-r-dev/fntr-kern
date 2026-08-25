@@ -2105,6 +2105,7 @@ export class SceneController {
       moveOnCurve = applicationSettingsController.model.harmonizeMoveOnCurve,
       applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
       equalizeTension = applicationSettingsController.model.harmonizeEqualizeTension,
+      realignHandles = applicationSettingsController.model.harmonizeRealignHandles,
     } = options;
 
     // Two checks decide three things. The first picks the target and so the
@@ -2133,6 +2134,7 @@ export class SceneController {
           slideOnCurve,
           handleBias,
           equalizeTension,
+          realignHandles,
         },
         translate("action.harmonize")
       );
@@ -2211,6 +2213,7 @@ export class SceneController {
           slideOnCurve,
           handleBias,
           equalizeTension,
+          realignHandles,
           roundCoordinates: true,
         });
         for (let index = 0; index < path.numPoints; index++) {

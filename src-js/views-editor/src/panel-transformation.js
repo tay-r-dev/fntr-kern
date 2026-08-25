@@ -780,6 +780,13 @@ export default class TransformationPanel extends Panel {
 
     formContents.push({
       type: "checkbox",
+      key: "harmonizeRealignHandles",
+      label: translate("sidebar.selection-transformation.harmonize.realign-handles"),
+      value: applicationSettingsController.model.harmonizeRealignHandles,
+    });
+
+    formContents.push({
+      type: "checkbox",
       key: "harmonizeEqualizeTension",
       label: translate("sidebar.selection-transformation.harmonize.equalize-tension"),
       value: applicationSettingsController.model.harmonizeEqualizeTension,
@@ -852,6 +859,7 @@ export default class TransformationPanel extends Panel {
           "harmonizeMoveOnCurve",
           "harmonizeOtherSources",
           "harmonizeEqualizeTension",
+          "harmonizeRealignHandles",
         ].includes(fieldItem.key)
       ) {
         applicationSettingsController.model[fieldItem.key] = value;
@@ -931,6 +939,7 @@ export default class TransformationPanel extends Panel {
       moveOnCurve: !!settings.harmonizeMoveOnCurve,
       applyToOtherSources: settings.harmonizeOtherSources,
       equalizeTension: settings.harmonizeEqualizeTension,
+      realignHandles: settings.harmonizeRealignHandles,
     };
     const reports = await this.sceneController.doHarmonize(options);
     this.setHarmonizeReport(
@@ -1661,6 +1670,7 @@ function detailHarmonizeReport(reports, options) {
   const lines = [
     `${options.useG3 ? "G3" : "G2"}` +
       `, move the on-curve: ${options.moveOnCurve ? "on" : "off"}` +
+      `, realign handles: ${options.realignHandles ? "on" : "off"}` +
       `, equalize tension: ${options.equalizeTension ? "on" : "off"}` +
       `, other sources: ${options.applyToOtherSources ? "on" : "off"}`,
   ];

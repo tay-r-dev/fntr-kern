@@ -635,8 +635,11 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
   "sidebar.selection-transformation.harmonize.equalize-tension": "Equalize tension",
   "sidebar.selection-transformation.harmonize.equalize-tension.tooltip":
-    "Even out the two segments at each joint afterwards, which is the one pass allowed to move the outer handles. It also lets the command consider Curvatura’s handle-length construction, which moves them too.",
+    "Even out the two segments at each joint first, so the joint itself is solved last. This is the one pass allowed to move the outer handles. It also lets the command consider Curvatura’s handle-length construction, which moves them too.",
   "sidebar.selection-transformation.harmonize.other-sources": "Other sources",
+  "sidebar.selection-transformation.harmonize.realign-handles": "Realign handles",
+  "sidebar.selection-transformation.harmonize.realign-handles.tooltip":
+    "Put every smooth joint back on one line before anything is solved. A handle drawn dead horizontal or vertical is kept and the other is turned onto it; otherwise the joint comes to the handles. It also reaches joints where a curve meets a straight, which harmonize itself refuses.",
   "sidebar.selection-transformation.harmonize.reason.already-harmonic":
     "already harmonic",
   "sidebar.selection-transformation.harmonize.reason.below-grid":

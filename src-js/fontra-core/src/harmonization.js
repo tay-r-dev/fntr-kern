@@ -56,9 +56,13 @@ export const HARMONIZE_DEFAULTS = {
   // joint is solved in one; a ring of coupled joints (an 'o') takes ~8. The
   // math is a handful of square roots, so the budget is generous on purpose.
   maxIterations: 50,
-  // Tunni-equalize the two segments at each joint, before and after — the pass
-  // SuperTool's Harmonize command wraps around the same math. It is what moves
-  // the outer handles PP and NN. Costs exactness: see equalizeJointSegments.
+  // Square up a smooth joint whose handles have drifted off its tangent,
+  // before anything is solved. A joint that arrives bent is corrected against
+  // a tangent that is not there.
+  realignHandles: false,
+  // Tunni-balance the two segments at each joint BEFORE the joint is solved,
+  // so the solve has the last word. It is what moves the outer handles PP and
+  // NN, and it is also the tick that admits the handle-length construction.
   equalizeTension: false,
   // Ceiling on how far a handle may reach toward its segment's Tunni point.
   // At 1 it lands exactly on it; past 1 the segment's two handle lines cross
@@ -115,6 +119,130 @@ function neighborIndex(path, contourIndex, contourPointIndex, offset) {
 
 function isCubicOffCurve(point) {
   return point?.type === POINT_TYPE_OFF_CURVE_CUBIC;
+}
+
+//
+// --- realigning a joint before anything is solved ---------------------------
+//
+// A smooth flag is a claim about the drawing: the joint and its two neighbours
+// lie on one line. Nudging, interpolating and changing the grid all break that
+// claim without clearing the flag. Every construction in this module solves
+// against the tangent at the joint, so a joint that arrives bent is being
+// corrected against a tangent that is not there -- and the score refuses to buy
+// a bend, so the bend it arrived with limits the answer for the whole press.
+//
+// The rule is mekkablue's Realign BCPs, carried unchanged.
+//
+const REALIGN_TOLERANCE = 1e-9;
+
+// A handle drawn dead horizontal or dead vertical off its joint marks an
+// extreme of the curve. It is the one part of the joint that is certainly
+// deliberate, so it is what the rest is squared up against.
+function runsAlongAnAxis(node, handle) {
+  const dx = handle.x - node.x;
+  const dy = handle.y - node.y;
+  return (dx === 0) !== (dy === 0);
+}
+
+// Put `handle` back on the line that runs from `opposite` through `node`, on
+// the far side of the node, keeping the length the designer gave it.
+function turnedOntoLine(node, opposite, handle) {
+  const away = subVectors(node, opposite);
+  const length = vectorLength(away);
+  if (!length) {
+    return null;
+  }
+  return addVectors(node, mulVectorScalar(away, distance(node, handle) / length));
+}
+
+// The foot of the perpendicular from `node` onto the line through the two
+// handles. This is the one repair that keeps both handles exactly as drawn.
+function footOnLine(node, from, to) {
+  const span = subVectors(to, from);
+  const spanLengthSquared = dotVector(span, span);
+  if (!spanLengthSquared) {
+    return null;
+  }
+  const along = dotVector(subVectors(node, from), span) / spanLengthSquared;
+  return addVectors(from, mulVectorScalar(span, along));
+}
+
+//
+// Square up the smooth joints in `candidates`. Writes into `path` and records
+// what it moved in `touched`.
+//
+// This reaches joints harmonization itself refuses: a curve running into a
+// straight has no five-point stencil, so nothing else here ever squares it up.
+//
+export function realignSmoothJointsInPlace(path, candidates, touched) {
+  for (const pointIndex of candidates) {
+    const point = path.getPoint(pointIndex);
+    if (!point || point.type || !point.smooth) {
+      continue;
+    }
+
+    const [contourIndex, contourPointIndex] = path.getContourAndPointIndex(pointIndex);
+    const previousIndex = neighborIndex(path, contourIndex, contourPointIndex, -1);
+    const nextIndex = neighborIndex(path, contourIndex, contourPointIndex, 1);
+    if (previousIndex === undefined || nextIndex === undefined) {
+      continue;
+    }
+
+    const node = { x: point.x, y: point.y };
+    const previous = path.getPoint(previousIndex);
+    const next = path.getPoint(nextIndex);
+    const previousIsHandle = isCubicOffCurve(previous);
+    const nextIsHandle = isCubicOffCurve(next);
+    if (!previousIsHandle && !nextIsHandle) {
+      continue; // a corner between two straights owns no tangent to repair
+    }
+
+    // Already on one line: leave it exactly alone rather than rewriting it
+    // with the same numbers and taking an undo step for nothing.
+    const bend = crossProduct(subVectors(node, previous), subVectors(next, node));
+    const scale = distance(previous, node) * distance(node, next);
+    if (scale && Math.abs(bend) / scale < REALIGN_TOLERANCE) {
+      continue;
+    }
+
+    if (previousIsHandle !== nextIsHandle) {
+      // A curve meeting a straight. The straight states the direction, so the
+      // handle is what turns.
+      const handleIndex = previousIsHandle ? previousIndex : nextIndex;
+      const opposite = previousIsHandle ? next : previous;
+      const turned = turnedOntoLine(node, opposite, path.getPoint(handleIndex));
+      if (turned) {
+        writePoint(path, touched, handleIndex, turned);
+      }
+      continue;
+    }
+
+    const anchorIndex = runsAlongAnAxis(node, next)
+      ? nextIndex
+      : runsAlongAnAxis(node, previous)
+        ? previousIndex
+        : undefined;
+
+    if (anchorIndex !== undefined) {
+      const turningIndex = anchorIndex === nextIndex ? previousIndex : nextIndex;
+      const turned = turnedOntoLine(
+        node,
+        path.getPoint(anchorIndex),
+        path.getPoint(turningIndex)
+      );
+      if (turned) {
+        writePoint(path, touched, turningIndex, turned);
+      }
+      continue;
+    }
+
+    // Neither handle is more deliberate than the other, so both stay where
+    // they are and the joint comes to them.
+    const foot = footOnLine(node, previous, next);
+    if (foot) {
+      writePoint(path, touched, pointIndex, foot);
+    }
+  }
 }
 
 //
@@ -1425,7 +1553,6 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
     cuspSafetyMargin,
     toleranceUnits,
     maxIterations,
-    equalizeTension,
     maxHandleTension,
     maxCurvatureStep,
     roundCoordinates,
@@ -1895,6 +2022,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   const {
     continuity,
     equalizeTension,
+    realignHandles,
     maxHandleTension,
     maxCurvatureStep,
     roundCoordinates,
@@ -1907,8 +2035,64 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     ? [...new Set(pointIndices)].sort((a, b) => a - b)
     : expandToJoints(path, undefined);
 
-  // Read once, from the drawing as it arrived, so both candidates are judged
-  // against the same thing.
+  const prepared = new Set();
+
+  //
+  // Square the joints up first of all. Balancing below reads each segment's
+  // tangent rays, and every construction after it reads the joint's tangent,
+  // so both want a drawing whose smooth flags are true.
+  //
+  if (realignHandles) {
+    realignSmoothJointsInPlace(path, candidates, prepared);
+  }
+
+  //
+  // Equalize FIRST, before anything is solved.
+  //
+  // It used to run last, after the best-state gate, which is the donor's
+  // `balance, harmonize, balance` (SuperTool+Harmonize.m:61,75). Two things
+  // went wrong there. It balanced each segment against inner handles the solve
+  // had just placed, so it overwrote the exact answer -- on the arch joint it
+  // took the G3 rate step from 5.3e-6 to 5.8e-5. And while it ran inside the
+  // gate, a harmonic answer the gate declined took the equalization out with
+  // it, so the tick did nothing at all.
+  //
+  // Balancing is a statement about the two handles of one segment. It is not a
+  // proposal about continuity and has no business being scored against one. So
+  // it prepares the drawing and the solve has the last word, which is the order
+  // both of the other donors use -- Curvatura keeps its tunnify a separate
+  // command, and the Bezier Fixer panel runs tunnify before harmonize.
+  //
+  // The ceiling is re-established here and not assumed: a balanced tension can
+  // itself land over it.
+  //
+  if (equalizeTension) {
+    for (const pointIndex of candidates) {
+      const ctx = getJointContext(path, pointIndex);
+      if (ctx.reason) {
+        continue;
+      }
+      equalizeJointSegments(path, ctx, prepared);
+      enforceHandleTension(
+        path,
+        getJointContext(path, pointIndex),
+        maxHandleTension,
+        prepared
+      );
+    }
+  }
+
+  // Whole units, by rounding and not by searching. The search below is for
+  // choosing between answers; neither pass above is offering one.
+  if (roundCoordinates) {
+    for (const index of prepared) {
+      const [x, y] = path.getPointPosition(index);
+      path.setPointPosition(index, Math.round(x), Math.round(y));
+    }
+  }
+
+  // Read once, from the drawing the solve is handed, so both candidates are
+  // judged against the same thing.
   const arrival = new Map();
   for (const pointIndex of candidates) {
     const ctx = getJointContext(path, pointIndex);
@@ -1953,63 +2137,14 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     }
   }
 
-  const states = winner.report;
-  //
-  // Equalize, last, and outside everything above.
-  //
-  // It used to run inside the scored attempt -- once before the sweep and once
-  // after, which is the donor's `balance, harmonize, balance`
-  // (SuperTool+Harmonize.m:61,75). That put it inside the best-state gate, and
-  // the gate judges a state by the joint and the curve, which is not what
-  // equalizing is for. So a run whose harmonic answer the gate declined threw
-  // the equalization out with it, and the tick did nothing at all: on `n` node
-  // 13, G2 + on-curve + equalize wrote not one point and reported
-  // `skipped/reverted`.
-  //
-  // It is a convenience: even out the two segments at each joint, because a
-  // designer asked for that. It is not a proposal about continuity and has no
-  // business being scored against one. So it runs on whatever the gate kept,
-  // it is kept whatever it does to the residual, and it runs on every joint --
-  // including the ones harmonization skipped, which are exactly the joints
-  // where the old code refused to run it.
-  //
-  // The verdicts above are already fixed, and they still describe
-  // harmonization: `skipped` means nothing was harmonized there, not that
-  // nothing moved.
-  //
-  // The ceiling is re-established afterwards and not assumed: balance averages
-  // the two tensions of a segment and the average can itself land over it.
-  //
-  if (equalizeTension) {
-    const equalized = new Set();
-    for (const state of states) {
-      const ctx = getJointContext(path, state.pointIndex);
-      if (ctx.reason) {
-        continue;
-      }
-      equalizeJointSegments(path, ctx, equalized);
-      state.tensionReduced =
-        enforceHandleTension(
-          path,
-          getJointContext(path, state.pointIndex),
-          maxHandleTension,
-          equalized
-        ) || state.tensionReduced;
-    }
-    // Whole units, by rounding and not by searching. The search above is for
-    // choosing between answers; this pass is not offering one.
-    if (roundCoordinates) {
-      for (const index of equalized) {
-        const [x, y] = path.getPointPosition(index);
-        path.setPointPosition(index, Math.round(x), Math.round(y));
-      }
-    }
-    for (const index of equalized) {
-      touched.add(index);
-    }
+  for (const index of prepared) {
+    touched.add(index);
   }
 
-  return states;
+  // The verdicts describe harmonization alone. A joint that reports `skipped`
+  // may still have had its two segments balanced by the pass above: `skipped`
+  // means nothing was harmonized there, not that nothing moved.
+  return winner.report;
 }
 
 // --- the donors' other command: harmonize by handle LENGTH -------------------
