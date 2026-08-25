@@ -2291,19 +2291,20 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     const drawn = solveOnce(current);
     field.push(...drawn);
 
-    // Which one the next attempt carries on from. Judged against the drawing
-    // as it stands rather than against the whole field, because the field is
-    // not complete yet -- the final choice below is.
-    const provisional = (candidate) => ({
-      ...scoreWith(candidate.path),
-      refused: refusalCount(candidate.report),
-    });
-    let next = drawn[0];
-    for (const candidate of drawn.slice(1)) {
-      if (isBetter(provisional(candidate), provisional(next))) {
-        next = candidate;
-      }
-    }
+    // Which one the next attempt carries on from: the joint construction's,
+    // always. This is not the choice of a winner -- the whole field is ranked
+    // at the end -- it is the choice of where to look next, and the two are not
+    // the same question.
+    //
+    // Ranking the continuation nearly cost the loop entirely. A drawing the
+    // balance has just prepared is perfectly balanced, so the handle-length
+    // solve refusing to move scored better on the balance rank than the joint
+    // construction's real answer. The loop then carried on from a state it had
+    // already seen, saw its own starting point come round, and stopped on the
+    // first attempt -- so `pressAttempts` made no difference at any value, and
+    // the reported joint kept its tension-limited first answer.
+    //
+    const next = drawn[0];
 
     const key = Array.from(next.path.coordinates).join(",");
     if (seen.has(key)) {

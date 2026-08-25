@@ -2255,3 +2255,77 @@ describe("harmonization: the balance tick has to mean something", () => {
     expect(imbalance(asked, 0)).to.be.greaterThan(0.05);
   });
 });
+
+describe("harmonization: the repetition has to actually repeat", () => {
+  //
+  // `B^1.json` point 3, redrawn again: one press with equalization on left the
+  // left segment at 0.535 against 1.000 -- the inner handle pinned on the
+  // tension ceiling, the joint still 137 per cent out. Raising `pressAttempts`
+  // to any value changed nothing at all, which is the tell: the loop was
+  // stopping on its first attempt.
+  //
+  // It chose which state to carry on from by ranking the answers, and a drawing
+  // the balance has just prepared is perfectly balanced. So the handle-length
+  // solve refusing to move outranked the joint construction's real answer on
+  // the balance term, the loop carried on from a state it had already seen, saw
+  // its own starting point come round, and stopped.
+  //
+  // Where to look next and which answer to keep are different questions. The
+  // whole field is ranked at the end; the walk goes through the joint
+  // construction's answer, always.
+  //
+  function reportedStalledJoint() {
+    return makeContour([
+      { x: 365, y: 228, smooth: true },
+      cubic(365, 307),
+      cubic(414, 357),
+      { x: 426, y: 357, smooth: true },
+      cubic(531, 357),
+      cubic(545, 336),
+      { x: 545, y: 255, smooth: true },
+    ]);
+  }
+
+  const options = {
+    roundCoordinates: true,
+    equalizeTension: true,
+    realignHandles: true,
+  };
+
+  function imbalance(path, start) {
+    const points = [0, 1, 2, 3].map((offset) => {
+      const [x, y] = path.getPointPosition(start + offset);
+      return { x, y };
+    });
+    const tunniPoint = calculateTunniPoint(points);
+    return Math.abs(
+      distance(points[0], points[1]) / distance(points[0], tunniPoint) -
+        distance(points[3], points[2]) / distance(points[3], tunniPoint)
+    );
+  }
+
+  it("gets further than one attempt can", () => {
+    const single = reportedStalledJoint();
+    harmonizePathInPlace(single, [3], { ...options, pressAttempts: 1 });
+    const settled = reportedStalledJoint();
+    harmonizePathInPlace(settled, [3], options);
+    expect(Array.from(settled.coordinates)).to.not.deep.equal(
+      Array.from(single.coordinates)
+    );
+  });
+
+  it("balances and harmonizes it in one press", () => {
+    const path = reportedStalledJoint();
+    const report = harmonizePathInPlace(path, [3], options);
+    expect(report[0].status).to.equal("harmonized");
+    for (const start of [0, 3]) {
+      expect(imbalance(path, start), `segment at ${start}`).to.be.lessThan(0.05);
+    }
+  });
+
+  it("does not leave a handle pinned on the tension ceiling", () => {
+    const path = reportedStalledJoint();
+    harmonizePathInPlace(path, [3], options);
+    expect(Math.max(...jointHandleTensions(path))).to.be.lessThan(0.99);
+  });
+});

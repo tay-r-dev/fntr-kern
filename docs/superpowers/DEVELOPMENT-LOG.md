@@ -650,6 +650,45 @@ ratio of its two handles; harmonizing sets the inner one. They are the same
 number. What the ranking can do, and now does, is refuse the answers that are
 not even close.
 
+### The repetition was not repeating, and the balance rank is what stopped it
+
+`B^1.json` point 3 redrawn again, with equalization and realign on: one press
+left the left segment at 0.535 against 1.000, the inner handle pinned on the
+tension ceiling and the joint still 137 per cent out. **Raising `pressAttempts`
+to any value changed nothing**, which is the tell — the loop was stopping on its
+first attempt.
+
+The loop chose which state to carry on from by ranking the answers, and a
+drawing the balance has just prepared is perfectly balanced. So the
+handle-length solve **refusing to move** outranked the joint construction's real
+answer on the balance rank added the round before. The loop then carried on from
+a state it had already seen, saw its own starting point come round, and stopped.
+
+**Where to look next and which answer to keep are different questions.** The
+whole field is ranked at the end. The walk goes through the joint construction's
+answer, always. Self-inflicted, one round old, and invisible to every test:
+2003 of them passed while the loop ran once.
+
+The joint needs several rounds because of the ceiling, not because of the
+ranking. As drawn it is a radius of 4.3 against 787.5. The first solve wants an
+inner handle longer than the tangent crossing allows, clamps at tension 1 and
+stops; the balance then lengthens the outer handle, which gives the next solve
+room. Three rounds of that reach the answer, and they now happen inside one
+press: 0.736/0.754 and 0.471/0.500, 1.20 per cent across the joint.
+
+The population improves with it: over 1500 random joints the joints left both
+over the perceptual bound and worse than drawn fall from 235 to 223 under G2 and
+from 327 to 257 under G3, and the median G3 step from 3.99e-2 to 3.42e-2.
+
+**Known gap, honestly reported.** Under G3 this joint is refused outright:
+`skipped`, reason `reverted`, leaving the balanced drawing at 189 per cent. The
+G2 fallback answer is tension-limited, and under G3 the rate term ranks it below
+the drawing, so the inner gate reverts it before the outer field ever sees it —
+and with every field member then carrying the same bad step, the curvature
+ratchet takes that step as its own bound and stops forbidding anything. G2
+reaches 1.20 per cent on the same joint. Letting the outer field see the inner
+gate's discards is the fix, and it is not a small one.
+
 ### Realign, and what it is actually worth
 
 The pass squares a smooth joint up before anything is solved. mekkablue's rule,

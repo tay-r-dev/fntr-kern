@@ -1334,6 +1334,12 @@ because a different set of handles has a different harmonic target.
   of the perceptual one and the best step anything on the table actually
   reached. A bad drawing still excuses an answer while nothing better exists,
   and stops excusing it the moment something does.
+- **Where to look next and which answer to keep are different questions.** The
+  repetition always walks through the joint construction's answer; the whole
+  field is ranked once, at the end. Ranking the walk stopped the loop dead: a
+  drawing the balance has just prepared is perfectly balanced, so a construction
+  refusing to move outranked a real answer, and the loop saw its own starting
+  point come round on the first attempt.
 - **Every construction is one field, judged once.** The joint constructions and
   the handle-length solve are all drawn first and chosen between afterwards,
   because the ratchet above needs to know what the whole field managed before it
@@ -1393,6 +1399,14 @@ because a different set of handles has a different harmonic target.
 
 ### 10.6 Known defects
 
+- **A joint the inner gate reverts is invisible to the outer field.** Under G3,
+  where a joint's only reachable answer is the tension-limited G2 fallback, the
+  inner gate ranks that answer below the drawing and puts the drawing back. The
+  outer field then holds nothing but that one state, so the curvature ratchet
+  takes its step as the bound and forbids nothing. `B^1.json` point 3 is left at
+  189 per cent under G3 and reaches 1.20 per cent under G2, and it says
+  `skipped/reverted` rather than pretending. Letting the outer field see the
+  inner gate's discards is the fix.
 - **Rounding happens after the tension ceiling**, so a handle at exactly tension
   1 can land a fraction over it. Sub-unit. A ceiling of 0.98 would remove it.
   The grid search counts ceiling violations ahead of curvature, so it will not
