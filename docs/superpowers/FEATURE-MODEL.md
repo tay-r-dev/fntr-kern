@@ -1339,6 +1339,12 @@ because a different set of handles has a different harmonic target.
   because the ratchet above needs to know what the whole field managed before it
   can rank any of it. Choosing pairwise as they were drawn is what let an answer
   its own solver had refused beat one that succeeded.
+- **An answer its own solver refused may not win.** Refusal ranks below the hard
+  defects and above everything that measures the curve. It reads the
+  handle-length construction only: that one states a pair of lengths which is
+  taken whole or not at all, so `clamped`, `tension-limited` and `degenerate`
+  there mean it drew nothing. The joint constructions use the same three words
+  for a step they scaled back at a limit, which is a real answer partly applied.
 - **Two defects rank above any amount of residual, and are not tradeable.** A
   handle over the tension ceiling is one. A crease at a smooth point is the
   other: curvature continuity across a joint with no common tangent does not mean

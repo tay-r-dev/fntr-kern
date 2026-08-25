@@ -927,8 +927,16 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
   // still in the sum and was simply too small to be heard.
   //
   return continuity === "G3"
-    ? { broken, crossed, creased, stepped, residual, unfair }
-    : { broken, crossed, creased, stepped, residual: residual + unfair, unfair: 0 };
+    ? { broken, crossed, creased, stepped, refused: 0, residual, unfair }
+    : {
+        broken,
+        crossed,
+        creased,
+        stepped,
+        refused: 0,
+        residual: residual + unfair,
+        unfair: 0,
+      };
 }
 
 // Ranked, and deliberately not added up.
@@ -948,7 +956,47 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
 //   unfair    the bending energy of the curve either side, under G3 only --
 //             under G2 it is folded into the residual instead, see below
 //
-const SCORE_RANKS = ["broken", "crossed", "creased", "stepped", "residual", "unfair"];
+//
+// `refused` counts the joints a construction gave up on -- it reported an
+// answer for them and said in the same breath that its solve was clamped, over
+// the tension ceiling, or degenerate. It ranks below the hard defects and above
+// everything that measures the curve, because an answer its own solver refused
+// is not an answer, however flat it draws. Curvatura's handle-length solve
+// reported `partial/degenerate` on the reported `B^1` joint and won anyway,
+// leaving one segment at 0.116 against 0.979 from a tick that asks for balance.
+//
+const SCORE_RANKS = [
+  "broken",
+  "crossed",
+  "creased",
+  "stepped",
+  "refused",
+  "residual",
+  "unfair",
+];
+
+// The three words mean different things to the two constructions, and only the
+// handle-length one means "refused" by them. The joint constructions step
+// toward their answer and scale the step back when they meet a limit, so a
+// clamped joint answer is real and partly applied. The handle-length solve
+// states one pair of lengths, which is taken whole or not at all, so the same
+// words there mean it drew nothing. `not-converged` is never a refusal: that
+// answer is real and simply unfinished.
+const REFUSAL_REASONS = new Set(["degenerate", "clamped", "tension-limited"]);
+
+function refusalCount(report) {
+  let refused = 0;
+  for (const state of report || []) {
+    if (
+      state.construction === "handles" &&
+      state.status === "partial" &&
+      REFUSAL_REASONS.has(state.reason)
+    ) {
+      refused += 1;
+    }
+  }
+  return refused;
+}
 
 function isBetter(candidate, incumbent) {
   for (const rank of SCORE_RANKS) {
@@ -2195,9 +2243,13 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     // Which one the next attempt carries on from. Judged against the drawing
     // as it stands rather than against the whole field, because the field is
     // not complete yet -- the final choice below is.
+    const provisional = (candidate) => ({
+      ...scoreWith(candidate.path),
+      refused: refusalCount(candidate.report),
+    });
     let next = drawn[0];
     for (const candidate of drawn.slice(1)) {
-      if (isBetter(scoreWith(candidate.path), scoreWith(next.path))) {
+      if (isBetter(provisional(candidate), provisional(next))) {
         next = candidate;
       }
     }
@@ -2248,10 +2300,15 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
 
   // First wins a tie, and the prepared drawing is first, so an answer has to
   // beat it rather than merely match it.
+  const rank = (candidate) => ({
+    ...scoreWith(candidate.path, ceilings),
+    refused: refusalCount(candidate.report),
+  });
+
   let best = field[0];
-  let bestScore = scoreWith(best.path, ceilings);
+  let bestScore = rank(best);
   for (const candidate of field.slice(1)) {
-    const score = scoreWith(candidate.path, ceilings);
+    const score = rank(candidate);
     if (isBetter(score, bestScore)) {
       best = candidate;
       bestScore = score;

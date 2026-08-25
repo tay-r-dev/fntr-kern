@@ -2110,3 +2110,68 @@ describe("harmonization: a joint that arrived badly broken", () => {
     expect(Math.abs(start - end)).to.be.lessThan(0.3);
   });
 });
+
+describe("harmonization: an answer its own solver refused", () => {
+  //
+  // Reported on `_external/test-glyphs/B^1.json`, point 3. With equalization
+  // on, the first press left the two segments at 0.116/0.979 and 0.988/0.108 --
+  // as far from balanced as a segment gets, from a tick that asks for balance.
+  //
+  // The answer came from Curvatura's handle-length solve, which reported
+  // `partial`, reason `degenerate`: it did not solve the joint, it gave up on
+  // it. Nothing in the ranking said so, and the term that prefers the flatter
+  // curve crowned it.
+  //
+  function reportedRefusedJoint() {
+    return makeContour([
+      { x: 365, y: 228, smooth: true },
+      cubic(365, 293),
+      cubic(412, 357),
+      { x: 460, y: 357, smooth: true },
+      cubic(526, 357),
+      cubic(545, 337),
+      { x: 545, y: 255, smooth: true },
+    ]);
+  }
+
+  function segmentTensions(path, start) {
+    const points = [0, 1, 2, 3].map((offset) => {
+      const [x, y] = path.getPointPosition(start + offset);
+      return { x, y };
+    });
+    const tunniPoint = calculateTunniPoint(points);
+    return [
+      distance(points[0], points[1]) / distance(points[0], tunniPoint),
+      distance(points[3], points[2]) / distance(points[3], tunniPoint),
+    ];
+  }
+
+  it("does not crown it over a construction that finished", () => {
+    const path = reportedRefusedJoint();
+    const report = harmonizePathInPlace(path, [3], {
+      roundCoordinates: true,
+      equalizeTension: true,
+      realignHandles: true,
+    });
+    // Not that the handle-length construction may never win -- it wins here,
+    // and well, once the repetition has given it a drawing it can solve. What
+    // it may not do is win while reporting that it gave up.
+    expect(report[0].status).to.equal("harmonized");
+    expect(report[0].reason).to.equal(undefined);
+  });
+
+  it("leaves both segments something like balanced", () => {
+    const path = reportedRefusedJoint();
+    harmonizePathInPlace(path, [3], {
+      roundCoordinates: true,
+      equalizeTension: true,
+      realignHandles: true,
+    });
+    for (const start of [0, 3]) {
+      const [tensionStart, tensionEnd] = segmentTensions(path, start);
+      expect(Math.abs(tensionStart - tensionEnd), `segment at ${start}`).to.be.lessThan(
+        0.35
+      );
+    }
+  });
+});

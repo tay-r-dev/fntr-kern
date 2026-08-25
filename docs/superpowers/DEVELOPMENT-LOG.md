@@ -556,6 +556,50 @@ calls and the 90th percentile six, against a drift that never converged. Ten per
 cent still have not settled inside twelve, and that is the balance's own nature
 rather than the loop's — see the section above.
 
+### The B^1 joint: an answer its own solver had refused
+
+Reported on `_external/test-glyphs/B^1.json`, point 3, with equalize and realign
+on. The first press left the two segments at 0.116/0.979 and 0.988/0.108 — as
+far from balanced as a segment gets, from the tick that asks for balance. Later
+presses then flattened both sides.
+
+Same construction as the `j` report, and the ratchet did not catch it: this
+answer landed inside the perceptual bound, so nothing above the flatness term
+had anything to say. What was wrong with it is not its curvature step. It is
+that **Curvatura's handle-length solve reported `partial`, reason `degenerate`
+— it gave up on the joint — and the ranking crowned it anyway.**
+
+Refusal is a rank now, below the hard defects and above everything that
+measures the curve. An answer its own solver refused is not an answer, however
+flat it draws.
+
+**The same three words mean different things to the two constructions, and only
+one of them means refusal.** The joint constructions step toward their answer
+and scale the step back at a limit, so a `clamped` joint answer is real and
+partly applied — counting those as refusals made four existing tests report
+`skipped` where they had reported `partial`, which is how the distinction was
+found. The handle-length solve states one pair of lengths, taken whole or not at
+all, so there the same word means it drew nothing.
+
+**The fix let the refused construction win properly.** On the reported joint the
+handle-length solve now wins, and wins well: 0.28 per cent across the joint,
+0.605/0.621 and 0.600/0.627, and a second press does nothing. It was never the
+wrong construction. It was being crowned on the attempt where it had failed,
+which also fed that failed drawing to the next attempt.
+
+Both reported joints settle now and settle nearer the drawing:
+
+|               | first press | settles at | settled tensions         |
+| ------------- | ----------- | ---------- | ------------------------ |
+| `B^1` point 3 | 0.28%       | call 1     | 0.605/0.621, 0.600/0.627 |
+| `j` point 3   | 2.37%       | call 3     | 0.500/0.496, 0.692/0.685 |
+
+Over 1500 random joints, against the previous round: no ticks unchanged to the
+byte; G2 with equalize, joints left over 3% and worse than drawn 215 to 212;
+G3 with both ticks, 255 to 251. The rank is a tie-break in the population and a
+correction on the two reported joints, which is what a rank below the hard
+defects should look like.
+
 ### Realign, and what it is actually worth
 
 The pass squares a smooth joint up before anything is solved. mekkablue's rule,
