@@ -1324,6 +1324,21 @@ because a different set of handles has a different harmonic target.
   the two curvatures have opposite signs there and the ratio saturates, and a
   score with no gradient at an inflection cannot tell the G2 fallback's answer
   from the drawing it started on.
+- **The curvature stand-down ratchets onto the field.** A joint may not be left
+  worse than the perceptual bound, and that bound stands down where the drawing
+  already arrived worse — so a joint 40 per cent out is not forbidden from being
+  improved to 30. Read off the arriving drawing alone the stand-down is
+  permanent, and on a badly drawn joint it forbids nothing at all: the reported
+  `j` joint arrives 130 per cent out, every answer passed, and the choice fell
+  through to the term that prefers the flatter curve. So the bound is the worse
+  of the perceptual one and the best step anything on the table actually
+  reached. A bad drawing still excuses an answer while nothing better exists,
+  and stops excusing it the moment something does.
+- **Every construction is one field, judged once.** The joint constructions and
+  the handle-length solve are all drawn first and chosen between afterwards,
+  because the ratchet above needs to know what the whole field managed before it
+  can rank any of it. Choosing pairwise as they were drawn is what let an answer
+  its own solver had refused beat one that succeeded.
 - **Two defects rank above any amount of residual, and are not tradeable.** A
   handle over the tension ceiling is one. A crease at a smooth point is the
   other: curvature continuity across a joint with no common tangent does not mean

@@ -1992,3 +1992,121 @@ describe("harmonization: pressing it again does nothing", () => {
     expect(single.numPoints).to.equal(settled.numPoints);
   });
 });
+
+describe("harmonization: a joint that arrived badly broken", () => {
+  //
+  // Reported on `_external/test-glyphs/j.json`, point 3 of the b1aacb66 layer:
+  // with equalization on, the left segment came out flattened and its two
+  // handles were nowhere near equal -- 0.880 and 0.191, which is the opposite
+  // of what the tick asks for.
+  //
+  // The joint arrives with a radius of 199.8 on one side and 42.7 on the other,
+  // a 130 per cent step. The guard that forbids leaving a joint worse than
+  // `maxCurvatureStep` stands down where the drawing already arrived worse than
+  // that, so that a joint 40 per cent out is not forbidden from being improved
+  // to 30. Here it stood down at 130 per cent, which forbade nothing at all,
+  // and the choice fell through to the term that prefers the flatter curve.
+  //
+  function reportedBrokenJoint() {
+    return makeContour([
+      { x: 135, y: 263 },
+      cubic(135, 315),
+      cubic(177, 355),
+      { x: 250, y: 355, smooth: true },
+      cubic(282, 355),
+      cubic(315, 319),
+      { x: 315, y: 263 },
+    ]);
+  }
+
+  function segmentTensions(path, start) {
+    const points = [0, 1, 2, 3].map((offset) => {
+      const [x, y] = path.getPointPosition(start + offset);
+      return { x, y };
+    });
+    const tunniPoint = calculateTunniPoint(points);
+    return [
+      distance(points[0], points[1]) / distance(points[0], tunniPoint),
+      distance(points[3], points[2]) / distance(points[3], tunniPoint),
+    ];
+  }
+
+  // The curvature step across the joint, against the joint's own curvature.
+  function relativeStep(path) {
+    const points = [0, 1, 2, 3, 4, 5, 6].map((index) => {
+      const [x, y] = path.getPointPosition(index);
+      return { x, y };
+    });
+    const incoming = points.slice(0, 4);
+    const outgoing = points.slice(3, 7);
+    const step = curvatureDiscontinuity(incoming, outgoing);
+    const scale =
+      (distance(incoming[0], incoming[3]) + distance(outgoing[0], outgoing[3])) / 2;
+    return step * scale;
+  }
+
+  it("harmonizes it to the grid with every tick off", () => {
+    const path = reportedBrokenJoint();
+    const before = relativeStep(path);
+    harmonizePathInPlace(path, [3], { roundCoordinates: true });
+    expect(relativeStep(path)).to.be.lessThan(before / 100);
+  });
+
+  it("does not leave it worse for having asked for equalization", () => {
+    const plain = reportedBrokenJoint();
+    harmonizePathInPlace(plain, [3], { roundCoordinates: true });
+
+    const equalized = reportedBrokenJoint();
+    harmonizePathInPlace(equalized, [3], {
+      roundCoordinates: true,
+      equalizeTension: true,
+    });
+
+    // A clean answer was on the table, so the guard has to tighten onto it.
+    // The equalized answer is not identical to the plain one -- balancing moves
+    // the drawing the solve then works from -- but it lands beside it instead
+    // of several times worse, and it is under the perceptual bound rather than
+    // excused by the 130 per cent the drawing arrived with.
+    expect(relativeStep(equalized)).to.be.lessThan(0.04);
+    expect(relativeStep(equalized)).to.be.lessThan(relativeStep(plain) * 4);
+  });
+
+  it("does not crown a construction that refused the joint", () => {
+    // Curvatura's handle-length solve reported `partial`, reason `degenerate`,
+    // and won anyway, because nothing above the flatness term could veto it.
+    const path = reportedBrokenJoint();
+    const report = harmonizePathInPlace(path, [3], {
+      roundCoordinates: true,
+      equalizeTension: true,
+    });
+    expect(report[0].status).to.equal("harmonized");
+    expect(report[0].reason).to.equal(undefined);
+  });
+
+  it("settles under repeated calls with equalization on", () => {
+    const path = reportedBrokenJoint();
+    const press = () => {
+      harmonizePathInPlace(path, [3], {
+        roundCoordinates: true,
+        equalizeTension: true,
+      });
+      return Array.from(path.coordinates);
+    };
+    press();
+    press();
+    press();
+    const settled = press();
+    expect(press()).to.deep.equal(settled);
+  });
+
+  it("leaves the segments something like balanced when asked to balance them", () => {
+    // The tick's own promise. It came out at 0.880 and 0.191.
+    const path = reportedBrokenJoint();
+    harmonizePathInPlace(path, [3], {
+      roundCoordinates: true,
+      equalizeTension: true,
+    });
+    const [start, end] = segmentTensions(path, 0);
+    expect(Math.abs(start - end)).to.be.lessThan(0.3);
+  });
+});

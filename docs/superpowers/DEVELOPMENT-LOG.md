@@ -495,6 +495,67 @@ not-converged test used to expect two partials; one of the two joints comes out
 harmonized, because the second solve starts where the first ran out. The budget
 is not the hard stop it reads as.
 
+### The j joint: a bad drawing disarmed the guard
+
+Reported on `_external/test-glyphs/j.json`, point 3 of the `b1aacb66` layer.
+Three complaints, and they are one fault.
+
+The joint arrives with a radius of 199.8 on one side and 42.7 on the other, a
+130 per cent step. With every tick off the command is exact: 109.3 against
+108.4, a 0.90 per cent step, and without the grid it is 0.000. The 0.90 is
+whole-unit rounding and nothing else. Realign is a no-op there, correctly — the
+joint and both handles already sit at y = 355, so the smooth flag is telling the
+truth and there is nothing to repair.
+
+With equalization on, the left segment came out flattened and its handles read
+0.880 and 0.191 — the opposite of what the tick asks for. The balance itself was
+fine and left them at 0.609 and 0.609. What overwrote it was Curvatura's
+handle-length solve, which **reported `partial`, reason `degenerate`** — its own
+solver refused the joint — and won the gate anyway.
+
+**Why the refused answer won.** A joint may not be left worse than
+`maxCurvatureStep`, and that bound stands down where the drawing arrived worse,
+so that a joint 40 per cent out may still be improved to 30. Read off the
+arriving drawing alone, the stand-down is permanent. Here it stood down at 130
+per cent, forbade nothing, and the choice fell to the term below it, which under
+G2 is bending energy — twenty to fifty times the size of the joint terms, and it
+prefers the flatter curve. So the tick that admits the handle-length
+construction was the tick that flattened the stroke.
+
+It never showed with the tick off because there is only one answer then, and
+never under G3 because there the rate has its own rank above the curve term and
+cannot be outvoted.
+
+**The fix is the ratchet**, not a veto on the refused construction. The bound is
+now the worse of the perceptual one and the best step anything on the table
+actually reached. Both fixes close this report; the ratchet closes the class.
+It also forced the constructions to be drawn first and chosen afterwards,
+because a ratchet cannot rank a field it has not seen.
+
+On the reported joint: 4.21 per cent to 2.37, the construction `g2` rather than
+a refused `handles`, and the left segment at 0.609/0.417 rather than
+0.880/0.191. Over 1500 random joints:
+
+|                         | median step           | left over 3% and worse than drawn |
+| ----------------------- | --------------------- | --------------------------------- |
+| G2, no ticks            | 5.12e-2 unchanged     | 186 unchanged                     |
+| G3, no ticks            | 2.96e-1 unchanged     | 317 unchanged                     |
+| G2 + equalize           | 2.27e-2 → 2.17e-2     | 223 → 215                         |
+| G3 + equalize + realign | 9.01e-2 → **2.93e-2** | 430 → **255**                     |
+
+Byte-identical with no ticks, which is the check that matters: the ratchet only
+bites where there is more than one answer to rank. The stated cost is under G3
+with the ticks on, where the median rate step rises from 5.25 to 13.3 — the
+answers it now vetoes were flatter and some of them had the better rate. That is
+the module's own ordering: a visible break at the joint outranks any amount of
+residual.
+
+**Repeated calls settle now.** On the reported joint they converge by the fourth
+press and hold. Over 800 random joints with equalization on the median is two
+calls and the 90th percentile six, against a drift that never converged. Ten per
+cent still have not settled inside twelve, and that is the balance's own nature
+rather than the loop's — see the section above.
+
 ### Realign, and what it is actually worth
 
 The pass squares a smooth joint up before anything is solved. mekkablue's rule,

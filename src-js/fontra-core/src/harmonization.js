@@ -857,7 +857,14 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
     // the worse of the perceptual bound and what the drawing already had.
     const arrived = arrival?.get(pointIndex);
     if (arrived !== undefined) {
-      const ceiling = Math.max(arrived, limits.maxCurvatureStep);
+      // The stand-down ratchets. `limits.ceilings` carries, per joint, the best
+      // step any answer on the table actually reached, so once one of them
+      // comes in clean the drawing stops excusing the others. Without it the
+      // stand-down is permanent: a joint reported at 130% disarmed the bound
+      // completely, every answer passed, and the choice fell through to the
+      // term that prefers the flatter curve. See the reported `j` joint.
+      const ceiling =
+        limits.ceilings?.get(pointIndex) ?? Math.max(arrived, limits.maxCurvatureStep);
       if (relativeCurvatureStep(path, ctx) > ceiling) {
         stepped += 1;
       }
@@ -2116,17 +2123,22 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     }
   }
   const limits = { maxHandleTension, maxCurvatureStep };
-  const scoreOf = (candidate) =>
-    scoreJoints(candidate, candidates, continuity, limits, arrival);
+  const scoreWith = (candidate, ceilings) =>
+    scoreJoints(candidate, candidates, continuity, { ...limits, ceilings }, arrival);
 
   //
-  // One solve, on a copy, so the loop below can decline it whole.
+  // One solve, on a copy. It hands back every answer it drew rather than
+  // choosing between them: the choice belongs to the one gate at the end, which
+  // is the only place that knows what the whole field managed.
   //
   function solveOnce(from) {
-    const working = from.copy();
+    const drawn = [];
 
-    const byJoint = working.copy();
-    const jointReport = harmonizeByJointInPlace(byJoint, candidates, options);
+    const byJoint = from.copy();
+    drawn.push({
+      path: byJoint,
+      report: harmonizeByJointInPlace(byJoint, candidates, options),
+    });
 
     // The handle-length candidate is only admissible where moving the outer
     // handles is. A cubic's end curvature depends only on its last three
@@ -2141,13 +2153,13 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     // it off there is one candidate and the default press moves exactly what it
     // always moved.
     if (equalizeTension) {
-      const byHandles = working.copy();
-      const handleReport = harmonizeHandlesInPlace(byHandles, candidates, options);
-      if (isBetter(scoreOf(byHandles), scoreOf(byJoint))) {
-        return { path: byHandles, report: handleReport };
-      }
+      const byHandles = from.copy();
+      drawn.push({
+        path: byHandles,
+        report: harmonizeHandlesInPlace(byHandles, candidates, options),
+      });
     }
-    return { path: byJoint, report: jointReport };
+    return drawn;
   }
 
   //
@@ -2169,25 +2181,33 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   //
   const original = Array.from(path.coordinates);
   const seen = new Set([original.join(",")]);
-  let best = { score: scoreOf(path), coordinates: original, report: null };
-  let firstReport = null;
+
+  // The prepared drawing is the first candidate and the floor, so the two
+  // preparation passes always land and a press that can only make things worse
+  // leaves the drawing alone.
+  const field = [{ path: path.copy(), report: null }];
   let current = path;
 
   for (let attempt = 0; attempt < Math.max(1, pressAttempts); attempt++) {
-    const pressed = solveOnce(current);
-    firstReport ??= pressed.report;
+    const drawn = solveOnce(current);
+    field.push(...drawn);
 
-    const coordinates = Array.from(pressed.path.coordinates);
-    if (isBetter(scoreOf(pressed.path), best.score)) {
-      best = { score: scoreOf(pressed.path), coordinates, report: pressed.report };
+    // Which one the next attempt carries on from. Judged against the drawing
+    // as it stands rather than against the whole field, because the field is
+    // not complete yet -- the final choice below is.
+    let next = drawn[0];
+    for (const candidate of drawn.slice(1)) {
+      if (isBetter(scoreWith(candidate.path), scoreWith(next.path))) {
+        next = candidate;
+      }
     }
 
-    const key = coordinates.join(",");
+    const key = Array.from(next.path.coordinates).join(",");
     if (seen.has(key)) {
       break;
     }
     seen.add(key);
-    current = pressed.path;
+    current = next.path.copy();
     // Prepared again for the next attempt, because the solve has moved the
     // inner handles and rounded them, so both passes have something to say
     // about the drawing again. This is what makes the repetition a cycle the
@@ -2195,10 +2215,52 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     prepare(current);
   }
 
+  //
+  // The stand-down ratchets onto the field.
+  //
+  // A joint may not be left worse than `maxCurvatureStep`, and that bound
+  // stands down where the drawing already arrived worse -- so that a joint 40%
+  // out is not forbidden from being improved to 30%. Read off the arriving
+  // drawing alone, the stand-down is permanent: the reported `j` joint arrives
+  // 130% out, so every answer passed however bad, and the choice fell through
+  // to the term that prefers the flatter curve. The tick that admits the
+  // handle-length construction was therefore the tick that flattened the
+  // stroke, and the balance it promised was overwritten by the answer it let in.
+  //
+  // The bound is the worse of `maxCurvatureStep` and the best step anything on
+  // the table actually reached. So a bad drawing still excuses an answer while
+  // nothing better exists, and stops excusing it the moment something does.
+  //
+  const ceilings = new Map();
+  for (const pointIndex of candidates) {
+    if (!arrival.has(pointIndex)) {
+      continue;
+    }
+    let reached = arrival.get(pointIndex);
+    for (const { path: candidate } of field) {
+      const ctx = getJointContext(candidate, pointIndex);
+      if (!ctx.reason) {
+        reached = Math.min(reached, relativeCurvatureStep(candidate, ctx));
+      }
+    }
+    ceilings.set(pointIndex, Math.max(reached, maxCurvatureStep));
+  }
+
+  // First wins a tie, and the prepared drawing is first, so an answer has to
+  // beat it rather than merely match it.
+  let best = field[0];
+  let bestScore = scoreWith(best.path, ceilings);
+  for (const candidate of field.slice(1)) {
+    const score = scoreWith(candidate.path, ceilings);
+    if (isBetter(score, bestScore)) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+
   for (let index = 0; index < path.numPoints; index++) {
     const [x, y] = path.getPointPosition(index);
-    const bestX = best.coordinates[index * 2];
-    const bestY = best.coordinates[index * 2 + 1];
+    const [bestX, bestY] = best.path.getPointPosition(index);
     if (bestX !== x || bestY !== y) {
       path.setPointPosition(index, bestX, bestY);
     }
@@ -2214,7 +2276,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   // may still have had its two segments balanced by the preparation passes:
   // `skipped` means nothing was harmonized there, not that nothing moved.
   //
-  const report = best.report ?? firstReport ?? [];
+  const report = best.report ?? field[1]?.report ?? [];
   for (const state of report) {
     if (state.status !== "harmonized" && state.status !== "partial") {
       continue;
