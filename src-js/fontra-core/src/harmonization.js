@@ -605,6 +605,17 @@ function handleTension(points, nearSide) {
   return reach ? distance(onCurve, handle) / reach : Infinity;
 }
 
+// How far apart a segment's two tensions sit, or undefined where it has no
+// tangent crossing to measure them against.
+function segmentImbalance(points) {
+  const start = handleTension(points, "start");
+  const end = handleTension(points, "end");
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return undefined;
+  }
+  return Math.abs(start - end);
+}
+
 //
 // The worst tension either of the joint's own handles would reach after a
 // step, computed without touching the path.
@@ -810,6 +821,7 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
   let stepped = 0;
   let residual = 0;
   let unfair = 0;
+  let unbalanced = 0;
   for (const pointIndex of candidates) {
     const ctx = getJointContext(path, pointIndex);
     if (ctx.reason) {
@@ -903,11 +915,35 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
     }
 
     for (const { nearSide, indices } of jointSegments(path, ctx)) {
-      if (
-        handleTension(segmentPositions(path, indices), nearSide) >
-        limits.maxHandleTension
-      ) {
+      const points = segmentPositions(path, indices);
+      if (handleTension(points, nearSide) > limits.maxHandleTension) {
         crossed += 1;
+      }
+      //
+      // The balance tick asks for the two handles of a segment to sit at one
+      // tension. It also admits the handle-length construction, which has no
+      // balancing property at all -- it solves lengths against a curvature
+      // target and says nothing about how the two compare. So whenever that
+      // construction won, the tick's own promise went with it: on the reported
+      // `B^1` joint, one press left a segment at 0.961 against 0.246.
+      //
+      // Where the tick is on, an answer that leaves a segment visibly lopsided
+      // loses to one that does not. The tick states what the designer wants, so
+      // it belongs in what makes one answer better than another -- and it is a
+      // count rather than a magnitude, like the curvature bound above it: an
+      // answer may move tension about freely inside the tolerance.
+      //
+      // A softer form was measured and rejected: bounding each segment by how
+      // lopsided the DRAWING had it left the reported joint at 0.651 against
+      // 0.739, which is better than it was and still not what the tick says.
+      // The bound is a flat one, so the tick means the same thing on every
+      // drawing.
+      //
+      if (limits.balanceTolerance !== undefined) {
+        const now = segmentImbalance(points);
+        if (now !== undefined && now > limits.balanceTolerance) {
+          unbalanced += 1;
+        }
       }
     }
   }
@@ -927,13 +963,14 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
   // still in the sum and was simply too small to be heard.
   //
   return continuity === "G3"
-    ? { broken, crossed, creased, stepped, refused: 0, residual, unfair }
+    ? { broken, crossed, creased, stepped, refused: 0, unbalanced, residual, unfair }
     : {
         broken,
         crossed,
         creased,
         stepped,
         refused: 0,
+        unbalanced,
         residual: residual + unfair,
         unfair: 0,
       };
@@ -971,9 +1008,17 @@ const SCORE_RANKS = [
   "creased",
   "stepped",
   "refused",
+  "unbalanced",
   "residual",
   "unfair",
 ];
+
+// How far apart a segment's two tensions may sit and still read as equal. Only
+// consulted where the designer asked for the balance. Like the perceptual
+// curvature bound it is a constant so that it can be argued with rather than
+// tuned. It is flat and does not stand down, so the tick means the same thing
+// on every drawing.
+const BALANCE_TOLERANCE = 0.05;
 
 // The three words mean different things to the two constructions, and only the
 // handle-length one means "refused" by them. The joint constructions step
@@ -2170,7 +2215,13 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       arrival.set(pointIndex, relativeCurvatureStep(path, ctx));
     }
   }
-  const limits = { maxHandleTension, maxCurvatureStep };
+  const limits = {
+    maxHandleTension,
+    maxCurvatureStep,
+    // The rank is the tick's own preference, so with the tick off it does not
+    // reach the ranking at all.
+    balanceTolerance: equalizeTension ? BALANCE_TOLERANCE : undefined,
+  };
   const scoreWith = (candidate, ceilings) =>
     scoreJoints(candidate, candidates, continuity, { ...limits, ceilings }, arrival);
 

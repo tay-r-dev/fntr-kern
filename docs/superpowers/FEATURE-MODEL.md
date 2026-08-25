@@ -1345,6 +1345,13 @@ because a different set of handles has a different harmonic target.
   taken whole or not at all, so `clamped`, `tension-limited` and `degenerate`
   there mean it drew nothing. The joint constructions use the same three words
   for a step they scaled back at a limit, which is a real answer partly applied.
+- **Where the balance is asked for, an unbalanced answer loses.** The tick does
+  two unrelated things — it balances the segments before the solve, and it
+  admits the handle-length construction, which has no balancing property at all.
+  So an answer that leaves a segment's two tensions more than 0.05 apart ranks
+  below one that does not. A count, not a magnitude, and a flat bound rather
+  than one that stands down, so the tick means the same thing on every drawing.
+  It costs joint accuracy on the presses that ask for it, and only those.
 - **Two defects rank above any amount of residual, and are not tradeable.** A
   handle over the tension ceiling is one. A crease at a smooth point is the
   other: curvature continuity across a joint with no common tangent does not mean

@@ -600,6 +600,56 @@ G3 with both ticks, 255 to 251. The rank is a tie-break in the population and a
 correction on the two reported joints, which is what a rank below the hard
 defects should look like.
 
+### The balance tick did two unrelated things, and they fought
+
+`B^1.json` redrawn, point 3, still with equalization on: one press left the left
+segment at 0.961 against 0.246. Not refused this time — the handle-length solve
+converged and won honestly.
+
+The tick does two unrelated things. It balances the segments before the solve,
+and it admits Curvatura's handle-length construction. **That construction has no
+balancing property at all** — it solves handle lengths against a curvature
+target and says nothing about how the two of them compare. So whenever it wins,
+the tick's own promise goes with it, and under G2 it usually wins, because there
+the ranking is carried by the term that prefers the flatter curve. All three
+reports on this tick were this one fault wearing different clothes.
+
+**A tick states what the designer wants, so it belongs in what makes one answer
+better than another.** Where it is on, an answer that leaves a segment's two
+tensions more than 0.05 apart loses to one that does not. It is a count and not
+a magnitude, like the curvature bound above it in the ranking: inside the
+tolerance an answer may move tension about freely.
+
+Both reported joints now balance in one press and hold:
+
+|                       | joint | left segment  | right segment | settles |
+| --------------------- | ----- | ------------- | ------------- | ------- |
+| `B^1` point 3, before | 0.48% | 0.961 / 0.246 | 0.441 / 0.588 | never   |
+| `B^1` point 3, now    | 0.48% | 0.767 / 0.739 | 0.568 / 0.549 | call 2  |
+| `j` point 3, before   | 2.37% | 0.609 / 0.417 | 0.769 / 0.565 | call 3  |
+| `j` point 3, now      | 0.79% | 0.467 / 0.461 | 0.662 / 0.652 | call 1  |
+
+**Two softer forms were built and measured, and both were rejected.** A
+tolerance of 0.25 is cheap in the population and leaves the reported joint at
+0.605 against 0.826, which nobody would call equal. Bounding each segment by how
+lopsided the DRAWING had it — the same stand-down the curvature bound uses —
+leaves it at 0.651 against 0.739, better than it was drawn and still not what
+the tick says. The bound is flat, so the tick means the same thing on every
+drawing.
+
+**The stated cost, over 1500 random joints.** Nothing changes with the tick off.
+With it on, the median curvature step rises from 2.69e-2 to 3.13e-2 under G2 and
+from 3.12e-2 to 3.99e-2 under G3, and the joints left both over the perceptual
+bound and worse than drawn rise from 212 to 235 and from 251 to 327. That is the
+price of the tick doing what it says, and it is paid only by the presses that
+ask for it.
+
+**Exact equality and an exact joint cannot both hold in general**, and it is
+worth saying why rather than chasing it again. Balancing a segment sets the
+ratio of its two handles; harmonizing sets the inner one. They are the same
+number. What the ranking can do, and now does, is refuse the answers that are
+not even close.
+
 ### Realign, and what it is actually worth
 
 The pass squares a smooth joint up before anything is solved. mekkablue's rule,
