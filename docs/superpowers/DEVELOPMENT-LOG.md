@@ -689,6 +689,57 @@ ratchet takes that step as its own bound and stops forbidding anything. G2
 reaches 1.20 per cent on the same joint. Letting the outer field see the inner
 gate's discards is the fix, and it is not a small one.
 
+### The two-press flip, and the candidate that was missing all along
+
+Reported: G3 with the on-curve move on still took several presses. Traced on
+`j` point 3 with the balance on, and it is a clean period-two cycle — the joint
+alternates between x = 260 and x = 190, seventy units apart, **with identical
+curvature and identical rate to every digit printed**. Two mirror answers, both
+harmonic, both balanced, and each press took the other one.
+
+The cause is the hole this loop has had since it was built: **the state a press
+keeps is not a candidate of the next press.** Every press prepares the drawing
+before it does anything, so what the designer is looking at was never on the
+table. From 260 the field held 190 and not 260, so 190 won; from 190 it held 260. For ever.
+
+The drawing exactly as handed is a candidate now, beside the prepared one.
+Every combination on both reported glyphs settles on the first press.
+
+**It was built and reverted once before**, when the balance ran inside the gate:
+back then the arriving drawing reverted the balance and the tick did nothing at
+all. What makes it safe now is everything added since — a crease, an unbalanced
+segment and a curvature step all rank above the curve, so the drawing has to be
+better by the measures that matter, not merely flatter.
+
+**Ranks needed a tie tolerance.** The two flip states agreed on the residual to
+every printed digit and differed in the twelfth, and the comparison was exact,
+so dust settled which was kept — differently each press, because the drawing it
+measured had moved by a rounding step in between. Ranks tie within a relative
+1e-9 now, and a last rank breaks what is left: how far the answer moved the
+drawing. Two answers that are equally good are not equally welcome.
+
+**The reverted preparation pass shows up in exactly one place**, and it is a
+configuration no press uses: with the solver switched off entirely, the gate can
+prefer the drawing to a realigned joint, because straightening a joint inside
+the grid's own allowance buys nothing the score reads. The test that covered it
+reads the pass directly now rather than through a whole press.
+
+**One report fault came with it, and it silenced six tests at once.** The
+fallback report was `field[1]`, which had been the first solved answer and was
+now the arriving drawing, whose report is null. Six tests reported an empty
+report and failed on the entry that was not there.
+
+Over 1500 random joints, against the previous round:
+
+|                                 | 2nd call moves | 2nd call worse | over 3% and worse than drawn |
+| ------------------------------- | -------------- | -------------- | ---------------------------- |
+| G2 + equalize                   | 1050 → **615** | 579 → **252**  | 223 → 201                    |
+| G3 + equalize + realign         | 863 → **371**  | 476 → **122**  | 257 → 239                    |
+| G3 + slide + equalize + realign | —              | —              | **19**, median step 1.03e-2  |
+
+Both stability and quality improved, which is the sign that the candidate was
+missing rather than that a trade was made.
+
 ### Realign, and what it is actually worth
 
 The pass squares a smooth joint up before anything is solved. mekkablue's rule,

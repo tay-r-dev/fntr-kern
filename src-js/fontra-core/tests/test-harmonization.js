@@ -13,6 +13,7 @@ import {
   harmonizePath,
   harmonizePathInPlace,
   measureG2Discontinuity,
+  realignSmoothJointsInPlace,
 } from "@fontra/core/harmonization.js";
 import { calculateTunniPoint } from "@fontra/core/tunni-calculations.js";
 import VarArray from "@fontra/core/var-array.js";
@@ -1856,12 +1857,16 @@ describe("harmonization: realigning a joint before it is solved", () => {
   });
 
   it("brings the joint to the handles when neither runs along an axis", () => {
+    // Read off the pass itself. Through a whole press the gate has the last
+    // word, and with nothing solved it can prefer the drawing -- which is a
+    // statement about the gate and not about this rule.
     const path = bentJoint();
     const before = positionsOf(path, [2, 4]);
-    harmonizePathInPlace(path, [3], { realignHandles: true, maxIterations: 0 });
+    realignSmoothJointsInPlace(path, [3], new Set());
     // both handles are where the designer drew them; the joint moved onto them
     expect(positionsOf(path, [2, 4])).to.deep.equal(before);
     expect(positionsOf(path, [3])).to.not.deep.equal([{ x: 100, y: 100 }]);
+    expect(bendAt(path, 3)).to.be.lessThan(1e-9);
   });
 
   it("keeps an axis-aligned handle and turns the other onto it", () => {

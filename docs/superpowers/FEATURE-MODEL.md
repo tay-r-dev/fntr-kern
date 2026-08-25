@@ -1334,6 +1334,17 @@ because a different set of handles has a different harmonic target.
   of the perceptual one and the best step anything on the table actually
   reached. A bad drawing still excuses an answer while nothing better exists,
   and stops excusing it the moment something does.
+- **The drawing as handed is a candidate.** The command prepares before it does
+  anything, so without this the state the designer is looking at is never on the
+  table and a press cannot be idempotent — it put one joint into a two-press
+  flip seventy units wide between two answers that were equally harmonic and
+  equally balanced. It is safe only because a crease, an unbalanced segment and
+  a curvature step all rank above the curve: the drawing has to be better by the
+  measures that matter, not merely flatter.
+- **Ranks tie within a relative tolerance, and travel breaks what is left.**
+  Floating-point dust may not decide between two indistinguishable answers, and
+  where they really are indistinguishable the one that changed less of the
+  drawing is kept.
 - **Where to look next and which answer to keep are different questions.** The
   repetition always walks through the joint construction's answer; the whole
   field is ranked once, at the end. Ranking the walk stopped the loop dead: a

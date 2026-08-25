@@ -1011,6 +1011,17 @@ const SCORE_RANKS = [
   "unbalanced",
   "residual",
   "unfair",
+  // Last, and it decides nothing but a true tie: how far the answer moved the
+  // drawing. Two answers that are equally good are not equally welcome, and the
+  // one that changed less of what the designer drew is the one to keep.
+  //
+  // It is what stops a flip. On `j` point 3 under G3 with the slide and the
+  // balance on, the search found two positions 70 units apart along the tangent
+  // whose curvature and rate agreed to every digit, and each press took the
+  // other one -- for ever, because the state a press keeps is not itself a
+  // candidate of the next press. The slide already breaks its own ties this
+  // way; the gate above it did not.
+  "travel",
 ];
 
 // How far apart a segment's two tensions may sit and still read as equal. Only
@@ -1043,9 +1054,22 @@ function refusalCount(report) {
   return refused;
 }
 
+//
+// Two answers this close on a rank are the same answer on that rank, and the
+// next one down decides. Without it, floating-point dust in the twelfth digit
+// settles which of two indistinguishable answers is kept -- and on `j` point 3
+// it settled it differently each press, because the drawing it was measuring
+// had moved by a rounding step in between.
+//
+const RANK_TIE = 1e-9;
+
+function tied(a, b) {
+  return Math.abs(a - b) <= RANK_TIE * Math.max(1, Math.abs(a), Math.abs(b));
+}
+
 function isBetter(candidate, incumbent) {
   for (const rank of SCORE_RANKS) {
-    if (candidate[rank] !== incumbent[rank]) {
+    if (!tied(candidate[rank], incumbent[rank])) {
       return candidate[rank] < incumbent[rank];
     }
   }
@@ -2201,8 +2225,22 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     }
   }
 
-  // The floor. Preparing the drawing the command was handed is the one state
-  // the gate below may never fall beneath, so the two passes always land.
+  // The drawing exactly as the command was handed it, kept as a candidate of
+  // its own. Without it a press cannot be idempotent: whatever the previous
+  // press left, this one prepares before it does anything, so the state the
+  // designer is looking at is not on the table and cannot be chosen again.
+  //
+  // On `j` point 3 under G3 with the slide and the balance on, that put the
+  // joint into a two-press flip 70 units wide, between two mirror answers whose
+  // curvature and rate agreed to every digit. Each press could see only the
+  // other one, so each press took it.
+  //
+  // It is safe to offer only because a crease, an unbalanced segment and a
+  // curvature step all rank above the curve now. Those are what stop it
+  // reverting the preparation passes, which is what this candidate did the last
+  // time it existed.
+  const asHanded = path.copy();
+
   prepare(path);
 
   // What each joint's curvature step was in the drawing the solve is handed.
@@ -2284,7 +2322,10 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   // The prepared drawing is the first candidate and the floor, so the two
   // preparation passes always land and a press that can only make things worse
   // leaves the drawing alone.
-  const field = [{ path: path.copy(), report: null }];
+  const field = [
+    { path: path.copy(), report: null },
+    { path: asHanded, report: null },
+  ];
   let current = path;
 
   for (let attempt = 0; attempt < Math.max(1, pressAttempts); attempt++) {
@@ -2352,9 +2393,20 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
 
   // First wins a tie, and the prepared drawing is first, so an answer has to
   // beat it rather than merely match it.
+  // How far a candidate moved the drawing, summed over every point.
+  const travelOf = (candidate) => {
+    let travel = 0;
+    for (let index = 0; index < candidate.numPoints; index++) {
+      const [x, y] = candidate.getPointPosition(index);
+      travel += Math.hypot(x - original[index * 2], y - original[index * 2 + 1]);
+    }
+    return travel;
+  };
+
   const rank = (candidate) => ({
     ...scoreWith(candidate.path, ceilings),
     refused: refusalCount(candidate.report),
+    travel: travelOf(candidate.path),
   });
 
   let best = field[0];
@@ -2385,7 +2437,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   // may still have had its two segments balanced by the preparation passes:
   // `skipped` means nothing was harmonized there, not that nothing moved.
   //
-  const report = best.report ?? field[1]?.report ?? [];
+  const report = best.report ?? field.find((c) => c.report)?.report ?? [];
   for (const state of report) {
     if (state.status !== "harmonized" && state.status !== "partial") {
       continue;
