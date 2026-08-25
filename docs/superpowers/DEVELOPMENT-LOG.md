@@ -283,6 +283,26 @@ units over a 22.37% mismatch, and 3.73 units after the mismatch is fixed to
 2.36% — the reverse of the truth. Not fixed, at the user's instruction; recorded
 here so it is not re-derived.
 
+### The on-curve slide under G3, measured both ways
+
+Proposed: disable "move the on-curve" under G3, on the reasoning that G3 always
+moves the two inner handles and holds the joint. Measured, that is the wrong
+call on an isolated joint and the right instinct on a ring.
+
+Over 2000 random isolated joints, G3 with the slide against G3 without it: the
+curvature step improves on 1723 and worsens on 253, and the rate step improves
+on 1742 and worsens on 237. It is the most effective option under G3, not a
+dead one.
+
+Over 400 random coupled rings the answer reverses: better on 77 and worse on 322. Every joint sliding at once moves its neighbours' stencils, so the ring
+fights itself. It is also the slowest thing in the module — 64 sampled
+positions per joint per attempt.
+
+The real complaint behind the proposal stands: one label covers two different
+actions. Under G2 the tick picks who carries the correction, and the curve is
+the same shape either way. Under G3 it turns on a search over the tangent. That
+is a naming problem.
+
 ### The second donor command, and what it is for
 
 `harmonize_contour` answers "fix this joint". `harmonizehandles_contour`
@@ -429,6 +449,51 @@ curve's own midpoint", which is false: the balanced midpoints lie on a line the
 original midpoint is not on, so the answer is the nearest point and not the
 point. **A test that asserts an exact identity for a least-squares answer is
 asserting the thing least squares exists because you cannot have.**
+
+### Pressing the button again, and what the loop can and cannot settle
+
+Reported as "multiple presses give a better and better picture". Measured, the
+report was half right and it named a defect.
+
+A press was not a fixed point. Over 2000 random joints a second press moved
+points on 21 of them under G2 and 35 under G3 — the small tail the rounding
+loop inside the sweep leaves — and with the two preparation passes on it moved
+1115, improved 660 and made **430 worse**. So repeated pressing was a gamble
+that read as convergence.
+
+The whole press repeats inside one scored gate now, the rule the rounding loop
+already used, one level up. Without the preparation ticks it settles
+completely: 0 of 1500 second calls move anything, against 21 and 35.
+
+**It cannot settle the balance, and the reason is what the balance is.** Every
+call balances the drawing it is handed, and that drawing has had its inner
+handles moved by the previous call's solve. So there is always something left
+to balance, and 1082 of 1500 second calls still move. This is not a bug in the
+loop. It is two different requests to the same four handles inside one command.
+Curvatura keeps its tunnify separate, and the log has said that is the better
+model twice now. **A loop can make one answer settle. It cannot make two
+answers agree.**
+
+**Three attempts at a floor, and why none of them work.** The gate needs a state
+it may never fall beneath, or the balance is reverted and the tick does nothing
+— the defect this section already carried. Making that floor the prepared
+drawing fixes the reversion and costs idempotence, because the next call's floor
+is the prepared version of the kept state and the kept state is not itself a
+candidate. Making it the arriving drawing restores idempotence and brings the
+reversion straight back. There is no third place to put it while the balance
+lives inside the command.
+
+**A test that pins coordinates cannot survive a search.** "Balances the segments
+off the arriving drawing" asserted an outer handle's exact position, which was
+true of one press and false of the best of several. Deleted rather than
+loosened: the contract it was reaching for — the joint is as exact with the
+balance on as with it off — is already pinned by its own test, and that one is
+a statement rather than a coordinate.
+
+**A starved iteration budget is now partly made up by the repetition.** The
+not-converged test used to expect two partials; one of the two joints comes out
+harmonized, because the second solve starts where the first ran out. The budget
+is not the hard stop it reads as.
 
 ### Realign, and what it is actually worth
 

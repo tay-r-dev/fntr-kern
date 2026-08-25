@@ -1214,6 +1214,29 @@ the relative displacement is identical either way, so the curve is the same shap
 and only its position at the joint differs. Under G3 it turns the slide on. The
 values between the old slider's two ends were never asked for.
 
+### 10.2b The press repeats itself
+
+The sweep below settles one solve. A press is prepare, then solve, and that was
+not a fixed point: pressing the button again kept changing the drawing, and a
+designer reading the curvature comb took the change for progress.
+
+The whole press now repeats inside one scored gate, which is the rule the
+rounding loop inside the sweep already uses, applied one level up. Every state
+the repetition lands on is scored, the loop stops the moment a drawing comes
+round a second time, and the best of them is kept. The drawing the command was
+handed is one of the candidates, so a repetition that can only make things
+worse leaves it alone. With neither preparation pass on, a second call now moves
+nothing at all: 0 of 1500 random joints, against 21 to 35 before.
+
+**With the balance on, a second call is not a repetition.** Every call balances
+the drawing it is handed, and that drawing has had its inner handles moved by
+the previous call's solve, so there is something to balance again — 1082 of
+1500 joints still move, and 628 of those come out worse on the raw curvature
+step. The loop settles the solve. It cannot settle two different requests to
+the same handles. Curvatura's model, where the balance is its own command,
+is the answer, and it is a change to what the tick **is** rather than to how it
+runs.
+
 ### 10.3 The sweep
 
 Every joint on a closed contour shares a segment with the two beside it, so

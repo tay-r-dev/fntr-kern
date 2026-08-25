@@ -56,6 +56,10 @@ export const HARMONIZE_DEFAULTS = {
   // joint is solved in one; a ring of coupled joints (an 'o') takes ~8. The
   // math is a handful of square roots, so the budget is generous on purpose.
   maxIterations: 50,
+  // How many times the whole press -- prepare, then solve -- may repeat before
+  // it has to have settled. Every state is scored and the best is kept, so a
+  // repetition can only improve the drawing. One is a single press.
+  pressAttempts: 8,
   // Square up a smooth joint whose handles have drifted off its tangent,
   // before anything is solved. A joint that arrives bent is corrected against
   // a tangent that is not there.
@@ -2026,6 +2030,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     maxHandleTension,
     maxCurvatureStep,
     roundCoordinates,
+    pressAttempts,
   } = {
     ...HARMONIZE_DEFAULTS,
     ...options,
@@ -2035,64 +2040,74 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     ? [...new Set(pointIndices)].sort((a, b) => a - b)
     : expandToJoints(path, undefined);
 
-  const prepared = new Set();
+  //
+  // The two preparation passes, as one step.
+  //
+  // They run outside the gate: neither is a proposal about continuity, and the
+  // gate judges nothing else. Running the balance inside it is what made the
+  // tick do nothing at all -- a harmonic answer the gate declined took the
+  // equalization out with it.
+  //
+  function prepare(target) {
+    const prepared = new Set();
 
-  //
-  // Square the joints up first of all. Balancing below reads each segment's
-  // tangent rays, and every construction after it reads the joint's tangent,
-  // so both want a drawing whose smooth flags are true.
-  //
-  if (realignHandles) {
-    realignSmoothJointsInPlace(path, candidates, prepared);
-  }
+    // Square the joints up first of all. Balancing below reads each segment's
+    // tangent rays, and every construction after it reads the joint's tangent,
+    // so both want a drawing whose smooth flags are true.
+    if (realignHandles) {
+      realignSmoothJointsInPlace(target, candidates, prepared);
+    }
 
-  //
-  // Equalize FIRST, before anything is solved.
-  //
-  // It used to run last, after the best-state gate, which is the donor's
-  // `balance, harmonize, balance` (SuperTool+Harmonize.m:61,75). Two things
-  // went wrong there. It balanced each segment against inner handles the solve
-  // had just placed, so it overwrote the exact answer -- on the arch joint it
-  // took the G3 rate step from 5.3e-6 to 5.8e-5. And while it ran inside the
-  // gate, a harmonic answer the gate declined took the equalization out with
-  // it, so the tick did nothing at all.
-  //
-  // Balancing is a statement about the two handles of one segment. It is not a
-  // proposal about continuity and has no business being scored against one. So
-  // it prepares the drawing and the solve has the last word, which is the order
-  // both of the other donors use -- Curvatura keeps its tunnify a separate
-  // command, and the Bezier Fixer panel runs tunnify before harmonize.
-  //
-  // The ceiling is re-established here and not assumed: a balanced tension can
-  // itself land over it.
-  //
-  if (equalizeTension) {
-    for (const pointIndex of candidates) {
-      const ctx = getJointContext(path, pointIndex);
-      if (ctx.reason) {
-        continue;
+    //
+    // Equalize BEFORE anything is solved.
+    //
+    // It used to run last, after the best-state gate, which is the donor's
+    // `balance, harmonize, balance` (SuperTool+Harmonize.m:61,75). It balanced
+    // each segment against inner handles the solve had just placed, so it
+    // overwrote the exact answer -- on the arch joint it took the G3 rate step
+    // from 5.3e-6 to 5.8e-5.
+    //
+    // Balancing is a statement about the two handles of one segment, so it
+    // prepares the drawing and the solve has the last word. That is the order
+    // both of the other donors use -- Curvatura keeps its tunnify a separate
+    // command, and the Bezier Fixer panel runs tunnify before harmonize.
+    //
+    // The ceiling is re-established here and not assumed: a balanced tension
+    // can itself land over it.
+    //
+    if (equalizeTension) {
+      for (const pointIndex of candidates) {
+        const ctx = getJointContext(target, pointIndex);
+        if (ctx.reason) {
+          continue;
+        }
+        equalizeJointSegments(target, ctx, prepared);
+        enforceHandleTension(
+          target,
+          getJointContext(target, pointIndex),
+          maxHandleTension,
+          prepared
+        );
       }
-      equalizeJointSegments(path, ctx, prepared);
-      enforceHandleTension(
-        path,
-        getJointContext(path, pointIndex),
-        maxHandleTension,
-        prepared
-      );
+    }
+
+    // Whole units, by rounding and not by searching. The search below is for
+    // choosing between answers; neither pass above is offering one.
+    if (roundCoordinates) {
+      for (const index of prepared) {
+        const [x, y] = target.getPointPosition(index);
+        target.setPointPosition(index, Math.round(x), Math.round(y));
+      }
     }
   }
 
-  // Whole units, by rounding and not by searching. The search below is for
-  // choosing between answers; neither pass above is offering one.
-  if (roundCoordinates) {
-    for (const index of prepared) {
-      const [x, y] = path.getPointPosition(index);
-      path.setPointPosition(index, Math.round(x), Math.round(y));
-    }
-  }
+  // The floor. Preparing the drawing the command was handed is the one state
+  // the gate below may never fall beneath, so the two passes always land.
+  prepare(path);
 
-  // Read once, from the drawing the solve is handed, so both candidates are
-  // judged against the same thing.
+  // What each joint's curvature step was in the drawing the solve is handed.
+  // Read once: it is a ceiling on the answer, and every attempt below is judged
+  // against the same one.
   const arrival = new Map();
   for (const pointIndex of candidates) {
     const ctx = getJointContext(path, pointIndex);
@@ -2104,47 +2119,120 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   const scoreOf = (candidate) =>
     scoreJoints(candidate, candidates, continuity, limits, arrival);
 
-  const byJoint = path.copy();
-  const jointReport = harmonizeByJointInPlace(byJoint, candidates, options);
-
-  // The handle-length candidate is only admissible where moving the outer
-  // handles is. A cubic's end curvature depends only on its last three control
-  // points, so `PP` and `NN` are inputs to the joint construction and never
-  // outputs -- and that is a rule this module keeps, not an accident: it is why
-  // equalizing is an opt-in pass rather than part of the default press.
   //
-  // The handle-length solve rescales both handles of every segment, so it does
-  // move them. `equalizeTension` is already the tick that says the outer
-  // handles may move, so it is the tick that admits this candidate too. With it
-  // off there is one candidate and the default press moves exactly what it
-  // always moved.
-  let winner = { path: byJoint, report: jointReport };
-  if (equalizeTension) {
-    const byHandles = path.copy();
-    const handleReport = harmonizeHandlesInPlace(byHandles, candidates, options);
-    if (isBetter(scoreOf(byHandles), scoreOf(byJoint))) {
-      winner = { path: byHandles, report: handleReport };
+  // One solve, on a copy, so the loop below can decline it whole.
+  //
+  function solveOnce(from) {
+    const working = from.copy();
+
+    const byJoint = working.copy();
+    const jointReport = harmonizeByJointInPlace(byJoint, candidates, options);
+
+    // The handle-length candidate is only admissible where moving the outer
+    // handles is. A cubic's end curvature depends only on its last three
+    // control points, so `PP` and `NN` are inputs to the joint construction and
+    // never outputs -- and that is a rule this module keeps, not an accident:
+    // it is why equalizing is an opt-in pass rather than part of the default
+    // press.
+    //
+    // The handle-length solve rescales both handles of every segment, so it
+    // does move them. `equalizeTension` is already the tick that says the outer
+    // handles may move, so it is the tick that admits this candidate too. With
+    // it off there is one candidate and the default press moves exactly what it
+    // always moved.
+    if (equalizeTension) {
+      const byHandles = working.copy();
+      const handleReport = harmonizeHandlesInPlace(byHandles, candidates, options);
+      if (isBetter(scoreOf(byHandles), scoreOf(byJoint))) {
+        return { path: byHandles, report: handleReport };
+      }
     }
+    return { path: byJoint, report: jointReport };
   }
 
-  const touched = new Set();
+  //
+  // Press it until it settles, and keep the best drawing of all of them.
+  //
+  // A press was not a fixed point, and with the preparation passes on it was
+  // nowhere near one: over 2000 random joints a second press moved points on
+  // 1115 of them, improved 660 and made 430 WORSE. The reason is the order
+  // above -- equalize reads the drawing the previous press's solve left, so
+  // balance and solve chase each other. Pressing the button repeatedly was
+  // therefore a gamble that read as convergence.
+  //
+  // The answer is the one the rounding loop inside `harmonizeByJointInPlace`
+  // already uses, applied one level up: every state the repetition lands on is
+  // scored, the loop stops the moment a drawing comes round a second time, and
+  // the best of them is kept. The drawing the command was handed is one of the
+  // candidates, so a repetition that can only make things worse leaves it
+  // alone -- which is what makes pressing the button twice do nothing.
+  //
+  const original = Array.from(path.coordinates);
+  const seen = new Set([original.join(",")]);
+  let best = { score: scoreOf(path), coordinates: original, report: null };
+  let firstReport = null;
+  let current = path;
+
+  for (let attempt = 0; attempt < Math.max(1, pressAttempts); attempt++) {
+    const pressed = solveOnce(current);
+    firstReport ??= pressed.report;
+
+    const coordinates = Array.from(pressed.path.coordinates);
+    if (isBetter(scoreOf(pressed.path), best.score)) {
+      best = { score: scoreOf(pressed.path), coordinates, report: pressed.report };
+    }
+
+    const key = coordinates.join(",");
+    if (seen.has(key)) {
+      break;
+    }
+    seen.add(key);
+    current = pressed.path;
+    // Prepared again for the next attempt, because the solve has moved the
+    // inner handles and rounded them, so both passes have something to say
+    // about the drawing again. This is what makes the repetition a cycle the
+    // loop can detect rather than a drift a second button press continues.
+    prepare(current);
+  }
+
   for (let index = 0; index < path.numPoints; index++) {
     const [x, y] = path.getPointPosition(index);
-    const [newX, newY] = winner.path.getPointPosition(index);
-    if (newX !== x || newY !== y) {
-      path.setPointPosition(index, newX, newY);
-      touched.add(index);
+    const bestX = best.coordinates[index * 2];
+    const bestY = best.coordinates[index * 2 + 1];
+    if (bestX !== x || bestY !== y) {
+      path.setPointPosition(index, bestX, bestY);
     }
   }
 
-  for (const index of prepared) {
-    touched.add(index);
-  }
-
+  //
+  // A verdict describes the drawing that was kept. Each press already says that
+  // about its own attempt, and the gate above can still put the whole thing
+  // back, so the same test is applied once more against the drawing as it
+  // arrived. An answer was drawn and the drawing beat it: that is `reverted`.
+  //
   // The verdicts describe harmonization alone. A joint that reports `skipped`
-  // may still have had its two segments balanced by the pass above: `skipped`
-  // means nothing was harmonized there, not that nothing moved.
-  return winner.report;
+  // may still have had its two segments balanced by the preparation passes:
+  // `skipped` means nothing was harmonized there, not that nothing moved.
+  //
+  const report = best.report ?? firstReport ?? [];
+  for (const state of report) {
+    if (state.status !== "harmonized" && state.status !== "partial") {
+      continue;
+    }
+    const ctx = getJointContext(path, state.pointIndex);
+    const stencil = ctx.reason
+      ? [state.pointIndex]
+      : [state.pointIndex, ...Object.values(ctx.indices)];
+    const moved = stencil.some((index) => {
+      const [x, y] = path.getPointPosition(index);
+      return original[index * 2] !== x || original[index * 2 + 1] !== y;
+    });
+    if (!moved) {
+      state.status = "skipped";
+      state.reason = "reverted";
+    }
+  }
+  return report;
 }
 
 // --- the donors' other command: harmonize by handle LENGTH -------------------
