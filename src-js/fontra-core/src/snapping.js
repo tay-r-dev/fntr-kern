@@ -327,7 +327,27 @@ export function resolveSnapForPoints(candidates, points, cursor, options) {
   let best = { ...noWin };
   let bestScore = 0;
 
+  // The balance between one anchor and the whole selection. At 0 the strongest
+  // alignment anywhere takes the drag. In between, each point's pull is discounted
+  // by how far that point is from the hand. At 1 the point under the hand is the
+  // only one asked, so the end of the slider is an exact behavior and not merely a
+  // steep discount.
+  let anchorIndex = -1;
+  if (SNAP_PARAMETERS.pointerWeight >= 1) {
+    let nearest = Infinity;
+    points.forEach((point, pointIndex) => {
+      const distance = Math.hypot(point.x - cursor.x, point.y - cursor.y);
+      if (distance < nearest) {
+        nearest = distance;
+        anchorIndex = pointIndex;
+      }
+    });
+  }
+
   points.forEach((point, pointIndex) => {
+    if (anchorIndex >= 0 && pointIndex !== anchorIndex) {
+      return;
+    }
     // The hold belongs to the pair. A candidate held by another point earns no bonus here.
     const held =
       options.held && options.held.pointIndex === pointIndex

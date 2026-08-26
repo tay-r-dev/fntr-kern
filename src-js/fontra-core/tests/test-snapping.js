@@ -316,6 +316,28 @@ describe("multi-point resolution", () => {
     expect(result.pointIndex).to.equal(1);
   });
 
+  it("asks every point at a balance of zero, and only the anchor at one", () => {
+    const points = [
+      { x: 0, y: 20 }, // under the cursor, nothing in reach of it
+      { x: 0, y: 51 }, // far from the hand, almost on the metric
+    ];
+    const cursor = { x: 0, y: 20 };
+    const before = SNAP_PARAMETERS.pointerWeight;
+    try {
+      SNAP_PARAMETERS.pointerWeight = 0;
+      expect(
+        resolveSnapForPoints([metric(50)], points, cursor, opts).pointIndex
+      ).to.equal(1);
+      SNAP_PARAMETERS.pointerWeight = 1;
+      const anchorOnly = resolveSnapForPoints([metric(50)], points, cursor, opts);
+      // The anchor has nothing in reach, so at one the drag snaps to nothing at
+      // all rather than borrowing the far point's alignment.
+      expect(anchorOnly.pointIndex).to.equal(-1);
+    } finally {
+      SNAP_PARAMETERS.pointerWeight = before;
+    }
+  });
+
   it("returns a zero delta where no point wins", () => {
     const result = resolveSnapForPoints(
       [metric(50)],

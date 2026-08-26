@@ -109,10 +109,16 @@ const SNAPPING_DEBUG_CONTROLS = [
   { path: "reachPixels", label: "Reach (px)", min: 1, max: 60, step: 1 },
   { path: "noSnapPull", label: "Release floor", min: 0, max: 1, step: 0.01 },
   { path: "holdBonus", label: "Hold bonus", min: 1, max: 3, step: 0.05 },
-  { path: "pointerWeight", label: "Pointer weight", min: 0, max: 1, step: 0.05 },
+  {
+    path: "pointerWeight",
+    label: "Anchor vs multi-point (0 any point, 1 anchor only)",
+    min: 0,
+    max: 1,
+    step: 0.05,
+  },
   {
     path: "pointerFalloffReaches",
-    label: "Pointer falloff (reaches)",
+    label: "Anchor preference range (reaches)",
     min: 1,
     max: 20,
     step: 0.5,

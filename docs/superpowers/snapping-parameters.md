@@ -61,25 +61,31 @@ takes it.
 - **Too small:** flicker between neighbors.
 - **Too large:** snaps feel glued, and moving off one takes a shove.
 
-## Pointer weight
+## Anchor vs multi-point
 
-**Default 0.5.** How strongly the point under your hand is preferred over a
-better alignment somewhere else in the selection.
+**Default 0.5.** The balance between snapping by one anchor and snapping by the
+whole selection.
 
 When you drag several points, every one of them is asked where it would like to
 land, and the strongest answer moves the whole selection. This number discounts
 each answer by how far that point is from the cursor.
 
-- **At 0:** the strongest alignment anywhere wins, however far from your hand.
+- **At 0:** pure multi-point. The strongest alignment anywhere in the selection
+  takes the drag, however far it is from your hand.
 - **At 0.5:** a distant point has to be roughly twice as good to take the drag.
-- **At 1:** only the point under the cursor can ever win.
+- **At 1:** single anchor. Only the point nearest the cursor is asked at all. If
+  that point has nothing in reach, the drag snaps to nothing, rather than
+  borrowing an alignment from the far side of the selection.
+
+Both ends are exact behaviors, not just steep settings of the same discount.
 
 This has no effect when you drag a single point.
 
-## Pointer falloff (reaches)
+## Anchor preference range (reaches)
 
 **Default 8.** How far from your hand, counted in reaches, the preference above
-stops growing.
+stops growing. It does nothing at either end of the balance slider — only in
+between.
 
 Past this distance every point is discounted the same. Below it the discount
 grows with distance.
