@@ -1,14 +1,18 @@
 import { parseSelection } from "@fontra/core/utils.js";
 import {
   getSkeletonData,
+  getSkeletonPointAddress,
   resolveGeneratedPointProvenance,
 } from "@fontra/core/skeleton-model.js";
 import {
+  KIND,
   collectCandidates,
+  makeLineCandidate,
   resolveSnap,
   resolveSnapForPoints,
   roundSnapped,
 } from "@fontra/core/snapping.js";
+import { constrainHorVerDiag } from "./edit-behavior.js";
 
 function segmentAngle(from, to) {
   return (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
@@ -94,6 +98,60 @@ function excludedPointIndices(sceneController, movedPointIndices) {
     }
   }
   return excluded;
+}
+
+// Shift constrains the drag to a horizontal, a vertical or a diagonal. That axis
+// enters the resolver as a line through the anchor, so the gesture starts at one
+// degree of freedom and the snap only chooses where along it the point sits.
+export function constraintLineForDelta(delta, anchor) {
+  if (!anchor) {
+    return null;
+  }
+  const constrained = constrainHorVerDiag(delta);
+  if (!constrained.x && !constrained.y) {
+    return null;
+  }
+  return makeLineCandidate({
+    x: anchor.x,
+    y: anchor.y,
+    angle: (Math.atan2(constrained.y, constrained.x) * 180) / Math.PI,
+    kind: KIND.METRIC,
+    source: { x: anchor.x, y: anchor.y },
+  });
+}
+
+// The path points the current selection moves. This is what the session excludes.
+export function selectedPointIndices(sceneController) {
+  return parseSelection(sceneController.selection).point || [];
+}
+
+// The points the drag asks the resolver about, at their positions before the drag.
+// On-curves only: a handle states a direction, so aligning it to a metric means
+// nothing, and a handle generates no rays of its own either. Where the selection
+// holds no on-curve, which is a handle drag, that one handle is asked instead.
+export function draggedSnapPositions(sceneController, layerGlyph) {
+  const path = layerGlyph?.path;
+  const positions = [];
+  if (path) {
+    const selected = selectedPointIndices(sceneController);
+    const onCurves = selected.filter((i) => !path.getPoint(i)?.type);
+    for (const i of onCurves.length ? onCurves : selected) {
+      const point = path.getPoint(i);
+      if (point) {
+        positions.push({ x: point.x, y: point.y });
+      }
+    }
+  }
+
+  const skeletonData = getSkeletonData(layerGlyph);
+  for (const key of parseSelection(sceneController.selection).skeletonPoint || []) {
+    const [contourId, pointId] = key.split("/").map(Number);
+    const address = getSkeletonPointAddress(skeletonData, contourId, pointId);
+    if (address?.point) {
+      positions.push({ x: address.point.x, y: address.point.y });
+    }
+  }
+  return positions;
 }
 
 export function buildSnapScene(sceneController, excludePointIndices) {

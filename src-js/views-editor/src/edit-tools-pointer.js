@@ -34,6 +34,12 @@ import {
 } from "@fontra/core/utils.ts";
 import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
+import {
+  SnappingSession,
+  constraintLineForDelta,
+  draggedSnapPositions,
+  selectedPointIndices,
+} from "./snapping-interactions.js";
 import * as vector from "@fontra/core/vector.js";
 import {
   BASE_EXPAND_BEHAVIOR_NAME,
@@ -913,6 +919,17 @@ export class PointerTool extends BaseTool {
       layerInfo[0].isPrimaryLayer = true;
       publishGhost(behaviorName);
 
+      // Snapping resolves positions, and the drag applies a delta, so the session
+      // is asked where every dragged point would land and the delta is corrected
+      // once, before the change is made.
+      const snapStartPositions = draggedSnapPositions(
+        sceneController,
+        layerInfo[0].layerGlyph
+      );
+      const snapSession = new SnappingSession(sceneController, {
+        excludePointIndices: selectedPointIndices(sceneController),
+      });
+
       this.sceneController.scrollAdjustBehavior = "pin-glyph-origin";
       let editChange;
 
@@ -948,9 +965,26 @@ export class PointerTool extends BaseTool {
           await sendIncrementalChange(consolidateChanges(rollbackChanges));
         }
         const currentPoint = sceneController.selectedGlyphPoint(event);
-        const delta = {
+        const rawDelta = {
           x: currentPoint.x - initialPoint.x,
           y: currentPoint.y - initialPoint.y,
+        };
+        // Shift states an axis, so it enters the resolver as a held line rather
+        // than as a projection afterwards. A magnet cannot overrule it: it only
+        // decides where along the axis the point sits.
+        const constraint = event.shiftKey
+          ? constraintLineForDelta(rawDelta, snapStartPositions[0])
+          : null;
+        const wouldBe = snapStartPositions.map((point) => ({
+          x: point.x + rawDelta.x,
+          y: point.y + rawDelta.y,
+        }));
+        const correction = snapSession.resolveSet(wouldBe, currentPoint, {
+          constraint,
+        });
+        const delta = {
+          x: rawDelta.x + correction.x,
+          y: rawDelta.y + correction.y,
         };
 
         const deepEditChanges = [];
@@ -967,6 +1001,9 @@ export class PointerTool extends BaseTool {
 
         await sendIncrementalChange(editChange, true); // true: "may drop"
       }
+      // No snap state survives the gesture (spec section 5).
+      snapSession.end();
+
       let changes = ChangeCollector.fromChanges(
         editChange,
         consolidateChanges(
