@@ -1,7 +1,6 @@
 import {
   adjustStepsForCurve,
   calculateSegmentBudget,
-  collectCurveRuns,
   computeSpeedPunkSamples,
   countCurveSegments,
   estimateCurveLength,
@@ -43,79 +42,6 @@ describe("curvature sampling helpers", () => {
       },
     ]);
     expect(countCurveSegments(oneCubic)).to.equal(1);
-  });
-});
-
-describe("collectCurveRuns", () => {
-  const twoCubics = (smooth) =>
-    VarPackedPath.fromUnpackedContours([
-      {
-        points: [
-          { x: 0, y: 0 },
-          { x: 0, y: 60, type: "cubic" },
-          { x: 60, y: 100, type: "cubic" },
-          { x: 160, y: 100, smooth },
-          { x: 200, y: 100, type: "cubic" },
-          { x: 240, y: 93.6, type: "cubic" },
-          { x: 250, y: 40 },
-        ],
-        isClosed: false,
-      },
-    ]);
-
-  it("joins two curves at a smooth point", () => {
-    const runs = collectCurveRuns(twoCubics(true));
-    expect(runs).to.have.lengthOf(1);
-    expect(runs[0]).to.have.lengthOf(2);
-  });
-
-  it("breaks the run at a corner", () => {
-    const runs = collectCurveRuns(twoCubics(false));
-    expect(runs).to.have.lengthOf(2);
-  });
-
-  it("breaks the run at a line", () => {
-    const curveLineCurve = VarPackedPath.fromUnpackedContours([
-      {
-        points: [
-          { x: 0, y: 0 },
-          { x: 0, y: 60, type: "cubic" },
-          { x: 60, y: 100, type: "cubic" },
-          { x: 160, y: 100, smooth: true },
-          { x: 260, y: 100, smooth: true },
-          { x: 300, y: 100, type: "cubic" },
-          { x: 340, y: 60, type: "cubic" },
-          { x: 340, y: 0 },
-        ],
-        isClosed: false,
-      },
-    ]);
-    expect(collectCurveRuns(curveLineCurve)).to.have.lengthOf(2);
-  });
-
-  it("closes a run around a closed contour", () => {
-    const ring = VarPackedPath.fromUnpackedContours([
-      {
-        points: [
-          { x: 0, y: -100, smooth: true },
-          { x: 55, y: -100, type: "cubic" },
-          { x: 100, y: -55, type: "cubic" },
-          { x: 100, y: 0, smooth: true },
-          { x: 100, y: 55, type: "cubic" },
-          { x: 55, y: 100, type: "cubic" },
-          { x: 0, y: 100, smooth: true },
-          { x: -55, y: 100, type: "cubic" },
-          { x: -100, y: 55, type: "cubic" },
-          { x: -100, y: 0, smooth: true },
-          { x: -100, y: -55, type: "cubic" },
-          { x: -55, y: -100, type: "cubic" },
-        ],
-        isClosed: true,
-      },
-    ]);
-    const runs = collectCurveRuns(ring);
-    expect(runs).to.have.lengthOf(1);
-    expect(runs[0]).to.have.lengthOf(4);
   });
 });
 
@@ -230,7 +156,7 @@ describe("computeSpeedPunkSamples", () => {
     }
   });
 
-  it("leaves a segment's fringe alone when a neighbour in the run changes", () => {
+  it("leaves a segment's fringe alone when a neighbour changes", () => {
     const options = {
       peakHeightGlyphUnits: 24,
       referenceRadiusGlyphUnits: 100,
@@ -256,6 +182,52 @@ describe("computeSpeedPunkSamples", () => {
     for (let i = 0; i < asDrawn.length; i++) {
       expect(neighbourTightened[i]).to.be.closeTo(asDrawn[i], 1e-9);
     }
+  });
+
+  const STOPS = ["#8b939c", "#f29400", "#e3004f"];
+  const channelsOf = (quads) =>
+    quads.map((q) => q.color.match(/\d+/g).slice(0, 3).map(Number));
+  const expectAllNear = (quads, hex) => {
+    const want = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    for (const got of channelsOf(quads)) {
+      for (let i = 0; i < 3; i++) {
+        expect(got[i]).to.be.closeTo(want[i], 6);
+      }
+    }
+  };
+
+  it("paints the colour stops at the named radii", () => {
+    const options = {
+      referenceRadiusGlyphUnits: 100,
+      colorStops: STOPS,
+      baseSegmentBudget: 400,
+      zoomFactor: 1,
+    };
+    // grey at four times the reference radius, orange at it, red at a quarter
+    expectAllNear(computeSpeedPunkSamples(ringOfRadius(400), options), STOPS[0]);
+    expectAllNear(computeSpeedPunkSamples(ringOfRadius(100), options), STOPS[1]);
+    expectAllNear(computeSpeedPunkSamples(ringOfRadius(25), options), STOPS[2]);
+  });
+
+  it("leaves a segment's colour alone when a neighbour changes", () => {
+    const options = {
+      referenceRadiusGlyphUnits: 100,
+      colorStops: STOPS,
+      baseSegmentBudget: 400,
+      zoomFactor: 1,
+    };
+    const untouchedQuadrant = (path) =>
+      channelsOf(
+        computeSpeedPunkSamples(path, options).filter(
+          (q) => q.points[0][0] > 1e-9 && q.points[0][1] < -1e-9
+        )
+      );
+
+    const asDrawn = untouchedQuadrant(ringOfRadius(100));
+    const neighbourTightened = untouchedQuadrant(ringOfRadius(100, 0.5));
+
+    expect(asDrawn.length).to.be.greaterThan(10);
+    expect(neighbourTightened).to.deep.equal(asDrawn);
   });
 
   it("draws one height for one curvature across a smooth joint", () => {

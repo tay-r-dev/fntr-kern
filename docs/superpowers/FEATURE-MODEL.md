@@ -1441,12 +1441,15 @@ the log's comb section carries what each attempt cost. What the tree holds now:
   length cannot: **any** relative scale is rescaled by whatever it normalizes
   over, so redrawing one segment changed the fringe on its untouched
   neighbours. Both per-segment and per-run divisors were tried and are closed.
-- **Colour** comes from the run's own range, gentlest to tightest — the same run
-  the height is scaled over, so the two readouts agree about what they are
-  comparing. Per **segment** it put the end of the scale on any joint that was an
-  extreme of one of its two segments, which is every joint at the end of a run:
-  the colour said where in the segment, and was read as how curved. The donor
-  uses the glyph's own range, recomputed when the glyph changes.
+- **Colour is absolute too, with its stops at named radii.** The middle stop sits
+  at the reference radius, the first at four times it and the last at a quarter
+  of it, and the ramp runs geometrically between them, so equal ratios of radius
+  are equal steps of colour. Nothing is read off the drawing. The spread exists
+  because colour taken straight off a 0–1 curvature ratio spends almost all of
+  its stops outside the range letters occupy and paints a whole letter one shade
+  — the stops are spent on the working range instead. The donor uses the glyph's
+  own range, recomputed when the glyph changes; forkra does not, because any
+  relative scale is restretched by an edit anywhere inside it.
 - **Sample count** is a budget divided by the number of curve segments, times the
   square root of the magnification, with the budget divided by the magnification
   first. The donor uses the budget divided by the segment count alone.
@@ -1460,9 +1463,12 @@ store the full floating point result of a drag.
 readouts, not two answers to one question.** Length answers "compare two
 letters". Colour answers "read one letter". A normalized readout cannot compare
 across whatever it normalizes over — per segment it cannot compare two segments,
-and comparing two segments is what a joint is. The comb now applies that rule
-instead of restating it: length is absolute and scoped to nothing, colour is
-relative and scoped to the run.
+and comparing two segments is what a joint is. **The comb ended up with neither
+readout relative**, and the rule survives as the reason why: a relative scale is
+one an edit rescales, so both length and colour are stated against the reference
+radius and scoped to nothing. What the rule still governs is the ramp — an
+absolute readout has to be told which range to spend itself on, or it says
+nothing.
 
 ---
 

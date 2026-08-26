@@ -27,7 +27,7 @@ The donor is in `_external/speedpunk`. It states both of its choices plainly.
 |               | donor                                                                          | restored comb                                                                                        |
 | ------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | Fringe length | curvature times a fixed gain. Straight proportion, no ceiling, no floor        | the same, with the gain stated as "full height at radius R", default 200                             |
-| Colour        | the glyph's own range, gentlest to tightest, recomputed when the glyph changes | its run's own range                                                                                  |
+| Colour        | the glyph's own range, gentlest to tightest, recomputed when the glyph changes | absolute, stops at named radii: 4R, R, R/4, geometric in between                                     |
 | Sample count  | a budget divided by the number of curve segments                               | that, times the square root of the magnification, with the budget divided by the magnification first |
 
 ### Three fixes went out with the revert and are not present
@@ -160,6 +160,43 @@ against a peak height of 24.
 spike as long as its curvature asks for, and a near-cusp draws an enormous one.
 That is the donor's behaviour and it was accepted knowingly, not overlooked.
 
+### Colour went absolute the next day, and the run went with it
+
+Reported immediately: colour still restretched when a neighbour changed. It did,
+by the same mechanism and in the same scope — the height had gone absolute and
+the colour had not. **Half a fix reads exactly like the fault it half fixed.**
+
+Colour is a fixed function of radius now. The middle stop sits at the reference
+radius, the first at four times it and the last at a quarter of it, geometric in
+between, so equal ratios of radius are equal steps of colour.
+
+**The spread is the whole of the design, and the log already knew why.** Colour
+taken straight off a 0–1 curvature ratio was measured and rejected once:
+radius 200 down to 30 is the working range of most letters and that rule spent
+0.33 to 0.77 of the stops on it, which is one colour to the eye. That objection
+is about where the stops sit, not about being absolute — the ramp is placed on
+the working range, and the objection is answered rather than re-inherited.
+
+Measured on the reported joints: point 3 is byte-identical after the neighbour
+two segments away is halved, and point 24's two sides agree to the digit where
+one read grey and the other orange three days ago.
+
+**The run grouping is deleted.** It was the scope of a relative scale, both
+scales are absolute, and nothing read it — the same "who writes it, not who
+reads it" check that found four dead levels in the skeleton. It lived three
+days. The break rule it encoded is not lost: it was never about the drawing, it
+was about what a relative scale may compare, and an absolute one compares
+everything.
+
+**Two ideas that had to be given up to get here**, both of them real:
+
+- A relative colour stretches the contrast on a letter that has little curvature
+  variation. Absolute cannot, so a very flat glyph now draws nearly one colour —
+  which is the truth about that glyph, told less legibly.
+- Colour and length now encode the same number twice. That is redundancy, not
+  information. It is kept because two encodings of one number are read at
+  different distances: length at a glance across a word, colour at a point.
+
 **The probe measured the wrong quads first, and it looked like a result.** It
 picked a segment's quads by the bounding box of its two end points, so once the
 neighbour's handles moved into that box its quads were counted too — reporting
@@ -181,6 +218,7 @@ We built and measured each one. None is in the tree.
 | Colour straight off the curvature ratio                        | Radius 200 to 30 is the working range of most letters. This rule spent 0.33 to 0.77 of the stops on it, which is one colour to the eye.                                                                                                                                                          |
 | Colour off the fringe length, last stop at three peak heights  | An arc with its handles half way out already sat past the middle stop, and everything above handle tension 1 came out identical.                                                                                                                                                                 |
 | Colour off the fringe length, last stop at five peak heights   | Better: a well-formed arc read a third along and red waited for tension 1.5. Still absolute, so it painted a whole letter one colour like the two before it. Where a letter's curvature sits depends on the letter.                                                                              |
+| Colour relative to the segment, and then to the run            | Both shipped and both went. A joint that is an extreme of one of its two segments took the end of that scale by construction; per run, an edit anywhere restretched every colour in the run. The absolute ramp above is the same idea as the two rows over this one, with the stops placed on the working range rather than on 0–1 — which is what those rows were actually complaining about. |
 
 ---
 

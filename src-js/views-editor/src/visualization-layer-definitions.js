@@ -1865,7 +1865,6 @@ registerVisualizationLayerDefinition({
     illustrationPosition: "outsideOfCurve",
     baseSegmentBudget: 400,
     minSegmentsPerCurve: 5,
-    globalColorNormalization: false,
     adaptStepsToCurveLength: false,
   },
   draw: (context, positionedGlyph, parameters, model, controller) => {
@@ -1886,7 +1885,6 @@ registerVisualizationLayerDefinition({
       referenceRadiusGlyphUnits,
       sharpness,
       illustrationPosition: parameters.illustrationPosition,
-      useGlobalNormalization: parameters.globalColorNormalization,
       colorStops: parameters.colorStops,
       baseSegmentBudget: parameters.baseSegmentBudget,
       minSegmentsPerCurve: parameters.minSegmentsPerCurve,

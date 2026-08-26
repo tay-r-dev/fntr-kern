@@ -143,33 +143,47 @@ function interpolateColor(color1, color2, t) {
 }
 
 /**
- * Map absolute curvature -> color using per-segment min/max normalization.
- * NEW SIGNATURE:
- *   curvatureToColor(curvatureAbs, minAbs, maxAbs, colorStops)
+ * How far either side of the reference radius the colour ramp reaches, as a
+ * factor on the radius. The last stop is at referenceRadius / SPREAD and the
+ * first at referenceRadius * SPREAD.
  *
- * - curvatureAbs: non-negative absolute curvature value
- * - minAbs, maxAbs: per-segment min/max absolute curvature (the visualization must pass these)
- * - colorStops: array of hex strings
+ * The stops are spent on the range letters occupy rather than on the range from
+ * flat to infinitely tight. Spread across a raw curvature ratio instead, a whole
+ * letter comes out one colour: measured once at 0.33 to 0.77 of the stops for a
+ * working range of radius 200 down to 30.
+ */
+export const COLOR_STOP_RADIUS_SPREAD = 4;
+
+/**
+ * Map absolute curvature -> colour, against a named radius.
+ *
+ * The middle stop sits at `referenceRadius`, the first at that radius times
+ * COLOR_STOP_RADIUS_SPREAD, the last at that radius divided by it, and the ramp
+ * runs geometrically in between — so equal ratios of radius are equal steps of
+ * colour, whichever end of the ramp they sit at.
+ *
+ * Nothing here is read off the drawing. One curvature is one colour in every
+ * glyph of the font, and no edit changes the colour of anything it did not move.
  */
 export function curvatureToColor(
   curvatureAbs,
-  minAbs,
-  maxAbs,
+  referenceRadius,
   colorStops = ["#8b939c", "#f29400", "#e3004f"]
 ) {
-  // safe defaults
   if (!Array.isArray(colorStops) || colorStops.length === 0) {
     return "rgba(0,0,0,1)";
   }
-
-  // degenerate: all identical -> return middle or last stop
-  if (maxAbs <= minAbs) {
-    const mid = Math.floor((colorStops.length - 1) / 2);
-    return interpolateColor(colorStops[mid], colorStops[mid], 0);
+  if (colorStops.length === 1) {
+    return interpolateColor(colorStops[0], colorStops[0], 0);
   }
 
-  // normalize to [0,1]
-  let t = (curvatureAbs - minAbs) / (maxAbs - minAbs);
+  const radiusRatio = curvatureAbs * Math.max(1e-9, referenceRadius);
+  // 0 at the flat end of the ramp, 0.5 at the reference radius, 1 at the tight
+  // end. A straight line has zero curvature and lands on the flat end.
+  let t =
+    radiusRatio > 0
+      ? 0.5 + Math.log(radiusRatio) / (2 * Math.log(COLOR_STOP_RADIUS_SPREAD))
+      : 0;
   t = Math.max(0, Math.min(1, t));
 
   const segments = colorStops.length - 1;
@@ -284,92 +298,6 @@ function _segmentKind(t1, t2, t3) {
   return { isCubic, isQuadratic };
 }
 
-/**
- * Group a path's curve segments into runs. A run is a maximal chain of curve
- * segments joined at smooth on-curve points. A line, a corner or a contour end
- * breaks it, because those are the places the outline itself declares a
- * discontinuity, and a fringe is only comparable across a joint that claims one
- * curve.
- *
- * Returns an array of runs, each an array of { kind, pts }.
- */
-export function collectCurveRuns(path) {
-  const runs = [];
-
-  for (let contourIndex = 0; contourIndex < (path?.numContours ?? 0); contourIndex++) {
-    const contour = path.getContour(contourIndex);
-    const numPoints = contour.pointTypes.length;
-    const segments = [];
-
-    for (let i = 0; i < numPoints; i++) {
-      const pointIndex = path.getAbsolutePointIndex(contourIndex, i);
-      if (!_isOnCurve(path.pointTypes[pointIndex])) {
-        continue;
-      }
-      const next1 = path.getAbsolutePointIndex(contourIndex, (i + 1) % numPoints);
-      const next2 = path.getAbsolutePointIndex(contourIndex, (i + 2) % numPoints);
-      const next3 = path.getAbsolutePointIndex(contourIndex, (i + 3) % numPoints);
-      const { isCubic, isQuadratic } = _segmentKind(
-        path.pointTypes[next1],
-        path.pointTypes[next2],
-        path.pointTypes[next3]
-      );
-      if (!isCubic && !isQuadratic) {
-        continue;
-      }
-      const pointIndices = isCubic
-        ? [pointIndex, next1, next2, next3]
-        : [pointIndex, next1, next2];
-      const pts = pointIndices.map((index) => {
-        const point = path.getPoint(index);
-        return [point.x, point.y];
-      });
-      segments.push({
-        kind: isCubic ? "cubic" : "quadratic",
-        pts,
-        startPointIndex: pointIndex,
-        endPointIndex: pointIndices[pointIndices.length - 1],
-      });
-    }
-
-    if (!segments.length) {
-      continue;
-    }
-
-    const isSmooth = (pointIndex) =>
-      !!(path.pointTypes[pointIndex] & VarPackedPath.SMOOTH_FLAG);
-
-    const contourRuns = [[segments[0]]];
-    for (let s = 1; s < segments.length; s++) {
-      const segment = segments[s];
-      const previous = segments[s - 1];
-      const continues =
-        segment.startPointIndex === previous.endPointIndex &&
-        isSmooth(segment.startPointIndex);
-      if (continues) {
-        contourRuns[contourRuns.length - 1].push(segment);
-      } else {
-        contourRuns.push([segment]);
-      }
-    }
-
-    // A closed contour can close its own run, so the last and the first are one.
-    if (contour.isClosed && contourRuns.length > 1) {
-      const last = contourRuns[contourRuns.length - 1];
-      const first = contourRuns[0];
-      const joint = first[0].startPointIndex;
-      if (last[last.length - 1].endPointIndex === joint && isSmooth(joint)) {
-        contourRuns[0] = last.concat(first);
-        contourRuns.pop();
-      }
-    }
-
-    runs.push(...contourRuns);
-  }
-
-  return runs;
-}
-
 export function computeSpeedPunkSamples(path, params = {}) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;
   // The anchor the height scale is stated in: a curve of this radius draws a
@@ -377,7 +305,6 @@ export function computeSpeedPunkSamples(path, params = {}) {
   const referenceRadius = Math.max(1e-6, params.referenceRadiusGlyphUnits ?? 200);
   const sharpness = Math.max(0.1, params.sharpness ?? 1);
   const illustrationPosition = params.illustrationPosition ?? "outsideOfCurve";
-  const useGlobalNormalization = params.useGlobalNormalization ?? false;
   const colorStops = params.colorStops ?? ["#8b939c", "#f29400", "#e3004f"];
   const baseSegmentBudget = params.baseSegmentBudget ?? 400;
   const minSegmentsPerCurve = params.minSegmentsPerCurve ?? 5;
@@ -411,114 +338,102 @@ export function computeSpeedPunkSamples(path, params = {}) {
     averageCurveLength = curveCount > 0 ? totalLength / curveCount : 0;
   }
 
-  let globalMinAbs = Infinity;
-  let globalMaxAbs = -Infinity;
-  if (useGlobalNormalization) {
-    forEachCurveSegment(path, (kind, pts) => {
-      const steps = adaptToCurveLength
-        ? adjustStepsForCurve(
-            stepsPerSegment,
-            estimateCurveLength(...pts),
-            averageCurveLength
-          )
-        : stepsPerSegment;
-      const samples =
-        kind === "cubic"
-          ? calculateCurvatureForSegment(...pts, steps)
-          : calculateCurvatureForQuadraticSegment(...pts, steps);
-      for (const sample of samples) {
-        const absK = Math.abs(sample.curvature);
-        globalMinAbs = Math.min(globalMinAbs, absK);
-        globalMaxAbs = Math.max(globalMaxAbs, absK);
-      }
-    });
-    if (globalMinAbs === Infinity) {
-      globalMinAbs = 0;
-      globalMaxAbs = 1;
-    }
-  }
-
+  // Both scales are absolute, so a segment is drawn from its own geometry and
+  // the reference radius alone. Nothing here reads another segment.
   const quads = [];
-  for (const run of collectCurveRuns(path)) {
-    const sampled = run.map(({ kind, pts }) => {
-      const steps = adaptToCurveLength
-        ? adjustStepsForCurve(
-            stepsPerSegment,
-            estimateCurveLength(...pts),
-            averageCurveLength
-          )
-        : stepsPerSegment;
-      const samples =
+  forEachCurveSegment(path, (kind, pts) => {
+    const steps = adaptToCurveLength
+      ? adjustStepsForCurve(
+          stepsPerSegment,
+          estimateCurveLength(...pts),
+          averageCurveLength
+        )
+      : stepsPerSegment;
+    const samples =
+      kind === "cubic"
+        ? calculateCurvatureForSegment(...pts, steps)
+        : calculateCurvatureForQuadraticSegment(...pts, steps);
+
+    const onCurve = [];
+    const offCurve = [];
+    for (let s = 0; s < samples.length; s++) {
+      const absK = Math.abs(samples[s].curvature);
+      const t = samples[s].t;
+      const { r, r1 } =
         kind === "cubic"
-          ? calculateCurvatureForSegment(...pts, steps)
-          : calculateCurvatureForQuadraticSegment(...pts, steps);
-      const absVals = samples.map((s) => Math.abs(s.curvature));
-      return { kind, pts, samples, absVals };
-    });
+          ? solveCubicBezier(...pts, t)
+          : solveQuadraticBezier(...pts, t);
+      const [x, y] = r;
+      onCurve.push({ x, y, k: absK });
 
-    // Colour is relative and reads one run: the range of curvature in this run,
-    // gentlest to tightest. It is the run's and not the segment's, because a
-    // joint that is an extreme of one of its two segments would otherwise take
-    // the end of that segment's own scale whatever it measured.
-    const runMinAbs = Math.min(...sampled.map((s) => Math.min(...s.absVals)));
-    const runMaxAbs = Math.max(...sampled.map((s) => Math.max(...s.absVals)));
+      let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];
+      let ny = illustrationPosition === "outsideOfCurve" ? r1[0] : -r1[0];
+      const mag = Math.hypot(nx, ny) || 1;
+      nx /= mag;
+      ny /= mag;
 
-    for (const { kind, pts, samples, absVals } of sampled) {
-      const minAbs = useGlobalNormalization ? globalMinAbs : runMinAbs;
-      const maxAbs = useGlobalNormalization ? globalMaxAbs : runMaxAbs;
-
-      const onCurve = [];
-      const offCurve = [];
-      for (let s = 0; s < samples.length; s++) {
-        const t = samples[s].t;
-        const { r, r1 } =
-          kind === "cubic"
-            ? solveCubicBezier(...pts, t)
-            : solveQuadraticBezier(...pts, t);
-        const [x, y] = r;
-        onCurve.push({ x, y, k: samples[s].curvature });
-
-        let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];
-        let ny = illustrationPosition === "outsideOfCurve" ? r1[0] : -r1[0];
-        const mag = Math.hypot(nx, ny) || 1;
-        nx /= mag;
-        ny /= mag;
-
-        // Length is absolute: the fringe is the peak height where the radius is
-        // the reference radius, and proportional to curvature from there. No
-        // ceiling and no floor, so one curvature draws one length everywhere in
-        // the glyph and nothing a neighbour does can rescale it. Sharpness is
-        // an exponent about that anchor, which the anchor itself survives.
-        const heightRatio = Math.pow(absVals[s] * referenceRadius, sharpness);
-        const h = -heightRatio * peakHeightGlyphUnits;
-        offCurve.push({ x: x + nx * h, y: y + ny * h });
-      }
-
-      for (let s = 0; s < onCurve.length - 1; s++) {
-        const a = onCurve[s];
-        const b = onCurve[s + 1];
-        quads.push({
-          points: [
-            [a.x, a.y],
-            [b.x, b.y],
-            [offCurve[s + 1].x, offCurve[s + 1].y],
-            [offCurve[s].x, offCurve[s].y],
-          ],
-          color: curvatureToColor(Math.abs(a.k), minAbs, maxAbs, colorStops),
-        });
-      }
+      // The fringe is the peak height where the radius is the reference radius,
+      // and proportional to curvature from there. No ceiling and no floor.
+      // Sharpness is an exponent about that anchor, which the anchor survives.
+      const heightRatio = Math.pow(absK * referenceRadius, sharpness);
+      const h = -heightRatio * peakHeightGlyphUnits;
+      offCurve.push({ x: x + nx * h, y: y + ny * h });
     }
-  }
+
+    for (let s = 0; s < onCurve.length - 1; s++) {
+      const a = onCurve[s];
+      const b = onCurve[s + 1];
+      quads.push({
+        points: [
+          [a.x, a.y],
+          [b.x, b.y],
+          [offCurve[s + 1].x, offCurve[s + 1].y],
+          [offCurve[s].x, offCurve[s].y],
+        ],
+        color: curvatureToColor(a.k, referenceRadius, colorStops),
+      });
+    }
+  });
 
   return quads;
 }
 
-// The segment walk lives in collectCurveRuns. This is the same walk with the
-// grouping dropped, for the two passes that only want every segment once.
+// The one segment walk. Every curve segment, once, in contour order.
+//
+// It used to group segments into runs of smoothly joined curves, for a comb
+// whose two scales were relative and needed a scope. Both scales are absolute
+// now, so nothing has a scope and the grouping had no reader left.
 function forEachCurveSegment(path, cb) {
-  for (const run of collectCurveRuns(path)) {
-    for (const { kind, pts } of run) {
-      cb(kind, pts);
+  for (let contourIndex = 0; contourIndex < (path?.numContours ?? 0); contourIndex++) {
+    const contour = path.getContour(contourIndex);
+    const numPoints = contour.pointTypes.length;
+
+    for (let i = 0; i < numPoints; i++) {
+      const pointIndex = path.getAbsolutePointIndex(contourIndex, i);
+      if (!_isOnCurve(path.pointTypes[pointIndex])) {
+        continue;
+      }
+      const next1 = path.getAbsolutePointIndex(contourIndex, (i + 1) % numPoints);
+      const next2 = path.getAbsolutePointIndex(contourIndex, (i + 2) % numPoints);
+      const next3 = path.getAbsolutePointIndex(contourIndex, (i + 3) % numPoints);
+      const { isCubic, isQuadratic } = _segmentKind(
+        path.pointTypes[next1],
+        path.pointTypes[next2],
+        path.pointTypes[next3]
+      );
+      if (!isCubic && !isQuadratic) {
+        continue;
+      }
+      const pointIndices = isCubic
+        ? [pointIndex, next1, next2, next3]
+        : [pointIndex, next1, next2];
+      cb(
+        isCubic ? "cubic" : "quadratic",
+        pointIndices.map((index) => {
+          const point = path.getPoint(index);
+          return [point.x, point.y];
+        })
+      );
     }
   }
 }
