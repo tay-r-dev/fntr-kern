@@ -14,6 +14,8 @@ import { constrainHorVerDiag } from "./edit-behavior.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
 import { recordSkeletonContourIndexShift } from "./skeleton-editing.js";
 
+import { SnappingSession } from "./snapping-interactions.js";
+
 export class PenTool {
   identifier = "pen-tool";
   subTools = [PenToolCubic, PenToolQuad];
@@ -29,6 +31,11 @@ export class PenToolCubic extends BaseTool {
       return;
     }
     this.setCursor();
+    // The preview must show the result before the click, so the hover resolves
+    // through the same session the click will use.
+    this.sceneModel.penSnappedPoint = this._snapSession().resolve(
+      this.sceneController.selectedGlyphPoint(event)
+    );
     const { insertHandles, targetPoint, danglingOffCurve, canDragOffCurve } =
       this._getPathConnectTargetPoint(event);
     const prevInsertHandles = this.sceneModel.pathInsertHandles;
@@ -60,7 +67,24 @@ export class PenToolCubic extends BaseTool {
     this.canvasController.requestUpdate();
   }
 
+  // One session for the length of the hover, rebuilt when the glyph changes.
+  // Nothing is excluded: the point being placed is not in the path yet, and the
+  // previous point of the chain is the most useful source there (spec section 6).
+  _snapSession() {
+    const glyphName = this.sceneModel.selectedGlyph?.glyphName;
+    if (!this._snapping || this._snappingGlyph !== glyphName) {
+      this._snapping = new SnappingSession(this.sceneController, {
+        excludePointIndices: [],
+      });
+      this._snappingGlyph = glyphName;
+    }
+    return this._snapping;
+  }
+
   _resetHover() {
+    this._snapping?.end();
+    this._snapping = null;
+    delete this.sceneModel.penSnappedPoint;
     delete this.sceneModel.pathInsertHandles;
     delete this.sceneModel.pathConnectTargetPoint;
     delete this.sceneModel.pathDanglingOffCurve;
@@ -223,7 +247,8 @@ export class PenToolCubic extends BaseTool {
             this.sceneController,
             initialEvent,
             layerGlyph.path,
-            this.curveType
+            this.curveType,
+            this._snapSession()
           ),
         };
       });
@@ -389,7 +414,13 @@ const AppendModes = {
   PREPEND: "prepend",
 };
 
-function getPenToolBehavior(sceneController, initialEvent, path, curveType) {
+function getPenToolBehavior(
+  sceneController,
+  initialEvent,
+  path,
+  curveType,
+  snapSession
+) {
   const appendInfo = getAppendInfo(path, sceneController.selection);
 
   let behaviorFuncs;
@@ -468,7 +499,13 @@ function getPenToolBehavior(sceneController, initialEvent, path, curveType) {
     }
   }
 
-  const getPointFromEvent = (event) => sceneController.selectedGlyphPoint(event);
+  // The one place the pen turns an event into a position, so the click and the
+  // preview cannot disagree. One point is placed, so this is resolve, not
+  // resolveSet: there is no set to choose from.
+  const getPointFromEvent = (event) =>
+    snapSession
+      ? snapSession.resolve(sceneController.selectedGlyphPoint(event))
+      : sceneController.selectedGlyphPoint(event);
 
   return new PenToolBehavior(getPointFromEvent, appendInfo, behaviorFuncs, curveType);
 }
