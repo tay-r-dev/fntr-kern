@@ -1441,15 +1441,19 @@ the log's comb section carries what each attempt cost. What the tree holds now:
   length cannot: **any** relative scale is rescaled by whatever it normalizes
   over, so redrawing one segment changed the fringe on its untouched
   neighbours. Both per-segment and per-run divisors were tried and are closed.
-- **Colour is absolute too, with its stops at named radii.** The middle stop sits
-  at the reference radius, the first at four times it and the last at a quarter
-  of it, and the ramp runs geometrically between them, so equal ratios of radius
-  are equal steps of colour. Nothing is read off the drawing. The spread exists
-  because colour taken straight off a 0–1 curvature ratio spends almost all of
-  its stops outside the range letters occupy and paints a whole letter one shade
-  — the stops are spent on the working range instead. The donor uses the glyph's
-  own range, recomputed when the glyph changes; forkra does not, because any
-  relative scale is restretched by an edit anywhere inside it.
+- **Colour is absolute too, on a ramp between two named radii** — flat end 400,
+  tight end 180 by default, geometric in between, pinned past either end.
+  Nothing is read off the drawing. The donor uses the glyph's own range,
+  recomputed when the glyph changes; forkra does not, because any relative scale
+  is restretched by an edit anywhere inside it.
+
+  **The ramp is narrow on purpose, and it owns its own two numbers.** Letters
+  occupy a narrow band of radius — the calibration glyphs sit between 170 and
+  370, about 2.2 to 1 — so a ramp much wider than that lands the whole drawing
+  in one stop's colour and puts the last stop out of reach. Deriving the ramp
+  from the fringe-length anchor was built and reverted for exactly that: the
+  span of the ramp and the anchor of the length are unrelated quantities, and
+  one number cannot state both.
 - **Sample count** is a budget divided by the number of curve segments, times the
   square root of the magnification, with the budget divided by the magnification
   first. The donor uses the budget divided by the segment count alone.

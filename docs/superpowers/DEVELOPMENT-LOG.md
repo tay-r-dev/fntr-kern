@@ -27,7 +27,7 @@ The donor is in `_external/speedpunk`. It states both of its choices plainly.
 |               | donor                                                                          | restored comb                                                                                        |
 | ------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | Fringe length | curvature times a fixed gain. Straight proportion, no ceiling, no floor        | the same, with the gain stated as "full height at radius R", default 200                             |
-| Colour        | the glyph's own range, gentlest to tightest, recomputed when the glyph changes | absolute, stops at named radii: 4R, R, R/4, geometric in between                                     |
+| Colour        | the glyph's own range, gentlest to tightest, recomputed when the glyph changes | absolute, on a ramp between two named radii: 400 and 180, geometric in between                       |
 | Sample count  | a budget divided by the number of curve segments                               | that, times the square root of the magnification, with the budget divided by the magnification first |
 
 ### Three fixes went out with the revert and are not present
@@ -170,12 +170,35 @@ Colour is a fixed function of radius now. The middle stop sits at the reference
 radius, the first at four times it and the last at a quarter of it, geometric in
 between, so equal ratios of radius are equal steps of colour.
 
-**The spread is the whole of the design, and the log already knew why.** Colour
-taken straight off a 0–1 curvature ratio was measured and rejected once:
-radius 200 down to 30 is the working range of most letters and that rule spent
-0.33 to 0.77 of the stops on it, which is one colour to the eye. That objection
-is about where the stops sit, not about being absolute — the ramp is placed on
-the working range, and the objection is answered rather than re-inherited.
+**The spread is the whole of the design, and the first attempt got it wrong in
+the commit that said so.** Colour taken straight off a 0–1 curvature ratio was
+measured and rejected once: radius 200 down to 30 is the working range of most
+letters and that rule spent 0.33 to 0.77 of the stops on it, which is one colour
+to the eye. The first ramp derived its two ends from the height anchor, four
+times either side — radius 50 to 800, 16 to 1 — and reported back as "everything
+is yellow, and you have to push curvature too far to see pink". It had
+re-inherited the very objection it quoted.
+
+Measured afterwards, at 50 samples per segment over both external glyphs:
+
+| glyph | p5  | p25 | median | p75 | p95  |
+| ----- | --- | --- | ------ | --- | ---- |
+| N     | 168 | 190 | 278    | 325 | 365  |
+| U     | 183 | 214 | 275    | 434 | 1587 |
+
+**Letters occupy about 2.2 to 1 in radius.** A 16 to 1 ramp therefore lands the
+whole drawing inside its middle stop, and the last stop needs a radius four
+times tighter than anything drawn. The ramp is 400 to 180 now, named outright.
+On N that draws 1 per cent pinned flat, 61 per cent in the lower half, 20 in the
+upper and 18 pinned tight; on U, 30 / 42 / 24 / 4. Both letters use all three
+stops.
+
+**And the ramp owns its own two numbers.** Deriving them from the height anchor
+was one number doing two jobs — the span of a colour ramp and the anchor of a
+fringe length are unrelated, so retuning the length moved every colour. That
+trap has its own row in this log four times over, and it was walked into inside
+the commit that cited the rule. **Quoting a rule is not applying it: apply it to
+a measurement.**
 
 Measured on the reported joints: point 3 is byte-identical after the neighbour
 two segments away is halved, and point 24's two sides agree to the digit where
@@ -218,6 +241,7 @@ We built and measured each one. None is in the tree.
 | Colour straight off the curvature ratio                        | Radius 200 to 30 is the working range of most letters. This rule spent 0.33 to 0.77 of the stops on it, which is one colour to the eye.                                                                                                                                                          |
 | Colour off the fringe length, last stop at three peak heights  | An arc with its handles half way out already sat past the middle stop, and everything above handle tension 1 came out identical.                                                                                                                                                                 |
 | Colour off the fringe length, last stop at five peak heights   | Better: a well-formed arc read a third along and red waited for tension 1.5. Still absolute, so it painted a whole letter one colour like the two before it. Where a letter's curvature sits depends on the letter.                                                                              |
+| Derive the colour ramp from the fringe-length anchor           | Shipped for one session, reported as "everything is yellow". Four times either side of the anchor is 16 to 1, and letters occupy about 2.2 to 1, so the drawing sat inside the middle stop and the last stop was unreachable. It also made one number state two unrelated things. The ramp names its own two radii now.                                                                                          |
 | Colour relative to the segment, and then to the run            | Both shipped and both went. A joint that is an extreme of one of its two segments took the end of that scale by construction; per run, an edit anywhere restretched every colour in the run. The absolute ramp above is the same idea as the two rows over this one, with the stops placed on the working range rather than on 0–1 — which is what those rows were actually complaining about. |
 
 ---

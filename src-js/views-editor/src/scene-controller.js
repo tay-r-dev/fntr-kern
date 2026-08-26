@@ -139,6 +139,8 @@ export class SceneController {
     this.sceneSettingsController.setItem("coarseGridSpacing", 10);
     this.sceneSettingsController.setItem("speedPunkPeakHeightUpm", 24);
     this.sceneSettingsController.setItem("speedPunkReferenceRadiusUpm", 200);
+    this.sceneSettingsController.setItem("speedPunkColorFlatRadiusUpm", 400);
+    this.sceneSettingsController.setItem("speedPunkColorTightRadiusUpm", 180);
     this.sceneSettingsController.setItem("speedPunkSharpness", 1);
     this.sceneSettingsController.setItem("speedPunkOpacity", 0.5);
     this.sceneSettings = this.sceneSettingsController.model;

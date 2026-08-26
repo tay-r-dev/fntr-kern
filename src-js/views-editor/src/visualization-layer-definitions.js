@@ -1874,6 +1874,10 @@ registerVisualizationLayerDefinition({
     const peakHeightGlyphUnits = model.sceneSettings?.speedPunkPeakHeightUpm ?? 24;
     const referenceRadiusGlyphUnits =
       model.sceneSettings?.speedPunkReferenceRadiusUpm ?? 200;
+    const colorFlatRadiusGlyphUnits =
+      model.sceneSettings?.speedPunkColorFlatRadiusUpm ?? 400;
+    const colorTightRadiusGlyphUnits =
+      model.sceneSettings?.speedPunkColorTightRadiusUpm ?? 180;
     const sharpness = Math.max(0.1, model.sceneSettings?.speedPunkSharpness ?? 1);
     const opacity = Math.max(
       0,
@@ -1883,6 +1887,8 @@ registerVisualizationLayerDefinition({
     const quads = computeSpeedPunkSamples(path, {
       peakHeightGlyphUnits,
       referenceRadiusGlyphUnits,
+      colorFlatRadiusGlyphUnits,
+      colorTightRadiusGlyphUnits,
       sharpness,
       illustrationPosition: parameters.illustrationPosition,
       colorStops: parameters.colorStops,

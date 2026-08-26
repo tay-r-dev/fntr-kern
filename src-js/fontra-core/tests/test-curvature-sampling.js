@@ -196,26 +196,42 @@ describe("computeSpeedPunkSamples", () => {
     }
   };
 
+  const COLOUR_RAMP = {
+    colorFlatRadiusGlyphUnits: 400,
+    colorTightRadiusGlyphUnits: 100,
+    colorStops: STOPS,
+    baseSegmentBudget: 400,
+    zoomFactor: 1,
+  };
+
   it("paints the colour stops at the named radii", () => {
-    const options = {
-      referenceRadiusGlyphUnits: 100,
-      colorStops: STOPS,
-      baseSegmentBudget: 400,
-      zoomFactor: 1,
-    };
-    // grey at four times the reference radius, orange at it, red at a quarter
-    expectAllNear(computeSpeedPunkSamples(ringOfRadius(400), options), STOPS[0]);
-    expectAllNear(computeSpeedPunkSamples(ringOfRadius(100), options), STOPS[1]);
-    expectAllNear(computeSpeedPunkSamples(ringOfRadius(25), options), STOPS[2]);
+    // The two ends are named outright. The middle stop falls on their geometric
+    // mean, because the ramp is geometric in radius.
+    expectAllNear(computeSpeedPunkSamples(ringOfRadius(400), COLOUR_RAMP), STOPS[0]);
+    expectAllNear(computeSpeedPunkSamples(ringOfRadius(200), COLOUR_RAMP), STOPS[1]);
+    expectAllNear(computeSpeedPunkSamples(ringOfRadius(100), COLOUR_RAMP), STOPS[2]);
+  });
+
+  it("pins the colour past either end of the ramp", () => {
+    expectAllNear(computeSpeedPunkSamples(ringOfRadius(2000), COLOUR_RAMP), STOPS[0]);
+    expectAllNear(computeSpeedPunkSamples(ringOfRadius(20), COLOUR_RAMP), STOPS[2]);
+  });
+
+  it("does not move the colour ramp when the height anchor changes", () => {
+    const ring = ringOfRadius(200);
+    const near = computeSpeedPunkSamples(ring, {
+      ...COLOUR_RAMP,
+      referenceRadiusGlyphUnits: 50,
+    });
+    const far = computeSpeedPunkSamples(ring, {
+      ...COLOUR_RAMP,
+      referenceRadiusGlyphUnits: 900,
+    });
+    expect(channelsOf(far)).to.deep.equal(channelsOf(near));
   });
 
   it("leaves a segment's colour alone when a neighbour changes", () => {
-    const options = {
-      referenceRadiusGlyphUnits: 100,
-      colorStops: STOPS,
-      baseSegmentBudget: 400,
-      zoomFactor: 1,
-    };
+    const options = COLOUR_RAMP;
     const untouchedQuadrant = (path) =>
       channelsOf(
         computeSpeedPunkSamples(path, options).filter(

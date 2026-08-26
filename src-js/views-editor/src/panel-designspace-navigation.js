@@ -72,6 +72,10 @@ const SPEEDPUNK_PEAK_HEIGHT_MAX_UPM = 1000;
 const SPEEDPUNK_REFERENCE_RADIUS_DEFAULT_UPM = 200;
 const SPEEDPUNK_REFERENCE_RADIUS_MIN_UPM = 1;
 const SPEEDPUNK_REFERENCE_RADIUS_MAX_UPM = 5000;
+const SPEEDPUNK_COLOR_FLAT_RADIUS_DEFAULT_UPM = 400;
+const SPEEDPUNK_COLOR_TIGHT_RADIUS_DEFAULT_UPM = 180;
+const SPEEDPUNK_COLOR_RADIUS_MIN_UPM = 1;
+const SPEEDPUNK_COLOR_RADIUS_MAX_UPM = 20000;
 const SPEEDPUNK_SHARPNESS_DEFAULT = 1;
 const SPEEDPUNK_SHARPNESS_MIN = 0.1;
 const SPEEDPUNK_SHARPNESS_MAX = 4;
@@ -367,6 +371,34 @@ export default class DesignspaceNavigationPanel extends Panel {
               step: 1,
             }),
             html.label(
+              {
+                for: "speedpunk-color-flat-radius-input",
+                style: "white-space: nowrap;",
+              },
+              [translate("sidebar.designspace-navigation.speedpunk.color-flat-radius")]
+            ),
+            html.input({
+              id: "speedpunk-color-flat-radius-input",
+              type: "number",
+              min: SPEEDPUNK_COLOR_RADIUS_MIN_UPM,
+              max: SPEEDPUNK_COLOR_RADIUS_MAX_UPM,
+              step: 1,
+            }),
+            html.label(
+              {
+                for: "speedpunk-color-tight-radius-input",
+                style: "white-space: nowrap;",
+              },
+              [translate("sidebar.designspace-navigation.speedpunk.color-tight-radius")]
+            ),
+            html.input({
+              id: "speedpunk-color-tight-radius-input",
+              type: "number",
+              min: SPEEDPUNK_COLOR_RADIUS_MIN_UPM,
+              max: SPEEDPUNK_COLOR_RADIUS_MAX_UPM,
+              step: 1,
+            }),
+            html.label(
               { for: "speedpunk-sharpness-input", style: "white-space: nowrap;" },
               [translate("sidebar.designspace-navigation.speedpunk.sharpness")]
             ),
@@ -448,6 +480,14 @@ export default class DesignspaceNavigationPanel extends Panel {
 
   get speedPunkReferenceRadiusInput() {
     return this.accordion.querySelector("#speedpunk-reference-radius-input");
+  }
+
+  get speedPunkColorFlatRadiusInput() {
+    return this.accordion.querySelector("#speedpunk-color-flat-radius-input");
+  }
+
+  get speedPunkColorTightRadiusInput() {
+    return this.accordion.querySelector("#speedpunk-color-tight-radius-input");
   }
 
   get speedPunkSharpnessInput() {
@@ -660,6 +700,14 @@ export default class DesignspaceNavigationPanel extends Panel {
     );
   }
 
+  _normalizeSpeedPunkColorRadiusUpm(value, fallback) {
+    if (!Number.isFinite(value)) return fallback;
+    return Math.max(
+      SPEEDPUNK_COLOR_RADIUS_MIN_UPM,
+      Math.min(SPEEDPUNK_COLOR_RADIUS_MAX_UPM, Math.round(value))
+    );
+  }
+
   _normalizeSpeedPunkSharpness(value) {
     if (!Number.isFinite(value)) return SPEEDPUNK_SHARPNESS_DEFAULT;
     return Math.max(SPEEDPUNK_SHARPNESS_MIN, Math.min(SPEEDPUNK_SHARPNESS_MAX, value));
@@ -679,6 +727,14 @@ export default class DesignspaceNavigationPanel extends Panel {
       referenceRadiusUpm: this._normalizeSpeedPunkReferenceRadiusUpm(
         model.speedPunkReferenceRadiusUpm
       ),
+      colorFlatRadiusUpm: this._normalizeSpeedPunkColorRadiusUpm(
+        model.speedPunkColorFlatRadiusUpm,
+        SPEEDPUNK_COLOR_FLAT_RADIUS_DEFAULT_UPM
+      ),
+      colorTightRadiusUpm: this._normalizeSpeedPunkColorRadiusUpm(
+        model.speedPunkColorTightRadiusUpm,
+        SPEEDPUNK_COLOR_TIGHT_RADIUS_DEFAULT_UPM
+      ),
       sharpness: this._normalizeSpeedPunkSharpness(model.speedPunkSharpness),
       opacity: this._normalizeSpeedPunkOpacity(model.speedPunkOpacity),
     };
@@ -689,6 +745,8 @@ export default class DesignspaceNavigationPanel extends Panel {
     const model = applicationSettingsController.model;
     model.speedPunkPeakHeightUpm = settings.peakHeightUpm;
     model.speedPunkReferenceRadiusUpm = settings.referenceRadiusUpm;
+    model.speedPunkColorFlatRadiusUpm = settings.colorFlatRadiusUpm;
+    model.speedPunkColorTightRadiusUpm = settings.colorTightRadiusUpm;
     model.speedPunkSharpness = settings.sharpness;
     model.speedPunkOpacity = settings.opacity;
   }
@@ -699,6 +757,8 @@ export default class DesignspaceNavigationPanel extends Panel {
     for (const input of [
       this.speedPunkPeakHeightInput,
       this.speedPunkReferenceRadiusInput,
+      this.speedPunkColorFlatRadiusInput,
+      this.speedPunkColorTightRadiusInput,
       this.speedPunkSharpnessInput,
       this.speedPunkOpacityInput,
     ]) {
@@ -716,6 +776,12 @@ export default class DesignspaceNavigationPanel extends Panel {
     if (this.speedPunkReferenceRadiusInput) {
       this.speedPunkReferenceRadiusInput.value = String(settings.referenceRadiusUpm);
     }
+    if (this.speedPunkColorFlatRadiusInput) {
+      this.speedPunkColorFlatRadiusInput.value = String(settings.colorFlatRadiusUpm);
+    }
+    if (this.speedPunkColorTightRadiusInput) {
+      this.speedPunkColorTightRadiusInput.value = String(settings.colorTightRadiusUpm);
+    }
     if (this.speedPunkSharpnessInput) {
       this.speedPunkSharpnessInput.value = String(settings.sharpness);
     }
@@ -730,6 +796,16 @@ export default class DesignspaceNavigationPanel extends Panel {
     this.sceneSettingsController.setItem(
       "speedPunkReferenceRadiusUpm",
       settings.referenceRadiusUpm,
+      { senderID: this }
+    );
+    this.sceneSettingsController.setItem(
+      "speedPunkColorFlatRadiusUpm",
+      settings.colorFlatRadiusUpm,
+      { senderID: this }
+    );
+    this.sceneSettingsController.setItem(
+      "speedPunkColorTightRadiusUpm",
+      settings.colorTightRadiusUpm,
       { senderID: this }
     );
     this.sceneSettingsController.setItem("speedPunkSharpness", settings.sharpness, {
@@ -771,6 +847,26 @@ export default class DesignspaceNavigationPanel extends Panel {
       (value) => this._normalizeSpeedPunkReferenceRadiusUpm(value),
       "referenceRadiusUpm",
       "speedPunkReferenceRadiusUpm"
+    );
+    bindNumberInput(
+      this.speedPunkColorFlatRadiusInput,
+      (value) =>
+        this._normalizeSpeedPunkColorRadiusUpm(
+          value,
+          SPEEDPUNK_COLOR_FLAT_RADIUS_DEFAULT_UPM
+        ),
+      "colorFlatRadiusUpm",
+      "speedPunkColorFlatRadiusUpm"
+    );
+    bindNumberInput(
+      this.speedPunkColorTightRadiusInput,
+      (value) =>
+        this._normalizeSpeedPunkColorRadiusUpm(
+          value,
+          SPEEDPUNK_COLOR_TIGHT_RADIUS_DEFAULT_UPM
+        ),
+      "colorTightRadiusUpm",
+      "speedPunkColorTightRadiusUpm"
     );
     bindNumberInput(
       this.speedPunkSharpnessInput,

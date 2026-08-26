@@ -143,31 +143,28 @@ function interpolateColor(color1, color2, t) {
 }
 
 /**
- * How far either side of the reference radius the colour ramp reaches, as a
- * factor on the radius. The last stop is at referenceRadius / SPREAD and the
- * first at referenceRadius * SPREAD.
+ * Map absolute curvature -> colour, against a ramp between two named radii.
  *
- * The stops are spent on the range letters occupy rather than on the range from
- * flat to infinitely tight. Spread across a raw curvature ratio instead, a whole
- * letter comes out one colour: measured once at 0.33 to 0.77 of the stops for a
- * working range of radius 200 down to 30.
- */
-export const COLOR_STOP_RADIUS_SPREAD = 4;
-
-/**
- * Map absolute curvature -> colour, against a named radius.
+ * `flatRadius` takes the first stop and `tightRadius` the last, and the ramp
+ * runs geometrically between them, so equal ratios of radius are equal steps of
+ * colour and the middle stop of a three-stop ramp lands on their geometric
+ * mean. Past either end the colour pins.
  *
- * The middle stop sits at `referenceRadius`, the first at that radius times
- * COLOR_STOP_RADIUS_SPREAD, the last at that radius divided by it, and the ramp
- * runs geometrically in between — so equal ratios of radius are equal steps of
- * colour, whichever end of the ramp they sit at.
+ * **The two radii are the whole of the design.** An absolute colour has to be
+ * told which range to spend its stops on, and letters occupy a narrow one — the
+ * two glyphs this was calibrated against sit between radius 170 and 370, about
+ * 2.2 to 1. A ramp wider than that puts the whole drawing in the middle stop's
+ * colour and makes the last stop unreachable. Deriving the ramp from the height
+ * anchor instead is what produced exactly that, because the span of the ramp and
+ * the anchor of the fringe length are unrelated quantities.
  *
  * Nothing here is read off the drawing. One curvature is one colour in every
  * glyph of the font, and no edit changes the colour of anything it did not move.
  */
 export function curvatureToColor(
   curvatureAbs,
-  referenceRadius,
+  flatRadius,
+  tightRadius,
   colorStops = ["#8b939c", "#f29400", "#e3004f"]
 ) {
   if (!Array.isArray(colorStops) || colorStops.length === 0) {
@@ -177,13 +174,18 @@ export function curvatureToColor(
     return interpolateColor(colorStops[0], colorStops[0], 0);
   }
 
-  const radiusRatio = curvatureAbs * Math.max(1e-9, referenceRadius);
-  // 0 at the flat end of the ramp, 0.5 at the reference radius, 1 at the tight
-  // end. A straight line has zero curvature and lands on the flat end.
-  let t =
-    radiusRatio > 0
-      ? 0.5 + Math.log(radiusRatio) / (2 * Math.log(COLOR_STOP_RADIUS_SPREAD))
-      : 0;
+  const flat = Math.max(1e-6, flatRadius);
+  const tight = Math.max(1e-6, tightRadius);
+  // A straight line has no curvature and no radius, so it lands on the flat end.
+  const radius = curvatureAbs > 0 ? 1 / curvatureAbs : Infinity;
+
+  let t = 0;
+  if (flat > tight) {
+    t = Number.isFinite(radius) ? Math.log(flat / radius) / Math.log(flat / tight) : 0;
+  } else {
+    // A ramp with no width: everything at or past it takes the last stop.
+    t = radius <= flat ? 1 : 0;
+  }
   t = Math.max(0, Math.min(1, t));
 
   const segments = colorStops.length - 1;
@@ -303,6 +305,9 @@ export function computeSpeedPunkSamples(path, params = {}) {
   // The anchor the height scale is stated in: a curve of this radius draws a
   // fringe of exactly the peak height.
   const referenceRadius = Math.max(1e-6, params.referenceRadiusGlyphUnits ?? 200);
+  // The colour ramp's own two ends, independent of the height anchor above.
+  const colorFlatRadius = Math.max(1e-6, params.colorFlatRadiusGlyphUnits ?? 400);
+  const colorTightRadius = Math.max(1e-6, params.colorTightRadiusGlyphUnits ?? 180);
   const sharpness = Math.max(0.1, params.sharpness ?? 1);
   const illustrationPosition = params.illustrationPosition ?? "outsideOfCurve";
   const colorStops = params.colorStops ?? ["#8b939c", "#f29400", "#e3004f"];
@@ -390,7 +395,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
           [offCurve[s + 1].x, offCurve[s + 1].y],
           [offCurve[s].x, offCurve[s].y],
         ],
-        color: curvatureToColor(a.k, referenceRadius, colorStops),
+        color: curvatureToColor(a.k, colorFlatRadius, colorTightRadius, colorStops),
       });
     }
   });
