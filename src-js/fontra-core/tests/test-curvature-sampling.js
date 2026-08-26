@@ -1,6 +1,7 @@
 import {
   adjustStepsForCurve,
   calculateSegmentBudget,
+  collectCurveRuns,
   computeSpeedPunkSamples,
   countCurveSegments,
   estimateCurveLength,
@@ -42,6 +43,79 @@ describe("curvature sampling helpers", () => {
       },
     ]);
     expect(countCurveSegments(oneCubic)).to.equal(1);
+  });
+});
+
+describe("collectCurveRuns", () => {
+  const twoCubics = (smooth) =>
+    VarPackedPath.fromUnpackedContours([
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 0, y: 60, type: "cubic" },
+          { x: 60, y: 100, type: "cubic" },
+          { x: 160, y: 100, smooth },
+          { x: 200, y: 100, type: "cubic" },
+          { x: 240, y: 93.6, type: "cubic" },
+          { x: 250, y: 40 },
+        ],
+        isClosed: false,
+      },
+    ]);
+
+  it("joins two curves at a smooth point", () => {
+    const runs = collectCurveRuns(twoCubics(true));
+    expect(runs).to.have.lengthOf(1);
+    expect(runs[0]).to.have.lengthOf(2);
+  });
+
+  it("breaks the run at a corner", () => {
+    const runs = collectCurveRuns(twoCubics(false));
+    expect(runs).to.have.lengthOf(2);
+  });
+
+  it("breaks the run at a line", () => {
+    const curveLineCurve = VarPackedPath.fromUnpackedContours([
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 0, y: 60, type: "cubic" },
+          { x: 60, y: 100, type: "cubic" },
+          { x: 160, y: 100, smooth: true },
+          { x: 260, y: 100, smooth: true },
+          { x: 300, y: 100, type: "cubic" },
+          { x: 340, y: 60, type: "cubic" },
+          { x: 340, y: 0 },
+        ],
+        isClosed: false,
+      },
+    ]);
+    expect(collectCurveRuns(curveLineCurve)).to.have.lengthOf(2);
+  });
+
+  it("closes a run around a closed contour", () => {
+    const ring = VarPackedPath.fromUnpackedContours([
+      {
+        points: [
+          { x: 0, y: -100, smooth: true },
+          { x: 55, y: -100, type: "cubic" },
+          { x: 100, y: -55, type: "cubic" },
+          { x: 100, y: 0, smooth: true },
+          { x: 100, y: 55, type: "cubic" },
+          { x: 55, y: 100, type: "cubic" },
+          { x: 0, y: 100, smooth: true },
+          { x: -55, y: 100, type: "cubic" },
+          { x: -100, y: 55, type: "cubic" },
+          { x: -100, y: 0, smooth: true },
+          { x: -100, y: -55, type: "cubic" },
+          { x: -55, y: -100, type: "cubic" },
+        ],
+        isClosed: true,
+      },
+    ]);
+    const runs = collectCurveRuns(ring);
+    expect(runs).to.have.lengthOf(1);
+    expect(runs[0]).to.have.lengthOf(4);
   });
 });
 
@@ -95,6 +169,52 @@ describe("computeSpeedPunkSamples", () => {
         )
       );
     expect(outsideGlyphBox(big)).to.be.greaterThan(outsideGlyphBox(small));
+  });
+
+  it("draws one height for one curvature across a smooth joint", () => {
+    // Two cubics meeting smoothly at (160, 100) with equal curvature on both
+    // sides, and very different peaks of their own: 0.0111 on the first, 0.0086
+    // on the second. Per-segment normalization draws the joint at 0.24 of full
+    // height from the left and 0.31 from the right.
+    const twoCubics = VarPackedPath.fromUnpackedContours([
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 0, y: 60, type: "cubic" },
+          { x: 60, y: 100, type: "cubic" },
+          { x: 160, y: 100, smooth: true },
+          { x: 200, y: 100, type: "cubic" },
+          { x: 240, y: 93.6, type: "cubic" },
+          { x: 250, y: 40 },
+        ],
+        isClosed: false,
+      },
+    ]);
+    const quads = computeSpeedPunkSamples(twoCubics, {
+      peakHeightGlyphUnits: 24,
+      sharpness: 1,
+      baseSegmentBudget: 40,
+      minSegmentsPerCurve: 5,
+      zoomFactor: 1,
+    });
+
+    const atJoint = (quad) =>
+      quad.points.findIndex(([x, y]) => Math.abs(x - 160) < 1e-6 && y === 100);
+    const heights = [];
+    for (const quad of quads) {
+      const onCurveIndex = atJoint(quad);
+      if (onCurveIndex < 0 || onCurveIndex > 1) {
+        continue;
+      }
+      // point i is the on-curve sample, point 3-i its own fringe tip
+      const [x0, y0] = quad.points[onCurveIndex];
+      const [x1, y1] = quad.points[3 - onCurveIndex];
+      heights.push(Math.hypot(x1 - x0, y1 - y0));
+    }
+
+    expect(heights).to.have.lengthOf(2);
+    expect(heights[0]).to.be.greaterThan(0);
+    expect(heights[1]).to.be.closeTo(heights[0], 1e-9);
   });
 
   it("returns an empty array for a path with no curves", () => {

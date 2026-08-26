@@ -1432,7 +1432,13 @@ because a different set of handles has a different harmonic target.
 the log's comb section carries what each attempt cost. What the tree holds now:
 
 - **Fringe length** is curvature divided by the tallest curvature on its own
-  segment, so every segment's peak draws the full height. The donor
+  **run**, so a run's peak draws the full height. A run is a maximal chain of
+  curve segments joined at smooth on-curve points; a line, a corner or a contour
+  end breaks it, because those are where the outline itself declares a
+  discontinuity. Per **segment** it drew two heights for one curvature at every
+  joint whose two sides peaked differently, which is the step the eye reads as a
+  break. It still cannot compare across whatever it normalizes over — the
+  boundary has moved from the segment to the run, not gone. The donor
   (`_external/speedpunk`) instead uses curvature times a fixed gain, with no
   ceiling and no floor.
 - **Colour** comes from each segment's own range. The donor uses the glyph's own

@@ -26,7 +26,7 @@ The donor is in `_external/speedpunk`. It states both of its choices plainly.
 
 |               | donor                                                                          | restored comb                                                                                        |
 | ------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| Fringe length | curvature times a fixed gain. Straight proportion, no ceiling, no floor        | divided by the tallest curvature on its own segment, so every segment's peak draws the full height   |
+| Fringe length | curvature times a fixed gain. Straight proportion, no ceiling, no floor        | divided by the tallest curvature on its own run, so a run's peak draws the full height               |
 | Colour        | the glyph's own range, gentlest to tightest, recomputed when the glyph changes | each segment's own range                                                                             |
 | Sample count  | a budget divided by the number of curve segments                               | that, times the square root of the magnification, with the budget divided by the magnification first |
 
@@ -77,6 +77,32 @@ height with the drawing untouched.
 drew a 2.73 unit step. The same joint 23 per cent out drew 0.16 units. The comb
 reported the reverse of what was there. Four rounds went into the geometry first,
 and the geometry was right every time.
+
+### The height scale is the run's, not the segment's
+
+The restored comb divided each fringe by the tallest curvature on its **own
+segment**, so two segments meeting at one curvature drew two heights whenever
+their own peaks differed. The eleventh entry in the rejected table below is that
+same rule, measured at a 27 per cent false step on `d` and rejected once
+already; the revert brought it back with everything else.
+
+The divisor is the **run** now — a maximal chain of curve segments joined at
+smooth on-curve points, broken by a line, a corner or a contour end. The break
+rule is not a tuning choice: a fringe is only comparable across a joint that
+claims one curve, and a corner is the outline saying it does not. On the two-cubic
+fixture, one curvature across a smooth joint drew 4.97 units of fringe from the
+left and 3.60 from the right; both draw 4.97 now.
+
+**This moves the boundary the normalization cannot see across. It does not
+remove it.** Two runs still cannot be compared, which is the same limit stated
+three times in this section. What it buys is that the boundary now sits where
+the drawing already has one, so the readout no longer invents a step in the
+middle of a curve the designer drew as one.
+
+**Colour was deliberately left per segment.** It answers "read one letter" while
+length answers "compare two", and it was not what the report was about. It now
+normalizes over a smaller thing than the height does, which is an inconsistency
+worth closing on purpose rather than as a side effect.
 
 ### Rejected drawing rules
 

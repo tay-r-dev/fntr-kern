@@ -284,6 +284,92 @@ function _segmentKind(t1, t2, t3) {
   return { isCubic, isQuadratic };
 }
 
+/**
+ * Group a path's curve segments into runs. A run is a maximal chain of curve
+ * segments joined at smooth on-curve points. A line, a corner or a contour end
+ * breaks it, because those are the places the outline itself declares a
+ * discontinuity, and a fringe is only comparable across a joint that claims one
+ * curve.
+ *
+ * Returns an array of runs, each an array of { kind, pts }.
+ */
+export function collectCurveRuns(path) {
+  const runs = [];
+
+  for (let contourIndex = 0; contourIndex < (path?.numContours ?? 0); contourIndex++) {
+    const contour = path.getContour(contourIndex);
+    const numPoints = contour.pointTypes.length;
+    const segments = [];
+
+    for (let i = 0; i < numPoints; i++) {
+      const pointIndex = path.getAbsolutePointIndex(contourIndex, i);
+      if (!_isOnCurve(path.pointTypes[pointIndex])) {
+        continue;
+      }
+      const next1 = path.getAbsolutePointIndex(contourIndex, (i + 1) % numPoints);
+      const next2 = path.getAbsolutePointIndex(contourIndex, (i + 2) % numPoints);
+      const next3 = path.getAbsolutePointIndex(contourIndex, (i + 3) % numPoints);
+      const { isCubic, isQuadratic } = _segmentKind(
+        path.pointTypes[next1],
+        path.pointTypes[next2],
+        path.pointTypes[next3]
+      );
+      if (!isCubic && !isQuadratic) {
+        continue;
+      }
+      const pointIndices = isCubic
+        ? [pointIndex, next1, next2, next3]
+        : [pointIndex, next1, next2];
+      const pts = pointIndices.map((index) => {
+        const point = path.getPoint(index);
+        return [point.x, point.y];
+      });
+      segments.push({
+        kind: isCubic ? "cubic" : "quadratic",
+        pts,
+        startPointIndex: pointIndex,
+        endPointIndex: pointIndices[pointIndices.length - 1],
+      });
+    }
+
+    if (!segments.length) {
+      continue;
+    }
+
+    const isSmooth = (pointIndex) =>
+      !!(path.pointTypes[pointIndex] & VarPackedPath.SMOOTH_FLAG);
+
+    const contourRuns = [[segments[0]]];
+    for (let s = 1; s < segments.length; s++) {
+      const segment = segments[s];
+      const previous = segments[s - 1];
+      const continues =
+        segment.startPointIndex === previous.endPointIndex &&
+        isSmooth(segment.startPointIndex);
+      if (continues) {
+        contourRuns[contourRuns.length - 1].push(segment);
+      } else {
+        contourRuns.push([segment]);
+      }
+    }
+
+    // A closed contour can close its own run, so the last and the first are one.
+    if (contour.isClosed && contourRuns.length > 1) {
+      const last = contourRuns[contourRuns.length - 1];
+      const first = contourRuns[0];
+      const joint = first[0].startPointIndex;
+      if (last[last.length - 1].endPointIndex === joint && isSmooth(joint)) {
+        contourRuns[0] = last.concat(first);
+        contourRuns.pop();
+      }
+    }
+
+    runs.push(...contourRuns);
+  }
+
+  return runs;
+}
+
 export function computeSpeedPunkSamples(path, params = {}) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;
   const sharpness = Math.max(0.1, params.sharpness ?? 1);
@@ -350,111 +436,83 @@ export function computeSpeedPunkSamples(path, params = {}) {
   }
 
   const quads = [];
-  forEachCurveSegment(path, (kind, pts) => {
-    const steps = adaptToCurveLength
-      ? adjustStepsForCurve(
-          stepsPerSegment,
-          estimateCurveLength(...pts),
-          averageCurveLength
-        )
-      : stepsPerSegment;
-    const samples =
-      kind === "cubic"
-        ? calculateCurvatureForSegment(...pts, steps)
-        : calculateCurvatureForQuadraticSegment(...pts, steps);
-
-    const absVals = samples.map((s) => Math.abs(s.curvature));
-    const minAbsSegment = Math.min(...absVals);
-    const maxAbsSegment = Math.max(...absVals);
-    const segmentPeakAbsCurvature = maxAbsSegment > 1e-12 ? maxAbsSegment : 1;
-    const minAbs = useGlobalNormalization ? globalMinAbs : minAbsSegment;
-    const maxAbs = useGlobalNormalization ? globalMaxAbs : maxAbsSegment;
-
-    const onCurve = [];
-    const offCurve = [];
-    for (let s = 0; s < samples.length; s++) {
-      const t = samples[s].t;
-      const { r, r1 } =
+  for (const run of collectCurveRuns(path)) {
+    const sampled = run.map(({ kind, pts }) => {
+      const steps = adaptToCurveLength
+        ? adjustStepsForCurve(
+            stepsPerSegment,
+            estimateCurveLength(...pts),
+            averageCurveLength
+          )
+        : stepsPerSegment;
+      const samples =
         kind === "cubic"
-          ? solveCubicBezier(...pts, t)
-          : solveQuadraticBezier(...pts, t);
-      const [x, y] = r;
-      onCurve.push({ x, y, k: samples[s].curvature });
+          ? calculateCurvatureForSegment(...pts, steps)
+          : calculateCurvatureForQuadraticSegment(...pts, steps);
+      const absVals = samples.map((s) => Math.abs(s.curvature));
+      return { kind, pts, samples, absVals };
+    });
 
-      let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];
-      let ny = illustrationPosition === "outsideOfCurve" ? r1[0] : -r1[0];
-      const mag = Math.hypot(nx, ny) || 1;
-      nx /= mag;
-      ny /= mag;
+    // The height scale belongs to the whole run, so one curvature draws one
+    // height wherever it sits, and a joint's two sides cannot disagree.
+    const runMaxAbs = Math.max(...sampled.map((s) => Math.max(...s.absVals)));
+    const runPeakAbsCurvature = runMaxAbs > 1e-12 ? runMaxAbs : 1;
 
-      const rawNormalizedHeight =
-        Math.abs(samples[s].curvature) / segmentPeakAbsCurvature;
-      const normalizedHeight = Math.pow(
-        Math.max(0, Math.min(1, rawNormalizedHeight)),
-        sharpness
-      );
-      const h = -normalizedHeight * peakHeightGlyphUnits;
-      offCurve.push({ x: x + nx * h, y: y + ny * h });
+    for (const { kind, pts, samples, absVals } of sampled) {
+      const minAbs = useGlobalNormalization ? globalMinAbs : Math.min(...absVals);
+      const maxAbs = useGlobalNormalization ? globalMaxAbs : Math.max(...absVals);
+
+      const onCurve = [];
+      const offCurve = [];
+      for (let s = 0; s < samples.length; s++) {
+        const t = samples[s].t;
+        const { r, r1 } =
+          kind === "cubic"
+            ? solveCubicBezier(...pts, t)
+            : solveQuadraticBezier(...pts, t);
+        const [x, y] = r;
+        onCurve.push({ x, y, k: samples[s].curvature });
+
+        let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];
+        let ny = illustrationPosition === "outsideOfCurve" ? r1[0] : -r1[0];
+        const mag = Math.hypot(nx, ny) || 1;
+        nx /= mag;
+        ny /= mag;
+
+        const rawNormalizedHeight = absVals[s] / runPeakAbsCurvature;
+        const normalizedHeight = Math.pow(
+          Math.max(0, Math.min(1, rawNormalizedHeight)),
+          sharpness
+        );
+        const h = -normalizedHeight * peakHeightGlyphUnits;
+        offCurve.push({ x: x + nx * h, y: y + ny * h });
+      }
+
+      for (let s = 0; s < onCurve.length - 1; s++) {
+        const a = onCurve[s];
+        const b = onCurve[s + 1];
+        quads.push({
+          points: [
+            [a.x, a.y],
+            [b.x, b.y],
+            [offCurve[s + 1].x, offCurve[s + 1].y],
+            [offCurve[s].x, offCurve[s].y],
+          ],
+          color: curvatureToColor(Math.abs(a.k), minAbs, maxAbs, colorStops),
+        });
+      }
     }
-
-    for (let s = 0; s < onCurve.length - 1; s++) {
-      const a = onCurve[s];
-      const b = onCurve[s + 1];
-      quads.push({
-        points: [
-          [a.x, a.y],
-          [b.x, b.y],
-          [offCurve[s + 1].x, offCurve[s + 1].y],
-          [offCurve[s].x, offCurve[s].y],
-        ],
-        color: curvatureToColor(Math.abs(a.k), minAbs, maxAbs, colorStops),
-      });
-    }
-  });
+  }
 
   return quads;
 }
 
+// The segment walk lives in collectCurveRuns. This is the same walk with the
+// grouping dropped, for the two passes that only want every segment once.
 function forEachCurveSegment(path, cb) {
-  for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
-    const contour = path.getContour(contourIndex);
-    const startPoint = path.getAbsolutePointIndex(contourIndex, 0);
-    const numPoints = contour.pointTypes.length;
-
-    for (let i = 0; i < numPoints; i++) {
-      const pointIndex = startPoint + i;
-      if (!_isOnCurve(path.pointTypes[pointIndex])) {
-        continue;
-      }
-      const next1 = path.getAbsolutePointIndex(contourIndex, (i + 1) % numPoints);
-      const next2 = path.getAbsolutePointIndex(contourIndex, (i + 2) % numPoints);
-      const next3 = path.getAbsolutePointIndex(contourIndex, (i + 3) % numPoints);
-      const { isCubic, isQuadratic } = _segmentKind(
-        path.pointTypes[next1],
-        path.pointTypes[next2],
-        path.pointTypes[next3]
-      );
-      if (isCubic) {
-        const p1 = path.getPoint(pointIndex);
-        const p2 = path.getPoint(next1);
-        const p3 = path.getPoint(next2);
-        const p4 = path.getPoint(next3);
-        cb("cubic", [
-          [p1.x, p1.y],
-          [p2.x, p2.y],
-          [p3.x, p3.y],
-          [p4.x, p4.y],
-        ]);
-      } else if (isQuadratic) {
-        const p1 = path.getPoint(pointIndex);
-        const p2 = path.getPoint(next1);
-        const p3 = path.getPoint(next2);
-        cb("quadratic", [
-          [p1.x, p1.y],
-          [p2.x, p2.y],
-          [p3.x, p3.y],
-        ]);
-      }
+  for (const run of collectCurveRuns(path)) {
+    for (const { kind, pts } of run) {
+      cb(kind, pts);
     }
   }
 }
