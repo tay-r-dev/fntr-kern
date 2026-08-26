@@ -347,3 +347,17 @@ export function collectCandidates(scene, cursor, { pixelUnit }) {
   });
   return candidates.slice(0, CULL_PARAMETERS.maxCandidates);
 }
+
+export function roundSnapped(result, roundFunc) {
+  const { position, held, freedom } = result;
+  if (freedom === "point") {
+    return { ...position };
+  }
+  if (freedom === "free" || !held.length) {
+    return { x: roundFunc(position.x), y: roundFunc(position.y) };
+  }
+  const line = held[0];
+  const along = (position.x - line.x) * line.dx + (position.y - line.y) * line.dy;
+  const rounded = roundFunc(along);
+  return { x: line.x + rounded * line.dx, y: line.y + rounded * line.dy };
+}

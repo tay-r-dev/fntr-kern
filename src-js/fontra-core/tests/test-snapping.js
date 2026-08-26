@@ -9,6 +9,7 @@ import {
   crossLines,
   resolveSnap,
   resolveSnapForPoints,
+  roundSnapped,
   distanceToCandidate,
   makeLineCandidate,
   makePointCandidate,
@@ -462,5 +463,56 @@ describe("candidate generation", () => {
     expect(collectCandidates(scene, { x: 0, y: 0 }, opts).length).to.be.at.most(
       CULL_PARAMETERS.maxCandidates
     );
+  });
+});
+
+describe("the grid rounds what is left", () => {
+  const round = (v) => Math.round(v);
+
+  it("rounds both axes when free", () => {
+    const out = roundSnapped(
+      { position: { x: 10.4, y: 20.6 }, held: [], freedom: "free" },
+      round
+    );
+    expect(out).to.deep.equal({ x: 10, y: 21 });
+  });
+
+  it("rounds along a horizontal line and leaves the line's own coordinate alone", () => {
+    const line = makeLineCandidate({
+      x: 0,
+      y: 50.5,
+      angle: 0,
+      kind: KIND.METRIC,
+      source: { x: 0, y: 50.5 },
+    });
+    const out = roundSnapped(
+      { position: { x: 10.4, y: 50.5 }, held: [line], freedom: "line" },
+      round
+    );
+    expect(out.x).to.equal(10);
+    expect(out.y).to.equal(50.5);
+  });
+
+  it("rounds nothing at a crossing", () => {
+    const out = roundSnapped(
+      { position: { x: 10.4, y: 20.6 }, held: [], freedom: "point" },
+      round
+    );
+    expect(out).to.deep.equal({ x: 10.4, y: 20.6 });
+  });
+
+  it("rounds along a slant, so the point stays on the line before emission", () => {
+    const line = makeLineCandidate({
+      x: 0,
+      y: 0,
+      angle: 45,
+      kind: KIND.GUIDE_SLANTED,
+      source: { x: 0, y: 0 },
+    });
+    const out = roundSnapped(
+      { position: { x: 7.1, y: 7.1 }, held: [line], freedom: "line" },
+      round
+    );
+    expect(out.x).to.be.closeTo(out.y, 1e-9);
   });
 });
