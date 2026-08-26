@@ -92,6 +92,9 @@ export class SceneModel {
     this.measureHoverHandle = null;
     this.measureHoverSkeletonRib = null;
 
+    // The snap candidates the current gesture holds, for the snapping layer to draw.
+    this.snapHeldCandidates = [];
+
     this.sceneSettingsController.addKeyListener(
       [
         "characterLines",
