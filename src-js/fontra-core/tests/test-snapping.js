@@ -1,6 +1,8 @@
 import { expect } from "chai";
 import {
   KIND,
+  MIN_CROSSING_ANGLE_DEG,
+  crossLines,
   distanceToCandidate,
   makeLineCandidate,
   makePointCandidate,
@@ -63,5 +65,50 @@ describe("snapping primitives", () => {
       source: { x: 3, y: 4 },
     });
     expect(distanceToCandidate(point, { x: 0, y: 0 })).to.be.closeTo(5, 1e-12);
+  });
+});
+
+describe("snapping crossings", () => {
+  const horizontal = (y, kind = KIND.METRIC) =>
+    makeLineCandidate({ x: 0, y, angle: 0, kind, source: { x: 0, y } });
+  const vertical = (x, kind = KIND.SMART_ORTHOGONAL) =>
+    makeLineCandidate({ x, y: 0, angle: 90, kind, source: { x, y: 0 } });
+
+  it("crosses a horizontal and a vertical", () => {
+    const c = crossLines(horizontal(50), vertical(30));
+    expect(c.type).to.equal("point");
+    expect(c.x).to.be.closeTo(30, 1e-9);
+    expect(c.y).to.be.closeTo(50, 1e-9);
+    expect(c.sources).to.have.length(2);
+  });
+
+  it("refuses two parallel lines", () => {
+    expect(crossLines(horizontal(50), horizontal(80))).to.equal(null);
+  });
+
+  it("refuses a crossing shallower than the stated angle", () => {
+    const shallow = makeLineCandidate({
+      x: 0,
+      y: 0,
+      angle: MIN_CROSSING_ANGLE_DEG - 1,
+      kind: KIND.SMART_SLANTED,
+      source: { x: 0, y: 0 },
+    });
+    expect(crossLines(horizontal(0), shallow)).to.equal(null);
+  });
+
+  it("ranks a crossing of two orthogonal smart guides above one involving a slant", () => {
+    const both = crossLines(horizontal(50, KIND.SMART_ORTHOGONAL), vertical(30));
+    expect(both.kind).to.equal(KIND.SMART_INTERSECTION_ORTHOGONAL);
+    const slanted = makeLineCandidate({
+      x: 0,
+      y: 0,
+      angle: 40,
+      kind: KIND.SMART_SLANTED,
+      source: { x: 0, y: 0 },
+    });
+    expect(crossLines(horizontal(50, KIND.SMART_ORTHOGONAL), slanted).kind).to.equal(
+      KIND.SMART_INTERSECTION_SLANTED
+    );
   });
 });
