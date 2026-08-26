@@ -1,4 +1,11 @@
 import { registerAction } from "@fontra/core/actions.js";
+import {
+  CULL_PARAMETERS,
+  KIND,
+  SNAP_PARAMETERS,
+  resetSnapParameters,
+  setSnapParameter,
+} from "@fontra/core/snapping.js";
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { makeFontAxisAccordionItems } from "@fontra/core/axis-ui.js";
 import {
@@ -94,6 +101,105 @@ const LIST_HEADER_ANIMATION_STYLE = `
   transform: scale(1.2);
 }
 `;
+
+// The snapping numbers, as one table. Each row states its own range, so the panel
+// is generated rather than written out, and adding a parameter is one line here.
+// Labels are literal: this is a tuning aid, not shipped chrome.
+const SNAPPING_DEBUG_CONTROLS = [
+  { path: "reachPixels", label: "Reach (px)", min: 1, max: 60, step: 1 },
+  { path: "noSnapPull", label: "Release floor", min: 0, max: 1, step: 0.01 },
+  { path: "holdBonus", label: "Hold bonus", min: 1, max: 3, step: 0.05 },
+  { path: "pointerWeight", label: "Pointer weight", min: 0, max: 1, step: 0.05 },
+  {
+    path: "pointerFalloffReaches",
+    label: "Pointer falloff (reaches)",
+    min: 1,
+    max: 20,
+    step: 0.5,
+  },
+  {
+    path: "collectionRadiusPixels",
+    label: "Collection radius (px)",
+    min: 50,
+    max: 2000,
+    step: 50,
+  },
+  { path: "perSideCount", label: "Sources per side", min: 1, max: 5, step: 1 },
+  { path: "maxCandidates", label: "Candidate cap", min: 20, max: 500, step: 10 },
+  {
+    path: "weights." + KIND.METRIC,
+    label: "Weight: metric",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.GUIDE_INTERSECTION,
+    label: "Weight: guide crossing",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.GUIDE_ORTHOGONAL,
+    label: "Weight: guide, right angle",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.GUIDE_SLANTED,
+    label: "Weight: guide, slant",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.SMART_INTERSECTION_ORTHOGONAL,
+    label: "Weight: smart crossing, right angle",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.SMART_INTERSECTION_SLANTED,
+    label: "Weight: smart crossing, slant",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.SMART_ORTHOGONAL,
+    label: "Weight: smart, right angle",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.SMART_SLANTED,
+    label: "Weight: smart, slant",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.OTHER,
+    label: "Weight: other",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+];
+
+function readSnapParameter(path) {
+  if (path.startsWith("weights.")) {
+    return SNAP_PARAMETERS.weights[path.slice("weights.".length)];
+  }
+  if (path in CULL_PARAMETERS) {
+    return CULL_PARAMETERS[path];
+  }
+  return SNAP_PARAMETERS[path];
+}
 
 export default class DesignspaceNavigationPanel extends Panel {
   identifier = "designspace-navigation";
@@ -422,6 +528,59 @@ export default class DesignspaceNavigationPanel extends Panel {
             }),
           ]
         ),
+      },
+      {
+        id: "snapping-debug-accordion-item",
+        label: "Snapping (debug)",
+        open: false,
+        content: html.div({}, [
+          html.div(
+            {
+              id: "snapping-debug-readout",
+              style: `
+                font-family: monospace;
+                font-size: 0.85em;
+                white-space: pre;
+                overflow-x: auto;
+                padding: 0.4em 0;
+                opacity: 0.8;
+              `,
+            },
+            ["no snap"]
+          ),
+          html.div(
+            {
+              style: `
+                display: grid;
+                grid-template-columns: auto 1fr auto;
+                gap: 0.35em 0.5em;
+                align-items: center;
+              `,
+            },
+            SNAPPING_DEBUG_CONTROLS.flatMap((control) => [
+              html.label({ style: "white-space: nowrap; font-size: 0.9em;" }, [
+                control.label,
+              ]),
+              html.input({
+                id: `snapping-debug-${control.path.replace(".", "-")}`,
+                type: "range",
+                min: control.min,
+                max: control.max,
+                step: control.step,
+              }),
+              html.span(
+                {
+                  id: `snapping-debug-${control.path.replace(".", "-")}-value`,
+                  style: "font-family: monospace; font-size: 0.85em; min-width: 3.5em;",
+                },
+                [""]
+              ),
+            ])
+          ),
+          html.div({ style: "padding-top: 0.6em;" }, [
+            html.button({ id: "snapping-debug-reset" }, ["Reset to defaults"]),
+          ]),
+        ]),
       },
     ];
 
@@ -817,6 +976,98 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._updateSpeedPunkControlsEnabled();
   }
 
+  _setupSnappingDebugControls() {
+    const stored = applicationSettingsController.model.snapDebugParameters || {};
+    for (const [path, value] of Object.entries(stored)) {
+      if (Number.isFinite(value)) {
+        setSnapParameter(path, value);
+      }
+    }
+
+    const persist = () => {
+      const values = {};
+      for (const control of SNAPPING_DEBUG_CONTROLS) {
+        values[control.path] = readSnapParameter(control.path);
+      }
+      applicationSettingsController.model.snapDebugParameters = values;
+    };
+
+    const syncOne = (control) => {
+      const id = control.path.replace(".", "-");
+      const input = this.accordion.querySelector(`#snapping-debug-${id}`);
+      const readout = this.accordion.querySelector(`#snapping-debug-${id}-value`);
+      const value = readSnapParameter(control.path);
+      if (input) {
+        input.value = String(value);
+      }
+      if (readout) {
+        readout.textContent = String(value);
+      }
+    };
+
+    for (const control of SNAPPING_DEBUG_CONTROLS) {
+      syncOne(control);
+      const id = control.path.replace(".", "-");
+      const input = this.accordion.querySelector(`#snapping-debug-${id}`);
+      if (!input) {
+        continue;
+      }
+      // "input", not "change": a scrub must answer while the thumb is moving.
+      input.addEventListener("input", () => {
+        setSnapParameter(control.path, Number(input.value));
+        syncOne(control);
+        persist();
+        this.editorController.canvasController.requestUpdate();
+      });
+    }
+
+    const resetButton = this.accordion.querySelector("#snapping-debug-reset");
+    resetButton?.addEventListener("click", () => {
+      resetSnapParameters();
+      SNAPPING_DEBUG_CONTROLS.forEach(syncOne);
+      persist();
+      this.editorController.canvasController.requestUpdate();
+    });
+
+    this._startSnappingDebugReadout();
+  }
+
+  // The readout follows the live gesture, which no setting changes, so it polls
+  // one frame at a time and only while the panel is open to be read.
+  _startSnappingDebugReadout() {
+    const element = this.accordion.querySelector("#snapping-debug-readout");
+    const item = this.accordion.querySelector("#snapping-debug-accordion-item");
+    if (!element) {
+      return;
+    }
+    const tick = () => {
+      if (item?.offsetParent !== null) {
+        element.textContent = this._formatSnappingReadout();
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  _formatSnappingReadout() {
+    const readout = this.sceneController?.sceneModel?.snapDebugReadout;
+    if (!readout) {
+      return "no snap";
+    }
+    const lines = [
+      `candidates ${readout.candidateCount}`,
+      `freedom    ${readout.freedom}`,
+      `winner     ${readout.winningKind || "-"}`,
+      `pull       ${readout.winningPull.toFixed(3)}`,
+      "",
+    ];
+    const byKind = Object.entries(readout.byKind).sort((a, b) => b[1] - a[1]);
+    for (const [kind, pull] of byKind) {
+      lines.push(`${kind.padEnd(28)} ${pull.toFixed(3)}`);
+    }
+    return lines.join("\n");
+  }
+
   _setupSpeedPunkControls() {
     this._speedPunkSettings = this._readSpeedPunkSettingsFromApp();
     this._syncSpeedPunkControls();
@@ -982,6 +1233,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._setupCoarseGridControls();
     this._setupCoarseGridDisplayToggle();
     this._setupSpeedPunkControls();
+    this._setupSnappingDebugControls();
 
     const columnDescriptions = this._setupSourceListColumnDescriptions();
 
