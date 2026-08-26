@@ -66,6 +66,7 @@ export const strings = {
   "action.select-all": "Select All",
   "action.select-none": "Select None",
   "action.set-contour-start": "Set Start Point",
+  "action.toggle-snapping": "Toggle Snapping",
   "action.undo": "Undo",
   "action.unlock-background-images": "Unlock Background Images",
   "action.unlock-guideline": "Unlock Guideline",

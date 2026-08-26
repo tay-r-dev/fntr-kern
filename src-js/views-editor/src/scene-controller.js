@@ -136,6 +136,7 @@ export class SceneController {
     this.setupSceneSettings();
     //// grid
     this.sceneSettingsController.setItem("coarseGridSpacing", 10);
+    this.sceneSettingsController.setItem("snappingEnabled", true);
     this.sceneSettingsController.setItem("speedPunkPeakHeightUpm", 24);
     this.sceneSettingsController.setItem("speedPunkReferenceRadiusUpm", 200);
     this.sceneSettingsController.setItem("speedPunkColorFlatRadiusUpm", 400);
@@ -689,6 +690,21 @@ export class SceneController {
       () => {
         const v = this.sceneSettings.coarseGridSpacing;
         if (v > 5) this.sceneSettingsController.setItem("coarseGridSpacing", v - 5);
+      }
+    );
+
+    registerAction(
+      "action.toggle-snapping",
+      {
+        titleKey: "action.toggle-snapping",
+        defaultShortCuts: [{ baseKey: "g", shiftKey: true }],
+      },
+      () => {
+        this.sceneSettingsController.setItem(
+          "snappingEnabled",
+          !this.sceneSettings.snappingEnabled
+        );
+        this.canvasController.requestUpdate();
       }
     );
 
