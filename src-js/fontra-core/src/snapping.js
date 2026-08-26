@@ -73,3 +73,173 @@ export function crossLines(a, b) {
   }
   return { ...makePointCandidate({ x, y, kind, source: a.source }), sources: [a, b] };
 }
+
+export const SNAP_PARAMETERS = Object.freeze({
+  reachPixels: 12,
+  holdBonus: 1.3,
+  noSnapPull: 0.15,
+  pointerWeight: 0.5,
+  pointerFalloffReaches: 8,
+  weights: Object.freeze({
+    [KIND.METRIC]: 1.0,
+    [KIND.GUIDE_INTERSECTION]: 0.84,
+    [KIND.GUIDE_ORTHOGONAL]: 0.8,
+    [KIND.GUIDE_SLANTED]: 0.76,
+    [KIND.SMART_INTERSECTION_ORTHOGONAL]: 0.52,
+    [KIND.SMART_INTERSECTION_SLANTED]: 0.48,
+    [KIND.SMART_ORTHOGONAL]: 0.44,
+    [KIND.SMART_SLANTED]: 0.4,
+    [KIND.OTHER]: 0.3,
+  }),
+});
+
+function falloff(u) {
+  return u >= 1 ? 0 : 1 - u * u;
+}
+
+function sameCandidate(a, b) {
+  if (!a || !b || a.type !== b.type || a.kind !== b.kind) {
+    return false;
+  }
+  if (a.type === "point") {
+    return Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9;
+  }
+  const parallel = Math.abs(a.dx * b.dy - a.dy * b.dx) < 1e-9;
+  return parallel && Math.abs((b.x - a.x) * a.dy - (b.y - a.y) * a.dx) < 1e-9;
+}
+
+export function candidatePull(candidate, cursor, { pixelUnit, held }) {
+  const reach = SNAP_PARAMETERS.reachPixels * pixelUnit;
+  const weight =
+    SNAP_PARAMETERS.weights[candidate.kind] ?? SNAP_PARAMETERS.weights[KIND.OTHER];
+  const bonus = sameCandidate(candidate, held) ? SNAP_PARAMETERS.holdBonus : 1;
+  return weight * bonus * falloff(distanceToCandidate(candidate, cursor) / reach);
+}
+
+export function resolveSnap(candidates, cursor, options) {
+  const { constraint } = options;
+  if (constraint) {
+    // The constraint is a held line, so the gesture already stands at one degree of
+    // freedom and the search below looks for the second. Shift is not overruled.
+    const onConstraint = projectOntoLine(constraint, cursor);
+    for (const candidate of candidates) {
+      if (candidate.type !== "line") {
+        continue;
+      }
+      if (candidatePull(candidate, cursor, options) <= SNAP_PARAMETERS.noSnapPull) {
+        continue;
+      }
+      const crossing = crossLines(constraint, candidate);
+      if (!crossing) {
+        continue;
+      }
+      const pull = candidatePull(crossing, cursor, options);
+      if (pull > SNAP_PARAMETERS.noSnapPull) {
+        return {
+          position: { x: crossing.x, y: crossing.y },
+          pull,
+          held: [candidate],
+          freedom: "point",
+        };
+      }
+    }
+    return { position: onConstraint, pull: 0, held: [], freedom: "line" };
+  }
+
+  const scored = [];
+  for (const candidate of candidates) {
+    const pull = candidatePull(candidate, cursor, options);
+    if (pull <= SNAP_PARAMETERS.noSnapPull) {
+      continue;
+    }
+    if (scored.some(({ candidate: other }) => sameCandidate(other, candidate))) {
+      continue;
+    }
+    scored.push({ candidate, pull });
+  }
+  scored.sort((a, b) => b.pull - a.pull);
+
+  if (!scored.length) {
+    return { position: { ...cursor }, pull: 0, held: [], freedom: "free" };
+  }
+
+  const winner = scored[0].candidate;
+  if (winner.type === "point") {
+    return {
+      position: { x: winner.x, y: winner.y },
+      pull: scored[0].pull,
+      held: winner.sources ? [...winner.sources] : [winner],
+      freedom: "point",
+    };
+  }
+
+  for (const { candidate } of scored.slice(1)) {
+    if (candidate.type !== "line") {
+      continue;
+    }
+    const crossing = crossLines(winner, candidate);
+    if (!crossing) {
+      continue;
+    }
+    const crossingPull = candidatePull(crossing, cursor, options);
+    if (crossingPull > SNAP_PARAMETERS.noSnapPull) {
+      return {
+        position: { x: crossing.x, y: crossing.y },
+        pull: crossingPull,
+        held: [winner, candidate],
+        freedom: "point",
+      };
+    }
+  }
+
+  return {
+    position: projectOntoLine(winner, cursor),
+    pull: scored[0].pull,
+    held: [winner],
+    freedom: "line",
+  };
+}
+
+export function resolveSnapForPoints(candidates, points, cursor, options) {
+  const reach = SNAP_PARAMETERS.reachPixels * options.pixelUnit;
+  const pointerSpan = reach * SNAP_PARAMETERS.pointerFalloffReaches;
+  const noWin = {
+    delta: { x: 0, y: 0 },
+    pointIndex: -1,
+    position: null,
+    pull: 0,
+    held: [],
+    freedom: "free",
+  };
+  let best = noWin;
+  let bestScore = 0;
+
+  points.forEach((point, pointIndex) => {
+    // The hold belongs to the pair. A candidate held by another point earns no bonus here.
+    const held =
+      options.held && options.held.pointIndex === pointIndex
+        ? options.held.candidate
+        : null;
+    const result = resolveSnap(candidates, point, { ...options, held });
+    if (!result.held.length) {
+      return;
+    }
+    const pointerDistance = Math.hypot(point.x - cursor.x, point.y - cursor.y);
+    const discount =
+      1 - SNAP_PARAMETERS.pointerWeight * Math.min(1, pointerDistance / pointerSpan);
+    const score = result.pull * discount;
+    if (score > bestScore) {
+      bestScore = score;
+      best = {
+        delta: { x: result.position.x - point.x, y: result.position.y - point.y },
+        pointIndex,
+        position: result.position,
+        pull: result.pull,
+        held: result.held,
+        freedom: result.freedom,
+      };
+    }
+  });
+
+  return best;
+}
