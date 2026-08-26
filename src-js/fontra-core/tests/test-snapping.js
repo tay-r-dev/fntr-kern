@@ -2,7 +2,9 @@ import { expect } from "chai";
 import {
   KIND,
   MIN_CROSSING_ANGLE_DEG,
+  CULL_PARAMETERS,
   SNAP_PARAMETERS,
+  collectCandidates,
   candidatePull,
   crossLines,
   resolveSnap,
@@ -352,5 +354,113 @@ describe("multi-point resolution", () => {
       }
     );
     expect(again.pointIndex).to.equal(result.pointIndex);
+  });
+});
+
+describe("candidate generation", () => {
+  const opts = { pixelUnit: 1 };
+
+  it("makes one line per metric, and a band ranks lowest", () => {
+    const scene = {
+      metrics: [
+        { name: "xHeight", value: 500, kind: "metric" },
+        { name: "overshoot", value: 510, kind: "band" },
+      ],
+      guides: [],
+      points: [],
+      segments: [],
+    };
+    const found = collectCandidates(scene, { x: 0, y: 505 }, opts);
+    expect(found.map((c) => c.kind)).to.have.members([KIND.METRIC, KIND.OTHER]);
+  });
+
+  it("ranks a right-angle guide above a slanted one", () => {
+    const scene = {
+      metrics: [],
+      guides: [
+        { x: 10, y: 0, angle: 90 },
+        { x: 10, y: 0, angle: 30 },
+      ],
+      points: [],
+      segments: [],
+    };
+    const kinds = collectCandidates(scene, { x: 10, y: 0 }, opts).map((c) => c.kind);
+    expect(kinds).to.include(KIND.GUIDE_ORTHOGONAL);
+    expect(kinds).to.include(KIND.GUIDE_SLANTED);
+  });
+
+  it("gives an on-curve point a horizontal and a vertical ray", () => {
+    const scene = { metrics: [], guides: [], points: [{ x: 40, y: 60 }], segments: [] };
+    const found = collectCandidates(scene, { x: 41, y: 61 }, opts);
+    expect(found).to.have.length(2);
+    expect(found.every((c) => c.kind === KIND.SMART_ORTHOGONAL)).to.equal(true);
+  });
+
+  it("drops a source outside the collection radius", () => {
+    const far = CULL_PARAMETERS.collectionRadiusPixels + 100;
+    const scene = {
+      metrics: [],
+      guides: [],
+      points: [{ x: far, y: far }],
+      segments: [],
+    };
+    expect(collectCandidates(scene, { x: 0, y: 0 }, opts)).to.have.length(0);
+  });
+
+  it("keeps only the nearest source per side, so a far point adds no ray a near point already gives", () => {
+    const scene = {
+      metrics: [],
+      guides: [],
+      points: [
+        { x: 0, y: 103 }, // near, above
+        { x: 0, y: 180 }, // far, above - same horizontal family
+        { x: 0, y: 97 }, // near, below
+      ],
+      segments: [],
+    };
+    const horizontals = collectCandidates(scene, { x: 0, y: 100 }, opts).filter(
+      (c) => Math.abs(c.dy) < 1e-9
+    );
+    expect(horizontals).to.have.length(2);
+    expect(horizontals.map((c) => c.y).sort((a, b) => a - b)).to.deep.equal([97, 103]);
+  });
+
+  it("never culls a metric or a permanent guide by side", () => {
+    const scene = {
+      metrics: [
+        { name: "baseline", value: 0, kind: "metric" },
+        { name: "xHeight", value: 20, kind: "metric" },
+        { name: "capHeight", value: 40, kind: "metric" },
+      ],
+      guides: [],
+      points: [],
+      segments: [],
+    };
+    expect(collectCandidates(scene, { x: 0, y: 21 }, opts)).to.have.length(3);
+  });
+
+  it("extends a straight segment and a curve end tangent along their own angle", () => {
+    const scene = {
+      metrics: [],
+      guides: [],
+      points: [],
+      segments: [
+        { type: "line", x: 0, y: 0, angle: 0 },
+        { type: "tangent", x: 0, y: 0, angle: 30 },
+      ],
+    };
+    const kinds = collectCandidates(scene, { x: 0, y: 0 }, opts).map((c) => c.kind);
+    expect(kinds).to.deep.equal([KIND.SMART_ORTHOGONAL, KIND.SMART_SLANTED]);
+  });
+
+  it("caps the candidate list", () => {
+    const points = [];
+    for (let i = 0; i < 500; i++) {
+      points.push({ x: i, y: i });
+    }
+    const scene = { metrics: [], guides: [], points, segments: [] };
+    expect(collectCandidates(scene, { x: 0, y: 0 }, opts).length).to.be.at.most(
+      CULL_PARAMETERS.maxCandidates
+    );
   });
 });

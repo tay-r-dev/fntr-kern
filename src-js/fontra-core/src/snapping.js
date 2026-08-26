@@ -243,3 +243,107 @@ export function resolveSnapForPoints(candidates, points, cursor, options) {
 
   return best;
 }
+
+export const CULL_PARAMETERS = Object.freeze({
+  collectionRadiusPixels: 400,
+  perSideCount: 1,
+  maxCandidates: 200,
+});
+
+function isOrthogonal(angle) {
+  const a = ((angle % 180) + 180) % 180;
+  return Math.abs(a) < 1e-9 || Math.abs(a - 90) < 1e-9;
+}
+
+function nearestPerSide(sources, cursor, axis) {
+  // axis "y": horizontal rays, compared by the source's y. axis "x": vertical rays.
+  const above = [];
+  const below = [];
+  for (const source of sources) {
+    (source[axis] >= cursor[axis] ? above : below).push(source);
+  }
+  const byDistance = (a, b) =>
+    Math.abs(a[axis] - cursor[axis]) - Math.abs(b[axis] - cursor[axis]);
+  above.sort(byDistance);
+  below.sort(byDistance);
+  return [
+    ...above.slice(0, CULL_PARAMETERS.perSideCount),
+    ...below.slice(0, CULL_PARAMETERS.perSideCount),
+  ];
+}
+
+export function collectCandidates(scene, cursor, { pixelUnit }) {
+  const radius = CULL_PARAMETERS.collectionRadiusPixels * pixelUnit;
+  const inRadius = (p) => Math.hypot(p.x - cursor.x, p.y - cursor.y) <= radius;
+  const candidates = [];
+
+  for (const metric of scene.metrics || []) {
+    candidates.push(
+      makeLineCandidate({
+        x: cursor.x,
+        y: metric.value,
+        angle: 0,
+        kind: metric.kind === "band" ? KIND.OTHER : KIND.METRIC,
+        source: { x: cursor.x, y: metric.value },
+      })
+    );
+  }
+
+  for (const guide of scene.guides || []) {
+    candidates.push(
+      makeLineCandidate({
+        x: guide.x,
+        y: guide.y,
+        angle: guide.angle,
+        kind: isOrthogonal(guide.angle) ? KIND.GUIDE_ORTHOGONAL : KIND.GUIDE_SLANTED,
+        source: { x: guide.x, y: guide.y },
+      })
+    );
+  }
+
+  const points = (scene.points || []).filter(inRadius);
+  for (const source of nearestPerSide(points, cursor, "y")) {
+    candidates.push(
+      makeLineCandidate({
+        x: source.x,
+        y: source.y,
+        angle: 0,
+        kind: KIND.SMART_ORTHOGONAL,
+        source,
+      })
+    );
+  }
+  for (const source of nearestPerSide(points, cursor, "x")) {
+    candidates.push(
+      makeLineCandidate({
+        x: source.x,
+        y: source.y,
+        angle: 90,
+        kind: KIND.SMART_ORTHOGONAL,
+        source,
+      })
+    );
+  }
+
+  for (const segment of (scene.segments || []).filter(inRadius)) {
+    candidates.push(
+      makeLineCandidate({
+        x: segment.x,
+        y: segment.y,
+        angle: segment.angle,
+        kind: isOrthogonal(segment.angle) ? KIND.SMART_ORTHOGONAL : KIND.SMART_SLANTED,
+        source: { x: segment.x, y: segment.y },
+      })
+    );
+  }
+
+  candidates.sort((a, b) => {
+    const weightDelta =
+      (SNAP_PARAMETERS.weights[b.kind] ?? 0) - (SNAP_PARAMETERS.weights[a.kind] ?? 0);
+    if (Math.abs(weightDelta) > 1e-12) {
+      return weightDelta;
+    }
+    return distanceToCandidate(a, cursor) - distanceToCandidate(b, cursor);
+  });
+  return candidates.slice(0, CULL_PARAMETERS.maxCandidates);
+}
