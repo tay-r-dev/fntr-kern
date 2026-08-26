@@ -192,6 +192,25 @@ describe("the pull model", () => {
     expect(withHold.freedom).to.equal("line");
   });
 
+  it("lets one kind reach further than another without changing who wins ties", () => {
+    const before = SNAP_PARAMETERS.reaches[KIND.METRIC];
+    try {
+      // Out of the shared reach of 12, so nothing takes it.
+      expect(resolveSnap([metric(50)], { x: 0, y: 70 }, opts).freedom).to.equal("free");
+      SNAP_PARAMETERS.reaches[KIND.METRIC] = 3;
+      expect(resolveSnap([metric(50)], { x: 0, y: 70 }, opts).freedom).to.equal("line");
+      // The smart guide's own reach is untouched by the metric's.
+      expect(resolveSnap([smart(50)], { x: 0, y: 70 }, opts).freedom).to.equal("free");
+      // And at equal distance the ranking is unchanged: reach is not precedence.
+      const cursor = { x: 0, y: 52 };
+      expect(candidatePull(metric(50), cursor, opts)).to.be.greaterThan(
+        candidatePull(smart(50), cursor, opts)
+      );
+    } finally {
+      SNAP_PARAMETERS.reaches[KIND.METRIC] = before;
+    }
+  });
+
   it("collapses duplicate candidates at one position to one held entry", () => {
     const result = resolveSnap([metric(50), metric(50)], { x: 0, y: 51 }, opts);
     expect(result.held).to.have.length(1);

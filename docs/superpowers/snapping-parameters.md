@@ -154,6 +154,26 @@ Kept in weight order, then distance order, so the cap takes the least useful
 candidates first. You should not need to touch it. If you hit it, lower the
 collection radius instead.
 
+## The nine reaches
+
+One per kind of candidate, as a **multiple of the master reach** above. The
+pixels each one comes to are shown beside its slider, and they all move when you
+move the master reach.
+
+This is the knob to use when a kind should grab from further away without also
+winning ties it ought to lose. Raising a weight does both at once, which is why
+it is the wrong tool for that job.
+
+Worked example: metrics that catch early without overpowering a nearby guide.
+Set **Reach: metric** to 2 and leave every weight alone. The baseline now pulls
+from twice as far, and a guide at the same distance still beats it.
+
+- **Below 1:** that kind only engages when you are already close. Useful for the
+  bands, and for slanted smart guides, which are the usual source of snaps
+  nobody asked for.
+- **Above 1:** that kind catches early. Useful for metrics, which are the lines
+  a designer aims at deliberately.
+
 ## The nine weights
 
 The relative worth of each kind of candidate. They only decide near-ties: a light
@@ -173,8 +193,8 @@ Inside each cluster two rules hold: a crossing beats a single line, and a right
 angle beats a slant.
 
 **Raising a weight to get more reach is the wrong move.** It also changes who wins
-ties. If a kind needs to grab from further away while still losing ties, the fix
-is a per-kind reach, which does not exist yet.
+ties. If a kind needs to grab from further away while still losing ties, use its
+own reach above.
 
 One consequence, accepted rather than fixed: a guide you placed near the working
 area suppresses the derived guides around it. Placing a guide is not free.

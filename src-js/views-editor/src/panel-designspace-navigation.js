@@ -191,6 +191,69 @@ const SNAPPING_DEBUG_CONTROLS = [
     step: 0.02,
   },
   {
+    path: "reaches." + KIND.METRIC,
+    label: "Reach: metric",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.GUIDE_INTERSECTION,
+    label: "Reach: guide crossing",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.GUIDE_ORTHOGONAL,
+    label: "Reach: guide, right angle",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.GUIDE_SLANTED,
+    label: "Reach: guide, slant",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.SMART_INTERSECTION_ORTHOGONAL,
+    label: "Reach: smart crossing, right angle",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.SMART_INTERSECTION_SLANTED,
+    label: "Reach: smart crossing, slant",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.SMART_ORTHOGONAL,
+    label: "Reach: smart, right angle",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.SMART_SLANTED,
+    label: "Reach: smart, slant",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.OTHER,
+    label: "Reach: other",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
     path: "weights." + KIND.OTHER,
     label: "Weight: other",
     min: 0,
@@ -200,6 +263,9 @@ const SNAPPING_DEBUG_CONTROLS = [
 ];
 
 function readSnapParameter(path) {
+  if (path.startsWith("reaches.")) {
+    return SNAP_PARAMETERS.reaches[path.slice("reaches.".length)];
+  }
   if (path.startsWith("weights.")) {
     return SNAP_PARAMETERS.weights[path.slice("weights.".length)];
   }
@@ -1015,7 +1081,12 @@ export default class DesignspaceNavigationPanel extends Panel {
         input.value = String(value);
       }
       if (readout) {
-        readout.textContent = String(value);
+        // A per-kind reach is a multiple of the master reach, so the pixels it
+        // comes to are shown beside it. Otherwise the number means nothing on
+        // its own.
+        readout.textContent = control.path.startsWith("reaches.")
+          ? `${value} (${Math.round(value * SNAP_PARAMETERS.reachPixels)}px)`
+          : String(value);
       }
     };
 
@@ -1029,7 +1100,9 @@ export default class DesignspaceNavigationPanel extends Panel {
       // "input", not "change": a scrub must answer while the thumb is moving.
       input.addEventListener("input", () => {
         setSnapParameter(control.path, Number(input.value));
-        syncOne(control);
+        // Every row, not just this one: moving the master reach changes the pixel
+        // figure shown beside all nine per-kind reaches.
+        SNAPPING_DEBUG_CONTROLS.forEach(syncOne);
         persist();
         this.editorController.canvasController.requestUpdate();
       });

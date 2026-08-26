@@ -82,6 +82,20 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
   pointerFalloffReaches: 8,
   overruleMargin: 1.6,
   overruleFrames: 4,
+  // Per-kind reach, as a multiple of reachPixels. This is what lets reach and
+  // precedence move apart: a kind can grab from further away without also winning
+  // ties it should lose, which raising its weight would do.
+  reaches: Object.freeze({
+    [KIND.METRIC]: 1,
+    [KIND.GUIDE_INTERSECTION]: 1,
+    [KIND.GUIDE_ORTHOGONAL]: 1,
+    [KIND.GUIDE_SLANTED]: 1,
+    [KIND.SMART_INTERSECTION_ORTHOGONAL]: 1,
+    [KIND.SMART_INTERSECTION_SLANTED]: 1,
+    [KIND.SMART_ORTHOGONAL]: 1,
+    [KIND.SMART_SLANTED]: 1,
+    [KIND.OTHER]: 1,
+  }),
   weights: Object.freeze({
     [KIND.METRIC]: 1.0,
     [KIND.GUIDE_INTERSECTION]: 0.84,
@@ -105,13 +119,16 @@ export const CULL_PARAMETERS_DEFAULTS = Object.freeze({
 // can move one and the next frame answers with it. Reset restores the defaults.
 export const SNAP_PARAMETERS = {
   ...SNAP_PARAMETERS_DEFAULTS,
+  reaches: { ...SNAP_PARAMETERS_DEFAULTS.reaches },
   weights: { ...SNAP_PARAMETERS_DEFAULTS.weights },
 };
 
 export const CULL_PARAMETERS = { ...CULL_PARAMETERS_DEFAULTS };
 
 export function setSnapParameter(path, value) {
-  if (path.startsWith("weights.")) {
+  if (path.startsWith("reaches.")) {
+    SNAP_PARAMETERS.reaches[path.slice("reaches.".length)] = value;
+  } else if (path.startsWith("weights.")) {
     SNAP_PARAMETERS.weights[path.slice("weights.".length)] = value;
   } else if (path in CULL_PARAMETERS) {
     CULL_PARAMETERS[path] = value;
@@ -122,6 +139,7 @@ export function setSnapParameter(path, value) {
 
 export function resetSnapParameters() {
   Object.assign(SNAP_PARAMETERS, SNAP_PARAMETERS_DEFAULTS);
+  SNAP_PARAMETERS.reaches = { ...SNAP_PARAMETERS_DEFAULTS.reaches };
   SNAP_PARAMETERS.weights = { ...SNAP_PARAMETERS_DEFAULTS.weights };
   Object.assign(CULL_PARAMETERS, CULL_PARAMETERS_DEFAULTS);
 }
@@ -141,8 +159,12 @@ function sameCandidate(a, b) {
   return parallel && Math.abs((b.x - a.x) * a.dy - (b.y - a.y) * a.dx) < 1e-9;
 }
 
+export function reachForKind(kind, pixelUnit) {
+  return SNAP_PARAMETERS.reachPixels * (SNAP_PARAMETERS.reaches[kind] ?? 1) * pixelUnit;
+}
+
 export function candidatePull(candidate, cursor, { pixelUnit, held }) {
-  const reach = SNAP_PARAMETERS.reachPixels * pixelUnit;
+  const reach = reachForKind(candidate.kind, pixelUnit);
   const weight =
     SNAP_PARAMETERS.weights[candidate.kind] ?? SNAP_PARAMETERS.weights[KIND.OTHER];
   const bonus = sameCandidate(candidate, held) ? SNAP_PARAMETERS.holdBonus : 1;
