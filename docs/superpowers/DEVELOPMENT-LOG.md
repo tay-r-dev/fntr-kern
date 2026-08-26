@@ -27,7 +27,7 @@ The donor is in `_external/speedpunk`. It states both of its choices plainly.
 |               | donor                                                                          | restored comb                                                                                        |
 | ------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | Fringe length | curvature times a fixed gain. Straight proportion, no ceiling, no floor        | divided by the tallest curvature on its own run, so a run's peak draws the full height               |
-| Colour        | the glyph's own range, gentlest to tightest, recomputed when the glyph changes | each segment's own range                                                                             |
+| Colour        | the glyph's own range, gentlest to tightest, recomputed when the glyph changes | its run's own range                                                                                  |
 | Sample count  | a budget divided by the number of curve segments                               | that, times the square root of the magnification, with the budget divided by the magnification first |
 
 ### Three fixes went out with the revert and are not present
@@ -99,10 +99,24 @@ three times in this section. What it buys is that the boundary now sits where
 the drawing already has one, so the readout no longer invents a step in the
 middle of a curve the designer drew as one.
 
-**Colour was deliberately left per segment.** It answers "read one letter" while
-length answers "compare two", and it was not what the report was about. It now
-normalizes over a smaller thing than the height does, which is an inconsistency
-worth closing on purpose rather than as a side effect.
+**Colour was left per segment for one round, and reported the next day.** On
+`N^1.json` layer `5daac8f8`, points 3 and 24: two curvatures agreeing to 0.29
+per cent, drawn grey on one side of the joint and orange on the other. The cause
+is the per-segment range's **lower** end rather than its peak — the joint is the
+flattest place on the segment arriving at it, so `k = segMin`, so `t` is exactly
+0 and the fringe is the bottom of the scale whatever it measures. The other side
+sat at 0.362 of its own range. Both read 0.266 and 0.272 on the run's range now,
+and point 24 reads 0.420 on both sides against 0.420 and 0.000.
+
+**Every joint at the end of a run is an extreme of one of its two segments**, so
+this was not a rare configuration — it was structural, and the two scales are
+both the run's now.
+
+**A fixture can be too kind, and nearly hid it.** The first colour test used the
+synthetic two-cubic fixture from the height round, where the joint happens to be
+the minimum of *both* segments, so both sides already read 0 and the test failed
+by five parts in 255. The reported geometry, dropped in as the fixture, fails by
+73. **Take the case the report names.**
 
 ### Rejected drawing rules
 

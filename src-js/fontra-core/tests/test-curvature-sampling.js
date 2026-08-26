@@ -217,6 +217,49 @@ describe("computeSpeedPunkSamples", () => {
     expect(heights[1]).to.be.closeTo(heights[0], 1e-9);
   });
 
+  it("draws one colour for one curvature across a smooth joint", () => {
+    // The top of `_external/N^1.json`, contour points 0 to 6, layer 5daac8f8.
+    // The two curvatures at the joint agree to 0.29 per cent, and the joint is
+    // the flattest place on the segment arriving at it — so a per-segment
+    // colour range paints it the bottom of the scale from that side (t = 0.000)
+    // and a third of the way up from the other (t = 0.362).
+    const twoCubics = VarPackedPath.fromUnpackedContours([
+      {
+        points: [
+          { x: 680, y: 410 },
+          { x: 680, y: 579, type: "cubic" },
+          { x: 526, y: 706, type: "cubic" },
+          { x: 350, y: 706, smooth: true },
+          { x: 159, y: 706, type: "cubic" },
+          { x: 32, y: 556, type: "cubic" },
+          { x: 32, y: 367 },
+        ],
+        isClosed: false,
+      },
+    ]);
+    const quads = computeSpeedPunkSamples(twoCubics, {
+      baseSegmentBudget: 40,
+      minSegmentsPerCurve: 5,
+      zoomFactor: 1,
+    });
+
+    const channels = quads
+      .filter((quad) => {
+        const index = quad.points.findIndex(
+          ([x, y]) => Math.abs(x - 350) < 1e-6 && y === 706
+        );
+        return index === 0 || index === 1;
+      })
+      .map((quad) => quad.color.match(/\d+/g).slice(0, 3).map(Number));
+
+    expect(channels).to.have.lengthOf(2);
+    // A quad is painted by its own leading sample, so the two are one sample
+    // apart and never identical. They must not be two different colours.
+    for (let i = 0; i < 3; i++) {
+      expect(channels[1][i]).to.be.closeTo(channels[0][i], 4);
+    }
+  });
+
   it("returns an empty array for a path with no curves", () => {
     const lineOnly = VarPackedPath.fromUnpackedContours([
       {

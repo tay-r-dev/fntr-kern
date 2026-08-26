@@ -1441,8 +1441,12 @@ the log's comb section carries what each attempt cost. What the tree holds now:
   boundary has moved from the segment to the run, not gone. The donor
   (`_external/speedpunk`) instead uses curvature times a fixed gain, with no
   ceiling and no floor.
-- **Colour** comes from each segment's own range. The donor uses the glyph's own
-  range, gentlest to tightest, recomputed when the glyph changes.
+- **Colour** comes from the run's own range, gentlest to tightest — the same run
+  the height is scaled over, so the two readouts agree about what they are
+  comparing. Per **segment** it put the end of the scale on any joint that was an
+  extreme of one of its two segments, which is every joint at the end of a run:
+  the colour said where in the segment, and was read as how curved. The donor
+  uses the glyph's own range, recomputed when the glyph changes.
 - **Sample count** is a budget divided by the number of curve segments, times the
   square root of the magnification, with the budget divided by the magnification
   first. The donor uses the budget divided by the segment count alone.

@@ -453,14 +453,17 @@ export function computeSpeedPunkSamples(path, params = {}) {
       return { kind, pts, samples, absVals };
     });
 
-    // The height scale belongs to the whole run, so one curvature draws one
-    // height wherever it sits, and a joint's two sides cannot disagree.
+    // Both scales belong to the whole run, so one curvature draws one height and
+    // one colour wherever it sits, and a joint's two sides cannot disagree.
+    // Per segment, a joint that is an extreme of one of its two segments took
+    // the end of that segment's own scale by construction, whatever it measured.
+    const runMinAbs = Math.min(...sampled.map((s) => Math.min(...s.absVals)));
     const runMaxAbs = Math.max(...sampled.map((s) => Math.max(...s.absVals)));
     const runPeakAbsCurvature = runMaxAbs > 1e-12 ? runMaxAbs : 1;
 
     for (const { kind, pts, samples, absVals } of sampled) {
-      const minAbs = useGlobalNormalization ? globalMinAbs : Math.min(...absVals);
-      const maxAbs = useGlobalNormalization ? globalMaxAbs : Math.max(...absVals);
+      const minAbs = useGlobalNormalization ? globalMinAbs : runMinAbs;
+      const maxAbs = useGlobalNormalization ? globalMaxAbs : runMaxAbs;
 
       const onCurve = [];
       const offCurve = [];
