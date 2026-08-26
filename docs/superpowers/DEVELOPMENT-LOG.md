@@ -26,7 +26,7 @@ The donor is in `_external/speedpunk`. It states both of its choices plainly.
 
 |               | donor                                                                          | restored comb                                                                                        |
 | ------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| Fringe length | curvature times a fixed gain. Straight proportion, no ceiling, no floor        | divided by the tallest curvature on its own run, so a run's peak draws the full height               |
+| Fringe length | curvature times a fixed gain. Straight proportion, no ceiling, no floor        | the same, with the gain stated as "full height at radius R", default 200                             |
 | Colour        | the glyph's own range, gentlest to tightest, recomputed when the glyph changes | its run's own range                                                                                  |
 | Sample count  | a budget divided by the number of curve segments                               | that, times the square root of the magnification, with the budget divided by the magnification first |
 
@@ -93,11 +93,11 @@ claims one curve, and a corner is the outline saying it does not. On the two-cub
 fixture, one curvature across a smooth joint drew 4.97 units of fringe from the
 left and 3.60 from the right; both draw 4.97 now.
 
-**This moves the boundary the normalization cannot see across. It does not
-remove it.** Two runs still cannot be compared, which is the same limit stated
-three times in this section. What it buys is that the boundary now sits where
-the drawing already has one, so the readout no longer invents a step in the
-middle of a curve the designer drew as one.
+**This moved the boundary the normalization cannot see across. It did not
+remove it, and the next report was the proof.** Changing one segment of
+21-24-27 rescaled the other: a ten per cent handle change on the neighbour took
+21 per cent off an untouched fringe, and half the mean at ×0.7. The height scale
+is absolute now — see below. The run survives as the **colour** scope only.
 
 **Colour was left per segment for one round, and reported the next day.** On
 `N^1.json` layer `5daac8f8`, points 3 and 24: two curvatures agreeing to 0.29
@@ -118,6 +118,55 @@ the minimum of *both* segments, so both sides already read 0 and the test failed
 by five parts in 255. The reported geometry, dropped in as the fixture, fails by
 73. **Take the case the report names.**
 
+### The height is absolute, and the anchor is the whole of the design
+
+Reported one day after the run scale shipped: changing one segment of the
+21-24-27 chain changed the height **and the peakiness** of its neighbour. It
+did, by construction. `runPeak` is the tallest curvature in the run, so a
+tighter neighbour lengthens the divisor under geometry nobody touched, and
+because `sharpness` is an exponent on that ratio the profile flattens as well as
+shrinking — which is why the mean fell much faster than the max.
+
+| 24→27 handles | 21→24 max fringe | 21→24 mean |
+| ------------- | ---------------- | ---------- |
+| as drawn      | 24.00            | 18.85      |
+| × 0.9         | 18.85            | 14.91      |
+| × 0.7         | 17.51            | 7.50       |
+| × 0.5         | 17.52            | 3.42       |
+
+**This is not a fault of the run grouping. It is what relative normalization
+is**, and the same complaint already stands in the rejected table below against
+the glyph-wide divisor: "redrawing one segment moved the glyph's peak". Per run
+is that fault in smaller scope. There is no scope that removes it, because the
+coupling is the scope.
+
+So length went absolute, which is the donor's rule and what this section's own
+heading rule has said three times: **length answers "compare two letters", and a
+readout that rescales when a neighbour moves cannot answer that.** Colour stays
+relative and stays scoped to the run. The two readouts now differ in kind rather
+than in radius.
+
+**The gain is stated as an anchor rather than as a gain.** "Full height at
+radius R", default 200 units. A bare multiplier is the thing the colour rules
+were rejected for three times over — nobody could say what the top of the scale
+meant. A radius is a number a designer can hold, and the anchor is invariant to
+sharpness, so the two controls do not multiply into one quantity.
+
+Measured after: the neighbour sweep above moves 21→24 by 0.00 at every pull.
+The whole N at the default anchor draws min 11.55, median 17.33, max 29.57
+against a peak height of 24.
+
+**The stated cost is the ceiling.** There is none, so a tight corner draws a
+spike as long as its curvature asks for, and a near-cusp draws an enormous one.
+That is the donor's behaviour and it was accepted knowingly, not overlooked.
+
+**The probe measured the wrong quads first, and it looked like a result.** It
+picked a segment's quads by the bounding box of its two end points, so once the
+neighbour's handles moved into that box its quads were counted too — reporting
+an 89 per cent *rise* on an untouched segment. Slicing by emission order gives
+0.00. Same class as the bulb's rejoin helper: **a helper that identifies
+geometry by position re-identifies it when the geometry moves.**
+
 ### Rejected drawing rules
 
 We built and measured each one. None is in the tree.
@@ -126,6 +175,7 @@ We built and measured each one. None is in the tree.
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Divide each fringe by the tallest curvature on its own segment | Two segments meeting at equal curvature drew unequal fringe. On glyph `d` the two sides of a joint peak 27 per cent apart. That 27 per cent was the whole of the step on screen. Elsewhere a 2.7 per cent difference in the curve drew as a 21 per cent step, eight times the thing it measures. |
 | Divide by the tallest curvature on the glyph                   | Redrawing one segment moved the glyph's peak. Every fringe then changed length at once, and two glyphs never shared one scale.                                                                                                                                                                   |
+| Divide by the tallest curvature on its own **run**             | Shipped for one day. It fixes the false step at a joint and keeps the coupling above at smaller scope: a ten per cent handle change on one segment took 21 per cent off its untouched neighbour. Any relative length is rescaled by whatever it normalizes over. The run survives as the colour scope. |
 | A typed reference radius, with a floor and a ceiling           | A readout you must tune before you can trust it is not a readout. The ceiling drew two different curvatures at one length. That is the same false reading the per-segment divisor gave.                                                                                                          |
 | Squeeze the height towards twice the peak                      | Nothing clipped and everything flattened. Four times the reference tightness drew 1.6 times the height and eight times drew 1.8: two peaks, one drawn length.                                                                                                                                    |
 | Colour straight off the curvature ratio                        | Radius 200 to 30 is the working range of most letters. This rule spent 0.33 to 0.77 of the stops on it, which is one colour to the eye.                                                                                                                                                          |

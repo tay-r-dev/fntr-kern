@@ -171,6 +171,93 @@ describe("computeSpeedPunkSamples", () => {
     expect(outsideGlyphBox(big)).to.be.greaterThan(outsideGlyphBox(small));
   });
 
+  const ringOfRadius = (radius, pull = 1) => {
+    const k = 0.5523 * radius; // a cubic circle approximation
+    return VarPackedPath.fromUnpackedContours([
+      {
+        points: [
+          { x: 0, y: -radius, smooth: true },
+          { x: k, y: -radius, type: "cubic" },
+          { x: radius, y: -k, type: "cubic" },
+          { x: radius, y: 0, smooth: true },
+          // the pull factor tightens this one quadrant and leaves the rest alone
+          { x: radius, y: k * pull, type: "cubic" },
+          { x: k * pull, y: radius, type: "cubic" },
+          { x: 0, y: radius, smooth: true },
+          { x: -k, y: radius, type: "cubic" },
+          { x: -radius, y: k, type: "cubic" },
+          { x: -radius, y: 0, smooth: true },
+          { x: -radius, y: -k, type: "cubic" },
+          { x: -k, y: -radius, type: "cubic" },
+        ],
+        isClosed: true,
+      },
+    ]);
+  };
+
+  const fringeHeights = (quads) =>
+    quads.map((q) =>
+      Math.hypot(q.points[3][0] - q.points[0][0], q.points[3][1] - q.points[0][1])
+    );
+
+  it("draws the peak height at the reference radius", () => {
+    // A circle of radius R has curvature 1/R everywhere, so at a reference
+    // radius of R every fringe is exactly the peak height.
+    const quads = computeSpeedPunkSamples(ringOfRadius(100), {
+      peakHeightGlyphUnits: 24,
+      referenceRadiusGlyphUnits: 100,
+      sharpness: 1,
+      baseSegmentBudget: 400,
+      zoomFactor: 1,
+    });
+    for (const height of fringeHeights(quads)) {
+      // 3 per cent, which is the cubic circle approximation's own curvature
+      // ripple, not the scale's error
+      expect(height).to.be.closeTo(24, 24 * 0.03);
+    }
+  });
+
+  it("halves the fringe when the radius doubles", () => {
+    const quads = computeSpeedPunkSamples(ringOfRadius(200), {
+      peakHeightGlyphUnits: 24,
+      referenceRadiusGlyphUnits: 100,
+      sharpness: 1,
+      baseSegmentBudget: 400,
+      zoomFactor: 1,
+    });
+    for (const height of fringeHeights(quads)) {
+      expect(height).to.be.closeTo(12, 12 * 0.03);
+    }
+  });
+
+  it("leaves a segment's fringe alone when a neighbour in the run changes", () => {
+    const options = {
+      peakHeightGlyphUnits: 24,
+      referenceRadiusGlyphUnits: 100,
+      sharpness: 1,
+      baseSegmentBudget: 400,
+      zoomFactor: 1,
+    };
+    // The untouched quadrant runs from (0, -100) to (100, 0). Both of its own
+    // end points are excluded, because the joint at (100, 0) also leads the
+    // first quad of the quadrant that does change.
+    const untouchedQuadrant = (path) =>
+      fringeHeights(
+        computeSpeedPunkSamples(path, options).filter(
+          (q) => q.points[0][0] > 1e-9 && q.points[0][1] < -1e-9
+        )
+      );
+
+    const asDrawn = untouchedQuadrant(ringOfRadius(100));
+    const neighbourTightened = untouchedQuadrant(ringOfRadius(100, 0.5));
+
+    expect(asDrawn.length).to.be.greaterThan(10);
+    expect(neighbourTightened).to.have.lengthOf(asDrawn.length);
+    for (let i = 0; i < asDrawn.length; i++) {
+      expect(neighbourTightened[i]).to.be.closeTo(asDrawn[i], 1e-9);
+    }
+  });
+
   it("draws one height for one curvature across a smooth joint", () => {
     // Two cubics meeting smoothly at (160, 100) with equal curvature on both
     // sides, and very different peaks of their own: 0.0111 on the first, 0.0086

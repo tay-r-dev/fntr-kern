@@ -372,6 +372,9 @@ export function collectCurveRuns(path) {
 
 export function computeSpeedPunkSamples(path, params = {}) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;
+  // The anchor the height scale is stated in: a curve of this radius draws a
+  // fringe of exactly the peak height.
+  const referenceRadius = Math.max(1e-6, params.referenceRadiusGlyphUnits ?? 200);
   const sharpness = Math.max(0.1, params.sharpness ?? 1);
   const illustrationPosition = params.illustrationPosition ?? "outsideOfCurve";
   const useGlobalNormalization = params.useGlobalNormalization ?? false;
@@ -453,13 +456,12 @@ export function computeSpeedPunkSamples(path, params = {}) {
       return { kind, pts, samples, absVals };
     });
 
-    // Both scales belong to the whole run, so one curvature draws one height and
-    // one colour wherever it sits, and a joint's two sides cannot disagree.
-    // Per segment, a joint that is an extreme of one of its two segments took
-    // the end of that segment's own scale by construction, whatever it measured.
+    // Colour is relative and reads one run: the range of curvature in this run,
+    // gentlest to tightest. It is the run's and not the segment's, because a
+    // joint that is an extreme of one of its two segments would otherwise take
+    // the end of that segment's own scale whatever it measured.
     const runMinAbs = Math.min(...sampled.map((s) => Math.min(...s.absVals)));
     const runMaxAbs = Math.max(...sampled.map((s) => Math.max(...s.absVals)));
-    const runPeakAbsCurvature = runMaxAbs > 1e-12 ? runMaxAbs : 1;
 
     for (const { kind, pts, samples, absVals } of sampled) {
       const minAbs = useGlobalNormalization ? globalMinAbs : runMinAbs;
@@ -482,12 +484,13 @@ export function computeSpeedPunkSamples(path, params = {}) {
         nx /= mag;
         ny /= mag;
 
-        const rawNormalizedHeight = absVals[s] / runPeakAbsCurvature;
-        const normalizedHeight = Math.pow(
-          Math.max(0, Math.min(1, rawNormalizedHeight)),
-          sharpness
-        );
-        const h = -normalizedHeight * peakHeightGlyphUnits;
+        // Length is absolute: the fringe is the peak height where the radius is
+        // the reference radius, and proportional to curvature from there. No
+        // ceiling and no floor, so one curvature draws one length everywhere in
+        // the glyph and nothing a neighbour does can rescale it. Sharpness is
+        // an exponent about that anchor, which the anchor itself survives.
+        const heightRatio = Math.pow(absVals[s] * referenceRadius, sharpness);
+        const h = -heightRatio * peakHeightGlyphUnits;
         offCurve.push({ x: x + nx * h, y: y + ny * h });
       }
 

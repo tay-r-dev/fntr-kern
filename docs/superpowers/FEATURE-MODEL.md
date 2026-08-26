@@ -1431,16 +1431,16 @@ because a different set of handles has a different harmonic target.
 **Reverted to its state at `2242d76b`.** Ten rounds of rework did not settle, and
 the log's comb section carries what each attempt cost. What the tree holds now:
 
-- **Fringe length** is curvature divided by the tallest curvature on its own
-  **run**, so a run's peak draws the full height. A run is a maximal chain of
-  curve segments joined at smooth on-curve points; a line, a corner or a contour
-  end breaks it, because those are where the outline itself declares a
-  discontinuity. Per **segment** it drew two heights for one curvature at every
-  joint whose two sides peaked differently, which is the step the eye reads as a
-  break. It still cannot compare across whatever it normalizes over — the
-  boundary has moved from the segment to the run, not gone. The donor
-  (`_external/speedpunk`) instead uses curvature times a fixed gain, with no
-  ceiling and no floor.
+- **Fringe length is absolute**, which is the donor's own rule
+  (`_external/speedpunk`): curvature times a fixed gain, with no ceiling and no
+  floor. **The gain is stated as an anchor a person can name** — "full height at
+  radius R", default 200 units, so a curve of radius R draws a fringe of exactly
+  the peak height and everything else is proportional to its curvature.
+  `sharpness` is an exponent about that anchor, which the anchor survives.
+  Length is the readout that answers "compare two letters", and a relative
+  length cannot: **any** relative scale is rescaled by whatever it normalizes
+  over, so redrawing one segment changed the fringe on its untouched
+  neighbours. Both per-segment and per-run divisors were tried and are closed.
 - **Colour** comes from the run's own range, gentlest to tightest — the same run
   the height is scaled over, so the two readouts agree about what they are
   comparing. Per **segment** it put the end of the scale on any joint that was an
@@ -1460,7 +1460,9 @@ store the full floating point result of a drag.
 readouts, not two answers to one question.** Length answers "compare two
 letters". Colour answers "read one letter". A normalized readout cannot compare
 across whatever it normalizes over — per segment it cannot compare two segments,
-and comparing two segments is what a joint is.
+and comparing two segments is what a joint is. The comb now applies that rule
+instead of restating it: length is absolute and scoped to nothing, colour is
+relative and scoped to the run.
 
 ---
 

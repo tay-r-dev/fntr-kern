@@ -69,6 +69,9 @@ const FONTRA_STATUS_DEFINITIONS_KEY = "fontra.sourceStatusFieldDefinitions";
 const SPEEDPUNK_PEAK_HEIGHT_DEFAULT_UPM = 24;
 const SPEEDPUNK_PEAK_HEIGHT_MIN_UPM = 1;
 const SPEEDPUNK_PEAK_HEIGHT_MAX_UPM = 1000;
+const SPEEDPUNK_REFERENCE_RADIUS_DEFAULT_UPM = 200;
+const SPEEDPUNK_REFERENCE_RADIUS_MIN_UPM = 1;
+const SPEEDPUNK_REFERENCE_RADIUS_MAX_UPM = 5000;
 const SPEEDPUNK_SHARPNESS_DEFAULT = 1;
 const SPEEDPUNK_SHARPNESS_MIN = 0.1;
 const SPEEDPUNK_SHARPNESS_MAX = 4;
@@ -350,6 +353,20 @@ export default class DesignspaceNavigationPanel extends Panel {
               step: 1,
             }),
             html.label(
+              {
+                for: "speedpunk-reference-radius-input",
+                style: "white-space: nowrap;",
+              },
+              [translate("sidebar.designspace-navigation.speedpunk.reference-radius")]
+            ),
+            html.input({
+              id: "speedpunk-reference-radius-input",
+              type: "number",
+              min: SPEEDPUNK_REFERENCE_RADIUS_MIN_UPM,
+              max: SPEEDPUNK_REFERENCE_RADIUS_MAX_UPM,
+              step: 1,
+            }),
+            html.label(
               { for: "speedpunk-sharpness-input", style: "white-space: nowrap;" },
               [translate("sidebar.designspace-navigation.speedpunk.sharpness")]
             ),
@@ -427,6 +444,10 @@ export default class DesignspaceNavigationPanel extends Panel {
 
   get speedPunkPeakHeightInput() {
     return this.accordion.querySelector("#speedpunk-peak-height-input");
+  }
+
+  get speedPunkReferenceRadiusInput() {
+    return this.accordion.querySelector("#speedpunk-reference-radius-input");
   }
 
   get speedPunkSharpnessInput() {
@@ -631,6 +652,14 @@ export default class DesignspaceNavigationPanel extends Panel {
     );
   }
 
+  _normalizeSpeedPunkReferenceRadiusUpm(value) {
+    if (!Number.isFinite(value)) return SPEEDPUNK_REFERENCE_RADIUS_DEFAULT_UPM;
+    return Math.max(
+      SPEEDPUNK_REFERENCE_RADIUS_MIN_UPM,
+      Math.min(SPEEDPUNK_REFERENCE_RADIUS_MAX_UPM, Math.round(value))
+    );
+  }
+
   _normalizeSpeedPunkSharpness(value) {
     if (!Number.isFinite(value)) return SPEEDPUNK_SHARPNESS_DEFAULT;
     return Math.max(SPEEDPUNK_SHARPNESS_MIN, Math.min(SPEEDPUNK_SHARPNESS_MAX, value));
@@ -647,6 +676,9 @@ export default class DesignspaceNavigationPanel extends Panel {
       peakHeightUpm: this._normalizeSpeedPunkPeakHeightUpm(
         model.speedPunkPeakHeightUpm
       ),
+      referenceRadiusUpm: this._normalizeSpeedPunkReferenceRadiusUpm(
+        model.speedPunkReferenceRadiusUpm
+      ),
       sharpness: this._normalizeSpeedPunkSharpness(model.speedPunkSharpness),
       opacity: this._normalizeSpeedPunkOpacity(model.speedPunkOpacity),
     };
@@ -656,6 +688,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     const settings = this._speedPunkSettings;
     const model = applicationSettingsController.model;
     model.speedPunkPeakHeightUpm = settings.peakHeightUpm;
+    model.speedPunkReferenceRadiusUpm = settings.referenceRadiusUpm;
     model.speedPunkSharpness = settings.sharpness;
     model.speedPunkOpacity = settings.opacity;
   }
@@ -665,6 +698,7 @@ export default class DesignspaceNavigationPanel extends Panel {
       !!this.editorController.visualizationLayersSettings.model["fontra.curvature"];
     for (const input of [
       this.speedPunkPeakHeightInput,
+      this.speedPunkReferenceRadiusInput,
       this.speedPunkSharpnessInput,
       this.speedPunkOpacityInput,
     ]) {
@@ -679,6 +713,9 @@ export default class DesignspaceNavigationPanel extends Panel {
     if (this.speedPunkPeakHeightInput) {
       this.speedPunkPeakHeightInput.value = String(settings.peakHeightUpm);
     }
+    if (this.speedPunkReferenceRadiusInput) {
+      this.speedPunkReferenceRadiusInput.value = String(settings.referenceRadiusUpm);
+    }
     if (this.speedPunkSharpnessInput) {
       this.speedPunkSharpnessInput.value = String(settings.sharpness);
     }
@@ -688,6 +725,11 @@ export default class DesignspaceNavigationPanel extends Panel {
     this.sceneSettingsController.setItem(
       "speedPunkPeakHeightUpm",
       settings.peakHeightUpm,
+      { senderID: this }
+    );
+    this.sceneSettingsController.setItem(
+      "speedPunkReferenceRadiusUpm",
+      settings.referenceRadiusUpm,
       { senderID: this }
     );
     this.sceneSettingsController.setItem("speedPunkSharpness", settings.sharpness, {
@@ -723,6 +765,12 @@ export default class DesignspaceNavigationPanel extends Panel {
       (value) => this._normalizeSpeedPunkPeakHeightUpm(value),
       "peakHeightUpm",
       "speedPunkPeakHeightUpm"
+    );
+    bindNumberInput(
+      this.speedPunkReferenceRadiusInput,
+      (value) => this._normalizeSpeedPunkReferenceRadiusUpm(value),
+      "referenceRadiusUpm",
+      "speedPunkReferenceRadiusUpm"
     );
     bindNumberInput(
       this.speedPunkSharpnessInput,
