@@ -6,6 +6,8 @@ import {
 } from "@fontra/core/skeleton-model.js";
 import {
   KIND,
+  SNAP_PARAMETERS,
+  candidatePull,
   collectCandidates,
   makeLineCandidate,
   resolveSnap,
@@ -214,12 +216,54 @@ export function buildSnapScene(sceneController, excludePointIndices) {
 export class SnappingSession {
   constructor(sceneController, { excludePointIndices = [] } = {}) {
     this.sceneController = sceneController;
+    this.excludePointIndices = excludePointIndices;
     this.scene = buildSnapScene(sceneController, excludePointIndices);
     this.held = null;
   }
 
+  // A drag freezes its scene, because the moved geometry must not chase itself.
+  // The pen adds geometry as it goes, so it re-reads before every hover.
+  refresh() {
+    this.scene = buildSnapScene(this.sceneController, this.excludePointIndices);
+  }
+
   get enabled() {
     return this.sceneController.sceneSettings.snappingEnabled ?? true;
+  }
+
+  // What the indicator draws and what the tuning panel reads. Published on every
+  // resolve, so a frame that snapped nothing still clears the last frame's ring.
+  _publish(candidates, cursor, result, position) {
+    const sceneModel = this.sceneController.sceneModel;
+    sceneModel.snapHeldCandidates = result.held;
+    sceneModel.snapIndicator = result.held.length
+      ? { x: position.x, y: position.y, snapped: true, strength: 1 }
+      : result.near
+        ? {
+            x: result.near.position.x,
+            y: result.near.position.y,
+            snapped: false,
+            strength: Math.min(1, result.near.pull / SNAP_PARAMETERS.noSnapPull),
+          }
+        : null;
+
+    const byKind = {};
+    for (const candidate of candidates) {
+      const pull = candidatePull(candidate, cursor, {
+        pixelUnit: this.sceneController.onePixelUnit,
+        held: null,
+      });
+      if (pull > (byKind[candidate.kind] || 0)) {
+        byKind[candidate.kind] = pull;
+      }
+    }
+    sceneModel.snapDebugReadout = {
+      candidateCount: candidates.length,
+      winningPull: result.pull,
+      winningKind: result.held[0]?.kind || null,
+      freedom: result.freedom,
+      byKind,
+    };
   }
 
   resolve(point, { constraint } = {}) {
@@ -236,8 +280,9 @@ export class SnappingSession {
     this.held = result.held.length
       ? { pointIndex: 0, candidate: result.held[0] }
       : null;
-    this.sceneController.sceneModel.snapHeldCandidates = result.held;
-    return roundSnapped(result, (value) => Math.round(value));
+    const rounded = roundSnapped(result, (value) => Math.round(value));
+    this._publish(candidates, point, result, rounded);
+    return rounded;
   }
 
   resolveSet(points, cursor, { constraint } = {}) {
@@ -253,9 +298,9 @@ export class SnappingSession {
       held: this.held,
       constraint,
     });
-    this.sceneController.sceneModel.snapHeldCandidates = best.held;
     if (best.pointIndex < 0) {
       this.held = null;
+      this._publish(candidates, cursor, best, cursor);
       return { x: 0, y: 0 };
     }
     // The hold is the pair. A candidate held by one point earns no bonus on another.
@@ -265,11 +310,13 @@ export class SnappingSession {
       { position: best.position, held: best.held, freedom: best.freedom },
       (value) => Math.round(value)
     );
+    this._publish(candidates, cursor, best, rounded);
     return { x: rounded.x - winner.x, y: rounded.y - winner.y };
   }
 
   end() {
     this.held = null;
     this.sceneController.sceneModel.snapHeldCandidates = [];
+    this.sceneController.sceneModel.snapIndicator = null;
   }
 }

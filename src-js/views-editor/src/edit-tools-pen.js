@@ -32,10 +32,24 @@ export class PenToolCubic extends BaseTool {
     }
     this.setCursor();
     // The preview must show the result before the click, so the hover resolves
-    // through the same session the click will use.
-    this.sceneModel.penSnappedPoint = this._snapSession().resolve(
+    // through the same session the click will use. The scene is re-read first:
+    // the pen adds geometry as it goes, and a point just placed is a source.
+    const snapSession = this._snapSession();
+    snapSession.refresh();
+    this.sceneModel.penSnappedPoint = snapSession.resolve(
       this.sceneController.selectedGlyphPoint(event)
     );
+    // The hover redraw below fires only when the connect target changes, so the
+    // snap draw needs its own. Without it the guide appears only where some other
+    // hover state happens to change, which reads as snapping over geometry alone.
+    const snapState = JSON.stringify([
+      this.sceneModel.snapHeldCandidates?.map((c) => [c.kind, c.x, c.y, c.dx, c.dy]),
+      this.sceneModel.snapIndicator,
+    ]);
+    if (snapState !== this._lastSnapState) {
+      this._lastSnapState = snapState;
+      this.canvasController.requestUpdate();
+    }
     const { insertHandles, targetPoint, danglingOffCurve, canDragOffCurve } =
       this._getPathConnectTargetPoint(event);
     const prevInsertHandles = this.sceneModel.pathInsertHandles;
@@ -84,6 +98,7 @@ export class PenToolCubic extends BaseTool {
   _resetHover() {
     this._snapping?.end();
     this._snapping = null;
+    this._lastSnapState = undefined;
     delete this.sceneModel.penSnappedPoint;
     delete this.sceneModel.pathInsertHandles;
     delete this.sceneModel.pathConnectTargetPoint;

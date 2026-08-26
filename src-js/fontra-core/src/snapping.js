@@ -74,7 +74,7 @@ export function crossLines(a, b) {
   return { ...makePointCandidate({ x, y, kind, source: a.source }), sources: [a, b] };
 }
 
-export const SNAP_PARAMETERS = Object.freeze({
+export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
   reachPixels: 12,
   holdBonus: 1.3,
   noSnapPull: 0.15,
@@ -92,6 +92,37 @@ export const SNAP_PARAMETERS = Object.freeze({
     [KIND.OTHER]: 0.3,
   }),
 });
+
+export const CULL_PARAMETERS_DEFAULTS = Object.freeze({
+  collectionRadiusPixels: 400,
+  perSideCount: 1,
+  maxCandidates: 200,
+});
+
+// The live numbers. Every reader below takes them from here, so the tuning panel
+// can move one and the next frame answers with it. Reset restores the defaults.
+export const SNAP_PARAMETERS = {
+  ...SNAP_PARAMETERS_DEFAULTS,
+  weights: { ...SNAP_PARAMETERS_DEFAULTS.weights },
+};
+
+export const CULL_PARAMETERS = { ...CULL_PARAMETERS_DEFAULTS };
+
+export function setSnapParameter(path, value) {
+  if (path.startsWith("weights.")) {
+    SNAP_PARAMETERS.weights[path.slice("weights.".length)] = value;
+  } else if (path in CULL_PARAMETERS) {
+    CULL_PARAMETERS[path] = value;
+  } else {
+    SNAP_PARAMETERS[path] = value;
+  }
+}
+
+export function resetSnapParameters() {
+  Object.assign(SNAP_PARAMETERS, SNAP_PARAMETERS_DEFAULTS);
+  SNAP_PARAMETERS.weights = { ...SNAP_PARAMETERS_DEFAULTS.weights };
+  Object.assign(CULL_PARAMETERS, CULL_PARAMETERS_DEFAULTS);
+}
 
 function falloff(u) {
   return u >= 1 ? 0 : 1 - u * u;
@@ -147,8 +178,14 @@ export function resolveSnap(candidates, cursor, options) {
   }
 
   const scored = [];
+  let near = null;
   for (const candidate of candidates) {
     const pull = candidatePull(candidate, cursor, options);
+    // The strongest candidate seen, whether or not it beats the floor. This is
+    // what the indicator reads to show a snap coming before it takes.
+    if (pull > 0 && (!near || pull > near.pull)) {
+      near = { candidate, pull };
+    }
     if (pull <= SNAP_PARAMETERS.noSnapPull) {
       continue;
     }
@@ -160,7 +197,22 @@ export function resolveSnap(candidates, cursor, options) {
   scored.sort((a, b) => b.pull - a.pull);
 
   if (!scored.length) {
-    return { position: { ...cursor }, pull: 0, held: [], freedom: "free" };
+    return {
+      position: { ...cursor },
+      pull: 0,
+      held: [],
+      freedom: "free",
+      near: near
+        ? {
+            position:
+              near.candidate.type === "point"
+                ? { x: near.candidate.x, y: near.candidate.y }
+                : projectOntoLine(near.candidate, cursor),
+            pull: near.pull,
+            kind: near.candidate.kind,
+          }
+        : null,
+    };
   }
 
   const winner = scored[0].candidate;
@@ -210,6 +262,7 @@ export function resolveSnapForPoints(candidates, points, cursor, options) {
     pull: 0,
     held: [],
     freedom: "free",
+    near: null,
   };
   let best = noWin;
   let bestScore = 0;
@@ -222,6 +275,11 @@ export function resolveSnapForPoints(candidates, points, cursor, options) {
         : null;
     const result = resolveSnap(candidates, point, { ...options, held });
     if (!result.held.length) {
+      // Nothing took this point, but the strongest near miss still feeds the
+      // indicator, so a snap coming is visible before it takes.
+      if (result.near && (!best.near || result.near.pull > best.near.pull)) {
+        best.near = result.near;
+      }
       return;
     }
     const pointerDistance = Math.hypot(point.x - cursor.x, point.y - cursor.y);
@@ -243,12 +301,6 @@ export function resolveSnapForPoints(candidates, points, cursor, options) {
 
   return best;
 }
-
-export const CULL_PARAMETERS = Object.freeze({
-  collectionRadiusPixels: 400,
-  perSideCount: 1,
-  maxCandidates: 200,
-});
 
 function isOrthogonal(angle) {
   const a = ((angle % 180) + 180) % 180;

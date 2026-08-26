@@ -94,6 +94,8 @@ export class SceneModel {
 
     // The snap candidates the current gesture holds, for the snapping layer to draw.
     this.snapHeldCandidates = [];
+    this.snapIndicator = null;
+    this.snapDebugReadout = null;
 
     this.sceneSettingsController.addKeyListener(
       [
