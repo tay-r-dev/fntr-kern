@@ -23,12 +23,16 @@ function segmentAngle(from, to) {
 // each of its two ends, anchored on the on-curve point.
 function* iterPathSegments(path) {
   for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
-    for (const pointIndices of path.iterContourSegmentPointIndices(contourIndex)) {
+    for (const segment of path.iterContourSegmentPointIndices(contourIndex)) {
+      const pointIndices = segment.pointIndices;
+      if (segment.type === "quadBlob" || pointIndices.length < 2) {
+        continue;
+      }
       const points = pointIndices.map((i) => path.getPoint(i));
       if (points.some((point) => !point)) {
         continue;
       }
-      if (points.length === 2) {
+      if (segment.type === "line") {
         yield {
           pointIndices,
           candidate: {
