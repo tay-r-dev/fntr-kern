@@ -219,6 +219,9 @@ export class SnappingSession {
     this.excludePointIndices = excludePointIndices;
     this.scene = buildSnapScene(sceneController, excludePointIndices);
     this.held = null;
+    // Carried between frames so the resolver can tell a guide passed through from
+    // one the designer is moving toward. See the overrule rule in snapping.js.
+    this.overrule = null;
   }
 
   // A drag freezes its scene, because the moved geometry must not chase itself.
@@ -236,6 +239,7 @@ export class SnappingSession {
   _publish(candidates, cursor, result, position) {
     const sceneModel = this.sceneController.sceneModel;
     sceneModel.snapHeldCandidates = result.held;
+    sceneModel.snapSuggestion = result.suggestion || null;
     sceneModel.snapIndicator = result.held.length
       ? { x: position.x, y: position.y, snapped: true, strength: 1 }
       : result.near
@@ -275,8 +279,10 @@ export class SnappingSession {
     const result = resolveSnap(candidates, point, {
       pixelUnit,
       held: this.held?.candidate || null,
+      overrule: this.overrule,
       constraint,
     });
+    this.overrule = result.overrule || null;
     this.held = result.held.length
       ? { pointIndex: 0, candidate: result.held[0] }
       : null;
@@ -296,8 +302,10 @@ export class SnappingSession {
     const best = resolveSnapForPoints(candidates, points, cursor, {
       pixelUnit,
       held: this.held,
+      overrule: this.overrule,
       constraint,
     });
+    this.overrule = best.overrule || null;
     if (best.pointIndex < 0) {
       this.held = null;
       this._publish(candidates, cursor, best, cursor);
@@ -316,6 +324,8 @@ export class SnappingSession {
 
   end() {
     this.held = null;
+    this.overrule = null;
+    this.sceneController.sceneModel.snapSuggestion = null;
     this.sceneController.sceneModel.snapHeldCandidates = [];
     this.sceneController.sceneModel.snapIndicator = null;
   }

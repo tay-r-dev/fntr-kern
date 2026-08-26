@@ -117,6 +117,8 @@ const SNAPPING_DEBUG_CONTROLS = [
     max: 20,
     step: 0.5,
   },
+  { path: "overruleMargin", label: "Overrule margin", min: 1, max: 4, step: 0.05 },
+  { path: "overruleFrames", label: "Overrule frames", min: 1, max: 20, step: 1 },
   {
     path: "collectionRadiusPixels",
     label: "Collection radius (px)",
@@ -536,20 +538,6 @@ export default class DesignspaceNavigationPanel extends Panel {
         content: html.div({}, [
           html.div(
             {
-              id: "snapping-debug-readout",
-              style: `
-                font-family: monospace;
-                font-size: 0.85em;
-                white-space: pre;
-                overflow-x: auto;
-                padding: 0.4em 0;
-                opacity: 0.8;
-              `,
-            },
-            ["no snap"]
-          ),
-          html.div(
-            {
               style: `
                 display: grid;
                 grid-template-columns: auto 1fr auto;
@@ -580,6 +568,26 @@ export default class DesignspaceNavigationPanel extends Panel {
           html.div({ style: "padding-top: 0.6em;" }, [
             html.button({ id: "snapping-debug-reset" }, ["Reset to defaults"]),
           ]),
+          // Below the sliders, and at a fixed height. The readout changes line
+          // count from frame to frame, and above them that reflow moved every
+          // slider under the cursor.
+          html.div(
+            {
+              id: "snapping-debug-readout",
+              style: `
+                font-family: monospace;
+                font-size: 0.8em;
+                white-space: pre;
+                overflow: auto;
+                margin-top: 0.8em;
+                padding-top: 0.6em;
+                border-top: 1px solid rgba(128, 128, 128, 0.35);
+                height: 15em;
+                opacity: 0.8;
+              `,
+            },
+            ["no snap"]
+          ),
         ]),
       },
     ];

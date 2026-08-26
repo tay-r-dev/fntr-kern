@@ -516,3 +516,102 @@ describe("the grid rounds what is left", () => {
     expect(out.x).to.be.closeTo(out.y, 1e-9);
   });
 });
+
+describe("a chosen guide is not given up lightly", () => {
+  const opts = { pixelUnit: 1, held: null };
+  const metric = (y) =>
+    makeLineCandidate({ x: 0, y, angle: 0, kind: KIND.METRIC, source: { x: 0, y } });
+  const smart = (y) =>
+    makeLineCandidate({
+      x: 0,
+      y,
+      angle: 0,
+      kind: KIND.SMART_ORTHOGONAL,
+      source: { x: 0, y },
+    });
+
+  it("keeps a held candidate that the culls dropped from the list", () => {
+    // The source is far away and no longer collected, but the designer is still
+    // sliding along the guide they chose.
+    const held = metric(50);
+    const result = resolveSnap([], { x: 5000, y: 50.2 }, { ...opts, held });
+    expect(result.freedom).to.equal("line");
+    expect(result.position.y).to.be.closeTo(50, 1e-9);
+  });
+
+  it("reports a rival as a suggestion rather than handing it the snap", () => {
+    const held = smart(50);
+    // The metric is nearer and heavier, so on pull alone it would take over.
+    const result = resolveSnap(
+      [smart(50), metric(51)],
+      { x: 0, y: 50.9 },
+      {
+        ...opts,
+        held,
+      }
+    );
+    expect(result.held[0].kind).to.equal(KIND.SMART_ORTHOGONAL);
+    expect(result.suggestion.kind).to.equal(KIND.METRIC);
+  });
+
+  it("keeps the held guide while the designer slides along it", () => {
+    // The metric is heavier and in range on every frame, but the cursor never
+    // leaves the held guide, so the metric stays a suggestion.
+    const held = smart(50);
+    const candidates = [smart(50), metric(51)];
+    let overrule = null;
+    let result;
+    for (let i = 0; i < 20; i++) {
+      result = resolveSnap(
+        candidates,
+        { x: i * 10, y: 50 },
+        { ...opts, held, overrule }
+      );
+      overrule = result.overrule;
+    }
+    expect(result.held[0].kind).to.equal(KIND.SMART_ORTHOGONAL);
+    expect(result.suggestion.kind).to.equal(KIND.METRIC);
+  });
+
+  it("hands the snap over once the designer moves away for a run of frames", () => {
+    const held = smart(50);
+    const candidates = [smart(50), metric(51)];
+    let overrule = null;
+    let result;
+    // Every frame is further from the held guide and nearer the metric.
+    for (let i = 0; i <= SNAP_PARAMETERS.overruleFrames; i++) {
+      result = resolveSnap(
+        candidates,
+        { x: 0, y: 50 + i * 0.15 },
+        { ...opts, held, overrule }
+      );
+      overrule = result.overrule;
+    }
+    expect(result.held[0].kind).to.equal(KIND.METRIC);
+    expect(result.suggestion).to.equal(null);
+  });
+
+  it("forgets the run when the designer comes back to the held guide", () => {
+    const held = smart(50);
+    const candidates = [smart(50), metric(51)];
+    let overrule = null;
+    for (let i = 1; i <= 2; i++) {
+      overrule = resolveSnap(
+        candidates,
+        { x: 0, y: 50 + i * 0.15 },
+        { ...opts, held, overrule }
+      ).overrule;
+    }
+    expect(overrule.count).to.equal(1);
+    const back = resolveSnap(candidates, { x: 0, y: 50 }, { ...opts, held, overrule });
+    expect(back.overrule.count).to.equal(0);
+    expect(back.held[0].kind).to.equal(KIND.SMART_ORTHOGONAL);
+  });
+
+  it("still releases entirely when the held candidate falls below the floor", () => {
+    const held = metric(50);
+    const result = resolveSnap([], { x: 0, y: 200 }, { ...opts, held });
+    expect(result.freedom).to.equal("free");
+    expect(result.held).to.have.length(0);
+  });
+});

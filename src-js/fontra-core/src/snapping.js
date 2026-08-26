@@ -80,6 +80,8 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
   noSnapPull: 0.15,
   pointerWeight: 0.5,
   pointerFalloffReaches: 8,
+  overruleMargin: 1.6,
+  overruleFrames: 4,
   weights: Object.freeze({
     [KIND.METRIC]: 1.0,
     [KIND.GUIDE_INTERSECTION]: 0.84,
@@ -177,9 +179,18 @@ export function resolveSnap(candidates, cursor, options) {
     return { position: onConstraint, pull: 0, held: [], freedom: "line" };
   }
 
+  const { held } = options;
+  // A held candidate is never culled. Sliding far along a guide takes the geometry
+  // that produced it out of collection range, and the snap must not drop because
+  // of that: the designer is still on the guide they chose.
+  const pool =
+    held && !candidates.some((candidate) => sameCandidate(candidate, held))
+      ? [...candidates, held]
+      : candidates;
+
   const scored = [];
   let near = null;
-  for (const candidate of candidates) {
+  for (const candidate of pool) {
     const pull = candidatePull(candidate, cursor, options);
     // The strongest candidate seen, whether or not it beats the floor. This is
     // what the indicator reads to show a snap coming before it takes.
@@ -202,6 +213,8 @@ export function resolveSnap(candidates, cursor, options) {
       pull: 0,
       held: [],
       freedom: "free",
+      suggestion: null,
+      overrule: null,
       near: near
         ? {
             position:
@@ -215,18 +228,59 @@ export function resolveSnap(candidates, cursor, options) {
     };
   }
 
-  const winner = scored[0].candidate;
+  // A guide the designer chose is not given up because a heavier one came within
+  // range. Two things must both be true before a rival takes over. It must beat
+  // the held candidate by a margin, and the designer must be moving away from the
+  // guide they hold, for a run of frames. Sliding along a held guide keeps the
+  // distance to it at nothing, so a metric crossing the path is only ever a
+  // suggestion. Leaving that guide raises the distance every frame, which is what
+  // deciding looks like, and then the rival takes the snap.
+  let winning = scored[0];
+  let suggestion = null;
+  let nextOverrule = null;
+  const heldEntry = held
+    ? scored.find((entry) => sameCandidate(entry.candidate, held))
+    : null;
+  if (heldEntry) {
+    const heldDistance = distanceToCandidate(held, cursor);
+    const previous = options.overrule;
+    const movingAway =
+      previous && Number.isFinite(previous.heldDistance)
+        ? heldDistance > previous.heldDistance + 1e-9
+        : false;
+    let count = 0;
+    if (!sameCandidate(winning.candidate, held)) {
+      const rival = winning;
+      const beatsMargin = rival.pull >= heldEntry.pull * SNAP_PARAMETERS.overruleMargin;
+      if (beatsMargin && movingAway) {
+        count = sameCandidate(previous?.candidate, rival.candidate)
+          ? previous.count + 1
+          : 1;
+      }
+      if (count < SNAP_PARAMETERS.overruleFrames) {
+        suggestion = rival.candidate;
+        winning = heldEntry;
+      }
+      nextOverrule = { candidate: rival.candidate, count, heldDistance };
+    } else {
+      nextOverrule = { candidate: null, count: 0, heldDistance };
+    }
+  }
+
+  const winner = winning.candidate;
   if (winner.type === "point") {
     return {
       position: { x: winner.x, y: winner.y },
-      pull: scored[0].pull,
+      pull: winning.pull,
       held: winner.sources ? [...winner.sources] : [winner],
       freedom: "point",
+      suggestion,
+      overrule: nextOverrule,
     };
   }
 
-  for (const { candidate } of scored.slice(1)) {
-    if (candidate.type !== "line") {
+  for (const { candidate } of scored) {
+    if (candidate.type !== "line" || sameCandidate(candidate, winner)) {
       continue;
     }
     const crossing = crossLines(winner, candidate);
@@ -240,15 +294,19 @@ export function resolveSnap(candidates, cursor, options) {
         pull: crossingPull,
         held: [winner, candidate],
         freedom: "point",
+        suggestion,
+        overrule: nextOverrule,
       };
     }
   }
 
   return {
     position: projectOntoLine(winner, cursor),
-    pull: scored[0].pull,
+    pull: winning.pull,
     held: [winner],
     freedom: "line",
+    suggestion,
+    overrule: nextOverrule,
   };
 }
 
@@ -262,9 +320,11 @@ export function resolveSnapForPoints(candidates, points, cursor, options) {
     pull: 0,
     held: [],
     freedom: "free",
+    suggestion: null,
+    overrule: null,
     near: null,
   };
-  let best = noWin;
+  let best = { ...noWin };
   let bestScore = 0;
 
   points.forEach((point, pointIndex) => {
@@ -273,7 +333,11 @@ export function resolveSnapForPoints(candidates, points, cursor, options) {
       options.held && options.held.pointIndex === pointIndex
         ? options.held.candidate
         : null;
-    const result = resolveSnap(candidates, point, { ...options, held });
+    const result = resolveSnap(candidates, point, {
+      ...options,
+      held,
+      overrule: held ? options.overrule : null,
+    });
     if (!result.held.length) {
       // Nothing took this point, but the strongest near miss still feeds the
       // indicator, so a snap coming is visible before it takes.
@@ -295,6 +359,9 @@ export function resolveSnapForPoints(candidates, points, cursor, options) {
         pull: result.pull,
         held: result.held,
         freedom: result.freedom,
+        suggestion: result.suggestion,
+        overrule: result.overrule,
+        near: best.near,
       };
     }
   });
