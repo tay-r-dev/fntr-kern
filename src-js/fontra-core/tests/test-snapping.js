@@ -656,3 +656,91 @@ describe("a chosen guide is not given up lightly", () => {
     expect(result.held).to.have.length(0);
   });
 });
+
+describe("travelling past a guide, and breaking free of one", () => {
+  const opts = { pixelUnit: 1, held: null };
+  const metric = (y) =>
+    makeLineCandidate({ x: 0, y, angle: 0, kind: KIND.METRIC, source: { x: 0, y } });
+
+  const fast = SNAP_PARAMETERS.acquireSpeedPixels + 1;
+  const flick = SNAP_PARAMETERS.escapeSpeedPixels + 1;
+
+  it("takes no new snap while the pointer is travelling", () => {
+    const cursor = { x: 0, y: 50.5 };
+    expect(resolveSnap([metric(50)], cursor, opts).freedom).to.equal("line");
+    expect(
+      resolveSnap([metric(50)], cursor, { ...opts, speed: fast }).freedom
+    ).to.equal("free");
+  });
+
+  it("keeps a snap it already holds while travelling", () => {
+    const held = metric(50);
+    const result = resolveSnap(
+      [metric(50)],
+      { x: 900, y: 50.2 },
+      {
+        ...opts,
+        held,
+        speed: fast,
+      }
+    );
+    expect(result.freedom).to.equal("line");
+  });
+
+  it("will not break free on speed alone, without settling first", () => {
+    const held = metric(50);
+    // Never slow enough to arm, so the flick is just travel and the hold stays.
+    const overrule = { candidate: null, count: 0, heldDistance: 0 };
+    const result = resolveSnap(
+      [metric(50)],
+      { x: 0, y: 50.4 },
+      {
+        ...opts,
+        held,
+        speed: flick,
+        overrule,
+        escape: { armed: false, refused: null },
+      }
+    );
+    expect(result.freedom).to.equal("line");
+  });
+
+  it("breaks free when the designer settles and then leaves fast", () => {
+    const held = metric(50);
+    const candidates = [metric(50)];
+    // Settle on the guide: this arms the escape.
+    const settled = resolveSnap(
+      candidates,
+      { x: 0, y: 50 },
+      { ...opts, held, speed: 5 }
+    );
+    expect(settled.escape.armed).to.equal(true);
+    // Then leave it fast.
+    const freed = resolveSnap(
+      candidates,
+      { x: 0, y: 50.6 },
+      {
+        ...opts,
+        held,
+        speed: flick,
+        overrule: settled.overrule,
+        escape: settled.escape,
+      }
+    );
+    expect(freed.freedom).to.equal("free");
+    expect(freed.escaped.kind).to.equal(KIND.METRIC);
+  });
+
+  it("refuses the escaped guide until the cursor has left its reach", () => {
+    const escaped = metric(50);
+    const candidates = [metric(50)];
+    const escape = { armed: false, refused: escaped };
+    // Still inside the reach, and slow: without the refusal this would snap back.
+    const inside = resolveSnap(candidates, { x: 0, y: 50.5 }, { ...opts, escape });
+    expect(inside.freedom).to.equal("free");
+    expect(inside.escape.refused).to.not.equal(null);
+    // Out past the reach, the refusal is spent.
+    const outside = resolveSnap(candidates, { x: 0, y: 200 }, { ...opts, escape });
+    expect(outside.escape.refused).to.equal(null);
+  });
+});

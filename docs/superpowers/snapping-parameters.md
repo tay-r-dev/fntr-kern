@@ -94,6 +94,51 @@ grows with distance.
   so only nearby points compete.
 - **Large:** the discount grows slowly, so far points stay competitive.
 
+## Acquire below speed (px/s)
+
+**Default 600.** Above this pointer speed no new snap is taken up. Whatever is
+already held stays held.
+
+This is what stops a guide you sweep past from grabbing the cursor on the way by,
+which is the usual cause of jitter. Below the threshold you are placing a point.
+Above it you are travelling, and a magnet that fires while travelling is noise.
+
+Inkscape does the same thing and calls it postponing the snap. Its threshold is
+much lower, near a standstill, because it pairs the hold with a watchdog timer
+that fires the snap once motion stops. This editor resolves on pointer motion and
+has no such timer, so the threshold sits higher: stopping dead has to leave a
+slow frame behind it for the snap to be taken.
+
+- **Too small:** snapping only engages when you are almost still, and stopping
+  dead may leave the point unsnapped until you nudge it.
+- **Too large:** the threshold never bites, and guides grab as you sweep past.
+
+## Break free above speed (px/s)
+
+**Default 1400.** How fast you must leave a guide to break free of it.
+
+Breaking free is a gesture in two parts, and both are needed so that ordinary
+dragging cannot do it by accident:
+
+1. **Settle** on the guide. Any frame slower than the acquire threshold above
+   arms the escape.
+2. **Leave it fast.** While armed, moving away from that guide above this speed
+   releases it at once, without waiting for the pull to fall under the release
+   floor.
+
+The guide you escaped is then refused until the cursor has left its reach, or it
+would simply take the point back on the next frame.
+
+Inkscape has no equivalent. It holds no snap between frames, so it has nothing to
+break free of — it recomputes from scratch every time, and escaping means either
+moving out of tolerance or switching snapping off.
+
+- **Too small:** an ordinary quick drag throws the snap away.
+- **Too large:** you cannot flick free, and have to drag out past the reach.
+
+Set it above the top of the slider's useful range to switch the gesture off and
+rely on the release floor alone.
+
 ## Overrule margin
 
 **Default 1.6.** How much stronger a rival must be before it can take a snap you

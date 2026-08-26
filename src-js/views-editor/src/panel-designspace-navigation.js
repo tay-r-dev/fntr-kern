@@ -123,6 +123,20 @@ const SNAPPING_DEBUG_CONTROLS = [
     max: 20,
     step: 0.5,
   },
+  {
+    path: "acquireSpeedPixels",
+    label: "Acquire below speed (px/s)",
+    min: 50,
+    max: 3000,
+    step: 25,
+  },
+  {
+    path: "escapeSpeedPixels",
+    label: "Break free above speed (px/s)",
+    min: 200,
+    max: 6000,
+    step: 50,
+  },
   { path: "overruleMargin", label: "Overrule margin", min: 1, max: 4, step: 0.05 },
   { path: "overruleFrames", label: "Overrule frames", min: 1, max: 20, step: 1 },
   {

@@ -82,6 +82,8 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
   pointerFalloffReaches: 8,
   overruleMargin: 1.6,
   overruleFrames: 4,
+  acquireSpeedPixels: 600,
+  escapeSpeedPixels: 1400,
   // Per-kind reach, as a multiple of reachPixels. This is what lets reach and
   // precedence move apart: a kind can grab from further away without also winning
   // ties it should lose, which raising its weight would do.
@@ -201,14 +203,69 @@ export function resolveSnap(candidates, cursor, options) {
     return { position: onConstraint, pull: 0, held: [], freedom: "line" };
   }
 
-  const { held } = options;
+  const { held, pixelUnit } = options;
+  const speed = options.speed || 0;
+  // Below this the designer is placing, above it they are travelling. Inkscape
+  // postpones snapping the same way while the pointer is moving, which is what
+  // stops a guide swept past from grabbing the cursor on the way by.
+  const settled = speed <= SNAP_PARAMETERS.acquireSpeedPixels;
+
+  const heldDistance = held ? distanceToCandidate(held, cursor) : 0;
+  const previous = options.overrule;
+  const movingAway =
+    held && previous && Number.isFinite(previous.heldDistance)
+      ? heldDistance > previous.heldDistance + 1e-9
+      : false;
+
+  // The escape is a gesture in two parts, and both are needed so that ordinary
+  // dragging cannot perform it by accident. Settling on a guide arms it. Leaving
+  // that guide fast, while armed, breaks free. The candidate escaped from is then
+  // refused until the cursor has left its reach, or it would take the point back
+  // on the next frame.
+  const escapeIn = options.escape || { armed: false, refused: null };
+  let escapeOut = { armed: escapeIn.armed, refused: escapeIn.refused };
+  if (
+    escapeOut.refused &&
+    distanceToCandidate(escapeOut.refused, cursor) >
+      reachForKind(escapeOut.refused.kind, pixelUnit)
+  ) {
+    escapeOut.refused = null;
+  }
+  if (!held) {
+    escapeOut.armed = false;
+  } else if (settled) {
+    escapeOut.armed = true;
+  } else if (
+    escapeOut.armed &&
+    movingAway &&
+    speed > SNAP_PARAMETERS.escapeSpeedPixels
+  ) {
+    return {
+      position: { ...cursor },
+      pull: 0,
+      held: [],
+      freedom: "free",
+      suggestion: null,
+      overrule: null,
+      near: null,
+      escape: { armed: false, refused: held },
+      escaped: held,
+    };
+  }
+
   // A held candidate is never culled. Sliding far along a guide takes the geometry
   // that produced it out of collection range, and the snap must not drop because
   // of that: the designer is still on the guide they chose.
-  const pool =
-    held && !candidates.some((candidate) => sameCandidate(candidate, held))
-      ? [...candidates, held]
-      : candidates;
+  let pool = escapeOut.refused
+    ? candidates.filter((candidate) => !sameCandidate(candidate, escapeOut.refused))
+    : candidates;
+  if (held && !pool.some((candidate) => sameCandidate(candidate, held))) {
+    pool = [...pool, held];
+  }
+  // Travelling: whatever is already held stays, and nothing new is taken up.
+  if (!settled) {
+    pool = held ? [held] : [];
+  }
 
   const scored = [];
   let near = null;
@@ -237,6 +294,7 @@ export function resolveSnap(candidates, cursor, options) {
       freedom: "free",
       suggestion: null,
       overrule: null,
+      escape: escapeOut,
       near: near
         ? {
             position:
@@ -264,12 +322,6 @@ export function resolveSnap(candidates, cursor, options) {
     ? scored.find((entry) => sameCandidate(entry.candidate, held))
     : null;
   if (heldEntry) {
-    const heldDistance = distanceToCandidate(held, cursor);
-    const previous = options.overrule;
-    const movingAway =
-      previous && Number.isFinite(previous.heldDistance)
-        ? heldDistance > previous.heldDistance + 1e-9
-        : false;
     let count = 0;
     if (!sameCandidate(winning.candidate, held)) {
       const rival = winning;
@@ -298,6 +350,7 @@ export function resolveSnap(candidates, cursor, options) {
       freedom: "point",
       suggestion,
       overrule: nextOverrule,
+      escape: escapeOut,
     };
   }
 
@@ -318,6 +371,7 @@ export function resolveSnap(candidates, cursor, options) {
         freedom: "point",
         suggestion,
         overrule: nextOverrule,
+        escape: escapeOut,
       };
     }
   }
@@ -329,6 +383,7 @@ export function resolveSnap(candidates, cursor, options) {
     freedom: "line",
     suggestion,
     overrule: nextOverrule,
+    escape: escapeOut,
   };
 }
 
@@ -344,6 +399,7 @@ export function resolveSnapForPoints(candidates, points, cursor, options) {
     freedom: "free",
     suggestion: null,
     overrule: null,
+    escape: options.escape || null,
     near: null,
   };
   let best = { ...noWin };
@@ -379,7 +435,13 @@ export function resolveSnapForPoints(candidates, points, cursor, options) {
       ...options,
       held,
       overrule: held ? options.overrule : null,
+      escape: held ? options.escape : null,
     });
+    if (held) {
+      // Only the point that holds owns the escape state; the rest were never on
+      // a guide to break free of.
+      best.escape = result.escape;
+    }
     if (!result.held.length) {
       // Nothing took this point, but the strongest near miss still feeds the
       // indicator, so a snap coming is visible before it takes.
@@ -403,6 +465,7 @@ export function resolveSnapForPoints(candidates, points, cursor, options) {
         freedom: result.freedom,
         suggestion: result.suggestion,
         overrule: result.overrule,
+        escape: result.escape,
         near: best.near,
       };
     }

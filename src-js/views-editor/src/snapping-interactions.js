@@ -222,6 +222,26 @@ export class SnappingSession {
     // Carried between frames so the resolver can tell a guide passed through from
     // one the designer is moving toward. See the overrule rule in snapping.js.
     this.overrule = null;
+    this.escape = null;
+    this._lastCursor = null;
+    this._lastTime = 0;
+  }
+
+  // Pointer speed in screen pixels per second. The resolver takes it in pixels so
+  // that the thresholds mean the same thing at every zoom level, exactly as reach
+  // does. A first frame reports nothing, so it counts as settled.
+  _speed(cursor) {
+    const now = Date.now();
+    const previous = this._lastCursor;
+    const elapsed = now - this._lastTime;
+    this._lastCursor = { x: cursor.x, y: cursor.y };
+    this._lastTime = now;
+    if (!previous || elapsed <= 0) {
+      return 0;
+    }
+    const pixelUnit = this.sceneController.onePixelUnit || 1;
+    const moved = Math.hypot(cursor.x - previous.x, cursor.y - previous.y) / pixelUnit;
+    return (moved * 1000) / elapsed;
   }
 
   // A drag freezes its scene, because the moved geometry must not chase itself.
@@ -280,9 +300,12 @@ export class SnappingSession {
       pixelUnit,
       held: this.held?.candidate || null,
       overrule: this.overrule,
+      escape: this.escape,
+      speed: this._speed(point),
       constraint,
     });
     this.overrule = result.overrule || null;
+    this.escape = result.escape || null;
     this.held = result.held.length
       ? { pointIndex: 0, candidate: result.held[0] }
       : null;
@@ -303,9 +326,12 @@ export class SnappingSession {
       pixelUnit,
       held: this.held,
       overrule: this.overrule,
+      escape: this.escape,
+      speed: this._speed(cursor),
       constraint,
     });
     this.overrule = best.overrule || null;
+    this.escape = best.escape || null;
     if (best.pointIndex < 0) {
       this.held = null;
       this._publish(candidates, cursor, best, cursor);
@@ -325,6 +351,8 @@ export class SnappingSession {
   end() {
     this.held = null;
     this.overrule = null;
+    this.escape = null;
+    this._lastCursor = null;
     this.sceneController.sceneModel.snapSuggestion = null;
     this.sceneController.sceneModel.snapHeldCandidates = [];
     this.sceneController.sceneModel.snapIndicator = null;
