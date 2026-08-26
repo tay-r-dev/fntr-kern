@@ -26,13 +26,6 @@ import {
   findPointMatch,
 } from "./edit-behavior-support.js";
 
-//// grid
-let magneticSnapEnabled = false;
-export function toggleMagneticSnap() {
-  magneticSnapEnabled = !magneticSnapEnabled;
-  console.log("Magnetic snap", magneticSnapEnabled ? "ON" : "OFF");
-}
-
 export class EditBehaviorFactory {
   constructor(
     instance,
@@ -124,27 +117,12 @@ class EditBehavior {
   ) {
     this.doFullTransform = doFullTransform;
     this.targetEntries = targetEntries;
-    //// grid
     this.roundFunc = (value, isArrowKey = false) => {
       const coarseUnit = window.coarseGridSpacing || 1;
-
-      // 1.  Ctrl / Cmd  ⇒ always coarse grid
       if (window.event?.ctrlKey || window.event?.metaKey) {
         return Math.round(value / coarseUnit) * coarseUnit;
       }
-
-      // 2.  Arrow keys  ⇒ ignore magnetic & coarse, use 1-unit steps
-      if (isArrowKey) {
-        return Math.round(value);
-      }
-
-      // 3.  Magnetic snap only when explicitly enabled
-      if (!magneticSnapEnabled || coarseUnit <= 1) {
-        return Math.round(value);
-      }
-
-      const coarse = Math.round(value / coarseUnit) * coarseUnit;
-      return Math.abs(value - coarse) <= coarseUnit * 0.35 ? coarse : Math.round(value);
+      return Math.round(value);
     };
     this.constrainDelta = behavior.constrainDelta || ((v) => v);
     const [pointEditFuncs, participatingPointIndices] = makePointEditFuncs(

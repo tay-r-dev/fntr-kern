@@ -101,7 +101,6 @@ import {
   getTensionAwareBehaviorName,
 } from "./tension-aware-editing.js";
 //// grid
-import { toggleMagneticSnap } from "./edit-behavior.js";
 
 // Minimum pixels per em and maximum pixels per unit for zooming out and in.
 //
@@ -700,15 +699,6 @@ export class SceneController {
         const v = this.sceneSettings.coarseGridSpacing;
         if (v < 40) this.sceneSettingsController.setItem("coarseGridSpacing", v + 5);
       }
-    );
-
-    registerAction(
-      "action.toggle-magnetic-snap",
-      {
-        titleKey: "action.toggle-magnetic-snap",
-        defaultShortCuts: [{ baseKey: "g", shiftKey: true }],
-      },
-      () => toggleMagneticSnap()
     );
 
     registerAction(
