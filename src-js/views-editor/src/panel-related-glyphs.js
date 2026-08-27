@@ -8,9 +8,11 @@ import { unicodeMadeOf, unicodeUsedBy } from "@fontra/core/unicode-utils.js";
 import {
   attachComponent,
   buildGlyph,
+  buildGlyphs,
   detachComponent,
   overrideComponent,
   readCompositionState,
+  targetsForMark,
   updateComponent,
 } from "./composition-editing.js";
 import Panel from "./panel.js";
@@ -201,6 +203,22 @@ export default class RelatedGlyphPanel extends Panel {
               },
             },
             [translate("composition.button.build")]
+          ),
+          html.button(
+            {
+              onclick: async () => {
+                const targets = targetsForMark(this.sceneController, glyphName);
+                const report = await buildGlyphs(this.sceneController, targets);
+                this.compositionReport = translate(
+                  "composition.report",
+                  report.built.length,
+                  report.skipped.length,
+                  report.refused.length
+                );
+                this.throttledUpdate();
+              },
+            },
+            [translate("composition.button.compose-all")]
           ),
         ])
       );

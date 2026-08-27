@@ -15,6 +15,7 @@ import {
   transformedAnchorMap,
 } from "@fontra/core/composition.js";
 import { translate } from "@fontra/core/localization.js";
+import { unicodeUsedBy } from "@fontra/core/unicode-utils.js";
 import { getDecomposedIdentity } from "@fontra/core/transform.js";
 import { parseSelection, unionIndexSets } from "@fontra/core/utils.ts";
 import { copyComponent } from "@fontra/core/var-glyph.js";
@@ -488,4 +489,48 @@ export async function buildGlyph(sceneController, glyphName) {
   });
 
   return { status: "built" };
+}
+
+// Build a list of glyphs. Each one is its own change, so a refusal does not
+// roll back the glyphs that came before it. Spec section 7.2.
+export async function buildGlyphs(sceneController, glyphNames) {
+  const built = [];
+  const skipped = [];
+  const refused = [];
+  for (const glyphName of glyphNames) {
+    const result = await buildGlyph(sceneController, glyphName);
+    if (result.status === "built") {
+      built.push(glyphName);
+    } else if (result.status === "skipped") {
+      skipped.push(glyphName);
+    } else {
+      refused.push({ glyphName, reason: result.reason });
+    }
+  }
+  return { built, skipped, refused };
+}
+
+// Every glyph that uses this mark, bounded by the combined glyph map. That map
+// is the font's own glyphs plus the selected project and user glyph sets, so a
+// character in no selected glyph set is not a target and is not reported.
+export function targetsForMark(sceneController, markGlyphName) {
+  const fontController = sceneController.fontController;
+  const sceneSettings = sceneController.sceneSettings;
+  const codePoint =
+    fontController.codePointForGlyph(markGlyphName) ??
+    sceneSettings.combinedGlyphMap?.[markGlyphName]?.[0];
+  if (!codePoint) {
+    return [];
+  }
+  const combinedGlyphMap = sceneSettings.combinedGlyphMap || {};
+  const targets = [];
+  for (const usedByCodePoint of unicodeUsedBy(codePoint)) {
+    const glyphName =
+      fontController.characterMap[usedByCodePoint] ||
+      sceneSettings.combinedCharacterMap?.[usedByCodePoint];
+    if (glyphName && glyphName in combinedGlyphMap) {
+      targets.push(glyphName);
+    }
+  }
+  return targets;
 }
