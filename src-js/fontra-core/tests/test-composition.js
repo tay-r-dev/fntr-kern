@@ -1,4 +1,5 @@
 import {
+  attachmentState,
   getAttachments,
   getCompositionData,
   markAnchorNames,
@@ -138,5 +139,41 @@ describe("composition — anchors and the offset", () => {
 
   it("the offset is negative where the mark anchor is above the base anchor", () => {
     expect(solveOffset([0, 100], [0, 300])).to.deep.equal([0, -200]);
+  });
+});
+
+describe("composition — states", () => {
+  const entry = (detached = false) => ({ anchorName: "top", detached });
+
+  it("no entry is unattached", () => {
+    expect(attachmentState({ entry: null, aligned: true })).to.equal("unattached");
+  });
+
+  it("a missing anchor is broken", () => {
+    expect(attachmentState({ entry: entry(), aligned: null })).to.equal("broken");
+  });
+
+  it("broken beats detached", () => {
+    expect(attachmentState({ entry: entry(true), aligned: null })).to.equal("broken");
+  });
+
+  it("detached beats out of date", () => {
+    expect(attachmentState({ entry: entry(true), aligned: false })).to.equal(
+      "detached"
+    );
+  });
+
+  it("anchors that do not coincide are out of date", () => {
+    expect(attachmentState({ entry: entry(), aligned: false })).to.equal("outOfDate");
+  });
+
+  it("anchors that coincide are in sync", () => {
+    expect(attachmentState({ entry: entry(), aligned: true })).to.equal("inSync");
+  });
+
+  it("a detached component that happens to be aligned reads in sync", () => {
+    // The flag says the designer overruled the solve. Where the drawing agrees
+    // with the solve anyway, there is nothing to overrule and nothing to report.
+    expect(attachmentState({ entry: entry(true), aligned: true })).to.equal("inSync");
   });
 });

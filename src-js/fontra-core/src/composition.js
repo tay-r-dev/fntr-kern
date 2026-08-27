@@ -117,3 +117,29 @@ export function transformedAnchorMap(anchors, transformation) {
 export function solveOffset(basePosition, markPosition) {
   return [basePosition[0] - markPosition[0], basePosition[1] - markPosition[1]];
 }
+
+// Spec section 6. The order of these checks is the behavior, not a style
+// choice. Broken is checked before detached, because a missing anchor is a
+// fault the designer has to see whatever else they said. Detached is checked
+// before out of date, because it is the designer overruling the solve.
+export function attachmentState({ entry, aligned }) {
+  if (!entry) {
+    return "unattached";
+  }
+  if (aligned === null || aligned === undefined) {
+    return "broken";
+  }
+  if (aligned) {
+    return "inSync";
+  }
+  return entry.detached ? "detached" : "outOfDate";
+}
+
+// Grid coordinates are whole units, so an exact comparison is the right one.
+// A tolerance here would report a component one unit off as attached.
+export function anchorsCoincide(basePosition, markPosition) {
+  if (!basePosition || !markPosition) {
+    return null;
+  }
+  return basePosition[0] === markPosition[0] && basePosition[1] === markPosition[1];
+}
