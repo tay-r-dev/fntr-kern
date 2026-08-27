@@ -11,10 +11,13 @@ import {
 
 registerVisualizationLayerDefinition({
   identifier: "fontra.composition.mark-cloud",
-  name: "sidebar.user-settings.composition-mark-cloud",
+  name: "Mark cloud",
   selectionFunc: glyphSelector("editing"),
-  userSwitchable: true,
-  defaultOn: false,
+  // Not user-switchable: the panel's own switch governs the cloud, and a second
+  // switch in the View menu would let one of them silently overrule the other.
+  // The draw returns at once while the cloud is empty, so an always-visible
+  // layer costs nothing when the panel switch is off.
+  userSwitchable: false,
   zIndex: 200,
   screenParameters: { strokeWidth: 1 },
   colors: { fillColor: "#00BFFF30", strokeColor: "#00BFFF80" },

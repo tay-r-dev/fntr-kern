@@ -762,7 +762,6 @@ export const strings = {
   "sidebar.user-settings.language": "Display language",
   "sidebar.user-settings.line-metrics": "Line metrics",
   "sidebar.user-settings.server": "Server info",
-  "sidebar.user-settings.composition-mark-cloud": "Mark cloud",
   "sidebar.user-settings.snapping-guides": "Snapping guides",
   "sidebar.user-settings.theme": "Theme settings",
   "sidebar.user-settings.theme.auto": "Automatic (use OS setting)",
