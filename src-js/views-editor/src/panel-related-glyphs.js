@@ -5,6 +5,13 @@ import {
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { unicodeMadeOf, unicodeUsedBy } from "@fontra/core/unicode-utils.js";
+import {
+  attachComponent,
+  detachComponent,
+  overrideComponent,
+  readCompositionState,
+  updateComponent,
+} from "./composition-editing.js";
 import Panel from "./panel.js";
 
 import { getCharFromCodePoint, throttleCalls } from "@fontra/core/utils.ts";
@@ -34,6 +41,33 @@ export default class RelatedGlyphPanel extends Panel {
       color: #999;
       padding-top: 1em;
     }
+
+    .composition-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4em;
+      padding-top: 0.5em;
+    }
+
+    .composition-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.4em;
+    }
+
+    .composition-row-name {
+      font-weight: bold;
+    }
+
+    .composition-row-state {
+      color: #999;
+    }
+
+    .composition-row-state.out-of-date,
+    .composition-row-state.broken {
+      color: #d08b00;
+    }
   `;
 
   constructor(editorController) {
@@ -44,8 +78,18 @@ export default class RelatedGlyphPanel extends Panel {
     this.setupGlyphRelationshipsElement();
 
     this.sceneController.sceneSettingsController.addKeyListener(
-      ["selectedGlyphName"],
+      ["selectedGlyphName", "editLayerName"],
       (event) => this.throttledUpdate()
+    );
+
+    // An edit inside the open glyph moves an anchor or a component, and either
+    // of those changes what the composition rows report. The listener follows
+    // the open glyph, so it is re-registered whenever the selection moves.
+    this._compositionGlyphListener = () => this.throttledUpdate();
+    this._compositionListenerGlyphName = null;
+    this.sceneController.sceneSettingsController.addKeyListener(
+      ["selectedGlyphName"],
+      (event) => this.followGlyphForComposition(event.newValue)
     );
 
     this.fontController.addChangeListener({ glyphMap: null }, (event) =>
@@ -80,6 +124,10 @@ export default class RelatedGlyphPanel extends Panel {
         class: "panel",
       },
       [
+        html.div({ class: "panel-section" }, [
+          html.div({ id: "composition-header" }, [translate("composition.title")]),
+          html.div({ id: "composition-rows", class: "composition-rows" }, []),
+        ]),
         html.div(
           {
             class: "panel-section panel-section--flex related-glyphs-section",
@@ -99,10 +147,114 @@ export default class RelatedGlyphPanel extends Panel {
     this.relatedGlyphsHeaderElement = this.contentElement.querySelector(
       "#related-glyphs-header"
     );
+    this.compositionHeaderElement =
+      this.contentElement.querySelector("#composition-header");
+    this.compositionRowsElement =
+      this.contentElement.querySelector("#composition-rows");
+  }
+
+  followGlyphForComposition(glyphName) {
+    if (this._compositionListenerGlyphName === glyphName) {
+      return;
+    }
+    if (this._compositionListenerGlyphName) {
+      this.fontController.removeGlyphChangeListener(
+        this._compositionListenerGlyphName,
+        this._compositionGlyphListener
+      );
+    }
+    this._compositionListenerGlyphName = glyphName || null;
+    if (glyphName) {
+      this.fontController.addGlyphChangeListener(
+        glyphName,
+        this._compositionGlyphListener
+      );
+    }
+  }
+
+  // The panel computes nothing. It asks the write-path module for the state and
+  // calls that module for every action. Spec section 9.
+  async updateComposition() {
+    this.compositionRowsElement.innerHTML = "";
+    this.compositionHeaderElement.innerHTML = `<b>${translate(
+      "composition.title"
+    )}</b>`;
+
+    const { rows } = await readCompositionState(this.sceneController);
+    if (!rows.length) {
+      this.compositionRowsElement.appendChild(
+        html.div({ class: "no-related-glyphs" }, [
+          translate("composition.no-components"),
+        ])
+      );
+      return;
+    }
+
+    for (const row of rows) {
+      const parts = [
+        html.span({ class: "composition-row-name" }, [row.componentName]),
+        html.span({ class: "composition-row-state" }, [
+          translate(`composition.state.${row.state}`),
+        ]),
+      ];
+      if (row.anchorName) {
+        parts.push(html.span({}, [row.anchorName]));
+      }
+      if (row.refusal) {
+        parts.push(
+          html.span({ class: "composition-row-state broken" }, [
+            translate(`composition.refusal.${row.refusal}`),
+          ])
+        );
+      }
+      for (const [labelKey, action] of this.compositionButtonsFor(row)) {
+        parts.push(
+          html.button(
+            {
+              onclick: async () => {
+                await action(this.sceneController, row.componentIndex);
+                this.throttledUpdate();
+              },
+            },
+            [translate(labelKey)]
+          )
+        );
+      }
+      this.compositionRowsElement.appendChild(
+        html.div({ class: "composition-row" }, parts)
+      );
+    }
+  }
+
+  // The state decides what the designer can do about it. Spec section 6.
+  compositionButtonsFor(row) {
+    switch (row.state) {
+      case "unattached":
+        return row.anchorName ? [["composition.button.attach", attachComponent]] : [];
+      case "inSync":
+        return [["composition.button.detach", detachComponent]];
+      case "outOfDate":
+        return [
+          ["composition.button.update", updateComponent],
+          ["composition.button.override", overrideComponent],
+          ["composition.button.detach", detachComponent],
+        ];
+      case "detached":
+        return [
+          ["composition.button.update", updateComponent],
+          ["composition.button.detach", detachComponent],
+        ];
+      case "broken":
+        return [["composition.button.detach", detachComponent]];
+      default:
+        return [];
+    }
   }
 
   async update() {
     const glyphName = this.sceneController.sceneSettings.selectedGlyphName;
+    this.followGlyphForComposition(glyphName);
+    await this.updateComposition();
     const character = glyphName
       ? getCharFromCodePoint(
           this.fontController.codePointForGlyph(glyphName) ||
