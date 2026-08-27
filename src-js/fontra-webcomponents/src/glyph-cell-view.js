@@ -30,9 +30,10 @@ export class GlyphCellView extends HTMLElement {
     this.glyphSelectionKey = options?.glyphSelectionKey || "glyphSelection";
     this.closedGlyphSectionsKey =
       options?.closedGlyphSectionsKey || "closedGlyphSections";
-    // Opt-in: cells keep the drawing they have when their glyph is edited, and
-    // report themselves stale instead. The owner decides when to look again.
-    this.deferUpdates = !!options?.deferUpdates;
+    // Cells whose section asks for it keep the drawing they have when their
+    // glyph is edited, and report themselves stale instead. It is per section,
+    // because a section listing the open glyph's own parts is telling the truth
+    // when it redraws, while one listing the glyphs built on top of it is not.
     this._staleCells = new Set();
 
     this._magnification = 1;
@@ -338,7 +339,7 @@ export class GlyphCellView extends HTMLElement {
         this.settingsController,
         this.locationKey
       );
-      glyphCell.deferUpdates = this.deferUpdates;
+      glyphCell.deferUpdates = !!item.section.deferUpdates;
       glyphCell.onStaleChanged = (cell) => {
         this._staleCells.add(cell);
         this.onStaleChanged?.();

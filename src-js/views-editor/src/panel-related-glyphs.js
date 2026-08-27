@@ -133,7 +133,7 @@ export default class RelatedGlyphPanel extends Panel {
     this.glyphCellView = new GlyphCellView(
       this.editorController.fontController,
       this.editorController.sceneSettingsController,
-      { glyphSelectionKey: "relatedGlyphsGlyphSelection", deferUpdates: true }
+      { glyphSelectionKey: "relatedGlyphsGlyphSelection" }
     );
 
     // The tiles hold the drawing they were given. An edit to a glyph one of
@@ -183,7 +183,11 @@ export default class RelatedGlyphPanel extends Panel {
                   class: "related-glyphs-refresh",
                   title: translate("sidebar.related-glyphs.refresh"),
                   onclick: () => {
+                    // Rebuild the lists too: a glyph may have gained or lost a
+                    // component while the tiles were holding still.
+                    this._sectionsGlyphName = null;
                     this.glyphCellView.refreshStaleCells();
+                    this.update();
                   },
                 },
                 ["↻"]
@@ -527,6 +531,11 @@ export default class RelatedGlyphPanel extends Panel {
         {
           labelKey: "sidebar.related-glyphs.glyphs-using-this-glyph-as-a-component",
           getRelatedGlyphsFunc: getUsedByGlyphs,
+          // These two list the glyphs built on top of the open one. Editing the
+          // open glyph moves them on screen, but nothing has re-solved where
+          // their components sit, so a live redraw shows a state the font has
+          // not settled on. They hold their drawing and report it stale.
+          deferUpdates: true,
         },
         {
           labelKey: "sidebar.related-glyphs.character-decomposition",
@@ -535,6 +544,7 @@ export default class RelatedGlyphPanel extends Panel {
         {
           labelKey: "sidebar.related-glyphs.character-decompose-with-character",
           getRelatedGlyphsFunc: getUnicodeUsedBy,
+          deferUpdates: true,
         },
       ];
 
@@ -546,9 +556,10 @@ export default class RelatedGlyphPanel extends Panel {
       if (this._sectionsGlyphName !== glyphName) {
         this._sectionsGlyphName = glyphName;
         const sections = sectionDefinitions.map(
-          ({ labelKey, getRelatedGlyphsFunc }) => ({
+          ({ labelKey, getRelatedGlyphsFunc, deferUpdates }) => ({
             label: translate(labelKey),
             glyphs: getRelatedGlyphsFunc(this.fontController, glyphName, codePoint),
+            deferUpdates,
           })
         );
         this.glyphCellView.setGlyphSections(sections, true);
