@@ -7,6 +7,7 @@ import { translate } from "@fontra/core/localization.js";
 import { unicodeMadeOf, unicodeUsedBy } from "@fontra/core/unicode-utils.js";
 import {
   attachComponent,
+  buildGlyph,
   detachComponent,
   overrideComponent,
   readCompositionState,
@@ -179,6 +180,36 @@ export default class RelatedGlyphPanel extends Panel {
     this.compositionHeaderElement.innerHTML = `<b>${translate(
       "composition.title"
     )}</b>`;
+
+    const glyphName = this.sceneController.sceneSettings.selectedGlyphName;
+    if (glyphName) {
+      this.compositionRowsElement.appendChild(
+        html.div({ class: "composition-row" }, [
+          html.button(
+            {
+              onclick: async () => {
+                const result = await buildGlyph(this.sceneController, glyphName);
+                if (result.status === "refused") {
+                  this.compositionReport = translate(
+                    "composition.refused",
+                    translate(`composition.refusal.${result.reason}`)
+                  );
+                } else {
+                  this.compositionReport = null;
+                }
+                this.throttledUpdate();
+              },
+            },
+            [translate("composition.button.build")]
+          ),
+        ])
+      );
+    }
+    if (this.compositionReport) {
+      this.compositionRowsElement.appendChild(
+        html.div({ class: "composition-row-state broken" }, [this.compositionReport])
+      );
+    }
 
     const { rows } = await readCompositionState(this.sceneController);
     if (!rows.length) {
