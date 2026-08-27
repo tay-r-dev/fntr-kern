@@ -93,7 +93,17 @@ export default class RelatedGlyphPanel extends Panel {
     // An edit inside the open glyph moves an anchor or a component, and either
     // of those changes what the composition rows report. The listener follows
     // the open glyph, so it is re-registered whenever the selection moves.
-    this._compositionGlyphListener = () => this.throttledUpdate();
+    // An edit does not redraw the cloud. It marks it stale, and the designer
+    // presses refresh — the same bargain the attachment rows make, for the same
+    // reason: the editor reports what has moved and never answers for you.
+    this._compositionGlyphListener = () => {
+      if (this.compositionCloud) {
+        this.compositionCloudStale = true;
+      }
+      this.throttledUpdate();
+    };
+    this.compositionCloud = null;
+    this.compositionCloudStale = false;
     this._compositionListenerGlyphName = null;
     this.sceneController.sceneSettingsController.addKeyListener(
       ["selectedGlyphName"],
@@ -331,31 +341,69 @@ export default class RelatedGlyphPanel extends Panel {
   // ticks are view preferences, so they live in localStorage per decision D9.
   async updateMarkCloud(glyphName) {
     const model = this.sceneController.sceneModel;
-    model.compositionMarkCloud = [];
-    if (!glyphName) {
-      return;
-    }
-    const candidates = markCandidatesForBase(this.sceneController, glyphName);
+    const candidates = glyphName
+      ? markCandidatesForBase(this.sceneController, glyphName)
+      : [];
     if (!candidates.length) {
+      model.compositionMarkCloud = [];
+      this.compositionCloud = null;
+      this.compositionCloudStale = false;
       return;
     }
 
     const settings = applicationSettingsController.model;
     const sets = settings.compositionMarkCloudSets || {};
     const enabled = new Set(sets[glyphName] ?? candidates);
+    const markNames = candidates.filter((name) => enabled.has(name));
 
-    const onSwitch = html.input({
-      type: "checkbox",
-      checked: !!settings.compositionMarkCloudOn,
-      onchange: (event) => {
-        settings.compositionMarkCloudOn = event.target.checked;
-        this.throttledUpdate();
-      },
-    });
+    // A cloud belongs to the glyph it was solved on. Moving to another glyph
+    // drops it rather than redrawing it in the wrong place.
+    if (this.compositionCloud?.glyphName !== glyphName) {
+      this.compositionCloud = null;
+      this.compositionCloudStale = false;
+    }
+    model.compositionMarkCloud = settings.compositionMarkCloudOn
+      ? this.compositionCloud?.placed || []
+      : [];
+
     this.compositionRowsElement.appendChild(
       html.div({ class: "composition-row" }, [
-        onSwitch,
+        html.input({
+          type: "checkbox",
+          checked: !!settings.compositionMarkCloudOn,
+          onchange: async (event) => {
+            settings.compositionMarkCloudOn = event.target.checked;
+            if (event.target.checked) {
+              await this.refreshMarkCloud(glyphName, markNames);
+            } else {
+              model.compositionMarkCloud = [];
+              this.editorController.canvasController.requestUpdate();
+            }
+            this.throttledUpdate();
+          },
+        }),
         html.span({}, [translate("composition.mark-cloud")]),
+        // The cloud is a drawing of a solve, and the glyph it was solved on can
+        // move under it. It is not redrawn on its own, for the same reason an
+        // attachment is not: the editor reports that a placement is out of date
+        // and leaves the answer to the designer. Pressing this re-solves it.
+        ...(settings.compositionMarkCloudOn && this.compositionCloudStale
+          ? [
+              html.span({ class: "composition-row-state broken" }, [
+                translate("composition.mark-cloud.stale"),
+              ]),
+              html.button(
+                {
+                  title: translate("composition.mark-cloud.refresh"),
+                  onclick: async () => {
+                    await this.refreshMarkCloud(glyphName, markNames);
+                    this.throttledUpdate();
+                  },
+                },
+                ["↻"]
+              ),
+            ]
+          : []),
       ])
     );
 
@@ -365,7 +413,7 @@ export default class RelatedGlyphPanel extends Panel {
           html.input({
             type: "checkbox",
             checked: enabled.has(markName),
-            onchange: (event) => {
+            onchange: async (event) => {
               const next = new Set(enabled);
               if (event.target.checked) {
                 next.add(markName);
@@ -376,6 +424,14 @@ export default class RelatedGlyphPanel extends Panel {
                 ...sets,
                 [glyphName]: [...next],
               };
+              // Ticking a mark is a request about the cloud itself, not an edit
+              // to the glyph, so it takes effect at once.
+              if (settings.compositionMarkCloudOn) {
+                await this.refreshMarkCloud(
+                  glyphName,
+                  candidates.filter((name) => next.has(name))
+                );
+              }
               this.throttledUpdate();
             },
           }),
@@ -384,21 +440,10 @@ export default class RelatedGlyphPanel extends Panel {
       );
     }
 
-    if (!settings.compositionMarkCloudOn) {
-      return;
-    }
-    const placed = await computeMarkCloud(
-      this.sceneController,
-      glyphName,
-      candidates.filter((name) => enabled.has(name))
-    );
-    model.compositionMarkCloud = placed;
-    this.editorController.canvasController.requestUpdate();
-
     // A mark carrying more than one underscore anchor name is drawn once per
     // name, and it is flagged here. Spec section 8.
     const drawnPerMark = {};
-    for (const mark of placed) {
+    for (const mark of this.compositionCloud?.placed || []) {
       drawnPerMark[mark.glyphName] = (drawnPerMark[mark.glyphName] || 0) + 1;
     }
     for (const [markName, count] of Object.entries(drawnPerMark)) {
@@ -410,6 +455,19 @@ export default class RelatedGlyphPanel extends Panel {
         );
       }
     }
+  }
+
+  // Solve the cloud and draw it. This is the only thing that recomputes it:
+  // turning it on, ticking a mark, and pressing refresh.
+  async refreshMarkCloud(glyphName, markNames) {
+    const placed = await computeMarkCloud(this.sceneController, glyphName, markNames);
+    this.compositionCloud = { glyphName, placed };
+    this.compositionCloudStale = false;
+    this.sceneController.sceneModel.compositionMarkCloud = applicationSettingsController
+      .model.compositionMarkCloudOn
+      ? placed
+      : [];
+    this.editorController.canvasController.requestUpdate();
   }
 
   // The state decides what the designer can do about it. Spec section 6.
