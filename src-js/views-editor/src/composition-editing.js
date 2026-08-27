@@ -6,11 +6,14 @@ import {
   markAnchorNames,
   matchAnchorNames,
   plainAnchorNames,
+  remapAttachmentsForDelete,
+  remapAttachmentsForInsert,
   setCompositionData,
   solveOffset,
   transformedAnchorMap,
 } from "@fontra/core/composition.js";
 import { translate } from "@fontra/core/localization.js";
+import { parseSelection, unionIndexSets } from "@fontra/core/utils.ts";
 
 // THE ONE WRITE PATH. Nothing outside this module writes the composition
 // section, and nothing outside it writes a component transform on behalf of an
@@ -243,4 +246,37 @@ export async function detachComponent(sceneController, componentIndex) {
     });
     return translate("composition.undo.detach");
   });
+}
+
+// Called from every operation that restructures the component list, inside the
+// same change that restructures it. The attachment list is positional, so an
+// operation that moves components and does not move entries silently retargets
+// every attachment after the edit. Spec section 4.1.
+export function recordComponentInsert(varGlyph, index, count, componentCountBefore) {
+  const attachments = getAttachments(varGlyph, componentCountBefore);
+  setCompositionData(varGlyph, {
+    ...(getCompositionData(varGlyph) || {}),
+    attachments: remapAttachmentsForInsert(attachments, index, count),
+  });
+}
+
+export function recordComponentDelete(varGlyph, indices, componentCountBefore) {
+  const attachments = getAttachments(varGlyph, componentCountBefore);
+  setCompositionData(varGlyph, {
+    ...(getCompositionData(varGlyph) || {}),
+    attachments: remapAttachmentsForDelete(attachments, indices),
+  });
+}
+
+// The cut and delete paths select components three ways, and every one of them
+// removes the component. The same union the copy path takes.
+export function selectedComponentIndices(selection) {
+  const { component, componentOrigin, componentTCenter } = parseSelection(selection);
+  return [...unionIndexSets(component, componentOrigin, componentTCenter)];
+}
+
+// The component count of any layer, which is the length the attachment list
+// must have. Every layer of a glyph carries the same components.
+export function componentCountOf(varGlyph) {
+  return Object.values(varGlyph.layers)[0]?.glyph?.components.length || 0;
 }

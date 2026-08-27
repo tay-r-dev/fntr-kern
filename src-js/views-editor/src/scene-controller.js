@@ -92,6 +92,11 @@ import {
   recordSkeletonContourIndexShift,
 } from "./skeleton-editing.js";
 import {
+  componentCountOf,
+  recordComponentDelete,
+  recordComponentInsert,
+} from "./composition-editing.js";
+import {
   harmonizePanelSkeletonPoints,
   splitPanelSkeletonContours,
   togglePanelContourReversed,
@@ -1997,35 +2002,59 @@ export class SceneController {
       );
     }
 
-    await this.editLayersAndRecordChanges((layerGlyphs) => {
-      for (const [layerName, layerGlyph] of Object.entries(layerGlyphs)) {
-        const decomposeInfo = decomposed[layerName];
-        const path = layerGlyph.path;
-        const components = layerGlyph.components;
-        const anchors = layerGlyph.anchors;
+    await this.editGlyphAndRecordChanges(
+      (glyph) => {
+        const layerGlyphs = this.getEditingLayerFromGlyphLayers(glyph.layers);
+        // Decompose appends the decomposed components at the end and then
+        // removes the ones it decomposed, so the attachment list has to follow
+        // both moves in the same change. Spec section 4.1.
+        const componentCountBefore = componentCountOf(glyph);
+        const appendedCount = Object.values(decomposed)[0]?.components.length || 0;
+        for (const [layerName, layerGlyph] of Object.entries(layerGlyphs)) {
+          const decomposeInfo = decomposed[layerName];
+          const path = layerGlyph.path;
+          const components = layerGlyph.components;
+          const anchors = layerGlyph.anchors;
 
-        for (const contour of decomposeInfo.path.iterContours()) {
-          // Hm, rounding should be optional
-          // contour.coordinates = contour.coordinates.map(c => Math.round(c));
-          path.appendContour(contour);
-        }
-        components.push(...decomposeInfo.components);
-        for (const anchor of decomposeInfo.anchors) {
-          // preserve existing anchors
-          const exists = anchors.some((a) => a.name === anchor.name);
-          if (!exists) {
-            anchors.push(anchor);
+          for (const contour of decomposeInfo.path.iterContours()) {
+            // Hm, rounding should be optional
+            // contour.coordinates = contour.coordinates.map(c => Math.round(c));
+            path.appendContour(contour);
+          }
+          components.push(...decomposeInfo.components);
+          for (const anchor of decomposeInfo.anchors) {
+            // preserve existing anchors
+            const exists = anchors.some((a) => a.name === anchor.name);
+            if (!exists) {
+              anchors.push(anchor);
+            }
+          }
+
+          // Next, delete the components we decomposed
+          for (const componentIndex of reversed(componentSelection)) {
+            components.splice(componentIndex, 1);
           }
         }
-
-        // Next, delete the components we decomposed
-        for (const componentIndex of reversed(componentSelection)) {
-          components.splice(componentIndex, 1);
-        }
-      }
-      this.selection = new Set();
-      return translatePlural("action.decompose-component", componentSelection?.length);
-    });
+        recordComponentInsert(
+          glyph,
+          componentCountBefore,
+          appendedCount,
+          componentCountBefore
+        );
+        recordComponentDelete(
+          glyph,
+          componentSelection || [],
+          componentCountBefore + appendedCount
+        );
+        this.selection = new Set();
+        return translatePlural(
+          "action.decompose-component",
+          componentSelection?.length
+        );
+      },
+      undefined,
+      true
+    );
   }
 
   async doAddOverlap() {

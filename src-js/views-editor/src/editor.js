@@ -70,6 +70,12 @@ import {
   writeObjectToURLFragment,
   writeToClipboard,
 } from "@fontra/core/utils.ts";
+import {
+  componentCountOf,
+  recordComponentDelete,
+  recordComponentInsert,
+  selectedComponentIndices,
+} from "./composition-editing.js";
 import { addItemwise, mulScalar, subItemwise } from "@fontra/core/var-funcs.js";
 import { StaticGlyph, VariableGlyph, copyComponent } from "@fontra/core/var-glyph.js";
 import { locationToString, makeSparseLocation } from "@fontra/core/var-model.js";
@@ -1659,7 +1665,16 @@ export class EditorController extends ViewController {
     let copyResult;
     await this.sceneController.editGlyphAndRecordChanges(
       (glyph) => {
+        // The attachment list is positional, so a cut that removes components
+        // has to move the entries in the same change. Spec section 4.1.
+        const cutComponentIndices = selectedComponentIndices(
+          this.sceneController.selection
+        );
+        const componentCountBefore = componentCountOf(glyph);
         copyResult = this._prepareCopyOrCutLayers(glyph, true);
+        if (cutComponentIndices.length) {
+          recordComponentDelete(glyph, cutComponentIndices, componentCountBefore);
+        }
         this.sceneController.selection = new Set();
         return "Cut Selection"; // TODO: translation translate("action.edit-guideline");
       },
@@ -2356,6 +2371,15 @@ export class EditorController extends ViewController {
           selection.add(`guideline/${guidelineIndex}`);
         }
 
+        // Paste appends components at the end, so no existing entry moves.
+        // The list still has to grow with the component list. Spec section 4.1.
+        recordComponentInsert(
+          glyph,
+          firstLayerGlyph.components.length,
+          defaultPasteGlyph.components.length,
+          firstLayerGlyph.components.length
+        );
+
         const editLayerName = this.sceneController.sceneSettings.editLayerName;
         const selectionLayerName =
           editLayerName in editLayerGlyphs
@@ -2496,99 +2520,117 @@ export class EditorController extends ViewController {
     //     XXX
     //   }
     // }
-    await this.sceneController.editLayersAndRecordChanges((layerGlyphs) => {
-      for (const layerGlyph of Object.values(layerGlyphs)) {
-        if (event.altKey) {
-          // Behave like "cut", but don't put anything on the clipboard
-          this._prepareCopyOrCut(layerGlyph, true, false);
-        } else {
-          if (pointSelection) {
-            // Deleting all points of a contour deletes the contour, which
-            // shifts skeleton-generated contour indices; dry-run on a marked
-            // scratch copy to learn where the generated contours land.
-            const remap = computeGeneratedContourRemap(layerGlyph, (scratchPath) =>
-              deleteSelectedPoints(scratchPath, pointSelection)
-            );
-            deleteSelectedPoints(layerGlyph.path, pointSelection);
-            applyGeneratedContourRemap(layerGlyph, remap);
-          }
-          if (componentSelection) {
-            for (const componentIndex of reversed(componentSelection)) {
-              layerGlyph.components.splice(componentIndex, 1);
-            }
-          }
-          if (anchorSelection) {
-            for (const anchorIndex of reversed(anchorSelection)) {
-              layerGlyph.anchors.splice(anchorIndex, 1);
-            }
-          }
-          if (guidelineSelection) {
-            for (const guidelineIndex of reversed(guidelineSelection)) {
-              const guideline = layerGlyph.guidelines[guidelineIndex];
-              if (guideline.locked) {
-                // don't delete locked guidelines
-                continue;
-              }
-              layerGlyph.guidelines.splice(guidelineIndex, 1);
-            }
-          }
-          if (backgroundImageSelection) {
-            // TODO: don't delete if bg images are locked
-            // (even though we shouldn't be able to select them)
-            layerGlyph.backgroundImage = undefined;
-          }
-        }
-      }
-      // Skeleton points delete through the one write path (WS-9 editSkeleton),
-      // which regenerates the generated contours. Selection ids are canonical in
-      // the edit layer; other layers resolve by structural ordinal (WS-9).
-      let survivorSelection = null;
-      if (skeletonPointKeys?.length && !event.altKey) {
-        const editLayerName = this.sceneController.sceneSettings.editLayerName;
-        const selectionLayerGlyph =
-          layerGlyphs[editLayerName] || Object.values(layerGlyphs)[0];
-        const referenceSkeletonData = getSkeletonData(selectionLayerGlyph);
-        // The surviving on-curve neighbor of each deleted point stays selected;
-        // compute candidates against the pre-deletion reference data.
-        const survivorCandidates = collectSkeletonDeleteSurvivors(
-          referenceSkeletonData,
-          skeletonPointKeys.map(parseSkeletonPointKey)
+    await this.sceneController.editGlyphAndRecordChanges(
+      (glyph) => {
+        const layerGlyphs = this.sceneController.getEditingLayerFromGlyphLayers(
+          glyph.layers
         );
+        // The attachment list is positional, so a delete that removes
+        // components has to move the entries in the same change. Alt-delete
+        // takes the cut path, which selects components three ways.
+        // Spec section 4.1.
+        const componentCountBefore = componentCountOf(glyph);
+        const deletedComponentIndices = event.altKey
+          ? selectedComponentIndices(this.sceneController.selection)
+          : componentSelection || [];
         for (const layerGlyph of Object.values(layerGlyphs)) {
-          if (!getSkeletonData(layerGlyph)) {
-            continue;
-          }
-          editSkeleton(layerGlyph, (working) => {
-            const toDelete = [];
-            for (const key of skeletonPointKeys) {
-              const { contourId, pointId } = parseSkeletonPointKey(key);
-              const address = resolveSkeletonAddressAcrossLayers(
-                referenceSkeletonData,
-                working,
-                contourId,
-                pointId
+          if (event.altKey) {
+            // Behave like "cut", but don't put anything on the clipboard
+            this._prepareCopyOrCut(layerGlyph, true, false);
+          } else {
+            if (pointSelection) {
+              // Deleting all points of a contour deletes the contour, which
+              // shifts skeleton-generated contour indices; dry-run on a marked
+              // scratch copy to learn where the generated contours land.
+              const remap = computeGeneratedContourRemap(layerGlyph, (scratchPath) =>
+                deleteSelectedPoints(scratchPath, pointSelection)
               );
-              if (address) {
-                toDelete.push([address.contour.id, address.point.id]);
+              deleteSelectedPoints(layerGlyph.path, pointSelection);
+              applyGeneratedContourRemap(layerGlyph, remap);
+            }
+            if (componentSelection) {
+              for (const componentIndex of reversed(componentSelection)) {
+                layerGlyph.components.splice(componentIndex, 1);
               }
             }
-            deleteSkeletonPoints(working, toDelete);
-          });
+            if (anchorSelection) {
+              for (const anchorIndex of reversed(anchorSelection)) {
+                layerGlyph.anchors.splice(anchorIndex, 1);
+              }
+            }
+            if (guidelineSelection) {
+              for (const guidelineIndex of reversed(guidelineSelection)) {
+                const guideline = layerGlyph.guidelines[guidelineIndex];
+                if (guideline.locked) {
+                  // don't delete locked guidelines
+                  continue;
+                }
+                layerGlyph.guidelines.splice(guidelineIndex, 1);
+              }
+            }
+            if (backgroundImageSelection) {
+              // TODO: don't delete if bg images are locked
+              // (even though we shouldn't be able to select them)
+              layerGlyph.backgroundImage = undefined;
+            }
+          }
         }
-        const postDeleteSkeletonData = getSkeletonData(selectionLayerGlyph);
-        survivorSelection = new Set(
-          survivorCandidates
-            .filter(([contourId, pointId]) =>
-              getSkeletonPoint(postDeleteSkeletonData, contourId, pointId)
-            )
-            .map(([contourId, pointId]) => `skeletonPoint/${contourId}/${pointId}`)
-        );
-      }
-      this.sceneController.selection = survivorSelection?.size
-        ? survivorSelection
-        : new Set();
-      return translate("action.delete-selection");
-    });
+        if (deletedComponentIndices.length) {
+          recordComponentDelete(glyph, deletedComponentIndices, componentCountBefore);
+        }
+        // Skeleton points delete through the one write path (WS-9 editSkeleton),
+        // which regenerates the generated contours. Selection ids are canonical in
+        // the edit layer; other layers resolve by structural ordinal (WS-9).
+        let survivorSelection = null;
+        if (skeletonPointKeys?.length && !event.altKey) {
+          const editLayerName = this.sceneController.sceneSettings.editLayerName;
+          const selectionLayerGlyph =
+            layerGlyphs[editLayerName] || Object.values(layerGlyphs)[0];
+          const referenceSkeletonData = getSkeletonData(selectionLayerGlyph);
+          // The surviving on-curve neighbor of each deleted point stays selected;
+          // compute candidates against the pre-deletion reference data.
+          const survivorCandidates = collectSkeletonDeleteSurvivors(
+            referenceSkeletonData,
+            skeletonPointKeys.map(parseSkeletonPointKey)
+          );
+          for (const layerGlyph of Object.values(layerGlyphs)) {
+            if (!getSkeletonData(layerGlyph)) {
+              continue;
+            }
+            editSkeleton(layerGlyph, (working) => {
+              const toDelete = [];
+              for (const key of skeletonPointKeys) {
+                const { contourId, pointId } = parseSkeletonPointKey(key);
+                const address = resolveSkeletonAddressAcrossLayers(
+                  referenceSkeletonData,
+                  working,
+                  contourId,
+                  pointId
+                );
+                if (address) {
+                  toDelete.push([address.contour.id, address.point.id]);
+                }
+              }
+              deleteSkeletonPoints(working, toDelete);
+            });
+          }
+          const postDeleteSkeletonData = getSkeletonData(selectionLayerGlyph);
+          survivorSelection = new Set(
+            survivorCandidates
+              .filter(([contourId, pointId]) =>
+                getSkeletonPoint(postDeleteSkeletonData, contourId, pointId)
+              )
+              .map(([contourId, pointId]) => `skeletonPoint/${contourId}/${pointId}`)
+          );
+        }
+        this.sceneController.selection = survivorSelection?.size
+          ? survivorSelection
+          : new Set();
+        return translate("action.delete-selection");
+      },
+      undefined,
+      true
+    );
   }
 
   async doAddComponent() {
@@ -2611,15 +2653,27 @@ export class EditorController extends ViewController {
       location: location,
     };
 
-    await this.sceneController.editLayersAndRecordChanges((layerGlyphs) => {
-      for (const layerGlyph of Object.values(layerGlyphs)) {
-        layerGlyph.components.push(copyComponent(newComponent));
-      }
-      const instance = this.sceneModel.getSelectedPositionedGlyph().glyph.instance;
-      const newComponentIndex = instance.components.length - 1;
-      this.sceneController.selection = new Set([`component/${newComponentIndex}`]);
-      return translate("action.add-component");
-    });
+    await this.sceneController.editGlyphAndRecordChanges(
+      (glyph) => {
+        const layerGlyphs = this.sceneController.getEditingLayerFromGlyphLayers(
+          glyph.layers
+        );
+        // A component appended at the end moves no existing entry, but the
+        // attachment list still has to grow with the component list.
+        // Spec section 4.1.
+        const componentCountBefore = componentCountOf(glyph);
+        for (const layerGlyph of Object.values(layerGlyphs)) {
+          layerGlyph.components.push(copyComponent(newComponent));
+        }
+        recordComponentInsert(glyph, componentCountBefore, 1, componentCountBefore);
+        const instance = this.sceneModel.getSelectedPositionedGlyph().glyph.instance;
+        const newComponentIndex = instance.components.length - 1;
+        this.sceneController.selection = new Set([`component/${newComponentIndex}`]);
+        return translate("action.add-component");
+      },
+      undefined,
+      true
+    );
   }
 
   async doAddAnchor() {
