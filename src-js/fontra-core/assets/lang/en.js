@@ -140,7 +140,8 @@ export const strings = {
     "this component has no anchor whose name starts with an underscore",
   "composition.refusal.no-shared-anchor": "no shared anchor",
   "composition.refused": "Refused: %0",
-  "composition.report": "%0 built, %1 already in sync, %2 refused",
+  "composition.report":
+    "%0 built, %1 already in sync, %2 refused. Undo each built glyph from that glyph.",
   "composition.mark-cloud": "Show mark cloud",
   "composition.state.base": "base",
   "composition.state.broken": "broken",

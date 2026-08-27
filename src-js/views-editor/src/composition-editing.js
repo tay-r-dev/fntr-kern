@@ -19,7 +19,7 @@ import { translate } from "@fontra/core/localization.js";
 import { unicodeMadeOf, unicodeUsedBy } from "@fontra/core/unicode-utils.js";
 import { getDecomposedIdentity } from "@fontra/core/transform.js";
 import { parseSelection, unionIndexSets } from "@fontra/core/utils.ts";
-import { copyComponent } from "@fontra/core/var-glyph.js";
+import { StaticGlyph, copyComponent } from "@fontra/core/var-glyph.js";
 
 // THE ONE WRITE PATH. Nothing outside this module writes the composition
 // section, and nothing outside it writes a component transform on behalf of an
@@ -199,6 +199,73 @@ function writeAttachments(varGlyph, mutate) {
   });
 }
 
+// The offset one named anchor gives this component, per layer. It is solved
+// from the anchor name alone and never from the stored entry, so an attach can
+// solve before it has written anything and stay one change. One button press
+// must be one undo step: undo is per glyph here, and a second recorded change
+// makes the designer press Ctrl+Z twice to take back one action.
+async function solveOffsetsForAnchor(
+  fontController,
+  varGlyph,
+  componentIndex,
+  anchorName
+) {
+  const anchorsPerLayer = await readAnchorsPerLayer(fontController, varGlyph);
+  const offsets = {};
+  for (const [layerName, perComponent] of Object.entries(anchorsPerLayer)) {
+    const layerGlyph = varGlyph.layers[layerName]?.glyph;
+    const baseComponent = layerGlyph?.components[0];
+    if (!baseComponent) {
+      continue;
+    }
+    const basePosition = transformedAnchorMap(
+      perComponent[0] || [],
+      baseComponent.transformation
+    )[anchorName];
+    const markAnchor = (perComponent[componentIndex] || []).find(
+      (anchor) => anchor.name === "_" + anchorName
+    );
+    if (!basePosition || !markAnchor) {
+      continue;
+    }
+    offsets[layerName] = solveOffset(basePosition, [markAnchor.x, markAnchor.y]);
+  }
+  return offsets;
+}
+
+// Write one anchor name and the offsets it gives, in a single recorded change.
+async function writeAttachment(
+  sceneController,
+  componentIndex,
+  anchorName,
+  undoLabelKey
+) {
+  const fontController = sceneController.fontController;
+  const varGlyphBefore = await getVarGlyph(sceneController);
+  if (!varGlyphBefore) {
+    return;
+  }
+  const offsets = await solveOffsetsForAnchor(
+    fontController,
+    varGlyphBefore,
+    componentIndex,
+    anchorName
+  );
+
+  await sceneController.editGlyphAndRecordChanges((varGlyph) => {
+    for (const [layerName, offset] of Object.entries(offsets)) {
+      const component = varGlyph.layers[layerName]?.glyph?.components[componentIndex];
+      if (component) {
+        setComponentOffset(component, offset);
+      }
+    }
+    writeAttachments(varGlyph, (attachments) => {
+      attachments[componentIndex] = { anchorName, detached: false };
+    });
+    return translate(undoLabelKey);
+  });
+}
+
 export async function attachComponent(sceneController, componentIndex) {
   const fontController = sceneController.fontController;
   const varGlyphBefore = await getVarGlyph(sceneController);
@@ -214,42 +281,31 @@ export async function attachComponent(sceneController, componentIndex) {
   if (match.refusal) {
     return;
   }
-
-  await sceneController.editGlyphAndRecordChanges((varGlyph) => {
-    writeAttachments(varGlyph, (attachments) => {
-      attachments[componentIndex] = { anchorName: match.anchorName, detached: false };
-    });
-    return translate("composition.undo.attach");
-  });
-
-  await updateComponent(sceneController, componentIndex);
+  await writeAttachment(
+    sceneController,
+    componentIndex,
+    match.anchorName,
+    "composition.undo.attach"
+  );
 }
 
 export async function updateComponent(sceneController, componentIndex) {
-  const fontController = sceneController.fontController;
   const varGlyphBefore = await getVarGlyph(sceneController);
   if (!varGlyphBefore) {
     return;
   }
-  const solved = await solveGlyphAttachments(fontController, varGlyphBefore);
-
-  await sceneController.editGlyphAndRecordChanges((varGlyph) => {
-    for (const [layerName, perIndex] of Object.entries(solved)) {
-      const offset = perIndex[componentIndex]?.offset;
-      const component = varGlyph.layers[layerName]?.glyph?.components[componentIndex];
-      if (!offset || !component) {
-        continue;
-      }
-      setComponentOffset(component, offset);
-    }
-    writeAttachments(varGlyph, (attachments) => {
-      const entry = attachments[componentIndex];
-      if (entry) {
-        attachments[componentIndex] = { ...entry, detached: false };
-      }
-    });
-    return translate("composition.undo.update");
-  });
+  const entry = getAttachments(varGlyphBefore, componentCountOf(varGlyphBefore))[
+    componentIndex
+  ];
+  if (!entry) {
+    return;
+  }
+  await writeAttachment(
+    sceneController,
+    componentIndex,
+    entry.anchorName,
+    "composition.undo.update"
+  );
 }
 
 export async function overrideComponent(sceneController, componentIndex) {
@@ -352,19 +408,19 @@ export async function buildGlyph(sceneController, glyphName) {
   }
   const { codePoint, glyphNames } = decomposition;
 
-  if (!fontController.hasGlyph(glyphName)) {
-    // A target in the glyph set but not in the font is created. The glyph set
-    // is the project's statement that the font should carry it.
-    await fontController.newGlyph(
-      glyphName,
-      codePoint,
-      null,
-      null,
-      translate("composition.undo.build")
-    );
-  }
-  const varGlyphController = await fontController.getGlyph(glyphName);
-  const varGlyph = varGlyphController?.glyph;
+  // A target in the glyph set but not in the font is created. The glyph set is
+  // the project's statement that the font should carry it. The shell is built
+  // in memory and handed to newGlyph complete, because creating the glyph and
+  // then filling it would be two recorded changes and two presses of Ctrl+Z for
+  // one press of Build. Undo is per glyph here, so both records would land on
+  // the same stack and the first press would appear to do half the job.
+  const exists = fontController.hasGlyph(glyphName);
+  const varGlyph = exists
+    ? (await fontController.getGlyph(glyphName))?.glyph
+    : fontController.makeVariableGlyphFromSingleStaticGlyph(
+        glyphName,
+        StaticGlyph.fromObject({ xAdvance: 0 })
+      );
   if (!varGlyph) {
     return { status: "refused", reason: "missing-glyph" };
   }
@@ -463,7 +519,7 @@ export async function buildGlyph(sceneController, glyphName) {
     layerNames.map((layerName) => [layerName, perLayer[layerName][0]?.xAdvance])
   );
 
-  await sceneController.editNamedGlyphAndRecordChanges(glyphName, (glyph) => {
+  const applyBuild = (glyph) => {
     for (const [layerName, layerEntry] of Object.entries(glyph.layers)) {
       const layerGlyph = layerEntry?.glyph;
       if (!layerGlyph) {
@@ -501,13 +557,33 @@ export async function buildGlyph(sceneController, glyphName) {
       attachments,
     });
     return translate("composition.undo.build");
-  });
+  };
+
+  if (exists) {
+    await sceneController.editNamedGlyphAndRecordChanges(glyphName, applyBuild);
+  } else {
+    applyBuild(varGlyph);
+    await fontController.newGlyph(
+      glyphName,
+      codePoint,
+      varGlyph,
+      null,
+      translate("composition.undo.build")
+    );
+  }
 
   return { status: "built" };
 }
 
 // Build a list of glyphs. Each one is its own change, so a refusal does not
 // roll back the glyphs that came before it. Spec section 7.2.
+//
+// UNDO. Fontra keeps one undo stack per glyph, and Ctrl+Z pops the stack of the
+// glyph on screen. A batch driven from a mark writes to other glyphs, so its
+// records land on their stacks, not on the mark's: Ctrl+Z with the mark open
+// takes back nothing. Each built glyph undoes on its own, from itself. There is
+// no font-wide stack to push a whole batch onto, so the report says so rather
+// than leaving the designer to discover it.
 export async function buildGlyphs(sceneController, glyphNames) {
   const built = [];
   const skipped = [];
