@@ -136,6 +136,8 @@ export const strings = {
   "composition.refusal.anchor-taken": "two components want this anchor",
   "composition.refusal.missing-glyph": "a part of this character is missing",
   "composition.refusal.no-decomposition": "this character has no decomposition",
+  "composition.refusal.no-mark-anchor":
+    "this component has no anchor whose name starts with an underscore",
   "composition.refusal.no-shared-anchor": "no shared anchor",
   "composition.refused": "Refused: %0",
   "composition.report": "%0 built, %1 already in sync, %2 refused",

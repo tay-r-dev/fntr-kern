@@ -60,6 +60,13 @@ describe("composition — matching", () => {
     });
   });
 
+  it("refuses a mark carrying no underscore anchor", () => {
+    expect(matchAnchorNames(["top"], [])).to.deep.equal({
+      refusal: "no-mark-anchor",
+      names: [],
+    });
+  });
+
   it("refuses where nothing is shared", () => {
     expect(matchAnchorNames(["top"], ["bottom"])).to.deep.equal({
       refusal: "no-shared-anchor",

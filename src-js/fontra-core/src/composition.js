@@ -35,6 +35,13 @@ export function getAttachments(glyph, componentCount) {
 // one answer means no answer. Spec section 5.1.
 
 export function matchAnchorNames(baseNames, markNames) {
+  // A mark with no underscore anchor at all is the commonest fault and the one
+  // hardest to read off "no shared anchor": the designer drew `top` where the
+  // convention wants `_top`, so the anchor names the place something attaches
+  // to the mark rather than the place the mark attaches by.
+  if (!markNames.length) {
+    return { refusal: "no-mark-anchor", names: [] };
+  }
   const base = new Set(baseNames);
   const shared = [...new Set(markNames)].filter((name) => base.has(name)).sort();
   if (shared.length === 1) {
