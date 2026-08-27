@@ -146,8 +146,6 @@ export const strings = {
   "composition.report":
     "%0 built, %1 already in sync, %2 refused. Undo each built glyph from that glyph.",
   "composition.mark-cloud": "Show mark cloud",
-  "composition.mark-cloud.refresh": "Solve the mark cloud again",
-  "composition.mark-cloud.stale": "out of date",
   "composition.state.base": "base",
   "composition.state.broken": "broken",
   "composition.state.detached": "detached",
