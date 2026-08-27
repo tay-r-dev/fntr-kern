@@ -1,6 +1,8 @@
 import {
   getAttachments,
   getCompositionData,
+  matchAnchorNames,
+  planAttachments,
   setCompositionData,
 } from "@fontra/core/composition.js";
 import { FONTRA_INTERNAL_SECTIONS } from "@fontra/core/fontra-internal-schema.js";
@@ -39,5 +41,61 @@ describe("composition — stored section", () => {
 
   it("returns all-null for a glyph with no section", () => {
     expect(getAttachments({}, 2)).to.deep.equal([null, null]);
+  });
+});
+
+describe("composition — matching", () => {
+  it("matches the one shared name", () => {
+    expect(matchAnchorNames(["top", "bottom"], ["top"])).to.deep.equal({
+      anchorName: "top",
+    });
+  });
+
+  it("refuses where nothing is shared", () => {
+    expect(matchAnchorNames(["top"], ["bottom"])).to.deep.equal({
+      refusal: "no-shared-anchor",
+      names: [],
+    });
+  });
+
+  it("refuses a mark that matches two base anchors", () => {
+    expect(matchAnchorNames(["top", "bottom"], ["top", "bottom"])).to.deep.equal({
+      refusal: "ambiguous-mark",
+      names: ["bottom", "top"],
+    });
+  });
+
+  it("ignores a mark anchor the base does not carry", () => {
+    expect(matchAnchorNames(["top"], ["top", "center"])).to.deep.equal({
+      anchorName: "top",
+    });
+  });
+});
+
+describe("composition — planning a whole glyph", () => {
+  it("attaches two marks to two different anchors", () => {
+    const plan = planAttachments(["top", "bottom"], [["top"], ["bottom"]]);
+    expect(plan.results).to.deep.equal([
+      { componentIndex: 0, anchorName: "top" },
+      { componentIndex: 1, anchorName: "bottom" },
+    ]);
+    expect(plan.refusals).to.deep.equal([]);
+  });
+
+  it("refuses both components where two claim one anchor", () => {
+    const plan = planAttachments(["top"], [["top"], ["top"]]);
+    expect(plan.results).to.deep.equal([]);
+    expect(plan.refusals.map((r) => r.reason)).to.deep.equal([
+      "anchor-taken",
+      "anchor-taken",
+    ]);
+  });
+
+  it("refuses only the bad component and keeps the good one", () => {
+    const plan = planAttachments(["top", "bottom"], [["top"], ["nothing"]]);
+    expect(plan.results).to.deep.equal([{ componentIndex: 0, anchorName: "top" }]);
+    expect(plan.refusals).to.deep.equal([
+      { componentIndex: 1, reason: "no-shared-anchor", names: [] },
+    ]);
   });
 });
