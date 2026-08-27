@@ -981,6 +981,14 @@ export class FontOverviewController extends ViewController {
       }
     });
 
+    // `root.glyphMap` is the font controller's own map, so recordChanges has
+    // already mutated it. `root.glyphs` is not: it is a throwaway object, so a
+    // glyph created here would leave its name in the map with no data behind
+    // it — a glyph that exists and cannot be opened. applyChange is what puts
+    // the glyph in the controller's cache and tells it what changed. The paste
+    // path does the same, for the same reason.
+    await this.fontController.applyChange(changes.change);
+
     {
       // glyphSelection closure
       const glyphSelection = this.glyphCellView.glyphSelection;
@@ -996,10 +1004,6 @@ export class FontOverviewController extends ViewController {
           },
         }
       );
-    }
-
-    for (const { glyphName } of plans) {
-      await this.fontController.glyphChanged(glyphName, { senderID: this });
     }
   }
 
