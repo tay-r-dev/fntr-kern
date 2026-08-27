@@ -4,6 +4,7 @@ import {
 } from "./fontra-internal-data.js";
 import { FONTRA_INTERNAL_SECTIONS } from "./fontra-internal-schema.js";
 import { decomposedToTransform } from "./transform.js";
+import { unicodeMadeOf } from "./unicode-utils.js";
 
 // An attachment says: this component hangs on the base glyph's anchor of this
 // name. Two fields, both structure, so the entry is the same in every layer and
@@ -158,4 +159,21 @@ export function remapAttachmentsForInsert(attachments, index, count) {
 export function remapAttachmentsForDelete(attachments, indices) {
   const drop = new Set(indices);
   return attachments.filter((_, index) => !drop.has(index));
+}
+
+// The Related Glyphs panel already displays this decomposition. The build
+// action uses the same table, so the two cannot disagree about what a
+// character is made of. Spec section 7.1.
+export function decomposeToGlyphNames(codePoint, glyphNameForCodePoint) {
+  const glyphNames = [];
+  const missing = [];
+  for (const partCodePoint of unicodeMadeOf(codePoint)) {
+    const glyphName = glyphNameForCodePoint(partCodePoint);
+    if (glyphName) {
+      glyphNames.push(glyphName);
+    } else {
+      missing.push(partCodePoint);
+    }
+  }
+  return { glyphNames, missing };
 }

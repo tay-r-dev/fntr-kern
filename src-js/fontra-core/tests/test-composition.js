@@ -1,5 +1,6 @@
 import {
   attachmentState,
+  decomposeToGlyphNames,
   getAttachments,
   getCompositionData,
   markAnchorNames,
@@ -208,5 +209,31 @@ describe("composition — component-list bookkeeping", () => {
 
   it("deleting nothing changes nothing", () => {
     expect(remapAttachmentsForDelete([null, a], [])).to.deep.equal([null, a]);
+  });
+});
+
+describe("composition — decomposition", () => {
+  const names = { 0x61: "a", 0x301: "acutecomb" };
+  const lookup = (codePoint) => names[codePoint];
+
+  it("names the parts of aacute", () => {
+    // U+00E1 LATIN SMALL LETTER A WITH ACUTE
+    const result = decomposeToGlyphNames(0x00e1, lookup);
+    expect(result.glyphNames).to.deep.equal(["a", "acutecomb"]);
+    expect(result.missing).to.deep.equal([]);
+  });
+
+  it("reports a part the font cannot name", () => {
+    const result = decomposeToGlyphNames(0x00e1, (cp) =>
+      cp === 0x61 ? "a" : undefined
+    );
+    expect(result.glyphNames).to.deep.equal(["a"]);
+    expect(result.missing).to.deep.equal([0x301]);
+  });
+
+  it("returns nothing for a character with no decomposition", () => {
+    const result = decomposeToGlyphNames(0x61, lookup);
+    expect(result.glyphNames).to.deep.equal([]);
+    expect(result.missing).to.deep.equal([]);
   });
 });
