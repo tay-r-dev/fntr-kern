@@ -25,10 +25,7 @@ const cellObserver = new IntersectionObserver(
       const cell = entry.target;
       if (entry.intersectionRatio > 0) {
         cell.locationController.addKeyListener(cell.locationKey, cell.throttledUpdate);
-        cell.fontController.addGlyphChangeListener(
-          cell.glyphName,
-          cell.throttledUpdate
-        );
+        cell.fontController.addGlyphChangeListener(cell.glyphName, cell.onGlyphChanged);
         cell.throttledUpdate();
         cell.visible = true;
       } else {
@@ -42,7 +39,7 @@ const cellObserver = new IntersectionObserver(
         );
         cell.fontController.removeGlyphChangeListener(
           cell.glyphName,
-          cell.throttledUpdate
+          cell.onGlyphChanged
         );
         cell.visible = false;
       }
@@ -60,6 +57,11 @@ export class GlyphCell extends UnlitElement {
   :host {
     display: inline-block;
     --glyph-cell-scale-factor: calc(var(--glyph-cell-scale-factor-override, 1));
+  }
+
+  /* The glyph moved and this drawing did not follow it. */
+  :host(.stale) {
+    opacity: 0.4;
   }
 
   #glyph-cell-container {
@@ -149,6 +151,35 @@ export class GlyphCell extends UnlitElement {
     this._placeholderString = glyphString;
     this._placeholderDirection = direction || "auto";
     this._selected = false;
+
+    // A cell follows its glyph by default. A view that sets `deferUpdates`
+    // keeps the drawing it has and reports that the glyph moved under it, so
+    // the designer decides when to look again. Coming into view and a location
+    // change still redraw at once: neither is an edit.
+    this.deferUpdates = false;
+    this.stale = false;
+    this.onGlyphChanged = () => {
+      if (this.deferUpdates) {
+        this.markStale();
+      } else {
+        this.throttledUpdate();
+      }
+    };
+  }
+
+  markStale() {
+    if (this.stale) {
+      return;
+    }
+    this.stale = true;
+    this.classList.add("stale");
+    this.onStaleChanged?.(this);
+  }
+
+  refreshNow() {
+    this.stale = false;
+    this.classList.remove("stale");
+    this.throttledUpdate();
   }
 
   connectedCallback() {
@@ -160,7 +191,7 @@ export class GlyphCell extends UnlitElement {
     super.disconnectedCallback?.();
     cellObserver.unobserve(this);
     this.locationController.removeKeyListener(this.locationKey, this.throttledUpdate);
-    this.fontController.removeGlyphChangeListener(this.glyphName, this.throttledUpdate);
+    this.fontController.removeGlyphChangeListener(this.glyphName, this.onGlyphChanged);
   }
 
   async _updateGlyph() {

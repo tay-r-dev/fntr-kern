@@ -30,6 +30,10 @@ export class GlyphCellView extends HTMLElement {
     this.glyphSelectionKey = options?.glyphSelectionKey || "glyphSelection";
     this.closedGlyphSectionsKey =
       options?.closedGlyphSectionsKey || "closedGlyphSections";
+    // Opt-in: cells keep the drawing they have when their glyph is edited, and
+    // report themselves stale instead. The owner decides when to look again.
+    this.deferUpdates = !!options?.deferUpdates;
+    this._staleCells = new Set();
 
     this._magnification = 1;
     this.classList.add("focus-preferred");
@@ -208,6 +212,9 @@ export class GlyphCellView extends HTMLElement {
   }
 
   setGlyphSections(glyphSections, resetGlyphSelection = false) {
+    // The cells these referred to are being replaced.
+    this._staleCells.clear();
+    this.onStaleChanged?.();
     this._resetSelectionHelpers();
     if (resetGlyphSelection) {
       this.glyphSelection = new Set();
@@ -302,6 +309,19 @@ export class GlyphCellView extends HTMLElement {
     return itemHasGlyphs;
   }
 
+  get hasStaleCells() {
+    return this._staleCells.size > 0;
+  }
+
+  refreshStaleCells() {
+    const stale = [...this._staleCells];
+    this._staleCells.clear();
+    for (const cell of stale) {
+      cell.refreshNow();
+    }
+    this.onStaleChanged?.();
+  }
+
   _addCellsIfNeeded(item) {
     if (!item.glyphsToAdd.length) {
       return;
@@ -318,6 +338,11 @@ export class GlyphCellView extends HTMLElement {
         this.settingsController,
         this.locationKey
       );
+      glyphCell.deferUpdates = this.deferUpdates;
+      glyphCell.onStaleChanged = (cell) => {
+        this._staleCells.add(cell);
+        this.onStaleChanged?.();
+      };
       glyphCell._sectionIndex = item.sectionIndex;
       glyphCell._cellIndex = item.nextCellIndex++;
 

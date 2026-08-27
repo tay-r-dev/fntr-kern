@@ -45,6 +45,28 @@ export default class RelatedGlyphPanel extends Panel {
       flex-direction: column;
     }
 
+    .related-glyphs-preview {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+      min-height: 0;
+      display: flex;
+    }
+
+    .related-glyphs-refresh {
+      position: absolute;
+      top: 0.4em;
+      right: 0.4em;
+      display: none;
+      z-index: 1;
+      border-radius: 1em;
+      cursor: pointer;
+    }
+
+    .related-glyphs-refresh.shown {
+      display: block;
+    }
+
     .no-related-glyphs {
       color: #999;
       padding-top: 1em;
@@ -100,17 +122,26 @@ export default class RelatedGlyphPanel extends Panel {
       (event) => this.followGlyphForComposition(event.newValue)
     );
 
-    this.fontController.addChangeListener({ glyphMap: null }, (event) =>
-      this.throttledUpdate()
-    );
+    this.fontController.addChangeListener({ glyphMap: null }, (event) => {
+      // The font gained or lost a glyph, so the related list itself can differ.
+      this._sectionsGlyphName = null;
+      this.throttledUpdate();
+    });
   }
 
   getContentElement() {
     this.glyphCellView = new GlyphCellView(
       this.editorController.fontController,
       this.editorController.sceneSettingsController,
-      { glyphSelectionKey: "relatedGlyphsGlyphSelection" }
+      { glyphSelectionKey: "relatedGlyphsGlyphSelection", deferUpdates: true }
     );
+
+    // The tiles hold the drawing they were given. An edit to a glyph one of
+    // them shows dims that tile instead of redrawing it, and the button over
+    // the preview solves them all again. This is the same bargain the
+    // attachment rows make: the editor reports what moved and never answers
+    // for the designer.
+    this.glyphCellView.onStaleChanged = () => this.updateRefreshButton();
 
     this.glyphCellView.onOpenSelectedGlyphs = (event) => this.openSelectedGlyphs(event);
 
@@ -144,10 +175,30 @@ export default class RelatedGlyphPanel extends Panel {
             html.div({ id: "related-glyphs-header" }, [
               translate("sidebar.related-glyphs.related-glyphs"),
             ]),
-            this.glyphCellView,
+            html.div({ class: "related-glyphs-preview" }, [
+              this.glyphCellView,
+              html.button(
+                {
+                  id: "related-glyphs-refresh",
+                  class: "related-glyphs-refresh",
+                  title: translate("sidebar.related-glyphs.refresh"),
+                  onclick: () => {
+                    this.glyphCellView.refreshStaleCells();
+                  },
+                },
+                ["↻"]
+              ),
+            ]),
           ]
         ),
       ]
+    );
+  }
+
+  updateRefreshButton() {
+    this.refreshButtonElement?.classList.toggle(
+      "shown",
+      !!this.glyphCellView.hasStaleCells
     );
   }
 
@@ -159,6 +210,9 @@ export default class RelatedGlyphPanel extends Panel {
       this.contentElement.querySelector("#composition-header");
     this.compositionRowsElement =
       this.contentElement.querySelector("#composition-rows");
+    this.refreshButtonElement = this.contentElement.querySelector(
+      "#related-glyphs-refresh"
+    );
   }
 
   followGlyphForComposition(glyphName) {
@@ -484,12 +538,23 @@ export default class RelatedGlyphPanel extends Panel {
         },
       ];
 
-      const sections = sectionDefinitions.map(({ labelKey, getRelatedGlyphsFunc }) => ({
-        label: translate(labelKey),
-        glyphs: getRelatedGlyphsFunc(this.fontController, glyphName, codePoint),
-      }));
-      this.glyphCellView.setGlyphSections(sections, true);
+      // Rebuilding the sections replaces every cell, which would throw away
+      // what the tiles are holding and quietly redraw them all. So the list is
+      // rebuilt only when it can actually have changed: a different glyph is
+      // open, or the font gained or lost glyphs. An edit inside a glyph leaves
+      // the tiles alone, and they report themselves stale instead.
+      if (this._sectionsGlyphName !== glyphName) {
+        this._sectionsGlyphName = glyphName;
+        const sections = sectionDefinitions.map(
+          ({ labelKey, getRelatedGlyphsFunc }) => ({
+            label: translate(labelKey),
+            glyphs: getRelatedGlyphsFunc(this.fontController, glyphName, codePoint),
+          })
+        );
+        this.glyphCellView.setGlyphSections(sections, true);
+      }
     } else {
+      this._sectionsGlyphName = null;
       this.glyphCellView.setGlyphSections([], true);
 
       this.relatedGlyphsHeaderElement.appendChild(
