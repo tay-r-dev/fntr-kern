@@ -1,4 +1,5 @@
 import {
+  anchorMap,
   anchorsCoincide,
   attachmentState,
   getAttachments,
@@ -15,7 +16,7 @@ import {
   transformedAnchorMap,
 } from "@fontra/core/composition.js";
 import { translate } from "@fontra/core/localization.js";
-import { unicodeUsedBy } from "@fontra/core/unicode-utils.js";
+import { unicodeMadeOf, unicodeUsedBy } from "@fontra/core/unicode-utils.js";
 import { getDecomposedIdentity } from "@fontra/core/transform.js";
 import { parseSelection, unionIndexSets } from "@fontra/core/utils.ts";
 import { copyComponent } from "@fontra/core/var-glyph.js";
@@ -533,4 +534,70 @@ export function targetsForMark(sceneController, markGlyphName) {
     }
   }
   return targets;
+}
+
+// The marks that can attach to this base. They come from the same Unicode
+// table the build action uses, so the cloud and the build cannot disagree
+// about what composes with a letter: every character that decomposes to
+// include this glyph, minus the glyph itself.
+export function markCandidatesForBase(sceneController, glyphName) {
+  const fontController = sceneController.fontController;
+  const sceneSettings = sceneController.sceneSettings;
+  const codePoint =
+    fontController.codePointForGlyph(glyphName) ??
+    sceneSettings.combinedGlyphMap?.[glyphName]?.[0];
+  if (!codePoint) {
+    return [];
+  }
+  const nameForCodePoint = (cp) =>
+    fontController.characterMap[cp] || sceneSettings.combinedCharacterMap?.[cp];
+  const candidates = new Set();
+  for (const usedByCodePoint of unicodeUsedBy(codePoint)) {
+    for (const partCodePoint of unicodeMadeOf(usedByCodePoint)) {
+      const partName = nameForCodePoint(partCodePoint);
+      if (partName && partName !== glyphName && fontController.hasGlyph(partName)) {
+        candidates.add(partName);
+      }
+    }
+  }
+  return [...candidates].sort();
+}
+
+// Where each mark would sit on this glyph's anchors. It writes nothing: the
+// cloud is a drawing, and the solve that places it is the same one an
+// attachment uses. Spec section 8.
+export async function computeMarkCloud(sceneController, glyphName, markNames) {
+  const fontController = sceneController.fontController;
+  const location = sceneController.sceneSettings.fontLocationSourceMapped || {};
+  const baseInstance = await fontController.getGlyphInstance(glyphName, location);
+  if (!baseInstance) {
+    return [];
+  }
+  const baseMap = anchorMap(baseInstance.anchors || []);
+  const placed = [];
+
+  for (const markName of markNames) {
+    const markInstance = await fontController.getGlyphInstance(markName, location);
+    if (!markInstance) {
+      continue;
+    }
+    // A mark carrying more than one underscore anchor name is drawn once per
+    // name, and the panel flags it.
+    for (const anchor of markInstance.anchors || []) {
+      if (!anchor.name?.startsWith("_")) {
+        continue;
+      }
+      const basePosition = baseMap[anchor.name.slice(1)];
+      if (!basePosition) {
+        continue;
+      }
+      placed.push({
+        glyphName: markName,
+        anchorName: anchor.name.slice(1),
+        offset: solveOffset(basePosition, [anchor.x, anchor.y]),
+        path2d: markInstance.flattenedPath2d,
+      });
+    }
+  }
+  return placed;
 }

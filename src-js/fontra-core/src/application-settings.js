@@ -26,6 +26,9 @@ export const applicationSettingsController = new ObservableController({
   harmonizeOtherSources: true,
   harmonizeEqualizeTension: false,
   harmonizeRealignHandles: false,
+  // fork: mark-cloud settings (app-level, per D9 — not written to project files)
+  compositionMarkCloudOn: false,
+  compositionMarkCloudSets: {},
 });
 
 applicationSettingsController.synchronizeWithLocalStorage(

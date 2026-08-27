@@ -3,12 +3,15 @@ import {
   getSuggestedGlyphName,
 } from "@fontra/core/glyph-data.js";
 import * as html from "@fontra/core/html-utils.js";
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { translate } from "@fontra/core/localization.js";
 import { unicodeMadeOf, unicodeUsedBy } from "@fontra/core/unicode-utils.js";
 import {
   attachComponent,
   buildGlyph,
   buildGlyphs,
+  computeMarkCloud,
+  markCandidatesForBase,
   detachComponent,
   overrideComponent,
   readCompositionState,
@@ -229,6 +232,8 @@ export default class RelatedGlyphPanel extends Panel {
       );
     }
 
+    await this.updateMarkCloud(glyphName);
+
     const { rows } = await readCompositionState(this.sceneController);
     if (!rows.length) {
       this.compositionRowsElement.appendChild(
@@ -272,6 +277,92 @@ export default class RelatedGlyphPanel extends Panel {
       this.compositionRowsElement.appendChild(
         html.div({ class: "composition-row" }, parts)
       );
+    }
+  }
+
+  // The cloud controls appear only where the open glyph carries a plain anchor,
+  // which is the base-glyph case. On a mark they are absent. The switch and the
+  // ticks are view preferences, so they live in localStorage per decision D9.
+  async updateMarkCloud(glyphName) {
+    const model = this.sceneController.sceneModel;
+    model.compositionMarkCloud = [];
+    if (!glyphName) {
+      return;
+    }
+    const candidates = markCandidatesForBase(this.sceneController, glyphName);
+    if (!candidates.length) {
+      return;
+    }
+
+    const settings = applicationSettingsController.model;
+    const sets = settings.compositionMarkCloudSets || {};
+    const enabled = new Set(sets[glyphName] ?? candidates);
+
+    const onSwitch = html.input({
+      type: "checkbox",
+      checked: !!settings.compositionMarkCloudOn,
+      onchange: (event) => {
+        settings.compositionMarkCloudOn = event.target.checked;
+        this.throttledUpdate();
+      },
+    });
+    this.compositionRowsElement.appendChild(
+      html.div({ class: "composition-row" }, [
+        onSwitch,
+        html.span({}, [translate("composition.mark-cloud")]),
+      ])
+    );
+
+    for (const markName of candidates) {
+      this.compositionRowsElement.appendChild(
+        html.div({ class: "composition-row" }, [
+          html.input({
+            type: "checkbox",
+            checked: enabled.has(markName),
+            onchange: (event) => {
+              const next = new Set(enabled);
+              if (event.target.checked) {
+                next.add(markName);
+              } else {
+                next.delete(markName);
+              }
+              settings.compositionMarkCloudSets = {
+                ...sets,
+                [glyphName]: [...next],
+              };
+              this.throttledUpdate();
+            },
+          }),
+          html.span({}, [markName]),
+        ])
+      );
+    }
+
+    if (!settings.compositionMarkCloudOn) {
+      return;
+    }
+    const placed = await computeMarkCloud(
+      this.sceneController,
+      glyphName,
+      candidates.filter((name) => enabled.has(name))
+    );
+    model.compositionMarkCloud = placed;
+    this.editorController.canvasController.requestUpdate();
+
+    // A mark carrying more than one underscore anchor name is drawn once per
+    // name, and it is flagged here. Spec section 8.
+    const drawnPerMark = {};
+    for (const mark of placed) {
+      drawnPerMark[mark.glyphName] = (drawnPerMark[mark.glyphName] || 0) + 1;
+    }
+    for (const [markName, count] of Object.entries(drawnPerMark)) {
+      if (count > 1) {
+        this.compositionRowsElement.appendChild(
+          html.div({ class: "composition-row-state broken" }, [
+            `${markName}: ${translate("composition.multi-anchor-mark")}`,
+          ])
+        );
+      }
     }
   }
 

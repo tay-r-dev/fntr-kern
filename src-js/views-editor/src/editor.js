@@ -114,6 +114,7 @@ import {
 } from "./visualization-layer-definitions.js";
 import "./visualization-layer-letterspacer.js";
 import "./visualization-layer-skeleton.js";
+import "./visualization-layer-composition.js";
 import "./visualization-layer-snapping.js";
 import { VisualizationContext, VisualizationLayers } from "./visualization-layers.js";
 
