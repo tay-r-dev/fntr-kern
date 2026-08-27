@@ -3,6 +3,7 @@ import {
   setFontraInternalSection,
 } from "./fontra-internal-data.js";
 import { FONTRA_INTERNAL_SECTIONS } from "./fontra-internal-schema.js";
+import { decomposedToTransform } from "./transform.js";
 
 // An attachment says: this component hangs on the base glyph's anchor of this
 // name. Two fields, both structure, so the entry is the same in every layer and
@@ -87,4 +88,32 @@ export function planAttachments(baseNames, markNamesPerComponent) {
 
   refusals.sort((a, b) => a.componentIndex - b.componentIndex);
   return { results, refusals };
+}
+
+export function plainAnchorNames(anchors) {
+  return (anchors || []).filter((a) => !a.name?.startsWith("_")).map((a) => a.name);
+}
+
+export function markAnchorNames(anchors) {
+  return (anchors || [])
+    .filter((a) => a.name?.startsWith("_"))
+    .map((a) => a.name.slice(1));
+}
+
+export function anchorMap(anchors) {
+  return Object.fromEntries((anchors || []).map((a) => [a.name, [a.x, a.y]]));
+}
+
+// The base glyph is a component too, so its anchors are only where the drawing
+// says they are once its own transform has been applied. A base that is scaled
+// or shifted carries its anchors with it. Spec section 5.2.
+export function transformedAnchorMap(anchors, transformation) {
+  const t = decomposedToTransform(transformation);
+  return Object.fromEntries(
+    (anchors || []).map((a) => [a.name, [...t.transformPoint(a.x, a.y)]])
+  );
+}
+
+export function solveOffset(basePosition, markPosition) {
+  return [basePosition[0] - markPosition[0], basePosition[1] - markPosition[1]];
 }

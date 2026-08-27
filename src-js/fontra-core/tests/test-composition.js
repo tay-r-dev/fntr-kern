@@ -1,10 +1,15 @@
 import {
   getAttachments,
   getCompositionData,
+  markAnchorNames,
   matchAnchorNames,
+  plainAnchorNames,
   planAttachments,
   setCompositionData,
+  solveOffset,
+  transformedAnchorMap,
 } from "@fontra/core/composition.js";
+import { getDecomposedIdentity } from "@fontra/core/transform.js";
 import { FONTRA_INTERNAL_SECTIONS } from "@fontra/core/fontra-internal-schema.js";
 import { expect } from "chai";
 
@@ -97,5 +102,41 @@ describe("composition — planning a whole glyph", () => {
     expect(plan.refusals).to.deep.equal([
       { componentIndex: 1, reason: "no-shared-anchor", names: [] },
     ]);
+  });
+});
+
+describe("composition — anchors and the offset", () => {
+  const anchors = [
+    { name: "top", x: 250, y: 700 },
+    { name: "_top", x: 100, y: 0 },
+  ];
+
+  it("splits plain from underscore names", () => {
+    expect(plainAnchorNames(anchors)).to.deep.equal(["top"]);
+    expect(markAnchorNames(anchors)).to.deep.equal(["top"]);
+  });
+
+  it("moves anchors by the component transform", () => {
+    const transformation = {
+      ...getDecomposedIdentity(),
+      translateX: 30,
+      translateY: -5,
+    };
+    const map = transformedAnchorMap(anchors, transformation);
+    expect(map["top"]).to.deep.equal([280, 695]);
+  });
+
+  it("scales anchors by the component transform", () => {
+    const transformation = { ...getDecomposedIdentity(), scaleX: 2, scaleY: 0.5 };
+    const map = transformedAnchorMap(anchors, transformation);
+    expect(map["top"]).to.deep.equal([500, 350]);
+  });
+
+  it("the offset is base minus mark", () => {
+    expect(solveOffset([250, 700], [100, 0])).to.deep.equal([150, 700]);
+  });
+
+  it("the offset is negative where the mark anchor is above the base anchor", () => {
+    expect(solveOffset([0, 100], [0, 300])).to.deep.equal([0, -200]);
   });
 });
