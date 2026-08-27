@@ -45,26 +45,20 @@ export default class RelatedGlyphPanel extends Panel {
       flex-direction: column;
     }
 
-    .related-glyphs-preview {
-      position: relative;
-      flex: 1;
-      overflow: hidden;
-      min-height: 0;
+    .related-glyphs-preview-controls {
       display: flex;
+      align-items: center;
+      gap: 0.5em;
+      padding-bottom: 0.4em;
     }
 
     .related-glyphs-refresh {
-      position: absolute;
-      top: 0.4em;
-      right: 0.4em;
-      display: none;
-      z-index: 1;
       border-radius: 1em;
       cursor: pointer;
     }
 
-    .related-glyphs-refresh.shown {
-      display: block;
+    .related-glyphs-refresh.stale {
+      font-weight: bold;
     }
 
     .no-related-glyphs {
@@ -175,8 +169,7 @@ export default class RelatedGlyphPanel extends Panel {
             html.div({ id: "related-glyphs-header" }, [
               translate("sidebar.related-glyphs.related-glyphs"),
             ]),
-            html.div({ class: "related-glyphs-preview" }, [
-              this.glyphCellView,
+            html.div({ class: "related-glyphs-preview-controls" }, [
               html.button(
                 {
                   id: "related-glyphs-refresh",
@@ -190,18 +183,37 @@ export default class RelatedGlyphPanel extends Panel {
                     this.update();
                   },
                 },
-                ["↻"]
+                ["↻ ", translate("sidebar.related-glyphs.refresh")]
               ),
+              html.input({
+                type: "checkbox",
+                id: "related-glyphs-live",
+                checked:
+                  !!applicationSettingsController.model.relatedGlyphsLivePreviews,
+                onchange: (event) => {
+                  applicationSettingsController.model.relatedGlyphsLivePreviews =
+                    event.target.checked;
+                  this.glyphCellView.setDeferUpdates(!event.target.checked);
+                  this.updateRefreshButton();
+                },
+              }),
+              html.label({ for: "related-glyphs-live" }, [
+                translate("sidebar.related-glyphs.live-previews"),
+              ]),
             ]),
+            this.glyphCellView,
           ]
         ),
       ]
     );
   }
 
+  // The button is always there, because "redraw the previews" is something the
+  // designer may want at any moment. It only advertises itself when something
+  // is actually waiting.
   updateRefreshButton() {
     this.refreshButtonElement?.classList.toggle(
-      "shown",
+      "stale",
       !!this.glyphCellView.hasStaleCells
     );
   }
@@ -559,7 +571,9 @@ export default class RelatedGlyphPanel extends Panel {
           ({ labelKey, getRelatedGlyphsFunc, deferUpdates }) => ({
             label: translate(labelKey),
             glyphs: getRelatedGlyphsFunc(this.fontController, glyphName, codePoint),
-            deferUpdates,
+            deferUpdates:
+              deferUpdates &&
+              !applicationSettingsController.model.relatedGlyphsLivePreviews,
           })
         );
         this.glyphCellView.setGlyphSections(sections, true);

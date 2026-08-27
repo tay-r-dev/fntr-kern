@@ -323,6 +323,19 @@ export class GlyphCellView extends HTMLElement {
     this.onStaleChanged?.();
   }
 
+  // Turn deferring off and every waiting cell catches up at once; turn it on
+  // and cells start holding still from the next edit. Sections that never asked
+  // to defer are untouched either way.
+  setDeferUpdates(deferUpdates) {
+    this.forEachGlyphCell((glyphCell) => {
+      const sectionDefers = !!this.glyphSections[glyphCell._sectionIndex]?.deferUpdates;
+      glyphCell.deferUpdates = deferUpdates && sectionDefers;
+    });
+    if (!deferUpdates) {
+      this.refreshStaleCells();
+    }
+  }
+
   _addCellsIfNeeded(item) {
     if (!item.glyphsToAdd.length) {
       return;

@@ -24,8 +24,12 @@ const cellObserver = new IntersectionObserver(
     entries.forEach((entry) => {
       const cell = entry.target;
       if (entry.intersectionRatio > 0) {
-        cell.locationController.addKeyListener(cell.locationKey, cell.throttledUpdate);
+        cell.locationController.addKeyListener(
+          cell.locationKey,
+          cell.onLocationChanged
+        );
         cell.fontController.addGlyphChangeListener(cell.glyphName, cell.onGlyphChanged);
+        cell._allowRedraw = true;
         cell.throttledUpdate();
         cell.visible = true;
       } else {
@@ -35,7 +39,7 @@ const cellObserver = new IntersectionObserver(
         }
         cell.locationController.removeKeyListener(
           cell.locationKey,
-          cell.throttledUpdate
+          cell.onLocationChanged
         );
         cell.fontController.removeGlyphChangeListener(
           cell.glyphName,
@@ -158,13 +162,12 @@ export class GlyphCell extends UnlitElement {
     // change still redraw at once: neither is an edit.
     this.deferUpdates = false;
     this.stale = false;
-    this.onGlyphChanged = () => {
-      if (this.deferUpdates) {
-        this.markStale();
-      } else {
-        this.throttledUpdate();
-      }
-    };
+    this._hasDrawn = false;
+    this._allowRedraw = false;
+    this.onGlyphChanged = () => this.throttledUpdate();
+    // A location change is not an edit, so it redraws whatever the cell was
+    // told about deferring.
+    this.onLocationChanged = () => this.refreshNow();
   }
 
   markStale() {
@@ -177,6 +180,7 @@ export class GlyphCell extends UnlitElement {
   }
 
   refreshNow() {
+    this._allowRedraw = true;
     this.stale = false;
     this.classList.remove("stale");
     this.throttledUpdate();
@@ -190,11 +194,23 @@ export class GlyphCell extends UnlitElement {
   disconnectedCallback() {
     super.disconnectedCallback?.();
     cellObserver.unobserve(this);
-    this.locationController.removeKeyListener(this.locationKey, this.throttledUpdate);
+    this.locationController.removeKeyListener(this.locationKey, this.onLocationChanged);
     this.fontController.removeGlyphChangeListener(this.glyphName, this.onGlyphChanged);
   }
 
   async _updateGlyph() {
+    // The guard sits here, at the drawing, rather than on any one of the things
+    // that ask for a redraw. A cell is asked to redraw from several directions
+    // — its glyph changed, its location changed, it came into view — and a
+    // deferring cell has to hold still for all of them but the ones it was told
+    // to honour. The first draw always happens: a blank tile is not a preview.
+    if (this.deferUpdates && this._hasDrawn && !this._allowRedraw) {
+      this.markStale();
+      return;
+    }
+    this._allowRedraw = false;
+    this._hasDrawn = true;
+
     this.width = this.height;
 
     const location = this.locationController.model[this.locationKey];

@@ -484,7 +484,8 @@ export const strings = {
   "sidebar.related-glyphs.no-related-glyphs-or-characters-were-found":
     "(No related glyphs or characters were found)",
   "sidebar.related-glyphs.related-glyphs": "Related Glyphs",
-  "sidebar.related-glyphs.refresh": "Redraw the previews",
+  "sidebar.related-glyphs.live-previews": "Live previews",
+  "sidebar.related-glyphs.refresh": "Redraw previews",
   "sidebar.related-glyphs.replace-selected-glyph": "Replace selected glyph",
   "sidebar.related-glyphs.title": "Related Glyphs & Characters for %0",
   "sidebar.selection-info": "Selection Info",
