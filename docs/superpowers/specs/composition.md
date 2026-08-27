@@ -193,12 +193,17 @@ as out of date. The entry keeps its anchor name, so the designer can bring it ba
 **Detach.** Drop the attachment. The component keeps its transform and becomes an ordinary
 component.
 
-### 6.1 A hand-drag detaches
+### 6.1 A hand-drag needs nothing
 
-Dragging an attached component marks it detached and records its new transform. The skeleton
-settled the same question once: a direct handle drag clears the segment's curvature pin, because
-the hand is the later and more specific answer to the same question. The panel then shows the
-component as detached, with one action to put it back under the anchors.
+Dragging a component already works. The pointer tool moves it and writes the transform, as it does
+for any component today. This feature adds nothing there and hooks nothing.
+
+The drag is then a difference like any other: the transform no longer matches the offset last
+written, so the row reads out of date. The designer presses Update to put it back under the
+anchors, or Override to keep the hand position.
+
+An earlier draft had the drag write `detached` on mouse-up. That changes one word in one row and
+costs a hook in the drag path. It was dropped.
 
 ### 6.2 When the solve runs
 
