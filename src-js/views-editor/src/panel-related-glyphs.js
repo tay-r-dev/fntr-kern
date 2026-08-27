@@ -4,6 +4,7 @@ import {
 } from "@fontra/core/glyph-data.js";
 import * as html from "@fontra/core/html-utils.js";
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
+import { readDecomposition } from "@fontra/core/composition-build.js";
 import { translate } from "@fontra/core/localization.js";
 import { unicodeMadeOf, unicodeUsedBy } from "@fontra/core/unicode-utils.js";
 import {
@@ -15,7 +16,6 @@ import {
   detachComponent,
   overrideComponent,
   readCompositionState,
-  readDecomposition,
   targetsForMark,
   undoBuildGlyphs,
   updateComponent,
@@ -193,7 +193,12 @@ export default class RelatedGlyphPanel extends Panel {
       // Build is offered only where the character is made of something. On an
       // unaccented letter or on a mark there is nothing to build from, and a
       // button that only ever refuses is worse than no button.
-      const decomposition = readDecomposition(this.sceneController, glyphName);
+      const decomposition = readDecomposition(
+        this.fontController,
+        glyphName,
+        this.sceneController.sceneSettings.combinedGlyphMap,
+        this.sceneController.sceneSettings.combinedCharacterMap
+      );
       const canBuild = decomposition.status === "ok";
       const markTargets = targetsForMark(this.sceneController, glyphName);
       this.compositionRowsElement.appendChild(

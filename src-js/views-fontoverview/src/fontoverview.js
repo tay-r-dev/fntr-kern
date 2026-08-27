@@ -10,6 +10,7 @@ import {
 } from "@fontra/core/axis-ui.js";
 import { Backend } from "@fontra/core/backend-api.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
+import { planGlyphBuild, readDecomposition } from "@fontra/core/composition-build.js";
 import { reverseUndoRecord, UndoStack } from "@fontra/core/font-controller.js";
 import { makeFontraMenuBar } from "@fontra/core/fontra-menus.js";
 import { staticGlyphToGLIF } from "@fontra/core/glyph-glif.js";
@@ -131,6 +132,8 @@ export class FontOverviewController extends ViewController {
       { actionIdentifier: "action.copy" },
       { actionIdentifier: "action.paste" },
       { actionIdentifier: "action.delete" },
+      MenuItemDivider,
+      { actionIdentifier: "action.build-glyph" },
       MenuItemDivider,
       { actionIdentifier: "action.copy-glyphname" },
       { actionIdentifier: "action.copy-character" },
@@ -327,8 +330,14 @@ export class FontOverviewController extends ViewController {
   }
 
   async _updateGlyphSelection() {
-    const { combinedGlyphMap, shouldSort } =
+    const { combinedGlyphMap, combinedCharacterMap, shouldSort } =
       await this.glyphSetsController.getCombinedGlyphMap(this._fontGlyphItemList);
+
+    // Kept so the build action can name a glyph the selected glyph sets carry
+    // but the font does not, and so the menu item can grey itself out without
+    // recomputing the whole map on every open.
+    this._combinedGlyphMap = combinedGlyphMap;
+    this._combinedCharacterMap = combinedCharacterMap;
 
     let combinedItemList = glyphMapToItemList(combinedGlyphMap);
 
@@ -452,6 +461,14 @@ export class FontOverviewController extends ViewController {
       "action.delete",
       (event) => this.doDelete(),
       () => this.canCutCopyOrDelete()
+    );
+
+    registerActionCallbacks(
+      "action.build-glyph",
+      () => this.doBuildGlyphs(),
+      () => this.canBuildGlyphs(),
+      () =>
+        translatePlural("action.build-glyph", this.getSelectedGlyphNames().length || 1)
     );
 
     registerActionCallbacks(
@@ -901,6 +918,88 @@ export class FontOverviewController extends ViewController {
           this.glyphCellView.glyphSelection = new Set();
         },
       });
+    }
+  }
+
+  // Greyed out unless every selected glyph can actually be built: it has a
+  // Unicode decomposition and the font carries every glyph that decomposition
+  // names. A missing component is the commonest reason a build refuses, so it
+  // is worth answering before the designer presses anything.
+  canBuildGlyphs() {
+    const glyphNames = this.getSelectedGlyphNames();
+    if (!glyphNames.length) {
+      return false;
+    }
+    return glyphNames.every(
+      (glyphName) =>
+        readDecomposition(
+          this.fontController,
+          glyphName,
+          this._combinedGlyphMap,
+          this._combinedCharacterMap
+        ).status === "ok"
+    );
+  }
+
+  // Every selected glyph in one recorded change, so one Ctrl+Z takes the whole
+  // build back. The font overview keeps a font-wide undo stack, unlike the
+  // glyph editor, whose stack is per glyph — so a batch is undoable here in a
+  // way it is not there.
+  async doBuildGlyphs() {
+    const glyphNames = this.getSelectedGlyphNames();
+    const plans = [];
+    for (const glyphName of glyphNames) {
+      const plan = await planGlyphBuild(
+        this.fontController,
+        glyphName,
+        this._combinedGlyphMap,
+        this._combinedCharacterMap
+      );
+      if (plan.status === "built") {
+        plans.push({ glyphName, plan });
+      }
+    }
+    if (!plans.length) {
+      return;
+    }
+
+    const glyphMap = this.fontController.glyphMap;
+    const glyphs = await this.fontController.getMultipleGlyphs(
+      plans.filter(({ plan }) => !plan.created).map(({ glyphName }) => glyphName)
+    );
+
+    const root = { glyphs, glyphMap };
+    const changes = recordChanges(root, (root) => {
+      for (const { glyphName, plan } of plans) {
+        if (plan.created) {
+          plan.apply(plan.varGlyph);
+          root.glyphs[glyphName] = plan.varGlyph;
+          root.glyphMap[glyphName] = [plan.codePoint];
+        } else {
+          plan.apply(root.glyphs[glyphName]);
+        }
+      }
+    });
+
+    {
+      // glyphSelection closure
+      const glyphSelection = this.glyphCellView.glyphSelection;
+      await this.postChange(
+        changes,
+        translatePlural("action.build-glyph", plans.length).toLowerCase(),
+        {
+          undoCallback: () => {
+            this.glyphCellView.glyphSelection = glyphSelection;
+          },
+          redoCallback: () => {
+            this.glyphCellView.glyphSelection = glyphSelection;
+          },
+        }
+      );
+    }
+
+    for (const { glyphName } of plans) {
+      await this.fontController.glyphChanged(glyphName, { senderID: this });
     }
   }
 

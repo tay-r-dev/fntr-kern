@@ -294,6 +294,13 @@ function rerouteViewPath(path, targetView) {
     ],
   });
 
+  // No default shortcut: a build writes several glyphs at once, and a key that
+  // does that is too easy to press by accident.
+  registerActionInfo("action.build-glyph", {
+    topic,
+    defaultShortCuts: [],
+  });
+
   registerActionInfo("action.select-all", {
     topic,
     defaultShortCuts: [{ baseKey: "a", commandKey: true }],
