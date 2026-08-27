@@ -31,7 +31,7 @@ These words are used exactly. Add them to `GLOSSARY.md` when the work lands.
 **Mark** — a glyph that attaches to another. It carries at least one anchor whose name starts with
 an underscore. A glyph with no contours whose every component is a mark is also a mark.
 
-**Attachment** — the stored statement that one component hangs on an anchor of the thing below it.
+**Attachment** — the stored statement that one component hangs on an anchor of its base glyph.
 
 **Anchor pair** — a plain anchor on the thing below, such as `top`, and the anchor of the same
 name with an underscore in front on the component, `_top`. The pair is what an attachment names.
@@ -78,14 +78,13 @@ offsets already live.
 The section holds one entry per component, in component order. The list is always the same length
 as the component list. A component with no attachment holds an empty entry.
 
-An entry carries four things.
+An entry carries three things.
 
-| Field                    | Meaning                                                                                 |
-| ------------------------ | --------------------------------------------------------------------------------------- |
-| Anchor name              | What matching landed on, such as `top`. Without the underscore.                         |
-| Hangs on                 | The base, or the index of another component. This is what stacks a ring under an acute. |
-| Detached                 | The designer moved this component by hand and meant it. The solver stops setting it.    |
-| Solved offset as written | What the solver last wrote. One offset per layer, keyed by layer name.                  |
+| Field                    | Meaning                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------ |
+| Anchor name              | What matching landed on, such as `top`. Without the underscore.                      |
+| Detached                 | The designer moved this component by hand and meant it. The solver stops setting it. |
+| Solved offset as written | What the solver last wrote. One offset per layer, keyed by layer name.               |
 
 **The last field is what makes the two buttons possible.** Comparing the component transform
 against a fresh solve says only that the two differ. Comparing both against the offset last
@@ -119,17 +118,35 @@ bookkeeping is smaller and needs no schema change.
 ### 5.1 Matching
 
 An attachment is made by matching, never by typing. The component's underscore anchors are
-compared against the plain anchors of the thing below. The pair both sides carry becomes the
-attachment, and the name is recorded in the entry.
+compared against the plain anchors of the base glyph. The one name both sides carry becomes the
+attachment, and it is recorded in the entry.
 
-Where the two sides share more than one name, the attachment is ambiguous. The panel reports it
-and offers the names. It does not pick one silently. Three of the five reference tools treat a
-mark carrying more than one anchor name as an error worth reporting.
+**More than one answer means no answer.** Two cases produce that, and both end the same way:
+nothing is attached, nothing is added, and the glyph is reported as refused with the reason.
+
+- Two components claim the same base anchor. A ring and an acute both want `top`.
+- One mark carries two underscore anchors that both match plain anchors on the base.
+
+`Aringacute` is therefore not composable and is refused. Stacked-mark glyphs are built by hand.
+
+None of the five reference tools guesses here. Adjust Anchors prints an error for a mark carrying
+more than one anchor name. Mark Tool never faces the question, because the designer picks the base
+anchor first. Glyph Construction never faces it, because the recipe names the position outright.
 
 Where the recorded name no longer exists on either side, the attachment is **broken**. Matching
 runs again and offers a replacement.
 
-### 5.2 The offset
+### 5.2 Which component is the base
+
+The base is the **first component in the list**. Anchor Overlay uses the same rule.
+
+Its anchors are read from its own glyph and then moved by its own component transform, so a base
+that is scaled or shifted carries its anchors with it.
+
+A glyph whose first component is a mark has no base, and every attachment in it is refused. A glyph
+with one component has no attachment to make.
+
+### 5.3 The offset
 
 The offset is the base anchor position minus the mark anchor position. Both are read at the same
 layer. So one attachment produces a different offset in each master, which is the whole point of
@@ -138,19 +155,18 @@ storing the intent instead of the number.
 The offset is written into the component transform's translation. Nothing else in the transform is
 touched, so a scaled or rotated component keeps its scale and its rotation.
 
-### 5.3 Stacking
+### 5.4 No chaining
 
-A component may hang on another component instead of on the base. The solver places the components
-in order. After a component is placed, its own plain anchors are read at their placed positions,
-and they become available to the components after it.
+Every attachment hangs on the base glyph. A component never hangs on another component.
 
-This is the Anchor Overlay rule, and it is what makes `Aringacute` work: the ring attaches to the
-`A`, and the acute attaches to the ring's own `top`.
+So each component solves on its own, in any order, and the solve of one cannot affect the solve of
+another. There is no chain, no cycle to detect and no target field to store.
 
-**A cycle is refused.** A component that hangs on itself, directly or through a chain, reports as
-broken.
+The reference tools do chain. Anchor Overlay keeps a running anchor map, so a second mark stacks on
+the first. That is what composes `Aringacute`. This design deliberately does not, and refuses such
+a glyph instead. The cost is stated in §5.1: stacked-mark glyphs are built by hand.
 
-### 5.4 What the solve does not do
+### 5.5 What the solve does not do
 
 It does not touch the advance width, except in the build action of §7. It does not create anchors
 on the composite. It does not read or write feature code.
@@ -159,12 +175,12 @@ on the composite. It does not read or write feature code.
 
 Four states per component. The panel shows one per row.
 
-| State       | Condition                                                               |
-| ----------- | ----------------------------------------------------------------------- |
-| In sync     | The transform equals the solve, and both equal the offset last written. |
-| Out of date | The solve differs from the offset last written. The anchors moved.      |
-| Detached    | The designer moved the component by hand and said so.                   |
-| Broken      | An anchor named by the entry does not exist, or the chain is a cycle.   |
+| State       | Condition                                                                  |
+| ----------- | -------------------------------------------------------------------------- |
+| In sync     | The transform equals the solve, and both equal the offset last written.    |
+| Out of date | The solve differs from the offset last written. The anchors moved.         |
+| Detached    | The designer moved the component by hand and said so.                      |
+| Broken      | The anchor the entry names does not exist on the base or on the component. |
 
 Three actions.
 
@@ -286,7 +302,7 @@ write path for the actions.
 
 - Matching: one shared name, several shared names, none, a name on one side only.
 - The offset: a plain pair, a chained pair, a mark on a mark, a component with a scale.
-- Chain order: two marks on one base, a mark on a mark, a cycle.
+- Refusal: two components claiming one base anchor, and one mark matching two base anchors.
 - The four states, including the case that separates "the anchors moved" from "the hand moved it".
 - Decomposition to a component list, including a code point the font does not carry.
 - Per-layer solve: two masters with different anchor positions produce two different offsets.
@@ -318,16 +334,41 @@ Each of these is a feature of its own size, and each is easier once this one exi
   unrelated to composition.
 - **Mark feature generation.** Writing `mark` and `mkmk` feature code from the anchors.
 
-## 12. Open questions
+## 12. Decisions taken, and what they cost
 
-1. **Ambiguous matching.** Where both sides share two anchor names, the panel offers them. Whether
-   it refuses to attach until the designer picks, or attaches to the first and flags it, is not
-   decided.
-2. **Ligature components.** The references lay ligature components out side by side by advance
-   width plus kerning, and they use numbered anchor names. This spec does not cover ligatures. A
-   ligature component simply carries no attachment.
-3. **Right-to-left.** The shaper swaps entry and exit for cursive attachment in RTL. Mark
-   attachment itself is direction-independent, so nothing here changes. Confirm against a real RTL
-   font before saying so in the feature model.
-4. **Panel layout.** Which controls sit in the Related Glyphs panel and which belong in a menu is
-   not decided. The panel already holds five glyph-cell sections and is a single file.
+Each of these was asked and answered. They are recorded so nobody re-derives them.
+
+**Attachments are stored, not computed once.** The alternative is the reference tools' model: a
+command writes a transform and nothing records why. Cost of the choice: one stored section and the
+five bookkeeping sites of §4.1.
+
+**A stale glyph is reported, never rewritten.** The alternatives were a cascade that rewrites every
+dependent glyph on every frame of an anchor drag, and a derivation at read time that would have to
+exist in both JavaScript and Python. Cost of the choice: a glyph nobody opens keeps its old
+transform until the batch action of §7.2 runs.
+
+**Matching, never typing.** The alternative was a typed anchor name per attachment. Cost of the
+choice: a mark and a base that share two names cannot be resolved by the designer naming one.
+
+**More than one answer means no answer.** The alternative was to attach to the first name by a
+stated rule and flag the row. Cost of the choice: `Aringacute` and every other stacked-mark glyph
+is refused and must be built by hand.
+
+**No chaining.** Every attachment hangs on the base. The alternative was Anchor Overlay's running
+anchor map, which composes stacked marks. Cost of the choice: the same refusal as above. Benefit:
+no target field, no cycle check, and each component solves independently of every other.
+
+**Ligatures are out.** They are not composed from anchor-attached components. A ligature component
+carries no attachment and is placed by hand.
+
+**The panel is one more section in Related Glyphs.** No glyph-cell previews in it. Component rows
+carry a state and buttons. The mark-cloud switch and its tickable mark list appear only on a base
+glyph, and are absent on a mark.
+
+**Right-to-left needs nothing.** The shaper's direction rule swaps entry and exit anchors for
+cursive attachment, which joins letters across a text line. Mark attachment is a coordinate
+difference inside one glyph and has no direction.
+
+## 13. Open questions
+
+None. Numbers for the preview drawing and the exact panel layout are left to the plan.
