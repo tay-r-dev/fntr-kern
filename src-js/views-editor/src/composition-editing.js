@@ -310,7 +310,10 @@ export function componentCountOf(varGlyph) {
 // question is answered before anything is written, because more than one
 // answer means no answer: a glyph that would need a guess is refused whole,
 // with nothing added and nothing attached.
-export async function buildGlyph(sceneController, glyphName) {
+// What this glyph is made of, if anything. The panel asks this to decide
+// whether Build is worth offering, and the build action asks it for the answer
+// itself, so the button and the action cannot disagree about what is buildable.
+export function readDecomposition(sceneController, glyphName) {
   const fontController = sceneController.fontController;
   const sceneSettings = sceneController.sceneSettings;
 
@@ -337,6 +340,17 @@ export async function buildGlyph(sceneController, glyphName) {
       return { status: "refused", reason: "missing-glyph" };
     }
   }
+  return { status: "ok", codePoint, glyphNames };
+}
+
+export async function buildGlyph(sceneController, glyphName) {
+  const fontController = sceneController.fontController;
+
+  const decomposition = readDecomposition(sceneController, glyphName);
+  if (decomposition.status !== "ok") {
+    return decomposition;
+  }
+  const { codePoint, glyphNames } = decomposition;
 
   if (!fontController.hasGlyph(glyphName)) {
     // A target in the glyph set but not in the font is created. The glyph set

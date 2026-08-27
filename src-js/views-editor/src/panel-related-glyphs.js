@@ -15,6 +15,7 @@ import {
   detachComponent,
   overrideComponent,
   readCompositionState,
+  readDecomposition,
   targetsForMark,
   updateComponent,
 } from "./composition-editing.js";
@@ -188,10 +189,17 @@ export default class RelatedGlyphPanel extends Panel {
 
     const glyphName = this.sceneController.sceneSettings.selectedGlyphName;
     if (glyphName) {
+      // Build is offered only where the character is made of something. On an
+      // unaccented letter or on a mark there is nothing to build from, and a
+      // button that only ever refuses is worse than no button.
+      const decomposition = readDecomposition(this.sceneController, glyphName);
+      const canBuild = decomposition.status === "ok";
+      const markTargets = targetsForMark(this.sceneController, glyphName);
       this.compositionRowsElement.appendChild(
         html.div({ class: "composition-row" }, [
           html.button(
             {
+              disabled: !canBuild,
               onclick: async () => {
                 const result = await buildGlyph(this.sceneController, glyphName);
                 if (result.status === "refused") {
@@ -209,9 +217,9 @@ export default class RelatedGlyphPanel extends Panel {
           ),
           html.button(
             {
+              disabled: !markTargets.length,
               onclick: async () => {
-                const targets = targetsForMark(this.sceneController, glyphName);
-                const report = await buildGlyphs(this.sceneController, targets);
+                const report = await buildGlyphs(this.sceneController, markTargets);
                 this.compositionReport = translate(
                   "composition.report",
                   report.built.length,
