@@ -6,6 +6,8 @@ import {
   matchAnchorNames,
   plainAnchorNames,
   planAttachments,
+  remapAttachmentsForDelete,
+  remapAttachmentsForInsert,
   setCompositionData,
   solveOffset,
   transformedAnchorMap,
@@ -175,5 +177,36 @@ describe("composition — states", () => {
     // The flag says the designer overruled the solve. Where the drawing agrees
     // with the solve anyway, there is nothing to overrule and nothing to report.
     expect(attachmentState({ entry: entry(true), aligned: true })).to.equal("inSync");
+  });
+});
+
+describe("composition — component-list bookkeeping", () => {
+  const a = { anchorName: "top", detached: false };
+  const b = { anchorName: "bottom", detached: false };
+
+  it("inserting at the end leaves entries alone", () => {
+    expect(remapAttachmentsForInsert([null, a], 2, 1)).to.deep.equal([null, a, null]);
+  });
+
+  it("inserting in the middle shifts later entries right", () => {
+    expect(remapAttachmentsForInsert([null, a, b], 1, 2)).to.deep.equal([
+      null,
+      null,
+      null,
+      a,
+      b,
+    ]);
+  });
+
+  it("deleting one entry shifts later entries left", () => {
+    expect(remapAttachmentsForDelete([null, a, b], [1])).to.deep.equal([null, b]);
+  });
+
+  it("deletes several indices in any order", () => {
+    expect(remapAttachmentsForDelete([null, a, b], [2, 0])).to.deep.equal([a]);
+  });
+
+  it("deleting nothing changes nothing", () => {
+    expect(remapAttachmentsForDelete([null, a], [])).to.deep.equal([null, a]);
   });
 });

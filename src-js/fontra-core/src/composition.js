@@ -143,3 +143,19 @@ export function anchorsCoincide(basePosition, markPosition) {
   }
   return basePosition[0] === markPosition[0] && basePosition[1] === markPosition[1];
 }
+
+// The attachment list is positional, because components carry no stable id in
+// Fontra. So every operation that restructures the component list moves the
+// entries in the same change. Five sites do that: add component, paste, cut,
+// delete selection, and decompose. Spec section 4.1.
+
+export function remapAttachmentsForInsert(attachments, index, count) {
+  const remapped = [...attachments];
+  remapped.splice(index, 0, ...new Array(count).fill(null));
+  return remapped;
+}
+
+export function remapAttachmentsForDelete(attachments, indices) {
+  const drop = new Set(indices);
+  return attachments.filter((_, index) => !drop.has(index));
+}
