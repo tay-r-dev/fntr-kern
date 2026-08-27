@@ -124,6 +124,10 @@ export const strings = {
   "background-image.labels.colorize": "Colorize",
   "background-image.labels.opacity": "Opacity",
   "canvas.clean-view-and-hand-tool": "Clean View and Hand Tool",
+  "composition.undo.attach": "attach component",
+  "composition.undo.detach": "detach component",
+  "composition.undo.override": "override attached component",
+  "composition.undo.update": "update attached component",
   "cross-axis-mapping.axis-participates":
     "When checked, this axis participates in the mapping",
   "cross-axis-mapping.delete": "Delete cross-axis mapping",
