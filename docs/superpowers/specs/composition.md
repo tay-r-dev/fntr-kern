@@ -78,24 +78,21 @@ offsets already live.
 The section holds one entry per component, in component order. The list is always the same length
 as the component list. A component with no attachment holds an empty entry.
 
-An entry carries three things.
+An entry carries two things.
 
-| Field                    | Meaning                                                                              |
-| ------------------------ | ------------------------------------------------------------------------------------ |
-| Anchor name              | What matching landed on, such as `top`. Without the underscore.                      |
-| Detached                 | The designer moved this component by hand and meant it. The solver stops setting it. |
-| Solved offset as written | What the solver last wrote. One offset per layer, keyed by layer name.               |
+| Field       | Meaning                                                                              |
+| ----------- | ------------------------------------------------------------------------------------ |
+| Anchor name | What matching landed on, such as `top`. Without the underscore.                      |
+| Detached    | The designer moved this component by hand and meant it. The solver stops setting it. |
 
-**The last field is what makes the two buttons possible.** Comparing the component transform
-against a fresh solve says only that the two differ. Comparing both against the offset last
-written says _which one moved_. The anchors moving is "out of date". The transform moving is a
-hand edit.
+Both are structure, so the whole entry is the same in every layer, and the section carries no
+per-layer data at all.
 
-It is also the one field in a glyph-level section that is per layer. It has to be: the solve
-produces a different number in each master, and the record of what was written must match what was
-written. It is a record of past writes, not a statement of structure, and no reader may treat it
-as one. A layer name it does not carry reads as "never written", which is the state a freshly
-attached component is in.
+**Nothing records what was written.** The state is read off the drawing: the mark's anchor, moved
+by the component's transform, either sits on the base's anchor or it does not. An earlier draft
+stored the offset the solver last wrote, so the panel could say which of the two had moved. That
+distinction changes nothing the designer does about it, and it put a per-layer record inside a
+glyph-level section. It was dropped.
 
 ### 4.1 The positional risk, stated
 
@@ -177,18 +174,21 @@ Four states per component. The panel shows one per row.
 
 | State       | Condition                                                                  |
 | ----------- | -------------------------------------------------------------------------- |
-| In sync     | The transform equals the solve, and both equal the offset last written.    |
-| Out of date | The solve differs from the offset last written. The anchors moved.         |
-| Detached    | The designer moved the component by hand and said so.                      |
+| In sync     | The two anchors coincide in this layer.                                    |
+| Out of date | They do not coincide.                                                      |
+| Detached    | They do not coincide, and the designer said so.                            |
 | Broken      | The anchor the entry names does not exist on the base or on the component. |
+
+The state is read per layer, so a glyph can be in sync in Light and out of date in Bold. The panel
+reports the layer being edited.
 
 Three actions.
 
-**Update.** Write the solved offset into the component transform, in every layer, and record it as
-the offset last written. The row returns to in sync.
+**Update.** Write the solved offset into the component transform, in every layer, and clear the
+detached flag. The row returns to in sync.
 
 **Override.** Keep the transform as it stands, and mark the entry detached. The row stops reporting
-as out of date. The entry keeps its anchor name, so the designer can bring it back later.
+as out of date. The entry keeps its anchor name, so Update brings it back later.
 
 **Detach.** Drop the attachment. The component keeps its transform and becomes an ordinary
 component.
@@ -198,8 +198,8 @@ component.
 Dragging a component already works. The pointer tool moves it and writes the transform, as it does
 for any component today. This feature adds nothing there and hooks nothing.
 
-The drag is then a difference like any other: the transform no longer matches the offset last
-written, so the row reads out of date. The designer presses Update to put it back under the
+The drag is then a difference like any other: the two anchors no longer coincide, so the row reads
+out of date. The designer presses Update to put it back under the
 anchors, or Override to keep the hand position.
 
 An earlier draft had the drag write `detached` on mouse-up. That changes one word in one row and

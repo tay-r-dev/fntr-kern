@@ -41,7 +41,7 @@
   - `getCompositionData(glyph) -> {attachments: (Entry|null)[]} | undefined`
   - `setCompositionData(glyph, data) -> void`
   - `getAttachments(glyph, componentCount) -> (Entry|null)[]` — always exactly `componentCount` long
-  - `Entry = {anchorName: string, detached: boolean, written: {[layerName]: [number, number]}}`
+  - `Entry = {anchorName: string, detached: boolean}`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -67,7 +67,7 @@ describe("composition — stored section", () => {
 
   it("round-trips a deep copy", () => {
     const glyph = {};
-    const entry = { anchorName: "top", detached: false, written: { light: [10, 20] } };
+    const entry = { anchorName: "top", detached: false };
     setCompositionData(glyph, { attachments: [null, entry] });
     const read = getCompositionData(glyph);
     expect(read.attachments[1].anchorName).to.equal("top");
@@ -82,7 +82,7 @@ describe("composition — stored section", () => {
 
   it("truncates an attachment list longer than the component count", () => {
     const glyph = {};
-    const entry = { anchorName: "top", detached: false, written: {} };
+    const entry = { anchorName: "top", detached: false };
     setCompositionData(glyph, { attachments: [null, entry, entry] });
     expect(getAttachments(glyph, 2).length).to.equal(2);
   });
@@ -123,10 +123,10 @@ import {
 import { FONTRA_INTERNAL_SECTIONS } from "./fontra-internal-schema.js";
 
 // An attachment says: this component hangs on the base glyph's anchor of this
-// name. It is stored per glyph, never per layer, because it is structure. The
-// one per-layer thing it carries is `written`, which is a record of what the
-// solver last wrote, and is what separates "the anchors moved" from "the hand
-// moved it". See docs/superpowers/specs/composition.md section 4.
+// name. Two fields, both structure, so the entry is the same in every layer and
+// the section carries no per-layer data. Nothing records what was written: the
+// state is read off the drawing, by asking whether the two anchors coincide.
+// See docs/superpowers/specs/composition.md section 4.
 
 export function getCompositionData(glyph) {
   return getFontraInternalSection(glyph, FONTRA_INTERNAL_SECTIONS.COMPOSITION);
@@ -463,12 +463,11 @@ git commit -m "feat(composition): anchor name sets and the offset solve"
 
 **Interfaces:**
 
-- Produces: `attachmentState({entry, layerName, currentOffset, solvedOffset}) -> "unattached" | "broken" | "detached" | "outOfDate" | "inSync"`
+- Produces: `attachmentState({entry, aligned}) -> "unattached" | "broken" | "detached" | "outOfDate" | "inSync"`
   - `entry` is the stored entry or null.
-  - `currentOffset` is the component's current translation as `[x, y]`.
-  - `solvedOffset` is what the solve produced, or `null` where an anchor is missing.
+  - `aligned` is true where the two anchors coincide in this layer, false where they do not, and null where one of them is missing.
 
-The order of the checks is the whole behavior. No entry is unattached. A missing solve is broken. Detached wins over out of date, because the designer said so. A written record that differs from the solve is out of date. Everything else is in sync.
+The state is read off the drawing. Nothing is stored to compare against, because it does not matter which of the two anchors moved: either way they no longer coincide, and either way the designer's two answers are Update and Override.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -478,90 +477,38 @@ Append to `src-js/fontra-core/tests/test-composition.js`:
 import { attachmentState } from "@fontra/core/composition.js";
 
 describe("composition — states", () => {
-  const entry = (written, detached = false) => ({
-    anchorName: "top",
-    detached,
-    written,
-  });
+  const entry = (detached = false) => ({ anchorName: "top", detached });
 
   it("no entry is unattached", () => {
-    expect(
-      attachmentState({
-        entry: null,
-        layerName: "light",
-        currentOffset: [0, 0],
-        solvedOffset: [1, 1],
-      })
-    ).to.equal("unattached");
+    expect(attachmentState({ entry: null, aligned: true })).to.equal("unattached");
   });
 
-  it("a missing solve is broken", () => {
-    expect(
-      attachmentState({
-        entry: entry({ light: [10, 20] }),
-        layerName: "light",
-        currentOffset: [10, 20],
-        solvedOffset: null,
-      })
-    ).to.equal("broken");
+  it("a missing anchor is broken", () => {
+    expect(attachmentState({ entry: entry(), aligned: null })).to.equal("broken");
+  });
+
+  it("broken beats detached", () => {
+    expect(attachmentState({ entry: entry(true), aligned: null })).to.equal("broken");
   });
 
   it("detached beats out of date", () => {
-    expect(
-      attachmentState({
-        entry: entry({ light: [10, 20] }, true),
-        layerName: "light",
-        currentOffset: [99, 99],
-        solvedOffset: [30, 40],
-      })
-    ).to.equal("detached");
+    expect(attachmentState({ entry: entry(true), aligned: false })).to.equal(
+      "detached"
+    );
   });
 
-  it("a solve that differs from what was written is out of date", () => {
-    expect(
-      attachmentState({
-        entry: entry({ light: [10, 20] }),
-        layerName: "light",
-        currentOffset: [10, 20],
-        solvedOffset: [30, 40],
-      })
-    ).to.equal("outOfDate");
+  it("anchors that do not coincide are out of date", () => {
+    expect(attachmentState({ entry: entry(), aligned: false })).to.equal("outOfDate");
   });
 
-  it("a layer never written is out of date", () => {
-    expect(
-      attachmentState({
-        entry: entry({}),
-        layerName: "light",
-        currentOffset: [0, 0],
-        solvedOffset: [30, 40],
-      })
-    ).to.equal("outOfDate");
+  it("anchors that coincide are in sync", () => {
+    expect(attachmentState({ entry: entry(), aligned: true })).to.equal("inSync");
   });
 
-  it("everything agreeing is in sync", () => {
-    expect(
-      attachmentState({
-        entry: entry({ light: [30, 40] }),
-        layerName: "light",
-        currentOffset: [30, 40],
-        solvedOffset: [30, 40],
-      })
-    ).to.equal("inSync");
-  });
-
-  it("a hand-moved transform reads as out of date, not in sync", () => {
-    // The solve still agrees with what was written, but the component is
-    // somewhere else. Until the designer says it is deliberate, this is a
-    // difference the panel must show.
-    expect(
-      attachmentState({
-        entry: entry({ light: [30, 40] }),
-        layerName: "light",
-        currentOffset: [77, 40],
-        solvedOffset: [30, 40],
-      })
-    ).to.equal("outOfDate");
+  it("a detached component that happens to be aligned reads in sync", () => {
+    // The flag says the designer overruled the solve. Where the drawing agrees
+    // with the solve anyway, there is nothing to overrule and nothing to report.
+    expect(attachmentState({ entry: entry(true), aligned: true })).to.equal("inSync");
   });
 });
 ```
@@ -576,28 +523,30 @@ Expected: FAIL, `attachmentState is not a function`.
 Append to `src-js/fontra-core/src/composition.js`:
 
 ```js
-function samePoint(a, b) {
-  return !!a && !!b && a[0] === b[0] && a[1] === b[1];
-}
-
 // Spec section 6. The order of these checks is the behavior, not a style
-// choice. Detached is checked before out of date, because a detached entry is
-// the designer overruling the solve and must stop reporting.
-export function attachmentState({ entry, layerName, currentOffset, solvedOffset }) {
+// choice. Broken is checked before detached, because a missing anchor is a
+// fault the designer has to see whatever else they said. Detached is checked
+// before out of date, because it is the designer overruling the solve.
+export function attachmentState({ entry, aligned }) {
   if (!entry) {
     return "unattached";
   }
-  if (!solvedOffset) {
+  if (aligned === null || aligned === undefined) {
     return "broken";
   }
-  if (entry.detached) {
-    return "detached";
+  if (aligned) {
+    return "inSync";
   }
-  const written = entry.written?.[layerName];
-  if (!samePoint(written, solvedOffset) || !samePoint(written, currentOffset)) {
-    return "outOfDate";
+  return entry.detached ? "detached" : "outOfDate";
+}
+
+// Grid coordinates are whole units, so an exact comparison is the right one.
+// A tolerance here would report a component one unit off as attached.
+export function anchorsCoincide(basePosition, markPosition) {
+  if (!basePosition || !markPosition) {
+    return null;
   }
-  return "inSync";
+  return basePosition[0] === markPosition[0] && basePosition[1] === markPosition[1];
 }
 ```
 
@@ -611,7 +560,7 @@ Expected: PASS, 26 passing.
 ```bash
 npx prettier --write src-js/fontra-core/src/composition.js src-js/fontra-core/tests/test-composition.js
 git add .
-git commit -m "feat(composition): the four attachment states"
+git commit -m "feat(composition): the four attachment states, read off the drawing"
 ```
 
 ---
@@ -642,8 +591,8 @@ import {
 } from "@fontra/core/composition.js";
 
 describe("composition — component-list bookkeeping", () => {
-  const a = { anchorName: "top", detached: false, written: {} };
-  const b = { anchorName: "bottom", detached: false, written: {} };
+  const a = { anchorName: "top", detached: false };
+  const b = { anchorName: "bottom", detached: false };
 
   it("inserting at the end leaves entries alone", () => {
     expect(remapAttachmentsForInsert([null, a], 2, 1)).to.deep.equal([null, a, null]);
@@ -833,7 +782,7 @@ git commit -m "feat(composition): the Unicode decomposition to a component list"
   - `updateComponent(sceneController, componentIndex) -> Promise<void>`
   - `overrideComponent(sceneController, componentIndex) -> Promise<void>`
   - `detachComponent(sceneController, componentIndex) -> Promise<void>`
-  - `solveGlyphAttachments(fontController, varGlyph) -> Promise<{[layerName]: {[componentIndex]: [number, number] | null}}>`
+  - `solveGlyphAttachments(fontController, varGlyph) -> Promise<{[layerName]: {[componentIndex]: {offset: [number, number] | null, aligned: boolean | null}}}>`
 
 There is no test harness here. This task carries a manual matrix instead.
 
@@ -843,6 +792,7 @@ Create `src-js/views-editor/src/composition-editing.js`:
 
 ```js
 import {
+  anchorsCoincide,
   attachmentState,
   getAttachments,
   getCompositionData,
@@ -860,10 +810,6 @@ import { translate } from "@fontra/core/localization.js";
 // attachment. This is rail R-C applied to a second feature: undo, incremental
 // sync and multi-layer editing then come from the existing change system with
 // no work of their own.
-
-function componentOffset(component) {
-  return [component.transformation.translateX, component.transformation.translateY];
-}
 
 function setComponentOffset(component, offset) {
   component.transformation.translateX = offset[0];
@@ -925,15 +871,24 @@ export async function solveGlyphAttachments(fontController, varGlyph) {
       if (!entry || index === 0) {
         continue;
       }
-      const markAnchors = perComponent[index];
+      const component = layerGlyph.components[index];
       const basePosition = baseMap[entry.anchorName];
-      const markAnchor = (markAnchors || []).find(
+      const markAnchor = (perComponent[index] || []).find(
         (a) => a.name === `_${entry.anchorName}`
       );
-      perIndex[index] =
-        basePosition && markAnchor
-          ? solveOffset(basePosition, [markAnchor.x, markAnchor.y])
-          : null;
+      if (!basePosition || !markAnchor || !component) {
+        perIndex[index] = { offset: null, aligned: null };
+        continue;
+      }
+      // Where the mark's anchor sits now, with the component's own transform
+      // applied. In sync is this landing on the base anchor.
+      const placed = transformedAnchorMap([markAnchor], component.transformation)[
+        markAnchor.name
+      ];
+      perIndex[index] = {
+        offset: solveOffset(basePosition, [markAnchor.x, markAnchor.y]),
+        aligned: anchorsCoincide(basePosition, placed),
+      };
     }
     solved[layerName] = perIndex;
   }
@@ -988,12 +943,7 @@ export async function readCompositionState(sceneController) {
     rows.push({
       componentIndex: index,
       componentName: component.name,
-      state: attachmentState({
-        entry,
-        layerName,
-        currentOffset: componentOffset(component),
-        solvedOffset: solvedHere[index] || null,
-      }),
+      state: attachmentState({ entry, aligned: solvedHere[index]?.aligned ?? null }),
       anchorName: entry?.anchorName || match?.anchorName || null,
       refusal: match?.refusal || null,
     });
@@ -1031,11 +981,7 @@ export async function attachComponent(sceneController, componentIndex) {
 
   await sceneController.editGlyphAndRecordChanges((varGlyph) => {
     writeAttachments(varGlyph, (attachments) => {
-      attachments[componentIndex] = {
-        anchorName: match.anchorName,
-        detached: false,
-        written: {},
-      };
+      attachments[componentIndex] = { anchorName: match.anchorName, detached: false };
     });
     return translate("composition.undo.attach");
   });
@@ -1052,20 +998,18 @@ export async function updateComponent(sceneController, componentIndex) {
   const solved = await solveGlyphAttachments(fontController, varGlyphBefore);
 
   await sceneController.editGlyphAndRecordChanges((varGlyph) => {
-    const written = {};
     for (const [layerName, perIndex] of Object.entries(solved)) {
-      const offset = perIndex[componentIndex];
+      const offset = perIndex[componentIndex]?.offset;
       const component = varGlyph.layers[layerName]?.glyph?.components[componentIndex];
       if (!offset || !component) {
         continue;
       }
       setComponentOffset(component, offset);
-      written[layerName] = offset;
     }
     writeAttachments(varGlyph, (attachments) => {
       const entry = attachments[componentIndex];
       if (entry) {
-        attachments[componentIndex] = { ...entry, detached: false, written };
+        attachments[componentIndex] = { ...entry, detached: false };
       }
     });
     return translate("composition.undo.update");
@@ -1273,7 +1217,7 @@ Use a font with `a`, `acutecomb` and an `aacute` you build by hand with two comp
 - Move the `top` anchor in `a`, return to `aacute`, confirm the row says out of date.
 - Press Update. The component moves. The row says in sync.
 - Move the `top` anchor again, return, press Override. The row says detached and the component does not move.
-- Drag the acute component by hand. The row says out of date, because the transform no longer matches what was written.
+- Drag the acute component by hand. The row says out of date, because the two anchors no longer coincide.
 - Press Detach. The row says not attached and the component stays where it is.
 - Delete the `top` anchor from `a`, return, confirm the row says broken.
 - Add a component before the acute, and confirm the attachment still names the acute.
@@ -1511,7 +1455,7 @@ The preserve list starts with these:
 - The attachment list is the same length as the component list, and the five sites keep it that way.
 - More than one answer means no answer. Nothing attaches and nothing is added.
 - The base is the first component, and its anchors are read through its own transform.
-- A stale glyph is reported and never rewritten.
+- A stale glyph is reported and never rewritten. The report is read off the drawing, and nothing records what was written.
 - One write path.
 
 - [ ] **Step 3: Architecture map**
