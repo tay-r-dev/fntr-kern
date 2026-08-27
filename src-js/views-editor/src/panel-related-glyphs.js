@@ -17,6 +17,7 @@ import {
   readCompositionState,
   readDecomposition,
   targetsForMark,
+  undoBuildGlyphs,
   updateComponent,
 } from "./composition-editing.js";
 import Panel from "./panel.js";
@@ -226,6 +227,12 @@ export default class RelatedGlyphPanel extends Panel {
                   report.skipped.length,
                   report.refused.length
                 );
+                // Ctrl+Z cannot take a batch back: its records are on the built
+                // glyphs' own stacks, and this glyph's stack is empty. So the
+                // batch keeps what it needs to undo itself, and offers it here.
+                this.compositionBatch = report.record.length
+                  ? { markGlyphName: glyphName, record: report.record }
+                  : null;
                 this.throttledUpdate();
               },
             },
@@ -233,6 +240,32 @@ export default class RelatedGlyphPanel extends Panel {
           ),
         ])
       );
+
+      if (this.compositionBatch?.markGlyphName === glyphName) {
+        this.compositionRowsElement.appendChild(
+          html.div({ class: "composition-row" }, [
+            html.button(
+              {
+                onclick: async () => {
+                  await undoBuildGlyphs(
+                    this.sceneController,
+                    this.compositionBatch.record
+                  );
+                  this.compositionBatch = null;
+                  this.compositionReport = null;
+                  this.throttledUpdate();
+                },
+              },
+              [
+                translate(
+                  "composition.button.undo-compose-all",
+                  this.compositionBatch.record.length
+                ),
+              ]
+            ),
+          ])
+        );
+      }
     }
     if (this.compositionReport) {
       this.compositionRowsElement.appendChild(

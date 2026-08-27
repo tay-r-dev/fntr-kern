@@ -18,7 +18,7 @@ import {
 import { translate } from "@fontra/core/localization.js";
 import { unicodeMadeOf, unicodeUsedBy } from "@fontra/core/unicode-utils.js";
 import { getDecomposedIdentity } from "@fontra/core/transform.js";
-import { parseSelection, unionIndexSets } from "@fontra/core/utils.ts";
+import { deepCopyObject, parseSelection, unionIndexSets } from "@fontra/core/utils.ts";
 import { StaticGlyph, copyComponent } from "@fontra/core/var-glyph.js";
 
 // THE ONE WRITE PATH. Nothing outside this module writes the composition
@@ -584,21 +584,88 @@ export async function buildGlyph(sceneController, glyphName) {
 // takes back nothing. Each built glyph undoes on its own, from itself. There is
 // no font-wide stack to push a whole batch onto, so the report says so rather
 // than leaving the designer to discover it.
+// What a build touches, and nothing else: the components of every layer, the
+// advance width, and the stored section. A whole-glyph swap is not available,
+// because assigning a top-level property on the recorded proxy does not
+// register — the designspace panel hit the same wall and splices in place.
+function snapshotGlyph(varGlyph) {
+  const layers = {};
+  for (const [layerName, layerEntry] of Object.entries(varGlyph.layers)) {
+    const layerGlyph = layerEntry?.glyph;
+    if (!layerGlyph) {
+      continue;
+    }
+    layers[layerName] = {
+      components: layerGlyph.components.map(copyComponent),
+      xAdvance: layerGlyph.xAdvance,
+    };
+  }
+  return {
+    layers,
+    composition: deepCopyObject(getCompositionData(varGlyph) || null),
+  };
+}
+
 export async function buildGlyphs(sceneController, glyphNames) {
+  const fontController = sceneController.fontController;
   const built = [];
   const skipped = [];
   const refused = [];
+  // What each built glyph looked like beforehand, so the batch can be taken
+  // back in one press from the mark it was driven from.
+  const record = [];
+
   for (const glyphName of glyphNames) {
+    const existed = fontController.hasGlyph(glyphName);
+    const before = existed
+      ? snapshotGlyph((await fontController.getGlyph(glyphName)).glyph)
+      : null;
     const result = await buildGlyph(sceneController, glyphName);
     if (result.status === "built") {
       built.push(glyphName);
+      record.push({ glyphName, created: !existed, before });
     } else if (result.status === "skipped") {
       skipped.push(glyphName);
     } else {
       refused.push({ glyphName, reason: result.reason });
     }
   }
-  return { built, skipped, refused };
+  return { built, skipped, refused, record };
+}
+
+// Take back a whole batch from the glyph that drove it. Ctrl+Z cannot do this:
+// the records live on the built glyphs' own stacks, and the mark's stack is
+// empty. A glyph the batch created is deleted; a glyph it changed is put back
+// as it was. Each step is itself a recorded change, so the restore is not a
+// hole in the history — it is an ordinary edit that happens to undo one.
+export async function undoBuildGlyphs(sceneController, record) {
+  const fontController = sceneController.fontController;
+  for (const entry of [...record].reverse()) {
+    if (entry.created) {
+      await fontController.deleteGlyph(
+        entry.glyphName,
+        translate("composition.undo.compose-all")
+      );
+      continue;
+    }
+    await sceneController.editNamedGlyphAndRecordChanges(entry.glyphName, (glyph) => {
+      for (const [layerName, layerEntry] of Object.entries(glyph.layers)) {
+        const layerGlyph = layerEntry?.glyph;
+        const before = entry.before.layers[layerName];
+        if (!layerGlyph || !before) {
+          continue;
+        }
+        layerGlyph.components.splice(
+          0,
+          layerGlyph.components.length,
+          ...before.components.map(copyComponent)
+        );
+        layerGlyph.xAdvance = before.xAdvance;
+      }
+      setCompositionData(glyph, entry.before.composition ?? undefined);
+      return translate("composition.undo.compose-all");
+    });
+  }
 }
 
 // Every glyph that uses this mark, bounded by the combined glyph map. That map
