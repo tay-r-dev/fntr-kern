@@ -391,10 +391,9 @@ export const strings = {
   "sidebar.designspace-navigation.speedpunk.display": "Display",
   "sidebar.designspace-navigation.speedpunk.opacity": "Opacity",
   "sidebar.designspace-navigation.speedpunk.peak-height": "Peak height",
-  "sidebar.designspace-navigation.speedpunk.reference-radius": "Full height at radius",
-  "sidebar.designspace-navigation.speedpunk.color-flat-radius": "Flat colour at radius",
-  "sidebar.designspace-navigation.speedpunk.color-tight-radius":
-    "Tight colour at radius",
+  "sidebar.designspace-navigation.speedpunk.reference-turn": "Full height at turn°",
+  "sidebar.designspace-navigation.speedpunk.color-flat-turn": "Flat colour at turn°",
+  "sidebar.designspace-navigation.speedpunk.color-tight-turn": "Tight colour at turn°",
   "sidebar.designspace-navigation.speedpunk.sharpness": "Sharpness",
   "sidebar.designspace-navigation.dialog.add-source.label.layer": "Layer:",
   "sidebar.designspace-navigation.dialog.add-source.label.source-name": "Source name:",

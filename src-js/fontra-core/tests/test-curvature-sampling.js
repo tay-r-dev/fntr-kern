@@ -121,61 +121,84 @@ describe("computeSpeedPunkSamples", () => {
     ]);
   };
 
+  // A ring cut into `count` equal cubic arcs. Every segment turns through
+  // 360/count degrees whatever the radius, so this is how a named turn is
+  // reached in a test: the shape states the turn, and the size states nothing.
+  const ringInSegments = (count, radius = 100) => {
+    const step = (2 * Math.PI) / count;
+    // the standard handle length for a circular arc of this angle
+    const k = ((4 / 3) * Math.tan(step / 4)) / 1;
+    const points = [];
+    for (let i = 0; i < count; i++) {
+      const a = i * step;
+      const b = a + step;
+      const at = (angle) => [radius * Math.cos(angle), radius * Math.sin(angle)];
+      const tangent = (angle) => [
+        -radius * Math.sin(angle) * k,
+        radius * Math.cos(angle) * k,
+      ];
+      const [ax, ay] = at(a);
+      const [atx, aty] = tangent(a);
+      const [bx, by] = at(b);
+      const [btx, bty] = tangent(b);
+      points.push({ x: ax, y: ay, smooth: true });
+      points.push({ x: ax + atx, y: ay + aty, type: "cubic" });
+      points.push({ x: bx - btx, y: by - bty, type: "cubic" });
+    }
+    return VarPackedPath.fromUnpackedContours([{ points, isClosed: true }]);
+  };
+
   const fringeHeights = (quads) =>
     quads.map((q) =>
       Math.hypot(q.points[3][0] - q.points[0][0], q.points[3][1] - q.points[0][1])
     );
 
-  it("draws the peak height at the reference radius", () => {
-    // A circle of radius R has curvature 1/R everywhere, so at a reference
-    // radius of R every fringe is exactly the peak height.
-    const quads = computeSpeedPunkSamples(ringOfRadius(100), {
-      peakHeightGlyphUnits: 24,
-      referenceRadiusGlyphUnits: 100,
-      sharpness: 1,
-      baseSegmentBudget: 400,
-      zoomFactor: 1,
-    });
-    for (const height of fringeHeights(quads)) {
+  const HEIGHT = {
+    peakHeightGlyphUnits: 24,
+    referenceTurnDegrees: 90,
+    sharpness: 1,
+    baseSegmentBudget: 400,
+    zoomFactor: 1,
+  };
+
+  it("draws the peak height on a circle drawn in quadrants", () => {
+    // A circle drawn as four cubic quadrants turns through 90 degrees per
+    // segment. At a reference turn of 90 every fringe is the peak height.
+    for (const height of fringeHeights(
+      computeSpeedPunkSamples(ringOfRadius(100), HEIGHT)
+    )) {
       // 3 per cent, which is the cubic circle approximation's own curvature
       // ripple, not the scale's error
       expect(height).to.be.closeTo(24, 24 * 0.03);
     }
   });
 
-  it("halves the fringe when the radius doubles", () => {
-    const quads = computeSpeedPunkSamples(ringOfRadius(200), {
-      peakHeightGlyphUnits: 24,
-      referenceRadiusGlyphUnits: 100,
-      sharpness: 1,
-      baseSegmentBudget: 400,
-      zoomFactor: 1,
-    });
-    for (const height of fringeHeights(quads)) {
-      expect(height).to.be.closeTo(12, 12 * 0.03);
+  it("draws the same fringe at every radius, because a circle is a circle", () => {
+    // This is the whole of the readout. Curvature carries one over length, so an
+    // absolute reading of it reports size. The turn does not, so scaling the
+    // drawing does not move the comb.
+    const small = fringeHeights(computeSpeedPunkSamples(ringOfRadius(50), HEIGHT));
+    const large = fringeHeights(computeSpeedPunkSamples(ringOfRadius(800), HEIGHT));
+    expect(small).to.have.lengthOf(large.length);
+    for (let i = 0; i < small.length; i++) {
+      expect(large[i]).to.be.closeTo(small[i], 1e-6);
     }
   });
 
-  it("leaves a segment's fringe alone when a neighbour changes", () => {
-    const options = {
-      peakHeightGlyphUnits: 24,
-      referenceRadiusGlyphUnits: 100,
-      sharpness: 1,
-      baseSegmentBudget: 400,
-      zoomFactor: 1,
-    };
-    // The untouched quadrant runs from (0, -100) to (100, 0). Both of its own
-    // end points are excluded, because the joint at (100, 0) also leads the
-    // first quad of the quadrant that does change.
-    const untouchedQuadrant = (path) =>
+  it("leaves a segment's fringe alone beyond its immediate neighbours", () => {
+    // The normalizer is the mean of the segments meeting at each on-curve, so a
+    // redrawn segment reaches the two beside it and nothing further. The
+    // tightened quadrant here runs from (100, 0) to (0, 100); the quadrant
+    // measured is the opposite one, from (-100, 0) to (0, -100).
+    const oppositeQuadrant = (path) =>
       fringeHeights(
-        computeSpeedPunkSamples(path, options).filter(
-          (q) => q.points[0][0] > 1e-9 && q.points[0][1] < -1e-9
+        computeSpeedPunkSamples(path, HEIGHT).filter(
+          (q) => q.points[0][0] < -1e-9 && q.points[0][1] < -1e-9
         )
       );
 
-    const asDrawn = untouchedQuadrant(ringOfRadius(100));
-    const neighbourTightened = untouchedQuadrant(ringOfRadius(100, 0.5));
+    const asDrawn = oppositeQuadrant(ringOfRadius(100));
+    const neighbourTightened = oppositeQuadrant(ringOfRadius(100, 0.5));
 
     expect(asDrawn.length).to.be.greaterThan(10);
     expect(neighbourTightened).to.have.lengthOf(asDrawn.length);
@@ -196,46 +219,71 @@ describe("computeSpeedPunkSamples", () => {
     }
   };
 
+  // A quadrant ring turns 90 degrees per segment, which this ramp puts exactly
+  // on the middle stop, so these tests read a colour that can still move either
+  // way rather than one pinned at an end.
   const COLOUR_RAMP = {
-    colorFlatRadiusGlyphUnits: 400,
-    colorTightRadiusGlyphUnits: 100,
+    colorFlatTurnDegrees: 22.5,
+    colorTightTurnDegrees: 360,
     colorStops: STOPS,
     baseSegmentBudget: 400,
     zoomFactor: 1,
   };
 
-  it("paints the colour stops at the named radii", () => {
-    // The two ends are named outright. The middle stop falls on their geometric
-    // mean, because the ramp is geometric in radius.
-    expectAllNear(computeSpeedPunkSamples(ringOfRadius(400), COLOUR_RAMP), STOPS[0]);
-    expectAllNear(computeSpeedPunkSamples(ringOfRadius(200), COLOUR_RAMP), STOPS[1]);
-    expectAllNear(computeSpeedPunkSamples(ringOfRadius(100), COLOUR_RAMP), STOPS[2]);
+  // The stops land on 22.5, 45 and 90 degrees, which are the turns of a ring cut
+  // into 16, 8 and 4 arcs. A ring is the only shape holding one turn the whole
+  // way round, and a cubic stops approximating an arc well below about three
+  // segments, so the ends are reached by cutting the ring rather than by naming
+  // a wider ramp.
+  const STOPS_RAMP = {
+    ...COLOUR_RAMP,
+    colorFlatTurnDegrees: 22.5,
+    colorTightTurnDegrees: 90,
+  };
+
+  it("paints the colour stops at the named turns", () => {
+    expectAllNear(computeSpeedPunkSamples(ringInSegments(16), STOPS_RAMP), STOPS[0]);
+    expectAllNear(computeSpeedPunkSamples(ringInSegments(8), STOPS_RAMP), STOPS[1]);
+    expectAllNear(computeSpeedPunkSamples(ringInSegments(4), STOPS_RAMP), STOPS[2]);
   });
 
   it("pins the colour past either end of the ramp", () => {
-    expectAllNear(computeSpeedPunkSamples(ringOfRadius(2000), COLOUR_RAMP), STOPS[0]);
-    expectAllNear(computeSpeedPunkSamples(ringOfRadius(20), COLOUR_RAMP), STOPS[2]);
+    expectAllNear(computeSpeedPunkSamples(ringInSegments(32), STOPS_RAMP), STOPS[0]);
+    expectAllNear(
+      computeSpeedPunkSamples(ringInSegments(4), {
+        ...STOPS_RAMP,
+        colorFlatTurnDegrees: 5,
+        colorTightTurnDegrees: 20,
+      }),
+      STOPS[2]
+    );
+  });
+
+  it("does not move the colour with the size of the drawing", () => {
+    const small = channelsOf(computeSpeedPunkSamples(ringOfRadius(40), COLOUR_RAMP));
+    const large = channelsOf(computeSpeedPunkSamples(ringOfRadius(900), COLOUR_RAMP));
+    expect(large).to.deep.equal(small);
   });
 
   it("does not move the colour ramp when the height anchor changes", () => {
     const ring = ringOfRadius(200);
     const near = computeSpeedPunkSamples(ring, {
       ...COLOUR_RAMP,
-      referenceRadiusGlyphUnits: 50,
+      referenceTurnDegrees: 20,
     });
     const far = computeSpeedPunkSamples(ring, {
       ...COLOUR_RAMP,
-      referenceRadiusGlyphUnits: 900,
+      referenceTurnDegrees: 300,
     });
     expect(channelsOf(far)).to.deep.equal(channelsOf(near));
   });
 
-  it("leaves a segment's colour alone when a neighbour changes", () => {
+  it("leaves a segment's colour alone beyond its immediate neighbours", () => {
     const options = COLOUR_RAMP;
     const untouchedQuadrant = (path) =>
       channelsOf(
         computeSpeedPunkSamples(path, options).filter(
-          (q) => q.points[0][0] > 1e-9 && q.points[0][1] < -1e-9
+          (q) => q.points[0][0] < -1e-9 && q.points[0][1] < -1e-9
         )
       );
 

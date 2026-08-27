@@ -1428,51 +1428,63 @@ because a different set of handles has a different harmonic target.
 
 ## 11. The curvature comb
 
-**Reverted to its state at `2242d76b`.** Ten rounds of rework did not settle, and
-the log's comb section carries what each attempt cost. What the tree holds now:
+**What the comb draws is a turn, not a curvature.** Curvature carries one over
+length, so any reading of it in font units is partly a statement about size.
+Multiply it by a length taken from the shape and the size cancels: halve the
+drawing and the curvature doubles while the length halves. What is left is the
+angle the outline turns through, which is dimensionless. A circle reads the same
+at every radius, which is the whole of the design.
 
-- **Fringe length is absolute**, which is the donor's own rule
-  (`_external/speedpunk`): curvature times a fixed gain, with no ceiling and no
-  floor. **The gain is stated as an anchor a person can name** — "full height at
-  radius R", default 200 units, so a curve of radius R draws a fringe of exactly
-  the peak height and everything else is proportional to its curvature.
+Everything below follows from that.
+
+- **The length is continuous along the outline.** Each on-curve takes the mean of
+  the arc lengths of the curve segments meeting there, and the length runs
+  linearly between a segment's two ends. A per-segment length would step at every
+  joint, so two segments meeting at one curvature would draw two heights — the
+  false step measured at 27 per cent on `d`. This is the rule harmonize already
+  scores a joint by, for the same reason.
+- **Fringe length** is the turn times a fixed gain, with no ceiling and no floor,
+  which is the donor's proportion (`_external/speedpunk`). **The gain is stated
+  as an anchor a person can name** — "full height at turn T", default 90 degrees,
+  which is what a circle drawn as four cubic quadrants turns through per segment.
   `sharpness` is an exponent about that anchor, which the anchor survives.
-  Length is the readout that answers "compare two letters", and a relative
-  length cannot: **any** relative scale is rescaled by whatever it normalizes
-  over, so redrawing one segment changed the fringe on its untouched
-  neighbours. Both per-segment and per-run divisors were tried and are closed.
-- **Colour is absolute too, on a ramp between two named radii** — flat end 400,
-  tight end 180 by default, geometric in between, pinned past either end.
-  Nothing is read off the drawing. The donor uses the glyph's own range,
-  recomputed when the glyph changes; forkra does not, because any relative scale
-  is restretched by an edit anywhere inside it.
-
-  **The ramp is narrow on purpose, and it owns its own two numbers.** Letters
-  occupy a narrow band of radius — the calibration glyphs sit between 170 and
-  370, about 2.2 to 1 — so a ramp much wider than that lands the whole drawing
-  in one stop's colour and puts the last stop out of reach. Deriving the ramp
-  from the fringe-length anchor was built and reverted for exactly that: the
-  span of the ramp and the anchor of the length are unrelated quantities, and
-  one number cannot state both.
+- **Colour** is a ramp between two named turns — flat end 30 degrees, tight end
+  120 by default, geometric in between, pinned past either end. Nothing is read
+  off the drawing. The donor uses the glyph's own range, recomputed when the
+  glyph changes; forkra does not, because any relative scale is restretched by an
+  edit anywhere inside it.
 - **Sample count** is a budget divided by the number of curve segments, times the
   square root of the magnification, with the budget divided by the magnification
   first. The donor uses the budget divided by the segment count alone.
 
-Three fixes went out with the revert and are not present: the comb does not
-repaint when a comb setting changes, the three fields do not scrub and a number
-box in that panel keeps the keyboard after an edit, and sharpness and opacity
-store the full floating point result of a drag.
+**The anchors carry no length, so there is nothing left to calibrate.** The
+radius anchors this replaced had to be spent on one band of size, and one band
+cannot serve a font drawn at a different weight, nor a capital and a combining
+mark inside one font. Every anchor is an angle now and means the same thing in
+every glyph of every font.
 
-**The rule this feature keeps re-learning: absolute and relative are two
-readouts, not two answers to one question.** Length answers "compare two
-letters". Colour answers "read one letter". A normalized readout cannot compare
-across whatever it normalizes over — per segment it cannot compare two segments,
-and comparing two segments is what a joint is. **The comb ended up with neither
-readout relative**, and the rule survives as the reason why: a relative scale is
-one an edit rescales, so both length and colour are stated against the reference
-radius and scoped to nothing. What the rule still governs is the ramp — an
-absolute readout has to be told which range to spend itself on, or it says
-nothing.
+**Two costs are stated rather than hidden.**
+
+1. A segment's fringe moves when an immediate neighbour is redrawn, because the
+   two share the length at the joint between them. Agreeing at a joint and
+   reading nothing but itself are exclusive, and reading a joint is what the comb
+   is for. Nothing beyond the two adjacent segments is touched.
+2. The comb no longer says a shape is small. A tightly drawn mark and a large
+   round letter of the same proportion draw the same fringe. That is the readout
+   working, not a loss, but a designer who wants to compare absolute tightness
+   has to measure it instead.
+
+Three fixes went out with an earlier revert and are still not present: the comb
+does not repaint when a comb setting changes, the three fields do not scrub and a
+number box in that panel keeps the keyboard after an edit, and sharpness and
+opacity store the full floating point result of a drag.
+
+**The rule this feature kept re-learning: absolute and relative are two readouts,
+not two answers to one question.** Length answers "compare two letters". Colour
+answers "read one letter". A relative scale is one an edit rescales, so a divisor
+searched over a segment, a run or a glyph is closed — see the log. The length
+here is not such a divisor. It is a unit, taken from the shape at the point it
+describes, and it is what makes the reading mean the same thing everywhere.
 
 ---
 

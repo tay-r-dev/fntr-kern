@@ -17,18 +17,94 @@ Keep order inside a section only where the sequence is the lesson.
 
 ## The curvature comb (SpeedPunk, map F3)
 
-**State: reverted.** Entries 45 to 56 reworked the drawing rule over ten rounds
-and did not settle. The comb is back to its state at `2242d76b`.
+**State: settled on a normalized reading.** Entries 45 to 56 reworked the drawing
+rule over ten rounds without settling, and the comb was reverted to `2242d76b`.
+Five commits then took both scales absolute, in radius. That is what the section
+below records. The eleventh round replaced the radius with a turn, which is what
+the ten rounds had all been circling: **the readout was never allowed to carry a
+unit of length.**
 
-### Three things the restored comb does differently from the donor
+### The eleventh round: a radius is a size, and the comb was reporting size
+
+Reported on `_external/skeletron.fontra/glyphs/tildecomb.json` — the comb went
+insane on a combining tilde. Measured on the file as it then stood, against the
+default ramp of 400 to 180:
+
+- 88.9 per cent of the outline sat at radius 180 or tighter and pinned to the
+  last stop. The mark drew as one flat red with a grey notch at each inflection.
+- Its median radius was 67, roughly four times tighter than the ramp's tight end.
+- With no ceiling on the fringe, the longest drew 174 units on a mark 100 units
+  tall, so the comb was several times the size of the thing it described.
+
+**The first diagnosis was that the anchors were calibrated on the wrong glyphs,
+and it was half right and useless.** The anchors came from an N and a U sitting
+between radius 170 and 370. This font's median is 116 and `j` — an ordinary
+letter, not a diacritic — is entirely between 95 and 152, so it pinned red too.
+Widening or re-centring the ramp was the obvious next move. Two whole rounds of
+options were written up around it, including a per-glyph override.
+
+The designer refused all of it in one sentence: a circle is a circle. **Scaling a
+drawing must not change what the comb says about it.** Curvature carries one over
+length, so an absolute reading of it is a statement about size, and no choice of
+band fixes that — it only moves which sizes read correctly.
+
+**The quantity is curvature times a length taken from the shape**, which is
+dimensionless and is the angle the outline turns through. Harmonize already
+scores a joint this way, and its reason is the same one: an absolute curvature
+difference lets the tightest joint own the whole number.
+
+**Which length is the whole of the remaining design, and it must be continuous.**
+Each on-curve takes the mean of the arc lengths of the curve segments meeting
+there, and the length runs linearly along a segment between its two ends. A
+per-segment length was the first thing tried on paper and is closed: on the
+reported tilde, neighbouring segments differ in length by 4, 5, 31, 33, 42 and 54
+per cent across its own smooth joints, so a segment-scoped divisor would have
+drawn a false break at each one. That is the same fault the per-segment
+_curvature_ divisor was rejected for at 27 per cent on `d`, arriving through a
+different door.
+
+Measured after, at the new defaults — reference turn 90 degrees, ramp 30 to 120:
+
+| glyph     | fringe p10 / median / p90 | distinct colours | pinned red | pinned grey |
+| --------- | ------------------------- | ---------------- | ---------- | ----------- |
+| j         | 16.9 / 22.2 / 28.4        | 173              | 0%         | 0%          |
+| k         | 9.5 / 14.9 / 30.5         | 253              | 4%         | 2%          |
+| tildecomb | 5.1 / 23.7 / 26.8         | 156              | 1%         | 13%         |
+
+The tilde's longest fringe fell from 174 units to 35, against a peak height of 24. Its 13 per cent of grey is the two inflections, which is what an inflection
+should draw.
+
+**The cost, stated because it is real.** A segment's fringe now moves when an
+immediate neighbour is redrawn, since the two share the length at the joint. The
+five rejected rows in the table below were all rejected for a version of this,
+so the difference matters: those divisors were a peak _searched_ over a scope, so
+an edit anywhere inside the scope rescaled everything in it. This is a unit taken
+from the two segments that meet at a point, it reaches nothing further, and
+agreeing at a joint is the one thing the comb exists to do.
+
+**Three sessions were spent measuring the wrong file.** `tildecomb.json` was
+redrawn twice while the investigation ran — 20 points and one contour, then 26
+and three. Every number taken before that described a drawing that no longer
+existed. This is the third time this log records the same lesson: **read the file
+at the moment of the question, and say which state a number came from.**
+
+**A playground font is not a calibration set.** Every measurement above comes
+from three glyphs in a test file that was never drawn to be representative. They
+are enough to show a scale is wrong and not enough to tune one. The turn anchors
+need no tuning, which is the point of them.
+
+### Three things the comb does differently from the donor
 
 The donor is in `_external/speedpunk`. It states both of its choices plainly.
 
-|               | donor                                                                          | restored comb                                                                                        |
+|               | donor                                                                          | this comb                                                                                            |
 | ------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| Fringe length | curvature times a fixed gain. Straight proportion, no ceiling, no floor        | the same, with the gain stated as "full height at radius R", default 200                             |
-| Colour        | the glyph's own range, gentlest to tightest, recomputed when the glyph changes | absolute, on a ramp between two named radii: 400 and 180, geometric in between                       |
+| Fringe length | curvature times a fixed gain. Straight proportion, no ceiling, no floor        | the turn times a fixed gain, stated as "full height at turn T", default 90 degrees                   |
+| Colour        | the glyph's own range, gentlest to tightest, recomputed when the glyph changes | absolute, on a ramp between two named turns: 30 and 120 degrees, geometric in between                |
 | Sample count  | a budget divided by the number of curve segments                               | that, times the square root of the magnification, with the budget divided by the magnification first |
+
+The donor's fringe is a length reading and carries the same size dependence the
+eleventh round removed. That is a deliberate departure, not a port gap.
 
 ### Three fixes went out with the revert and are not present
 
@@ -114,11 +190,10 @@ both the run's now.
 
 **A fixture can be too kind, and nearly hid it.** The first colour test used the
 synthetic two-cubic fixture from the height round, where the joint happens to be
-the minimum of *both* segments, so both sides already read 0 and the test failed
-by five parts in 255. The reported geometry, dropped in as the fixture, fails by
-73. **Take the case the report names.**
+the minimum of _both_ segments, so both sides already read 0 and the test failed
+by five parts in 255. The reported geometry, dropped in as the fixture, fails by 73. **Take the case the report names.**
 
-### The height is absolute, and the anchor is the whole of the design
+### The height went absolute, and the anchor was the whole of the design (radius era)
 
 Reported one day after the run scale shipped: changing one segment of the
 21-24-27 chain changed the height **and the peakiness** of its neighbour. It
@@ -146,11 +221,13 @@ readout that rescales when a neighbour moves cannot answer that.** Colour stays
 relative and stays scoped to the run. The two readouts now differ in kind rather
 than in radius.
 
-**The gain is stated as an anchor rather than as a gain.** "Full height at
-radius R", default 200 units. A bare multiplier is the thing the colour rules
-were rejected for three times over — nobody could say what the top of the scale
-meant. A radius is a number a designer can hold, and the anchor is invariant to
-sharpness, so the two controls do not multiply into one quantity.
+**The gain is stated as an anchor rather than as a gain.** A bare multiplier is
+the thing the colour rules were rejected for three times over — nobody could say
+what the top of the scale meant. The anchor is also invariant to sharpness, so
+the two controls do not multiply into one quantity. Both points still hold. The
+anchor was a radius then, default 200 units, and **that part is superseded**: a
+radius is a length, so the readout was reporting size. It is a turn now, default
+90 degrees. See the eleventh round at the top of this section.
 
 Measured after: the neighbour sweep above moves 21→24 by 0.00 at every pull.
 The whole N at the default anchor draws min 11.55, median 17.33, max 29.57
@@ -160,15 +237,17 @@ against a peak height of 24.
 spike as long as its curvature asks for, and a near-cusp draws an enormous one.
 That is the donor's behaviour and it was accepted knowingly, not overlooked.
 
-### Colour went absolute the next day, and the run went with it
+### Colour went absolute the next day, and the run went with it (radius era)
 
 Reported immediately: colour still restretched when a neighbour changed. It did,
 by the same mechanism and in the same scope — the height had gone absolute and
 the colour had not. **Half a fix reads exactly like the fault it half fixed.**
 
-Colour is a fixed function of radius now. The middle stop sits at the reference
-radius, the first at four times it and the last at a quarter of it, geometric in
-between, so equal ratios of radius are equal steps of colour.
+Colour became a fixed function of radius, geometric between two named ends, so
+equal ratios were equal steps of colour. **The geometric spacing survives and the
+radius does not** — the ends are two turns now. What follows is why the ends have
+to be named separately from the height anchor, which is still true whatever unit
+they are in.
 
 **The spread is the whole of the design, and the first attempt got it wrong in
 the commit that said so.** Colour taken straight off a 0–1 curvature ratio was
@@ -223,7 +302,7 @@ everything.
 **The probe measured the wrong quads first, and it looked like a result.** It
 picked a segment's quads by the bounding box of its two end points, so once the
 neighbour's handles moved into that box its quads were counted too — reporting
-an 89 per cent *rise* on an untouched segment. Slicing by emission order gives
+an 89 per cent _rise_ on an untouched segment. Slicing by emission order gives
 0.00. Same class as the bulb's rejoin helper: **a helper that identifies
 geometry by position re-identifies it when the geometry moves.**
 
@@ -231,18 +310,20 @@ geometry by position re-identifies it when the geometry moves.**
 
 We built and measured each one. None is in the tree.
 
-| Rule                                                           | Why it went                                                                                                                                                                                                                                                                                      |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Divide each fringe by the tallest curvature on its own segment | Two segments meeting at equal curvature drew unequal fringe. On glyph `d` the two sides of a joint peak 27 per cent apart. That 27 per cent was the whole of the step on screen. Elsewhere a 2.7 per cent difference in the curve drew as a 21 per cent step, eight times the thing it measures. |
-| Divide by the tallest curvature on the glyph                   | Redrawing one segment moved the glyph's peak. Every fringe then changed length at once, and two glyphs never shared one scale.                                                                                                                                                                   |
-| Divide by the tallest curvature on its own **run**             | Shipped for one day. It fixes the false step at a joint and keeps the coupling above at smaller scope: a ten per cent handle change on one segment took 21 per cent off its untouched neighbour. Any relative length is rescaled by whatever it normalizes over. The run survives as the colour scope. |
-| A typed reference radius, with a floor and a ceiling           | A readout you must tune before you can trust it is not a readout. The ceiling drew two different curvatures at one length. That is the same false reading the per-segment divisor gave.                                                                                                          |
-| Squeeze the height towards twice the peak                      | Nothing clipped and everything flattened. Four times the reference tightness drew 1.6 times the height and eight times drew 1.8: two peaks, one drawn length.                                                                                                                                    |
-| Colour straight off the curvature ratio                        | Radius 200 to 30 is the working range of most letters. This rule spent 0.33 to 0.77 of the stops on it, which is one colour to the eye.                                                                                                                                                          |
-| Colour off the fringe length, last stop at three peak heights  | An arc with its handles half way out already sat past the middle stop, and everything above handle tension 1 came out identical.                                                                                                                                                                 |
-| Colour off the fringe length, last stop at five peak heights   | Better: a well-formed arc read a third along and red waited for tension 1.5. Still absolute, so it painted a whole letter one colour like the two before it. Where a letter's curvature sits depends on the letter.                                                                              |
-| Derive the colour ramp from the fringe-length anchor           | Shipped for one session, reported as "everything is yellow". Four times either side of the anchor is 16 to 1, and letters occupy about 2.2 to 1, so the drawing sat inside the middle stop and the last stop was unreachable. It also made one number state two unrelated things. The ramp names its own two radii now.                                                                                          |
-| Colour relative to the segment, and then to the run            | Both shipped and both went. A joint that is an extreme of one of its two segments took the end of that scale by construction; per run, an edit anywhere restretched every colour in the run. The absolute ramp above is the same idea as the two rows over this one, with the stops placed on the working range rather than on 0–1 — which is what those rows were actually complaining about. |
+| Rule                                                                                              | Why it went                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Divide each fringe by the tallest curvature on its own segment                                    | Two segments meeting at equal curvature drew unequal fringe. On glyph `d` the two sides of a joint peak 27 per cent apart. That 27 per cent was the whole of the step on screen. Elsewhere a 2.7 per cent difference in the curve drew as a 21 per cent step, eight times the thing it measures.                                                                                               |
+| Divide by the tallest curvature on the glyph                                                      | Redrawing one segment moved the glyph's peak. Every fringe then changed length at once, and two glyphs never shared one scale.                                                                                                                                                                                                                                                                 |
+| Divide by the tallest curvature on its own **run**                                                | Shipped for one day. It fixes the false step at a joint and keeps the coupling above at smaller scope: a ten per cent handle change on one segment took 21 per cent off its untouched neighbour. Any relative length is rescaled by whatever it normalizes over. The run survives as the colour scope.                                                                                         |
+| A typed reference radius, with a floor and a ceiling                                              | A readout you must tune before you can trust it is not a readout. The ceiling drew two different curvatures at one length. That is the same false reading the per-segment divisor gave.                                                                                                                                                                                                        |
+| Squeeze the height towards twice the peak                                                         | Nothing clipped and everything flattened. Four times the reference tightness drew 1.6 times the height and eight times drew 1.8: two peaks, one drawn length.                                                                                                                                                                                                                                  |
+| Colour straight off the curvature ratio                                                           | Radius 200 to 30 is the working range of most letters. This rule spent 0.33 to 0.77 of the stops on it, which is one colour to the eye.                                                                                                                                                                                                                                                        |
+| Colour off the fringe length, last stop at three peak heights                                     | An arc with its handles half way out already sat past the middle stop, and everything above handle tension 1 came out identical.                                                                                                                                                                                                                                                               |
+| Colour off the fringe length, last stop at five peak heights                                      | Better: a well-formed arc read a third along and red waited for tension 1.5. Still absolute, so it painted a whole letter one colour like the two before it. Where a letter's curvature sits depends on the letter.                                                                                                                                                                            |
+| Derive the colour ramp from the fringe-length anchor                                              | Shipped for one session, reported as "everything is yellow". Four times either side of the anchor is 16 to 1, and letters occupy about 2.2 to 1, so the drawing sat inside the middle stop and the last stop was unreachable. It also made one number state two unrelated things. The ramp names its own two ends, in degrees of turn.                                                         |
+| Colour relative to the segment, and then to the run                                               | Both shipped and both went. A joint that is an extreme of one of its two segments took the end of that scale by construction; per run, an edit anywhere restretched every colour in the run. The absolute ramp above is the same idea as the two rows over this one, with the stops placed on the working range rather than on 0–1 — which is what those rows were actually complaining about. |
+| Recalibrate the radius anchors — per font, per glyph, or by fitting them to the drawing on demand | Written up as three options and refused before any was built. Every one of them keeps a length in the readout and only moves which sizes read correctly, so a scaled drawing still says something different about itself. A circle is a circle. The anchors are angles now and there is nothing left to calibrate.                                                                             |
+| Normalize the turn by each segment's own arc length                                               | The obvious first form, closed on the reported tilde before it was built: neighbouring segments there differ in length by up to 54 per cent across smooth joints, so the divisor steps at each one and a G2 joint draws a break. Same fault as the per-segment curvature divisor at the top of this table. The length is continuous across joints instead.                                     |
 
 ---
 

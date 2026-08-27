@@ -76,13 +76,13 @@ const FONTRA_STATUS_DEFINITIONS_KEY = "fontra.sourceStatusFieldDefinitions";
 const SPEEDPUNK_PEAK_HEIGHT_DEFAULT_UPM = 24;
 const SPEEDPUNK_PEAK_HEIGHT_MIN_UPM = 1;
 const SPEEDPUNK_PEAK_HEIGHT_MAX_UPM = 1000;
-const SPEEDPUNK_REFERENCE_RADIUS_DEFAULT_UPM = 200;
-const SPEEDPUNK_REFERENCE_RADIUS_MIN_UPM = 1;
-const SPEEDPUNK_REFERENCE_RADIUS_MAX_UPM = 5000;
-const SPEEDPUNK_COLOR_FLAT_RADIUS_DEFAULT_UPM = 400;
-const SPEEDPUNK_COLOR_TIGHT_RADIUS_DEFAULT_UPM = 180;
-const SPEEDPUNK_COLOR_RADIUS_MIN_UPM = 1;
-const SPEEDPUNK_COLOR_RADIUS_MAX_UPM = 20000;
+const SPEEDPUNK_REFERENCE_TURN_DEFAULT_DEGREES = 90;
+const SPEEDPUNK_REFERENCE_TURN_MIN_DEGREES = 1;
+const SPEEDPUNK_REFERENCE_TURN_MAX_DEGREES = 360;
+const SPEEDPUNK_COLOR_FLAT_TURN_DEFAULT_DEGREES = 30;
+const SPEEDPUNK_COLOR_TIGHT_TURN_DEFAULT_DEGREES = 120;
+const SPEEDPUNK_COLOR_TURN_MIN_DEGREES = 1;
+const SPEEDPUNK_COLOR_TURN_MAX_DEGREES = 360;
 const SPEEDPUNK_SHARPNESS_DEFAULT = 1;
 const SPEEDPUNK_SHARPNESS_MIN = 0.1;
 const SPEEDPUNK_SHARPNESS_MAX = 4;
@@ -552,44 +552,44 @@ export default class DesignspaceNavigationPanel extends Panel {
             }),
             html.label(
               {
-                for: "speedpunk-reference-radius-input",
+                for: "speedpunk-reference-turn-input",
                 style: "white-space: nowrap;",
               },
-              [translate("sidebar.designspace-navigation.speedpunk.reference-radius")]
+              [translate("sidebar.designspace-navigation.speedpunk.reference-turn")]
             ),
             html.input({
-              id: "speedpunk-reference-radius-input",
+              id: "speedpunk-reference-turn-input",
               type: "number",
-              min: SPEEDPUNK_REFERENCE_RADIUS_MIN_UPM,
-              max: SPEEDPUNK_REFERENCE_RADIUS_MAX_UPM,
+              min: SPEEDPUNK_REFERENCE_TURN_MIN_DEGREES,
+              max: SPEEDPUNK_REFERENCE_TURN_MAX_DEGREES,
               step: 1,
             }),
             html.label(
               {
-                for: "speedpunk-color-flat-radius-input",
+                for: "speedpunk-color-flat-turn-input",
                 style: "white-space: nowrap;",
               },
-              [translate("sidebar.designspace-navigation.speedpunk.color-flat-radius")]
+              [translate("sidebar.designspace-navigation.speedpunk.color-flat-turn")]
             ),
             html.input({
-              id: "speedpunk-color-flat-radius-input",
+              id: "speedpunk-color-flat-turn-input",
               type: "number",
-              min: SPEEDPUNK_COLOR_RADIUS_MIN_UPM,
-              max: SPEEDPUNK_COLOR_RADIUS_MAX_UPM,
+              min: SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
+              max: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
               step: 1,
             }),
             html.label(
               {
-                for: "speedpunk-color-tight-radius-input",
+                for: "speedpunk-color-tight-turn-input",
                 style: "white-space: nowrap;",
               },
-              [translate("sidebar.designspace-navigation.speedpunk.color-tight-radius")]
+              [translate("sidebar.designspace-navigation.speedpunk.color-tight-turn")]
             ),
             html.input({
-              id: "speedpunk-color-tight-radius-input",
+              id: "speedpunk-color-tight-turn-input",
               type: "number",
-              min: SPEEDPUNK_COLOR_RADIUS_MIN_UPM,
-              max: SPEEDPUNK_COLOR_RADIUS_MAX_UPM,
+              min: SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
+              max: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
               step: 1,
             }),
             html.label(
@@ -731,16 +731,16 @@ export default class DesignspaceNavigationPanel extends Panel {
     return this.accordion.querySelector("#speedpunk-peak-height-input");
   }
 
-  get speedPunkReferenceRadiusInput() {
-    return this.accordion.querySelector("#speedpunk-reference-radius-input");
+  get speedPunkReferenceTurnInput() {
+    return this.accordion.querySelector("#speedpunk-reference-turn-input");
   }
 
-  get speedPunkColorFlatRadiusInput() {
-    return this.accordion.querySelector("#speedpunk-color-flat-radius-input");
+  get speedPunkColorFlatTurnInput() {
+    return this.accordion.querySelector("#speedpunk-color-flat-turn-input");
   }
 
-  get speedPunkColorTightRadiusInput() {
-    return this.accordion.querySelector("#speedpunk-color-tight-radius-input");
+  get speedPunkColorTightTurnInput() {
+    return this.accordion.querySelector("#speedpunk-color-tight-turn-input");
   }
 
   get speedPunkSharpnessInput() {
@@ -945,19 +945,19 @@ export default class DesignspaceNavigationPanel extends Panel {
     );
   }
 
-  _normalizeSpeedPunkReferenceRadiusUpm(value) {
-    if (!Number.isFinite(value)) return SPEEDPUNK_REFERENCE_RADIUS_DEFAULT_UPM;
+  _normalizeSpeedPunkReferenceTurnDegrees(value) {
+    if (!Number.isFinite(value)) return SPEEDPUNK_REFERENCE_TURN_DEFAULT_DEGREES;
     return Math.max(
-      SPEEDPUNK_REFERENCE_RADIUS_MIN_UPM,
-      Math.min(SPEEDPUNK_REFERENCE_RADIUS_MAX_UPM, Math.round(value))
+      SPEEDPUNK_REFERENCE_TURN_MIN_DEGREES,
+      Math.min(SPEEDPUNK_REFERENCE_TURN_MAX_DEGREES, Math.round(value))
     );
   }
 
-  _normalizeSpeedPunkColorRadiusUpm(value, fallback) {
+  _normalizeSpeedPunkColorTurnDegrees(value, fallback) {
     if (!Number.isFinite(value)) return fallback;
     return Math.max(
-      SPEEDPUNK_COLOR_RADIUS_MIN_UPM,
-      Math.min(SPEEDPUNK_COLOR_RADIUS_MAX_UPM, Math.round(value))
+      SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
+      Math.min(SPEEDPUNK_COLOR_TURN_MAX_DEGREES, Math.round(value))
     );
   }
 
@@ -977,16 +977,16 @@ export default class DesignspaceNavigationPanel extends Panel {
       peakHeightUpm: this._normalizeSpeedPunkPeakHeightUpm(
         model.speedPunkPeakHeightUpm
       ),
-      referenceRadiusUpm: this._normalizeSpeedPunkReferenceRadiusUpm(
-        model.speedPunkReferenceRadiusUpm
+      referenceTurnDegrees: this._normalizeSpeedPunkReferenceTurnDegrees(
+        model.speedPunkReferenceTurnDegrees
       ),
-      colorFlatRadiusUpm: this._normalizeSpeedPunkColorRadiusUpm(
-        model.speedPunkColorFlatRadiusUpm,
-        SPEEDPUNK_COLOR_FLAT_RADIUS_DEFAULT_UPM
+      colorFlatTurnDegrees: this._normalizeSpeedPunkColorTurnDegrees(
+        model.speedPunkColorFlatTurnDegrees,
+        SPEEDPUNK_COLOR_FLAT_TURN_DEFAULT_DEGREES
       ),
-      colorTightRadiusUpm: this._normalizeSpeedPunkColorRadiusUpm(
-        model.speedPunkColorTightRadiusUpm,
-        SPEEDPUNK_COLOR_TIGHT_RADIUS_DEFAULT_UPM
+      colorTightTurnDegrees: this._normalizeSpeedPunkColorTurnDegrees(
+        model.speedPunkColorTightTurnDegrees,
+        SPEEDPUNK_COLOR_TIGHT_TURN_DEFAULT_DEGREES
       ),
       sharpness: this._normalizeSpeedPunkSharpness(model.speedPunkSharpness),
       opacity: this._normalizeSpeedPunkOpacity(model.speedPunkOpacity),
@@ -997,9 +997,9 @@ export default class DesignspaceNavigationPanel extends Panel {
     const settings = this._speedPunkSettings;
     const model = applicationSettingsController.model;
     model.speedPunkPeakHeightUpm = settings.peakHeightUpm;
-    model.speedPunkReferenceRadiusUpm = settings.referenceRadiusUpm;
-    model.speedPunkColorFlatRadiusUpm = settings.colorFlatRadiusUpm;
-    model.speedPunkColorTightRadiusUpm = settings.colorTightRadiusUpm;
+    model.speedPunkReferenceTurnDegrees = settings.referenceTurnDegrees;
+    model.speedPunkColorFlatTurnDegrees = settings.colorFlatTurnDegrees;
+    model.speedPunkColorTightTurnDegrees = settings.colorTightTurnDegrees;
     model.speedPunkSharpness = settings.sharpness;
     model.speedPunkOpacity = settings.opacity;
   }
@@ -1009,9 +1009,9 @@ export default class DesignspaceNavigationPanel extends Panel {
       !!this.editorController.visualizationLayersSettings.model["fontra.curvature"];
     for (const input of [
       this.speedPunkPeakHeightInput,
-      this.speedPunkReferenceRadiusInput,
-      this.speedPunkColorFlatRadiusInput,
-      this.speedPunkColorTightRadiusInput,
+      this.speedPunkReferenceTurnInput,
+      this.speedPunkColorFlatTurnInput,
+      this.speedPunkColorTightTurnInput,
       this.speedPunkSharpnessInput,
       this.speedPunkOpacityInput,
     ]) {
@@ -1026,14 +1026,14 @@ export default class DesignspaceNavigationPanel extends Panel {
     if (this.speedPunkPeakHeightInput) {
       this.speedPunkPeakHeightInput.value = String(settings.peakHeightUpm);
     }
-    if (this.speedPunkReferenceRadiusInput) {
-      this.speedPunkReferenceRadiusInput.value = String(settings.referenceRadiusUpm);
+    if (this.speedPunkReferenceTurnInput) {
+      this.speedPunkReferenceTurnInput.value = String(settings.referenceTurnDegrees);
     }
-    if (this.speedPunkColorFlatRadiusInput) {
-      this.speedPunkColorFlatRadiusInput.value = String(settings.colorFlatRadiusUpm);
+    if (this.speedPunkColorFlatTurnInput) {
+      this.speedPunkColorFlatTurnInput.value = String(settings.colorFlatTurnDegrees);
     }
-    if (this.speedPunkColorTightRadiusInput) {
-      this.speedPunkColorTightRadiusInput.value = String(settings.colorTightRadiusUpm);
+    if (this.speedPunkColorTightTurnInput) {
+      this.speedPunkColorTightTurnInput.value = String(settings.colorTightTurnDegrees);
     }
     if (this.speedPunkSharpnessInput) {
       this.speedPunkSharpnessInput.value = String(settings.sharpness);
@@ -1047,18 +1047,18 @@ export default class DesignspaceNavigationPanel extends Panel {
       { senderID: this }
     );
     this.sceneSettingsController.setItem(
-      "speedPunkReferenceRadiusUpm",
-      settings.referenceRadiusUpm,
+      "speedPunkReferenceTurnDegrees",
+      settings.referenceTurnDegrees,
       { senderID: this }
     );
     this.sceneSettingsController.setItem(
-      "speedPunkColorFlatRadiusUpm",
-      settings.colorFlatRadiusUpm,
+      "speedPunkColorFlatTurnDegrees",
+      settings.colorFlatTurnDegrees,
       { senderID: this }
     );
     this.sceneSettingsController.setItem(
-      "speedPunkColorTightRadiusUpm",
-      settings.colorTightRadiusUpm,
+      "speedPunkColorTightTurnDegrees",
+      settings.colorTightTurnDegrees,
       { senderID: this }
     );
     this.sceneSettingsController.setItem("speedPunkSharpness", settings.sharpness, {
@@ -1195,30 +1195,30 @@ export default class DesignspaceNavigationPanel extends Panel {
       "speedPunkPeakHeightUpm"
     );
     bindNumberInput(
-      this.speedPunkReferenceRadiusInput,
-      (value) => this._normalizeSpeedPunkReferenceRadiusUpm(value),
-      "referenceRadiusUpm",
-      "speedPunkReferenceRadiusUpm"
+      this.speedPunkReferenceTurnInput,
+      (value) => this._normalizeSpeedPunkReferenceTurnDegrees(value),
+      "referenceTurnDegrees",
+      "speedPunkReferenceTurnDegrees"
     );
     bindNumberInput(
-      this.speedPunkColorFlatRadiusInput,
+      this.speedPunkColorFlatTurnInput,
       (value) =>
-        this._normalizeSpeedPunkColorRadiusUpm(
+        this._normalizeSpeedPunkColorTurnDegrees(
           value,
-          SPEEDPUNK_COLOR_FLAT_RADIUS_DEFAULT_UPM
+          SPEEDPUNK_COLOR_FLAT_TURN_DEFAULT_DEGREES
         ),
-      "colorFlatRadiusUpm",
-      "speedPunkColorFlatRadiusUpm"
+      "colorFlatTurnDegrees",
+      "speedPunkColorFlatTurnDegrees"
     );
     bindNumberInput(
-      this.speedPunkColorTightRadiusInput,
+      this.speedPunkColorTightTurnInput,
       (value) =>
-        this._normalizeSpeedPunkColorRadiusUpm(
+        this._normalizeSpeedPunkColorTurnDegrees(
           value,
-          SPEEDPUNK_COLOR_TIGHT_RADIUS_DEFAULT_UPM
+          SPEEDPUNK_COLOR_TIGHT_TURN_DEFAULT_DEGREES
         ),
-      "colorTightRadiusUpm",
-      "speedPunkColorTightRadiusUpm"
+      "colorTightTurnDegrees",
+      "speedPunkColorTightTurnDegrees"
     );
     bindNumberInput(
       this.speedPunkSharpnessInput,

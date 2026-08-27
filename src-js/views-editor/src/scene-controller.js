@@ -143,9 +143,9 @@ export class SceneController {
     this.sceneSettingsController.setItem("coarseGridSpacing", 10);
     this.sceneSettingsController.setItem("snappingEnabled", true);
     this.sceneSettingsController.setItem("speedPunkPeakHeightUpm", 24);
-    this.sceneSettingsController.setItem("speedPunkReferenceRadiusUpm", 200);
-    this.sceneSettingsController.setItem("speedPunkColorFlatRadiusUpm", 400);
-    this.sceneSettingsController.setItem("speedPunkColorTightRadiusUpm", 180);
+    this.sceneSettingsController.setItem("speedPunkReferenceTurnDegrees", 90);
+    this.sceneSettingsController.setItem("speedPunkColorFlatTurnDegrees", 30);
+    this.sceneSettingsController.setItem("speedPunkColorTightTurnDegrees", 120);
     this.sceneSettingsController.setItem("speedPunkSharpness", 1);
     this.sceneSettingsController.setItem("speedPunkOpacity", 0.5);
     this.sceneSettings = this.sceneSettingsController.model;

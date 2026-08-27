@@ -169,8 +169,12 @@ Curvature combs with app-level parameters: peak height, sharpness and opacity.
 | `fontra-core/src/application-settings.js`             | +9       | shared with F1                                      |
 | `fontra-core/tests/test-curvature-sampling.js`        | +112     | tests                                               |
 
-Peak height is UPM-relative. That normalization replaced the original hardcoded `* -180000`
-magic constants.
+Peak height is the drawn length of a fringe, in glyph units. **It was never UPM-relative**, whatever
+its old setting name said: nothing in the tree ever divided it by units-per-em. An earlier version of
+this row claimed it was.
+
+The three scale anchors are angles — a reference turn, and the colour ramp's two ends — so none of
+them carries a unit of length and none needs calibrating per font. See feature model §11.
 
 ### F4 — Tunni
 

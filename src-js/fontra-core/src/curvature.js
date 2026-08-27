@@ -143,28 +143,32 @@ function interpolateColor(color1, color2, t) {
 }
 
 /**
- * Map absolute curvature -> colour, against a ramp between two named radii.
+ * Map normalized curvature -> colour, against a ramp between two named turns.
  *
- * `flatRadius` takes the first stop and `tightRadius` the last, and the ramp
- * runs geometrically between them, so equal ratios of radius are equal steps of
- * colour and the middle stop of a three-stop ramp lands on their geometric
- * mean. Past either end the colour pins.
+ * The argument is a turn: curvature times the local length (see
+ * `computeSpeedPunkSamples`), so it is an angle in radians and carries no unit
+ * of length. Scale a drawing and it does not move. A circle reads the same turn
+ * at every radius, which is what the whole readout exists to say.
  *
- * **The two radii are the whole of the design.** An absolute colour has to be
- * told which range to spend its stops on, and letters occupy a narrow one — the
- * two glyphs this was calibrated against sit between radius 170 and 370, about
- * 2.2 to 1. A ramp wider than that puts the whole drawing in the middle stop's
- * colour and makes the last stop unreachable. Deriving the ramp from the height
- * anchor instead is what produced exactly that, because the span of the ramp and
- * the anchor of the fringe length are unrelated quantities.
+ * `flatTurn` takes the first stop and `tightTurn` the last, and the ramp runs
+ * geometrically between them, so equal ratios of turn are equal steps of colour
+ * and the middle stop of a three-stop ramp lands on their geometric mean. Past
+ * either end the colour pins.
  *
- * Nothing here is read off the drawing. One curvature is one colour in every
- * glyph of the font, and no edit changes the colour of anything it did not move.
+ * **A ramp in radius was what this replaced, and the reason is in the units.**
+ * A radius is a length, so a ramp stated in radii is a statement about size. It
+ * has to be recalibrated for every font drawn at a different weight, and inside
+ * one font it cannot serve a capital and a combining mark at once — a tilde
+ * pinned to the last stop over 89 per cent of its outline while a capital read
+ * correctly. A turn has no size in it, so there is nothing left to calibrate.
+ *
+ * Nothing here is read off the drawing. One turn is one colour in every glyph of
+ * every font.
  */
 export function curvatureToColor(
-  curvatureAbs,
-  flatRadius,
-  tightRadius,
+  normalizedCurvature,
+  flatTurn,
+  tightTurn,
   colorStops = ["#8b939c", "#f29400", "#e3004f"]
 ) {
   if (!Array.isArray(colorStops) || colorStops.length === 0) {
@@ -174,17 +178,17 @@ export function curvatureToColor(
     return interpolateColor(colorStops[0], colorStops[0], 0);
   }
 
-  const flat = Math.max(1e-6, flatRadius);
-  const tight = Math.max(1e-6, tightRadius);
-  // A straight line has no curvature and no radius, so it lands on the flat end.
-  const radius = curvatureAbs > 0 ? 1 / curvatureAbs : Infinity;
+  const flat = Math.max(1e-9, flatTurn);
+  const tight = Math.max(1e-9, tightTurn);
+  // A straight line turns through nothing, so it lands on the flat end.
+  const turn = Math.max(0, normalizedCurvature);
 
   let t = 0;
-  if (flat > tight) {
-    t = Number.isFinite(radius) ? Math.log(flat / radius) / Math.log(flat / tight) : 0;
+  if (tight > flat) {
+    t = turn > 0 ? Math.log(turn / flat) / Math.log(tight / flat) : 0;
   } else {
     // A ramp with no width: everything at or past it takes the last stop.
-    t = radius <= flat ? 1 : 0;
+    t = turn >= flat ? 1 : 0;
   }
   t = Math.max(0, Math.min(1, t));
 
@@ -210,6 +214,21 @@ export function calculateSegmentBudget(
   );
 
   return stepsPerSegment;
+}
+
+// The true arc length of a segment, by the midpoint rule on its own speed.
+// `estimateCurveLength` below is the control-polygon estimate, which the step
+// budget uses; this one is the length the normalizer is stated in, so it has to
+// be the arc a designer sees rather than a proxy for it.
+export function segmentArcLength(kind, pts, steps = 32) {
+  let length = 0;
+  for (let i = 0; i < steps; i++) {
+    const t = (i + 0.5) / steps;
+    const { r1 } =
+      kind === "cubic" ? solveCubicBezier(...pts, t) : solveQuadraticBezier(...pts, t);
+    length += Math.hypot(r1[0], r1[1]) / steps;
+  }
+  return length;
 }
 
 export function estimateCurveLength(p1, p2, p3, p4 = null) {
@@ -300,14 +319,18 @@ function _segmentKind(t1, t2, t3) {
   return { isCubic, isQuadratic };
 }
 
+const DEGREE = Math.PI / 180;
+
 export function computeSpeedPunkSamples(path, params = {}) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;
-  // The anchor the height scale is stated in: a curve of this radius draws a
-  // fringe of exactly the peak height.
-  const referenceRadius = Math.max(1e-6, params.referenceRadiusGlyphUnits ?? 200);
+  // The anchor the height scale is stated in: a stretch of outline that turns
+  // through this angle draws a fringe of exactly the peak height. A circle
+  // drawn as four cubic quadrants turns through 90 degrees per segment, at
+  // every radius, so the default anchor is one a designer can name and check.
+  const referenceTurn = Math.max(1e-9, (params.referenceTurnDegrees ?? 90) * DEGREE);
   // The colour ramp's own two ends, independent of the height anchor above.
-  const colorFlatRadius = Math.max(1e-6, params.colorFlatRadiusGlyphUnits ?? 400);
-  const colorTightRadius = Math.max(1e-6, params.colorTightRadiusGlyphUnits ?? 180);
+  const colorFlatTurn = Math.max(1e-9, (params.colorFlatTurnDegrees ?? 30) * DEGREE);
+  const colorTightTurn = Math.max(1e-9, (params.colorTightTurnDegrees ?? 120) * DEGREE);
   const sharpness = Math.max(0.1, params.sharpness ?? 1);
   const illustrationPosition = params.illustrationPosition ?? "outsideOfCurve";
   const colorStops = params.colorStops ?? ["#8b939c", "#f29400", "#e3004f"];
@@ -343,10 +366,46 @@ export function computeSpeedPunkSamples(path, params = {}) {
     averageCurveLength = curveCount > 0 ? totalLength / curveCount : 0;
   }
 
-  // Both scales are absolute, so a segment is drawn from its own geometry and
-  // the reference radius alone. Nothing here reads another segment.
+  // The normalizer. Curvature carries one over length, so it cannot be read
+  // without a size. Multiplying by a length taken from the shape removes the
+  // size again: scale a drawing and the curvature halves while the length
+  // doubles, so the product does not move. The product is the angle the outline
+  // turns through over that length.
+  //
+  // **The length has to be continuous along the outline.** A per-segment length
+  // steps at every joint, so two segments meeting at one curvature would draw
+  // two fringe heights — the false step measured at 27 per cent on `d` and
+  // rejected once already. Each on-curve therefore takes the mean of the curve
+  // segments meeting there, and the length runs linearly between a segment's two
+  // ends. That is the rule harmonize already scores a joint by.
+  //
+  // The cost is stated rather than hidden: a segment's fringe now moves when an
+  // immediate neighbour is redrawn, because the two share the value at the joint
+  // between them. Agreeing at the joint and reading nothing but itself are
+  // exclusive, and reading a joint is what the comb is for. Nothing beyond the
+  // two adjacent segments is touched.
+  const segments = collectCurveSegments(path);
+  const lengthsAtPoint = new Map();
+  for (const segment of segments) {
+    segment.arcLength = segmentArcLength(segment.kind, segment.points);
+    for (const index of [segment.startPointIndex, segment.endPointIndex]) {
+      if (!lengthsAtPoint.has(index)) {
+        lengthsAtPoint.set(index, []);
+      }
+      lengthsAtPoint.get(index).push(segment.arcLength);
+    }
+  }
+  const meanLengthAt = (index) => {
+    const lengths = lengthsAtPoint.get(index);
+    return lengths.reduce((a, b) => a + b, 0) / lengths.length;
+  };
+
   const quads = [];
-  forEachCurveSegment(path, (kind, pts) => {
+  for (const segment of segments) {
+    const kind = segment.kind;
+    const pts = segment.points;
+    const startLength = meanLengthAt(segment.startPointIndex);
+    const endLength = meanLengthAt(segment.endPointIndex);
     const steps = adaptToCurveLength
       ? adjustStepsForCurve(
           stepsPerSegment,
@@ -369,7 +428,10 @@ export function computeSpeedPunkSamples(path, params = {}) {
           ? solveCubicBezier(...pts, t)
           : solveQuadraticBezier(...pts, t);
       const [x, y] = r;
-      onCurve.push({ x, y, k: absK });
+      // The turn: curvature times the local length, so it carries no unit of
+      // length and does not move when the drawing is scaled.
+      const turn = absK * (startLength + (endLength - startLength) * t);
+      onCurve.push({ x, y, turn });
 
       let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];
       let ny = illustrationPosition === "outsideOfCurve" ? r1[0] : -r1[0];
@@ -377,10 +439,10 @@ export function computeSpeedPunkSamples(path, params = {}) {
       nx /= mag;
       ny /= mag;
 
-      // The fringe is the peak height where the radius is the reference radius,
-      // and proportional to curvature from there. No ceiling and no floor.
+      // The fringe is the peak height where the outline turns through the
+      // reference turn, and proportional from there. No ceiling and no floor.
       // Sharpness is an exponent about that anchor, which the anchor survives.
-      const heightRatio = Math.pow(absK * referenceRadius, sharpness);
+      const heightRatio = Math.pow(turn / referenceTurn, sharpness);
       const h = -heightRatio * peakHeightGlyphUnits;
       offCurve.push({ x: x + nx * h, y: y + ny * h });
     }
@@ -395,10 +457,10 @@ export function computeSpeedPunkSamples(path, params = {}) {
           [offCurve[s + 1].x, offCurve[s + 1].y],
           [offCurve[s].x, offCurve[s].y],
         ],
-        color: curvatureToColor(a.k, colorFlatRadius, colorTightRadius, colorStops),
+        color: curvatureToColor(a.turn, colorFlatTurn, colorTightTurn, colorStops),
       });
     }
-  });
+  }
 
   return quads;
 }
@@ -406,8 +468,18 @@ export function computeSpeedPunkSamples(path, params = {}) {
 // The one segment walk. Every curve segment, once, in contour order.
 //
 // It used to group segments into runs of smoothly joined curves, for a comb
-// whose two scales were relative and needed a scope. Both scales are absolute
-// now, so nothing has a scope and the grouping had no reader left.
+// whose two scales were relative and needed a scope. There is no run scope now.
+// What a segment does need is its two end points' absolute indices, so the
+// normalizer can find the segments that share them. That is a neighbour lookup
+// through the path's own point identity, not a search by position.
+function collectCurveSegments(path) {
+  const segments = [];
+  forEachCurveSegment(path, (kind, points, startPointIndex, endPointIndex) => {
+    segments.push({ kind, points, startPointIndex, endPointIndex });
+  });
+  return segments;
+}
+
 function forEachCurveSegment(path, cb) {
   for (let contourIndex = 0; contourIndex < (path?.numContours ?? 0); contourIndex++) {
     const contour = path.getContour(contourIndex);
@@ -437,7 +509,9 @@ function forEachCurveSegment(path, cb) {
         pointIndices.map((index) => {
           const point = path.getPoint(index);
           return [point.x, point.y];
-        })
+        }),
+        pointIndex,
+        isCubic ? next3 : next2
       );
     }
   }
