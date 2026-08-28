@@ -87,6 +87,7 @@ import {
 } from "./composition-editing.js";
 import { HandTool } from "./edit-tools-hand.js";
 import { KnifeTool } from "./edit-tools-knife.js";
+import { MarkerTool } from "./edit-tools-marker.js";
 import { MetricsTool } from "./edit-tools-metrics.js";
 import { PenTool } from "./edit-tools-pen.js";
 import { PointerTools } from "./edit-tools-pointer.js";
@@ -1056,6 +1057,7 @@ export class EditorController extends ViewController {
       ShapeTool,
       MetricsTool,
       PowerRulerTool,
+      MarkerTool,
       HandTool,
     ];
 
