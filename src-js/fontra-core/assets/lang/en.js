@@ -517,6 +517,7 @@ export const strings = {
   "sidebar.letterspacer.apply-rsb": "Apply RSB",
   "sidebar.letterspacer.reference": "Reference",
   "sidebar.skeleton-parameters": "Skeleton Parameters",
+  "sidebar.markers": "Markers",
   "sidebar.markers.broken": "broken",
   "sidebar.markers.no-glyph": "No glyph selected",
   "sidebar.markers.none": "No markers in this glyph",
