@@ -70,12 +70,6 @@ import {
   writeObjectToURLFragment,
   writeToClipboard,
 } from "@fontra/core/utils.ts";
-import {
-  componentCountOf,
-  recordComponentDelete,
-  recordComponentInsert,
-  selectedComponentIndices,
-} from "./composition-editing.js";
 import { addItemwise, mulScalar, subItemwise } from "@fontra/core/var-funcs.js";
 import { StaticGlyph, VariableGlyph, copyComponent } from "@fontra/core/var-glyph.js";
 import { locationToString, makeSparseLocation } from "@fontra/core/var-model.js";
@@ -85,6 +79,12 @@ import { MenuItemDivider, showMenu } from "@fontra/web-components/menu-panel.js"
 import { dialog, dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import { parsePluginBasePath } from "@fontra/web-components/plugin-manager.js";
 import { CJKDesignFrame } from "./cjk-design-frame.js";
+import {
+  componentCountOf,
+  recordComponentDelete,
+  recordComponentInsert,
+  selectedComponentIndices,
+} from "./composition-editing.js";
 import { HandTool } from "./edit-tools-hand.js";
 import { KnifeTool } from "./edit-tools-knife.js";
 import { MetricsTool } from "./edit-tools-metrics.js";
@@ -108,13 +108,14 @@ import {
   resolveSkeletonAddressAcrossLayers,
   setSkeletonGenerationOptionsReader,
 } from "./skeleton-editing.js";
+import "./visualization-layer-composition.js";
 import {
   allGlyphsCleanVisualizationLayerDefinition,
   visualizationLayerDefinitions,
 } from "./visualization-layer-definitions.js";
 import "./visualization-layer-letterspacer.js";
+import "./visualization-layer-markers.js";
 import "./visualization-layer-skeleton.js";
-import "./visualization-layer-composition.js";
 import "./visualization-layer-snapping.js";
 import { VisualizationContext, VisualizationLayers } from "./visualization-layers.js";
 

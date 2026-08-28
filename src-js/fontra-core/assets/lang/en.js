@@ -757,6 +757,8 @@ export const strings = {
   "sidebar.user-settings.glyph.kerning-tool": "Kerning (tool)",
   "sidebar.user-settings.glyph.lockicon": "Glyph lock icon for non-editing glyphs",
   "sidebar.user-settings.glyph.point.index": "Point indices",
+  "sidebar.user-settings.glyph.markers.dimensions": "Marker dimensions",
+  "sidebar.user-settings.glyph.markers.rays": "Marker rays",
   "sidebar.user-settings.glyph.powerruler": "Power Ruler",
   "sidebar.user-settings.glyph.skeleton.point.index": "Skeleton point indices",
   "sidebar.user-settings.glyph.referencefont": "Reference font",

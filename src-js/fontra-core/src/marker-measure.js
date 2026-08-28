@@ -141,15 +141,22 @@ export function measureSkeletonAnchor(pathHitTester, end, skeletonData, path) {
 
 export function markerGeometry(glyphController, marker, skeletonData) {
   const path = glyphController.flattenedPath;
-  if (markerIsStale(marker, path)) {
-    return { stale: true, grips: [], distance: null };
-  }
-
   const anchors = marker.ends.map((end) =>
     end.kind === "cast" ? null : resolveMarkerAnchor(end, { path, skeletonData })
   );
-  if (anchors.some((anchor) => anchor && anchor.verdict !== "ok")) {
-    return { stale: true, grips: [], distance: null };
+
+  // A stale marker is still resolved where it can be, so it can be drawn greyed at the
+  // place it used to point and re-anchored there. It carries no measurement: the number
+  // is exactly what must not be trusted. Where the address no longer resolves at all
+  // there is nothing to draw, and the panel is the only way to it.
+  const stale =
+    markerIsStale(marker, path) ||
+    anchors.some((anchor) => anchor && anchor.verdict !== "ok");
+  if (stale) {
+    const points = anchors
+      .filter((anchor) => anchor?.verdict === "ok")
+      .map((anchor) => anchor.point);
+    return { stale: true, grips: [], points, distance: null };
   }
 
   const hitTester = glyphController.flattenedPathHitTester;

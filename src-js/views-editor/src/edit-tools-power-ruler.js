@@ -5,6 +5,8 @@ import * as vector from "@fontra/core/vector.js";
 import { constrainHorVerDiag } from "./edit-behavior.js";
 import { BaseTool } from "./edit-tools-base.js";
 import {
+  fillCircle,
+  fillPill,
   glyphSelector,
   registerVisualizationLayerDefinition,
   strokeLine,
@@ -314,20 +316,4 @@ export class PowerRulerTool extends BaseTool {
       this.canvasController.requestUpdate();
     }
   }
-}
-
-// TODO: we need drawing-tools.js
-function fillPill(context, cx, cy, length, height) {
-  const radius = height / 2;
-  const offset = length / 2 - radius;
-  context.beginPath();
-  context.arc(cx - offset, cy, radius, 0.5 * Math.PI, -0.5 * Math.PI, false);
-  context.arc(cx + offset, cy, radius, -0.5 * Math.PI, 0.5 * Math.PI, false);
-  context.fill();
-}
-
-function fillCircle(context, cx, cy, radius) {
-  context.beginPath();
-  context.arc(cx, cy, radius, 0, 2 * Math.PI, false);
-  context.fill();
 }
