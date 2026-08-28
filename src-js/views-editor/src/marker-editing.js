@@ -241,3 +241,156 @@ export function breakMarkersOnContours(layerGlyph, contourIndices) {
     return changed;
   });
 }
+
+// Dragging a placed marker.
+//
+// A ray drags along the outline, not across the glyph: the anchor is a point on a curve,
+// so each frame runs the same nearest-hit the placement ran and writes whatever segment
+// and parameter come back. Crossing into the neighbouring segment is therefore ordinary,
+// and nothing special happens at the joint.
+//
+// The drag is restricted to the contour it started on. Unrestricted, the anchor would
+// jump to whatever outline happened to pass nearer the cursor. To move a marker to
+// another contour, delete it and place a new one.
+//
+// Every frame is recorded against the state captured at mouse-down, never against the
+// live glyph, so a rollback is a statement about the whole gesture rather than about its
+// last frame.
+export async function handleMarkerDrag({
+  sceneController,
+  eventStream,
+  initialEvent,
+  markerId,
+  endIndex,
+}) {
+  const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
+  if (!positionedGlyph) {
+    return;
+  }
+  const glyphController = positionedGlyph.glyph;
+  const startMarker = getMarkers(
+    sceneController.sceneModel._getEditLayerGlyph(positionedGlyph)
+  ).find((marker) => marker.id === markerId);
+  if (!startMarker) {
+    return;
+  }
+  const draggedEndIndex =
+    endIndex ?? startMarker.ends.findIndex((end) => end.kind !== "cast");
+  const startEnd = startMarker.ends[draggedEndIndex];
+  const isRay = startMarker.ends.some((end) => end.kind === "cast");
+  if (isRay && startEnd.kind !== "pathSegment") {
+    // A ray anchored on a skeleton point is dragged as a skeleton point, not here.
+    return;
+  }
+
+  const signature = computeMarkerSignature(glyphController.flattenedPath);
+  const hitTester = glyphController.flattenedPathHitTester;
+
+  await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
+    const layerInfo = Object.entries(
+      sceneController.getEditingLayerFromGlyphLayers(glyph.layers)
+    ).map(([layerName, layerGlyph]) => ({
+      layerGlyph,
+      changePath: ["layers", layerName, "glyph"],
+    }));
+    if (!layerInfo.length) {
+      return;
+    }
+
+    let accumulated = new ChangeCollector();
+    let dragged = false;
+
+    for await (const event of eventStream) {
+      if (event.type === "mouseup") {
+        break;
+      }
+      if (event.type !== "mousemove") {
+        continue;
+      }
+      const point = sceneController.localPoint(event);
+      const newEnd = isRay
+        ? nearestEndOnContour(hitTester, point, positionedGlyph, startEnd.contourIndex)
+        : nearestPointEnd(glyphController, point, positionedGlyph);
+      if (!newEnd) {
+        // A dimension end released on nothing stays where it was: an end that could be
+        // dropped on empty space would be measuring something it no longer names.
+        continue;
+      }
+      dragged = true;
+
+      let frame = new ChangeCollector();
+      for (const { layerGlyph, changePath } of layerInfo) {
+        const layerChanges = recordChanges(layerGlyph, (proxy) => {
+          mutateMarkerData(proxy, (data) => {
+            data.markers = data.markers.map((marker) =>
+              marker.id === markerId
+                ? withEnd(startMarker, draggedEndIndex, newEnd, signature)
+                : marker
+            );
+          });
+        });
+        frame = frame.concat(layerChanges.prefixed(changePath));
+      }
+      accumulated = accumulated.concat(frame);
+      await sendIncrementalChange(frame.change, true);
+    }
+
+    if (!dragged || !accumulated.hasChange) {
+      return;
+    }
+    return { changes: accumulated, undoLabel: "Move Marker", broadcast: true };
+  }, MARKER_EDIT_SENDER);
+}
+
+function withEnd(marker, endIndex, end, signature) {
+  const ends = [...marker.ends];
+  ends[endIndex] = end;
+  return { ...marker, ends, signature };
+}
+
+function nearestEndOnContour(hitTester, point, positionedGlyph, contourIndex) {
+  const local = {
+    x: point.x - positionedGlyph.x,
+    y: point.y - positionedGlyph.y,
+  };
+  const hit = hitTester.findNearest(local);
+  if (!hit || hit.contourIndex !== contourIndex) {
+    return undefined;
+  }
+  return {
+    kind: "pathSegment",
+    contourIndex: hit.contourIndex,
+    segmentIndex: hit.segmentIndex,
+    t: hit.t,
+  };
+}
+
+function nearestPointEnd(glyphController, point, positionedGlyph) {
+  const local = {
+    x: point.x - positionedGlyph.x,
+    y: point.y - positionedGlyph.y,
+  };
+  const path = glyphController.flattenedPath;
+  let best;
+  for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
+    const numPoints = path.getNumPointsOfContour(contourIndex);
+    for (let pointIndex = 0; pointIndex < numPoints; pointIndex++) {
+      const candidate = path.getContourPoint(contourIndex, pointIndex);
+      const distance = Math.hypot(candidate.x - local.x, candidate.y - local.y);
+      if (!best || distance < best.distance) {
+        best = { distance, contourIndex, pointIndex };
+      }
+    }
+  }
+  if (!best || best.distance > MARKER_REANCHOR_RADIUS) {
+    return undefined;
+  }
+  return {
+    kind: "pathPoint",
+    contourIndex: best.contourIndex,
+    pointIndex: best.pointIndex,
+  };
+}
+
+// A dimension end re-anchors to a point it is released near, and to nothing otherwise.
+const MARKER_REANCHOR_RADIUS = 30;
