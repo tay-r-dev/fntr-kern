@@ -1,7 +1,7 @@
 # Contour markers — design
 
 **Date:** 2026-08-28
-**Status:** design agreed, not built
+**Status:** built — see FEATURE-MODEL.md §13 and FEATURE-ARCHITECTURE-MAP.md §3 F11, which are the design of record. This spec is kept for its reasoning; where the two differ, the model wins.
 **Feature:** F11 — markers
 
 A marker is a measurement the designer places on a drawing and keeps. It sits on a
@@ -106,7 +106,7 @@ Four kinds. A ray is `[anchor, cast]`; a dimension is `[anchor, anchor]`.
 
 ```js
 {
-  kind: ("pathSegment", contourIndex, segmentStart, t);
+  kind: ("pathSegment", contourIndex, segmentIndex, t);
 }
 {
   kind: ("pathPoint", contourIndex, pointIndex);

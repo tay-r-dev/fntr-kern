@@ -64,6 +64,7 @@ way once nothing references them.
 | F7  | **Skeleton**             | shipped WS-6…WS-17              | re-integrated from donor       | 5 core + 7 editor + panel set                            | Skeleton Pen tool, right sidebar            |
 | F8  | **Carried fork extras**  | shipped, pre-dating the program | fork-original                  | `corner-overlap.js`, quad handles, equalize, pen-connect | scattered — see §3.8                        |
 | F9  | **Base-curve expansion** | shipped                         | fork-original                  | 1 core + 1 editor module                                 | hold **D**/**S**, drag an outline on-curve  |
+| F11 | **Markers**              | shipped                         | fork-original                  | 2 core + 3 editor + panel + tool                         | Marker tool, `fontra.markers.*` layers      |
 
 Feature sizes, owned code only. Shared-file hunks are excluded.
 
@@ -368,6 +369,48 @@ not being offset has an offset of zero and does not move, so the crossing stays
 on it. The one bound is the standard miter limit of 4, for two segments doubling
 back, which never cross at all.
 
+### F11 — Markers
+
+A measurement the designer places on a contour and keeps. Saved per layer, it
+rides the geometry while the drawing is edited and goes stale loudly when the
+point count under it changes.
+
+| File                                              | +/−      | Role                                                                                                        |
+| ------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/marker-model.js`                 | +190     | **NEW** — the stored section, non-reusing ids, the count signature, the stale rule, anchor resolution       |
+| `fontra-core/src/marker-measure.js`               | +230     | **NEW** — the winding walk (shared with the Power Ruler), ray and dimension measurement, on-screen geometry |
+| `views-editor/src/marker-editing.js`              | +390     | **NEW** — the ONLY write path, plus the drag and the reverse-contour break                                  |
+| `views-editor/src/visualization-layer-markers.js` | +215     | **NEW** — two layers, rays and dimensions                                                                   |
+| `views-editor/src/edit-tools-marker.js`           | +185     | **NEW** — the narrow tool, delegating to the pointer tool                                                   |
+| `views-editor/src/panel-markers.js`               | +225     | **NEW** — the right-sidebar list, targets and group visibility                                              |
+| `views-editor/src/scene-model.js`                 | (shared) | `markerAtPoint`, `markerGrips`, and the place in the cascade                                                |
+| `views-editor/src/edit-tools-pointer.js`          | (shared) | Drag hook and double-click delete. Dispatcher only (R-A)                                                    |
+| `views-editor/src/scene-controller.js`            | (shared) | Reverse contour breaks the markers on it                                                                    |
+| `views-editor/src/edit-tools-power-ruler.js`      | +2/−20   | Its winding walk moved out; it imports it now                                                               |
+| `fontra-core/tests/test-marker-model.js`          | +190     | tests                                                                                                       |
+| `fontra-core/tests/test-marker-anchor.js`         | +80      | tests                                                                                                       |
+| `fontra-core/tests/test-marker-measure.js`        | +255     | tests, including three sweeps                                                                               |
+
+**A marker stores an address and no geometry.** Every distance, direction and
+far point is derived on read. Nothing recovers an anchor by geometric matching:
+the signature is a count, it verifies an address and never searches for one
+(R-D). This is what separates markers from defect P1.
+
+**The count changes, the marker goes stale; anything else, it rides.** One rule.
+It deletes an obligation rather than adding one — no tool that restructures a
+point list owes marker anchors any bookkeeping. Reverse contour is the single
+named exception, because it preserves the count, and it declares the markers on
+its contour broken in the same change.
+
+**Stale is derived on read and never written**, so undoing past the structural
+edit brings the marker back on its own.
+
+**The grip loses to skeleton and generated geometry**, so a readout never sits
+in front of the geometry it describes. The marker tool is how that geometry is
+reached.
+
+---
+
 ---
 
 ---
@@ -391,17 +434,17 @@ Twelve files carry hunks from more than one feature. **Read this before you edit
 | `fontra-webcomponents/src/range-slider.js`            | +53/−10  | **Skeleton panel** — `allowInputBeyondRange`, `displayValue`, `values`, `step`                                                     |
 | `fontra-webcomponents/src/ui-form.js`                 | +56/−0   | **Skeleton panel** — passes those slider options through; adds checkbox with indeterminate                                         |
 | `views-editor/src/panel-selection-info.js`            | +24/−1   | Hosts **letterspacer** + **skeleton-defaults** sub-panels                                                                          |
-| `fontra-core/assets/lang/en.js`                       | +107/−0  | skeleton-parameters 73, designspace-navigation 11, letterspacer 7, realtime shortcuts 5, skeleton tool 6                           |
+| `fontra-core/assets/lang/en.js`                       | +107/−0  | skeleton-parameters 73, designspace-navigation 11, letterspacer 7, realtime shortcuts 5, skeleton tool 6, markers 8                |
 
 Small shared edits worth knowing about:
 
-| File                                | +/−     | Why                                                                   |
-| ----------------------------------- | ------- | --------------------------------------------------------------------- |
-| `fontra-core/src/utils.ts`          | +14/−6  | `parseSelection` must not `parseInt` compound skeleton keys           |
-| `fontra-core/src/var-glyph.js`      | +3      | `customData` survives glyph copy — skeleton persistence depends on it |
-| `fontra-core/src/var-path.js`       | +8/−2   | `copy()` tolerates a Proxy-wrapped `coordinates`                      |
-| `fontra-core/src/path-functions.js` | +45/−12 | quad handles + corner-overlap entry                                   |
-| `fontra-core/src/mouse-tracker.js`  | +2/−1   | —                                                                     |
+| File                                | +/−     | Why                                                                                                 |
+| ----------------------------------- | ------- | --------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/utils.ts`          | +14/−6  | `parseSelection` keeps any non-integer remainder raw — compound skeleton keys and string marker ids |
+| `fontra-core/src/var-glyph.js`      | +3      | `customData` survives glyph copy — skeleton persistence depends on it                               |
+| `fontra-core/src/var-path.js`       | +8/−2   | `copy()` tolerates a Proxy-wrapped `coordinates`                                                    |
+| `fontra-core/src/path-functions.js` | +45/−12 | quad handles + corner-overlap entry                                                                 |
+| `fontra-core/src/mouse-tracker.js`  | +2/−1   | —                                                                                                   |
 
 ---
 
@@ -409,11 +452,11 @@ Small shared edits worth knowing about:
 
 ### Persistence — `fontra.internal` customData
 
-One key, three sections (`fontra-core/src/fontra-internal-schema.js`):
+One key, four sections (`fontra-core/src/fontra-internal-schema.js`):
 
 ```js
 FONTRA_INTERNAL_KEY = "fontra.internal";
-FONTRA_INTERNAL_SECTIONS = { LETTERSPACER, SKELETON, SKELETON_DEFAULTS };
+FONTRA_INTERNAL_SECTIONS = { LETTERSPACER, SKELETON, SKELETON_DEFAULTS, MARKERS };
 ```
 
 Access it **only** through `fontra-core/src/fontra-internal-data.js`, with

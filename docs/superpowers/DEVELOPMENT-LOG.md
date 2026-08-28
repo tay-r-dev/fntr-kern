@@ -2933,3 +2933,91 @@ silently.
 
 **Documents that were already unformatted are left that way**, here and at the
 segment selection fix, because reformatting buries a change in noise.
+
+---
+
+# Markers
+
+## The anchor check collapsed from three cases to one
+
+The design started with three cases and resplit arithmetic: the count unchanged,
+the count changed near the anchor, the count changed elsewhere — with a tolerance
+deciding which. Telling a shifted index from a resized contour is a search, and a
+search that gets it wrong reports a confident wrong number.
+
+It collapsed to one rule: **the point count under an anchor changes, the marker
+goes stale; anything else, it rides the geometry.** A count change on any contour
+stales, which is deliberately over-eager.
+
+**What it bought.** No tool that restructures a point list owes marker anchors any
+bookkeeping — not the pen, the knife, shape append, delete-selection, paste or
+break-contour. The alternative was an audit of every one of them, with a quiet
+wrong measurement as the cost of missing one. The donor's generated-contour
+indices produced that exact quiet failure twice.
+
+**What it cost.** Inserting a point on a contour stales every marker on it, even
+where the curve through the anchor is unchanged. That is an ordinary edit and it
+will be felt. Re-anchoring is one click.
+
+**Stale is derived on read, never written.** So an undo past the structural edit
+brings the marker back with no code. A stale flag in the file would survive the
+undo and leave a dead marker on a healthy contour.
+
+## Reverse contour is the one exception, and it declares rather than fudges
+
+It keeps the point count and the closed flag and turns the point order around, so
+every anchor on the contour would name a different place while the signature said
+fine. It writes those markers an explicit broken flag in the same change. A
+signature written to disagree on purpose would be a signature that lies.
+
+Measured, as the plan asked: a skeleton reversal leaves the centerline as drawn,
+so a centerline anchor is safe; it turns the generated outline over at the same
+point count, so an anchor on one of those is declared broken too.
+
+## The hit tester does not order its crossings along the ray
+
+Found while testing the double-sided centerline case, which returned null, and
+the single-sided case, which returned zero. The crossings come back in the hit
+tester's own order, and the winding walk reads a sequence — so measuring outward
+from a point **inside** the black picked the span behind the anchor as the one in
+front of it.
+
+The Power Ruler never hit this because it always measures a whole line across the
+glyph, where the walk's direction does not matter: over a closed path the total
+winding is zero, so accumulating in either direction marks the same spans inside.
+Measuring outward from an anchor is the first caller that starts mid-line. The
+crossings are now sorted along the ray before the walk, which the ruler shares.
+
+## The sweeps
+
+Three, each walking one input in fine steps and measuring the worst single-step
+movement of the reported distance against its driver.
+
+| Sweep                                           | Worst single step           |
+| ----------------------------------------------- | --------------------------- |
+| A moving neighbour, 200 steps of 1 unit         | 0 — follows exactly         |
+| Anchor dragged along a straight edge, 260 steps | 0 — constant, as it must be |
+| Anchor dragged along a wedge of slope 1-in-2    | 0.5000000000000284/unit     |
+
+The wedge number is the slope and nothing more. Each sweep starts away from a
+degenerate configuration, so none reports its own seed as a jump — a fault this
+project has recorded twice.
+
+## Deviations from the plan, recorded
+
+**The end field is `segmentIndex`, not the spec's `segmentStart`.** It is what
+the nearest-hit returns and what resolution consumes; the other name needs a
+translation at both ends for no gain.
+
+**`measureRay` takes a hit tester, not a glyph controller.** `fontra-core` has no
+business knowing what a glyph controller is, and the tests build a hit tester in
+three lines.
+
+**A stale marker is still resolved where it can be**, so it draws greyed at the
+place it used to point and can be re-anchored there. It carries no number: the
+number is exactly what must not be trusted. The spec allowed greyed or nothing;
+this is the greyed reading, without inventing any stored coordinate to do it.
+
+**`parseSelection` now keeps any non-integer remainder raw**, rather than only
+compound keys. Marker ids are names, not numbers, and the old rule turned them
+into NaN.

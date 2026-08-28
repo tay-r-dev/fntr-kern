@@ -310,6 +310,23 @@ glyph. Its three controls are **area**, **depth** and **overshoot**.
 **Corner overlap** — deliberately overlapping the shapes at a joint so that the rendered corner
 stays clean.
 
+**Marker** — a measurement the designer places on a drawing and keeps. It sits on a contour,
+measures across the black, and stays where it was put while the drawing is edited. Saved per
+layer; it never reaches a compiled font.
+
+**Ray** — a marker placed on a contour. It points inward along that contour's normal and stops
+where the outline leaves the black.
+
+**Dimension** — a marker placed between two points, measuring the distance between them and moving
+with both.
+
+**Signature** — the per-contour point counts and closed flags a marker's anchors were written
+against. A count, not a geometry: it verifies an address and never searches for one.
+
+**Stale** — a marker whose signature no longer matches the drawing, so its address can no longer be
+trusted. Derived on read and never written, so an undo revives the marker. It keeps its id, its
+target and its group, draws greyed with no number, and is listed as broken in the panel.
+
 ### Project words
 
 **Donor** — the older fork the skeleton math came from. It sits read-only in the tree as a

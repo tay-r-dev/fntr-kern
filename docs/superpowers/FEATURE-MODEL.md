@@ -1535,3 +1535,133 @@ local radius. That is ordinary outline geometry, reachable by hand and undoable.
 **What must be preserved.** Every frame is recorded against a fresh copy of the
 pre-drag path, never against the live glyph. A rollback is a statement about the
 whole gesture, so it has to be measured from where the gesture started.
+
+---
+
+## 13. Markers
+
+A marker is a measurement the designer places on a drawing and keeps. It sits on a
+contour, measures across the black, and stays where it was put while the drawing is
+edited. It is saved per layer in the project file, and it never reaches a compiled
+font: it lives in customData, which no compiler reads.
+
+Two shapes of one object. A **ray** is placed on a contour, points inward along that
+contour's normal and stops where the outline leaves the black. A **dimension** is placed
+between two points and measures the distance between them.
+
+**A marker stores an address and nothing else** — no coordinates, no curve snapshot, no
+measured distance. The number is derived on every frame, the way a rib is. A stored
+measurement is a number that drifts.
+
+### The one rule
+
+> The point count under an anchor changes, the marker goes stale. Anything else, the
+> marker rides the geometry.
+
+Two cases, not three. Riding needs no code at all: the anchor is a parameter on a curve
+and the curve is read live, so a marker watched while a stem is dragged updates every
+frame. That is the feature working, not a special case.
+
+The **signature** is the array of per-contour point counts over the flattened path, plus
+each contour's closed flag, taken when the anchors were last written. It is a count, not
+a geometry. There is no tolerance in it, nothing is searched for, and no stored
+coordinate is ever compared against a drawn one. It verifies an address; it never
+recovers one.
+
+A count change on **any** contour stales, not only the anchor's own. An added or removed
+contour shifts every index after it, and telling "shifted" from "resized" apart is
+exactly the search this design refuses to do.
+
+**Stale is derived on read and never written to the file.** So undoing past the
+structural edit restores the count and the marker comes back to life on its own. A stale
+flag written into the file would survive the undo and leave a dead marker on a healthy
+contour.
+
+### What the rule buys, and what it costs
+
+It **deletes an obligation rather than adding one**. No tool has to update marker anchors
+when it restructures a point list — not the pen, not the knife, not shape append,
+delete-selection, paste or break-contour. The alternative was an audit of every tool that
+touches a point list, with a quiet wrong measurement as the cost of missing one. The
+donor's generated-contour indices produced exactly that quiet failure twice.
+
+The price, stated: inserting a point on a contour stales every marker on it, even where
+the curve through the anchor is unchanged. That is an ordinary edit and it will be felt.
+Re-anchoring is one click.
+
+**Reverse contour is the single named exception**, because it keeps the count and the
+closed flag and turns the point order around, so every anchor on that contour would name
+a different place while the signature said fine. It therefore declares those markers
+broken in the same change. Declaring is honest; a signature written to disagree on
+purpose would be a signature that lies. Measured: a skeleton reversal leaves the
+centerline as drawn, so a centerline anchor is safe, and turns the generated outline over
+at the same point count, so an anchor on one of those is declared broken too.
+
+**Generated contours are path anchors and follow the path rule.** Point-count stability
+across parameter values (§3) means a rib drag, a width edit or a skeleton move keeps the
+count, so those markers ride the regeneration. They stale where the count genuinely
+changes: corner-rounding distance crossing zero, a cap style change, a serif switched on.
+Expect that to read as a bug the first time; it is not one.
+
+### Measuring
+
+The stopping rule is the **winding walk**, which the Power Ruler already had: accumulate
+winding across the crossings along the ray, and a span is inside the black wherever the
+running total is non-zero. The ray walks on across consecutive inside spans, so an
+overlapping contour's interior edge is crossed rather than stopped at, and entering a
+counter stops it correctly. There is one copy of that walk, shared with the ruler.
+
+The crossings must be **ordered along the ray** before the walk. The hit tester returns
+them in its own order, which the ruler never noticed because it always measures a whole
+line across the glyph; measuring outward from a point inside the black ran the walk
+backwards and reported zero.
+
+**Null is the honest answer** where a ray never leaves the black, and every reader must
+handle it. A marker with no measurement draws its anchor and no number. It is not stale
+and must not be greyed as though it were.
+
+Three skeleton cases. On a **generated contour** it is an ordinary ray, and it crosses the
+centerline, because a centerline is not outline geometry and casts no crossing. On a
+**centerline**, double-sided, the ray runs both ways and reports the sum, which is the
+stroke's full width there. On a **centerline**, single-sided, one way only, because the
+other edge lies on the centerline itself. Left is the generator's own convention — the
+travel direction turned a quarter clockwise — read through the skeleton's accessor rather
+than inferred from the widths.
+
+### Reaching a marker
+
+Markers are not a modal feature: **the pointer tool selects, moves and deletes them**,
+through the same dispatch hooks Tunni uses.
+
+**The marker grip loses to skeleton and generated geometry.** Hit order is generated
+gizmos and skeleton ribs first, then the marker grip, then ordinary points. A marker
+lying over a generated contour is therefore unreachable with the pointer tool while gizmo
+mode is on, and that is what the marker tool is for. A marker winning the click would put
+a readout in front of the geometry it describes.
+
+The marker tool is deliberately narrow: it places, moves and deletes markers and
+delegates everything else to the pointer tool. It **delegates rather than subclassing**,
+because the pointer tool's drag dispatches over selection kinds a marker tool has no
+business inheriting. The single-sided pen settled the same argument the same way.
+
+A ray has one grip whichever end is grabbed: the far end is a cast and owns nothing. A
+dimension has one grip per end, so an end can be re-anchored on its own. A ray's drag
+**stays on the contour it started on** — unrestricted, the anchor would jump to whatever
+outline passed nearer the cursor. To move a marker to another contour, delete it and
+place a new one.
+
+**A drag rewrites the address and the signature together**, through one helper. That pair
+disagreeing is exactly what the stale check reads as a broken anchor. And every frame is
+recorded against the state captured at mouse-down, never against the live glyph, so a
+rollback is a statement about the whole gesture.
+
+### Ids and sources
+
+Ids are allocated once and **never reused**, held as a counter in the section rather than
+derived from the list: a deleted marker's id must stay spent, because a copy of that
+marker may still exist in another source. One edit applied to every source selected for
+editing lands the same id in each, so a reader can tell those copies are one marker seen
+in several masters. Placement defaults to the active source alone.
+
+**Groups carry visibility only.** No shared target: one number owned by two levels is the
+trap this project has recorded four times.
