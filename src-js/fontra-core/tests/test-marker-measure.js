@@ -143,3 +143,84 @@ describe("marker-measure — the skeleton cases", () => {
     expect(measured).to.equal(null);
   });
 });
+
+// A sweep, not an assertion. A per-configuration assertion has missed every fault in
+// this project's geometry so far: what matters is that the reported number moves
+// smoothly with its driver, not that it equals a particular value at one configuration.
+//
+// Each sweep starts away from a degenerate configuration, because a sweep that begins at
+// a zero-length or coincident state reports its own seed as a large jump.
+
+describe("marker-measure — sweeps", () => {
+  it("the anchor rides a moving neighbour without jumping", () => {
+    // The right wall of a stem walks right in fine steps. A ray across the stem must
+    // follow it step for step: the anchor is a parameter on a curve, and the curve is
+    // read live.
+    const STEP = 1;
+    const STEPS = 200;
+    let previous = null;
+    let worst = 0;
+    for (let i = 0; i < STEPS; i++) {
+      const right = 120 + i * STEP;
+      const path = pathOf(rectContour(0, 0, right, 100));
+      const measured = measureRay(hitTesterFor(path), { x: 0, y: 50 }, { x: 1, y: 0 });
+      expect(measured).to.not.equal(null);
+      if (previous !== null) {
+        worst = Math.max(worst, Math.abs(measured.distance - previous - STEP));
+      }
+      previous = measured.distance;
+    }
+    // The reported distance moves exactly as far as its driver does, every step.
+    expect(worst).to.be.lessThan(1e-6);
+  });
+
+  it("a dragged anchor crosses a segment joint without jumping", () => {
+    // The anchor walks along the bottom edge of a rectangle, across the corner and up
+    // the right edge. The measured distance changes shape at the corner, as the
+    // geometry does, but never jumps: the worst single step stays within what one step
+    // of the driver can account for.
+    const path = pathOf(rectContour(0, 0, 300, 100));
+    const hitTester = hitTesterFor(path);
+    const STEP = 1;
+    let previous = null;
+    let worst = 0;
+    for (let x = 20; x <= 280; x += STEP) {
+      const measured = measureRay(hitTester, { x, y: 0 }, { x: 0, y: 1 });
+      expect(measured).to.not.equal(null);
+      if (previous !== null) {
+        worst = Math.max(worst, Math.abs(measured.distance - previous));
+      }
+      previous = measured.distance;
+    }
+    // Along a straight edge of a rectangle the measured height is constant, so no step
+    // may move it at all.
+    expect(worst).to.be.lessThan(1e-6);
+  });
+
+  it("a ray on a slanted edge follows its anchor smoothly", () => {
+    // A wedge, so the measured distance genuinely changes as the anchor walks. The
+    // reported number must change no faster than the geometry does — the slope here is
+    // one unit of height per two units along.
+    const path = pathOf({
+      points: [
+        { x: 0, y: 0 },
+        { x: 400, y: 0 },
+        { x: 400, y: 200 },
+      ],
+      isClosed: true,
+    });
+    const hitTester = hitTesterFor(path);
+    const STEP = 1;
+    let previous = null;
+    let worst = 0;
+    for (let x = 20; x <= 380; x += STEP) {
+      const measured = measureRay(hitTester, { x, y: 0 }, { x: 0, y: 1 });
+      expect(measured).to.not.equal(null);
+      if (previous !== null) {
+        worst = Math.max(worst, Math.abs(measured.distance - previous));
+      }
+      previous = measured.distance;
+    }
+    expect(worst).to.be.lessThan(0.51);
+  });
+});
