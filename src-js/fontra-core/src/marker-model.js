@@ -48,3 +48,42 @@ function highestUsedId(data) {
   }
   return highest;
 }
+
+// The signature is a count, not a geometry. There is no tolerance in it: it verifies an
+// address, it never searches for one. The rule it serves is the whole of the anchoring
+// design — the point count under an anchor changes, the marker goes stale; anything
+// else, the marker rides the geometry.
+//
+// The comparison runs on read and writes nothing, so undoing past a structural edit
+// restores the count and the marker comes back to life on its own.
+
+export function computeMarkerSignature(path) {
+  const counts = [];
+  const closed = [];
+  for (let i = 0; i < path.contourInfo.length; i++) {
+    counts.push(path.getNumPointsOfContour(i));
+    closed.push(!!path.contourInfo[i].isClosed);
+  }
+  return { counts, closed };
+}
+
+export function markerIsStale(marker, path) {
+  if (!marker.ends?.some(endIsPathAnchored)) {
+    // Skeleton anchors carry stable ids and cast ends own nothing. Neither can shift.
+    return false;
+  }
+  const now = computeMarkerSignature(path);
+  const then = marker.signature;
+  if (!then || then.counts?.length !== now.counts.length) {
+    return true;
+  }
+  // Compared whole: an added or removed contour shifts every index after it, and
+  // telling "shifted" from "resized" is the search this design refuses to do.
+  return now.counts.some(
+    (count, i) => count !== then.counts[i] || now.closed[i] !== then.closed[i]
+  );
+}
+
+function endIsPathAnchored(end) {
+  return end.kind === "pathSegment" || end.kind === "pathPoint";
+}
