@@ -8,6 +8,7 @@ import {
   findNearestLocationIndex,
 } from "./discrete-variation-model.js";
 import { VariationError } from "./errors.js";
+import { withoutMarkerData } from "./marker-model.js";
 import { filterPathByPointIndices } from "./path-functions.js";
 import { PathHitTester } from "./path-hit-tester.js";
 import {
@@ -1400,6 +1401,10 @@ function ensureGlyphCompatibility(layers, glyphDependencies) {
           ? normalizeGuidelines(glyph.guidelines, true)
           : [],
         backgroundImage: undefined, // The background image isn't meant to interpolate
+        // Markers are not interpolable data — ids and address kinds, not numbers — and
+        // two sources need not carry the same ones. Left in, placing a marker in one
+        // source alone makes the glyph incompatible. They live on masters only.
+        customData: withoutMarkerData(glyph.customData),
       },
       true // noCopy
     )

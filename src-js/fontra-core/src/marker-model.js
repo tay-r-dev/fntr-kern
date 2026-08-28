@@ -3,7 +3,10 @@ import {
   getFontraInternalSection,
   setFontraInternalSection,
 } from "./fontra-internal-data.js";
-import { FONTRA_INTERNAL_SECTIONS } from "./fontra-internal-schema.js";
+import {
+  FONTRA_INTERNAL_KEY,
+  FONTRA_INTERNAL_SECTIONS,
+} from "./fontra-internal-schema.js";
 import {
   buildSkeletonTunniSegments,
   getSkeletonContour,
@@ -180,4 +183,24 @@ function pathSegmentBezier(path, contourIndex, segmentIndex) {
 function normalAt(bezier, t) {
   const derivative = bezier.derivative(t);
   return vector.normalizeVector({ x: -derivative.y, y: derivative.x });
+}
+
+// Markers must never reach the interpolation model. A layer's customData goes into it
+// whole, and a marker is not interpolable data: it holds ids and address kinds, not
+// numbers, and two sources need not carry the same markers at all. Left in, adding a
+// marker to one source alone makes the glyph incompatible and interpolation stops.
+//
+// So markers live on masters only, and nothing in between reads them. The background
+// image is dropped from that same call for the same kind of reason.
+//
+// The customData is returned untouched when there is nothing to strip, so the common
+// case copies nothing.
+export function withoutMarkerData(customData) {
+  const internal = customData?.[FONTRA_INTERNAL_KEY];
+  if (internal?.[FONTRA_INTERNAL_SECTIONS.MARKERS] === undefined) {
+    return customData;
+  }
+  const strippedInternal = { ...internal };
+  delete strippedInternal[FONTRA_INTERNAL_SECTIONS.MARKERS];
+  return { ...customData, [FONTRA_INTERNAL_KEY]: strippedInternal };
 }

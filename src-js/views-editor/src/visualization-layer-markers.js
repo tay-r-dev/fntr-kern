@@ -27,32 +27,60 @@ function getEditLayerGlyph(positionedGlyph, model) {
   );
 }
 
-function selectedMarkerIds(model) {
+function markerIdsIn(selection) {
   const ids = new Set();
-  for (const source of [model.selection, model.hoverSelection]) {
-    const parsed = parseSelection(source || []);
-    for (const id of parsed.marker || []) {
-      ids.add(String(id));
-    }
-    for (const key of parsed.markerEnd || []) {
-      ids.add(String(key).split("/")[0]);
-    }
+  const parsed = parseSelection(selection || []);
+  for (const id of parsed.marker || []) {
+    ids.add(String(id));
+  }
+  for (const key of parsed.markerEnd || []) {
+    ids.add(String(key).split("/")[0]);
   }
   return ids;
 }
 
-// Every marker of the current glyph, with its geometry already derived. Both layers walk
-// this and draw only their own kind.
+// Every marker of the current glyph, with its geometry already derived and its state
+// known. Both layers walk this and draw only their own kind.
 function* eachMarker(positionedGlyph, model) {
   const layerGlyph = getEditLayerGlyph(positionedGlyph, model);
   const skeletonData = getSkeletonData(layerGlyph);
-  const selected = selectedMarkerIds(model);
+  const selected = markerIdsIn(model.selection);
+  const hovered = markerIdsIn(model.hoverSelection);
   for (const marker of getVisibleMarkers(layerGlyph)) {
     yield {
       marker,
       geometry: markerGeometry(positionedGlyph.glyph, marker, skeletonData),
       isSelected: selected.has(String(marker.id)),
+      isHovered: hovered.has(String(marker.id)),
     };
+  }
+}
+
+// The grip a hand can find. Hover puts a ring around it, selection fills it: a marker
+// that gives no sign of being under the cursor cannot be aimed at, and a marker that
+// gives no sign of being selected cannot be deleted with any confidence.
+function drawGrips(context, parameters, geometry, isSelected, isHovered, color) {
+  for (const grip of geometry.grips) {
+    if (isHovered) {
+      context.strokeStyle = color;
+      context.lineWidth = parameters.strokeWidth;
+      context.beginPath();
+      context.arc(
+        grip.point.x,
+        grip.point.y,
+        parameters.gripRadius + parameters.hoverRingGap,
+        0,
+        2 * Math.PI
+      );
+      context.stroke();
+    }
+    context.fillStyle = color;
+    fillCircle(
+      context,
+      grip.point.x,
+      grip.point.y,
+      isSelected ? parameters.gripRadius * 1.6 : parameters.gripRadius
+    );
   }
 }
 
@@ -98,21 +126,35 @@ function drawArrowHead(context, at, direction, size) {
 }
 
 function drawMarkerRays(context, positionedGlyph, parameters, model, controller) {
-  for (const { marker, geometry, isSelected } of eachMarker(positionedGlyph, model)) {
-    if (geometry.stale) {
-      drawStaleMarker(context, parameters, geometry);
+  for (const { marker, geometry, isSelected, isHovered } of eachMarker(
+    positionedGlyph,
+    model
+  )) {
+    if (!geometry.isRay) {
       continue;
     }
-    if (!geometry.isRay) {
+    // A stale ray is a plain dot and no arrow: there is no direction to believe in and
+    // no number to report. It is still grabbable, and dragging it onto a segment is
+    // what repairs it.
+    if (geometry.stale) {
+      drawGrips(
+        context,
+        parameters,
+        geometry,
+        isSelected,
+        isHovered,
+        parameters.staleColor
+      );
       continue;
     }
 
     const { anchorPoint, farPoint, secondFarPoint } = geometry;
+    const color = isSelected ? parameters.selectedColor : parameters.strokeColor;
     context.lineWidth = isSelected
       ? parameters.strokeWidth * 2
       : parameters.strokeWidth;
-    context.strokeStyle = parameters.strokeColor;
-    context.fillStyle = parameters.strokeColor;
+    context.strokeStyle = color;
+    context.fillStyle = color;
 
     const tips = [farPoint, secondFarPoint].filter((point) => point);
     for (const tip of tips) {
@@ -120,7 +162,7 @@ function drawMarkerRays(context, positionedGlyph, parameters, model, controller)
       const direction = vector.normalizeVector(vector.subVectors(tip, anchorPoint));
       drawArrowHead(context, tip, direction, parameters.arrowSize);
     }
-    fillCircle(context, anchorPoint.x, anchorPoint.y, parameters.anchorRadius);
+    drawGrips(context, parameters, geometry, isSelected, isHovered, color);
 
     const midpoint = tips.length
       ? vector.addVectors(
@@ -132,45 +174,45 @@ function drawMarkerRays(context, positionedGlyph, parameters, model, controller)
   }
 }
 
-// A stale marker keeps its id, its target and its group, and is listed as broken in the
-// panel. On canvas it is a grey dot at the last place its anchor is known to have been,
-// so it can be found and re-anchored rather than hunted for. Where even that is unknown
-// it draws nothing, and the panel is the only way to it.
-function drawStaleMarker(context, parameters, geometry) {
-  context.fillStyle = parameters.staleBlobColor;
-  for (const point of geometry.points || []) {
-    fillCircle(context, point.x, point.y, parameters.anchorRadius);
-  }
-}
-
 function drawMarkerDimensions(context, positionedGlyph, parameters, model, controller) {
-  for (const { marker, geometry, isSelected } of eachMarker(positionedGlyph, model)) {
-    if (geometry.stale || geometry.isRay) {
+  for (const { marker, geometry, isSelected, isHovered } of eachMarker(
+    positionedGlyph,
+    model
+  )) {
+    if (geometry.isRay) {
+      continue;
+    }
+    if (geometry.stale) {
+      drawGrips(
+        context,
+        parameters,
+        geometry,
+        isSelected,
+        isHovered,
+        parameters.staleColor
+      );
       continue;
     }
     const [p1, p2] = geometry.points;
-    const along = vector.normalizeVector(vector.subVectors(p2, p1));
-    const out = vector.mulVectorScalar(
-      { x: -along.y, y: along.x },
-      parameters.witnessGap
-    );
+    const [q1, q2] = geometry.arrows;
+    const along = geometry.along;
+    const color = isSelected ? parameters.selectedColor : parameters.strokeColor;
 
     context.lineWidth = isSelected
       ? parameters.strokeWidth * 2
       : parameters.strokeWidth;
-    context.strokeStyle = parameters.strokeColor;
-    context.fillStyle = parameters.strokeColor;
+    context.strokeStyle = color;
+    context.fillStyle = color;
 
     // Extension lines out to the measured line, then the measured line itself, in the
-    // AutoCAD idiom: the number sits clear of the geometry it measures.
-    for (const point of [p1, p2]) {
-      strokeLine(context, point.x, point.y, point.x + out.x, point.y + out.y);
-    }
-    const q1 = vector.addVectors(p1, out);
-    const q2 = vector.addVectors(p2, out);
+    // AutoCAD idiom: the number sits clear of the geometry it measures. The arrows are
+    // where the grips are, which is why the offset is derived once, in the geometry.
+    strokeLine(context, p1.x, p1.y, q1.x, q1.y);
+    strokeLine(context, p2.x, p2.y, q2.x, q2.y);
     strokeLine(context, q1.x, q1.y, q2.x, q2.y);
     drawArrowHead(context, q1, vector.mulVectorScalar(along, -1), parameters.arrowSize);
     drawArrowHead(context, q2, along, parameters.arrowSize);
+    drawGrips(context, parameters, geometry, isSelected, isHovered, color);
 
     const midpoint = vector.addVectors(
       q1,
@@ -183,6 +225,8 @@ function drawMarkerDimensions(context, positionedGlyph, parameters, model, contr
 const MARKER_COLORS = {
   colors: {
     strokeColor: "#08AD",
+    selectedColor: "#06CF",
+    staleColor: "#0BBC",
     blobColor: "#FFFB",
     textColor: "#000B",
     staleBlobColor: "#8888",
@@ -190,6 +234,8 @@ const MARKER_COLORS = {
   },
   colorsDarkMode: {
     strokeColor: "#6BFD",
+    selectedColor: "#9EFF",
+    staleColor: "#4CCC",
     blobColor: "#444B",
     textColor: "#FFFB",
     staleBlobColor: "#8888",
@@ -207,7 +253,8 @@ registerVisualizationLayerDefinition({
   screenParameters: {
     strokeWidth: 1,
     fontSize: 12,
-    anchorRadius: 3,
+    gripRadius: 4,
+    hoverRingGap: 3,
     arrowSize: 7,
   },
   ...MARKER_COLORS,
@@ -224,9 +271,59 @@ registerVisualizationLayerDefinition({
   screenParameters: {
     strokeWidth: 1,
     fontSize: 12,
+    gripRadius: 4,
+    hoverRingGap: 3,
     arrowSize: 7,
-    witnessGap: 24,
   },
   ...MARKER_COLORS,
   draw: drawMarkerDimensions,
+});
+
+// What a click would place, drawn while the marker tool hovers a contour. Without it the
+// tool gives no sign of what it is aiming at, and a placement is a guess.
+const PLACEMENT_PREVIEW_IDENTIFIER = "fontra.markers.placement";
+
+let thePlacementPreview = null;
+
+export function setMarkerPlacementPreview(preview) {
+  thePlacementPreview = preview;
+}
+
+function drawPlacementPreview(context, positionedGlyph, parameters, model, controller) {
+  const preview = thePlacementPreview;
+  if (!preview) {
+    return;
+  }
+  context.strokeStyle = parameters.previewColor;
+  context.fillStyle = parameters.previewColor;
+  context.lineWidth = parameters.strokeWidth;
+  if (preview.farPoint) {
+    strokeLine(
+      context,
+      preview.point.x,
+      preview.point.y,
+      preview.farPoint.x,
+      preview.farPoint.y
+    );
+    drawArrowHead(
+      context,
+      preview.farPoint,
+      vector.normalizeVector(vector.subVectors(preview.farPoint, preview.point)),
+      parameters.arrowSize
+    );
+  }
+  fillCircle(context, preview.point.x, preview.point.y, parameters.gripRadius);
+}
+
+registerVisualizationLayerDefinition({
+  identifier: PLACEMENT_PREVIEW_IDENTIFIER,
+  name: "sidebar.user-settings.glyph.markers.placement",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: false,
+  defaultOn: true,
+  zIndex: 612,
+  screenParameters: { strokeWidth: 1, gripRadius: 4, arrowSize: 7 },
+  colors: { previewColor: "#08A8" },
+  colorsDarkMode: { previewColor: "#6BFA" },
+  draw: drawPlacementPreview,
 });

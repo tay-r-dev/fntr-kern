@@ -950,19 +950,12 @@ export class SceneModel {
     const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
     const grips = [];
     for (const marker of markers) {
+      // Stale markers keep their grips: a broken marker has to be reachable, because
+      // dragging it to a new spot is how it is repaired.
       const geometry = markerGeometry(positionedGlyph.glyph, marker, skeletonData);
-      if (geometry.stale) {
-        continue;
+      for (const grip of geometry.grips) {
+        grips.push({ ...grip, markerId: marker.id });
       }
-      // A ray has one grip whichever of its two points is grabbed; a dimension has one
-      // grip per end, so an end can be re-anchored on its own.
-      geometry.grips.forEach((point, i) => {
-        grips.push({
-          point,
-          markerId: marker.id,
-          endIndex: geometry.isRay ? undefined : i,
-        });
-      });
     }
     return grips;
   }

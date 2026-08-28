@@ -1,7 +1,10 @@
+import { measureRay } from "@fontra/core/marker-measure.js";
 import { computeMarkerSignature } from "@fontra/core/marker-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
+import * as vector from "@fontra/core/vector.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
 import { deleteMarkers, handleMarkerDrag, placeMarker } from "./marker-editing.js";
+import { setMarkerPlacementPreview } from "./visualization-layer-markers.js";
 
 // The escape hatch, and deliberately narrow: this tool places, moves and deletes
 // markers, and delegates everything else to the pointer tool.
@@ -26,12 +29,70 @@ export class MarkerTool extends BaseTool {
     return this.editor.tools["pointer-tool"];
   }
 
+  // The tool says what a click would do. Hovering a marker offers its grip; hovering a
+  // contour previews the ray that would be placed there, cast and measured exactly as
+  // the placement would cast it. Without this the tool aims blind.
   handleHover(event) {
     if (!this.sceneModel.selectedGlyph?.isEditing) {
+      setMarkerPlacementPreview(null);
       this.pointerTool.handleHover(event);
       return;
     }
+    const point = this.sceneController.localPoint(event);
+    const size = this.sceneController.mouseClickMargin;
+    const markerTarget = this.sceneModel.markerAtPoint(point, size);
+    this.sceneController.hoverSelection = markerTarget
+      ? new Set([
+          markerTarget.endIndex === undefined
+            ? `marker/${markerTarget.markerId}`
+            : `markerEnd/${markerTarget.markerId}/${markerTarget.endIndex}`,
+        ])
+      : new Set();
+
+    setMarkerPlacementPreview(
+      markerTarget ? null : this.previewAt(point, event.altKey)
+    );
+    this.canvasController.requestUpdate();
     this.setCursor();
+  }
+
+  previewAt(point, wantDimension) {
+    const positionedGlyph = this.sceneModel.getSelectedPositionedGlyph();
+    if (!positionedGlyph) {
+      return null;
+    }
+    const glyphController = positionedGlyph.glyph;
+    const local = {
+      x: point.x - positionedGlyph.x,
+      y: point.y - positionedGlyph.y,
+    };
+    if (wantDimension) {
+      const end = nearestPathPointEnd(glyphController.flattenedPath, local);
+      if (!end) {
+        return null;
+      }
+      return {
+        point: glyphController.flattenedPath.getContourPoint(
+          end.contourIndex,
+          end.pointIndex
+        ),
+      };
+    }
+    const hitTester = glyphController.flattenedPathHitTester;
+    const hit = hitTester.findNearest(local);
+    if (!hit || hit.contourIndex === undefined) {
+      return null;
+    }
+    const derivative = hit.segment.bezier.derivative(hit.t);
+    const normal = vector.normalizeVector({ x: -derivative.y, y: derivative.x });
+    const anchorPoint = hit.segment.bezier.get(hit.t);
+    const measured = measureRay(hitTester, anchorPoint, normal);
+    return { point: anchorPoint, farPoint: measured?.farPoint || null };
+  }
+
+  deactivate() {
+    setMarkerPlacementPreview(null);
+    super.deactivate();
   }
 
   setCursor() {

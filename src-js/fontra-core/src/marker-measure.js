@@ -145,10 +145,10 @@ export function markerGeometry(glyphController, marker, skeletonData) {
     end.kind === "cast" ? null : resolveMarkerAnchor(end, { path, skeletonData })
   );
 
-  // A stale marker is still resolved where it can be, so it can be drawn greyed at the
-  // place it used to point and re-anchored there. It carries no measurement: the number
-  // is exactly what must not be trusted. Where the address no longer resolves at all
-  // there is nothing to draw, and the panel is the only way to it.
+  // A stale marker is still resolved where it can be, and it keeps its grips: it draws
+  // as a plain dot at the place it used to point, and it is dragged to a new spot to
+  // re-anchor it. A broken marker you cannot touch is a broken marker you cannot fix.
+  // It carries no measurement — the number is exactly what must not be trusted.
   const stale =
     markerIsStale(marker, path) ||
     anchors.some((anchor) => anchor && anchor.verdict !== "ok");
@@ -156,13 +156,22 @@ export function markerGeometry(glyphController, marker, skeletonData) {
     const points = anchors
       .filter((anchor) => anchor?.verdict === "ok")
       .map((anchor) => anchor.point);
-    return { stale: true, grips: [], points, distance: null };
+    const isRay = marker.ends.some((end) => end.kind === "cast");
+    return {
+      stale: true,
+      isRay,
+      grips: points.map((point, i) => ({ point, endIndex: isRay ? undefined : i })),
+      points,
+      distance: null,
+    };
   }
 
   const hitTester = glyphController.flattenedPathHitTester;
   const isRay = marker.ends.some((end) => end.kind === "cast");
 
   if (isRay) {
+    // A ray has ONE grip whichever end is grabbed: the far end is a cast and owns
+    // nothing, so there is only one thing to drag.
     const anchorIndex = anchors.findIndex((anchor) => anchor);
     const anchor = anchors[anchorIndex];
     const measured = measureSkeletonAnchor(
@@ -171,9 +180,12 @@ export function markerGeometry(glyphController, marker, skeletonData) {
       skeletonData,
       path
     );
-    const grips = [anchor.point];
+    const grips = [{ point: anchor.point }];
     if (measured?.farPoint) {
-      grips.push(measured.farPoint);
+      grips.push({ point: measured.farPoint });
+    }
+    if (measured?.secondFarPoint) {
+      grips.push({ point: measured.secondFarPoint });
     }
     return {
       stale: false,
@@ -186,12 +198,29 @@ export function markerGeometry(glyphController, marker, skeletonData) {
     };
   }
 
+  // A dimension is grabbed by its ARROWS, not by the points it is attached to. The
+  // points belong to the outline and are wanted for ordinary point editing; the arrows
+  // are the marker's own, and they sit clear of the geometry where there is room to
+  // aim at them.
   const points = anchors.map((anchor) => anchor.point);
+  const along = vector.normalizeVector(vector.subVectors(points[1], points[0]));
+  const out = vector.mulVectorScalar(
+    { x: -along.y, y: along.x },
+    DIMENSION_WITNESS_GAP
+  );
+  const arrows = points.map((point) => vector.addVectors(point, out));
   return {
     stale: false,
     isRay: false,
-    grips: points,
+    grips: arrows.map((point, i) => ({ point, endIndex: i })),
     points,
+    arrows,
+    along,
     distance: measureDimension(points[0], points[1]),
   };
 }
+
+// How far a dimension's arrows sit off the line it measures, in font units. It is a font
+// unit and not a screen parameter because the grip and the drawing must agree at every
+// zoom: a grip that drifts from what is drawn is a grip you cannot hit.
+export const DIMENSION_WITNESS_GAP = 40;

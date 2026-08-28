@@ -16,6 +16,7 @@ import {
   getMarkerData,
   getMarkerGroups,
   getMarkers,
+  markerIsStale,
   setMarkerData,
 } from "@fontra/core/marker-model.js";
 
@@ -283,6 +284,7 @@ export async function handleMarkerDrag({
     return;
   }
 
+  const wasStale = markerIsStale(startMarker, glyphController.flattenedPath);
   const signature = computeMarkerSignature(glyphController.flattenedPath);
   const hitTester = glyphController.flattenedPathHitTester;
 
@@ -308,8 +310,17 @@ export async function handleMarkerDrag({
         continue;
       }
       const point = sceneController.localPoint(event);
+      // A healthy ray stays on the contour it started on: unrestricted, the anchor would
+      // jump to whatever outline passed nearer the cursor. A STALE one is not restricted,
+      // because the contour it names is exactly what can no longer be trusted — dragging
+      // it onto any live segment is how it is repaired.
       const newEnd = isRay
-        ? nearestEndOnContour(hitTester, point, positionedGlyph, startEnd.contourIndex)
+        ? nearestEndOnContour(
+            hitTester,
+            point,
+            positionedGlyph,
+            wasStale ? undefined : startEnd.contourIndex
+          )
         : nearestPointEnd(glyphController, point, positionedGlyph);
       if (!newEnd) {
         // A dimension end released on nothing stays where it was: an end that could be
@@ -342,10 +353,15 @@ export async function handleMarkerDrag({
   }, MARKER_EDIT_SENDER);
 }
 
+// Re-anchoring repairs a marker, so it clears the declared break as well as writing the
+// address and the signature. A marker dragged onto live geometry and still reading
+// broken would be unfixable by the only gesture that fixes it.
 function withEnd(marker, endIndex, end, signature) {
   const ends = [...marker.ends];
   ends[endIndex] = end;
-  return { ...marker, ends, signature };
+  const repaired = { ...marker, ends, signature };
+  delete repaired.broken;
+  return repaired;
 }
 
 function nearestEndOnContour(hitTester, point, positionedGlyph, contourIndex) {
@@ -354,7 +370,10 @@ function nearestEndOnContour(hitTester, point, positionedGlyph, contourIndex) {
     y: point.y - positionedGlyph.y,
   };
   const hit = hitTester.findNearest(local);
-  if (!hit || hit.contourIndex !== contourIndex) {
+  if (!hit || hit.contourIndex === undefined) {
+    return undefined;
+  }
+  if (contourIndex !== undefined && hit.contourIndex !== contourIndex) {
     return undefined;
   }
   return {
