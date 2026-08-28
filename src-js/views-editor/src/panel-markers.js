@@ -158,7 +158,10 @@ export default class MarkersPanel extends Panel {
     // in place and ungrouped.
     formContents.push({ type: "header", label: translate("sidebar.markers.groups") });
     if (!groups.length) {
-      formContents.push({ type: "text", value: translate("sidebar.markers.no-groups") });
+      formContents.push({
+        type: "text",
+        value: translate("sidebar.markers.no-groups"),
+      });
     }
     for (const group of groups) {
       const members = markers.filter((marker) => marker.groupId === group.id);
@@ -245,11 +248,11 @@ export default class MarkersPanel extends Panel {
         key: `target:${marker.id}`,
         value: marker.target ?? "",
         allowEmptyField: true,
-        auxiliaryElement: html.span({}, [
+        auxiliaryElement: html.span({ style: ROW_CONTROLS_STYLE }, [
           this._groupSelect(marker, groupOptions),
           html.button(
             {
-              class: "marker-row-button",
+              style: ROW_BUTTON_STYLE,
               title: translate(
                 marker.hidden
                   ? "sidebar.markers.show-marker"
@@ -275,7 +278,7 @@ export default class MarkersPanel extends Panel {
   _groupSelect(marker, groupOptions) {
     const select = html.select(
       {
-        class: "marker-row-select",
+        style: "max-width: 5em; flex: 0 1 auto;",
         title: translate("sidebar.markers.group"),
         onchange: () => this.assignGroup(marker.id, select.value || undefined),
       },
@@ -286,7 +289,7 @@ export default class MarkersPanel extends Panel {
   }
 
   _removeButton(title, onclick) {
-    return html.button({ class: "marker-row-button", title, onclick }, ["×"]);
+    return html.button({ style: ROW_BUTTON_STYLE, title, onclick }, ["×"]);
   }
 
   // Handing the form a new set of field descriptions rebuilds every input from scratch,
@@ -371,6 +374,13 @@ export default class MarkersPanel extends Panel {
     await setMarkerGroup(this.sceneController, markerId, groupId);
   }
 }
+
+// The controls sit in the form's own shadow root, so they carry their sizing with them:
+// nothing outside can reach in with a stylesheet.
+const ROW_CONTROLS_STYLE =
+  "display: flex; align-items: center; gap: 0.2em; flex: 0 0 auto;";
+const ROW_BUTTON_STYLE =
+  "flex: 0 0 auto; padding: 0 0.3em; background: none; border: none; cursor: pointer; font-size: 1em;";
 
 function isRay(marker) {
   return (marker.ends || []).some((end) => end.kind === "cast");

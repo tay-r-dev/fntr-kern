@@ -425,11 +425,16 @@ export class Form extends SimpleElement {
     this._addText(valueElement, fieldItem);
   }
 
+  // The text goes in a span of its own rather than into the cell. A packed row shares one
+  // cell between three fields, and writing the cell's innerText — on build or on every
+  // later setValue — would throw away whatever else is standing in it.
   _addText(valueElement, fieldItem) {
     if (fieldItem.value !== undefined) {
-      valueElement.innerText = fieldItem.value;
-      this._fieldGetters[fieldItem.key] = () => valueElement.innerText;
-      this._fieldSetters[fieldItem.key] = (value) => (valueElement.innerText = value);
+      const textElement = document.createElement("span");
+      textElement.innerText = fieldItem.value;
+      valueElement.appendChild(textElement);
+      this._fieldGetters[fieldItem.key] = () => textElement.innerText;
+      this._fieldSetters[fieldItem.key] = (value) => (textElement.innerText = value);
     }
   }
 
