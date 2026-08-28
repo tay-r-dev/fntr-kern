@@ -1553,49 +1553,68 @@ between two points and measures the distance between them.
 measured distance. The number is derived on every frame, the way a rib is. A stored
 measurement is a number that drifts.
 
-### The one rule
+### An anchor is a place, not an index
 
-> The point count under an anchor changes, the marker goes stale. Anything else, the
-> marker rides the geometry.
+An address is how a place is written down; the place itself is what the designer put the
+marker on. When the two disagree, the place wins. Three cases, and they are exhaustive:
 
-Two cases, not three. Riding needs no code at all: the anchor is a parameter on a curve
-and the curve is read live, so a marker watched while a stem is dragged updates every
-frame. That is the feature working, not a special case.
+| #   | what happened                                           | what the marker does                                       |
+| --- | ------------------------------------------------------- | ---------------------------------------------------------- |
+| 1   | points moved, indices unchanged                         | rides the curve — the address still means what it meant    |
+| 2   | indices changed, the outline is still there             | stays put; its address is rewritten to where that place is |
+| 3   | indices changed and the outline moved out from under it | goes stale **in the same place it last stood**             |
 
-The **signature** is the array of per-contour point counts over the flattened path, plus
-each contour's closed flag, taken when the anchors were last written. It is a count, not
-a geometry. There is no tolerance in it, nothing is searched for, and no stored
-coordinate is ever compared against a drawn one. It verifies an address; it never
-recovers one.
+Case 1 needs no code: the anchor is a parameter on a curve and the curve is read live, so
+a marker watched while a stem is dragged updates every frame.
 
-A count change on **any** contour stales, not only the anchor's own. An added or removed
-contour shifts every index after it, and telling "shifted" from "resized" apart is
-exactly the search this design refuses to do.
+Case 2 covers inserting a point, deleting one elsewhere, adding or removing a whole
+contour, and reversing a contour. All of them shift indices without moving the outline,
+and none of them should disturb a marker.
 
-**Stale is derived on read and never written to the file.** So undoing past the
-structural edit restores the count and the marker comes back to life on its own. A stale
-flag written into the file would survive the undo and leave a dead marker on a healthy
-contour.
+Case 3 leaves the marker where it was rather than deleting it or hiding it, so it can be
+found and dragged somewhere useful. A broken marker that vanishes is a broken marker you
+cannot fix.
 
-### What the rule buys, and what it costs
+### The two things it reads
 
-It **deletes an obligation rather than adding one**. No tool has to update marker anchors
-when it restructures a point list — not the pen, not the knife, not shape append,
-delete-selection, paste or break-contour. The alternative was an audit of every tool that
-touches a point list, with a quiet wrong measurement as the cost of missing one. The
-donor's generated-contour indices produced exactly that quiet failure twice.
+**The signature** — per-contour point counts and closed flags, taken when the anchors
+were last written — decides only _which case applies_. It is the answer to "do these
+indices still mean what they meant?", and nothing more. It is not a verdict: an earlier
+design used it as one, and an inserted point anywhere in the glyph then broke every
+marker in it.
 
-The price, stated: inserting a point on a contour stales every marker on it, even where
-the curve through the anchor is unchanged. That is an ordinary edit and it will be felt.
-Re-anchoring is one click.
+**The remembered position** — where the anchor stood when it was last written — is the
+one stored coordinate in the feature. Where the indices moved, the outline is checked
+against it: if the place is still there, the address is rewritten to wherever it now
+lives, and if it is gone, the marker stales there.
 
-**Reverse contour is the single named exception**, because it keeps the count and the
-closed flag and turns the point order around, so every anchor on that contour would name
-a different place while the signature said fine. It therefore declares those markers
-broken in the same change. Declaring is honest; a signature written to disagree on
-purpose would be a signature that lies. Measured: a skeleton reversal leaves the
-centerline as drawn, so a centerline anchor is safe, and turns the generated outline over
-at the same point count, so an anchor on one of those is declared broken too.
+That coordinate is not a way of recovering a lost anchor, and the distinction is the
+whole of rail R-D. It never searches among candidates and never picks a best match. It
+asks one question — _is the outline still where this anchor was?_ — and accepts only an
+answer within half a font unit. An intact curve, however it was resubdivided, answers
+yes; anything else answers no and the marker says so.
+
+**Stale is derived on read and never written**, so undoing the edit brings the marker
+back on its own.
+
+### Reverse contour needs no special case
+
+It leaves the outline exactly where it is and only turns the point order around, so the
+anchor's place is untouched and case 2 rewrites the address. Under the earlier
+count-based rule this was the one structural change that had to declare its markers
+broken by hand; it no longer is, and neither is anything else. **No tool owes marker
+anchors any bookkeeping.**
+
+### A marker can be dragged anywhere
+
+Onto another contour, or off the outline altogether. The outline is magnetic: within
+reach the marker takes hold of it and rides it, past that reach it lets go and sits where
+it is dropped. A marker attached to nothing is **free**, measures nothing, and cannot
+break.
+
+This is what makes case 3 repairable — a stale marker is dragged back onto live geometry
+and is whole again — and it is why a placed marker is not imprisoned on the contour it
+was first put on.
 
 **Generated contours are path anchors and follow the path rule.** Point-count stability
 across parameter values (§3) means a rib drag, a width edit or a skeleton move keeps the

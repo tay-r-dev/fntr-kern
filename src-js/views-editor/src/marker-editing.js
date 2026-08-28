@@ -16,8 +16,8 @@ import {
   getMarkerData,
   getMarkerGroups,
   getMarkers,
-  markerIsStale,
   setMarkerData,
+  withAnchorPosition,
 } from "@fontra/core/marker-model.js";
 
 export const MARKER_EDIT_SENDER = { senderID: "marker-editing" };
@@ -213,36 +213,6 @@ export function getVisibleMarkers(layerGlyph) {
   return getMarkers(layerGlyph).filter((marker) => markerIsVisible(layerGlyph, marker));
 }
 
-// Reverse contour is the one structural change that preserves the point count and the
-// closed flag while moving the geometry out from under every address on that contour. So
-// it declares those markers broken, in the same change that reverses. Declaring is
-// honest; writing a signature that disagrees on purpose would be a signature that lies.
-//
-// Called from inside an existing recorded edit, so it mutates the layer glyph directly
-// rather than opening an edit of its own.
-export function breakMarkersOnContours(layerGlyph, contourIndices) {
-  const affected = new Set(contourIndices);
-  if (!affected.size) {
-    return;
-  }
-  mutateMarkerData(layerGlyph, (data) => {
-    let changed = false;
-    data.markers = data.markers.map((marker) => {
-      const touches = marker.ends.some(
-        (end) =>
-          (end.kind === "pathSegment" || end.kind === "pathPoint") &&
-          affected.has(end.contourIndex)
-      );
-      if (!touches || marker.broken) {
-        return marker;
-      }
-      changed = true;
-      return { ...marker, broken: true };
-    });
-    return changed;
-  });
-}
-
 // Dragging a placed marker.
 //
 // A ray drags along the outline, not across the glyph: the anchor is a point on a curve,
@@ -279,12 +249,11 @@ export async function handleMarkerDrag({
     endIndex ?? startMarker.ends.findIndex((end) => end.kind !== "cast");
   const startEnd = startMarker.ends[draggedEndIndex];
   const isRay = startMarker.ends.some((end) => end.kind === "cast");
-  if (isRay && startEnd.kind !== "pathSegment") {
+  if (isRay && startEnd.kind === "skeletonPoint") {
     // A ray anchored on a skeleton point is dragged as a skeleton point, not here.
     return;
   }
 
-  const wasStale = markerIsStale(startMarker, glyphController.flattenedPath);
   const signature = computeMarkerSignature(glyphController.flattenedPath);
   const hitTester = glyphController.flattenedPathHitTester;
 
@@ -310,21 +279,21 @@ export async function handleMarkerDrag({
         continue;
       }
       const point = sceneController.localPoint(event);
-      // A healthy ray stays on the contour it started on: unrestricted, the anchor would
-      // jump to whatever outline passed nearer the cursor. A STALE one is not restricted,
-      // because the contour it names is exactly what can no longer be trusted — dragging
-      // it onto any live segment is how it is repaired.
+      // A ray goes wherever it is dragged — onto another contour, or off the outline
+      // altogether. The magnet does the resisting, not a restriction: a marker held to
+      // the contour it happened to start on is one that cannot be moved somewhere more
+      // useful, and a broken one has to be movable to be repairable at all.
       const newEnd = isRay
         ? nearestEndOnContour(
             hitTester,
+            glyphController.flattenedPath,
             point,
-            positionedGlyph,
-            wasStale ? undefined : startEnd.contourIndex
+            positionedGlyph
           )
         : nearestPointEnd(glyphController, point, positionedGlyph);
       if (!newEnd) {
-        // A dimension end released on nothing stays where it was: an end that could be
-        // dropped on empty space would be measuring something it no longer names.
+        // A dimension end released on nothing stays where it was: both its ends name
+        // points, and one dropped on empty space would name nothing.
         continue;
       }
       dragged = true;
@@ -364,24 +333,34 @@ function withEnd(marker, endIndex, end, signature) {
   return repaired;
 }
 
-function nearestEndOnContour(hitTester, point, positionedGlyph, contourIndex) {
+// Where a dragged ray lands. The outline is magnetic: within reach the marker takes hold
+// of it and rides it, and past that reach it lets go and sits wherever it was dropped.
+// A marker can therefore be moved from contour to contour, or left on empty canvas,
+// which is what makes a broken one repairable and a placed one re-usable.
+//
+// The reach is in font units and is compared against the true nearest point on the
+// outline, so the magnet grips a curve along its whole length, not only near its ends.
+function nearestEndOnContour(hitTester, path, point, positionedGlyph) {
   const local = {
     x: point.x - positionedGlyph.x,
     y: point.y - positionedGlyph.y,
   };
   const hit = hitTester.findNearest(local);
-  if (!hit || hit.contourIndex === undefined) {
-    return undefined;
+  if (hit && hit.contourIndex !== undefined) {
+    const distance = Math.hypot(hit.x - local.x, hit.y - local.y);
+    if (distance <= MARKER_MAGNET_REACH) {
+      return withAnchorPosition(
+        {
+          kind: "pathSegment",
+          contourIndex: hit.contourIndex,
+          segmentIndex: hit.segmentIndex,
+          t: hit.t,
+        },
+        path
+      );
+    }
   }
-  if (contourIndex !== undefined && hit.contourIndex !== contourIndex) {
-    return undefined;
-  }
-  return {
-    kind: "pathSegment",
-    contourIndex: hit.contourIndex,
-    segmentIndex: hit.segmentIndex,
-    t: hit.t,
-  };
+  return { kind: "free", x: local.x, y: local.y };
 }
 
 function nearestPointEnd(glyphController, point, positionedGlyph) {
@@ -404,12 +383,20 @@ function nearestPointEnd(glyphController, point, positionedGlyph) {
   if (!best || best.distance > MARKER_REANCHOR_RADIUS) {
     return undefined;
   }
-  return {
-    kind: "pathPoint",
-    contourIndex: best.contourIndex,
-    pointIndex: best.pointIndex,
-  };
+  return withAnchorPosition(
+    {
+      kind: "pathPoint",
+      contourIndex: best.contourIndex,
+      pointIndex: best.pointIndex,
+    },
+    path
+  );
 }
+
+// How near the outline a dragged marker has to be, in font units, before it takes hold
+// of it. Beyond that it is free and sits wherever it is dropped. This is the magnet:
+// inside the reach the marker resists being pulled off, past it the marker lets go.
+const MARKER_MAGNET_REACH = 24;
 
 // A dimension end re-anchors to a point it is released near, and to nothing otherwise.
 const MARKER_REANCHOR_RADIUS = 30;

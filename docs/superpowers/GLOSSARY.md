@@ -321,11 +321,16 @@ where the outline leaves the black.
 with both.
 
 **Signature** — the per-contour point counts and closed flags a marker's anchors were written
-against. A count, not a geometry: it verifies an address and never searches for one.
+against. It decides only whether the indices still mean what they meant, which says which of the
+three anchoring cases applies. It is not a verdict on its own.
 
-**Stale** — a marker whose signature no longer matches the drawing, so its address can no longer be
-trusted. Derived on read and never written, so an undo revives the marker. It keeps its id, its
-target and its group, draws greyed with no number, and is listed as broken in the panel.
+**Stale** — a marker whose place is gone from the outline. It is not about indices moving: an
+index that shifted is simply rewritten. Derived on read and never written, so an undo revives the
+marker. It stays exactly where it last stood, keeps its id, its target and its group, draws as a
+plain dot with no number, and is repaired by dragging it back onto geometry.
+
+**Free** — a marker attached to nothing, sitting where it was dropped. It measures nothing and
+cannot go stale.
 
 ### Project words
 

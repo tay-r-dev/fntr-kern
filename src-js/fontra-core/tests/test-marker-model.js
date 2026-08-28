@@ -6,6 +6,7 @@ import {
   getMarkerData,
   getMarkerGroups,
   getMarkers,
+  markerIndicesChanged,
   markerIsStale,
   setMarkerData,
   withoutMarkerData,
@@ -89,61 +90,42 @@ function markerOn(contourIndex, path) {
   };
 }
 
-describe("marker-model — the stale rule", () => {
-  it("is not stale against the path it was written on", () => {
-    const path = twoContourPath();
-    expect(markerIsStale(markerOn(0, path), path)).to.equal(false);
+// The count is no longer the verdict — see test-marker-anchoring.js for the three
+// cases it decides between. What is left here is the signature itself: whether the
+// addresses in a marker still mean what they meant when it was written.
+describe("marker-model — the signature", () => {
+  it("says nothing moved when nothing moved", () => {
+    const marker = markerOn(0, twoContourPath());
+    expect(markerIndicesChanged(marker, twoContourPath())).to.equal(false);
   });
 
-  it("is not stale when the points only move", () => {
+  it("says nothing moved when the points only move", () => {
     const marker = markerOn(0, twoContourPath());
     const moved = twoContourPath();
     moved.coordinates[0] = -40;
     moved.coordinates[1] = -40;
-    expect(markerIsStale(marker, moved)).to.equal(false);
+    expect(markerIndicesChanged(marker, moved)).to.equal(false);
   });
 
-  it("is stale when a point is inserted on its own contour", () => {
+  it("says the indices moved when a point is inserted", () => {
     const marker = markerOn(0, twoContourPath());
     const grown = twoContourPath();
     grown.insertPoint(0, 1, { x: 50, y: 0 });
-    expect(markerIsStale(marker, grown)).to.equal(true);
+    expect(markerIndicesChanged(marker, grown)).to.equal(true);
   });
 
-  it("is stale when a point is deleted from its own contour", () => {
-    const marker = markerOn(0, twoContourPath());
-    const shrunk = twoContourPath();
-    shrunk.deletePoint(0, 1);
-    expect(markerIsStale(marker, shrunk)).to.equal(true);
-  });
-
-  it("is stale when ANY contour changes count", () => {
+  it("says the indices moved when ANY contour changes count", () => {
     const marker = markerOn(0, twoContourPath());
     const other = twoContourPath();
     other.insertPoint(1, 1, { x: 260, y: 10 });
-    expect(markerIsStale(marker, other)).to.equal(true);
+    expect(markerIndicesChanged(marker, other)).to.equal(true);
   });
 
-  it("is stale when a contour is removed", () => {
-    const marker = markerOn(1, twoContourPath());
-    const fewer = twoContourPath();
-    fewer.deleteContour(0);
-    expect(markerIsStale(marker, fewer)).to.equal(true);
-  });
-
-  it("is stale when a closed contour is opened", () => {
+  it("says the indices moved when a closed contour is opened", () => {
     const marker = markerOn(0, twoContourPath());
     const opened = twoContourPath();
     opened.contourInfo[0].isClosed = false;
-    expect(markerIsStale(marker, opened)).to.equal(true);
-  });
-
-  it("comes back when the count is restored, which is the undo property", () => {
-    const marker = markerOn(0, twoContourPath());
-    const grown = twoContourPath();
-    grown.insertPoint(0, 1, { x: 50, y: 0 });
-    expect(markerIsStale(marker, grown)).to.equal(true);
-    expect(markerIsStale(marker, twoContourPath())).to.equal(false);
+    expect(markerIndicesChanged(marker, opened)).to.equal(true);
   });
 
   it("never stales a skeleton anchor", () => {
@@ -155,9 +137,21 @@ describe("marker-model — the stale rule", () => {
       ],
       signature: computeMarkerSignature(twoContourPath()),
     };
+    const skeletonData = {
+      contours: [
+        {
+          id: "c1",
+          closed: false,
+          points: [
+            { id: "p1", x: 0, y: 50 },
+            { id: "p2", x: 100, y: 50 },
+          ],
+        },
+      ],
+    };
     const fewer = twoContourPath();
     fewer.deleteContour(0);
-    expect(markerIsStale(marker, fewer)).to.equal(false);
+    expect(markerIsStale(marker, fewer, skeletonData)).to.equal(false);
   });
 });
 

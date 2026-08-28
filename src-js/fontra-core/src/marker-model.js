@@ -77,26 +77,134 @@ export function computeMarkerSignature(path) {
   return { counts, closed };
 }
 
-export function markerIsStale(marker, path) {
-  if (marker.broken) {
-    // Declared broken by an edit that preserved the count but moved the geometry out
-    // from under the address — reversing a contour is the one such edit. Declaring it is
-    // honest; a signature written to disagree on purpose would be a signature that lies.
-    return true;
+// Where an anchor last stood, remembered so a later edit can be checked against it.
+//
+// This is the one stored coordinate in the whole feature, and it earns its place: it is
+// never used to resolve a healthy anchor, and it never searches among candidates. It
+// answers exactly one question — is the outline still where this anchor was? — and it
+// answers it by looking, not by guessing. Everything else is still derived on read.
+export function withAnchorPosition(end, path, skeletonData) {
+  if (end.kind !== "pathSegment" && end.kind !== "pathPoint") {
+    return end;
   }
-  if (!marker.ends?.some(endIsPathAnchored)) {
-    // Skeleton anchors carry stable ids and cast ends own nothing. Neither can shift.
-    return false;
+  const resolved = resolveMarkerAnchor(end, { path, skeletonData });
+  if (resolved.verdict !== "ok") {
+    return end;
+  }
+  return { ...end, at: { x: resolved.point.x, y: resolved.point.y } };
+}
+
+// How far the outline may have drifted from the remembered spot and still count as the
+// same place, in font units. Subdividing a curve is exact, so an intact outline lands
+// within rounding; half a unit on a 1000-unit em is far below anything a designer would
+// call "the same place", and far above the arithmetic.
+const REPAIR_TOLERANCE = 0.5;
+
+// The whole anchoring rule, in one place.
+//
+//   1. The address still resolves and the outline is where the anchor left it — it
+//      rides. Points moving under it is this case, and it needs no repair.
+//   2. The address no longer names that place, but the place is still on the outline —
+//      the address is rewritten to wherever it now lives. Inserting a point, deleting
+//      one elsewhere, adding a contour and reversing a contour are all this case.
+//   3. The place is gone from the outline — stale, AT THE SAME SPOT it last stood, so
+//      it can be found and dragged somewhere useful rather than vanishing.
+export function resolveMarkerEnd(end, { path, skeletonData, indicesChanged } = {}) {
+  if (end?.kind === "free") {
+    // Attached to nothing, so nothing can break it.
+    return { verdict: "ok", end, point: { x: end.x, y: end.y } };
+  }
+  if (end?.kind !== "pathSegment" && end?.kind !== "pathPoint") {
+    const resolved = resolveMarkerAnchor(end, { path, skeletonData });
+    return { ...resolved, end };
+  }
+
+  const direct = resolveMarkerAnchor(end, { path, skeletonData });
+
+  // While the indices still mean what they meant, the address is the truth and the
+  // remembered position is only a memory. Preferring the memory here would drag a
+  // marker back to where the stem used to be instead of letting it ride the stem —
+  // which is the whole point of case 2.
+  if (!indicesChanged) {
+    return direct.verdict === "ok" ? { ...direct, end } : { verdict: "stale", end };
+  }
+
+  if (!end.at) {
+    // Written before positions were remembered. There is nothing to check against, so
+    // the address is all there is.
+    return direct.verdict === "ok" ? { ...direct, end } : { verdict: "stale", end };
+  }
+
+  const found = nearestPlaceOnPath(path, end.at);
+  if (found && isSamePlace(found.point, end.at)) {
+    const rewritten = { ...end, ...found.address, at: end.at };
+    const resolved = resolveMarkerAnchor(rewritten, { path, skeletonData });
+    if (resolved.verdict === "ok") {
+      return { ...resolved, end: rewritten };
+    }
+  }
+  return { verdict: "stale", end, point: { x: end.at.x, y: end.at.y } };
+}
+
+// Whether the addresses in a marker still mean what they meant when it was written.
+// This is what the signature is for now: not a verdict, but the switch that says which
+// of the two readings of the outline applies.
+export function markerIndicesChanged(marker, path) {
+  const then = marker.signature;
+  if (!then?.counts) {
+    return true;
   }
   const now = computeMarkerSignature(path);
-  const then = marker.signature;
-  if (!then || then.counts?.length !== now.counts.length) {
+  if (then.counts.length !== now.counts.length) {
     return true;
   }
-  // Compared whole: an added or removed contour shifts every index after it, and
-  // telling "shifted" from "resized" is the search this design refuses to do.
   return now.counts.some(
     (count, i) => count !== then.counts[i] || now.closed[i] !== then.closed[i]
+  );
+}
+
+function isSamePlace(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y) <= REPAIR_TOLERANCE;
+}
+
+// The nearest place on the outline to a remembered point. This is a measurement, not a
+// search for a lost anchor: the result is accepted only if it lands on the remembered
+// point, so it can confirm that a place still exists and never invent one.
+function nearestPlaceOnPath(path, at) {
+  if (!path) {
+    return undefined;
+  }
+  let best;
+  for (let contourIndex = 0; contourIndex < path.contourInfo.length; contourIndex++) {
+    let segmentIndex = 0;
+    for (const segment of path.iterContourDecomposedSegments(contourIndex)) {
+      const projected = new Bezier(segment.points).project(at);
+      if (projected && (!best || projected.d < best.d)) {
+        best = {
+          d: projected.d,
+          point: { x: projected.x, y: projected.y },
+          address: { contourIndex, segmentIndex, t: projected.t },
+        };
+      }
+      segmentIndex++;
+    }
+  }
+  return best;
+}
+
+// A marker is stale when any of its ends is, and an end is stale only when the place it
+// named is gone from the outline. The point count is no longer the test: counting made
+// an inserted point anywhere in the glyph break every marker in it, which is a lot of
+// false alarms to buy one rule.
+export function markerIsStale(marker, path, skeletonData) {
+  if (marker.broken) {
+    return true;
+  }
+  const indicesChanged = markerIndicesChanged(marker, path);
+  return (marker.ends || []).some(
+    (end) =>
+      end.kind !== "cast" &&
+      resolveMarkerEnd(end, { path, skeletonData, indicesChanged }).verdict !== "ok"
   );
 }
 

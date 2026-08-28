@@ -3021,3 +3021,41 @@ this is the greyed reading, without inventing any stored coordinate to do it.
 **`parseSelection` now keeps any non-integer remainder raw**, rather than only
 compound keys. Marker ids are names, not numbers, and the old rule turned them
 into NaN.
+
+## The count rule was wrong, and use showed it in a day
+
+The one rule — the point count changes, the marker goes stale — was chosen to delete an
+obligation: no tool that restructures a point list would owe marker anchors any
+bookkeeping. It did delete it. It also broke every marker in a glyph whenever a point was
+added anywhere in it, including on a contour the marker had nothing to do with. That is
+not a price worth paying; it is a feature that cries wolf until it is switched off.
+
+The replacement keeps the same refusal and moves the question. **An anchor is a place,
+not an index.** The signature no longer decides whether a marker is broken — it decides
+only whether the indices still mean what they meant, which selects between two readings
+of the outline:
+
+- indices intact → the address is the truth, and the marker rides. Points moving under it
+  is this case, and it is still free.
+- indices moved → check the outline against where the anchor last stood. Still there: the
+  address is rewritten. Gone: stale, in place.
+
+**The one stored coordinate.** This needs the anchor's last position on disk, which the
+first design forbade outright. The prohibition was against _recovering_ an anchor by
+geometric matching — searching among candidates for a plausible one — and that is still
+refused. What this does is verify: one question, _is the outline still where this anchor
+was_, answered within half a font unit, with no second-best and no fallback. Subdividing
+a curve is exact, so an intact outline answers yes however it was resubdivided.
+
+**A test caught the first attempt.** Preferring the remembered position over the live
+address made a marker snap back to where the stem used to be instead of riding it — case
+1 broken by the machinery meant to fix case 2. The fix is precedence: while the indices
+hold, the memory is only a memory.
+
+**Reverse contour stopped being a special case.** It moves no geometry, so the rewrite
+handles it like any other index shift. The explicit break it used to need is gone, and
+with it the last piece of marker bookkeeping any tool owed.
+
+**Markers drag anywhere now**, onto another contour or off the outline entirely, with the
+outline magnetic within reach. That is what makes a stale marker repairable rather than
+merely visible, and it is the same gesture either way.

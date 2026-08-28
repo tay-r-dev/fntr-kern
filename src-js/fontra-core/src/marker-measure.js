@@ -1,4 +1,8 @@
-import { markerIsStale, resolveMarkerAnchor } from "./marker-model.js";
+import {
+  markerIndicesChanged,
+  resolveMarkerAnchor,
+  resolveMarkerEnd,
+} from "./marker-model.js";
 import {
   getSkeletonContour,
   getSkeletonPoint,
@@ -141,22 +145,21 @@ export function measureSkeletonAnchor(pathHitTester, end, skeletonData, path) {
 
 export function markerGeometry(glyphController, marker, skeletonData) {
   const path = glyphController.flattenedPath;
+  const indicesChanged = markerIndicesChanged(marker, path);
   const anchors = marker.ends.map((end) =>
-    end.kind === "cast" ? null : resolveMarkerAnchor(end, { path, skeletonData })
+    end.kind === "cast"
+      ? null
+      : resolveMarkerEnd(end, { path, skeletonData, indicesChanged })
   );
 
-  // A stale marker is still resolved where it can be, and it keeps its grips: it draws
-  // as a plain dot at the place it used to point, and it is dragged to a new spot to
-  // re-anchor it. A broken marker you cannot touch is a broken marker you cannot fix.
-  // It carries no measurement — the number is exactly what must not be trusted.
-  const stale =
-    markerIsStale(marker, path) ||
-    anchors.some((anchor) => anchor && anchor.verdict !== "ok");
+  // A stale marker keeps its place and its grips: it draws as a plain dot where it last
+  // stood and is dragged somewhere useful to repair it. A broken marker you cannot touch
+  // is a broken marker you cannot fix. It carries no measurement — the number is exactly
+  // what must not be trusted.
+  const isRay = marker.ends.some((end) => end.kind === "cast");
+  const stale = marker.broken || anchors.some((anchor) => anchor?.verdict !== "ok");
   if (stale) {
-    const points = anchors
-      .filter((anchor) => anchor?.verdict === "ok")
-      .map((anchor) => anchor.point);
-    const isRay = marker.ends.some((end) => end.kind === "cast");
+    const points = anchors.filter((anchor) => anchor?.point).map((a) => a.point);
     return {
       stale: true,
       isRay,
@@ -166,8 +169,10 @@ export function markerGeometry(glyphController, marker, skeletonData) {
     };
   }
 
+  // The addresses the ends resolved THROUGH, which after a repair are not the addresses
+  // stored on the marker. Everything downstream measures against these.
+  const resolvedEnds = marker.ends.map((end, i) => anchors[i]?.end || end);
   const hitTester = glyphController.flattenedPathHitTester;
-  const isRay = marker.ends.some((end) => end.kind === "cast");
 
   if (isRay) {
     // A ray has ONE grip whichever end is grabbed: the far end is a cast and owns
@@ -176,7 +181,7 @@ export function markerGeometry(glyphController, marker, skeletonData) {
     const anchor = anchors[anchorIndex];
     const measured = measureSkeletonAnchor(
       hitTester,
-      marker.ends[anchorIndex],
+      resolvedEnds[anchorIndex],
       skeletonData,
       path
     );

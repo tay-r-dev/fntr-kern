@@ -1,5 +1,8 @@
 import { measureRay } from "@fontra/core/marker-measure.js";
-import { computeMarkerSignature } from "@fontra/core/marker-model.js";
+import {
+  computeMarkerSignature,
+  withAnchorPosition,
+} from "@fontra/core/marker-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
@@ -180,12 +183,15 @@ export class MarkerTool extends BaseTool {
     const signature = computeMarkerSignature(glyphController.flattenedPath);
     await placeMarker(this.sceneController, () => ({
       ends: [
-        {
-          kind: "pathSegment",
-          contourIndex: hit.contourIndex,
-          segmentIndex: hit.segmentIndex,
-          t: hit.t,
-        },
+        withAnchorPosition(
+          {
+            kind: "pathSegment",
+            contourIndex: hit.contourIndex,
+            segmentIndex: hit.segmentIndex,
+            t: hit.t,
+          },
+          glyphController.flattenedPath
+        ),
         { kind: "cast" },
       ],
       signature,
@@ -235,11 +241,14 @@ function nearestPathPointEnd(path, local) {
   if (!best || best.distance > PLACE_DIMENSION_RADIUS) {
     return undefined;
   }
-  return {
-    kind: "pathPoint",
-    contourIndex: best.contourIndex,
-    pointIndex: best.pointIndex,
-  };
+  return withAnchorPosition(
+    {
+      kind: "pathPoint",
+      contourIndex: best.contourIndex,
+      pointIndex: best.pointIndex,
+    },
+    path
+  );
 }
 
 function markerIdsIn(selection) {
