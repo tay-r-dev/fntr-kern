@@ -158,3 +158,10 @@ describe("marker-model — the stale rule", () => {
     expect(markerIsStale(marker, fewer)).to.equal(false);
   });
 });
+
+describe("marker-model — a declared break", () => {
+  it("is stale when an edit declares it broken", () => {
+    const marker = { ...markerOn(0, twoContourPath()), broken: true };
+    expect(markerIsStale(marker, twoContourPath())).to.equal(true);
+  });
+});

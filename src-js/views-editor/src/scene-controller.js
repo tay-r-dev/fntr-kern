@@ -75,7 +75,13 @@ import { isLocationAtDefault } from "@fontra/core/var-model.js";
 import { VarPackedPath, packContour } from "@fontra/core/var-path.js";
 import * as vector from "@fontra/core/vector.js";
 import { dialog, message } from "@fontra/web-components/modal-dialog.js";
+import {
+  componentCountOf,
+  recordComponentDelete,
+  recordComponentInsert,
+} from "./composition-editing.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
+import { breakMarkersOnContours } from "./marker-editing.js";
 import { SceneModel } from "./scene-model.js";
 import {
   applyGeneratedContourRemap,
@@ -91,11 +97,6 @@ import {
   parseSkeletonPointKey,
   recordSkeletonContourIndexShift,
 } from "./skeleton-editing.js";
-import {
-  componentCountOf,
-  recordComponentDelete,
-  recordComponentInsert,
-} from "./composition-editing.js";
 import {
   harmonizePanelSkeletonPoints,
   splitPanelSkeletonContours,
@@ -1825,6 +1826,9 @@ export class SceneController {
           layerGlyph.path.deleteContour(contourIndex);
           layerGlyph.path.insertContour(contourIndex, packedContour);
         }
+        // The count and the closed flag survive a reversal, so the marker signature
+        // would say fine while every anchor on the contour named a different place.
+        breakMarkersOnContours(layerGlyph, selectedContours);
       }
       this.selection = selection;
       return translate("action.reverse-contour");
@@ -1836,6 +1840,25 @@ export class SceneController {
   // as it was drawn. Each selected contour flips its own state, the same way
   // reversing a mixed selection of ordinary contours does.
   async doReverseSelectedSkeletonContours(skeletonContourIds) {
+    // The centerline is untouched by a skeleton reversal, so a centerline anchor is
+    // safe. The generated outline turns over with the same point count, so an anchor on
+    // one of those contours is not: it is declared broken here.
+    const affected = new Set(skeletonContourIds);
+    await this.editLayersAndRecordChanges((layerGlyphs) => {
+      let broke = false;
+      for (const layerGlyph of Object.values(layerGlyphs)) {
+        const skeletonData = getSkeletonData(layerGlyph);
+        const indices = (skeletonData?.generated || [])
+          .filter((entry) => affected.has(entry.skeletonContourId))
+          .map((entry) => entry.pathContourIndex)
+          .filter((index) => Number.isInteger(index) && index >= 0);
+        if (indices.length) {
+          breakMarkersOnContours(layerGlyph, indices);
+          broke = true;
+        }
+      }
+      return broke ? translate("action.reverse-contour") : undefined;
+    });
     await togglePanelContourReversed(
       this,
       skeletonContourIds.map((contourId) => ({ contourId })),

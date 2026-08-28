@@ -75,6 +75,12 @@ export function computeMarkerSignature(path) {
 }
 
 export function markerIsStale(marker, path) {
+  if (marker.broken) {
+    // Declared broken by an edit that preserved the count but moved the geometry out
+    // from under the address — reversing a contour is the one such edit. Declaring it is
+    // honest; a signature written to disagree on purpose would be a signature that lies.
+    return true;
+  }
   if (!marker.ends?.some(endIsPathAnchored)) {
     // Skeleton anchors carry stable ids and cast ends own nothing. Neither can shift.
     return false;

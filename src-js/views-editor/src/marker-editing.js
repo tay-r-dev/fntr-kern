@@ -211,3 +211,33 @@ export function markerIsVisible(layerGlyph, marker) {
 export function getVisibleMarkers(layerGlyph) {
   return getMarkers(layerGlyph).filter((marker) => markerIsVisible(layerGlyph, marker));
 }
+
+// Reverse contour is the one structural change that preserves the point count and the
+// closed flag while moving the geometry out from under every address on that contour. So
+// it declares those markers broken, in the same change that reverses. Declaring is
+// honest; writing a signature that disagrees on purpose would be a signature that lies.
+//
+// Called from inside an existing recorded edit, so it mutates the layer glyph directly
+// rather than opening an edit of its own.
+export function breakMarkersOnContours(layerGlyph, contourIndices) {
+  const affected = new Set(contourIndices);
+  if (!affected.size) {
+    return;
+  }
+  mutateMarkerData(layerGlyph, (data) => {
+    let changed = false;
+    data.markers = data.markers.map((marker) => {
+      const touches = marker.ends.some(
+        (end) =>
+          (end.kind === "pathSegment" || end.kind === "pathPoint") &&
+          affected.has(end.contourIndex)
+      );
+      if (!touches || marker.broken) {
+        return marker;
+      }
+      changed = true;
+      return { ...marker, broken: true };
+    });
+    return changed;
+  });
+}
