@@ -2,6 +2,7 @@ import {
   computeMarkerSignature,
   markerIndicesChanged,
   markerIsStale,
+  nearestPlaceOnSkeleton,
   resolveMarkerEnd,
   withAnchorPosition,
 } from "@fontra/core/marker-model.js";
@@ -237,5 +238,59 @@ describe("marker anchoring — a dimension's ends", () => {
       indicesChanged: markerIndicesChanged(marker, shrunk),
     });
     expect(resolved.verdict).to.equal("stale");
+  });
+});
+
+// The centerline is not part of the outline, so nothing that hit-tests the path can find
+// it. A marker placed on a stroke's centerline has to be found separately, or the
+// skeleton is invisible to the tool and its measurements are unreachable.
+describe("marker anchoring — the centerline", () => {
+  const skeletonData = {
+    contours: [
+      {
+        id: "c1",
+        closed: false,
+        points: [
+          { id: "p1", x: 0, y: 50 },
+          { id: "p2", x: 100, y: 50 },
+        ],
+      },
+    ],
+  };
+
+  it("finds the place on a centerline nearest a point", () => {
+    const found = nearestPlaceOnSkeleton(skeletonData, { x: 40, y: 55 });
+    expect(found.end.kind).to.equal("skeletonPoint");
+    expect(found.end.contourId).to.equal("c1");
+    expect(found.end.pointId).to.equal("p1");
+    expect(found.point.x).to.be.closeTo(40, 0.001);
+    expect(found.point.y).to.be.closeTo(50, 0.001);
+    expect(found.distance).to.be.closeTo(5, 0.001);
+  });
+
+  it("reports nothing when there is no skeleton", () => {
+    expect(nearestPlaceOnSkeleton(null, { x: 0, y: 0 })).to.equal(undefined);
+    expect(nearestPlaceOnSkeleton({ contours: [] }, { x: 0, y: 0 })).to.equal(
+      undefined
+    );
+  });
+
+  it("resolves the end it produced", () => {
+    const found = nearestPlaceOnSkeleton(skeletonData, { x: 40, y: 55 });
+    const resolved = resolveMarkerEnd(found.end, { path: squarePath(), skeletonData });
+    expect(resolved.verdict).to.equal("ok");
+    expect(resolved.point.x).to.be.closeTo(40, 0.001);
+  });
+
+  it("never stales, because a skeleton point carries a stable id", () => {
+    const found = nearestPlaceOnSkeleton(skeletonData, { x: 40, y: 55 });
+    const marker = {
+      id: "m1",
+      ends: [found.end, { kind: "cast" }],
+      signature: computeMarkerSignature(squarePath()),
+    };
+    const wrecked = squarePath();
+    wrecked.deleteContour(0);
+    expect(markerIsStale(marker, wrecked, skeletonData)).to.equal(false);
   });
 });

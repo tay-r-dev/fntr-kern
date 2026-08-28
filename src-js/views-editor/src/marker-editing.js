@@ -16,9 +16,11 @@ import {
   getMarkerData,
   getMarkerGroups,
   getMarkers,
+  nearestPlaceOnSkeleton,
   setMarkerData,
   withAnchorPosition,
 } from "@fontra/core/marker-model.js";
+import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 
 export const MARKER_EDIT_SENDER = { senderID: "marker-editing" };
 
@@ -247,12 +249,10 @@ export async function handleMarkerDrag({
   }
   const draggedEndIndex =
     endIndex ?? startMarker.ends.findIndex((end) => end.kind !== "cast");
-  const startEnd = startMarker.ends[draggedEndIndex];
   const isRay = startMarker.ends.some((end) => end.kind === "cast");
-  if (isRay && startEnd.kind === "skeletonPoint") {
-    // A ray anchored on a skeleton point is dragged as a skeleton point, not here.
-    return;
-  }
+  const skeletonData = getSkeletonData(
+    sceneController.sceneModel._getEditLayerGlyph(positionedGlyph)
+  );
 
   const signature = computeMarkerSignature(glyphController.flattenedPath);
   const hitTester = glyphController.flattenedPathHitTester;
@@ -288,7 +288,8 @@ export async function handleMarkerDrag({
             hitTester,
             glyphController.flattenedPath,
             point,
-            positionedGlyph
+            positionedGlyph,
+            skeletonData
           )
         : nearestPointEnd(glyphController, point, positionedGlyph);
       if (!newEnd) {
@@ -340,16 +341,27 @@ function withEnd(marker, endIndex, end, signature) {
 //
 // The reach is in font units and is compared against the true nearest point on the
 // outline, so the magnet grips a curve along its whole length, not only near its ends.
-function nearestEndOnContour(hitTester, path, point, positionedGlyph) {
+function nearestEndOnContour(hitTester, path, point, positionedGlyph, skeletonData) {
   const local = {
     x: point.x - positionedGlyph.x,
     y: point.y - positionedGlyph.y,
   };
+  const found = nearestMarkerAnchorage(hitTester, path, local, skeletonData);
+  return found || { kind: "free", x: local.x, y: local.y };
+}
+
+// What a marker would take hold of at a given spot: the outline, or the centerline of a
+// stroke, whichever is nearer and within reach. The centerline is not outline geometry,
+// so a tool that only asks the path cannot see the skeleton at all.
+export function nearestMarkerAnchorage(hitTester, path, local, skeletonData) {
+  const candidates = [];
+
   const hit = hitTester.findNearest(local);
   if (hit && hit.contourIndex !== undefined) {
-    const distance = Math.hypot(hit.x - local.x, hit.y - local.y);
-    if (distance <= MARKER_MAGNET_REACH) {
-      return withAnchorPosition(
+    candidates.push({
+      distance: Math.hypot(hit.x - local.x, hit.y - local.y),
+      point: { x: hit.x, y: hit.y },
+      end: withAnchorPosition(
         {
           kind: "pathSegment",
           contourIndex: hit.contourIndex,
@@ -357,10 +369,18 @@ function nearestEndOnContour(hitTester, path, point, positionedGlyph) {
           t: hit.t,
         },
         path
-      );
-    }
+      ),
+    });
   }
-  return { kind: "free", x: local.x, y: local.y };
+
+  const skeletonHit = nearestPlaceOnSkeleton(skeletonData, local);
+  if (skeletonHit) {
+    candidates.push(skeletonHit);
+  }
+
+  candidates.sort((a, b) => a.distance - b.distance);
+  const best = candidates[0];
+  return best && best.distance <= MARKER_MAGNET_REACH ? best.end : undefined;
 }
 
 function nearestPointEnd(glyphController, point, positionedGlyph) {

@@ -340,3 +340,38 @@ export function withoutMarkerData(customData) {
   delete strippedInternal[FONTRA_INTERNAL_SECTIONS.MARKERS];
   return { ...customData, [FONTRA_INTERNAL_KEY]: strippedInternal };
 }
+
+// The nearest place on a stroke's centerline. The centerline is not outline geometry, so
+// no path hit test can find it — a tool that only asks the path is blind to the skeleton,
+// and every centerline measurement is unreachable.
+//
+// The end this returns carries stable ids rather than indices, so it never needs
+// repairing and never goes stale.
+export function nearestPlaceOnSkeleton(skeletonData, at) {
+  let best;
+  for (const contour of skeletonData?.contours || []) {
+    for (const segment of buildSkeletonTunniSegments(contour)) {
+      const points = [segment.startPoint, ...segment.controlPoints, segment.endPoint];
+      if (points.some((point) => !point)) {
+        continue;
+      }
+      const projected = new Bezier(
+        points.map((point) => ({ x: point.x, y: point.y }))
+      ).project(at);
+      if (!projected || (best && projected.d >= best.distance)) {
+        continue;
+      }
+      best = {
+        distance: projected.d,
+        point: { x: projected.x, y: projected.y },
+        end: {
+          kind: "skeletonPoint",
+          contourId: contour.id,
+          pointId: segment.startPointId,
+          t: projected.t,
+        },
+      };
+    }
+  }
+  return best;
+}

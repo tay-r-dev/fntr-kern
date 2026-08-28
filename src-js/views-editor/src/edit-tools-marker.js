@@ -1,12 +1,19 @@
-import { measureRay } from "@fontra/core/marker-measure.js";
+import { measureSkeletonAnchor } from "@fontra/core/marker-measure.js";
 import {
   computeMarkerSignature,
+  resolveMarkerEnd,
   withAnchorPosition,
 } from "@fontra/core/marker-model.js";
+import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
-import { deleteMarkers, handleMarkerDrag, placeMarker } from "./marker-editing.js";
+import {
+  deleteMarkers,
+  handleMarkerDrag,
+  nearestMarkerAnchorage,
+  placeMarker,
+} from "./marker-editing.js";
 import { setMarkerPlacementPreview } from "./visualization-layer-markers.js";
 
 // The escape hatch, and deliberately narrow: this tool places, moves and deletes
@@ -81,16 +88,37 @@ export class MarkerTool extends BaseTool {
         ),
       };
     }
+    // The preview is the placement: same anchorage, same cast, same measurement. Two
+    // routines answering "where would this go" is two answers waiting to disagree.
     const hitTester = glyphController.flattenedPathHitTester;
-    const hit = hitTester.findNearest(local);
-    if (!hit || hit.contourIndex === undefined) {
+    const skeletonData = this.skeletonData;
+    const end = nearestMarkerAnchorage(
+      hitTester,
+      glyphController.flattenedPath,
+      local,
+      skeletonData
+    );
+    if (!end) {
       return null;
     }
-    const derivative = hit.segment.bezier.derivative(hit.t);
-    const normal = vector.normalizeVector({ x: -derivative.y, y: derivative.x });
-    const anchorPoint = hit.segment.bezier.get(hit.t);
-    const measured = measureRay(hitTester, anchorPoint, normal);
-    return { point: anchorPoint, farPoint: measured?.farPoint || null };
+    const resolved = resolveMarkerEnd(end, {
+      path: glyphController.flattenedPath,
+      skeletonData,
+    });
+    if (resolved.verdict !== "ok") {
+      return null;
+    }
+    const measured = measureSkeletonAnchor(
+      hitTester,
+      end,
+      skeletonData,
+      glyphController.flattenedPath
+    );
+    return {
+      point: resolved.point,
+      farPoint: measured?.farPoint || null,
+      secondFarPoint: measured?.secondFarPoint || null,
+    };
   }
 
   deactivate() {
@@ -174,29 +202,33 @@ export class MarkerTool extends BaseTool {
     eventStream.done();
   }
 
+  // A ray takes hold of whatever is nearest and within reach — an outline, or the
+  // centerline of a stroke. The centerline is not outline geometry, so asking only the
+  // path leaves the skeleton invisible to this tool.
   async placeRay(positionedGlyph, local) {
     const glyphController = positionedGlyph.glyph;
-    const hit = glyphController.flattenedPathHitTester.findNearest(local);
-    if (!hit || hit.contourIndex === undefined) {
+    const end = nearestMarkerAnchorage(
+      glyphController.flattenedPathHitTester,
+      glyphController.flattenedPath,
+      local,
+      this.skeletonData
+    );
+    if (!end) {
       return false;
     }
     const signature = computeMarkerSignature(glyphController.flattenedPath);
     await placeMarker(this.sceneController, () => ({
-      ends: [
-        withAnchorPosition(
-          {
-            kind: "pathSegment",
-            contourIndex: hit.contourIndex,
-            segmentIndex: hit.segmentIndex,
-            t: hit.t,
-          },
-          glyphController.flattenedPath
-        ),
-        { kind: "cast" },
-      ],
+      ends: [end, { kind: "cast" }],
       signature,
     }));
     return true;
+  }
+
+  get skeletonData() {
+    const positionedGlyph = this.sceneModel.getSelectedPositionedGlyph();
+    return positionedGlyph
+      ? getSkeletonData(this.sceneModel._getEditLayerGlyph(positionedGlyph))
+      : null;
   }
 
   // A dimension takes two clicks. The first is remembered on the tool and nothing is

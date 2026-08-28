@@ -297,18 +297,14 @@ function drawPlacementPreview(context, positionedGlyph, parameters, model, contr
   context.strokeStyle = parameters.previewColor;
   context.fillStyle = parameters.previewColor;
   context.lineWidth = parameters.strokeWidth;
-  if (preview.farPoint) {
-    strokeLine(
-      context,
-      preview.point.x,
-      preview.point.y,
-      preview.farPoint.x,
-      preview.farPoint.y
-    );
+  // Two tips where the stroke is measured both ways, which is what a double-sided
+  // centerline reports.
+  for (const tip of [preview.farPoint, preview.secondFarPoint].filter((p) => p)) {
+    strokeLine(context, preview.point.x, preview.point.y, tip.x, tip.y);
     drawArrowHead(
       context,
-      preview.farPoint,
-      vector.normalizeVector(vector.subVectors(preview.farPoint, preview.point)),
+      tip,
+      vector.normalizeVector(vector.subVectors(tip, preview.point)),
       parameters.arrowSize
     );
   }
