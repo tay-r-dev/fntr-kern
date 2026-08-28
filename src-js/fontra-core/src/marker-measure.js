@@ -1,4 +1,4 @@
-import { resolveMarkerAnchor } from "./marker-model.js";
+import { markerIsStale, resolveMarkerAnchor } from "./marker-model.js";
 import {
   getSkeletonContour,
   getSkeletonPoint,
@@ -127,5 +127,64 @@ export function measureSkeletonAnchor(pathHitTester, end, skeletonData, path) {
     farPoint: leftMeasured.farPoint,
     secondFarPoint: rightMeasured.farPoint,
     distance: leftMeasured.distance + rightMeasured.distance,
+  };
+}
+
+// One derivation of what a marker looks like on screen, shared by the hit test and the
+// drawing so the two can never disagree about where a marker is (rail R-B).
+//
+// A ray has one grip: the arrowhead and the tail are the same handle, because the far
+// end is a cast and owns nothing. A dimension has one grip per end.
+//
+// `distance` is null where the ray never leaves the black. That is not staleness and
+// must not be drawn as though it were.
+
+export function markerGeometry(glyphController, marker, skeletonData) {
+  const path = glyphController.flattenedPath;
+  if (markerIsStale(marker, path)) {
+    return { stale: true, grips: [], distance: null };
+  }
+
+  const anchors = marker.ends.map((end) =>
+    end.kind === "cast" ? null : resolveMarkerAnchor(end, { path, skeletonData })
+  );
+  if (anchors.some((anchor) => anchor && anchor.verdict !== "ok")) {
+    return { stale: true, grips: [], distance: null };
+  }
+
+  const hitTester = glyphController.flattenedPathHitTester;
+  const isRay = marker.ends.some((end) => end.kind === "cast");
+
+  if (isRay) {
+    const anchorIndex = anchors.findIndex((anchor) => anchor);
+    const anchor = anchors[anchorIndex];
+    const measured = measureSkeletonAnchor(
+      hitTester,
+      marker.ends[anchorIndex],
+      skeletonData,
+      path
+    );
+    const grips = [anchor.point];
+    if (measured?.farPoint) {
+      grips.push(measured.farPoint);
+    }
+    return {
+      stale: false,
+      isRay: true,
+      grips,
+      anchorPoint: anchor.point,
+      farPoint: measured?.farPoint || null,
+      secondFarPoint: measured?.secondFarPoint || null,
+      distance: measured ? measured.distance : null,
+    };
+  }
+
+  const points = anchors.map((anchor) => anchor.point);
+  return {
+    stale: false,
+    isRay: false,
+    grips: points,
+    points,
+    distance: measureDimension(points[0], points[1]),
   };
 }

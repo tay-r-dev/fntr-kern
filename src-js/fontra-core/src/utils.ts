@@ -292,9 +292,10 @@ export function parseSelection(selection: string[]) {
     if (result[tp] === undefined) {
       result[tp] = [];
     }
-    // Single-segment kinds stay numeric (upstream behavior);
-    // compound kinds (skeletonPoint/…, skeletonRib/…) keep the raw remainder.
-    result[tp].push(rest.includes("/") ? rest : parseInt(rest, 10));
+    // A remainder that is not a plain integer is kept raw: compound kinds
+    // (skeletonPoint/…, markerEnd/…) and string ids (marker/…) both need it.
+    const isPlainInteger = /^[0-9]+$/.test(rest);
+    result[tp].push(isPlainInteger ? parseInt(rest, 10) : rest);
   }
   for (const values of Object.values(result)) {
     // Ensure values are sorted; numeric kinds keep numeric order

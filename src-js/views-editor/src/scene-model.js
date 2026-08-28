@@ -8,6 +8,7 @@ import {
   guessDirectionFromCodePoints,
 } from "@fontra/core/glyph-data.js";
 import { loaderSpinner } from "@fontra/core/loader-spinner.js";
+import { markerGeometry } from "@fontra/core/marker-measure.js";
 import {
   centeredRect,
   insetRect,
@@ -58,6 +59,7 @@ import {
 import { normalizeLocation, unnormalizeLocation } from "@fontra/core/var-model.js";
 import * as vector from "@fontra/core/vector.js";
 import { BASE_EXPAND_BEHAVIOR_NAME } from "./base-expand-editing.js";
+import { getVisibleMarkers } from "./marker-editing.js";
 import {
   getSkeletonPointAddress,
   makeSkeletonPointKey,
@@ -810,6 +812,17 @@ export class SceneModel {
       return { selection: new Set([editableGeneratedTarget.selectionKey]) };
     }
 
+    const markerTarget = this.markerAtPoint(point, size);
+    if (markerTarget) {
+      return {
+        selection: new Set([
+          markerTarget.endIndex === undefined
+            ? `marker/${markerTarget.markerId}`
+            : `markerEnd/${markerTarget.markerId}/${markerTarget.endIndex}`,
+        ]),
+      };
+    }
+
     const pointSelection = this.pointSelectionAtPoint(
       point,
       size,
@@ -913,6 +926,62 @@ export class SceneModel {
       }
     }
     return indices.size ? indices : null;
+  }
+
+  _getEditLayerGlyph(positionedGlyph) {
+    const editLayerName =
+      this.sceneSettings?.editLayerName || positionedGlyph.glyph?.layerName;
+    return (
+      (editLayerName &&
+        positionedGlyph.varGlyph?.glyph?.layers?.[editLayerName]?.glyph) ||
+      positionedGlyph.glyph
+    );
+  }
+
+  // Where each visible marker's grips are, in glyph space. The geometry comes from the
+  // one shared derivation, so the hit test and the drawing can never disagree about
+  // where a marker is.
+  markerGrips(positionedGlyph) {
+    const layerGlyph = this._getEditLayerGlyph(positionedGlyph);
+    const markers = getVisibleMarkers(layerGlyph);
+    if (!markers.length) {
+      return [];
+    }
+    const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
+    const grips = [];
+    for (const marker of markers) {
+      const geometry = markerGeometry(positionedGlyph.glyph, marker, skeletonData);
+      if (geometry.stale) {
+        continue;
+      }
+      // A ray has one grip whichever of its two points is grabbed; a dimension has one
+      // grip per end, so an end can be re-anchored on its own.
+      geometry.grips.forEach((point, i) => {
+        grips.push({
+          point,
+          markerId: marker.id,
+          endIndex: geometry.isRay ? undefined : i,
+        });
+      });
+    }
+    return grips;
+  }
+
+  // Markers lose the click to skeleton and generated geometry: see _selectionAtPoint.
+  markerAtPoint(point, size, positionedGlyph) {
+    positionedGlyph ||= this.getSelectedPositionedGlyph();
+    if (!positionedGlyph) {
+      return undefined;
+    }
+    const x = point.x - positionedGlyph.x;
+    const y = point.y - positionedGlyph.y;
+    const selRect = centeredRect(x, y, size);
+    for (const grip of reversed(this.markerGrips(positionedGlyph))) {
+      if (pointInRect(grip.point.x, grip.point.y, selRect)) {
+        return { markerId: grip.markerId, endIndex: grip.endIndex };
+      }
+    }
+    return undefined;
   }
 
   _getEditLayerSkeletonData(positionedGlyph) {
