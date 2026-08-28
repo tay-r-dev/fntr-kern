@@ -39,14 +39,14 @@ stopped at, and entering a counter stops it correctly.
 **Do not rewrite any of it.** Markers reuse it whole (rail R-B). What markers add is
 everything the Power Ruler deliberately does not have:
 
-| | Power Ruler | Markers |
-| --- | --- | --- |
-| How many | one per glyph | many |
-| Lifetime | in memory, gone on reload | saved in the project file |
-| Anchoring | a base point in glyph coordinates | an address on a segment or a point |
-| Under an edit | recast from the same coordinates | rides the curve it was placed on |
-| Sources | the one being viewed | one per source, same id across sources |
-| A wanted value | none | target plus delta |
+|                | Power Ruler                       | Markers                                |
+| -------------- | --------------------------------- | -------------------------------------- |
+| How many       | one per glyph                     | many                                   |
+| Lifetime       | in memory, gone on reload         | saved in the project file              |
+| Anchoring      | a base point in glyph coordinates | an address on a segment or a point     |
+| Under an edit  | recast from the same coordinates  | rides the curve, or stales loudly      |
+| Sources        | the one being viewed              | one per source, same id across sources |
+| A wanted value | none                              | target plus delta                      |
 
 ---
 
@@ -57,7 +57,13 @@ everything the Power Ruler deliberately does not have:
 A new section in `fontra-core/src/fontra-internal-schema.js`:
 
 ```js
-FONTRA_INTERNAL_SECTIONS = { COMPOSITION, LETTERSPACER, SKELETON, SKELETON_DEFAULTS, MARKERS };
+FONTRA_INTERNAL_SECTIONS = {
+  COMPOSITION,
+  LETTERSPACER,
+  SKELETON,
+  SKELETON_DEFAULTS,
+  MARKERS,
+};
 ```
 
 Per **layer**, beside `SKELETON`, reached only through `getFontraInternalSection` and
@@ -80,6 +86,7 @@ binary.
 {
   id,                 // stable, never reused
   ends: [end, end],
+  signature,          // the structural signature the anchors were written against
   target,             // optional wanted value, in font units
   groupId,            // optional
 }
@@ -98,59 +105,103 @@ A marker holds no measured distance. The distance is derived on every frame, lik
 Four kinds. A ray is `[anchor, cast]`; a dimension is `[anchor, anchor]`.
 
 ```js
-{ kind: "pathSegment",   contourIndex, segmentStart, t, curve }
-{ kind: "pathPoint",     contourIndex, pointIndex, position }
-{ kind: "skeletonPoint", contourId, pointId, t }
-{ kind: "cast" }
+{
+  kind: ("pathSegment", contourIndex, segmentStart, t);
+}
+{
+  kind: ("pathPoint", contourIndex, pointIndex);
+}
+{
+  kind: ("skeletonPoint", contourId, pointId, t);
+}
+{
+  kind: "cast";
+}
 ```
 
 `cast` carries no address at all — it is the free end of a ray, re-derived every frame
 from the anchor's normal and the winding walk.
 
-`curve` on a `pathSegment` is the four control points of that segment **as last valid**.
-`position` on a `pathPoint` is that point's coordinates as last valid. Neither is ever
-used to *search* for the geometry. Both are used only to check the geometry the index
-points at. This distinction is what keeps the design clear of defect P1 and rail R-D:
-nothing here recovers an address by geometric matching or by tolerance-based nearest
-hit.
+**An end stores an address and nothing else.** No control points, no coordinates, no
+curve snapshot. Validity is decided by the marker-level `signature` (§3), which is a
+count and not a geometry. Nothing here searches for an address, and nothing compares a
+stored position against a drawn one — that is defect P1 and rail R-D.
+
+### Path addresses are in flattened-path space
+
+`contourIndex` counts through `glyphController.flattenedPath`, which is the glyph's own
+contours followed by every component's. That is the path the Power Ruler already
+hit-tests against, so a marker can be placed on a component's outline as well as on the
+glyph's own.
+
+The consequence is deliberate: adding, removing or reordering a component changes the
+signature, so markers stale. That is the loud failure, which is what we want.
 
 ---
 
-## 3. Anchoring, and the three cases
+## 3. Anchoring, and the one rule
 
 Two mechanisms, because the two geometries differ in what they can be named by.
 
 **A skeleton anchor needs no maintenance.** Skeleton contours and points carry stable
 ids that are never reused, so `{contourId, pointId, t}` survives any structural edit by
-construction. This is rail R-D reused, not re-invented.
+construction. It is never stale. This is rail R-D reused, not re-invented.
 
 **A path anchor is an index, and indices shift.** An ordinary Fontra path point has no
-id, so the address is a position in a list. Every tool that restructures a point list
-updates the anchors in the same change — the obligation `edit-tools-pen.js` and
-`edit-tools-knife.js` already carry for the generated-contour mapping, extended to one
-more consumer.
+id, so the address is a position in a list. There is one rule for it:
 
-The stored `curve` snapshot is then the check on that obligation. On every read, compare
-the segment the index points at against the snapshot:
+> **The point count changes, the marker goes stale. Anything else, the marker rides the
+> geometry.**
 
-| | what happened | result |
-| --- | --- | --- |
-| 1 | a point was added or deleted, and the curve through the anchor changed | the marker goes **stale** |
-| 2 | a point was added or deleted, and the curve is unchanged — a true bezier split | **re-express** `t` on whichever half now holds the anchor, and rewrite the snapshot |
-| 3 | the segment's points moved | nothing stored changes; the anchor rides the curve |
+That is the whole of it. Two cases, not three.
 
-Case 2 is arithmetic and not a search: a split at `tSplit` sends an anchor at `t` to
-`t / tSplit` on the first half, or `(t − tSplit) / (1 − tSplit)` on the second.
+|     | what happened                             | result                                             |
+| --- | ----------------------------------------- | -------------------------------------------------- |
+| 1   | the flattened path's point counts changed | the marker goes **stale**                          |
+| 2   | the points moved                          | nothing stored changes; the anchor rides the curve |
 
-Case 3 needs no code. The anchor is a parameter on a curve, and the curve is read live.
+Case 2 needs no code. The anchor is a parameter on a curve, and the curve is read live.
+That is the feature working: a marker is watched _while_ the stem is dragged, and the
+number updates every frame.
 
-**The failure mode is loud, and that is the point.** A tool that forgets to update its
-anchors produces case 1 — the marker greys out and the panel says it is broken — rather
-than a marker that silently measures a different stem and reports a plausible wrong
-number. The donor's generated-contour indices produced the quiet kind of failure twice.
+### The signature
 
-A dimension end is a `pathPoint` and obeys the same three cases against its `position`
-snapshot.
+`signature` is the array of per-contour point counts over the flattened path, plus each
+contour's closed flag, taken when the anchors were last written. On every read, compare
+it against the path as it stands. A different length, or a different count on the
+contour the anchor names, is stale.
+
+It is a count, not a geometry. There is no tolerance in it, nothing is searched for, and
+no stored coordinate is compared against a drawn one.
+
+**Stale is derived, never stored.** The comparison runs on read and writes nothing. So
+undoing past the structural edit restores the signature and the marker comes back to
+life on its own. A stale flag written into the file would survive the undo and leave a
+dead marker on a healthy contour.
+
+**This deletes an obligation rather than adding one.** No tool has to update marker
+anchors when it restructures a point list — not the pen, not the knife, not shape
+append, delete-selection, paste or break-contour. A structural edit stales the markers
+on that contour and the designer re-anchors with a click. The alternative was an audit
+of every tool that touches a point list, with a quiet wrong measurement as the cost of
+missing one. The donor's generated-contour indices produced exactly that quiet failure
+twice.
+
+**The price, stated.** Inserting a point on a contour stales every marker on it, even
+though the curve through the anchor is unchanged. That is an ordinary edit and it will
+be felt. It buys the absence of the audit above, and re-anchoring is one click.
+
+**One count-preserving change is real: reverse contour.** It keeps the count and the
+closed flag and reverses the point order, so every anchor on that contour would name a
+different place while the signature says fine. Reverse-contour therefore stales the
+markers on the contour it reverses, explicitly, in the same change. It is one command in
+one place, which is why this is a line of code rather than a rule.
+
+**Generated contours are path anchors and follow the path rule.** Point-count stability
+across parameter values (feature model §3) means a rib drag, a width edit or a skeleton
+move keeps the count, so those markers ride the regeneration. They stale where the count
+genuinely changes: corner-rounding distance crossing zero, a cap style change, a serif
+switched on. Expect that to read as a bug the first time; it is not one.
 
 **Stale is a state, not a deletion.** A stale marker keeps its id, its target and its
 group, draws greyed or not at all, and is listed as broken in the panel so that it can
@@ -165,10 +216,10 @@ Pure, in `fontra-core`, with mocha tests, per rail R-A.
 `fontra-core/src/marker-model.js`
 
 - schema, stable-id allocation, accessors
-- `resolveAnchor(anchorEnd, path, skeleton)` → a point, a normal, and a validity verdict
-  of `ok`, `resplit` or `stale`
-- `resplitAnchor(anchorEnd, tSplit, whichHalf)` → the new `t`
-- the three-case comparison against the stored snapshot
+- `computeSignature(flattenedPath)` → the per-contour count and closed-flag array
+- `isStale(marker, flattenedPath)` → the signature comparison
+- `resolveAnchor(anchorEnd, path, skeleton)` → a point, a normal, and a verdict of `ok`
+  or `stale`
 
 `fontra-core/src/marker-measure.js`
 
@@ -213,22 +264,41 @@ inherit, do not copy, and the two cannot drift.
 
 Registered in `editor.js` `initTools()` beside `PowerRulerTool`.
 
+### The pointer tool reaches markers too
+
+Markers are not a modal feature. **The pointer tool selects, moves and deletes them**,
+through the same dispatch hooks Tunni already uses, so the ordinary tool stays the
+ordinary tool and `edit-tools-pointer.js` stays a thin dispatcher (R-A).
+
+The marker tool is the escape hatch, and it is deliberately narrow: **it moves and
+deletes markers and does nothing else**, delegating everything that is not marker
+business to the pointer tool.
+
+**The marker grip loses to skeleton and generated geometry.** Hit order is generated
+gizmos and skeleton ribs first, then the marker grip, then ordinary points. A marker
+lying over a generated contour is therefore unreachable with the pointer tool while
+gizmo mode is on, and that is what the marker tool is for. The alternative — a marker
+winning the click — would put a readout in front of the geometry it describes.
+
+The Power Ruler is untouched. Its double-click-to-dismiss lives inside its own tool, and
+there is no ruler to dismiss from the pointer tool, so the two never arbitrate.
+
 ### Gestures
 
-| gesture | what it does |
-| --- | --- |
-| click a contour | place a ray at that point on that segment |
-| Alt, click a point, click a second point | place a dimension |
-| click a marker | select it |
-| **double-click a marker** | delete it |
-| **drag a ray** | slide its anchor along the outline |
-| **drag a dimension end** | re-anchor that end to another point |
-| Backspace | delete the selection |
-| anything else | delegate to the pointer tool |
+| gesture                                  | what it does                              |
+| ---------------------------------------- | ----------------------------------------- |
+| click a contour                          | place a ray at that point on that segment |
+| Alt, click a point, click a second point | place a dimension                         |
+| click a marker                           | select it                                 |
+| **double-click a marker**                | delete it                                 |
+| **drag a ray**                           | slide its anchor along the outline        |
+| **drag a dimension end**                 | re-anchor that end to another point       |
+| Backspace                                | delete the selection                      |
+| anything else                            | delegate to the pointer tool              |
 
-**Double-click deletes**, and it decides after it sees whether the pointer moved, the
-way the equalize gesture does — so a double-click that turns into a drag is a drag. A
-double-click on empty canvas places nothing and deletes nothing.
+**Double-click deletes**, as the ordinary double-click gesture: two presses on the
+marker with no drag in between. A press that moves is a drag, whatever its click count.
+A double-click on empty canvas places nothing and deletes nothing.
 
 ### Dragging a placed marker
 
@@ -249,10 +319,16 @@ than anchoring to empty space. Dragging the dimension's **body** moves nothing �
 ends belong to points, and a dimension that could be slid off its points would be
 measuring something it no longer names.
 
-**A drag rewrites the address and the snapshot together.** They are one write, through
-one helper, so a marker can never hold an address from one moment and a snapshot from
+**A drag rewrites the address and the signature together.** They are one write, through
+one helper, so a marker can never hold an address from one moment and a signature from
 another — that pair disagreeing is exactly what the stale check reads as a broken
 anchor.
+
+**A ray's drag stays on the contour it started on.** `findNearest` searches every
+contour in the flattened path, so an unrestricted drag would let the anchor jump to a
+different outline that happens to pass nearer the cursor. It also refuses `t` of exactly
+0 and 1, so an anchor approaches a node without ever landing on it. Both are accepted:
+to move a marker to another contour, delete it and place a new one.
 
 **Every frame is recorded against a fresh copy of the pre-drag state**, never against
 the live glyph. A rollback is a statement about the whole gesture. Base-curve expansion
@@ -306,11 +382,17 @@ Writes go through one helper module in the editor, in the shape
 
 - **A marker stores one address and no geometry.** Every distance, direction and far
   point is derived on read. A stored measurement is a number that drifts.
-- **Nothing recovers an anchor by geometric matching.** The stored snapshot verifies an
-  address; it never searches for one. This is rail R-D, and it is what separates markers
-  from defect P1.
-- **A broken anchor goes stale, loudly.** It never falls back to a nearest hit, and it
-  never silently re-anchors.
+- **Nothing recovers an anchor by geometric matching.** The signature is a count and
+  verifies an address; it never searches for one. This is rail R-D, and it is what
+  separates markers from defect P1.
+- **The count changes, the marker goes stale; anything else, it rides the geometry.**
+  One rule. It never falls back to a nearest hit, and it never silently re-anchors.
+- **Stale is derived on read, never written to the file**, so an undo past the
+  structural edit brings the marker back on its own.
+- **No tool owes marker anchors any bookkeeping.** The stale rule exists precisely so
+  that the pen, the knife and everything else that restructures a point list can stay
+  ignorant of markers. Reverse contour is the single named exception, because it
+  preserves the count.
 - **Ids are allocated once and never reused**, so multi-source copies of one marker are
   recognisably one marker.
 - **One copy of the winding walk**, shared with the Power Ruler (R-B).
@@ -318,8 +400,10 @@ Writes go through one helper module in the editor, in the shape
   would drift within a release.
 - **Markers never reach a compiled font.** They live in `customData`, which no compiler
   reads.
-- **A drag records against the pre-drag state**, and writes the address and its snapshot
-  in one change.
+- **A drag records against the pre-drag state**, and writes the address and its
+  signature in one change.
+- **The marker grip loses to skeleton and generated geometry**, and the marker tool is
+  the way to reach what it loses.
 
 ---
 
@@ -343,9 +427,11 @@ Writes go through one helper module in the editor, in the shape
 
 **Automated**, in `fontra-core/tests/`:
 
-- `test-marker-model.js` — id allocation and non-reuse, the three anchor cases, the
-  resplit arithmetic against a de Casteljau split, stale detection, round-trip through
-  `fontra.internal`.
+- `test-marker-model.js` — id allocation and non-reuse; the signature over a flattened
+  path with components; stale on an inserted point, on a deleted point, on a removed
+  contour and on an added component; **not** stale when points only move; a skeleton
+  anchor never staling; stale recovered by restoring the count, which is the undo
+  property; round-trip through `fontra.internal`.
 - `test-marker-measure.js` — the winding walk on an overlapping stem (rule 3 crosses the
   interior edge), on a counter (stops on entry), on an open contour that never crosses
   (no measurement rather than a fabricated one), and the double-sided centerline sum.
@@ -359,7 +445,10 @@ A drag gets the same sweep: drive a ray's anchor along a contour in fine steps, 
 segment joint, and measure the worst single-step movement of the reported distance.
 
 **Manual matrix owed** for the editor half: place a ray on each of an ordinary contour,
-a generated contour and a centerline in both width modes; place a dimension; insert a
-point into an anchored segment with the pen and confirm case 2; delete that point and
-confirm case 1; knife the contour away and confirm stale; edit in two sources at once
-and confirm one id in both; undo each of the above.
+a generated contour and a centerline in both width modes; place a dimension; drag the
+stem the marker sits on and confirm the number follows live; insert a point with the pen
+and confirm stale; undo that and confirm the marker returns; knife the contour away and
+confirm stale; reverse the contour and confirm stale; select, move and delete a marker
+with the pointer tool; confirm a marker on a generated contour is unreachable with the
+pointer tool in gizmo mode and reachable with the marker tool; edit in two sources at
+once and confirm one id in both; undo each of the above.
