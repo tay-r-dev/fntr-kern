@@ -255,7 +255,7 @@ describe("marker-measure — a freshly placed marker", () => {
     expect(geometry.distance).to.be.closeTo(200, 0.001);
   });
 
-  it("is not stale when it is free of the outline entirely", () => {
+  it("is stale when it is free of the outline entirely", () => {
     const path = pathOf(rectContour(0, 0, 100, 200));
     const glyphController = {
       flattenedPath: path,
@@ -267,7 +267,7 @@ describe("marker-measure — a freshly placed marker", () => {
       signature: computeMarkerSignature(path),
     };
     const geometry = markerGeometry(glyphController, marker, null);
-    expect(geometry.stale).to.equal(false);
+    expect(geometry.stale).to.equal(true);
     expect(geometry.distance).to.equal(null);
   });
 });

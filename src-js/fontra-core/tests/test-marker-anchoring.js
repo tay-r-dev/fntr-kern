@@ -2,6 +2,8 @@ import {
   computeMarkerSignature,
   markerIndicesChanged,
   markerIsStale,
+  nearestOnCurvePlace,
+  nearestOnCurvePoint,
   nearestPlaceOnSkeleton,
   resolveMarkerEnd,
   withAnchorPosition,
@@ -119,15 +121,6 @@ describe("marker anchoring — the three cases", () => {
     wrecked.deletePoint(0, 1);
     wrecked.deletePoint(0, 1);
     expect(markerIsStale(markerWith(end), wrecked)).to.equal(true);
-    expect(markerIsStale(markerWith(end), squarePath())).to.equal(false);
-  });
-
-  // A marker dropped on empty canvas belongs to nothing and cannot break.
-  it("never stales a free marker", () => {
-    const end = { kind: "free", x: 500, y: 500 };
-    const resolved = resolveAgainst(end, squarePath());
-    expect(resolved.verdict).to.equal("ok");
-    expect(resolved.point).to.deep.include({ x: 500, y: 500 });
     expect(markerIsStale(markerWith(end), squarePath())).to.equal(false);
   });
 
@@ -292,5 +285,54 @@ describe("marker anchoring — the centerline", () => {
     const wrecked = squarePath();
     wrecked.deleteContour(0);
     expect(markerIsStale(marker, wrecked, skeletonData)).to.equal(false);
+  });
+});
+
+// A marker measures something. Dragged off the outline it has nothing under it, so it is
+// stale on the spot — the same state as a marker whose geometry was deleted under it, and
+// the same way back: drag it onto something.
+describe("marker anchoring — off the geometry", () => {
+  it("stales a marker that names no geometry", () => {
+    const end = { kind: "free", x: 500, y: 500 };
+    const resolved = resolveAgainst(end, squarePath());
+    expect(resolved.verdict).to.equal("stale");
+    expect(resolved.point).to.deep.include({ x: 500, y: 500 });
+    expect(markerIsStale(markerWith(end), squarePath())).to.equal(true);
+  });
+});
+
+// A dimension names points, and only on-curve points are points a designer places. An
+// off-curve handle is a control of the curve, not a place on it.
+describe("marker anchoring — on-curve points", () => {
+  it("skips the off-curve points when looking for the nearest point", () => {
+    const path = new VarPackedPath();
+    path.appendUnpackedContour({
+      points: [
+        { x: 0, y: 0 },
+        { x: 30, y: 90, type: "cubic" },
+        { x: 70, y: 90, type: "cubic" },
+        { x: 100, y: 0 },
+      ],
+      isClosed: true,
+    });
+    const found = nearestOnCurvePoint(path, { x: 32, y: 88 });
+    expect(found.pointIndex).to.equal(0);
+  });
+
+  it("finds nothing on a path with no points", () => {
+    expect(nearestOnCurvePoint(new VarPackedPath(), { x: 0, y: 0 })).to.equal(
+      undefined
+    );
+  });
+
+  it("names an on-curve point as a place on the outline", () => {
+    const place = nearestOnCurvePlace(squarePath(), { x: 2, y: 3 });
+    expect(place.distance).to.be.closeTo(Math.hypot(2, 3), 0.001);
+    expect(place.point).to.deep.include({ x: 0, y: 0 });
+    expect(place.end.kind).to.equal("pathSegment");
+    expect(resolveAgainst(place.end, squarePath()).point).to.deep.include({
+      x: 0,
+      y: 0,
+    });
   });
 });

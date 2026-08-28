@@ -111,8 +111,10 @@ const REPAIR_TOLERANCE = 0.5;
 //      it can be found and dragged somewhere useful rather than vanishing.
 export function resolveMarkerEnd(end, { path, skeletonData, indicesChanged } = {}) {
   if (end?.kind === "free") {
-    // Attached to nothing, so nothing can break it.
-    return { verdict: "ok", end, point: { x: end.x, y: end.y } };
+    // Attached to nothing, so there is nothing to measure. A marker off the geometry is
+    // stale for the same reason a marker whose geometry was deleted is stale, and takes
+    // the same way back: it keeps its place so it can be dragged onto something.
+    return { verdict: "stale", end, point: { x: end.x, y: end.y } };
   }
   if (end?.kind !== "pathSegment" && end?.kind !== "pathPoint") {
     const resolved = resolveMarkerAnchor(end, { path, skeletonData });
@@ -374,4 +376,65 @@ export function nearestPlaceOnSkeleton(skeletonData, at) {
     }
   }
   return best;
+}
+
+// Only on-curve points are points a designer placed; an off-curve is a handle that shapes
+// a curve and is not a place on the outline. Anything that names a point — a dimension's
+// ends, the pull a dragged ray feels — asks here.
+export function nearestOnCurvePoint(path, at) {
+  if (!path) {
+    return undefined;
+  }
+  let best;
+  for (let contourIndex = 0; contourIndex < path.contourInfo.length; contourIndex++) {
+    const numPoints = path.getNumPointsOfContour(contourIndex);
+    for (let pointIndex = 0; pointIndex < numPoints; pointIndex++) {
+      const point = path.getContourPoint(contourIndex, pointIndex);
+      if (point.type) {
+        continue;
+      }
+      const distance = Math.hypot(point.x - at.x, point.y - at.y);
+      if (!best || distance < best.distance) {
+        best = { distance, point, contourIndex, pointIndex };
+      }
+    }
+  }
+  return best;
+}
+
+// The same on-curve point, addressed as a place on the outline rather than as a point:
+// what a ray anchors to. It is the start of the segment that leaves the point, so the
+// address is exact rather than a parameter that happens to land near it.
+export function nearestOnCurvePlace(path, at) {
+  const found = nearestOnCurvePoint(path, at);
+  if (!found) {
+    return undefined;
+  }
+  const segments = [...path.iterContourDecomposedSegments(found.contourIndex)];
+  let segmentIndex = segments.findIndex(
+    (segment) => segment.pointIndices[0] === found.pointIndex
+  );
+  let t = 0;
+  if (segmentIndex < 0) {
+    segmentIndex = segments.findIndex(
+      (segment) => segment.pointIndices.at(-1) === found.pointIndex
+    );
+    t = 1;
+  }
+  if (segmentIndex < 0) {
+    return undefined;
+  }
+  return {
+    distance: found.distance,
+    point: { x: found.point.x, y: found.point.y },
+    end: withAnchorPosition(
+      {
+        kind: "pathSegment",
+        contourIndex: found.contourIndex,
+        segmentIndex,
+        t,
+      },
+      path
+    ),
+  };
 }

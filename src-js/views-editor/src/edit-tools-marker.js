@@ -1,6 +1,7 @@
 import { measureSkeletonAnchor } from "@fontra/core/marker-measure.js";
 import {
   computeMarkerSignature,
+  nearestOnCurvePoint,
   resolveMarkerEnd,
   withAnchorPosition,
 } from "@fontra/core/marker-model.js";
@@ -258,18 +259,10 @@ export class MarkerTool extends BaseTool {
 
 const PLACE_DIMENSION_RADIUS = 30;
 
+// A dimension runs between points a designer placed. An off-curve is a handle that
+// shapes a curve, not a place on the drawing, so it is not offered.
 function nearestPathPointEnd(path, local) {
-  let best;
-  for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
-    const numPoints = path.getNumPointsOfContour(contourIndex);
-    for (let pointIndex = 0; pointIndex < numPoints; pointIndex++) {
-      const candidate = path.getContourPoint(contourIndex, pointIndex);
-      const distance = Math.hypot(candidate.x - local.x, candidate.y - local.y);
-      if (!best || distance < best.distance) {
-        best = { distance, contourIndex, pointIndex };
-      }
-    }
-  }
+  const best = nearestOnCurvePoint(path, local);
   if (!best || best.distance > PLACE_DIMENSION_RADIUS) {
     return undefined;
   }

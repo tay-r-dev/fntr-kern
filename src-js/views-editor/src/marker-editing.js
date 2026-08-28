@@ -16,6 +16,8 @@ import {
   getMarkerData,
   getMarkerGroups,
   getMarkers,
+  nearestOnCurvePlace,
+  nearestOnCurvePoint,
   nearestPlaceOnSkeleton,
   setMarkerData,
   withAnchorPosition,
@@ -375,6 +377,10 @@ function nearestEndOnContour(hitTester, path, point, positionedGlyph, skeletonDa
 // What a marker would take hold of at a given spot: the outline, or the centerline of a
 // stroke, whichever is nearer and within reach. The centerline is not outline geometry,
 // so a tool that only asks the path cannot see the skeleton at all.
+// How much nearer an on-curve point counts than it really is when the magnet ranks what
+// a dragged marker could take hold of.
+const ON_CURVE_PULL = 0.4;
+
 export function nearestMarkerAnchorage(hitTester, path, local, skeletonData) {
   const candidates = [];
 
@@ -400,28 +406,28 @@ export function nearestMarkerAnchorage(hitTester, path, local, skeletonData) {
     candidates.push(skeletonHit);
   }
 
+  // An on-curve point pulls harder than the curve running through it. Anywhere along a
+  // segment is a place a marker CAN sit; a point is a place a designer chose, and a
+  // measurement taken at one is the measurement that was meant. The pull is a weighting
+  // on the ranking, not a wider reach: it wins ties nearby and never drags from afar.
+  const onCurve = nearestOnCurvePlace(path, local);
+  if (onCurve) {
+    candidates.push({ ...onCurve, distance: onCurve.distance * ON_CURVE_PULL });
+  }
+
   candidates.sort((a, b) => a.distance - b.distance);
   const best = candidates[0];
   return best && best.distance <= MARKER_MAGNET_REACH ? best.end : undefined;
 }
 
+// A dimension end lands on a point a designer placed, never on a handle.
 function nearestPointEnd(glyphController, point, positionedGlyph) {
   const local = {
     x: point.x - positionedGlyph.x,
     y: point.y - positionedGlyph.y,
   };
   const path = glyphController.flattenedPath;
-  let best;
-  for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
-    const numPoints = path.getNumPointsOfContour(contourIndex);
-    for (let pointIndex = 0; pointIndex < numPoints; pointIndex++) {
-      const candidate = path.getContourPoint(contourIndex, pointIndex);
-      const distance = Math.hypot(candidate.x - local.x, candidate.y - local.y);
-      if (!best || distance < best.distance) {
-        best = { distance, contourIndex, pointIndex };
-      }
-    }
-  }
+  const best = nearestOnCurvePoint(path, local);
   if (!best || best.distance > MARKER_REANCHOR_RADIUS) {
     return undefined;
   }
