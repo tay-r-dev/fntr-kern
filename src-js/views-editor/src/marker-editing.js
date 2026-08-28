@@ -145,6 +145,23 @@ export async function reanchorMarkerEnd(
   });
 }
 
+export async function setMarkerVisible(sceneController, id, visible) {
+  return await runMarkerEdit(sceneController, "Toggle Marker", (data) => {
+    data.markers = data.markers.map((marker) => {
+      if (marker.id !== id) {
+        return marker;
+      }
+      const next = { ...marker };
+      if (visible) {
+        delete next.hidden;
+      } else {
+        next.hidden = true;
+      }
+      return next;
+    });
+  });
+}
+
 export async function setMarkerGroup(sceneController, id, groupId) {
   return await runMarkerEdit(sceneController, "Set Marker Group", (data) => {
     data.markers = data.markers.map((marker) => {
@@ -203,7 +220,12 @@ export async function setGroupVisible(sceneController, id, visible) {
   });
 }
 
+// A marker can be hidden on its own, and a group can hide the markers in it. Either
+// alone is enough to hide: the group switch does not un-hide a marker put away by hand.
 export function markerIsVisible(layerGlyph, marker) {
+  if (marker.hidden) {
+    return false;
+  }
   if (!marker.groupId) {
     return true;
   }

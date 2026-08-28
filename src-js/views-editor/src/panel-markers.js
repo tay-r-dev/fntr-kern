@@ -13,6 +13,7 @@ import {
   setGroupVisible,
   setMarkerGroup,
   setMarkerTarget,
+  setMarkerVisible,
 } from "./marker-editing.js";
 import Panel from "./panel.js";
 
@@ -151,11 +152,26 @@ export default class MarkersPanel extends Panel {
           key: `group:${marker.id}`,
           value: marker.groupId || "",
           options: groupOptions,
-          auxiliaryElement: this._removeButton(
-            translate("sidebar.markers.delete-marker"),
-            () => this.deleteMarker(marker.id)
-          ),
+          auxiliaryElement: html.span({}, [
+            html.button(
+              {
+                class: "marker-row-button",
+                title: translate(
+                  marker.hidden
+                    ? "sidebar.markers.show-marker"
+                    : "sidebar.markers.hide-marker"
+                ),
+                onclick: () => this.setMarkerVisible(marker.id, !!marker.hidden),
+              },
+              [marker.hidden ? "◌" : "●"]
+            ),
+            this._removeButton(translate("sidebar.markers.delete-marker"), () =>
+              this.deleteMarker(marker.id)
+            ),
+          ]),
         },
+        // The eye is drawn, not set, so the row has to be rebuilt when it changes.
+        flags: marker.hidden ? "hidden" : "",
       });
     }
 
@@ -200,7 +216,7 @@ export default class MarkersPanel extends Panel {
   }
 
   _removeButton(title, onclick) {
-    return html.button({ class: "marker-remove-button", title, onclick }, ["×"]);
+    return html.button({ class: "marker-row-button", title, onclick }, ["×"]);
   }
 
   // Handing the form a new set of field descriptions rebuilds every input from scratch,
@@ -212,7 +228,11 @@ export default class MarkersPanel extends Panel {
     const layout = formContents
       .map((item) =>
         item.type === "universal-row"
-          ? [item.type, ...packedFields(item).map((field) => field.key ?? "")].join(" ")
+          ? [
+              item.type,
+              item.flags ?? "",
+              ...packedFields(item).map((field) => field.key ?? ""),
+            ].join(" ")
           : [item.type, item.key ?? "", item.label ?? ""].join(" ")
       )
       .join("");
@@ -257,6 +277,10 @@ export default class MarkersPanel extends Panel {
   // test. They exist so nothing outside this file needs to know the write path.
   async deleteMarker(id) {
     await deleteMarkers(this.sceneController, [id]);
+  }
+
+  async setMarkerVisible(id, visible) {
+    await setMarkerVisible(this.sceneController, id, visible);
   }
 
   async createGroup(name) {
