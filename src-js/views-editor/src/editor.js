@@ -93,6 +93,7 @@ import { PointerTools } from "./edit-tools-pointer.js";
 import { PowerRulerTool } from "./edit-tools-power-ruler.js";
 import { ShapeTool } from "./edit-tools-shape.js";
 import { SkeletonPenTools } from "./edit-tools-skeleton.js";
+import { deleteMarkers } from "./marker-editing.js";
 import {
   SceneController,
   numQuadraticOffCurvePointsOptions,
@@ -2516,6 +2517,18 @@ export class EditorController extends ViewController {
       skeletonPoint: skeletonPointKeys,
       //fontGuideline: fontGuidelineSelection,
     } = parseSelection(this.sceneController.selection);
+    // Markers are deleted through their own write path, not through the path edit.
+    const doomedMarkers = [
+      ...(parseSelection(this.sceneController.selection).marker || []).map(String),
+      ...(parseSelection(this.sceneController.selection).markerEnd || []).map(
+        (key) => String(key).split("/")[0]
+      ),
+    ];
+    if (doomedMarkers.length) {
+      await deleteMarkers(this.sceneController, doomedMarkers);
+      this.sceneController.selection = new Set();
+      return;
+    }
     // TODO: Font Guidelines
     // if (fontGuidelineSelection) {
     //   for (const guidelineIndex of reversed(fontGuidelineSelection)) {

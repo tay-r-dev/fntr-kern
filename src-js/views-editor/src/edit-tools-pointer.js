@@ -34,12 +34,6 @@ import {
 } from "@fontra/core/utils.ts";
 import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
-import {
-  SnappingSession,
-  constraintLineForDelta,
-  draggedSnapPositions,
-  selectedPointIndices,
-} from "./snapping-interactions.js";
 import * as vector from "@fontra/core/vector.js";
 import {
   BASE_EXPAND_BEHAVIOR_NAME,
@@ -49,16 +43,10 @@ import {
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
 import { handlesEqual } from "./edit-tools-pen.js";
+import { deleteMarkers, handleMarkerDrag } from "./marker-editing.js";
 import { MeasureInteraction } from "./measure-interactions.js";
 import { getPinPoint } from "./panel-transformation.js";
 import { equalGlyphSelection } from "./scene-controller.js";
-import {
-  createTensionAwareTargetEntries,
-  createTensionAwareTransformEntries,
-  getTensionAwareBehaviorName,
-  TENSION_AWARE_BEHAVIOR_NAME,
-  TENSION_AWARE_SCALE_BEHAVIOR_NAME,
-} from "./tension-aware-editing.js";
 import {
   createEditableGeneratedHandleTargetEntries,
   createEditableGeneratedPointTargetEntries,
@@ -74,6 +62,19 @@ import {
   toggleEditableGeneratedHandleDetached,
   toggleSkeletonSmooth,
 } from "./skeleton-editing.js";
+import {
+  SnappingSession,
+  constraintLineForDelta,
+  draggedSnapPositions,
+  selectedPointIndices,
+} from "./snapping-interactions.js";
+import {
+  TENSION_AWARE_BEHAVIOR_NAME,
+  TENSION_AWARE_SCALE_BEHAVIOR_NAME,
+  createTensionAwareTargetEntries,
+  createTensionAwareTransformEntries,
+  getTensionAwareBehaviorName,
+} from "./tension-aware-editing.js";
 import {
   glyphSelector,
   registerVisualizationLayerDefinition,
@@ -515,6 +516,26 @@ export class PointerTool extends BaseTool {
       return;
     }
 
+    // A drag that starts on a marker grip is a marker drag. The work lives in
+    // marker-editing.js; this file stays a dispatcher.
+    const clickedMarker = parseSelection(selection).marker || [];
+    const clickedMarkerEnd = parseSelection(selection).markerEnd || [];
+    if (clickedMarker.length || clickedMarkerEnd.length) {
+      if (await shouldInitiateDrag(eventStream, initialEvent)) {
+        const [markerId, endIndex] = clickedMarkerEnd.length
+          ? String(clickedMarkerEnd[0]).split("/")
+          : [String(clickedMarker[0]), undefined];
+        await handleMarkerDrag({
+          sceneController,
+          eventStream,
+          initialEvent,
+          markerId,
+          endIndex: endIndex === undefined ? undefined : parseInt(endIndex, 10),
+        });
+      }
+      return;
+    }
+
     if (!this.sceneSettings.selectedGlyph?.isEditing) {
       this.sceneSettings.selectedGlyph = this.sceneModel.glyphAtPoint(point);
       eventStream.done();
@@ -603,6 +624,15 @@ export class PointerTool extends BaseTool {
     } else {
       const instance = this.sceneModel.getSelectedPositionedGlyph().glyph.instance;
       const clickedSelection = parseSelection(selection || []);
+      // Double-click deletes a marker, as the ordinary gesture.
+      const doomedMarkers = [
+        ...(clickedSelection.marker || []).map(String),
+        ...(clickedSelection.markerEnd || []).map((key) => String(key).split("/")[0]),
+      ];
+      if (doomedMarkers.length) {
+        await deleteMarkers(sceneController, doomedMarkers);
+        return;
+      }
       if (clickedSelection.editableGeneratedHandle?.length) {
         await this.handleEditableGeneratedHandlesDoubleClick(selection);
         return;
