@@ -1,7 +1,13 @@
 import { expect } from "chai";
 
-import { StaticGlyphController } from "@fontra/core/glyph-controller.js";
 import {
+  StaticGlyphController,
+  ensureGlyphCompatibility,
+  stripNonInterpolatablesAndSortAnchors,
+} from "@fontra/core/glyph-controller.js";
+import { getMarkers, setMarkerData } from "@fontra/core/marker-model.js";
+import {
+  getSkeletonData,
   getSkeletonRibPosition,
   setSkeletonData,
 } from "@fontra/core/skeleton-model.js";
@@ -349,5 +355,62 @@ describe("StaticGlyphController getSelectionBounds — skeleton", () => {
     );
     // path point 0 is (60, 0); skeleton point 3 is (300, 200)
     expect(bounds).to.deep.equal({ xMin: 60, yMin: 0, xMax: 300, yMax: 200 });
+  });
+});
+
+describe("interpolation ignores markers", () => {
+  function layerGlyphWithMarker() {
+    const glyph = StaticGlyph.fromObject(makeTestStaticGlyphObject());
+    setMarkerData(glyph, {
+      markers: [
+        {
+          id: "marker0",
+          ends: [
+            { kind: "pathSegment", contourIndex: 0, segmentIndex: 0, t: 0.5 },
+            { kind: "cast" },
+          ],
+          signature: { counts: [4], closed: [true] },
+        },
+      ],
+      groups: [],
+    });
+    return glyph;
+  }
+
+  // A layer's customData reaches TWO comparisons: the interpolation model, and the
+  // compatibility check the source panel's warning reads. Markers are not interpolable
+  // data — ids and address kinds, not numbers — and two sources need not carry the same
+  // ones, so both must drop them. Dropping only one leaves a glyph that interpolates
+  // correctly while the panel still reports it broken.
+
+  it("the compatibility check drops markers", () => {
+    const stripped = stripNonInterpolatablesAndSortAnchors(layerGlyphWithMarker());
+    expect(getMarkers(stripped)).to.deep.equal([]);
+  });
+
+  it("the interpolation model drops markers", () => {
+    const [stripped] = ensureGlyphCompatibility(
+      [{ sourceLocation: {}, glyph: layerGlyphWithMarker() }],
+      {}
+    );
+    expect(getMarkers(stripped)).to.deep.equal([]);
+  });
+
+  it("neither drops anything else in fontra.internal", () => {
+    const glyph = layerGlyphWithMarker();
+    setSkeletonData(glyph, { contours: [], generated: [], nextId: 1 });
+    for (const stripped of [
+      stripNonInterpolatablesAndSortAnchors(glyph),
+      ensureGlyphCompatibility([{ sourceLocation: {}, glyph }], {})[0],
+    ]) {
+      expect(getSkeletonData(stripped)).to.not.equal(undefined);
+    }
+  });
+
+  it("leaves the original glyph's markers alone", () => {
+    const glyph = layerGlyphWithMarker();
+    stripNonInterpolatablesAndSortAnchors(glyph);
+    ensureGlyphCompatibility([{ sourceLocation: {}, glyph }], {});
+    expect(getMarkers(glyph)).to.have.lengthOf(1);
   });
 });

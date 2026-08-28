@@ -1369,7 +1369,7 @@ function makeEmptyComponentPlaceholderGlyph() {
   return StaticGlyph.fromObject({ path: path });
 }
 
-function ensureGlyphCompatibility(layers, glyphDependencies) {
+export function ensureGlyphCompatibility(layers, glyphDependencies) {
   const layerGlyphs = layers.map(({ glyph }) => glyph);
 
   const componentsAreCompatible = areComponentsCompatible(layerGlyphs);
@@ -1551,7 +1551,10 @@ function areCustomDatasCompatible(customDatas) {
   return true;
 }
 
-function stripNonInterpolatablesAndSortAnchors(glyph) {
+// Exported for the tests: markers must be dropped by BOTH this and
+// ensureGlyphCompatibility, and a test that can only reach one of them would let the
+// other regress.
+export function stripNonInterpolatablesAndSortAnchors(glyph) {
   return StaticGlyph.fromObject(
     {
       ...glyph,
@@ -1566,6 +1569,11 @@ function stripNonInterpolatablesAndSortAnchors(glyph) {
       anchors: glyph.anchors.slice().sort((a, b) => compare(a.name, b.name)),
       guidelines: [],
       backgroundImage: undefined,
+      // Markers are not interpolable and must not count against compatibility. This is
+      // the second place a layer's customData reaches a comparison: interpolation uses
+      // one strip and the source panel's warning uses this one, so both must drop them
+      // or the glyph interpolates fine while the panel still reports it broken.
+      customData: withoutMarkerData(glyph.customData),
     },
     true // noCopy
   );
