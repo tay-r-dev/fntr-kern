@@ -157,7 +157,10 @@ export function markerGeometry(glyphController, marker, skeletonData) {
   // is a broken marker you cannot fix. It carries no measurement — the number is exactly
   // what must not be trusted.
   const isRay = marker.ends.some((end) => end.kind === "cast");
-  const stale = marker.broken || anchors.some((anchor) => anchor?.verdict !== "ok");
+  // Only the ends that name something can fail. A ray's far end is a cast: it resolves
+  // to nothing by design, and counting that as a failure stales every ray on sight.
+  const stale =
+    marker.broken || anchors.some((anchor) => anchor && anchor.verdict !== "ok");
   if (stale) {
     const points = anchors.filter((anchor) => anchor?.point).map((a) => a.point);
     return {

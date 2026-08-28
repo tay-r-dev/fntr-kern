@@ -1,9 +1,11 @@
 import {
+  markerGeometry,
   measureDimension,
   measureRay,
   measureSkeletonAnchor,
   walkRayIntersections,
 } from "@fontra/core/marker-measure.js";
+import { computeMarkerSignature } from "@fontra/core/marker-model.js";
 import { PathHitTester } from "@fontra/core/path-hit-tester.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
@@ -222,5 +224,50 @@ describe("marker-measure — sweeps", () => {
       previous = measured.distance;
     }
     expect(worst).to.be.lessThan(0.51);
+  });
+});
+
+describe("marker-measure — a freshly placed marker", () => {
+  // A ray's far end is a cast: it resolves to nothing on purpose, and reading that as a
+  // failure made every ray stale the instant it was placed.
+  it("is not stale, and reports its measurement", () => {
+    const path = pathOf(rectContour(0, 0, 100, 200));
+    const glyphController = {
+      flattenedPath: path,
+      flattenedPathHitTester: hitTesterFor(path),
+    };
+    const marker = {
+      id: "m1",
+      ends: [
+        {
+          kind: "pathSegment",
+          contourIndex: 0,
+          segmentIndex: 0,
+          t: 0.5,
+          at: { x: 50, y: 0 },
+        },
+        { kind: "cast" },
+      ],
+      signature: computeMarkerSignature(path),
+    };
+    const geometry = markerGeometry(glyphController, marker, null);
+    expect(geometry.stale).to.equal(false);
+    expect(geometry.distance).to.be.closeTo(200, 0.001);
+  });
+
+  it("is not stale when it is free of the outline entirely", () => {
+    const path = pathOf(rectContour(0, 0, 100, 200));
+    const glyphController = {
+      flattenedPath: path,
+      flattenedPathHitTester: hitTesterFor(path),
+    };
+    const marker = {
+      id: "m1",
+      ends: [{ kind: "free", x: 400, y: 400 }, { kind: "cast" }],
+      signature: computeMarkerSignature(path),
+    };
+    const geometry = markerGeometry(glyphController, marker, null);
+    expect(geometry.stale).to.equal(false);
+    expect(geometry.distance).to.equal(null);
   });
 });
