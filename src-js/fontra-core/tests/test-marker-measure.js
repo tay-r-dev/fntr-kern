@@ -1,6 +1,7 @@
 import {
   measureDimension,
   measureRay,
+  measureSkeletonAnchor,
   walkRayIntersections,
 } from "@fontra/core/marker-measure.js";
 import { PathHitTester } from "@fontra/core/path-hit-tester.js";
@@ -75,5 +76,70 @@ describe("marker-measure — the winding walk", () => {
 
   it("measures a dimension as the plain hypotenuse", () => {
     expect(measureDimension({ x: 0, y: 0 }, { x: 3, y: 4 })).to.equal(5);
+  });
+});
+
+// A straight centerline running left to right along y = 50. The left side of a skeleton
+// contour is the direction of the travel direction turned a quarter clockwise, which for
+// this centerline points downward.
+function straightSkeleton(singleSided = null) {
+  return {
+    contours: [
+      {
+        id: "c1",
+        closed: false,
+        singleSided,
+        points: [
+          { id: "p1", x: 0, y: 50 },
+          { id: "p2", x: 100, y: 50 },
+        ],
+      },
+    ],
+  };
+}
+
+const centerlineEnd = { kind: "skeletonPoint", contourId: "c1", pointId: "p1", t: 0.5 };
+
+describe("marker-measure — the skeleton cases", () => {
+  it("reports the full stroke width from a double-sided centerline", () => {
+    const path = pathOf(rectContour(0, 0, 100, 100));
+    const measured = measureSkeletonAnchor(
+      hitTesterFor(path),
+      centerlineEnd,
+      straightSkeleton()
+    );
+    expect(measured.distance).to.be.closeTo(100, 0.001);
+  });
+
+  it("reports one side from a single-sided centerline", () => {
+    // The stroke lies below the centerline, which is the left side.
+    const path = pathOf(rectContour(0, 0, 100, 50));
+    const measured = measureSkeletonAnchor(
+      hitTesterFor(path),
+      centerlineEnd,
+      straightSkeleton("left")
+    );
+    expect(measured.distance).to.be.closeTo(50, 0.001);
+  });
+
+  it("measures an anchor on a generated contour as an ordinary ray", () => {
+    const path = pathOf(rectContour(0, 0, 100, 100));
+    const measured = measureSkeletonAnchor(
+      hitTesterFor(path),
+      { kind: "pathSegment", contourIndex: 0, segmentIndex: 0, t: 0.5 },
+      straightSkeleton(),
+      path
+    );
+    expect(measured.distance).to.be.closeTo(100, 0.001);
+  });
+
+  it("reports null for an anchor that no longer resolves", () => {
+    const path = pathOf(rectContour(0, 0, 100, 100));
+    const measured = measureSkeletonAnchor(
+      hitTesterFor(path),
+      { kind: "skeletonPoint", contourId: "gone", pointId: "p1", t: 0.5 },
+      straightSkeleton()
+    );
+    expect(measured).to.equal(null);
   });
 });

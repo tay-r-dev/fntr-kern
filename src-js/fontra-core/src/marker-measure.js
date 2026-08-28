@@ -1,3 +1,9 @@
+import { resolveMarkerAnchor } from "./marker-model.js";
+import {
+  getSkeletonContour,
+  getSkeletonPoint,
+  getSkeletonRibSidesForPoint,
+} from "./skeleton-model.js";
 import { round } from "./utils.ts";
 import * as vector from "./vector.js";
 
@@ -34,12 +40,24 @@ export function walkRayIntersections(intersections) {
 // never crosses. Every reader must handle it. Do not fabricate a distance.
 
 export function measureRay(pathHitTester, origin, direction, extraLines = undefined) {
-  const intersections = pathHitTester.rayIntersections(origin, direction, extraLines);
+  // The hit tester returns crossings in its own order, not along the ray, so order them
+  // before walking: the walk reads a sequence, and a sequence in the wrong order reports
+  // the span behind the anchor as the one in front of it.
+  const intersections = pathHitTester
+    .rayIntersections(origin, direction, extraLines)
+    .map((intersection) => ({
+      ...intersection,
+      along: vector.dotVector(vector.subVectors(intersection, origin), direction),
+    }))
+    .sort((a, b) => a.along - b.along);
+
   const spans = walkRayIntersections(intersections);
-  const start = firstSpanAtOrAfter(intersections, origin, direction);
+  const start = spanAtOrigin(intersections);
   if (start === undefined || !spans[start]?.inside) {
     return null;
   }
+  // Walk on across consecutive inside spans: an overlapping contour's interior edge ends
+  // a span without ending the black, and the ray must cross it rather than stop.
   let end = start;
   while (spans[end + 1]?.inside) {
     end++;
@@ -55,15 +73,59 @@ export function measureDimension(p1, p2) {
 
 const ALONG_RAY_EPSILON = 1e-6;
 
-function firstSpanAtOrAfter(intersections, origin, direction) {
+// The span the anchor sits in, which is the first one that does not end behind it. An
+// anchor on an outline sits exactly on a span boundary; an anchor on a centerline sits
+// in the middle of one.
+function spanAtOrigin(intersections) {
   for (let i = 0; i < intersections.length - 1; i++) {
-    const along = vector.dotVector(
-      vector.subVectors(intersections[i], origin),
-      direction
-    );
-    if (along >= -ALONG_RAY_EPSILON) {
+    if (intersections[i + 1].along > ALONG_RAY_EPSILON) {
       return i;
     }
   }
   return undefined;
+}
+
+// A skeleton anchor, in its three cases.
+//
+// On a generated contour it is an ordinary ray: the centerline is not outline geometry
+// and casts no crossing, so the ray runs straight through it to the far generated edge.
+//
+// On a centerline it depends on how many sides the stroke has there. Double-sided, the
+// ray runs both ways and reports the sum, which is the stroke's full width at that
+// point. Single-sided, it runs one way only, because the other edge lies on the
+// centerline itself.
+//
+// Which way is "left" is the skeleton generator's convention: the travel direction
+// turned a quarter clockwise. The anchor normal is turned the other way, so left is its
+// negation.
+
+export function measureSkeletonAnchor(pathHitTester, end, skeletonData, path) {
+  const anchor = resolveMarkerAnchor(end, { path, skeletonData });
+  if (anchor.verdict !== "ok" || !anchor.normal) {
+    return null;
+  }
+  if (end.kind !== "skeletonPoint") {
+    return measureRay(pathHitTester, anchor.point, anchor.normal);
+  }
+
+  const contour = getSkeletonContour(skeletonData, end.contourId);
+  const point = getSkeletonPoint(skeletonData, end.contourId, end.pointId);
+  const sides = getSkeletonRibSidesForPoint(contour, point);
+  const left = vector.mulVectorScalar(anchor.normal, -1);
+  const right = anchor.normal;
+
+  if (sides.length === 1) {
+    return measureRay(pathHitTester, anchor.point, sides[0] === "left" ? left : right);
+  }
+
+  const leftMeasured = measureRay(pathHitTester, anchor.point, left);
+  const rightMeasured = measureRay(pathHitTester, anchor.point, right);
+  if (!leftMeasured || !rightMeasured) {
+    return null;
+  }
+  return {
+    farPoint: leftMeasured.farPoint,
+    secondFarPoint: rightMeasured.farPoint,
+    distance: leftMeasured.distance + rightMeasured.distance,
+  };
 }
