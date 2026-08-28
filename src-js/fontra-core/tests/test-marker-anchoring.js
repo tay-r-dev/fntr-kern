@@ -152,3 +152,90 @@ describe("marker anchoring — the three cases", () => {
     expect(after.point.y).to.be.closeTo(before.point.y, 0.001);
   });
 });
+
+// A dimension's ends name POINTS, not places along a segment, so repairing one means
+// finding the point again — not the nearest spot on the outline, which is a different
+// question with a different answer.
+describe("marker anchoring — a dimension's ends", () => {
+  function pointEndOn(path, contourIndex, pointIndex) {
+    return withAnchorPosition({ kind: "pathPoint", contourIndex, pointIndex }, path);
+  }
+
+  function dimensionWith(end, path) {
+    return {
+      id: "m1",
+      ends: [end, { kind: "pathPoint", contourIndex: 0, pointIndex: 0 }],
+      signature: computeMarkerSignature(path),
+    };
+  }
+
+  // A five-point contour: the square with an extra point mid-way along the bottom.
+  function fivePointPath() {
+    const path = squarePath();
+    path.insertPoint(0, 1, { x: 50, y: 0 });
+    return path;
+  }
+
+  it("survives a point deleted from its own contour", () => {
+    const start = fivePointPath();
+    const end = pointEndOn(start, 0, 3); // the far corner, (100, 100)
+    const marker = dimensionWith(end, start);
+
+    const shrunk = fivePointPath();
+    shrunk.deletePoint(0, 1); // the extra point goes; the square is unchanged
+
+    const resolved = resolveMarkerEnd(end, {
+      path: shrunk,
+      indicesChanged: markerIndicesChanged(marker, shrunk),
+    });
+    expect(resolved.verdict).to.equal("ok");
+    expect(resolved.point).to.deep.include({ x: 100, y: 100 });
+    // The address now names where that corner actually lives.
+    expect(resolved.end.pointIndex).to.equal(2);
+    expect(markerIsStale(marker, shrunk)).to.equal(false);
+  });
+
+  it("survives a point inserted on its own contour", () => {
+    const start = squarePath();
+    const end = pointEndOn(start, 0, 2); // (100, 100)
+    const marker = dimensionWith(end, start);
+
+    const grown = squarePath();
+    grown.insertPoint(0, 1, { x: 50, y: 0 });
+
+    expect(markerIsStale(marker, grown)).to.equal(false);
+    const resolved = resolveMarkerEnd(end, {
+      path: grown,
+      indicesChanged: markerIndicesChanged(marker, grown),
+    });
+    expect(resolved.point).to.deep.include({ x: 100, y: 100 });
+  });
+
+  it("stales when its own point is the one deleted", () => {
+    const start = fivePointPath();
+    const end = pointEndOn(start, 0, 1); // the extra point at (50, 0)
+    const marker = dimensionWith(end, start);
+
+    const shrunk = fivePointPath();
+    shrunk.deletePoint(0, 1);
+
+    expect(markerIsStale(marker, shrunk)).to.equal(true);
+  });
+
+  it("does not slide onto the nearest place on a segment", () => {
+    // The deleted point's spot still lies ON the outline — mid-way along the bottom
+    // edge — so a segment-based repair would happily "find" it and report a healthy
+    // anchor to a point that no longer exists.
+    const start = fivePointPath();
+    const end = pointEndOn(start, 0, 1);
+    const marker = dimensionWith(end, start);
+    const shrunk = fivePointPath();
+    shrunk.deletePoint(0, 1);
+
+    const resolved = resolveMarkerEnd(end, {
+      path: shrunk,
+      indicesChanged: markerIndicesChanged(marker, shrunk),
+    });
+    expect(resolved.verdict).to.equal("stale");
+  });
+});

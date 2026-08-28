@@ -135,7 +135,15 @@ export function resolveMarkerEnd(end, { path, skeletonData, indicesChanged } = {
     return direct.verdict === "ok" ? { ...direct, end } : { verdict: "stale", end };
   }
 
-  const found = nearestPlaceOnPath(path, end.at);
+  // What counts as "still there" depends on what the end names. A ray's anchor is a
+  // place along the outline, so any spot on it will do. A dimension's end names a POINT,
+  // and a point that has been deleted is gone even though its position still lies on the
+  // outline — asking the segment question there would report a healthy anchor to a point
+  // that no longer exists.
+  const found =
+    end.kind === "pathPoint"
+      ? nearestPointOnPath(path, end.at)
+      : nearestPlaceOnPath(path, end.at);
   if (found && isSamePlace(found.point, end.at)) {
     const rewritten = { ...end, ...found.address, at: end.at };
     const resolved = resolveMarkerAnchor(rewritten, { path, skeletonData });
@@ -170,6 +178,26 @@ function isSamePlace(a, b) {
 // The nearest place on the outline to a remembered point. This is a measurement, not a
 // search for a lost anchor: the result is accepted only if it lands on the remembered
 // point, so it can confirm that a place still exists and never invent one.
+// The nearest actual point of the outline, for an end that names one. Same discipline as
+// nearestPlaceOnPath: the answer is accepted only if it lands on the remembered spot.
+function nearestPointOnPath(path, at) {
+  if (!path) {
+    return undefined;
+  }
+  let best;
+  for (let contourIndex = 0; contourIndex < path.contourInfo.length; contourIndex++) {
+    const numPoints = path.getNumPointsOfContour(contourIndex);
+    for (let pointIndex = 0; pointIndex < numPoints; pointIndex++) {
+      const point = path.getContourPoint(contourIndex, pointIndex);
+      const d = Math.hypot(point.x - at.x, point.y - at.y);
+      if (!best || d < best.d) {
+        best = { d, point, address: { contourIndex, pointIndex } };
+      }
+    }
+  }
+  return best;
+}
+
 function nearestPlaceOnPath(path, at) {
   if (!path) {
     return undefined;
