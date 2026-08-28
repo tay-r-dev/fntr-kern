@@ -80,7 +80,7 @@ function markerOn(contourIndex, path) {
   return {
     id: "m1",
     ends: [
-      { kind: "pathSegment", contourIndex, segmentStart: 0, t: 0.5 },
+      { kind: "pathSegment", contourIndex, segmentIndex: 0, t: 0.5 },
       { kind: "cast" },
     ],
     signature: computeMarkerSignature(path),

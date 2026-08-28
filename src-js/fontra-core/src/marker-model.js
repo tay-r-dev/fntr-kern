@@ -1,8 +1,15 @@
+import { Bezier } from "bezier-js";
 import {
   getFontraInternalSection,
   setFontraInternalSection,
 } from "./fontra-internal-data.js";
 import { FONTRA_INTERNAL_SECTIONS } from "./fontra-internal-schema.js";
+import {
+  buildSkeletonTunniSegments,
+  getSkeletonContour,
+  getSkeletonPoint,
+} from "./skeleton-model.js";
+import * as vector from "./vector.js";
 
 // A marker is a measurement the designer places on a contour and keeps. It stores an
 // address and nothing else: every distance is derived on read.
@@ -86,4 +93,85 @@ export function markerIsStale(marker, path) {
 
 function endIsPathAnchored(end) {
   return end.kind === "pathSegment" || end.kind === "pathPoint";
+}
+
+// Resolving an address. The verdict is "ok" or "stale" and there is no third value:
+// anything that cannot be resolved is stale, never guessed at and never thrown on.
+
+export function resolveMarkerAnchor(end, { path, skeletonData } = {}) {
+  switch (end?.kind) {
+    case "pathSegment":
+      return resolvePathSegment(end, path);
+    case "pathPoint":
+      return resolvePathPoint(end, path);
+    case "skeletonPoint":
+      return resolveSkeletonPoint(end, skeletonData);
+    default:
+      return STALE;
+  }
+}
+
+const STALE = Object.freeze({ verdict: "stale" });
+
+function resolvePathSegment(end, path) {
+  const bezier = pathSegmentBezier(path, end.contourIndex, end.segmentIndex);
+  if (!bezier) {
+    return STALE;
+  }
+  return { verdict: "ok", point: bezier.get(end.t), normal: normalAt(bezier, end.t) };
+}
+
+function resolvePathPoint(end, path) {
+  if (
+    !path ||
+    end.contourIndex < 0 ||
+    end.contourIndex >= path.contourInfo.length ||
+    end.pointIndex < 0 ||
+    end.pointIndex >= path.getNumPointsOfContour(end.contourIndex)
+  ) {
+    return STALE;
+  }
+  const point = path.getContourPoint(end.contourIndex, end.pointIndex);
+  return point ? { verdict: "ok", point } : STALE;
+}
+
+function resolveSkeletonPoint(end, skeletonData) {
+  const contour = skeletonData
+    ? getSkeletonContour(skeletonData, end.contourId)
+    : undefined;
+  if (!contour || !getSkeletonPoint(skeletonData, end.contourId, end.pointId)) {
+    return STALE;
+  }
+  const segment = buildSkeletonTunniSegments(contour).find(
+    (segment) => segment.startPointId === end.pointId
+  );
+  if (!segment) {
+    return STALE;
+  }
+  const bezier = new Bezier(
+    [segment.startPoint, ...segment.controlPoints, segment.endPoint].map((point) => ({
+      x: point.x,
+      y: point.y,
+    }))
+  );
+  return { verdict: "ok", point: bezier.get(end.t), normal: normalAt(bezier, end.t) };
+}
+
+function pathSegmentBezier(path, contourIndex, segmentIndex) {
+  if (!path || contourIndex < 0 || contourIndex >= path.contourInfo.length) {
+    return undefined;
+  }
+  let i = 0;
+  for (const segment of path.iterContourDecomposedSegments(contourIndex)) {
+    if (i++ === segmentIndex) {
+      return new Bezier(segment.points);
+    }
+  }
+  return undefined;
+}
+
+// The same quarter turn the Power Ruler takes at recalcRulerFromPoint.
+function normalAt(bezier, t) {
+  const derivative = bezier.derivative(t);
+  return vector.normalizeVector({ x: -derivative.y, y: derivative.x });
 }
