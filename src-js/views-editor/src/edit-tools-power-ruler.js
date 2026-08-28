@@ -1,5 +1,6 @@
 import { translate } from "@fontra/core/localization.js";
-import { range, round, throttleCalls } from "@fontra/core/utils.ts";
+import { walkRayIntersections } from "@fontra/core/marker-measure.js";
+import { throttleCalls } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
 import { constrainHorVerDiag } from "./edit-behavior.js";
 import { BaseTool } from "./edit-tools-base.js";
@@ -205,20 +206,7 @@ export class PowerRulerTool extends BaseTool {
       directionVector,
       extraLines
     );
-    const measurePoints = [];
-    let winding = 0;
-    for (const i of range(intersections.length - 1)) {
-      winding += intersections[i].winding;
-      const j = i + 1;
-      const v = vector.subVectors(intersections[j], intersections[i]);
-      const measurePoint = vector.addVectors(
-        intersections[i],
-        vector.mulVectorScalar(v, 0.5)
-      );
-      measurePoint.distance = round(Math.hypot(v.x, v.y), 1);
-      measurePoint.inside = !!winding;
-      measurePoints.push(measurePoint);
-    }
+    const measurePoints = walkRayIntersections(intersections);
     return {
       basePoint,
       directionVector,
