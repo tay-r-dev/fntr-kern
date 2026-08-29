@@ -14,6 +14,7 @@ import {
   makeLineCandidate,
   makePointCandidate,
   projectOntoLine,
+  resetSnapParameters,
 } from "@fontra/core/snapping.js";
 
 describe("snapping primitives", () => {
@@ -742,5 +743,85 @@ describe("travelling past a guide, and breaking free of one", () => {
     // Out past the reach, the refusal is spent.
     const outside = resolveSnap(candidates, { x: 0, y: 200 }, { ...opts, escape });
     expect(outside.escape.refused).to.equal(null);
+  });
+});
+
+describe("a weightless kind is offered but never wins", () => {
+  afterEach(() => resetSnapParameters());
+
+  const scene = (kind) => ({
+    metrics: [],
+    guides: [],
+    segments: [],
+    points: [{ x: 100, y: 100, kind }],
+  });
+  const cursor = { x: 101, y: 101 };
+  const options = { pixelUnit: 1, held: null };
+
+  it("collects the own-generated rays like any other point's", () => {
+    const candidates = collectCandidates(scene(KIND.OWN_GENERATED), cursor, {
+      pixelUnit: 1,
+    });
+    const own = candidates.filter((c) => c.kind === KIND.OWN_GENERATED);
+    // One horizontal and one vertical, the same pair every point casts.
+    expect(own.length).to.equal(2);
+  });
+
+  it("gives them no pull, so the resolver holds nothing", () => {
+    const candidates = collectCandidates(scene(KIND.OWN_GENERATED), cursor, {
+      pixelUnit: 1,
+    });
+    for (const candidate of candidates) {
+      expect(candidatePull(candidate, cursor, options)).to.equal(0);
+    }
+    expect(resolveSnap(candidates, cursor, options).held).to.deep.equal([]);
+  });
+
+  it("does not let them form an intersection either", () => {
+    const horizontal = makeLineCandidate({
+      x: 0,
+      y: 100,
+      angle: 0,
+      kind: KIND.OWN_GENERATED,
+    });
+    const vertical = makeLineCandidate({
+      x: 100,
+      y: 0,
+      angle: 90,
+      kind: KIND.METRIC,
+    });
+    // Without this rule the crossing would come back at the intersection
+    // weight, and a weight of zero would not mean what it says.
+    expect(crossLines(horizontal, vertical)).to.equal(null);
+  });
+
+  it("snaps to them once the designer gives them a weight", () => {
+    SNAP_PARAMETERS.weights[KIND.OWN_GENERATED] = 0.5;
+    const candidates = collectCandidates(scene(KIND.OWN_GENERATED), cursor, {
+      pixelUnit: 1,
+    });
+    expect(resolveSnap(candidates, cursor, options).held.length).to.be.above(0);
+  });
+});
+
+describe("rays are chosen per kind", () => {
+  it("does not let a nearer kind hide a further one", () => {
+    const candidates = collectCandidates(
+      {
+        metrics: [],
+        guides: [],
+        segments: [],
+        points: [
+          { x: 100, y: 101 },
+          { x: 100, y: 140, kind: KIND.SKELETON },
+        ],
+      },
+      { x: 100, y: 100 },
+      { pixelUnit: 1 }
+    );
+    // The outline point is much nearer, but the skeleton is a kind of its own,
+    // so its rays are still offered and a weight change can reach them.
+    expect(candidates.some((c) => c.kind === KIND.SKELETON)).to.equal(true);
+    expect(candidates.some((c) => c.kind === KIND.SMART_ORTHOGONAL)).to.equal(true);
   });
 });

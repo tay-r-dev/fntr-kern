@@ -7,6 +7,14 @@ export const KIND = Object.freeze({
   SMART_INTERSECTION_SLANTED: "smartIntersectionSlanted",
   SMART_ORTHOGONAL: "smartOrthogonal",
   SMART_SLANTED: "smartSlanted",
+  // The skeleton's own points and rib ends. Their own kind, because a
+  // centerline is construction: it should be reachable without also outranking
+  // the outline the designer can see.
+  SKELETON: "skeleton",
+  // The generated geometry that follows the very thing being dragged. It moves
+  // with the drag, so it is weightless by default and never wins; raise the
+  // weight to snap a point to the outline it is making.
+  OWN_GENERATED: "ownGenerated",
   OTHER: "other",
 });
 
@@ -52,9 +60,21 @@ const ORTHOGONAL_KINDS = new Set([
   KIND.METRIC,
   KIND.GUIDE_ORTHOGONAL,
   KIND.SMART_ORTHOGONAL,
+  // The skeleton casts the same two axis-aligned rays every other point does.
+  KIND.SKELETON,
 ]);
 
+function kindWeight(kind) {
+  return SNAP_PARAMETERS.weights[kind] ?? SNAP_PARAMETERS.weights[KIND.OTHER];
+}
+
 export function crossLines(a, b) {
+  // A line that pulls nothing cannot help form a point. Without this a
+  // weightless kind would come back at the intersection weight, and setting a
+  // weight to zero would not mean what it says.
+  if (!kindWeight(a.kind) || !kindWeight(b.kind)) {
+    return null;
+  }
   const cross = a.dx * b.dy - a.dy * b.dx;
   const sinLimit = Math.sin((MIN_CROSSING_ANGLE_DEG * Math.PI) / 180);
   if (Math.abs(cross) < sinLimit) {
@@ -96,6 +116,8 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
     [KIND.SMART_INTERSECTION_SLANTED]: 1,
     [KIND.SMART_ORTHOGONAL]: 1,
     [KIND.SMART_SLANTED]: 1,
+    [KIND.SKELETON]: 1,
+    [KIND.OWN_GENERATED]: 1,
     [KIND.OTHER]: 1,
   }),
   weights: Object.freeze({
@@ -107,6 +129,10 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
     [KIND.SMART_INTERSECTION_SLANTED]: 0.48,
     [KIND.SMART_ORTHOGONAL]: 0.44,
     [KIND.SMART_SLANTED]: 0.4,
+    [KIND.SKELETON]: 0.36,
+    // Zero: present, collected, reported in the readout, and never winning
+    // until the designer asks for it.
+    [KIND.OWN_GENERATED]: 0,
     [KIND.OTHER]: 0.3,
   }),
 });
@@ -167,8 +193,7 @@ export function reachForKind(kind, pixelUnit) {
 
 export function candidatePull(candidate, cursor, { pixelUnit, held }) {
   const reach = reachForKind(candidate.kind, pixelUnit);
-  const weight =
-    SNAP_PARAMETERS.weights[candidate.kind] ?? SNAP_PARAMETERS.weights[KIND.OTHER];
+  const weight = kindWeight(candidate.kind);
   const bonus = sameCandidate(candidate, held) ? SNAP_PARAMETERS.holdBonus : 1;
   return weight * bonus * falloff(distanceToCandidate(candidate, cursor) / reach);
 }
@@ -525,28 +550,28 @@ export function collectCandidates(scene, cursor, { pixelUnit }) {
     );
   }
 
-  const points = (scene.points || []).filter(inRadius);
-  for (const source of nearestPerSide(points, cursor, "y")) {
-    candidates.push(
-      makeLineCandidate({
-        x: source.x,
-        y: source.y,
-        angle: 0,
-        kind: KIND.SMART_ORTHOGONAL,
-        source,
-      })
-    );
+  // Rays are chosen per kind, not across all points at once: the nearest point
+  // of one kind must not hide the nearest of another, or raising a weight would
+  // not be enough to reach a kind that is standing behind a closer one.
+  const pointsByKind = new Map();
+  for (const point of (scene.points || []).filter(inRadius)) {
+    const kind = point.kind || KIND.SMART_ORTHOGONAL;
+    if (!pointsByKind.has(kind)) {
+      pointsByKind.set(kind, []);
+    }
+    pointsByKind.get(kind).push(point);
   }
-  for (const source of nearestPerSide(points, cursor, "x")) {
-    candidates.push(
-      makeLineCandidate({
-        x: source.x,
-        y: source.y,
-        angle: 90,
-        kind: KIND.SMART_ORTHOGONAL,
-        source,
-      })
-    );
+  for (const [kind, points] of pointsByKind) {
+    for (const [axis, angle] of [
+      ["y", 0],
+      ["x", 90],
+    ]) {
+      for (const source of nearestPerSide(points, cursor, axis)) {
+        candidates.push(
+          makeLineCandidate({ x: source.x, y: source.y, angle, kind, source })
+        );
+      }
+    }
   }
 
   for (const segment of (scene.segments || []).filter(inRadius)) {

@@ -205,6 +205,22 @@ const SNAPPING_DEBUG_CONTROLS = [
     step: 0.02,
   },
   {
+    path: "weights." + KIND.SKELETON,
+    label: "Weight: skeleton and rib ends",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    // Zero by default: the outline the drag is generating moves with the drag,
+    // so it is offered and never wins until the designer asks for it.
+    path: "weights." + KIND.OWN_GENERATED,
+    label: "Weight: own generated outline",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
     path: "reaches." + KIND.METRIC,
     label: "Reach: metric",
     min: 0.25,
@@ -251,6 +267,20 @@ const SNAPPING_DEBUG_CONTROLS = [
     label: "Reach: smart, right angle",
     min: 0.25,
     max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.SKELETON,
+    label: "Reach: skeleton and rib ends",
+    min: 0.25,
+    max: 3,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.OWN_GENERATED,
+    label: "Reach: own generated outline",
+    min: 0.25,
+    max: 3,
     step: 0.05,
   },
   {

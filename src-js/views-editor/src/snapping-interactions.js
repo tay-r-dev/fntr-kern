@@ -93,30 +93,39 @@ function movedSkeletonPointKeys(sceneController, movedPointIndices) {
   return moved;
 }
 
-function excludedPointIndices(sceneController, movedPointIndices) {
+// `excluded` is the geometry the drag moves and so cannot snap to: the moved
+// points themselves. `ownGenerated` is the outline those moved skeleton points
+// generate. It moves too, which is why it is weightless by default rather than
+// simply absent - the designer can give it a weight and snap a point to the
+// outline it is making.
+function partitionMovedPointIndices(sceneController, movedPointIndices) {
   const excluded = new Set(movedPointIndices);
+  const ownGenerated = new Set();
   const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
   const path = positionedGlyph?.glyph?.path;
   const skeletonData = getSkeletonData(positionedGlyph?.glyph);
   if (!path || !skeletonData) {
-    return excluded;
+    return { excluded, ownGenerated };
   }
 
   const movedSkeletonPoints = movedSkeletonPointKeys(sceneController, excluded);
   if (!movedSkeletonPoints.size) {
-    return excluded;
+    return { excluded, ownGenerated };
   }
 
   for (let pointIndex = 0; pointIndex < path.numPoints; pointIndex++) {
+    if (excluded.has(pointIndex)) {
+      continue;
+    }
     const provenance = resolveGeneratedPointProvenance(skeletonData, path, pointIndex);
     if (
       provenance &&
       movedSkeletonPoints.has(`${provenance.contourId}/${provenance.pointId}`)
     ) {
-      excluded.add(pointIndex);
+      ownGenerated.add(pointIndex);
     }
   }
-  return excluded;
+  return { excluded, ownGenerated };
 }
 
 // Shift constrains the drag to a horizontal, a vertical or a diagonal. That axis
@@ -179,7 +188,10 @@ export function buildSnapScene(sceneController, excludePointIndices) {
   if (!glyph) {
     return { metrics: [], guides: [], points: [], segments: [] };
   }
-  const excluded = excludedPointIndices(sceneController, excludePointIndices);
+  const { excluded, ownGenerated } = partitionMovedPointIndices(
+    sceneController,
+    excludePointIndices
+  );
 
   const metrics = [];
   const lineMetrics =
@@ -215,10 +227,16 @@ export function buildSnapScene(sceneController, excludePointIndices) {
     if (point.type) {
       continue; // off-curve points contribute no rays
     }
-    points.push({ x: point.x, y: point.y });
+    points.push({
+      x: point.x,
+      y: point.y,
+      kind: ownGenerated.has(i) ? KIND.OWN_GENERATED : undefined,
+    });
   }
   for (const segment of iterPathSegments(path)) {
-    if (segment.pointIndices.some((i) => excluded.has(i))) {
+    if (segment.pointIndices.some((i) => excluded.has(i) || ownGenerated.has(i))) {
+      // A segment of the moved outline is not offered at all. Only its points
+      // are, and only weightlessly.
       continue;
     }
     segments.push(segment.candidate);
@@ -236,13 +254,13 @@ export function buildSnapScene(sceneController, excludePointIndices) {
       if (point.type || movedSkeletonPoints.has(`${contour.id}/${point.id}`)) {
         continue;
       }
-      points.push({ x: point.x, y: point.y });
+      points.push({ x: point.x, y: point.y, kind: KIND.SKELETON });
       const ribEnds = getSkeletonRibEndpoints(contour, point);
       for (const end of [ribEnds.left, ribEnds.right]) {
         // A collapsed side returns the centerline point itself, which is
         // already in the list.
         if (end && end !== point) {
-          points.push({ x: end.x, y: end.y });
+          points.push({ x: end.x, y: end.y, kind: KIND.SKELETON });
         }
       }
     }
