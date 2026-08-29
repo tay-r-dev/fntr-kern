@@ -311,16 +311,16 @@ const u1Sides = {
   },
 };
 
-function u1RequestAt(scale, side) {
+function u1RequestAtSplit(startScale, endScale, side) {
   const skeletonControlPoints = [
     U1.p0,
     {
-      x: U1.p0.x + U1.startDirection.x * U1.startHandleLength * scale,
-      y: U1.p0.y + U1.startDirection.y * U1.startHandleLength * scale,
+      x: U1.p0.x + U1.startDirection.x * U1.startHandleLength * startScale,
+      y: U1.p0.y + U1.startDirection.y * U1.startHandleLength * startScale,
     },
     {
-      x: U1.p3.x + U1.endDirection.x * U1.endHandleLength * scale,
-      y: U1.p3.y + U1.endDirection.y * U1.endHandleLength * scale,
+      x: U1.p3.x + U1.endDirection.x * U1.endHandleLength * endScale,
+      y: U1.p3.y + U1.endDirection.y * U1.endHandleLength * endScale,
     },
     U1.p3,
   ];
@@ -339,6 +339,13 @@ function u1RequestAt(scale, side) {
       U1.endDirection
     ),
   };
+}
+
+// The U^1 sweep moves both skeleton handles together. A designer moves one.
+// Holding the other still is a separate axis, and the generated handle at the
+// held end has its own answer to report there.
+function u1RequestAt(scale, side) {
+  return u1RequestAtSplit(scale, scale, side);
 }
 
 function sweepRequests(requestAt, solve = solveNaturalHandles) {
@@ -371,6 +378,25 @@ function sweepMetrics(values) {
     );
   }
   return { worstStep, worstBacktrack };
+}
+
+// The paired sweep can assume every length grows with the scale, so it measures
+// a decrease. The held end has no such promise: its length may legitimately fall
+// across the whole drag. What it may not do is turn around. So the measure here
+// is the worst move against the sweep's own overall direction, which is the same
+// number as `worstBacktrack` whenever the trend is upward.
+function sweepReversal(values, key) {
+  const first = values[0][key];
+  const last = values[values.length - 1][key];
+  const trend = Math.sign(last - first) || 1;
+  let worstReversal = 0;
+  let worstStep = 0;
+  for (let index = 1; index < values.length; index++) {
+    const delta = values[index][key] - values[index - 1][key];
+    worstStep = Math.max(worstStep, Math.abs(delta));
+    worstReversal = Math.max(worstReversal, -trend * delta);
+  }
+  return { worstStep, worstReversal, travel: Math.abs(last - first) };
 }
 
 function scaledHandles(points, scale) {
@@ -662,6 +688,61 @@ describe("natural-handle-solver: U^1 sweep", () => {
       expect(worstStep, `worst step=${worstStep}`).to.be.at.most(3);
       expect(reverse).to.deep.equal([...forward].reverse());
     });
+  }
+});
+
+// The rule is zero. These are what the solver does instead, in units, and they
+// are the fault BACKLOG.md records as B9. Recorded rather than hidden so that a
+// change to the construction is measured against a number instead of against a
+// memory. Drive them to zero; never raise one to make a change pass.
+//
+// A search over the four pull constants shrinks these monotonically and never
+// reaches zero: the worst reversal falls as roughly one over the pull floor —
+// 0.742 at the shipped 0.001, then 0.325, 0.083, 0.029, 0.0089, 0.0009 at 0.03,
+// 1, 3, 10, 100 — while the paired-sweep step stays near 2.6 throughout. It
+// vanishes only in the limit where the pull has replaced the fit, and there the
+// generator has stopped offsetting anything. So no tuple of the constants fixes
+// this, the same way Round 7 found a cusp-only predictor could not.
+const heldHandleReversalLedger = {
+  "single-sided right": { start: 0, end: 0 },
+  "single-sided left": { start: 0.3379, end: 0.422 },
+  "double-sided outer": { start: 0.2316, end: 0.5852 },
+  "double-sided inner": { start: 0.2336, end: 0.7423 },
+};
+
+describe("natural-handle-solver: one-handle sweep", () => {
+  // Moving one skeleton handle and holding the other. The generated handle at
+  // the held end is free to take any value the fit wants, and free to move a
+  // long way. It may not turn around while the drag runs one way. The paired
+  // U^1 sweep moves both handles together, so it never puts this question.
+  for (const [name, side] of Object.entries(u1Sides)) {
+    for (const moving of ["start", "end"]) {
+      const held = moving === "start" ? "end" : "start";
+      it(`holds the ${held} handle to its recorded reversal while ${moving} moves, ${name}`, () => {
+        const { forward, reverse } = sweepRequests((scale) =>
+          moving === "start"
+            ? u1RequestAtSplit(scale, 1, side)
+            : u1RequestAtSplit(1, scale, side)
+        );
+        const movingMetrics = sweepReversal(forward, `${moving}Length`);
+        const heldMetrics = sweepReversal(forward, `${held}Length`);
+        const diagnostic =
+          `${moving}: step=${movingMetrics.worstStep} ` +
+          `reversal=${movingMetrics.worstReversal} ` +
+          `travel=${movingMetrics.travel} | ` +
+          `${held}: step=${heldMetrics.worstStep} ` +
+          `reversal=${heldMetrics.worstReversal} ` +
+          `travel=${heldMetrics.travel}`;
+        expect(reverse, diagnostic).to.deep.equal([...forward].reverse());
+        // The handle the designer is dragging is already sound on this axis.
+        expect(movingMetrics.worstReversal, diagnostic).to.be.at.most(1e-9);
+        expect(heldMetrics.worstReversal, diagnostic).to.be.at.most(
+          heldHandleReversalLedger[name][moving] + 1e-3
+        );
+        expect(movingMetrics.worstStep, diagnostic).to.be.at.most(3);
+        expect(heldMetrics.worstStep, diagnostic).to.be.at.most(3);
+      });
+    }
   }
 });
 
