@@ -3665,6 +3665,12 @@ export class EditorController extends ViewController {
   contextMenuHandler(event) {
     event.preventDefault();
 
+    // The active tool gets the gesture first. The pens use it to end the
+    // contour they are drawing, and for them a menu would be the wrong answer.
+    if (this.tools[this.selectedToolIdentifier]?.handleContextMenu?.(event)) {
+      return;
+    }
+
     const { x, y } = event;
     this.contextMenuPosition = { x: x, y: y };
     showMenu(this.buildContextMenuItems(event), { x: x + 1, y: y - 1 });

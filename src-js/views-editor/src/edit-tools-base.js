@@ -29,6 +29,13 @@ export class BaseTool {
   getContextMenuItems() {
     return [];
   }
+
+  // A right-click on the canvas. Return true to say the tool consumed the
+  // gesture, in which case no context menu opens. The default is to decline,
+  // so a tool that says nothing keeps the menu it has always had.
+  handleContextMenu(event) {
+    return false;
+  }
 }
 
 const MINIMUM_DRAG_DISTANCE = 2;

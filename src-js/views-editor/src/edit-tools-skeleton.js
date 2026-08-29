@@ -864,6 +864,18 @@ export class SkeletonPenTool extends BaseTool {
     this.canvasController.requestUpdate();
   }
 
+  // Same rule as the base pen: the drawing endpoint is a selected skeleton
+  // point, so clearing the selection ends the contour and the next click starts
+  // a new one. No skeleton data changes, so no editSkeleton write and no undo
+  // record. A pen never opens the canvas context menu.
+  handleContextMenu(event) {
+    this.sceneController.selection = new Set();
+    delete this.sceneModel.skeletonInsertHandles;
+    this.sceneController.hoverSelection = new Set();
+    this.canvasController.requestUpdate();
+    return true;
+  }
+
   setCursor() {
     this.canvasController.canvas.style.cursor = this.sceneModel.selectedGlyph?.isEditing
       ? "crosshair"

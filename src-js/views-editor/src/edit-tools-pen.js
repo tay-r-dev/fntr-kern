@@ -81,6 +81,17 @@ export class PenToolCubic extends BaseTool {
     this.canvasController.requestUpdate();
   }
 
+  // The pen appends to whichever contour endpoint is selected, so dropping the
+  // selection is what ends the contour: the next click starts a new one. This
+  // touches no glyph data, so there is nothing to undo. A pen never opens the
+  // canvas context menu, drawing or not, so the gesture is always consumed.
+  handleContextMenu(event) {
+    this.sceneController.selection = new Set();
+    this._resetHover();
+    this.canvasController.requestUpdate();
+    return true;
+  }
+
   // One session for the length of the hover, rebuilt when the glyph changes.
   // Nothing is excluded: the point being placed is not in the path yet, and the
   // previous point of the chain is the most useful source there (spec section 6).
