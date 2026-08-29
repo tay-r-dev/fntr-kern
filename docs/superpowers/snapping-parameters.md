@@ -191,6 +191,11 @@ almost everywhere. Only the nearest source above, below, left and right survives
 Metrics and guides you placed are never culled this way. There are few of them,
 and you put them there.
 
+The cull runs **once per kind**, not once over all points. An outline point a
+hair nearer than a skeleton point does not take the skeleton's place in the
+list, or raising the skeleton weight would not be enough to reach something
+standing behind a closer point.
+
 ## Candidate cap
 
 **Default 200.** The hard ceiling on the candidate list, after the culls.
@@ -199,7 +204,7 @@ Kept in weight order, then distance order, so the cap takes the least useful
 candidates first. You should not need to touch it. If you hit it, lower the
 collection radius instead.
 
-## The nine reaches
+## The eleven reaches
 
 One per kind of candidate, as a **multiple of the master reach** above. The
 pixels each one comes to are shown beside its slider, and they all move when you
@@ -219,7 +224,7 @@ from twice as far, and a guide at the same distance still beats it.
 - **Above 1:** that kind catches early. Useful for metrics, which are the lines
   a designer aims at deliberately.
 
-## The nine weights
+## The eleven weights
 
 The relative worth of each kind of candidate. They only decide near-ties: a light
 candidate close to the cursor still beats a heavy one far away.
@@ -227,15 +232,32 @@ candidate close to the cursor still beats a heavy one far away.
 They are clustered rather than evenly spread, so that one rule survives:
 **a guide you placed beats a guide the editor invented.**
 
-| Cluster           | Default weights | Meaning                                |
-| ----------------- | --------------- | -------------------------------------- |
-| Metric            | 1.0             | Baseline, x-height, cap height         |
-| Guides you placed | 0.84 – 0.76     | Crossing, then right angle, then slant |
-| Guides derived    | 0.52 – 0.40     | Crossing, then right angle, then slant |
-| Other             | 0.3             | Ascender, descender, overshoot bands   |
+| Cluster               | Default weights | Meaning                                   |
+| --------------------- | --------------- | ----------------------------------------- |
+| Metric                | 1.0             | Baseline, x-height, cap height            |
+| Guides you placed     | 0.84 – 0.76     | Crossing, then right angle, then slant    |
+| Guides derived        | 0.52 – 0.40     | Crossing, then right angle, then slant    |
+| Skeleton and rib ends | 0.36            | The centerline's own points, and rib ends |
+| Other                 | 0.3             | Ascender, descender, overshoot bands      |
+| Own generated outline | 0               | The outline the drag is currently making  |
 
 Inside each cluster two rules hold: a crossing beats a single line, and a right
 angle beats a slant.
+
+**Skeleton and rib ends** sit just under the derived guides on purpose. A
+centerline is construction. It should be reachable without outranking the
+outline the designer can actually see.
+
+**Own generated outline** is the geometry that follows the very point being
+dragged: move a skeleton point and its outline moves with it. It is collected
+and reported in the readout, and at weight 0 it never wins. Raise it when you
+want to place a skeleton point by the edge it is producing rather than by the
+centerline. Everything else the skeleton generated — the parts not following
+this drag — is ordinary outline and answers to the smart weights.
+
+A weight of 0 means it: a weightless line is also refused as one half of a
+crossing, so a kind cannot come back in at the intersection weight through a
+side door.
 
 **Raising a weight to get more reach is the wrong move.** It also changes who wins
 ties. If a kind needs to grab from further away while still losing ties, use its
