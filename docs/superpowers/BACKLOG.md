@@ -2,22 +2,23 @@
 
 **Date:** 2026-08-29. Written on `feature/markers`, verified against the tree at `fbbe86fc4`.
 
-Seven items, from the designer. Each row states what you see, the rule it should follow, and
+Eight items, from the designer. Each row states what you see, the rule it should follow, and
 the files it lands in. Every file path and symbol below came from a grep against the tree, not
 from the other documents (architecture map, maintenance rule).
 
-This is a backlog, not a spec. Two rows — **B4** and **B6** — are architectural and each owes
-its own design document before any code. The other five are bounded.
+This is a backlog, not a spec. Three rows — **B4**, **B6** and **B8** — are architectural and
+each owes its own design document before any code. The other five are bounded.
 
 | #   | Item                          | Size        | Owns                                              |
 | --- | ----------------------------- | ----------- | ------------------------------------------------- |
 | B1  | RMB drops the drawn contour   | bounded     | `edit-tools-pen.js`, `edit-tools-skeleton.js`, `editor.js` |
-| B2  | Click a point to resume it    | bounded     | `edit-tools-skeleton.js`                          |
+| B2  | Hover says the pen sees a point | bounded   | `edit-tools-skeleton.js`, `visualization-layer-skeleton.js` |
 | B3  | Three per-side locks, drawn   | bounded     | `skeleton-model.js`, `skeleton-generator.js`, panel, layers |
 | B4  | Corner join by intersection   | **architectural** | `skeleton-generator.js`, `offset-contour.js` |
 | B5  | Skeleton points snap          | bounded     | `snapping-interactions.js`                        |
 | B6  | Convert a contour to skeleton | **architectural** | new core module, `scene-controller.js`, dialog |
 | B7  | Gizmo mode still draws labels | bounded     | `visualization-layer-skeleton.js`, `visualization-layer-definitions.js` |
+| B8  | A side-mode change keeps the form | **architectural** | `skeleton-model.js`, new core module, panel |
 
 ---
 
@@ -48,22 +49,33 @@ both gestures or only the mouse.
 
 ---
 
-## B2 — Clicking an existing point makes it the active one
+## B2 — Hover says the pen has seen a point
 
-**What you see.** The inverse of B1. With a pen tool, clicking a point that is already drawn
-should make that point active, so the next click continues from there.
+**The behaviour already works.** Clicking an existing skeleton point makes it the active one, and
+the next click continues from there (`edit-tools-skeleton.js:179`, then `_getDrawingContourId`).
+Confirmed by the designer. Nothing about the writing side of this row needs to change.
 
-**The rule.** It already holds for the basic pens. Extend it to both skeleton pens.
+**What is missing is the feedback.** The pen gives no sign that the point under the cursor is a
+point it will pick up. So the designer finds out by clicking, and a click is a commitment: guess
+wrong and you have appended a point instead of resuming a contour.
 
-**Where it lands.** `edit-tools-skeleton.js:179` already selects an existing skeleton point on
-click. So half of this exists. What is unverified is whether selecting it also makes it the
-endpoint the next click extends — `_getDrawingContourId` derives the drawing contour from the
-selection, so it may already work, and it may only work on a contour end.
+**The rule.** While a pen tool is active and the cursor is over a point the pen would take, that
+point is drawn as recognized. Hovering says what the click will do, before the click.
 
-**First job is a measurement, not a change.** Click a mid-contour point and a contour end, then
-click on empty canvas, and record what each one appends to. Only a point at an open end can be
-extended; a mid-contour point cannot, and the tool must do nothing rather than something
-surprising.
+**Where it lands.** The hit test exists — `_hitTestSkeletonPoint` in `edit-tools-skeleton.js`. It
+runs inside `handleDrag`, on press. Hover needs it on move, and the result has to reach a drawing
+layer, so it goes on the scene model the way Q-measure's hover target already does
+(`setMeasureHoverTarget` / `getMeasureHoverTarget`, `scene-model.js`). Copy that shape rather
+than inventing a second one. The draw is a new layer in `visualization-layer-skeleton.js`.
+
+**Three states, not one.** The same hover has to distinguish what the click will actually do,
+because `handleDrag` already branches three ways: a point it will resume, a point it cannot
+resume (mid-contour, so the click does something else), and the close-the-contour target that
+`_getCloseTarget` finds. A single highlight that means all three is worse than none.
+
+**Watch the repaint cost.** The log records the ordinary pen's version of this: hover state that
+changes on every mouse move reads as snapping over geometry (`edit-tools-pen.js:44`). Whatever
+this stores, it must not repaint the canvas on every pixel of travel.
 
 ---
 
@@ -289,13 +301,136 @@ hidden, and only in gizmo mode. Hide the labels on the same terms.
 
 ---
 
+## B8 — A side-mode change keeps the drawn form
+
+**Architectural. Owes a design document.**
+
+**What you see.** Switching a contour between double-sided and single-sided throws the drawing
+away. The shape jumps to somewhere else entirely, and the two single-sided modes are two
+unrelated shapes rather than two readings of one.
+
+**Why it does that.** `singleSided` is one contour field holding `null`, `"left"` or `"right"`
+(`skeleton-model.js:2177`, `VALID_SINGLE_SIDED`). Changing it writes that field and nothing else.
+The centerline is treated as the invariant and the outline is rebuilt around it, so the mode
+decides which edge lands on a line that has not moved. That is a defensible default and it is the
+only behaviour on offer.
+
+**The rule.** The mode gains two options beside it.
+
+**The chips.** The checkbox-plus-toggle pair in `panel-skeleton-parameters.js:859–871` becomes
+three chips — **double**, **left**, **right** — one lit at a time. The stored field does not
+change shape; the chips are a better reading of the three states it already holds.
+
+**Preserve form.** When it is checked, a mode change moves the centerline instead of the outline.
+The new centerline is **the edge the new mode collapses onto the skeleton**, and the width is
+rewritten so that the stroke still reaches where it reached. The drawn shape therefore stays put
+and the skeleton is what moves.
+
+State it that way — as the edge the new mode puts the skeleton on — and not as "the corresponding
+side", because the naming does not read the way it sounds: `singleSided: "left"` means the width
+sits on the left and the **right** edge is the one collapsed onto the centerline
+(`skeleton-generator.js:2313`). So double → left moves the centerline to the old right edge, and
+left → right moves it to the current left edge. Both are the same sentence. Verify that
+convention against the code before writing the design; getting it backwards produces a shape that
+is mirrored rather than preserved.
+
+Single → double is the same rule run the other way, and it is an offset rather than a copy: the
+centerline moves off the edge it was sitting on, by half the total width, and the two half-widths
+split the total. That offset is `offsetCubicSide`, the generator's own construction, which the D
+and S drags already run on a skeleton (feature model §1.1). One copy of it, per rail R-B.
+
+**Which points become the new centerline.** The **solved** edge, taken before corner rounding and
+before caps — one generated on-curve per skeleton point per side. So the new centerline has the
+same point count and the same stable ids as the old one, and the rounded corners and the caps are
+rebuilt from it afterwards. This is what lets widths, nudges, pins and selections carry across by
+provenance lookup rather than by geometric matching (R-D), and it is what keeps markers and undo
+pointing at the right points.
+
+The cost is stated rather than hidden: where a corner was rounded or a cap trimmed, the outline
+after the switch is very close to the outline before it and is not byte-identical. Taking the
+emitted edge instead would be exact and would cost the ids, the point count and every corner and
+cap parameter, which would then be baked into the shape and no longer editable as numbers.
+
+**Respect changes.** A generated edge can carry authored geometry — nudges, handle offsets,
+detached handles and a curvature pin. This second checkbox says whether the edge that becomes the
+new centerline carries them.
+
+- **Checked** — the authored layers are applied first, so the centerline is the edge the designer
+  actually drew, and the work done on that edge survives the mode change.
+- **Unchecked** — the ideal solved edge is used, and every authored change on that side is
+  dropped. The conversion is silent about it, which is what the designer asked for, so the panel
+  has to be clear about it instead.
+
+The order the layers apply in is fixed and already stated: natural answer, then attached
+adjustments, then the pinned tension, then detached handles (feature model §3.2). Respect-changes
+does not reorder them. It only chooses whether the last three run before the edge is read.
+
+**Where it lands.** The conversion is pure geometry and belongs in `fontra-core` with mocha tests
+(R-A) — it takes a skeleton contour, a target mode and the two flags, and returns a new contour.
+The mode write is `setSkeletonContourSingleSided` in `skeleton-model.js`, and the whole change
+goes through `editSkeleton` (R-C), because it rewrites the centerline, the widths and the
+generated contours together and needs one rollback. The panel is
+`panel-skeleton-parameters.js` through `skeleton-panel-edits.js`.
+
+**Preserve form writes no width. It moves the centerline and nothing else.**
+
+This is not a choice; it falls out of what single-sided mode already does. `skeleton-generator.js:1555`
+does not read one side's width — it takes the **sum** of the two stored half-widths, gives that
+total to the named side, and sets the other side to 0. So the visible stroke width is
+`left + right` in **both** modes. Moving the centerline onto the collapsed edge is therefore the
+whole conversion, and the stored split rides across untouched.
+
+Worked, at a point storing left 60 and right 20, double → left. The centerline moves 20 toward
+the right edge. The left side receives the total, 80. The new left edge sits 80 to the left of the
+new centerline, which is 60 to the left of the old one — the old left edge exactly.
+
+**So the round trip is exact.** Double → left → double lands on the shape it started from,
+because nothing was rewritten to land back on. Test it as one round trip, not as two
+conversions.
+
+**And the authored data needs no rule either.** The side that keeps the width keeps its edge in
+the same place, so its nudges, handle offsets and pin still describe that edge. The side that
+becomes the centerline is forced to 0, which makes it collapsed, and the guards at
+`skeleton-generator.js:531` and `:561` already store a collapsed side's authored data without
+applying it. It returns when the contour goes back to double-sided. Both halves are the existing
+machinery, doing what it already does.
+
+**Two costs, stated because they are real and neither is a question.**
+
+1. **The new centerline is an offset of the old one**, so it carries the same tangent direction
+   and a different curvature. A nudge is a tangential displacement and lands where it landed. A
+   handle offset is measured against a handle whose length the solver will now choose differently,
+   so it lands close and not identically.
+2. **Handles at a smooth junction arrive fractional.** Rib on-curves are emitted through
+   `Math.round` (`:2348`), so the centerline's own points are whole units and nothing new is lost
+   there. But `enforceSmoothColinearity` writes handle positions unrounded on purpose (feature
+   model §3, step 6), so a handle taken from a smooth junction is not on the grid. Decide where it
+   is rounded, and expect the corner-rounding and cap rebuild to be the visible part of the
+   difference rather than this.
+
+**Shares plumbing with B6.** Both turn an edge into a centerline and write a skeleton plus its
+generated contours in one change. The geometry differs — B6 copies a drawn contour verbatim, B8
+reads a solved edge — but the write path and the contour-index bookkeeping are the same problem.
+Whichever is built first should leave that half reusable.
+
+---
+
 ## Order
 
 **B7, then B1, then B2, then B5, then B3.** B7 is the smallest and is a one-layer read. B1 and B2
 are one gesture pair and are best done together. B5 is one function. B3 is a schema change and a
 new drawing, so it is the largest of the bounded rows.
 
-**B4 and B6 wait for their design documents.** B4 is the one with real risk: it changes the
+**B4, B6 and B8 wait for their design documents.** B4 is the one with real risk: it changes the
 geometry of every corner in every glyph, under a construction that has to stay continuous while
 the designer drags and has to keep the point count fixed. B6 is large but low-risk, because it
-writes new data and changes nothing already drawn.
+writes new data and changes nothing already drawn. B8 sits between them — it rewrites existing
+drawings, but only when the designer asks it to, and its unchecked default is what happens today.
+
+B8 is the smallest of the three now that preserve form turns out to write no width. Its design
+document is mostly the respect-changes flag and the chips; the conversion itself is one centerline
+move. It may not stay architectural once that is written down — re-classify it then rather than
+carrying the label out of habit.
+
+**B6 before B8**, if both are taken, so that the shared write path is built once under the
+simpler of the two.
