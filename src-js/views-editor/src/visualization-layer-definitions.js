@@ -1562,16 +1562,25 @@ registerVisualizationLayerDefinition({
     insertHandlesRadius: 5,
     deleteOffCurveIndicatorLength: 7,
     canDragOffCurveIndicatorRadius: 9,
+    inertRadius: 6.5,
+    inertDashLength: 2.5,
     strokeWidth: 2,
   },
-  colors: { color: "#3080FF80" },
-  colorsDarkMode: { color: "#50A0FF80" },
+  colors: { color: "#3080FF80", inertColor: "rgba(80, 80, 80, 0.7)" },
+  colorsDarkMode: { color: "#50A0FF80", inertColor: "rgba(200, 200, 200, 0.7)" },
   draw: (context, positionedGlyph, parameters, model, controller) => {
     const targetPoint = model.pathConnectTargetPoint;
     const insertHandles = model.pathInsertHandles;
     const danglingOffCurve = model.pathDanglingOffCurve;
     const canDragOffCurve = model.pathCanDragOffCurve;
-    if (!targetPoint && !insertHandles && !danglingOffCurve && !canDragOffCurve) {
+    const inertPoint = model.pathInertPoint;
+    if (
+      !targetPoint &&
+      !insertHandles &&
+      !danglingOffCurve &&
+      !canDragOffCurve &&
+      !inertPoint
+    ) {
       return;
     }
 
@@ -1607,6 +1616,18 @@ registerVisualizationLayerDefinition({
         canDragOffCurve,
         2 * parameters.canDragOffCurveIndicatorRadius
       );
+    }
+    // A point the pen sees but will not use: the middle of a contour, a closed
+    // contour, generated geometry, or any point while no contour is being
+    // drawn. A click there adds a point where it lands and leaves this one
+    // alone. Same dashed ring the skeleton pen uses for the same answer.
+    if (inertPoint) {
+      context.save();
+      context.strokeStyle = parameters.inertColor;
+      context.lineWidth = parameters.strokeWidth;
+      context.setLineDash([parameters.inertDashLength, parameters.inertDashLength]);
+      strokeRoundNode(context, inertPoint, 2 * parameters.inertRadius);
+      context.restore();
     }
   },
 });

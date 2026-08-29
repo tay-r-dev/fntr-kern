@@ -50,23 +50,31 @@ export class PenToolCubic extends BaseTool {
       this._lastSnapState = snapState;
       this.canvasController.requestUpdate();
     }
-    const { insertHandles, targetPoint, danglingOffCurve, canDragOffCurve } =
-      this._getPathConnectTargetPoint(event);
+    const {
+      insertHandles,
+      targetPoint,
+      danglingOffCurve,
+      canDragOffCurve,
+      inertPoint,
+    } = this._getPathConnectTargetPoint(event);
     const prevInsertHandles = this.sceneModel.pathInsertHandles;
     const prevTargetPoint = this.sceneModel.pathConnectTargetPoint;
     const prevDanglingOffCurve = this.sceneModel.pathDanglingOffCurve;
     const prevCanDragOffCurve = this.sceneModel.pathCanDragOffCurve;
+    const prevInertPoint = this.sceneModel.pathInertPoint;
 
     if (
       !handlesEqual(insertHandles, prevInsertHandles) ||
       !pointsEqual(targetPoint, prevTargetPoint) ||
       !pointsEqual(danglingOffCurve, prevDanglingOffCurve) ||
-      !pointsEqual(canDragOffCurve, prevCanDragOffCurve)
+      !pointsEqual(canDragOffCurve, prevCanDragOffCurve) ||
+      !pointsEqual(inertPoint, prevInertPoint)
     ) {
       this.sceneModel.pathInsertHandles = insertHandles;
       this.sceneModel.pathConnectTargetPoint = targetPoint;
       this.sceneModel.pathDanglingOffCurve = danglingOffCurve;
       this.sceneModel.pathCanDragOffCurve = canDragOffCurve;
+      this.sceneModel.pathInertPoint = inertPoint;
       this.canvasController.requestUpdate();
     }
   }
@@ -115,6 +123,7 @@ export class PenToolCubic extends BaseTool {
     delete this.sceneModel.pathConnectTargetPoint;
     delete this.sceneModel.pathDanglingOffCurve;
     delete this.sceneModel.pathCanDragOffCurve;
+    delete this.sceneModel.pathInertPoint;
   }
 
   setCursor() {
@@ -156,7 +165,7 @@ export class PenToolCubic extends BaseTool {
         hit = {};
       }
       if (event.altKey && hit.segment?.points?.length === 2) {
-        return this.getInsertHandlesFromPathHit(hit);
+        return this.getInsertHandlesFromPathHit(hit, event);
       } else {
         const targetPoint = { ...hit };
         if ("x" in targetPoint) {
@@ -170,7 +179,12 @@ export class PenToolCubic extends BaseTool {
     }
 
     if (hoveredPointIndex === undefined || appendInfo.createContour) {
-      return {};
+      // A point is under the pointer and the pen will not use it: with nothing
+      // being drawn, a click starts a new contour where it lands rather than
+      // resuming from the point. Say so, rather than saying nothing.
+      return hoveredPointIndex === undefined
+        ? {}
+        : { inertPoint: path.getPoint(hoveredPointIndex) };
     }
 
     const [contourIndex, contourPointIndex] =
@@ -192,14 +206,19 @@ export class PenToolCubic extends BaseTool {
 
     if (
       contourInfo.isClosed ||
-      (contourPointIndex != 0 && hoveredPointIndex != contourInfo.endPoint)
+      (contourPointIndex != 0 && hoveredPointIndex != contourInfo.endPoint) ||
+      // Skeleton-generated contours are derived geometry: the pen never joins to
+      // one, the same way it never inserts into one above.
+      this.sceneModel.isGeneratedPathContour(contourIndex)
     ) {
-      return {};
+      // Only an end of an open contour can be connected to. Anything else is
+      // inert: a click adds a point where it lands and leaves this one alone.
+      return { inertPoint: path.getPoint(hoveredPointIndex) };
     }
     return { targetPoint: path.getPoint(hoveredPointIndex) };
   }
 
-  getInsertHandlesFromPathHit(hit) {
+  getInsertHandlesFromPathHit(hit, event) {
     const pt1 = hit.segment.points[0];
     const pt2 = hit.segment.points[1];
     const handle1 = vector.roundVector(vector.interpolateVectors(pt1, pt2, 1 / 3));
@@ -336,102 +355,21 @@ export class PenToolQuad extends PenToolCubic {
     return "quad";
   }
 
-  ////quad handles
-  _getPathConnectTargetPoint(event) {
-    // Requirements:
-    // - we must have an edited glyph at an editable location
-    // - we must be in append/prepend mode for an existing contour
-    // - the hovered point must be eligible to connect to:
-    //   - must be a start or end point of an open contour
-    //   - must not be the currently selected point
-
-    const hoveredPointIndex = getHoveredPointIndex(this.sceneController, event);
-
-    const glyphController = this.sceneModel.getSelectedPositionedGlyph().glyph;
-    if (!glyphController.canEdit) {
-      return {};
+  // The only thing the quadratic pen does differently on hover: Alt inserts one
+  // handle at the midpoint, and Alt-Shift inserts the cubic pair. Everything
+  // else about the connect target is the same, so it stays in one place above.
+  getInsertHandlesFromPathHit(hit, event) {
+    const pt1 = hit.segment.points[0];
+    const pt2 = hit.segment.points[1];
+    if (event.shiftKey) {
+      const handle1 = vector.roundVector(vector.interpolateVectors(pt1, pt2, 1 / 3));
+      const handle2 = vector.roundVector(vector.interpolateVectors(pt1, pt2, 2 / 3));
+      return {
+        insertHandles: { points: [handle1, handle2], hit: hit, shiftKey: true },
+      };
     }
-    const path = glyphController.instance.path;
-
-    const appendInfo = getAppendInfo(path, this.sceneController.selection);
-    if (hoveredPointIndex === undefined && appendInfo.createContour) {
-      const point = this.sceneController.localPoint(event);
-      // The following max() call makes sure that the margin is never
-      // less than half a font unit. This works around a visualization
-      // artifact caused by bezier-js: Bezier.project() returns t values
-      // with a max precision of 0.001.
-      const size = Math.max(1, this.sceneController.mouseClickMargin);
-      let hit = this.sceneModel.pathHitAtPoint(point, size);
-      if (this.sceneModel.isGeneratedPathContour(hit.contourIndex)) {
-        // Skeleton-generated contours are derived geometry: the pen must not
-        // insert points or handles into them. Treat the hover as empty canvas.
-        hit = {};
-      }
-      if (event.altKey && hit.segment?.points?.length === 2) {
-        const pt1 = hit.segment.points[0];
-        const pt2 = hit.segment.points[1];
-        if (event.altKey && event.shiftKey) {
-          // For quadratic curves with alt+shift, create two handles like cubic
-          const handle1 = vector.roundVector(
-            vector.interpolateVectors(pt1, pt2, 1 / 3)
-          );
-          const handle2 = vector.roundVector(
-            vector.interpolateVectors(pt1, pt2, 2 / 3)
-          );
-          return {
-            insertHandles: {
-              points: [handle1, handle2],
-              hit: hit,
-              shiftKey: event.shiftKey,
-            },
-          };
-        } else {
-          // For quadratic curves with alt, create one handle at the midpoint
-          const handle = vector.roundVector(vector.interpolateVectors(pt1, pt2, 0.5));
-          return {
-            insertHandles: { points: [handle], hit: hit, shiftKey: event.shiftKey },
-          };
-        }
-      } else {
-        const targetPoint = { ...hit };
-        if ("x" in targetPoint) {
-          // Don't use vector.roundVector, as there are more properties besides
-          // x and y, and we want to preserve them
-          targetPoint.x = Math.round(targetPoint.x);
-          targetPoint.y = Math.round(targetPoint.y);
-        }
-        return { targetPoint: targetPoint };
-      }
-    }
-
-    if (hoveredPointIndex === undefined || appendInfo.createContour) {
-      return {};
-    }
-
-    const [contourIndex, contourPointIndex] =
-      path.getContourAndPointIndex(hoveredPointIndex);
-    const contourInfo = path.contourInfo[contourIndex];
-
-    if (
-      appendInfo.contourIndex == contourIndex &&
-      appendInfo.contourPointIndex == contourPointIndex
-    ) {
-      // We're hovering over the source point
-      const point = path.getPoint(hoveredPointIndex);
-      if (!appendInfo.isOnCurve) {
-        return { danglingOffCurve: point };
-      } else {
-        return { canDragOffCurve: point };
-      }
-    }
-
-    if (
-      contourInfo.isClosed ||
-      (contourPointIndex != 0 && hoveredPointIndex != contourInfo.endPoint)
-    ) {
-      return {};
-    }
-    return { targetPoint: path.getPoint(hoveredPointIndex) };
+    const handle = vector.roundVector(vector.interpolateVectors(pt1, pt2, 0.5));
+    return { insertHandles: { points: [handle], hit: hit, shiftKey: false } };
   }
 }
 
