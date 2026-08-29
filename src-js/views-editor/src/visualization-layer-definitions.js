@@ -1562,7 +1562,7 @@ registerVisualizationLayerDefinition({
     insertHandlesRadius: 5,
     deleteOffCurveIndicatorLength: 7,
     canDragOffCurveIndicatorRadius: 9,
-    inertRadius: 6.5,
+    pointRingRadius: 6.5,
     inertDashLength: 2.5,
     strokeWidth: 2,
   },
@@ -1574,12 +1574,14 @@ registerVisualizationLayerDefinition({
     const danglingOffCurve = model.pathDanglingOffCurve;
     const canDragOffCurve = model.pathCanDragOffCurve;
     const inertPoint = model.pathInertPoint;
+    const resumePoint = model.pathResumePoint;
     if (
       !targetPoint &&
       !insertHandles &&
       !danglingOffCurve &&
       !canDragOffCurve &&
-      !inertPoint
+      !inertPoint &&
+      !resumePoint
     ) {
       return;
     }
@@ -1621,12 +1623,20 @@ registerVisualizationLayerDefinition({
     // contour, generated geometry, or any point while no contour is being
     // drawn. A click there adds a point where it lands and leaves this one
     // alone. Same dashed ring the skeleton pen uses for the same answer.
+    // An end of an open contour, with nothing being drawn: a click picks it up
+    // and drawing resumes from it. A plain ring, against the dashed one below.
+    if (resumePoint) {
+      context.save();
+      context.lineWidth = parameters.strokeWidth;
+      strokeRoundNode(context, resumePoint, 2 * parameters.pointRingRadius);
+      context.restore();
+    }
     if (inertPoint) {
       context.save();
       context.strokeStyle = parameters.inertColor;
       context.lineWidth = parameters.strokeWidth;
       context.setLineDash([parameters.inertDashLength, parameters.inertDashLength]);
-      strokeRoundNode(context, inertPoint, 2 * parameters.inertRadius);
+      strokeRoundNode(context, inertPoint, 2 * parameters.pointRingRadius);
       context.restore();
     }
   },

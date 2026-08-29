@@ -56,25 +56,29 @@ export class PenToolCubic extends BaseTool {
       danglingOffCurve,
       canDragOffCurve,
       inertPoint,
+      resumePoint,
     } = this._getPathConnectTargetPoint(event);
     const prevInsertHandles = this.sceneModel.pathInsertHandles;
     const prevTargetPoint = this.sceneModel.pathConnectTargetPoint;
     const prevDanglingOffCurve = this.sceneModel.pathDanglingOffCurve;
     const prevCanDragOffCurve = this.sceneModel.pathCanDragOffCurve;
     const prevInertPoint = this.sceneModel.pathInertPoint;
+    const prevResumePoint = this.sceneModel.pathResumePoint;
 
     if (
       !handlesEqual(insertHandles, prevInsertHandles) ||
       !pointsEqual(targetPoint, prevTargetPoint) ||
       !pointsEqual(danglingOffCurve, prevDanglingOffCurve) ||
       !pointsEqual(canDragOffCurve, prevCanDragOffCurve) ||
-      !pointsEqual(inertPoint, prevInertPoint)
+      !pointsEqual(inertPoint, prevInertPoint) ||
+      !pointsEqual(resumePoint, prevResumePoint)
     ) {
       this.sceneModel.pathInsertHandles = insertHandles;
       this.sceneModel.pathConnectTargetPoint = targetPoint;
       this.sceneModel.pathDanglingOffCurve = danglingOffCurve;
       this.sceneModel.pathCanDragOffCurve = canDragOffCurve;
       this.sceneModel.pathInertPoint = inertPoint;
+      this.sceneModel.pathResumePoint = resumePoint;
       this.canvasController.requestUpdate();
     }
   }
@@ -124,6 +128,7 @@ export class PenToolCubic extends BaseTool {
     delete this.sceneModel.pathDanglingOffCurve;
     delete this.sceneModel.pathCanDragOffCurve;
     delete this.sceneModel.pathInertPoint;
+    delete this.sceneModel.pathResumePoint;
   }
 
   setCursor() {
@@ -179,12 +184,16 @@ export class PenToolCubic extends BaseTool {
     }
 
     if (hoveredPointIndex === undefined || appendInfo.createContour) {
-      // A point is under the pointer and the pen will not use it: with nothing
-      // being drawn, a click starts a new contour where it lands rather than
-      // resuming from the point. Say so, rather than saying nothing.
-      return hoveredPointIndex === undefined
-        ? {}
-        : { inertPoint: path.getPoint(hoveredPointIndex) };
+      if (hoveredPointIndex === undefined) {
+        return {};
+      }
+      // Nothing is being drawn. An end of an open contour is picked up by a
+      // click, and drawing resumes from it; anything else is inert, because a
+      // click adds a point where it lands and leaves that one alone.
+      const point = path.getPoint(hoveredPointIndex);
+      return this._canResumeFrom(path, hoveredPointIndex)
+        ? { resumePoint: point }
+        : { inertPoint: point };
     }
 
     const [contourIndex, contourPointIndex] =
@@ -218,6 +227,16 @@ export class PenToolCubic extends BaseTool {
     return { targetPoint: path.getPoint(hoveredPointIndex) };
   }
 
+  // A click here picks the point up rather than starting a new contour. Not on
+  // generated geometry: the pen never edits a skeleton's outline.
+  _canResumeFrom(path, pointIndex) {
+    if (!isResumablePointIndex(path, pointIndex)) {
+      return false;
+    }
+    const [contourIndex] = path.getContourAndPointIndex(pointIndex);
+    return !this.sceneModel.isGeneratedPathContour(contourIndex);
+  }
+
   getInsertHandlesFromPathHit(hit, event) {
     const pt1 = hit.segment.points[0];
     const pt2 = hit.segment.points[1];
@@ -236,10 +255,36 @@ export class PenToolCubic extends BaseTool {
       await this._handleInsertPoint();
     } else if (this.sceneModel.pathInsertHandles) {
       await this.handleInsertHandles();
+    } else if (this._handleResumeFromPoint(initialEvent)) {
+      eventStream.done();
     } else {
       this._resetHover();
       await this._handleAddPoints(eventStream, initialEvent);
     }
+  }
+
+  // Clicking an end of an open contour while nothing is being drawn selects it,
+  // so the next click extends that contour. Without this the click started a
+  // new contour on top of the point instead. Selection only: no glyph data
+  // changes, so there is nothing to undo. Returns whether it took the click.
+  _handleResumeFromPoint(event) {
+    const glyphController = this.sceneModel.getSelectedPositionedGlyph()?.glyph;
+    if (!glyphController?.canEdit) {
+      return false;
+    }
+    const path = glyphController.instance.path;
+    if (!getAppendInfo(path, this.sceneController.selection).createContour) {
+      // Already drawing: the connect and insert paths above own this click.
+      return false;
+    }
+    const hoveredPointIndex = getHoveredPointIndex(this.sceneController, event);
+    if (!this._canResumeFrom(path, hoveredPointIndex)) {
+      return false;
+    }
+    this.sceneController.selection = new Set([`point/${hoveredPointIndex}`]);
+    this._resetHover();
+    this.canvasController.requestUpdate();
+    return true;
   }
 
   async _handleInsertPoint() {
@@ -763,6 +808,20 @@ function getPointSelection(path, contourIndex, contourPointIndex) {
 
 function getPointSelectionAbs(pointIndex) {
   return new Set([`point/${pointIndex}`]);
+}
+
+// The ends of an open contour are the points the pen can draw on from: they are
+// exactly what getAppendInfo below accepts as a selection, so both read this.
+function isResumablePointIndex(path, pointIndex) {
+  if (pointIndex === undefined || pointIndex >= path.numPoints) {
+    return false;
+  }
+  const [contourIndex, contourPointIndex] = path.getContourAndPointIndex(pointIndex);
+  if (path.contourInfo[contourIndex].isClosed) {
+    return false;
+  }
+  const numPointsContour = path.getNumPointsOfContour(contourIndex);
+  return contourPointIndex === 0 || contourPointIndex === numPointsContour - 1;
 }
 
 function getAppendInfo(path, selection) {
