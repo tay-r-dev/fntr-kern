@@ -1178,15 +1178,14 @@ export default class SkeletonParametersPanel extends Panel {
         indeterminate: value.mixed,
       });
     }
-    // Detach is a handle adjustment, so a handle-locked selection cannot reach
-    // it. The row stays and greys out rather than vanishing: a control that
-    // disappears reads as a bug, and says nothing about why it went.
+    // Detach is available whatever is locked. It does not move the handle; it
+    // changes how the handle's stored offset is measured, and a handle lock
+    // holds the handle where it is either way.
     formContents.push({
       type: "checkbox",
       key: "rib:detached",
       label: translate("sidebar.skeleton-parameters.detached"),
       value: summary.detached.mixed ? false : summary.detached.value,
-      disabled: summary.locked.handles.value === true,
     });
     const buttons = [
       html.button({ onclick: () => this._resetRibs({ handlesOnly: false }) }, [

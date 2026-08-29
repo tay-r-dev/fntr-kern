@@ -12,7 +12,6 @@ import {
   getSkeletonRibPosition,
   isSkeletonSideLocked,
   isSkeletonSideLockedAtAll,
-  lockSkeletonSideWidth,
   setSkeletonPointSideWidth,
   setSkeletonPointTotalWidth,
   setSkeletonPointWidthFromSide,
@@ -508,6 +507,34 @@ describe("rib detach toggle", () => {
       expect(Math.abs(position.y - before[role].y), `${role} y`).to.be.at.most(2);
     }
   });
+
+  it("detaches a handle-locked side too", () => {
+    const layer = makeCurveLayer();
+    editSkeleton(layer, (working) => {
+      setSkeletonSideLocked(working.contours[0].points[3], "left", "handles", true);
+    });
+    const before = { in: positionOf(layer, "in"), out: positionOf(layer, "out") };
+
+    // A handle lock holds where the handle is. Detaching only changes how that
+    // position is stored, so the lock is no reason to refuse it.
+    const conversions = computeRibDetachConversions(
+      layer,
+      getSkeletonData(layer),
+      [{ contourId: 80, pointId: 4, side: "left" }],
+      true
+    );
+    expect(conversions).to.have.length(1);
+    applyConversions(layer, conversions, true);
+
+    expect(
+      getSkeletonData(layer).contours[0].points[3].handleOffsets.leftOut.detached
+    ).to.equal(true);
+    for (const role of ["in", "out"]) {
+      const position = positionOf(layer, role);
+      expect(Math.abs(position.x - before[role].x), `${role} x`).to.be.at.most(1);
+      expect(Math.abs(position.y - before[role].y), `${role} y`).to.be.at.most(1);
+    }
+  });
 });
 
 describe("tied rib group", () => {
@@ -946,15 +973,45 @@ describe("a width-locked side holds its edge", () => {
     expect(getSkeletonPointHalfWidth(point, 80, "left")).to.equal(40);
   });
 
-  it("writes the number the edge stands at, so a default change cannot move it", () => {
+  it("moves nothing when the lock goes on", () => {
     const contour = makeContour();
     const point = contour.points[0];
-    // Start out inheriting: the point states nothing of its own.
-    point.width = undefined;
-    expect(getEffectiveRibHalfWidth(contour, point, "left")).to.equal(40);
-    lockSkeletonSideWidth(contour, point, "left", true);
-    contour.defaultWidth = 200;
-    expect(getEffectiveRibHalfWidth(contour, point, "left")).to.equal(40);
+    const before = getEffectiveRibHalfWidth(contour, point, "left");
+    setSkeletonSideLocked(point, "left", "width", true);
+    // Locking states a rule; it is not itself a width edit.
+    expect(getEffectiveRibHalfWidth(contour, point, "left")).to.equal(before);
+    expect(getSkeletonPointHalfWidth(point, 80, "left")).to.equal(40);
+    expect(getSkeletonPointHalfWidth(point, 80, "right")).to.equal(40);
+  });
+
+  it("keeps its own number rather than a tied group's mean", () => {
+    const contour = normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          defaultWidth: 80,
+          points: [
+            makeSkeletonPoint({
+              id: 1,
+              x: 0,
+              y: 0,
+              width: { left: 40, right: 40, linked: true },
+              locked: { left: { width: true } },
+            }),
+            makeSkeletonPoint({
+              id: 2,
+              x: 100,
+              y: 0,
+              width: { left: 60, right: 60, linked: true },
+            }),
+          ],
+        }),
+      ],
+    }).contours[0];
+    const locked = contour.points[0];
+    // Whether or not the two are tied, the locked one reports its own 40 and
+    // not the 50 a shared mean would give it.
+    expect(getEffectiveRibHalfWidth(contour, locked, "left")).to.equal(40);
   });
 });
 

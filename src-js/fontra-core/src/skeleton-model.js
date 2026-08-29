@@ -2498,22 +2498,6 @@ export function setSkeletonSideLocked(point, side, kind, locked) {
   point.locked = next;
 }
 
-// Locking the width fixes the edge where it stands, so the point must state the
-// number itself: a side that is still inheriting the contour default would move
-// the next time that default changed, which is the opposite of a lock. Only the
-// locked side is written, so the other one keeps whatever it was doing.
-export function lockSkeletonSideWidth(contour, point, side, locked) {
-  assertSkeletonRibSide(side);
-  if (locked === true && !isSkeletonSideLocked(point, side, "width")) {
-    const halfWidth = getEffectiveRibHalfWidth(contour, point, side);
-    setSkeletonPointSideWidth(point, contour?.defaultWidth, side, halfWidth, {
-      linked: point?.width?.linked === true,
-      force: true,
-    });
-  }
-  setSkeletonSideLocked(point, side, "width", locked);
-}
-
 // Clear one side's generated adjustments (nudge + both handle offsets). The
 // lock flag is deliberately untouched: locking and adjusting are independent,
 // so a reset must not silently unlock and a lock must not silently reset.
@@ -2738,7 +2722,11 @@ export function getTiedRibGroup(contour, point) {
 // stored value, or the gizmo sits somewhere the outline is not.
 export function getEffectiveRibHalfWidth(contour, point, side) {
   const group = getTiedRibGroup(contour, point);
-  if (!group) {
+  // A width-locked side holds its own edge, so it keeps its own number rather
+  // than following the tied group's mean. Otherwise a sibling's width drag
+  // would move the locked edge through that mean, which is the thing the lock
+  // exists to stop.
+  if (!group || isSkeletonSideLocked(point, side, "width")) {
     return getSkeletonPointHalfWidth(point, contour?.defaultWidth, side);
   }
   return meanHalfWidth(group, (member) =>

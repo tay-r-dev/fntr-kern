@@ -44,7 +44,6 @@ import {
   setSkeletonPointWidthLinked,
   setSkeletonPointWidthTied,
   setSkeletonSerifParameters,
-  lockSkeletonSideWidth,
   setSkeletonSideLocked,
   splitSkeletonContourAtPoint,
 } from "@fontra/core/skeleton-model.js";
@@ -1246,11 +1245,11 @@ export function computeRibDetachConversions(
       address.contourId,
       address.pointId
     );
-    if (
-      !resolved ||
-      resolved.point.type ||
-      isSkeletonSideLocked(resolved.point, address.side, "handles")
-    ) {
+    // No lock check. Detaching does not move the handle: it changes how the
+    // stored offset is measured, from a length along the solved axis to a
+    // position of its own. A handle lock holds where the handle is, and detach
+    // keeps it exactly there - so the two are independent.
+    if (!resolved || resolved.point.type) {
       continue;
     }
     const positions = {};
@@ -1423,14 +1422,8 @@ export async function setPanelRibLocked(
   return editSelectedSkeletonPoints(
     sceneController,
     ribAddresses,
-    (point, address, { contour }) => {
-      if (kind === "width") {
-        // Locking the width has to write the number the edge is standing at,
-        // so it goes through the model's own helper rather than the flag alone.
-        lockSkeletonSideWidth(contour, point, address.side, locked);
-      } else {
-        setSkeletonSideLocked(point, address.side, kind, locked);
-      }
+    (point, address) => {
+      setSkeletonSideLocked(point, address.side, kind, locked);
     },
     undoLabel
   );
