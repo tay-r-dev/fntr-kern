@@ -800,6 +800,53 @@ registerVisualizationLayerDefinition({
   },
 });
 
+// What the skeleton pen has under the pointer, and what a click would do with
+// it. Three marks, because the pen has three answers: a ring with a filled
+// centre closes the contour, a plain ring resumes drawing from that end, and a
+// dashed ring says the point can only be selected - the pen cannot draw on from
+// the middle of a contour.
+registerVisualizationLayerDefinition({
+  identifier: "fontra.skeleton.pen-hover",
+  name: "Skeleton pen hover",
+  selectionFunc: glyphSelector("editing"),
+  zIndex: 566,
+  screenParameters: {
+    ringSize: 13,
+    dotSize: 5,
+    strokeWidth: 1.5,
+    dashLength: 2.5,
+  },
+  colors: {
+    activeColor: "#2279d2",
+    inertColor: "rgba(80, 80, 80, 0.7)",
+  },
+  colorsDarkMode: {
+    activeColor: "#5fb2ff",
+    inertColor: "rgba(200, 200, 200, 0.7)",
+  },
+  draw: (context, positionedGlyph, parameters, model) => {
+    const target = model.skeletonPenHoverTarget;
+    if (!target) {
+      return;
+    }
+    const isInert = target.kind === "select";
+    context.save();
+    context.lineWidth = parameters.strokeWidth;
+    context.strokeStyle = isInert ? parameters.inertColor : parameters.activeColor;
+    if (isInert) {
+      context.setLineDash([parameters.dashLength, parameters.dashLength]);
+    }
+    context.beginPath();
+    context.arc(target.x, target.y, parameters.ringSize / 2, 0, 2 * Math.PI, false);
+    context.stroke();
+    context.restore();
+    if (target.kind === "close") {
+      context.fillStyle = parameters.activeColor;
+      fillRoundNode(context, target, parameters.dotSize);
+    }
+  },
+});
+
 registerVisualizationLayerDefinition({
   identifier: "fontra.skeleton.editable-markers",
   name: "Skeleton locked markers",

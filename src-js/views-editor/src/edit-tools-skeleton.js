@@ -108,11 +108,65 @@ export class SkeletonPenTool extends BaseTool {
 
   handleHover(event) {
     if (!this.sceneModel.selectedGlyph?.isEditing) {
+      // Outside editing the pen is not the tool answering the pointer, so its
+      // mark must not stay behind on the canvas.
+      this._setPenPointHover(null);
       this.editor.tools["pointer-tool"].handleHover(event);
       return;
     }
     this.setCursor();
     this._updateInsertHandlesPreview(event);
+    this._updatePenPointHover(event);
+  }
+
+  // What a click on the hovered skeleton point would do. Three answers, because
+  // handleDrag branches three ways on a point hit: "close" joins the contour
+  // shut on it, "resume" selects an open end the next click extends from, and
+  // "select" selects a point the pen cannot draw on from. Without this the
+  // designer only finds out by clicking, and the click has already committed.
+  _getPenPointHoverTarget(event) {
+    const hit = this._hitTestSkeletonPoint(event);
+    if (!hit) {
+      return null;
+    }
+    const skeletonData = this._getEditLayerSkeletonData();
+    if (!skeletonData) {
+      return null;
+    }
+    const address = getSkeletonPointAddress(skeletonData, hit.contourId, hit.pointId);
+    if (!address) {
+      return null;
+    }
+    let kind;
+    if (this._getCloseTarget(hit)) {
+      kind = "close";
+    } else if (
+      this._getOpenEndpointAt(skeletonData, skeletonData, hit.contourId, hit.pointId)
+    ) {
+      kind = "resume";
+    } else {
+      kind = "select";
+    }
+    return { x: address.point.x, y: address.point.y, kind };
+  }
+
+  // Repaint only when the answer changes. The hit test runs on every move, and
+  // a redraw on every move reads as the canvas snapping under the pointer.
+  _updatePenPointHover(event) {
+    this._setPenPointHover(this._getPenPointHoverTarget(event));
+  }
+
+  _setPenPointHover(target) {
+    const previous = this.sceneModel.skeletonPenHoverTarget;
+    if (
+      previous?.kind === target?.kind &&
+      previous?.x === target?.x &&
+      previous?.y === target?.y
+    ) {
+      return;
+    }
+    this.sceneModel.skeletonPenHoverTarget = target;
+    this.canvasController.requestUpdate();
   }
 
   // Preview the two cubic handles that an Alt-click would insert on a hovered
@@ -281,6 +335,18 @@ export class SkeletonPenTool extends BaseTool {
       return null;
     }
     const { contourId, pointId } = parseSkeletonPointKey(skeletonPoint[0]);
+    return this._getOpenEndpointAt(
+      skeletonData,
+      referenceSkeletonData,
+      contourId,
+      pointId
+    );
+  }
+
+  // Whether a named skeleton point is an end of an open contour, and so which
+  // way the pen would extend from it. Null for anything else: a closed contour,
+  // an off-curve, or a point in the middle of the run.
+  _getOpenEndpointAt(skeletonData, referenceSkeletonData, contourId, pointId) {
     const address = resolveSkeletonAddressAcrossLayers(
       referenceSkeletonData || skeletonData,
       skeletonData,
@@ -860,6 +926,7 @@ export class SkeletonPenTool extends BaseTool {
   deactivate() {
     super.deactivate();
     delete this.sceneModel.skeletonInsertHandles;
+    delete this.sceneModel.skeletonPenHoverTarget;
     this.sceneController.hoverSelection = new Set();
     this.canvasController.requestUpdate();
   }
@@ -871,6 +938,7 @@ export class SkeletonPenTool extends BaseTool {
   handleContextMenu(event) {
     this.sceneController.selection = new Set();
     delete this.sceneModel.skeletonInsertHandles;
+    delete this.sceneModel.skeletonPenHoverTarget;
     this.sceneController.hoverSelection = new Set();
     this.canvasController.requestUpdate();
     return true;
