@@ -1896,7 +1896,7 @@ export function getSkeletonPointNudge(
   side,
   defaultWidth = DEFAULT_SKELETON_WIDTH
 ) {
-  if (isSkeletonSideLocked(point, side)) {
+  if (isSkeletonSideLocked(point, side, "slide")) {
     return 0;
   }
   if (getSkeletonPointHalfWidth(point, defaultWidth, side) < 0.5) {
@@ -2095,7 +2095,17 @@ export function setSkeletonPointWidthFromSide(
   { round = Math.round } = {}
 ) {
   assertSkeletonRibSide(side);
-  if (point?.width?.linked === false) {
+  // A width-locked side holds its edge, so it refuses to be written at all.
+  if (isSkeletonSideLocked(point, side, "width")) {
+    return false;
+  }
+  const otherSide = side === "left" ? "right" : "left";
+  // The lock overrides the distribution: with the other side held, this one is
+  // written alone and the share is not carried across.
+  if (
+    point?.width?.linked === false ||
+    isSkeletonSideLocked(point, otherSide, "width")
+  ) {
     setSkeletonPointSideWidth(point, defaultWidth, side, halfWidth, {
       linked: false,
       round,
@@ -2103,7 +2113,6 @@ export function setSkeletonPointWidthFromSide(
     return true;
   }
   const width = normalizeWidth(point?.width);
-  const otherSide = side === "left" ? "right" : "left";
   const total = width.left + width.right;
   const share = total > 0 ? width[side] / total : 0.5;
   if (!(share > 0)) {
@@ -2436,17 +2445,43 @@ export function resetSkeletonEditableRibHandles(point, side) {
   }
 }
 
-// Is this side's generated geometry blocked from adjustment?
-export function isSkeletonSideLocked(point, side) {
+// Is one named freedom of this side blocked? The kind is required: there is no
+// such thing as "locked" on its own any more.
+export function isSkeletonSideLocked(point, side, kind) {
   assertSkeletonRibSide(side);
-  return normalizeLocked(point?.locked)[side];
+  assertSkeletonLockKind(kind);
+  return normalizeLocked(point?.locked)[side][kind];
 }
 
-export function setSkeletonSideLocked(point, side, locked) {
+// Any lock at all on this side. For questions about the side as a whole, never
+// as a stand-in for one of the three.
+export function isSkeletonSideLockedAtAll(point, side) {
   assertSkeletonRibSide(side);
+  const locks = normalizeLocked(point?.locked)[side];
+  return SKELETON_LOCK_KINDS.some((kind) => locks[kind]);
+}
+
+export function setSkeletonSideLocked(point, side, kind, locked) {
+  assertSkeletonRibSide(side);
+  assertSkeletonLockKind(kind);
   const next = normalizeLocked(point?.locked);
-  next[side] = locked === true;
+  next[side][kind] = locked === true;
   point.locked = next;
+}
+
+// Locking the width fixes the edge where it stands, so the point must state the
+// number itself: a side that is still inheriting the contour default would move
+// the next time that default changed, which is the opposite of a lock. Only the
+// locked side is written, so the other one keeps whatever it was doing.
+export function lockSkeletonSideWidth(contour, point, side, locked) {
+  assertSkeletonRibSide(side);
+  if (locked === true && !isSkeletonSideLocked(point, side, "width")) {
+    const halfWidth = getEffectiveRibHalfWidth(contour, point, side);
+    setSkeletonPointSideWidth(point, contour?.defaultWidth, side, halfWidth, {
+      linked: point?.width?.linked === true,
+    });
+  }
+  setSkeletonSideLocked(point, side, "width", locked);
 }
 
 // Clear one side's generated adjustments (nudge + both handle offsets). The
@@ -2841,7 +2876,7 @@ export function createSkeletonRibExecutor(
   const originalNudge = getSkeletonPointNudge(point, side, defaultWidth);
   const originalHandleNudge = getSkeletonPointHandleNudge(point, side);
   const tangent = { x: -normal.y, y: normal.x };
-  const adjustable = !isSkeletonSideLocked(point, side);
+  const adjustable = !isSkeletonSideLocked(point, side, "slide");
   const forceTangent =
     behaviorName === "rib-tangent" || behaviorName === "rib-tangent-interpolate";
   const interpolate =
@@ -2893,8 +2928,10 @@ export function applySkeletonRibExecutorResult(address, result) {
     // A zero-share side refuses, and the nudge below still applies.
     setSkeletonPointWidthFromSide(point, defaultWidth, side, result.halfWidth);
   }
-  if (!isSkeletonSideLocked(point, side)) {
+  if (!isSkeletonSideLocked(point, side, "slide")) {
     setSkeletonPointSideNudge(point, side, result.nudge);
+  }
+  if (!isSkeletonSideLocked(point, side, "handles")) {
     setSkeletonPointSideHandleNudge(point, side, result.handleNudge);
     for (const [role, offset] of Object.entries(result.handleOffsets || {})) {
       setSkeletonHandleOffset(point, side, role, offset, { round: (value) => value });
@@ -2927,6 +2964,11 @@ export function* iterSkeletonRibTargets(skeletonData) {
 }
 
 function setSingleSidedTotalWidth(point, defaultWidth, side, totalWidth) {
+  // In a single-sided contour the visible width is the sum of the two stored
+  // halves, so a lock on the side carrying it holds the whole edge.
+  if (isSkeletonSideLocked(point, side, "width")) {
+    return;
+  }
   const linked = point.width?.linked !== false;
   const value = Math.max(0, totalWidth);
   if (linked) {
@@ -3038,8 +3080,11 @@ export function resolveEditableGeneratedTarget(skeletonData, path, pathPointInde
   // Its points are not that point's rib geometry, though, so they are not
   // directly editable: dragging one would move the rib the neck hangs off.
   if (provenance.capCurvatureField) return null;
-  if (provenance.point?.type || isSkeletonSideLocked(provenance.point, provenance.side))
-    return null;
+  if (provenance.point?.type) return null;
+  // Each gizmo answers to its own lock: the on-curve to the slide lock, the two
+  // handles to the handle lock.
+  const lockKind = provenance.role === "onCurve" ? "slide" : "handles";
+  if (isSkeletonSideLocked(provenance.point, provenance.side, lockKind)) return null;
   const kind =
     provenance.role === "onCurve"
       ? EDITABLE_GENERATED_POINT_KEY_KIND
@@ -3383,13 +3428,39 @@ function normalizeNudge(nudge) {
   };
 }
 
-// Side locks (donor `leftLocked`/`rightLocked`). Absence means unlocked, so
-// generated-side adjustment is available by default and the lock is what blocks
-// it. A lock never clears stored adjustments — unlocking re-exposes them.
+// Side locks. Three independent ones per side, because the single donor flag
+// meant three different things at once and could not say any of them alone:
+//
+//   handles — the curvature is the designer's. The natural solve may not move
+//             the handles, and their gizmos do not answer the pointer.
+//   slide   — the generated on-curve does not slide along the rib. Its nudge is
+//             kept but not applied, and its gizmo does not answer the pointer.
+//   width   — this side's edge holds its distance from the centerline. A width
+//             or distribution change goes to the other side instead.
+//
+// Absence means unlocked, so adjustment is available by default and the lock is
+// what blocks it. A lock never clears stored adjustments — unlocking re-exposes
+// them.
+export const SKELETON_LOCK_KINDS = Object.freeze(["handles", "slide", "width"]);
+
+function assertSkeletonLockKind(kind) {
+  if (!SKELETON_LOCK_KINDS.includes(kind)) {
+    throw new Error(`invalid skeleton lock kind: ${kind}`);
+  }
+}
+
+function normalizeLockedSide(locked) {
+  const side = {};
+  for (const kind of SKELETON_LOCK_KINDS) {
+    side[kind] = locked?.[kind] === true;
+  }
+  return side;
+}
+
 function normalizeLocked(locked) {
   return {
-    left: locked?.left === true,
-    right: locked?.right === true,
+    left: normalizeLockedSide(locked?.left),
+    right: normalizeLockedSide(locked?.right),
   };
 }
 

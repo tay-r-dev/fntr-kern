@@ -10,6 +10,7 @@ import {
   getSkeletonPointWidth,
   getSkeletonRibAddress,
   getSkeletonRibSidesForPoint,
+  SKELETON_LOCK_KINDS,
   isSkeletonSideLocked,
   parseEditableGeneratedHandleKey,
   parseEditableGeneratedPointKey,
@@ -502,8 +503,16 @@ export function singleGeneratedHandleTarget(panelSelection) {
 
 export function summarizeSkeletonRibSelection(selectedRibs) {
   return {
-    locked: reduceValues(
-      selectedRibs.map((entry) => isSkeletonSideLocked(entry.point, entry.side))
+    // One summary per lock kind: three independent controls need three answers.
+    locked: Object.fromEntries(
+      SKELETON_LOCK_KINDS.map((kind) => [
+        kind,
+        reduceValues(
+          selectedRibs.map((entry) =>
+            isSkeletonSideLocked(entry.point, entry.side, kind)
+          )
+        ),
+      ])
     ),
     detached: reduceValues(
       selectedRibs.map(

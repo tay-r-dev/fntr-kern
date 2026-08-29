@@ -25,6 +25,7 @@ import {
   getSkeletonPointWidth,
   harmonizeSkeletonPoints,
   isSkeletonSideLocked,
+  isSkeletonSideLockedAtAll,
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
   resetSkeletonEditableRibHandles,
@@ -43,6 +44,7 @@ import {
   setSkeletonPointWidthLinked,
   setSkeletonPointWidthTied,
   setSkeletonSerifParameters,
+  lockSkeletonSideWidth,
   setSkeletonSideLocked,
   splitSkeletonContourAtPoint,
 } from "@fontra/core/skeleton-model.js";
@@ -1080,13 +1082,16 @@ export async function resetPanelRibs(
     sceneController,
     ribAddresses,
     (point, address) => {
-      // A locked side blocks every adjustment route, resets included.
-      if (isSkeletonSideLocked(point, address.side)) {
-        return;
-      }
+      // A lock blocks every route to the thing it holds, resets included.
       if (handlesOnly) {
+        if (isSkeletonSideLocked(point, address.side, "handles")) {
+          return;
+        }
         resetSkeletonEditableRibHandles(point, address.side);
       } else {
+        if (isSkeletonSideLockedAtAll(point, address.side)) {
+          return;
+        }
         resetSkeletonEditableRib(point, address.side);
       }
     },
@@ -1189,7 +1194,7 @@ export async function resetPanelGeneratedHandle(
           return;
         }
         const { side, role } = handleAddress;
-        if (isSkeletonSideLocked(resolved.point, side)) {
+        if (isSkeletonSideLocked(resolved.point, side, "handles")) {
           return;
         }
         resetSkeletonEditableRibHandle(resolved.point, side, role);
@@ -1244,7 +1249,7 @@ export function computeRibDetachConversions(
     if (
       !resolved ||
       resolved.point.type ||
-      isSkeletonSideLocked(resolved.point, address.side)
+      isSkeletonSideLocked(resolved.point, address.side, "handles")
     ) {
       continue;
     }
@@ -1411,14 +1416,21 @@ export async function setPanelRibDetached(
 export async function setPanelRibLocked(
   sceneController,
   ribAddresses,
+  kind,
   locked,
   undoLabel
 ) {
   return editSelectedSkeletonPoints(
     sceneController,
     ribAddresses,
-    (point, address) => {
-      setSkeletonSideLocked(point, address.side, locked);
+    (point, address, { contour }) => {
+      if (kind === "width") {
+        // Locking the width has to write the number the edge is standing at,
+        // so it goes through the model's own helper rather than the flag alone.
+        lockSkeletonSideWidth(contour, point, address.side, locked);
+      } else {
+        setSkeletonSideLocked(point, address.side, kind, locked);
+      }
     },
     undoLabel
   );

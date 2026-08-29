@@ -382,7 +382,7 @@ describe("skeleton-model geometry helpers", () => {
   it("returns nudge only for unlocked non-zero-width sides", () => {
     const point = makeSkeletonPoint({
       nudge: { left: 7, right: 9 },
-      locked: { left: false, right: true },
+      locked: { right: { slide: true } },
     });
     expect(getSkeletonPointNudge(point, "left")).to.equal(7);
     expect(getSkeletonPointNudge(point, "right")).to.equal(0);
@@ -881,7 +881,7 @@ describe("skeleton-model panel-facing mutators", () => {
   it("collapsing a side clears its rib adjustments but not its lock", () => {
     const point = makePoint({
       width: { left: 40, right: 40, linked: false },
-      locked: { left: true, right: false },
+      locked: { left: { slide: true } },
       nudge: { left: 5, right: 5 },
       handleOffsets: { leftIn: { x: 1, y: 2, detached: true } },
     });
@@ -889,7 +889,7 @@ describe("skeleton-model panel-facing mutators", () => {
     expect(point.nudge.left).to.equal(0);
     expect(point.handleOffsets.leftIn).to.equal(undefined);
     // Collapsing is a geometry change; it must not touch lock state.
-    expect(point.locked.left).to.equal(true);
+    expect(point.locked.left.slide).to.equal(true);
     expect(point.nudge.right).to.equal(5);
   });
 
@@ -980,7 +980,7 @@ describe("skeleton-model panel-facing mutators", () => {
 
   it("reset rib removes nudge/handle offsets/curvature for one side, leaving locks", () => {
     const point = makePoint({
-      locked: { left: true, right: true },
+      locked: { left: { handles: true }, right: { handles: true } },
       nudge: { left: 5, right: 7 },
       handleNudge: { left: 4, right: 6 },
       segmentCurvature: { left: 0.4, right: 0.7 },
@@ -995,7 +995,7 @@ describe("skeleton-model panel-facing mutators", () => {
     expect(point.segmentCurvature.left).to.equal(null);
     expect(point.handleOffsets.leftIn).to.equal(undefined);
     // Reset clears adjustments only — the lock is independent.
-    expect(point.locked.left).to.equal(true);
+    expect(point.locked.left.handles).to.equal(true);
     expect(point.nudge.right).to.equal(7);
     expect(point.handleNudge.right).to.equal(6);
     expect(point.segmentCurvature.right).to.equal(0.7);
@@ -1080,7 +1080,10 @@ describe("skeleton-model transform/translate/id-allocation", () => {
               width: { left: 30, right: 50, linked: true, tied: false },
               nudge: { left: 3, right: -7 },
               handleNudge: { left: 2, right: -5 },
-              locked: { left: true, right: false },
+              locked: {
+                left: { handles: true, slide: true, width: true },
+                right: { handles: false, slide: false, width: false },
+              },
               segmentCurvature: { left: 0.3, right: 0.8 },
               capBallSide: "left",
               capAngle: 12,
@@ -1173,7 +1176,10 @@ describe("skeleton-model transform/translate/id-allocation", () => {
     });
     expect(point.nudge).to.deep.equal({ left: -7, right: 3 });
     expect(point.handleNudge).to.deep.equal({ left: -5, right: 2 });
-    expect(point.locked).to.deep.equal({ left: false, right: true });
+    expect(point.locked).to.deep.equal({
+      left: { handles: false, slide: false, width: false },
+      right: { handles: true, slide: true, width: true },
+    });
     expect(point.segmentCurvature).to.deep.equal({ left: 0.8, right: 0.3 });
     expect(point.handleOffsets).to.deep.equal({
       leftIn: { x: 6, y: 7, detached: false },

@@ -10,6 +10,7 @@ import { SERIF_HALF_DEFAULTS } from "@fontra/core/skeleton-generator.js";
 import {
   SERIF_HALF_FIELDS,
   SERIF_PRESETS,
+  SKELETON_LOCK_KINDS,
   SKELETON_SOURCE_DEFAULT_KEYS,
   VALID_SERIF_AXIS_MODES,
   VALID_SERIF_SIDES,
@@ -1165,15 +1166,20 @@ export default class SkeletonParametersPanel extends Panel {
     // Locking blocks this side's generated adjustments without clearing them.
     // With a skeleton point selected the derived targets are both its ribs, so
     // this is the donor's combined lock control.
-    formContents.push({
-      type: "checkbox",
-      key: "rib:locked",
-      label: translate("sidebar.skeleton-parameters.locked"),
-      value: summary.locked.mixed ? false : summary.locked.value,
-      indeterminate: summary.locked.mixed,
-    });
-    // Detach is an adjustment, so a fully locked selection can't reach it.
-    if (summary.locked.value !== true) {
+    // Three independent locks, one row each. The old single control could not
+    // say which of the three the designer meant.
+    for (const kind of SKELETON_LOCK_KINDS) {
+      const value = summary.locked[kind];
+      formContents.push({
+        type: "checkbox",
+        key: `rib:locked-${kind}`,
+        label: translate(`sidebar.skeleton-parameters.locked.${kind}`),
+        value: value.mixed ? false : value.value,
+        indeterminate: value.mixed,
+      });
+    }
+    // Detach is a handle adjustment, so a handle-locked selection can't reach it.
+    if (summary.locked.handles.value !== true) {
       formContents.push({
         type: "checkbox",
         key: "rib:detached",
@@ -2387,12 +2393,14 @@ export default class SkeletonParametersPanel extends Panel {
       ] = value === true;
       return;
     }
-    if (name === "locked") {
+    if (name.startsWith("locked-")) {
+      const kind = name.slice("locked-".length);
       await setPanelRibLocked(
         this.sceneController,
         this._ribTargets,
+        kind,
         value === true,
-        this._undo("set-rib-locked")
+        this._undo(`set-rib-locked-${kind}`)
       );
     } else if (name === "detached") {
       await setPanelRibDetached(

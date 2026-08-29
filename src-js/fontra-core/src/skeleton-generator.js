@@ -262,8 +262,13 @@ function canonicalPointToGeneratorPoint(point) {
   // The corner block travels whole, like the serif's. A new field inside it
   // therefore arrives without a copy line — which is not true of a flat field.
   generatorPoint.corner = point.corner ?? null;
-  generatorPoint.leftLocked = point.locked?.left === true;
-  generatorPoint.rightLocked = point.locked?.right === true;
+  // Three independent locks per side; see SKELETON_LOCK_KINDS in skeleton-model.
+  for (const side of ["left", "right"]) {
+    for (const kind of ["handles", "slide", "width"]) {
+      const name = `${side}Locked${kind[0].toUpperCase()}${kind.slice(1)}`;
+      generatorPoint[name] = point.locked?.[side]?.[kind] === true;
+    }
+  }
   // The pinned segment tension for the segment STARTING here, per side. Null
   // where the segment is unpinned, which is not the same as zero.
   generatorPoint.leftSegmentCurvature = point.segmentCurvature?.left ?? null;
@@ -531,8 +536,8 @@ function ribNudgeDisplacement(skeletonPoint, normal, side, halfWidth) {
     return none;
   }
 
-  // A locked side keeps its stored nudge but does not apply it.
-  const lockedKey = side === "left" ? "leftLocked" : "rightLocked";
+  // A slide-locked side keeps its stored nudge but does not apply it.
+  const lockedKey = side === "left" ? "leftLockedSlide" : "rightLockedSlide";
   if (skeletonPoint?.[lockedKey]) {
     return none;
   }
@@ -557,10 +562,9 @@ function ribHandleNudgeDisplacement(skeletonPoint, normal, side, halfWidth) {
   if (halfWidth !== undefined && halfWidth < 0.5) {
     return none;
   }
-  const lockedKey = side === "left" ? "leftLocked" : "rightLocked";
-  if (skeletonPoint?.[lockedKey]) {
-    return none;
-  }
+  // A handle lock keeps the handles where the designer put them, so the stored
+  // nudge is applied here exactly as on an unlocked side. What the lock blocks
+  // is the writing of a new one.
   const nudgeKey = side === "left" ? "leftHandleNudge" : "rightHandleNudge";
   const nudge = skeletonPoint[nudgeKey];
   if (!nudge) {
@@ -641,12 +645,9 @@ function getGeneratedHandleAdjustment(
   side,
   handleType
 ) {
-  // A locked side keeps its stored handle offsets but does not apply them.
-  const lockedKey = side === "left" ? "leftLocked" : "rightLocked";
-  if (skeletonPoint?.[lockedKey]) {
-    return null;
-  }
-
+  // A handle lock preserves the authored curvature, so the stored offsets are
+  // applied here as on any other side. The lock is enforced where handles are
+  // written, not where they are read.
   const keyPrefix = `${side}Handle${handleType === "in" ? "In" : "Out"}`;
 
   // Check if this handle is detached (absolute positioning relative to the

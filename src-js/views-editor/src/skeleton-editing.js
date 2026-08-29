@@ -895,7 +895,9 @@ export function createSkeletonRibTargetEntries(
 // resolved.
 function makeRibInterpolationAxis(originalLayerGlyph, skeletonData, address) {
   const { contour, point, side } = address;
-  if (isSkeletonSideLocked(point, side)) {
+  // The axis exists to interpolate the rib's position; a side that may not
+  // slide has none.
+  if (isSkeletonSideLocked(point, side, "slide")) {
     return null;
   }
   const handlePositions = {};
@@ -1169,7 +1171,8 @@ export function createEditableGeneratedPointTargetEntries(
       pointId,
       side
     );
-    if (!address || isSkeletonSideLocked(address.point, side)) continue;
+    // A generated on-curve, so the slide lock is the one that speaks.
+    if (!address || isSkeletonSideLocked(address.point, side, "slide")) continue;
     if (
       !findGeneratedPathAddress(
         referenceSkeletonData,
@@ -1712,10 +1715,10 @@ function resolveEditableGeneratedHandleAddressAcrossLayersForEditing(
     pointId,
     side
   );
-  if (!reference || isSkeletonSideLocked(reference.point, side)) return null;
+  if (!reference || isSkeletonSideLocked(reference.point, side, "handles")) return null;
   const contour = targetSkeletonData?.contours?.[reference.contourIndex];
   const point = contour?.points?.[reference.pointIndex];
-  if (!contour || !point || point.type || isSkeletonSideLocked(point, side))
+  if (!contour || !point || point.type || isSkeletonSideLocked(point, side, "handles"))
     return null;
   const direction =
     publishedAuthoredAxis(referenceSkeletonData, contourId, pointId, side, role) ??

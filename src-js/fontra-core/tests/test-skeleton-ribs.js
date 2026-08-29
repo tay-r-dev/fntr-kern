@@ -7,8 +7,14 @@ import {
   getEffectiveRibHalfWidth,
   getSkeletonData,
   getSkeletonRibAddress,
+  getSkeletonPointHalfWidth,
   getSkeletonRibEndpoints,
   getSkeletonRibPosition,
+  isSkeletonSideLocked,
+  isSkeletonSideLockedAtAll,
+  lockSkeletonSideWidth,
+  setSkeletonPointWidthFromSide,
+  setSkeletonSideLocked,
   getTiedRibGroup,
   makeSkeletonContour,
   makeSkeletonPoint,
@@ -96,8 +102,8 @@ describe("skeleton rib executor", () => {
     expect(result.nudge).to.equal(7);
   });
 
-  it("locked ribs never nudge, even under rib-tangent", () => {
-    const address = makeAddress("left", { locked: { left: true } });
+  it("slide-locked ribs never nudge, even under rib-tangent", () => {
+    const address = makeAddress("left", { locked: { left: { slide: true } } });
     const executor = createSkeletonRibExecutor(address, "rib-tangent");
 
     const result = executor.applyDelta(makeDelta(address, "left", 10, 7));
@@ -141,8 +147,8 @@ describe("skeleton rib executor", () => {
     expect(result.nudge).to.equal(7);
   });
 
-  it("interpolation on locked ribs behaves like a plain width drag", () => {
-    const address = makeAddress("left", { locked: { left: true } });
+  it("interpolation on slide-locked ribs behaves like a plain width drag", () => {
+    const address = makeAddress("left", { locked: { left: { slide: true } } });
     const executor = createSkeletonRibExecutor(address, "rib-interpolate");
 
     const result = executor.applyDelta(makeDelta(address, "left", 10, 7));
@@ -858,5 +864,91 @@ describe("getSkeletonRibEndpoints", () => {
       // as long as the double-sided one was across.
       expect(Math.abs(ends[side].y)).to.equal(80);
     }
+  });
+});
+
+describe("the three side locks are independent", () => {
+  const makePoint = (locked) =>
+    normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          defaultWidth: 80,
+          points: [makeSkeletonPoint({ id: 1, x: 0, y: 0, locked })],
+        }),
+      ],
+    }).contours[0];
+
+  it("reads each kind on its own", () => {
+    const contour = makePoint({ left: { slide: true } });
+    const point = contour.points[0];
+    expect(isSkeletonSideLocked(point, "left", "slide")).to.equal(true);
+    expect(isSkeletonSideLocked(point, "left", "handles")).to.equal(false);
+    expect(isSkeletonSideLocked(point, "left", "width")).to.equal(false);
+    expect(isSkeletonSideLocked(point, "right", "slide")).to.equal(false);
+    expect(isSkeletonSideLockedAtAll(point, "left")).to.equal(true);
+    expect(isSkeletonSideLockedAtAll(point, "right")).to.equal(false);
+  });
+
+  it("refuses an unknown kind rather than answering false", () => {
+    const point = makePoint({}).points[0];
+    expect(() => isSkeletonSideLocked(point, "left", "everything")).to.throw();
+  });
+
+  it("setting one kind leaves the other two alone", () => {
+    const point = makePoint({ left: { handles: true } }).points[0];
+    setSkeletonSideLocked(point, "left", "width", true);
+    expect(point.locked.left).to.deep.equal({
+      handles: true,
+      slide: false,
+      width: true,
+    });
+  });
+});
+
+describe("a width-locked side holds its edge", () => {
+  const makeContour = (locked) =>
+    normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          defaultWidth: 80,
+          points: [
+            makeSkeletonPoint({
+              id: 1,
+              x: 0,
+              y: 0,
+              width: { left: 40, right: 40, linked: true },
+              locked,
+            }),
+          ],
+        }),
+      ],
+    }).contours[0];
+
+  it("refuses to be written", () => {
+    const point = makeContour({ left: { width: true } }).points[0];
+    const written = setSkeletonPointWidthFromSide(point, 80, "left", 10);
+    expect(written).to.equal(false);
+    expect(getSkeletonPointHalfWidth(point, 80, "left")).to.equal(40);
+  });
+
+  it("overrides the distribution when the other side is dragged", () => {
+    const point = makeContour({ left: { width: true } }).points[0];
+    setSkeletonPointWidthFromSide(point, 80, "right", 10);
+    // Linked would normally carry the change across to the left as well.
+    expect(getSkeletonPointHalfWidth(point, 80, "right")).to.equal(10);
+    expect(getSkeletonPointHalfWidth(point, 80, "left")).to.equal(40);
+  });
+
+  it("writes the number the edge stands at, so a default change cannot move it", () => {
+    const contour = makeContour();
+    const point = contour.points[0];
+    // Start out inheriting: the point states nothing of its own.
+    point.width = undefined;
+    expect(getEffectiveRibHalfWidth(contour, point, "left")).to.equal(40);
+    lockSkeletonSideWidth(contour, point, "left", true);
+    contour.defaultWidth = 200;
+    expect(getEffectiveRibHalfWidth(contour, point, "left")).to.equal(40);
   });
 });

@@ -34,7 +34,6 @@ import {
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
   getSkeletonRibAddress,
-  isSkeletonSideLocked,
   iterSkeletonRibTargets,
   parseEditableGeneratedHandleKey,
   parseEditableGeneratedPointKey,

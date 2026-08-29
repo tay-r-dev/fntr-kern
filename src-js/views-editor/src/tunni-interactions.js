@@ -647,7 +647,12 @@ export async function handleGeneratedTunniDrag({
               working?.contours?.[original?.contourIndex]?.points?.[
                 original?.pointIndex
               ];
-            if (!original || !point || isSkeletonSideLocked(point, original.side)) {
+            // Curvature, so the handle lock is the one that speaks.
+            if (
+              !original ||
+              !point ||
+              isSkeletonSideLocked(point, original.side, "handles")
+            ) {
               continue;
             }
             if (write.capCurvature !== undefined) {
@@ -877,7 +882,7 @@ async function applyGeneratedSegmentWrites(
             !originalPoint ||
             !contour ||
             !point ||
-            isSkeletonSideLocked(point, provenance.side)
+            isSkeletonSideLocked(point, provenance.side, "handles")
           ) {
             continue;
           }

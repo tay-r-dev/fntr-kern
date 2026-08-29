@@ -15,6 +15,7 @@ import {
   getSkeletonHandleOffset,
   getSkeletonRibEndpoints,
   isSkeletonSideLocked,
+  isSkeletonSideLockedAtAll,
   makeEditableGeneratedHandleKey,
   makeEditableGeneratedPointKey,
   makeSkeletonRibKey,
@@ -99,6 +100,57 @@ function skeletonContourToPath2d(contour) {
   return path;
 }
 
+// Which of the three locks are on, drawn so that they can be told apart. Each
+// mark lies along the freedom it removes: the width lock across the rib, the
+// slide lock along it, and the handle lock as an arc, because what it holds is
+// a curvature rather than a direction. A rib end with no lock gets no marks,
+// and its endpoint keeps the plain pink treatment.
+function drawSideLockMarks(context, parameters, sourcePoint, ribEnd, side) {
+  // The rib direction is the direction width moves the end; the slide runs
+  // across it. A collapsed side has no length, so it states no directions and
+  // only the arc can be drawn.
+  const dx = ribEnd.x - sourcePoint.x;
+  const dy = ribEnd.y - sourcePoint.y;
+  const length = Math.hypot(dx, dy);
+  const along = length > 1e-9 ? { x: dx / length, y: dy / length } : null;
+  const across = along ? { x: -along.y, y: along.x } : null;
+  const gap = parameters.lockMarkGap;
+  const half = parameters.lockMarkLength / 2;
+
+  const tick = (direction, offset) => {
+    if (!direction) {
+      return;
+    }
+    const cx = ribEnd.x + offset.x * gap;
+    const cy = ribEnd.y + offset.y * gap;
+    strokeLine(
+      context,
+      cx - direction.x * half,
+      cy - direction.y * half,
+      cx + direction.x * half,
+      cy + direction.y * half
+    );
+  };
+
+  if (isSkeletonSideLocked(sourcePoint, side, "width") && along) {
+    tick(along, across);
+  }
+  if (isSkeletonSideLocked(sourcePoint, side, "slide") && across) {
+    tick(across, { x: -across.x, y: -across.y });
+  }
+  if (isSkeletonSideLocked(sourcePoint, side, "handles")) {
+    context.beginPath();
+    context.arc(
+      ribEnd.x,
+      ribEnd.y,
+      parameters.lockArcRadius,
+      0.15 * Math.PI,
+      0.85 * Math.PI
+    );
+    context.stroke();
+  }
+}
+
 function getRibPoints(contour, pointIndex) {
   const point = contour.points[pointIndex];
   const activeSingleSide =
@@ -110,10 +162,10 @@ function getRibPoints(contour, pointIndex) {
     center: point,
     left,
     unlockedLeft:
-      activeSingleSide === "right" ? false : !isSkeletonSideLocked(point, "left"),
+      activeSingleSide === "right" ? false : !isSkeletonSideLockedAtAll(point, "left"),
     right,
     unlockedRight:
-      activeSingleSide === "left" ? false : !isSkeletonSideLocked(point, "right"),
+      activeSingleSide === "left" ? false : !isSkeletonSideLockedAtAll(point, "right"),
   };
 }
 
@@ -234,10 +286,13 @@ function forEachEditableGeneratedTarget(positionedGlyph, model, callback) {
       // Adjustable is the default since side locks landed, so marking every
       // adjustable target would mark nearly the whole outline. Mark the
       // exceptional state instead: generated targets whose side is LOCKED.
+      // Each target answers to its own lock: the on-curve to the slide lock,
+      // the two handles to the handle lock.
+      const lockKind = provenance.role === "onCurve" ? "slide" : "handles";
       if (
         !contour ||
         sourcePoint?.type ||
-        !isSkeletonSideLocked(sourcePoint, provenance.side)
+        !isSkeletonSideLocked(sourcePoint, provenance.side, lockKind)
       ) {
         continue;
       }
@@ -348,6 +403,9 @@ registerVisualizationLayerDefinition({
     endpointSize: 10,
     lockedEndpointSize: 12,
     strokeWidth: 2,
+    lockMarkLength: 7,
+    lockMarkGap: 4,
+    lockArcRadius: 8,
   },
   colors: {
     endpointColor: "rgba(220, 60, 120, 0.7)",
@@ -396,6 +454,9 @@ registerVisualizationLayerDefinition({
           context.fillStyle = color;
           const size = locked ? parameters.lockedEndpointSize : parameters.endpointSize;
           drawDiamondNode(context, rib[side], size, selected);
+          if (locked) {
+            drawSideLockMarks(context, parameters, point, rib[side], side);
+          }
         }
       }
     });
