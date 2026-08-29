@@ -1182,12 +1182,16 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
   context.restore();
 }
 
+// `hiddenContourIndices` names contours whose handles are not control surfaces
+// right now, so their labels are not drawn either. Null means every contour is
+// labelled, which is the plain case.
 export function drawPointLabels(
   context,
   positionedGlyph,
   parameters,
   model,
-  controller
+  controller,
+  hiddenContourIndices = null
 ) {
   const path = positionedGlyph.glyph.path;
 
@@ -1205,6 +1209,9 @@ export function drawPointLabels(
 
   // Iterate through all contours
   for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
+    if (hiddenContourIndices?.has(contourIndex)) {
+      continue;
+    }
     // Iterate through all segments in the contour
     for (const segment of path.iterContourDecomposedSegments(contourIndex)) {
       // Check if it's a cubic segment (4 points)
@@ -1235,6 +1242,10 @@ export function drawPointLabels(
   // Iterate through all points in the path
   for (let pointIndex = 0; pointIndex < path.numPoints; pointIndex++) {
     const pointType = path.pointTypes[pointIndex];
+
+    if (hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
+      continue;
+    }
 
     // Check if this is an off-curve point
     if (pointType !== 0) {

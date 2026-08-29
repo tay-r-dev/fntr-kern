@@ -2404,7 +2404,18 @@ registerVisualizationLayerDefinition({
     textColor: "white",
   },
   colorsDarkMode: { strokeColor: "#FF00FF", badgeColor: "#FF00FF", textColor: "white" },
-  draw: drawPointLabels,
+  // In gizmo mode the generated handles are not dragged directly, so their
+  // labels go the same way their handle lines and off-curve nodes already do.
+  // The centerline's own labels are a separate layer and are untouched.
+  draw: (context, positionedGlyph, parameters, model, controller) =>
+    drawPointLabels(
+      context,
+      positionedGlyph,
+      parameters,
+      model,
+      controller,
+      getGizmoHiddenContourIndices(positionedGlyph, model)
+    ),
 });
 
 registerVisualizationLayerDefinition({
