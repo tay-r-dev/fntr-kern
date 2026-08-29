@@ -418,9 +418,10 @@ Whichever is built first should leave that half reusable.
 
 ## B9 — Moving one handle of a segment carries the other
 
-**What you see.** Detach one of a generated segment's two handles, then move the skeleton handle
-that handle is derived from. The **other** generated handle of the same segment moves too. Nothing
-was asked of it.
+**What you see.** Move the skeleton handle at one end of a generated segment. The **other**
+generated handle of that segment moves too. Nothing was asked of it. Detached or attached makes no
+difference — detaching one end only made it easier to be sure of, because a detached handle is
+placed absolutely and so cannot be the thing that moved.
 
 **Status.** Not a regression from the side locks — reported during that work, and confirmed to
 pre-date it. It has presumably always done this.
@@ -433,8 +434,10 @@ one where it stands.
 together: `solveNaturalHandles` takes both ends' directions and both widths and returns a
 `{ startLength, endLength }` pair, and `applyPinnedTension` then states a tension for the segment
 as a whole. Either could be the coupling — the natural solve reading the far end, or a pin being
-applied where no pin was asked for. The detached case is the one that makes it visible, because a
-detached handle is placed absolutely and so cannot be the thing that moved.
+applied where no pin was asked for.
+
+Since it happens with nothing detached and nothing authored, the natural solve is the first
+suspect: on a plain segment it is the only thing that sets either length.
 
 **The question to answer before designing anything.** Which of the two is it, and is the coupling
 deliberate? The natural solve exists to make a pair of handles that produce a continuous offset,
