@@ -518,6 +518,17 @@ export function applyFixedRibDelta(
       // unaffected and keep going until they reach the floor too, at which point
       // the drag has nothing left to move and stands still.
       const allowedDelta = allowed.has(pointId) ? allowed.get(pointId) : projectedDelta;
+      // A width-locked side holds its edge where it stands. The drag pays for
+      // its movement out of the width, so with the width refused the point
+      // cannot move either - the centerline would walk the pinned edge away.
+      // Single-sided renders the sum, so a lock on either side holds it.
+      const widthHeld = singleSided
+        ? isSkeletonSideLocked(originalPoint, "left", "width") ||
+          isSkeletonSideLocked(originalPoint, "right", "width")
+        : isSkeletonSideLocked(originalPoint, anchorSide, "width");
+      if (widthHeld) {
+        continue;
+      }
       if (!singleSided) {
         offsetsByIndex.set(originalPointIndex, allowedDelta);
       }
@@ -1910,13 +1921,24 @@ export function setSkeletonPointSideWidth(
   defaultWidth,
   side,
   halfWidth,
-  { linked = point?.width?.linked !== false, round = Math.round } = {}
+  { linked = point?.width?.linked !== false, round = Math.round, force = false } = {}
 ) {
   assertSkeletonRibSide(side);
+  const otherSide = side === "left" ? "right" : "left";
+  // The lowest width writer, so this is where the width lock has to bite: every
+  // route to a half-width comes through here, the fixed-rib drag included.
+  // `force` is for the act of locking itself, which must write the number the
+  // edge is standing at.
+  if (!force && isSkeletonSideLocked(point, side, "width")) {
+    return;
+  }
+  // A linked write moves both sides by the same delta. With the other side
+  // locked, that half of the write is refused and this one goes alone.
+  const carryToOtherSide =
+    linked && (force || !isSkeletonSideLocked(point, otherSide, "width"));
   const width = normalizeWidth(point?.width);
   const value = Math.max(0, round(halfWidth));
-  const otherSide = side === "left" ? "right" : "left";
-  if (linked) {
+  if (carryToOtherSide) {
     // Both sides move by the same delta, which preserves left − right. That is a
     // statement about the two EDGES, and it is what the fixed-rib drag wants: it
     // holds one edge while the point follows the cursor.
@@ -2135,6 +2157,13 @@ export function setSkeletonPointTotalWidth(
   totalWidth,
   { round = Math.round } = {}
 ) {
+  // Both halves are rewritten here, so a lock on either one holds the whole.
+  if (
+    isSkeletonSideLocked(point, "left", "width") ||
+    isSkeletonSideLocked(point, "right", "width")
+  ) {
+    return;
+  }
   const width = normalizeWidth(point?.width);
   const total = Math.max(0, asFiniteNumber(totalWidth, 0));
   const currentTotal = width.left + width.right;
@@ -2479,6 +2508,7 @@ export function lockSkeletonSideWidth(contour, point, side, locked) {
     const halfWidth = getEffectiveRibHalfWidth(contour, point, side);
     setSkeletonPointSideWidth(point, contour?.defaultWidth, side, halfWidth, {
       linked: point?.width?.linked === true,
+      force: true,
     });
   }
   setSkeletonSideLocked(point, side, "width", locked);
@@ -2879,9 +2909,14 @@ export function createSkeletonRibExecutor(
   const adjustable = !isSkeletonSideLocked(point, side, "slide");
   const forceTangent =
     behaviorName === "rib-tangent" || behaviorName === "rib-tangent-interpolate";
-  const interpolate =
-    adjustable &&
-    (behaviorName === "rib-interpolate" || behaviorName === "rib-tangent-interpolate");
+  const interpolateRequested =
+    behaviorName === "rib-interpolate" || behaviorName === "rib-tangent-interpolate";
+  const interpolate = adjustable && interpolateRequested;
+  // Alt-drag asks the rib to slide along its axis and nothing else. On a
+  // slide-locked side there is nothing for it to do, so the whole gesture is
+  // refused rather than falling through to the plain width drag - which would
+  // change the width by whatever part of the drag missed the axis.
+  const frozen = interpolateRequested && !adjustable;
   const axis = interpolate
     ? interpolationAxis || { dir: tangent, hasHandle: {} }
     : null;
@@ -2891,6 +2926,14 @@ export function createSkeletonRibExecutor(
     side,
     normal,
     applyDelta(delta, { constrainMode = null, round = Math.round } = {}) {
+      if (frozen) {
+        return {
+          halfWidth: originalHalfWidth,
+          nudge: originalNudge,
+          handleNudge: originalHandleNudge,
+          side,
+        };
+      }
       if (axis) {
         const deltaAlongAxis = delta.x * axis.dir.x + delta.y * axis.dir.y;
         const axisDotTangent = axis.dir.x * tangent.x + axis.dir.y * tangent.y;
@@ -3812,6 +3855,14 @@ export function buildGeneratedTunniSegments(skeletonData, path) {
         skeletonData,
         generatedSegment
       );
+      // A locked gizmo is not offered at all. Blocking only the write left the
+      // control looking live and moving the curve through whichever end was
+      // still free, which reads as the lock being ignored.
+      const locks = getGeneratedSegmentLocks(skeletonData, generatedSegment);
+      generatedSegment.handlesLocked = locks.handlesLocked;
+      generatedSegment.onCurveMovable = generatedSegment.onCurveMovable.map(
+        (movable, index) => movable && !locks.slideLocked[index]
+      );
       segments.push(generatedSegment);
     }
   }
@@ -3839,6 +3890,27 @@ function findGeneratedSegmentSkeletonContour(skeletonData, segment) {
   const contourId =
     segment.provenance[0]?.skeletonContourId ?? segment.skeletonContourId;
   return (skeletonData?.contours || []).find((item) => item?.id === contourId);
+}
+
+// The locks that govern a generated segment's two gizmos. The curvature gizmo
+// belongs to both ends at once, so a handle lock at either end takes it away.
+// The on-curve gizmo is per end, so each end answers for itself.
+function getGeneratedSegmentLocks(skeletonData, segment) {
+  const contour = findGeneratedSegmentSkeletonContour(skeletonData, segment);
+  const lockedAt = (index, kind) => {
+    const provenance = segment.provenance[index];
+    if (!contour || !provenance?.side) {
+      return false;
+    }
+    const point = (contour.points || []).find(
+      (candidate) => candidate?.id === provenance.skeletonPointId
+    );
+    return point ? isSkeletonSideLocked(point, provenance.side, kind) : false;
+  };
+  return {
+    handlesLocked: [0, 1, 2, 3].some((index) => lockedAt(index, "handles")),
+    slideLocked: [lockedAt(0, "slide"), lockedAt(3, "slide")],
+  };
 }
 
 function getGeneratedOnCurveMovability(skeletonData, segment) {
@@ -4165,7 +4237,7 @@ export function generatedTunniHitTest(point, size, skeletonData, path, options =
         return { type: "generated-on-curve", segment, gizmoPoint };
       }
     }
-    if (includeCurvature) {
+    if (includeCurvature && !segment.handlesLocked) {
       const anchor = calculateCurvatureGizmoPoint(segment.points);
       if (anchor && distance(point, anchor) <= size) {
         return { type: "generated-curvature", segment, gizmoPoint: anchor };

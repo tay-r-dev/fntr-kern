@@ -751,6 +751,9 @@ registerVisualizationLayerDefinition({
     // is what makes the curvature control legible: it is the direction the
     // curve swells in, and without it the node looks free to go anywhere.
     for (const segment of segments) {
+      if (segment.handlesLocked) {
+        continue;
+      }
       const anchor = calculateCurvatureGizmoPoint(segment.points);
       const axis = calculateCurvatureGizmoAxis(
         segment.points,
@@ -775,7 +778,11 @@ registerVisualizationLayerDefinition({
         context.fillStyle = parameters.onCurveColor;
         drawDiamondNode(context, gizmoPoint, parameters.onCurveSize, true);
       }
-      const anchor = calculateCurvatureGizmoPoint(segment.points);
+      // A handle-locked side has no curvature gizmo: the control is gone, not
+      // merely inert.
+      const anchor = segment.handlesLocked
+        ? null
+        : calculateCurvatureGizmoPoint(segment.points);
       if (anchor) {
         context.fillStyle = parameters.curvatureColor;
         fillRoundNode(context, anchor, parameters.curvatureSize);

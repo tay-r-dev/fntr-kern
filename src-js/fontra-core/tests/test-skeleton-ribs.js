@@ -13,6 +13,8 @@ import {
   isSkeletonSideLocked,
   isSkeletonSideLockedAtAll,
   lockSkeletonSideWidth,
+  setSkeletonPointSideWidth,
+  setSkeletonPointTotalWidth,
   setSkeletonPointWidthFromSide,
   setSkeletonSideLocked,
   getTiedRibGroup,
@@ -147,14 +149,17 @@ describe("skeleton rib executor", () => {
     expect(result.nudge).to.equal(7);
   });
 
-  it("interpolation on slide-locked ribs behaves like a plain width drag", () => {
+  it("interpolation on a slide-locked rib does nothing at all", () => {
     const address = makeAddress("left", { locked: { left: { slide: true } } });
     const executor = createSkeletonRibExecutor(address, "rib-interpolate");
 
+    // The drag is off-axis, so falling through to a plain width drag would
+    // have widened the rib by the part of it that missed the axis.
     const result = executor.applyDelta(makeDelta(address, "left", 10, 7));
 
-    expect(result.halfWidth).to.equal(50);
+    expect(result.halfWidth).to.equal(40);
     expect(result.nudge).to.equal(0);
+    expect(result.handleNudge).to.equal(0);
   });
 
   it("applying an interpolation result leaves handle offsets unchanged", () => {
@@ -950,5 +955,46 @@ describe("a width-locked side holds its edge", () => {
     lockSkeletonSideWidth(contour, point, "left", true);
     contour.defaultWidth = 200;
     expect(getEffectiveRibHalfWidth(contour, point, "left")).to.equal(40);
+  });
+});
+
+describe("a width lock holds against every writer", () => {
+  const makeContour = (locked) =>
+    normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          defaultWidth: 80,
+          points: [
+            makeSkeletonPoint({
+              id: 1,
+              x: 0,
+              y: 0,
+              width: { left: 40, right: 40, linked: true },
+              locked,
+            }),
+          ],
+        }),
+      ],
+    }).contours[0];
+
+  it("refuses the lowest side writer, which the fixed-rib drag goes through", () => {
+    const point = makeContour({ left: { width: true } }).points[0];
+    setSkeletonPointSideWidth(point, 80, "left", 10);
+    expect(getSkeletonPointHalfWidth(point, 80, "left")).to.equal(40);
+  });
+
+  it("lets the free side move alone, without the linked companion write", () => {
+    const point = makeContour({ left: { width: true } }).points[0];
+    setSkeletonPointSideWidth(point, 80, "right", 60);
+    expect(getSkeletonPointHalfWidth(point, 80, "right")).to.equal(60);
+    expect(getSkeletonPointHalfWidth(point, 80, "left")).to.equal(40);
+  });
+
+  it("refuses a total-width write, which rewrites both halves", () => {
+    const point = makeContour({ right: { width: true } }).points[0];
+    setSkeletonPointTotalWidth(point, 80, 200);
+    expect(getSkeletonPointHalfWidth(point, 80, "left")).to.equal(40);
+    expect(getSkeletonPointHalfWidth(point, 80, "right")).to.equal(40);
   });
 });
