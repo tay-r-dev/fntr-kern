@@ -65,6 +65,7 @@ way once nothing references them.
 | F8  | **Carried fork extras**  | shipped, pre-dating the program | fork-original                  | `corner-overlap.js`, quad handles, equalize, pen-connect | scattered — see §3.8                        |
 | F9  | **Base-curve expansion** | shipped                         | fork-original                  | 1 core + 1 editor module                                 | hold **D**/**S**, drag an outline on-curve  |
 | F11 | **Markers**              | shipped                         | fork-original                  | 2 core + 3 editor + panel + tool                         | Marker tool, `fontra.markers.*` layers      |
+| F12 | **Snapping**             | shipped                         | fork-original                  | 1 core + 1 editor + 1 layer                              | any drag, and the pen while it hovers       |
 
 Feature sizes, owned code only. Shared-file hunks are excluded.
 
@@ -75,6 +76,7 @@ Tunni         █████                                      ~1,850
 Measure+labels████                                       ~2,050  (F2 + F5 share distance-angle.js)
 Base expansion██▏                                         ~875  (shared with the skeleton's drag)
 SpeedPunk     █▌                                           ~460
+Snapping      ███                                          ~1,180
 Corner overlap█                                            ~350
 Coarse grid   ▏                                             ~66
 ```
@@ -408,6 +410,38 @@ edit brings the marker back on its own.
 **The grip loses to skeleton and generated geometry**, so a readout never sits
 in front of the geometry it describes. The marker tool is how that geometry is
 reached.
+
+---
+
+### F12 — Snapping
+
+A drag reports where it would like to be, and the resolver answers with the
+metrics, guides, points and segments near it. Reach and precedence are separate
+numbers per kind, so a kind can grab from further away without also winning.
+
+| File                                               | +/−      | Role                                                                                              |
+| -------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/snapping.js`                      | +587     | **NEW** — candidate kinds, reach and weight per kind, the resolver, the escape and overrule rules |
+| `views-editor/src/snapping-interactions.js`        | +398     | **NEW** — the scene the resolver reads, the session held across a drag, exclusion by provenance   |
+| `views-editor/src/visualization-layer-snapping.js` | +198     | **NEW** — the held rings, the near indicator and the guide lines                                  |
+| `views-editor/src/edit-tools-pen.js`               | (shared) | the pen's own session, refreshed on every hover because it adds geometry as it goes               |
+| `fontra-core/tests/test-snapping.js`               | +        | tests                                                                                             |
+
+Two rules worth knowing before touching it.
+
+**A drag freezes its scene.** The moved geometry must not chase itself, so
+`SnappingSession` builds the scene once. The pen is the exception: it calls
+`refresh()` before every hover, because the point it just placed is a source.
+
+**Exclusion is a provenance lookup, never a geometric match (R-D).** A moved
+skeleton point takes the generated points it made out of the scene with it;
+`excludedPointIndices` resolves them through `resolveGeneratedPointProvenance`,
+not by comparing coordinates.
+
+The skeleton is not in the glyph path, so it needs its own pass to be a target
+at all: its on-curve points and both ends of every rib. Not its segments — a
+centerline is construction, and aligning to one says less than aligning to what
+it makes.
 
 ---
 

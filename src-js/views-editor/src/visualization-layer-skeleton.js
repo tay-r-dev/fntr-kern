@@ -13,7 +13,7 @@ import {
   getGeneratedSegmentCurvature,
   getSkeletonData,
   getSkeletonHandleOffset,
-  getSkeletonRibPosition,
+  getSkeletonRibEndpoints,
   isSkeletonSideLocked,
   makeEditableGeneratedHandleKey,
   makeEditableGeneratedPointKey,
@@ -105,18 +105,13 @@ function getRibPoints(contour, pointIndex) {
     contour.singleSided === "left" || contour.singleSided === "right"
       ? contour.singleSided
       : null;
+  const { left, right } = getSkeletonRibEndpoints(contour, point);
   return {
     center: point,
-    left:
-      activeSingleSide === "right"
-        ? point
-        : getSkeletonRibPosition(contour, point, "left"),
+    left,
     unlockedLeft:
       activeSingleSide === "right" ? false : !isSkeletonSideLocked(point, "left"),
-    right:
-      activeSingleSide === "left"
-        ? point
-        : getSkeletonRibPosition(contour, point, "right"),
+    right,
     unlockedRight:
       activeSingleSide === "left" ? false : !isSkeletonSideLocked(point, "right"),
   };

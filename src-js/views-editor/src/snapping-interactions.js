@@ -2,6 +2,7 @@ import { parseSelection } from "@fontra/core/utils.js";
 import {
   getSkeletonData,
   getSkeletonPointAddress,
+  getSkeletonRibEndpoints,
   resolveGeneratedPointProvenance,
 } from "@fontra/core/skeleton-model.js";
 import {
@@ -72,6 +73,26 @@ function* iterPathSegments(path) {
 // Spec section 6. The moved geometry contributes nothing, and neither does the
 // generated geometry that follows it. Which generated points those are is a
 // provenance lookup, never a geometric match (R-D).
+// The skeleton points the drag moves: the ones selected outright, plus the ones
+// the moved path points were generated from. Always a provenance lookup, never a
+// geometric match (R-D).
+function movedSkeletonPointKeys(sceneController, movedPointIndices) {
+  const moved = new Set(parseSelection(sceneController.selection).skeletonPoint || []);
+  const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
+  const path = positionedGlyph?.glyph?.path;
+  const skeletonData = getSkeletonData(positionedGlyph?.glyph);
+  if (!path || !skeletonData) {
+    return moved;
+  }
+  for (const pointIndex of movedPointIndices) {
+    const provenance = resolveGeneratedPointProvenance(skeletonData, path, pointIndex);
+    if (provenance) {
+      moved.add(`${provenance.contourId}/${provenance.pointId}`);
+    }
+  }
+  return moved;
+}
+
 function excludedPointIndices(sceneController, movedPointIndices) {
   const excluded = new Set(movedPointIndices);
   const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
@@ -81,15 +102,7 @@ function excludedPointIndices(sceneController, movedPointIndices) {
     return excluded;
   }
 
-  const movedSkeletonPoints = new Set(
-    parseSelection(sceneController.selection).skeletonPoint || []
-  );
-  for (const pointIndex of excluded) {
-    const provenance = resolveGeneratedPointProvenance(skeletonData, path, pointIndex);
-    if (provenance) {
-      movedSkeletonPoints.add(`${provenance.contourId}/${provenance.pointId}`);
-    }
-  }
+  const movedSkeletonPoints = movedSkeletonPointKeys(sceneController, excluded);
   if (!movedSkeletonPoints.size) {
     return excluded;
   }
@@ -210,6 +223,31 @@ export function buildSnapScene(sceneController, excludePointIndices) {
     }
     segments.push(segment.candidate);
   }
+
+  // The skeleton is not in the glyph path, so the loops above never reach it: it
+  // entered snapping as a mover and was never a target. Its on-curve points and
+  // both ends of every rib are targets now. Not its segments - a centerline is
+  // construction, and aligning to one says less than aligning to what it makes.
+  // Rib ends come from the model, never recomputed here.
+  const skeletonData = getSkeletonData(glyph);
+  const movedSkeletonPoints = movedSkeletonPointKeys(sceneController, excluded);
+  for (const contour of skeletonData?.contours || []) {
+    for (const point of contour.points || []) {
+      if (point.type || movedSkeletonPoints.has(`${contour.id}/${point.id}`)) {
+        continue;
+      }
+      points.push({ x: point.x, y: point.y });
+      const ribEnds = getSkeletonRibEndpoints(contour, point);
+      for (const end of [ribEnds.left, ribEnds.right]) {
+        // A collapsed side returns the centerline point itself, which is
+        // already in the list.
+        if (end && end !== point) {
+          points.push({ x: end.x, y: end.y });
+        }
+      }
+    }
+  }
+
   return { metrics, guides, points, segments };
 }
 

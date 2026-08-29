@@ -2712,6 +2712,26 @@ export function getSkeletonRibPosition(contour, point, side) {
   return projectSkeletonRibPoint(point, normal, halfWidth, side, nudge);
 }
 
+// Both ends of one point's rib. In a single-sided contour one end is the
+// centerline itself, because that side is collapsed onto the skeleton. Null
+// where the point states no rib on that side.
+export function getSkeletonRibEndpoints(contour, point) {
+  const activeSingleSide =
+    contour.singleSided === "left" || contour.singleSided === "right"
+      ? contour.singleSided
+      : null;
+  return {
+    left:
+      activeSingleSide === "right"
+        ? point
+        : getSkeletonRibPosition(contour, point, "left"),
+    right:
+      activeSingleSide === "left"
+        ? point
+        : getSkeletonRibPosition(contour, point, "right"),
+  };
+}
+
 const VALID_GENERATED_ROLES = new Set(["onCurve", "in", "out"]);
 
 export function findGeneratedPathAddress(skeletonData, contourId, pointId, side, role) {

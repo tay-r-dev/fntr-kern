@@ -7,6 +7,7 @@ import {
   getEffectiveRibHalfWidth,
   getSkeletonData,
   getSkeletonRibAddress,
+  getSkeletonRibEndpoints,
   getSkeletonRibPosition,
   getTiedRibGroup,
   makeSkeletonContour,
@@ -813,5 +814,49 @@ describe("tied rib group: serif on a straight", () => {
       generateFromSkeleton(makeSerifSkeleton({ neighbourWidth: 35, serifWidth: 35 }))
         .contours
     );
+  });
+});
+
+describe("getSkeletonRibEndpoints", () => {
+  const makeContour = (extra = {}) =>
+    normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          defaultWidth: 80,
+          closed: false,
+          points: [
+            makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+            makeSkeletonPoint({ id: 2, x: 100, y: 0 }),
+          ],
+          ...extra,
+        }),
+      ],
+    }).contours[0];
+
+  it("gives both ends of the rib on a double-sided contour", () => {
+    const contour = makeContour();
+    const ends = getSkeletonRibEndpoints(contour, contour.points[0]);
+    // A horizontal centerline puts the two ends above and below it, one half
+    // width away each, and neither of them on the point itself.
+    expect(ends.left).to.not.equal(null);
+    expect(ends.right).to.not.equal(null);
+    expect(ends.left.x).to.equal(0);
+    expect(ends.right.x).to.equal(0);
+    expect(ends.left.y).to.equal(-40);
+    expect(ends.right.y).to.equal(40);
+  });
+
+  it("collapses the unused side onto the centerline when single-sided", () => {
+    for (const side of ["left", "right"]) {
+      const contour = makeContour({ singleSided: side });
+      const point = contour.points[0];
+      const ends = getSkeletonRibEndpoints(contour, point);
+      const collapsed = side === "left" ? "right" : "left";
+      expect(ends[collapsed]).to.equal(point);
+      // The side that keeps the width carries the whole of it, so the rib is
+      // as long as the double-sided one was across.
+      expect(Math.abs(ends[side].y)).to.equal(80);
+    }
   });
 });
