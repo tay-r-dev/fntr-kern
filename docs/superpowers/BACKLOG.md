@@ -9,16 +9,17 @@ from the other documents (architecture map, maintenance rule).
 This is a backlog, not a spec. Three rows — **B4**, **B6** and **B8** — are architectural and
 each owes its own design document before any code. The other five are bounded.
 
-| #   | Item                          | Size        | Owns                                              |
-| --- | ----------------------------- | ----------- | ------------------------------------------------- |
-| B1  | RMB drops the drawn contour   | bounded     | `edit-tools-pen.js`, `edit-tools-skeleton.js`, `editor.js` |
-| B2  | Hover says the pen sees a point | bounded   | `edit-tools-skeleton.js`, `visualization-layer-skeleton.js` |
-| B3  | Three per-side locks, drawn   | bounded     | `skeleton-model.js`, `skeleton-generator.js`, panel, layers |
-| B4  | Corner join by intersection   | **architectural** | `skeleton-generator.js`, `offset-contour.js` |
-| B5  | Skeleton points snap          | bounded     | `snapping-interactions.js`                        |
-| B6  | Convert a contour to skeleton | **architectural** | new core module, `scene-controller.js`, dialog |
-| B7  | Gizmo mode still draws labels | bounded     | `visualization-layer-skeleton.js`, `visualization-layer-definitions.js` |
-| B8  | A side-mode change keeps the form | **architectural** | `skeleton-model.js`, new core module, panel |
+| #   | Item                                | Size              | Owns                                                                    |
+| --- | ----------------------------------- | ----------------- | ----------------------------------------------------------------------- |
+| B1  | RMB drops the drawn contour         | bounded           | `edit-tools-pen.js`, `edit-tools-skeleton.js`, `editor.js`              |
+| B2  | Hover says the pen sees a point     | bounded           | `edit-tools-skeleton.js`, `visualization-layer-skeleton.js`             |
+| B3  | Three per-side locks, drawn         | bounded           | `skeleton-model.js`, `skeleton-generator.js`, panel, layers             |
+| B4  | Corner join by intersection         | **architectural** | `skeleton-generator.js`, `offset-contour.js`                            |
+| B5  | Skeleton points snap                | bounded           | `snapping-interactions.js`                                              |
+| B6  | Convert a contour to skeleton       | **architectural** | new core module, `scene-controller.js`, dialog                          |
+| B7  | Gizmo mode still draws labels       | bounded           | `visualization-layer-skeleton.js`, `visualization-layer-definitions.js` |
+| B8  | A side-mode change keeps the form   | **architectural** | `skeleton-model.js`, new core module, panel                             |
+| B9  | One handle's move carries the other | bounded           | `offset-cubic.js`, `skeleton-generator.js`                              |
 
 ---
 
@@ -149,8 +150,8 @@ sides, and the side falls out of which way the corner turns rather than being br
 cubic, what is intersected is that arm's offset cubic, not a tangent ray standing in for it.
 
 **This construction already exists in the tree, once.** `offset-contour.js` states the same rule
-for the base-curve expansion drag: *each segment moves along its own normal by its own offset,
-and the corner point lands where its two moved segments cross* (feature model §12, log "Base-curve
+for the base-curve expansion drag: _each segment moves along its own normal by its own offset,
+and the corner point lands where its two moved segments cross_ (feature model §12, log "Base-curve
 expansion"). Rail R-B says there is one copy of every geometry function. So the first design
 question is whether the generator can call that module rather than grow a second copy — and the
 log records that stating this rule as a derivation rather than as a miter length is what made it
@@ -196,7 +197,7 @@ every fault in this area and the one that assertions have missed.
 `views-editor/src/snapping-interactions.js` and `visualization-layer-snapping.js`. Skeleton points
 already enter it as **movers**: `draggedSnapPositions` reads the `skeletonPoint` selection and asks
 the resolver about those positions. What they never do is enter it as **targets** —
-`buildSnapScene` walks `glyph.path` and nothing else, so the only things anything can snap *to*
+`buildSnapScene` walks `glyph.path` and nothing else, so the only things anything can snap _to_
 are path points and segments.
 
 So this is one gap, in one function, and the half that is harder is already built.
@@ -247,7 +248,7 @@ feature. It is **not** this row. File it separately if it is wanted.
 
 **Which presets.** The per-source base widths, held by glyph case in the skeleton defaults
 (`panel-skeleton-defaults.js`, `FONTRA_INTERNAL_SECTIONS.SKELETON_DEFAULTS`). Note that the only
-preset *list* in the tree today is the serif one; the widths are defaults rather than a named
+preset _list_ in the tree today is the serif one; the widths are defaults rather than a named
 list, so the dialog's "preset" select may need that list to exist first. Settle this in the
 design.
 
@@ -412,6 +413,38 @@ machinery, doing what it already does.
 generated contours in one change. The geometry differs — B6 copies a drawn contour verbatim, B8
 reads a solved edge — but the write path and the contour-index bookkeeping are the same problem.
 Whichever is built first should leave that half reusable.
+
+---
+
+## B9 — Moving one handle of a segment carries the other
+
+**What you see.** Detach one of a generated segment's two handles, then move the skeleton handle
+that handle is derived from. The **other** generated handle of the same segment moves too. Nothing
+was asked of it.
+
+**Status.** Not a regression from the side locks — reported during that work, and confirmed to
+pre-date it. It has presumably always done this.
+
+**What the rule should be.** A generated handle is derived from the skeleton handle on its own
+end, and from nothing else. Moving one end's handle changes that end's handle and leaves the far
+one where it stands.
+
+**Where to look first.** `offsetCubicSide` in `offset-cubic.js` solves both handles of a segment
+together: `solveNaturalHandles` takes both ends' directions and both widths and returns a
+`{ startLength, endLength }` pair, and `applyPinnedTension` then states a tension for the segment
+as a whole. Either could be the coupling — the natural solve reading the far end, or a pin being
+applied where no pin was asked for. The detached case is the one that makes it visible, because a
+detached handle is placed absolutely and so cannot be the thing that moved.
+
+**The question to answer before designing anything.** Which of the two is it, and is the coupling
+deliberate? The natural solve exists to make a pair of handles that produce a continuous offset,
+so _some_ dependence between the two ends may be the whole point of it. If it is, this row becomes
+"the far handle holds once it has been authored" rather than "the far handle never moves". Read
+the offset-construction rounds before deciding — that construction spent nine rounds earning its
+continuity, and this row must not spend it.
+
+**Size.** Bounded to read, unknown to fix, because the answer above decides the shape. It sits
+outside the ordering below until it has been read.
 
 ---
 
