@@ -6,9 +6,8 @@ Nine items, from the designer. Each row states what you see, the rule it should 
 the files it lands in. Every file path and symbol below came from a grep against the tree, not
 from the other documents (architecture map, maintenance rule).
 
-This is a backlog, not a spec. **Six are closed, one is dropped, and two are open.** The two open
-rows — **B6** and **B8** — are architectural and each owes its own design document before any
-code.
+This is a backlog, not a spec. **Seven are closed, one is dropped, and one is open.** The open
+row is **B8**, and it owes its own design document before any code.
 
 A closed row keeps its whole entry. What was asked for is the record of why the code is the shape
 it is, and the development log carries what it cost to get there.
@@ -20,7 +19,7 @@ it is, and the development log carries what it cost to get there.
 | B3  | Three per-side locks, drawn         | **closed**  | bounded           | `skeleton-model.js`, `skeleton-generator.js`, panel, layers             |
 | B4  | Corner join by intersection         | **closed**  | **architectural** | `skeleton-generator.js`, `offset-contour.js`                            |
 | B5  | Skeleton points snap                | **closed**  | bounded           | `snapping-interactions.js`                                              |
-| B6  | Convert a contour to skeleton       | open        | **architectural** | new core module, `scene-controller.js`, dialog                          |
+| B6  | Convert a contour to skeleton       | **closed**  | bounded           | `skeleton-from-contour.js`, `scene-controller.js`, dialog               |
 | B7  | Gizmo mode still draws labels       | **closed**  | bounded           | `visualization-layer-skeleton.js`, `visualization-layer-definitions.js` |
 | B8  | A side-mode change keeps the form   | open        | **architectural** | `skeleton-model.js`, new core module, panel                             |
 | B9  | One handle's move carries the other | **dropped** | bounded           | `offset-cubic.js`, `skeleton-generator.js`                              |
@@ -256,7 +255,38 @@ there.
 
 ## B6 — Convert a contour to a skeleton
 
-**Architectural. Owes a design document.**
+**Closed** (`b6e0473bd`). Built as a bounded change, with no design document.
+
+**It was not architectural, and the reason is worth keeping.** The row was classified by the
+plumbing it names rather than by the work. A centerline is a path of points and handles with a
+width attached, and a drawn contour is a path of points and handles, so the conversion is a copy
+and there is no geometry in it at all. Every piece of plumbing it needs was already in the tree:
+the width list, the one skeleton write path, and the bookkeeping for a deleted contour. What was
+left was a copy, a menu entry and a dialog.
+
+**Where it landed differently from the ask below.** Three things.
+
+The width is written onto **every on-curve point** as well as onto the contour. The width cascade
+the row was warned about does not reach a real file: normalization materializes a width on every
+on-curve point, so a point never falls through to the contour's number. The skeleton pen already
+seeds a new contour this way, and says so in a comment.
+
+The smooth flags are **copied as drawn**, which was left open below. A smooth point holding one
+handle beside a straight has no direction of its own, so the straight sets it and that straight's
+two ribs are tied. The drawing has that configuration; the conversion does not introduce it.
+Clearing the flags would change the shape. The centerline split does clear them on its two new
+ends, and that is not the same case: there the cut is what left those points holding one handle.
+
+A **quadratic contour is refused**, with a message naming the reason. A skeleton point is
+on-curve or cubic off-curve and nothing else, so a quadratic off-curve copied verbatim would be
+read as an on-curve and would move the outline. A contour with no on-curve points is refused the
+same way.
+
+**Not tested, and owed as a manual matrix.** The dialog, the menu entry and the write are all in
+the editor, which carries no harness (R-G). Eleven core tests cover the copy. Outstanding: an
+open contour, a closed one, several at once, each of the three side modes, an undo of each, and
+one conversion inside a glyph that already carries a stroke — that last is where the deleted
+contour's index shift is the only thing keeping the existing stroke's bookkeeping right.
 
 **What you see.** Nothing. A drawn outline cannot become a skeleton.
 
@@ -438,10 +468,10 @@ machinery, doing what it already does.
    is rounded, and expect the corner-rounding and cap rebuild to be the visible part of the
    difference rather than this.
 
-**Shares plumbing with B6.** Both turn an edge into a centerline and write a skeleton plus its
-generated contours in one change. The geometry differs — B6 copies a drawn contour verbatim, B8
-reads a solved edge — but the write path and the contour-index bookkeeping are the same problem.
-Whichever is built first should leave that half reusable.
+**Shares plumbing with B6, which is built.** Both turn an edge into a centerline. The geometry
+differs — B6 copies a drawn contour verbatim, B8 reads a solved edge — but the write is the same
+three steps, and B6 left them in place: delete the path contour, shift the record of which path
+contours the skeleton built, append the centerline, one change and one rollback.
 
 ---
 
@@ -484,18 +514,20 @@ outside the ordering below until it has been read.
 
 ## Order
 
-**Done: B7, then B1, then B2, then B5, then B3, then B4.** The five bounded rows went in that
-order, smallest first. B4 came last because it changes the geometry of every corner in every
-glyph.
+**Done: B7, then B1, then B2, then B5, then B3, then B4, then B6.** The bounded rows went
+smallest first. B4 came before B6 because it changes the geometry of every corner in every glyph.
 
-**B6 and B8 remain, and both wait for their design documents.** B6 is large but low-risk, because
-it writes new data and changes nothing already drawn. B8 rewrites existing drawings, but only when
-the designer asks it to, and its unchecked default is what happens today.
+**B8 remains.** It rewrites existing drawings, but only when the designer asks it to, and its
+unchecked default is what happens today.
 
-B8 is the smaller of the two now that preserve form turns out to write no width. Its design
+B8 is smaller than its label says, now that preserve form turns out to write no width. Its design
 document is mostly the respect-changes flag and the chips; the conversion itself is one centerline
-move. It may not stay architectural once that is written down — re-classify it then rather than
-carrying the label out of habit.
+move. **Re-classify it before writing anything.** B6 carried the architectural label to the point
+of costing a round of design work on geometry that did not exist, and B8's label was written at
+the same sitting by the same reasoning. The test is whether the flow it changes is already in the
+tree to read, not how much plumbing the row names.
 
-**B6 before B8**, if both are taken, so that the shared write path is built once under the
-simpler of the two.
+**The write path B6 was meant to leave reusable is in place.** Converting a drawn contour deletes
+a path contour, shifts the record of which path contours the skeleton built, and appends a
+centerline, all in one change with one rollback. B8 needs the same three steps against a different
+source of points.
