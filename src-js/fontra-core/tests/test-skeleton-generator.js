@@ -3008,3 +3008,57 @@ describe("a curvature pin on a serifed terminal", () => {
     expect(published.length).to.equal(0);
   });
 });
+
+describe("skeleton-generator corner meeting place", () => {
+  // A horizontal arm into a vertical arm, meeting at (100, 0). Half-width 40.
+  // One side's two edges are the lines y = -40 and x = 140, which cross at
+  // (140, -40). The other side's are y = 40 and x = 60, crossing at (60, 40).
+  // Straight arms, so both crossings are exact and there is no rounding to
+  // argue about, and the outer and inner rules give the same answer.
+  function rightAngleSkeleton(halfWidth = 40) {
+    // Half-width comes from each point's own width, not from defaultWidth:
+    // getSkeletonPointHalfWidth reads point.width for a named side.
+    const width = { left: halfWidth, right: halfWidth };
+    return {
+      version: 1,
+      nextId: 5,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: halfWidth * 2,
+          singleSided: null,
+          points: [
+            { id: 2, x: 0, y: 0, type: null, smooth: false, width },
+            { id: 3, x: 100, y: 0, type: null, smooth: false, width },
+            { id: 4, x: 100, y: 100, type: null, smooth: false, width },
+          ],
+        },
+      ],
+      generated: [],
+    };
+  }
+
+  function onCurvesOf(result) {
+    return result.contours.flatMap((contour) =>
+      contour.points.filter((point) => !point.type)
+    );
+  }
+
+  function hasPoint(points, x, y) {
+    return points.some(
+      (point) => Math.abs(point.x - x) <= 1 && Math.abs(point.y - y) <= 1
+    );
+  }
+
+  it("puts the outer side of a right-angle corner where its two edges cross", () => {
+    const points = onCurvesOf(generateFromSkeleton(rightAngleSkeleton()));
+    expect(hasPoint(points, 140, -40), "outer corner at (140, -40)").to.be.true;
+  });
+
+  it("moves the outer corner in proportion to the stroke width", () => {
+    // Half-width 20: the edges are y = -20 and x = 120, crossing at (120, -20).
+    const points = onCurvesOf(generateFromSkeleton(rightAngleSkeleton(20)));
+    expect(hasPoint(points, 120, -20), "outer corner at (120, -20)").to.be.true;
+  });
+});

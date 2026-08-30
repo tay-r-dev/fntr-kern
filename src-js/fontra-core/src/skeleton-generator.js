@@ -2341,13 +2341,14 @@ function generateOffsetPointsForSegment(
 
   const left = [];
   const right = [];
-  const projectPoint = (basePoint, normal, halfWidth, sign) => {
+  const projectPoint = (basePoint, normal, halfWidth, sign, miterScale = 1) => {
     if (isCollapsedSide(halfWidth)) {
       return { x: basePoint.x, y: basePoint.y };
     }
+    const reach = halfWidth * miterScale;
     return {
-      x: Math.round(basePoint.x + sign * normal.x * halfWidth),
-      y: Math.round(basePoint.y + sign * normal.y * halfWidth),
+      x: Math.round(basePoint.x + sign * normal.x * reach),
+      y: Math.round(basePoint.y + sign * normal.y * reach),
     };
   };
 
@@ -2363,16 +2364,24 @@ function generateOffsetPointsForSegment(
     // - For closed skeletons: for all segments (each adds its start)
     const shouldAddStart = isClosed || isFirst;
     if (shouldAddStart) {
-      let startNormal =
+      let startJoin =
         !prevSegment ||
         (isFirst && !isClosed) ||
         // Direction comes from this straight, not from a miter average with the
         // one handle on the far side.
         isStraightControlledSmoothPoint(segment.startPoint, segment, prevSegment)
-          ? normal
-          : calculateCornerNormal(prevSegment, segment, startLeftHW);
+          ? null
+          : calculateCornerJoin(prevSegment, segment);
+      let startNormal = startJoin ? startJoin.normal : normal;
       // Apply angle override if set on the point
       startNormal = getEffectiveNormal(segment.startPoint, startNormal);
+      // A forced rib angle replaces the split line outright. Both arms' edge
+      // ends then land on the forced rib and there is nothing to carry on to.
+      if (startJoin && startNormal !== startJoin.normal) {
+        startJoin = null;
+      }
+      const startLeftScale = cornerSideScale(startJoin, 1);
+      const startRightScale = cornerSideScale(startJoin, -1);
 
       // Copy smooth property from skeleton point, round to UPM grid
       // Use per-point half-widths for left and right sides
@@ -2387,7 +2396,8 @@ function generateOffsetPointsForSegment(
         segment.startPoint,
         startNormal,
         startLeftHW,
-        1
+        1,
+        startLeftScale
       );
       const startLeftPt = translateRibPoint(startLeftBase, startLeftNudge);
       left.push(
@@ -2413,7 +2423,8 @@ function generateOffsetPointsForSegment(
         segment.startPoint,
         startNormal,
         startRightHW,
-        -1
+        -1,
+        startRightScale
       );
       const startRightPt = translateRibPoint(startRightBase, startRightNudge);
       right.push(
@@ -2435,16 +2446,23 @@ function generateOffsetPointsForSegment(
     // - For closed skeletons: don't add (next segment's start is this end)
     const shouldAddEnd = !isClosed;
     if (shouldAddEnd) {
-      let endNormal =
+      let endJoin =
         !nextSegment ||
         isLast ||
         // Direction comes from this straight, not from a miter average with the
         // one handle on the far side.
         isStraightControlledSmoothPoint(segment.endPoint, segment, nextSegment)
-          ? normal
-          : calculateCornerNormal(segment, nextSegment, endLeftHW);
+          ? null
+          : calculateCornerJoin(segment, nextSegment);
+      let endNormal = endJoin ? endJoin.normal : normal;
       // Apply angle override if set on the point
       endNormal = getEffectiveNormal(segment.endPoint, endNormal);
+      // A forced rib angle replaces the split line outright.
+      if (endJoin && endNormal !== endJoin.normal) {
+        endJoin = null;
+      }
+      const endLeftScale = cornerSideScale(endJoin, 1);
+      const endRightScale = cornerSideScale(endJoin, -1);
 
       // Copy smooth property from skeleton point, round to UPM grid
       // Use per-point half-widths for left and right sides
@@ -2455,7 +2473,13 @@ function generateOffsetPointsForSegment(
         "left",
         endLeftHW
       );
-      const endLeftBase = projectPoint(segment.endPoint, endNormal, endLeftHW, 1);
+      const endLeftBase = projectPoint(
+        segment.endPoint,
+        endNormal,
+        endLeftHW,
+        1,
+        endLeftScale
+      );
       const endLeftPt = translateRibPoint(endLeftBase, endLeftNudge);
       left.push(
         buildGeneratedOnCurve(
@@ -2476,7 +2500,13 @@ function generateOffsetPointsForSegment(
         "right",
         endRightHW
       );
-      const endRightBase = projectPoint(segment.endPoint, endNormal, endRightHW, -1);
+      const endRightBase = projectPoint(
+        segment.endPoint,
+        endNormal,
+        endRightHW,
+        -1,
+        endRightScale
+      );
       const endRightPt = translateRibPoint(endRightBase, endRightNudge);
       right.push(
         buildGeneratedOnCurve(
@@ -2516,6 +2546,7 @@ function generateOffsetPointsForSegment(
     // segment on the other side instead — that straight is what defines it, so
     // its rib must be perpendicular to the straight and not to a miter average.
     let startNormal;
+    let startJoin = null;
     if (!prevSegment || (isFirst && !isClosed)) {
       startNormal = bezierStartNormal;
     } else if (
@@ -2523,12 +2554,18 @@ function generateOffsetPointsForSegment(
     ) {
       startNormal = straightSegmentNormal(prevSegment);
     } else {
-      startNormal = calculateCornerNormal(prevSegment, segment, startLeftHW);
+      startJoin = calculateCornerJoin(prevSegment, segment);
+      startNormal = startJoin.normal;
     }
     // Apply angle override if set on the point
     startNormal = getEffectiveNormal(segment.startPoint, startNormal);
+    // A forced rib angle replaces the split line outright.
+    if (startJoin && startNormal !== startJoin.normal) {
+      startJoin = null;
+    }
 
     let endNormal;
+    let endJoin = null;
     if (!nextSegment || (isLast && !isClosed)) {
       endNormal = bezierEndNormal;
     } else if (
@@ -2536,10 +2573,19 @@ function generateOffsetPointsForSegment(
     ) {
       endNormal = straightSegmentNormal(nextSegment);
     } else {
-      endNormal = calculateCornerNormal(segment, nextSegment, endLeftHW);
+      endJoin = calculateCornerJoin(segment, nextSegment);
+      endNormal = endJoin.normal;
     }
     // Apply angle override if set on the point
     endNormal = getEffectiveNormal(segment.endPoint, endNormal);
+    // A forced rib angle replaces the split line outright.
+    if (endJoin && endNormal !== endJoin.normal) {
+      endJoin = null;
+    }
+    const startLeftScale = cornerSideScale(startJoin, 1);
+    const startRightScale = cornerSideScale(startJoin, -1);
+    const endLeftScale = cornerSideScale(endJoin, 1);
+    const endRightScale = cornerSideScale(endJoin, -1);
 
     const avgLeftHW = (startLeftHW + endLeftHW) / 2;
     const avgRightHW = (startRightHW + endRightHW) / 2;
@@ -2553,16 +2599,30 @@ function generateOffsetPointsForSegment(
       segment.startPoint,
       startNormal,
       startLeftHW,
-      1
+      1,
+      startLeftScale
     );
     const fixedStartRight = projectPoint(
       segment.startPoint,
       startNormal,
       startRightHW,
-      -1
+      -1,
+      startRightScale
     );
-    const fixedEndLeft = projectPoint(segment.endPoint, endNormal, endLeftHW, 1);
-    const fixedEndRight = projectPoint(segment.endPoint, endNormal, endRightHW, -1);
+    const fixedEndLeft = projectPoint(
+      segment.endPoint,
+      endNormal,
+      endLeftHW,
+      1,
+      endLeftScale
+    );
+    const fixedEndRight = projectPoint(
+      segment.endPoint,
+      endNormal,
+      endRightHW,
+      -1,
+      endRightScale
+    );
 
     const nudgeStartLeft = ribNudgeDisplacement(
       segment.startPoint,
@@ -2906,10 +2966,16 @@ function coupledHalfWidths(segments, isClosed, defaultWidth, contourCapStyle) {
 }
 
 /**
- * Calculate the normal at a corner between two segments.
- * Uses miter join logic.
+ * The join at a corner between two arms.
+ *
+ * `normal` is the unit normal on the line that splits the angle between the two
+ * arms. `miterScale` is how many half-widths along that line the two carried-on
+ * edges of a side meet at: one over the cosine of half the turn, and Infinity
+ * where the two arms are exactly parallel, which is a centerline folded back on
+ * itself. `dir1` and `dir2` are the arms' own unit directions, returned so that
+ * no caller works them out a second time (rail R-B).
  */
-function calculateCornerNormal(segment1, segment2, halfWidth) {
+function calculateCornerJoin(segment1, segment2) {
   // Get outgoing tangent from segment1 at its endpoint
   let dir1;
   if (segment1.controlPoints.length === 0) {
@@ -2963,8 +3029,45 @@ function calculateCornerNormal(segment1, segment2, halfWidth) {
     y: dir1.x * sinH + dir1.y * cosH,
   };
 
-  // Normal is perpendicular to bisector (rotated 90° CW)
-  return { x: bisector.y, y: -bisector.x };
+  // Each arm's edge ends square to that arm's own direction, so the two edge
+  // ends of one side are at two different places. Carried on along their own
+  // arms they meet on the split line, one half-width over the cosine of half
+  // the turn out. Placing the point at a plain half-width left the corner open.
+  const cosHalfTurn = Math.abs(cosH);
+  const miterScale = cosHalfTurn > 0 ? 1 / cosHalfTurn : Infinity;
+
+  // Normal is perpendicular to bisector (rotated 90 degrees CW)
+  return { normal: { x: bisector.y, y: -bisector.x }, miterScale, dir1, dir2 };
+}
+
+/**
+ * Whether one side of a corner has a gap between its two edge ends.
+ *
+ * `sideSign` is 1 for the left side and -1 for the right. The test reads the
+ * geometry rather than the sign of the turn: it takes the ingoing arm's own
+ * direction and the vector between the two edge ends, which is the half-width
+ * times the difference of the two arms' normals. Pointing the same way means a
+ * gap, which is the outer side.
+ */
+function cornerSideIsOuter(dir1, dir2, sideSign) {
+  const n1 = vector.rotateVector90CW(dir1);
+  const n2 = vector.rotateVector90CW(dir2);
+  const between = { x: sideSign * (n2.x - n1.x), y: sideSign * (n2.y - n1.y) };
+  return dir1.x * between.x + dir1.y * between.y >= 0;
+}
+
+/**
+ * How far out along the split line one side of a corner reaches.
+ *
+ * The outer side reaches the apex, where its two carried-on edges meet. The
+ * inner side's two edges overlap instead of stopping, and their crossing is
+ * real drawn geometry found in a later pass, so that side stays on a plain
+ * half-width here.
+ */
+function cornerSideScale(join, sideSign) {
+  return join && cornerSideIsOuter(join.dir1, join.dir2, sideSign)
+    ? join.miterScale
+    : 1;
 }
 
 /**
