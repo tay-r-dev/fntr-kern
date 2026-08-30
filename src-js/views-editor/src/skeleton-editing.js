@@ -178,6 +178,20 @@ export function makeEditSkeletonChange(layerGlyph, mutate, options = {}) {
   return changes;
 }
 
+// The one write path, for a caller that has already opened its own change on
+// this layer glyph. `editSkeleton` opens one and is the ordinary entry point;
+// this is the same mutation without that wrapper, so a command that also edits
+// the layer's path can put both halves in a single change with one rollback.
+// Converting a drawn contour into a centerline is the case: it deletes a path
+// contour and appends a skeleton contour, and an undo has to take back both.
+//
+// `replaceContours` must be set when the path was restructured before the call.
+// The in-place update writes coordinates into the slots the previous generated
+// contours occupied, and a restructured path has moved them.
+export function applySkeletonEditInPlace(layerGlyph, mutate, options = {}) {
+  return applySkeletonMutation(layerGlyph, mutate, options);
+}
+
 // Returns whether the generated contours were replaced rather than moved.
 function applySkeletonMutation(layerGlyph, mutate, options = {}) {
   const original = getSkeletonData(layerGlyph);

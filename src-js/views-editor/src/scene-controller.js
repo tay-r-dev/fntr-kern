@@ -26,6 +26,7 @@ import {
   readProjectGlyphSets,
 } from "@fontra/core/glyphsets-controller.js";
 import { expandToJoints, harmonizePathInPlace } from "@fontra/core/harmonization.js";
+import * as html from "@fontra/core/html-utils.js";
 import { translate, translatePlural } from "@fontra/core/localization.js";
 import { MouseTracker } from "@fontra/core/mouse-tracker.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
@@ -51,8 +52,17 @@ import {
 } from "@fontra/core/set-ops.js";
 import { ShaperController } from "@fontra/core/shaper-controller.js";
 import {
+  SKELETON_CONVERSION_REFUSALS,
+  appendSkeletonContourFromPathContour,
+  skeletonConversionRefusal,
+} from "@fontra/core/skeleton-from-contour.js";
+import {
+  SKELETON_SOURCE_DEFAULT_KEYS,
   clearSkeletonData,
+  getDefaultSkeletonWidthKeyForGlyphName,
   getSkeletonData,
+  getSkeletonGlyphCase,
+  resolveEffectiveSourceSkeletonDefault,
   setSkeletonData,
 } from "@fontra/core/skeleton-model.js";
 import {
@@ -74,7 +84,7 @@ import { GlyphSource, Layer } from "@fontra/core/var-glyph.js";
 import { isLocationAtDefault } from "@fontra/core/var-model.js";
 import { VarPackedPath, packContour } from "@fontra/core/var-path.js";
 import * as vector from "@fontra/core/vector.js";
-import { dialog, message } from "@fontra/web-components/modal-dialog.js";
+import { dialog, dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import {
   componentCountOf,
   recordComponentDelete,
@@ -84,6 +94,7 @@ import { EditBehaviorFactory } from "./edit-behavior.js";
 import { SceneModel } from "./scene-model.js";
 import {
   applyGeneratedContourRemap,
+  applySkeletonEditInPlace,
   computeGeneratedContourRemap,
   createEditableGeneratedHandleTargetEntries,
   createEditableGeneratedPointTargetEntries,
@@ -774,6 +785,13 @@ export class SceneController {
     );
 
     registerAction(
+      "action.convert-contour-to-skeleton",
+      { topic },
+      () => this.doConvertContoursToSkeleton(),
+      () => this.contextMenuState.convertibleContours?.length
+    );
+
+    registerAction(
       "action.decompose-component",
       {
         topic,
@@ -1205,6 +1223,24 @@ export class SceneController {
       ),
     ];
 
+    // Which drawn contours can become centerlines. A generated contour is the
+    // stroke a centerline already made, so it is never offered: converting one
+    // would build a stroke around an outline the app is about to rebuild.
+    this.contextMenuState.convertibleContours = [
+      ...new Set(
+        (pointSelection || []).map(
+          (pointIndex) =>
+            this.sceneModel
+              .getSelectedPositionedGlyph()
+              ?.glyph?.instance?.path?.getContourAndPointIndex(pointIndex)?.[0]
+        )
+      ),
+    ].filter(
+      (contourIndex) =>
+        Number.isInteger(contourIndex) &&
+        !this.sceneModel.isGeneratedPathContour(contourIndex)
+    );
+
     const glyphController = this.sceneModel.getSelectedPositionedGlyph().glyph;
     this.contextMenuState.openContourSelection = glyphController.canEdit
       ? getSelectedClosableContours(glyphController.instance.path, pointSelection)
@@ -1234,6 +1270,14 @@ export class SceneController {
       { actionIdentifier: "action.set-contour-start" },
       { actionIdentifier: "action.harmonize" },
       { actionIdentifier: "action.realize-skeleton-contours" },
+      {
+        title: () =>
+          translatePlural(
+            "action.convert-contour-to-skeleton",
+            this.contextMenuState.convertibleContours?.length
+          ),
+        actionIdentifier: "action.convert-contour-to-skeleton",
+      },
       {
         title: translate("action.glyph.convert-curves"),
         getItems: () => [
@@ -1327,6 +1371,227 @@ export class SceneController {
         [...this.selection].filter((key) => !key.startsWith("skeletonPoint/"))
       );
       return translate("action.realize-skeleton-contours");
+    });
+  }
+
+  // The width choices the conversion dialog offers: the master's three base
+  // widths for the edited glyph's case, plus whatever named widths that master
+  // stores for the same case. This is the list the skeleton parameters panel
+  // already offers on a point, read the same way, so one glyph cannot be told
+  // two different sets of widths.
+  _skeletonWidthProfileOptions() {
+    const glyphName = this.getSelectedGlyphName();
+    const location =
+      this.sceneSettings?.fontLocationSourceMapped ||
+      this.sceneSettings?.fontLocationSource ||
+      {};
+    const read = (key) =>
+      resolveEffectiveSourceSkeletonDefault(this.fontController, location, key);
+    const isLower = getSkeletonGlyphCase(glyphName) === "lowercase";
+    const K = SKELETON_SOURCE_DEFAULT_KEYS;
+    const options = [
+      {
+        label: translate("sidebar.skeleton-parameters.default-base"),
+        value: read(isLower ? K.WIDTH_LOWERCASE_BASE : K.WIDTH_CAPITAL_BASE),
+      },
+      {
+        label: translate("sidebar.skeleton-parameters.default-horizontal"),
+        value: read(
+          isLower ? K.WIDTH_LOWERCASE_HORIZONTAL : K.WIDTH_CAPITAL_HORIZONTAL
+        ),
+      },
+      {
+        label: translate("sidebar.skeleton-parameters.default-contrast"),
+        value: read(isLower ? K.WIDTH_LOWERCASE_CONTRAST : K.WIDTH_CAPITAL_CONTRAST),
+      },
+    ];
+    const custom = read(
+      isLower ? K.CUSTOM_WIDTHS_LOWERCASE : K.CUSTOM_WIDTHS_UPPERCASE
+    );
+    if (Array.isArray(custom)) {
+      custom.forEach((item, index) => {
+        options.push({
+          label: item?.name || `${index + 1}`,
+          value: Number(item?.value),
+        });
+      });
+    }
+    return options.filter((option) => Number.isFinite(Number(option.value)));
+  }
+
+  // Asks for a stroke width and a side mode. Returns null when the designer
+  // cancels. The width box is the value that is used; picking a named width
+  // fills that box, so a typed number is never overruled by a select.
+  async _runConvertToSkeletonDialog(defaultWidth) {
+    const profiles = this._skeletonWidthProfileOptions();
+
+    const widthInput = html.input({
+      type: "number",
+      min: 0,
+      step: 1,
+      value: defaultWidth,
+      style: "width: 6em;",
+    });
+
+    const profileSelect = html.select(
+      {
+        onchange: (event) => {
+          const chosen = profiles[Number(event.target.value)];
+          if (chosen) {
+            widthInput.value = Number(chosen.value);
+          }
+        },
+      },
+      [
+        html.option({ value: "" }, [
+          translate("action.convert-contour-to-skeleton.width-profile.custom"),
+        ]),
+        ...profiles.map((profile, index) =>
+          html.option({ value: `${index}` }, [`${profile.label} (${profile.value})`])
+        ),
+      ]
+    );
+
+    const modeSelect = html.select({}, [
+      html.option({ value: "" }, [
+        translate("action.convert-contour-to-skeleton.mode.double"),
+      ]),
+      html.option({ value: "left" }, [
+        translate("action.convert-contour-to-skeleton.mode.left"),
+      ]),
+      html.option({ value: "right" }, [
+        translate("action.convert-contour-to-skeleton.mode.right"),
+      ]),
+    ]);
+
+    const content = html.div({ style: "display: grid; gap: 0.6em;" }, [
+      html.div({}, [
+        translate("action.convert-contour-to-skeleton.width-profile"),
+        " ",
+        profileSelect,
+      ]),
+      html.div({}, [
+        translate("action.convert-contour-to-skeleton.width"),
+        " ",
+        widthInput,
+      ]),
+      html.div({}, [
+        translate("action.convert-contour-to-skeleton.mode"),
+        " ",
+        modeSelect,
+      ]),
+    ]);
+
+    const dialogBox = await dialogSetup(
+      translate("action.convert-contour-to-skeleton.title"),
+      null,
+      [
+        { title: translate("dialog.cancel"), isCancelButton: true },
+        {
+          title: translate("dialog.okay"),
+          isDefaultButton: true,
+          resultValue: true,
+        },
+      ]
+    );
+    dialogBox.setContent(content);
+
+    if (!(await dialogBox.run())) {
+      return null;
+    }
+    const width = Number(widthInput.value);
+    if (!Number.isFinite(width) || width < 0) {
+      return null;
+    }
+    return { width, singleSided: modeSelect.value || null };
+  }
+
+  // Convert drawn contours into centerlines. The inverse of "Realize contours":
+  // there a skeleton is dropped and its outline kept, here an outline becomes a
+  // centerline and a new stroke is built around it.
+  //
+  // Every point keeps its position, its type and its smooth flag. Nothing is
+  // fitted and no shape is guessed at.
+  //
+  // The drawn contour is consumed. Deleting it moves every generated contour
+  // after it down one, which the skeleton has to be told in the same change, or
+  // its record of which path contours it built points at the wrong ones.
+  async doConvertContoursToSkeleton() {
+    const contourIndices = [...(this.contextMenuState.convertibleContours || [])].sort(
+      (a, b) => b - a
+    );
+    if (!contourIndices.length) {
+      return;
+    }
+
+    const path = this.sceneModel.getSelectedPositionedGlyph()?.glyph?.instance?.path;
+    if (!path) {
+      return;
+    }
+    for (const contourIndex of contourIndices) {
+      const refusal = skeletonConversionRefusal(path.getUnpackedContour(contourIndex));
+      if (refusal) {
+        await message(
+          translate("action.convert-contour-to-skeleton.title"),
+          translate(
+            refusal === SKELETON_CONVERSION_REFUSALS.QUADRATIC
+              ? "action.convert-contour-to-skeleton.refused.quadratic"
+              : "action.convert-contour-to-skeleton.refused.empty"
+          )
+        );
+        return;
+      }
+    }
+
+    const glyphName = this.getSelectedGlyphName();
+    const location =
+      this.sceneSettings?.fontLocationSourceMapped ||
+      this.sceneSettings?.fontLocationSource ||
+      {};
+    const masterWidth = Number(
+      resolveEffectiveSourceSkeletonDefault(
+        this.fontController,
+        location,
+        getDefaultSkeletonWidthKeyForGlyphName(glyphName)
+      )
+    );
+    const answer = await this._runConvertToSkeletonDialog(
+      Number.isFinite(masterWidth) && masterWidth > 0 ? masterWidth : 60
+    );
+    if (!answer) {
+      return;
+    }
+
+    await this.editLayersAndRecordChanges((layerGlyphs) => {
+      for (const layerGlyph of Object.values(layerGlyphs)) {
+        // Read every contour before deleting any of them, highest index first,
+        // so the indices stay valid while the reads happen.
+        const contours = contourIndices.map((contourIndex) =>
+          layerGlyph.path.getUnpackedContour(contourIndex)
+        );
+        for (const contourIndex of contourIndices) {
+          layerGlyph.path.deleteContour(contourIndex);
+          recordSkeletonContourIndexShift(layerGlyph, contourIndex, -1);
+        }
+        applySkeletonEditInPlace(
+          layerGlyph,
+          (working) => {
+            // Lowest index first, so the centerlines come out in the order the
+            // contours stood in.
+            for (const contour of [...contours].reverse()) {
+              appendSkeletonContourFromPathContour(working, contour, answer);
+            }
+          },
+          // The path was restructured, so the generated contours cannot be
+          // updated in their old slots.
+          { createIfMissing: true, replaceContours: true }
+        );
+      }
+      this.selection = new Set();
+      return translatePlural(
+        "action.convert-contour-to-skeleton",
+        contourIndices.length
+      );
     });
   }
 
