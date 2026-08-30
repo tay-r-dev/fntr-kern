@@ -340,6 +340,24 @@ export function summarizeSkeletonCapStyleSelection(selectedPoints) {
   return { canEdit: true, mixed: reduced.mixed, value: reduced.value };
 }
 
+/**
+ * The rib angle lock over a selection.
+ *
+ * It is a property of a point's rib, not of a cap, so it is offered at every
+ * skeleton point. At a corner it replaces the line that splits the angle between
+ * the two arms, so both arms' edge ends land on the forced rib and the corner
+ * sits at a plain half-width along it.
+ */
+export function summarizeSkeletonRibAngleLockSelection(selectedPoints) {
+  if (!selectedPoints.length) {
+    return { canEdit: false, mixed: false, value: null };
+  }
+  const reduced = reduceValues(
+    selectedPoints.map((entry) => entry.point.ribAngleLock ?? null)
+  );
+  return { canEdit: true, mixed: reduced.mixed, value: reduced.value };
+}
+
 export function summarizeSkeletonCapSelection(selectedPoints) {
   return {
     capStyle: reduceValues(selectedPoints.map((entry) => entry.point.capStyle ?? null)),
@@ -364,11 +382,6 @@ export function summarizeSkeletonCapSelection(selectedPoints) {
     ),
     capBallSide: reduceValues(
       selectedPoints.map((entry) => entry.point.capBallSide ?? null)
-    ),
-    // Not a cap parameter — it sets the rib the cap is built on — but it is
-    // edited beside the cap style, and gated the same way.
-    ribAngleLock: reduceValues(
-      selectedPoints.map((entry) => entry.point.ribAngleLock ?? null)
     ),
   };
 }

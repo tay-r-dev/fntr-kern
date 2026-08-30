@@ -3225,6 +3225,21 @@ describe("skeleton-generator corner meeting place", () => {
       ]);
     }
   });
+
+  it("puts a corner on its forced rib at a plain half-width", () => {
+    // A rib angle lock replaces the line that splits the angle between the two
+    // arms outright, so there is no apex to reach and both arms' edge ends land
+    // on the forced rib. One on-curve per side, at the half-width.
+    const locked = rightAngleSkeleton();
+    locked.contours[0].points[1].ribAngleLock = "horizontal";
+    const result = generateFromSkeleton(locked);
+    const left = cornerOnCurves(result, 3, "left");
+    const right = cornerOnCurves(result, 3, "right");
+    expect(left).to.have.lengthOf(1);
+    expect(right).to.have.lengthOf(1);
+    expect([left[0].x, left[0].y]).to.deep.equal([140, 0]);
+    expect([right[0].x, right[0].y]).to.deep.equal([60, 0]);
+  });
 });
 
 describe("skeleton-generator corner sweeps", () => {

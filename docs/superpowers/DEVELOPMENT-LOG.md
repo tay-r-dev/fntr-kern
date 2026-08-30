@@ -1908,6 +1908,16 @@ whether a consumer exists.
 can only assert the rib line itself on the flat-ended styles; for the others it
 asserts that the lock changes the outline at all.
 
+**It is offered at every skeleton point now, not only at a contour's ends.** The
+field was always per point and the geometry always applied per point. Only the
+panel was gated, and only because the control was drawn beside the cap style. It
+moved to the point section, and the writer dropped the endpoint check that
+matched the old placement. At a corner the lock replaces the line that splits the
+angle between the two arms, so there is no meeting place to reach: both arms' edge
+ends land on the forced rib and the corner sits at a plain half-width along it,
+one outline point per side. A right angle at a half-width of 40 with a horizontal
+lock puts them at (140, 0) and (60, 0).
+
 ### Segment selection
 
 Clicking a segment selects its two on-curve points, and shift-clicking an

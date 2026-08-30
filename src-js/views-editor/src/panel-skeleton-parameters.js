@@ -70,6 +70,7 @@ import {
   summarizeSkeletonContourSelection,
   summarizeSkeletonCornerSelection,
   summarizeSkeletonPointWidths,
+  summarizeSkeletonRibAngleLockSelection,
   summarizeSkeletonRibSelection,
   summarizeSkeletonSerifSelection,
 } from "./skeleton-panel-model.js";
@@ -840,6 +841,34 @@ export default class SkeletonParametersPanel extends Panel {
         ? { step: 10, disabled: true, displayValue: "" }
         : { step: 10 }
     );
+    // The rib angle lock sits with the point rather than with the cap. It is a
+    // property of the point's rib and it applies at every point: at a terminal
+    // it decides the rib the cap is built on, and at a corner it replaces the
+    // line that splits the angle between the two arms, so both arms' edge ends
+    // land on the forced rib and the corner sits at a plain half-width along it.
+    const ribAngleLock = summarizeSkeletonRibAngleLockSelection(widthPoints);
+    formContents.push({
+      type: "select",
+      key: "width:ribanglelock",
+      label: translate("sidebar.skeleton-parameters.rib-angle-lock"),
+      value: ribAngleLock.mixed ? "" : (ribAngleLock.value ?? "auto"),
+      disabled: !ribAngleLock.canEdit,
+      options: [
+        ...(ribAngleLock.mixed ? [{ value: "", label: "mixed", disabled: true }] : []),
+        {
+          value: "auto",
+          label: translate("sidebar.skeleton-parameters.rib-angle-lock.auto"),
+        },
+        {
+          value: "horizontal",
+          label: translate("sidebar.skeleton-parameters.rib-angle-lock.horizontal"),
+        },
+        {
+          value: "vertical",
+          label: translate("sidebar.skeleton-parameters.rib-angle-lock.vertical"),
+        },
+      ],
+    });
     // Force-apply a master width profile to the selected points (two-click
     // confirm; the dropdown picks base/horizontal/contrast or a custom width).
     this._buildForceApplyRow(formContents, {
@@ -916,33 +945,6 @@ export default class SkeletonParametersPanel extends Panel {
         {
           value: "serif",
           label: translate("sidebar.skeleton-parameters.cap-style.serif"),
-        },
-      ],
-    });
-    // The rib angle lock is offered for every cap style, not just the flat one
-    // as in the donor: it decides the rib the cap is built on, so it supersedes
-    // the style rather than belonging to one.
-    formContents.push({
-      type: "select",
-      key: "cap:ribanglelock",
-      label: translate("sidebar.skeleton-parameters.rib-angle-lock"),
-      value: cap.ribAngleLock.mixed ? "" : (cap.ribAngleLock.value ?? "auto"),
-      disabled: !capStyle.canEdit,
-      options: [
-        ...(cap.ribAngleLock.mixed
-          ? [{ value: "", label: "mixed", disabled: true }]
-          : []),
-        {
-          value: "auto",
-          label: translate("sidebar.skeleton-parameters.rib-angle-lock.auto"),
-        },
-        {
-          value: "horizontal",
-          label: translate("sidebar.skeleton-parameters.rib-angle-lock.horizontal"),
-        },
-        {
-          value: "vertical",
-          label: translate("sidebar.skeleton-parameters.rib-angle-lock.vertical"),
         },
       ],
     });
@@ -2152,6 +2154,18 @@ export default class SkeletonParametersPanel extends Panel {
   }
 
   async _onWidthChange(name, value) {
+    if (name === "ribanglelock") {
+      if (!["auto", "horizontal", "vertical"].includes(value)) {
+        return;
+      }
+      await setPanelRibAngleLock(
+        this.sceneController,
+        this._widthPoints(),
+        value === "auto" ? null : value,
+        this._undo("set-rib-angle-lock")
+      );
+      return;
+    }
     const points = this._widthPoints();
     const sc = this.sceneController;
     if (name === "linked") {
@@ -2202,18 +2216,6 @@ export default class SkeletonParametersPanel extends Panel {
   }
 
   async _onCapChange(name, value) {
-    if (name === "ribanglelock") {
-      if (!["auto", "horizontal", "vertical"].includes(value)) {
-        return;
-      }
-      await setPanelRibAngleLock(
-        this.sceneController,
-        this._widthPoints(),
-        value === "auto" ? null : value,
-        this._undo("set-rib-angle-lock")
-      );
-      return;
-    }
     if (name === "style") {
       if (!["butt", "square", "round", "drop", "serif"].includes(value)) {
         return;

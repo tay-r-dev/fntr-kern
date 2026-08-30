@@ -985,8 +985,12 @@ export async function setPanelSerifParametersStream(
   );
 }
 
-// Lock the ribs of selected open-contour endpoints to an axis (or clear it).
-// Gated to endpoints like the cap style is, since that is where it is offered.
+// Lock the ribs of the selected skeleton points to an axis (or clear it).
+//
+// Every on-curve point, not only a contour's endpoints. At a terminal it decides
+// the rib the cap is built on. At a corner it replaces the line that splits the
+// angle between the two arms, so both arms' edge ends land on the forced rib and
+// the corner sits at a plain half-width along it.
 export async function setPanelRibAngleLock(
   sceneController,
   pointAddresses,
@@ -996,15 +1000,7 @@ export async function setPanelRibAngleLock(
   return editSelectedSkeletonPoints(
     sceneController,
     pointAddresses,
-    (point, _address, { contour }) => {
-      const endpoints = skeletonContourEndpointIndices(contour);
-      if (!endpoints) {
-        return;
-      }
-      const pointIndex = contour.points.indexOf(point);
-      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
-        return;
-      }
+    (point) => {
       setSkeletonPointRibAngleLock(point, ribAngleLock);
     },
     undoLabel
