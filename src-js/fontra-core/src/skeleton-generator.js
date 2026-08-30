@@ -1212,12 +1212,6 @@ function findNextOnCurveIndex(points, index, isClosed) {
   return null;
 }
 
-// How near two crossings must be to count as the same one. Curve-curve
-// intersection subdivides, so a single crossing comes back as a small cluster of
-// parameter pairs. Counting those as several would send an ordinary corner down
-// the fallback.
-const CORNER_CROSSING_TOLERANCE = 0.5;
-
 // An inner corner's two on-curves stand at the two arms' edge ends, which is the
 // only place two adjacent on-curves name one skeleton point and one side.
 function isInnerCornerPair(first, second) {
@@ -1233,46 +1227,145 @@ function isInnerCornerPair(first, second) {
   );
 }
 
+// How near two crossings must be to count as the same one. Curve-curve
+// intersection subdivides, so a single crossing comes back as a small cluster of
+// parameter pairs. Counting those as several would send an ordinary corner down
+// the fallback.
+const CORNER_CROSSING_CLUSTER = 0.5;
+
+// How small a pair of spans must get before it is called one point, in font
+// units, and how many spans the search may hold at once. The cap only bites on
+// two curves that lie along each other, where every span overlaps every other;
+// the clustering below then collapses what comes back.
+const CROSSING_PRECISION = 0.01;
+const CROSSING_MAX_SPANS = 4000;
+
+// A straight as a cubic. Controls at the thirds keep it linear in t, so the
+// parameter the search reports is the parameter along the straight.
+function asCubic(curve) {
+  if (curve.length === 4) {
+    return curve;
+  }
+  const [start, end] = curve;
+  return [
+    start,
+    {
+      x: start.x + (end.x - start.x) / 3,
+      y: start.y + (end.y - start.y) / 3,
+    },
+    {
+      x: start.x + (2 * (end.x - start.x)) / 3,
+      y: start.y + (2 * (end.y - start.y)) / 3,
+    },
+    end,
+  ];
+}
+
+function splitCubicInHalf(points) {
+  const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  const a = mid(points[0], points[1]);
+  const b = mid(points[1], points[2]);
+  const c = mid(points[2], points[3]);
+  const d = mid(a, b);
+  const e = mid(b, c);
+  const f = mid(d, e);
+  return [
+    [points[0], a, d, f],
+    [f, e, c, points[3]],
+  ];
+}
+
+function controlBox(points) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of points) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+  return { minX, minY, maxX, maxY, size: Math.max(maxX - minX, maxY - minY) };
+}
+
+/**
+ * Every place two cubics cross, as a parameter on each.
+ *
+ * bezier-js has its own curve-curve intersection and it is not used here. It
+ * reduces each curve to spans it calls simple and drops the spans it cannot
+ * simplify, so a crossing that lands in a dropped span is reported as no
+ * crossing at all. On the sharp inner corner of a b it reported none where there
+ * is one, and the outline doubled back on itself.
+ *
+ * This subdivides the two curves against each other instead. Two spans whose
+ * control boxes miss cannot hold a crossing. Two spans small enough to be one
+ * point are one. Nothing is dropped, so nothing is missed.
+ */
+function cubicCrossings(cubic1, cubic2) {
+  const found = [];
+  let stack = [[cubic1, 0, 1, cubic2, 0, 1]];
+  while (stack.length) {
+    if (stack.length > CROSSING_MAX_SPANS) {
+      break;
+    }
+    const [first, firstLow, firstHigh, second, secondLow, secondHigh] = stack.pop();
+    const boxA = controlBox(first);
+    const boxB = controlBox(second);
+    if (
+      boxA.maxX < boxB.minX ||
+      boxB.maxX < boxA.minX ||
+      boxA.maxY < boxB.minY ||
+      boxB.maxY < boxA.minY
+    ) {
+      continue;
+    }
+    if (boxA.size <= CROSSING_PRECISION && boxB.size <= CROSSING_PRECISION) {
+      found.push({ t1: (firstLow + firstHigh) / 2, t2: (secondLow + secondHigh) / 2 });
+      continue;
+    }
+    // Halve whichever span is the coarser, so both close in together.
+    if (boxA.size >= boxB.size) {
+      const [left, right] = splitCubicInHalf(first);
+      const middle = (firstLow + firstHigh) / 2;
+      stack.push([left, firstLow, middle, second, secondLow, secondHigh]);
+      stack.push([right, middle, firstHigh, second, secondLow, secondHigh]);
+    } else {
+      const [left, right] = splitCubicInHalf(second);
+      const middle = (secondLow + secondHigh) / 2;
+      stack.push([first, firstLow, firstHigh, left, secondLow, middle]);
+      stack.push([first, firstLow, firstHigh, right, middle, secondHigh]);
+    }
+  }
+  return found;
+}
+
+function cubicPointAt(points, t) {
+  const u = 1 - t;
+  const a = u * u * u;
+  const b = 3 * u * u * t;
+  const c = 3 * u * t * t;
+  const d = t * t * t;
+  return {
+    x: a * points[0].x + b * points[1].x + c * points[2].x + d * points[3].x,
+    y: a * points[0].y + b * points[1].y + c * points[2].y + d * points[3].y,
+  };
+}
+
 // Every place the two curves meet, as a parameter on each, with clusters of
-// subdivision hits counted once. A straight is solved outright rather than
-// elevated to a cubic: the exact answer costs less than the search and cannot
-// report a cluster.
+// subdivision hits counted once. Two straights are solved outright: the exact
+// answer costs less than the search and cannot report a cluster.
 function cornerCurveCrossings(curve1, curve2) {
-  const toPoint = (curve, t) =>
-    curve.length === 4
-      ? new Bezier(curve).get(t)
-      : vector.interpolateVectors(curve[0], curve[1], t);
   let candidates = [];
   if (curve1.length === 2 && curve2.length === 2) {
     const hit = vector.intersect(curve1[0], curve1[1], curve2[0], curve2[1]);
     if (hit) {
       candidates.push({ t1: hit.t1, t2: hit.t2 });
     }
-  } else if (curve1.length === 4 && curve2.length === 4) {
-    for (const pair of new Bezier(curve1).intersects(new Bezier(curve2))) {
-      const [t1, t2] = String(pair).split("/").map(Number);
-      candidates.push({ t1, t2 });
-    }
   } else {
-    // One curve, one straight. bezier-js reports the parameter on the curve
-    // only, so the straight's own parameter comes back from a projection.
-    const cubicFirst = curve1.length === 4;
-    const cubic = cubicFirst ? curve1 : curve2;
-    const line = cubicFirst ? curve2 : curve1;
-    const span = vector.subVectors(line[1], line[0]);
-    const spanLengthSquared = span.x * span.x + span.y * span.y;
-    if (spanLengthSquared < 1e-12) {
-      return [];
-    }
-    for (const t of new Bezier(cubic).intersects({ p1: line[0], p2: line[1] })) {
-      const at = new Bezier(cubic).get(Number(t));
-      const along =
-        ((at.x - line[0].x) * span.x + (at.y - line[0].y) * span.y) / spanLengthSquared;
-      candidates.push(
-        cubicFirst ? { t1: Number(t), t2: along } : { t1: along, t2: Number(t) }
-      );
-    }
+    candidates = cubicCrossings(asCubic(curve1), asCubic(curve2));
   }
+  const shapeOne = asCubic(curve1);
 
   const crossings = [];
   for (const candidate of candidates) {
@@ -1285,10 +1378,10 @@ function cornerCurveCrossings(curve1, curve2) {
     if (candidate.t1 < 0 || candidate.t1 > 1 || candidate.t2 < 0 || candidate.t2 > 1) {
       continue;
     }
-    const point = toPoint(curve1, candidate.t1);
+    const point = cubicPointAt(shapeOne, candidate.t1);
     if (
       crossings.some(
-        (other) => vector.distance(other.point, point) <= CORNER_CROSSING_TOLERANCE
+        (other) => vector.distance(other.point, point) <= CORNER_CROSSING_CLUSTER
       )
     ) {
       continue;
