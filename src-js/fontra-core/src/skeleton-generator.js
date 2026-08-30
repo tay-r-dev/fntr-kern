@@ -2808,14 +2808,11 @@ function generateOffsetPointsForSegment(
       getEffectiveNormal(segment.startPoint, normal),
       normal
     );
-    const startFullWidth = startLeftHW + startRightHW;
     const startLeftPlace = cornerSidePlacement(
       startJoin,
       1,
       startJoinPlace,
       startOwnPlace,
-      startLeftHW,
-      startFullWidth,
       startLocked
     );
     const startRightPlace = cornerSidePlacement(
@@ -2823,8 +2820,6 @@ function generateOffsetPointsForSegment(
       -1,
       startJoinPlace,
       startOwnPlace,
-      startRightHW,
-      startFullWidth,
       startLocked
     );
     // An inner side needs both arms' edge ends, so the arm that does not carry
@@ -2932,14 +2927,11 @@ function generateOffsetPointsForSegment(
       getEffectiveNormal(segment.endPoint, normal),
       normal
     );
-    const endFullWidth = endLeftHW + endRightHW;
     const endLeftPlace = cornerSidePlacement(
       endJoin,
       1,
       endJoinPlace,
       endOwnPlace,
-      endLeftHW,
-      endFullWidth,
       endLocked
     );
     const endRightPlace = cornerSidePlacement(
@@ -2947,8 +2939,6 @@ function generateOffsetPointsForSegment(
       -1,
       endJoinPlace,
       endOwnPlace,
-      endRightHW,
-      endFullWidth,
       endLocked
     );
     const addEndLeft = shouldAddEnd || endLeftPlace.perArm;
@@ -3111,15 +3101,11 @@ function generateOffsetPointsForSegment(
       getEffectiveNormal(segment.endPoint, bezierEndNormal),
       bezierEndNormal
     );
-    const startFullWidth = startLeftHW + startRightHW;
-    const endFullWidth = endLeftHW + endRightHW;
     const startLeftPlace = cornerSidePlacement(
       startJoin,
       1,
       startJoinPlace,
       startOwnPlace,
-      startLeftHW,
-      startFullWidth,
       startLocked
     );
     const startRightPlace = cornerSidePlacement(
@@ -3127,8 +3113,6 @@ function generateOffsetPointsForSegment(
       -1,
       startJoinPlace,
       startOwnPlace,
-      startRightHW,
-      startFullWidth,
       startLocked
     );
     const endLeftPlace = cornerSidePlacement(
@@ -3136,8 +3120,6 @@ function generateOffsetPointsForSegment(
       1,
       endJoinPlace,
       endOwnPlace,
-      endLeftHW,
-      endFullWidth,
       endLocked
     );
     const endRightPlace = cornerSidePlacement(
@@ -3145,8 +3127,6 @@ function generateOffsetPointsForSegment(
       -1,
       endJoinPlace,
       endOwnPlace,
-      endRightHW,
-      endFullWidth,
       endLocked
     );
 
@@ -3631,12 +3611,18 @@ function cornerSideIsOuter(dir1, dir2, sideSign) {
   return dir1.x * between.x + dir1.y * between.y >= 0;
 }
 
-// How far a corner may reach from its skeleton point, as a multiple of the full
-// stroke width there. Past this the two arms are so nearly parallel that the
-// place their edges meet is further out than the letter is tall. The drag that
-// offsets an ordinary hand-drawn outline bevels at the same turn: it states the
-// same number as four times the half-width.
-const CORNER_MITER_LIMIT = 2;
+// How far a corner may reach, as a multiple of ITS OWN SIDE'S half-width. Past
+// this the two arms are so nearly parallel that the place their edges meet is
+// further out than the letter is tall.
+//
+// Per side, not per stroke. Stated against the whole stroke width instead, a
+// side carrying a small share of an unlinked width was allowed a spike several
+// times longer than that side is wide, while the other side of the same corner
+// was held: a 10/50 stroke let its narrow side reach twelve half-widths. Four
+// half-widths is two full stroke widths wherever the two sides are equal, so
+// nothing changes for a linked width. The drag that offsets an ordinary
+// hand-drawn outline states the same number the same way.
+const CORNER_MITER_LIMIT = 4;
 
 /**
  * Whether an outer side's apex is out of bounds.
@@ -3645,9 +3631,8 @@ const CORNER_MITER_LIMIT = 2;
  * there is no apex at all. That side then ends each arm at its own edge end, and
  * the straight between the two is the corner.
  */
-function cornerIsHeld(miterScale, halfWidth, fullWidth) {
-  const reach = halfWidth * miterScale;
-  return !Number.isFinite(reach) || reach > CORNER_MITER_LIMIT * fullWidth;
+function cornerIsHeld(miterScale) {
+  return !Number.isFinite(miterScale) || miterScale > CORNER_MITER_LIMIT;
 }
 
 /**
@@ -3685,15 +3670,7 @@ function lockedPlacement(point, forcedNormal, unlockedNormal) {
  * what `perArm` says. Both arms work it out for themselves from the same pair of
  * segments, so they agree with no state passed between them.
  */
-function cornerSidePlacement(
-  join,
-  sideSign,
-  joinPlace,
-  ownPlace,
-  halfWidth,
-  fullWidth,
-  locked
-) {
+function cornerSidePlacement(join, sideSign, joinPlace, ownPlace, locked) {
   if (!join) {
     return { ...joinPlace, perArm: false };
   }
@@ -3709,7 +3686,7 @@ function cornerSidePlacement(
   if (!cornerSideIsOuter(join.dir1, join.dir2, sideSign)) {
     return { ...ownPlace, perArm: true };
   }
-  if (cornerIsHeld(join.miterScale, halfWidth, fullWidth)) {
+  if (cornerIsHeld(join.miterScale)) {
     // The two edge ends have a gap between them, so joinInnerCornersOnSide finds
     // no crossing and leaves both standing. The straight between them needs no
     // code: two on-curves with no handles between them are a straight line.

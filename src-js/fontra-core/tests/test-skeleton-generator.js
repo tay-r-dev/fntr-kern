@@ -3343,6 +3343,63 @@ describe("skeleton-generator corner meeting place", () => {
       ]);
     }
   });
+
+  it("decides a held corner by the turn alone, not by the width split", () => {
+    // The two arms turn through 155 degrees, which is past the limit, so both
+    // sides keep their two edge ends. An unlinked width shares the same 80
+    // differently between the sides and must not change that. Stated against the
+    // whole stroke rather than against each side, a side carrying 10 of the 80
+    // was allowed a spike four times longer than it is wide while the other side
+    // of the same corner was cut.
+    const cornerAt = (angleDegrees, left, right) => {
+      const radians = (angleDegrees * Math.PI) / 180;
+      const width = { left, right, linked: left === right };
+      const even = { left: 40, right: 40, linked: true };
+      return {
+        version: 1,
+        nextId: 5,
+        contours: [
+          {
+            id: 1,
+            closed: false,
+            defaultWidth: 80,
+            singleSided: null,
+            points: [
+              { id: 2, x: 0, y: 0, type: null, smooth: false, width: even },
+              { id: 3, x: 100, y: 0, type: null, smooth: false, width },
+              {
+                id: 4,
+                x: 100 + 100 * Math.cos(radians),
+                y: 100 * Math.sin(radians),
+                type: null,
+                smooth: false,
+                width: even,
+              },
+            ],
+          },
+        ],
+        generated: [],
+      };
+    };
+    for (const [angle, expected] of [
+      [155, 2],
+      [90, 1],
+    ]) {
+      for (const [left, right] of [
+        [40, 40],
+        [10, 70],
+        [70, 10],
+      ]) {
+        const result = generateFromSkeleton(cornerAt(angle, left, right));
+        for (const side of ["left", "right"]) {
+          expect(
+            cornerOnCurves(result, 3, side).length,
+            `${angle} degrees, ${left}/${right}, ${side}`
+          ).to.equal(expected);
+        }
+      }
+    }
+  });
 });
 
 describe("skeleton-generator corner sweeps", () => {

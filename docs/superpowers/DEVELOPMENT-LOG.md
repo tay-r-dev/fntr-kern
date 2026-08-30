@@ -2584,11 +2584,18 @@ several crossings can change its answer between two frames of a drag, and the
 outline is rebuilt on every frame. This is the same rule the offset construction
 arrived at over five rounds.
 
-**The miter limit is two stroke widths.** At 178 degrees on a 60 unit stroke the
-meeting place stands about 1719 units out, longer than the letter is tall. Past
-two stroke widths, and where the two arms are exactly parallel and there is no
-meeting place at all, the side ends each arm at its own edge end and the straight
-between them is the corner. It reuses the inner side's path: two edge ends with a
+**The miter limit is four half-widths, measured per side.** At 178 degrees on a
+60 unit stroke the meeting place stands about 1719 units out, longer than the
+letter is tall. Past four of its own side's half-widths, and where the two arms
+are exactly parallel and there is no meeting place at all, the side ends each arm
+at its own edge end and the straight between them is the corner.
+
+It was first written as two full stroke widths, which is the same number wherever
+the two sides are equal and a different one wherever they are not. On an unlinked
+10/50 stroke the narrow side was allowed twelve of its own half-widths while the
+wide side was cut at two and a half, so one side of a corner spiked and the other
+was bevelled at the same turn. Per side, whether a corner is held is decided by
+its turn alone. It reuses the inner side's path: two edge ends with a
 gap do not cross, so the crossing pass finds none and leaves both standing. The
 drag that offsets an ordinary hand-drawn outline bevels at the same turn; it
 states the same number as four times the half-width.

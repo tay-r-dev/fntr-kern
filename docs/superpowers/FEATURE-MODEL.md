@@ -244,8 +244,9 @@ The side with the overlap lets each arm end at its own edge end, and `joinInnerC
 intersects the two emitted curves and cuts both back to the crossing. The crossing is of the drawn
 curves, not of their end directions, because both curves bend away from their directions over the
 reach. Where they do not cross exactly once, both edge ends stay and the straight between them is
-the corner. A gap wider than two stroke widths is held the same way: past that the meeting place
-stands further out than the letter is tall.
+the corner. A gap wider than four of that side's own half-widths is held the same way: past that the meeting
+place stands further out than the letter is tall. Per side, so an unlinked width holds both sides
+of a corner at the same turn.
 
 **The solver is untouched by all of this.** It takes the endpoint it must land on separately from
 the shape it must match, so moving the endpoint to the meeting place changes one input and nothing
