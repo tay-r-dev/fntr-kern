@@ -1732,6 +1732,39 @@ case, which is why the fix does what was asked. On ordinary geometry a slid
 handle stops short of its drawn crossing rather than at it. Left alone, because
 the handle moves, which was the complaint.
 
+### The grid invented a ceiling, and one handle sat on it
+
+Reported on the j of skeletron.fontra: move the first handle of the stem and one
+of that segment's two generated edges does not follow. It draws as a straight
+and stays that way until the segment's other handle moves.
+
+The stem is drawn as a cubic whose two handles sit on the exact thirds, so the
+segment is a straight line. Nudge one handle sideways and the two tangent rays
+open by a couple of degrees. Their crossing is then a few units **behind** the
+start point, which means there is no forward crossing and no ceiling — the
+domain's own parallel case, and the right answer.
+
+The outline endpoints are rounded to the grid before the domain is built. At two
+degrees the crossing slides about twenty-six units for every unit an endpoint
+moves sideways, so half a unit of rounding at each end is enough to carry it
+across the start point and put it a few units **ahead** instead. The ceiling that
+came out of that was seven per cent of the reach at one handle offset and one per
+cent at another. The start handle was held at 8 units where the drawing asks for
+128, so the edge left its on-curve as a straight, and it stayed there across a
+whole range of the handle that governs it.
+
+**The fix is to refuse a crossing the grid could have invented.** The
+amplification is one over the sine of the angle between the two rays, so the
+uncertainty the rounding buys is a unit and a half times that amplification, less
+the unit and a half already in the endpoints. A crossing nearer than that is
+refused exactly as an exactly parallel pair is. Where the rays are square nothing
+is amplified, the term is zero, and a short honest crossing keeps the ceiling it
+had — which is the case a fixture already pins at half a unit.
+
+The defect predates the corner work. It reproduces on the generator as it stood
+before it, and it needed a segment straight to within a few degrees, which is
+what a cubic with its handles on the thirds is.
+
 ### The limit that remains
 
 One segment on the reported glyph reports no tension at all at the far end of its

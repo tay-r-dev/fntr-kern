@@ -880,3 +880,50 @@ describe("natural-handle-solver: constrained answer", () => {
     expect(result.startLength).to.be.closeTo(expected, 1e-9);
   });
 });
+
+describe("natural-handle-solver: the grid cannot invent a ceiling", () => {
+  // The j of skeletron.fontra draws its stem as a cubic whose handles sit on the
+  // exact thirds, so the segment is a straight. Nudging one handle sideways
+  // opens the two tangent rays by a couple of degrees. The crossing is then
+  // behind the start point, which is no ceiling at all — but the outline
+  // endpoints are on the grid, and half a unit of rounding at that angle carries
+  // the crossing a few units past the start point instead. The ceiling that came
+  // out of it crushed the start handle to nothing, the edge drew as a straight,
+  // and it stayed that way while the skeleton handle governing it moved.
+  const start = { x: 369, y: 413 };
+  const end = { x: 286, y: 38 };
+
+  function directions(handleShift) {
+    const unitOf = (vector) => {
+      const length = Math.hypot(vector.x, vector.y);
+      return { x: vector.x / length, y: vector.y / length };
+    };
+    return {
+      startDirection: unitOf({ x: 371 + handleShift - 399, y: 282 - 408 }),
+      endDirection: unitOf({ x: 343 - 315, y: 157 - 31 }),
+    };
+  }
+
+  for (const handleShift of [2, 5, 10, 15, 20]) {
+    it(`keeps the whole reach with the handle ${handleShift} units off the line`, () => {
+      const { startDirection, endDirection } = directions(handleShift);
+      const domain = buildHandleDomain(start, end, startDirection, endDirection);
+      expect(domain.maxStartTension).to.equal(1);
+    });
+  }
+
+  it("still holds a short crossing where the rays are square", () => {
+    // Nothing is amplified at a right angle, so a crossing half a unit out is as
+    // trustworthy as the endpoints it came from and keeps its ceiling.
+    const domain = buildHandleDomain(
+      { x: 0, y: 0 },
+      { x: 10, y: 0.5 },
+      { x: 1, y: 0 },
+      { x: -0.1 / Math.hypot(0.1, 0.5), y: -0.5 / Math.hypot(0.1, 0.5) }
+    );
+    expect(domain.maxEndTension * domain.endReach).to.be.closeTo(
+      Math.hypot(0.1, 0.5),
+      1e-9
+    );
+  });
+});

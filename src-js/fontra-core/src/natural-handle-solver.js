@@ -1,6 +1,9 @@
 import { calculateTunniPoint } from "./tunni-calculations.js";
 
 const EPSILON = 1e-9;
+
+// Half a unit of rounding at each endpoint, and a little over.
+const GRID_UNCERTAINTY = 1.5;
 const MIN_HANDLE_LENGTH = 1;
 const REACH_FLOOR_RATIO = 1 / 3;
 const REACH_CAP_RATIO = 2;
@@ -173,10 +176,34 @@ export function buildHandleDomain(
   // The clamped reach is a stable coordinate scale, not a substitute tangent
   // intersection. A short real forward reach lowers the normalized maximum so
   // multiplying it by that scale still lands exactly on the geometric ceiling.
+  // How far the tangent intersection can slide on rounding alone, beyond the
+  // rounding already in the endpoints themselves. The two rays cross at an
+  // angle, and the shallower that angle the further a sideways displacement of
+  // either endpoint carries the crossing along them: the amplification is one
+  // over the sine of the angle. Both endpoints sit on the grid, so each brings
+  // up to half a unit of displacement the drawing never asked for. Where the
+  // rays are square to each other nothing is amplified and this is zero, which
+  // leaves a short honest crossing exactly where it was.
+  const sinTurn = Math.abs(
+    startDirection.x * endDirection.y - startDirection.y * endDirection.x
+  );
+  const uncertainty =
+    sinTurn > EPSILON ? GRID_UNCERTAINTY * (1 / sinTurn - 1) : Infinity;
   const projectedDomain = (anchor, direction, nudge) => {
     if (!tunni) return { reach: cap, maxTension: 1, intersection: 1 };
     const realReach = dot(subtract(tunni, anchor), direction);
-    if (!(realReach > EPSILON)) return { reach: cap, maxTension: 1, intersection: 1 };
+    // A crossing nearer than the grid can account for is the grid's answer and
+    // not the drawing's, so it is refused the same way an exactly parallel pair
+    // is. On a segment drawn as a cubic but straight to within a couple of
+    // degrees, the true crossing is behind the endpoint and there is no ceiling
+    // at all; rounding put a false one a few units ahead instead, and the
+    // ceiling it gave crushed that handle to nothing. The handle then sat on
+    // its on-curve and the edge drew as a straight, unmoved by the skeleton
+    // handle that governs it, until the other handle moved far enough to open
+    // the angle again.
+    if (!(realReach > Math.max(EPSILON, uncertainty))) {
+      return { reach: cap, maxTension: 1, intersection: 1 };
+    }
     // The scale stays the geometry's own, so the coordinate system every stage
     // works in does not move when a nudge changes. Only the ceiling shifts.
     const reach = clamp(realReach, floor, cap);
