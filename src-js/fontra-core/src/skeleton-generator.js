@@ -1891,26 +1891,31 @@ function roundSharpCornersOnSide(sidePoints, { isClosed }) {
   return points;
 }
 
-/**
- * Generates closed outline contour(s) from a single skeleton contour.
- * @param {Object} skeletonContour - Single skeleton contour with points array
- * @returns {Array} Array of unpacked contours [{points: [...], isClosed: true}, ...]
- *   - For open skeleton: returns 1 contour (stroke with caps)
- *   - For closed skeleton: returns 2 contours (outer and inner)
- */
-export function generateOutlineFromSkeletonContour(skeletonContour, options = {}) {
+// Solve the stroke's two edges, and stop there.
+//
+// This is the whole of the offset construction and none of what closes it into
+// a letter: no inner-corner join, no corner rounding, no caps, no assembly. So
+// each side holds one on-curve per skeleton point, carrying the skeleton point
+// it came from, which is what a reader wanting "where does this edge run" needs
+// and what the finished outline no longer offers.
+//
+// Returns null where the contour is too short to have edges at all.
+//
+// `generateOutlineFromSkeletonContour` is the one caller that goes on to close
+// them, and it takes the rest of what it needs from the same return, so the two
+// halves cannot disagree about a width, a cap style or a coupled rib.
+export function solveSkeletonContourSides(skeletonContour, options = {}) {
   const {
     points,
     isClosed,
     defaultWidth = DEFAULT_WIDTH,
     capStyle = "butt",
-    reversed = false,
     singleSided = false,
     singleSidedDirection = "left",
   } = skeletonContour;
 
   if (points.length < 2) {
-    return [];
+    return null;
   }
 
   // Separate on-curve and off-curve points, build segments
@@ -1918,7 +1923,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
 
   // If no valid segments (e.g., less than 2 on-curve points), return empty
   if (segments.length === 0) {
-    return [];
+    return null;
   }
 
   // Generate left and right offset points
@@ -2016,6 +2021,54 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
     leftSide.push(...offsetPoints.left);
     rightSide.push(...offsetPoints.right);
   }
+
+  return {
+    segments,
+    leftSide,
+    rightSide,
+    authoredKeys,
+    serifPins,
+    resolveHalfWidth,
+    firstOnCurvePoint,
+    lastOnCurvePoint,
+    startCapStyle,
+    endCapStyle,
+  };
+}
+
+/**
+ * Generates closed outline contour(s) from a single skeleton contour.
+ * @param {Object} skeletonContour - Single skeleton contour with points array
+ * @returns {Array} Array of unpacked contours [{points: [...], isClosed: true}, ...]
+ *   - For open skeleton: returns 1 contour (stroke with caps)
+ *   - For closed skeleton: returns 2 contours (outer and inner)
+ */
+export function generateOutlineFromSkeletonContour(skeletonContour, options = {}) {
+  const {
+    isClosed,
+    defaultWidth = DEFAULT_WIDTH,
+    capStyle = "butt",
+    reversed = false,
+    singleSided = false,
+    singleSidedDirection = "left",
+  } = skeletonContour;
+
+  const solved = solveSkeletonContourSides(skeletonContour, options);
+  if (!solved) {
+    return [];
+  }
+  const {
+    segments,
+    leftSide,
+    rightSide,
+    authoredKeys,
+    serifPins,
+    resolveHalfWidth,
+    firstOnCurvePoint,
+    lastOnCurvePoint,
+    startCapStyle,
+    endCapStyle,
+  } = solved;
 
   const joinedLeftSide = joinInnerCornersOnSide(leftSide, { isClosed });
   const joinedRightSide = joinInnerCornersOnSide(rightSide, { isClosed });
