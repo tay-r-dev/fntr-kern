@@ -2705,12 +2705,27 @@ function generateOffsetPointsForSegment(
     if (startJoin && (startNormal !== startJoin.normal || segment.startPoint.smooth)) {
       startJoin = null;
     }
-    const startLeftPlace = cornerSidePlacement(startJoin, 1, startNormal, normal);
-    const startRightPlace = cornerSidePlacement(startJoin, -1, startNormal, normal);
+    const startFullWidth = startLeftHW + startRightHW;
+    const startLeftPlace = cornerSidePlacement(
+      startJoin,
+      1,
+      startNormal,
+      normal,
+      startLeftHW,
+      startFullWidth
+    );
+    const startRightPlace = cornerSidePlacement(
+      startJoin,
+      -1,
+      startNormal,
+      normal,
+      startRightHW,
+      startFullWidth
+    );
     // An inner side needs both arms' edge ends, so the arm that does not carry
     // the shared on-curve today adds its own.
-    const addStartLeft = shouldAddStart || startLeftPlace.inner;
-    const addStartRight = shouldAddStart || startRightPlace.inner;
+    const addStartLeft = shouldAddStart || startLeftPlace.perArm;
+    const addStartRight = shouldAddStart || startRightPlace.perArm;
     if (addStartLeft || addStartRight) {
       const startLeftScale = startLeftPlace.scale;
       const startRightScale = startRightPlace.scale;
@@ -2743,7 +2758,7 @@ function generateOffsetPointsForSegment(
             "left",
             startLeftNudge,
             startLeftBase,
-            startLeftPlace.inner ? "out" : null
+            startLeftPlace.perArm ? "out" : null
           )
         );
       }
@@ -2773,7 +2788,7 @@ function generateOffsetPointsForSegment(
             "right",
             startRightNudge,
             startRightBase,
-            startRightPlace.inner ? "out" : null
+            startRightPlace.perArm ? "out" : null
           )
         );
       }
@@ -2799,10 +2814,25 @@ function generateOffsetPointsForSegment(
     if (endJoin && (endNormal !== endJoin.normal || segment.endPoint.smooth)) {
       endJoin = null;
     }
-    const endLeftPlace = cornerSidePlacement(endJoin, 1, endNormal, normal);
-    const endRightPlace = cornerSidePlacement(endJoin, -1, endNormal, normal);
-    const addEndLeft = shouldAddEnd || endLeftPlace.inner;
-    const addEndRight = shouldAddEnd || endRightPlace.inner;
+    const endFullWidth = endLeftHW + endRightHW;
+    const endLeftPlace = cornerSidePlacement(
+      endJoin,
+      1,
+      endNormal,
+      normal,
+      endLeftHW,
+      endFullWidth
+    );
+    const endRightPlace = cornerSidePlacement(
+      endJoin,
+      -1,
+      endNormal,
+      normal,
+      endRightHW,
+      endFullWidth
+    );
+    const addEndLeft = shouldAddEnd || endLeftPlace.perArm;
+    const addEndRight = shouldAddEnd || endRightPlace.perArm;
     if (addEndLeft || addEndRight) {
       const endLeftScale = endLeftPlace.scale;
       const endRightScale = endRightPlace.scale;
@@ -2835,7 +2865,7 @@ function generateOffsetPointsForSegment(
             "left",
             endLeftNudge,
             endLeftBase,
-            endLeftPlace.inner ? "in" : null
+            endLeftPlace.perArm ? "in" : null
           )
         );
       }
@@ -2865,7 +2895,7 @@ function generateOffsetPointsForSegment(
             "right",
             endRightNudge,
             endRightBase,
-            endRightPlace.inner ? "in" : null
+            endRightPlace.perArm ? "in" : null
           )
         );
       }
@@ -2933,20 +2963,40 @@ function generateOffsetPointsForSegment(
     if (endJoin && (endNormal !== endJoin.normal || segment.endPoint.smooth)) {
       endJoin = null;
     }
+    const startFullWidth = startLeftHW + startRightHW;
+    const endFullWidth = endLeftHW + endRightHW;
     const startLeftPlace = cornerSidePlacement(
       startJoin,
       1,
       startNormal,
-      bezierStartNormal
+      bezierStartNormal,
+      startLeftHW,
+      startFullWidth
     );
     const startRightPlace = cornerSidePlacement(
       startJoin,
       -1,
       startNormal,
-      bezierStartNormal
+      bezierStartNormal,
+      startRightHW,
+      startFullWidth
     );
-    const endLeftPlace = cornerSidePlacement(endJoin, 1, endNormal, bezierEndNormal);
-    const endRightPlace = cornerSidePlacement(endJoin, -1, endNormal, bezierEndNormal);
+    const endLeftPlace = cornerSidePlacement(
+      endJoin,
+      1,
+      endNormal,
+      bezierEndNormal,
+      endLeftHW,
+      endFullWidth
+    );
+    const endRightPlace = cornerSidePlacement(
+      endJoin,
+      -1,
+      endNormal,
+      bezierEndNormal,
+      endRightHW,
+      endFullWidth
+    );
 
     const avgLeftHW = (startLeftHW + endLeftHW) / 2;
     const avgRightHW = (startRightHW + endRightHW) / 2;
@@ -3260,8 +3310,8 @@ function generateOffsetPointsForSegment(
       left,
       fixedStartLeft,
       fixedEndLeft,
-      shouldAddStart || startLeftPlace.inner,
-      shouldAddEnd || endLeftPlace.inner,
+      shouldAddStart || startLeftPlace.perArm,
+      shouldAddEnd || endLeftPlace.perArm,
       segment.startPoint.smooth,
       segment.endPoint.smooth,
       avgLeftHW,
@@ -3272,16 +3322,16 @@ function generateOffsetPointsForSegment(
       endLeftRoundBase,
       nudgeStartLeft,
       nudgeEndLeft,
-      startLeftPlace.inner ? "out" : null,
-      endLeftPlace.inner ? "in" : null
+      startLeftPlace.perArm ? "out" : null,
+      endLeftPlace.perArm ? "in" : null
     );
 
     addOffsetCurves(
       right,
       fixedStartRight,
       fixedEndRight,
-      shouldAddStart || startRightPlace.inner,
-      shouldAddEnd || endRightPlace.inner,
+      shouldAddStart || startRightPlace.perArm,
+      shouldAddEnd || endRightPlace.perArm,
       segment.startPoint.smooth,
       segment.endPoint.smooth,
       avgRightHW,
@@ -3292,8 +3342,8 @@ function generateOffsetPointsForSegment(
       endRightRoundBase,
       nudgeStartRight,
       nudgeEndRight,
-      startRightPlace.inner ? "out" : null,
-      endRightPlace.inner ? "in" : null
+      startRightPlace.perArm ? "out" : null,
+      endRightPlace.perArm ? "in" : null
     );
   }
 
@@ -3429,25 +3479,59 @@ function cornerSideIsOuter(dir1, dir2, sideSign) {
   return dir1.x * between.x + dir1.y * between.y >= 0;
 }
 
+// How far a corner may reach from its skeleton point, as a multiple of the full
+// stroke width there. Past this the two arms are so nearly parallel that the
+// place their edges meet is further out than the letter is tall. The drag that
+// offsets an ordinary hand-drawn outline bevels at the same turn: it states the
+// same number as four times the half-width.
+const CORNER_MITER_LIMIT = 2;
+
+/**
+ * Whether an outer side's apex is out of bounds.
+ *
+ * True past the limit, and true where the two arms are exactly parallel and
+ * there is no apex at all. That side then ends each arm at its own edge end, and
+ * the straight between the two is the corner.
+ */
+function cornerIsHeld(miterScale, halfWidth, fullWidth) {
+  const reach = halfWidth * miterScale;
+  return !Number.isFinite(reach) || reach > CORNER_MITER_LIMIT * fullWidth;
+}
+
 /**
  * Where one side of a corner puts its endpoint.
  *
  * The outer side reaches the apex: along the split line, at one half-width over
- * the cosine of half the turn. The inner side's two edges overlap rather than
- * stopping, so each arm ends at its own edge end instead, square to its own
- * direction, and joinInnerCornersOnSide cuts the two back to where they cross.
- * `inner` says which of the two this is, and both arms work it out for
- * themselves from the same pair of segments, so they agree with no state passed
- * between them.
+ * the cosine of half the turn.
+ *
+ * Two cases cannot use the apex. The inner side's two edges overlap rather than
+ * stopping, so their crossing is drawn geometry and joinInnerCornersOnSide finds
+ * it. An outer side past the miter limit has an apex too far out to draw. Both
+ * end each arm at its own edge end, square to that arm's own direction, which is
+ * what `perArm` says. Both arms work it out for themselves from the same pair of
+ * segments, so they agree with no state passed between them.
  */
-function cornerSidePlacement(join, sideSign, joinNormal, ownNormal) {
+function cornerSidePlacement(
+  join,
+  sideSign,
+  joinNormal,
+  ownNormal,
+  halfWidth,
+  fullWidth
+) {
   if (!join) {
-    return { normal: joinNormal, scale: 1, inner: false };
+    return { normal: joinNormal, scale: 1, perArm: false };
   }
-  if (cornerSideIsOuter(join.dir1, join.dir2, sideSign)) {
-    return { normal: joinNormal, scale: join.miterScale, inner: false };
+  if (!cornerSideIsOuter(join.dir1, join.dir2, sideSign)) {
+    return { normal: ownNormal, scale: 1, perArm: true };
   }
-  return { normal: ownNormal, scale: 1, inner: true };
+  if (cornerIsHeld(join.miterScale, halfWidth, fullWidth)) {
+    // The two edge ends have a gap between them, so joinInnerCornersOnSide finds
+    // no crossing and leaves both standing. The straight between them needs no
+    // code: two on-curves with no handles between them are a straight line.
+    return { normal: ownNormal, scale: 1, perArm: true };
+  }
+  return { normal: joinNormal, scale: join.miterScale, perArm: false };
 }
 
 /**

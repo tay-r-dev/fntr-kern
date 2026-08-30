@@ -3172,4 +3172,57 @@ describe("skeleton-generator corner meeting place", () => {
       "out",
     ]);
   });
+
+  // Arms (0,0) -> (100,0) -> (0,10). The arriving direction is (1, 0) and the
+  // leaving one is close to (-1, 0), so the turn is about 174 degrees and the
+  // apex is about 19 half-widths out. The limit is 2 full stroke widths, which
+  // is 4 half-widths when the two sides are equal, so this is well past it.
+  function foldingSkeleton() {
+    const width = { left: 40, right: 40 };
+    return {
+      version: 1,
+      nextId: 5,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80,
+          singleSided: null,
+          points: [
+            { id: 2, x: 0, y: 0, type: null, smooth: false, width },
+            { id: 3, x: 100, y: 0, type: null, smooth: false, width },
+            { id: 4, x: 0, y: 10, type: null, smooth: false, width },
+          ],
+        },
+      ],
+      generated: [],
+    };
+  }
+
+  it("holds the corner at two stroke widths", () => {
+    const result = generateFromSkeleton(foldingSkeleton());
+    const points = cornerOnCurves(result, 3, "left").concat(
+      cornerOnCurves(result, 3, "right")
+    );
+    expect(points.length).to.be.greaterThan(0);
+    for (const point of points) {
+      const reach = Math.hypot(point.x - 100, point.y - 0);
+      expect(reach, `point at (${point.x}, ${point.y})`).to.be.at.most(2 * 80 + 1);
+    }
+  });
+
+  it("gives a held side two on-curve points, one per arm", () => {
+    // Both sides are held here. The outer one is past the miter limit. The inner
+    // one would meet the same distance out, which is far beyond the ends of two
+    // arms 100 units long, so there is no crossing inside either drawn edge.
+    const result = generateFromSkeleton(foldingSkeleton());
+    for (const side of ["left", "right"]) {
+      const points = cornerOnCurves(result, 3, side);
+      expect(points, side).to.have.lengthOf(2);
+      expect(points.map((point) => point.provenance.arm).sort(), side).to.deep.equal([
+        "in",
+        "out",
+      ]);
+    }
+  });
 });
