@@ -103,11 +103,14 @@ its stated width as it approaches a corner.
 At a right-angle corner on a 60 unit stroke the endpoint moves about 12 units from where it sits
 today.
 
-**The size of the departure is not yet known and the plan must measure it.** Hold a corner fixed.
+The fit is what keeps that departure small. It has a fixed endpoint and two fixed directions, and
+it solves the two handle lengths to stay as close to the true edge as it can. So this is a fitting
+problem with one answer, not an error running loose.
+
+**Measure the residual after building and record it in the development log.** Hold a corner fixed.
 Walk the turn through its range and the half-width through its range. Measure the largest distance
-from the emitted cubic to the true edge. Report it in font units. That number is the price of
-having one outline point at a corner instead of three, and it should be stated in the development
-log whatever it turns out to be.
+from the emitted cubic to the true edge. Report it in font units. This is the check that the fit
+is doing its job, not a defect to weigh against the design.
 
 ## The inner side
 
@@ -136,29 +139,34 @@ published on the inserted point's provenance, and one reader resolves it. The cu
 through that reader. Reading the emitted points directly makes the first drag of that gizmo jump.
 See the feature model, "what a trimmed terminal owes the rest of the editor".
 
-## No miter limit and no bevel setting
+## The miter limit
 
-An earlier version of this design added a number on the skeleton point, limiting how far the apex
-may travel, with a flat cut across the corner past that limit.
+The apex can sit very far from the skeleton point. At a turn of 178 degrees on a 60 unit stroke it
+sits about 1719 units out, which is longer than the letter is tall.
 
-That is dropped. Corner rounding already softens a sharp corner and is set per skeleton point per
-side. One shape must not have two controls.
+**The limit is 2 times the full stroke width, measured from the skeleton point to the apex.** On a
+60 unit stroke that is 120 units. It engages at a turn of about 151 degrees.
 
-So the apex always goes where the two lines cross, however far that is. Nothing new is stored on
-the skeleton point. Nothing is added to the panel.
+That is the same limit the drag that offsets an ordinary outline already uses. That drag states it
+as 4 times the half-width, which is the same number. So both gestures bevel at the same turn.
 
-Inkscape does carry such a limit and falls back to a straight line between the two edge ends past
-it. That fallback shape is the same one the fold-back below produces. The difference is only that
-here it is not a setting.
+Past the limit, that side of the stroke keeps both edge ends as outline points and runs a straight
+line between them. That side is then two outline points rather than one.
+
+**The limit is fixed in the code. It is not a setting in the panel.**
+
+**Corner rounding overrides it.** Where corner rounding is switched on at that skeleton point,
+rounding decides the corner's shape and the limit does not apply.
 
 ## The fold-back
 
-The two straight lines used to find the apex are parallel when the centerline folds back on itself
-at the skeleton point. Both arms then leave the skeleton point travelling the same way. There is
-no apex.
+**There is no threshold on the turn.** Two straight lines cross unless they are exactly parallel.
+They are exactly parallel only when the centerline folds back on itself at the skeleton point, so
+that both arms leave it travelling the same way. Every other turn has an apex, and the miter limit
+above is what stops it running away.
 
-**That side of the stroke keeps both edge ends as outline points** and runs a straight line
-between them. That side is two outline points rather than one.
+At the fold-back there is no apex. **That side of the stroke keeps both edge ends as outline
+points** and runs a straight line between them. That side is two outline points rather than one.
 
 The other side of the stroke behaves differently, because the arms are curves. They fold at the
 skeleton point and separate further along, so their two edges do cross and that side takes its one
@@ -166,38 +174,9 @@ crossing as normal.
 
 This is the case drawn in the designer's image 1.
 
-### The threshold, and what it costs
-
-The code decides whether an apex exists. Two nearly-parallel lines cross at a place that is very
-far away, so the decision needs a threshold.
-
-The outline changes shape and changes point count as a corner crosses that threshold. Both
-consequences are accepted:
-
-- **The shape changes.** Just under the threshold the corner draws as a very long spike. Just over
-  it, the spike is replaced by a straight line between the two edge ends. This is a discontinuity.
-  It sits at a turn nobody draws on purpose.
-- **The point count changes.** A corner drawn as a fold-back in one master and as an ordinary
-  corner in another has a different number of outline points, so that letter does not interpolate
-  between those two masters. The designer accepted this. Contours rarely change this much between
-  masters, and this is not animation software.
-
-**The threshold value is the one number this design leaves open.** It has to be chosen before
-implementation. The distance from the skeleton point to the apex, at a range of turns, for a
-stroke 60 units wide in a 1000 unit em:
-
-| turn of the corner | distance to the apex | on a 60 unit stroke |
-| ------------------ | -------------------- | ------------------- |
-| 90 degrees         | 1.41 half-widths     | 42 units            |
-| 120 degrees        | 2 half-widths        | 60 units            |
-| 151 degrees        | 4 half-widths        | 120 units           |
-| 170 degrees        | 11.5 half-widths     | 344 units           |
-| 178 degrees        | 57.3 half-widths     | 1719 units          |
-| 179.5 degrees      | 229 half-widths      | 6875 units          |
-
-The recommendation is to state the threshold as a distance rather than as an angle, because a
-distance is what the designer sees. A threshold of 4 half-widths engages at a turn of about 151
-degrees. Whatever number is chosen, it is fixed in the code and is not a setting in the panel.
+**A corner in this state does not interpolate against an ordinary corner in another master**,
+because the two have a different number of outline points. The designer accepted this. Contours
+rarely change this much between masters, and this is not animation software.
 
 ## The number of outline points
 
@@ -206,11 +185,12 @@ corners cost nothing.
 
 Two cases have more:
 
-| case                                            | that side of the stroke |
-| ----------------------------------------------- | ----------------------- |
-| ordinary corner, either side                    | 1                       |
-| fold-back, or apex past the threshold           | 2                       |
-| inner edges cross zero times or many times      | 2                       |
+| case                                       | that side of the stroke |
+| ------------------------------------------ | ----------------------- |
+| ordinary corner, either side               | 1                       |
+| apex past the miter limit                  | 2                       |
+| fold-back                                  | 2                       |
+| inner edges cross zero times or many times | 2                       |
 
 Two masters whose corners fall in different rows of that table do not interpolate at that corner.
 This is accepted, and it is stated here so that nobody reports it as a defect later.
@@ -231,10 +211,8 @@ One place in the code decides the rib direction. The rib gizmo, the rib drag, th
 and the measure readout all read that one place, so they cannot disagree with each other. This is
 rail R-B.
 
-**One thing to check in the plan.** The rib direction may be computed by a function that the drag
-that offsets an ordinary outline also uses. That drag is a different feature and its behavior must
-not change. If the function is shared, the skeleton rib takes its own direction and the shared
-function is left alone.
+The drag that offsets an ordinary hand-drawn outline works from normal directions of its own and
+does not read the rib. It is unaffected.
 
 ## Provenance
 
@@ -246,8 +224,9 @@ The apex takes the label the corner's outline point carries today. It is the sam
 the same side, and the same job. A rib drag therefore keeps moving the outline points it owns with
 no change.
 
-The two cases with two outline points on one side need labels the tree does not have yet. The plan
-must name them before anything is built.
+Where a side has two outline points instead of one, each of the two records which arm it came
+from: the ingoing arm or the outgoing arm. Without that, both would say the same thing, and a drag
+of the skeleton point would move one of them and leave the other behind, tearing the outline.
 
 ## What does not change
 
@@ -273,8 +252,9 @@ starts at zero-length handles reports its own first step as a large jump.
 
 Four sweeps are required:
 
-1. **The turn.** Walk the corner from a gentle turn to just under the fold-back threshold. The
-   outline must move smoothly. The one place it may jump is the threshold itself.
+1. **The turn.** Walk the corner from a gentle turn through the miter limit and on to the
+   fold-back. The outline must move smoothly. The one place it may jump is the miter limit, where
+   the apex is replaced by a straight line between the two edge ends.
 2. **The half-width.** Walk the stroke width through its range at several fixed turns. The corner
    must move in proportion to the width, which is what it fails to do today.
 3. **The arms' curvature.** Walk the handles of one arm. This sweep also produces the number for
@@ -305,9 +285,7 @@ can be shared with it.
 
 ## Open
 
-1. **The fold-back threshold value.** Stated above as the one number left to choose.
-2. **How far the stretched cubic departs from the true edge.** Measured in the plan, reported in
-   font units, and recorded in the development log.
-3. **Whether the rib direction function is shared with the ordinary-outline offset drag.**
-4. **The provenance labels for the two-outline-point cases.** Named in the plan before anything is
-   built.
+Nothing in this design is undecided.
+
+One measurement is owed after the work is built: how far the stretched cubic departs from the true
+edge, in font units, recorded in the development log.
