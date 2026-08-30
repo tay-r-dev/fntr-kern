@@ -16,6 +16,7 @@ import { offsetCubicSide } from "./offset-cubic.js";
 import {
   buildContourSegments,
   calculateContourNormalAtPoint,
+  cornerArrivingNormal,
   collectCoupledPointGroups,
   offsetContourAlongNormals,
   isStraightControlledSmoothPoint,
@@ -3238,11 +3239,13 @@ export function calculateNormalAtSkeletonPoint(skeletonContour, pointIndexOrPoin
     pointIndexOrPointId >= 0 && pointIndexOrPointId < points.length
       ? pointIndexOrPointId
       : points.findIndex((point) => point.id === pointIndexOrPointId);
-  const normal = calculateContourNormalAtPoint(
-    points,
-    skeletonContour?.closed,
-    pointIndex
-  );
+  // At a corner the outline's own points stand where the two offset edges meet,
+  // further out than any half-width, so the bar cannot end on the outline
+  // whatever direction it takes. It states the width of the arriving stroke
+  // instead. Every other point keeps the answer it had.
+  const normal =
+    cornerArrivingNormal(points, skeletonContour?.closed, pointIndex) ??
+    calculateContourNormalAtPoint(points, skeletonContour?.closed, pointIndex);
   const point = points[pointIndex];
   return point && !point.type ? getEffectiveNormal(point, normal) : normal;
 }

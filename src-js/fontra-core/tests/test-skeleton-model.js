@@ -1520,3 +1520,37 @@ describe("harmonizing a skeleton centerline", () => {
     }
   });
 });
+
+describe("skeleton rib direction at a corner", () => {
+  // (0,0) -> (100,0) -> (100,100). The arriving arm runs along +x, so its normal
+  // is straight up or straight down. The split line's normal is about
+  // (0.707, -0.707).
+  const contour = {
+    id: 1,
+    closed: false,
+    defaultWidth: 80,
+    singleSided: null,
+    points: [
+      { id: 2, x: 0, y: 0, type: null, smooth: false },
+      { id: 3, x: 100, y: 0, type: null, smooth: false },
+      { id: 4, x: 100, y: 100, type: null, smooth: false },
+    ],
+  };
+
+  it("is square to the arriving arm, not to the split line", () => {
+    const normal = calculateNormalAtSkeletonPoint(contour, 1);
+    expect(normal.x).to.be.closeTo(0, 1e-9);
+    expect(Math.abs(normal.y)).to.be.closeTo(1, 1e-9);
+  });
+
+  it("leaves a smooth point alone", () => {
+    const smooth = {
+      ...contour,
+      points: contour.points.map((point, index) =>
+        index === 1 ? { ...point, smooth: true } : point
+      ),
+    };
+    const normal = calculateNormalAtSkeletonPoint(smooth, 1);
+    expect(Math.abs(normal.x)).to.be.closeTo(Math.SQRT1_2, 1e-9);
+  });
+});

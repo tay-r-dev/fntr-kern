@@ -349,6 +349,43 @@ export function resolveOffsetTravel(
   return { normal: fallbackNormal, factor: 1 };
 }
 
+/**
+ * The normal of the arm arriving at a corner, or null where the point is not a
+ * corner.
+ *
+ * A corner's generated outline points sit where the two offset edges meet, which
+ * is further out than any half-width, so no direction puts a rib bar's ends on
+ * the outline. Square to the arriving arm the bar states the width of the stroke
+ * arriving there, which is one rule at every point.
+ *
+ * A smooth point is not a corner: the centerline does not change direction
+ * there. Nor is a smooth point whose direction comes from a straight on one
+ * side. Both keep the answer calculateContourNormalAtPoint gives them.
+ *
+ * @param {Array} points - The contour's points
+ * @param {boolean} closed - Whether the contour is closed
+ * @param {number} pointIndex - Index of the on-curve point
+ * @returns {Object|null} Normal {x, y}, or null
+ */
+export function cornerArrivingNormal(points, closed, pointIndex) {
+  const point = points?.[pointIndex];
+  if (!point || point.type || point.smooth) {
+    return null;
+  }
+  const adjacent = adjacentSegments(points, closed, pointIndex);
+  if (!adjacent?.incoming || !adjacent?.outgoing) {
+    return null;
+  }
+  if (
+    isStraightControlledSmoothPoint(point, adjacent.incoming, adjacent.outgoing) ||
+    isStraightControlledSmoothPoint(point, adjacent.outgoing, adjacent.incoming)
+  ) {
+    return null;
+  }
+  const direction = segmentEndDirection(adjacent.incoming);
+  return direction ? rotateVector90CW(direction) : null;
+}
+
 function makeSegment(points, startIdx, endIdx) {
   return {
     startPoint: points[startIdx],
