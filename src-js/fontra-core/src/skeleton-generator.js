@@ -1,5 +1,6 @@
 import { Bezier } from "bezier-js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
+import { offsetContourAlongNormals } from "./offset-contour.js";
 import { offsetCubicSide } from "./offset-cubic.js";
 import {
   buildSerifTerminal,
@@ -11,9 +12,11 @@ import {
   DEFAULT_CORNER_CURVATURE,
   DEFAULT_SKELETON_WIDTH,
   SERIF_HALF_ZEROS,
+  calculateNormalAtSkeletonPoint,
   collectSerifTerminals,
   collectTiedRibGroups,
   getEffectiveNormal,
+  getEffectiveRibHalfWidth,
   isStraightControlledSmoothPoint,
   ribAngleLockReach,
   meanHalfWidth,
@@ -1889,6 +1892,218 @@ function roundSharpCornersOnSide(sidePoints, { isClosed }) {
   }
 
   return points;
+}
+
+// The side whose edge lies on the centerline under `mode`, or null under
+// two-sided, where the centerline lies on no edge.
+//
+// The naming does not read the way it sounds: a stroke set to "left" carries
+// its width on the left, so its RIGHT edge is the one on the centerline.
+export function collapsedSideForSingleSided(mode) {
+  return mode === "left" ? "right" : mode === "right" ? "left" : null;
+}
+
+// Where a mode stands the centerline, as a signed distance from where the
+// two-sided centerline stands. Positive along the left normal, which is the
+// direction the left half-width is measured in.
+//
+// The half-width is the coupled one. Ribs tied across a straight share one
+// offset, so the coupled value is where the edge is and the stored value is not.
+function centerlineOffsetForSingleSided(contour, point, mode) {
+  const collapsed = collapsedSideForSingleSided(mode);
+  if (!collapsed) {
+    return 0;
+  }
+  const distance = getEffectiveRibHalfWidth(contour, point, collapsed);
+  return collapsed === "right" ? -distance : distance;
+}
+
+// Every stored adjustment that shapes one side of the generated outline. When
+// that side's edge becomes the centerline, the edge is taken as drawn, so each
+// of these is already in the geometry and has to come off the point — left
+// behind, it would be applied a second time to an outline that already has it.
+function clearGeneratedAdjustmentsOnSide(point, side) {
+  point.nudge = { ...point.nudge, [side]: 0 };
+  point.handleNudge = { ...point.handleNudge, [side]: 0 };
+  point.segmentCurvature = { ...point.segmentCurvature, [side]: null };
+  const handleOffsets = { ...point.handleOffsets };
+  delete handleOffsets[`${side}In`];
+  delete handleOffsets[`${side}Out`];
+  point.handleOffsets = handleOffsets;
+}
+
+// The collapsing side's emitted geometry, keyed by the skeleton point it came
+// from: the on-curve, and the handles either side of it.
+//
+// A corner where the two arms both emit an on-curve is left out. Those two
+// points are the two ends of the corner rather than one place the centerline
+// could stand, and taking either would put the centerline on one arm's edge
+// and off the other's. Such a point falls back to the plain offset, which
+// reaches the corner the letter actually draws.
+function collectSolvedSidePoints(contour, side) {
+  // The solve reads the generator's own input dialect, not the stored contour:
+  // flattened widths, and the stable id under the name provenance is stamped
+  // from. Handing it a stored contour emits points at no coordinates and with
+  // no provenance at all.
+  const [generatorContour] = canonicalToGeneratorInput({
+    contours: [contour],
+  }).contours;
+  const solved = solveSkeletonContourSides(generatorContour);
+  if (!solved) {
+    return null;
+  }
+  const emitted = side === "left" ? solved.leftSide : solved.rightSide;
+  const bySkeletonPoint = new Map();
+  const armed = new Set();
+  for (const point of emitted) {
+    const provenance = point?._provenance;
+    if (!provenance || provenance.side !== side) {
+      continue;
+    }
+    const id = provenance.skeletonPointId;
+    const entry = bySkeletonPoint.get(id) || {};
+    if (provenance.role === "onCurve") {
+      if (provenance.arm || entry.onCurve) {
+        armed.add(id);
+      }
+      entry.onCurve = point;
+    } else if (provenance.role === "in" || provenance.role === "out") {
+      entry[provenance.role] = point;
+    }
+    bySkeletonPoint.set(id, entry);
+  }
+  for (const id of armed) {
+    bySkeletonPoint.delete(id);
+  }
+  return bySkeletonPoint;
+}
+
+// Move a contour's centerline so that the letter stays where it is when its
+// side mode changes to `targetMode`. The mode itself is written separately, by
+// `setSkeletonContourSingleSided`.
+//
+// **It writes no width.** A one-sided stroke gives the named side the sum of
+// the two stored half-widths and sets the other to nothing, so the visible
+// width is that same sum in both modes. Moving the centerline onto the edge
+// that is collapsing is the whole of it, and the stored split between the two
+// sides rides across untouched — which is what the contour returns to when it
+// goes two-sided again.
+//
+// At a point holding 60 on the left and 20 on the right, going two-sided to
+// left-only: the centerline moves 20 toward the right edge, the left side then
+// receives 80, and the left edge has not moved.
+//
+// `respectChanges` decides which edge the centerline lands on where the
+// designer has worked on the collapsing side by hand.
+//
+// Off, the centerline is the old one stepped sideways, so it lands on the edge
+// as the generator solves it, and the hand work stays stored and unapplied,
+// ready for the contour going two-sided again.
+//
+// On, the centerline becomes that edge as drawn: its on-curves and handles are
+// taken from what the generator emitted for that side, which already carries
+// every slid on-curve, carried handle, hand-placed handle and pinned curvature
+// on it. Those adjustments are then cleared, because they have become the shape
+// of the centerline and applying them again would move the outline off it.
+// Taking the emitted edge is the only route that keeps all of them: reading the
+// stored numbers back and replaying them would be a second copy of the
+// generator, and would carry only the ones somebody remembered.
+//
+// Returns whether anything moved.
+export function moveCenterlineForSingleSidedChange(
+  originalContour,
+  workingContour,
+  targetMode,
+  { respectChanges = false, round = Math.round } = {}
+) {
+  const currentMode = originalContour?.singleSided ?? null;
+  const nextMode = targetMode ?? null;
+  if (currentMode === nextMode) {
+    return false;
+  }
+
+  const offsets = new Map();
+  originalContour.points.forEach((point, pointIndex) => {
+    if (point.type) {
+      return;
+    }
+    const distance =
+      centerlineOffsetForSingleSided(originalContour, point, nextMode) -
+      centerlineOffsetForSingleSided(originalContour, point, currentMode);
+    if (distance) {
+      offsets.set(pointIndex, distance);
+    }
+  });
+  if (!offsets.size) {
+    return false;
+  }
+
+  const moved = offsetContourAlongNormals(
+    originalContour.points,
+    originalContour.closed === true,
+    offsets,
+    workingContour.points,
+    {
+      round,
+      rebuildHandles: true,
+      // A corner's two edges meet further out than a half-width, so the
+      // centerline has to reach that far to land on the corner the letter
+      // draws.
+      offsetCorners: true,
+      normalAt: (pointIndex) =>
+        calculateNormalAtSkeletonPoint(originalContour, pointIndex),
+    }
+  );
+
+  const collapsingSide = collapsedSideForSingleSided(nextMode);
+  if (!respectChanges || !collapsingSide) {
+    return moved;
+  }
+
+  // The centerline stepped sideways above is the solved edge. Where the drawn
+  // edge differs from it, the drawn one wins, point and handles together.
+  const solved = collectSolvedSidePoints(originalContour, collapsingSide);
+  if (!solved?.size) {
+    return moved;
+  }
+  const points = originalContour.points;
+  const isClosed = originalContour.closed === true;
+  const step = (index, delta) => {
+    const next = index + delta;
+    if (next >= 0 && next < points.length) {
+      return next;
+    }
+    return isClosed ? (next + points.length) % points.length : -1;
+  };
+  let changed = moved;
+  points.forEach((point, pointIndex) => {
+    if (point.type) {
+      return;
+    }
+    const entry = solved.get(point.id);
+    const workingPoint = workingContour.points[pointIndex];
+    if (!entry?.onCurve || !workingPoint) {
+      return;
+    }
+    workingPoint.x = round(entry.onCurve.x);
+    workingPoint.y = round(entry.onCurve.y);
+    for (const [role, delta] of [
+      ["in", -1],
+      ["out", 1],
+    ]) {
+      const handle = entry[role];
+      const handleIndex = step(pointIndex, delta);
+      const workingHandle =
+        handleIndex >= 0 ? workingContour.points[handleIndex] : null;
+      if (handle && workingHandle?.type) {
+        workingHandle.x = round(handle.x);
+        workingHandle.y = round(handle.y);
+      }
+    }
+    clearGeneratedAdjustmentsOnSide(workingPoint, collapsingSide);
+    changed = true;
+  });
+  return changed;
 }
 
 // Solve the stroke's two edges, and stop there.

@@ -11,6 +11,7 @@ import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
 import {
   SERIF_HALF_DEFAULTS,
   generateFromSkeleton,
+  moveCenterlineForSingleSidedChange,
 } from "@fontra/core/skeleton-generator.js";
 import {
   DEFAULT_SERIF_PRESET,
@@ -32,7 +33,6 @@ import {
   setSkeletonCapParameters,
   setSkeletonContourDefaultWidth,
   setSkeletonContourReversed,
-  moveCenterlineForSingleSidedChange,
   setSkeletonContourSingleSided,
   setSkeletonCornerParameters,
   setSkeletonData,
