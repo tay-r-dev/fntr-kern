@@ -3226,3 +3226,125 @@ describe("skeleton-generator corner meeting place", () => {
     }
   });
 });
+
+describe("skeleton-generator corner sweeps", () => {
+  // A sweep holds the geometry fixed, walks one input in fine steps, and reports
+  // the worst single-step movement of any outline point. A per-configuration
+  // assertion has missed every fault in this area so far. Steps where the point
+  // count changes are skipped: that is the fallback engaging, and it is a change
+  // of construction rather than a jump within one.
+  function worstStep(makeSkeleton, from, to, steps) {
+    let worst = 0;
+    let previous = null;
+    for (let i = 0; i <= steps; i++) {
+      const value = from + ((to - from) * i) / steps;
+      const points = generateFromSkeleton(makeSkeleton(value)).contours.flatMap(
+        (contour) => contour.points.filter((point) => !point.type)
+      );
+      if (previous && previous.length === points.length) {
+        for (let j = 0; j < points.length; j++) {
+          worst = Math.max(
+            worst,
+            Math.hypot(points[j].x - previous[j].x, points[j].y - previous[j].y)
+          );
+        }
+      }
+      previous = points;
+    }
+    return worst;
+  }
+
+  function cornerAt(angleDegrees, halfWidth = 40) {
+    const radians = (angleDegrees * Math.PI) / 180;
+    const width = { left: halfWidth, right: halfWidth };
+    return {
+      version: 1,
+      nextId: 5,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: halfWidth * 2,
+          singleSided: null,
+          points: [
+            { id: 2, x: 0, y: 0, type: null, smooth: false, width },
+            { id: 3, x: 100, y: 0, type: null, smooth: false, width },
+            {
+              id: 4,
+              x: 100 + 100 * Math.cos(radians),
+              y: 100 * Math.sin(radians),
+              type: null,
+              smooth: false,
+              width,
+            },
+          ],
+        },
+      ],
+      generated: [],
+    };
+  }
+
+  it("moves smoothly as the corner turns, up to the limit", () => {
+    // 20 to 140 degrees in 240 steps, half a degree each. The limit engages at
+    // about 151 degrees, so this sweep stays under it.
+    expect(worstStep((angle) => cornerAt(angle), 20, 140, 240)).to.be.below(4);
+  });
+
+  it("moves smoothly as the stroke widens", () => {
+    expect(worstStep((halfWidth) => cornerAt(90, halfWidth), 10, 100, 180)).to.be.below(
+      4
+    );
+  });
+
+  it("moves in proportion to the stroke width", () => {
+    // Doubling the width doubles how far the corner sits from the skeleton
+    // point. This is what the old construction failed to do, because it was
+    // handed the width and did not use it.
+    const reachAt = (halfWidth) => {
+      const result = generateFromSkeleton(cornerAt(90, halfWidth));
+      const reaches = [];
+      result.contours.forEach((contour, contourIndex) => {
+        const pointMap =
+          result.provenance.find((item) => item.generatedContourIndex === contourIndex)
+            ?.pointMap ?? [];
+        contour.points.forEach((point, pointIndex) => {
+          if (!point.type && pointMap[pointIndex]?.skeletonPointId === 3) {
+            reaches.push(Math.hypot(point.x - 100, point.y));
+          }
+        });
+      });
+      return Math.max(...reaches);
+    };
+    expect(reachAt(80) / reachAt(40)).to.be.closeTo(2, 0.05);
+  });
+
+  it("moves smoothly as the inner crossing appears and goes", () => {
+    // Bow one arm through its range so the inner side's two edges go from
+    // crossing once to not crossing at all. The fallback must engage without the
+    // outline jumping more than the step that drove it.
+    const width = { left: 40, right: 40 };
+    const bowed = (bow) => ({
+      version: 1,
+      nextId: 9,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80,
+          singleSided: null,
+          points: [
+            { id: 2, x: 0, y: bow, type: null, smooth: false, width },
+            { id: 5, x: 40, y: bow, type: "cubic" },
+            { id: 6, x: 70, y: 0, type: "cubic" },
+            { id: 3, x: 100, y: 0, type: null, smooth: false, width },
+            { id: 7, x: 100, y: 40, type: "cubic" },
+            { id: 8, x: 60, y: 100, type: "cubic" },
+            { id: 4, x: 40, y: 100, type: null, smooth: false, width },
+          ],
+        },
+      ],
+      generated: [],
+    });
+    expect(worstStep(bowed, 0, 40, 160)).to.be.below(6);
+  });
+});

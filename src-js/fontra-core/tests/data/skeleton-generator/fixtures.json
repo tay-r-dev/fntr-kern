@@ -77,7 +77,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 100,
@@ -88,7 +89,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             }
           ]
         }
@@ -221,7 +223,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 100,
@@ -232,7 +235,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 50,
@@ -243,7 +247,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             }
           ]
         }
@@ -253,18 +258,18 @@
       {
         "points": [
           {
-            "x": -35,
-            "y": -19,
+            "x": -72,
+            "y": -40,
             "smooth": false
           },
           {
-            "x": 135,
-            "y": -19,
+            "x": 172,
+            "y": -40,
             "smooth": false
           },
           {
             "x": 50,
-            "y": 120,
+            "y": 155,
             "smooth": false
           }
         ],
@@ -273,18 +278,28 @@
       {
         "points": [
           {
-            "x": 50,
+            "x": 34,
+            "y": -21,
+            "smooth": false
+          },
+          {
+            "x": 84,
+            "y": 59,
+            "smooth": false
+          },
+          {
+            "x": 16,
+            "y": 59,
+            "smooth": false
+          },
+          {
+            "x": 28,
             "y": 40,
             "smooth": false
           },
           {
-            "x": 65,
-            "y": 19,
-            "smooth": false
-          },
-          {
-            "x": 35,
-            "y": 19,
+            "x": 0,
+            "y": 40,
             "smooth": false
           }
         ],
@@ -388,6 +403,7 @@
               "rightNudge": 0,
               "leftEditable": false,
               "rightEditable": false,
+              "corner": null,
               "capStyle": "round"
             },
             {
@@ -412,6 +428,7 @@
               "rightNudge": 0,
               "leftEditable": false,
               "rightEditable": false,
+              "corner": null,
               "capStyle": "round"
             }
           ]
@@ -632,7 +649,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 40,
@@ -655,7 +673,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             }
           ]
         }
@@ -836,7 +855,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 20,
@@ -859,7 +879,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 70,
@@ -882,7 +903,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             }
           ]
         }
@@ -1112,7 +1134,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 10,
@@ -1135,7 +1158,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 140,
@@ -1146,7 +1170,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 180,
@@ -1169,7 +1194,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             }
           ]
         }
@@ -1409,7 +1435,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 10,
@@ -1432,7 +1459,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 140,
@@ -1443,7 +1471,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 200,
@@ -1466,7 +1495,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             }
           ]
         }
@@ -1486,8 +1516,8 @@
             "type": "cubic"
           },
           {
-            "x": 45.857700717300176,
-            "y": 26.277390724416954,
+            "x": 45.73624316202633,
+            "y": 26.520312887266016,
             "type": "cubic"
           },
           {
@@ -1497,17 +1527,17 @@
           },
           {
             "x": 154,
-            "y": 81,
+            "y": 80,
             "smooth": false
           },
           {
-            "x": 186,
-            "y": 113,
+            "x": 188,
+            "y": 114,
             "type": "cubic"
           },
           {
             "x": 190,
-            "y": 57,
+            "y": 56,
             "type": "cubic"
           },
           {
@@ -1522,16 +1552,16 @@
           },
           {
             "x": 290,
-            "y": 63,
+            "y": 62,
             "type": "cubic"
           },
           {
-            "x": 214,
+            "x": 216,
             "y": 207,
             "type": "cubic"
           },
           {
-            "x": 126,
+            "x": 125,
             "y": 119,
             "smooth": false
           },
@@ -1541,8 +1571,8 @@
             "smooth": true
           },
           {
-            "x": -17.170977504763982,
-            "y": 48.34419291972686,
+            "x": -16.999999999999986,
+            "y": 48.00000000000001,
             "type": "cubic"
           },
           {
@@ -1638,7 +1668,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             },
             {
               "x": 120,
@@ -1649,7 +1680,8 @@
               "leftNudge": 0,
               "rightNudge": 0,
               "leftEditable": false,
-              "rightEditable": false
+              "rightEditable": false,
+              "corner": null
             }
           ]
         }
@@ -1761,7 +1793,8 @@
               "leftNudge": 8,
               "rightNudge": -6,
               "leftEditable": true,
-              "rightEditable": true
+              "rightEditable": true,
+              "corner": null
             },
             {
               "x": 140,
@@ -1772,7 +1805,8 @@
               "leftNudge": -4,
               "rightNudge": 5,
               "leftEditable": true,
-              "rightEditable": true
+              "rightEditable": true,
+              "corner": null
             }
           ]
         }
@@ -1896,7 +1930,8 @@
               "leftNudge": 17,
               "rightNudge": -9,
               "leftEditable": true,
-              "rightEditable": true
+              "rightEditable": true,
+              "corner": null
             },
             {
               "x": 40,
@@ -1919,7 +1954,8 @@
               "leftNudge": -11,
               "rightNudge": 6,
               "leftEditable": true,
-              "rightEditable": true
+              "rightEditable": true,
+              "corner": null
             }
           ]
         }
@@ -2088,6 +2124,7 @@
               "rightNudge": 0,
               "leftEditable": true,
               "rightEditable": true,
+              "corner": null,
               "leftHandleOutOffsetX": -12,
               "leftHandleOutOffsetY": 20,
               "leftHandleOutDetached": true,
@@ -2119,6 +2156,7 @@
               "rightNudge": 0,
               "leftEditable": true,
               "rightEditable": true,
+              "corner": null,
               "leftHandleInOffsetX": 10,
               "leftHandleInOffsetY": 22,
               "leftHandleInDetached": true,

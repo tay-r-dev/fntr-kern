@@ -2800,7 +2800,9 @@ function generateOffsetPointsForSegment(
     const shouldAddEnd = !isClosed;
     let endJoin =
       !nextSegment ||
-      isLast ||
+      // A closed contour's last segment has a next one: it wraps. Only an open
+      // contour's last segment ends at a terminal rather than a corner.
+      (isLast && !isClosed) ||
       // Direction comes from this straight, not from a miter average with the
       // one handle on the far side.
       isStraightControlledSmoothPoint(segment.endPoint, segment, nextSegment)
