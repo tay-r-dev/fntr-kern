@@ -26,6 +26,11 @@ export const applicationSettingsController = new ObservableController({
   harmonizeOtherSources: true,
   harmonizeEqualizeTension: false,
   harmonizeRealignHandles: false,
+  // fork: what a side-mode change does to the drawing (app-level, per D9 — not
+  // written to project files). Off is the plain write: the centerline holds
+  // still and the letter moves.
+  skeletonSideModeKeepsForm: false,
+  skeletonSideModeKeepsEdits: false,
   // fork: mark-cloud settings (app-level, per D9 — not written to project files)
   compositionMarkCloudOn: false,
   // fork: related-glyphs preview tiles follow their glyph live, or hold still

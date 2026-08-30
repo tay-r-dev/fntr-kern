@@ -2237,6 +2237,138 @@ export function setSkeletonContourSingleSided(contour, sideOrNull) {
   contour.singleSided = VALID_SINGLE_SIDED.has(sideOrNull) ? sideOrNull : null;
 }
 
+// The side whose edge lies on the centerline under `mode`, or null under
+// two-sided, where the centerline lies on no edge.
+//
+// The naming does not read the way it sounds: a stroke set to "left" carries
+// its width on the left, so its RIGHT edge is the one on the centerline.
+export function collapsedSideForSingleSided(mode) {
+  return mode === "left" ? "right" : mode === "right" ? "left" : null;
+}
+
+// Where a mode stands the centerline, as a signed distance from where the
+// two-sided centerline stands. Positive along the left normal, which is the
+// direction the left half-width is measured in.
+//
+// The half-width is the coupled one. Ribs tied across a straight share one
+// offset, so the coupled value is where the edge is and the stored value is not.
+function centerlineOffsetForSingleSided(contour, point, mode) {
+  const collapsed = collapsedSideForSingleSided(mode);
+  if (!collapsed) {
+    return 0;
+  }
+  const distance = getEffectiveRibHalfWidth(contour, point, collapsed);
+  return collapsed === "right" ? -distance : distance;
+}
+
+// Move a contour's centerline so that the letter stays where it is when its
+// side mode changes to `targetMode`. Nothing else about the change needs doing
+// here: the mode itself is written by `setSkeletonContourSingleSided`.
+//
+// **It writes no width.** A one-sided stroke gives the named side the sum of
+// the two stored half-widths and sets the other to nothing, so the visible
+// width is that same sum in both modes. Moving the centerline onto the edge
+// that is collapsing is the whole of it, and the stored split between the two
+// sides rides across untouched — which is what the contour returns to when it
+// goes two-sided again.
+//
+// At a point holding 60 on the left and 20 on the right, going two-sided to
+// left-only: the centerline moves 20 toward the right edge, the left side then
+// receives 80, and the left edge has not moved.
+//
+// `respectChanges` decides which edge the centerline lands on where the
+// designer has slid the collapsing side's on-curve points along the outline.
+// On, the slide is added, so the centerline lands on the edge that is on
+// screen, and that side's slide is then cleared, because it has been spent
+// moving the centerline. Off, the centerline lands on the edge the generator
+// solved, and the slide stays stored and unapplied, ready for the contour going
+// two-sided again.
+//
+// The slide is the only stored adjustment that moves an on-curve point. A
+// hand-placed handle, a detached handle and a pinned curvature all say what
+// shape the edge is, not where its ends are, and the centerline's own handles
+// are rebuilt by the offset construction either way.
+//
+// Returns whether anything moved.
+export function moveCenterlineForSingleSidedChange(
+  originalContour,
+  workingContour,
+  targetMode,
+  { respectChanges = false, round = Math.round } = {}
+) {
+  const currentMode = originalContour?.singleSided ?? null;
+  const nextMode = VALID_SINGLE_SIDED.has(targetMode) ? (targetMode ?? null) : null;
+  if (currentMode === nextMode) {
+    return false;
+  }
+
+  const offsets = new Map();
+  originalContour.points.forEach((point, pointIndex) => {
+    if (point.type) {
+      return;
+    }
+    const distance =
+      centerlineOffsetForSingleSided(originalContour, point, nextMode) -
+      centerlineOffsetForSingleSided(originalContour, point, currentMode);
+    if (distance) {
+      offsets.set(pointIndex, distance);
+    }
+  });
+  if (!offsets.size) {
+    return false;
+  }
+
+  const collapsingSide = collapsedSideForSingleSided(nextMode);
+  const slides = new Map();
+  if (respectChanges && collapsingSide) {
+    originalContour.points.forEach((point, pointIndex) => {
+      if (point.type) {
+        return;
+      }
+      const slide = getSkeletonPointNudge(
+        point,
+        collapsingSide,
+        originalContour.defaultWidth
+      );
+      if (slide) {
+        slides.set(pointIndex, slide);
+      }
+    });
+  }
+
+  const moved = offsetContourAlongNormals(
+    originalContour.points,
+    originalContour.closed === true,
+    offsets,
+    workingContour.points,
+    {
+      round,
+      rebuildHandles: true,
+      // A corner's two edges meet further out than a half-width, so the
+      // centerline has to reach that far to land on the corner the letter
+      // draws.
+      offsetCorners: true,
+      normalAt: (pointIndex) =>
+        calculateNormalAtSkeletonPoint(originalContour, pointIndex),
+    }
+  );
+
+  // The slide runs along the centerline rather than across it, so applying it
+  // after the step sideways does not disturb that step.
+  for (const [pointIndex, slide] of slides) {
+    const workingPoint = workingContour.points[pointIndex];
+    if (!workingPoint) {
+      continue;
+    }
+    const normal = calculateNormalAtSkeletonPoint(originalContour, pointIndex);
+    workingPoint.x = round(workingPoint.x + -normal.y * slide);
+    workingPoint.y = round(workingPoint.y + normal.x * slide);
+    workingPoint.nudge = { ...normalizeNudge(workingPoint.nudge), [collapsingSide]: 0 };
+  }
+
+  return moved || slides.size > 0;
+}
+
 // Which way round the generated outline runs. It flips the winding of what the
 // generator emits and leaves the centerline exactly as it was drawn, which is
 // what "reverse contour" asks of a stroke: the letter's fill direction changes,

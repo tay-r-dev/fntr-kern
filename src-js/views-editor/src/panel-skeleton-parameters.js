@@ -1,3 +1,4 @@
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
@@ -913,21 +914,41 @@ export default class SkeletonParametersPanel extends Panel {
       type: "header",
       label: translate("sidebar.skeleton-parameters.contour"),
     });
+    // One control with three named states, replacing a checkbox that turned
+    // one-sided on and a second one that then chose the side. Which side a
+    // stroke sits on is one setting with three values, and the pair could show
+    // a state the stored setting does not have.
     const singleSided = summary.singleSided.value;
     formContents.push({
-      type: "checkbox",
+      type: "select",
       key: "contour:single-sided",
-      label: translate("sidebar.skeleton-parameters.single-sided"),
-      value: summary.singleSided.mixed ? false : singleSided != null,
+      label: translate("sidebar.skeleton-parameters.sides"),
+      value: summary.singleSided.mixed ? "" : (singleSided ?? "both"),
+      options: [
+        ...(summary.singleSided.mixed
+          ? [{ value: "", label: "mixed", disabled: true }]
+          : []),
+        { value: "both", label: translate("sidebar.skeleton-parameters.sides.both") },
+        { value: "left", label: translate("sidebar.skeleton-parameters.sides.left") },
+        { value: "right", label: translate("sidebar.skeleton-parameters.sides.right") },
+      ],
     });
-    if (singleSided != null) {
-      formContents.push({
-        type: "checkbox",
-        key: "contour:single-sided-right",
-        label: translate("sidebar.skeleton-parameters.single-sided-right"),
-        value: singleSided === "right",
-      });
-    }
+    // Two options on that change, not on the contour: they say what the change
+    // does to the drawing. Off is the plain write, which is what the app has
+    // always done — the centerline holds still and the letter moves.
+    formContents.push({
+      type: "checkbox",
+      key: "contour:sides-keep-form",
+      label: translate("sidebar.skeleton-parameters.sides.keep-form"),
+      value: applicationSettingsController.model.skeletonSideModeKeepsForm === true,
+    });
+    formContents.push({
+      type: "checkbox",
+      key: "contour:sides-keep-edits",
+      label: translate("sidebar.skeleton-parameters.sides.keep-edits"),
+      value: applicationSettingsController.model.skeletonSideModeKeepsEdits === true,
+      disabled: applicationSettingsController.model.skeletonSideModeKeepsForm !== true,
+    });
     this._pushSummaryNumber(
       formContents,
       "contour:default-width",
@@ -2234,16 +2255,20 @@ export default class SkeletonParametersPanel extends Panel {
       await setPanelContourSingleSided(
         sc,
         contours,
-        value === true ? "left" : null,
-        this._undo("set-single-sided")
+        value === "both" ? null : value,
+        this._undo("set-single-sided"),
+        {
+          keepForm:
+            applicationSettingsController.model.skeletonSideModeKeepsForm === true,
+          keepEdits:
+            applicationSettingsController.model.skeletonSideModeKeepsEdits === true,
+        }
       );
-    } else if (name === "single-sided-right") {
-      await setPanelContourSingleSided(
-        sc,
-        contours,
-        value === true ? "right" : "left",
-        this._undo("set-single-sided")
-      );
+    } else if (name === "sides-keep-form") {
+      applicationSettingsController.model.skeletonSideModeKeepsForm = value === true;
+      await this.update();
+    } else if (name === "sides-keep-edits") {
+      applicationSettingsController.model.skeletonSideModeKeepsEdits = value === true;
     } else if (name === "default-width") {
       await setPanelContourDefaultWidth(
         sc,

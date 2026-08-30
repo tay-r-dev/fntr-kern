@@ -32,6 +32,7 @@ import {
   setSkeletonCapParameters,
   setSkeletonContourDefaultWidth,
   setSkeletonContourReversed,
+  moveCenterlineForSingleSidedChange,
   setSkeletonContourSingleSided,
   setSkeletonCornerParameters,
   setSkeletonData,
@@ -588,16 +589,36 @@ export async function applyPanelPointWidthSnapshot(
 
 // ---- Contour operations -----------------------------------------------------
 
+// Which side of its centerline a stroke sits on.
+//
+// The plain write moves the setting and nothing else, so the centerline holds
+// still and the letter lands wherever the new mode puts it. `keepForm` asks for
+// the other reading: move the centerline onto the edge that is collapsing, and
+// leave the letter where it is. `keepEdits` then decides whether that edge is
+// the one on screen or the one the generator solved, which differ where the
+// designer has slid its on-curve points along the outline.
+//
+// The centerline has to move before the mode is written, because every distance
+// it moves by is measured on the contour as it stands.
 export async function setPanelContourSingleSided(
   sceneController,
   contourAddresses,
   sideOrNull,
-  undoLabel
+  undoLabel,
+  { keepForm = false, keepEdits = false } = {}
 ) {
   return editSelectedSkeletonContours(
     sceneController,
     contourAddresses,
     (contour) => {
+      if (keepForm) {
+        moveCenterlineForSingleSidedChange(
+          structuredClone(contour),
+          contour,
+          sideOrNull,
+          { respectChanges: keepEdits }
+        );
+      }
       setSkeletonContourSingleSided(contour, sideOrNull);
     },
     undoLabel
