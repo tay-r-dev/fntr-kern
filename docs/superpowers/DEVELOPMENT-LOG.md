@@ -1918,6 +1918,26 @@ ends land on the forced rib and the corner sits at a plain half-width along it,
 one outline point per side. A right angle at a half-width of 40 with a horizontal
 lock puts them at (140, 0) and (60, 0).
 
+**A locked corner does not cancel the corner, it re-places it.** The first build
+threw the join away when the lock fired, on the reasoning that both arms' edge
+ends land on the forced rib and there is nothing to carry on to. That is true
+only while the two arms read the same side of the forced rib. `getEffectiveNormal`
+keeps the sign of the normal it is given, so past a quarter turn the two arms
+read opposite signs, and their edge ends stand a full stroke width apart along
+the rib rather than together. Cancelling the join emitted one point instead of
+two, the outline pinched to a cusp at the fold and both handles left it pointing
+the same way. On the b that drew a pair of 250 unit spikes. The lock now makes
+the side per-arm: each arm ends on the forced rib on the side its own direction
+puts it. A gentle corner's two land together and are one point, which is what a
+right angle with a horizontal lock still does. A fold gets a flat face across it,
+one rib wide, along the forced angle.
+
+**The sign flip is a discontinuity and it is not new.** The forced normal jumps
+from one direction to its opposite as an arm's own normal crosses square to the
+forced axis, so the edge end jumps a full stroke width. `getEffectiveNormal` has
+always done this. It was invisible while the lock was offered only at a
+terminal, where there is one arm and no second sign to disagree with.
+
 ### Segment selection
 
 Clicking a segment selects its two on-curve points, and shift-clicking an

@@ -3240,6 +3240,53 @@ describe("skeleton-generator corner meeting place", () => {
     expect([left[0].x, left[0].y]).to.deep.equal([140, 0]);
     expect([right[0].x, right[0].y]).to.deep.equal([60, 0]);
   });
+
+  it("gives a locked corner a flat face one rib wide where it folds", () => {
+    // Arms (0,0) -> (0,100) -> (10,0), a fold of about 174 degrees, with the
+    // corner's rib forced horizontal. The forced rib keeps the sign of each
+    // arm's own normal, and a fold this sharp puts the two arms on opposite
+    // sides of it, so each side's two edge ends stand 80 apart along the rib.
+    // That is the whole stroke width, and the straight between them is the
+    // corner's flat face.
+    const width = { left: 40, right: 40 };
+    const result = generateFromSkeleton({
+      version: 1,
+      nextId: 5,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80,
+          singleSided: null,
+          points: [
+            { id: 2, x: 0, y: 0, type: null, smooth: false, width },
+            {
+              id: 3,
+              x: 0,
+              y: 100,
+              type: null,
+              smooth: false,
+              width,
+              ribAngleLock: "horizontal",
+            },
+            { id: 4, x: 10, y: 0, type: null, smooth: false, width },
+          ],
+        },
+      ],
+      generated: [],
+    });
+    for (const side of ["left", "right"]) {
+      const points = cornerOnCurves(result, 3, side);
+      expect(points, side).to.have.lengthOf(2);
+      expect(
+        points.map((point) => [point.x, point.y]).sort((a, b) => a[0] - b[0]),
+        side
+      ).to.deep.equal([
+        [-40, 100],
+        [40, 100],
+      ]);
+    }
+  });
 });
 
 describe("skeleton-generator corner sweeps", () => {

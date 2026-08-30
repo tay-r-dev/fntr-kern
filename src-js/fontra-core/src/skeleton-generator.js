@@ -2791,29 +2791,31 @@ function generateOffsetPointsForSegment(
     let startNormal = startJoin ? startJoin.normal : normal;
     // Apply angle override if set on the point
     startNormal = getEffectiveNormal(segment.startPoint, startNormal);
-    // A forced rib angle replaces the split line outright. Both arms' edge
-    // ends then land on the forced rib and there is nothing to carry on to.
     // A smooth point is not a corner: the centerline does not change direction
     // there, so it keeps the averaged normal at a plain half-width.
-    if (startJoin && (startNormal !== startJoin.normal || segment.startPoint.smooth)) {
+    if (startJoin && segment.startPoint.smooth) {
       startJoin = null;
     }
+    const startLocked = !!segment.startPoint?.ribAngleLock;
+    const startOwnNormal = getEffectiveNormal(segment.startPoint, normal);
     const startFullWidth = startLeftHW + startRightHW;
     const startLeftPlace = cornerSidePlacement(
       startJoin,
       1,
       startNormal,
-      normal,
+      startOwnNormal,
       startLeftHW,
-      startFullWidth
+      startFullWidth,
+      startLocked
     );
     const startRightPlace = cornerSidePlacement(
       startJoin,
       -1,
       startNormal,
-      normal,
+      startOwnNormal,
       startRightHW,
-      startFullWidth
+      startFullWidth,
+      startLocked
     );
     // An inner side needs both arms' edge ends, so the arm that does not carry
     // the shared on-curve today adds its own.
@@ -2904,27 +2906,31 @@ function generateOffsetPointsForSegment(
     let endNormal = endJoin ? endJoin.normal : normal;
     // Apply angle override if set on the point
     endNormal = getEffectiveNormal(segment.endPoint, endNormal);
-    // A forced rib angle replaces the split line outright. A smooth point is
-    // not a corner and keeps the averaged normal at a plain half-width.
-    if (endJoin && (endNormal !== endJoin.normal || segment.endPoint.smooth)) {
+    // A smooth point is not a corner and keeps the averaged normal at a plain
+    // half-width.
+    if (endJoin && segment.endPoint.smooth) {
       endJoin = null;
     }
+    const endLocked = !!segment.endPoint?.ribAngleLock;
+    const endOwnNormal = getEffectiveNormal(segment.endPoint, normal);
     const endFullWidth = endLeftHW + endRightHW;
     const endLeftPlace = cornerSidePlacement(
       endJoin,
       1,
       endNormal,
-      normal,
+      endOwnNormal,
       endLeftHW,
-      endFullWidth
+      endFullWidth,
+      endLocked
     );
     const endRightPlace = cornerSidePlacement(
       endJoin,
       -1,
       endNormal,
-      normal,
+      endOwnNormal,
       endRightHW,
-      endFullWidth
+      endFullWidth,
+      endLocked
     );
     const addEndLeft = shouldAddEnd || endLeftPlace.perArm;
     const addEndRight = shouldAddEnd || endRightPlace.perArm;
@@ -3033,9 +3039,9 @@ function generateOffsetPointsForSegment(
     }
     // Apply angle override if set on the point
     startNormal = getEffectiveNormal(segment.startPoint, startNormal);
-    // A forced rib angle replaces the split line outright. A smooth point is
-    // not a corner and keeps the averaged normal at a plain half-width.
-    if (startJoin && (startNormal !== startJoin.normal || segment.startPoint.smooth)) {
+    // A smooth point is not a corner and keeps the averaged normal at a plain
+    // half-width.
+    if (startJoin && segment.startPoint.smooth) {
       startJoin = null;
     }
 
@@ -3053,44 +3059,52 @@ function generateOffsetPointsForSegment(
     }
     // Apply angle override if set on the point
     endNormal = getEffectiveNormal(segment.endPoint, endNormal);
-    // A forced rib angle replaces the split line outright. A smooth point is
-    // not a corner and keeps the averaged normal at a plain half-width.
-    if (endJoin && (endNormal !== endJoin.normal || segment.endPoint.smooth)) {
+    // A smooth point is not a corner and keeps the averaged normal at a plain
+    // half-width.
+    if (endJoin && segment.endPoint.smooth) {
       endJoin = null;
     }
+    const startLocked = !!segment.startPoint?.ribAngleLock;
+    const endLocked = !!segment.endPoint?.ribAngleLock;
+    const startOwnNormal = getEffectiveNormal(segment.startPoint, bezierStartNormal);
+    const endOwnNormal = getEffectiveNormal(segment.endPoint, bezierEndNormal);
     const startFullWidth = startLeftHW + startRightHW;
     const endFullWidth = endLeftHW + endRightHW;
     const startLeftPlace = cornerSidePlacement(
       startJoin,
       1,
       startNormal,
-      bezierStartNormal,
+      startOwnNormal,
       startLeftHW,
-      startFullWidth
+      startFullWidth,
+      startLocked
     );
     const startRightPlace = cornerSidePlacement(
       startJoin,
       -1,
       startNormal,
-      bezierStartNormal,
+      startOwnNormal,
       startRightHW,
-      startFullWidth
+      startFullWidth,
+      startLocked
     );
     const endLeftPlace = cornerSidePlacement(
       endJoin,
       1,
       endNormal,
-      bezierEndNormal,
+      endOwnNormal,
       endLeftHW,
-      endFullWidth
+      endFullWidth,
+      endLocked
     );
     const endRightPlace = cornerSidePlacement(
       endJoin,
       -1,
       endNormal,
-      bezierEndNormal,
+      endOwnNormal,
       endRightHW,
-      endFullWidth
+      endFullWidth,
+      endLocked
     );
 
     const avgLeftHW = (startLeftHW + endLeftHW) / 2;
@@ -3599,7 +3613,7 @@ function cornerIsHeld(miterScale, halfWidth, fullWidth) {
  * The outer side reaches the apex: along the split line, at one half-width over
  * the cosine of half the turn.
  *
- * Two cases cannot use the apex. The inner side's two edges overlap rather than
+ * Three cases cannot use the apex. The inner side's two edges overlap rather than
  * stopping, so their crossing is drawn geometry and joinInnerCornersOnSide finds
  * it. An outer side past the miter limit has an apex too far out to draw. Both
  * end each arm at its own edge end, square to that arm's own direction, which is
@@ -3612,10 +3626,20 @@ function cornerSidePlacement(
   joinNormal,
   ownNormal,
   halfWidth,
-  fullWidth
+  fullWidth,
+  locked
 ) {
   if (!join) {
     return { normal: joinNormal, scale: 1, perArm: false };
+  }
+  if (locked) {
+    // A forced rib replaces the split line outright, so there is no meeting
+    // place to reach: both carried-on edges already lie on the forced rib. Each
+    // arm ends on it instead, on the side its own direction puts it. Where the
+    // corner turns far enough for the two arms to read opposite sides, that
+    // gives a flat face across the corner, one rib wide, along the forced angle.
+    // Where they read the same side the two land together and are one point.
+    return { normal: ownNormal, scale: 1, perArm: true };
   }
   if (!cornerSideIsOuter(join.dir1, join.dir2, sideSign)) {
     return { normal: ownNormal, scale: 1, perArm: true };
