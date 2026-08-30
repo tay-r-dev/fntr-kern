@@ -2,19 +2,18 @@
 
 **Date:** 2026-08-29. Written on `feature/markers`, verified against the tree at `fbbe86fc4`.
 
-Eight items, from the designer. Each row states what you see, the rule it should follow, and
+Seven items, from the designer. Each row states what you see, the rule it should follow, and
 the files it lands in. Every file path and symbol below came from a grep against the tree, not
 from the other documents (architecture map, maintenance rule).
 
-This is a backlog, not a spec. Three rows — **B4**, **B6** and **B8** — are architectural and
-each owes its own design document before any code. The other five are bounded.
+This is a backlog, not a spec. Two rows — **B6** and **B8** — are architectural and each owes its
+own design document before any code. The other five are bounded.
 
 | #   | Item                                | Size              | Owns                                                                    |
 | --- | ----------------------------------- | ----------------- | ----------------------------------------------------------------------- |
 | B1  | RMB drops the drawn contour         | bounded           | `edit-tools-pen.js`, `edit-tools-skeleton.js`, `editor.js`              |
 | B2  | Hover says the pen sees a point     | bounded           | `edit-tools-skeleton.js`, `visualization-layer-skeleton.js`             |
 | B3  | Three per-side locks, drawn         | bounded           | `skeleton-model.js`, `skeleton-generator.js`, panel, layers             |
-| B4  | Corner join by intersection         | **architectural** | `skeleton-generator.js`, `offset-contour.js`                            |
 | B5  | Skeleton points snap                | bounded           | `snapping-interactions.js`                                              |
 | B6  | Convert a contour to skeleton       | **architectural** | new core module, `scene-controller.js`, dialog                          |
 | B7  | Gizmo mode still draws labels       | bounded           | `visualization-layer-skeleton.js`, `visualization-layer-definitions.js` |
@@ -117,75 +116,6 @@ half-width, or the edge's position. They differ the moment the point moves, and 
 fallback cascade (feature model §2) means a point that stores nothing follows the contour
 default. A lock that writes a width onto a point to hold it would kill that point's link to the
 default. Hold the edge, do not materialize a number.
-
----
-
-## B4 — A corner is solved by intersecting the two edges
-
-**Architectural. Owes a design document.**
-
-**What you see.** Where the centerline turns a sharp corner, the generated outline is wrong. On
-the reported glyph — a diagonal stroke meeting a vertical stem — the outline runs out into two
-thin spikes instead of closing the corner. The intended shape is the two strokes meeting at a
-clean joint, the way the reference image shows.
-
-**What the code does today.** `calculateCornerNormal` (`skeleton-generator.js:2911`) takes the
-signed angle between the two segments' tangents, halves it to get the bisector, and returns the
-perpendicular of that bisector as the rib normal. The rib end is then projected one plain
-half-width along it. Two things follow, and both are the fault:
-
-- **Both sides get the same normal and the same distance.** The outer side of a corner needs to
-  reach further than the half-width to close the gap, and the inner side needs to reach less.
-  Neither happens.
-- **`halfWidth` is passed to the function and never used.** So the corner's geometry does not
-  depend on how wide the stroke is, which is exactly the "the algorithm chooses by the angle
-  alone" complaint.
-
-**The rule.** Each of the two arms is offset by its own half-width, on its own. The corner point
-lands **where the two offset edges cross**. On the outer side both edges are extended forward to
-that crossing; on the inner side both are trimmed back to it. This is one construction for both
-sides, and the side falls out of which way the corner turns rather than being branched on.
-
-**It applies to every corner, curves included.** Not only straight-to-straight. Where an arm is a
-cubic, what is intersected is that arm's offset cubic, not a tangent ray standing in for it.
-
-**This construction already exists in the tree, once.** `offset-contour.js` states the same rule
-for the base-curve expansion drag: _each segment moves along its own normal by its own offset,
-and the corner point lands where its two moved segments cross_ (feature model §12, log "Base-curve
-expansion"). Rail R-B says there is one copy of every geometry function. So the first design
-question is whether the generator can call that module rather than grow a second copy — and the
-log records that stating this rule as a derivation rather than as a miter length is what made it
-come out right last time.
-
-**The bound.** `offset-contour.js` holds the crossing at four times the offset, the standard miter
-limit, which bites at a turn of about 151 degrees. Two edges doubling back move to parallel
-positions and never cross at all.
-
-The designer's position is that two curves emitted from one corner point always cross. That is
-true of an ordinary corner and it is not true at the two ends of the range: as the turn goes to
-zero the crossing runs to infinity, and at a doubled-back corner the two offsets are parallel.
-The design has to say what happens at the limit, and the answer has to be continuous through it —
-a drag passes through these configurations.
-
-**Three hard constraints this must not break.** They are the same three the offset construction
-already lives under, and they are why this is architectural rather than a fix:
-
-1. **Point-count stability.** The corner must emit the same number of points at every parameter
-   value, or a corner in one master will not interpolate against the same corner in another. A
-   crossing that sometimes exists and sometimes does not cannot decide the point count.
-2. **Continuity in the input.** The outline is rebuilt on every frame of a drag. Two cubics can
-   cross zero, one or several times, and picking "the" crossing is a search. A search that changes
-   which root it returns as the skeleton moves smoothly is exactly the jitter the offset
-   construction spent five rounds removing (log, offset construction rounds 5–7). Read that
-   section before designing the root find.
-3. **Corner rounding sits on top.** `roundSharpCornersOnSide` replaces the sharp corner with an
-   arc, and reads the corner the construction produced. Moving where the corner point is moves
-   what rounding starts from.
-
-**Test it with a sweep, not an assertion.** Hold the geometry fixed, walk the corner's turn and
-the half-width through their ranges in fine steps, and measure the worst single-step movement of
-any emitted point. Start away from a degenerate configuration. This is the method that has caught
-every fault in this area and the one that assertions have missed.
 
 ---
 
@@ -457,10 +387,8 @@ outside the ordering below until it has been read.
 are one gesture pair and are best done together. B5 is one function. B3 is a schema change and a
 new drawing, so it is the largest of the bounded rows.
 
-**B4, B6 and B8 wait for their design documents.** B4 is the one with real risk: it changes the
-geometry of every corner in every glyph, under a construction that has to stay continuous while
-the designer drags and has to keep the point count fixed. B6 is large but low-risk, because it
-writes new data and changes nothing already drawn. B8 sits between them — it rewrites existing
+**B6 and B8 wait for their design documents.** B6 is large but low-risk, because it writes new
+data and changes nothing already drawn. B8 sits between them — it rewrites existing
 drawings, but only when the designer asks it to, and its unchecked default is what happens today.
 
 B8 is the smallest of the three now that preserve form turns out to write no width. Its design

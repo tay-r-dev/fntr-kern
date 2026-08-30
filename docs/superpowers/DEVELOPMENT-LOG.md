@@ -2458,11 +2458,113 @@ geometry bug and was a measurement bug.
 line there and a line has no curvature gizmo, so the first version of the
 addressability test asserted against geometry that could never satisfy it.
 
+### The corner sat one half-width out whatever the width and whatever the turn
+
+The routine that placed a corner's outline point took the stroke width as an
+argument and never used it. It returned the right direction, the normal on the
+line that splits the angle between the two arms, and the caller then walked a
+plain half-width along it. So a corner's shape did not depend on the stroke width
+at all, and a diagonal arm meeting a vertical stem ran out into two thin spikes
+instead of closing.
+
+**The two edges of one side meet at one half-width over the cosine of half the
+turn.** At a right angle that is 1.41 half-widths, at a 120 degree turn it is 2.
+The routine is `calculateCornerJoin` now and returns that distance beside the
+direction it already returned.
+
+**The two sides of a corner are different problems, and they are solved
+differently.** One side has a gap between the two arms' edge ends and the other an
+overlap. The side with the gap carries each edge on as a straight along its own
+arm and takes the place they meet: those straights are a construction that finds
+a point which does not otherwise exist, and they are discarded. The side with the
+overlap has nothing that stops, so the crossing there is drawn geometry and it is
+found, not stood in for by a crossing of the two end directions. Both curves bend
+toward each other over the reach, so a direction crossing sits in the wrong place
+and on a strongly curved arm the corner sticks through the stroke.
+
+**Where the inner curves do not cross exactly once, the code does not choose.**
+Both edge ends stay and the straight between them is the corner. Choosing among
+several crossings can change its answer between two frames of a drag, and the
+outline is rebuilt on every frame. This is the same rule the offset construction
+arrived at over five rounds.
+
+**The miter limit is two stroke widths.** At 178 degrees on a 60 unit stroke the
+meeting place stands about 1719 units out, longer than the letter is tall. Past
+two stroke widths, and where the two arms are exactly parallel and there is no
+meeting place at all, the side ends each arm at its own edge end and the straight
+between them is the corner. It reuses the inner side's path: two edge ends with a
+gap do not cross, so the crossing pass finds none and leaves both standing. The
+drag that offsets an ordinary hand-drawn outline bevels at the same turn; it
+states the same number as four times the half-width.
+
+**The fit costs nothing measurable.** The emitted cubic follows its arm's true
+edge and is then stretched to reach the meeting place. Measured over turns of 30
+to 150 degrees, half-widths of 10 to 60 and two arm curvatures, the whole
+departure is the reach itself: it is the half-width times the tangent of half the
+turn, which is exactly the distance from the edge end to the meeting place. Over
+the first four fifths of the curve, before that reach begins, the departure is
+0.3 units at 30 degrees and a half-width of 10, and 12.5 units at 150 degrees and
+a half-width of 60. Worst overall is 224 units, at 150 degrees and a half-width of
+60, which is the reach and not a fitting error.
+
+| turn | half-width 10 | half-width 30 | half-width 60 |
+| ---- | ------------- | ------------- | ------------- |
+| 30   | 3.0 (0.3)     | 8.0 (0.7)     | 16.0 (1.8)    |
+| 60   | 6.0 (0.4)     | 17.0 (1.2)    | 35.0 (2.6)    |
+| 90   | 10.0 (0.6)    | 30.0 (1.9)    | 60.0 (3.5)    |
+| 120  | 17.0 (1.0)    | 52.0 (3.3)    | 104.0 (5.3)   |
+| 150  | 37.0 (2.5)    | 112.0 (7.1)   | 224.0 (12.5)  |
+
+Worst departure in font units, with the departure before the reach in brackets.
+
+**A smooth point is not a corner.** The centerline does not change direction
+there, so it keeps the averaged normal at a plain half-width and one outline point
+per side. Applying the corner treatment at smooth points broke two serif tests at
+once: a nominally smooth skeleton point with a 60 degree kink between its handles
+got the whole construction, and its inner side then rebuilt both handles from the
+cut, which coupled a handle to its neighbour that must stay still.
+
+**A closed contour's last straight segment was dropping its corner join.** The
+branch treated the last index as the end of the contour, which is only true for an
+open one. It never showed before, because a closed contour's segments emit only
+their start points, so the dropped join had nothing to place. A closed triangle's
+inner contour came out asymmetric. At a half-width inside the triangle's inradius
+it is now the exact inset triangle.
+
+**Sweeps, not assertions.** Four of them: the turn from 20 to 140 degrees in half
+degree steps, the stroke width from 10 to 100, the proportion between the two, and
+an arm bowed until the inner crossing goes away. No step moves an outline point
+more than a few units. A per-configuration assertion has missed every fault in
+this area so far.
+
+**The rib bar is square to the arriving arm now.** It keeps its length, drawn at
+the stored half-width, so it stops short of the outline at every corner and by
+more the sharper the turn. It states how wide the stroke is. It no longer states
+where the edges are. `cornerArrivingNormal` returns null everywhere but a corner,
+so the shared normal in `offset-contour.js` is untouched and the drag that offsets
+an ordinary hand-drawn outline reads exactly what it read before.
+
+**The outline point count changes in three cases.** An ordinary corner is one
+outline point per side, which is what it was. A side past the miter limit, a
+fold-back, and an inner side whose curves cross zero times or several are two.
+Two masters whose corners fall in different rows do not interpolate at that
+corner. The designer accepted this: contours rarely change this much between
+masters, and this is not animation software.
+
 ### Fixture gap
 
 No golden fixture moved for the corner rounding rework, and the corpus carries no
 rounded corner at all, so it cannot see that change. No external glyph uses a
 bulb.
+
+Two fixtures moved for the corner join. `closed-triangle` moved every outer point
+outward along its split line, from one half-width to two, which is one over the
+cosine of half a 120 degree turn. Its inner contour is drawn at a half-width wider
+than the triangle's own inradius, so the stroke swallows the shape, that contour
+is inverted and self-crossing, and two of its three corners fall back to two
+points each. `one-ended-controlled-straight` moved its corner by one to two units.
+The canonical inputs in the fixture file also gained a `corner` field, which
+predates this work: the recorded fixtures were stale.
 
 ---
 

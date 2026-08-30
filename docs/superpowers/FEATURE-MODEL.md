@@ -229,6 +229,31 @@ rib normal. A cubic segment keeps the skeleton handle directions, and its endpoi
 exact construction rib positions. So the only free numbers are the two handle lengths, and
 choosing them is the whole job of `offset-cubic.js`.
 
+**At a corner an endpoint is not on the rib.** A corner is a non-smooth skeleton point where two
+segments, its two arms, meet. Each arm's own offset edge ends square to that arm's own direction,
+so the two edges of one side end at two different places. One side of the stroke has a gap between
+them and the other an overlap, and `cornerSideIsOuter` decides which by reading the geometry rather
+than the sign of the turn.
+
+The side with the gap carries each edge on as a straight along its own arm's direction and takes
+the place they meet, which is one half-width over the cosine of half the turn out along the line
+that splits the angle. That is one outline point, and both arms' curves end on it. The straight
+lines are then discarded: nothing straight is drawn.
+
+The side with the overlap lets each arm end at its own edge end, and `joinInnerCornersOnSide`
+intersects the two emitted curves and cuts both back to the crossing. The crossing is of the drawn
+curves, not of their end directions, because both curves bend away from their directions over the
+reach. Where they do not cross exactly once, both edge ends stay and the straight between them is
+the corner. A gap wider than two stroke widths is held the same way: past that the meeting place
+stands further out than the letter is tall.
+
+**The solver is untouched by all of this.** It takes the endpoint it must land on separately from
+the shape it must match, so moving the endpoint to the meeting place changes one input and nothing
+else. Its samples, its directions, its convexity and its bounds are the same.
+
+A smooth point is not a corner. The centerline does not change direction there, so it keeps the
+averaged normal at a plain half-width and one outline point per side.
+
 The durable construction is:
 
 ```text
@@ -396,6 +421,10 @@ edit write both.
 
 The side's pair is resolved at emission, where the side is known, so the rounding pass reads one
 pair per point and never asks which side it is working on.
+
+Rounding runs after the corner join, so it starts from a corner point that now stands where the two
+offset edges meet rather than one half-width out. A rounded corner drawn before that change comes
+out a different shape. The rounding rule itself is unchanged.
 
 Three clamps hold the distance, and no fixed fraction stands in for them. An arm ends at its
 neighbouring on-curve. A curved arm stops just short of its handle, because trimming past the
