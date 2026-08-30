@@ -82,6 +82,14 @@ const VALID_CAP_BALL_SIDES = new Set(["auto", "left", "right"]);
 // a flat terminal is drawn along the rib — so "vertical" means the normal is the
 // y axis. Independent of cap style: every style is built on the locked rib.
 export const VALID_RIB_ANGLE_LOCKS = new Set([null, "horizontal", "vertical"]);
+// What a forced rib holds on to. "stroke" keeps the stroke as wide as its stored
+// width and lets the rib run further to reach the edge, which is the flat cut a
+// single master wants. "rib" keeps the rib itself the stored width long, which
+// draws the stroke thinner by the cosine of the turn and is the one that
+// interpolates. Neither is right for every drawing; see the development log,
+// "the forced rib, and what it cannot do at once".
+export const VALID_RIB_ANGLE_LOCK_MODES = new Set(["stroke", "rib"]);
+export const DEFAULT_RIB_ANGLE_LOCK_MODE = "stroke";
 export const CAP_POINT_FIELDS = [
   "capRadiusRatio",
   "capTension",
@@ -1218,6 +1226,11 @@ export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = nul
     normalized.ribAngleLock = VALID_RIB_ANGLE_LOCKS.has(point?.ribAngleLock)
       ? (point.ribAngleLock ?? null)
       : null;
+    normalized.ribAngleLockMode = VALID_RIB_ANGLE_LOCK_MODES.has(
+      point?.ribAngleLockMode
+    )
+      ? point.ribAngleLockMode
+      : DEFAULT_RIB_ANGLE_LOCK_MODE;
     for (const field of CAP_POINT_FIELDS) {
       if (Number.isFinite(point?.[field])) {
         normalized[field] = point[field];
@@ -1524,6 +1537,8 @@ function copySkeletonCapData(sourcePoint, targetPoint) {
   // The lock describes the terminal, not the point, so it moves with the cap
   // when the terminal does (donor parity: it travelled in the same key list).
   targetPoint.ribAngleLock = sourcePoint.ribAngleLock ?? null;
+  targetPoint.ribAngleLockMode =
+    sourcePoint.ribAngleLockMode ?? DEFAULT_RIB_ANGLE_LOCK_MODE;
   for (const field of CAP_POINT_FIELDS) {
     if (Number.isFinite(sourcePoint[field])) {
       targetPoint[field] = sourcePoint[field];
@@ -2210,6 +2225,12 @@ export function setSkeletonPointWidthTied(point, tied) {
 // clears it, so the field can never hold a value the normal override ignores.
 export function setSkeletonPointRibAngleLock(point, lock) {
   point.ribAngleLock = VALID_RIB_ANGLE_LOCKS.has(lock) ? (lock ?? null) : null;
+}
+
+export function setSkeletonPointRibAngleLockMode(point, mode) {
+  point.ribAngleLockMode = VALID_RIB_ANGLE_LOCK_MODES.has(mode)
+    ? mode
+    : DEFAULT_RIB_ANGLE_LOCK_MODE;
 }
 
 export function setSkeletonContourSingleSided(contour, sideOrNull) {
@@ -3252,17 +3273,29 @@ export const RIB_ANGLE_LOCK_LIMIT = 4;
 /**
  * How far along a forced rib the outline sits, as a multiple of the half-width.
  *
- * A rib angle lock turns the rib off the perpendicular. The stroke's width is
- * measured across the centerline and a lock does not change it, so the outline
- * point stays on the edge it was always on and the forced rib has to reach
- * further along itself to get there: one over the cosine of the angle it was
- * turned through. One is the answer wherever no lock is in force.
+ * A rib angle lock turns the rib off the perpendicular, and the point's own mode
+ * says what that holds on to.
+ *
+ * In `stroke` mode the stroke stays as wide as its stored width. The outline
+ * point stays on the edge it was always on, so the forced rib runs one over the
+ * cosine of the angle it was turned through to reach it. Every master then draws
+ * the width its panel states.
+ *
+ * In `rib` mode the rib itself is the stored width long. The stroke it is turned
+ * across draws thinner, by that same cosine. This is the one that interpolates:
+ * a fixed offset along a fixed direction blends exactly, while one over a cosine
+ * curves upward and a weight between two masters comes out too wide.
+ *
+ * One is the answer wherever no lock is in force.
  *
  * The single copy. The generator imports it, so the drawn edge and the rib bar
  * cannot disagree about where that edge is (rail R-B).
  */
 export function ribAngleLockReach(point, forcedNormal, unlockedNormal) {
   if (!point?.ribAngleLock) {
+    return 1;
+  }
+  if ((point.ribAngleLockMode ?? DEFAULT_RIB_ANGLE_LOCK_MODE) === "rib") {
     return 1;
   }
   const cosTurn = Math.abs(

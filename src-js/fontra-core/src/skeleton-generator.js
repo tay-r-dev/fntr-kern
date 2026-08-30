@@ -256,6 +256,10 @@ function canonicalPointToGeneratorPoint(point) {
   // The rib angle lock has to be copied across explicitly like every other
   // per-point field: the generator never sees the canonical shape (§7).
   generatorPoint.ribAngleLock = point.ribAngleLock ?? null;
+  // The mode rides with the lock. Like every other field here it has to be
+  // copied across the dialect explicitly, or the geometry reads undefined and
+  // falls back to a default the point never asked for.
+  generatorPoint.ribAngleLockMode = point.ribAngleLockMode ?? "stroke";
   // Serif parameters travel as one object. Like ribAngleLock, they have to be
   // copied across explicitly: the generator never sees the canonical shape, and
   // a field that is not copied here fails silently rather than throwing.

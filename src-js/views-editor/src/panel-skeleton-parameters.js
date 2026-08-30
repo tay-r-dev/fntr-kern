@@ -54,6 +54,7 @@ import {
   setPanelPointTotalWidth,
   setPanelPointValuesStream,
   setPanelRibAngleLock,
+  setPanelRibAngleLockMode,
   setPanelRibDetached,
   setPanelRibLocked,
   setPanelSerifParameters,
@@ -866,6 +867,32 @@ export default class SkeletonParametersPanel extends Panel {
         {
           value: "vertical",
           label: translate("sidebar.skeleton-parameters.rib-angle-lock.vertical"),
+        },
+      ],
+    });
+    // A forced rib cannot both keep the stroke as wide as its number and blend
+    // cleanly between masters, so the point says which it holds on to. Stroke
+    // width runs the rib further to reach the edge, so every master draws its
+    // number. Rib length keeps the bar the number long, which draws a turned
+    // stroke thinner and is the one that interpolates. Greyed with no lock,
+    // because it decides nothing then.
+    formContents.push({
+      type: "select",
+      key: "width:ribanglelockmode",
+      label: translate("sidebar.skeleton-parameters.rib-angle-lock-mode"),
+      value: ribAngleLock.mode.mixed ? "" : (ribAngleLock.mode.value ?? "stroke"),
+      disabled: !ribAngleLock.mode.canEdit,
+      options: [
+        ...(ribAngleLock.mode.mixed
+          ? [{ value: "", label: "mixed", disabled: true }]
+          : []),
+        {
+          value: "stroke",
+          label: translate("sidebar.skeleton-parameters.rib-angle-lock-mode.stroke"),
+        },
+        {
+          value: "rib",
+          label: translate("sidebar.skeleton-parameters.rib-angle-lock-mode.rib"),
         },
       ],
     });
@@ -2163,6 +2190,18 @@ export default class SkeletonParametersPanel extends Panel {
         this._widthPoints(),
         value === "auto" ? null : value,
         this._undo("set-rib-angle-lock")
+      );
+      return;
+    }
+    if (name === "ribanglelockmode") {
+      if (!["stroke", "rib"].includes(value)) {
+        return;
+      }
+      await setPanelRibAngleLockMode(
+        this.sceneController,
+        this._widthPoints(),
+        value,
+        this._undo("set-rib-angle-lock-mode")
       );
       return;
     }

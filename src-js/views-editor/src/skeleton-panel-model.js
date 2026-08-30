@@ -350,12 +350,23 @@ export function summarizeSkeletonCapStyleSelection(selectedPoints) {
  */
 export function summarizeSkeletonRibAngleLockSelection(selectedPoints) {
   if (!selectedPoints.length) {
-    return { canEdit: false, mixed: false, value: null };
+    return { canEdit: false, mixed: false, value: null, mode: {} };
   }
   const reduced = reduceValues(
     selectedPoints.map((entry) => entry.point.ribAngleLock ?? null)
   );
-  return { canEdit: true, mixed: reduced.mixed, value: reduced.value };
+  // What a forced rib holds on to. Offered only where at least one selected
+  // point has a lock, because with no lock there is nothing for it to decide.
+  const locked = selectedPoints.filter((entry) => entry.point.ribAngleLock);
+  const mode = reduceValues(
+    locked.map((entry) => entry.point.ribAngleLockMode ?? "stroke")
+  );
+  return {
+    canEdit: true,
+    mixed: reduced.mixed,
+    value: reduced.value,
+    mode: { canEdit: locked.length > 0, mixed: mode.mixed, value: mode.value },
+  };
 }
 
 export function summarizeSkeletonCapSelection(selectedPoints) {

@@ -248,6 +248,13 @@ the corner. A gap wider than four of that side's own half-widths is held the sam
 place stands further out than the letter is tall. Per side, so an unlinked width holds both sides
 of a corner at the same turn.
 
+**A forced rib angle names its own trade.** A lock turns a point's rib off the perpendicular, and
+the point's mode says what that holds on to. `stroke` runs the rib one over the cosine of its turn
+to reach the edge, so every master draws the width its panel states and weights between masters
+whose rib angles differ draw wider. `rib` keeps the bar the stated width long, so a turned stroke
+draws thinner and every weight between masters is right. Nothing can do both: the font blends
+outlines rather than skeletons, so the blend is fixed once the masters are.
+
 **The solver is untouched by all of this.** It takes the endpoint it must land on separately from
 the shape it must match, so moving the endpoint to the meeting place changes one input and nothing
 else. Its samples, its directions, its convexity and its bounds are the same.

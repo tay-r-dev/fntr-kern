@@ -1739,7 +1739,7 @@ function round(value) {
 describe("skeleton-generator rib angle lock", () => {
   // Open diagonal line: without a lock the terminal rib is perpendicular to the
   // diagonal, so its two ends differ in both x and y.
-  function diagonalSkeleton(ribAngleLock, capStyle = "butt") {
+  function diagonalSkeleton(ribAngleLock, capStyle = "butt", ribAngleLockMode) {
     return {
       version: 1,
       nextId: 4,
@@ -1752,7 +1752,15 @@ describe("skeleton-generator rib angle lock", () => {
           capStyle,
           points: [
             { id: 2, x: 0, y: 0, type: null, smooth: false },
-            { id: 3, x: 100, y: 100, type: null, smooth: false, ribAngleLock },
+            {
+              id: 3,
+              x: 100,
+              y: 100,
+              type: null,
+              smooth: false,
+              ribAngleLock,
+              ribAngleLockMode,
+            },
           ],
         },
       ],
@@ -1807,6 +1815,33 @@ describe("skeleton-generator rib angle lock", () => {
       );
       expect(width, `lock ${lock}`).to.be.closeTo(80, 1);
     }
+  });
+
+  // The other mode. A forced rib cannot both draw the stated width at every
+  // master and blend cleanly between them, because the font blends outlines and
+  // one over a cosine curves upward. "rib" keeps the bar the stated width long,
+  // which is a fixed offset along a fixed direction and blends exactly, and
+  // draws the stroke thinner by the cosine of the turn.
+  it("keeps the rib 80 long, and the stroke thinner, in rib mode", () => {
+    const ends = terminalOnCurves(
+      generateFromSkeleton(diagonalSkeleton("vertical", "butt", "rib"))
+    );
+    expect(ends).to.have.length(2);
+    expect(Math.abs(ends[0].y - ends[1].y)).to.equal(80);
+    const across = { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
+    expect(
+      Math.abs((ends[0].x - ends[1].x) * across.x + (ends[0].y - ends[1].y) * across.y)
+    ).to.be.closeTo(80 * Math.SQRT1_2, 1);
+  });
+
+  it("defaults to keeping the stroke width", () => {
+    const stated = terminalOnCurves(
+      generateFromSkeleton(diagonalSkeleton("vertical", "butt", "stroke"))
+    );
+    const bare = terminalOnCurves(generateFromSkeleton(diagonalSkeleton("vertical")));
+    expect(bare.map((point) => [point.x, point.y])).to.deep.equal(
+      stated.map((point) => [point.x, point.y])
+    );
   });
 
   // The donor gated this on the flat cap; here it supersedes the cap style, so

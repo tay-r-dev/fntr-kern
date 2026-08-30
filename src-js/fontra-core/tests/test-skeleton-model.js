@@ -1561,16 +1561,17 @@ describe("skeleton rib reach under a forced angle", () => {
   // A stem at 45 degrees. Its rib is square to it without a lock; forced
   // horizontal it is turned 45 degrees, so it has to run one over the cosine of
   // 45 degrees further to reach the same two edges.
-  function stem(ribAngleLock) {
+  function stem(ribAngleLock, ribAngleLockMode) {
     const width = { left: 40, right: 40 };
+    const point = { type: null, smooth: false, width, ribAngleLock, ribAngleLockMode };
     return {
       id: 1,
       closed: false,
       defaultWidth: 80,
       singleSided: null,
       points: [
-        { id: 2, x: 0, y: 0, type: null, smooth: false, width, ribAngleLock },
-        { id: 3, x: 100, y: 100, type: null, smooth: false, width, ribAngleLock },
+        { id: 2, x: 0, y: 0, ...point },
+        { id: 3, x: 100, y: 100, ...point },
       ],
     };
   }
@@ -1581,6 +1582,21 @@ describe("skeleton rib reach under a forced angle", () => {
 
   it("reaches further where the angle is forced", () => {
     expect(skeletonRibReach(stem("horizontal"), 0)).to.be.closeTo(Math.SQRT2, 1e-9);
+  });
+
+  // In rib mode the bar is the stored width long whichever way it is turned, so
+  // it reaches one half-width and the stroke draws thinner. That is the mode
+  // that blends between masters; see the development log.
+  it("reaches one half-width in rib mode", () => {
+    expect(skeletonRibReach(stem("horizontal", "rib"), 0)).to.equal(1);
+  });
+
+  it("puts the rib bar's ends a plain half-width out in rib mode", () => {
+    const contour = stem("horizontal", "rib");
+    const point = contour.points[0];
+    const left = getSkeletonRibPosition(contour, point, "left");
+    const right = getSkeletonRibPosition(contour, point, "right");
+    expect(Math.abs(left.x - right.x)).to.equal(80);
   });
 
   it("puts the forced bar's ends on the edges the stroke's own width sets", () => {

@@ -38,6 +38,7 @@ import {
   setSkeletonHandleDetached,
   setSkeletonHandleOffset,
   setSkeletonPointRibAngleLock,
+  setSkeletonPointRibAngleLockMode,
   setSkeletonPointWidthFromSide,
   setSkeletonPointTotalWidth,
   setSkeletonPointWidthDistribution,
@@ -1002,6 +1003,28 @@ export async function setPanelRibAngleLock(
     pointAddresses,
     (point) => {
       setSkeletonPointRibAngleLock(point, ribAngleLock);
+    },
+    undoLabel
+  );
+}
+
+// What a forced rib holds on to, per point. Only a point that has a lock is
+// written: the mode decides nothing without one, and writing it everywhere would
+// stamp a field on points that never asked for it.
+export async function setPanelRibAngleLockMode(
+  sceneController,
+  pointAddresses,
+  mode,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point) => {
+      if (!point.ribAngleLock) {
+        return;
+      }
+      setSkeletonPointRibAngleLockMode(point, mode);
     },
     undoLabel
   );

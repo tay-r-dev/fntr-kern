@@ -1990,6 +1990,41 @@ hand moving it.
 about 76 degrees is running nearly along the centerline and reaching for an edge
 nearly parallel to it, which is a request with no answer.
 
+### The forced rib, and what it cannot do at once
+
+Reaching for the edge draws the stated width at every master, and it does not
+survive interpolation. The generated outline is stored per master and the font
+blends outlines; nothing regenerates from the skeleton at an intermediate weight.
+One over a cosine curves upward, so blending two outlines blends two reaches and
+lands above the reach the blended angle needs.
+
+Measured on the N of skeletron.fontra while it carried three weights, its
+diagonal cut vertical with the rib turned 72, 51 and 32 degrees across them. Each
+master drew 60. Blended from weight 100 to 900 the drawn width ran 60, 79, 90,
+96, **97**, 96, 91, 85, 78, 69, 60 — 62 per cent over at four tenths of the way.
+A stem held at one length with the same angle range still bulges from 61 to 70.
+
+**No single rule can do both.** The blend is fixed the moment the masters are, so
+any rule that makes every master draw the stated width gives that same bulge.
+Walking a plain half-width does not: a fixed offset along a fixed direction
+blends exactly, and the same two masters then run monotone between the widths
+they each draw.
+
+**So the point says which it holds on to.** `ribAngleLockMode` is `stroke` or
+`rib`, and it decides nothing without a lock.
+
+- **`stroke`** runs the rib one over the cosine of its turn to reach the edge.
+  Every master draws the width its panel states. Weights between two masters
+  whose rib angles differ draw wider. This is the default, and it is the one for
+  a drawing whose masters are the deliverable.
+- **`rib`** keeps the bar the stated width long. A stroke the rib is turned
+  across draws thinner by the cosine of the turn, so the panel's number is the
+  bar's length rather than the stroke's thickness. Every weight between two
+  masters is right. This is the one for a family that interpolates.
+
+Both are tested, in the generator and on the rib bar, so neither can be dropped
+by accident.
+
 **Two fixtures moved and one was measuring the grid.** The two terminal-lock
 fixtures asserted the bar was exactly the stroke width; they now assert it is the
 width over the cosine of 45 degrees, and a third pins the width itself across the
