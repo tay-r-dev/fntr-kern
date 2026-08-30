@@ -9,6 +9,8 @@ import {
   applySerifPreset,
   buildSegmentsFromSkeletonPoints,
   calculateNormalAtSkeletonPoint,
+  getSkeletonRibPosition,
+  skeletonRibReach,
   captureSerifPreset,
   clearSkeletonData,
   deleteSkeletonPoints,
@@ -1552,5 +1554,47 @@ describe("skeleton rib direction at a corner", () => {
     };
     const normal = calculateNormalAtSkeletonPoint(smooth, 1);
     expect(Math.abs(normal.x)).to.be.closeTo(Math.SQRT1_2, 1e-9);
+  });
+});
+
+describe("skeleton rib reach under a forced angle", () => {
+  // A stem at 45 degrees. Its rib is square to it without a lock; forced
+  // horizontal it is turned 45 degrees, so it has to run one over the cosine of
+  // 45 degrees further to reach the same two edges.
+  function stem(ribAngleLock) {
+    const width = { left: 40, right: 40 };
+    return {
+      id: 1,
+      closed: false,
+      defaultWidth: 80,
+      singleSided: null,
+      points: [
+        { id: 2, x: 0, y: 0, type: null, smooth: false, width, ribAngleLock },
+        { id: 3, x: 100, y: 100, type: null, smooth: false, width, ribAngleLock },
+      ],
+    };
+  }
+
+  it("reaches one half-width where no angle is forced", () => {
+    expect(skeletonRibReach(stem(null), 0)).to.equal(1);
+  });
+
+  it("reaches further where the angle is forced", () => {
+    expect(skeletonRibReach(stem("horizontal"), 0)).to.be.closeTo(Math.SQRT2, 1e-9);
+  });
+
+  it("puts the forced bar's ends on the edges the stroke's own width sets", () => {
+    const contour = stem("horizontal");
+    const point = contour.points[0];
+    const left = getSkeletonRibPosition(contour, point, "left");
+    const right = getSkeletonRibPosition(contour, point, "right");
+    // The bar is horizontal and 113 long, and the stroke is still 80 across.
+    expect(left.y).to.equal(0);
+    expect(right.y).to.equal(0);
+    expect(Math.abs(left.x - right.x)).to.be.closeTo(80 * Math.SQRT2, 1);
+    const across = { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
+    expect(
+      Math.abs((left.x - right.x) * across.x + (left.y - right.y) * across.y)
+    ).to.be.closeTo(80, 1);
   });
 });

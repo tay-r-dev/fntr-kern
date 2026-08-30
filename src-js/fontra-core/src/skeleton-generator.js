@@ -15,6 +15,7 @@ import {
   collectTiedRibGroups,
   getEffectiveNormal,
   isStraightControlledSmoothPoint,
+  ribAngleLockReach,
   meanHalfWidth,
   normalizeSkeletonData,
   straightSegmentNormal,
@@ -2797,13 +2798,22 @@ function generateOffsetPointsForSegment(
       startJoin = null;
     }
     const startLocked = !!segment.startPoint?.ribAngleLock;
-    const startOwnNormal = getEffectiveNormal(segment.startPoint, normal);
+    const startJoinPlace = lockedPlacement(
+      segment.startPoint,
+      startNormal,
+      startJoin ? startJoin.normal : normal
+    );
+    const startOwnPlace = lockedPlacement(
+      segment.startPoint,
+      getEffectiveNormal(segment.startPoint, normal),
+      normal
+    );
     const startFullWidth = startLeftHW + startRightHW;
     const startLeftPlace = cornerSidePlacement(
       startJoin,
       1,
-      startNormal,
-      startOwnNormal,
+      startJoinPlace,
+      startOwnPlace,
       startLeftHW,
       startFullWidth,
       startLocked
@@ -2811,8 +2821,8 @@ function generateOffsetPointsForSegment(
     const startRightPlace = cornerSidePlacement(
       startJoin,
       -1,
-      startNormal,
-      startOwnNormal,
+      startJoinPlace,
+      startOwnPlace,
       startRightHW,
       startFullWidth,
       startLocked
@@ -2912,13 +2922,22 @@ function generateOffsetPointsForSegment(
       endJoin = null;
     }
     const endLocked = !!segment.endPoint?.ribAngleLock;
-    const endOwnNormal = getEffectiveNormal(segment.endPoint, normal);
+    const endJoinPlace = lockedPlacement(
+      segment.endPoint,
+      endNormal,
+      endJoin ? endJoin.normal : normal
+    );
+    const endOwnPlace = lockedPlacement(
+      segment.endPoint,
+      getEffectiveNormal(segment.endPoint, normal),
+      normal
+    );
     const endFullWidth = endLeftHW + endRightHW;
     const endLeftPlace = cornerSidePlacement(
       endJoin,
       1,
-      endNormal,
-      endOwnNormal,
+      endJoinPlace,
+      endOwnPlace,
       endLeftHW,
       endFullWidth,
       endLocked
@@ -2926,8 +2945,8 @@ function generateOffsetPointsForSegment(
     const endRightPlace = cornerSidePlacement(
       endJoin,
       -1,
-      endNormal,
-      endOwnNormal,
+      endJoinPlace,
+      endOwnPlace,
       endRightHW,
       endFullWidth,
       endLocked
@@ -3037,6 +3056,7 @@ function generateOffsetPointsForSegment(
       startJoin = calculateCornerJoin(prevSegment, segment);
       startNormal = startJoin.normal;
     }
+    const startUnlockedNormal = startNormal;
     // Apply angle override if set on the point
     startNormal = getEffectiveNormal(segment.startPoint, startNormal);
     // A smooth point is not a corner and keeps the averaged normal at a plain
@@ -3057,6 +3077,7 @@ function generateOffsetPointsForSegment(
       endJoin = calculateCornerJoin(segment, nextSegment);
       endNormal = endJoin.normal;
     }
+    const endUnlockedNormal = endNormal;
     // Apply angle override if set on the point
     endNormal = getEffectiveNormal(segment.endPoint, endNormal);
     // A smooth point is not a corner and keeps the averaged normal at a plain
@@ -3066,15 +3087,37 @@ function generateOffsetPointsForSegment(
     }
     const startLocked = !!segment.startPoint?.ribAngleLock;
     const endLocked = !!segment.endPoint?.ribAngleLock;
-    const startOwnNormal = getEffectiveNormal(segment.startPoint, bezierStartNormal);
-    const endOwnNormal = getEffectiveNormal(segment.endPoint, bezierEndNormal);
+    // The unlocked normal is the one the point would have used with no lock, and
+    // it is what the forced rib is measured against. At a straight-controlled
+    // smooth point that is the straight's normal, not this curve's, which is why
+    // it is read back from the branch above rather than recomputed here.
+    const startJoinPlace = lockedPlacement(
+      segment.startPoint,
+      startNormal,
+      startUnlockedNormal
+    );
+    const endJoinPlace = lockedPlacement(
+      segment.endPoint,
+      endNormal,
+      endUnlockedNormal
+    );
+    const startOwnPlace = lockedPlacement(
+      segment.startPoint,
+      getEffectiveNormal(segment.startPoint, bezierStartNormal),
+      bezierStartNormal
+    );
+    const endOwnPlace = lockedPlacement(
+      segment.endPoint,
+      getEffectiveNormal(segment.endPoint, bezierEndNormal),
+      bezierEndNormal
+    );
     const startFullWidth = startLeftHW + startRightHW;
     const endFullWidth = endLeftHW + endRightHW;
     const startLeftPlace = cornerSidePlacement(
       startJoin,
       1,
-      startNormal,
-      startOwnNormal,
+      startJoinPlace,
+      startOwnPlace,
       startLeftHW,
       startFullWidth,
       startLocked
@@ -3082,8 +3125,8 @@ function generateOffsetPointsForSegment(
     const startRightPlace = cornerSidePlacement(
       startJoin,
       -1,
-      startNormal,
-      startOwnNormal,
+      startJoinPlace,
+      startOwnPlace,
       startRightHW,
       startFullWidth,
       startLocked
@@ -3091,8 +3134,8 @@ function generateOffsetPointsForSegment(
     const endLeftPlace = cornerSidePlacement(
       endJoin,
       1,
-      endNormal,
-      endOwnNormal,
+      endJoinPlace,
+      endOwnPlace,
       endLeftHW,
       endFullWidth,
       endLocked
@@ -3100,8 +3143,8 @@ function generateOffsetPointsForSegment(
     const endRightPlace = cornerSidePlacement(
       endJoin,
       -1,
-      endNormal,
-      endOwnNormal,
+      endJoinPlace,
+      endOwnPlace,
       endRightHW,
       endFullWidth,
       endLocked
@@ -3608,6 +3651,28 @@ function cornerIsHeld(miterScale, halfWidth, fullWidth) {
 }
 
 /**
+ * A normal and how far along it the outline sits, once a forced rib is allowed
+ * for.
+ *
+ * A rib angle lock turns the rib off the perpendicular. The stroke's width is
+ * measured across the centerline and does not change, so the outline point stays
+ * on the edge it was always on, and the forced rib has to reach further along
+ * itself to get there: one half-width over the cosine of the angle it was turned
+ * through. Walking a plain half-width along the forced rib instead put the
+ * outline inside its own edge, and a diagonal stem with a horizontal rib drew
+ * 51 units wide while its panel read 60.
+ *
+ * The same limit the corner uses holds it. A rib turned to within a few degrees
+ * of the centerline reaches for an edge that is almost parallel to it.
+ */
+function lockedPlacement(point, forcedNormal, unlockedNormal) {
+  return {
+    normal: forcedNormal,
+    scale: ribAngleLockReach(point, forcedNormal, unlockedNormal),
+  };
+}
+
+/**
  * Where one side of a corner puts its endpoint.
  *
  * The outer side reaches the apex: along the split line, at one half-width over
@@ -3623,14 +3688,14 @@ function cornerIsHeld(miterScale, halfWidth, fullWidth) {
 function cornerSidePlacement(
   join,
   sideSign,
-  joinNormal,
-  ownNormal,
+  joinPlace,
+  ownPlace,
   halfWidth,
   fullWidth,
   locked
 ) {
   if (!join) {
-    return { normal: joinNormal, scale: 1, perArm: false };
+    return { ...joinPlace, perArm: false };
   }
   if (locked) {
     // A forced rib replaces the split line outright, so there is no meeting
@@ -3639,18 +3704,22 @@ function cornerSidePlacement(
     // corner turns far enough for the two arms to read opposite sides, that
     // gives a flat face across the corner, one rib wide, along the forced angle.
     // Where they read the same side the two land together and are one point.
-    return { normal: ownNormal, scale: 1, perArm: true };
+    return { ...ownPlace, perArm: true };
   }
   if (!cornerSideIsOuter(join.dir1, join.dir2, sideSign)) {
-    return { normal: ownNormal, scale: 1, perArm: true };
+    return { ...ownPlace, perArm: true };
   }
   if (cornerIsHeld(join.miterScale, halfWidth, fullWidth)) {
     // The two edge ends have a gap between them, so joinInnerCornersOnSide finds
     // no crossing and leaves both standing. The straight between them needs no
     // code: two on-curves with no handles between them are a straight line.
-    return { normal: ownNormal, scale: 1, perArm: true };
+    return { ...ownPlace, perArm: true };
   }
-  return { normal: joinNormal, scale: join.miterScale, perArm: false };
+  return {
+    normal: joinPlace.normal,
+    scale: joinPlace.scale * join.miterScale,
+    perArm: false,
+  };
 }
 
 /**

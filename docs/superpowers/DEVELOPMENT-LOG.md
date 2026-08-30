@@ -1965,6 +1965,39 @@ puts it. A gentle corner's two land together and are one point, which is what a
 right angle with a horizontal lock still does. A fold gets a flat face across it,
 one rib wide, along the forced angle.
 
+**The lock was making the stroke thinner instead of cutting it at an angle.**
+Reported on the N of skeletron.fontra: every rib reads 60 and the diagonal draws
+51 while the stems draw 60. Walking a plain half-width along a forced rib puts
+the outline point inside the edge the stroke's own width sets, and by the cosine
+of the angle the rib was turned through. A horizontal rib on a stem at 58 degrees
+loses 15 per cent of the width.
+
+**The stroke's width is measured across the centerline, and a lock does not
+change it.** What a lock changes is the angle the stroke is cut at, and a slanted
+cut across a 60 unit stroke is longer than 60. So the outline point stays on the
+edge it was always on and the forced rib reaches one half-width over the cosine
+of the turn to get there. The N's diagonals now measure 60.2 and 59.6 across,
+against 51.1 before, and its stems are unchanged.
+
+**The rib bar reaches with it**, because it is the cut and not a measure of the
+cut. `skeletonRibReach` is the single copy of the number and the generator
+imports it, so the drawn edge and the bar cannot disagree about where that edge
+is. A drag of the bar's end divides by it: the end covers more ground than the
+width it is stating, and without that a locked rib would widen faster than the
+hand moving it.
+
+**The same limit as the corner holds it**, four half-widths. A rib turned past
+about 76 degrees is running nearly along the centerline and reaching for an edge
+nearly parallel to it, which is a request with no answer.
+
+**Two fixtures moved and one was measuring the grid.** The two terminal-lock
+fixtures asserted the bar was exactly the stroke width; they now assert it is the
+width over the cosine of 45 degrees, and a third pins the width itself across the
+centerline, which is the property that matters. The serif wall fixture compared
+every wall against the first one; on a tilted stem no two walls round to the same
+distance, so it was measuring the grid. It compares each wall against its own
+counterpart now, and holds the half unit it always held.
+
 **The sign flip is a discontinuity and it is not new.** The forced normal jumps
 from one direction to its opposite as an arm's own normal crosses square to the
 forced axis, so the edge end jumps a full stroke width. `getEffectiveNormal` has

@@ -1776,12 +1776,15 @@ describe("skeleton-generator rib angle lock", () => {
     expect(ends[0].y).to.not.equal(ends[1].y);
   });
 
+  // The stroke is 80 wide across the centerline and a lock does not change
+  // that. A rib turned 45 degrees off the perpendicular has to be 80 over the
+  // cosine of 45 degrees long to reach the same two edges, which is 113.
   it("locks the terminal rib vertical", () => {
     const ends = terminalOnCurves(generateFromSkeleton(diagonalSkeleton("vertical")));
     expect(ends).to.have.length(2);
     expect(ends[0].x).to.equal(100);
     expect(ends[1].x).to.equal(100);
-    expect(Math.abs(ends[0].y - ends[1].y)).to.equal(80);
+    expect(Math.abs(ends[0].y - ends[1].y)).to.be.closeTo(80 * Math.SQRT2, 1);
   });
 
   it("locks the terminal rib horizontal", () => {
@@ -1789,7 +1792,21 @@ describe("skeleton-generator rib angle lock", () => {
     expect(ends).to.have.length(2);
     expect(ends[0].y).to.equal(100);
     expect(ends[1].y).to.equal(100);
-    expect(Math.abs(ends[0].x - ends[1].x)).to.equal(80);
+    expect(Math.abs(ends[0].x - ends[1].x)).to.be.closeTo(80 * Math.SQRT2, 1);
+  });
+
+  // What the rib length is for. The two edges stay 80 apart across the
+  // centerline whichever way the rib is turned, so a locked stem is as thick as
+  // its panel says.
+  it("keeps the stroke 80 wide across the centerline under a lock", () => {
+    for (const lock of [null, "horizontal", "vertical"]) {
+      const ends = terminalOnCurves(generateFromSkeleton(diagonalSkeleton(lock)));
+      const across = { x: Math.SQRT1_2, y: -Math.SQRT1_2 };
+      const width = Math.abs(
+        (ends[0].x - ends[1].x) * across.x + (ends[0].y - ends[1].y) * across.y
+      );
+      expect(width, `lock ${lock}`).to.be.closeTo(80, 1);
+    }
   });
 
   // The donor gated this on the flat cap; here it supersedes the cap style, so
@@ -2117,12 +2134,18 @@ describe("skeleton-generator serif on a stroke the axis is not square to", () =>
 
   it("leaves both walls where the stroke alone put them", () => {
     for (const tilt of [0, 10, 20, 30, 40]) {
-      const [plain] = wallDistances(stem(tilt, { serif: false }));
-      for (const distance of wallDistances(stem(tilt))) {
+      // Wall against the same wall, not against the first one. Every wall is
+      // emitted on the integer grid, so on a tilted stem no two of them read
+      // exactly the same distance and comparing across them measures the grid
+      // rather than the serif.
+      const plain = wallDistances(stem(tilt, { serif: false }));
+      const serifed = wallDistances(stem(tilt));
+      expect(serifed.length, `tilt ${tilt}`).to.equal(plain.length);
+      serifed.forEach((distance, index) => {
         // Half a unit of slack: the rib ends are emitted on the integer grid
         // and the serif's release is not.
-        expect(Math.abs(distance - plain), `tilt ${tilt}`).to.be.below(0.51);
-      }
+        expect(Math.abs(distance - plain[index]), `tilt ${tilt}`).to.be.below(0.51);
+      });
     }
   });
 });
@@ -3226,19 +3249,52 @@ describe("skeleton-generator corner meeting place", () => {
     }
   });
 
-  it("puts a corner on its forced rib at a plain half-width", () => {
-    // A rib angle lock replaces the line that splits the angle between the two
-    // arms outright, so there is no apex to reach and both arms' edge ends land
-    // on the forced rib. One on-curve per side, at the half-width.
-    const locked = rightAngleSkeleton();
-    locked.contours[0].points[1].ribAngleLock = "horizontal";
-    const result = generateFromSkeleton(locked);
-    const left = cornerOnCurves(result, 3, "left");
-    const right = cornerOnCurves(result, 3, "right");
-    expect(left).to.have.lengthOf(1);
-    expect(right).to.have.lengthOf(1);
-    expect([left[0].x, left[0].y]).to.deep.equal([140, 0]);
-    expect([right[0].x, right[0].y]).to.deep.equal([60, 0]);
+  it("puts a locked corner on its forced rib, out at the edge it belongs to", () => {
+    // Arms (0,0) -> (100,0) -> (0,100), a 135 degree turn, with the corner's rib
+    // forced vertical. Each arm ends where the vertical through the skeleton
+    // point crosses that arm's own edge. The arriving arm runs along +x, so its
+    // edges are the lines y = -40 and y = 40 and the vertical meets them at
+    // (100, -40) and (100, 40). The leaving arm is at 45 degrees, so its edges
+    // are 40 over the cosine of 45 degrees up and down, which is 57.
+    const width = { left: 40, right: 40 };
+    const result = generateFromSkeleton({
+      version: 1,
+      nextId: 5,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80,
+          singleSided: null,
+          points: [
+            { id: 2, x: 0, y: 0, type: null, smooth: false, width },
+            {
+              id: 3,
+              x: 100,
+              y: 0,
+              type: null,
+              smooth: false,
+              width,
+              ribAngleLock: "vertical",
+            },
+            { id: 4, x: 0, y: 100, type: null, smooth: false, width },
+          ],
+        },
+      ],
+      generated: [],
+    });
+    // The side whose two edges leave a gap keeps both of them, and both stand on
+    // the vertical through the skeleton point.
+    const gapped = cornerOnCurves(result, 3, "left");
+    expect(gapped).to.have.lengthOf(2);
+    expect(gapped.map((point) => point.x)).to.deep.equal([100, 100]);
+    expect(gapped.map((point) => Math.round(Math.abs(point.y))).sort()).to.deep.equal([
+      40, 57,
+    ]);
+    // The other side's two edges overlap, so it is cut at their crossing like
+    // any other inner corner. A lock decides the rib, not whether an overlap is
+    // trimmed.
+    expect(cornerOnCurves(result, 3, "right")).to.have.lengthOf(1);
   });
 
   it("gives a locked corner a flat face one rib wide where it folds", () => {

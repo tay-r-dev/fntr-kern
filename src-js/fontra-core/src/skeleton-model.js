@@ -2763,7 +2763,11 @@ export function getSkeletonRibPosition(contour, point, side) {
       ? leftHalfWidth + rightHalfWidth
       : getEffectiveRibHalfWidth(contour, point, side);
   const nudge = getSkeletonPointNudge(point, side, defaultWidth);
-  return projectSkeletonRibPoint(point, normal, halfWidth, side, nudge);
+  // A forced rib is the cut across the stroke, not a measure of it, so its end
+  // reaches the edge the stroke's own width puts there rather than stopping at
+  // the width itself.
+  const reach = skeletonRibReach(contour, pointIndex >= 0 ? pointIndex : point.id);
+  return projectSkeletonRibPoint(point, normal, halfWidth * reach, side, nudge);
 }
 
 // Both ends of one point's rib. In a single-sided contour one end is the
@@ -2876,6 +2880,7 @@ export function getSkeletonRibAddress(skeletonData, contourId, pointId, side) {
     side,
     defaultWidth: contour.defaultWidth,
     normal: calculateNormalAtSkeletonPoint(contour, pointIndex),
+    ribReach: skeletonRibReach(contour, pointIndex),
   };
 }
 
@@ -2885,6 +2890,9 @@ export function createSkeletonRibExecutor(
   { interpolationAxis = null, carryNudgeToHandles = false } = {}
 ) {
   const { contour, point, side, defaultWidth, normal } = address;
+  // A forced rib's end stands further out than the width it states, so a drag
+  // of that end covers more ground than the width it is changing.
+  const ribReach = address.ribReach || 1;
   const leftHalfWidth = getSkeletonPointHalfWidth(point, defaultWidth, "left");
   const rightHalfWidth = getSkeletonPointHalfWidth(point, defaultWidth, "right");
   const isSingleSided =
@@ -2935,7 +2943,8 @@ export function createSkeletonRibExecutor(
         };
       }
       const normalSign = side === "left" ? 1 : -1;
-      const normalDelta = normalSign * (delta.x * normal.x + delta.y * normal.y);
+      const normalDelta =
+        (normalSign * (delta.x * normal.x + delta.y * normal.y)) / ribReach;
       const tangentDelta = delta.x * tangent.x + delta.y * tangent.y;
       const tangentOnly = forceTangent || constrainMode === "tangent";
       const halfWidth = tangentOnly
@@ -3233,7 +3242,40 @@ export function collectTiedRibGroups(
 
 // The generic normal plus the skeleton's per-point rib-angle override, which is
 // a pure post-transform of the result and so composes after it.
-export function calculateNormalAtSkeletonPoint(skeletonContour, pointIndexOrPointId) {
+// How far a forced rib may reach for its edge, as a multiple of the half-width.
+// Four is two full stroke widths, the same bound the corner join and the
+// ordinary-outline offset drag both hold. It bites where the rib is turned past
+// about 76 degrees, which is a rib running nearly along the centerline and
+// reaching for an edge nearly parallel to it.
+export const RIB_ANGLE_LOCK_LIMIT = 4;
+
+/**
+ * How far along a forced rib the outline sits, as a multiple of the half-width.
+ *
+ * A rib angle lock turns the rib off the perpendicular. The stroke's width is
+ * measured across the centerline and a lock does not change it, so the outline
+ * point stays on the edge it was always on and the forced rib has to reach
+ * further along itself to get there: one over the cosine of the angle it was
+ * turned through. One is the answer wherever no lock is in force.
+ *
+ * The single copy. The generator imports it, so the drawn edge and the rib bar
+ * cannot disagree about where that edge is (rail R-B).
+ */
+export function ribAngleLockReach(point, forcedNormal, unlockedNormal) {
+  if (!point?.ribAngleLock) {
+    return 1;
+  }
+  const cosTurn = Math.abs(
+    forcedNormal.x * unlockedNormal.x + forcedNormal.y * unlockedNormal.y
+  );
+  return cosTurn > 1 / RIB_ANGLE_LOCK_LIMIT ? 1 / cosTurn : RIB_ANGLE_LOCK_LIMIT;
+}
+
+// The rib's direction at a point, both before and after any forced angle, and
+// how far along the forced one the outline sits. One walk of the contour
+// answers all three, and the two exported readers below each take what they
+// need from it.
+function skeletonRibGeometry(skeletonContour, pointIndexOrPointId) {
   const points = skeletonContour?.points || [];
   const pointIndex =
     pointIndexOrPointId >= 0 && pointIndexOrPointId < points.length
@@ -3243,11 +3285,31 @@ export function calculateNormalAtSkeletonPoint(skeletonContour, pointIndexOrPoin
   // further out than any half-width, so the bar cannot end on the outline
   // whatever direction it takes. It states the width of the arriving stroke
   // instead. Every other point keeps the answer it had.
-  const normal =
+  const unlocked =
     cornerArrivingNormal(points, skeletonContour?.closed, pointIndex) ??
     calculateContourNormalAtPoint(points, skeletonContour?.closed, pointIndex);
   const point = points[pointIndex];
-  return point && !point.type ? getEffectiveNormal(point, normal) : normal;
+  if (!point || point.type) {
+    return { normal: unlocked, unlocked, reach: 1 };
+  }
+  const normal = getEffectiveNormal(point, unlocked);
+  return { normal, unlocked, reach: ribAngleLockReach(point, normal, unlocked) };
+}
+
+export function calculateNormalAtSkeletonPoint(skeletonContour, pointIndexOrPointId) {
+  return skeletonRibGeometry(skeletonContour, pointIndexOrPointId).normal;
+}
+
+/**
+ * How far out the rib bar's end sits, as a multiple of the half-width.
+ *
+ * One everywhere but a point whose rib angle is forced. There the bar is the
+ * cut across the stroke, so it is longer than the stroke is wide and its ends
+ * still land on the outline. A drag of that end divides by this to get back to
+ * the width it is stating.
+ */
+export function skeletonRibReach(skeletonContour, pointIndexOrPointId) {
+  return skeletonRibGeometry(skeletonContour, pointIndexOrPointId).reach;
 }
 
 export function projectSkeletonRibPoint(point, normal, halfWidth, side, nudge = 0) {
