@@ -129,21 +129,6 @@ as outline points and runs a straight line between them. That side is then two o
 This is Inkscape's rule. Choosing among several crossings is a choice that can change from one
 frame to the next while the designer drags, and the outline is rebuilt on every frame of a drag.
 
-### The first build does not do this
-
-The plan at `docs/superpowers/plans/2026-08-30-corner-intersection.md` builds the inner side with
-the same apex the outer side uses, mirrored. That is the crossing of the two arms' directions
-rather than of the two cubics. It is one formula, it is symmetric with the outer side, and it needs
-no change to the way the outline is assembled.
-
-The crossing of the two cubics described here costs a great deal more. Each arm must first emit its
-own endpoint, a later pass must find the crossing, and a root find between two cubics can return a
-different crossing from one frame to the next while the designer drags.
-
-The plan measures how far the emitted cubic departs from the true edge. Build the true crossing
-only if that number is large enough to see. Do not build it on the argument that it is more
-correct.
-
 ### A cut owes the rest of the editor the uncut curve
 
 Cutting makes the emitted cubic shorter than the cubic the generator solved. Anything that
