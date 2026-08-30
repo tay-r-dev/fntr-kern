@@ -4036,17 +4036,32 @@ export function getSkeletonSegmentHandles(contour, point, role) {
 // on screen IS the curve the pin governs and there is nothing to publish. Null
 // here is the ordinary answer, and the caller falls back to the emitted segment,
 // which is the right one to measure.
+// The uncut segment a point publishes, for the side of it being measured.
+//
+// A trimmed terminal is cut at one end and publishes one snapshot, under
+// `constructionSegment`. An inner corner is cut on BOTH sides of a single point
+// — the arm arriving at it and the arm leaving it are each shortened — so it
+// publishes one snapshot per arm and the carrier's own position picks between
+// them. Index 0 means the point starts the segment being measured, so the arm
+// leaving it is the one that was cut; index 3 means it ends it.
+function storedConstructionSegment(item, index) {
+  const perArm =
+    index === 0 ? item?.constructionSegmentOut : item?.constructionSegmentIn;
+  const stored = perArm ?? item?.constructionSegment;
+  return stored?.length === 4 ? stored : null;
+}
+
 function untrimmedConstructionSegment(segmentPoints, provenance) {
   if (segmentPoints?.length !== 4) {
     return null;
   }
   const carrier = provenance?.findIndex(
-    (item) => item?.constructionSegment?.length === 4
+    (item, index) => storedConstructionSegment(item, index) !== null
   );
   if (carrier === undefined || carrier < 0) {
     return null;
   }
-  const stored = provenance[carrier].constructionSegment;
+  const stored = storedConstructionSegment(provenance[carrier], carrier);
   if (
     stored.some((point) => !Number.isFinite(point?.x) || !Number.isFinite(point?.y))
   ) {

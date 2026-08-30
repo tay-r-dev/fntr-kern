@@ -3061,4 +3061,115 @@ describe("skeleton-generator corner meeting place", () => {
     const points = onCurvesOf(generateFromSkeleton(rightAngleSkeleton(20)));
     expect(hasPoint(points, 120, -20), "outer corner at (120, -20)").to.be.true;
   });
+
+  // Provenance is returned beside the contours, not stamped on the points: one
+  // pointMap per generated contour, in point order.
+  function cornerOnCurves(result, skeletonPointId, side) {
+    const found = [];
+    result.contours.forEach((contour, contourIndex) => {
+      const pointMap =
+        result.provenance.find((item) => item.generatedContourIndex === contourIndex)
+          ?.pointMap ?? [];
+      contour.points.forEach((point, pointIndex) => {
+        const provenance = pointMap[pointIndex];
+        if (
+          !point.type &&
+          provenance?.skeletonPointId === skeletonPointId &&
+          provenance?.side === side
+        ) {
+          found.push({ ...point, provenance });
+        }
+      });
+    });
+    return found;
+  }
+
+  // Two arms leaning gently into a right angle. Their two inner edges overlap
+  // and cross once, so the inner side is cut back to that crossing.
+  function gentleCornerSkeleton() {
+    const width = { left: 40, right: 40 };
+    return {
+      version: 1,
+      nextId: 9,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80,
+          singleSided: null,
+          points: [
+            { id: 2, x: 0, y: 0, type: null, smooth: false, width },
+            { id: 5, x: 35, y: 0, type: "cubic" },
+            { id: 6, x: 70, y: 0, type: "cubic" },
+            { id: 3, x: 100, y: 0, type: null, smooth: false, width },
+            { id: 7, x: 100, y: 30, type: "cubic" },
+            { id: 8, x: 100, y: 70, type: "cubic" },
+            { id: 4, x: 100, y: 100, type: null, smooth: false, width },
+          ],
+        },
+      ],
+      generated: [],
+    };
+  }
+
+  // The same right angle with both arms bowed hard. The two inner edges separate
+  // before they would meet, so there is no crossing to cut back to.
+  function bowedCornerSkeleton() {
+    const width = { left: 40, right: 40 };
+    return {
+      version: 1,
+      nextId: 9,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80,
+          singleSided: null,
+          points: [
+            { id: 2, x: 0, y: 40, type: null, smooth: false, width },
+            { id: 5, x: 40, y: 40, type: "cubic" },
+            { id: 6, x: 70, y: 0, type: "cubic" },
+            { id: 3, x: 100, y: 0, type: null, smooth: false, width },
+            { id: 7, x: 100, y: 40, type: "cubic" },
+            { id: 8, x: 60, y: 100, type: "cubic" },
+            { id: 4, x: 40, y: 100, type: null, smooth: false, width },
+          ],
+        },
+      ],
+      generated: [],
+    };
+  }
+
+  it("gives every side of a corner exactly one on-curve point", () => {
+    const result = generateFromSkeleton(gentleCornerSkeleton());
+    expect(cornerOnCurves(result, 3, "left")).to.have.lengthOf(1);
+    expect(cornerOnCurves(result, 3, "right")).to.have.lengthOf(1);
+  });
+
+  it("cuts the inner side back to where its two edges really cross", () => {
+    // The inner edges here are the lines y = 40 and x = 60, which cross at
+    // (60, 40). Projecting a half-width along the split line would put the
+    // point at about (72, 28) instead.
+    const inner = cornerOnCurves(
+      generateFromSkeleton(gentleCornerSkeleton()),
+      3,
+      "right"
+    );
+    expect(inner).to.have.lengthOf(1);
+    expect(inner[0].x).to.be.closeTo(60, 1);
+    expect(inner[0].y).to.be.closeTo(40, 1);
+  });
+
+  it("keeps both edge ends where the inner edges never cross", () => {
+    const inner = cornerOnCurves(
+      generateFromSkeleton(bowedCornerSkeleton()),
+      3,
+      "right"
+    );
+    expect(inner).to.have.lengthOf(2);
+    expect(inner.map((point) => point.provenance.arm).sort()).to.deep.equal([
+      "in",
+      "out",
+    ]);
+  });
 });

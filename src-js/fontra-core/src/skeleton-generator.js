@@ -374,11 +374,16 @@ function getCornerSide(point, side) {
 // generated[].pointMap and stripped from the output points. Points that get
 // replaced by later stages (corner rounding, caps) simply lose provenance and
 // fall back to the side-less annotator — they are not editable targets.
-function pointProvenance(sourcePoint, side, role, nudge = null) {
+function pointProvenance(sourcePoint, side, role, nudge = null, arm = null) {
   if (!sourcePoint?._sourcePointId || (side !== "left" && side !== "right")) {
     return undefined;
   }
   const provenance = { skeletonPointId: sourcePoint._sourcePointId, side, role };
+  if (arm) {
+    // Two on-curves of one side of one skeleton point, one per arm. Without
+    // this they say exactly the same thing and no reader can name one of them.
+    provenance.arm = arm;
+  }
   if (
     role === "onCurve" &&
     nudge &&
@@ -397,14 +402,15 @@ function buildGeneratedOnCurve(
   cornerRoundBaseOverride = undefined,
   side = null,
   nudge = null,
-  constructionAnchor = null
+  constructionAnchor = null,
+  arm = null
 ) {
   const generatedPoint = {
     x: basePoint.x,
     y: basePoint.y,
     smooth,
   };
-  const provenance = pointProvenance(skeletonPoint, side, "onCurve", nudge);
+  const provenance = pointProvenance(skeletonPoint, side, "onCurve", nudge, arm);
   if (provenance) {
     generatedPoint._provenance = provenance;
   }
@@ -1206,6 +1212,321 @@ function findNextOnCurveIndex(points, index, isClosed) {
   return null;
 }
 
+// How near two crossings must be to count as the same one. Curve-curve
+// intersection subdivides, so a single crossing comes back as a small cluster of
+// parameter pairs. Counting those as several would send an ordinary corner down
+// the fallback.
+const CORNER_CROSSING_TOLERANCE = 0.5;
+
+// An inner corner's two on-curves stand at the two arms' edge ends, which is the
+// only place two adjacent on-curves name one skeleton point and one side.
+function isInnerCornerPair(first, second) {
+  return (
+    !!first &&
+    !!second &&
+    !first.type &&
+    !second.type &&
+    first._provenance?.arm === "in" &&
+    second._provenance?.arm === "out" &&
+    first._provenance?.skeletonPointId === second._provenance?.skeletonPointId &&
+    first._provenance?.side === second._provenance?.side
+  );
+}
+
+// Every place the two curves meet, as a parameter on each, with clusters of
+// subdivision hits counted once. A straight is solved outright rather than
+// elevated to a cubic: the exact answer costs less than the search and cannot
+// report a cluster.
+function cornerCurveCrossings(curve1, curve2) {
+  const toPoint = (curve, t) =>
+    curve.length === 4
+      ? new Bezier(curve).get(t)
+      : vector.interpolateVectors(curve[0], curve[1], t);
+  let candidates = [];
+  if (curve1.length === 2 && curve2.length === 2) {
+    const hit = vector.intersect(curve1[0], curve1[1], curve2[0], curve2[1]);
+    if (hit) {
+      candidates.push({ t1: hit.t1, t2: hit.t2 });
+    }
+  } else if (curve1.length === 4 && curve2.length === 4) {
+    for (const pair of new Bezier(curve1).intersects(new Bezier(curve2))) {
+      const [t1, t2] = String(pair).split("/").map(Number);
+      candidates.push({ t1, t2 });
+    }
+  } else {
+    // One curve, one straight. bezier-js reports the parameter on the curve
+    // only, so the straight's own parameter comes back from a projection.
+    const cubicFirst = curve1.length === 4;
+    const cubic = cubicFirst ? curve1 : curve2;
+    const line = cubicFirst ? curve2 : curve1;
+    const span = vector.subVectors(line[1], line[0]);
+    const spanLengthSquared = span.x * span.x + span.y * span.y;
+    if (spanLengthSquared < 1e-12) {
+      return [];
+    }
+    for (const t of new Bezier(cubic).intersects({ p1: line[0], p2: line[1] })) {
+      const at = new Bezier(cubic).get(Number(t));
+      const along =
+        ((at.x - line[0].x) * span.x + (at.y - line[0].y) * span.y) / spanLengthSquared;
+      candidates.push(
+        cubicFirst ? { t1: Number(t), t2: along } : { t1: along, t2: Number(t) }
+      );
+    }
+  }
+
+  const crossings = [];
+  for (const candidate of candidates) {
+    if (!Number.isFinite(candidate.t1) || !Number.isFinite(candidate.t2)) {
+      continue;
+    }
+    // The two edges overlap, so their crossing lies inside both of the drawn
+    // pieces. A meeting outside one of them is the carried-on line meeting
+    // something the outline never draws.
+    if (candidate.t1 < 0 || candidate.t1 > 1 || candidate.t2 < 0 || candidate.t2 > 1) {
+      continue;
+    }
+    const point = toPoint(curve1, candidate.t1);
+    if (
+      crossings.some(
+        (other) => vector.distance(other.point, point) <= CORNER_CROSSING_TOLERANCE
+      )
+    ) {
+      continue;
+    }
+    crossings.push({ ...candidate, point });
+  }
+  return crossings;
+}
+
+/**
+ * Replace each inner corner's two on-curve points with the one place its two
+ * curves cross, and cut both curves back to it.
+ *
+ * A corner's inner side is where the two arms' edges overlap. The crossing there
+ * is drawn geometry, so it is found rather than guessed at: both curves bend
+ * toward each other, so a crossing of their end directions always sits too far
+ * out and on a strongly curved arm the corner sticks through the stroke.
+ *
+ * Run before roundSharpCornersOnSide. Rounding reads the corner this pass leaves
+ * behind.
+ *
+ * Where the two do not cross exactly once, both edge ends are kept and the
+ * straight between them is the corner. Choosing among several crossings is a
+ * choice that can change between two frames of a drag, and the outline is
+ * rebuilt on every frame.
+ */
+function joinInnerCornersOnSide(sidePoints, { isClosed }) {
+  let points = sidePoints.map((point) => ({ ...point }));
+  // The element the list started on, so a closed side can be turned back to face
+  // the way it came in. A merge can swallow it, and then the point that replaced
+  // it is the start.
+  const originalStart = points[0];
+  let guard = points.length;
+
+  while (guard-- > 0) {
+    const pairIndex = findInnerCornerPair(points, isClosed);
+    if (pairIndex === null) {
+      break;
+    }
+    const merged = mergeInnerCornerPair(points, pairIndex, isClosed);
+    if (!merged) {
+      // No usable crossing. Both edge ends stay and the straight between them is
+      // the corner. Clear the arm labels on the way past so the scan does not
+      // come back to this pair.
+      const first = points[pairIndex];
+      const second = points[(pairIndex + 1) % points.length];
+      for (const point of [first, second]) {
+        if (point._provenance) {
+          point._provenance = { ...point._provenance, heldArm: point._provenance.arm };
+          delete point._provenance.arm;
+        }
+      }
+      continue;
+    }
+    points = merged;
+  }
+
+  // Put the arm labels back on any pair that kept both of its points.
+  for (const point of points) {
+    if (point._provenance?.heldArm) {
+      point._provenance.arm = point._provenance.heldArm;
+      delete point._provenance.heldArm;
+    }
+  }
+
+  if (isClosed && originalStart) {
+    const startIndex = points.indexOf(originalStart);
+    if (startIndex > 0) {
+      points = [...points.slice(startIndex), ...points.slice(0, startIndex)];
+    }
+  }
+  return points;
+}
+
+function findInnerCornerPair(points, isClosed) {
+  const last = isClosed ? points.length : points.length - 1;
+  for (let i = 0; i < last; i++) {
+    if (isInnerCornerPair(points[i], points[(i + 1) % points.length])) {
+      return i;
+    }
+  }
+  return null;
+}
+
+// The points from `from` to `to` going forward, both ends excluded, wrapping
+// around the end of a closed side.
+function pointsBetween(points, from, to) {
+  const between = [];
+  let cursor = (from + 1) % points.length;
+  while (cursor !== to && between.length < points.length) {
+    between.push(points[cursor]);
+    cursor = (cursor + 1) % points.length;
+  }
+  return between;
+}
+
+// The indices from `from` to `to` going forward, both ends included.
+function indexSpan(points, from, to) {
+  const span = [from];
+  let cursor = (from + 1) % points.length;
+  while (span.length <= points.length) {
+    span.push(cursor);
+    if (cursor === to) {
+      return span;
+    }
+    cursor = (cursor + 1) % points.length;
+  }
+  return span;
+}
+
+function mergeInnerCornerPair(points, pairIndex, isClosed) {
+  const arrivingEnd = pairIndex;
+  const leavingStart = (pairIndex + 1) % points.length;
+  const prevOn = findPrevOnCurveIndex(points, arrivingEnd, isClosed);
+  const nextOn = findNextOnCurveIndex(points, leavingStart, isClosed);
+  if (prevOn === null || nextOn === null || prevOn === leavingStart) {
+    return null;
+  }
+
+  const arrivingHandles = pointsBetween(points, prevOn, arrivingEnd);
+  const leavingHandles = pointsBetween(points, leavingStart, nextOn);
+  if (
+    (arrivingHandles.length !== 0 && arrivingHandles.length !== 2) ||
+    (leavingHandles.length !== 0 && leavingHandles.length !== 2)
+  ) {
+    return null;
+  }
+
+  const arriving = [points[prevOn], ...arrivingHandles, points[arrivingEnd]];
+  const leaving = [points[leavingStart], ...leavingHandles, points[nextOn]];
+  const crossings = cornerCurveCrossings(
+    arriving.map((point) => ({ x: point.x, y: point.y })),
+    leaving.map((point) => ({ x: point.x, y: point.y }))
+  );
+  if (crossings.length !== 1) {
+    return null;
+  }
+  const { t1, t2, point: crossing } = crossings[0];
+
+  // Everything the two edge ends carried that describes the corner itself, not
+  // where it sat: the rounding stamped on it at emission, and its smoothness.
+  // Corner rounding runs after this pass and reads them off the point it finds.
+  const arrivingPoint = points[arrivingEnd];
+  const crossingPoint = {
+    x: Math.round(crossing.x),
+    y: Math.round(crossing.y),
+    smooth: arrivingPoint.smooth === true,
+  };
+  if (arrivingPoint.cornerDistance !== undefined) {
+    crossingPoint.cornerDistance = arrivingPoint.cornerDistance;
+  }
+  if (arrivingPoint.cornerCurvature !== undefined) {
+    crossingPoint.cornerCurvature = arrivingPoint.cornerCurvature;
+  }
+  const source = arrivingPoint._provenance;
+  if (source) {
+    const { arm: _arm, ...rest } = source;
+    crossingPoint._provenance = { ...rest };
+    // The cut leaves both curves shorter than the ones the generator solved.
+    // Anything measuring a cut curve would then be talking about a different
+    // curve from the one a pin is reproduced on, and the curvature gizmo's first
+    // drag would jump. One reader resolves these; see skeleton-model.js.
+    if (arriving.length === 4) {
+      crossingPoint._provenance.constructionSegmentIn = arriving.map((point) => ({
+        x: point.x,
+        y: point.y,
+      }));
+    }
+    if (leaving.length === 4) {
+      crossingPoint._provenance.constructionSegmentOut = leaving.map((point) => ({
+        x: point.x,
+        y: point.y,
+      }));
+    }
+  }
+
+  const cutArriving = cutCurveAt(arriving, t1, "left");
+  const cutLeaving = cutCurveAt(leaving, t2, "right");
+
+  const rewritten = [
+    points[prevOn],
+    ...cutArriving,
+    crossingPoint,
+    ...cutLeaving,
+    points[nextOn],
+  ];
+
+  const span = indexSpan(points, prevOn, nextOn);
+  const replaced = new Set(span);
+  const kept = [];
+  for (let i = 0; i < points.length; i++) {
+    if (!replaced.has(i)) {
+      kept.push(points[i]);
+    }
+  }
+  if (span[0] <= span[span.length - 1]) {
+    return [...points.slice(0, prevOn), ...rewritten, ...points.slice(nextOn + 1)];
+  }
+  // The span wrapped the end of a closed side. The result starts on the piece
+  // that follows it, which a closed contour is free to do; the caller turns the
+  // list back to face the way it came in.
+  return [...rewritten, ...kept];
+}
+
+// The handles of the piece of `curve` on one side of `t`, with their own
+// provenance kept in place and their axes restamped, because a cut turns a
+// handle onto a new direction.
+function cutCurveAt(curve, t, half) {
+  if (curve.length !== 4) {
+    return [];
+  }
+  const split = new Bezier(curve.map((point) => ({ x: point.x, y: point.y }))).split(t);
+  const kept = (half === "left" ? split.left : split.right).points;
+  // Handle 1 keeps handle 1's address whichever end the cut came from, the same
+  // rule the round-cap split follows.
+  return [1, 2].map((index) => {
+    const anchor = index === 1 ? kept[0] : kept[3];
+    const handle = {
+      ...curve[index],
+      x: Math.round(kept[index].x),
+      y: Math.round(kept[index].y),
+      type: "cubic",
+    };
+    // A cut turns a handle onto a new direction, and a handle carrying a stale
+    // axis leaves every reader measuring along a line the curve no longer takes.
+    const axis = vector.normalizeVector({
+      x: kept[index].x - anchor.x,
+      y: kept[index].y - anchor.y,
+    });
+    if (Number.isFinite(axis.x) && Number.isFinite(axis.y)) {
+      handle._axis = { x: axis.x, y: axis.y };
+    } else {
+      delete handle._axis;
+    }
+    return handle;
+  });
+}
+
 function roundSharpCornersOnSide(sidePoints, { isClosed }) {
   const points = sidePoints.map((point) => ({ ...point }));
   if (points.length < 3) {
@@ -1598,8 +1919,11 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
     rightSide.push(...offsetPoints.right);
   }
 
-  let roundedLeftSide = roundSharpCornersOnSide(leftSide, { isClosed });
-  let roundedRightSide = roundSharpCornersOnSide(rightSide, { isClosed });
+  const joinedLeftSide = joinInnerCornersOnSide(leftSide, { isClosed });
+  const joinedRightSide = joinInnerCornersOnSide(rightSide, { isClosed });
+
+  let roundedLeftSide = roundSharpCornersOnSide(joinedLeftSide, { isClosed });
+  let roundedRightSide = roundSharpCornersOnSide(joinedRightSide, { isClosed });
 
   if (isClosed) {
     // For closed skeleton: TWO separate contours (outer and inner)
@@ -2363,25 +2687,33 @@ function generateOffsetPointsForSegment(
     // - For open skeletons: only for the first segment
     // - For closed skeletons: for all segments (each adds its start)
     const shouldAddStart = isClosed || isFirst;
-    if (shouldAddStart) {
-      let startJoin =
-        !prevSegment ||
-        (isFirst && !isClosed) ||
-        // Direction comes from this straight, not from a miter average with the
-        // one handle on the far side.
-        isStraightControlledSmoothPoint(segment.startPoint, segment, prevSegment)
-          ? null
-          : calculateCornerJoin(prevSegment, segment);
-      let startNormal = startJoin ? startJoin.normal : normal;
-      // Apply angle override if set on the point
-      startNormal = getEffectiveNormal(segment.startPoint, startNormal);
-      // A forced rib angle replaces the split line outright. Both arms' edge
-      // ends then land on the forced rib and there is nothing to carry on to.
-      if (startJoin && startNormal !== startJoin.normal) {
-        startJoin = null;
-      }
-      const startLeftScale = cornerSideScale(startJoin, 1);
-      const startRightScale = cornerSideScale(startJoin, -1);
+    let startJoin =
+      !prevSegment ||
+      (isFirst && !isClosed) ||
+      // Direction comes from this straight, not from a miter average with the
+      // one handle on the far side.
+      isStraightControlledSmoothPoint(segment.startPoint, segment, prevSegment)
+        ? null
+        : calculateCornerJoin(prevSegment, segment);
+    let startNormal = startJoin ? startJoin.normal : normal;
+    // Apply angle override if set on the point
+    startNormal = getEffectiveNormal(segment.startPoint, startNormal);
+    // A forced rib angle replaces the split line outright. Both arms' edge
+    // ends then land on the forced rib and there is nothing to carry on to.
+    // A smooth point is not a corner: the centerline does not change direction
+    // there, so it keeps the averaged normal at a plain half-width.
+    if (startJoin && (startNormal !== startJoin.normal || segment.startPoint.smooth)) {
+      startJoin = null;
+    }
+    const startLeftPlace = cornerSidePlacement(startJoin, 1, startNormal, normal);
+    const startRightPlace = cornerSidePlacement(startJoin, -1, startNormal, normal);
+    // An inner side needs both arms' edge ends, so the arm that does not carry
+    // the shared on-curve today adds its own.
+    const addStartLeft = shouldAddStart || startLeftPlace.inner;
+    const addStartRight = shouldAddStart || startRightPlace.inner;
+    if (addStartLeft || addStartRight) {
+      const startLeftScale = startLeftPlace.scale;
+      const startRightScale = startRightPlace.scale;
 
       // Copy smooth property from skeleton point, round to UPM grid
       // Use per-point half-widths for left and right sides
@@ -2394,24 +2726,27 @@ function generateOffsetPointsForSegment(
       );
       const startLeftBase = projectPoint(
         segment.startPoint,
-        startNormal,
+        startLeftPlace.normal,
         startLeftHW,
         1,
         startLeftScale
       );
       const startLeftPt = translateRibPoint(startLeftBase, startLeftNudge);
-      left.push(
-        buildGeneratedOnCurve(
-          startLeftPt,
-          segment.startPoint.smooth,
-          segment.startPoint,
-          startLeftHW,
-          startLeftRoundBase,
-          "left",
-          startLeftNudge,
-          startLeftBase
-        )
-      );
+      if (addStartLeft) {
+        left.push(
+          buildGeneratedOnCurve(
+            startLeftPt,
+            segment.startPoint.smooth,
+            segment.startPoint,
+            startLeftHW,
+            startLeftRoundBase,
+            "left",
+            startLeftNudge,
+            startLeftBase,
+            startLeftPlace.inner ? "out" : null
+          )
+        );
+      }
 
       const startRightNudge = ribNudgeDisplacement(
         segment.startPoint,
@@ -2421,48 +2756,56 @@ function generateOffsetPointsForSegment(
       );
       const startRightBase = projectPoint(
         segment.startPoint,
-        startNormal,
+        startRightPlace.normal,
         startRightHW,
         -1,
         startRightScale
       );
       const startRightPt = translateRibPoint(startRightBase, startRightNudge);
-      right.push(
-        buildGeneratedOnCurve(
-          startRightPt,
-          segment.startPoint.smooth,
-          segment.startPoint,
-          startRightHW,
-          startRightRoundBase,
-          "right",
-          startRightNudge,
-          startRightBase
-        )
-      );
+      if (addStartRight) {
+        right.push(
+          buildGeneratedOnCurve(
+            startRightPt,
+            segment.startPoint.smooth,
+            segment.startPoint,
+            startRightHW,
+            startRightRoundBase,
+            "right",
+            startRightNudge,
+            startRightBase,
+            startRightPlace.inner ? "out" : null
+          )
+        );
+      }
     }
 
     // Add end point offset:
     // - For open skeletons: for all segments (each adds its end)
     // - For closed skeletons: don't add (next segment's start is this end)
     const shouldAddEnd = !isClosed;
-    if (shouldAddEnd) {
-      let endJoin =
-        !nextSegment ||
-        isLast ||
-        // Direction comes from this straight, not from a miter average with the
-        // one handle on the far side.
-        isStraightControlledSmoothPoint(segment.endPoint, segment, nextSegment)
-          ? null
-          : calculateCornerJoin(segment, nextSegment);
-      let endNormal = endJoin ? endJoin.normal : normal;
-      // Apply angle override if set on the point
-      endNormal = getEffectiveNormal(segment.endPoint, endNormal);
-      // A forced rib angle replaces the split line outright.
-      if (endJoin && endNormal !== endJoin.normal) {
-        endJoin = null;
-      }
-      const endLeftScale = cornerSideScale(endJoin, 1);
-      const endRightScale = cornerSideScale(endJoin, -1);
+    let endJoin =
+      !nextSegment ||
+      isLast ||
+      // Direction comes from this straight, not from a miter average with the
+      // one handle on the far side.
+      isStraightControlledSmoothPoint(segment.endPoint, segment, nextSegment)
+        ? null
+        : calculateCornerJoin(segment, nextSegment);
+    let endNormal = endJoin ? endJoin.normal : normal;
+    // Apply angle override if set on the point
+    endNormal = getEffectiveNormal(segment.endPoint, endNormal);
+    // A forced rib angle replaces the split line outright. A smooth point is
+    // not a corner and keeps the averaged normal at a plain half-width.
+    if (endJoin && (endNormal !== endJoin.normal || segment.endPoint.smooth)) {
+      endJoin = null;
+    }
+    const endLeftPlace = cornerSidePlacement(endJoin, 1, endNormal, normal);
+    const endRightPlace = cornerSidePlacement(endJoin, -1, endNormal, normal);
+    const addEndLeft = shouldAddEnd || endLeftPlace.inner;
+    const addEndRight = shouldAddEnd || endRightPlace.inner;
+    if (addEndLeft || addEndRight) {
+      const endLeftScale = endLeftPlace.scale;
+      const endRightScale = endRightPlace.scale;
 
       // Copy smooth property from skeleton point, round to UPM grid
       // Use per-point half-widths for left and right sides
@@ -2475,24 +2818,27 @@ function generateOffsetPointsForSegment(
       );
       const endLeftBase = projectPoint(
         segment.endPoint,
-        endNormal,
+        endLeftPlace.normal,
         endLeftHW,
         1,
         endLeftScale
       );
       const endLeftPt = translateRibPoint(endLeftBase, endLeftNudge);
-      left.push(
-        buildGeneratedOnCurve(
-          endLeftPt,
-          segment.endPoint.smooth,
-          segment.endPoint,
-          endLeftHW,
-          endLeftRoundBase,
-          "left",
-          endLeftNudge,
-          endLeftBase
-        )
-      );
+      if (addEndLeft) {
+        left.push(
+          buildGeneratedOnCurve(
+            endLeftPt,
+            segment.endPoint.smooth,
+            segment.endPoint,
+            endLeftHW,
+            endLeftRoundBase,
+            "left",
+            endLeftNudge,
+            endLeftBase,
+            endLeftPlace.inner ? "in" : null
+          )
+        );
+      }
 
       const endRightNudge = ribNudgeDisplacement(
         segment.endPoint,
@@ -2502,24 +2848,27 @@ function generateOffsetPointsForSegment(
       );
       const endRightBase = projectPoint(
         segment.endPoint,
-        endNormal,
+        endRightPlace.normal,
         endRightHW,
         -1,
         endRightScale
       );
       const endRightPt = translateRibPoint(endRightBase, endRightNudge);
-      right.push(
-        buildGeneratedOnCurve(
-          endRightPt,
-          segment.endPoint.smooth,
-          segment.endPoint,
-          endRightHW,
-          endRightRoundBase,
-          "right",
-          endRightNudge,
-          endRightBase
-        )
-      );
+      if (addEndRight) {
+        right.push(
+          buildGeneratedOnCurve(
+            endRightPt,
+            segment.endPoint.smooth,
+            segment.endPoint,
+            endRightHW,
+            endRightRoundBase,
+            "right",
+            endRightNudge,
+            endRightBase,
+            endRightPlace.inner ? "in" : null
+          )
+        );
+      }
     }
   } else {
     // Cubic segments use the constructed endpoint-constrained offset cubic.
@@ -2559,8 +2908,9 @@ function generateOffsetPointsForSegment(
     }
     // Apply angle override if set on the point
     startNormal = getEffectiveNormal(segment.startPoint, startNormal);
-    // A forced rib angle replaces the split line outright.
-    if (startJoin && startNormal !== startJoin.normal) {
+    // A forced rib angle replaces the split line outright. A smooth point is
+    // not a corner and keeps the averaged normal at a plain half-width.
+    if (startJoin && (startNormal !== startJoin.normal || segment.startPoint.smooth)) {
       startJoin = null;
     }
 
@@ -2578,14 +2928,25 @@ function generateOffsetPointsForSegment(
     }
     // Apply angle override if set on the point
     endNormal = getEffectiveNormal(segment.endPoint, endNormal);
-    // A forced rib angle replaces the split line outright.
-    if (endJoin && endNormal !== endJoin.normal) {
+    // A forced rib angle replaces the split line outright. A smooth point is
+    // not a corner and keeps the averaged normal at a plain half-width.
+    if (endJoin && (endNormal !== endJoin.normal || segment.endPoint.smooth)) {
       endJoin = null;
     }
-    const startLeftScale = cornerSideScale(startJoin, 1);
-    const startRightScale = cornerSideScale(startJoin, -1);
-    const endLeftScale = cornerSideScale(endJoin, 1);
-    const endRightScale = cornerSideScale(endJoin, -1);
+    const startLeftPlace = cornerSidePlacement(
+      startJoin,
+      1,
+      startNormal,
+      bezierStartNormal
+    );
+    const startRightPlace = cornerSidePlacement(
+      startJoin,
+      -1,
+      startNormal,
+      bezierStartNormal
+    );
+    const endLeftPlace = cornerSidePlacement(endJoin, 1, endNormal, bezierEndNormal);
+    const endRightPlace = cornerSidePlacement(endJoin, -1, endNormal, bezierEndNormal);
 
     const avgLeftHW = (startLeftHW + endLeftHW) / 2;
     const avgRightHW = (startRightHW + endRightHW) / 2;
@@ -2597,31 +2958,31 @@ function generateOffsetPointsForSegment(
     // Z-normal handle carry are applied independently after construction.
     const fixedStartLeft = projectPoint(
       segment.startPoint,
-      startNormal,
+      startLeftPlace.normal,
       startLeftHW,
       1,
-      startLeftScale
+      startLeftPlace.scale
     );
     const fixedStartRight = projectPoint(
       segment.startPoint,
-      startNormal,
+      startRightPlace.normal,
       startRightHW,
       -1,
-      startRightScale
+      startRightPlace.scale
     );
     const fixedEndLeft = projectPoint(
       segment.endPoint,
-      endNormal,
+      endLeftPlace.normal,
       endLeftHW,
       1,
-      endLeftScale
+      endLeftPlace.scale
     );
     const fixedEndRight = projectPoint(
       segment.endPoint,
-      endNormal,
+      endRightPlace.normal,
       endRightHW,
       -1,
-      endRightScale
+      endRightPlace.scale
     );
 
     const nudgeStartLeft = ribNudgeDisplacement(
@@ -2664,7 +3025,9 @@ function generateOffsetPointsForSegment(
       startRoundBase,
       endRoundBase,
       startNudge,
-      endNudge
+      endNudge,
+      startArm,
+      endArm
     ) => {
       const side = isLeftSide ? "left" : "right";
       // When halfWidth is near zero, contour should exactly match skeleton
@@ -2680,7 +3043,8 @@ function generateOffsetPointsForSegment(
               startRoundBase,
               side,
               startNudge,
-              segment.startPoint
+              segment.startPoint,
+              startArm
             )
           );
         }
@@ -2698,7 +3062,8 @@ function generateOffsetPointsForSegment(
               endRoundBase,
               side,
               endNudge,
-              segment.endPoint
+              segment.endPoint,
+              endArm
             )
           );
         }
@@ -2794,7 +3159,8 @@ function generateOffsetPointsForSegment(
             startRoundBase,
             side,
             startNudge,
-            fixedStart
+            fixedStart,
+            startArm
           )
         );
       const adjustedHandle1 = {
@@ -2877,13 +3243,16 @@ function generateOffsetPointsForSegment(
             endRoundBase,
             side,
             endNudge,
-            fixedEnd
+            fixedEnd,
+            endArm
           )
         );
       return;
     };
 
-    // Determine which points to add based on closed/open and first/last
+    // Determine which points to add based on closed/open and first/last. An
+    // inner side needs both arms' edge ends, so the arm that does not carry the
+    // shared on-curve today adds its own.
     const shouldAddStart = isClosed || isFirst;
     const shouldAddEnd = !isClosed;
 
@@ -2891,8 +3260,8 @@ function generateOffsetPointsForSegment(
       left,
       fixedStartLeft,
       fixedEndLeft,
-      shouldAddStart,
-      shouldAddEnd,
+      shouldAddStart || startLeftPlace.inner,
+      shouldAddEnd || endLeftPlace.inner,
       segment.startPoint.smooth,
       segment.endPoint.smooth,
       avgLeftHW,
@@ -2902,15 +3271,17 @@ function generateOffsetPointsForSegment(
       startLeftRoundBase,
       endLeftRoundBase,
       nudgeStartLeft,
-      nudgeEndLeft
+      nudgeEndLeft,
+      startLeftPlace.inner ? "out" : null,
+      endLeftPlace.inner ? "in" : null
     );
 
     addOffsetCurves(
       right,
       fixedStartRight,
       fixedEndRight,
-      shouldAddStart,
-      shouldAddEnd,
+      shouldAddStart || startRightPlace.inner,
+      shouldAddEnd || endRightPlace.inner,
       segment.startPoint.smooth,
       segment.endPoint.smooth,
       avgRightHW,
@@ -2920,7 +3291,9 @@ function generateOffsetPointsForSegment(
       startRightRoundBase,
       endRightRoundBase,
       nudgeStartRight,
-      nudgeEndRight
+      nudgeEndRight,
+      startRightPlace.inner ? "out" : null,
+      endRightPlace.inner ? "in" : null
     );
   }
 
@@ -3057,17 +3430,24 @@ function cornerSideIsOuter(dir1, dir2, sideSign) {
 }
 
 /**
- * How far out along the split line one side of a corner reaches.
+ * Where one side of a corner puts its endpoint.
  *
- * The outer side reaches the apex, where its two carried-on edges meet. The
- * inner side's two edges overlap instead of stopping, and their crossing is
- * real drawn geometry found in a later pass, so that side stays on a plain
- * half-width here.
+ * The outer side reaches the apex: along the split line, at one half-width over
+ * the cosine of half the turn. The inner side's two edges overlap rather than
+ * stopping, so each arm ends at its own edge end instead, square to its own
+ * direction, and joinInnerCornersOnSide cuts the two back to where they cross.
+ * `inner` says which of the two this is, and both arms work it out for
+ * themselves from the same pair of segments, so they agree with no state passed
+ * between them.
  */
-function cornerSideScale(join, sideSign) {
-  return join && cornerSideIsOuter(join.dir1, join.dir2, sideSign)
-    ? join.miterScale
-    : 1;
+function cornerSidePlacement(join, sideSign, joinNormal, ownNormal) {
+  if (!join) {
+    return { normal: joinNormal, scale: 1, inner: false };
+  }
+  if (cornerSideIsOuter(join.dir1, join.dir2, sideSign)) {
+    return { normal: joinNormal, scale: join.miterScale, inner: false };
+  }
+  return { normal: ownNormal, scale: 1, inner: true };
 }
 
 /**
