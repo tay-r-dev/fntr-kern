@@ -4,6 +4,7 @@ import {
   DEFAULT_SKELETON_WIDTH,
   appendSkeletonContour,
   appendSkeletonPoint,
+  closeSkeletonContour,
   getDefaultSkeletonWidthKeyForGlyphName,
   getSkeletonData,
   makeSkeletonPoint,
@@ -558,7 +559,9 @@ export class SkeletonPenTool extends BaseTool {
         if (!address) {
           return null;
         }
-        address.contour.closed = true;
+        // One close, one rule: two ends already standing in the same place
+        // become one point rather than two stacked on each other.
+        closeSkeletonContour(working, address.contour.id);
         return [
           makeSkeletonPointKey(closeTarget.contourId, closeTarget.clickedPointId),
         ];

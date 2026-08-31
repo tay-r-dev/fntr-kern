@@ -1452,18 +1452,41 @@ function skeletonOpenEndRole(contour, pointId) {
   return onCurves.at(-1).id === pointId ? "tail" : null;
 }
 
+// Two ends standing in the same place are one place. The designer put them
+// there, usually by snapping one onto the other, so the coordinates agree
+// exactly and the test is equality rather than a tolerance: a tolerance would
+// decide that two points a third of a unit apart are the same point, which is a
+// judgement nobody asked this function to make.
+function skeletonPointsCoincide(first, second) {
+  return first.x === second.x && first.y === second.y;
+}
+
 // Close an open contour on the two ends it already has.
 //
-// No point is added and none is moved. The closing segment is the straight
-// between the two ends, exactly as the pen's own close does, so a contour closed
-// from the menu and one closed by clicking the far end are the same contour.
+// No point is moved and none is added. Where the two ends already stand in the
+// same place the last is dropped instead, so a stroke drawn back onto its own
+// start closes into the loop it already draws rather than gaining a second point
+// on top of the first. The handles that led into the dropped end stay, and shape
+// the closing segment into the point that survives.
 export function closeSkeletonContour(skeletonData, contourId) {
   const contour = getSkeletonContour(skeletonData, contourId);
   if (!contour || contour.closed) {
     return false;
   }
-  if (contour.points.filter((point) => !point.type).length < 2) {
+  const onCurveIndices = contour.points
+    .map((point, index) => (point.type ? -1 : index))
+    .filter((index) => index >= 0);
+  if (onCurveIndices.length < 2) {
     return false;
+  }
+  const first = contour.points[onCurveIndices[0]];
+  const last = contour.points[onCurveIndices.at(-1)];
+  if (skeletonPointsCoincide(first, last)) {
+    // One on-curve and nothing between the two ends is a point, not a loop.
+    if (onCurveIndices.length === 2 && contour.points.length === 2) {
+      return false;
+    }
+    contour.points.splice(onCurveIndices.at(-1), 1);
   }
   contour.closed = true;
   return true;
@@ -1512,7 +1535,16 @@ export function joinSkeletonContours(skeletonData, firstEnd, secondEnd) {
 
   const survivor = head === second ? second : first;
   const absorbed = survivor === first ? second : first;
-  survivor.points = [...head.points, ...tail.points];
+  // Where the two ends already stand in the same place they are one point, and
+  // the survivor keeps its own. What the dropped end carried in front of it -
+  // the handles leaving it - stays, and shapes the segment leaving the joint.
+  let tailPoints = tail.points;
+  const joint = head.points.at(-1);
+  const tailFirst = tailPoints.findIndex((point) => !point.type);
+  if (tailFirst >= 0 && joint && skeletonPointsCoincide(joint, tailPoints[tailFirst])) {
+    tailPoints = tailPoints.slice(tailFirst + 1);
+  }
+  survivor.points = [...head.points, ...tailPoints];
   survivor.closed = false;
   skeletonData.contours = skeletonData.contours.filter(
     (contour) => contour !== absorbed

@@ -1853,3 +1853,125 @@ describe("closing a skeleton contour", () => {
     expect(closeSkeletonContour(skeletonData, contour.id)).to.equal(false);
   });
 });
+
+describe("joining and closing on a point that is already there", () => {
+  function pointAt(skeletonData, contourId, x, y, extra = {}) {
+    return appendSkeletonPoint(skeletonData, contourId, { x, y, ...extra });
+  }
+
+  function twoStrokes(meetX, meetY) {
+    const skeletonData = { nextId: 1, contours: [] };
+    const first = appendSkeletonContour(skeletonData, { closed: false, points: [] });
+    const a = pointAt(skeletonData, first.id, 0, 0);
+    const b = pointAt(skeletonData, first.id, meetX, meetY);
+    const second = appendSkeletonContour(skeletonData, { closed: false, points: [] });
+    const c = pointAt(skeletonData, second.id, 50, 0);
+    const d = pointAt(skeletonData, second.id, 150, 0);
+    return { skeletonData, first, second, a, b, c, d };
+  }
+
+  it("keeps one point where the two ends stand in the same place", () => {
+    const { skeletonData, first, second, b, c } = twoStrokes(50, 0);
+    joinSkeletonContours(
+      skeletonData,
+      { contourId: first.id, pointId: b.id },
+      { contourId: second.id, pointId: c.id }
+    );
+    expect(skeletonData.contours[0].points.map((point) => point.x)).to.deep.equal([
+      0, 50, 150,
+    ]);
+  });
+
+  it("keeps the surviving contour's own point, not the absorbed one", () => {
+    const { skeletonData, first, second, b, c } = twoStrokes(50, 0);
+    joinSkeletonContours(
+      skeletonData,
+      { contourId: first.id, pointId: b.id },
+      { contourId: second.id, pointId: c.id }
+    );
+    expect(skeletonData.contours[0].points[1].id).to.equal(b.id);
+  });
+
+  it("hands the absorbed point's handles to the point that survives", () => {
+    const { skeletonData, first, second, b, c } = twoStrokes(50, 0);
+    // A handle leaving the absorbed end shapes the segment leaving the joint.
+    const contour = getSkeletonContour(skeletonData, second.id);
+    contour.points.splice(1, 0, { id: 99, x: 70, y: 30, type: "cubic" });
+    joinSkeletonContours(
+      skeletonData,
+      { contourId: first.id, pointId: b.id },
+      { contourId: second.id, pointId: c.id }
+    );
+    expect(skeletonData.contours[0].points.map((point) => point.x)).to.deep.equal([
+      0, 50, 70, 150,
+    ]);
+  });
+
+  it("keeps both points where the two ends stand apart", () => {
+    const { skeletonData, first, second, b, c } = twoStrokes(40, 0);
+    joinSkeletonContours(
+      skeletonData,
+      { contourId: first.id, pointId: b.id },
+      { contourId: second.id, pointId: c.id }
+    );
+    expect(skeletonData.contours[0].points.map((point) => point.x)).to.deep.equal([
+      0, 40, 50, 150,
+    ]);
+  });
+
+  it("keeps both where only one coordinate agrees", () => {
+    const { skeletonData, first, second, b, c } = twoStrokes(50, 20);
+    joinSkeletonContours(
+      skeletonData,
+      { contourId: first.id, pointId: b.id },
+      { contourId: second.id, pointId: c.id }
+    );
+    expect(skeletonData.contours[0].points).to.have.length(4);
+  });
+
+  function loop(lastX, lastY) {
+    const skeletonData = { nextId: 1, contours: [] };
+    const contour = appendSkeletonContour(skeletonData, { closed: false, points: [] });
+    appendSkeletonPoint(skeletonData, contour.id, { x: 0, y: 0 });
+    appendSkeletonPoint(skeletonData, contour.id, { x: 50, y: 0 });
+    appendSkeletonPoint(skeletonData, contour.id, { x: 50, y: 50 });
+    appendSkeletonPoint(skeletonData, contour.id, { x: lastX, y: lastY });
+    return { skeletonData, contour };
+  }
+
+  it("drops the last point where a close would stack it on the first", () => {
+    const { skeletonData, contour } = loop(0, 0);
+    expect(closeSkeletonContour(skeletonData, contour.id)).to.equal(true);
+    expect(skeletonData.contours[0].points.map((point) => point.x)).to.deep.equal([
+      0, 50, 50,
+    ]);
+  });
+
+  it("gives the closing segment the dropped point's handles", () => {
+    const { skeletonData, contour } = loop(0, 0);
+    const points = getSkeletonContour(skeletonData, contour.id).points;
+    points.splice(3, 0, { id: 98, x: 20, y: 60, type: "cubic" });
+    closeSkeletonContour(skeletonData, contour.id);
+    expect(skeletonData.contours[0].points.map((point) => point.x)).to.deep.equal([
+      0, 50, 50, 20,
+    ]);
+    expect(skeletonData.contours[0].closed).to.equal(true);
+  });
+
+  it("keeps every point where the two ends stand apart", () => {
+    const { skeletonData, contour } = loop(0, 30);
+    closeSkeletonContour(skeletonData, contour.id);
+    expect(skeletonData.contours[0].points).to.have.length(4);
+  });
+
+  it("refuses a close that would leave a single point standing alone", () => {
+    // Two coincident on-curves and nothing between them is not a loop, it is one
+    // point, and a contour of one point draws nothing.
+    const skeletonData = { nextId: 1, contours: [] };
+    const contour = appendSkeletonContour(skeletonData, { closed: false, points: [] });
+    appendSkeletonPoint(skeletonData, contour.id, { x: 0, y: 0 });
+    appendSkeletonPoint(skeletonData, contour.id, { x: 0, y: 0 });
+    expect(closeSkeletonContour(skeletonData, contour.id)).to.equal(false);
+    expect(skeletonData.contours[0].closed).to.equal(false);
+  });
+});
