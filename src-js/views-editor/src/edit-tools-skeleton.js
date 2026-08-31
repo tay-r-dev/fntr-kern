@@ -118,8 +118,10 @@ export class SkeletonPenTool extends BaseTool {
       return;
     }
     this.setCursor();
-    this._updateSnapHover(event);
+    // The preview runs first: whether it found a segment decides whether the
+    // snap runs at all.
     this._updateInsertHandlesPreview(event);
+    this._updateSnapHover(event);
     this._updatePenPointHover(event);
   }
 
@@ -153,6 +155,11 @@ export class SkeletonPenTool extends BaseTool {
   _updateSnapHover(event) {
     const session = this._snapSession();
     session.refresh();
+    // Alt over a line segment inserts two handles at its thirds. The cursor
+    // names the segment and nothing else - where the handles land is the
+    // segment's own arithmetic - so a magnet has nothing to move, and the
+    // guides it draws would describe a placement that is not happening.
+    session.suppressed = !!this.sceneModel.skeletonInsertHandles;
     const point = this.sceneController.selectedGlyphPoint(event);
     if (point) {
       session.resolve(point);

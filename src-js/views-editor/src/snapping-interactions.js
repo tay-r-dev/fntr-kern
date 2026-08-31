@@ -234,6 +234,26 @@ export function draggedSnapPositions(sceneController, layerGlyph) {
   return positions;
 }
 
+// A source the designer cannot see is a source they cannot account for. A point
+// off the left edge emits a horizontal ray that crosses the whole canvas, and
+// being pulled by geometry that is not on screen reads as the canvas moving on
+// its own. The test is taken in glyph space, because that is what the scene
+// records. Metrics and guides are exempt: they are lines the designer placed,
+// stated as infinite, and one of them crossing the view is the whole of what it
+// is for.
+function makeOnScreenTest(sceneController, positionedGlyph) {
+  const viewBox = sceneController.canvasController?.getViewBox?.();
+  if (!viewBox) {
+    return () => true;
+  }
+  const xMin = viewBox.xMin - positionedGlyph.x;
+  const xMax = viewBox.xMax - positionedGlyph.x;
+  const yMin = viewBox.yMin - positionedGlyph.y;
+  const yMax = viewBox.yMax - positionedGlyph.y;
+  return (point) =>
+    point.x >= xMin && point.x <= xMax && point.y >= yMin && point.y <= yMax;
+}
+
 export function buildSnapScene(sceneController, excludePointIndices) {
   const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
   const glyph = positionedGlyph?.glyph;
@@ -268,6 +288,8 @@ export function buildSnapScene(sceneController, excludePointIndices) {
     angle: guideline.angle || 0,
   }));
 
+  const onScreen = makeOnScreenTest(sceneController, positionedGlyph);
+
   const points = [];
   const segments = [];
   const curves = [];
@@ -277,6 +299,9 @@ export function buildSnapScene(sceneController, excludePointIndices) {
       continue;
     }
     const point = path.getPoint(i);
+    if (!onScreen(point)) {
+      continue;
+    }
     // An off-curve is offered under its own kind, and the switch in the resolver
     // decides whether it is collected at all. Marking it here rather than
     // dropping it is what lets the switch answer on the next frame, without the
@@ -297,6 +322,9 @@ export function buildSnapScene(sceneController, excludePointIndices) {
       // are, and only weightlessly.
       continue;
     }
+    if (!onScreen(segment.candidate)) {
+      continue;
+    }
     segments.push(segment.candidate);
   }
   // A projection is offered for every cubic, INCLUDING the ones the drag moves.
@@ -306,7 +334,7 @@ export function buildSnapScene(sceneController, excludePointIndices) {
   // one case the projection is for - a terminal is elongated by dragging the very
   // point the curve arriving at it ends on.
   for (const segment of iterPathSegments(path)) {
-    if (segment.curve) {
+    if (segment.curve && segment.curve.points.some(onScreen)) {
       curves.push(segment.curve);
     }
   }
@@ -336,7 +364,9 @@ export function buildSnapScene(sceneController, excludePointIndices) {
         offCurve: !!point.type,
         alwaysKeep: isDraggedContour,
       };
-      points.push(source);
+      if (onScreen(source)) {
+        points.push(source);
+      }
       if (point.type) {
         continue; // a handle has no rib
       }
@@ -344,7 +374,7 @@ export function buildSnapScene(sceneController, excludePointIndices) {
       for (const end of [ribEnds.left, ribEnds.right]) {
         // A collapsed side returns the centerline point itself, which is
         // already in the list.
-        if (end && end !== point) {
+        if (end && end !== point && onScreen(end)) {
           points.push({ x: end.x, y: end.y, alwaysKeep: isDraggedContour });
         }
       }
@@ -356,6 +386,9 @@ export function buildSnapScene(sceneController, excludePointIndices) {
     // moved point is left out, because it would chase the drag.
     for (const curve of iterSkeletonCurves(contour)) {
       if (curve.pointIds.some((id) => movedSkeletonPoints.has(`${contour.id}/${id}`))) {
+        continue;
+      }
+      if (!curve.points.some(onScreen)) {
         continue;
       }
       curves.push({ points: curve.points });

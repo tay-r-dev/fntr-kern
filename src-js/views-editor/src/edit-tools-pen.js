@@ -31,11 +31,25 @@ export class PenToolCubic extends BaseTool {
       return;
     }
     this.setCursor();
+    // Read first, because the answer decides whether the snap runs at all.
+    const {
+      insertHandles,
+      targetPoint,
+      danglingOffCurve,
+      canDragOffCurve,
+      inertPoint,
+      resumePoint,
+    } = this._getPathConnectTargetPoint(event);
     // The preview must show the result before the click, so the hover resolves
     // through the same session the click will use. The scene is re-read first:
     // the pen adds geometry as it goes, and a point just placed is a source.
     const snapSession = this._snapSession();
     snapSession.refresh();
+    // Alt over a segment inserts two handles at its thirds. The cursor names the
+    // segment and nothing else - where the handles land is the segment's own
+    // arithmetic - so a magnet has nothing to move, and the guides it draws
+    // would be describing a placement that is not happening.
+    snapSession.suppressed = !!insertHandles;
     this.sceneModel.penSnappedPoint = snapSession.resolve(
       this.sceneController.selectedGlyphPoint(event)
     );
@@ -59,14 +73,6 @@ export class PenToolCubic extends BaseTool {
       this._lastSnapState = snapState;
       this.canvasController.requestUpdate();
     }
-    const {
-      insertHandles,
-      targetPoint,
-      danglingOffCurve,
-      canDragOffCurve,
-      inertPoint,
-      resumePoint,
-    } = this._getPathConnectTargetPoint(event);
     const prevInsertHandles = this.sceneModel.pathInsertHandles;
     const prevTargetPoint = this.sceneModel.pathConnectTargetPoint;
     const prevDanglingOffCurve = this.sceneModel.pathDanglingOffCurve;
