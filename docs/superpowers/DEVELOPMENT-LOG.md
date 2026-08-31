@@ -1181,6 +1181,42 @@ under one unit.
   alternates rather than drifting, so it is grid quantization on the trim. Left
   alone.
 
+### The right curve, measured the wrong way
+
+Reported on `b.json`: the two gizmos on the inner side of the stroke read 0.18
+and 0.35, and grabbing either one without moving the pointer threw the shape.
+A zero-delta grab wrote exactly the number shown and redrew at 0.055 and 0.135,
+moving handles 213 and 232 units.
+
+**The inner side of a corner is the side the join cuts back**, so both of its
+curves publish an untrimmed snapshot and the reader correctly measures that
+instead of the leftover piece. It then threw the axes away and fell through to
+the plain tangent-intersection formula, while the generator went on reproducing
+the pin through the handle domain. Where the domain has no usable forward
+crossing it scales by twice the chord instead, so the two are not the same
+quantity: stored against displayed ran 0.05 to 0.014, 0.5 to 0.152, 1.0 to
+0.305 — a flat factor of 3.28, which also put the whole top two thirds of the
+control out of reach. The uncut side of the same stroke round-tripped to within
+0.0007 throughout, and is what identified the reader rather than the generator.
+
+- **Substituting the right curve and measuring it a different way is the same
+  defect as measuring the wrong curve.** The serif round fixed which points;
+  this one fixes which unit. Both readings build the domain now.
+- **A cut segment's axes are the snapshot's own end tangents.** The snapshot is
+  taken before emission, so nothing has rotated them. The published axis belongs
+  to the emitted handle and is right only for a segment that reached the outline
+  whole — which is why the fallback looked defensible.
+- **The displayed numbers moved, and that is the fix rather than a cost.** Those
+  two gizmos read 0.585 and 0.907 now. The old figures were the same handles in
+  a unit nothing else used.
+- **A grab that moves nothing is the test**, not a per-value assertion: the
+  round trip is checked against the uncut side of the same stroke, which is the
+  oracle. Zero-delta grab, both segments: 213 and 232 units before, 0.00 after.
+- **Left alone**: the round trip still drifts at the bottom of the range, 0.05
+  reading back as 0.24, because the cut moves when the handles shorten and the
+  curve measured is not quite the curve the pin was reproduced on. The designer
+  ruled that drift acceptable and jumps not.
+
 ### A pin must survive the hand that overrules it
 
 Set a curvature, switch to direct handle editing, drag a handle: the handles

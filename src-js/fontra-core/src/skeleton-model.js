@@ -3954,9 +3954,39 @@ export function generatedSegmentHandleAxes(provenance) {
 // the handle it anchors onto the terminal's depth axis and stamps that. The
 // snapshot is taken before colinearity ever runs, so its own drawn directions
 // are already the ones it was constructed on and need no correction.
-function constructionSegmentAxes(segmentPoints, provenance) {
+// The pair of directions a segment's two handle lengths are a fraction OF.
+//
+// A published axis belongs to the handle that was emitted, so it is the right
+// answer for a segment that reaches the outline whole: a smooth joint rotates
+// the drawn handle after the solve, keeping its length and moving the
+// intersection, so the drawn direction is the one thing that must not be
+// measured against.
+//
+// A cut segment is a different curve. The snapshot the cut published is the
+// whole curve the generator solved, taken before emission, so its own end
+// tangents are the axes it was built on and nothing has rotated them. The
+// emitted handles belong to the leftover piece and one of them points somewhere
+// the solved curve does not go.
+//
+// Falling back to no axes at all is what this replaces. That sent the reader
+// down the plain-Tunni path while the generator went on reproducing the pin
+// through the handle domain, and where the domain has no usable forward
+// crossing the two are not the same quantity at all — a factor of 3.28 on the
+// inner side of `b.json`, so the gizmo displayed 0.18, wrote 0.18 and redrew at
+// 0.055. Both readings build the domain now, so both land in the same branch of
+// it.
+function constructionSegmentAxes(segmentPoints, provenance, constructionPoints) {
   if (untrimmedConstructionSegment(segmentPoints, provenance)) {
-    return null;
+    if (constructionPoints?.length !== 4) {
+      return null;
+    }
+    const start = normalizeVector(
+      subVectors(constructionPoints[1], constructionPoints[0])
+    );
+    const end = normalizeVector(
+      subVectors(constructionPoints[2], constructionPoints[3])
+    );
+    return start && end ? [start, end] : null;
   }
   const start = provenance?.[1]?.constructionAxis;
   const end = provenance?.[2]?.constructionAxis;
@@ -4048,7 +4078,7 @@ export function calculateGeneratedCurvatureEdits({
   }
   const tension = generatedSegmentTension(
     constructionPoints,
-    constructionSegmentAxes(segmentPoints, provenance),
+    constructionSegmentAxes(segmentPoints, provenance, constructionPoints),
     pinned
   );
   if (!Number.isFinite(tension) || tension < 0) {
@@ -4529,7 +4559,7 @@ export function getGeneratedSegmentCurvature(skeletonData, segment) {
   }
   const tension = generatedSegmentTension(
     points,
-    constructionSegmentAxes(segment?.points, segment?.provenance),
+    constructionSegmentAxes(segment?.points, segment?.provenance, points),
     [points[1], points[2]]
   );
   if (!Number.isFinite(tension) || tension <= 0) {

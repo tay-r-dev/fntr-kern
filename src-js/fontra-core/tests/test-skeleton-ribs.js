@@ -5,6 +5,7 @@ import {
   createSkeletonRibExecutor,
   findGeneratedPathAddress,
   getEffectiveRibHalfWidth,
+  getGeneratedSegmentCurvature,
   getSkeletonData,
   getSkeletonRibAddress,
   getSkeletonPointHalfWidth,
@@ -15,6 +16,7 @@ import {
   setSkeletonPointSideWidth,
   setSkeletonPointTotalWidth,
   setSkeletonPointWidthFromSide,
+  setSkeletonSegmentCurvature,
   setSkeletonSideLocked,
   getTiedRibGroup,
   makeSkeletonContour,
@@ -313,6 +315,117 @@ describe("skeleton rib executor", () => {
     expect(address.point.width.left).to.equal(60);
     expect(address.point.width.right).to.equal(20);
     expect(result.nudge).to.equal(7);
+  });
+});
+
+// A curvature gizmo shows a number and writes that same number. If the generator
+// reproduces it as something else, the first grab moves the shape without the
+// pointer moving at all. Reported on `_external/skeletron.fontra/glyphs/b.json`,
+// where the two gizmos on the inner side read 0.18 and 0.35, wrote exactly that,
+// and redrew at 0.055 and 0.135 — handles travelling over 200 units on a grab.
+//
+// The inner side of a corner is the one the join cuts back, so the curve the
+// gizmo must measure is the whole solved one and not the leftover piece. Both
+// readings have to land in the same unit, or the round trip is a rescale.
+describe("a curvature pin on a corner-cut segment", () => {
+  // The reported glyph's own skeleton: one open stroke with a sharp corner in
+  // the middle, so the inner side of that corner is joined and both of its
+  // curves are trimmed. The rib locks are the file's, and they are what puts
+  // the corner where it is.
+  const makeCornerSkeleton = () =>
+    normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 12,
+          closed: false,
+          defaultWidth: 60,
+          capStyle: "butt",
+          points: [
+            makeSkeletonPoint({
+              id: 15,
+              x: 443,
+              y: 168,
+              width: { left: 40, right: 40, linked: true },
+              ribAngleLock: "horizontal",
+            }),
+            makeSkeletonPoint({ id: 16, x: 443, y: 470, type: "cubic" }),
+            makeSkeletonPoint({ id: 17, x: 264, y: 436, type: "cubic" }),
+            makeSkeletonPoint({
+              id: 14,
+              x: 223,
+              y: 168,
+              width: { left: 24, right: 21, linked: false },
+              ribAngleLock: "horizontal",
+            }),
+            makeSkeletonPoint({ id: 18, x: 170, y: 439, type: "cubic" }),
+            makeSkeletonPoint({ id: 19, x: 88, y: 512, type: "cubic" }),
+            makeSkeletonPoint({
+              id: 13,
+              x: 88,
+              y: 168,
+              width: { left: 48, right: 40, linked: true },
+            }),
+          ],
+        }),
+      ],
+    });
+
+  // Every generated cubic, addressed the way the gizmo addresses one: by the
+  // skeleton point its segment starts at, and the side it is on.
+  const generatedSegments = (skeleton) => {
+    const generated = generateFromSkeleton(skeleton);
+    const found = new Map();
+    for (const [contourIndex, entry] of (generated.provenance || []).entries()) {
+      const points = generated.contours[contourIndex].points;
+      const pointMap = entry.pointMap || [];
+      for (let i = 0; i + 3 < points.length; i++) {
+        const indices = [i, i + 1, i + 2, i + 3];
+        const quad = indices.map((k) => points[k]);
+        if (quad[0].type || quad[3].type) continue;
+        if (quad[1].type !== "cubic" || quad[2].type !== "cubic") continue;
+        const provenance = indices.map((k) => pointMap[k]);
+        const start = provenance[provenance[1]?.role === "out" ? 0 : 3];
+        if (start?.skeletonPointId === undefined) continue;
+        found.set(`${start.skeletonPointId}/${start.side}`, {
+          points: quad.map((p) => ({ x: p.x, y: p.y, type: p.type })),
+          provenance,
+        });
+      }
+    }
+    return found;
+  };
+
+  const readBack = (pointId, side, pin) => {
+    const skeleton = makeCornerSkeleton();
+    for (const contour of skeleton.contours) {
+      for (const point of contour.points) {
+        if (point.id === pointId) {
+          setSkeletonSegmentCurvature(point, side, pin);
+        }
+      }
+    }
+    const segment = generatedSegments(skeleton).get(`${pointId}/${side}`);
+    return getGeneratedSegmentCurvature(skeleton, segment)?.tension;
+  };
+
+  // The uncut side already round-trips. It is here as the oracle: whatever the
+  // cut side is measured against has to be the unit this side is measured in.
+  it("round-trips on the uncut side of the same stroke", () => {
+    for (const pin of [0.3, 0.5, 0.8, 1.0]) {
+      expect(readBack(15, "right", pin)).to.be.closeTo(pin, 0.02);
+    }
+  });
+
+  it("round-trips on the cut side", () => {
+    for (const pin of [0.3, 0.5, 0.8, 1.0]) {
+      expect(readBack(15, "left", pin)).to.be.closeTo(pin, 0.02);
+    }
+  });
+
+  it("round-trips on the cut side of the second corner arm", () => {
+    for (const pin of [0.3, 0.5, 0.8, 1.0]) {
+      expect(readBack(14, "left", pin)).to.be.closeTo(pin, 0.02);
+    }
   });
 });
 

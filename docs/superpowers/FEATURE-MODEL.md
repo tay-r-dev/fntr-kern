@@ -605,11 +605,18 @@ If the code loses any of these, the product regresses.
   changes. Not a rib end, not a terminal's release, not the bottom of a serif's straight run. This
   is what forces the serif's release to be fixed in its own frame (§8). It is also checkable:
   sweep the pin, and sum each emitted on-curve's travel. The sum must be exactly zero.
-- **A gizmo measures the curve its write governs.** The generator reproduces the curvature gizmo's
-  pin on the whole segment, so the gizmo must read its starting value from the whole segment. Use
-  `constructionSegment` where a terminal has trimmed one. Reading the emitted points directly
-  makes the first drag jump, because the number displayed and the number written then describe
-  different curves.
+- **A gizmo measures the curve its write governs, in the unit that write is read back in.** The
+  generator reproduces the curvature gizmo's pin on the whole segment, so the gizmo must read its
+  starting value from the whole segment. Use `constructionSegment` where a terminal or a corner
+  join has cut one. Reading the emitted points directly makes the first drag jump, because the
+  number displayed and the number written then describe different curves. Substituting the right
+  curve and then measuring it a different way is the same fault wearing a second face: both
+  readings go through the handle domain, so both land in the same branch of it. A reader that
+  falls back to the plain tangent-intersection formula is measuring a quantity the generator never
+  computes, and where the domain has no usable forward crossing the two are not the same number.
+  The axes for a cut segment come from the cut's own snapshot, which predates emission and so has
+  had nothing rotated; the published axis belongs to the emitted handle and is right only for a
+  segment that reached the outline whole.
 - **A drag's geometry does not consult the panel's link flag.** `width.linked` says how the
   designer types numbers in. A fixed-rib drag is a statement about which of the two edges is
   pinned. Reading one from the other made the same drag behave two ways inside one selection.
