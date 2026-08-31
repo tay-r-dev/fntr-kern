@@ -23,6 +23,8 @@ import {
   getSkeletonPointWidth,
   getSkeletonRibPosition,
   getSkeletonRibSidesForPoint,
+  getSkeletonRibTieGroup,
+  getTiedRibGroup,
   harmonizeSkeletonPoints,
   joinSkeletonContours,
   makeEmptySkeletonData,
@@ -50,6 +52,7 @@ import {
   setSkeletonPointWidthDistribution,
   setSkeletonPointWidthFromSide,
   setSkeletonPointWidthLinked,
+  setSkeletonRibTiedAcrossGroup,
   setSkeletonSerifParameters,
   skeletonRibReach,
   splitSkeletonContourAtPoint,
@@ -1973,5 +1976,88 @@ describe("joining and closing on a point that is already there", () => {
     appendSkeletonPoint(skeletonData, contour.id, { x: 0, y: 0 });
     expect(closeSkeletonContour(skeletonData, contour.id)).to.equal(false);
     expect(skeletonData.contours[0].closed).to.equal(false);
+  });
+});
+
+describe("the tied flag belongs to the group, not to one rib", () => {
+  // A straight from A to B, then a curve on from B. B is smooth carrying one
+  // handle, so the straight controls it and the tie reaches back to A.
+  function contour(tiedA = true, tiedB = true) {
+    return normalizeSkeletonData({
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 60,
+          points: [
+            {
+              id: 1,
+              x: 0,
+              y: 0,
+              type: null,
+              smooth: false,
+              width: { left: 10, right: 30, tied: tiedA },
+            },
+            {
+              id: 2,
+              x: 200,
+              y: 0,
+              type: null,
+              smooth: true,
+              width: { left: 50, right: 30, tied: tiedB },
+            },
+            { id: 3, x: 300, y: 0, type: "cubic" },
+            { id: 4, x: 400, y: 100, type: "cubic" },
+            {
+              id: 5,
+              x: 400,
+              y: 200,
+              type: null,
+              smooth: false,
+              width: { left: 30, right: 30 },
+            },
+          ],
+        },
+      ],
+    }).contours[0];
+  }
+
+  it("names the group a rib would be tied into, whatever the flags say", () => {
+    // Off, the effective group is gone - but the two ribs are still the two ends
+    // of one straight, and that is what the flag is written across.
+    const off = contour(false, false);
+    expect(getTiedRibGroup(off, off.points[0])).to.equal(null);
+    const group = getSkeletonRibTieGroup(off, off.points[0]);
+    expect(group).to.have.members([off.points[0], off.points[1]]);
+  });
+
+  it("clears the flag on every member", () => {
+    const data = contour();
+    setSkeletonRibTiedAcrossGroup(data, data.points[0], false);
+    expect(data.points[0].width.tied).to.equal(false);
+    expect(data.points[1].width.tied).to.equal(false);
+  });
+
+  it("sets it back on every member, from a point whose group is gone", () => {
+    // The re-tie is the case that needs the flag-blind group: with the flags off
+    // there is no effective group to carry the write to.
+    const data = contour(false, false);
+    setSkeletonRibTiedAcrossGroup(data, data.points[0], true);
+    expect(data.points[0].width.tied).to.equal(true);
+    expect(data.points[1].width.tied).to.equal(true);
+    expect(getTiedRibGroup(data, data.points[0])).to.have.length(2);
+  });
+
+  it("leaves a rib outside the group alone", () => {
+    const data = contour();
+    setSkeletonRibTiedAcrossGroup(data, data.points[0], false);
+    expect(data.points[4].width.tied).to.not.equal(false);
+  });
+
+  it("writes the one rib where it belongs to no group at all", () => {
+    const data = contour();
+    setSkeletonRibTiedAcrossGroup(data, data.points[4], false);
+    expect(data.points[4].width.tied).to.equal(false);
+    expect(data.points[0].width.tied).to.not.equal(false);
   });
 });

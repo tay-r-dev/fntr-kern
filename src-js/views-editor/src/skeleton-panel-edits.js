@@ -46,7 +46,7 @@ import {
   setSkeletonPointWidthDistribution,
   setSkeletonPointWidthFromSide,
   setSkeletonPointWidthLinked,
-  setSkeletonPointWidthTied,
+  setSkeletonRibTiedAcrossGroup,
   setSkeletonSerifParameters,
   setSkeletonSideLocked,
   splitSkeletonContourAtPoint,
@@ -416,8 +416,11 @@ export async function setPanelPointTied(
   return editSelectedSkeletonPoints(
     sceneController,
     pointAddresses,
-    (point) => {
-      setSkeletonPointWidthTied(point, tied);
+    // The flag describes a straight, so it is written across the whole group the
+    // rib belongs to. Freeing one end frees the segment, and the other end's
+    // stored flag would otherwise go on claiming a tie that is not there.
+    (point, address, { contour }) => {
+      setSkeletonRibTiedAcrossGroup(contour, point, tied);
     },
     undoLabel
   );

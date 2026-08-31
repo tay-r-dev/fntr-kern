@@ -2907,6 +2907,47 @@ export function getTiedRibGroup(contour, point) {
   );
 }
 
+// The group a rib WOULD be tied into, reading the geometry and ignoring every
+// opt-out flag in it.
+//
+// `getTiedRibGroup` answers what is tied; this answers what could be. The two
+// differ exactly where the flag is off, which is the case the flag has to be
+// written across: once a straight is freed there is no effective group left to
+// carry a re-tie to, so a write that asked the effective group would be a one-way
+// door.
+export function getSkeletonRibTieGroup(contour, point) {
+  if (!point || point.type) {
+    return null;
+  }
+  const points = contour?.points || [];
+  if (!points.includes(point)) {
+    return null;
+  }
+  const isClosed = contour.closed === true;
+  const segments = buildSegmentsFromSkeletonPoints(points, isClosed);
+  return (
+    collectTiedRibGroups(
+      segments,
+      isClosed,
+      () => true,
+      collectSerifTerminals(segments, isClosed, contour.capStyle)
+    ).get(point) || null
+  );
+}
+
+// Tie or free a straight, from either of its ends.
+//
+// The flag describes a straight, not a rib: freeing one end frees the segment,
+// so the other end's stored flag would go on saying "tied" about a straight that
+// is not. The panel then reads the pair as mixed and the designer is looking at
+// a checkbox that disagrees with itself. One write, every member.
+export function setSkeletonRibTiedAcrossGroup(contour, point, tied) {
+  const group = getSkeletonRibTieGroup(contour, point) || [point];
+  for (const member of group) {
+    setSkeletonPointWidthTied(member, tied);
+  }
+}
+
 // The half-width the generator will actually use for this rib: the stored value,
 // or the mean across a tied group, matching coupledHalfWidths in
 // skeleton-generator.js. Rendering and hit-testing must use this rather than the
