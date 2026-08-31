@@ -1348,6 +1348,31 @@ the far handle kept its full 203 units while the span it had to cover fell from
   still carries no rounded corner at all, which is why a translation survived in
   the tree. The new test is a departure measurement on the reported geometry.
 
+**The first fix shipped with two faults that cancelled on the test and not on the
+glyph**, and it came back the same day as "the rounding is inside out".
+
+- **The cut wrote its result back into the corner point, which BOTH arms share.**
+  One object, two arms: cutting the first moved the second's curve out from under
+  it before that arm had been cut, and the straight arm's step was then taken
+  from a corner that had already moved — 25 units off its own line. Only the two
+  handles are written now. The far on-curve does not move under a cut and the
+  near one is the corner, which the arc replaces.
+- **The old translation was still running after the cut.** Carrying the
+  neighbouring handle with the moved on-curve belongs to the straight step alone;
+  on a cut arm it added the whole trim a second time, putting the handle a
+  trim's length past where the curve goes. That is what drew the arc bowing away
+  from the corner instead of into it.
+- **Neither fault was visible on the fixture, because they cancelled there.** The
+  corner write moved the corner to where the translation measured its delta from,
+  so the delta came out near zero and the departure read 0.158. Removing one
+  alone took it to 12.4. **A test that passes while two faults are live is
+  measuring their sum**, and the departure measure alone could not see the
+  direction.
+- Two guards were added for what the departure measure cannot see: the arc's ends
+  must lie on the arms they join, and the arc must bow toward the corner it
+  replaces, both across a range of distances. Both fail on the first fix and pass
+  now. Departure on the reported glyph: 0.112 and 0.158.
+
 ### The corner sat one half-width out whatever the width and whatever the turn
 
 The routine that placed a corner's outline point took the stroke width as an

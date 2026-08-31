@@ -1687,23 +1687,25 @@ function trimCurvedArm(arm, trim, atEnd) {
   const kept = (atEnd ? bezier.split(0, 1 - given) : bezier.split(given, 1)).points;
   const cutIndex = atEnd ? 3 : 0;
   const handleAtCut = atEnd ? 2 : 1;
-  for (const index of [0, 1, 2, 3]) {
+  // Only the two handles are written back. The far on-curve does not move under
+  // a cut, and the near one is the corner, which the arc replaces — and the
+  // corner is ONE object shared by both arms, so writing it here moved the
+  // second arm's curve out from under it before that arm had been cut.
+  for (const index of [1, 2]) {
     arm[index].x = kept[index].x;
     arm[index].y = kept[index].y;
-    if (index === 1 || index === 2) {
-      // A cut turns a handle onto a new direction. A handle left carrying the
-      // axis it was constructed on sends every reader measuring along a line the
-      // curve no longer takes.
-      const anchor = kept[index === 1 ? 0 : 3];
-      const axis = vector.normalizeVector({
-        x: kept[index].x - anchor.x,
-        y: kept[index].y - anchor.y,
-      });
-      if (Number.isFinite(axis.x) && Number.isFinite(axis.y)) {
-        arm[index]._axis = { x: axis.x, y: axis.y };
-      } else {
-        delete arm[index]._axis;
-      }
+    // A cut turns a handle onto a new direction. A handle left carrying the
+    // axis it was constructed on sends every reader measuring along a line the
+    // curve no longer takes.
+    const anchor = kept[index === 1 ? 0 : 3];
+    const axis = vector.normalizeVector({
+      x: kept[index].x - anchor.x,
+      y: kept[index].y - anchor.y,
+    });
+    if (Number.isFinite(axis.x) && Number.isFinite(axis.y)) {
+      arm[index]._axis = { x: axis.x, y: axis.y };
+    } else {
+      delete arm[index]._axis;
     }
   }
   // The way the curve is heading as it arrives at the cut, pointing on past it.
@@ -1997,11 +1999,17 @@ function roundSharpCornersOnSide(sidePoints, { isClosed }) {
       y: endPoint.y - corner.y,
     };
 
-    if (cornerInfo.prevHandlePoint) {
+    // Carrying the neighbouring handle with the moved on-curve belongs to the
+    // straight step alone. A cut arm has already had both of its handles
+    // rewritten to the ones the shortened curve wants, so translating them again
+    // adds the whole trim on top: the handle at the cut ends up a trim's length
+    // past where the curve goes, and the arc bows away from the corner it is
+    // meant to be cutting off instead of toward it.
+    if (cornerInfo.prevHandlePoint && !arrivingCut) {
       cornerInfo.prevHandlePoint.x += deltaIn.x;
       cornerInfo.prevHandlePoint.y += deltaIn.y;
     }
-    if (cornerInfo.nextHandlePoint) {
+    if (cornerInfo.nextHandlePoint && !leavingCut) {
       cornerInfo.nextHandlePoint.x += deltaOut.x;
       cornerInfo.nextHandlePoint.y += deltaOut.y;
     }

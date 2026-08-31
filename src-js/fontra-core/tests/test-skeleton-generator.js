@@ -724,6 +724,45 @@ describe("skeleton-generator corner rounding input", () => {
       return worst;
     }
 
+    // The sharp outline's own corner point on one side, which the arc replaces.
+    function cornerPoint(result, side) {
+      for (const [contourIndex, entry] of result.provenance.entries()) {
+        const points = result.contours[contourIndex].points;
+        const pointMap = entry.pointMap || [];
+        for (let i = 0; i < points.length; i++) {
+          const at = pointMap[i];
+          if (!points[i].type && at?.skeletonPointId === 3 && at.side === side) {
+            return { x: points[i].x, y: points[i].y };
+          }
+        }
+      }
+      return null;
+    }
+
+    // The arc a rounding put in place of one corner: of the runs of four with two
+    // smooth ends, the one standing closest to where that corner was. Taking the
+    // first inside a radius picks up an ordinary curve whose ends happen to be
+    // smooth once the radius grows.
+    function arcNear(result, corner) {
+      let best = null;
+      for (const contour of result.contours) {
+        const points = contour.points;
+        for (let i = 0; i + 3 < points.length; i++) {
+          const run = points.slice(i, i + 4);
+          if (run[0].type || run[3].type || !run[1].type || !run[2].type) continue;
+          if (!run[0].smooth || !run[3].smooth) continue;
+          const reach = Math.max(
+            Math.hypot(run[0].x - corner.x, run[0].y - corner.y),
+            Math.hypot(run[3].x - corner.x, run[3].y - corner.y)
+          );
+          if (!best || reach < best.reach) {
+            best = { reach, run: run.map((point) => ({ x: point.x, y: point.y })) };
+          }
+        }
+      }
+      return best?.run ?? null;
+    }
+
     for (const side of ["left", "right"]) {
       it(`on the ${side} side`, () => {
         const sharp = generateFromSkeleton(makeCurvedArmSkeleton(0));
@@ -735,6 +774,99 @@ describe("skeleton-generator corner rounding input", () => {
         // A unit of slack for the grid and for measuring the give-up along the
         // curve rather than along the chord. The bulge this covers was 19.
         expect(greatestDeparture(after, before)).to.be.lessThan(1.5);
+      });
+
+      // An arc replaces a piece of the corner and joins what is left, so both of
+      // its ends stand ON the arms they join. Writing the cut point back into the
+      // corner moved it out from under the OTHER arm — one point, shared by both
+      // — and that arm's end then came off its own line entirely, 25 units away
+      // on the reported glyph.
+      it(`starts and ends on the arms it joins, on the ${side} side`, () => {
+        const sharp = generateFromSkeleton(makeCurvedArmSkeleton(0));
+        const corner = cornerPoint(sharp, side);
+        const curved = armLeavingCorner(sharp, side);
+        expect(corner, "sharp corner").to.not.equal(null);
+        // The straight arm runs from the corner to the outline point belonging
+        // to the skeleton's other on-curve.
+        const straightEnd = (() => {
+          for (const [contourIndex, entry] of sharp.provenance.entries()) {
+            const points = sharp.contours[contourIndex].points;
+            const pointMap = entry.pointMap || [];
+            for (let i = 0; i < points.length; i++) {
+              const at = pointMap[i];
+              if (!points[i].type && at?.skeletonPointId === 4 && at.side === side) {
+                return { x: points[i].x, y: points[i].y };
+              }
+            }
+          }
+          return null;
+        })();
+        expect(straightEnd, "straight arm end").to.not.equal(null);
+        const onStraight = (point) => {
+          const dx = corner.x - straightEnd.x;
+          const dy = corner.y - straightEnd.y;
+          const length = Math.hypot(dx, dy);
+          const along =
+            ((point.x - straightEnd.x) * dx + (point.y - straightEnd.y) * dy) / length;
+          const foot = {
+            x: straightEnd.x + (dx / length) * along,
+            y: straightEnd.y + (dy / length) * along,
+          };
+          return Math.hypot(point.x - foot.x, point.y - foot.y);
+        };
+        const onCurved = (point) => {
+          const bezier = new Bezier(curved);
+          let nearest = Infinity;
+          for (let j = 0; j <= 2000; j++) {
+            const q = bezier.get(j / 2000);
+            nearest = Math.min(nearest, Math.hypot(point.x - q.x, point.y - q.y));
+          }
+          return nearest;
+        };
+        for (const distance of [10, 36, 80]) {
+          const arc = arcNear(
+            generateFromSkeleton(makeCurvedArmSkeleton(distance)),
+            corner
+          );
+          expect(arc, `arc at distance ${distance}`).to.not.equal(null);
+          for (const end of [arc[0], arc[3]]) {
+            expect(
+              Math.min(onStraight(end), onCurved(end)),
+              `arc end off both arms at distance ${distance}`
+            ).to.be.lessThan(1);
+          }
+        }
+      });
+
+      // A rounding cuts a corner off. Its arc therefore lies between the two
+      // arms and the corner, bowing toward the corner — never away from it,
+      // which is a rounding drawn inside out. Carrying the neighbouring handle
+      // with the moved on-curve after the arm had already been cut put the whole
+      // trim back onto that handle and did exactly that.
+      it(`bows toward the corner on the ${side} side`, () => {
+        const corner = cornerPoint(
+          generateFromSkeleton(makeCurvedArmSkeleton(0)),
+          side
+        );
+        expect(corner, "sharp corner").to.not.equal(null);
+        for (const distance of [10, 36, 80]) {
+          const arc = arcNear(
+            generateFromSkeleton(makeCurvedArmSkeleton(distance)),
+            corner
+          );
+          expect(arc, `arc at distance ${distance}`).to.not.equal(null);
+          const middle = new Bezier(arc).get(0.5);
+          const chordMiddle = {
+            x: (arc[0].x + arc[3].x) / 2,
+            y: (arc[0].y + arc[3].y) / 2,
+          };
+          const toCorner = (point) =>
+            Math.hypot(point.x - corner.x, point.y - corner.y);
+          expect(
+            toCorner(middle),
+            `arc at distance ${distance} bows away from its corner`
+          ).to.be.lessThan(toCorner(chordMiddle));
+        }
       });
     }
   });
