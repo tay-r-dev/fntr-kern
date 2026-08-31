@@ -951,11 +951,8 @@ Nothing is dragged onto a target and no handle is turned.
 The rule this replaces placed those points on a straight line running up the frame's depth from the
 rib end, and brought the edge to them. That line is the wall only on a straight stem. On a curved
 one the wall had to be dragged onto it and its surviving handle turned onto the endpoint tangent,
-and both grew with the depth the serif reached at. Tip thickness sets that depth almost alone, so
-moving tip thickness reshaped the stem: on `_external/b.json` the emitted wall departed from the
-curve the generator solved by 11 units at tip thickness 63 and 23 at 100, with the segment's tension
-sliding from 1.33 to 0.85. It now moves under a tenth of a unit across that whole range, which is
-grid rounding.
+and both grew with the depth the serif reached at — so tip thickness, which sets that depth almost
+alone, reshaped the stem. The log carries the measurement.
 
 **What keeps a curvature pin out of the serif is not the straight line but the ordering.** The cut
 is taken on the wall before any authored layer touches it, and all three authored layers — the
@@ -973,10 +970,9 @@ been switched on.
 
 **Reach and ease distance are lengths along the wall.** They are lengths in the panel, so they are
 lengths in the shape. The straight-line model could only advance by depth, which on a leaning or
-curving wall carries the point further than the number says — by the number divided by the cosine of
-the lean, so an ease distance of 15 moved its wall end 17.3 at a lean of 30 degrees while its other
-end moved 15. The rounding was lopsided at exactly the leans a designer notices. Tip thickness stays
-a depth, because the thickness of a tip is measured square to its foot.
+curving wall carries the point further than the number says — by the number over the cosine of the
+lean — so the rounding was lopsided at exactly the leans a designer notices. Tip thickness stays a
+depth, because the thickness of a tip is measured square to its foot.
 
 A wall states how far it may be consumed, in its own length, and the half serif reads that limit off
 the wall rather than being handed one beside it.

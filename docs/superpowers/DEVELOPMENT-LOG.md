@@ -621,6 +621,14 @@ serifed terminal now describes the emitted piece, and wing slope is now the
 incline of the wing's top surface. Both agree with the old reading on a straight
 stem, which is why no fixture moved.
 
+**Reach and ease distance had to become lengths along the wall in the same
+change.** The straight-line model could only advance by depth, which carries the
+point further than the number says by the number over the cosine of the lean: an
+ease distance of 15 moved its wall end 17.3 at a lean of 30 degrees while its
+other end moved 15, so the rounding was lopsided at exactly the leans a designer
+notices. Tip thickness stays a depth, because the thickness of a tip is measured
+square to its foot.
+
 **Deleting the anchoring took the surviving handle's axis with it**, and three
 tests went quiet rather than loud. The handle at a cut is tangent to the curve
 there, so its own direction is the axis — a true statement where the old one was

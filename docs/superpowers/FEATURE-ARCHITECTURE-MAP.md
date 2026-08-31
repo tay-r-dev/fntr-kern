@@ -8,22 +8,16 @@ This is the **inventory and ownership map**. It names what we built, where each 
 what you may touch. A fresh session or a delegated agent can start work from it without deriving
 the architecture again.
 
-We re-integrated the skeleton from an older fork (the "donor") between 2026-07 and now. We ported
-the geometry math and redesigned all of the plumbing. That work is finished. The integration
-roadmap that planned it is retired, and its durable content is now **§9 (skeleton design
-rationale)**. So this file stands alone, and §9 covers why the skeleton has the shape it has.
+We re-integrated the skeleton from an older fork (the "donor") between 2026-07 and now, porting the
+geometry math and redesigning all of the plumbing. That work is finished, and the roadmap that
+planned it is retired into **§9 (skeleton design rationale)**.
 
-We retired the per-feature design specs and implementation plans the same way. The `specs/` and
-`plans/` folders held the offset construction, the generated-segment gizmos, the curvature pin,
-the continuous natural solver and the true geometric handle ceiling. Those folders are
-**dissolved**, and their durable content is now in this doc and in the feature model. No plan
-still holds a forward-looking statement. If a statement is still true, it is in one of the docs
-in the table below.
-
-Two files remain under those folders. They are the serif generator's design and plan, dated
-2026-07-30, plus the `serif-lab.html` mockup they were written against. The serif is shipped, so
-their durable content is now in feature model §8 and in the log's serif section. Retire them the same
-way once nothing references them.
+The per-feature design specs and implementation plans went the same way. The `specs/` and `plans/`
+folders are **dissolved** into this doc and the feature model, and no plan still holds a
+forward-looking statement. **If a statement is still true, it is in one of the docs below.** Three
+files remain under those folders: the serif generator's design and plan and the `serif-lab.html`
+mockup they were written against. The serif is shipped and its durable content is feature model §8,
+so retire them the same way once nothing references them.
 
 | Doc                  | Answers                                                                                     |
 | -------------------- | ------------------------------------------------------------------------------------------- |
@@ -67,19 +61,10 @@ way once nothing references them.
 | F11 | **Markers**              | shipped                         | fork-original                  | 2 core + 3 editor + panel + tool                         | Marker tool, `fontra.markers.*` layers      |
 | F12 | **Snapping**             | shipped                         | fork-original                  | 1 core + 1 editor + 1 layer                              | any drag, and the pen while it hovers       |
 
-Feature sizes, owned code only. Shared-file hunks are excluded.
-
-```
-Skeleton      ████████████████████████████████████████  ~16,300 lines
-Letterspacer  █████                                      ~1,900
-Tunni         █████                                      ~1,850
-Measure+labels████                                       ~2,050  (F2 + F5 share distance-angle.js)
-Base expansion██▏                                         ~875  (shared with the skeleton's drag)
-SpeedPunk     █▌                                           ~460
-Snapping      ███                                          ~1,180
-Corner overlap█                                            ~350
-Coarse grid   ▏                                             ~66
-```
+Feature sizes, owned code only, shared-file hunks excluded. The skeleton is an order of magnitude
+above everything else: skeleton ~16,300 lines, measure and labels ~2,050 (F2 and F5 share
+`distance-angle.js`), letterspacer ~1,900, Tunni ~1,850, snapping ~1,180, base expansion ~875
+(shared with the skeleton's drag), SpeedPunk ~460, corner overlap ~350, coarse grid ~66.
 
 ---
 
@@ -366,11 +351,6 @@ whole edit runs in the target entry, which is where the kind decision belongs
 (R-E). The entry records every frame against a fresh copy of the pre-drag path,
 so the rollback describes the gesture rather than its last frame.
 
-**A corner point lands where its two moved segments cross.** A segment that is
-not being offset has an offset of zero and does not move, so the crossing stays
-on it. The one bound is the standard miter limit of 4, for two segments doubling
-back, which never cross at all.
-
 ### F11 — Markers
 
 A measurement the designer places on a contour and keeps. Saved per layer, it
@@ -393,19 +373,14 @@ point count under it changes.
 | `fontra-core/tests/test-marker-anchor.js`         | +80      | tests                                                                                                       |
 | `fontra-core/tests/test-marker-measure.js`        | +255     | tests, including three sweeps                                                                               |
 
-**A marker stores an address and no geometry.** Every distance, direction and
-far point is derived on read. Nothing recovers an anchor by geometric matching:
-the signature is a count, it verifies an address and never searches for one
-(R-D). This is what separates markers from defect P1.
+Three claims matter here; feature model §13 holds the rest.
 
-**The count changes, the marker goes stale; anything else, it rides.** One rule.
-It deletes an obligation rather than adding one — no tool that restructures a
-point list owes marker anchors any bookkeeping. Reverse contour is the single
-named exception, because it preserves the count, and it declares the markers on
-its contour broken in the same change.
+**A marker stores an address and no geometry**, and nothing recovers an anchor
+by geometric matching — the one stored coordinate verifies an address and never
+searches for one (R-D). This is what separates markers from defect P1.
 
-**Stale is derived on read and never written**, so undoing past the structural
-edit brings the marker back on its own.
+**No tool that restructures a point list owes marker anchors any bookkeeping.**
+There is no exception, reverse contour included.
 
 **The grip loses to skeleton and generated geometry**, so a readout never sits
 in front of the geometry it describes. The marker tool is how that geometry is
@@ -433,19 +408,14 @@ Two rules worth knowing before touching it.
 `SnappingSession` builds the scene once. The pen is the exception: it calls
 `refresh()` before every hover, because the point it just placed is a source.
 
-**Exclusion is a provenance lookup, never a geometric match (R-D).** A moved
-skeleton point takes the generated points it made out of the scene with it;
-`excludedPointIndices` resolves them through `resolveGeneratedPointProvenance`,
-not by comparing coordinates.
+**Exclusion is a provenance lookup, never a geometric match (R-D).**
+`excludedPointIndices` resolves a moved skeleton point's generated points
+through `resolveGeneratedPointProvenance`, not by comparing coordinates.
 
 The skeleton is not in the glyph path, so it needs its own pass to be a target
 at all: its on-curve points and both ends of every rib. Not its segments — a
 centerline is construction, and aligning to one says less than aligning to what
 it makes.
-
----
-
----
 
 ---
 
@@ -736,13 +706,12 @@ real work, not an afterthought.
 
 ### History (for archaeology)
 
-The donor is pinned at `fd76d3abe`, the last pre-refactor commit, from 2026-02-20. It is the
-behavioral ground truth. We cherry-picked three generator bug-fixes from its later refactor branch
-as semantics. We built the feature across WS-6…WS-16, with WS-17 as the parity pass. The donor
-checkout still exists at **`_external/skeleton`**, read-only and gitignored, pinned at
-`fd76d3abe`. Reach it with `git -C _external/skeleton …`. It is a behavioral reference for parity
-questions, and never a source to port plumbing from. The porting rules that governed the
-integration are retired. This doc, verified against the code, is the reference now.
+The donor sits read-only and gitignored at **`_external/skeleton`**, pinned at `fd76d3abe`, the
+last pre-refactor commit, from 2026-02-20. Reach it with `git -C _external/skeleton …`. It is the
+behavioral ground truth for parity questions and never a source to port plumbing from. We
+cherry-picked three generator bug-fixes from its later refactor branch as semantics, and built the
+feature across WS-6…WS-16 with WS-17 as the parity pass. The porting rules that governed the
+integration are retired; this doc, verified against the code, is the reference now.
 
 ---
 
