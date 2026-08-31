@@ -1628,6 +1628,95 @@ function cutCurveAt(curve, t, half) {
   });
 }
 
+// The four points of one arm, as references into the side's own list, or null
+// where the two on-curves do not have exactly two handles between them.
+function armPoints(points, fromOnIndex, toOnIndex, isClosed) {
+  const between = pointsBetween(points, fromOnIndex, toOnIndex);
+  if (between.length !== 2 || !between[0].type || !between[1].type) {
+    return null;
+  }
+  if (!isClosed && fromOnIndex > toOnIndex) {
+    return null;
+  }
+  return [points[fromOnIndex], between[0], between[1], points[toOnIndex]];
+}
+
+// Where along a cubic it has covered `length` of its own arc. Bisection on arc
+// length, which rises strictly with the parameter, so the answer is continuous
+// in the input and a fixed trip count is enough. Returns null where the curve is
+// shorter than the length asked for.
+function parameterAtArcLength(curve, length) {
+  const bezier = new Bezier(curve.map((point) => ({ x: point.x, y: point.y })));
+  const total = bezier.length();
+  if (!(total > 1e-6) || !(length > 0) || length >= total) {
+    return null;
+  }
+  let low = 0;
+  let high = 1;
+  for (let step = 0; step < 40; step++) {
+    const middle = (low + high) / 2;
+    if (bezier.split(0, middle).length() < length) {
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+  return (low + high) / 2;
+}
+
+// Give up `trim` of one end of a curved arm by CUTTING the curve there. What
+// survives is the same curve, shorter — the piece the rounding did not take.
+//
+// Sliding the end point along the chord toward its handle and carrying that
+// handle with it is not this. It is a rigid move of one end of a cubic while the
+// other end and its handle stay, which reshapes the curve: on `I^1` the shoulder
+// bulged 19 units out of its own path on a rounding of 36. The corner join and
+// the serif's easing both cut, and this is the same operation.
+//
+// `atEnd` says which end is given up. The arm's own points are rewritten in
+// place, and the direction the surviving curve now travels at the cut is
+// returned, because the arc has to leave along it or the join is a kink.
+function trimCurvedArm(arm, trim, atEnd) {
+  // Measured from the end being given up, so the curve is turned round when that
+  // end is the far one.
+  const given = parameterAtArcLength(atEnd ? [...arm].reverse() : arm, trim);
+  if (given === null) {
+    return null;
+  }
+  const bezier = new Bezier(arm.map((point) => ({ x: point.x, y: point.y })));
+  const kept = (atEnd ? bezier.split(0, 1 - given) : bezier.split(given, 1)).points;
+  const cutIndex = atEnd ? 3 : 0;
+  const handleAtCut = atEnd ? 2 : 1;
+  for (const index of [0, 1, 2, 3]) {
+    arm[index].x = kept[index].x;
+    arm[index].y = kept[index].y;
+    if (index === 1 || index === 2) {
+      // A cut turns a handle onto a new direction. A handle left carrying the
+      // axis it was constructed on sends every reader measuring along a line the
+      // curve no longer takes.
+      const anchor = kept[index === 1 ? 0 : 3];
+      const axis = vector.normalizeVector({
+        x: kept[index].x - anchor.x,
+        y: kept[index].y - anchor.y,
+      });
+      if (Number.isFinite(axis.x) && Number.isFinite(axis.y)) {
+        arm[index]._axis = { x: axis.x, y: axis.y };
+      } else {
+        delete arm[index]._axis;
+      }
+    }
+  }
+  // The way the curve is heading as it arrives at the cut, pointing on past it.
+  const travel = vector.normalizeVector({
+    x: kept[cutIndex].x - kept[handleAtCut].x,
+    y: kept[cutIndex].y - kept[handleAtCut].y,
+  });
+  if (!Number.isFinite(travel.x) || !Number.isFinite(travel.y)) {
+    return null;
+  }
+  return { point: { x: kept[cutIndex].x, y: kept[cutIndex].y }, travel };
+}
+
 function roundSharpCornersOnSide(sidePoints, { isClosed }) {
   const points = sidePoints.map((point) => ({ ...point }));
   if (points.length < 3) {
@@ -1733,6 +1822,14 @@ function roundSharpCornersOnSide(sidePoints, { isClosed }) {
       curvature: cornerCurvature,
       prevHandlePoint: prevHandleIndex !== null ? points[prevHandleIndex] : null,
       nextHandlePoint: nextHandleIndex !== null ? points[nextHandleIndex] : null,
+      // A curved arm is given up by cutting the curve, so the whole cubic is
+      // needed and not just the handle beside the corner. Held as references so
+      // that the emission below reads them as they stand — two corners can share
+      // one segment, and the second has to cut what the first left.
+      arrivingArm:
+        prevHandleIndex !== null ? armPoints(points, prevOnIndex, i, isClosed) : null,
+      leavingArm:
+        nextHandleIndex !== null ? armPoints(points, i, nextOnIndex, isClosed) : null,
     });
   }
 
@@ -1823,25 +1920,47 @@ function roundSharpCornersOnSide(sidePoints, { isClosed }) {
       continue;
     }
 
+    // A straight arm is given up by stepping along it, which is exact. A curved
+    // one is given up by cutting the curve, and the arc then has to leave along
+    // the direction the shortened curve actually travels at the cut rather than
+    // along the corner's own chord.
+    const arrivingCut = cornerInfo.arrivingArm
+      ? trimCurvedArm(cornerInfo.arrivingArm, trimIn, true)
+      : null;
+    const leavingCut = cornerInfo.leavingArm
+      ? trimCurvedArm(cornerInfo.leavingArm, trimOut, false)
+      : null;
+    if (
+      (cornerInfo.arrivingArm && !arrivingCut) ||
+      (cornerInfo.leavingArm && !leavingCut)
+    ) {
+      i++;
+      continue;
+    }
+
     const startPoint = {
-      x: corner.x + cornerInfo.dirInAway.x * trimIn,
-      y: corner.y + cornerInfo.dirInAway.y * trimIn,
+      x: arrivingCut ? arrivingCut.point.x : corner.x + cornerInfo.dirInAway.x * trimIn,
+      y: arrivingCut ? arrivingCut.point.y : corner.y + cornerInfo.dirInAway.y * trimIn,
       smooth: true,
     };
     const endPoint = {
-      x: corner.x + cornerInfo.dirOutAway.x * trimOut,
-      y: corner.y + cornerInfo.dirOutAway.y * trimOut,
+      x: leavingCut ? leavingCut.point.x : corner.x + cornerInfo.dirOutAway.x * trimOut,
+      y: leavingCut ? leavingCut.point.y : corner.y + cornerInfo.dirOutAway.y * trimOut,
       smooth: true,
     };
 
-    const startTangent = {
-      x: -cornerInfo.dirInAway.x,
-      y: -cornerInfo.dirInAway.y,
-    };
-    const endTangent = {
-      x: cornerInfo.dirOutAway.x,
-      y: cornerInfo.dirOutAway.y,
-    };
+    const startTangent = arrivingCut
+      ? arrivingCut.travel
+      : {
+          x: -cornerInfo.dirInAway.x,
+          y: -cornerInfo.dirInAway.y,
+        };
+    const endTangent = leavingCut
+      ? { x: -leavingCut.travel.x, y: -leavingCut.travel.y }
+      : {
+          x: cornerInfo.dirOutAway.x,
+          y: cornerInfo.dirOutAway.y,
+        };
     // Curvature is a tension: 0 leaves both handles on their own on-curve and
     // cuts a straight chamfer, 1 carries both onto the corner point, which is
     // where the two tangent rays meet. A zero-length handle is the setting

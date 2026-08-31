@@ -460,6 +460,14 @@ neighbouring on-curve. A curved arm stops just short of its handle, because trim
 handle inverts the curve. And the pairwise pass splits the run between two corners that share
 one segment.
 
+**A curved arm is given up by cutting the curve, and the distance is a length along it.** What
+survives is the same curve, shorter — the piece the rounding did not take — so rounding a corner
+changes the corner and nothing else. The arc then leaves along the direction the shortened curve
+actually travels at the cut, not along the corner's own chord, or the join it was drawn to smooth
+is a kink. Sliding the end point along the chord toward its handle and carrying that handle with
+it is not this: it is a rigid move of one end of a cubic while the other end and its handle stay,
+which reshapes the whole curve. A straight arm is stepped along, which is exact there.
+
 A side under half a unit is collapsed and is not rounded, because that edge lies on the skeleton
 exactly. Single-sided mode is the deliberate exception: there the collapsed side borrows the live
 side's base and rounds with it, so the two edges of the stroke agree.

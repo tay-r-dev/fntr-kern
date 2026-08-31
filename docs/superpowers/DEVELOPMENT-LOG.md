@@ -1313,6 +1313,41 @@ one number for a thing that is two. The arc's fullness had no control at all.
   serif fixture objects merged into it, so those fixtures are never generated. A
   dev script, and it predates this work.
 
+### Rounding a curved corner reshaped the curve it was rounding
+
+Reported on `I^1`: the corner where the stem meets the shoulder bulged outward
+the moment it was rounded. The rounding gave up 36 units and the surviving arm
+left its own path by **19.0 units on the right side and 17.8 on the left**, worst
+around the middle of the curve where nothing had been asked to move.
+
+**A curved arm was given up by translating**, not by cutting. The end on-curve
+stepped 36 units along the chord toward its handle and that handle was carried by
+the same vector, while the far end and the far handle stayed. That is a rigid
+move of one end of a cubic, and a cubic with one end moved is a different curve:
+the far handle kept its full 203 units while the span it had to cover fell from
+411 to 397, so the curve bowed out to take up the difference.
+
+- **The cut is the operation, and the code already had it twice.** The corner
+  join cuts, and the serif's easing cuts so that "the surviving bracket is the
+  same curve, not a redrawn one". Only the rounding did not.
+- **The translation put the end off the curve as well as changing it.** Stepping
+  36 along the chord landed 1.80 units away from the curve, because a straight
+  step is not a step along a bend. Measured on the same arm, a proper cut departs
+  by 0.087 — grid rounding and nothing else.
+- **The arc's tangent has to come from the cut, not from the corner.** The old
+  chord direction is the tangent at the corner, which is not the tangent at the
+  new end, so the joint the rounding exists to smooth arrived with a kink of its
+  own. This was invisible while the arm's shape was already wrong.
+- **The distance is a length along the curve**, found by bisecting on arc length.
+  Arc length rises strictly with the parameter, so the answer is continuous in the
+  input and a fixed trip count is enough — the case the sweep rule warns about is
+  a bisection on something that is not monotone.
+- Measured after, same glyph and same 36 units: 0.158 and 0.112. Point count is
+  unchanged across distances 1 to 140.
+- **No golden fixture moved, and that is the gap and not the result.** The corpus
+  still carries no rounded corner at all, which is why a translation survived in
+  the tree. The new test is a departure measurement on the reported geometry.
+
 ### The corner sat one half-width out whatever the width and whatever the turn
 
 The routine that placed a corner's outline point took the stroke width as an

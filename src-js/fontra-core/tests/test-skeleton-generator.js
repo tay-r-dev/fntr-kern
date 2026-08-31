@@ -1,3 +1,4 @@
+import { Bezier } from "bezier-js";
 import {
   generateFromSkeleton,
   outlineContourToPackedPath,
@@ -644,6 +645,99 @@ describe("skeleton-generator corner rounding input", () => {
     }
     return runs;
   }
+
+  // Rounding gives up a length of each arm. What is left of a curved arm has to
+  // be the SAME curve, shorter — the piece of it the rounding did not take.
+  // Reported on `I^1`: the corner between the stem and the shoulder bulged out
+  // by 19 units the moment the corner was rounded, on a rounding of 36.
+  describe("a curved arm keeps its shape", () => {
+    // The reported geometry: a straight running up into a corner, and a curve
+    // leaving it. Only the corner point is rounded.
+    function makeCurvedArmSkeleton(distance) {
+      return {
+        version: 1,
+        nextId: 6,
+        contours: [
+          {
+            id: 1,
+            closed: false,
+            defaultWidth: 60,
+            singleSided: null,
+            points: [
+              { id: 4, x: 79, y: 359, type: null, smooth: false },
+              {
+                id: 3,
+                x: 76,
+                y: 500,
+                type: null,
+                smooth: false,
+                corner: {
+                  linked: false,
+                  left: { distance, curvature: 0.56 },
+                  right: { distance, curvature: 0.81 },
+                },
+              },
+              { id: 12, x: 196, y: 653, type: "cubic" },
+              { id: 13, x: 426, y: 608, type: "cubic" },
+              { id: 2, x: 418, y: 425, type: null, smooth: false },
+            ],
+          },
+        ],
+        generated: [],
+      };
+    }
+
+    // The cubic leaving the corner on one side, as four points. It is the only
+    // curve on its side whose far end is the outline point belonging to the
+    // skeleton's far on-curve.
+    function armLeavingCorner(result, side) {
+      for (const [contourIndex, entry] of result.provenance.entries()) {
+        const points = result.contours[contourIndex].points;
+        const pointMap = entry.pointMap || [];
+        for (let i = 0; i + 3 < points.length; i++) {
+          const quad = [i, i + 1, i + 2, i + 3];
+          if (points[quad[0]].type || points[quad[3]].type) continue;
+          if (!points[quad[1]].type || !points[quad[2]].type) continue;
+          const ends = [pointMap[quad[0]], pointMap[quad[3]]];
+          if (ends.some((end) => end?.skeletonPointId === 2 && end.side === side)) {
+            return quad.map((k) => ({ x: points[k].x, y: points[k].y }));
+          }
+        }
+      }
+      return null;
+    }
+
+    // How far the shorter curve strays from the longer one, sampled along it.
+    function greatestDeparture(shorter, longer) {
+      const a = new Bezier(shorter);
+      const b = new Bezier(longer);
+      let worst = 0;
+      for (let i = 0; i <= 400; i++) {
+        const p = a.get(i / 400);
+        let nearest = Infinity;
+        for (let j = 0; j <= 1200; j++) {
+          const q = b.get(j / 1200);
+          nearest = Math.min(nearest, Math.hypot(p.x - q.x, p.y - q.y));
+        }
+        worst = Math.max(worst, nearest);
+      }
+      return worst;
+    }
+
+    for (const side of ["left", "right"]) {
+      it(`on the ${side} side`, () => {
+        const sharp = generateFromSkeleton(makeCurvedArmSkeleton(0));
+        const rounded = generateFromSkeleton(makeCurvedArmSkeleton(36));
+        const before = armLeavingCorner(sharp, side);
+        const after = armLeavingCorner(rounded, side);
+        expect(before, "sharp arm").to.not.equal(null);
+        expect(after, "rounded arm").to.not.equal(null);
+        // A unit of slack for the grid and for measuring the give-up along the
+        // curve rather than along the chord. The bulge this covers was 19.
+        expect(greatestDeparture(after, before)).to.be.lessThan(1.5);
+      });
+    }
+  });
 
   it("a distance of zero leaves the corner sharp", () => {
     const plain = generateFromSkeleton(makeAnglePointSkeleton());
