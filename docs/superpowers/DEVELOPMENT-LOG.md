@@ -1092,6 +1092,10 @@ consumer exists.
 and unlinked, scrub both labels, drag both ribs at a distribution of 100, and
 drag the total in the panel while watching the other three fields.
 
+**Manual matrix owed for A** (rail R-G): drag a rib with A on a linked point, on
+an unlinked one, on a side holding zero and on a width-locked side; press and
+release A with the button down; drag a multi-rib selection; and hold A with D.
+
 ---
 
 ## The generated-segment gizmos and the curvature pin (map F7, skeleton)

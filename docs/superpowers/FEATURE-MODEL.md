@@ -47,8 +47,9 @@ Everything below elaborates that one idea.
   and detached handles. The point stays _generated_.
 - **Single-sided contours** — all width sits on one side. The other edge lies exactly on the
   skeleton.
-- **Modifier behaviors** — D (fixed-rib), S (fixed-rib-compress), X (equalize) and Z
-  (tangent-only rib drag). The designer holds them as realtime keys during a drag. See below.
+- **Modifier behaviors** — D (fixed-rib), S (fixed-rib-compress), X (equalize), Z (tangent-only
+  rib drag) and A (independent rib). The designer holds them as realtime keys during a drag. See
+  below.
 - **Centerline expansion** — what D and S do to a whole selection. See §1.1.
 - **Rib angle lock** — see below.
 - **Tunni points** on skeleton curve segments.
@@ -66,6 +67,26 @@ equalizes.
 The tangent nudge has two entry points, the rib gizmo and the generated on-curve, and they sit at
 the same place on screen. Both derive the handle carry from the behavior name, inside
 `createSkeletonRibTargetEntries`. So the two entry points cannot disagree about it.
+
+**A suspends the link and the distribution for one drag.** The dragged side takes the cursor's
+width and the far side stays exactly where it stands. It reads the stored link flag and never
+writes it, so releasing A returns the point to the linkage the designer chose, carrying a new
+distribution. The zero-share refusal goes with the share: a side holding zero has no share to
+state a total through, so a plain linked drag declines it, and under A there is nothing left to
+decline — which is how a rib pinned on the centerline is lifted off it.
+
+A rides on the behavior name, not beside it, because only a name change rebuilds the target
+entries. So A pressed or released with the button down takes effect on the next frame, the way Z
+already does. It has nothing to say under Z or Alt: both of those move the rib along the
+centerline and change no width, so those readings win. Under D and S it means the same thing — the
+anchor edge stays pinned, the far side keeps the width it had, and the far edge travels the whole
+drag with the point. The far side is then paying for nothing, so it no longer has a say in how far
+the drag may go.
+
+**Two holds A deliberately does not break.** A width lock still refuses, because a lock is a
+stored hold on one edge rather than a statement about how the two sides travel together. A tied
+group still carries its partner, because the shared offset is what keeps the straight straight,
+and the per-straight "Tied ribs" switch is already the way to ask for the other answer.
 
 **Rib angle lock.** `ribAngleLock` on a point forces its rib onto an axis, either `"horizontal"`
 or `"vertical"`. Those names describe the way the rib runs. The lock overrides the normal the

@@ -58,6 +58,7 @@ import {
   getSkeletonModifierBehaviorName,
   getSkeletonRibBehaviorName,
   hasSkeletonPointSelection,
+  isFixedRibBehaviorName,
   makeSkeletonModifierOptions,
   makeSkeletonPointKey,
   makeSkeletonPointTargetEntry,
@@ -105,6 +106,7 @@ const REALTIME_RIB_TANGENT_ACTION = "action.realtime.rib-tangent";
 const REALTIME_FIXED_RIB_ACTION = "action.realtime.fixed-rib";
 const REALTIME_FIXED_RIB_COMPRESS_ACTION = "action.realtime.fixed-rib-compress";
 const REALTIME_TENSION_AWARE_ACTION = "action.realtime.tension-aware";
+const REALTIME_INDEPENDENT_RIB_ACTION = "action.realtime.independent-rib";
 
 const REALTIME_MODIFIER_ACTIONS = [
   {
@@ -122,6 +124,10 @@ const REALTIME_MODIFIER_ACTIONS = [
   {
     action: REALTIME_TENSION_AWARE_ACTION,
     modeProperty: "tensionAwareMode",
+  },
+  {
+    action: REALTIME_INDEPENDENT_RIB_ACTION,
+    modeProperty: "independentRibMode",
   },
 ];
 
@@ -141,6 +147,7 @@ export class PointerTool extends BaseTool {
     this.fixedRibMode = false;
     this.fixedRibCompressMode = false;
     this.tensionAwareMode = false;
+    this.independentRibMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
     this._boundRealtimeModifierWindowBlur = null;
   }
@@ -771,6 +778,7 @@ export class PointerTool extends BaseTool {
         fixedRibCompressMode: this.fixedRibCompressMode,
         tangentRibMode: this.tangentRibMode,
         tensionAwareMode: this.tensionAwareMode,
+        independentRibMode: this.independentRibMode,
       });
       const getSelectionBehaviorName = (event) =>
         getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds) ||
@@ -869,8 +877,7 @@ export class PointerTool extends BaseTool {
         // selection otherwise means.
         if (
           hasRibLikeSelection(sceneController.selection) &&
-          name !== "fixed-rib" &&
-          name !== "fixed-rib-compress"
+          !isFixedRibBehaviorName(name)
         ) {
           const targetEntries = [];
           targetEntries.push(

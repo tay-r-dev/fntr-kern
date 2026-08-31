@@ -465,7 +465,12 @@ export function applyFixedRibDelta(
   selectedPointKeys,
   clickedPointKey,
   delta,
-  { compress = false, scaleControlPoints = true, round = Math.round } = {}
+  {
+    compress = false,
+    scaleControlPoints = true,
+    round = Math.round,
+    independent = false,
+  } = {}
 ) {
   const clicked = parseSkeletonPointKey(clickedPointKey);
   if (!clicked || !selectedPointKeys?.size) return false;
@@ -512,7 +517,8 @@ export function applyFixedRibDelta(
       affected,
       anchorSide,
       projectedDelta,
-      singleSided
+      singleSided,
+      independent
     );
     for (const pointId of affected) {
       const originalPointIndex = originalContour.points.findIndex(
@@ -548,7 +554,8 @@ export function applyFixedRibDelta(
         anchorSide,
         allowedDelta,
         round,
-        singleSided
+        singleSided,
+        independent
       );
       changed = true;
     }
@@ -783,7 +790,8 @@ function collectFixedRibAllowances(
   pointIds,
   anchorSide,
   projectedDelta,
-  singleSided
+  singleSided,
+  independent = false
 ) {
   const allowances = new Map();
   const points = contour?.points || [];
@@ -805,7 +813,11 @@ function collectFixedRibAllowances(
     // finished, because that edge is already down on the skeleton. Without this
     // the far side pinned at zero while the drag carried on compressing the
     // anchor alone.
-    const sides = [anchorSide, farSide];
+    //
+    // Under A the far side is not paying for anything: it keeps the width it
+    // has and its edge simply travels with the point. So it cannot reach a floor
+    // and has no say in how far the drag goes.
+    const sides = independent ? [anchorSide] : [anchorSide, farSide];
     return Math.max(
       0,
       Math.min(
@@ -835,7 +847,8 @@ function applyFixedRibWidthDelta(
   anchorSide,
   projectedDelta,
   round,
-  singleSided = false
+  singleSided = false,
+  independent = false
 ) {
   const linked = originalPoint.width?.linked !== false;
   // Double-sided: the centerline has already moved by the drag, and this pins one
@@ -883,7 +896,11 @@ function applyFixedRibWidthDelta(
     // lopsided, and on a selection where only some points are linked it leaves
     // half of them lopsided and the other half not, which is what turns the
     // panel's per-side and distribution readouts to mixed after one drag.
-    { linked: true, round }
+    //
+    // A asks for exactly that lopsided result, per drag rather than per point:
+    // the anchor edge stays pinned, the far side keeps the width it had, and
+    // the far edge therefore travels the whole drag with the centerline.
+    { linked: !independent, round }
   );
   // The link flag is the designer's, not the drag's, so put it back.
   workingPoint.width.linked = linked;
@@ -2294,19 +2311,38 @@ export function setSkeletonHandleDetached(point, side, detached) {
 // total is zero. That rib is pinned on the centerline, and only the distribution
 // or the total lifts it off. Returns false there, so a caller can leave the
 // width alone and still apply a drag's nudge.
+//
+// `independent` is the A modifier: for the length of one drag the write states
+// this side alone, whatever the link says, and the far side stays exactly where
+// it stands. The stored link flag is read and never written, so releasing A
+// returns the point to the linkage the designer chose, with a new distribution.
+// It dissolves the zero-share refusal above, because there is no share left to
+// refuse on — which is how a rib pinned on the centerline is lifted off it.
 export function setSkeletonPointWidthFromSide(
   point,
   defaultWidth,
   side,
   halfWidth,
-  { round = Math.round } = {}
+  { round = Math.round, independent = false } = {}
 ) {
   assertSkeletonRibSide(side);
   // A width-locked side holds its edge, so it refuses to be written at all.
+  // A does not lift this: the lock is a stored hold on one edge, not a statement
+  // about how the two sides travel together.
   if (isSkeletonSideLocked(point, side, "width")) {
     return false;
   }
   const otherSide = side === "left" ? "right" : "left";
+  if (independent) {
+    const linked = point?.width?.linked !== false;
+    setSkeletonPointSideWidth(point, defaultWidth, side, halfWidth, {
+      linked: false,
+      round,
+    });
+    point.width.linked = linked;
+    clearCollapsedRibSides(point);
+    return true;
+  }
   // The lock overrides the distribution: with the other side held, this one is
   // written alone and the share is not carried across.
   if (
@@ -3137,6 +3173,10 @@ export function createSkeletonRibExecutor(
   const adjustable = !isSkeletonSideLocked(point, side, "slide");
   const forceTangent =
     behaviorName === "rib-tangent" || behaviorName === "rib-tangent-interpolate";
+  // A: this side's width is written alone. Published on every frame's result
+  // rather than read from the name again downstream, so the write and the drag
+  // that asked for it cannot disagree.
+  const independent = behaviorName === "rib-independent";
   const interpolateRequested =
     behaviorName === "rib-interpolate" || behaviorName === "rib-tangent-interpolate";
   const interpolate = adjustable && interpolateRequested;
@@ -3160,6 +3200,7 @@ export function createSkeletonRibExecutor(
           nudge: originalNudge,
           handleNudge: originalHandleNudge,
           side,
+          independent,
         };
       }
       if (axis) {
@@ -3171,6 +3212,7 @@ export function createSkeletonRibExecutor(
           nudge: round(originalNudge + deltaNudge),
           handleNudge: originalHandleNudge,
           side,
+          independent,
         };
       }
       const normalSign = side === "left" ? 1 : -1;
@@ -3187,7 +3229,7 @@ export function createSkeletonRibExecutor(
         adjustable && tangentOnly && carryNudgeToHandles
           ? round(originalHandleNudge + tangentDelta)
           : originalHandleNudge;
-      return { halfWidth, nudge, handleNudge, side };
+      return { halfWidth, nudge, handleNudge, side, independent };
     },
   };
 }
@@ -3197,8 +3239,11 @@ export function applySkeletonRibExecutorResult(address, result) {
   if (contour.singleSided === "left" || contour.singleSided === "right") {
     setSingleSidedTotalWidth(point, defaultWidth, side, result.halfWidth);
   } else {
-    // A zero-share side refuses, and the nudge below still applies.
-    setSkeletonPointWidthFromSide(point, defaultWidth, side, result.halfWidth);
+    // A zero-share side refuses, and the nudge below still applies. Under A
+    // there is no share to refuse on, so that side lifts off the centerline.
+    setSkeletonPointWidthFromSide(point, defaultWidth, side, result.halfWidth, {
+      independent: result.independent === true,
+    });
   }
   if (!isSkeletonSideLocked(point, side, "slide")) {
     setSkeletonPointSideNudge(point, side, result.nudge);

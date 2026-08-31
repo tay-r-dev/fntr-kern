@@ -252,6 +252,68 @@ describe("skeleton rib executor", () => {
     expect(address.point.width.left).to.equal(70);
     expect(address.point.width.right).to.equal(20);
   });
+
+  // A holds the far side still for the length of one drag. The link flag is the
+  // designer's, so the drag reads it and does not write it: releasing A returns
+  // the point to its stored linkage with a new distribution.
+  it("an independent rib drag leaves the linked far side where it stands", () => {
+    const address = makeAddress("left", {
+      width: { left: 60, right: 20, linked: true },
+    });
+    const executor = createSkeletonRibExecutor(address, "rib-independent");
+
+    const result = executor.applyDelta(makeDelta(address, "left", 10, 0));
+    applySkeletonRibExecutorResult(address, result);
+
+    expect(address.point.width.left).to.equal(70);
+    expect(address.point.width.right).to.equal(20);
+    expect(address.point.width.linked).to.equal(true);
+  });
+
+  // Zero times any total is zero, so a share cannot lift this rib off the
+  // centerline. Without the share there is nothing left to refuse.
+  it("an independent rib drag lifts a zero side off the centerline", () => {
+    const address = makeAddress("right", {
+      width: { left: 60, right: 0, linked: true },
+    });
+    const executor = createSkeletonRibExecutor(address, "rib-independent");
+
+    const result = executor.applyDelta(makeDelta(address, "right", 10, 0));
+    applySkeletonRibExecutorResult(address, result);
+
+    expect(address.point.width.right).to.equal(10);
+    expect(address.point.width.left).to.equal(60);
+  });
+
+  it("an independent rib drag still refuses a width-locked side", () => {
+    const address = makeAddress("left", {
+      width: { left: 60, right: 20, linked: true },
+      locked: { left: { width: true } },
+    });
+    const executor = createSkeletonRibExecutor(address, "rib-independent");
+
+    const result = executor.applyDelta(makeDelta(address, "left", 10, 0));
+    applySkeletonRibExecutorResult(address, result);
+
+    expect(address.point.width.left).to.equal(60);
+    expect(address.point.width.right).to.equal(20);
+  });
+
+  it("an independent rib drag still slides on the tangent under Z", () => {
+    const address = makeAddress("left", {
+      width: { left: 60, right: 20, linked: true },
+    });
+    const executor = createSkeletonRibExecutor(address, "rib-independent");
+
+    const result = executor.applyDelta(makeDelta(address, "left", 10, 7), {
+      constrainMode: "tangent",
+    });
+    applySkeletonRibExecutorResult(address, result);
+
+    expect(address.point.width.left).to.equal(60);
+    expect(address.point.width.right).to.equal(20);
+    expect(result.nudge).to.equal(7);
+  });
 });
 
 describe("editable generated on-curve drag modes", () => {

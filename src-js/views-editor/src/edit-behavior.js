@@ -1413,6 +1413,19 @@ const behaviorTypes = {
     actions: actionFactories,
   },
 
+  // The same two drags with A held. The modifier changes only how the width is
+  // written, which is entirely the target entry's business, so the base point
+  // behavior is the same one.
+  "fixed-rib-independent": {
+    matchTree: buildPointMatchTree(defaultRules),
+    actions: actionFactories,
+  },
+
+  "fixed-rib-compress-independent": {
+    matchTree: buildPointMatchTree(defaultRules),
+    actions: actionFactories,
+  },
+
   // The ordinary match tree, plus a target entry that corrects handle lengths
   // afterwards. X changes no angle, so every rule above stays as it is. There
   // is no shift variant: X states an axis itself, and 0/45/90 has no diagonal
@@ -1461,6 +1474,11 @@ const behaviorTypes = {
   // entries); the base point behavior for any co-selected path points is the
   // default one.
   "rib-default": {
+    matchTree: buildPointMatchTree(defaultRules),
+    actions: actionFactories,
+  },
+
+  "rib-independent": {
     matchTree: buildPointMatchTree(defaultRules),
     actions: actionFactories,
   },

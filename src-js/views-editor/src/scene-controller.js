@@ -104,6 +104,7 @@ import {
   getSelectionTargetKinds,
   getSkeletonModifierBehaviorName,
   getSkeletonRibBehaviorName,
+  isFixedRibBehaviorName,
   makeSkeletonModifierOptions,
   makeSkeletonPointTargetEntry,
   parseSkeletonPointKey,
@@ -1058,13 +1059,13 @@ export class SceneController {
     const hasRibSelection = !!parsedSelection.skeletonRib?.length;
     const hasGeneratedPointSelection = !!parsedSelection.editableGeneratedPoint?.length;
     const hasRibLikeSelection = hasRibSelection || hasGeneratedPointSelection;
-    const isFixedRibBehavior = (name) =>
-      name === "fixed-rib" || name === "fixed-rib-compress";
+    const isFixedRibBehavior = isFixedRibBehaviorName;
     const modifiers = {
       fixedRibMode: this.selectedTool?.fixedRibMode === true,
       fixedRibCompressMode: this.selectedTool?.fixedRibCompressMode === true,
       tangentRibMode: this.selectedTool?.tangentRibMode === true,
       tensionAwareMode: this.selectedTool?.tensionAwareMode === true,
+      independentRibMode: this.selectedTool?.independentRibMode === true,
     };
     const targetKinds = getSelectionTargetKinds(this.selection);
     // An arrow key is a drag of one grid step, so X means here what it means

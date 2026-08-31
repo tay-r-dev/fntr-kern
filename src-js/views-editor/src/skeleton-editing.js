@@ -58,21 +58,46 @@ export { getSkeletonPointAddress, parseSkeletonPointKey };
 // to, exactly as grabbing the point itself would.
 export function getSkeletonModifierBehaviorName(event, modifiers = {}, targetKinds) {
   const canFixRib = targetKinds.has("skeletonPoint") || targetKinds.has("skeletonRib");
+  // A rides on the name rather than beside it, because only a name change
+  // rebuilds the target entries mid-drag. Pressed or released with the button
+  // down, A therefore takes effect on the next frame the way Z already does.
+  const suffix = modifiers.independentRibMode ? "-independent" : "";
   if (modifiers.fixedRibCompressMode && canFixRib) {
-    return "fixed-rib-compress";
+    return `fixed-rib-compress${suffix}`;
   }
   if (modifiers.fixedRibMode && canFixRib) {
-    return "fixed-rib";
+    return `fixed-rib${suffix}`;
   }
   return null;
 }
 
+// The two fixed-rib drags, with or without A. Stated once so a caller asking
+// "is this the pair that reads the ribs" cannot fall out of step with the names.
+export function isFixedRibBehaviorName(behaviorName) {
+  return behaviorName?.startsWith("fixed-rib") === true;
+}
+
+export function fixedRibBehaviorIsCompress(behaviorName) {
+  return behaviorName?.startsWith("fixed-rib-compress") === true;
+}
+
+// A is the modifier that suspends the link and the distribution: the dragged
+// side takes the cursor's width and the far side stays where it stands. Stated
+// once for every behavior name that can carry it.
+export function skeletonBehaviorIsIndependentRib(behaviorName) {
+  return behaviorName?.endsWith("-independent") === true;
+}
+
 // A plain drag changes the rib's width; Z slides the rib end along its tangent
 // instead. Alt is the second axis: it interpolates the nudge across the selection.
+// A is the third, and it has nothing to say under Z or Alt — both of those move
+// the rib along the centerline and change no width, so there is no distribution
+// for A to suspend and those two readings win.
 export function getSkeletonRibBehaviorName(event, modifiers = {}) {
   if (modifiers.tangentRibMode && event?.altKey) return "rib-tangent-interpolate";
   if (modifiers.tangentRibMode) return "rib-tangent";
   if (event?.altKey) return "rib-interpolate";
+  if (modifiers.independentRibMode) return "rib-independent";
   return "rib-default";
 }
 
@@ -100,8 +125,9 @@ export function makeSkeletonModifierOptions(behaviorName, extra = {}) {
     ...extra,
     behaviorName,
     equalize: behaviorName?.startsWith("equalize") === true,
-    fixedRib: behaviorName === "fixed-rib",
-    fixedRibCompress: behaviorName === "fixed-rib-compress",
+    fixedRib: isFixedRibBehaviorName(behaviorName),
+    fixedRibCompress: fixedRibBehaviorIsCompress(behaviorName),
+    independentRib: skeletonBehaviorIsIndependentRib(behaviorName),
   };
 }
 
@@ -536,7 +562,7 @@ export function makeSkeletonPointTargetEntry(
   const reference = referenceSkeletonData || skeletonData;
   const selected = collectSkeletonPointSelection(selection, reference, skeletonData);
 
-  if (behaviorName === "fixed-rib" || behaviorName === "fixed-rib-compress") {
+  if (isFixedRibBehaviorName(behaviorName)) {
     // Only this behavior pair reads the ribs. Folding rib owners into the
     // shared collector would drag the skeleton on a plain rib drag too, which
     // is the width edit and has to stay where it is.
@@ -775,7 +801,8 @@ function makeFixedRibSkeletonPointTargetEntry(
           clickedPointKey,
           delta,
           {
-            compress: behaviorName === "fixed-rib-compress",
+            compress: fixedRibBehaviorIsCompress(behaviorName),
+            independent: skeletonBehaviorIsIndependentRib(behaviorName),
             scaleControlPoints: true,
           }
         );
