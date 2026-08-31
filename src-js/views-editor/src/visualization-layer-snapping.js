@@ -92,12 +92,27 @@ registerVisualizationLayerDefinition({
     context.lineWidth = parameters.strokeWidth;
     context.setLineDash([parameters.dash, parameters.dash]);
     for (const candidate of held) {
-      if (candidate.type !== "line") {
+      if (candidate.type !== "line" && candidate.type !== "curve") {
         continue;
       }
       context.strokeStyle = candidate.permanent
         ? parameters.permanentColor
         : parameters.smartColor;
+      if (candidate.type === "curve") {
+        // Only the part that is not the drawn curve. The letter is already on
+        // the canvas; what the designer needs to see is where it would go on.
+        strokeCurveProjection(context, candidate);
+        context.beginPath();
+        context.arc(
+          candidate.source.x,
+          candidate.source.y,
+          parameters.markerRadius,
+          0,
+          2 * Math.PI
+        );
+        context.stroke();
+        continue;
+      }
       strokeGuideLine(context, candidate, reach);
       context.beginPath();
       context.arc(
@@ -112,6 +127,38 @@ registerVisualizationLayerDefinition({
     context.setLineDash([]);
   },
 });
+
+// The two runs outside the drawn segment, sampled. A cubic outside [0, 1] is the
+// same polynomial, so this is the curve carrying on rather than a fitted tail.
+function strokeCurveProjection(context, candidate) {
+  const { points, extend } = candidate;
+  for (const [from, to] of [
+    [-extend, 0],
+    [1, 1 + extend],
+  ]) {
+    context.beginPath();
+    for (let i = 0; i <= 32; i++) {
+      const t = from + ((to - from) * i) / 32;
+      const u = 1 - t;
+      const x =
+        u * u * u * points[0].x +
+        3 * u * u * t * points[1].x +
+        3 * u * t * t * points[2].x +
+        t * t * t * points[3].x;
+      const y =
+        u * u * u * points[0].y +
+        3 * u * u * t * points[1].y +
+        3 * u * t * t * points[2].y +
+        t * t * t * points[3].y;
+      if (i === 0) {
+        context.moveTo(x, y);
+      } else {
+        context.lineTo(x, y);
+      }
+    }
+    context.stroke();
+  }
+}
 
 // The line is drawn through the source, so the reason for the snap is visible.
 function strokeGuideLine(context, candidate, reach) {

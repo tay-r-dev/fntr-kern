@@ -375,6 +375,7 @@ export const strings = {
   "shortcuts.realtime.measure": "Measure (hold)",
   "shortcuts.realtime.measure-direct": "Measure direct (hold)",
   "shortcuts.realtime.rib-tangent": "Rib tangent (hold)",
+  "shortcuts.realtime.snap-curvature-only": "Snap to curve projections only (hold)",
   "shortcuts.realtime.snap-diagonals-only": "Snap to diagonals only (hold)",
   "shortcuts.realtime.fixed-rib": "Fixed rib (hold)",
   "shortcuts.realtime.fixed-rib-compress": "Fixed rib compress (hold)",

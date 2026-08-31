@@ -43,7 +43,16 @@ export class PenToolCubic extends BaseTool {
     // snap draw needs its own. Without it the guide appears only where some other
     // hover state happens to change, which reads as snapping over geometry alone.
     const snapState = JSON.stringify([
-      this.sceneModel.snapHeldCandidates?.map((c) => [c.kind, c.x, c.y, c.dx, c.dy]),
+      this.sceneModel.snapHeldCandidates?.map((c) => [
+        c.kind,
+        c.x,
+        c.y,
+        c.dx,
+        c.dy,
+        // A curve projection has none of the above: its four points are what
+        // tells one from another.
+        c.points,
+      ]),
       this.sceneModel.snapIndicator,
     ]);
     if (snapState !== this._lastSnapState) {

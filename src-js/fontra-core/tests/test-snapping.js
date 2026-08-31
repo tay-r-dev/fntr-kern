@@ -7,8 +7,10 @@ import {
   collectCandidates,
   crossLines,
   distanceToCandidate,
+  makeCurveCandidate,
   makeLineCandidate,
   makePointCandidate,
+  projectOntoCurve,
   projectOntoLine,
   resetSnapParameters,
   resolveSnap,
@@ -924,7 +926,7 @@ describe("diagonals are off until asked for", () => {
       SNAP_PARAMETERS.diagonalsEnabled = enabled;
       const found = collectCandidates(scene, cursor, {
         pixelUnit: 1,
-        diagonals: "only",
+        only: "diagonal",
       });
       expect(found.length).to.be.above(0);
       expect(found.every((c) => c.kind === KIND.DIAGONAL)).to.equal(true);
@@ -984,5 +986,128 @@ describe("a source can refuse to be culled", () => {
       .map((c) => c.y)
       .sort((a, b) => a - b);
     expect(horizontals).to.deep.equal([103, 180]);
+  });
+});
+
+describe("a curve projected past its own end", () => {
+  afterEach(() => resetSnapParameters());
+
+  // A quarter-circle-ish cubic from (0,0) to (100,100), leaving (0,0) upward.
+  const points = [
+    { x: 0, y: 0 },
+    { x: 0, y: 55 },
+    { x: 45, y: 100 },
+    { x: 100, y: 100 },
+  ];
+  const curve = () => makeCurveCandidate({ points, kind: KIND.CURVATURE });
+
+  it("carries the curve's own bend past the end, not its tangent", () => {
+    const candidate = curve();
+    const foot = projectOntoCurve(candidate, { x: 160, y: 90 });
+    expect(foot.t).to.be.above(1);
+    // The end tangent is dead horizontal, so a tangent extension would sit at
+    // y = 100. The curve keeps turning, so the projection is below it.
+    expect(foot.y).to.be.below(100 - 1);
+  });
+
+  it("measures distance to that projection", () => {
+    const candidate = curve();
+    const foot = projectOntoCurve(candidate, { x: 160, y: 90 });
+    expect(distanceToCandidate(candidate, { x: 160, y: 90 })).to.be.closeTo(
+      Math.hypot(160 - foot.x, 90 - foot.y),
+      1e-6
+    );
+  });
+
+  it("projects past the start as well as past the end", () => {
+    const candidate = curve();
+    expect(projectOntoCurve(candidate, { x: -8, y: -30 }).t).to.be.below(0);
+  });
+
+  it("offers nothing on the drawn curve itself, which is not a projection", () => {
+    const candidate = curve();
+    // The middle of the segment is the drawn shape. A snap there would be a
+    // different feature: this one continues a curve, it does not trace one.
+    const middle = projectOntoCurve(candidate, { x: 30, y: 70 });
+    expect(middle.t <= 1e-6 || middle.t >= 1 - 1e-6).to.equal(true);
+  });
+
+  it("takes one degree of freedom, like a line does", () => {
+    SNAP_PARAMETERS.curvatureEnabled = 1;
+    const candidate = curve();
+    const foot = projectOntoCurve(candidate, { x: 160, y: 90 });
+    const result = resolveSnap(
+      [candidate],
+      { x: foot.x, y: foot.y + 1 },
+      {
+        pixelUnit: 1,
+        held: null,
+      }
+    );
+    expect(result.freedom).to.equal("line");
+    expect(result.position.x).to.be.closeTo(foot.x, 1);
+  });
+
+  it("rounds along the curve, so the snap is not thrown off it", () => {
+    const candidate = curve();
+    const foot = projectOntoCurve(candidate, { x: 160, y: 90 });
+    const rounded = roundSnapped(
+      { position: foot, held: [candidate], freedom: "line" },
+      (v) => Math.round(v)
+    );
+    expect(distanceToCandidate(candidate, rounded)).to.be.below(0.5);
+  });
+});
+
+describe("curvature candidates answer to their own switch", () => {
+  afterEach(() => resetSnapParameters());
+
+  const scene = {
+    metrics: [{ name: "xHeight", value: 0, kind: "metric" }],
+    guides: [],
+    points: [],
+    segments: [],
+    curves: [
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 0, y: 55 },
+          { x: 45, y: 100 },
+          { x: 100, y: 100 },
+        ],
+      },
+    ],
+  };
+  const cursor = { x: 100, y: 100 };
+
+  it("collects none by default", () => {
+    const found = collectCandidates(scene, cursor, { pixelUnit: 1 });
+    expect(found.some((c) => c.kind === KIND.CURVATURE)).to.equal(false);
+  });
+
+  it("collects them once the switch is on", () => {
+    SNAP_PARAMETERS.curvatureEnabled = 1;
+    const found = collectCandidates(scene, cursor, { pixelUnit: 1 });
+    expect(found.some((c) => c.kind === KIND.CURVATURE)).to.equal(true);
+  });
+
+  it("offers nothing but them while the key is held, switch or no switch", () => {
+    for (const enabled of [0, 1]) {
+      SNAP_PARAMETERS.curvatureEnabled = enabled;
+      const found = collectCandidates(scene, cursor, {
+        pixelUnit: 1,
+        only: "curvature",
+      });
+      expect(found.length).to.be.above(0);
+      expect(found.every((c) => c.kind === KIND.CURVATURE)).to.equal(true);
+    }
+  });
+
+  it("never forms a crossing, because it is not a line", () => {
+    SNAP_PARAMETERS.curvatureEnabled = 1;
+    const found = collectCandidates(scene, cursor, { pixelUnit: 1 });
+    const projection = found.find((c) => c.kind === KIND.CURVATURE);
+    const metric = found.find((c) => c.type === "line");
+    expect(crossLines(projection, metric)).to.equal(null);
   });
 });

@@ -102,6 +102,7 @@ const REALTIME_FIXED_RIB_ACTION = "action.realtime.fixed-rib";
 const REALTIME_FIXED_RIB_COMPRESS_ACTION = "action.realtime.fixed-rib-compress";
 const REALTIME_TENSION_AWARE_ACTION = "action.realtime.tension-aware";
 const REALTIME_SNAP_DIAGONALS_ACTION = "action.realtime.snap-diagonals-only";
+const REALTIME_SNAP_CURVATURE_ACTION = "action.realtime.snap-curvature-only";
 
 const REALTIME_MODIFIER_ACTIONS = [
   {
@@ -111,6 +112,14 @@ const REALTIME_MODIFIER_ACTIONS = [
     action: REALTIME_SNAP_DIAGONALS_ACTION,
     modeProperty: "snapDiagonalOnlyMode",
     sceneModelProperty: "snapDiagonalOnly",
+  },
+  {
+    // Held, the snap answers with curves carried past their own ends and
+    // nothing else - which is how a terminal is elongated along the stroke it
+    // ends rather than along a guess at it.
+    action: REALTIME_SNAP_CURVATURE_ACTION,
+    modeProperty: "snapCurvatureOnlyMode",
+    sceneModelProperty: "snapCurvatureOnly",
   },
   {
     action: REALTIME_RIB_TANGENT_ACTION,
@@ -177,6 +186,7 @@ export class PointerTool extends BaseTool {
     this.fixedRibCompressMode = false;
     this.tensionAwareMode = false;
     this.snapDiagonalOnlyMode = false;
+    this.snapCurvatureOnlyMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
     this._boundRealtimeModifierWindowBlur = null;
   }

@@ -752,6 +752,11 @@ export class EditorController extends ViewController {
         titleKey: "shortcuts.realtime.snap-diagonals-only",
         defaultShortCuts: [{ baseKey: "r" }],
       });
+      registerActionInfo("action.realtime.snap-curvature-only", {
+        topic,
+        titleKey: "shortcuts.realtime.snap-curvature-only",
+        defaultShortCuts: [{ baseKey: "t" }],
+      });
       registerActionInfo("action.realtime.tension-aware", {
         topic,
         titleKey: "shortcuts.realtime.tension-aware",

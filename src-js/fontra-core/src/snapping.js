@@ -11,6 +11,10 @@ export const KIND = Object.freeze({
   // Off-curve points. Their own kind because they are their own switch: a handle
   // states a direction rather than a place, so aligning to one is a choice.
   OFF_CURVE: "offCurve",
+  // A curve carried on past its own end. Not a direction and not a line: it is
+  // the one candidate whose shape is the answer, which is why it has its own
+  // geometry below rather than an angle.
+  CURVATURE: "curvature",
   // The generated geometry that follows the very thing being dragged. It moves
   // with the drag, so it is weightless by default and never wins; raise the
   // weight to snap a point to the outline it is making.
@@ -44,6 +48,114 @@ export function makePointCandidate({ x, y, kind, source, permanent }) {
   };
 }
 
+// The four control points of a cubic, kept as they are. A cubic evaluated
+// outside [0, 1] is the same polynomial, so it leaves the end with the curve's
+// own bend rather than with its tangent - which is the whole of what this
+// candidate offers. `extend` is how far past each end it runs, in the source
+// parameter, so 1 doubles the curve.
+export function makeCurveCandidate({ points, kind, extend, source, permanent }) {
+  return {
+    type: "curve",
+    points,
+    extend: extend ?? SNAP_PARAMETERS.curvatureExtend,
+    kind,
+    permanent: !!permanent,
+    source: source || points[3],
+  };
+}
+
+function cubicAt(points, t) {
+  const u = 1 - t;
+  const a = u * u * u;
+  const b = 3 * u * u * t;
+  const c = 3 * u * t * t;
+  const d = t * t * t;
+  return {
+    x: a * points[0].x + b * points[1].x + c * points[2].x + d * points[3].x,
+    y: a * points[0].y + b * points[1].y + c * points[2].y + d * points[3].y,
+  };
+}
+
+function cubicTangentAt(points, t) {
+  const u = 1 - t;
+  const a = 3 * u * u;
+  const b = 6 * u * t;
+  const c = 3 * t * t;
+  const dx =
+    a * (points[1].x - points[0].x) +
+    b * (points[2].x - points[1].x) +
+    c * (points[3].x - points[2].x);
+  const dy =
+    a * (points[1].y - points[0].y) +
+    b * (points[2].y - points[1].y) +
+    c * (points[3].y - points[2].y);
+  const length = Math.hypot(dx, dy);
+  return length < 1e-12 ? { dx: 1, dy: 0 } : { dx: dx / length, dy: dy / length };
+}
+
+// The two runs outside the drawn segment, and only those. Snapping onto the
+// drawn curve itself is a different feature: this one continues a curve, it does
+// not trace one.
+function projectionSpans(candidate) {
+  const extend = Math.max(candidate.extend, 0);
+  return [
+    [-extend, 0],
+    [1, 1 + extend],
+  ];
+}
+
+const PROJECTION_SAMPLES = 24;
+const PROJECTION_REFINEMENTS = 20;
+
+// Nearest point on the projection, by a fixed sweep and a fixed bisection. The
+// trip counts are fixed for the reason every other search in this fork fixes
+// them: a search that picks its own trip count cannot be continuous in its input.
+export function projectOntoCurve(candidate, point) {
+  const { points } = candidate;
+  let best = null;
+  for (const [from, to] of projectionSpans(candidate)) {
+    if (to - from < 1e-12) {
+      continue;
+    }
+    for (let i = 0; i <= PROJECTION_SAMPLES; i++) {
+      const t = from + ((to - from) * i) / PROJECTION_SAMPLES;
+      const at = cubicAt(points, t);
+      const distance = Math.hypot(at.x - point.x, at.y - point.y);
+      if (!best || distance < best.distance) {
+        best = { t, distance, from, to };
+      }
+    }
+  }
+  if (!best) {
+    const at = cubicAt(points, 1);
+    return { ...at, t: 1 };
+  }
+  // Bisect the bracket around the best sample, held inside its own span.
+  const step = (best.to - best.from) / PROJECTION_SAMPLES;
+  let low = Math.max(best.from, best.t - step);
+  let high = Math.min(best.to, best.t + step);
+  for (let i = 0; i < PROJECTION_REFINEMENTS; i++) {
+    const middle = (low + high) / 2;
+    const a = (low + middle) / 2;
+    const b = (middle + high) / 2;
+    const da = Math.hypot(
+      cubicAt(points, a).x - point.x,
+      cubicAt(points, a).y - point.y
+    );
+    const db = Math.hypot(
+      cubicAt(points, b).x - point.x,
+      cubicAt(points, b).y - point.y
+    );
+    if (da < db) {
+      high = middle;
+    } else {
+      low = middle;
+    }
+  }
+  const t = (low + high) / 2;
+  return { ...cubicAt(points, t), t };
+}
+
 export function projectOntoLine(candidate, point) {
   const vx = point.x - candidate.x;
   const vy = point.y - candidate.y;
@@ -58,8 +170,24 @@ export function distanceToCandidate(candidate, point) {
   if (candidate.type === "point") {
     return Math.hypot(point.x - candidate.x, point.y - candidate.y);
   }
-  const foot = projectOntoLine(candidate, point);
+  const foot =
+    candidate.type === "curve"
+      ? projectOntoCurve(candidate, point)
+      : projectOntoLine(candidate, point);
   return Math.hypot(point.x - foot.x, point.y - foot.y);
+}
+
+// Where a candidate puts a point that has fallen to it. One place, so the
+// resolver, the rounding and the readout cannot disagree about it.
+export function projectOntoCandidate(candidate, point) {
+  if (candidate.type === "point") {
+    return { x: candidate.x, y: candidate.y };
+  }
+  if (candidate.type === "curve") {
+    const foot = projectOntoCurve(candidate, point);
+    return { x: foot.x, y: foot.y };
+  }
+  return projectOntoLine(candidate, point);
 }
 
 export const MIN_CROSSING_ANGLE_DEG = 15;
@@ -69,6 +197,11 @@ function kindWeight(kind) {
 }
 
 export function crossLines(a, b) {
+  // Only two lines make a crossing. A projected curve is a shape rather than a
+  // direction, so there is no second constraint to meet it with.
+  if (a.type !== "line" || b.type !== "line") {
+    return null;
+  }
   // A line that pulls nothing cannot help form a point. Without this a
   // weightless kind would come back at the intersection weight, and setting a
   // weight to zero would not mean what it says.
@@ -118,6 +251,13 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
   // Off-curve points cast no rays until asked. A handle states a direction
   // rather than a place.
   offCurveSources: 0,
+  // A curve carried past its own end. Held under a key rather than left on: it
+  // answers away from the drawn shape, where nothing else does, and that is a
+  // deliberate reach rather than an everyday one.
+  curvatureEnabled: 0,
+  // How far past each end the projection runs, in the source parameter. One
+  // doubles the curve.
+  curvatureExtend: 1,
   // A fixed-rib drag pins one edge and follows the cursor with the other, so a
   // snap moving the point is fighting the gesture. Off, with a switch, because
   // the drag is also the one place a designer might want the width to land on a
@@ -131,6 +271,7 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
     [KIND.DIAGONAL]: 1,
     [KIND.INTERSECTION]: 1,
     [KIND.OFF_CURVE]: 1,
+    [KIND.CURVATURE]: 1,
     [KIND.OWN_GENERATED]: 1,
     [KIND.OTHER]: 1,
   }),
@@ -141,6 +282,7 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
     // of them on its own.
     [KIND.INTERSECTION]: 1.05,
     [KIND.OFF_CURVE]: 0.7,
+    [KIND.CURVATURE]: 1.0,
     // Zero: present, collected, reported in the readout, and never winning
     // until the designer asks for it.
     [KIND.OWN_GENERATED]: 0,
@@ -208,6 +350,15 @@ function falloff(u) {
 function sameCandidate(a, b) {
   if (!a || !b || a.type !== b.type || a.kind !== b.kind) {
     return false;
+  }
+  if (a.type === "curve") {
+    // Two projections are the same one where they were built on the same four
+    // points. A curve has no normal form to compare, so this is the comparison.
+    return a.points.every(
+      (point, i) =>
+        Math.abs(point.x - b.points[i].x) < 1e-9 &&
+        Math.abs(point.y - b.points[i].y) < 1e-9
+    );
   }
   if (a.type === "point") {
     return Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9;
@@ -351,10 +502,7 @@ export function resolveSnap(candidates, cursor, options) {
       escape: escapeOut,
       near: near
         ? {
-            position:
-              near.candidate.type === "point"
-                ? { x: near.candidate.x, y: near.candidate.y }
-                : projectOntoLine(near.candidate, cursor),
+            position: projectOntoCandidate(near.candidate, cursor),
             pull: near.pull,
             kind: near.candidate.kind,
           }
@@ -430,8 +578,10 @@ export function resolveSnap(candidates, cursor, options) {
     }
   }
 
+  // A projected curve takes one degree of freedom, exactly as a line does: the
+  // point is on it, and where along it is still the cursor's to say.
   return {
-    position: projectOntoLine(winner, cursor),
+    position: projectOntoCandidate(winner, cursor),
     pull: winning.pull,
     held: [winner],
     freedom: "line",
@@ -564,18 +714,26 @@ function nearestPerSide(sources, cursor, axis) {
 // What slanted candidates the frame is allowed. "off" and "on" come from the
 // switch; "only" comes from the key held down, and overrules the switch in both
 // directions - the point of the key is to clear the upright ones out of the way.
-function diagonalFilter(mode) {
-  const resolved = mode || (SNAP_PARAMETERS.diagonalsEnabled ? "on" : "off");
-  if (resolved === "only") {
-    return (candidate) => candidate.kind === KIND.DIAGONAL;
+// What the frame is allowed to offer. A held key names one kind and clears
+// everything else out of the way, which is the point of holding it; otherwise
+// each switchable kind answers to its own switch.
+function candidateFilter(only) {
+  if (only) {
+    const kind = only === "curvature" ? KIND.CURVATURE : KIND.DIAGONAL;
+    return (candidate) => candidate.kind === kind;
   }
-  if (resolved === "on") {
-    return () => true;
-  }
-  return (candidate) => candidate.kind !== KIND.DIAGONAL;
+  return (candidate) => {
+    if (candidate.kind === KIND.DIAGONAL) {
+      return !!SNAP_PARAMETERS.diagonalsEnabled;
+    }
+    if (candidate.kind === KIND.CURVATURE) {
+      return !!SNAP_PARAMETERS.curvatureEnabled;
+    }
+    return true;
+  };
 }
 
-export function collectCandidates(scene, cursor, { pixelUnit, diagonals }) {
+export function collectCandidates(scene, cursor, { pixelUnit, only }) {
   const radius = CULL_PARAMETERS.collectionRadiusPixels * pixelUnit;
   const inRadius = (p) => Math.hypot(p.x - cursor.x, p.y - cursor.y) <= radius;
   const candidates = [];
@@ -645,7 +803,22 @@ export function collectCandidates(scene, cursor, { pixelUnit, diagonals }) {
     );
   }
 
-  const allowed = candidates.filter(diagonalFilter(diagonals));
+  // A projection is anchored on the end it leaves, so that is what the
+  // collection radius asks about.
+  for (const curve of scene.curves || []) {
+    if (!curve.points?.some(inRadius)) {
+      continue;
+    }
+    candidates.push(
+      makeCurveCandidate({
+        points: curve.points,
+        kind: KIND.CURVATURE,
+        source: curve.points[3],
+      })
+    );
+  }
+
+  const allowed = candidates.filter(candidateFilter(only));
   candidates.length = 0;
   candidates.push(...allowed);
 
@@ -668,7 +841,20 @@ export function roundSnapped(result, roundFunc) {
   if (freedom === "free" || !held.length) {
     return { x: roundFunc(position.x), y: roundFunc(position.y) };
   }
-  const line = held[0];
+  const candidate = held[0];
+  if (candidate.type === "curve") {
+    // Rounding across the curve throws the point off it, so the whole unit is
+    // taken along the tangent at the foot and the result is projected back.
+    const foot = projectOntoCurve(candidate, position);
+    const tangent = cubicTangentAt(candidate.points, foot.t);
+    const stepped = {
+      x: foot.x + (roundFunc(foot.x) - foot.x) * tangent.dx * tangent.dx,
+      y: foot.y + (roundFunc(foot.y) - foot.y) * tangent.dy * tangent.dy,
+    };
+    const back = projectOntoCurve(candidate, stepped);
+    return { x: back.x, y: back.y };
+  }
+  const line = candidate;
   const along = (position.x - line.x) * line.dx + (position.y - line.y) * line.dy;
   const rounded = roundFunc(along);
   return { x: line.x + rounded * line.dx, y: line.y + rounded * line.dy };

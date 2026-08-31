@@ -48,6 +48,14 @@ function* iterPathSegments(path) {
         continue;
       }
       const last = points.length - 1;
+      if (points.length === 4) {
+        // The whole cubic, kept as its four points. What continues a curve is
+        // the curve, so a projection cannot be built out of an angle.
+        yield {
+          pointIndices,
+          curve: { points: points.map((p) => ({ x: p.x, y: p.y })) },
+        };
+      }
       yield {
         pointIndices,
         candidate: {
@@ -128,6 +136,39 @@ function partitionMovedPointIndices(sceneController, movedPointIndices) {
   return { excluded, ownGenerated };
 }
 
+// The cubic centerline segments of one skeleton contour, as their four points.
+// Straights are not curves and have nothing to project; a segment of any other
+// shape is left alone rather than approximated.
+function* iterSkeletonCurves(contour) {
+  const points = contour.points || [];
+  const onCurveIndices = [];
+  for (let i = 0; i < points.length; i++) {
+    if (!points[i].type) {
+      onCurveIndices.push(i);
+    }
+  }
+  const pairs = [];
+  for (let i = 0; i < onCurveIndices.length - 1; i++) {
+    pairs.push([onCurveIndices[i], onCurveIndices[i + 1]]);
+  }
+  if (contour.closed && onCurveIndices.length > 1) {
+    pairs.push([onCurveIndices.at(-1), points.length + onCurveIndices[0]]);
+  }
+  for (const [startIndex, endIndex] of pairs) {
+    const span = [];
+    for (let i = startIndex; i <= endIndex; i++) {
+      span.push(points[i % points.length]);
+    }
+    if (span.length !== 4) {
+      continue;
+    }
+    yield {
+      points: span.map((point) => ({ x: point.x, y: point.y })),
+      pointIds: span.map((point) => point.id),
+    };
+  }
+}
+
 function isOrthogonalAngle({ x, y }) {
   return Math.abs(x) < 1e-9 || Math.abs(y) < 1e-9;
 }
@@ -193,7 +234,7 @@ export function buildSnapScene(sceneController, excludePointIndices) {
   const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
   const glyph = positionedGlyph?.glyph;
   if (!glyph) {
-    return { metrics: [], guides: [], points: [], segments: [] };
+    return { metrics: [], guides: [], points: [], segments: [], curves: [] };
   }
   const { excluded, ownGenerated } = partitionMovedPointIndices(
     sceneController,
@@ -225,6 +266,7 @@ export function buildSnapScene(sceneController, excludePointIndices) {
 
   const points = [];
   const segments = [];
+  const curves = [];
   const path = glyph.path;
   for (let i = 0; i < path.numPoints; i++) {
     if (excluded.has(i)) {
@@ -248,7 +290,11 @@ export function buildSnapScene(sceneController, excludePointIndices) {
       // are, and only weightlessly.
       continue;
     }
-    segments.push(segment.candidate);
+    if (segment.curve) {
+      curves.push(segment.curve);
+    } else {
+      segments.push(segment.candidate);
+    }
   }
 
   // The skeleton is not in the glyph path, so the loops above never reach it: it
@@ -289,9 +335,20 @@ export function buildSnapScene(sceneController, excludePointIndices) {
         }
       }
     }
+    // A centerline is construction, so it is not offered as a line to align to.
+    // Its curve is a different question: continuing the stroke you are drawing
+    // is the thing the projection exists for - elongating a terminal is exactly
+    // that - and the centerline is the curve being continued. A curve holding a
+    // moved point is left out, because it would chase the drag.
+    for (const curve of iterSkeletonCurves(contour)) {
+      if (curve.pointIds.some((id) => movedSkeletonPoints.has(`${contour.id}/${id}`))) {
+        continue;
+      }
+      curves.push({ points: curve.points });
+    }
   }
 
-  return { metrics, guides, points, segments };
+  return { metrics, guides, points, segments, curves };
 }
 
 // Shift+G. Everything the snap drew comes off the canvas, every session's frozen
@@ -339,10 +396,17 @@ export class SnappingSession {
     }
   }
 
-  // "only" while the diagonal key is held. Otherwise the switch answers, inside
-  // the resolver, so a switch moved mid-drag takes on the next frame.
-  get _diagonals() {
-    return this.sceneController.sceneModel.snapDiagonalOnly ? "only" : undefined;
+  // The kind a held key is asking for, alone. Curvature wins where both keys are
+  // down: it is the narrower request, and it is the one that answers away from
+  // the drawn shape. With no key held this is undefined and each switchable kind
+  // answers to its own switch, inside the resolver, so a switch moved mid-drag
+  // takes on the next frame.
+  get _only() {
+    const sceneModel = this.sceneController.sceneModel;
+    if (sceneModel.snapCurvatureOnly) {
+      return "curvature";
+    }
+    return sceneModel.snapDiagonalOnly ? "diagonal" : undefined;
   }
 
   // Pointer speed in screen pixels per second. The resolver takes it in pixels so
@@ -434,7 +498,7 @@ export class SnappingSession {
     const pixelUnit = this.sceneController.onePixelUnit;
     const candidates = collectCandidates(this.scene, point, {
       pixelUnit,
-      diagonals: this._diagonals,
+      only: this._only,
     });
     const result = resolveSnap(candidates, point, {
       pixelUnit,
@@ -465,7 +529,7 @@ export class SnappingSession {
     // then resolved against that one set.
     const candidates = collectCandidates(this.scene, cursor, {
       pixelUnit,
-      diagonals: this._diagonals,
+      only: this._only,
     });
     const best = resolveSnapForPoints(candidates, points, cursor, {
       pixelUnit,

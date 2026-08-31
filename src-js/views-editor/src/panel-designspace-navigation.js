@@ -162,6 +162,18 @@ const SNAPPING_DEBUG_CONTROLS = [
     type: "toggle",
   },
   {
+    path: "curvatureEnabled",
+    label: "Curve projections (hold T)",
+    type: "toggle",
+  },
+  {
+    path: "curvatureExtend",
+    label: "Projection length (segments)",
+    min: 0.25,
+    max: 4,
+    step: 0.25,
+  },
+  {
     path: "snapDuringFixedRib",
     label: "Snap during a fixed-rib drag (D / S)",
     type: "toggle",
@@ -193,6 +205,13 @@ const SNAPPING_DEBUG_CONTROLS = [
   {
     path: "weights." + KIND.OFF_CURVE,
     label: "Weight: off-curve point",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.CURVATURE,
+    label: "Weight: curve projection",
     min: 0,
     max: 1.5,
     step: 0.02,
@@ -237,6 +256,13 @@ const SNAPPING_DEBUG_CONTROLS = [
   {
     path: "reaches." + KIND.OFF_CURVE,
     label: "Reach: off-curve point",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.CURVATURE,
+    label: "Reach: curve projection",
     min: 0.25,
     max: 4,
     step: 0.05,
