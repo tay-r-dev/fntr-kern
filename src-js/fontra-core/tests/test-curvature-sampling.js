@@ -4,6 +4,7 @@ import {
   computeSpeedPunkSamples,
   countCurveSegments,
   estimateCurveLength,
+  softCeilingRatio,
 } from "@fontra/core/curvature.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
@@ -170,6 +171,53 @@ describe("computeSpeedPunkSamples", () => {
       // 3 per cent, which is the cubic circle approximation's own curvature
       // ripple, not the scale's error
       expect(height).to.be.closeTo(24, 24 * 0.03);
+    }
+  });
+
+  it("shortens a fringe past the anchor and leaves the rest where it was", () => {
+    // Read against the same shape with the ceiling lifted, so the claim is
+    // about the rule and not about a number this particular ring happens to
+    // draw: past the peak height the fringe comes in, at or below it nothing
+    // moves at all.
+    const uncapped = fringeHeights(
+      computeSpeedPunkSamples(ringInSegments(2), {
+        ...HEIGHT,
+        heightCeilingRatio: Infinity,
+      })
+    );
+    const capped = fringeHeights(computeSpeedPunkSamples(ringInSegments(2), HEIGHT));
+    expect(Math.max(...uncapped)).to.be.greaterThan(24);
+    expect(capped).to.have.lengthOf(uncapped.length);
+    for (let i = 0; i < capped.length; i++) {
+      if (uncapped[i] > 24) {
+        expect(capped[i]).to.be.lessThan(uncapped[i]);
+        expect(capped[i]).to.be.greaterThan(24);
+      } else {
+        expect(capped[i]).to.be.closeTo(uncapped[i], 1e-9);
+      }
+      expect(capped[i]).to.be.at.most(48 + 1e-6);
+    }
+  });
+
+  it("caps a near-cusp instead of spiking off the glyph", () => {
+    // The case the ceiling exists for: a short arc bending hard drew a fringe
+    // longer than its own radius of curvature, and the fringe rays crossed.
+    const spike = VarPackedPath.fromUnpackedContours([
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 60, y: 0, type: "cubic" },
+          { x: 60, y: 4, type: "cubic" },
+          { x: 0, y: 4 },
+        ],
+        isClosed: true,
+      },
+    ]);
+    const heights = fringeHeights(computeSpeedPunkSamples(spike, HEIGHT));
+    expect(Math.max(...heights)).to.be.greaterThan(24);
+    for (const height of heights) {
+      // Measured back out of the drawn coordinates, so read to their tolerance.
+      expect(height).to.be.at.most(48 + 1e-6);
     }
   });
 
@@ -394,5 +442,60 @@ describe("computeSpeedPunkSamples", () => {
       },
     ]);
     expect(computeSpeedPunkSamples(lineOnly, {})).to.deep.equal([]);
+  });
+});
+
+describe("the soft ceiling on fringe height", () => {
+  // The anchor is a calibration, not a limit: a quarter circle draws exactly
+  // the peak height at every radius. So the ceiling may not touch anything at
+  // or below the anchor, and it may not put a corner there either - a kink in
+  // the height rule reads as a kink in the drawing, which is the one thing the
+  // comb must never invent.
+  it("changes nothing at or below the anchor", () => {
+    expect(softCeilingRatio(0, 2)).to.equal(0);
+    expect(softCeilingRatio(0.5, 2)).to.equal(0.5);
+    expect(softCeilingRatio(1, 2)).to.equal(1);
+  });
+
+  it("leaves the slope unbroken where it takes over", () => {
+    const step = 1e-6;
+    const slope = (softCeilingRatio(1 + step, 2) - softCeilingRatio(1, 2)) / step;
+    expect(slope).to.be.closeTo(1, 1e-3);
+  });
+
+  it("rises for every rise in turn, so tighter always draws longer", () => {
+    // Up to the point where the remaining gap stops being representable. Past
+    // about 37 peak heights the exponential underflows and the answer is the
+    // ceiling itself, which is the arithmetic saturating, not the rule.
+    let previous = -Infinity;
+    for (let ratio = 0; ratio <= 30; ratio += 0.05) {
+      const height = softCeilingRatio(ratio, 2);
+      expect(height).to.be.greaterThan(previous);
+      previous = height;
+    }
+  });
+
+  it("never passes the ceiling, however tight the turn", () => {
+    expect(softCeilingRatio(30, 2)).to.be.lessThan(2);
+    expect(softCeilingRatio(1e6, 2)).to.be.at.most(2);
+    expect(softCeilingRatio(Infinity, 2)).to.be.at.most(2);
+  });
+
+  it("approaches the ceiling rather than stopping short of it", () => {
+    expect(softCeilingRatio(12, 2)).to.be.greaterThan(1.99);
+  });
+
+  it("takes the ceiling it is given", () => {
+    expect(softCeilingRatio(30, 3)).to.be.lessThan(3);
+    expect(softCeilingRatio(30, 3)).to.be.greaterThan(2.99);
+    // Less room to spend, so it saturates sooner; read it before it does.
+    expect(softCeilingRatio(5, 1.5)).to.be.lessThan(1.5);
+  });
+
+  it("is the identity where the ceiling is not above the anchor", () => {
+    // No room between the anchor and the ceiling is no ceiling. Refusing here
+    // keeps the anchor exact rather than dividing by the gap.
+    expect(softCeilingRatio(9, 1)).to.equal(9);
+    expect(softCeilingRatio(9, 0)).to.equal(9);
   });
 });

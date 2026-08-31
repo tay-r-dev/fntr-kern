@@ -321,6 +321,39 @@ function _segmentKind(t1, t2, t3) {
 
 const DEGREE = Math.PI / 180;
 
+/**
+ * The fringe height rule above the anchor.
+ *
+ * The height is the turn times a gain, and the gain has no limit in it, so a
+ * short arc bending hard draws a fringe longer than its own radius of
+ * curvature. Those fringes converge on the centre of curvature, pass through
+ * it, and fan out the other side: the comb crosses itself and stops being
+ * readable exactly where the drawing is most in question.
+ *
+ * A hard clip would answer that and cost the reading: every turn past the
+ * ceiling would draw the same fringe, so "tight" and "very tight" would look
+ * alike. This bends instead. Below the anchor nothing is touched at all, so a
+ * quarter circle still draws exactly the peak height at every radius, which is
+ * the whole calibration. Above it the remaining room is spent on an exponential
+ * approach: strictly rising, so a tighter turn always draws longer, and never
+ * arriving, so the ceiling is a limit rather than a stop.
+ *
+ * @param {number} ratio - Height in peak heights, before the ceiling
+ * @param {number} ceiling - The limit, also in peak heights
+ * @returns {number} The height to draw, in peak heights
+ */
+export function softCeilingRatio(ratio, ceiling) {
+  // No room between the anchor and the ceiling is no ceiling, and neither is
+  // unbounded room. Saying both here keeps the anchor exact rather than
+  // dividing by the gap, and answers an infinite ceiling with the plain rule
+  // instead of an infinity times a zero.
+  if (!(ceiling > 1) || !Number.isFinite(ceiling) || ratio <= 1) {
+    return ratio;
+  }
+  const room = ceiling - 1;
+  return 1 + room * (1 - Math.exp(-(ratio - 1) / room));
+}
+
 export function computeSpeedPunkSamples(path, params = {}) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;
   // The anchor the height scale is stated in: a stretch of outline that turns
@@ -332,6 +365,9 @@ export function computeSpeedPunkSamples(path, params = {}) {
   const colorFlatTurn = Math.max(1e-9, (params.colorFlatTurnDegrees ?? 30) * DEGREE);
   const colorTightTurn = Math.max(1e-9, (params.colorTightTurnDegrees ?? 120) * DEGREE);
   const sharpness = Math.max(0.1, params.sharpness ?? 1);
+  // In peak heights. Two, so the anchor keeps the whole of its own range and
+  // everything past it shares one more.
+  const heightCeilingRatio = params.heightCeilingRatio ?? 2;
   const illustrationPosition = params.illustrationPosition ?? "outsideOfCurve";
   const colorStops = params.colorStops ?? ["#8b939c", "#f29400", "#e3004f"];
   const baseSegmentBudget = params.baseSegmentBudget ?? 400;
@@ -440,9 +476,13 @@ export function computeSpeedPunkSamples(path, params = {}) {
       ny /= mag;
 
       // The fringe is the peak height where the outline turns through the
-      // reference turn, and proportional from there. No ceiling and no floor.
-      // Sharpness is an exponent about that anchor, which the anchor survives.
-      const heightRatio = Math.pow(turn / referenceTurn, sharpness);
+      // reference turn, and proportional from there. No floor; the ceiling is
+      // soft and only bends what is already past the anchor. Sharpness is an
+      // exponent about that anchor, which the anchor survives.
+      const heightRatio = softCeilingRatio(
+        Math.pow(turn / referenceTurn, sharpness),
+        heightCeilingRatio
+      );
       const h = -heightRatio * peakHeightGlyphUnits;
       offCurve.push({ x: x + nx * h, y: y + ny * h });
     }

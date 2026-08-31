@@ -81,7 +81,7 @@ of a combining tilde pinned to the last stop, median radius 67, longest fringe
   neighbours on the tilde differ by up to 54 per cent across smooth joints, the
   fault the per-segment curvature divisor showed at 27 per cent on `d`.
 - **The cost is real and bounded.** A fringe moves when an immediate neighbour is
-  redrawn. The rejected divisors were a peak *searched* over a scope, so an edit
+  redrawn. The rejected divisors were a peak _searched_ over a scope, so an edit
   anywhere inside rescaled everything; this reaches only the two segments that
   meet, and agreeing at a joint is what the comb is for.
 - **A playground font is not a calibration set.** Three glyphs never drawn to be
@@ -115,18 +115,43 @@ the same number twice, kept because they are read at different distances.
 
 ### Three things the comb does differently from the donor (`_external/speedpunk`)
 
-|               | donor                                                    | this comb                                                                 |
-| ------------- | -------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Fringe length | curvature times a fixed gain, no ceiling, no floor       | the turn times a fixed gain, "full height at turn T", default 90 degrees   |
-| Colour        | the glyph's own range, recomputed when the glyph changes | absolute, geometric between two named turns, 30 and 120 degrees            |
-| Sample count  | a budget divided by the number of curve segments         | that, times √magnification, with the budget divided by magnification first |
+|               | donor                                                    | this comb                                                                                              |
+| ------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Fringe length | curvature times a fixed gain, no ceiling, no floor       | the turn times a fixed gain, "full height at turn T", default 90 degrees, soft-ceilinged at twice that |
+| Colour        | the glyph's own range, recomputed when the glyph changes | absolute, geometric between two named turns, 30 and 120 degrees                                        |
+| Sample count  | a budget divided by the number of curve segments         | that, times √magnification, with the budget divided by magnification first                             |
 
 The donor's fringe carries the size dependence the eleventh round removed — a
-deliberate departure, not a port gap. **The stated cost is the ceiling**: there
-is none, so a near-cusp draws an enormous spike, which is the donor's behaviour
-and was accepted knowingly. **Ask what the original does before inventing a
-rule**: the donor was in the tree for all ten rounds, and five of them invented
-scales for a readout whose original states both choices in a few lines.
+deliberate departure, not a port gap. **Ask what the original does before
+inventing a rule**: the donor was in the tree for all ten rounds, and five of
+them invented scales for a readout whose original states both choices in a few
+lines.
+
+### The soft ceiling, added later
+
+The uncapped fringe was accepted knowingly and came back on `I^1`: a fringe of
+79 units on an arc whose radius of curvature is 28. **A fringe longer than its
+own radius is drawn along rays that meet at the centre of curvature and come out
+the far side**, so the comb crosses itself exactly where the drawing is most in
+question — 4261 crossing pairs on that one segment.
+
+`softCeilingRatio` bends the height above the anchor toward twice it:
+`1 + room * (1 - exp(-(ratio - 1) / room))`, room being the gap. Three
+properties it was chosen for, all tested:
+
+- **Below the anchor it is the identity.** A quarter circle still draws exactly
+  the peak height at every radius, which is the whole calibration.
+- **The slope is unbroken where it takes over**, so the ceiling adds no corner
+  to a readout whose job is to show corners.
+- **It is strictly rising and never arrives**, so a tighter turn always draws
+  longer. A hard clip would have made "tight" and "very tight" one drawing.
+
+**The ceiling is stated in peak heights, so it cannot see the radius.** It
+shortened `I^1`'s worst fringe from 79 to 46 and its crossings from 4261 to
+3586, which is an improvement and not a fix: 46 is still above that arc's 28.
+Stating the ceiling as a fraction of the local radius would end the crossing —
+and would put a unit of length back into a readout that eleven rounds took one
+out of.
 
 **Still open**, all three out with the revert: the comb does not repaint when a
 comb setting changes; the three fields do not scrub and a number box keeps the
@@ -134,19 +159,19 @@ keyboard after an edit; sharpness and opacity store the full float of a drag.
 
 ### Rejected drawing rules
 
-| Rule                                                                  | Why it went                                                                                                                                        |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Divide each fringe by the tallest curvature on its own segment        | Two segments meeting at equal curvature drew unequal fringe — 27 per cent apart on `d`, and a 2.7 per cent difference elsewhere drew as 21.        |
-| Divide by the tallest curvature on the glyph                          | Redrawing one segment moved the glyph's peak, so every fringe changed at once and two glyphs never shared one scale.                               |
-| Divide by the tallest curvature on its own run                        | Shipped one day. Same coupling at smaller scope: ten per cent on one segment took 21 per cent off its neighbour.                                   |
-| A typed reference radius, with a floor and a ceiling                  | A readout you must tune before you can trust it is not a readout, and the ceiling drew two curvatures at one length.                               |
-| Squeeze the height towards twice the peak                             | Nothing clipped and everything flattened: four times the reference tightness drew 1.6 times the height, eight times drew 1.8.                      |
-| Colour straight off the curvature ratio                               | It spent 0.33 to 0.77 of the stops on radius 200 to 30, most letters' working range — one colour to the eye.                                       |
-| Colour off the fringe length, last stop at three or five peak heights | At three, everything above handle tension 1 came out identical; at five it still painted a whole letter one colour.                                |
-| Derive the colour ramp from the fringe-length anchor                  | "Everything is yellow" — 16 to 1 against letters occupying 2.2 to 1, and one number stating two unrelated things.                                  |
+| Rule                                                                  | Why it went                                                                                                                                                                      |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Divide each fringe by the tallest curvature on its own segment        | Two segments meeting at equal curvature drew unequal fringe — 27 per cent apart on `d`, and a 2.7 per cent difference elsewhere drew as 21.                                      |
+| Divide by the tallest curvature on the glyph                          | Redrawing one segment moved the glyph's peak, so every fringe changed at once and two glyphs never shared one scale.                                                             |
+| Divide by the tallest curvature on its own run                        | Shipped one day. Same coupling at smaller scope: ten per cent on one segment took 21 per cent off its neighbour.                                                                 |
+| A typed reference radius, with a floor and a ceiling                  | A readout you must tune before you can trust it is not a readout, and the ceiling drew two curvatures at one length.                                                             |
+| Squeeze the height towards twice the peak                             | Nothing clipped and everything flattened: four times the reference tightness drew 1.6 times the height, eight times drew 1.8.                                                    |
+| Colour straight off the curvature ratio                               | It spent 0.33 to 0.77 of the stops on radius 200 to 30, most letters' working range — one colour to the eye.                                                                     |
+| Colour off the fringe length, last stop at three or five peak heights | At three, everything above handle tension 1 came out identical; at five it still painted a whole letter one colour.                                                              |
+| Derive the colour ramp from the fringe-length anchor                  | "Everything is yellow" — 16 to 1 against letters occupying 2.2 to 1, and one number stating two unrelated things.                                                                |
 | Colour relative to the segment, then to the run                       | A joint at the end of a run is an extreme of one of its two segments by construction: on `N^1.json`, two curvatures 0.29 per cent apart drew grey one side and orange the other. |
-| Recalibrate the radius anchors — per font, per glyph, or on demand    | Refused before it was built. Every form keeps a length in the readout.                                                                             |
-| Normalize the turn by each segment's own arc length                   | Closed on the reported tilde before it was built: the divisor steps at every joint, so a G2 joint draws a break.                                   |
+| Recalibrate the radius anchors — per font, per glyph, or on demand    | Refused before it was built. Every form keeps a length in the readout.                                                                                                           |
+| Normalize the turn by each segment's own arc length                   | Closed on the reported tilde before it was built: the divisor steps at every joint, so a G2 joint draws a break.                                                                 |
 
 ---
 
@@ -406,14 +431,14 @@ the first solved answer and became the arriving drawing, whose report is null.
 
 ### Rejected
 
-| Idea                                                          | Why it went                                                                                                                                   |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| A bias slider between moving the joint and moving the handles | The values between its two ends were never asked for.                                                                                         |
-| Freezing each joint's tangent from the arriving drawing       | On a ring the tangent legitimately rotates. The drift was the grid search buying bends.                                                        |
-| The on-curve slide as a fallback for a failed held solve      | Holding the joint still almost never fails — byte-identical output with it on and off. Opt-in, and when on it is the whole search.             |
-| Bound the on-curve slide's range by the inner handles         | They are what the construction replaces. It stopped the search 25 units short where the first admissible slide is 45 and the handle is 20.     |
-| Harmonize the generated outline                               | Derived, and thrown away on the next regeneration. The skeleton's centerline is an ordinary path and takes the pass unchanged.                |
-| Pick the balanced fraction by the curve's midpoint alone      | Built and dropped the same hour. One sample is not the curve.                                                                                 |
+| Idea                                                          | Why it went                                                                                                                                |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| A bias slider between moving the joint and moving the handles | The values between its two ends were never asked for.                                                                                      |
+| Freezing each joint's tangent from the arriving drawing       | On a ring the tangent legitimately rotates. The drift was the grid search buying bends.                                                    |
+| The on-curve slide as a fallback for a failed held solve      | Holding the joint still almost never fails — byte-identical output with it on and off. Opt-in, and when on it is the whole search.         |
+| Bound the on-curve slide's range by the inner handles         | They are what the construction replaces. It stopped the search 25 units short where the first admissible slide is 45 and the handle is 20. |
+| Harmonize the generated outline                               | Derived, and thrown away on the next regeneration. The skeleton's centerline is an ordinary path and takes the pass unchanged.             |
+| Pick the balanced fraction by the curve's midpoint alone      | Built and dropped the same hour. One sample is not the curve.                                                                              |
 
 ---
 
@@ -670,7 +695,7 @@ curvature.**
 - **Two smoothing forms that look inert are not.** A square-root cusp floor
   shifts its input by a constant then multiplied by the handle length — 0.022
   units on a 55-unit handle. A p-norm smooth minimum returns 84 per cent of its
-  argument when both arguments are equal. A polynomial form is *exactly* the min
+  argument when both arguments are equal. A polynomial form is _exactly_ the min
   or max outside its blend window.
 - **The tangent-ray bound needed a floor for an ordinary reason.** The
   intersection slides backwards onto the start point whenever a start tangent
@@ -733,7 +758,7 @@ symmetric skeleton.
 ### Round 4: a saturated handle dragged its partner backwards
 
 At the step where one handle reached the ceiling the other moved backwards, 90.6
-to 59.4 in one step: the ceiling was applied *after* the equalization walk, so
+to 59.4 in one step: the ceiling was applied _after_ the equalization walk, so
 the walk balanced a pair that could never be emitted.
 
 - **A bounded measurement changes the baseline, not just the answer.** Judging
@@ -881,11 +906,11 @@ its handles.
 Reported on the `j` of skeletron.fontra: move the first handle of the stem and one
 generated edge draws as a straight until the other handle moves. The stem is a
 cubic with its handles on the exact thirds, so nudging one opens the tangent rays
-by a couple of degrees and puts their crossing a few units *behind* the start
+by a couple of degrees and puts their crossing a few units _behind_ the start
 point — the domain's parallel case, and the right answer. But the endpoints are
 rounded before the domain is built, and at two degrees the crossing slides about
 twenty-six units per unit of sideways endpoint movement, so half a unit of
-rounding at each end carries it *ahead* instead. The start handle was held at 8
+rounding at each end carries it _ahead_ instead. The start handle was held at 8
 units where the drawing asks for 128.
 
 **The fix is to refuse a crossing the grid could have invented.** The
@@ -943,7 +968,7 @@ rotated the axis there too: 1.1 degrees mean and 12.5 worst per unit of width.
 - **Deriving a direction from rounded coordinates inherits a width dependence.**
   A handle carries its axis only to within `atan(0.7 / length)`: 1.3 degrees at
   32 units, 4 at 10, 45 at 1. The general trap behind both faults.
-- **The first coupling rule was too narrow.** Tying only *pairs* of controlled
+- **The first coupling rule was too narrow.** Tying only _pairs_ of controlled
   points missed the common case: one tension point anywhere on a straight ties
   both of its ends, and the far end need not be controlled itself.
 - **Skipping the coupled accessor in the gizmo produced the original report** —
@@ -1018,7 +1043,7 @@ consumer exists.
 
 ### Structural editing
 
-- **Segment selection.** Shift-clicking an adjacent segment *removed* the shared
+- **Segment selection.** Shift-clicking an adjacent segment _removed_ the shared
   point, so a selection could never be built by walking a contour. The fault was
   the selection **mode**, not the hit test: shift maps to symmetric difference,
   right for a single point and wrong for a multi-point hit. It toggles the
@@ -1085,7 +1110,7 @@ are orthogonal and the pin and a hand-placed handle compose without a precedence
 rule.
 
 - **A new per-point field is invisible to the generator until it is copied across
-  explicitly.** This failed *silently*: the pin stored, read back correctly, and
+  explicitly.** This failed _silently_: the pin stored, read back correctly, and
   did nothing, because the generator saw undefined on every segment.
 - **Reproducing a pinned mean by scaling both tensions cannot work.** A preserved
   ratio caps the reachable mean at `2r/(1+r)` — 0.6 on a 0.3/0.7 split — so the
@@ -1419,7 +1444,7 @@ it currently was and working out the ratio.
 - **Clamping and rounding cannot be the same call.** They were, and the first
   pass shipped fractions into the boxes. Turning rounding on in that one function
   would have broken the fine modifier instead: the caller folds the clamped value
-  back into its accumulated travel, and folding a *rounded* value back cancels
+  back into its accumulated travel, and folding a _rounded_ value back cancels
   each fine move before the next can build on it.
 - **Two clamps disagreed with the panel.** The nudge floored every serif length
   at zero, but wing slope is signed and the whole lower half of its range is a
@@ -1438,7 +1463,7 @@ it currently was and working out the ratio.
 
 - **Two modifier rearrangements were built and both reverted the same day.**
   Swapping the rib pair ignores why Z exists: a tangential rib move is the
-  *rarer* intent. Dropping Z as the gate on generated geometry removes the safety
+  _rarer_ intent. Dropping Z as the gate on generated geometry removes the safety
   on derived geometry.
 - **A real defect was hiding under the second attempt.** Z carried the adjacent
   handles through the generated on-curve and not through the rib grip — two entry
@@ -1629,7 +1654,7 @@ they meant: intact, the address is the truth and the marker rides; moved, check
 the outline against where the anchor last stood.
 
 - **The one stored coordinate.** This needs the anchor's last position on disk,
-  which the first design forbade. The prohibition was against *recovering* an
+  which the first design forbade. The prohibition was against _recovering_ an
   anchor by geometric matching, and that is still refused. This verifies: one
   question, answered within half a font unit, with no second-best and no
   fallback. Subdividing a curve is exact, so an intact outline answers yes
