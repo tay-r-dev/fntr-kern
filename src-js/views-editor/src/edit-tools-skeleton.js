@@ -22,6 +22,7 @@ import {
   parseSkeletonPointKey,
   resolveSkeletonAddressAcrossLayers,
 } from "./skeleton-editing.js";
+import { SnappingSession } from "./snapping-interactions.js";
 
 // The dropdown, laid out like the ordinary pen's: one button that opens onto the
 // two pens. They differ in one thing, which is the state a contour they start is
@@ -111,12 +112,64 @@ export class SkeletonPenTool extends BaseTool {
       // Outside editing the pen is not the tool answering the pointer, so its
       // mark must not stay behind on the canvas.
       this._setPenPointHover(null);
+      this._endSnapping();
       this.editor.tools["pointer-tool"].handleHover(event);
       return;
     }
     this.setCursor();
+    this._updateSnapHover(event);
     this._updateInsertHandlesPreview(event);
     this._updatePenPointHover(event);
+  }
+
+  // One session for the length of the hover, rebuilt when the glyph changes.
+  // Nothing is excluded: the point being placed is not in the skeleton yet, and
+  // the point the stroke is extended from is the most useful source there.
+  _snapSession() {
+    const glyphName = this.sceneModel.selectedGlyph?.glyphName;
+    if (!this._snapping || this._snappingGlyph !== glyphName) {
+      this._snapping = new SnappingSession(this.sceneController, {
+        excludePointIndices: [],
+      });
+      this._snappingGlyph = glyphName;
+    }
+    return this._snapping;
+  }
+
+  // The same rule the ordinary pen follows: the click resolves through the
+  // session the hover just drew, so the mark on the canvas is where the point
+  // lands. The scene is re-read first, because the pen adds geometry as it goes
+  // and a point just placed is a source.
+  _snapPoint(event) {
+    const session = this._snapSession();
+    const point = this.sceneController.selectedGlyphPoint(event);
+    return point ? session.resolve(point) : point;
+  }
+
+  // The hover redraw below fires only when the pen's own hover answers change,
+  // so the snap draw needs its own. Without it a guide appears only where some
+  // other hover state happens to change.
+  _updateSnapHover(event) {
+    const session = this._snapSession();
+    session.refresh();
+    const point = this.sceneController.selectedGlyphPoint(event);
+    if (point) {
+      session.resolve(point);
+    }
+    const snapState = JSON.stringify([
+      this.sceneModel.snapHeldCandidates?.map((c) => [c.kind, c.x, c.y, c.dx, c.dy]),
+      this.sceneModel.snapIndicator,
+    ]);
+    if (snapState !== this._lastSnapState) {
+      this._lastSnapState = snapState;
+      this.canvasController.requestUpdate();
+    }
+  }
+
+  _endSnapping() {
+    this._snapping?.end();
+    this._snapping = null;
+    this._lastSnapState = undefined;
   }
 
   // What a click on the hovered skeleton point would do. Three answers, because
@@ -370,7 +423,7 @@ export class SkeletonPenTool extends BaseTool {
   }
 
   async _handleAddSkeletonPoint(eventStream, initialEvent) {
-    let glyphPoint = this._getGlyphPoint(initialEvent);
+    let glyphPoint = this._snapPoint(initialEvent);
     if (!glyphPoint) {
       eventStream.done();
       return;
@@ -925,6 +978,7 @@ export class SkeletonPenTool extends BaseTool {
 
   deactivate() {
     super.deactivate();
+    this._endSnapping();
     delete this.sceneModel.skeletonInsertHandles;
     delete this.sceneModel.skeletonPenHoverTarget;
     this.sceneController.hoverSelection = new Set();
@@ -937,6 +991,7 @@ export class SkeletonPenTool extends BaseTool {
   // record. A pen never opens the canvas context menu.
   handleContextMenu(event) {
     this.sceneController.selection = new Set();
+    this._endSnapping();
     delete this.sceneModel.skeletonInsertHandles;
     delete this.sceneModel.skeletonPenHoverTarget;
     this.sceneController.hoverSelection = new Set();

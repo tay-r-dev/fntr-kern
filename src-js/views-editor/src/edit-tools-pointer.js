@@ -21,6 +21,7 @@ import {
   union,
 } from "@fontra/core/set-ops.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
+import { SNAP_PARAMETERS } from "@fontra/core/snapping.js";
 import { Transform } from "@fontra/core/transform.js";
 import {
   assert,
@@ -100,8 +101,17 @@ const REALTIME_RIB_TANGENT_ACTION = "action.realtime.rib-tangent";
 const REALTIME_FIXED_RIB_ACTION = "action.realtime.fixed-rib";
 const REALTIME_FIXED_RIB_COMPRESS_ACTION = "action.realtime.fixed-rib-compress";
 const REALTIME_TENSION_AWARE_ACTION = "action.realtime.tension-aware";
+const REALTIME_SNAP_DIAGONALS_ACTION = "action.realtime.snap-diagonals-only";
 
 const REALTIME_MODIFIER_ACTIONS = [
+  {
+    // Held, the snap answers with slanted candidates and nothing else. The
+    // scene model carries it because the snapping session is the reader, and it
+    // has no route to this tool's own state.
+    action: REALTIME_SNAP_DIAGONALS_ACTION,
+    modeProperty: "snapDiagonalOnlyMode",
+    sceneModelProperty: "snapDiagonalOnly",
+  },
   {
     action: REALTIME_RIB_TANGENT_ACTION,
     modeProperty: "tangentRibMode",
@@ -166,6 +176,7 @@ export class PointerTool extends BaseTool {
     this.fixedRibMode = false;
     this.fixedRibCompressMode = false;
     this.tensionAwareMode = false;
+    this.snapDiagonalOnlyMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
     this._boundRealtimeModifierWindowBlur = null;
   }
@@ -1005,6 +1016,19 @@ export class PointerTool extends BaseTool {
         const constraint = event.shiftKey
           ? constraintLineForDelta(rawDelta, snapStartPositions[0])
           : null;
+        // A modified drag states its own geometry, and a magnet pulling the
+        // point somewhere else is fighting it. Alt equalizes, X holds the drawn
+        // shape, Z slides along a tangent, and D and S pin one edge of the
+        // stroke while the other follows the cursor. Read every frame, so a key
+        // pressed or released mid-drag takes on the next one - the same rule the
+        // behavior name already follows. D and S carry a switch, because a
+        // designer may want a width to land on a metric.
+        snapSession.suppressed =
+          event.altKey ||
+          this.tensionAwareMode ||
+          this.tangentRibMode ||
+          ((this.fixedRibMode || this.fixedRibCompressMode) &&
+            !SNAP_PARAMETERS.snapDuringFixedRib);
         const wouldBe = snapStartPositions.map((point) => ({
           x: point.x + rawDelta.x,
           y: point.y + rawDelta.y,
@@ -1434,6 +1458,9 @@ export class PointerTool extends BaseTool {
     }
     if (!this[modifier.modeProperty]) {
       this[modifier.modeProperty] = true;
+      if (modifier.sceneModelProperty) {
+        this.sceneModel[modifier.sceneModelProperty] = true;
+      }
       const keyUpHandler = (e) => this._handleRealtimeModifierKeyUp(e, modifier.action);
       this._realtimeModifierKeyUpHandlers.set(modifier.action, keyUpHandler);
       window.addEventListener("keyup", keyUpHandler);
@@ -1461,6 +1488,9 @@ export class PointerTool extends BaseTool {
       return;
     }
     this[modifier.modeProperty] = false;
+    if (modifier.sceneModelProperty) {
+      this.sceneModel[modifier.sceneModelProperty] = false;
+    }
     const keyUpHandler = this._realtimeModifierKeyUpHandlers.get(action);
     if (keyUpHandler) {
       window.removeEventListener("keyup", keyUpHandler);
@@ -1475,6 +1505,9 @@ export class PointerTool extends BaseTool {
     for (const modifier of REALTIME_MODIFIER_ACTIONS) {
       if (this[modifier.modeProperty]) {
         this[modifier.modeProperty] = false;
+        if (modifier.sceneModelProperty) {
+          this.sceneModel[modifier.sceneModelProperty] = false;
+        }
         changed = true;
       }
       const keyUpHandler = this._realtimeModifierKeyUpHandlers.get(modifier.action);

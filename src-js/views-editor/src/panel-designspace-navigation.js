@@ -1,11 +1,4 @@
 import { registerAction } from "@fontra/core/actions.js";
-import {
-  CULL_PARAMETERS,
-  KIND,
-  SNAP_PARAMETERS,
-  resetSnapParameters,
-  setSnapParameter,
-} from "@fontra/core/snapping.js";
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { makeFontAxisAccordionItems } from "@fontra/core/axis-ui.js";
 import {
@@ -24,6 +17,14 @@ import * as html from "@fontra/core/html-utils.js";
 import { htmlToElement } from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { ObservableController, controllerKey } from "@fontra/core/observable-object.ts";
+import {
+  CULL_PARAMETERS,
+  KIND,
+  SNAP_PARAMETERS,
+  resetSnapParameters,
+  setSnapParameter,
+  subscribeSnapParameters,
+} from "@fontra/core/snapping.js";
 import {
   labeledCheckbox,
   labeledPopupSelect,
@@ -148,65 +149,50 @@ const SNAPPING_DEBUG_CONTROLS = [
   },
   { path: "perSideCount", label: "Sources per side", min: 1, max: 5, step: 1 },
   { path: "maxCandidates", label: "Candidate cap", min: 20, max: 500, step: 10 },
+  // Switches. Held as 0 or 1 so that one table describes every parameter and the
+  // persistence, the reset and the external-change sync all keep working.
   {
-    path: "weights." + KIND.METRIC,
-    label: "Weight: metric",
+    path: "diagonalsEnabled",
+    label: "Diagonals (shift+R)",
+    type: "toggle",
+  },
+  {
+    path: "offCurveSources",
+    label: "Off-curve points cast rays",
+    type: "toggle",
+  },
+  {
+    path: "snapDuringFixedRib",
+    label: "Snap during a fixed-rib drag (D / S)",
+    type: "toggle",
+  },
+  // A kind is a direction, so the table below is a direction table. What a line
+  // came from does not enter it: a metric, a guide and a point's own ray all run
+  // one way and pull one amount.
+  {
+    path: "weights." + KIND.ORTHOGONAL,
+    label: "Weight: upright",
     min: 0,
     max: 1.5,
     step: 0.02,
   },
   {
-    path: "weights." + KIND.GUIDE_INTERSECTION,
-    label: "Weight: guide crossing",
+    path: "weights." + KIND.DIAGONAL,
+    label: "Weight: diagonal",
     min: 0,
     max: 1.5,
     step: 0.02,
   },
   {
-    path: "weights." + KIND.GUIDE_ORTHOGONAL,
-    label: "Weight: guide, right angle",
+    path: "weights." + KIND.INTERSECTION,
+    label: "Weight: crossing",
     min: 0,
     max: 1.5,
     step: 0.02,
   },
   {
-    path: "weights." + KIND.GUIDE_SLANTED,
-    label: "Weight: guide, slant",
-    min: 0,
-    max: 1.5,
-    step: 0.02,
-  },
-  {
-    path: "weights." + KIND.SMART_INTERSECTION_ORTHOGONAL,
-    label: "Weight: smart crossing, right angle",
-    min: 0,
-    max: 1.5,
-    step: 0.02,
-  },
-  {
-    path: "weights." + KIND.SMART_INTERSECTION_SLANTED,
-    label: "Weight: smart crossing, slant",
-    min: 0,
-    max: 1.5,
-    step: 0.02,
-  },
-  {
-    path: "weights." + KIND.SMART_ORTHOGONAL,
-    label: "Weight: smart, right angle",
-    min: 0,
-    max: 1.5,
-    step: 0.02,
-  },
-  {
-    path: "weights." + KIND.SMART_SLANTED,
-    label: "Weight: smart, slant",
-    min: 0,
-    max: 1.5,
-    step: 0.02,
-  },
-  {
-    path: "weights." + KIND.SKELETON,
-    label: "Weight: skeleton and rib ends",
+    path: "weights." + KIND.OFF_CURVE,
+    label: "Weight: off-curve point",
     min: 0,
     max: 1.5,
     step: 0.02,
@@ -221,59 +207,38 @@ const SNAPPING_DEBUG_CONTROLS = [
     step: 0.02,
   },
   {
-    path: "reaches." + KIND.METRIC,
-    label: "Reach: metric",
+    path: "weights." + KIND.OTHER,
+    label: "Weight: alignment band",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "reaches." + KIND.ORTHOGONAL,
+    label: "Reach: upright",
     min: 0.25,
     max: 4,
     step: 0.05,
   },
   {
-    path: "reaches." + KIND.GUIDE_INTERSECTION,
-    label: "Reach: guide crossing",
+    path: "reaches." + KIND.DIAGONAL,
+    label: "Reach: diagonal",
     min: 0.25,
     max: 4,
     step: 0.05,
   },
   {
-    path: "reaches." + KIND.GUIDE_ORTHOGONAL,
-    label: "Reach: guide, right angle",
+    path: "reaches." + KIND.INTERSECTION,
+    label: "Reach: crossing",
     min: 0.25,
     max: 4,
     step: 0.05,
   },
   {
-    path: "reaches." + KIND.GUIDE_SLANTED,
-    label: "Reach: guide, slant",
+    path: "reaches." + KIND.OFF_CURVE,
+    label: "Reach: off-curve point",
     min: 0.25,
     max: 4,
-    step: 0.05,
-  },
-  {
-    path: "reaches." + KIND.SMART_INTERSECTION_ORTHOGONAL,
-    label: "Reach: smart crossing, right angle",
-    min: 0.25,
-    max: 4,
-    step: 0.05,
-  },
-  {
-    path: "reaches." + KIND.SMART_INTERSECTION_SLANTED,
-    label: "Reach: smart crossing, slant",
-    min: 0.25,
-    max: 4,
-    step: 0.05,
-  },
-  {
-    path: "reaches." + KIND.SMART_ORTHOGONAL,
-    label: "Reach: smart, right angle",
-    min: 0.25,
-    max: 4,
-    step: 0.05,
-  },
-  {
-    path: "reaches." + KIND.SKELETON,
-    label: "Reach: skeleton and rib ends",
-    min: 0.25,
-    max: 3,
     step: 0.05,
   },
   {
@@ -284,25 +249,11 @@ const SNAPPING_DEBUG_CONTROLS = [
     step: 0.05,
   },
   {
-    path: "reaches." + KIND.SMART_SLANTED,
-    label: "Reach: smart, slant",
-    min: 0.25,
-    max: 4,
-    step: 0.05,
-  },
-  {
     path: "reaches." + KIND.OTHER,
-    label: "Reach: other",
+    label: "Reach: alignment band",
     min: 0.25,
     max: 4,
     step: 0.05,
-  },
-  {
-    path: "weights." + KIND.OTHER,
-    label: "Weight: other",
-    min: 0,
-    max: 1.5,
-    step: 0.02,
   },
 ];
 
@@ -665,13 +616,19 @@ export default class DesignspaceNavigationPanel extends Panel {
               html.label({ style: "white-space: nowrap; font-size: 0.9em;" }, [
                 control.label,
               ]),
-              html.input({
-                id: `snapping-debug-${control.path.replace(".", "-")}`,
-                type: "range",
-                min: control.min,
-                max: control.max,
-                step: control.step,
-              }),
+              control.type === "toggle"
+                ? html.input({
+                    id: `snapping-debug-${control.path.replace(".", "-")}`,
+                    type: "checkbox",
+                    style: "justify-self: start;",
+                  })
+                : html.input({
+                    id: `snapping-debug-${control.path.replace(".", "-")}`,
+                    type: "range",
+                    min: control.min,
+                    max: control.max,
+                    step: control.step,
+                  }),
               html.span(
                 {
                   id: `snapping-debug-${control.path.replace(".", "-")}-value`,
@@ -1122,9 +1079,17 @@ export default class DesignspaceNavigationPanel extends Panel {
       const readout = this.accordion.querySelector(`#snapping-debug-${id}-value`);
       const value = readSnapParameter(control.path);
       if (input) {
-        input.value = String(value);
+        if (control.type === "toggle") {
+          input.checked = !!value;
+        } else {
+          input.value = String(value);
+        }
       }
       if (readout) {
+        if (control.type === "toggle") {
+          readout.textContent = value ? "on" : "off";
+          return;
+        }
         // A per-kind reach is a multiple of the master reach, so the pixels it
         // comes to are shown beside it. Otherwise the number means nothing on
         // its own.
@@ -1143,9 +1108,12 @@ export default class DesignspaceNavigationPanel extends Panel {
       }
       // "input", not "change": a scrub must answer while the thumb is moving.
       input.addEventListener("input", () => {
-        setSnapParameter(control.path, Number(input.value));
+        setSnapParameter(
+          control.path,
+          control.type === "toggle" ? (input.checked ? 1 : 0) : Number(input.value)
+        );
         // Every row, not just this one: moving the master reach changes the pixel
-        // figure shown beside all nine per-kind reaches.
+        // figure shown beside every per-kind reach.
         SNAPPING_DEBUG_CONTROLS.forEach(syncOne);
         persist();
         this.editorController.canvasController.requestUpdate();
@@ -1158,6 +1126,13 @@ export default class DesignspaceNavigationPanel extends Panel {
       SNAPPING_DEBUG_CONTROLS.forEach(syncOne);
       persist();
       this.editorController.canvasController.requestUpdate();
+    });
+
+    // A switch has two writers - this panel and the key that holds or toggles it
+    // - so an outside write re-syncs the rows and is persisted like any other.
+    subscribeSnapParameters(() => {
+      SNAPPING_DEBUG_CONTROLS.forEach(syncOne);
+      persist();
     });
 
     this._startSnappingDebugReadout();

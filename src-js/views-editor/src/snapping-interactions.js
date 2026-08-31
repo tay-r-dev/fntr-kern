@@ -1,4 +1,3 @@
-import { parseSelection } from "@fontra/core/utils.js";
 import {
   getSkeletonData,
   getSkeletonPointAddress,
@@ -15,6 +14,7 @@ import {
   resolveSnapForPoints,
   roundSnapped,
 } from "@fontra/core/snapping.js";
+import { parseSelection } from "@fontra/core/utils.js";
 import { constrainHorVerDiag } from "./edit-behavior.js";
 
 function segmentAngle(from, to) {
@@ -128,6 +128,10 @@ function partitionMovedPointIndices(sceneController, movedPointIndices) {
   return { excluded, ownGenerated };
 }
 
+function isOrthogonalAngle({ x, y }) {
+  return Math.abs(x) < 1e-9 || Math.abs(y) < 1e-9;
+}
+
 // Shift constrains the drag to a horizontal, a vertical or a diagonal. That axis
 // enters the resolver as a line through the anchor, so the gesture starts at one
 // degree of freedom and the snap only chooses where along it the point sits.
@@ -143,7 +147,10 @@ export function constraintLineForDelta(delta, anchor) {
     x: anchor.x,
     y: anchor.y,
     angle: (Math.atan2(constrained.y, constrained.x) * 180) / Math.PI,
-    kind: KIND.METRIC,
+    // Its kind is the direction it runs, like every other line. It is never
+    // weighed against anything - a constraint is held, not chosen - so the kind
+    // matters only where the resolver crosses it with a candidate.
+    kind: isOrthogonalAngle(constrained) ? KIND.ORTHOGONAL : KIND.DIAGONAL,
     source: { x: anchor.x, y: anchor.y },
   });
 }
@@ -224,12 +231,14 @@ export function buildSnapScene(sceneController, excludePointIndices) {
       continue;
     }
     const point = path.getPoint(i);
-    if (point.type) {
-      continue; // off-curve points contribute no rays
-    }
+    // An off-curve is offered under its own kind, and the switch in the resolver
+    // decides whether it is collected at all. Marking it here rather than
+    // dropping it is what lets the switch answer on the next frame, without the
+    // frozen scene having to be rebuilt.
     points.push({
       x: point.x,
       y: point.y,
+      offCurve: !!point.type,
       kind: ownGenerated.has(i) ? KIND.OWN_GENERATED : undefined,
     });
   }
@@ -250,17 +259,33 @@ export function buildSnapScene(sceneController, excludePointIndices) {
   const skeletonData = getSkeletonData(glyph);
   const movedSkeletonPoints = movedSkeletonPointKeys(sceneController, excluded);
   for (const contour of skeletonData?.contours || []) {
+    // The contour the drag came from is the one whose own points the designer is
+    // aligning to - the neighbour a stem should stay level with is on it. Any
+    // nearer point elsewhere in the glyph would win the per-side cull and hide
+    // them, so this contour's sources are exempt from that contest.
+    const isDraggedContour = (contour.points || []).some((point) =>
+      movedSkeletonPoints.has(`${contour.id}/${point.id}`)
+    );
     for (const point of contour.points || []) {
-      if (point.type || movedSkeletonPoints.has(`${contour.id}/${point.id}`)) {
+      if (movedSkeletonPoints.has(`${contour.id}/${point.id}`)) {
         continue;
       }
-      points.push({ x: point.x, y: point.y, kind: KIND.SKELETON });
+      const source = {
+        x: point.x,
+        y: point.y,
+        offCurve: !!point.type,
+        alwaysKeep: isDraggedContour,
+      };
+      points.push(source);
+      if (point.type) {
+        continue; // a handle has no rib
+      }
       const ribEnds = getSkeletonRibEndpoints(contour, point);
       for (const end of [ribEnds.left, ribEnds.right]) {
         // A collapsed side returns the centerline point itself, which is
         // already in the list.
         if (end && end !== point) {
-          points.push({ x: end.x, y: end.y, kind: KIND.SKELETON });
+          points.push({ x: end.x, y: end.y, alwaysKeep: isDraggedContour });
         }
       }
     }
@@ -279,8 +304,18 @@ export class SnappingSession {
     // one the designer is moving toward. See the overrule rule in snapping.js.
     this.overrule = null;
     this.escape = null;
+    // Set per frame by the tool. A gesture that states its own geometry - a
+    // fixed-rib drag, a tangent-only rib move, an equalize, a tension-aware
+    // edit - has nothing to gain from a magnet moving the point somewhere else.
+    this.suppressed = false;
     this._lastCursor = null;
     this._lastTime = 0;
+  }
+
+  // "only" while the diagonal key is held. Otherwise the switch answers, inside
+  // the resolver, so a switch moved mid-drag takes on the next frame.
+  get _diagonals() {
+    return this.sceneController.sceneModel.snapDiagonalOnly ? "only" : undefined;
   }
 
   // Pointer speed in screen pixels per second. The resolver takes it in pixels so
@@ -307,7 +342,23 @@ export class SnappingSession {
   }
 
   get enabled() {
-    return this.sceneController.sceneSettings.snappingEnabled ?? true;
+    return (
+      !this.suppressed && (this.sceneController.sceneSettings.snappingEnabled ?? true)
+    );
+  }
+
+  // A suppressed frame must also take the last frame's ring and guide lines off
+  // the canvas. Leaving them up says the snap is still in force while the drag
+  // has stopped listening to it.
+  _clearPublished() {
+    const sceneModel = this.sceneController.sceneModel;
+    sceneModel.snapHeldCandidates = [];
+    sceneModel.snapSuggestion = null;
+    sceneModel.snapIndicator = null;
+    sceneModel.snapDebugReadout = null;
+    this.held = null;
+    this.overrule = null;
+    this.escape = null;
   }
 
   // What the indicator draws and what the tuning panel reads. Published on every
@@ -348,10 +399,14 @@ export class SnappingSession {
 
   resolve(point, { constraint } = {}) {
     if (!this.enabled) {
+      this._clearPublished();
       return point;
     }
     const pixelUnit = this.sceneController.onePixelUnit;
-    const candidates = collectCandidates(this.scene, point, { pixelUnit });
+    const candidates = collectCandidates(this.scene, point, {
+      pixelUnit,
+      diagonals: this._diagonals,
+    });
     const result = resolveSnap(candidates, point, {
       pixelUnit,
       held: this.held?.candidate || null,
@@ -372,12 +427,16 @@ export class SnappingSession {
 
   resolveSet(points, cursor, { constraint } = {}) {
     if (!this.enabled || !points.length) {
+      this._clearPublished();
       return { x: 0, y: 0 };
     }
     const pixelUnit = this.sceneController.onePixelUnit;
     // The candidate set is built against the cursor once per frame, and every point is
     // then resolved against that one set.
-    const candidates = collectCandidates(this.scene, cursor, { pixelUnit });
+    const candidates = collectCandidates(this.scene, cursor, {
+      pixelUnit,
+      diagonals: this._diagonals,
+    });
     const best = resolveSnapForPoints(candidates, points, cursor, {
       pixelUnit,
       held: this.held,

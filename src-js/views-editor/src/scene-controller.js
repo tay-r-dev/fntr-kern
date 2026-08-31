@@ -65,6 +65,7 @@ import {
   resolveEffectiveSourceSkeletonDefault,
   setSkeletonData,
 } from "@fontra/core/skeleton-model.js";
+import { SNAP_PARAMETERS, setSnapParameter } from "@fontra/core/snapping.js";
 import {
   arrowKeyDeltas,
   assert,
@@ -720,6 +721,18 @@ export class SceneController {
           "snappingEnabled",
           !this.sceneSettings.snappingEnabled
         );
+        this.canvasController.requestUpdate();
+      }
+    );
+
+    registerAction(
+      "action.toggle-snap-diagonals",
+      {
+        titleKey: "action.toggle-snap-diagonals",
+        defaultShortCuts: [{ baseKey: "r", shiftKey: true }],
+      },
+      () => {
+        setSnapParameter("diagonalsEnabled", SNAP_PARAMETERS.diagonalsEnabled ? 0 : 1);
         this.canvasController.requestUpdate();
       }
     );

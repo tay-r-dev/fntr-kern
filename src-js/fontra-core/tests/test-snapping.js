@@ -1,21 +1,21 @@
-import { expect } from "chai";
 import {
+  CULL_PARAMETERS,
   KIND,
   MIN_CROSSING_ANGLE_DEG,
-  CULL_PARAMETERS,
   SNAP_PARAMETERS,
-  collectCandidates,
   candidatePull,
+  collectCandidates,
   crossLines,
-  resolveSnap,
-  resolveSnapForPoints,
-  roundSnapped,
   distanceToCandidate,
   makeLineCandidate,
   makePointCandidate,
   projectOntoLine,
   resetSnapParameters,
+  resolveSnap,
+  resolveSnapForPoints,
+  roundSnapped,
 } from "@fontra/core/snapping.js";
+import { expect } from "chai";
 
 describe("snapping primitives", () => {
   it("builds a horizontal line candidate with a unit direction", () => {
@@ -23,7 +23,7 @@ describe("snapping primitives", () => {
       x: 100,
       y: 50,
       angle: 0,
-      kind: KIND.METRIC,
+      kind: KIND.ORTHOGONAL,
       source: { x: 100, y: 50 },
     });
     expect(c.type).to.equal("line");
@@ -36,7 +36,7 @@ describe("snapping primitives", () => {
       x: 0,
       y: 50,
       angle: 0,
-      kind: KIND.METRIC,
+      kind: KIND.ORTHOGONAL,
       source: { x: 0, y: 50 },
     });
     const p = projectOntoLine(c, { x: 33, y: 71 });
@@ -49,7 +49,7 @@ describe("snapping primitives", () => {
       x: 0,
       y: 0,
       angle: 45,
-      kind: KIND.GUIDE_SLANTED,
+      kind: KIND.DIAGONAL,
       source: { x: 0, y: 0 },
     });
     const p = projectOntoLine(c, { x: 10, y: 0 });
@@ -62,14 +62,14 @@ describe("snapping primitives", () => {
       x: 0,
       y: 50,
       angle: 0,
-      kind: KIND.METRIC,
+      kind: KIND.ORTHOGONAL,
       source: { x: 0, y: 50 },
     });
     expect(distanceToCandidate(line, { x: 999, y: 58 })).to.be.closeTo(8, 1e-12);
     const point = makePointCandidate({
       x: 3,
       y: 4,
-      kind: KIND.SMART_INTERSECTION_ORTHOGONAL,
+      kind: KIND.INTERSECTION,
       source: { x: 3, y: 4 },
     });
     expect(distanceToCandidate(point, { x: 0, y: 0 })).to.be.closeTo(5, 1e-12);
@@ -77,9 +77,9 @@ describe("snapping primitives", () => {
 });
 
 describe("snapping crossings", () => {
-  const horizontal = (y, kind = KIND.METRIC) =>
+  const horizontal = (y, kind = KIND.ORTHOGONAL) =>
     makeLineCandidate({ x: 0, y, angle: 0, kind, source: { x: 0, y } });
-  const vertical = (x, kind = KIND.SMART_ORTHOGONAL) =>
+  const vertical = (x, kind = KIND.OTHER) =>
     makeLineCandidate({ x, y: 0, angle: 90, kind, source: { x, y: 0 } });
 
   it("crosses a horizontal and a vertical", () => {
@@ -99,24 +99,25 @@ describe("snapping crossings", () => {
       x: 0,
       y: 0,
       angle: MIN_CROSSING_ANGLE_DEG - 1,
-      kind: KIND.SMART_SLANTED,
+      kind: KIND.DIAGONAL,
       source: { x: 0, y: 0 },
     });
     expect(crossLines(horizontal(0), shallow)).to.equal(null);
   });
 
-  it("ranks a crossing of two orthogonal smart guides above one involving a slant", () => {
-    const both = crossLines(horizontal(50, KIND.SMART_ORTHOGONAL), vertical(30));
-    expect(both.kind).to.equal(KIND.SMART_INTERSECTION_ORTHOGONAL);
+  it("calls every crossing one kind, whatever the two lines were", () => {
+    expect(crossLines(horizontal(50, KIND.OTHER), vertical(30)).kind).to.equal(
+      KIND.INTERSECTION
+    );
     const slanted = makeLineCandidate({
       x: 0,
       y: 0,
       angle: 40,
-      kind: KIND.SMART_SLANTED,
+      kind: KIND.DIAGONAL,
       source: { x: 0, y: 0 },
     });
-    expect(crossLines(horizontal(50, KIND.SMART_ORTHOGONAL), slanted).kind).to.equal(
-      KIND.SMART_INTERSECTION_SLANTED
+    expect(crossLines(horizontal(50, KIND.OTHER), slanted).kind).to.equal(
+      KIND.INTERSECTION
     );
   });
 });
@@ -124,13 +125,19 @@ describe("snapping crossings", () => {
 describe("the pull model", () => {
   const opts = { pixelUnit: 1, held: null };
   const metric = (y) =>
-    makeLineCandidate({ x: 0, y, angle: 0, kind: KIND.METRIC, source: { x: 0, y } });
+    makeLineCandidate({
+      x: 0,
+      y,
+      angle: 0,
+      kind: KIND.ORTHOGONAL,
+      source: { x: 0, y },
+    });
   const smart = (y) =>
     makeLineCandidate({
       x: 0,
       y,
       angle: 0,
-      kind: KIND.SMART_ORTHOGONAL,
+      kind: KIND.OTHER,
       source: { x: 0, y },
     });
 
@@ -143,7 +150,7 @@ describe("the pull model", () => {
 
   it("lets a near light candidate beat a far heavy one", () => {
     const result = resolveSnap([metric(40), smart(50)], { x: 0, y: 50.5 }, opts);
-    expect(result.held[0].kind).to.equal(KIND.SMART_ORTHOGONAL);
+    expect(result.held[0].kind).to.equal(KIND.OTHER);
   });
 
   it("returns the cursor unchanged when nothing is in reach", () => {
@@ -165,7 +172,7 @@ describe("the pull model", () => {
       x: 30,
       y: 0,
       angle: 90,
-      kind: KIND.SMART_ORTHOGONAL,
+      kind: KIND.OTHER,
       source: { x: 30, y: 0 },
     });
     const result = resolveSnap([metric(50), vertical], { x: 32, y: 52 }, opts);
@@ -194,11 +201,11 @@ describe("the pull model", () => {
   });
 
   it("lets one kind reach further than another without changing who wins ties", () => {
-    const before = SNAP_PARAMETERS.reaches[KIND.METRIC];
+    const before = SNAP_PARAMETERS.reaches[KIND.ORTHOGONAL];
     try {
       // Out of the shared reach of 12, so nothing takes it.
       expect(resolveSnap([metric(50)], { x: 0, y: 70 }, opts).freedom).to.equal("free");
-      SNAP_PARAMETERS.reaches[KIND.METRIC] = 3;
+      SNAP_PARAMETERS.reaches[KIND.ORTHOGONAL] = 3;
       expect(resolveSnap([metric(50)], { x: 0, y: 70 }, opts).freedom).to.equal("line");
       // The smart guide's own reach is untouched by the metric's.
       expect(resolveSnap([smart(50)], { x: 0, y: 70 }, opts).freedom).to.equal("free");
@@ -208,7 +215,7 @@ describe("the pull model", () => {
         candidatePull(smart(50), cursor, opts)
       );
     } finally {
-      SNAP_PARAMETERS.reaches[KIND.METRIC] = before;
+      SNAP_PARAMETERS.reaches[KIND.ORTHOGONAL] = before;
     }
   });
 
@@ -232,7 +239,7 @@ describe("the pull model", () => {
       x: 0,
       y: 0,
       angle: 90,
-      kind: KIND.METRIC,
+      kind: KIND.ORTHOGONAL,
       source: { x: 0, y: 0 },
     });
     const result = resolveSnap([metric(50)], { x: 4, y: 52 }, { ...opts, constraint });
@@ -246,7 +253,7 @@ describe("the pull model", () => {
       x: 0,
       y: 0,
       angle: 90,
-      kind: KIND.METRIC,
+      kind: KIND.ORTHOGONAL,
       source: { x: 0, y: 0 },
     });
     const result = resolveSnap([metric(50)], { x: 4, y: 300 }, { ...opts, constraint });
@@ -282,7 +289,13 @@ describe("the pull model", () => {
 describe("multi-point resolution", () => {
   const opts = { pixelUnit: 1, held: null };
   const metric = (y) =>
-    makeLineCandidate({ x: 0, y, angle: 0, kind: KIND.METRIC, source: { x: 0, y } });
+    makeLineCandidate({
+      x: 0,
+      y,
+      angle: 0,
+      kind: KIND.ORTHOGONAL,
+      source: { x: 0, y },
+    });
 
   it("lets a point other than the one under the cursor take the snap", () => {
     // The cursor is on the lower point. The upper point is the one near the metric.
@@ -402,6 +415,7 @@ describe("multi-point resolution", () => {
 
 describe("candidate generation", () => {
   const opts = { pixelUnit: 1 };
+  afterEach(() => resetSnapParameters());
 
   it("makes one line per metric, and a band ranks lowest", () => {
     const scene = {
@@ -414,10 +428,11 @@ describe("candidate generation", () => {
       segments: [],
     };
     const found = collectCandidates(scene, { x: 0, y: 505 }, opts);
-    expect(found.map((c) => c.kind)).to.have.members([KIND.METRIC, KIND.OTHER]);
+    expect(found.map((c) => c.kind)).to.have.members([KIND.ORTHOGONAL, KIND.OTHER]);
   });
 
   it("ranks a right-angle guide above a slanted one", () => {
+    SNAP_PARAMETERS.diagonalsEnabled = 1;
     const scene = {
       metrics: [],
       guides: [
@@ -428,15 +443,15 @@ describe("candidate generation", () => {
       segments: [],
     };
     const kinds = collectCandidates(scene, { x: 10, y: 0 }, opts).map((c) => c.kind);
-    expect(kinds).to.include(KIND.GUIDE_ORTHOGONAL);
-    expect(kinds).to.include(KIND.GUIDE_SLANTED);
+    expect(kinds).to.include(KIND.ORTHOGONAL);
+    expect(kinds).to.include(KIND.DIAGONAL);
   });
 
   it("gives an on-curve point a horizontal and a vertical ray", () => {
     const scene = { metrics: [], guides: [], points: [{ x: 40, y: 60 }], segments: [] };
     const found = collectCandidates(scene, { x: 41, y: 61 }, opts);
     expect(found).to.have.length(2);
-    expect(found.every((c) => c.kind === KIND.SMART_ORTHOGONAL)).to.equal(true);
+    expect(found.every((c) => c.kind === KIND.ORTHOGONAL)).to.equal(true);
   });
 
   it("drops a source outside the collection radius", () => {
@@ -483,6 +498,7 @@ describe("candidate generation", () => {
   });
 
   it("extends a straight segment and a curve end tangent along their own angle", () => {
+    SNAP_PARAMETERS.diagonalsEnabled = 1;
     const scene = {
       metrics: [],
       guides: [],
@@ -493,7 +509,7 @@ describe("candidate generation", () => {
       ],
     };
     const kinds = collectCandidates(scene, { x: 0, y: 0 }, opts).map((c) => c.kind);
-    expect(kinds).to.deep.equal([KIND.SMART_ORTHOGONAL, KIND.SMART_SLANTED]);
+    expect(kinds).to.deep.equal([KIND.ORTHOGONAL, KIND.DIAGONAL]);
   });
 
   it("caps the candidate list", () => {
@@ -524,7 +540,7 @@ describe("the grid rounds what is left", () => {
       x: 0,
       y: 50.5,
       angle: 0,
-      kind: KIND.METRIC,
+      kind: KIND.ORTHOGONAL,
       source: { x: 0, y: 50.5 },
     });
     const out = roundSnapped(
@@ -548,7 +564,7 @@ describe("the grid rounds what is left", () => {
       x: 0,
       y: 0,
       angle: 45,
-      kind: KIND.GUIDE_SLANTED,
+      kind: KIND.DIAGONAL,
       source: { x: 0, y: 0 },
     });
     const out = roundSnapped(
@@ -562,13 +578,19 @@ describe("the grid rounds what is left", () => {
 describe("a chosen guide is not given up lightly", () => {
   const opts = { pixelUnit: 1, held: null };
   const metric = (y) =>
-    makeLineCandidate({ x: 0, y, angle: 0, kind: KIND.METRIC, source: { x: 0, y } });
+    makeLineCandidate({
+      x: 0,
+      y,
+      angle: 0,
+      kind: KIND.ORTHOGONAL,
+      source: { x: 0, y },
+    });
   const smart = (y) =>
     makeLineCandidate({
       x: 0,
       y,
       angle: 0,
-      kind: KIND.SMART_ORTHOGONAL,
+      kind: KIND.OTHER,
       source: { x: 0, y },
     });
 
@@ -592,8 +614,8 @@ describe("a chosen guide is not given up lightly", () => {
         held,
       }
     );
-    expect(result.held[0].kind).to.equal(KIND.SMART_ORTHOGONAL);
-    expect(result.suggestion.kind).to.equal(KIND.METRIC);
+    expect(result.held[0].kind).to.equal(KIND.OTHER);
+    expect(result.suggestion.kind).to.equal(KIND.ORTHOGONAL);
   });
 
   it("keeps the held guide while the designer slides along it", () => {
@@ -611,8 +633,8 @@ describe("a chosen guide is not given up lightly", () => {
       );
       overrule = result.overrule;
     }
-    expect(result.held[0].kind).to.equal(KIND.SMART_ORTHOGONAL);
-    expect(result.suggestion.kind).to.equal(KIND.METRIC);
+    expect(result.held[0].kind).to.equal(KIND.OTHER);
+    expect(result.suggestion.kind).to.equal(KIND.ORTHOGONAL);
   });
 
   it("hands the snap over once the designer moves away for a run of frames", () => {
@@ -629,7 +651,7 @@ describe("a chosen guide is not given up lightly", () => {
       );
       overrule = result.overrule;
     }
-    expect(result.held[0].kind).to.equal(KIND.METRIC);
+    expect(result.held[0].kind).to.equal(KIND.ORTHOGONAL);
     expect(result.suggestion).to.equal(null);
   });
 
@@ -647,7 +669,7 @@ describe("a chosen guide is not given up lightly", () => {
     expect(overrule.count).to.equal(1);
     const back = resolveSnap(candidates, { x: 0, y: 50 }, { ...opts, held, overrule });
     expect(back.overrule.count).to.equal(0);
-    expect(back.held[0].kind).to.equal(KIND.SMART_ORTHOGONAL);
+    expect(back.held[0].kind).to.equal(KIND.OTHER);
   });
 
   it("still releases entirely when the held candidate falls below the floor", () => {
@@ -661,7 +683,13 @@ describe("a chosen guide is not given up lightly", () => {
 describe("travelling past a guide, and breaking free of one", () => {
   const opts = { pixelUnit: 1, held: null };
   const metric = (y) =>
-    makeLineCandidate({ x: 0, y, angle: 0, kind: KIND.METRIC, source: { x: 0, y } });
+    makeLineCandidate({
+      x: 0,
+      y,
+      angle: 0,
+      kind: KIND.ORTHOGONAL,
+      source: { x: 0, y },
+    });
 
   const fast = SNAP_PARAMETERS.acquireSpeedPixels + 1;
   const flick = SNAP_PARAMETERS.escapeSpeedPixels + 1;
@@ -729,7 +757,7 @@ describe("travelling past a guide, and breaking free of one", () => {
       }
     );
     expect(freed.freedom).to.equal("free");
-    expect(freed.escaped.kind).to.equal(KIND.METRIC);
+    expect(freed.escaped.kind).to.equal(KIND.ORTHOGONAL);
   });
 
   it("refuses the escaped guide until the cursor has left its reach", () => {
@@ -788,7 +816,7 @@ describe("a weightless kind is offered but never wins", () => {
       x: 100,
       y: 0,
       angle: 90,
-      kind: KIND.METRIC,
+      kind: KIND.ORTHOGONAL,
     });
     // Without this rule the crossing would come back at the intersection
     // weight, and a weight of zero would not mean what it says.
@@ -805,7 +833,10 @@ describe("a weightless kind is offered but never wins", () => {
 });
 
 describe("rays are chosen per kind", () => {
+  afterEach(() => resetSnapParameters());
+
   it("does not let a nearer kind hide a further one", () => {
+    SNAP_PARAMETERS.offCurveSources = 1;
     const candidates = collectCandidates(
       {
         metrics: [],
@@ -813,15 +844,145 @@ describe("rays are chosen per kind", () => {
         segments: [],
         points: [
           { x: 100, y: 101 },
-          { x: 100, y: 140, kind: KIND.SKELETON },
+          { x: 100, y: 140, offCurve: true },
         ],
       },
       { x: 100, y: 100 },
       { pixelUnit: 1 }
     );
-    // The outline point is much nearer, but the skeleton is a kind of its own,
+    // The on-curve point is much nearer, but an off-curve is a kind of its own,
     // so its rays are still offered and a weight change can reach them.
-    expect(candidates.some((c) => c.kind === KIND.SKELETON)).to.equal(true);
-    expect(candidates.some((c) => c.kind === KIND.SMART_ORTHOGONAL)).to.equal(true);
+    expect(candidates.some((c) => c.kind === KIND.OFF_CURVE)).to.equal(true);
+    expect(candidates.some((c) => c.kind === KIND.ORTHOGONAL)).to.equal(true);
+  });
+});
+
+describe("one direction, one weight", () => {
+  afterEach(() => resetSnapParameters());
+
+  const cursor = { x: 0, y: 52 };
+  const line = (kind) =>
+    makeLineCandidate({ x: 0, y: 50, angle: 0, kind, source: { x: 0, y: 50 } });
+
+  it("pulls a metric, a guide and a smart ray alike, because they run the same way", () => {
+    // What the source was is not a rank. Only the direction is, which is why the
+    // kind table is a direction table.
+    const scene = {
+      metrics: [{ name: "xHeight", value: 50, kind: "metric" }],
+      guides: [{ x: 0, y: 50, angle: 0 }],
+      points: [{ x: 0, y: 50 }],
+      segments: [],
+    };
+    const found = collectCandidates(scene, cursor, { pixelUnit: 1 });
+    const horizontals = found.filter((c) => Math.abs(c.dy) < 1e-9);
+    expect(horizontals.length).to.be.at.least(3);
+    for (const candidate of horizontals) {
+      expect(candidate.kind).to.equal(KIND.ORTHOGONAL);
+    }
+  });
+
+  it("keeps the drawing's guide-or-smart distinction off the kind", () => {
+    // The two are drawn differently and weighed the same, so the difference is
+    // carried as a flag rather than as a kind.
+    const scene = {
+      metrics: [{ name: "xHeight", value: 50, kind: "metric" }],
+      guides: [],
+      points: [{ x: 0, y: 50 }],
+      segments: [],
+    };
+    const found = collectCandidates(scene, cursor, { pixelUnit: 1 });
+    expect(found.some((c) => c.permanent)).to.equal(true);
+    expect(found.some((c) => !c.permanent)).to.equal(true);
+  });
+});
+
+describe("diagonals are off until asked for", () => {
+  afterEach(() => resetSnapParameters());
+
+  const scene = {
+    metrics: [],
+    guides: [{ x: 0, y: 0, angle: 30 }],
+    points: [{ x: 0, y: 2 }],
+    segments: [{ type: "line", x: 0, y: 0, angle: 40 }],
+  };
+  const cursor = { x: 0, y: 0 };
+
+  it("offers no slanted candidate by default", () => {
+    const found = collectCandidates(scene, cursor, { pixelUnit: 1 });
+    expect(found.some((c) => c.kind === KIND.DIAGONAL)).to.equal(false);
+    expect(found.some((c) => c.kind === KIND.ORTHOGONAL)).to.equal(true);
+  });
+
+  it("offers them once the switch is on", () => {
+    SNAP_PARAMETERS.diagonalsEnabled = 1;
+    const found = collectCandidates(scene, cursor, { pixelUnit: 1 });
+    expect(found.some((c) => c.kind === KIND.DIAGONAL)).to.equal(true);
+  });
+
+  it("offers nothing but them while the key is held, switch or no switch", () => {
+    for (const enabled of [0, 1]) {
+      SNAP_PARAMETERS.diagonalsEnabled = enabled;
+      const found = collectCandidates(scene, cursor, {
+        pixelUnit: 1,
+        diagonals: "only",
+      });
+      expect(found.length).to.be.above(0);
+      expect(found.every((c) => c.kind === KIND.DIAGONAL)).to.equal(true);
+    }
+  });
+});
+
+describe("off-curve points as sources", () => {
+  afterEach(() => resetSnapParameters());
+
+  const scene = {
+    metrics: [],
+    guides: [],
+    segments: [],
+    points: [{ x: 100, y: 100, offCurve: true }],
+  };
+  const cursor = { x: 101, y: 101 };
+
+  it("casts no ray while the switch is off", () => {
+    expect(collectCandidates(scene, cursor, { pixelUnit: 1 })).to.have.length(0);
+  });
+
+  it("casts the ordinary pair once it is on, under its own kind", () => {
+    SNAP_PARAMETERS.offCurveSources = 1;
+    const found = collectCandidates(scene, cursor, { pixelUnit: 1 });
+    expect(found).to.have.length(2);
+    expect(found.every((c) => c.kind === KIND.OFF_CURVE)).to.equal(true);
+  });
+
+  it("answers to its own weight", () => {
+    SNAP_PARAMETERS.offCurveSources = 1;
+    SNAP_PARAMETERS.weights[KIND.OFF_CURVE] = 0;
+    const found = collectCandidates(scene, cursor, { pixelUnit: 1 });
+    expect(
+      resolveSnap(found, cursor, { pixelUnit: 1, held: null }).held
+    ).to.have.length(0);
+    SNAP_PARAMETERS.weights[KIND.OFF_CURVE] = 0.9;
+    expect(
+      resolveSnap(found, cursor, { pixelUnit: 1, held: null }).held.length
+    ).to.be.above(0);
+  });
+});
+
+describe("a source can refuse to be culled", () => {
+  it("keeps a marked source a nearer one of its own kind would have hidden", () => {
+    const scene = {
+      metrics: [],
+      guides: [],
+      segments: [],
+      points: [
+        { x: 0, y: 103 },
+        { x: 0, y: 180, alwaysKeep: true },
+      ],
+    };
+    const horizontals = collectCandidates(scene, { x: 0, y: 100 }, { pixelUnit: 1 })
+      .filter((c) => Math.abs(c.dy) < 1e-9)
+      .map((c) => c.y)
+      .sort((a, b) => a - b);
+    expect(horizontals).to.deep.equal([103, 180]);
   });
 });

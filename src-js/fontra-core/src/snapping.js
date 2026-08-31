@@ -1,24 +1,25 @@
+// A kind is a direction, not a source. Two lines that run the same way pull the
+// same, whether one came from a guide the designer placed, a font metric, a
+// point's own ray or a skeleton rib end. What the source was decides how the
+// line is DRAWN - that travels as the `permanent` flag - and it decides nothing
+// about who wins. The three exceptions below are not directions: each is a class
+// of source the designer switches on and off as a whole.
 export const KIND = Object.freeze({
-  METRIC: "metric",
-  GUIDE_INTERSECTION: "guideIntersection",
-  GUIDE_ORTHOGONAL: "guideOrthogonal",
-  GUIDE_SLANTED: "guideSlanted",
-  SMART_INTERSECTION_ORTHOGONAL: "smartIntersectionOrthogonal",
-  SMART_INTERSECTION_SLANTED: "smartIntersectionSlanted",
-  SMART_ORTHOGONAL: "smartOrthogonal",
-  SMART_SLANTED: "smartSlanted",
-  // The skeleton's own points and rib ends. Their own kind, because a
-  // centerline is construction: it should be reachable without also outranking
-  // the outline the designer can see.
-  SKELETON: "skeleton",
+  ORTHOGONAL: "orthogonal",
+  DIAGONAL: "diagonal",
+  INTERSECTION: "intersection",
+  // Off-curve points. Their own kind because they are their own switch: a handle
+  // states a direction rather than a place, so aligning to one is a choice.
+  OFF_CURVE: "offCurve",
   // The generated geometry that follows the very thing being dragged. It moves
   // with the drag, so it is weightless by default and never wins; raise the
   // weight to snap a point to the outline it is making.
   OWN_GENERATED: "ownGenerated",
+  // Everything that is present and deliberately weak: an alignment zone's band.
   OTHER: "other",
 });
 
-export function makeLineCandidate({ x, y, angle, kind, source }) {
+export function makeLineCandidate({ x, y, angle, kind, source, permanent }) {
   const radians = (angle * Math.PI) / 180;
   return {
     type: "line",
@@ -27,12 +28,20 @@ export function makeLineCandidate({ x, y, angle, kind, source }) {
     dx: Math.cos(radians),
     dy: Math.sin(radians),
     kind,
+    permanent: !!permanent,
     source: source || { x, y },
   };
 }
 
-export function makePointCandidate({ x, y, kind, source }) {
-  return { type: "point", x, y, kind, source: source || { x, y } };
+export function makePointCandidate({ x, y, kind, source, permanent }) {
+  return {
+    type: "point",
+    x,
+    y,
+    kind,
+    permanent: !!permanent,
+    source: source || { x, y },
+  };
 }
 
 export function projectOntoLine(candidate, point) {
@@ -55,15 +64,6 @@ export function distanceToCandidate(candidate, point) {
 
 export const MIN_CROSSING_ANGLE_DEG = 15;
 
-const GUIDE_KINDS = new Set([KIND.METRIC, KIND.GUIDE_ORTHOGONAL, KIND.GUIDE_SLANTED]);
-const ORTHOGONAL_KINDS = new Set([
-  KIND.METRIC,
-  KIND.GUIDE_ORTHOGONAL,
-  KIND.SMART_ORTHOGONAL,
-  // The skeleton casts the same two axis-aligned rays every other point does.
-  KIND.SKELETON,
-]);
-
 function kindWeight(kind) {
   return SNAP_PARAMETERS.weights[kind] ?? SNAP_PARAMETERS.weights[KIND.OTHER];
 }
@@ -83,15 +83,18 @@ export function crossLines(a, b) {
   const t = ((b.x - a.x) * b.dy - (b.y - a.y) * b.dx) / cross;
   const x = a.x + t * a.dx;
   const y = a.y + t * a.dy;
-  let kind;
-  if (GUIDE_KINDS.has(a.kind) && GUIDE_KINDS.has(b.kind)) {
-    kind = KIND.GUIDE_INTERSECTION;
-  } else if (ORTHOGONAL_KINDS.has(a.kind) && ORTHOGONAL_KINDS.has(b.kind)) {
-    kind = KIND.SMART_INTERSECTION_ORTHOGONAL;
-  } else {
-    kind = KIND.SMART_INTERSECTION_SLANTED;
-  }
-  return { ...makePointCandidate({ x, y, kind, source: a.source }), sources: [a, b] };
+  // A crossing is one kind. Two constraints met at once is the fact worth
+  // weighing; which two directions produced it is not.
+  return {
+    ...makePointCandidate({
+      x,
+      y,
+      kind: KIND.INTERSECTION,
+      source: a.source,
+      permanent: a.permanent && b.permanent,
+    }),
+    sources: [a, b],
+  };
 }
 
 export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
@@ -104,32 +107,40 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
   overruleFrames: 4,
   acquireSpeedPixels: 600,
   escapeSpeedPixels: 1400,
+  // Switches, held as 0 or 1 so that they persist and reset through the same
+  // path every other number does.
+  //
+  // Slanted candidates are off. A diagonal alignment is a rarer intent than an
+  // upright one, and offered by default it takes the cursor on the way past far
+  // more often than it is wanted. The key that holds diagonals on is separate:
+  // it asks for them ALONE, which is what makes it worth pressing.
+  diagonalsEnabled: 0,
+  // Off-curve points cast no rays until asked. A handle states a direction
+  // rather than a place.
+  offCurveSources: 0,
+  // A fixed-rib drag pins one edge and follows the cursor with the other, so a
+  // snap moving the point is fighting the gesture. Off, with a switch, because
+  // the drag is also the one place a designer might want the width to land on a
+  // metric.
+  snapDuringFixedRib: 0,
   // Per-kind reach, as a multiple of reachPixels. This is what lets reach and
   // precedence move apart: a kind can grab from further away without also winning
   // ties it should lose, which raising its weight would do.
   reaches: Object.freeze({
-    [KIND.METRIC]: 1,
-    [KIND.GUIDE_INTERSECTION]: 1,
-    [KIND.GUIDE_ORTHOGONAL]: 1,
-    [KIND.GUIDE_SLANTED]: 1,
-    [KIND.SMART_INTERSECTION_ORTHOGONAL]: 1,
-    [KIND.SMART_INTERSECTION_SLANTED]: 1,
-    [KIND.SMART_ORTHOGONAL]: 1,
-    [KIND.SMART_SLANTED]: 1,
-    [KIND.SKELETON]: 1,
+    [KIND.ORTHOGONAL]: 1,
+    [KIND.DIAGONAL]: 1,
+    [KIND.INTERSECTION]: 1,
+    [KIND.OFF_CURVE]: 1,
     [KIND.OWN_GENERATED]: 1,
     [KIND.OTHER]: 1,
   }),
   weights: Object.freeze({
-    [KIND.METRIC]: 1.0,
-    [KIND.GUIDE_INTERSECTION]: 0.84,
-    [KIND.GUIDE_ORTHOGONAL]: 0.8,
-    [KIND.GUIDE_SLANTED]: 0.76,
-    [KIND.SMART_INTERSECTION_ORTHOGONAL]: 0.52,
-    [KIND.SMART_INTERSECTION_SLANTED]: 0.48,
-    [KIND.SMART_ORTHOGONAL]: 0.44,
-    [KIND.SMART_SLANTED]: 0.4,
-    [KIND.SKELETON]: 0.36,
+    [KIND.ORTHOGONAL]: 1.0,
+    [KIND.DIAGONAL]: 0.8,
+    // A crossing meets two constraints at once, so it stands just above either
+    // of them on its own.
+    [KIND.INTERSECTION]: 1.05,
+    [KIND.OFF_CURVE]: 0.7,
     // Zero: present, collected, reported in the readout, and never winning
     // until the designer asks for it.
     [KIND.OWN_GENERATED]: 0,
@@ -153,6 +164,22 @@ export const SNAP_PARAMETERS = {
 
 export const CULL_PARAMETERS = { ...CULL_PARAMETERS_DEFAULTS };
 
+// A parameter has two writers - the panel, and the keys that toggle a switch
+// mid-gesture - so the panel is told when something else moved one. Otherwise a
+// checkbox goes on saying "off" about a switch that is on.
+const parameterListeners = new Set();
+
+export function subscribeSnapParameters(listener) {
+  parameterListeners.add(listener);
+  return () => parameterListeners.delete(listener);
+}
+
+function notifySnapParameters() {
+  for (const listener of parameterListeners) {
+    listener();
+  }
+}
+
 export function setSnapParameter(path, value) {
   if (path.startsWith("reaches.")) {
     SNAP_PARAMETERS.reaches[path.slice("reaches.".length)] = value;
@@ -163,6 +190,7 @@ export function setSnapParameter(path, value) {
   } else {
     SNAP_PARAMETERS[path] = value;
   }
+  notifySnapParameters();
 }
 
 export function resetSnapParameters() {
@@ -170,6 +198,7 @@ export function resetSnapParameters() {
   SNAP_PARAMETERS.reaches = { ...SNAP_PARAMETERS_DEFAULTS.reaches };
   SNAP_PARAMETERS.weights = { ...SNAP_PARAMETERS_DEFAULTS.weights };
   Object.assign(CULL_PARAMETERS, CULL_PARAMETERS_DEFAULTS);
+  notifySnapParameters();
 }
 
 function falloff(u) {
@@ -506,9 +535,19 @@ function isOrthogonal(angle) {
 
 function nearestPerSide(sources, cursor, axis) {
   // axis "y": horizontal rays, compared by the source's y. axis "x": vertical rays.
+  // A source marked `alwaysKeep` is not entered into the contest at all. The cull
+  // keeps whichever ray stands nearest the cursor, which is the right answer for
+  // a glyph full of unrelated geometry and the wrong one for the very contour the
+  // drag came from: its own neighbours are what the designer is aligning to, and
+  // any nearer point elsewhere would hide them.
+  const kept = [];
+  const contested = [];
+  for (const source of sources) {
+    (source.alwaysKeep ? kept : contested).push(source);
+  }
   const above = [];
   const below = [];
-  for (const source of sources) {
+  for (const source of contested) {
     (source[axis] >= cursor[axis] ? above : below).push(source);
   }
   const byDistance = (a, b) =>
@@ -516,12 +555,27 @@ function nearestPerSide(sources, cursor, axis) {
   above.sort(byDistance);
   below.sort(byDistance);
   return [
+    ...kept,
     ...above.slice(0, CULL_PARAMETERS.perSideCount),
     ...below.slice(0, CULL_PARAMETERS.perSideCount),
   ];
 }
 
-export function collectCandidates(scene, cursor, { pixelUnit }) {
+// What slanted candidates the frame is allowed. "off" and "on" come from the
+// switch; "only" comes from the key held down, and overrules the switch in both
+// directions - the point of the key is to clear the upright ones out of the way.
+function diagonalFilter(mode) {
+  const resolved = mode || (SNAP_PARAMETERS.diagonalsEnabled ? "on" : "off");
+  if (resolved === "only") {
+    return (candidate) => candidate.kind === KIND.DIAGONAL;
+  }
+  if (resolved === "on") {
+    return () => true;
+  }
+  return (candidate) => candidate.kind !== KIND.DIAGONAL;
+}
+
+export function collectCandidates(scene, cursor, { pixelUnit, diagonals }) {
   const radius = CULL_PARAMETERS.collectionRadiusPixels * pixelUnit;
   const inRadius = (p) => Math.hypot(p.x - cursor.x, p.y - cursor.y) <= radius;
   const candidates = [];
@@ -532,8 +586,9 @@ export function collectCandidates(scene, cursor, { pixelUnit }) {
         x: cursor.x,
         y: metric.value,
         angle: 0,
-        kind: metric.kind === "band" ? KIND.OTHER : KIND.METRIC,
+        kind: metric.kind === "band" ? KIND.OTHER : KIND.ORTHOGONAL,
         source: { x: cursor.x, y: metric.value },
+        permanent: true,
       })
     );
   }
@@ -544,8 +599,9 @@ export function collectCandidates(scene, cursor, { pixelUnit }) {
         x: guide.x,
         y: guide.y,
         angle: guide.angle,
-        kind: isOrthogonal(guide.angle) ? KIND.GUIDE_ORTHOGONAL : KIND.GUIDE_SLANTED,
+        kind: isOrthogonal(guide.angle) ? KIND.ORTHOGONAL : KIND.DIAGONAL,
         source: { x: guide.x, y: guide.y },
+        permanent: true,
       })
     );
   }
@@ -555,7 +611,10 @@ export function collectCandidates(scene, cursor, { pixelUnit }) {
   // not be enough to reach a kind that is standing behind a closer one.
   const pointsByKind = new Map();
   for (const point of (scene.points || []).filter(inRadius)) {
-    const kind = point.kind || KIND.SMART_ORTHOGONAL;
+    if (point.offCurve && !SNAP_PARAMETERS.offCurveSources) {
+      continue;
+    }
+    const kind = point.kind || (point.offCurve ? KIND.OFF_CURVE : KIND.ORTHOGONAL);
     if (!pointsByKind.has(kind)) {
       pointsByKind.set(kind, []);
     }
@@ -580,11 +639,15 @@ export function collectCandidates(scene, cursor, { pixelUnit }) {
         x: segment.x,
         y: segment.y,
         angle: segment.angle,
-        kind: isOrthogonal(segment.angle) ? KIND.SMART_ORTHOGONAL : KIND.SMART_SLANTED,
+        kind: isOrthogonal(segment.angle) ? KIND.ORTHOGONAL : KIND.DIAGONAL,
         source: { x: segment.x, y: segment.y },
       })
     );
   }
+
+  const allowed = candidates.filter(diagonalFilter(diagonals));
+  candidates.length = 0;
+  candidates.push(...allowed);
 
   candidates.sort((a, b) => {
     const weightDelta =

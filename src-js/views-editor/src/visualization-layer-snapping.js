@@ -1,4 +1,3 @@
-import { KIND } from "@fontra/core/snapping.js";
 import {
   glyphSelector,
   registerVisualizationLayerDefinition,
@@ -7,13 +6,9 @@ import {
 
 // A snap the designer cannot account for reads as a bug, so every held candidate
 // is drawn back to the geometry it came from. A guide the designer placed and one
-// the editor invented are drawn differently, because they behave differently.
-const PERMANENT_KINDS = new Set([
-  KIND.METRIC,
-  KIND.GUIDE_ORTHOGONAL,
-  KIND.GUIDE_SLANTED,
-  KIND.GUIDE_INTERSECTION,
-]);
+// the editor invented are drawn differently, because they behave differently -
+// and that difference is a flag on the candidate, not its kind. A kind is a
+// direction, and a metric and a point's own ray share one.
 
 // The ring is animated on the changes, not forever. A candidate coming near opens
 // the ring outward. Taking the snap pulls it in tight. Losing it lets the ring go
@@ -100,7 +95,7 @@ registerVisualizationLayerDefinition({
       if (candidate.type !== "line") {
         continue;
       }
-      context.strokeStyle = PERMANENT_KINDS.has(candidate.kind)
+      context.strokeStyle = candidate.permanent
         ? parameters.permanentColor
         : parameters.smartColor;
       strokeGuideLine(context, candidate, reach);
