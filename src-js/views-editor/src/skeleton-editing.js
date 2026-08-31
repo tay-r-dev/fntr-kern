@@ -40,10 +40,12 @@ import {
   transformSkeletonContourMetadata,
   transformSkeletonPointMetadata,
 } from "@fontra/core/skeleton-model.js";
+import { applyTensionAwareEdit } from "@fontra/core/tension-aware-edit.js";
 import { isObjectEmpty, parseSelection, range } from "@fontra/core/utils.ts";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { dotVector, mulVectorScalar } from "@fontra/core/vector.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
+import { makeAxisLock } from "./tension-aware-editing.js";
 
 export function makeSkeletonPointKey(contourId, pointId) {
   return `skeletonPoint/${contourId}/${pointId}`;
@@ -653,6 +655,90 @@ export function makeSkeletonPointTargetEntry(
         transformation,
         true
       );
+    },
+  };
+}
+
+/**
+ * X on a skeleton selection. The centerline is an ordinary path made of the
+ * same on-curves, handles and smooth flags the correction reads, so the rule is
+ * the path rule verbatim - only the geometry it is handed and the way the
+ * result is written differ. The synthetic path is the one place the centerline
+ * already wears that shape, so it is what the ordinary behavior runs on, and
+ * every frame is recomputed from the pre-drag skeleton rather than from the
+ * frame before it.
+ *
+ * The entry is the only writer under this name (its match tree matches no
+ * point), so unlike the path entry there is nothing here to measure against and
+ * nothing to remember between frames: each frame states the whole answer.
+ */
+export function makeSkeletonTensionAwareTargetEntry(
+  layer,
+  selection,
+  referenceSkeletonData = null
+) {
+  const skeletonData = getSkeletonData(layer);
+  if (!skeletonData) return null;
+  const reference = referenceSkeletonData || skeletonData;
+  const selected = collectSkeletonPointSelection(selection, reference, skeletonData);
+  if (!selected.length) return null;
+
+  const originalLayerGlyph = cloneLayerGlyphForSkeletonEdit(layer);
+  const synthetic = makeSyntheticSkeletonPathInstance(skeletonData, selected);
+  const originalPath = synthetic.instance.path.copy();
+  const factory = new EditBehaviorFactory(
+    { ...synthetic.instance, path: originalPath },
+    synthetic.selection
+  );
+  const baseBehavior = factory.getBehavior("default");
+  // The axis the drag latches onto, held for the whole gesture. Same lock as
+  // the path drag: the correction reads a shape one axis at a time.
+  const lockDeltaToAxis = makeAxisLock();
+
+  let rollbackChange = null;
+  return {
+    get rollbackChange() {
+      return rollbackChange;
+    },
+    makeChangeForDelta(rawDelta) {
+      const delta = lockDeltaToAxis(rawDelta);
+      const moved = { ...synthetic.instance, path: originalPath.copy() };
+      applyChange(moved, baseBehavior.makeChangeForDelta(delta));
+      const corrected = new Map(); // absolute path point index -> {x, y}
+      for (
+        let contourIndex = 0;
+        contourIndex < moved.path.numContours;
+        contourIndex++
+      ) {
+        const before = originalPath.getUnpackedContour(contourIndex);
+        const after = moved.path.getUnpackedContour(contourIndex);
+        // No slide under a drag: the designer's own placement stands, and the
+        // tension is what the correction holds.
+        applyTensionAwareEdit(before.points, after.points, after.isClosed, {
+          slide: false,
+        });
+        const startIndex = moved.path.getAbsolutePointIndex(contourIndex, 0);
+        after.points.forEach((point, i) => corrected.set(startIndex + i, point));
+      }
+      const changes = makeEditSkeletonChange(originalLayerGlyph, (working) => {
+        for (const [pointIndex, address] of synthetic.pointAddresses) {
+          const target = resolveSkeletonAddressAcrossLayers(
+            skeletonData,
+            working,
+            address.contourId,
+            address.pointId
+          );
+          const point = corrected.get(pointIndex);
+          if (!target || !point) continue;
+          target.point.x = point.x;
+          target.point.y = point.y;
+        }
+      });
+      rollbackChange = changes.rollbackChange;
+      return changes.change;
+    },
+    makeChangeForTransformation() {
+      return null;
     },
   };
 }

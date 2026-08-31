@@ -1422,6 +1422,14 @@ const behaviorTypes = {
     actions: actionFactories,
   },
 
+  // The skeleton half of X. The entry writes the whole centerline through the
+  // skeleton write path, so the match tree matches no point (R-E, the same
+  // shape as base-expand).
+  "skeleton-tension-aware": {
+    matchTree: buildPointMatchTree([]),
+    actions: actionFactories,
+  },
+
   // The entry is the only writer under an X scale, so the match tree matches no
   // point (R-E, the same shape as base-expand).
   "tension-aware-scale": {

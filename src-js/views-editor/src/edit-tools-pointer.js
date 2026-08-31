@@ -61,6 +61,7 @@ import {
   makeSkeletonModifierOptions,
   makeSkeletonPointKey,
   makeSkeletonPointTargetEntry,
+  makeSkeletonTensionAwareTargetEntry,
   parseSkeletonPointKey,
   toggleEditableGeneratedHandleDetached,
   toggleSkeletonSmooth,
@@ -72,6 +73,7 @@ import {
   selectedPointIndices,
 } from "./snapping-interactions.js";
 import {
+  SKELETON_TENSION_AWARE_BEHAVIOR_NAME,
   TENSION_AWARE_BEHAVIOR_NAME,
   TENSION_AWARE_SCALE_BEHAVIOR_NAME,
   createTensionAwareTargetEntries,
@@ -822,6 +824,14 @@ export class PointerTool extends BaseTool {
               scalingEditBehavior: this.scalingEditBehavior,
             }
           );
+        }
+        if (name === SKELETON_TENSION_AWARE_BEHAVIOR_NAME) {
+          const entry = makeSkeletonTensionAwareTargetEntry(
+            layerGlyph,
+            sceneController.selection,
+            referenceSkeletonData
+          );
+          return entry ? [entry] : [];
         }
         if (name === BASE_EXPAND_BEHAVIOR_NAME) {
           return createBaseExpandTargetEntries(

@@ -12,11 +12,12 @@ import { parseSelection } from "@fontra/core/utils.ts";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 
 export const TENSION_AWARE_BEHAVIOR_NAME = "tension-aware";
+export const SKELETON_TENSION_AWARE_BEHAVIOR_NAME = "skeleton-tension-aware";
 
 /**
- * X drives the correction wherever the selection is ordinary path geometry.
- * A selection holding skeleton geometry keeps the skeleton drag, which has its
- * own width semantics.
+ * X drives the correction on whatever geometry the selection holds: ordinary
+ * path points take it directly, skeleton points take it on their centerline.
+ * A rib selection is the width edit and keeps its own drag.
  *
  * Shift adds nothing. X already states an axis, which is the stronger of the
  * two constraints, and 0/45/90 has no diagonal left to offer under it.
@@ -26,7 +27,12 @@ export const TENSION_AWARE_BEHAVIOR_NAME = "tension-aware";
  */
 export function getTensionAwareBehaviorName(modifiers, targetKinds) {
   if (!modifiers?.tensionAwareMode) return null;
-  if (targetKinds?.has("skeletonPoint") || targetKinds?.has("skeletonRib")) return null;
+  // A rib drag is the width edit: it states a distance across the stroke, and
+  // there is no tension along it for the correction to hold. X stays out.
+  if (targetKinds?.has("skeletonRib")) return null;
+  // The centerline is a path, so it takes the same correction - but only
+  // through the skeleton write path, which the ordinary entry cannot reach.
+  if (targetKinds?.has("skeletonPoint")) return SKELETON_TENSION_AWARE_BEHAVIOR_NAME;
   return TENSION_AWARE_BEHAVIOR_NAME;
 }
 
@@ -157,7 +163,7 @@ export function createTensionAwareTargetEntries(
 // first frame of a drag cannot settle the gesture on a jitter.
 const AXIS_LOCK_DEADZONE = 2;
 
-function makeAxisLock() {
+export function makeAxisLock() {
   let axis = null;
   return (rawDelta) => {
     const leading = Math.abs(rawDelta.x) >= Math.abs(rawDelta.y) ? "x" : "y";
