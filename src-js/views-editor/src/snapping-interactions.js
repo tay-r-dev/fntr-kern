@@ -294,6 +294,20 @@ export function buildSnapScene(sceneController, excludePointIndices) {
   return { metrics, guides, points, segments };
 }
 
+// Shift+G. Everything the snap drew comes off the canvas, every session's frozen
+// scene is stale from here, and the state that survives a frame - the hold, the
+// overrule run, the escape - is dropped with it. One gesture for "forget what you
+// think you know", because a snap the designer cannot account for is what asks
+// for it.
+export function forceRefreshSnapping(sceneController) {
+  const sceneModel = sceneController.sceneModel;
+  sceneModel.snapSceneEpoch = (sceneModel.snapSceneEpoch || 0) + 1;
+  sceneModel.snapHeldCandidates = [];
+  sceneModel.snapSuggestion = null;
+  sceneModel.snapIndicator = null;
+  sceneModel.snapDebugReadout = null;
+}
+
 export class SnappingSession {
   constructor(sceneController, { excludePointIndices = [] } = {}) {
     this.sceneController = sceneController;
@@ -310,6 +324,19 @@ export class SnappingSession {
     this.suppressed = false;
     this._lastCursor = null;
     this._lastTime = 0;
+    this._epoch = sceneController.sceneModel.snapSceneEpoch || 0;
+  }
+
+  // A drag freezes its scene, which is right until the designer says the scene
+  // is wrong. The force refresh raises an epoch; a session behind it re-reads on
+  // its next frame, mid-gesture and all. Compared rather than pushed, because a
+  // session the tool holds is not reachable from the action that asks.
+  _refreshIfStale() {
+    const epoch = this.sceneController.sceneModel.snapSceneEpoch || 0;
+    if (epoch !== this._epoch) {
+      this._epoch = epoch;
+      this.refresh();
+    }
   }
 
   // "only" while the diagonal key is held. Otherwise the switch answers, inside
@@ -339,6 +366,7 @@ export class SnappingSession {
   // The pen adds geometry as it goes, so it re-reads before every hover.
   refresh() {
     this.scene = buildSnapScene(this.sceneController, this.excludePointIndices);
+    this._epoch = this.sceneController.sceneModel.snapSceneEpoch || 0;
   }
 
   get enabled() {
@@ -402,6 +430,7 @@ export class SnappingSession {
       this._clearPublished();
       return point;
     }
+    this._refreshIfStale();
     const pixelUnit = this.sceneController.onePixelUnit;
     const candidates = collectCandidates(this.scene, point, {
       pixelUnit,
@@ -430,6 +459,7 @@ export class SnappingSession {
       this._clearPublished();
       return { x: 0, y: 0 };
     }
+    this._refreshIfStale();
     const pixelUnit = this.sceneController.onePixelUnit;
     // The candidate set is built against the cursor once per frame, and every point is
     // then resolved against that one set.

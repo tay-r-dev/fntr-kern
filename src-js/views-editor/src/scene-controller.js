@@ -113,6 +113,7 @@ import {
   splitPanelSkeletonContours,
   togglePanelContourReversed,
 } from "./skeleton-panel-edits.js";
+import { forceRefreshSnapping } from "./snapping-interactions.js";
 import {
   createTensionAwareTargetEntries,
   getTensionAwareBehaviorName,
@@ -721,6 +722,11 @@ export class SceneController {
           "snappingEnabled",
           !this.sceneSettings.snappingEnabled
         );
+        // Switching snapping off must take the guides off the canvas with it,
+        // and switching it back on must not resume against a scene read before
+        // the drawing changed. Both are the same forced refresh, so the toggle
+        // is also the way out of a snap the designer cannot account for.
+        forceRefreshSnapping(this);
         this.canvasController.requestUpdate();
       }
     );
