@@ -314,6 +314,8 @@ export class PowerRulerTool extends BaseTool {
       event.stopImmediatePropagation();
       delete this.glyphRulers[this.currentGlyphName];
       this.canvasController.requestUpdate();
+      return true;
     }
+    return super.handleKeyDown(event);
   }
 }

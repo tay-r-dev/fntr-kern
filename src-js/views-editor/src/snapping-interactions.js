@@ -1,4 +1,8 @@
 import {
+  eventMatchesActionBaseKey,
+  eventMatchesActionShortCut,
+} from "@fontra/core/actions.js";
+import {
   getSkeletonData,
   getSkeletonPointAddress,
   getSkeletonRibEndpoints,
@@ -285,15 +289,25 @@ export function buildSnapScene(sceneController, excludePointIndices) {
     });
   }
   for (const segment of iterPathSegments(path)) {
+    if (segment.curve) {
+      continue; // taken below, under its own rule
+    }
     if (segment.pointIndices.some((i) => excluded.has(i) || ownGenerated.has(i))) {
       // A segment of the moved outline is not offered at all. Only its points
       // are, and only weightlessly.
       continue;
     }
+    segments.push(segment.candidate);
+  }
+  // A projection is offered for every cubic, INCLUDING the ones the drag moves.
+  // The exclusion above exists so that moved geometry cannot chase itself, and a
+  // projection cannot: the scene is a snapshot taken at mouse-down, so the curve
+  // being continued is the curve as it stood. Excluding them would take away the
+  // one case the projection is for - a terminal is elongated by dragging the very
+  // point the curve arriving at it ends on.
+  for (const segment of iterPathSegments(path)) {
     if (segment.curve) {
       curves.push(segment.curve);
-    } else {
-      segments.push(segment.candidate);
     }
   }
 
@@ -349,6 +363,58 @@ export function buildSnapScene(sceneController, excludePointIndices) {
   }
 
   return { metrics, guides, points, segments, curves };
+}
+
+// The keys that narrow the snap to one kind while they are held. They live here
+// rather than in the pointer tool's own modifier table, because the tools that
+// want them most are the pens: a terminal is elongated with a pen in hand, and
+// the pointer tool's table is not something a pen can reach.
+const SNAP_MODE_KEYS = [
+  { action: "action.realtime.snap-diagonals-only", property: "snapDiagonalOnly" },
+  { action: "action.realtime.snap-curvature-only", property: "snapCurvatureOnly" },
+];
+
+// Every tool calls this from its own key handler, through BaseTool. Returns true
+// where the key was one of these, so the caller can stop.
+export function handleSnapModeKeyDown(tool, event) {
+  const mode = SNAP_MODE_KEYS.find(({ action }) =>
+    eventMatchesActionShortCut(action, event)
+  );
+  if (!mode) {
+    return false;
+  }
+  const sceneModel = tool.sceneController.sceneModel;
+  if (sceneModel[mode.property]) {
+    return true; // already down; a repeat is not a second press
+  }
+  sceneModel[mode.property] = true;
+  // The up is listened for on the window, not the canvas: a key released after
+  // the pointer has left the canvas would otherwise stay down forever. Blur says
+  // the same thing about a window that loses focus mid-hold.
+  const release = (releaseEvent) => {
+    if (eventMatchesActionBaseKey(mode.action, releaseEvent)) {
+      endSnapModeKey(tool, mode.property);
+    }
+  };
+  const blur = () => endSnapModeKey(tool, mode.property);
+  snapModeReleases.set(mode.property, { release, blur });
+  window.addEventListener("keyup", release);
+  window.addEventListener("blur", blur);
+  tool.canvasController.requestUpdate();
+  return true;
+}
+
+const snapModeReleases = new Map();
+
+function endSnapModeKey(tool, property) {
+  const handlers = snapModeReleases.get(property);
+  if (handlers) {
+    window.removeEventListener("keyup", handlers.release);
+    window.removeEventListener("blur", handlers.blur);
+    snapModeReleases.delete(property);
+  }
+  tool.sceneController.sceneModel[property] = false;
+  tool.canvasController.requestUpdate();
 }
 
 // Shift+G. Everything the snap drew comes off the canvas, every session's frozen

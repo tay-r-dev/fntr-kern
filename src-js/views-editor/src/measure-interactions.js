@@ -1,4 +1,7 @@
-import { getBaseKeyFromKeyEvent, getShortCuts } from "@fontra/core/actions.js";
+import {
+  eventMatchesActionBaseKey,
+  eventMatchesActionShortCut,
+} from "@fontra/core/actions.js";
 import { centeredRect } from "@fontra/core/rectangle.ts";
 import {
   getSkeletonPointHalfWidth,
@@ -6,41 +9,11 @@ import {
   getSkeletonRibAddress,
   getSkeletonRibPosition,
 } from "@fontra/core/skeleton-model.js";
-import { commandKeyProperty, parseSelection } from "@fontra/core/utils.ts";
+import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
 
 const REALTIME_MEASURE_ACTION = "action.realtime.measure";
 const REALTIME_MEASURE_DIRECT_ACTION = "action.realtime.measure-direct";
-
-function matchEventModifiers(shortCut, event) {
-  const expectedModifiers = { ...shortCut };
-  if (shortCut.commandKey) {
-    expectedModifiers[commandKeyProperty] = true;
-  }
-  return ["metaKey", "ctrlKey", "shiftKey", "altKey"].every(
-    (modifierProp) => !!expectedModifiers[modifierProp] === !!event[modifierProp]
-  );
-}
-
-function eventMatchesActionShortCut(actionIdentifier, event) {
-  const shortCuts = getShortCuts(actionIdentifier);
-  if (!shortCuts?.length) return false;
-  const baseKey = getBaseKeyFromKeyEvent(event);
-  for (const shortCut of shortCuts) {
-    if (!shortCut?.baseKey) continue;
-    if (shortCut.baseKey !== baseKey) continue;
-    if (!matchEventModifiers(shortCut, event)) continue;
-    return true;
-  }
-  return false;
-}
-
-function eventMatchesActionBaseKey(actionIdentifier, event) {
-  const shortCuts = getShortCuts(actionIdentifier);
-  if (!shortCuts?.length) return false;
-  const baseKey = getBaseKeyFromKeyEvent(event);
-  return shortCuts.some((shortCut) => shortCut?.baseKey === baseKey);
-}
 
 export class MeasureInteraction {
   constructor(tool) {

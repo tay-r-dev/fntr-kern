@@ -1,4 +1,7 @@
-import { getBaseKeyFromKeyEvent, getShortCuts } from "@fontra/core/actions.js";
+import {
+  eventMatchesActionBaseKey,
+  eventMatchesActionShortCut,
+} from "@fontra/core/actions.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import {
   ChangeCollector,
@@ -26,7 +29,6 @@ import { Transform } from "@fontra/core/transform.js";
 import {
   assert,
   boolInt,
-  commandKeyProperty,
   enumerate,
   isMac,
   modulo,
@@ -101,26 +103,8 @@ const REALTIME_RIB_TANGENT_ACTION = "action.realtime.rib-tangent";
 const REALTIME_FIXED_RIB_ACTION = "action.realtime.fixed-rib";
 const REALTIME_FIXED_RIB_COMPRESS_ACTION = "action.realtime.fixed-rib-compress";
 const REALTIME_TENSION_AWARE_ACTION = "action.realtime.tension-aware";
-const REALTIME_SNAP_DIAGONALS_ACTION = "action.realtime.snap-diagonals-only";
-const REALTIME_SNAP_CURVATURE_ACTION = "action.realtime.snap-curvature-only";
 
 const REALTIME_MODIFIER_ACTIONS = [
-  {
-    // Held, the snap answers with slanted candidates and nothing else. The
-    // scene model carries it because the snapping session is the reader, and it
-    // has no route to this tool's own state.
-    action: REALTIME_SNAP_DIAGONALS_ACTION,
-    modeProperty: "snapDiagonalOnlyMode",
-    sceneModelProperty: "snapDiagonalOnly",
-  },
-  {
-    // Held, the snap answers with curves carried past their own ends and
-    // nothing else - which is how a terminal is elongated along the stroke it
-    // ends rather than along a guess at it.
-    action: REALTIME_SNAP_CURVATURE_ACTION,
-    modeProperty: "snapCurvatureOnlyMode",
-    sceneModelProperty: "snapCurvatureOnly",
-  },
   {
     action: REALTIME_RIB_TANGENT_ACTION,
     modeProperty: "tangentRibMode",
@@ -139,36 +123,6 @@ const REALTIME_MODIFIER_ACTIONS = [
   },
 ];
 
-function matchEventModifiers(shortCut, event) {
-  const expectedModifiers = { ...shortCut };
-  if (shortCut.commandKey) {
-    expectedModifiers[commandKeyProperty] = true;
-  }
-  return ["metaKey", "ctrlKey", "shiftKey", "altKey"].every(
-    (modifierProp) => !!expectedModifiers[modifierProp] === !!event[modifierProp]
-  );
-}
-
-function eventMatchesActionShortCut(actionIdentifier, event) {
-  const shortCuts = getShortCuts(actionIdentifier);
-  if (!shortCuts?.length) return false;
-  const baseKey = getBaseKeyFromKeyEvent(event);
-  for (const shortCut of shortCuts) {
-    if (!shortCut?.baseKey) continue;
-    if (shortCut.baseKey !== baseKey) continue;
-    if (!matchEventModifiers(shortCut, event)) continue;
-    return true;
-  }
-  return false;
-}
-
-function eventMatchesActionBaseKey(actionIdentifier, event) {
-  const shortCuts = getShortCuts(actionIdentifier);
-  if (!shortCuts?.length) return false;
-  const baseKey = getBaseKeyFromKeyEvent(event);
-  return shortCuts.some((shortCut) => shortCut?.baseKey === baseKey);
-}
-
 export class PointerTools {
   identifier = "pointer-tools";
   subTools = [PointerTool, PointerToolScale];
@@ -185,8 +139,6 @@ export class PointerTool extends BaseTool {
     this.fixedRibMode = false;
     this.fixedRibCompressMode = false;
     this.tensionAwareMode = false;
-    this.snapDiagonalOnlyMode = false;
-    this.snapCurvatureOnlyMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
     this._boundRealtimeModifierWindowBlur = null;
   }
@@ -1404,6 +1356,12 @@ export class PointerTool extends BaseTool {
       event.preventDefault();
       return;
     }
+    // The snap mode keys belong to every tool, so they come from the base class
+    // rather than from the table above.
+    if (super.handleKeyDown(event)) {
+      event.preventDefault();
+      return;
+    }
     if (event.key !== "Tab" || !this.sceneSettings.selectedGlyph?.isEditing) {
       return;
     }
@@ -1468,9 +1426,6 @@ export class PointerTool extends BaseTool {
     }
     if (!this[modifier.modeProperty]) {
       this[modifier.modeProperty] = true;
-      if (modifier.sceneModelProperty) {
-        this.sceneModel[modifier.sceneModelProperty] = true;
-      }
       const keyUpHandler = (e) => this._handleRealtimeModifierKeyUp(e, modifier.action);
       this._realtimeModifierKeyUpHandlers.set(modifier.action, keyUpHandler);
       window.addEventListener("keyup", keyUpHandler);
@@ -1498,9 +1453,6 @@ export class PointerTool extends BaseTool {
       return;
     }
     this[modifier.modeProperty] = false;
-    if (modifier.sceneModelProperty) {
-      this.sceneModel[modifier.sceneModelProperty] = false;
-    }
     const keyUpHandler = this._realtimeModifierKeyUpHandlers.get(action);
     if (keyUpHandler) {
       window.removeEventListener("keyup", keyUpHandler);
@@ -1515,9 +1467,6 @@ export class PointerTool extends BaseTool {
     for (const modifier of REALTIME_MODIFIER_ACTIONS) {
       if (this[modifier.modeProperty]) {
         this[modifier.modeProperty] = false;
-        if (modifier.sceneModelProperty) {
-          this.sceneModel[modifier.sceneModelProperty] = false;
-        }
         changed = true;
       }
       const keyUpHandler = this._realtimeModifierKeyUpHandlers.get(modifier.action);

@@ -325,7 +325,7 @@ class MetricsBaseTool extends BaseTool {
 
   handleKeyDown(event) {
     if (event.key !== "Tab") {
-      return;
+      return super.handleKeyDown(event);
     }
     event.preventDefault();
     event.stopImmediatePropagation();

@@ -137,7 +137,7 @@ export class MarkerTool extends BaseTool {
 
   handleKeyDown(event) {
     if (event.key !== "Backspace") {
-      return;
+      return super.handleKeyDown(event);
     }
     const doomed = markerIdsIn(this.sceneController.selection);
     if (!doomed.length) {
