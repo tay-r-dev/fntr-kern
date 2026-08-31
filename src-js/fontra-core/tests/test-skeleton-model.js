@@ -9,10 +9,9 @@ import {
   applySerifPreset,
   buildSegmentsFromSkeletonPoints,
   calculateNormalAtSkeletonPoint,
-  getSkeletonRibPosition,
-  skeletonRibReach,
   captureSerifPreset,
   clearSkeletonData,
+  closeSkeletonContour,
   deleteSkeletonPoints,
   getSkeletonContour,
   getSkeletonData,
@@ -22,8 +21,10 @@ import {
   getSkeletonPointHalfWidth,
   getSkeletonPointNudge,
   getSkeletonPointWidth,
+  getSkeletonRibPosition,
   getSkeletonRibSidesForPoint,
   harmonizeSkeletonPoints,
+  joinSkeletonContours,
   makeEmptySkeletonData,
   makeSkeletonContour,
   makeSkeletonPoint,
@@ -33,6 +34,7 @@ import {
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
   resetSkeletonEditableRibHandles,
+  reverseSkeletonContourPoints,
   setSkeletonCapParameters,
   setSkeletonContourDefaultWidth,
   setSkeletonContourReversed,
@@ -49,6 +51,7 @@ import {
   setSkeletonPointWidthFromSide,
   setSkeletonPointWidthLinked,
   setSkeletonSerifParameters,
+  skeletonRibReach,
   splitSkeletonContourAtPoint,
   transformSkeletonData,
   transformSkeletonPointMetadata,
@@ -1612,5 +1615,241 @@ describe("skeleton rib reach under a forced angle", () => {
     expect(
       Math.abs((left.x - right.x) * across.x + (left.y - right.y) * across.y)
     ).to.be.closeTo(80, 1);
+  });
+});
+
+describe("reversing a skeleton contour's own point order", () => {
+  // Reversing the travel direction turns the tangent around, so the side that
+  // was left of it is now right of it. The drawing does not move; what changes
+  // is which stored number owns which edge.
+  function contour() {
+    return {
+      id: 1,
+      closed: false,
+      points: [
+        {
+          id: 10,
+          x: 0,
+          y: 0,
+          type: null,
+          smooth: false,
+          width: { left: 10, right: 30 },
+          nudge: { left: 3, right: -4 },
+          segmentCurvature: { left: 0.7, right: null },
+          handleOffsets: { leftOut: { x: 1, y: 2 }, rightIn: { x: 5, y: 6 } },
+          capBallSide: "left",
+        },
+        { id: 11, x: 10, y: 40, type: "cubic" },
+        { id: 12, x: 30, y: 60, type: "cubic" },
+        {
+          id: 13,
+          x: 60,
+          y: 60,
+          type: null,
+          smooth: false,
+          width: { left: 20, right: 50 },
+          nudge: { left: 0, right: 0 },
+          segmentCurvature: { left: null, right: null },
+          handleOffsets: {},
+          capBallSide: null,
+        },
+      ],
+    };
+  }
+
+  it("reverses the points and keeps every id", () => {
+    const reversed = reverseSkeletonContourPoints(contour());
+    expect(reversed.points.map((point) => point.id)).to.deep.equal([13, 12, 11, 10]);
+  });
+
+  it("swaps the two sides of every per-side field", () => {
+    const reversed = reverseSkeletonContourPoints(contour());
+    expect(reversed.points[3].width).to.deep.equal({ left: 30, right: 10 });
+    expect(reversed.points[3].nudge).to.deep.equal({ left: -4, right: 3 });
+    expect(reversed.points[3].capBallSide).to.equal("right");
+  });
+
+  it("swaps the in and out roles as well as the sides", () => {
+    // A handle that led out of a point now leads into it, and from the far side.
+    const reversed = reverseSkeletonContourPoints(contour());
+    const point = reversed.points[3];
+    expect(point.handleOffsets.rightIn).to.deep.equal({ x: 1, y: 2 });
+    expect(point.handleOffsets.leftOut).to.deep.equal({ x: 5, y: 6 });
+  });
+
+  it("carries a curvature pin to the point its segment now starts at", () => {
+    // A pin is keyed on its segment's START point. Reversed, that segment starts
+    // at the other end, so the pin has to travel or it describes another curve.
+    const reversed = reverseSkeletonContourPoints(contour());
+    expect(reversed.points[3].segmentCurvature.left).to.equal(null);
+    expect(reversed.points[3].segmentCurvature.right).to.equal(null);
+    expect(reversed.points[0].segmentCurvature.right).to.equal(0.7);
+  });
+
+  it("leaves absolute directions alone", () => {
+    // A reversal moves nothing, so anything named in glyph space still means
+    // what it meant. Only side ownership and handle role turn over.
+    const source = contour();
+    source.points[0].ribAngleLock = "horizontal";
+    source.points[0].capAngle = 20;
+    const reversed = reverseSkeletonContourPoints(source);
+    expect(reversed.points[3].ribAngleLock).to.equal("horizontal");
+    expect(reversed.points[3].capAngle).to.equal(20);
+  });
+
+  it("is its own inverse", () => {
+    const source = contour();
+    const twice = reverseSkeletonContourPoints(reverseSkeletonContourPoints(source));
+    expect(twice).to.deep.equal(source);
+  });
+});
+
+describe("joining two open skeleton contours", () => {
+  function data() {
+    const skeletonData = { nextId: 1, contours: [] };
+    const first = appendSkeletonContour(skeletonData, { closed: false, points: [] });
+    const a = appendSkeletonPoint(skeletonData, first.id, { x: 0, y: 0 });
+    const b = appendSkeletonPoint(skeletonData, first.id, { x: 50, y: 0 });
+    const second = appendSkeletonContour(skeletonData, { closed: false, points: [] });
+    const c = appendSkeletonPoint(skeletonData, second.id, { x: 100, y: 0 });
+    const d = appendSkeletonPoint(skeletonData, second.id, { x: 150, y: 0 });
+    return { skeletonData, first, second, a, b, c, d };
+  }
+
+  it("joins a tail to a head, keeping the first contour", () => {
+    const { skeletonData, first, second, b, c } = data();
+    const result = joinSkeletonContours(
+      skeletonData,
+      { contourId: first.id, pointId: b.id },
+      { contourId: second.id, pointId: c.id }
+    );
+    expect(result.contourId).to.equal(first.id);
+    expect(skeletonData.contours).to.have.length(1);
+    expect(skeletonData.contours[0].points.map((point) => point.x)).to.deep.equal([
+      0, 50, 100, 150,
+    ]);
+  });
+
+  it("joins a head to a tail without reversing anything", () => {
+    const { skeletonData, first, second, a, d } = data();
+    joinSkeletonContours(
+      skeletonData,
+      { contourId: first.id, pointId: a.id },
+      { contourId: second.id, pointId: d.id }
+    );
+    expect(skeletonData.contours[0].points.map((point) => point.x)).to.deep.equal([
+      100, 150, 0, 50,
+    ]);
+  });
+
+  it("reverses one contour where two tails meet", () => {
+    const { skeletonData, first, second, b, d } = data();
+    joinSkeletonContours(
+      skeletonData,
+      { contourId: first.id, pointId: b.id },
+      { contourId: second.id, pointId: d.id }
+    );
+    expect(skeletonData.contours[0].points.map((point) => point.x)).to.deep.equal([
+      0, 50, 150, 100,
+    ]);
+  });
+
+  it("reverses one contour where two heads meet", () => {
+    const { skeletonData, first, second, a, c } = data();
+    joinSkeletonContours(
+      skeletonData,
+      { contourId: first.id, pointId: a.id },
+      { contourId: second.id, pointId: c.id }
+    );
+    expect(skeletonData.contours[0].points.map((point) => point.x)).to.deep.equal([
+      50, 0, 100, 150,
+    ]);
+  });
+
+  it("never reuses the absorbed contour's id", () => {
+    const { skeletonData, first, second, b, c } = data();
+    const spent = second.id;
+    joinSkeletonContours(
+      skeletonData,
+      { contourId: first.id, pointId: b.id },
+      { contourId: second.id, pointId: c.id }
+    );
+    const fresh = appendSkeletonContour(skeletonData, { closed: false, points: [] });
+    expect(fresh.id).to.not.equal(spent);
+  });
+
+  it("closes the contour where both ends are its own", () => {
+    // Two ends of one open contour is not a join, it is a close. Answering it
+    // here means the one gesture does what the designer meant either way.
+    const { skeletonData, first, a, b } = data();
+    const result = joinSkeletonContours(
+      skeletonData,
+      { contourId: first.id, pointId: a.id },
+      { contourId: first.id, pointId: b.id }
+    );
+    expect(result.closed).to.equal(true);
+    expect(skeletonData.contours[0].closed).to.equal(true);
+    expect(skeletonData.contours[0].points).to.have.length(2);
+  });
+
+  it("refuses a point that is not an open end", () => {
+    const { skeletonData, first, second, b, c } = data();
+    // `b` was the tail; appending past it makes it an interior point.
+    appendSkeletonPoint(skeletonData, first.id, { x: 75, y: 0 });
+    expect(
+      joinSkeletonContours(
+        skeletonData,
+        { contourId: first.id, pointId: b.id },
+        { contourId: second.id, pointId: c.id }
+      )
+    ).to.equal(null);
+  });
+
+  it("refuses to join a closed contour", () => {
+    const { skeletonData, first, second, b, c } = data();
+    skeletonData.contours[1].closed = true;
+    expect(
+      joinSkeletonContours(
+        skeletonData,
+        { contourId: first.id, pointId: b.id },
+        { contourId: second.id, pointId: c.id }
+      )
+    ).to.equal(null);
+  });
+});
+
+describe("closing a skeleton contour", () => {
+  function openContour() {
+    const skeletonData = { nextId: 1, contours: [] };
+    const contour = appendSkeletonContour(skeletonData, { closed: false, points: [] });
+    appendSkeletonPoint(skeletonData, contour.id, { x: 0, y: 0 });
+    appendSkeletonPoint(skeletonData, contour.id, { x: 50, y: 0 });
+    appendSkeletonPoint(skeletonData, contour.id, { x: 50, y: 50 });
+    return { skeletonData, contour };
+  }
+
+  it("closes an open contour of three points", () => {
+    const { skeletonData, contour } = openContour();
+    expect(closeSkeletonContour(skeletonData, contour.id)).to.equal(true);
+    expect(skeletonData.contours[0].closed).to.equal(true);
+  });
+
+  it("adds no point, so the two ends stay the ends they were", () => {
+    const { skeletonData, contour } = openContour();
+    closeSkeletonContour(skeletonData, contour.id);
+    expect(skeletonData.contours[0].points).to.have.length(3);
+  });
+
+  it("refuses a contour that is already closed", () => {
+    const { skeletonData, contour } = openContour();
+    closeSkeletonContour(skeletonData, contour.id);
+    expect(closeSkeletonContour(skeletonData, contour.id)).to.equal(false);
+  });
+
+  it("refuses a contour with fewer than two on-curve points", () => {
+    const skeletonData = { nextId: 1, contours: [] };
+    const contour = appendSkeletonContour(skeletonData, { closed: false, points: [] });
+    appendSkeletonPoint(skeletonData, contour.id, { x: 0, y: 0 });
+    expect(closeSkeletonContour(skeletonData, contour.id)).to.equal(false);
   });
 });

@@ -12,16 +12,16 @@ import {
 import { getGlyphInfoFromGlyphName } from "./glyph-data.js";
 import { expandToJoints, harmonizePathInPlace } from "./harmonization.js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
-import { offsetCubicSide } from "./offset-cubic.js";
 import {
   buildContourSegments,
   calculateContourNormalAtPoint,
-  cornerArrivingNormal,
   collectCoupledPointGroups,
-  offsetContourAlongNormals,
+  cornerArrivingNormal,
   isStraightControlledSmoothPoint,
+  offsetContourAlongNormals,
   straightSegmentNormal,
 } from "./offset-contour.js";
+import { offsetCubicSide } from "./offset-cubic.js";
 import { alignHandle, alignHandles } from "./path-functions.js";
 import {
   DEFAULT_UNDERSIDE_CUP_TENSION,
@@ -1381,6 +1381,143 @@ export function splitSkeletonContourAtPoint(skeletonData, contourId, pointId) {
     points: tail,
   });
   return [contour.id, second.id];
+}
+
+// Reverse the order a centerline is travelled in.
+//
+// Nothing moves. What turns over is the frame every stored number is written
+// against: the tangent points the other way, so the side that was left of it is
+// now right of it, and a handle that led OUT of a point now leads INTO it. Three
+// transpositions follow, and all three are needed - the fork found each of the
+// equivalents separately when mirroring was built.
+//
+//   1. Side ownership, on every per-side field.
+//   2. Handle role, which combines with the side: leftOut becomes rightIn.
+//   3. A curvature pin, which is keyed on its segment's START point (feature
+//      model section 7). Reversed, that segment starts at its other end, so the
+//      pin travels there or it states the tension of a curve nobody asked about.
+//
+// Absolute directions are left alone, and this is the difference from a mirror.
+// A mirror reflects the plane, so `capAngle` and a serif's axis angle negate. A
+// reversal moves no geometry at all, so a direction named in glyph space still
+// means what it meant.
+export function reverseSkeletonContourPoints(contour) {
+  const reversed = deepCopyObject(contour);
+  reversed.points = reversed.points.slice().reverse();
+
+  for (const point of reversed.points) {
+    if (point.type) {
+      continue;
+    }
+    for (const field of ["width", "nudge", "handleNudge", "locked", "corner"]) {
+      swapProperties(point[field], "left", "right");
+    }
+    // Side and role turn over together, so the two diagonals exchange.
+    swapProperties(point.handleOffsets, "leftOut", "rightIn");
+    swapProperties(point.handleOffsets, "leftIn", "rightOut");
+    point.capBallSide = swapSideName(point.capBallSide);
+    if (point.serif && typeof point.serif === "object") {
+      point.serif.sides = swapSideName(point.serif.sides);
+    }
+  }
+
+  // The pins, in one pass over the reversed list, because moving one to its new
+  // owner would otherwise overwrite a pin not yet read.
+  const onCurves = reversed.points.filter((point) => !point.type);
+  const pins = onCurves.map((point) => point.segmentCurvature);
+  for (const [index, point] of onCurves.entries()) {
+    // Reversed, the segment leaving this point is the one that used to leave its
+    // successor in the new order. The last point leaves nothing, and on a closed
+    // contour it leaves the closing segment, which was the first point's.
+    const source = reversed.closed ? pins[(index + 1) % pins.length] : pins[index + 1];
+    point.segmentCurvature = normalizeSegmentCurvature(
+      source ? { left: source.right, right: source.left } : null
+    );
+  }
+  return reversed;
+}
+
+// Which end of an open contour a point is, or null where it is neither.
+function skeletonOpenEndRole(contour, pointId) {
+  if (!contour || contour.closed) {
+    return null;
+  }
+  const onCurves = contour.points.filter((point) => !point.type);
+  if (onCurves.length < 1) {
+    return null;
+  }
+  if (onCurves[0].id === pointId) {
+    return "head";
+  }
+  return onCurves.at(-1).id === pointId ? "tail" : null;
+}
+
+// Close an open contour on the two ends it already has.
+//
+// No point is added and none is moved. The closing segment is the straight
+// between the two ends, exactly as the pen's own close does, so a contour closed
+// from the menu and one closed by clicking the far end are the same contour.
+export function closeSkeletonContour(skeletonData, contourId) {
+  const contour = getSkeletonContour(skeletonData, contourId);
+  if (!contour || contour.closed) {
+    return false;
+  }
+  if (contour.points.filter((point) => !point.type).length < 2) {
+    return false;
+  }
+  contour.closed = true;
+  return true;
+}
+
+// Join two open ends into one contour.
+//
+// Where both ends belong to one contour this is a close, and it answers that
+// way: the designer selected the two ends of a stroke and asked for them to
+// meet, and which of the two operations that is is the machine's problem.
+//
+// Otherwise the second contour is absorbed into the first, and whichever of the
+// two must be turned around is reversed through the transposition above. The
+// absorbed contour's id is retired and never reused, like every skeleton id.
+export function joinSkeletonContours(skeletonData, firstEnd, secondEnd) {
+  const first = getSkeletonContour(skeletonData, firstEnd?.contourId);
+  const second = getSkeletonContour(skeletonData, secondEnd?.contourId);
+  const firstRole = skeletonOpenEndRole(first, firstEnd?.pointId);
+  const secondRole = skeletonOpenEndRole(second, secondEnd?.pointId);
+  if (!firstRole || !secondRole) {
+    return null;
+  }
+
+  if (first === second) {
+    if (firstRole === secondRole) {
+      return null; // one end asked to meet itself
+    }
+    return closeSkeletonContour(skeletonData, first.id)
+      ? { contourId: first.id, closed: true }
+      : null;
+  }
+
+  // The survivor keeps its own direction wherever it can. A tail meeting a head
+  // needs nothing turned around; the other three cases each turn exactly one
+  // contour, and never both.
+  let head = first;
+  let tail = second;
+  if (firstRole === "head" && secondRole === "tail") {
+    head = second;
+    tail = first;
+  } else if (firstRole === "head" && secondRole === "head") {
+    head = reverseSkeletonContourPoints(first);
+  } else if (firstRole === "tail" && secondRole === "tail") {
+    tail = reverseSkeletonContourPoints(second);
+  }
+
+  const survivor = head === second ? second : first;
+  const absorbed = survivor === first ? second : first;
+  survivor.points = [...head.points, ...tail.points];
+  survivor.closed = false;
+  skeletonData.contours = skeletonData.contours.filter(
+    (contour) => contour !== absorbed
+  );
+  return { contourId: survivor.id, closed: false };
 }
 
 export function appendSkeletonPoint(skeletonData, contourId, pointData = {}) {

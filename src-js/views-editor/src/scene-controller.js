@@ -60,6 +60,7 @@ import {
   SKELETON_SOURCE_DEFAULT_KEYS,
   clearSkeletonData,
   getDefaultSkeletonWidthKeyForGlyphName,
+  getSkeletonContour,
   getSkeletonData,
   getSkeletonGlyphCase,
   resolveEffectiveSourceSkeletonDefault,
@@ -109,10 +110,13 @@ import {
   recordSkeletonContourIndexShift,
 } from "./skeleton-editing.js";
 import {
+  closePanelSkeletonContours,
   harmonizePanelSkeletonPoints,
+  joinPanelSkeletonContours,
   splitPanelSkeletonContours,
   togglePanelContourReversed,
 } from "./skeleton-panel-edits.js";
+import { skeletonContourEndpointIndices } from "./skeleton-panel-model.js";
 import { forceRefreshSnapping } from "./snapping-interactions.js";
 import {
   createTensionAwareTargetEntries,
@@ -760,7 +764,14 @@ export class SceneController {
         defaultShortCuts: [{ baseKey: "j", commandKey: true }],
       },
       () => {
-        if (this.contextMenuState.joinContourSelection?.length === 2) {
+        // One gesture, four answers. The skeleton comes first because a
+        // centerline selection is never also a path selection: a generated
+        // outline cannot be selected as an ordinary point.
+        if (this.contextMenuState.skeletonJoinSelection?.length === 2) {
+          this.doJoinSelectedSkeletonContours();
+        } else if (this.contextMenuState.skeletonCloseSelection?.length) {
+          this.doCloseSelectedSkeletonContours();
+        } else if (this.contextMenuState.joinContourSelection?.length === 2) {
           this.doJoinSelectedOpenContours();
         } else {
           this.doCloseSelectedOpenContours();
@@ -768,7 +779,9 @@ export class SceneController {
       },
       () =>
         this.contextMenuState.joinContourSelection?.length ||
-        this.contextMenuState.openContourSelection?.length
+        this.contextMenuState.openContourSelection?.length ||
+        this.contextMenuState.skeletonJoinSelection?.length ||
+        this.contextMenuState.skeletonCloseSelection?.length
     );
 
     registerAction(
@@ -1260,6 +1273,27 @@ export class SceneController {
         !this.sceneModel.isGeneratedPathContour(contourIndex)
     );
 
+    // The skeleton's own answer to the same two questions the path answers
+    // below. A join wants two open ends on two contours; a close wants ends of
+    // one. Both are read off the selected centerline points alone: a rib says
+    // which contour, not which end.
+    const skeletonEnds = getSelectedSkeletonOpenEnds(
+      this.sceneModel._getEditLayerSkeletonData(
+        this.sceneModel.getSelectedPositionedGlyph()
+      ),
+      skeletonPointSelection
+    );
+    this.contextMenuState.skeletonJoinSelection =
+      skeletonEnds.length === 2 &&
+      skeletonEnds[0].contourId !== skeletonEnds[1].contourId
+        ? skeletonEnds
+        : [];
+    this.contextMenuState.skeletonCloseSelection =
+      skeletonEnds.length &&
+      skeletonEnds.every((end) => end.contourId === skeletonEnds[0].contourId)
+        ? [skeletonEnds[0]]
+        : [];
+
     const glyphController = this.sceneModel.getSelectedPositionedGlyph().glyph;
     this.contextMenuState.openContourSelection = glyphController.canEdit
       ? getSelectedClosableContours(glyphController.instance.path, pointSelection)
@@ -1276,11 +1310,13 @@ export class SceneController {
     const contextMenuItems = [
       {
         title: () =>
-          this.contextMenuState.joinContourSelection?.length === 2
+          this.contextMenuState.joinContourSelection?.length === 2 ||
+          this.contextMenuState.skeletonJoinSelection?.length === 2
             ? translate("action.join-contours")
             : translatePlural(
                 "action.close-contour",
-                this.contextMenuState.openContourSelection?.length
+                this.contextMenuState.openContourSelection?.length ||
+                  this.contextMenuState.skeletonCloseSelection?.length
               ),
         actionIdentifier: "action.join-contours",
       },
@@ -2217,6 +2253,31 @@ export class SceneController {
     });
   }
 
+  // Join, for a skeleton. Two open centerline ends become one contour, and the
+  // generated outline follows on its own: the one write path regenerates it
+  // whenever the topology changes.
+  async doJoinSelectedSkeletonContours() {
+    const [firstEnd, secondEnd] = this.contextMenuState.skeletonJoinSelection;
+    await joinPanelSkeletonContours(
+      this,
+      firstEnd,
+      secondEnd,
+      translate("action.join-contours")
+    );
+    this.selection = new Set();
+  }
+
+  // Close, for a skeleton: the contour meets its own two ends. No point is added
+  // and none is moved, which is what the pen's click on the far end already does.
+  async doCloseSelectedSkeletonContours() {
+    await closePanelSkeletonContours(
+      this,
+      this.contextMenuState.skeletonCloseSelection,
+      translatePlural("action.close-contour", 1)
+    );
+    this.selection = new Set();
+  }
+
   // Break, for a skeleton: cut the contour at the selected centerline point. A
   // closed contour opens there, an open one becomes two. The generated outline
   // follows on its own, because the one write path regenerates it and replaces
@@ -2751,6 +2812,30 @@ function reversePointSelection(path, pointSelection) {
   }
   newSelection.sort((a, b) => (a > b) - (a < b));
   return new Set(newSelection);
+}
+
+// Which selected centerline points are the open END of their contour. An end is
+// what a join and a close both need, and a point in the middle of a stroke is
+// neither - so this returns the ends and says nothing about how many there are.
+function getSelectedSkeletonOpenEnds(skeletonData, skeletonPointSelection) {
+  const ends = [];
+  for (const key of skeletonPointSelection || []) {
+    const address = parseSkeletonPointKey(`${key}`);
+    if (!address) {
+      continue;
+    }
+    const contour = getSkeletonContour(skeletonData, address.contourId);
+    const endpoints = skeletonContourEndpointIndices(contour);
+    if (!endpoints) {
+      continue; // closed, or no on-curve point
+    }
+    const pointId = contour.points[endpoints.first].id;
+    const lastId = contour.points[endpoints.last].id;
+    if (address.pointId === pointId || address.pointId === lastId) {
+      ends.push({ contourId: contour.id, pointId: address.pointId });
+    }
+  }
+  return ends;
 }
 
 function getSelectedJoinContoursPointIndices(path, pointSelection) {

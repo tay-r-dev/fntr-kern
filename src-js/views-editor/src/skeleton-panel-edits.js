@@ -17,6 +17,7 @@ import {
   DEFAULT_SERIF_PRESET,
   applySerifPreset,
   clearSkeletonSegmentCurvatureForHandle,
+  closeSkeletonContour,
   findGeneratedOutputPosition,
   findGeneratedPathAddress,
   getSkeletonData,
@@ -27,6 +28,7 @@ import {
   harmonizeSkeletonPoints,
   isSkeletonSideLocked,
   isSkeletonSideLockedAtAll,
+  joinSkeletonContours,
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
   resetSkeletonEditableRibHandles,
@@ -40,9 +42,9 @@ import {
   setSkeletonHandleOffset,
   setSkeletonPointRibAngleLock,
   setSkeletonPointRibAngleLockMode,
-  setSkeletonPointWidthFromSide,
   setSkeletonPointTotalWidth,
   setSkeletonPointWidthDistribution,
+  setSkeletonPointWidthFromSide,
   setSkeletonPointWidthLinked,
   setSkeletonPointWidthTied,
   setSkeletonSerifParameters,
@@ -663,6 +665,75 @@ export async function splitPanelSkeletonContours(
         );
         if (contour) {
           splitSkeletonContourAtPoint(working, contour.id, pointId);
+        }
+      }
+    }
+  );
+}
+
+// Join two open skeleton ends, or close one contour on its own two ends, from
+// the context menu.
+//
+// The addresses are resolved per layer before anything is joined, the way the
+// split does: a join restructures the contour list, so an address read after it
+// would be read against a structure that has moved. Every editable layer takes
+// the same join, because the two ends are the same two ends in each - the
+// geometry differs between layers, the topology does not.
+export async function joinPanelSkeletonContours(
+  sceneController,
+  firstEnd,
+  secondEnd,
+  undoLabel
+) {
+  if (!firstEnd || !secondEnd) {
+    return null;
+  }
+  return await runSkeletonPanelEdit(
+    sceneController,
+    undoLabel,
+    (working, reference) => {
+      const resolved = [firstEnd, secondEnd].map((end) =>
+        resolveSkeletonAddressAcrossLayers(
+          reference,
+          working,
+          end.contourId,
+          end.pointId
+        )
+      );
+      if (resolved.some((address) => !address)) {
+        return;
+      }
+      joinSkeletonContours(
+        working,
+        { contourId: resolved[0].contour.id, pointId: resolved[0].point.id },
+        { contourId: resolved[1].contour.id, pointId: resolved[1].point.id }
+      );
+    }
+  );
+}
+
+// Close every named contour on the two ends it already has.
+export async function closePanelSkeletonContours(
+  sceneController,
+  contourAddresses,
+  undoLabel
+) {
+  if (!contourAddresses.length) {
+    return null;
+  }
+  return await runSkeletonPanelEdit(
+    sceneController,
+    undoLabel,
+    (working, reference) => {
+      for (const address of contourAddresses) {
+        const resolved = resolveSkeletonAddressAcrossLayers(
+          reference,
+          working,
+          address.contourId,
+          address.pointId
+        );
+        if (resolved) {
+          closeSkeletonContour(working, resolved.contour.id);
         }
       }
     }
