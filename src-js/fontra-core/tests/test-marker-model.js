@@ -113,11 +113,32 @@ describe("marker-model — the signature", () => {
     expect(markerIndicesChanged(marker, grown)).to.equal(true);
   });
 
-  it("says the indices moved when ANY contour changes count", () => {
+  it("says the indices moved when ANY contour changes count, asked about no end", () => {
     const marker = markerOn(0, twoContourPath());
     const other = twoContourPath();
     other.insertPoint(1, 1, { x: 260, y: 10 });
     expect(markerIndicesChanged(marker, other)).to.equal(true);
+  });
+
+  it("says nothing moved when the change is on another contour", () => {
+    const marker = markerOn(0, twoContourPath());
+    const other = twoContourPath();
+    other.insertPoint(1, 1, { x: 260, y: 10 });
+    expect(markerIndicesChanged(marker, other, marker.ends[0])).to.equal(false);
+  });
+
+  it("says the indices moved when the change is on the end's own contour", () => {
+    const marker = markerOn(0, twoContourPath());
+    const grown = twoContourPath();
+    grown.insertPoint(0, 1, { x: 50, y: 0 });
+    expect(markerIndicesChanged(marker, grown, marker.ends[0])).to.equal(true);
+  });
+
+  it("says the indices moved when a whole contour appears, whatever end is asked", () => {
+    const marker = markerOn(0, twoContourPath());
+    const more = twoContourPath();
+    more.appendPath(twoContourPath());
+    expect(markerIndicesChanged(marker, more, marker.ends[0])).to.equal(true);
   });
 
   it("says the indices moved when a closed contour is opened", () => {

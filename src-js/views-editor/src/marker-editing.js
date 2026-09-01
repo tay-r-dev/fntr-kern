@@ -16,9 +16,11 @@ import {
   getMarkerData,
   getMarkerGroups,
   getMarkers,
+  markerIndicesChanged,
   nearestOnCurvePlace,
   nearestOnCurvePoint,
   nearestPlaceOnSkeleton,
+  resolveMarkerEnd,
   setMarkerData,
   withAnchorPosition,
 } from "@fontra/core/marker-model.js";
@@ -351,7 +353,10 @@ export async function handleMarkerDrag({
           mutateMarkerData(proxy, (data) => {
             data.markers = data.markers.map((marker) =>
               marker.id === markerId
-                ? withEnd(startMarker, draggedEndIndex, newEnd, signature)
+                ? withEnd(startMarker, draggedEndIndex, newEnd, signature, {
+                    path: glyphController.flattenedPath,
+                    skeletonData,
+                  })
                 : marker
             );
           });
@@ -372,11 +377,35 @@ export async function handleMarkerDrag({
 // Re-anchoring repairs a marker, so it clears the declared break as well as writing the
 // address and the signature. A marker dragged onto live geometry and still reading
 // broken would be unfixable by the only gesture that fixes it.
-function withEnd(marker, endIndex, end, signature) {
+//
+// The signature is what says the marker's addresses are current, and it covers every end
+// at once. Writing it while another end is still stale declares that end healthy too,
+// and it then re-anchors on its own to whatever its old numbers now point at -- so
+// dragging one end of a broken dimension moved both. The new signature is therefore
+// written only when the ends that were NOT dragged already resolve. Otherwise the old
+// signature stands, the untouched end stays stale, and the dragged end still holds
+// because it carries the position it was just dropped at.
+function withEnd(marker, endIndex, end, signature, { path, skeletonData } = {}) {
   const ends = [...marker.ends];
   ends[endIndex] = end;
-  const repaired = { ...marker, ends, signature };
-  delete repaired.broken;
+  const othersResolve = ends.every(
+    (candidate, i) =>
+      i === endIndex ||
+      candidate.kind === "cast" ||
+      resolveMarkerEnd(candidate, {
+        path,
+        skeletonData,
+        indicesChanged: markerIndicesChanged(marker, path, candidate),
+      }).verdict === "ok"
+  );
+  const repaired = {
+    ...marker,
+    ends,
+    signature: othersResolve ? signature : marker.signature,
+  };
+  if (othersResolve) {
+    delete repaired.broken;
+  }
   return repaired;
 }
 

@@ -39,6 +39,8 @@ export default class MarkersPanel extends Panel {
 
     this._lastFormLayout = null;
     this._activeFieldKey = null;
+    this._eraseArmed = false;
+    this._eraseTimer = null;
 
     this.updateBound = this.update.bind(this);
     this._throttledUpdate = throttleCalls(() => this.update(), 100);
@@ -164,15 +166,24 @@ export default class MarkersPanel extends Panel {
         type: "single-icon",
         // The label flips between hide-all and show-all, and the form only rebuilds a
         // row whose description changed, so the state has to be part of the key.
-        key: `allVisible:${allHidden}`,
+        key: `allVisible:${allHidden}:${this._eraseArmed}`,
         element: html.span({ style: ROW_CONTROLS_STYLE }, [
           html.button({ onclick: () => this.setAllVisible(allHidden) }, [
             translate(
               allHidden ? "sidebar.markers.show-all" : "sidebar.markers.hide-all"
             ),
           ]),
-          html.button({ onclick: () => this.deleteAllMarkers() }, [
-            translate("sidebar.markers.erase-all"),
+          // Erasing every marker in the glyph cannot be aimed at anything smaller and
+          // cannot be seen coming, so it takes two presses. The first press only changes
+          // what the button says; the second one does it. The arming lapses on its own
+          // after a few seconds, so a stray press never leaves a live delete sitting
+          // under the cursor.
+          html.button({ onclick: () => this.pressEraseAll() }, [
+            translate(
+              this._eraseArmed
+                ? "sidebar.markers.erase-all-confirm"
+                : "sidebar.markers.erase-all"
+            ),
           ]),
         ]),
       });
@@ -382,6 +393,21 @@ export default class MarkersPanel extends Panel {
     await setAllMarkersVisible(this.sceneController, visible);
   }
 
+  async pressEraseAll() {
+    clearTimeout(this._eraseTimer);
+    if (this._eraseArmed) {
+      this._eraseArmed = false;
+      await this.deleteAllMarkers();
+      return;
+    }
+    this._eraseArmed = true;
+    this._eraseTimer = setTimeout(() => {
+      this._eraseArmed = false;
+      this.update();
+    }, ERASE_ARMED_MILLISECONDS);
+    await this.update();
+  }
+
   async deleteAllMarkers() {
     await deleteMarkers(
       this.sceneController,
@@ -413,6 +439,9 @@ export default class MarkersPanel extends Panel {
 
 // The controls sit in the form's own shadow root, so they carry their sizing with them:
 // nothing outside can reach in with a stylesheet.
+// How long the erase button stays armed, in milliseconds.
+const ERASE_ARMED_MILLISECONDS = 4000;
+
 const ROW_CONTROLS_STYLE =
   "display: flex; align-items: center; gap: 0.2em; flex: 0 0 auto;";
 const ROW_BUTTON_STYLE =

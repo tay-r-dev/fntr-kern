@@ -145,11 +145,14 @@ export function measureSkeletonAnchor(pathHitTester, end, skeletonData, path) {
 
 export function markerGeometry(glyphController, marker, skeletonData) {
   const path = glyphController.flattenedPath;
-  const indicesChanged = markerIndicesChanged(marker, path);
   const anchors = marker.ends.map((end) =>
     end.kind === "cast"
       ? null
-      : resolveMarkerEnd(end, { path, skeletonData, indicesChanged })
+      : resolveMarkerEnd(end, {
+          path,
+          skeletonData,
+          indicesChanged: markerIndicesChanged(marker, path, end),
+        })
   );
 
   // A stale marker keeps its place and its grips: it draws as a plain dot where it last

@@ -156,7 +156,17 @@ export function resolveMarkerEnd(end, { path, skeletonData, indicesChanged } = {
 // Whether the addresses in a marker still mean what they meant when it was written.
 // This is what the signature is for now: not a verdict, but the switch that says which
 // of the two readings of the outline applies.
-export function markerIndicesChanged(marker, path) {
+// The question is asked about ONE end, because an end's address only names one contour.
+// Adding a point to a contour a marker never touched used to count as a change for that
+// marker too, which sent it down the repair road: the repair puts the anchor back on the
+// spot it was last WRITTEN at, and an anchor that had since ridden the outline somewhere
+// else was dragged back there. So the comparison is narrowed to the end's own contour.
+//
+// Two cases still have to look at the whole path. A different number of contours means
+// the contour numbers themselves have shifted, so no single one can be compared. And an
+// end that names no contour at all -- a skeleton anchor, a cast -- has nothing to narrow
+// to.
+export function markerIndicesChanged(marker, path, end = undefined) {
   const then = marker.signature;
   if (!then?.counts) {
     return true;
@@ -165,9 +175,18 @@ export function markerIndicesChanged(marker, path) {
   if (then.counts.length !== now.counts.length) {
     return true;
   }
-  return now.counts.some(
-    (count, i) => count !== then.counts[i] || now.closed[i] !== then.closed[i]
-  );
+  const differs = (i) =>
+    now.counts[i] !== then.counts[i] || now.closed[i] !== then.closed[i];
+  const contourIndex = end?.contourIndex;
+  if (
+    endIsPathAnchored(end || {}) &&
+    Number.isInteger(contourIndex) &&
+    contourIndex >= 0 &&
+    contourIndex < now.counts.length
+  ) {
+    return differs(contourIndex);
+  }
+  return now.counts.some((count, i) => differs(i));
 }
 
 function isSamePlace(a, b) {
@@ -227,11 +246,14 @@ export function markerIsStale(marker, path, skeletonData) {
   if (marker.broken) {
     return true;
   }
-  const indicesChanged = markerIndicesChanged(marker, path);
   return (marker.ends || []).some(
     (end) =>
       end.kind !== "cast" &&
-      resolveMarkerEnd(end, { path, skeletonData, indicesChanged }).verdict !== "ok"
+      resolveMarkerEnd(end, {
+        path,
+        skeletonData,
+        indicesChanged: markerIndicesChanged(marker, path, end),
+      }).verdict !== "ok"
   );
 }
 

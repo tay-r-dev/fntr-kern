@@ -547,6 +547,7 @@ export const strings = {
   "sidebar.markers.delete-group": "Delete group",
   "sidebar.markers.delete-marker": "Delete marker",
   "sidebar.markers.erase-all": "Erase all",
+  "sidebar.markers.erase-all-confirm": "Erase all — sure?",
   "sidebar.markers.hide-all": "Hide all",
   "sidebar.markers.show-all": "Show all",
   "sidebar.markers.group": "Group",
