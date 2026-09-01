@@ -2507,7 +2507,9 @@ export class SceneController {
     // read under it.
     const continuity = useG3 ? "G3" : "G2";
     const construction =
-      { 1: "nearest", 2: "canonical", 3: "canonical-slide" }[method] ?? "canonical";
+      { 1: "nearest", 2: "canonical", 3: "canonical-slide" }[
+        Math.round(Number(method))
+      ] ?? "canonical";
 
     const reports = new Map();
 

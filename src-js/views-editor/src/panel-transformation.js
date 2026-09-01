@@ -897,7 +897,14 @@ export default class TransformationPanel extends Panel {
           fieldItem.key
         )
       ) {
-        applicationSettingsController.model[fieldItem.key] = value;
+        applicationSettingsController.model[fieldItem.key] =
+          fieldItem.key === "harmonizeMethod" ? Math.round(Number(value)) : value;
+        // The row under the slider names the position, and turning G3 on greys
+        // the slider out. Neither is redrawn unless the panel is rebuilt.
+        if (fieldItem.key !== "harmonizeOtherSources") {
+          this.update();
+          return;
+        }
       }
 
       if (fieldItem.key === "originXButton" || fieldItem.key === "originYButton") {
