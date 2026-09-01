@@ -656,14 +656,19 @@ export function solveRigidLinkScale(contours, axis, factor, origin) {
       }
     }
   }
-  // Nothing straight anywhere, so there is no drawn width for the rule to hold
-  // and every point stands on a curve. The plain scale is then the whole
-  // answer, and the tension correction on top of it is what keeps the curves.
+  // What this rule holds is a straight's length ALONG the axis being scaled, so
+  // a straight that has no length along that axis holds nothing. A vertical
+  // segment under a horizontal scale is the case: it has zero width, so there
+  // is no drawn width in it to keep, and it is carried by the plain scale
+  // unchanged anyway.
   //
-  // This is the ordinary shape of a skeleton centerline, which is drawn as one
-  // run of curves and has no straights at all. Without the fallback the rule
-  // stood down and a horizontal scale did nothing.
-  if (!allBodies.length) {
+  // Where no straight has any length along the axis, the rule has nothing to
+  // hold at all and the plain scale is the whole answer, with the tension
+  // correction on top of it keeping the curves. That covers a contour with no
+  // straight anywhere -- the ordinary shape of a skeleton centerline, one run
+  // of curves end to end -- and a contour whose only straight runs across the
+  // axis. Without this the rule stood down and a horizontal scale did nothing.
+  if (!allBodies.some((entry) => entry.max - entry.min > EPSILON)) {
     return solvePlainAxisScale(contours, axis, factor, origin);
   }
   if (!hasDistributableRun || allBodies.length < 2) {

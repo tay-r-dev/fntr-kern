@@ -328,6 +328,29 @@ describe("tension-aware edit — the rigid-link scale", () => {
     expect(coordinates.get(6)).to.be.closeTo(200, 1e-6);
   });
 
+  it("plain-scales where the only straight runs across the axis", () => {
+    // A vertical straight has no width, so a horizontal scale finds nothing in
+    // it to hold. The plain scale carries it unchanged and the curves take the
+    // change.
+    const oneVerticalStraight = {
+      points: [
+        onCurve(0, 0),
+        onCurve(0, 200),
+        control(100, 300),
+        control(300, 300),
+        onCurve(400, 200),
+        control(400, 100),
+        control(300, 0),
+        onCurve(200, 0),
+      ],
+      isClosed: false,
+    };
+    const [coordinates] = solveRigidLinkScale([oneVerticalStraight], "x", 0.5, 0);
+    // The straight's two ends stay together, so it is still vertical.
+    expect(coordinates.get(0)).to.be.closeTo(coordinates.get(1), 1e-6);
+    expect(coordinates.get(4)).to.be.closeTo(200, 1e-6);
+  });
+
   it("stands down where every run returns to its own body", () => {
     // A stem with a bowl hung off it: the bowl's two ends sit on the same run
     // of straights, so nothing can be distributed.
