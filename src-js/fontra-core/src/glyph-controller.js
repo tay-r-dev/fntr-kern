@@ -8,7 +8,7 @@ import {
   findNearestLocationIndex,
 } from "./discrete-variation-model.js";
 import { VariationError } from "./errors.js";
-import { withoutMarkerData } from "./marker-model.js";
+import { withoutNonInterpolableData } from "./fontra-internal-schema.js";
 import { filterPathByPointIndices } from "./path-functions.js";
 import { PathHitTester } from "./path-hit-tester.js";
 import {
@@ -1401,10 +1401,10 @@ export function ensureGlyphCompatibility(layers, glyphDependencies) {
           ? normalizeGuidelines(glyph.guidelines, true)
           : [],
         backgroundImage: undefined, // The background image isn't meant to interpolate
-        // Markers are not interpolable data — ids and address kinds, not numbers — and
-        // two sources need not carry the same ones. Left in, placing a marker in one
-        // source alone makes the glyph incompatible. They live on masters only.
-        customData: withoutMarkerData(glyph.customData),
+        // The skeleton and the markers are not interpolable data, and two masters need
+        // not carry the same ones. Left in, adjusting a gizmo in one master alone makes
+        // the glyph incompatible. They live on masters only.
+        customData: withoutNonInterpolableData(glyph.customData),
       },
       true // noCopy
     )
@@ -1569,11 +1569,11 @@ export function stripNonInterpolatablesAndSortAnchors(glyph) {
       anchors: glyph.anchors.slice().sort((a, b) => compare(a.name, b.name)),
       guidelines: [],
       backgroundImage: undefined,
-      // Markers are not interpolable and must not count against compatibility. This is
-      // the second place a layer's customData reaches a comparison: interpolation uses
-      // one strip and the source panel's warning uses this one, so both must drop them
-      // or the glyph interpolates fine while the panel still reports it broken.
-      customData: withoutMarkerData(glyph.customData),
+      // The skeleton and the markers must not count against compatibility. This is the
+      // second place a layer's customData reaches a comparison: interpolation uses one
+      // strip and the source panel's warning uses this one, so both must drop them or
+      // the glyph interpolates fine while the panel still reports it broken.
+      customData: withoutNonInterpolableData(glyph.customData),
     },
     true // noCopy
   );

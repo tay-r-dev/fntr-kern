@@ -8,6 +8,7 @@ import {
 import {
   FONTRA_INTERNAL_KEY,
   FONTRA_INTERNAL_SECTIONS,
+  withoutNonInterpolableData,
 } from "@fontra/core/fontra-internal-schema.js";
 import { expect } from "chai";
 
@@ -63,5 +64,54 @@ describe("fontra-internal-data", () => {
     expect(
       getFontraInternalSection(e, FONTRA_INTERNAL_SECTIONS.SKELETON)
     ).to.deep.equal(skeleton);
+  });
+});
+
+describe("withoutNonInterpolableData", () => {
+  it("drops the whole internal block and leaves everything else alone", () => {
+    const customData = {
+      [FONTRA_INTERNAL_KEY]: {
+        [FONTRA_INTERNAL_SECTIONS.SKELETON]: { contours: [] },
+        [FONTRA_INTERNAL_SECTIONS.MARKERS]: { markers: [{ id: "m1" }] },
+      },
+      somethingElse: 1,
+    };
+    const stripped = withoutNonInterpolableData(customData);
+    expect(stripped[FONTRA_INTERNAL_KEY]).to.equal(undefined);
+    expect(stripped.somethingElse).to.equal(1);
+  });
+
+  it("does not mutate the customData it was given", () => {
+    const customData = { [FONTRA_INTERNAL_KEY]: { schemaVersion: 1 } };
+    withoutNonInterpolableData(customData);
+    expect(customData[FONTRA_INTERNAL_KEY]).to.deep.equal({ schemaVersion: 1 });
+  });
+
+  it("returns the same object when there is nothing to strip", () => {
+    const customData = { somethingElse: 1 };
+    expect(withoutNonInterpolableData(customData)).to.equal(customData);
+    expect(withoutNonInterpolableData(undefined)).to.equal(undefined);
+  });
+
+  // Two masters whose skeletons were edited differently carry different sets of
+  // entries. Before the strip, the compatibility check stopped on a skeleton point
+  // that had handle offsets in one master and none in the other, on a glyph whose
+  // 26 outline points matched exactly.
+  it("makes two differently-edited skeletons compare as equal", () => {
+    const withOffsets = {
+      [FONTRA_INTERNAL_KEY]: {
+        [FONTRA_INTERNAL_SECTIONS.SKELETON]: {
+          points: [{ handleOffsets: { rightIn: { x: 0, y: 0 } }, nudge: -18 }],
+        },
+      },
+    };
+    const without = {
+      [FONTRA_INTERNAL_KEY]: {
+        [FONTRA_INTERNAL_SECTIONS.SKELETON]: { points: [{ handleOffsets: {} }] },
+      },
+    };
+    expect(withoutNonInterpolableData(withOffsets)).to.deep.equal(
+      withoutNonInterpolableData(without)
+    );
   });
 });

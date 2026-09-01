@@ -9,7 +9,6 @@ import {
   markerIndicesChanged,
   markerIsStale,
   setMarkerData,
-  withoutMarkerData,
 } from "@fontra/core/marker-model.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
@@ -159,31 +158,5 @@ describe("marker-model — a declared break", () => {
   it("is stale when an edit declares it broken", () => {
     const marker = { ...markerOn(0, twoContourPath()), broken: true };
     expect(markerIsStale(marker, twoContourPath())).to.equal(true);
-  });
-});
-
-describe("marker-model — markers never interpolate", () => {
-  it("strips the markers section, leaving everything else alone", () => {
-    const layerGlyph = { customData: {} };
-    setMarkerData(layerGlyph, { markers: [{ id: "m1" }], groups: [] });
-    setFontraInternalSection(layerGlyph, "skeleton", { contours: [] });
-    layerGlyph.customData.somethingElse = 1;
-
-    const stripped = withoutMarkerData(layerGlyph.customData);
-    expect(stripped["fontra.internal"].markers).to.equal(undefined);
-    expect(stripped["fontra.internal"].skeleton).to.deep.equal({ contours: [] });
-    expect(stripped.somethingElse).to.equal(1);
-  });
-
-  it("leaves customData untouched when there are no markers", () => {
-    const customData = { "fontra.internal": { skeleton: {} } };
-    expect(withoutMarkerData(customData)).to.equal(customData);
-  });
-
-  it("does not mutate the customData it was given", () => {
-    const layerGlyph = {};
-    setMarkerData(layerGlyph, { markers: [{ id: "m1" }], groups: [] });
-    withoutMarkerData(layerGlyph.customData);
-    expect(getMarkers(layerGlyph)).to.have.lengthOf(1);
   });
 });
