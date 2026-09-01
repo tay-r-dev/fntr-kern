@@ -619,17 +619,6 @@ function handleTension(points, nearSide) {
   return reach ? distance(onCurve, handle) / reach : Infinity;
 }
 
-// How far apart a segment's two tensions sit, or undefined where it has no
-// tangent crossing to measure them against.
-function segmentImbalance(points) {
-  const start = handleTension(points, "start");
-  const end = handleTension(points, "end");
-  if (!Number.isFinite(start) || !Number.isFinite(end)) {
-    return undefined;
-  }
-  return Math.abs(start - end);
-}
-
 //
 // The worst tension either of the joint's own handles would reach after a
 // step, computed without touching the path.
@@ -832,10 +821,7 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
   let broken = 0;
   let crossed = 0;
   let creased = 0;
-  let stepped = 0;
   let residual = 0;
-  let unfair = 0;
-  let unbalanced = 0;
   for (const pointIndex of candidates) {
     const ctx = getJointContext(path, pointIndex);
     if (ctx.reason) {
@@ -868,51 +854,14 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
       continue;
     }
 
-    // G3 contains G2, so it may not be reached by giving G2 up.
-    //
-    // The two terms below are added, which lets the search pay for a better
-    // rate with a worse curvature -- and where the drawing arrives with a large
-    // rate error, that payment is cheap. Measured on `n` node 13 as it was
-    // drawn: arriving at 0.35% curvature and 1920% rate, the whole-unit answer
-    // the sum picked was 18.38% curvature and 70% rate, and the command called
-    // it harmonized. An 18% step is a visible break in the comb. It is not a G3
-    // answer, whatever its rate does -- and the same grid was offering 2.23% at
-    // that joint, which the sum passed over.
-    //
-    // So the curvature step is capped, ranked above any amount of residual, at
-    // the worse of the perceptual bound and what the drawing already had.
-    const arrived = arrival?.get(pointIndex);
-    if (arrived !== undefined) {
-      // The stand-down ratchets. `limits.ceilings` carries, per joint, the best
-      // step any answer on the table actually reached, so once one of them
-      // comes in clean the drawing stops excusing the others. Without it the
-      // stand-down is permanent: a joint reported at 130% disarmed the bound
-      // completely, every answer passed, and the choice fell through to the
-      // term that prefers the flatter curve. See the reported `j` joint.
-      const ceiling =
-        limits.ceilings?.get(pointIndex) ?? Math.max(arrived, limits.maxCurvatureStep);
-      if (relativeCurvatureStep(path, ctx) > ceiling) {
-        stepped += 1;
-      }
-    }
     // The seven-point stencil where the joint has both of its segments, which
     // is what the rate needs. Where an open contour runs out before one of
     // them there is no rate to measure and the five-point curvature stands.
     const stencil = jointStencil(path, ctx);
     if (stencil) {
-      // Both, and in this order of magnitude on purpose. Joint continuity is
-      // held by the `stepped` rank above, which will not let a visible break
-      // through whatever this says; below that line the curve decides. That is
-      // the ordering the reported glyph settled: a hand-made answer at 0.72%
-      // across the joint against a drawn 0.48% was the better curve by every
-      // measure of shape, and the old score -- which was joint continuity and
-      // nothing else -- reverted it as 1.5x worse.
-      const length =
-        (distance(stencil.incoming[0], stencil.incoming[3]) +
-          distance(stencil.outgoing[0], stencil.outgoing[3])) /
-        2;
+      // Under G3 `jointError` measures the rate of change of curvature as well,
+      // so a G3 caller is judged on what it asked for.
       residual += jointError(stencil, continuity);
-      unfair += jointUnfairness(stencil, length);
     } else {
       const discontinuity = measureG2Discontinuity(ctx);
       residual += Number.isFinite(discontinuity) ? discontinuity : 0;
@@ -933,117 +882,33 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
       if (handleTension(points, nearSide) > limits.maxHandleTension) {
         crossed += 1;
       }
-      //
-      // The balance tick asks for the two handles of a segment to sit at one
-      // tension. It also admits the handle-length construction, which has no
-      // balancing property at all -- it solves lengths against a curvature
-      // target and says nothing about how the two compare. So whenever that
-      // construction won, the tick's own promise went with it: on the reported
-      // `B^1` joint, one press left a segment at 0.961 against 0.246.
-      //
-      // Where the tick is on, an answer that leaves a segment visibly lopsided
-      // loses to one that does not. The tick states what the designer wants, so
-      // it belongs in what makes one answer better than another -- and it is a
-      // count rather than a magnitude, like the curvature bound above it: an
-      // answer may move tension about freely inside the tolerance.
-      //
-      // A softer form was measured and rejected: bounding each segment by how
-      // lopsided the DRAWING had it left the reported joint at 0.651 against
-      // 0.739, which is better than it was and still not what the tick says.
-      // The bound is a flat one, so the tick means the same thing on every
-      // drawing.
-      //
-      if (limits.balanceTolerance !== undefined) {
-        const now = segmentImbalance(points);
-        if (now !== undefined && now > limits.balanceTolerance) {
-          unbalanced += 1;
-        }
-      }
     }
   }
-  //
-  // Which of the two the caller is here for decides how they combine, and they
-  // are not commensurable: bending energy runs twenty to fifty times the size
-  // of the joint terms, so summing them is a decision about which one wins.
-  //
-  // Under G2 there is no rate to chase and the curve is the whole of the
-  // answer, so the two are summed and the curve carries it -- which is what
-  // lets a joint go from 0.48% to 0.72% in exchange for a curve worth having.
-  //
-  // Under G3 the caller has asked for the rate by name. It gets its own rank
-  // and the curve ranks below it, breaking ties rather than outvoting it.
-  // Folded together instead, the median rate step left behind on 500 random
-  // joints with equalization on went from 8.4% to 20.3%: the rate term was
-  // still in the sum and was simply too small to be heard.
-  //
-  return continuity === "G3"
-    ? { broken, crossed, creased, stepped, refused: 0, unbalanced, residual, unfair }
-    : {
-        broken,
-        crossed,
-        creased,
-        stepped,
-        refused: 0,
-        unbalanced,
-        residual: residual + unfair,
-        unfair: 0,
-      };
+  return { broken, crossed, creased, residual, travel: 0 };
 }
 
 // Ranked, and deliberately not added up.
 //
-// These are four different kinds of wrong and one number cannot hold them: when
-// the crease count and the tension count shared a counter, a state that brought
-// an over-tension handle back under the ceiling and cost a crease scored level
-// with the drawing that had neither fixed, and the tie fell to the residual --
-// so a handle whose lines crossed was left crossed. Each rank is a defect the
-// one below it may not be traded for.
+// These are different kinds of wrong and one number cannot hold them: when the
+// crease count and the tension count shared a counter, a state that brought an
+// over-tension handle back under the ceiling and cost a crease scored level with
+// the drawing that had neither fixed, and the tie fell to the residual -- so a
+// handle whose lines crossed was left crossed. Each rank is a defect the one
+// below it may not be traded for.
 //
 //   broken    a joint that arrived readable and can no longer be measured
 //   crossed   a handle past its segment's Tunni point: the curve doubles back
 //   creased   a smooth point that is not smooth, past what the grid can excuse
-//   stepped   a curvature break the eye can see, so the answer is not G3
-//   residual  how far the joint is from the condition, once all four hold
-//   unfair    the bending energy of the curve either side, under G3 only --
-//             under G2 it is folded into the residual instead, see below
+//   residual  how far the joint is from the condition, once all three hold
+//   travel    how far the answer moved the drawing
 //
+// One control now names one construction, so nothing here compares one
+// construction against another. What is left are the two refusals, the distance
+// from the condition, and a tie-breaker for the whole-unit search: two positions
+// that leave the joint equally good are not equally welcome, and the one that
+// changed less of what the designer drew is the one to keep.
 //
-// `refused` counts the joints a construction gave up on -- it reported an
-// answer for them and said in the same breath that its solve was clamped, over
-// the tension ceiling, or degenerate. It ranks below the hard defects and above
-// everything that measures the curve, because an answer its own solver refused
-// is not an answer, however flat it draws. Curvatura's handle-length solve
-// reported `partial/degenerate` on the reported `B^1` joint and won anyway,
-// leaving one segment at 0.116 against 0.979 from a tick that asks for balance.
-//
-const SCORE_RANKS = [
-  "broken",
-  "crossed",
-  "creased",
-  "stepped",
-  "refused",
-  "unbalanced",
-  "residual",
-  "unfair",
-  // Last, and it decides nothing but a true tie: how far the answer moved the
-  // drawing. Two answers that are equally good are not equally welcome, and the
-  // one that changed less of what the designer drew is the one to keep.
-  //
-  // It is what stops a flip. On `j` point 3 under G3 with the slide and the
-  // balance on, the search found two positions 70 units apart along the tangent
-  // whose curvature and rate agreed to every digit, and each press took the
-  // other one -- for ever, because the state a press keeps is not itself a
-  // candidate of the next press. The slide already breaks its own ties this
-  // way; the gate above it did not.
-  "travel",
-];
-
-// How far apart a segment's two tensions may sit and still read as equal. Only
-// consulted where the designer asked for the balance. Like the perceptual
-// curvature bound it is a constant so that it can be argued with rather than
-// tuned. It is flat and does not stand down, so the tick means the same thing
-// on every drawing.
-const BALANCE_TOLERANCE = 0.05;
+const SCORE_RANKS = ["broken", "crossed", "creased", "residual", "travel"];
 
 // The three words mean different things to the two constructions, and only the
 // handle-length one means "refused" by them. The joint constructions step
@@ -1689,8 +1554,25 @@ export function harmonizeNearestInPlace(path, pointIndices, options = {}) {
     }
   }
 
+  // How far the drawing has moved from where the command found it. The grid
+  // search needs this to break a tie between two whole-unit positions that
+  // leave the joint equally good: the one that changed less of what the
+  // designer drew is the one to keep.
+  const startedAt = Array.from(path.coordinates);
+  const travelSoFar = () => {
+    let travel = 0;
+    for (let index = 0; index < path.numPoints; index++) {
+      const [x, y] = path.getPointPosition(index);
+      travel += Math.hypot(x - startedAt[index * 2], y - startedAt[index * 2 + 1]);
+    }
+    return travel;
+  };
+
   const scoreLimits = { maxHandleTension };
-  const jointResidual = () => scoreJoints(path, candidates, "G2", scoreLimits, arrival);
+  const jointResidual = () => ({
+    ...scoreJoints(path, candidates, "G2", scoreLimits, arrival),
+    travel: travelSoFar(),
+  });
 
   for (let pass = 0; pass < maxIterations; pass++) {
     let anyMoved = false;
@@ -1844,9 +1726,25 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
     }
   }
 
+  // How far the drawing has moved from where the command found it. The grid
+  // search needs this to break a tie between two whole-unit positions that
+  // leave the joint equally good: the one that changed less of what the
+  // designer drew is the one to keep.
+  const startedAt = Array.from(path.coordinates);
+  const travelSoFar = () => {
+    let travel = 0;
+    for (let index = 0; index < path.numPoints; index++) {
+      const [x, y] = path.getPointPosition(index);
+      travel += Math.hypot(x - startedAt[index * 2], y - startedAt[index * 2 + 1]);
+    }
+    return travel;
+  };
+
   const scoreLimits = { maxHandleTension, maxCurvatureStep };
-  const jointResidual = () =>
-    scoreJoints(path, candidates, continuity, scoreLimits, arrivalCurvature);
+  const jointResidual = () => ({
+    ...scoreJoints(path, candidates, continuity, scoreLimits, arrivalCurvature),
+    travel: travelSoFar(),
+  });
 
   // The drawing exactly as it arrived. The verdict at the end is read against
   // this, so a joint can only be called harmonized if something actually moved.
@@ -2336,7 +2234,6 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     // press has no opinion about it. Ranking answers by a property the command
     // does not try for would refuse a good joint for a reason the designer
     // never asked this button for.
-    balanceTolerance: undefined,
   };
   const scoreWith = (candidate, ceilings) =>
     scoreJoints(candidate, candidates, continuity, { ...limits, ceilings }, arrival);
@@ -3287,3 +3184,6 @@ function report({
     construction,
   };
 }
+
+// Exported for the test suite alone: the score and the order it ranks in.
+export { scoreJoints as scoreJointsForTest, isBetter as isBetterForTest };

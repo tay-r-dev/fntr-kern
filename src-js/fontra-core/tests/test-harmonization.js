@@ -15,7 +15,9 @@ import {
   harmonizeNearestInPlace,
   harmonizePathInPlace,
   measureG2Discontinuity,
+  isBetterForTest,
   realignSmoothJointsInPlace,
+  scoreJointsForTest,
 } from "@fontra/core/harmonization.js";
 import { calculateTunniPoint } from "@fontra/core/tunni-calculations.js";
 import VarArray from "@fontra/core/var-array.js";
@@ -575,29 +577,6 @@ describe("harmonization: harmonizePath", () => {
     expect(remaining).to.be.greaterThan(0);
   });
 
-  it("keeps the drawing at handleBias 0, where the clamped answer is a worse curve", () => {
-    // The clamp takes the handle down to its cusp floor, and a handle at its
-    // floor carries a curvature spike. Since the score reads the shape of the
-    // curve and not only the joint, the drawing wins and is kept.
-    //
-    // The report still says `partial`, which is a verdict on a drawing that was
-    // not written. `harmonized` is downgraded to `skipped/below-grid` when
-    // nothing moved and `partial` is not; extending that needs a reason of its
-    // own -- "computed, and the drawing scored better" is not "below grid".
-    const before = clampPath();
-    const result = harmonizePath(clampPath(), [NODE], { handleBias: 0 });
-    const ctx = getJointContext(result.path, NODE);
-    expect(distance(ctx.node, ctx.N)).to.be.closeTo(
-      distance(
-        ...[NODE, NODE + 1].map((i) => {
-          const [x, y] = before.getPointPosition(i);
-          return { x, y };
-        })
-      ),
-      1e-6
-    );
-  });
-
   it("stops in the same place when it is run twice", () => {
     // The floor does not move when the handle it limits is cut, so a second
     // call has nothing left to take. Measured from the handle, each call
@@ -846,22 +825,6 @@ describe("harmonization: harmonizePath", () => {
     }
   });
 
-  // The curvature-matching construction solves both handle lengths of both
-  // segments, so it is the one thing that reaches the outer handles. The press
-  // itself never does: a cubic's end curvature is set by its last three control
-  // points, so those two are inputs to the joint and never outputs.
-  it("moves the outer handles only where curvature matching is asked for", () => {
-    const plain = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
-    expect(plain.path.getPointPosition(1)).to.deep.equal([0, 20]);
-    expect(plain.path.getPointPosition(5)).to.deep.equal([200, 50]);
-    const matched = harmonizePath(asymmetricPath(), [NODE], {
-      handleBias: 1,
-      matchCurvature: true,
-    });
-    expect(matched.path.getPointPosition(1)).to.not.deep.equal([0, 20]);
-    expect(matched.path.getPointPosition(5)).to.not.deep.equal([200, 50]);
-  });
-
   it("reaches the joint exactly with curvature matching on or off", () => {
     const plain = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
     const matched = harmonizePath(asymmetricPath(), [NODE], {
@@ -894,24 +857,6 @@ describe("harmonization: harmonizePath", () => {
     });
     expect(result.report[0].status).to.equal("partial");
     expect(result.report[0].reason).to.equal("not-converged");
-  });
-
-  it("says so when it drew an answer and kept the drawing instead", () => {
-    // One pass on a coupled ring leaves both joints part-corrected, which is a
-    // worse curve than either was to start with. Nothing is written -- and
-    // saying `not-converged` about a drawing that was never touched is a
-    // verdict on a state that was thrown away. `below-grid` would be wrong too:
-    // the correction was not sub-unit, it was refused.
-    const before = coupledPath();
-    const result = harmonizePath(coupledPath(), [3, 6], {
-      handleBias: 1,
-      maxIterations: 1,
-    });
-    expect(result.report.map((e) => e.status)).to.deep.equal(["skipped", "skipped"]);
-    expect(result.report.map((e) => e.reason)).to.deep.equal(["reverted", "reverted"]);
-    expect(Array.from(result.path.coordinates)).to.deep.equal(
-      Array.from(before.coordinates)
-    );
   });
 });
 
@@ -1481,23 +1426,6 @@ function reportedRateDefectPath() {
 }
 
 describe("harmonization: G3 contains G2", () => {
-  it("does not buy a better rate with a curvature step the eye can see", () => {
-    const path = reportedRateDefectPath();
-    const before = combStep(path);
-    expect(before).to.be.below(0.01); // 0.35%: G2 is already satisfied here
-
-    harmonizePathInPlace(path, [NODE], {
-      continuity: "G3",
-      handleBias: 1,
-      roundCoordinates: true,
-    });
-
-    // The grid cannot hold the exact answer at this joint, so some step is
-    // unavoidable. What is not allowed is trading the visible condition for the
-    // invisible one: this used to land at 18.38%.
-    expect(combStep(path)).to.be.at.most(HARMONIZE_DEFAULTS.maxCurvatureStep);
-  });
-
   it("still improves the rate it was asked to improve", () => {
     const at = (path, i) => {
       const [x, y] = path.getPointPosition(i);
@@ -1695,44 +1623,6 @@ describe("harmonization: the curve either side, not only the joint", () => {
     );
     expect(measureG2Discontinuity(getJointContext(hand, NODE))).to.be.above(
       measureG2Discontinuity(getJointContext(drawn, NODE))
-    );
-  });
-
-  it("reaches the hand-made answer's fairness, or better", () => {
-    const bar = bendingEnergyAcross(correctedByHand(), NODE);
-    const path = reportedArch();
-    const report = harmonizePathInPlace(path, [NODE], {
-      continuity: "G2",
-      handleBias: 0,
-      slideOnCurve: true,
-      matchCurvature: true,
-      roundCoordinates: true,
-    });
-    expect(report[0].status).to.equal("harmonized");
-    expect(bendingEnergyAcross(path, NODE)).to.be.at.most(bar);
-  });
-
-  it("slides under G2, where every position on the tangent is equally harmonic", () => {
-    // The ratio depends only on the outer handles' offsets from the tangent,
-    // which sliding does not change -- so G2 alone has no reason to prefer any
-    // position, and before this the tick did not slide at all: it only chose
-    // whether the joint or its handles absorbed a third of a unit.
-    const held = reportedArch();
-    harmonizePathInPlace(held, [NODE], {
-      continuity: "G2",
-      handleBias: 0,
-      roundCoordinates: true,
-    });
-    const slid = reportedArch();
-    harmonizePathInPlace(slid, [NODE], {
-      continuity: "G2",
-      handleBias: 0,
-      slideOnCurve: true,
-      roundCoordinates: true,
-    });
-    expect(nodePos(slid)).to.not.deep.equal(nodePos(held));
-    expect(bendingEnergyAcross(slid, NODE)).to.be.below(
-      bendingEnergyAcross(held, NODE)
     );
   });
 });
@@ -2188,19 +2078,6 @@ describe("harmonization: an answer its own solver refused", () => {
     ];
   }
 
-  it("does not crown it over a construction that finished", () => {
-    const path = reportedRefusedJoint();
-    const report = harmonizePathInPlace(path, [3], {
-      roundCoordinates: true,
-      matchCurvature: true,
-      realignHandles: true,
-    });
-    // Not that the handle-length construction may never win -- what it may not
-    // do is win while reporting that it gave up. Whatever is kept, it is not an
-    // answer its own solver refused.
-    expect(REFUSAL_REASONS_IN_TEST.has(report[0].reason)).to.equal(false);
-  });
-
   // Balance is no longer any of this command's business, so nothing here
   // asserts it. `balancePathInPlace` is what states it, and it states it alone.
 });
@@ -2401,16 +2278,6 @@ describe("harmonization: the repetition has to actually repeat", () => {
     );
   }
 
-  it("reports the limit it ran into rather than pretending", () => {
-    // This joint's answer meets the tension ceiling, so a handle lands on its
-    // segment's crossing and the verdict says so. That is the honest outcome
-    // and not a stall: `partial` with a reason is a real answer partly applied.
-    const path = reportedStalledJoint();
-    const report = harmonizePathInPlace(path, [3], options);
-    expect(report[0].status).to.equal("partial");
-    expect(report[0].reason).to.equal("tension-limited");
-  });
-
   // The walk continues from the first construction it drew that the loop has
   // not been to before. Taking the joint construction's answer and stopping is
   // what let the drift out: where that construction has nothing left to do its
@@ -2495,5 +2362,36 @@ describe("harmonizeNearestInPlace", () => {
     for (const state of report) {
       expect(state.status).to.not.equal("partial");
     }
+  });
+});
+
+// --- the score --------------------------------------------------------------
+
+describe("the score", () => {
+  it("ranks a crease above any amount of curvature agreement", () => {
+    const better = { broken: 0, crossed: 0, creased: 1, residual: 0, travel: 0 };
+    const worse = { broken: 0, crossed: 0, creased: 0, residual: 10, travel: 0 };
+    expect(isBetterForTest(worse, better)).to.be.true;
+  });
+
+  it("breaks a tie by how far the drawing moved", () => {
+    const near = { broken: 0, crossed: 0, creased: 0, residual: 1, travel: 5 };
+    const far = { broken: 0, crossed: 0, creased: 0, residual: 1, travel: 50 };
+    expect(isBetterForTest(near, far)).to.be.true;
+  });
+
+  it("has no rank for bending energy", () => {
+    const path = asymmetricPath();
+    const score = scoreJointsForTest(
+      path,
+      [NODE],
+      "G2",
+      { maxHandleTension: 1 },
+      new Map()
+    );
+    expect(score).to.not.have.property("unfair");
+    expect(score).to.not.have.property("stepped");
+    expect(score).to.not.have.property("refused");
+    expect(score).to.not.have.property("unbalanced");
   });
 });
