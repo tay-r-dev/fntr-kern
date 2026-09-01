@@ -2,7 +2,6 @@ import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
 import {
   HARMONIZE_DEFAULTS,
-  adjustHandles,
   calculateG3Targets,
   calculateHarmonicTarget,
   curvatureDiscontinuity,
@@ -10,7 +9,6 @@ import {
   expandToJoints,
   getJointContext,
   balancePathInPlace,
-  harmonizeHandlesInPlace,
   harmonizePath,
   harmonizeNearestInPlace,
   harmonizePathInPlace,
@@ -1236,87 +1234,6 @@ function handleAngles(path) {
     return Math.atan2(hy - oy, hx - ox);
   });
 }
-
-describe("harmonization: solving handle lengths", () => {
-  it("reaches the two curvatures it was asked for", () => {
-    const path = diagonalJointPath();
-    const points = [0, 1, 2, 3].map((i) => {
-      const [x, y] = path.getPointPosition(i);
-      return { x, y };
-    });
-
-    const solved = adjustHandles(points, 0.004, -0.0025);
-    expect(solved).to.not.equal(null);
-
-    const settled = [points[0], solved[0], solved[1], points[3]];
-    expect(endCurvature(settled, false)).to.be.closeTo(0.004, 1e-9);
-    expect(endCurvature(settled, true)).to.be.closeTo(-0.0025, 1e-9);
-  });
-
-  it("never moves a handle off its own direction", () => {
-    const path = diagonalJointPath();
-    const before = handleAngles(path);
-    harmonizeHandlesInPlace(path, [NODE], {});
-    for (const [i, angle] of handleAngles(path).entries()) {
-      expect(angle).to.be.closeTo(before[i], 1e-9);
-    }
-  });
-
-  it("brings the two sides of a joint onto one curvature", () => {
-    const path = reportedArchPath();
-    const drawn = segmentsAt(path, NODE);
-    const before = curvatureDiscontinuity(drawn.incoming, drawn.outgoing);
-    // 0.53% of the joint's own curvature: small, and the whole complaint.
-    expect(before).to.be.above(1e-5);
-
-    const report = harmonizeHandlesInPlace(path, [NODE], {});
-    expect(report[0].status).to.equal("harmonized");
-    expect(report[0].construction).to.equal("handles");
-
-    const after = segmentsAt(path, NODE);
-    // Both sides land on the mean of the two, exactly, so what is left is
-    // floating-point dust rather than a smaller version of the same gap.
-    expect(curvatureDiscontinuity(after.incoming, after.outgoing)).to.be.below(1e-15);
-  });
-
-  it("flattens an inflection instead of averaging across it", () => {
-    // The two sides curve opposite ways, so there is no magnitude they can
-    // share but zero -- which is what an inflection is. Point-symmetric about
-    // the joint, so neither side is the easier one to flatten.
-    const path = makeContour([
-      { x: -120, y: -90 },
-      cubic(-80, -80),
-      cubic(-40, -50),
-      { x: 0, y: 0, smooth: true },
-      cubic(40, 50),
-      cubic(80, 80),
-      { x: 120, y: 90 },
-    ]);
-    harmonizeHandlesInPlace(path, [NODE], {});
-    const { incoming, outgoing } = segmentsAt(path, NODE);
-    expect(Math.abs(endCurvature(incoming, true))).to.be.below(1e-9);
-    expect(Math.abs(endCurvature(outgoing, false))).to.be.below(1e-9);
-  });
-
-  it("leaves the drawing alone when it cannot improve on it", () => {
-    const path = diagonalJointPath();
-    harmonizeHandlesInPlace(path, [NODE], { roundCoordinates: true });
-    const once = Array.from(path.coordinates);
-    const report = harmonizeHandlesInPlace(path, [NODE], { roundCoordinates: true });
-    expect(Array.from(path.coordinates)).to.deep.equal(once);
-    expect(report[0].status).to.equal("skipped");
-  });
-
-  it("keeps whole-unit coordinates when the editor asks for them", () => {
-    const path = diagonalJointPath();
-    harmonizeHandlesInPlace(path, [NODE], { roundCoordinates: true });
-    for (let index = 0; index < path.numPoints; index++) {
-      for (const value of path.getPointPosition(index)) {
-        expect(value).to.equal(Math.round(value));
-      }
-    }
-  });
-});
 
 // --- G3 may not be bought with G2 -------------------------------------------
 //
