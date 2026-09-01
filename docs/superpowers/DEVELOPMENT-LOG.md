@@ -773,6 +773,52 @@ no editor change at all. Attached to a **straight** is the whole condition.
   consumer draining a value stream must refuse it, including two upstream panels
   that know nothing about this.
 
+### The axis tilts off the rib
+
+Ported from the second lab, `_external/serif-lab-2.html`, which adds three frame
+numbers to the v1 nine. One of the three is here.
+
+- **The tilt was cheap because the lean work was already done.** Three axis
+  modes already put the axis off the perpendicular, so a frame whose depth does
+  not agree with the stroke, and a wall that has to be met rather than assumed,
+  were already built and already tested. The whole geometry change is a rotation
+  and a reordering inside `computeSerifFrame`.
+- **The sweep found a jump the tilt did not cause**, at 391 units. The
+  axis-tangent guard clamped to the FAR side of the tangent, so an axis arriving
+  a fraction inside the 15-degree band left 30 degrees from where it came in —
+  under a tilt, a 150-degree flip of the whole frame at one value of one slider.
+  It was reachable through an absolute angle laid along the stroke and had been
+  in the tree since the guard was written. **The one guard test sits exactly on
+  the tangent, where there is no near side to get wrong**, which is why nothing
+  caught it. No fixture moved for the fix: an axis within 15 degrees of its own
+  stroke is a shape nobody had drawn.
+- **Three further steps are the construction's, not the tilt's**, measured on a
+  curved wall at wing 40, tip 20, slope 20, reach 30, ease 12, sweeping half a
+  degree at a time. Inside 38 degrees the worst step is 0.83, which is the
+  rotation itself and nothing else. At about 38 the wing is swallowed, which is
+  the documented deliberate snap; at about 47 the tip's own line stops crossing
+  the wall, so the tip unclamps and the corner jumps back from the wall foot to
+  its depth answer, 40 units; at about 66 the corner ray runs parallel to the
+  wall and the meeting slides 127 units. Each is reachable through an absolute
+  axis at the same effective angle. The panel offers the range that moves
+  smoothly, 40 either way, which is also the lab's own.
+- **`depthSign` is not here, and the answer is the release rule.** The lab flips
+  the depth so the wing block grows against the stroke — its reverse block and
+  its lowercase entry serif. The lab can, because its flank is a line at a fixed
+  `u` and nothing cares which side of the terminal plane the tip is on. Our
+  terminal finds every shared point ON the wall, and outward of the rib end there
+  is no wall: building one is the straight line from the rib end, closed
+  2026-08-08. It is a second feature.
+- **`backset` is not here either.** Sliding the origin outward leaves the
+  terminal joined to the stroke by its two brackets alone. It composes with the
+  tilt rather than competing with it.
+
+**Manual matrix owed** (rail R-G): tilt a foot serif on an upright stem and on a
+stem leaning 20 degrees; tilt both ends of one stroke and check the two read the
+same way; tilt with a rib angle lock on; tilt with one half collapsed; tilt to
+the ends of the range and back; mirror a tilted terminal; switch a tilted
+terminal to absolute and back.
+
 ### Gaps, and what is left alone
 
 - **The golden fixtures moved for none of the geometry changes above.** They
