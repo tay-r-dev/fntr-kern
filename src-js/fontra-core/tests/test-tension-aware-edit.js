@@ -306,6 +306,28 @@ describe("tension-aware edit — the rigid-link scale", () => {
     expect(solveRigidLinkScale([rectangle], "x", 0.5, 0)).to.equal(null);
   });
 
+  it("plain-scales a contour that has no straight anywhere", () => {
+    // The ordinary shape of a skeleton centerline: one run of curves, no
+    // straights. There is no drawn width to hold, so every point takes the
+    // scale and the tension correction keeps the curves.
+    const allCurves = {
+      points: [
+        onCurve(0, 0),
+        control(0, 100),
+        control(100, 200),
+        onCurve(200, 200),
+        control(300, 200),
+        control(400, 100),
+        onCurve(400, 0),
+      ],
+      isClosed: false,
+    };
+    const [coordinates] = solveRigidLinkScale([allCurves], "x", 0.5, 0);
+    expect(coordinates.get(0)).to.be.closeTo(0, 1e-6);
+    expect(coordinates.get(3)).to.be.closeTo(100, 1e-6);
+    expect(coordinates.get(6)).to.be.closeTo(200, 1e-6);
+  });
+
   it("stands down where every run returns to its own body", () => {
     // A stem with a bowl hung off it: the bowl's two ends sit on the same run
     // of straights, so nothing can be distributed.

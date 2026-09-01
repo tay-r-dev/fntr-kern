@@ -656,6 +656,16 @@ export function solveRigidLinkScale(contours, axis, factor, origin) {
       }
     }
   }
+  // Nothing straight anywhere, so there is no drawn width for the rule to hold
+  // and every point stands on a curve. The plain scale is then the whole
+  // answer, and the tension correction on top of it is what keeps the curves.
+  //
+  // This is the ordinary shape of a skeleton centerline, which is drawn as one
+  // run of curves and has no straights at all. Without the fallback the rule
+  // stood down and a horizontal scale did nothing.
+  if (!allBodies.length) {
+    return solvePlainAxisScale(contours, axis, factor, origin);
+  }
   if (!hasDistributableRun || allBodies.length < 2) {
     return null;
   }
