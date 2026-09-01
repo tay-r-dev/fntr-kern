@@ -673,7 +673,9 @@ describe("harmonization: harmonizePath", () => {
     );
 
     const ops = changes.change.c.map((c) => c.f);
-    expect(ops).to.deep.equal(["=xy", "=xy"]); // the two handles, nothing else
+    // Four handles, each written once: the two inner ones the construction
+    // moves, and the two outer ones the repair moves.
+    expect(ops).to.deep.equal(["=xy", "=xy", "=xy", "=xy"]);
     expect(layerGlyph.path.coordinates).to.be.an.instanceOf(VarArray);
 
     // replaying the change onto the untouched original reproduces it exactly
@@ -702,11 +704,10 @@ describe("harmonization: harmonizePath", () => {
     // unlimited, this joint sends the incoming handle to tension 2.6: it
     // overshoots the Tunni point, the segment's two handle lines cross, and the
     // curve doubles back on itself
-    const unlimited = harmonizePath(overshootPath(), [NODE], {
-      maxHandleTension: Infinity,
-    });
-    expect(Math.max(...jointHandleTensions(unlimited.path))).to.be.greaterThan(2);
-
+    // Unlimited, the construction alone sends the incoming handle to tension
+    // 2.6. There is no entry point that shows that any more: position 2
+    // finishes by balancing and repairing and position 3 slides, and all three
+    // pull an overshoot back. What is pinned here is the ceiling itself.
     const limited = harmonizePath(overshootPath(), [NODE], {});
     expect(Math.max(...jointHandleTensions(limited.path))).to.be.closeTo(1, 1e-6);
     expect(limited.report[0]).to.include({
@@ -765,8 +766,14 @@ describe("harmonization: harmonizePath", () => {
       expect(Number.isInteger(x), `point ${index} x`).to.equal(true);
       expect(Number.isInteger(y), `point ${index} y`).to.equal(true);
     }
+    // the repair moves the outer handles too, so they are rounded as well
+    for (const index of [1, 5]) {
+      const [x, y] = result.path.getPointPosition(index);
+      expect(Number.isInteger(x), `point ${index} x`).to.equal(true);
+      expect(Number.isInteger(y), `point ${index} y`).to.equal(true);
+    }
     // untouched points keep their exact original coordinates
-    for (const index of [0, 1, 3, 5, 6]) {
+    for (const index of [0, 3, 6]) {
       expect(result.path.getPointPosition(index)).to.deep.equal(
         before.getPointPosition(index)
       );
@@ -805,17 +812,20 @@ describe("harmonization: harmonizePath", () => {
     }
   });
 
-  it("never moves the outer handles without tension equalization", () => {
+  it("leaves the outer handles alone at position 3", () => {
     // PP and NN are inputs to the curvature at the joint, not outputs: the G2
     // construction reads them and leaves them alone. Both donors agree
     // (SuperTool+Harmonize.m:55-56 moves prevNode and nextNode only).
-    for (const handleBias of [0, 0.5, 1]) {
+    //
+    // Position 2 does move them, because it finishes with the repair and the
+    // repair is the nearest answer, which moves all four handle lengths.
+    for (const method of ["canonical-slide"]) {
       const path = asymmetricPath();
-      const result = harmonizePath(path, [NODE], { handleBias });
-      expect(result.path.getPointPosition(1), `bias ${handleBias}`).to.deep.equal([
+      const result = harmonizePath(path, [NODE], { method });
+      expect(result.path.getPointPosition(1), `method ${method}`).to.deep.equal([
         0, 20,
       ]);
-      expect(result.path.getPointPosition(5), `bias ${handleBias}`).to.deep.equal([
+      expect(result.path.getPointPosition(5), `method ${method}`).to.deep.equal([
         200, 50,
       ]);
     }
@@ -1563,7 +1573,11 @@ describe("harmonization: realigning a joint before it is solved", () => {
     const path = bentJoint();
     expect(bendAt(path, 3)).to.be.greaterThan(1);
     harmonizePathInPlace(path, [3], {});
-    expect(bendAt(path, 3)).to.be.lessThan(1e-6);
+    // Not exactly zero any more: position 2 finishes by balancing, and
+    // balancing rounds its handles to whole units, which can leave the joint a
+    // fraction off the line. Inside the grid's own worst case, which is what
+    // the score calls a crease.
+    expect(bendAt(path, 3)).to.be.lessThan(gridKinkAllowanceDegrees(path));
   });
 
   it("brings the joint to the handles when neither runs along an axis", () => {
@@ -2209,6 +2223,83 @@ describe("harmonizePathInPlace, one construction per press", () => {
     expect(report[0].construction).to.not.equal("nearest");
   });
 
+  it("balances and repairs after the construction, at position 2", () => {
+    const path = asymmetricPath();
+    harmonizePathInPlace(path, [NODE], { method: "canonical" });
+
+    // the joint is matched
+    expect(measureG2Discontinuity(getJointContext(path, NODE))).to.be.below(1e-6);
+
+    // and the outer handles moved, which the construction alone never does:
+    // that is the repair, which is the nearest answer over all four handles
+    expect(path.getPointPosition(1)).to.not.deep.equal([0, 20]);
+  });
+
+  it("brings a lopsided segment closer to one shared tension", () => {
+    const lopsided = () =>
+      makeContour([
+        { x: 0, y: 0 },
+        cubic(0, 60),
+        cubic(40, 100),
+        { x: 100, y: 100, smooth: true },
+        cubic(190, 100),
+        cubic(200, 30),
+        { x: 200, y: 0 },
+      ]);
+    const gap = (path) => {
+      let worst = 0;
+      for (const indices of [
+        [0, 1, 2, 3],
+        [3, 4, 5, 6],
+      ]) {
+        const points = indices.map((i) => {
+          const [x, y] = path.getPointPosition(i);
+          return { x, y };
+        });
+        const tunni = calculateTunniPoint(points);
+        if (!tunni) {
+          continue;
+        }
+        const reach = (a) => distance(a, tunni);
+        const start = reach(points[0])
+          ? distance(points[0], points[1]) / reach(points[0])
+          : 0;
+        const end = reach(points[3])
+          ? distance(points[3], points[2]) / reach(points[3])
+          : 0;
+        worst = Math.max(worst, Math.abs(start - end));
+      }
+      return worst;
+    };
+
+    const construction = lopsided();
+    harmonizePathInPlace(construction, [NODE], { method: "canonical-slide" });
+
+    const polished = lopsided();
+    harmonizePathInPlace(polished, [NODE], { method: "canonical" });
+
+    // as drawn 0.600, the construction alone 0.554, the construction with the
+    // balance and the repair after it 0.002
+    expect(gap(construction)).to.be.above(0.5);
+    expect(gap(polished)).to.be.below(0.01);
+  });
+
+  it("settles, so a second press moves nothing", () => {
+    const path = asymmetricPath();
+    for (let press = 0; press < 6; press++) {
+      harmonizePathInPlace(path, [NODE], {
+        method: "canonical",
+        roundCoordinates: true,
+      });
+    }
+    const settled = [...path.coordinates];
+    harmonizePathInPlace(path, [NODE], {
+      method: "canonical",
+      roundCoordinates: true,
+    });
+    expect([...path.coordinates]).to.deep.equal(settled);
+  });
+
   it("realigns without being asked", () => {
     const path = bentJointFixture();
     harmonizePathInPlace(path, [NODE], { method: "canonical" });
@@ -2217,7 +2308,8 @@ describe("harmonizePathInPlace, one construction per press", () => {
     const cross =
       (ctx.node.x - ctx.P.x) * (ctx.N.y - ctx.node.y) -
       (ctx.node.y - ctx.P.y) * (ctx.N.x - ctx.node.x);
-    expect(Math.abs(cross)).to.be.below(1);
+    // Not exactly on the line: balancing rounds its handles to whole units.
+    expect(Math.abs(cross)).to.be.below(200);
   });
 });
 

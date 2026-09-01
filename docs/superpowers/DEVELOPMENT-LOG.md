@@ -179,10 +179,35 @@ keyboard after an edit; sharpness and opacity store the full float of a drag.
 
 **State: shipped, reworked 2026-09-01.** One slider names one construction:
 preserve curvature, recompute curvature, or recompute and move the on-curve.
+Position 2 runs three steps: the construction, then a balance, then a repair.
 Every position removes the curvature step at the joint; they differ in what they
 do to the curve either side. G3 has one construction and greys the slider out. Squaring a bent joint up always runs. It reaches skeleton
 centerlines as well as ordinary paths. Feature model section 10 holds the rules;
 this is what measured them.
+
+### Position 2 became three steps (2026-09-01, second pass)
+
+Asked for by the designer: after the construction, equalize the handles the way
+the Balance button does, then run the nearest answer over the result.
+
+- **It converges, where balancing last does not.** The old failure was balancing
+  after the joint was solved, which gave the joint up -- 0% to 63% over eight
+  presses on `N^1.json` point 12. Putting the repair last inverts that, because
+  the repair is the smallest change that answers the joint and so barely
+  disturbs the balance.
+- **Two steps loop; three do not.** Balancing and repairing repeat until neither
+  moves anything: 254 units on the first round of `I^1.json` and nothing by the
+  fifth. Adding the construction to the loop made it oscillate instead -- 11,
+  12.5, 8.6, 14.5, 6.5, 1.0, 2.0 units over eight rounds with no rest.
+- **The balance is worth having.** On a joint arriving with a tension gap of
+  0.600, the construction alone leaves 0.554 and the three steps leave 0.002.
+- **Restricting the two steps to joints the construction solved costs coverage.**
+  On `I^1.json` the worst tension gap ends at 0.244; balancing every selected
+  joint instead reaches 0.019. Kept anyway, so that a joint reported as untouched
+  is untouched.
+- **Two prices, both paid knowingly.** Position 2 now moves the outer handles,
+  because the repair is the nearest answer. And the joint can end 0.34 degrees
+  off its own line, because balancing rounds its handles to whole units.
 
 ### The 2026-09-01 rework
 

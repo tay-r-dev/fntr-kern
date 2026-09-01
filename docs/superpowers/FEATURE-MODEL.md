@@ -1195,7 +1195,7 @@ three of the four smooth joints of `N^1.json`.
 | position | name                         | what it may move                             |
 | -------- | ---------------------------- | -------------------------------------------- |
 | 1        | Preserve curvature           | the four handle lengths, as little as it can |
-| 2        | Recompute curvature          | the two inner handle lengths                 |
+| 2        | Recompute curvature          | the four handle lengths, in three steps      |
 | 3        | Recompute, move the on-curve | the two inner handle lengths, and the joint  |
 
 **Position 1, preserve curvature.** It is the nearest answer. `harmonize-nearest.js`, ported from
@@ -1237,6 +1237,43 @@ unchanged. Position 2 holds the joint still. Position 3 lets the joint slide
 along its own tangent; measured on `I^1.json` the slide changes 18 points and
 201 units of drawing. Both move the two inner handles and neither touches an
 outer handle.
+
+**Position 2 finishes in two more steps.** The construction states one curvature
+and solves the two inner handle lengths for it. It says nothing about how a
+segment's two handles compare, so it can leave a segment lopsided. So position 2
+then balances the segments the way the Balance button does, and then repairs the
+joint with the nearest answer.
+
+- **The order is the whole of it.** Balancing LAST gives the joint up: measured
+  on `N^1.json` point 12, eight presses took it 0%, 6.9%, 9.5%, 13.0%, 17.8% and
+  on to 63%. The repair is what goes last, and it is safe there because it is the
+  smallest change that answers the joint, so it disturbs the balance it was
+  handed as little as the joint allows.
+- **The two steps repeat until neither moves anything**, up to six rounds, so
+  that one press is the whole of it. Done once, a second press still moved the
+  drawing 6.7 units on `I^1.json`, then 2.9, then 1.0, settling on the fifth.
+- **The construction does not repeat with them.** All three in a loop makes the
+  drawing oscillate rather than settle: eight rounds on `I^1.json` moved 11,
+  12.5, 8.6, 14.5, 6.5, 1.0 and 2.0 units and never came to rest.
+- **They run only where the construction reported `harmonized`.** A joint it left
+  partial, clamped or degenerate is not balanced and not repaired, because a
+  joint the command says it did not touch must not be touched. This costs
+  balancing coverage: on `I^1.json` the worst tension gap ends at 0.244 where
+  balancing every selected joint reaches 0.019.
+- **The whole sequence runs on a copy and only the points that ended up somewhere
+  else are written back.** Each step writes the same handles again, so without
+  this one press recorded six changes for four moved handles.
+- **Position 2 therefore moves the outer handles**, which the construction alone
+  never does. The repair is the nearest answer and the nearest answer moves all
+  four handle lengths.
+- **The joint can end a fraction off its own line**, because balancing rounds its
+  handles to whole units. Measured at 0.34 degrees on a test fixture, which is
+  inside the bend the score already treats as the price of the grid.
+- Measured on a joint whose segments arrive at a tension gap of 0.600: the
+  construction alone leaves 0.554, and the three steps leave 0.002.
+
+**Position 3 is the construction alone.** It has no balance and no repair, so it
+is the one place the construction's own answer can be read.
 
 **G3 by the two inner handles.** The joint and both outer handles hold still.
 Equal curvature and equal rate of change of curvature are two equations and the
