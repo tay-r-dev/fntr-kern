@@ -26,6 +26,8 @@ export const applicationSettingsController = new ObservableController({
   // 1 nearest, 2 canonical, 3 canonical with the joint free. See the design
   // document: one control names one construction.
   harmonizeMethod: 2,
+  // Finish with one balance and one repair. See the design document.
+  harmonizeEqualize: true,
   // fork: what a side-mode change does to the drawing (app-level, per D9 — not
   // written to project files). Off is the plain write: the centerline holds
   // still and the letter moves.

@@ -2500,6 +2500,7 @@ export class SceneController {
     const {
       useG3 = applicationSettingsController.model.harmonizeG3,
       method = applicationSettingsController.model.harmonizeMethod,
+      equalizeHandles = applicationSettingsController.model.harmonizeEqualize,
       applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
     } = options;
 
@@ -2528,6 +2529,7 @@ export class SceneController {
         {
           continuity,
           method: construction,
+          equalizeHandles,
         },
         translate("action.harmonize")
       );
@@ -2604,6 +2606,7 @@ export class SceneController {
         const report = harmonizePathInPlace(working, pointIndices, {
           continuity,
           method: construction,
+          equalizeHandles,
           roundCoordinates: true,
         });
         for (let index = 0; index < path.numPoints; index++) {

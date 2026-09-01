@@ -57,6 +57,12 @@ export const HARMONIZE_DEFAULTS = {
   // switch: it added an answer to a field which then decided whether to keep
   // it. See the design document.
   method: "canonical",
+  // Finish with one balance and one repair. Every construction here solves the
+  // joint and says nothing about how a segment's two handles compare, so it can
+  // leave a segment lopsided: right curvature, and a handle configuration a
+  // designer does not want. On by default, and off under G3, where the repair
+  // would throw the rate away.
+  equalizeHandles: true,
   // Never shrink a handle below 15% of a nominal handle for its segment, which
   // is measured from the segment's chord and not from the handle itself. See
   // `cuspFloors`.
@@ -2078,12 +2084,6 @@ function writeBack(path, working) {
   }
 }
 
-// How many times position 2 may balance and repair before it has to have
-// settled. Measured on `N^1.json` and `I^1.json` it settles on the third, and
-// the loop stops the moment a round changes nothing, so this is a ceiling and
-// not a cost.
-const BALANCE_REPAIR_ROUNDS = 6;
-
 //
 // Harmonize the given joints.
 //
@@ -2098,7 +2098,10 @@ const BALANCE_REPAIR_ROUNDS = 6;
 // ranks tied, and the flattest answer won. See the design document.
 //
 export function harmonizePathInPlace(path, pointIndices, options = {}) {
-  const { continuity, method, ...rest } = { ...HARMONIZE_DEFAULTS, ...options };
+  const { continuity, method, equalizeHandles, ...rest } = {
+    ...HARMONIZE_DEFAULTS,
+    ...options,
+  };
 
   const candidates = pointIndices?.length
     ? [...new Set(pointIndices)].sort((a, b) => a - b)
@@ -2122,85 +2125,74 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   // joint of `N^1.json` and `I^1.json` it moved 0 of 88 points.
   realignSmoothJointsInPlace(path, candidates, new Set());
 
-  if (construction === "nearest") {
-    return harmonizeNearestInPlace(path, candidates, { ...rest, continuity });
-  }
-
   // Position 2 is three steps rather than one, so the whole of it runs on a copy
   // and only what ended up somewhere else is written back. Each step moves the
   // same handles again, and every one of those writes would be a recorded
   // change -- which is how a command that settles on the drawing it started
   // from takes an undo step for nothing.
-  const threeSteps = construction === "canonical" && continuity === "G2";
-  const working = threeSteps ? path.copy() : path;
-
-  const jointOptions = {
-    ...rest,
-    continuity,
-    slideOnCurve: construction === "canonical-slide",
-    // The handles are what move at both positions. Position 3 adds the slide;
-    // it does not take the handles away. The design's own table reads
-    // "the two inner handle lengths, and the joint".
-    handleBias: 1,
-  };
-
-  let report = harmonizeByJointInPlace(working, candidates, jointOptions);
-  if (!threeSteps) {
-    return report;
-  }
-
   //
-  // Position 2 finishes in two more steps: balance, then repair.
+  // The finishing pass: one balance, then one repair.
   //
-  // The construction states one curvature and solves the two inner handle
-  // lengths for it. It says nothing about how each segment's two handles
-  // compare, so it can leave a segment lopsided. Balancing evens them, and
-  // evening them moves the inner handles, which puts the joint out again.
+  // Every construction here solves the joint and says nothing about how a
+  // segment's two handles compare, so it can leave a segment lopsided. The
+  // curvature is right and the handle configuration is not one a designer wants
+  // to work with -- measured on `N^1.json` point 12.
   //
-  // The repair is the nearest answer: the smallest change to the four handle
-  // lengths that brings the two curvatures back together. Being the smallest
-  // change is exactly what makes it safe here -- it disturbs the balance it was
-  // handed as little as the joint allows.
+  // So the pass balances each segment the way the Balance command does, and then
+  // repairs the joint with the nearest answer. It is ONE balance and ONE repair,
+  // not a loop.
   //
   // ORDER IS THE WHOLE OF IT. Balancing LAST gives the joint up: measured on
   // `N^1.json` point 12, eight presses took it 0%, 6.9%, 9.5%, 13.0%, 17.8% and
-  // on to 63%. That is why balancing is its own command, and why it is not the
-  // last thing here.
+  // on to 63%. The repair goes last, and it is safe there because it is the
+  // smallest change that answers the joint, so it disturbs the balance it was
+  // handed as little as the joint allows.
   //
-  // Balancing and repairing repeat until neither moves anything. The
-  // construction does NOT repeat with them: running all three in a loop makes
-  // the drawing oscillate rather than settle -- measured on `I^1.json`, eight
-  // rounds moved 11, 12.5, 8.6, 14.5, 6.5, 1.0 and 2.0 units and never came to
-  // rest. Balancing and repairing alone converge, because the repair is the
-  // smallest change that answers the joint.
+  // It is off under G3. The repair matches curvature and nothing else, so
+  // running it after a G3 answer throws the rate away.
   //
-  // The two extra steps polish a joint the construction SOLVED. They do not
-  // rescue one it could not: where the construction was degenerate, clamped or
-  // stopped by the tension ceiling, balancing the segments and repairing the
-  // joint is doing something at a place the designer was told nothing happened.
-  const solved = report
-    .filter((state) => state.status === "harmonized")
-    .map((state) => state.pointIndex);
+  const finishes = equalizeHandles && continuity === "G2";
 
-  let repaired = [];
-  for (let round = 0; solved.length && round < BALANCE_REPAIR_ROUNDS; round++) {
-    const before = Array.from(working.coordinates);
+  // The pass runs on a copy and only the points that ended up somewhere else are
+  // written back. Both steps write the same handles the construction already
+  // wrote, and every one of those writes would be a recorded change -- which is
+  // how a command that settles on the drawing it started from takes an undo step
+  // for nothing.
+  const working = finishes ? path.copy() : path;
 
-    balancePathInPlace(working, solved);
-    repaired = harmonizeNearestInPlace(working, solved, { ...rest, continuity });
+  const report =
+    construction === "nearest"
+      ? harmonizeNearestInPlace(working, candidates, { ...rest, continuity })
+      : harmonizeByJointInPlace(working, candidates, {
+          ...rest,
+          continuity,
+          slideOnCurve: construction === "canonical-slide",
+          // The handles are what move at both positions. Position 3 adds the
+          // slide; it does not take the handles away. The design's own table
+          // reads "the two inner handle lengths, and the joint".
+          handleBias: 1,
+        });
 
-    const after = working.coordinates;
-    let still = true;
-    for (let index = 0; index < before.length; index++) {
-      if (before[index] !== after[index]) {
-        still = false;
-        break;
-      }
-    }
-    if (still) {
-      break;
-    }
+  if (!finishes) {
+    return report;
   }
+
+  // Only where the construction had something to say. Balancing works on
+  // segments rather than joints, so handed the whole candidate list it evens
+  // segments at points the command has just reported it did not touch.
+  const reached = report
+    .filter((state) => state.status !== "skipped")
+    .map((state) => state.pointIndex);
+  if (!reached.length) {
+    writeBack(path, working);
+    return report;
+  }
+
+  balancePathInPlace(working, reached);
+  const repaired = harmonizeNearestInPlace(working, reached, {
+    ...rest,
+    continuity,
+  });
 
   writeBack(path, working);
 

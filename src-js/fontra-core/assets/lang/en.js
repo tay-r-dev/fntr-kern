@@ -741,7 +741,10 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
   "sidebar.selection-transformation.harmonize.method": "Movement",
   "sidebar.selection-transformation.harmonize.method.tooltip":
-    "Every position removes the curvature step at the joint. They differ in what they do to the curve either side of it. Position 1 keeps the curvature you drew and changes the four handle lengths as little as it can. Position 2 throws that curvature away and computes a new one from the two outer handles, then equalizes each segment's two handles and repairs the joint with position 1. Position 3 does the same and also lets the joint slide along its own tangent. G3 has one construction and greys this out.",
+    "Every position removes the curvature step at the joint. They differ in what they do to the curve either side of it. Position 1 keeps the curvature you drew and changes the four handle lengths as little as it can. Position 2 throws that curvature away and computes a new one from the two outer handles, which the drawing then has to reach. Position 3 does the same and also lets the joint slide along its own tangent. G3 has one construction and greys this out.",
+  "sidebar.selection-transformation.harmonize.equalize": "Equalize handles",
+  "sidebar.selection-transformation.harmonize.equalize.tooltip":
+    "Finish with one pass that equalizes each segment's two handles and then repairs the joint. Every position solves the joint and says nothing about how a segment's two handles compare, so it can leave the curvature right and the handles lopsided. Off under G3, where the repair would throw the rate away.",
   "sidebar.selection-transformation.harmonize.method.1": "Preserve curvature",
   "sidebar.selection-transformation.harmonize.method.2": "Recompute curvature",
   "sidebar.selection-transformation.harmonize.method.3": "Recompute, move the on-curve",

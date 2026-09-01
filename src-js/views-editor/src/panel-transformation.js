@@ -785,6 +785,13 @@ export default class TransformationPanel extends Panel {
       disabled: !!applicationSettingsController.model.harmonizeG3,
     });
 
+    formContents.push({
+      type: "checkbox",
+      key: "harmonizeEqualize",
+      label: translate("sidebar.selection-transformation.harmonize.equalize"),
+      value: applicationSettingsController.model.harmonizeEqualize,
+    });
+
     // The name of the position, held as an element rather than a form value.
     // Rebuilding the whole form to redraw one word replaces the slider under
     // the pointer, and a slider replaced mid-gesture goes back to the value it
@@ -900,9 +907,12 @@ export default class TransformationPanel extends Panel {
       }
 
       if (
-        ["harmonizeG3", "harmonizeMethod", "harmonizeOtherSources"].includes(
-          fieldItem.key
-        )
+        [
+          "harmonizeG3",
+          "harmonizeMethod",
+          "harmonizeEqualize",
+          "harmonizeOtherSources",
+        ].includes(fieldItem.key)
       ) {
         applicationSettingsController.model[fieldItem.key] =
           fieldItem.key === "harmonizeMethod" ? Math.round(Number(value)) : value;
@@ -996,6 +1006,7 @@ export default class TransformationPanel extends Panel {
       // command that does something other than what the panel shows is worse
       // than one that does nothing.
       method: this.harmonizeMethodOnScreen(),
+      equalizeHandles: !!settings.harmonizeEqualize,
       applyToOtherSources: settings.harmonizeOtherSources,
     };
     const reports = await this.sceneController.doHarmonize(options);

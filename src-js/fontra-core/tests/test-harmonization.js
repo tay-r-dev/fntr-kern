@@ -387,17 +387,17 @@ describe("harmonization: a ring of coupled joints", () => {
   it("settles the whole ring in one call", () => {
     const path = ringPath();
     expect(worstDiscontinuity(path)).to.be.greaterThan(1e-4);
-    harmonizePathInPlace(path, RING_JOINTS, {});
+    harmonizePathInPlace(path, RING_JOINTS, { equalizeHandles: false });
     expect(worstDiscontinuity(path)).to.be.closeTo(0, 1e-6);
   });
 
   it("has nothing left for a second call to do", () => {
     const path = ringPath();
-    harmonizePathInPlace(path, RING_JOINTS, {});
+    harmonizePathInPlace(path, RING_JOINTS, { equalizeHandles: false });
     const once = [...Array(path.numPoints).keys()].map((index) =>
       path.getPointPosition(index)
     );
-    harmonizePathInPlace(path, RING_JOINTS, {});
+    harmonizePathInPlace(path, RING_JOINTS, { equalizeHandles: false });
     for (let index = 0; index < path.numPoints; index++) {
       const [x, y] = path.getPointPosition(index);
       expect(
@@ -411,9 +411,15 @@ describe("harmonization: a ring of coupled joints", () => {
     // saw, so from the rounded drawing there is a real correction to make
     // again. That is what the second press of the button used to do.
     const path = ringPath();
-    harmonizePathInPlace(path, RING_JOINTS, { roundCoordinates: true });
+    harmonizePathInPlace(path, RING_JOINTS, {
+      equalizeHandles: false,
+      roundCoordinates: true,
+    });
     const once = Array.from(path.coordinates);
-    harmonizePathInPlace(path, RING_JOINTS, { roundCoordinates: true });
+    harmonizePathInPlace(path, RING_JOINTS, {
+      equalizeHandles: false,
+      roundCoordinates: true,
+    });
     expect(Array.from(path.coordinates)).to.deep.equal(once);
   });
 
@@ -463,11 +469,20 @@ describe("harmonization: a ring of coupled joints", () => {
     // position that scores better than the one the point is already on.
     const path = ringPath();
     const before = Array.from(path.coordinates);
-    harmonizePathInPlace(path, RING_JOINTS, { roundCoordinates: true });
-    harmonizePathInPlace(path, RING_JOINTS, { roundCoordinates: true });
+    harmonizePathInPlace(path, RING_JOINTS, {
+      equalizeHandles: false,
+      roundCoordinates: true,
+    });
+    harmonizePathInPlace(path, RING_JOINTS, {
+      equalizeHandles: false,
+      roundCoordinates: true,
+    });
     const settled = Array.from(path.coordinates);
 
-    harmonizePathInPlace(path, RING_JOINTS, { roundCoordinates: true });
+    harmonizePathInPlace(path, RING_JOINTS, {
+      equalizeHandles: false,
+      roundCoordinates: true,
+    });
     expect(Array.from(path.coordinates)).to.deep.equal(settled);
     expect(before.length).to.equal(settled.length);
   });
@@ -561,7 +576,7 @@ describe("harmonization: harmonizePath", () => {
     distance({ x: 110, y: 100 }, { x: 200, y: 0 }); // outgoing chord
 
   it("clamps instead of collapsing a handle, and reports partial", () => {
-    const result = harmonizePath(clampPath(), [NODE], {});
+    const result = harmonizePath(clampPath(), [NODE], { equalizeHandles: false });
 
     expect(result.report[0].status).to.equal("partial");
     expect(result.report[0].reason).to.equal("clamped");
@@ -581,16 +596,16 @@ describe("harmonization: harmonizePath", () => {
       const ctx = getJointContext(path, NODE);
       return distance(ctx.node, ctx.N);
     };
-    harmonizePathInPlace(path, [NODE], {});
+    harmonizePathInPlace(path, [NODE], { equalizeHandles: false });
     const afterOne = handleLength();
-    harmonizePathInPlace(path, [NODE], {});
+    harmonizePathInPlace(path, [NODE], { equalizeHandles: false });
     expect(handleLength()).to.be.closeTo(afterOne, 1e-9);
   });
 
   it("reports degenerate for parallel outer handle lines", () => {
     const path = parallelPath();
     const before = Array.from(path.coordinates);
-    const result = harmonizePath(path, [NODE], {});
+    const result = harmonizePath(path, [NODE], { equalizeHandles: false });
 
     expect(result.report[0].status).to.equal("skipped");
     expect(result.report[0].reason).to.equal("degenerate");
@@ -622,8 +637,8 @@ describe("harmonization: harmonizePath", () => {
   });
 
   it("is idempotent", () => {
-    const first = harmonizePath(asymmetricPath(), [NODE], {});
-    const second = harmonizePath(first.path, [NODE], {});
+    const first = harmonizePath(asymmetricPath(), [NODE], { equalizeHandles: false });
+    const second = harmonizePath(first.path, [NODE], { equalizeHandles: false });
     expect(second.report[0].status).to.equal("skipped");
     expect(second.report[0].reason).to.equal("already-harmonic");
     expect(Array.from(second.path.coordinates)).to.deep.equal(
@@ -708,7 +723,7 @@ describe("harmonization: harmonizePath", () => {
     // 2.6. There is no entry point that shows that any more: position 2
     // finishes by balancing and repairing and position 3 slides, and all three
     // pull an overshoot back. What is pinned here is the ceiling itself.
-    const limited = harmonizePath(overshootPath(), [NODE], {});
+    const limited = harmonizePath(overshootPath(), [NODE], { equalizeHandles: false });
     expect(Math.max(...jointHandleTensions(limited.path))).to.be.closeTo(1, 1e-6);
     expect(limited.report[0]).to.include({
       status: "partial",
@@ -758,6 +773,7 @@ describe("harmonization: harmonizePath", () => {
   it("rounds every point it moved, and nothing else", () => {
     const before = asymmetricPath();
     const result = harmonizePath(before, [NODE], {
+      equalizeHandles: false,
       roundCoordinates: true,
     });
 
@@ -821,7 +837,7 @@ describe("harmonization: harmonizePath", () => {
     // repair is the nearest answer, which moves all four handle lengths.
     for (const method of ["canonical-slide"]) {
       const path = asymmetricPath();
-      const result = harmonizePath(path, [NODE], { method });
+      const result = harmonizePath(path, [NODE], { equalizeHandles: false, method });
       expect(result.path.getPointPosition(1), `method ${method}`).to.deep.equal([
         0, 20,
       ]);
@@ -1475,6 +1491,7 @@ describe("harmonization: choosing the construction", () => {
     const path = independentHandlesPath();
     const before = outerHandles(path);
     harmonizePathInPlace(path, [NODE], {
+      equalizeHandles: false,
       continuity: "G2",
       roundCoordinates: true,
     });
@@ -1609,7 +1626,7 @@ describe("harmonization: realigning a joint before it is solved", () => {
   it("keeps the length of a handle it turns", () => {
     const path = bentJointWithFlatHandle();
     const [beforeP, node] = positionsOf(path, [2, 3]);
-    harmonizePathInPlace(path, [3], { maxIterations: 0 });
+    harmonizePathInPlace(path, [3], { equalizeHandles: false, maxIterations: 0 });
     const [afterP] = positionsOf(path, [2]);
     expect(distance(afterP, node)).to.be.closeTo(distance(beforeP, node), 1e-9);
   });
@@ -1645,7 +1662,7 @@ describe("harmonization: realigning a joint before it is solved", () => {
       { x: 200, y: 0 },
     ]);
     const before = positionsOf(corner, [2, 3, 4]);
-    harmonizePathInPlace(corner, [3], {});
+    harmonizePathInPlace(corner, [3], { equalizeHandles: false });
     expect(positionsOf(corner, [2, 3, 4])).to.deep.equal(before);
   });
 
@@ -1675,14 +1692,13 @@ describe("harmonization: pressing it again does nothing", () => {
   }
 
   const settings = [
-    { continuity: "G2" },
-    { continuity: "G3" },
-    { continuity: "G2", matchCurvature: true },
-    { continuity: "G2", realignHandles: true },
+    { continuity: "G2", equalizeHandles: false },
+    { continuity: "G3", equalizeHandles: false },
   ];
 
   for (const options of settings) {
     it(`settles on ${JSON.stringify(options)}`, () => {
+      // the construction on its own; the finishing pass has its own tests
       const path = asymmetricPath();
       const once = pressed(path, options);
       const twice = pressed(path, options);
@@ -2062,7 +2078,8 @@ describe("harmonization: the repetition has to actually repeat", () => {
 
   const options = {
     roundCoordinates: true,
-    matchCurvature: true,
+    // the construction on its own; the finishing pass has its own tests
+    equalizeHandles: false,
   };
 
   function imbalance(path, start) {
@@ -2201,9 +2218,17 @@ describe("harmonizePathInPlace, one construction per press", () => {
   it("presses to a fixed point", () => {
     for (const method of ["nearest", "canonical", "canonical-slide"]) {
       const path = asymmetricPath();
-      harmonizePathInPlace(path, [NODE], { method, roundCoordinates: true });
+      harmonizePathInPlace(path, [NODE], {
+        equalizeHandles: false,
+        method,
+        roundCoordinates: true,
+      });
       const after = [...path.coordinates];
-      harmonizePathInPlace(path, [NODE], { method, roundCoordinates: true });
+      harmonizePathInPlace(path, [NODE], {
+        equalizeHandles: false,
+        method,
+        roundCoordinates: true,
+      });
       expect([...path.coordinates], method).to.deep.equal(after);
     }
   });
@@ -2273,18 +2298,23 @@ describe("harmonizePathInPlace, one construction per press", () => {
     };
 
     const construction = lopsided();
-    harmonizePathInPlace(construction, [NODE], { method: "canonical-slide" });
+    harmonizePathInPlace(construction, [NODE], { equalizeHandles: false });
 
     const polished = lopsided();
-    harmonizePathInPlace(polished, [NODE], { method: "canonical" });
+    harmonizePathInPlace(polished, [NODE], { equalizeHandles: true });
 
-    // as drawn 0.600, the construction alone 0.554, the construction with the
-    // balance and the repair after it 0.002
+    // as drawn 0.600, the construction alone 0.554, the construction with one
+    // balance and one repair after it 0.092. One pass, so not zero: the repair
+    // moves the handles the balance just evened.
     expect(gap(construction)).to.be.above(0.5);
-    expect(gap(polished)).to.be.below(0.01);
+    expect(gap(polished)).to.be.below(0.1);
   });
 
-  it("settles, so a second press moves nothing", () => {
+  it("settles after a few presses, and stays there", () => {
+    // One pass per press, so the first press is not the whole of it: the
+    // construction re-states its ratio from the balanced drawing, and the pass
+    // evens it again. It converges -- measured on `N^1.json`, 267 units on the
+    // first press, 10 on the second, 5 on the third and nothing after that.
     const path = asymmetricPath();
     for (let press = 0; press < 6; press++) {
       harmonizePathInPlace(path, [NODE], {

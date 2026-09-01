@@ -179,35 +179,41 @@ keyboard after an edit; sharpness and opacity store the full float of a drag.
 
 **State: shipped, reworked 2026-09-01.** One slider names one construction:
 preserve curvature, recompute curvature, or recompute and move the on-curve.
-Position 2 runs three steps: the construction, then a balance, then a repair.
+Every position finishes with one balance and one repair, behind a tick box that
+is on by default.
 Every position removes the curvature step at the joint; they differ in what they
 do to the curve either side. G3 has one construction and greys the slider out. Squaring a bent joint up always runs. It reaches skeleton
 centerlines as well as ordinary paths. Feature model section 10 holds the rules;
 this is what measured them.
 
-### Position 2 became three steps (2026-09-01, second pass)
+### The finishing pass (2026-09-01, second pass)
 
-Asked for by the designer: after the construction, equalize the handles the way
-the Balance button does, then run the nearest answer over the result.
+Asked for by the designer, after reading `N^1.json` point 12: the constructions
+balance the curvature and leave one handle of a segment far longer than the
+other, which is a configuration nobody wants to work with. So every position
+finishes with one balance and one repair, behind a tick box that is on by
+default.
 
 - **It converges, where balancing last does not.** The old failure was balancing
   after the joint was solved, which gave the joint up -- 0% to 63% over eight
   presses on `N^1.json` point 12. Putting the repair last inverts that, because
   the repair is the smallest change that answers the joint and so barely
   disturbs the balance.
-- **Two steps loop; three do not.** Balancing and repairing repeat until neither
-  moves anything: 254 units on the first round of `I^1.json` and nothing by the
-  fifth. Adding the construction to the loop made it oscillate instead -- 11,
-  12.5, 8.6, 14.5, 6.5, 1.0, 2.0 units over eight rounds with no rest.
 - **The balance is worth having.** On a joint arriving with a tension gap of
-  0.600, the construction alone leaves 0.554 and the three steps leave 0.002.
-- **Restricting the two steps to joints the construction solved costs coverage.**
-  On `I^1.json` the worst tension gap ends at 0.244; balancing every selected
-  joint instead reaches 0.019. Kept anyway, so that a joint reported as untouched
-  is untouched.
-- **Two prices, both paid knowingly.** Position 2 now moves the outer handles,
-  because the repair is the nearest answer. And the joint can end 0.34 degrees
-  off its own line, because balancing rounds its handles to whole units.
+  0.600, the construction alone leaves 0.554 and the pass leaves 0.092. Over
+  `N^1.json` the worst gap goes 0.194 to 0.045.
+- **One pass, so the press is not always a fixed point.** `N^1.json` settles on
+  the first press. `I^1.json` takes a second, worth 2.6 units. Looping the two
+  steps reaches a better balance but was not what was asked for; looping all
+  three oscillates -- 11, 12.5, 8.6, 14.5, 6.5, 1.0 and 2.0 units over eight
+  rounds with no rest.
+- **It must not reach a joint the construction skipped.** Balancing works on
+  segments rather than joints, so handed the whole candidate list it evened
+  segments at points the command had just reported untouched -- which broke the
+  skeleton pass's promise to touch nothing outside the points it was given.
+- **Two prices, both paid knowingly.** The pass moves the outer handles, because
+  the repair is the nearest answer. And the joint can end 0.34 degrees off its
+  own line, because balancing rounds its handles to whole units.
 
 ### The 2026-09-01 rework
 
