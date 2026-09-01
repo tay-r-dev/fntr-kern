@@ -96,13 +96,14 @@ sees immediately at large sizes.
 at which the bend is changing. G3 contains G2: an answer that gives up curvature agreement to
 match the rate is not a G3 answer.
 
-**The nearest answer** — for a joint, the smallest change to the four handle lengths that makes
+**The nearest answer**, on the panel **preserve curvature** — for a joint, the smallest change to the four handle lengths that makes
 the two curvatures equal. Equal curvature is one equation and four lengths are four unknowns, so
 the answers form a surface, and this is the point of it closest to what the designer drew.
 
-**Canonical answer** — the joint construction's answer: the two inner handle lengths moved to one
-particular ratio. It is one answer rather than the nearest one, so it can move the drawing much
-further than it has to.
+**Recomputed curvature** — the joint construction's answer. It throws away the curvature the
+designer drew, computes one shared curvature from the two outer handles, and moves the two inner
+handle lengths until both sides reach it. It is one particular answer rather than the nearest one,
+so it can move the drawing much further than it has to.
 
 **Inner and outer handle** — at a joint, the inner handles are the two that grow from the joint
 itself and the outer handles are the two beyond them, growing from the far end of each segment. A

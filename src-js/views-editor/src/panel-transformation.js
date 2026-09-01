@@ -796,7 +796,9 @@ export default class TransformationPanel extends Panel {
         type: "auxiliaryElement",
         auxiliaryElement: (this.harmonizeMethodNameElement = html.span(
           { class: "harmonize-report" },
-          [harmonizeMethodName()]
+          // The form is being rebuilt, so the slider on screen is the previous
+          // one. The stored setting is what the new slider is about to show.
+          [harmonizeMethodName(applicationSettingsController.model.harmonizeMethod)]
         )),
       },
       field3: {},
@@ -905,7 +907,9 @@ export default class TransformationPanel extends Panel {
         applicationSettingsController.model[fieldItem.key] =
           fieldItem.key === "harmonizeMethod" ? Math.round(Number(value)) : value;
         if (this.harmonizeMethodNameElement) {
-          this.harmonizeMethodNameElement.innerText = harmonizeMethodName();
+          this.harmonizeMethodNameElement.innerText = harmonizeMethodName(
+            this.harmonizeMethodOnScreen()
+          );
         }
         // G3 greys the slider out, which is a property of the field and only
         // the rebuild can change it. The position is not: its name is written
@@ -987,7 +991,11 @@ export default class TransformationPanel extends Panel {
     const settings = applicationSettingsController.model;
     const options = {
       useG3: !!settings.harmonizeG3,
-      method: settings.harmonizeMethod,
+      // Read off the slider itself, not off the stored setting. The stored one
+      // is written from a value stream that a click can close early, and a
+      // command that does something other than what the panel shows is worse
+      // than one that does nothing.
+      method: this.harmonizeMethodOnScreen(),
       applyToOtherSources: settings.harmonizeOtherSources,
     };
     const reports = await this.sceneController.doHarmonize(options);
@@ -995,6 +1003,19 @@ export default class TransformationPanel extends Panel {
       formatHarmonizeReport(reports),
       detailHarmonizeReport(reports, options)
     );
+  }
+
+  // The position the slider is actually showing. Falls back to the stored
+  // setting where the form has not been built yet, which is how a keyboard
+  // shortcut reaches this before the panel is ever opened.
+  harmonizeMethodOnScreen() {
+    if (this.infoForm?.hasKey?.("harmonizeMethod")) {
+      const shown = Math.round(Number(this.infoForm.getValue("harmonizeMethod")));
+      if (shown >= 1 && shown <= 3) {
+        return shown;
+      }
+    }
+    return applicationSettingsController.model.harmonizeMethod;
   }
 
   async doBalance() {
@@ -1835,8 +1856,7 @@ customElements.define("panel-transformation", TransformationPanel);
 
 // The name of the harmonize position the panel is set to. Under G3 there is one
 // construction and the slider is greyed out, so the row names that one.
-function harmonizeMethodName() {
-  const settings = applicationSettingsController.model;
-  const position = settings.harmonizeG3 ? 2 : settings.harmonizeMethod;
+function harmonizeMethodName(method) {
+  const position = applicationSettingsController.model.harmonizeG3 ? 2 : method;
   return translate(`sidebar.selection-transformation.harmonize.method.${position}`);
 }

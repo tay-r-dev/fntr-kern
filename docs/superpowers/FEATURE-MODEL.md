@@ -1180,6 +1180,11 @@ controller.
 
 ### 10.2 One control, three positions
 
+Every position removes the curvature step at the joint. They differ in what
+they do to the curve either side of it: position 1 keeps the curvature the
+designer drew, and positions 2 and 3 throw it away and compute a new one from
+the two outer handles.
+
 One press draws one answer. A slider names the construction that runs, and the
 construction gives its answer alone. Until 2026-09-01 the press drew several
 answers and ranked them on nine terms, which is why the tick boxes were not
@@ -1187,13 +1192,13 @@ switches: a tick added an answer to a field and the field then decided whether
 to keep it. The output was identical with the match-curvature tick on and off at
 three of the four smooth joints of `N^1.json`.
 
-| position | name                  | what it may move                             |
-| -------- | --------------------- | -------------------------------------------- |
-| 1        | Nearest               | the four handle lengths, as little as it can |
-| 2        | Canonical             | the two inner handle lengths                 |
-| 3        | Canonical, joint free | the two inner handle lengths, and the joint  |
+| position | name                         | what it may move                             |
+| -------- | ---------------------------- | -------------------------------------------- |
+| 1        | Preserve curvature           | the four handle lengths, as little as it can |
+| 2        | Recompute curvature          | the two inner handle lengths                 |
+| 3        | Recompute, move the on-curve | the two inner handle lengths, and the joint  |
 
-**Position 1, the nearest answer.** `harmonize-nearest.js`, ported from
+**Position 1, preserve curvature.** It is the nearest answer. `harmonize-nearest.js`, ported from
 `_external/g1_g2_g3_bezier_harmonizer.html`. Equal curvature across the joint is
 one equation and the four handle lengths are four unknowns, so the answers form
 a surface. It returns the point of that surface nearest the drawing.
@@ -1227,7 +1232,7 @@ a surface. It returns the point of that surface nearest the drawing.
   between two adjacent frames, reaches a tension of 11.34, and moves the drawing
   461 to 2611 units on the joints where it converges at all.
 
-**Positions 2 and 3, the joint construction.** `harmonizeByJointInPlace`,
+**Positions 2 and 3, recompute the curvature.** The joint construction. `harmonizeByJointInPlace`,
 unchanged. Position 2 holds the joint still. Position 3 lets the joint slide
 along its own tangent; measured on `I^1.json` the slide changes 18 points and
 201 units of drawing. Both move the two inner handles and neither touches an

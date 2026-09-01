@@ -178,8 +178,9 @@ keyboard after an edit; sharpness and opacity store the full float of a drag.
 ## Harmonize (map F8, carried fork extras)
 
 **State: shipped, reworked 2026-09-01.** One slider names one construction:
-Nearest, Canonical, or Canonical with the joint free. G3 has one construction and
-greys the slider out. Squaring a bent joint up always runs. It reaches skeleton
+preserve curvature, recompute curvature, or recompute and move the on-curve.
+Every position removes the curvature step at the joint; they differ in what they
+do to the curve either side. G3 has one construction and greys the slider out. Squaring a bent joint up always runs. It reaches skeleton
 centerlines as well as ordinary paths. Feature model section 10 holds the rules;
 this is what measured them.
 
