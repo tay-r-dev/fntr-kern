@@ -1178,155 +1178,115 @@ It is on F9, in the context menu, and in the Transformation sidebar panel. The
 math is pure and lives in `harmonization.js`. The editor calls it from the scene
 controller.
 
-### 10.2 The three constructions
+### 10.2 One control, three positions
 
-**G3 by the two inner handles, tried first.** The joint and both outer handles
-hold still. Equal curvature and equal rate of change of curvature are two
-equations, and the two inner handle lengths are two unknowns, so the answer is
-exact and unique. There is nothing to iterate and nothing to choose between. It
+One press draws one answer. A slider names the construction that runs, and the
+construction gives its answer alone. Until 2026-09-01 the press drew several
+answers and ranked them on nine terms, which is why the tick boxes were not
+switches: a tick added an answer to a field and the field then decided whether
+to keep it. The output was identical with the match-curvature tick on and off at
+three of the four smooth joints of `N^1.json`.
+
+| position | name                  | what it may move                             |
+| -------- | --------------------- | -------------------------------------------- |
+| 1        | Nearest               | the four handle lengths, as little as it can |
+| 2        | Canonical             | the two inner handle lengths                 |
+| 3        | Canonical, joint free | the two inner handle lengths, and the joint  |
+
+**Position 1, the nearest answer.** `harmonize-nearest.js`, ported from
+`_external/g1_g2_g3_bezier_harmonizer.html`. Equal curvature across the joint is
+one equation and the four handle lengths are four unknowns, so the answers form
+a surface. It returns the point of that surface nearest the drawing.
+
+- The unknowns are the **logarithms** of four multipliers, one per handle. A
+  small change is a small percentage of each handle rather than a small number
+  of units, so the correction spreads over the four handles in proportion to
+  what each can contribute.
+- The step is the **minimum-norm Gauss-Newton** step, which is what makes the
+  answer the nearest one rather than one particular one. Each step is capped at
+  forty per cent of any one multiplier and taken at nine tenths.
+- It **moves the two outer handles**, which the other positions never do. That
+  is the departure that buys its accuracy: on a joint with one flat side and one
+  bent side the two inner handles hit the tension ceiling and leave the joint
+  unmatched, and all four reach it exactly. On point 3 of `N^1.json` the
+  four-handle answer moves the drawing 11.1 units against 36.2 for the same
+  solve restricted to the two inner handles.
+- It **never moves an on-curve point**.
+- Two limits bound it, both computed once before the first step, because the
+  handles keep their directions and the tangent-ray crossing is therefore fixed.
+  No handle may pass its segment's tangent-ray crossing, and no handle may be
+  shorter than one unit. Where a handle lands on a limit and the curvatures still
+  differ the joint reports `tension-limited`, not `harmonized`.
+- **The tension ceiling is a live constraint here, not a formality.** Where a
+  drag carries a joint toward an inflection both curvatures fall toward zero and
+  matching them asks for arbitrarily long handles. On point 19 of `I^1.json`,
+  over three units of drag: curvature 6.5e-5 to -6.0e-6, largest tension 1.95 to
+  3.85, handle movement 1227 to 2517 units. Nothing jumps; the answer grows.
+- **G2 only.** On two equations the same solver is unusable, and this is
+  measured. Over a quarter-unit drag sweep its answer steps by up to 2687 units
+  between two adjacent frames, reaches a tension of 11.34, and moves the drawing
+  461 to 2611 units on the joints where it converges at all.
+
+**Positions 2 and 3, the joint construction.** `harmonizeByJointInPlace`,
+unchanged. Position 2 holds the joint still. Position 3 lets the joint slide
+along its own tangent; measured on `I^1.json` the slide changes 18 points and
+201 units of drawing. Both move the two inner handles and neither touches an
+outer handle.
+
+**G3 by the two inner handles.** The joint and both outer handles hold still.
+Equal curvature and equal rate of change of curvature are two equations and the
+two inner handle lengths are two unknowns, so the answer is exact and unique. It
 is Linus Romer's construction from `_external/curvatura`, section 6.5 of its
-documentation, solved for the **arc-length** rate rather than the parameter rate.
+documentation, solved for the **arc-length** rate rather than the parameter
+rate. Where it is inadmissible the joint drops to G2 from the geometry as it
+stands. Two things make it inadmissible: an inflection, where it asks for the
+square root of a negative product, and an answer outside the cusp floor or the
+tangent intersection.
 
-The two segments run through a joint at different speeds, so equal rates in the
-parameter leave a rate mismatch equal to the ratio of the two speeds — 10 per
-cent on the glyph this was found on. The comb is drawn against arc length and arc
-length is what a designer reads. The arc form is the same shape of closed form,
-one square root and one division, and it is exact to machine precision on both
-conditions.
+**G3 has one construction, and turning it on greys the slider out.** Position 1
+cannot apply, for the reasons above. Position 3 is refused: moving the on-curve
+under G3 moves the drawing 1013 units on `I^1.json` against 201 under G2, and
+the shape it draws is not wanted.
 
-**G2 by the five-point stencil, as the fallback.** Over the stencil `PP P node N
-NN`, intersect the two outer handle lines to get `D`, take the square root of the
-product of two length ratios, and place the harmonic target by that ratio between
-`N` and `P`. This is Simon Cozens' construction. It matches two curvature values,
-which is all G2 asks.
+**The G2 construction itself** gives the joint one curvature that both sides can
+reach, from the two outer handles, and solves the two inner handle lengths for
+it. This is Simon Cozens' construction. It matches two curvature values, which
+is all G2 asks.
 
-**Where G3 is inadmissible**, the joint drops to G2, starting from the geometry
-as it stands. Two things make an answer inadmissible: an inflection, where the
-construction asks for the square root of a negative product; and an answer
-outside the two limits the G2 path already obeys, which are the cusp floor on the
-handle that shrinks and the tangent intersection on the handle that grows.
+**Squaring a bent joint up always runs, before anything is solved.** A smooth
+flag is a claim that the joint and its two neighbours are collinear, and
+nudging, interpolating and changing the grid all break that claim without
+clearing the flag. Every construction solves against the tangent at the joint,
+so a joint that arrives bent limits the answer. Where one handle runs dead
+horizontal or dead vertical off the joint it marks an extreme of the curve, so
+that handle is kept and the other is turned onto it at its own length. Otherwise
+both handles stay where they were drawn and **the joint comes to them** - which
+is the one case where this pass moves an on-curve point. Where a curve meets a
+straight the straight states the direction and the handle turns; that case is
+the one nothing else reaches, because harmonize refuses such a joint outright.
+The rule is mekkablue's Realign BCPs, carried unchanged.
 
-**The on-curve slide, under G3, is a search and not a repair.** When it is
-switched on it is the whole search: every admissible position on the tangent,
-including the one the joint already holds. It is not a fallback for when holding
-the joint still fails, because holding it still almost never fails — as a
-fallback the option did nothing on any healthy joint, and G3 with it on and off
-produced byte-identical output.
+It is unconditional rather than opt-in because it fires only on a bent joint:
+over every smooth joint of `N^1.json` and `I^1.json`, on all three layers, it
+moved 0 of 88 points. A control that does nothing on a healthy drawing teaches
+nothing.
 
-The construction is exact at every admissible position, so in exact arithmetic
-there is nothing to choose between them and the joint would never have reason to
-move. What separates them is the grid: how much of the exact answer survives
-whole-unit rounding depends on where the joint sits. Each candidate is therefore
-judged **as it will be emitted**, on the grid — the same rule the offset
-construction arrived at for its own candidates. Sampling is at whole units along
-the tangent with a fixed cap, and where two positions score alike the tie goes to
-whichever moves the joint less, so a joint already standing at the best place
-stays. Where the caller is not rounding every position ties, and the joint does
-not move at all.
-
-Its range is the far on-curve of either segment measured along the tangent,
-bounded separately in each direction. **It cannot be bounded by the inner
-handles**, because they are what the construction replaces, so their present
-lengths say nothing about where the joint may go.
-
-**Handle lengths only, as a third construction.** Curvatura ships two commands
-and this is the second one (`harmonizehandles_contour`). It does not slide
-anything along a tangent. Every selected node is given a target curvature — the
-mean of the two magnitudes it has now, each side keeping its own sign, and zero
-at an inflection where the two signs disagree and there is no magnitude they can
-share. Every segment then has **both** of its handle lengths solved so that it
-reaches its own two ends' targets: two unknowns, two equations, a quartic, and
-where that leaves two admissible roots the tie goes to the one that bends less.
-Five rounds, because a node's target is read off handles the previous round
-moved.
-
-Two properties follow and are the reason it is here. The handles keep their
-**directions**, so this construction cannot bend a joint at all. And the target
-is shared between the two sides of a node rather than derived from one of them,
-so a run of segments is pulled onto one curvature profile instead of each joint
-being repaired against whatever its neighbour is doing.
-
-It ignores the continuity, slide and bias settings, which have no meaning in it.
-Its answer is one pair of lengths rather than a direction to step along, so there
-is nothing to scale back when it meets the cusp floor or the tension ceiling: it
-is taken whole or refused, and a refusal is reported as `clamped`,
-`tension-limited` or `degenerate` — never as "already harmonic".
-
-**Balancing is not part of this command.** It is its own, beside Harmonize in the
-panel, with its own action and context-menu entry. It brings each curve's two
-handles to one shared tension **holding the harmonic mean of the two fixed**,
-which is the segment's own tension — so the split changes and how full the curve
+**Balancing is not part of this command.** It is its own, beside Harmonize in
+the panel, with its own action and context-menu entry. It brings each curve's
+two handles to one shared tension **holding the harmonic mean of the two fixed**,
+which is the segment's own tension - so the split changes and how full the curve
 is does not. That is the same rule the Tunni gizmo's equalize gesture uses, and
-there is one copy of it. Choosing the fraction by least squares over the curve
-instead moves the drawing least in position, and on a lopsided segment it
-inflates the curve by 21 to 136 per cent; a balance is not the place to decide
-how full a curve is. It refuses a curve whose handles sit on opposite sides of
-its chord, says nothing about any joint, and reaches a skeleton centerline the
+there is one copy of it. It refuses a curve whose handles sit on opposite sides
+of its chord, says nothing about any joint, and reaches a skeleton centerline the
 same way harmonizing does. Three fixed passes settle it against the grid, so one
 press is the whole of it.
 
 The two cannot be one press. A curve's end curvature is set by its last three
 control points, so the inner handle is what harmonizing moves to make two curves
 agree at a joint, and it is also half of what balancing sets. Whichever runs
-last wins outright: balance last gives equal handles and gives the joint up,
-balance first gives an exact joint and handles that drift out of balance. Inside
-one press they chase each other and lose a little handle length on every round
-trip, so the press is never a fixed point. The designer picks the order.
-
-**One preparation pass comes before any of this, and it is opt-in.**
-
-**Realign** puts a smooth joint back on one line. A smooth flag is a claim that
-the joint and its two neighbours are collinear, and nudging, interpolating and
-changing the grid all break that claim without clearing the flag. Every
-construction here solves against the tangent at the joint, and the score refuses
-to buy a bend, so a joint that arrives bent limits the answer for the whole
-press. Where one handle runs dead horizontal or dead vertical off the joint it
-marks an extreme of the curve, so that handle is kept and the other is turned
-onto it at its own length. Otherwise both handles stay where they were drawn and
-the joint comes to them. Where a curve meets a straight the straight states the
-direction and the handle turns. That last case is the one nothing else reaches:
-harmonize refuses such a joint outright, so without this pass it is never
-squared up. The rule is mekkablue's Realign BCPs, carried unchanged.
-
-Harmonize squares a cubic joint up on its own as a side effect, by translating
-both handles together, which is why the pass is not needed for continuity. What
-it buys is the flat handle: the translation carries a horizontal handle off the
-horizontal and the extreme of the curve off the joint.
-
-
-
-**Checkboxes, not a bias slider.** One picks the target and so the cascade; one
-says whether the joint itself may move; one admits the handle-length
-construction and is named for what that construction does, which is to pull a
-run onto one shared curvature.
-Under G2 the second is the whole of the old bias — at one end the on-curve moves
-and the handles hold, at the other the handles move and the on-curve holds, and
-the relative displacement is identical either way, so the curve is the same shape
-and only its position at the joint differs. Under G3 it turns the slide on. The
-values between the old slider's two ends were never asked for.
-
-### 10.2b The press repeats itself
-
-The sweep below settles one solve. A press is prepare, then solve, and that was
-not a fixed point: pressing the button again kept changing the drawing, and a
-designer reading the curvature comb took the change for progress.
-
-The whole press now repeats inside one scored gate, which is the rule the
-rounding loop inside the sweep already uses, applied one level up. Every state
-the repetition lands on is scored, the loop stops the moment a drawing comes
-round a second time, and the best of them is kept. The drawing the command was
-handed is one of the candidates, so a repetition that can only make things
-worse leaves it alone. With neither preparation pass on, a second call now moves
-nothing at all: 0 of 1500 random joints, against 21 to 35 before.
-
-**With the balance on, a second call is not a repetition.** Every call balances
-the drawing it is handed, and that drawing has had its inner handles moved by
-the previous call's solve, so there is something to balance again — 1082 of
-1500 joints still move, and 628 of those come out worse on the raw curvature
-step. The loop settles the solve. It cannot settle two different requests to
-the same handles. Curvatura's model, where the balance is its own command,
-is the answer, and it is a change to what the tick **is** rather than to how it
-runs.
+last wins outright. Inside one press they chase each other and lose a little
+handle length on every round trip, so the press is never a fixed point. The
+designer picks the order.
 
 ### 10.3 The sweep
 
@@ -1347,13 +1307,11 @@ sweep therefore loops over the ring until nothing moves anywhere.
   point where its segment's two handle lines cross. A neighbour's step can push a
   handle back over, so an invariant established at setup is only an assumption by
   the second pass.
-- **Grid rounding is inside the loop.** The sweep settles on fractional
-  coordinates, and from the rounded drawing there is a real correction to make
-  again. The command runs the sweep, rounds, and runs again from the rounded
-  drawing until a drawing comes round a second time — on almost everything, two
-  attempts. Every state is scored and the best is kept, and the drawing it was
-  handed counts as a candidate, so a command that can only make things worse
-  leaves the drawing alone.
+- **Grid rounding happens once, at the end of the sweep.** A residual rounded
+  mid-sweep sits permanently above the convergence tolerance and nothing ever
+  settles. The joint construction repeats the sweep from the rounded drawing
+  until a drawing comes round a second time, because rounding is a nudge the
+  sweep never saw; the nearest construction rounds once, because it is exact.
 - **The verdict is read at the end**, not at the moment a joint went quiet. Quiet
   at the end means harmonized; quiet from the start means already harmonic;
   anything else reports what stopped it.
@@ -1415,99 +1373,54 @@ because a different set of handles has a different harmonic target.
   the two curvatures have opposite signs there and the ratio saturates, and a
   score with no gradient at an inflection cannot tell the G2 fallback's answer
   from the drawing it started on.
-- **The curvature stand-down ratchets onto the field.** A joint may not be left
-  worse than the perceptual bound, and that bound stands down where the drawing
-  already arrived worse — so a joint 40 per cent out is not forbidden from being
-  improved to 30. Read off the arriving drawing alone the stand-down is
-  permanent, and on a badly drawn joint it forbids nothing at all: the reported
-  `j` joint arrives 130 per cent out, every answer passed, and the choice fell
-  through to the term that prefers the flatter curve. So the bound is the worse
-  of the perceptual one and the best step anything on the table actually
-  reached. A bad drawing still excuses an answer while nothing better exists,
-  and stops excusing it the moment something does.
-- **The drawing as handed is a candidate.** The command prepares before it does
-  anything, so without this the state the designer is looking at is never on the
-  table and a press cannot be idempotent — it put one joint into a two-press
-  flip seventy units wide between two answers that were equally harmonic and
-  equally balanced. It is safe only because a crease, an unbalanced segment and
-  a curvature step all rank above the curve: the drawing has to be better by the
-  measures that matter, not merely flatter.
-- **Ranks tie within a relative tolerance, and travel breaks what is left.**
-  Floating-point dust may not decide between two indistinguishable answers, and
-  where they really are indistinguishable the one that changed less of the
-  drawing is kept.
-- **Where to look next and which answer to keep are different questions.** The
-  repetition always walks through the joint construction's answer; the whole
-  field is ranked once, at the end. Ranking the walk stopped the loop dead: a
-  drawing the balance has just prepared is perfectly balanced, so a construction
-  refusing to move outranked a real answer, and the loop saw its own starting
-  point come round on the first attempt.
-- **Every construction is one field, judged once.** The joint constructions and
-  the handle-length solve are all drawn first and chosen between afterwards,
-  because the ratchet above needs to know what the whole field managed before it
-  can rank any of it. Choosing pairwise as they were drawn is what let an answer
-  its own solver had refused beat one that succeeded.
-- **An answer its own solver refused may not win.** Refusal ranks below the hard
-  defects and above everything that measures the curve. It reads the
-  handle-length construction only: that one states a pair of lengths which is
-  taken whole or not at all, so `clamped`, `tension-limited` and `degenerate`
-  there mean it drew nothing. The joint constructions use the same three words
-  for a step they scaled back at a limit, which is a real answer partly applied.
+- **The score is five ranks, and each is a defect the one below may not be
+  traded for**: `broken`, `crossed`, `creased`, `residual`, `travel`. Ranks tie
+  within a relative tolerance so floating-point dust may not decide between two
+  indistinguishable answers, and `travel` breaks what is left: two answers that
+  are equally good are not equally welcome, and the one that changed less of
+  what the designer drew is kept.
 - **Two defects rank above any amount of residual, and are not tradeable.** A
   handle over the tension ceiling is one. A crease at a smooth point is the
   other: curvature continuity across a joint with no common tangent does not mean
   anything, so no amount of it may buy a bend. Every construction here moves
-  points along the tangent and so preserves G1 exactly — but the answer is
-  rounded to whole units, the next attempt reads the tangent off those rounded
-  handles, and the search will walk the joint off G1 one attempt at a time if
+  points along the tangent and so preserves G1 exactly - but the answer is
+  rounded to whole units, the next sweep reads the tangent off those rounded
+  handles, and the search will walk the joint off G1 one step at a time if
   nothing scores it. The line is the grid's own worst case, `atan(sqrt(2)/L)` per
   handle: inside it the bend is the coordinate space, past it the bend was
-  chosen. Collinearity is also scored below that line, in radians alongside the
-  other two terms — curvature times length is the angle a segment turns through,
-  so all three are angles and there is no weight to pick.
+  chosen.
 - **The press has no opinion about balance, and must not acquire one.** It does
   not balance and it does not rank answers by how balanced they are. Ranking by
   a property the command does not pursue refuses a good joint for a reason the
   designer never asked this button for.
-- **The walk continues from the first construction drawn that the loop has not
-  been to.** Taking the joint construction's answer and stopping is what let a
-  drift out: where that construction has nothing left to do its answer IS the
-  state the attempt started from, so the loop saw a repeat and stopped on its
-  first attempt while another construction still had somewhere to go. The
-  drawing then advanced one step per BUTTON press and took eight of them to
-  settle. Where to look next and which answer to keep remain different
-  questions: the whole field is still ranked once, at the end.
-- **A balance lands between the two tensions, and moves the drawing as little
-  as a balance can.** Both handles go to one fraction of the way to the Tunni
-  point, and that fraction is the only free number left. It is chosen by least
-  squares over the whole segment, which has a closed form: the two tensions
-  averaged by how much of the curve each tangent ray shapes. Where the two rays
-  reach equally far it is the plain mean, which is what the donors do. It parts
-  from the plain mean only where one end reaches much further, which is exactly
-  where the plain mean moves the drawing most. A segment whose two handles sit
-  on opposite sides of its chord is refused: no one tension describes an S.
+- **The score does not rank on bending energy.** It did, and that is the second
+  fault the 2026-09-01 rework removed: once every answer cleared the joint
+  bound the ranks tied, the flattest answer won, and the command spent 45 more
+  units of movement on a difference nobody can see. The slide choosers inside
+  the joint construction still read it to pick a position along the tangent,
+  which is position 3's own business and not a comparison between constructions.
 - **A verdict describes the drawing that was kept.** A joint can converge
   exactly and still have nothing to write, because its correction was smaller
   than the grid can hold and the position it already sits on is the best one
-  available. That reports `skipped` with reason `below-grid`. Reading the
-  verdict off a state the best-state gate had discarded is what made an
-  unchanged drawing report "1 harmonized".
+  available. That reports `skipped` with reason `below-grid`.
 
 ### 10.6 Known defects
 
-- **A joint the inner gate reverts is invisible to the outer field.** Under G3,
-  where a joint's only reachable answer is the tension-limited G2 fallback, the
-  inner gate ranks that answer below the drawing and puts the drawing back. The
-  outer field then holds nothing but that one state, so the curvature ratchet
-  takes its step as the bound and forbids nothing. `B^1.json` point 3 is left at
-  189 per cent under G3 and reaches 1.20 per cent under G2, and it says
-  `skipped/reverted` rather than pretending. Letting the outer field see the
-  inner gate's discards is the fix.
 - **Rounding happens after the tension ceiling**, so a handle at exactly tension
   1 can land a fraction over it. Sub-unit. A ceiling of 0.98 would remove it.
   The grid search counts ceiling violations ahead of curvature, so it will not
   choose a position that crosses one, but it cannot undo an overshoot that
   every candidate shares.
+- **Squaring a bent joint up may move the on-curve point, at every position.**
+  Where neither handle is more deliberate than the other, that pass brings the
+  joint to the handles. Position 1 promises never to move an on-curve point and
+  position 2 promises to hold the joint still; both promises describe the
+  construction, not the pass that runs before it. On a drawing whose joints
+  arrive straight the pass moves nothing, which is the ordinary case.
+- **Position 3 still chooses its place along the tangent by bending energy.**
+  The slide's own chooser was left as it was, because position 3 is today's
+  construction unchanged. On the reported arch joint it slides the joint 11
+  units where the correction is 0.344 units. Position 2 leaves that joint alone.
 
 ---
 

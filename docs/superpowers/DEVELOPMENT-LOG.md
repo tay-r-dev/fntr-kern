@@ -177,11 +177,57 @@ keyboard after an edit; sharpness and opacity store the full float of a drag.
 
 ## Harmonize (map F8, carried fork extras)
 
-**State: shipped, one defect open.** Three constructions — G3 tried first with G2
-as its fallback, and Curvatura's handle-length solve as a separate check that
-replaces both — plus two opt-in preparation passes, realign then equalize. It
-reaches skeleton centerlines as well as ordinary paths. Feature model §10.5 holds
-the rules; this is what measured them.
+**State: shipped, reworked 2026-09-01.** One slider names one construction:
+Nearest, Canonical, or Canonical with the joint free. G3 has one construction and
+greys the slider out. Squaring a bent joint up always runs. It reaches skeleton
+centerlines as well as ordinary paths. Feature model section 10 holds the rules;
+this is what measured them.
+
+### The 2026-09-01 rework
+
+- **The tick boxes were not switches.** Each one added an answer to a ranked
+  field, and the field then decided whether to keep it. The output was identical
+  with the match-curvature tick on and off at three of the four smooth joints of
+  `N^1.json`. This is the finding that decided the whole slider design.
+- **The nearest answer is exact and moves the drawing seven times less on the
+  reported joint.** `N^1.json` point 12 arrives 4.177 per cent out. The old
+  command moved the drawing 85.0 units and left 0.006 per cent. The nearest
+  answer restricted to the same two handles moved 5.6 units and left 0.000.
+- **The 85 units are one joint, not the command.** On seven of nine measured
+  joints the old command moved the drawing about as far as the nearest answer
+  restricted to the two inner handles, and on two it moved less.
+- **Four handles buy real accuracy on a broken joint.** `N^1.json` point 3: 11.1
+  units against 36.2 for the same solve restricted to the two inner handles.
+  Where one side is flat and the other bent, the two inner handles hit the
+  tension ceiling and never match the joint at all; all four reach it exactly.
+- **The grid search must be kept.** The nearest answer is exact in floats, and
+  rounding each point to its own nearest unit leaves 1.206 per cent on
+  `N^1.json` point 12 and 14.819 per cent on `I^1.json` point 4, against 0.000
+  for the whole-unit search.
+- **G2 nearest is continuous but unbounded near an inflection.** Over a
+  quarter-unit drag sweep the answer steps by at most 0.06 units. Toward an
+  inflection it simply grows: `I^1.json` point 19 over three units of drag goes
+  curvature 6.5e-5 to -6.0e-6, tension 1.95 to 3.85, movement 1227 to 2517
+  units. So the tension ceiling is a live constraint at position 1.
+- **G3 nearest is discontinuous and unusable.** Over the same sweep its answer
+  steps by 1397, 2149, 2421 and 2687 units between adjacent frames and reaches a
+  tension of 11.34. That is why G3 has one construction.
+- **Moving the on-curve under G3 is not wanted.** It moves the drawing 1013
+  units on `I^1.json` against 201 under G2.
+- **Realigning moves nothing on a healthy drawing.** Over every smooth joint of
+  `N^1.json` and `I^1.json`, on all three layers, it moved 0 of 88 points. It
+  fires only on a bent joint, so it became unconditional.
+- **What the rework withdrew.** The sixteen prepare-then-solve rounds; the rank
+  on bending energy; the rank on distance moved as a chooser between
+  constructions; the perceptual curvature bound and the ratchet that stood it
+  down; the rank on an answer its own solver refused; and the handle-length
+  construction with its quartic root finder. Twenty-eight tests went with them
+  and seventeen arrived. The suite went 2315 to 2313.
+- **Three losses were paid for knowingly.** Two joints that only reached a G3
+  answer after repeated rounds now stop at the G2 fallback. The comb-sag
+  position the grid search used to reach through bending energy is no longer
+  reached. And the reported arch joint, whose correction is 0.344 units, is now
+  written rather than discarded at position 2 and slid 11 units at position 3.
 
 ### The constructions
 

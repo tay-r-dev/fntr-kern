@@ -92,6 +92,23 @@ small circle means high curvature, a big circle means nearly straight.
 direction matches, the join still catches the light as a faint flat spot, which a type designer
 sees immediately at large sizes.
 
+**G3 continuity** — two segments meet with the same direction, the same bend, and the same rate
+at which the bend is changing. G3 contains G2: an answer that gives up curvature agreement to
+match the rate is not a G3 answer.
+
+**The nearest answer** — for a joint, the smallest change to the four handle lengths that makes
+the two curvatures equal. Equal curvature is one equation and four lengths are four unknowns, so
+the answers form a surface, and this is the point of it closest to what the designer drew.
+
+**Canonical answer** — the joint construction's answer: the two inner handle lengths moved to one
+particular ratio. It is one answer rather than the nearest one, so it can move the drawing much
+further than it has to.
+
+**Inner and outer handle** — at a joint, the inner handles are the two that grow from the joint
+itself and the outer handles are the two beyond them, growing from the far end of each segment. A
+cubic's curvature at one end depends only on its last three control points, so an outer handle is
+an input to the canonical answer and never an output. The nearest answer moves all four.
+
 **Tension** — how far a handle is pushed out from its point, as a fraction of the way to where the
 two end tangents cross. At 0 the handle sits on its own point and the segment is straight. At 1 it
 sits on the crossing point and the curve is as full as a single cubic gets. A circle needs 0.5523.
