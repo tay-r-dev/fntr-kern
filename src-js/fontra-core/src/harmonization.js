@@ -23,6 +23,7 @@
 // two ways, which is what `handleBias` blends between.
 //
 
+import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
 import { calculateTunniPoint, equalizeTensions } from "./tunni-calculations.js";
 import { POINT_TYPE_OFF_CURVE_CUBIC } from "./var-path.js";
 import {
@@ -1641,6 +1642,134 @@ function snapToGrid(path, touched, jointResidual, isBetter) {
       break;
     }
   }
+}
+
+//
+// The nearest answer, applied over a selection.
+//
+// The solver moves the two OUTER handles as well as the two inner ones, which
+// is what buys its accuracy: on point 3 of `_external/problem-glyphs/N^1.json`
+// the four-handle answer moves the drawing 11.1 units and the same solve
+// restricted to the two inner handles moves 36.2.
+//
+// An outer handle of one joint is an inner handle of the next joint along, so a
+// joint's answer changes its neighbours' inputs. That is what the sweep is for,
+// and it is the same reason the other construction sweeps.
+//
+export function harmonizeNearestInPlace(path, pointIndices, options = {}) {
+  const { toleranceUnits, maxIterations, maxHandleTension, roundCoordinates } = {
+    ...HARMONIZE_DEFAULTS,
+    ...options,
+  };
+
+  const candidates = pointIndices?.length
+    ? [...new Set(pointIndices)].sort((a, b) => a - b)
+    : expandToJoints(path, undefined);
+
+  const touched = new Set();
+  const states = new Map();
+  for (const pointIndex of candidates) {
+    states.set(pointIndex, {
+      pointIndex,
+      contourIndex: path.getContourIndex(pointIndex),
+      status: undefined,
+      reason: undefined,
+      construction: "nearest",
+      everMoved: false,
+    });
+  }
+
+  // What each joint arrived with, captured before anything moves, so the score
+  // can tell a joint this command broke from one that was already unreadable.
+  const arrival = new Map();
+  for (const pointIndex of candidates) {
+    const ctx = getJointContext(path, pointIndex);
+    if (!ctx.reason) {
+      arrival.set(pointIndex, relativeCurvatureStep(path, ctx));
+    }
+  }
+
+  const scoreLimits = { maxHandleTension };
+  const jointResidual = () => scoreJoints(path, candidates, "G2", scoreLimits, arrival);
+
+  for (let pass = 0; pass < maxIterations; pass++) {
+    let anyMoved = false;
+
+    for (const pointIndex of candidates) {
+      const state = states.get(pointIndex);
+      const ctx = getJointContext(path, pointIndex);
+      if (ctx.reason) {
+        state.status = "skipped";
+        state.reason = ctx.reason;
+        continue;
+      }
+      const stencil = jointStencil(path, ctx);
+      if (!stencil) {
+        state.status = "skipped";
+        state.reason = "not-curve-joint";
+        continue;
+      }
+
+      const segments = jointSegments(path, ctx);
+      const [incoming, outgoing] = segments;
+      const seven = [
+        stencil.incoming[0],
+        stencil.incoming[1],
+        stencil.incoming[2],
+        stencil.incoming[3],
+        stencil.outgoing[1],
+        stencil.outgoing[2],
+        stencil.outgoing[3],
+      ];
+
+      const solved = solveNearestHandleScales(seven, { maxHandleTension });
+      state.status = solved.status === "solved" ? "harmonized" : solved.status;
+      state.reason = solved.reason;
+      if (solved.status === "skipped") {
+        continue;
+      }
+
+      // The four handle point indices, in the solver's own order:
+      // A -> PP, node -> P, node -> N, C -> NN.
+      const handleIndices = [
+        incoming.indices[1],
+        incoming.indices[2],
+        outgoing.indices[1],
+        outgoing.indices[2],
+      ];
+      const placed = applyHandleScales(seven, solved.scales);
+      const placedHandles = [placed[1], placed[2], placed[4], placed[5]];
+
+      for (let k = 0; k < 4; k++) {
+        const [x, y] = path.getPointPosition(handleIndices[k]);
+        const target = placedHandles[k];
+        if (Math.hypot(target.x - x, target.y - y) > toleranceUnits) {
+          anyMoved = true;
+          state.everMoved = true;
+        }
+        writePoint(path, touched, handleIndices[k], target);
+      }
+    }
+
+    if (!anyMoved) {
+      break;
+    }
+  }
+
+  if (roundCoordinates) {
+    snapToGrid(path, touched, jointResidual, isBetter);
+  }
+
+  // A joint whose handles all came back to where they started did nothing, and
+  // the verdict describes the drawing that was kept.
+  for (const state of states.values()) {
+    if (state.status === "harmonized" && !state.everMoved) {
+      state.status = "skipped";
+      state.reason = "below-grid";
+    }
+  }
+
+  return [...states.values()];
 }
 
 //

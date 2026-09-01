@@ -12,6 +12,7 @@ import {
   balancePathInPlace,
   harmonizeHandlesInPlace,
   harmonizePath,
+  harmonizeNearestInPlace,
   harmonizePathInPlace,
   measureG2Discontinuity,
   realignSmoothJointsInPlace,
@@ -54,6 +55,25 @@ function symmetricPath() {
     cubic(150, 100),
     cubic(200, 50),
     { x: 200, y: 0 },
+  ]);
+}
+
+// A closed ring of four curve segments, so every joint shares a segment with
+// two others and one joint's answer disturbs them.
+function roundContourPath() {
+  return makeContour([
+    { x: 0, y: 100 },
+    cubic(0, 155),
+    cubic(45, 200),
+    { x: 100, y: 200, smooth: true },
+    cubic(155, 200),
+    cubic(200, 155),
+    { x: 200, y: 100, smooth: true },
+    cubic(200, 45),
+    cubic(155, 0),
+    { x: 100, y: 0, smooth: true },
+    cubic(45, 0),
+    cubic(0, 45),
   ]);
 }
 
@@ -2415,5 +2435,65 @@ describe("harmonization: the repetition has to actually repeat", () => {
     expect(Math.max(...jointHandleTensions(path))).to.be.at.most(1 + 1e-9);
     balancePathInPlace(path, [3]);
     expect(Math.max(...jointHandleTensions(path))).to.be.lessThan(0.995);
+  });
+});
+
+// --- harmonizeNearestInPlace ------------------------------------------------
+
+describe("harmonizeNearestInPlace", () => {
+  it("matches the two curvatures at a joint", () => {
+    const path = asymmetricPath();
+    harmonizeNearestInPlace(path, [NODE], {});
+    const ctx = getJointContext(path, NODE);
+    expect(measureG2Discontinuity(ctx)).to.be.below(1e-6);
+  });
+
+  it("moves the outer handles, which the joint construction does not", () => {
+    const path = asymmetricPath();
+    const before = [...path.coordinates];
+    harmonizeNearestInPlace(path, [NODE], {});
+    // PP is point 1 and NN is point 5 of the fixture contour
+    const outerMoved =
+      path.coordinates[2] !== before[2] ||
+      path.coordinates[3] !== before[3] ||
+      path.coordinates[10] !== before[10] ||
+      path.coordinates[11] !== before[11];
+    expect(outerMoved).to.be.true;
+  });
+
+  it("never moves an on-curve point", () => {
+    const path = asymmetricPath();
+    const before = [...path.coordinates];
+    harmonizeNearestInPlace(path, [NODE], {});
+    for (const index of [0, 3, 6]) {
+      expect(path.coordinates[index * 2]).to.equal(before[index * 2]);
+      expect(path.coordinates[index * 2 + 1]).to.equal(before[index * 2 + 1]);
+    }
+  });
+
+  it("writes nothing on a joint that is already harmonic", () => {
+    const path = symmetricPath();
+    const before = [...path.coordinates];
+    const report = harmonizeNearestInPlace(path, [NODE], {});
+    expect([...path.coordinates]).to.deep.equal(before);
+    expect(report[0].status).to.equal("skipped");
+    expect(report[0].reason).to.equal("already-harmonic");
+  });
+
+  it("is a fixed point: a second call moves nothing", () => {
+    const path = asymmetricPath();
+    harmonizeNearestInPlace(path, [NODE], { roundCoordinates: true });
+    const after = [...path.coordinates];
+    harmonizeNearestInPlace(path, [NODE], { roundCoordinates: true });
+    expect([...path.coordinates]).to.deep.equal(after);
+  });
+
+  it("settles a ring where every joint disturbs its neighbours", () => {
+    const path = roundContourPath();
+    const report = harmonizeNearestInPlace(path, null, { roundCoordinates: true });
+    expect(report.length).to.be.above(1);
+    for (const state of report) {
+      expect(state.status).to.not.equal("partial");
+    }
   });
 });
