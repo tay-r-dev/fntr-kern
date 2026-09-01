@@ -3784,3 +3784,74 @@ describe("skeleton-generator corner sweeps", () => {
     expect(worstStep(bowed, 0, 40, 160)).to.be.below(6);
   });
 });
+
+// A new per-point serif field is invisible to the generator until something
+// copies it across explicitly: `canonicalToGeneratorInput` flattens every point
+// before generation. The curvature pin failed in exactly this way once — it
+// stored, it read back, and it did nothing. So the tilt is tested THROUGH
+// generation and not only in the frame.
+describe("skeleton-generator serif axis tilt", () => {
+  const half = {
+    wingLength: 40,
+    tipThickness: 20,
+    wingSlope: 20,
+    tipCutAngle: 0,
+    reach: 30,
+    tension: 0.7,
+    concavity: 0.8,
+    easeDistance: 0,
+    easeCurvature: 0,
+  };
+  const stem = (serif) => ({
+    version: 1,
+    nextId: 4,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 100,
+        capStyle: "serif",
+        points: [
+          { id: 1, x: 0, y: 0, serif: { left: half, right: half, ...serif } },
+          { id: 2, x: 0, y: 200 },
+          { id: 3, x: 0, y: 500 },
+        ],
+      },
+    ],
+    generated: [],
+  });
+  const points = (data) => generateFromSkeleton(data).contours[0].points;
+
+  it("reaches the generator at all", () => {
+    const upright = points(stem({ axisMode: "tilt", axisTilt: 0 }));
+    const tilted = points(stem({ axisMode: "tilt", axisTilt: 20 }));
+    const moved = Math.max(
+      ...upright.map((point, i) =>
+        Math.hypot(point.x - tilted[i].x, point.y - tilted[i].y)
+      )
+    );
+    expect(moved).to.be.above(10);
+  });
+
+  it("draws the perpendicular at a tilt of zero", () => {
+    const perpendicular = points(stem({ axisMode: "perpendicular" }));
+    const zero = points(stem({ axisMode: "tilt", axisTilt: 0 }));
+    expect(zero).to.deep.equal(perpendicular);
+  });
+
+  it("ignores the tilt in every other mode", () => {
+    for (const axisMode of ["perpendicular", "horizontal", "vertical", "absolute"]) {
+      const without = points(stem({ axisMode, axisAngle: 10 }));
+      const with_ = points(stem({ axisMode, axisAngle: 10, axisTilt: 25 }));
+      expect(with_, axisMode).to.deep.equal(without);
+    }
+  });
+
+  it("keeps the point count across the tilt's whole range", () => {
+    const counts = new Set();
+    for (let tilt = -40; tilt <= 40; tilt += 2) {
+      counts.add(points(stem({ axisMode: "tilt", axisTilt: tilt })).length);
+    }
+    expect(counts.size).to.equal(1);
+  });
+});

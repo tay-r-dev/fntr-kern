@@ -113,11 +113,16 @@ export const CAP_POINT_FIELDS = [
 // here and matched against the provenance the generator stamps, so the two
 // cannot drift apart.
 export const CAP_CURVATURE_FIELDS = new Set(["capBallEaseCurvature"]);
+// `tilt` is `perpendicular` turned off the rib by a stated angle. It is a mode
+// rather than a number every mode reads, so the plain perpendicular stays the
+// default and the tilt is something a designer asks for. The three named modes
+// state a direction outright and have no rib to be turned off.
 export const VALID_SERIF_AXIS_MODES = new Set([
   "perpendicular",
   "horizontal",
   "vertical",
   "absolute",
+  "tilt",
 ]);
 export const VALID_SERIF_UNITS_MODES = new Set(["absolute", "normalized"]);
 // Which sides of the terminal the serif is built on, and whether the two are
@@ -155,6 +160,7 @@ export const SERIF_HALF_FIELDS = Object.freeze([
 // centre along the foot, from the midpoint of the two tips out onto either one.
 export const SERIF_TERMINAL_FIELDS = Object.freeze([
   "axisAngle",
+  "axisTilt",
   "undersideCup",
   "undersideCupTension",
   "undersideCupBalance",
@@ -2627,10 +2633,14 @@ export function setSkeletonSerifParameters(point, values) {
       continue;
     }
     const value = values[field];
+    // The two angles keep what they hold rather than dropping to zero. Both sit
+    // behind a mode, on a summary slider, and a mixed selection delivers an
+    // empty value through it — zeroing every terminal from that is not what the
+    // designer touched. Every other terminal field takes an emptied box as zero.
     serif[field] = Number.isFinite(value)
       ? value
-      : field === "axisAngle"
-        ? serif.axisAngle
+      : field === "axisAngle" || field === "axisTilt"
+        ? serif[field]
         : 0;
   }
   // The balance runs tip to tip and stops there. Bounded here rather than in the
@@ -2956,6 +2966,13 @@ export function transformSkeletonPointMetadata(point, affine) {
   // correction.
   if (Number.isFinite(point.serif?.axisAngle)) {
     point.serif.axisAngle = -point.serif.axisAngle;
+  }
+  // The tilt negates too, and for its own reason rather than by analogy. A
+  // mirror takes the frame to (-M(axis), M(depth)): the axis is re-oriented to
+  // the new left while depth still points into the stroke. A tilt of θ on the
+  // old frame is a tilt of -θ on that one.
+  if (Number.isFinite(point.serif?.axisTilt)) {
+    point.serif.axisTilt = -point.serif.axisTilt;
   }
 }
 
@@ -3893,8 +3910,9 @@ function normalizeSerif(serif) {
       : "perpendicular",
   };
   normalized.axisAngle = Number.isFinite(serif?.axisAngle) ? serif.axisAngle : 0;
+  normalized.axisTilt = Number.isFinite(serif?.axisTilt) ? serif.axisTilt : 0;
   for (const field of SERIF_TERMINAL_FIELDS) {
-    if (field === "axisAngle") continue;
+    if (field === "axisAngle" || field === "axisTilt") continue;
     normalized[field] = Number.isFinite(serif?.[field])
       ? serif[field]
       : (SERIF_FIELD_DEFAULTS[field] ?? 0);

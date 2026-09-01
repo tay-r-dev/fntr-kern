@@ -6269,6 +6269,7 @@ function buildSerifCap({
     normal,
     axisMode: pointSerif?.axisMode ?? "perpendicular",
     axisAngle: pointSerif?.axisAngle ?? 0,
+    axisTilt: pointSerif?.axisTilt ?? 0,
   });
   const unitsContext = {
     unitsMode: serifUnitsMode,

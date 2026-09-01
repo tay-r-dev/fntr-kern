@@ -1354,7 +1354,25 @@ describe("skeleton-model serif schema", () => {
     const point = normalizeSkeletonPoint({ x: 0, y: 0 });
     expect(point.serif.axisMode).to.equal("perpendicular");
     expect(point.serif.axisAngle).to.equal(0);
+    expect(point.serif.axisTilt).to.equal(0);
     expect(point.serif.linked).to.equal(true);
+  });
+
+  it("accepts the tilt mode and stores its angle", () => {
+    const point = { x: 0, y: 0 };
+    setSkeletonSerifParameters(point, { axisMode: "tilt", axisTilt: -18 });
+    expect(point.serif.axisMode).to.equal("tilt");
+    expect(point.serif.axisTilt).to.equal(-18);
+  });
+
+  it("keeps the stored tilt when the field arrives empty", () => {
+    // A mixed selection delivers an empty value through the summary slider.
+    // Every other terminal field takes that as zero; the two angles do not,
+    // because zeroing every terminal in the selection is not what was touched.
+    const point = { x: 0, y: 0 };
+    setSkeletonSerifParameters(point, { axisMode: "tilt", axisTilt: 12 });
+    setSkeletonSerifParameters(point, { axisTilt: null });
+    expect(point.serif.axisTilt).to.equal(12);
   });
 
   it("rejects an unknown axis mode", () => {
@@ -1405,6 +1423,21 @@ describe("skeleton-model serif mirroring", () => {
     const point = serifPoint();
     transformSkeletonPointMetadata(point, mirrorX);
     expect(point.serif.axisAngle).to.equal(-30);
+  });
+
+  it("negates the axis tilt on a flip", () => {
+    // A mirror takes the frame to (-M(axis), M(depth)), so a tilt of theta on
+    // the old frame is a tilt of -theta on the new one. Unlike wingSlope and
+    // tipCutAngle, which are measured inside a half and corrected by the swap.
+    const point = normalizeSkeletonPoint({
+      x: 0,
+      y: 0,
+      serif: { axisMode: "tilt", axisTilt: 22 },
+    });
+    transformSkeletonPointMetadata(point, mirrorX);
+    expect(point.serif.axisTilt).to.equal(-22);
+    transformSkeletonPointMetadata(point, mirrorX);
+    expect(point.serif.axisTilt).to.equal(22);
   });
 
   it("leaves the axis mode alone on a flip", () => {
