@@ -214,3 +214,41 @@ Balancing was split out of this command on 2026-09-01 and is now its own. It
 brings a curve's two handles to one shared tension while holding the curve's own
 fullness fixed. It is not implicated in anything above, and a rework of
 harmonizing should leave it alone.
+
+---
+
+## 8. The panel, as the designer asked for it (2026-09-01)
+
+The checkboxes go. One positional slider replaces them. Each position says how
+much the command is allowed to move. The positions run from least movement to
+most.
+
+1. **The reference solve.** Handle lengths only. The nearest answer. It moves no
+   point.
+2. **Our construction, holding the joint still.**
+3. **Our construction, allowed to move the joint along its tangent.**
+
+At most four positions. Three are named here.
+
+**The match-curvature tick goes.** Position 1 takes its place.
+
+**G3 stays opt-in.** It is a separate control. The same three positions apply
+under it.
+
+---
+
+## 9. The unknowns to check before anything is designed
+
+1. **Continuity under a drag.** Does the nearest-answer solve stay continuous
+   while the designer drags? Every frame is recomputed. An answer that jumps
+   between two configurations is unusable however accurate it is. Gauss-Newton
+   from a fixed start with a fixed trip count is deterministic. Deterministic is
+   not continuous, and this project has paid for that distinction before.
+2. **A badly broken joint.** What does the nearest answer draw where the joint
+   arrives far out? The nearest answer may be a poor shape there, and the
+   present construction's one particular answer may be what is wanted.
+3. **The scoring layer.** With one answer instead of a field, most of the ranks
+   have nothing to choose between. Which parts are invariants that still have to
+   hold, and which parts are preferences that go?
+4. **Realign.** It is not known that this pass does anything at all. Measure
+   what it changes, and on which joints. If it changes nothing, it goes.
