@@ -40,14 +40,23 @@ import {
 
 export const HARMONIZE_DEFAULTS = {
   // "G2" matches curvature across the joint. "G3" also matches its rate of
-  // change, which is what removes the crease from the curvature comb. G3 is
-  // tried first and falls back to G2 wherever it has no admissible answer.
+  // change, which is what removes the crease from the curvature comb.
   continuity: "G2",
-  // Under G3, allow the joint itself to slide along its tangent where holding
-  // it still leaves the construction with no answer inside its bounds. It is a
-  // repair, so a joint that does not need it does not move.
-  slideOnCurve: false,
-  handleBias: 1.0, //     0 = move the node, 1 = move the handles
+  // Which construction runs. The designer names it, so one press draws one
+  // answer.
+  //
+  //   nearest          the smallest change to the four handle lengths that
+  //                    makes the two curvatures equal
+  //   canonical        the two inner handle lengths, moved to one particular
+  //                    ratio, with the joint held still
+  //   canonical-slide  the same, and the joint may slide along its tangent
+  //
+  // Until 2026-09-01 the press drew several of these at once and ranked them,
+  // and the rank on bending energy is what spent 85 units of movement on a
+  // joint that arrived 4.177% out. A tick box on the panel was therefore not a
+  // switch: it added an answer to a field which then decided whether to keep
+  // it. See the design document.
+  method: "canonical",
   // Never shrink a handle below 15% of a nominal handle for its segment, which
   // is measured from the segment's chord and not from the handle itself. See
   // `cuspFloors`.
@@ -57,51 +66,10 @@ export const HARMONIZE_DEFAULTS = {
   // joint is solved in one; a ring of coupled joints (an 'o') takes ~8. The
   // math is a handful of square roots, so the budget is generous on purpose.
   maxIterations: 50,
-  // How many times the whole press -- prepare, then solve -- may repeat before
-  // it has to have settled. Every state is scored and the best is kept, so a
-  // repetition can only improve the drawing. One is a single press.
-  //
-  // The loop stops the moment every construction it drew has come round before,
-  // so this is a ceiling and not a cost: a drawing that settles in three
-  // attempts takes three. It was eight, which was one short of a fixed point
-  // once two constructions were competing — the second press still moved, and
-  // the number of attempts is exactly what decided whether it did.
-  pressAttempts: 16,
-  // Square up a smooth joint whose handles have drifted off its tangent,
-  // before anything is solved. A joint that arrives bent is corrected against
-  // a tangent that is not there.
-  realignHandles: false,
-  // Admit the second construction: give every selected point one curvature
-  // shared by both its sides, and solve all four handle lengths of both
-  // segments to reach it. It pulls a run onto one curvature profile rather than
-  // repairing one joint, so it moves the outer handles PP and NN and it is
-  // opt-in for that reason.
-  //
-  // This tick used to balance the segments as well, before the solve. Balancing
-  // is now its own command: the two want the same handles and cannot both be
-  // exact, so pressing one button for both walked the drawing flatter on every
-  // press and never settled. See `balancePathInPlace`.
-  matchCurvature: false,
   // Ceiling on how far a handle may reach toward its segment's Tunni point.
   // At 1 it lands exactly on it; past 1 the segment's two handle lines cross
   // each other and the curve doubles back.
   maxHandleTension: 1,
-  // The largest curvature step G3 may leave behind at a joint that arrived
-  // better than this, as a fraction of the joint's own curvature.
-  //
-  // It is a perceptual bound, and it is named rather than derived because the
-  // thing it bounds is perceptual: the comb draws fringe length against
-  // curvature, so this IS the step in the comb, and "when does a designer see a
-  // break" has no answer in the geometry. Three per cent was set against
-  // judgement on `n` node 13 -- an answer at 2.34% reads as a good curve there
-  // and one at 18.38% reads as broken. It is here as a setting rather than a
-  // constant so it can be argued with.
-  //
-  // A ceiling and never a target: each joint's ceiling is the WORSE of this and
-  // what the drawing arrived with, so a joint already 40% out is not forbidden
-  // from being improved to 30%, and a joint that arrives clean cannot be
-  // dirtied past it.
-  maxCurvatureStep: 0.03,
   // Round the points this operation moved to whole units, once, at the end.
   // Off here so the math stays exact and testable; the editor turns it on,
   // because a document wants integer coordinates and the sweep does not.
@@ -910,29 +878,6 @@ function scoreJoints(path, candidates, continuity, limits, arrival) {
 //
 const SCORE_RANKS = ["broken", "crossed", "creased", "residual", "travel"];
 
-// The three words mean different things to the two constructions, and only the
-// handle-length one means "refused" by them. The joint constructions step
-// toward their answer and scale the step back when they meet a limit, so a
-// clamped joint answer is real and partly applied. The handle-length solve
-// states one pair of lengths, which is taken whole or not at all, so the same
-// words there mean it drew nothing. `not-converged` is never a refusal: that
-// answer is real and simply unfinished.
-const REFUSAL_REASONS = new Set(["degenerate", "clamped", "tension-limited"]);
-
-function refusalCount(report) {
-  let refused = 0;
-  for (const state of report || []) {
-    if (
-      state.construction === "handles" &&
-      state.status === "partial" &&
-      REFUSAL_REASONS.has(state.reason)
-    ) {
-      refused += 1;
-    }
-  }
-  return refused;
-}
-
 //
 // Two answers this close on a rank are the same answer on that rank, and the
 // next one down decides. Without it, floating-point dust in the twelfth digit
@@ -1668,7 +1613,6 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
     toleranceUnits,
     maxIterations,
     maxHandleTension,
-    maxCurvatureStep,
     roundCoordinates,
   } = {
     ...HARMONIZE_DEFAULTS,
@@ -1684,7 +1628,7 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
   const numericBias = rawHandleBias == null ? NaN : Number(rawHandleBias);
   const handleBias = Number.isFinite(numericBias)
     ? Math.min(1, Math.max(0, numericBias))
-    : HARMONIZE_DEFAULTS.handleBias;
+    : 1;
 
   const candidates = pointIndices?.length
     ? [...new Set(pointIndices)].sort((a, b) => a - b)
@@ -1740,7 +1684,7 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
     return travel;
   };
 
-  const scoreLimits = { maxHandleTension, maxCurvatureStep };
+  const scoreLimits = { maxHandleTension };
   const jointResidual = () => ({
     ...scoreJoints(path, candidates, continuity, scoreLimits, arrivalCurvature),
     travel: travelSoFar(),
@@ -2124,327 +2068,49 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
 //
 // Harmonize the given joints.
 //
-// Two constructions can answer, and which of them is right is a question about
-// the drawing rather than about the designer's intent, so it is not asked as a
-// checkbox. The joint construction slides points along the tangent -- it can
-// trade length between a joint's two handles, or move the whole joint, but the
-// sum of the two lengths is fixed and the outer handles are never touched. The
-// handle-length construction rescales both handles of every segment against a
-// curvature target shared by the two sides of each node, so it is the only one
-// that can change the two lengths independently, and it does move the outer
-// handles.
+// One control names one construction, and one construction gives one answer.
+// There is nothing here to choose between, so there is no field and no ranking
+// left at this level. What each construction still does internally is sweep
+// until it settles and search the whole-unit positions around its own answer.
 //
-// Measured on `n` joint 4: the joint construction has no answer above the grid
-// and writes nothing, G3 leaves the curvature step larger than it found it, and
-// the handle-length solve takes it from 1.4e-4 to 1.8e-5 -- by shortening one
-// handle from 28 units to 7 while lengthening the other, which no amount of
-// sliding can express.
-//
-// So both are run and the score picks, which is what the G3 cascade has always
-// done between G3 and G2. It is only honest because the score reads the shape
-// of the curve now and not just the joint; while it measured one point it could
-// not have been trusted with this. The report names the construction that ran.
-//
-// The ticks say what is wanted -- G2 or G3, whether the joint may move, whether
-// to equalize afterwards -- and never how to compute it.
+// Until 2026-09-01 this drew several answers and ranked them on nine terms. The
+// rank on bending energy is what spent 85 units of movement on a joint that
+// arrived 4.177 per cent out: once every answer cleared the joint bound the
+// ranks tied, and the flattest answer won. See the design document.
 //
 export function harmonizePathInPlace(path, pointIndices, options = {}) {
-  const {
-    continuity,
-    matchCurvature,
-    realignHandles,
-    maxHandleTension,
-    maxCurvatureStep,
-    roundCoordinates,
-    pressAttempts,
-  } = {
-    ...HARMONIZE_DEFAULTS,
-    ...options,
-  };
+  const { continuity, method, ...rest } = { ...HARMONIZE_DEFAULTS, ...options };
 
   const candidates = pointIndices?.length
     ? [...new Set(pointIndices)].sort((a, b) => a - b)
     : expandToJoints(path, undefined);
 
-  //
-  // The preparation pass.
-  //
-  // It runs outside the gate: it is not a proposal about continuity, and the
-  // gate judges nothing else.
-  //
-  // Balancing used to run here too, and it is now its own command. It wants the
-  // same handles the solve wants and neither can have them exactly, so with the
-  // two inside one press they chased each other: every press balanced what the
-  // last solve had unbalanced, the solve unbalanced it again, and each round
-  // trip lost a little handle length. On `N^1` point 12 that walked the
-  // tensions from 0.85 to 0.815 over forty presses, and no press was ever a
-  // fixed point. See `balancePathInPlace`.
-  //
-  function prepare(target) {
-    const prepared = new Set();
+  // G3 has one construction. The nearest answer on two equations steps by up to
+  // 2687 units between two adjacent frames of a quarter-unit drag and reaches a
+  // tension of 11.34, and moving the on-curve under G3 moves the drawing 1013
+  // units on `_external/problem-glyphs/I^1.json` against 201 under G2. Both
+  // measured 2026-09-01.
+  const construction = continuity === "G3" ? "canonical" : method;
 
-    // Square the joints up first of all. Every construction reads the joint's
-    // tangent, so they want a drawing whose smooth flags are true.
-    if (realignHandles) {
-      realignSmoothJointsInPlace(target, candidates, prepared);
-    }
+  // The preparation pass. It squares up a joint whose handles have drifted off
+  // one line, and every construction here solves against the tangent at the
+  // joint. It always runs: it fires only on a bent joint, and over every smooth
+  // joint of `N^1.json` and `I^1.json` it moved 0 of 88 points.
+  realignSmoothJointsInPlace(path, candidates, new Set());
 
-    // Whole units, by rounding and not by searching. The search below is for
-    // choosing between answers; the pass above is not offering one.
-    if (roundCoordinates) {
-      for (const index of prepared) {
-        const [x, y] = target.getPointPosition(index);
-        target.setPointPosition(index, Math.round(x), Math.round(y));
-      }
-    }
+  if (construction === "nearest") {
+    return harmonizeNearestInPlace(path, candidates, { ...rest, continuity });
   }
 
-  // The drawing exactly as the command was handed it, kept as a candidate of
-  // its own. Without it a press cannot be idempotent: whatever the previous
-  // press left, this one prepares before it does anything, so the state the
-  // designer is looking at is not on the table and cannot be chosen again.
-  //
-  // On `j` point 3 under G3 with the slide and the balance on, that put the
-  // joint into a two-press flip 70 units wide, between two mirror answers whose
-  // curvature and rate agreed to every digit. Each press could see only the
-  // other one, so each press took it.
-  //
-  // It is safe to offer only because a crease, an unbalanced segment and a
-  // curvature step all rank above the curve now. Those are what stop it
-  // reverting the preparation passes, which is what this candidate did the last
-  // time it existed.
-  const asHanded = path.copy();
-
-  prepare(path);
-
-  // What each joint's curvature step was in the drawing the solve is handed.
-  // Read once: it is a ceiling on the answer, and every attempt below is judged
-  // against the same one.
-  const arrival = new Map();
-  for (const pointIndex of candidates) {
-    const ctx = getJointContext(path, pointIndex);
-    if (!ctx.reason) {
-      arrival.set(pointIndex, relativeCurvatureStep(path, ctx));
-    }
-  }
-  const limits = {
-    maxHandleTension,
-    maxCurvatureStep,
-    // Nothing here pursues balance any more: it is its own command, and the
-    // press has no opinion about it. Ranking answers by a property the command
-    // does not try for would refuse a good joint for a reason the designer
-    // never asked this button for.
-  };
-  const scoreWith = (candidate, ceilings) =>
-    scoreJoints(candidate, candidates, continuity, { ...limits, ceilings }, arrival);
-
-  //
-  // One solve, on a copy. It hands back every answer it drew rather than
-  // choosing between them: the choice belongs to the one gate at the end, which
-  // is the only place that knows what the whole field managed.
-  //
-  function solveOnce(from) {
-    const drawn = [];
-
-    const byJoint = from.copy();
-    drawn.push({
-      path: byJoint,
-      report: harmonizeByJointInPlace(byJoint, candidates, options),
-    });
-
-    // The handle-length candidate is only admissible where moving the outer
-    // handles is. A cubic's end curvature depends only on its last three
-    // control points, so `PP` and `NN` are inputs to the joint construction and
-    // never outputs -- and that is a rule this module keeps, not an accident:
-    // it is why equalizing is an opt-in pass rather than part of the default
-    // press.
-    //
-    // The handle-length solve rescales both handles of every segment, so it
-    // does move them, which is what `matchCurvature` is the tick for. With it
-    // off there is one candidate and the press moves the two handles at each
-    // joint and nothing else.
-    if (matchCurvature) {
-      const byHandles = from.copy();
-      drawn.push({
-        path: byHandles,
-        report: harmonizeHandlesInPlace(byHandles, candidates, options),
-      });
-    }
-    return drawn;
-  }
-
-  //
-  // Press it until it settles, and keep the best drawing of all of them.
-  //
-  // A press was not a fixed point, and with the preparation passes on it was
-  // nowhere near one: over 2000 random joints a second press moved points on
-  // 1115 of them, improved 660 and made 430 WORSE. The reason is the order
-  // above -- equalize reads the drawing the previous press's solve left, so
-  // balance and solve chase each other. Pressing the button repeatedly was
-  // therefore a gamble that read as convergence.
-  //
-  // The answer is the one the rounding loop inside `harmonizeByJointInPlace`
-  // already uses, applied one level up: every state the repetition lands on is
-  // scored, the loop stops the moment a drawing comes round a second time, and
-  // the best of them is kept. The drawing the command was handed is one of the
-  // candidates, so a repetition that can only make things worse leaves it
-  // alone -- which is what makes pressing the button twice do nothing.
-  //
-  const original = Array.from(path.coordinates);
-  const seen = new Set([original.join(",")]);
-
-  // The prepared drawing is the first candidate and the floor, so the two
-  // preparation passes always land and a press that can only make things worse
-  // leaves the drawing alone.
-  const field = [
-    { path: path.copy(), report: null },
-    { path: asHanded, report: null },
-  ];
-  let current = path;
-
-  for (let attempt = 0; attempt < Math.max(1, pressAttempts); attempt++) {
-    const drawn = solveOnce(current);
-    field.push(...drawn);
-
-    // Which one the next attempt carries on from: the joint construction's,
-    // always. This is not the choice of a winner -- the whole field is ranked
-    // at the end -- it is the choice of where to look next, and the two are not
-    // the same question.
-    //
-    // Ranking the continuation nearly cost the loop entirely. A drawing the
-    // balance has just prepared is perfectly balanced, so the handle-length
-    // solve refusing to move scored better on the balance rank than the joint
-    // construction's real answer. The loop then carried on from a state it had
-    // already seen, saw its own starting point come round, and stopped on the
-    // first attempt -- so `pressAttempts` made no difference at any value, and
-    // the reported joint kept its tension-limited first answer.
-    //
-    //
-    // The joint construction's answer, unless the loop has already been there.
-    //
-    // Taking it and stopping is what let the drift out. Where the joint
-    // construction has nothing left to do, its answer IS the drawing the
-    // attempt started from, so the repetition saw a state it had seen and
-    // stopped on its first attempt — while the curvature-matching construction
-    // still had somewhere to go. The loop then advanced that construction by
-    // exactly one step per button press, so the drawing walked for eight
-    // presses before it settled and the press was not a fixed point.
-    //
-    // Falling through to the next construction drawn keeps the two questions
-    // apart, which is the rule that matters here: where to look next is not
-    // which answer to keep. The whole field is still ranked once, at the end.
-    //
-    const next = drawn.find(
-      (candidate) => !seen.has(Array.from(candidate.path.coordinates).join(","))
-    );
-    if (!next) {
-      break;
-    }
-    seen.add(Array.from(next.path.coordinates).join(","));
-    current = next.path.copy();
-    // Prepared again for the next attempt, because the solve has moved the
-    // inner handles and rounded them, so both passes have something to say
-    // about the drawing again. This is what makes the repetition a cycle the
-    // loop can detect rather than a drift a second button press continues.
-    prepare(current);
-  }
-
-  //
-  // The stand-down ratchets onto the field.
-  //
-  // A joint may not be left worse than `maxCurvatureStep`, and that bound
-  // stands down where the drawing already arrived worse -- so that a joint 40%
-  // out is not forbidden from being improved to 30%. Read off the arriving
-  // drawing alone, the stand-down is permanent: the reported `j` joint arrives
-  // 130% out, so every answer passed however bad, and the choice fell through
-  // to the term that prefers the flatter curve. The tick that admits the
-  // handle-length construction was therefore the tick that flattened the
-  // stroke, and the balance it promised was overwritten by the answer it let in.
-  //
-  // The bound is the worse of `maxCurvatureStep` and the best step anything on
-  // the table actually reached. So a bad drawing still excuses an answer while
-  // nothing better exists, and stops excusing it the moment something does.
-  //
-  const ceilings = new Map();
-  for (const pointIndex of candidates) {
-    if (!arrival.has(pointIndex)) {
-      continue;
-    }
-    let reached = arrival.get(pointIndex);
-    for (const { path: candidate } of field) {
-      const ctx = getJointContext(candidate, pointIndex);
-      if (!ctx.reason) {
-        reached = Math.min(reached, relativeCurvatureStep(candidate, ctx));
-      }
-    }
-    ceilings.set(pointIndex, Math.max(reached, maxCurvatureStep));
-  }
-
-  // First wins a tie, and the prepared drawing is first, so an answer has to
-  // beat it rather than merely match it.
-  // How far a candidate moved the drawing, summed over every point.
-  const travelOf = (candidate) => {
-    let travel = 0;
-    for (let index = 0; index < candidate.numPoints; index++) {
-      const [x, y] = candidate.getPointPosition(index);
-      travel += Math.hypot(x - original[index * 2], y - original[index * 2 + 1]);
-    }
-    return travel;
-  };
-
-  const rank = (candidate) => ({
-    ...scoreWith(candidate.path, ceilings),
-    refused: refusalCount(candidate.report),
-    travel: travelOf(candidate.path),
+  return harmonizeByJointInPlace(path, candidates, {
+    ...rest,
+    continuity,
+    slideOnCurve: construction === "canonical-slide",
+    // The handles are what move at both positions. Position 3 adds the slide;
+    // it does not take the handles away. The design's own table reads
+    // "the two inner handle lengths, and the joint".
+    handleBias: 1,
   });
-
-  let best = field[0];
-  let bestScore = rank(best);
-  for (const candidate of field.slice(1)) {
-    const score = rank(candidate);
-    if (isBetter(score, bestScore)) {
-      best = candidate;
-      bestScore = score;
-    }
-  }
-
-  for (let index = 0; index < path.numPoints; index++) {
-    const [x, y] = path.getPointPosition(index);
-    const [bestX, bestY] = best.path.getPointPosition(index);
-    if (bestX !== x || bestY !== y) {
-      path.setPointPosition(index, bestX, bestY);
-    }
-  }
-
-  //
-  // A verdict describes the drawing that was kept. Each press already says that
-  // about its own attempt, and the gate above can still put the whole thing
-  // back, so the same test is applied once more against the drawing as it
-  // arrived. An answer was drawn and the drawing beat it: that is `reverted`.
-  //
-  // The verdicts describe harmonization alone. A joint that reports `skipped`
-  // may still have had its two segments balanced by the preparation passes:
-  // `skipped` means nothing was harmonized there, not that nothing moved.
-  //
-  const report = best.report ?? field.find((c) => c.report)?.report ?? [];
-  for (const state of report) {
-    if (state.status !== "harmonized" && state.status !== "partial") {
-      continue;
-    }
-    const ctx = getJointContext(path, state.pointIndex);
-    const stencil = ctx.reason
-      ? [state.pointIndex]
-      : [state.pointIndex, ...Object.values(ctx.indices)];
-    const moved = stencil.some((index) => {
-      const [x, y] = path.getPointPosition(index);
-      return original[index * 2] !== x || original[index * 2 + 1] !== y;
-    });
-    if (!moved) {
-      state.status = "skipped";
-      state.reason = "reverted";
-    }
-  }
-  return report;
 }
 
 // --- the donors' other command: harmonize by handle LENGTH -------------------

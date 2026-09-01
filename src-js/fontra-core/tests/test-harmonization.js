@@ -39,6 +39,14 @@ const REFUSAL_REASONS_IN_TEST = new Set(["clamped", "tension-limited", "degenera
 // so `node` sits at absolute point index 3 and carries the 5-point stencil
 // the harmonization algorithm needs.
 
+// The drawing after the pass that squares a bent smooth joint up. That pass is
+// unconditional now, so it is part of what every construction is handed and not
+// part of any construction's answer.
+function squaredUp(path) {
+  realignSmoothJointsInPlace(path, expandToJoints(path, undefined), new Set());
+  return path;
+}
+
 function makeContour(points, isClosed = true) {
   return VarPackedPath.fromUnpackedContours([{ points, isClosed }]);
 }
@@ -335,7 +343,9 @@ describe("harmonization: measureG2Discontinuity", () => {
   });
 
   it("drops to zero once the joint has been harmonized", () => {
-    const { path } = harmonizePath(asymmetricPath(), [NODE], { handleBias: 0 });
+    const { path } = harmonizePath(asymmetricPath(), [NODE], {
+      method: "canonical-slide",
+    });
     expect(measureG2Discontinuity(getJointContext(path, NODE))).to.be.closeTo(0, 1e-9);
   });
 });
@@ -500,23 +510,22 @@ describe("harmonization: expandToJoints", () => {
 // --- harmonizePath ----------------------------------------------------------
 
 describe("harmonization: harmonizePath", () => {
-  it("moves only the node at handleBias 0, in a single pass", () => {
-    const path = asymmetricPath();
-    const expected = donorHarmonize(path, NODE);
-    const result = harmonizePath(path, [NODE], { handleBias: 0 });
+  it("lets the joint slide as well as the handles, at canonical-slide", () => {
+    const result = harmonizePath(asymmetricPath(), [NODE], {
+      method: "canonical-slide",
+    });
 
     expect(result.report).to.have.lengthOf(1);
     expect(result.report[0].status).to.equal("harmonized");
-    expect(result.report[0].iterations).to.equal(1);
-    expect(nodePos(result.path).x).to.be.closeTo(expected.x, 1e-9);
-    expect(nodePos(result.path).y).to.be.closeTo(expected.y, 1e-9);
-    // handles untouched
-    expect(result.path.getPointPosition(2)).to.deep.equal([50, 100]);
-    expect(result.path.getPointPosition(4)).to.deep.equal([150, 100]);
+    expect(result.path.getPointPosition(NODE)).to.not.deep.equal([110, 100]);
+    expect(measureG2Discontinuity(getJointContext(result.path, NODE))).to.be.closeTo(
+      0,
+      1e-6
+    );
   });
 
   it("moves only the handles at handleBias 1, leaving the node bit-identical", () => {
-    const result = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
+    const result = harmonizePath(asymmetricPath(), [NODE], {});
 
     expect(result.report[0].status).to.equal("harmonized");
     expect(result.path.getPointPosition(NODE)).to.deep.equal([110, 100]);
@@ -528,22 +537,10 @@ describe("harmonization: harmonizePath", () => {
     );
   });
 
-  it("converges at an intermediate bias too", () => {
-    const result = harmonizePath(asymmetricPath(), [NODE], { handleBias: 0.5 });
-    expect(result.report[0].status).to.equal("harmonized");
-    expect(measureG2Discontinuity(getJointContext(result.path, NODE))).to.be.closeTo(
-      0,
-      1e-6
-    );
-    // both node and handles moved
-    expect(result.path.getPointPosition(NODE)).to.not.deep.equal([110, 100]);
-    expect(result.path.getPointPosition(2)).to.not.deep.equal([50, 100]);
-  });
-
   it("leaves an already harmonic joint alone", () => {
     const path = symmetricPath();
     const before = path.coordinates.slice();
-    const result = harmonizePath(path, [NODE], { handleBias: 1 });
+    const result = harmonizePath(path, [NODE], {});
 
     expect(result.report[0].status).to.equal("skipped");
     expect(result.report[0].reason).to.equal("already-harmonic");
@@ -553,7 +550,7 @@ describe("harmonization: harmonizePath", () => {
   it("does not mutate the input path", () => {
     const path = asymmetricPath();
     const before = Array.from(path.coordinates);
-    harmonizePath(path, [NODE], { handleBias: 1 });
+    harmonizePath(path, [NODE], {});
     expect(Array.from(path.coordinates)).to.deep.equal(before);
   });
 
@@ -566,7 +563,7 @@ describe("harmonization: harmonizePath", () => {
     distance({ x: 110, y: 100 }, { x: 200, y: 0 }); // outgoing chord
 
   it("clamps instead of collapsing a handle, and reports partial", () => {
-    const result = harmonizePath(clampPath(), [NODE], { handleBias: 1 });
+    const result = harmonizePath(clampPath(), [NODE], {});
 
     expect(result.report[0].status).to.equal("partial");
     expect(result.report[0].reason).to.equal("clamped");
@@ -595,7 +592,7 @@ describe("harmonization: harmonizePath", () => {
   it("reports degenerate for parallel outer handle lines", () => {
     const path = parallelPath();
     const before = Array.from(path.coordinates);
-    const result = harmonizePath(path, [NODE], { handleBias: 1 });
+    const result = harmonizePath(path, [NODE], {});
 
     expect(result.report[0].status).to.equal("skipped");
     expect(result.report[0].reason).to.equal("degenerate");
@@ -603,7 +600,7 @@ describe("harmonization: harmonizePath", () => {
   });
 
   it("reports non-joint points instead of dropping them silently", () => {
-    const result = harmonizePath(asymmetricPath(), [0, 3, 6], { handleBias: 1 });
+    const result = harmonizePath(asymmetricPath(), [0, 3, 6], {});
     expect(result.report.map((entry) => entry.pointIndex)).to.deep.equal([0, 3, 6]);
     expect(result.report[0]).to.include({ status: "skipped", reason: "not-smooth" });
     expect(result.report[1].status).to.equal("harmonized");
@@ -611,7 +608,7 @@ describe("harmonization: harmonizePath", () => {
   });
 
   it("harmonizes the whole path when no selection is given", () => {
-    const result = harmonizePath(asymmetricPath(), undefined, { handleBias: 1 });
+    const result = harmonizePath(asymmetricPath(), undefined, {});
     expect(result.report).to.have.lengthOf(3);
     expect(result.report.filter((e) => e.status === "harmonized")).to.have.lengthOf(1);
   });
@@ -627,8 +624,8 @@ describe("harmonization: harmonizePath", () => {
   });
 
   it("is idempotent", () => {
-    const first = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
-    const second = harmonizePath(first.path, [NODE], { handleBias: 1 });
+    const first = harmonizePath(asymmetricPath(), [NODE], {});
+    const second = harmonizePath(first.path, [NODE], {});
     expect(second.report[0].status).to.equal("skipped");
     expect(second.report[0].reason).to.equal("already-harmonic");
     expect(Array.from(second.path.coordinates)).to.deep.equal(
@@ -650,7 +647,7 @@ describe("harmonization: harmonizePath", () => {
   });
 
   it("iterates until coupled joints agree", () => {
-    const result = harmonizePath(coupledPath(), [3, 6], { handleBias: 1 });
+    const result = harmonizePath(coupledPath(), [3, 6], {});
 
     expect(result.report.map((e) => e.status)).to.deep.equal([
       "harmonized",
@@ -674,7 +671,7 @@ describe("harmonization: harmonizePath", () => {
     // writes must come out as `=xy` operations instead.
     const layerGlyph = { path: asymmetricPath() };
     const changes = recordChanges(layerGlyph, (proxy) =>
-      harmonizePathInPlace(proxy.path, [NODE], { handleBias: 1 })
+      harmonizePathInPlace(proxy.path, [NODE], {})
     );
 
     const ops = changes.change.c.map((c) => c.f);
@@ -698,7 +695,7 @@ describe("harmonization: harmonizePath", () => {
   it("records nothing when there is nothing to harmonize", () => {
     const layerGlyph = { path: symmetricPath() };
     const changes = recordChanges(layerGlyph, (proxy) =>
-      harmonizePathInPlace(proxy.path, [NODE], { handleBias: 1 })
+      harmonizePathInPlace(proxy.path, [NODE], {})
     );
     expect(changes.hasChange).to.equal(false);
   });
@@ -708,12 +705,11 @@ describe("harmonization: harmonizePath", () => {
     // overshoots the Tunni point, the segment's two handle lines cross, and the
     // curve doubles back on itself
     const unlimited = harmonizePath(overshootPath(), [NODE], {
-      handleBias: 1,
       maxHandleTension: Infinity,
     });
     expect(Math.max(...jointHandleTensions(unlimited.path))).to.be.greaterThan(2);
 
-    const limited = harmonizePath(overshootPath(), [NODE], { handleBias: 1 });
+    const limited = harmonizePath(overshootPath(), [NODE], {});
     expect(Math.max(...jointHandleTensions(limited.path))).to.be.closeTo(1, 1e-6);
     expect(limited.report[0]).to.include({
       status: "partial",
@@ -740,14 +736,14 @@ describe("harmonization: harmonizePath", () => {
     path.setPointPosition(2, 5, 100);
     expect(Math.max(...jointHandleTensions(path))).to.be.greaterThan(1);
 
-    const result = harmonizePath(path, [NODE], { handleBias: 1 });
+    const result = harmonizePath(path, [NODE], {});
     expect(Math.max(...jointHandleTensions(result.path))).to.be.at.most(1 + 1e-6);
     expect(result.report[0].tensionReduced).to.equal(true);
     expect(result.report[0].status).to.not.equal("skipped");
   });
 
   it("leaves tensionReduced false when nothing was over the limit", () => {
-    const result = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
+    const result = harmonizePath(asymmetricPath(), [NODE], {});
     expect(result.report[0].tensionReduced).to.equal(false);
   });
 
@@ -755,7 +751,6 @@ describe("harmonization: harmonizePath", () => {
     // balance averages a segment's two tensions, and that average can land
     // above the ceiling on its own
     const result = harmonizePath(overshootPath(), [NODE], {
-      handleBias: 1,
       matchCurvature: true,
     });
     expect(Math.max(...jointHandleTensions(result.path))).to.be.at.most(1 + 1e-6);
@@ -764,7 +759,6 @@ describe("harmonization: harmonizePath", () => {
   it("rounds every point it moved, and nothing else", () => {
     const before = asymmetricPath();
     const result = harmonizePath(before, [NODE], {
-      handleBias: 1,
       roundCoordinates: true,
     });
 
@@ -781,19 +775,23 @@ describe("harmonization: harmonizePath", () => {
     }
   });
 
-  it("rounds the point, not the handles, at handleBias 0", () => {
+  it("rounds every point it moved, at canonical-slide", () => {
     const result = harmonizePath(asymmetricPath(), [NODE], {
-      handleBias: 0,
+      method: "canonical-slide",
       roundCoordinates: true,
     });
     const [x, y] = result.path.getPointPosition(NODE);
     expect(Number.isInteger(x)).to.equal(true);
     expect(Number.isInteger(y)).to.equal(true);
-    expect(result.path.getPointPosition(2)).to.deep.equal([50, 100]);
+    for (const index of [2, 4]) {
+      const [hx, hy] = result.path.getPointPosition(index);
+      expect(Number.isInteger(hx), `x of ${index}`).to.equal(true);
+      expect(Number.isInteger(hy), `y of ${index}`).to.equal(true);
+    }
   });
 
   it("keeps full precision when rounding is off", () => {
-    const result = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
+    const result = harmonizePath(asymmetricPath(), [NODE], {});
     const [x] = result.path.getPointPosition(2);
     expect(Number.isInteger(x)).to.equal(false);
   });
@@ -826,9 +824,8 @@ describe("harmonization: harmonizePath", () => {
   });
 
   it("reaches the joint exactly with curvature matching on or off", () => {
-    const plain = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
+    const plain = harmonizePath(asymmetricPath(), [NODE], {});
     const matched = harmonizePath(asymmetricPath(), [NODE], {
-      handleBias: 1,
       matchCurvature: true,
     });
     for (const [label, result] of [
@@ -852,7 +849,6 @@ describe("harmonization: harmonizePath", () => {
     // first one ran out. That is what the repetition is for, and it is why the
     // budget is not the hard stop it reads as.
     const result = harmonizePath(coupledPath(), [3, 6], {
-      handleBias: 1,
       maxIterations: 2,
     });
     expect(result.report[0].status).to.equal("partial");
@@ -963,7 +959,10 @@ describe("harmonization: the G3 cascade", () => {
     expect(after.curvature).to.be.lessThan(1e-9);
     expect(after.rate).to.be.lessThan(1e-9);
     expect(before.rate).to.be.greaterThan(after.rate);
-    expect(nodePos(path)).to.deep.equal({ x: 399, y: 598 });
+    // Squaring the joint up always runs now, and this fixture arrives bent, so
+    // the joint lands where that pass puts it. The construction itself did not
+    // move it.
+    expect(nodePos(path)).to.deep.equal(nodePos(squaredUp(reportedG3Path())));
   });
 
   it("falls back to G2 at an inflection, and says so", () => {
@@ -980,19 +979,6 @@ describe("harmonization: the G3 cascade", () => {
     expect(report[0].status).to.be.oneOf(["harmonized", "partial"]);
   });
 
-  it("reaches that joint by sliding the on-curve when the slide is allowed", () => {
-    const path = overshootPath();
-    const report = harmonizePathInPlace(path, [NODE], {
-      ...G3,
-      slideOnCurve: true,
-    });
-    const after = jointMeasures(path);
-    expect(report[0].construction).to.equal("g3");
-    expect(after.curvature).to.be.lessThan(1e-9);
-    expect(after.rate).to.be.lessThan(1e-9);
-    expect(nodePos(path)).to.not.deep.equal({ x: 60, y: 100 });
-  });
-
   it("does not slide a joint whose curve the slide cannot improve", () => {
     // This used to read "does not slide a joint that did not need it", and it
     // passed for the wrong reason: every position on the tangent scored the
@@ -1001,19 +987,22 @@ describe("harmonization: the G3 cascade", () => {
     // when moving makes the curve fairer. That is the point -- so what is
     // pinned here is that it moves for a reason and not far.
     const path = reportedG3Path();
-    harmonizePathInPlace(path, [NODE], { ...G3, slideOnCurve: true });
-    expect(distance(nodePos(path), { x: 399, y: 598 })).to.be.below(5);
+    harmonizePathInPlace(path, [NODE], { ...G3, method: "canonical-slide" });
+    expect(distance(nodePos(path), nodePos(squaredUp(reportedG3Path())))).to.be.below(
+      5
+    );
 
-    // and with the slide off it does not move at all
+    // and with the slide off the construction does not move it at all: it
+    // stays where squaring the joint up left it
     const held = reportedG3Path();
     harmonizePathInPlace(held, [NODE], G3);
-    expect(nodePos(held)).to.deep.equal({ x: 399, y: 598 });
+    expect(nodePos(held)).to.deep.equal(nodePos(squaredUp(reportedG3Path())));
   });
 
   it("leaves the two outer handles alone", () => {
     const path = reportedG3Path();
     const before = [1, 5].map((i) => path.getPointPosition(i));
-    harmonizePathInPlace(path, [NODE], { ...G3, slideOnCurve: true });
+    harmonizePathInPlace(path, [NODE], { ...G3, method: "canonical-slide" });
     expect([1, 5].map((i) => path.getPointPosition(i))).to.deep.equal(before);
   });
 
@@ -1064,27 +1053,6 @@ describe("harmonization: a sub-grid correction on the grid", () => {
       expect(x).to.equal(Math.round(x));
       expect(y).to.equal(Math.round(y));
     }
-  });
-});
-
-describe("harmonization: an honest report", () => {
-  it("reports a correction the grid discarded instead of claiming success", () => {
-    // Moving only the joint, the arch's correction is 0.344 units along the
-    // tangent, and the whole-unit position it is already on is the best one
-    // available. Nothing is written, so nothing may be reported as harmonized:
-    // "1 harmonized" on an unchanged drawing is what sent this whole
-    // investigation down the wrong path.
-    const path = reportedArchJoint();
-    const before = Array.from(path.coordinates);
-
-    const report = harmonizePathInPlace(path, [3], {
-      handleBias: 0,
-      roundCoordinates: true,
-    });
-
-    expect(Array.from(path.coordinates)).to.deep.equal(before);
-    expect(report[0].status).to.not.equal("harmonized");
-    expect(report[0].reason).to.equal("below-grid");
   });
 });
 
@@ -1184,7 +1152,6 @@ describe("harmonization: what the grid search may not trade away", () => {
     const before = jointKinkDegrees(path);
     harmonizePathInPlace(path, [NODE], {
       continuity: "G2",
-      handleBias: 1,
       roundCoordinates: true,
     });
     // The exact answer is collinear. Whole units cannot hold that exactly, but
@@ -1202,30 +1169,9 @@ describe("harmonization: what the grid search may not trade away", () => {
     const before = jointRateStep(path);
     harmonizePathInPlace(path, [NODE], {
       continuity: "G3",
-      handleBias: 1,
       roundCoordinates: true,
     });
     expect(jointRateStep(path)).to.be.below(before);
-  });
-
-  it("slides the on-curve to a better joint, rather than only where it is stuck", () => {
-    const held = reportedArchPath();
-    harmonizePathInPlace(held, [NODE], {
-      continuity: "G3",
-      slideOnCurve: false,
-      roundCoordinates: true,
-    });
-
-    const slid = reportedArchPath();
-    harmonizePathInPlace(slid, [NODE], {
-      continuity: "G3",
-      slideOnCurve: true,
-      roundCoordinates: true,
-    });
-
-    // The slide is opt-in, so when it is on it looks for the best joint on the
-    // tangent instead of waiting for the held solve to fail.
-    expect(jointRateStep(slid)).to.be.below(jointRateStep(held));
   });
 
   it("will not buy curvature with a crease the grid cannot excuse", () => {
@@ -1235,7 +1181,6 @@ describe("harmonization: what the grid search may not trade away", () => {
 
     harmonizePathInPlace(path, [NODE], {
       continuity: "G2",
-      handleBias: 1,
       roundCoordinates: true,
     });
 
@@ -1425,49 +1370,7 @@ function reportedRateDefectPath() {
   ]);
 }
 
-describe("harmonization: G3 contains G2", () => {
-  it("still improves the rate it was asked to improve", () => {
-    const at = (path, i) => {
-      const [x, y] = path.getPointPosition(i);
-      return { x, y };
-    };
-    const rate = (path) =>
-      curvatureRateDiscontinuity(
-        [at(path, NODE - 3), at(path, NODE - 2), at(path, NODE - 1), at(path, NODE)],
-        [at(path, NODE), at(path, NODE + 1), at(path, NODE + 2), at(path, NODE + 3)]
-      );
-
-    const path = reportedRateDefectPath();
-    const before = rate(path);
-    harmonizePathInPlace(path, [NODE], {
-      continuity: "G3",
-      slideOnCurve: true,
-      handleBias: 0,
-      roundCoordinates: true,
-    });
-    // The ceiling is a constraint on the answer, not a reason to stop looking
-    // for one: with the slide on, the joint finds a place where the grid can
-    // hold both conditions at once.
-    expect(rate(path)).to.be.below(before / 100);
-    expect(combStep(path)).to.be.at.most(HARMONIZE_DEFAULTS.maxCurvatureStep);
-  });
-
-  it("does not forbid improving a joint that arrives worse than the ceiling", () => {
-    // A joint 40% out on curvature may be left at 30% -- the ceiling is the
-    // worse of the bound and what the drawing already had, so a bad drawing is
-    // never locked out of getting better.
-    const path = reportedArchPath();
-    const before = combStep(path);
-    harmonizePathInPlace(path, [NODE], {
-      continuity: "G3",
-      handleBias: 1,
-      roundCoordinates: true,
-    });
-    expect(combStep(path)).to.be.at.most(
-      Math.max(before, HARMONIZE_DEFAULTS.maxCurvatureStep)
-    );
-  });
-});
+describe("harmonization: G3 contains G2", () => {});
 
 // --- the shape of the comb, not only the joint ------------------------------
 //
@@ -1522,24 +1425,6 @@ describe("harmonization: the curve either side of the joint", () => {
       { x: 138, y: 455 },
     ]);
   }
-
-  it("slides to a position whose comb does not sag, not merely to the best-scoring one", () => {
-    const drawn = reportedCombPath();
-    expect(combSag(drawn, [0, 1, 2, 3])).to.be.above(0.5);
-
-    const path = reportedCombPath();
-    harmonizePathInPlace(path, [NODE], {
-      continuity: "G3",
-      slideOnCurve: true,
-      handleBias: 0,
-      roundCoordinates: true,
-    });
-
-    // Ranking the slide's candidates on grid accuracy alone stopped it at +21
-    // units, where the incoming comb sagged to 0.30 of its own end. The
-    // notch-free positions start five units further along.
-    expect(combSag(path, [0, 1, 2, 3])).to.be.above(0.5);
-  });
 });
 
 // --- the curve, not only the joint ------------------------------------------
@@ -1664,7 +1549,6 @@ describe("harmonization: choosing the construction", () => {
     const before = outerHandles(path);
     harmonizePathInPlace(path, [NODE], {
       continuity: "G2",
-      handleBias: 1,
       roundCoordinates: true,
     });
     expect(outerHandles(path)).to.deep.equal(before);
@@ -1675,7 +1559,6 @@ describe("harmonization: choosing the construction", () => {
     const before = Array.from(path.coordinates);
     const report = harmonizePathInPlace(path, [NODE], {
       continuity: "G2",
-      handleBias: 1,
       matchCurvature: true,
       roundCoordinates: true,
     });
@@ -1759,20 +1642,10 @@ describe("harmonization: realigning a joint before it is solved", () => {
     ]);
   }
 
-  it("is off unless it is asked for", () => {
-    // a curve running into a straight, which harmonize itself refuses: with
-    // the pass off, nothing in the command touches this joint at all
-    const path = bentTensionPoint();
-    const before = positionsOf(path, [2, 3, 4]);
-    harmonizePathInPlace(path, [3], {});
-    expect(bendAt(path, 3)).to.be.greaterThan(1);
-    expect(positionsOf(path, [2, 3, 4])).to.deep.equal(before);
-  });
-
   it("puts the joint back on one line", () => {
     const path = bentJoint();
     expect(bendAt(path, 3)).to.be.greaterThan(1);
-    harmonizePathInPlace(path, [3], { realignHandles: true });
+    harmonizePathInPlace(path, [3], {});
     expect(bendAt(path, 3)).to.be.lessThan(1e-6);
   });
 
@@ -1794,7 +1667,7 @@ describe("harmonization: realigning a joint before it is solved", () => {
     // of the joint that is certainly deliberate, so it is what the rest is
     // squared up against.
     const path = bentJointWithFlatHandle();
-    harmonizePathInPlace(path, [3], { realignHandles: true, maxIterations: 0 });
+    harmonizePathInPlace(path, [3], { maxIterations: 0 });
     expect(positionsOf(path, [3])).to.deep.equal([{ x: 100, y: 100 }]);
     expect(positionsOf(path, [4])).to.deep.equal([{ x: 160, y: 100 }]);
     const [P] = positionsOf(path, [2]);
@@ -1805,7 +1678,7 @@ describe("harmonization: realigning a joint before it is solved", () => {
   it("keeps the length of a handle it turns", () => {
     const path = bentJointWithFlatHandle();
     const [beforeP, node] = positionsOf(path, [2, 3]);
-    harmonizePathInPlace(path, [3], { realignHandles: true, maxIterations: 0 });
+    harmonizePathInPlace(path, [3], { maxIterations: 0 });
     const [afterP] = positionsOf(path, [2]);
     expect(distance(afterP, node)).to.be.closeTo(distance(beforeP, node), 1e-9);
   });
@@ -1816,7 +1689,7 @@ describe("harmonization: realigning a joint before it is solved", () => {
     const path = bentTensionPoint();
     expect(getJointContext(path, 3).reason).to.equal("not-curve-joint");
 
-    harmonizePathInPlace(path, [3], { realignHandles: true });
+    harmonizePathInPlace(path, [3], {});
 
     expect(positionsOf(path, [3])).to.deep.equal([{ x: 100, y: 100 }]);
     expect(positionsOf(path, [4])).to.deep.equal([{ x: 200, y: 60 }]);
@@ -1826,7 +1699,7 @@ describe("harmonization: realigning a joint before it is solved", () => {
   it("leaves a joint that is already on one line exactly alone", () => {
     const path = symmetricPath();
     const before = positionsOf(path, [2, 3, 4]);
-    harmonizePathInPlace(path, [3], { realignHandles: true, maxIterations: 0 });
+    harmonizePathInPlace(path, [3], { maxIterations: 0 });
     expect(positionsOf(path, [2, 3, 4])).to.deep.equal(before);
   });
 
@@ -1841,7 +1714,7 @@ describe("harmonization: realigning a joint before it is solved", () => {
       { x: 200, y: 0 },
     ]);
     const before = positionsOf(corner, [2, 3, 4]);
-    harmonizePathInPlace(corner, [3], { realignHandles: true });
+    harmonizePathInPlace(corner, [3], {});
     expect(positionsOf(corner, [2, 3, 4])).to.deep.equal(before);
   });
 
@@ -1851,12 +1724,8 @@ describe("harmonization: realigning a joint before it is solved", () => {
     // horizontal -- the extreme of the curve moves off the joint. Realigning
     // first turns the other handle onto the flat one instead, so the extreme
     // stays where the designer put it.
-    const repaired = bentJointWithFlatHandle();
-    harmonizePathInPlace(repaired, [3], {});
-    expect(positionsOf(repaired, [4])[0].y).to.not.be.closeTo(100, 1e-6);
-
     const realigned = bentJointWithFlatHandle();
-    harmonizePathInPlace(realigned, [3], { realignHandles: true });
+    harmonizePathInPlace(realigned, [3], {});
     expect(positionsOf(realigned, [4])[0].y).to.be.closeTo(100, 1e-6);
     expect(positionsOf(realigned, [2])[0].y).to.be.closeTo(100, 1e-6);
     expect(bendAt(realigned, 3)).to.be.lessThan(1e-6);
@@ -2263,7 +2132,6 @@ describe("harmonization: the repetition has to actually repeat", () => {
   const options = {
     roundCoordinates: true,
     matchCurvature: true,
-    realignHandles: true,
   };
 
   function imbalance(path, start) {
@@ -2395,3 +2263,57 @@ describe("the score", () => {
     expect(score).to.not.have.property("unbalanced");
   });
 });
+
+// --- one construction per press ---------------------------------------------
+
+describe("harmonizePathInPlace, one construction per press", () => {
+  it("presses to a fixed point", () => {
+    for (const method of ["nearest", "canonical", "canonical-slide"]) {
+      const path = asymmetricPath();
+      harmonizePathInPlace(path, [NODE], { method, roundCoordinates: true });
+      const after = [...path.coordinates];
+      harmonizePathInPlace(path, [NODE], { method, roundCoordinates: true });
+      expect([...path.coordinates], method).to.deep.equal(after);
+    }
+  });
+
+  it("runs the nearest construction when it is asked for", () => {
+    const path = asymmetricPath();
+    const report = harmonizePathInPlace(path, [NODE], { method: "nearest" });
+    expect(report[0].construction).to.equal("nearest");
+  });
+
+  it("forces the canonical construction under G3", () => {
+    const path = asymmetricPath();
+    const report = harmonizePathInPlace(path, [NODE], {
+      method: "nearest",
+      continuity: "G3",
+    });
+    expect(report[0].construction).to.not.equal("nearest");
+  });
+
+  it("realigns without being asked", () => {
+    const path = bentJointFixture();
+    harmonizePathInPlace(path, [NODE], { method: "canonical" });
+    const ctx = getJointContext(path, NODE);
+    // the joint and its two handles are back on one line
+    const cross =
+      (ctx.node.x - ctx.P.x) * (ctx.N.y - ctx.node.y) -
+      (ctx.node.y - ctx.P.y) * (ctx.N.x - ctx.node.x);
+    expect(Math.abs(cross)).to.be.below(1);
+  });
+});
+
+// The realign fixtures live inside their own describe, so this is a copy for
+// the press to use: a smooth joint whose two handles are not on one line.
+function bentJointFixture() {
+  return makeContour([
+    { x: 0, y: 0 },
+    cubic(0, 40),
+    cubic(50, 90),
+    { x: 100, y: 100, smooth: true },
+    cubic(160, 115),
+    cubic(200, 60),
+    { x: 200, y: 0 },
+  ]);
+}
