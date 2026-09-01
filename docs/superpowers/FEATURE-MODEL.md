@@ -1253,9 +1253,18 @@ and it is what the pass is for. Measured on `N^1.json` point 12.
   on to 63%. The repair goes last, and it is safe there because it is the
   smallest change that answers the joint, so it disturbs the balance it was
   handed as little as the joint allows.
-- **It runs only where the construction did not report `skipped`.** Balancing
-  works on segments rather than joints, so handed the whole candidate list it
-  evens segments at points the command has just reported it did not touch.
+- **It runs everywhere the joint is a real one**, and is held back only by the
+  structural skips: the point is not a smooth joint, one of its neighbours is not
+  a curve, or the contour is generated. Balancing works on segments rather than
+  joints, so handed the whole candidate list it reaches past a skeleton
+  selection.
+
+  A joint that arrived harmonic is not excluded. Its curvature needing no work
+  says nothing about how its two handles compare, and evening them is the whole
+  of what this pass is for. Position 1 reports `already-harmonic` far more often
+  than the other two, because it measures the joint relatively and squaring the
+  joint up beforehand often settles it -- so gating on "the construction did
+  something" turned the pass off almost everywhere at position 1.
 - **It is off under G3.** The repair matches curvature and nothing else, so
   running it after a G3 answer throws the rate away.
 - **The whole press runs on a copy and only the points that ended up somewhere

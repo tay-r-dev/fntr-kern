@@ -207,10 +207,14 @@ default.
   steps reaches a better balance but was not what was asked for; looping all
   three oscillates -- 11, 12.5, 8.6, 14.5, 6.5, 1.0 and 2.0 units over eight
   rounds with no rest.
-- **It must not reach a joint the construction skipped.** Balancing works on
-  segments rather than joints, so handed the whole candidate list it evened
-  segments at points the command had just reported untouched -- which broke the
-  skeleton pass's promise to touch nothing outside the points it was given.
+- **It is held back by structure, not by whether the construction did work.**
+  Handed the whole candidate list, balancing reached past a skeleton selection,
+  because it works on segments rather than joints. Gating it instead on "the
+  construction reported something other than skipped" turned it off almost
+  everywhere at position 1: that construction reports `already-harmonic` far
+  more often, since it measures the joint relatively and squaring the joint up
+  beforehand often settles it. A joint whose curvature needs no work can still
+  have lopsided handles, which is the whole point of the pass.
 - **Two prices, both paid knowingly.** The pass moves the outer handles, because
   the repair is the nearest answer. And the joint can end 0.34 degrees off its
   own line, because balancing rounds its handles to whole units.

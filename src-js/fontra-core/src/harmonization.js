@@ -2084,6 +2084,17 @@ function writeBack(path, working) {
   }
 }
 
+// A joint neither the construction nor the finishing pass can touch. These are
+// structural: the point is not a smooth joint, or one of its neighbours is not a
+// curve, or the contour is generated. No amount of solving, balancing or
+// repairing changes any of them.
+const STRUCTURAL_SKIPS = new Set([
+  "not-smooth",
+  "not-curve-joint",
+  "generated-contour",
+  "open-contour-end",
+]);
+
 //
 // Harmonize the given joints.
 //
@@ -2177,11 +2188,19 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     return report;
   }
 
-  // Only where the construction had something to say. Balancing works on
-  // segments rather than joints, so handed the whole candidate list it evens
-  // segments at points the command has just reported it did not touch.
+  // Everywhere the joint is a real one. Balancing works on segments rather than
+  // joints, so handed the whole candidate list it evens segments at points that
+  // are not joints at all -- which is how it reached past a skeleton selection.
+  //
+  // A joint that arrived harmonic is NOT excluded. Its curvature needing no work
+  // says nothing about how its two handles compare, and evening them is the
+  // whole of what this pass is for. Position 1 reports `already-harmonic` far
+  // more often than the other two, because it measures the joint relatively and
+  // squaring the joint up beforehand often settles it -- so gating on "the
+  // construction did something" turned the pass off almost everywhere at
+  // position 1.
   const reached = report
-    .filter((state) => state.status !== "skipped")
+    .filter((state) => !STRUCTURAL_SKIPS.has(state.reason))
     .map((state) => state.pointIndex);
   if (!reached.length) {
     writeBack(path, working);
@@ -2201,20 +2220,9 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   // construction names which of G3 and G2 did the work; the repair knows
   // whether the joint ended matched. Neither alone is the answer.
   //
-  // A joint neither step could touch keeps the reason it was given. The three
-  // words below are structural: the point is not a smooth joint, or one of its
-  // neighbours is not a curve, and no amount of balancing or repairing changes
-  // that.
-  const STRUCTURAL = new Set([
-    "not-smooth",
-    "not-curve-joint",
-    "generated-contour",
-    "open-contour-end",
-  ]);
-
   const repairedByPoint = new Map(repaired.map((state) => [state.pointIndex, state]));
   for (const state of report) {
-    if (state.status === "skipped" && STRUCTURAL.has(state.reason)) {
+    if (state.status === "skipped" && STRUCTURAL_SKIPS.has(state.reason)) {
       continue;
     }
 
