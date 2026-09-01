@@ -1733,11 +1733,14 @@ function summarizeHarmonizeReport(report) {
 // Hover detail: the bias that actually ran, plus one line per candidate point.
 // The summary says what happened; this says which point and why.
 function detailHarmonizeReport(reports, options) {
+  // The head line names what was asked for. It used to name four tick boxes
+  // that no longer exist, so it read "move the on-curve: off" whatever the
+  // slider said.
+  const position = options.useG3 ? 2 : Math.round(Number(options.method));
   const lines = [
     `${options.useG3 ? "G3" : "G2"}` +
-      `, move the on-curve: ${options.moveOnCurve ? "on" : "off"}` +
-      `, realign handles: ${options.realignHandles ? "on" : "off"}` +
-      `, match curvature: ${options.matchCurvature ? "on" : "off"}` +
+      `, position ${options.useG3 ? "-" : position}: ` +
+      translate(`sidebar.selection-transformation.harmonize.method.${position}`) +
       `, other sources: ${options.applyToOtherSources ? "on" : "off"}`,
   ];
   for (const [layerName, report] of reports) {
