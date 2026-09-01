@@ -778,6 +778,8 @@ export default class TransformationPanel extends Panel {
       value: applicationSettingsController.model.harmonizeMethod,
       minValue: 1,
       maxValue: 3,
+      // The slider reads this back on a reset gesture, and it must be a number.
+      defaultValue: 2,
       values: [1, 2, 3],
       // G3 has one construction, so there is nothing for the slider to say.
       disabled: !!applicationSettingsController.model.harmonizeG3,
