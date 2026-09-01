@@ -2499,18 +2499,15 @@ export class SceneController {
   async doHarmonize(options = {}) {
     const {
       useG3 = applicationSettingsController.model.harmonizeG3,
-      moveOnCurve = applicationSettingsController.model.harmonizeMoveOnCurve,
+      method = applicationSettingsController.model.harmonizeMethod,
       applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
-      matchCurvature = applicationSettingsController.model.harmonizeMatchCurvature,
-      realignHandles = applicationSettingsController.model.harmonizeRealignHandles,
     } = options;
 
-    // Two checks decide three things. The first picks the target and so the
-    // cascade. The second says whether the joint itself may move: under G2 that
-    // is the whole of the old bias, and under G3 it turns the repair slide on.
+    // One control names one construction. G3 has one, so the position is not
+    // read under it.
     const continuity = useG3 ? "G3" : "G2";
-    const slideOnCurve = !!moveOnCurve;
-    const handleBias = moveOnCurve ? 0 : 1;
+    const construction =
+      { 1: "nearest", 2: "canonical", 3: "canonical-slide" }[method] ?? "canonical";
 
     const reports = new Map();
 
@@ -2528,10 +2525,7 @@ export class SceneController {
           .filter((address) => address),
         {
           continuity,
-          slideOnCurve,
-          handleBias,
-          matchCurvature,
-          realignHandles,
+          method: construction,
         },
         translate("action.harmonize")
       );
@@ -2607,10 +2601,7 @@ export class SceneController {
         const working = path.copy();
         const report = harmonizePathInPlace(working, pointIndices, {
           continuity,
-          slideOnCurve,
-          handleBias,
-          matchCurvature,
-          realignHandles,
+          method: construction,
           roundCoordinates: true,
         });
         for (let index = 0; index < path.numPoints; index++) {

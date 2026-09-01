@@ -772,24 +772,27 @@ export default class TransformationPanel extends Panel {
     });
 
     formContents.push({
-      type: "checkbox",
-      key: "harmonizeMoveOnCurve",
-      label: translate("sidebar.selection-transformation.harmonize.move-on-curve"),
-      value: applicationSettingsController.model.harmonizeMoveOnCurve,
+      type: "edit-number-slider",
+      key: "harmonizeMethod",
+      label: translate("sidebar.selection-transformation.harmonize.method"),
+      value: applicationSettingsController.model.harmonizeMethod,
+      minValue: 1,
+      maxValue: 3,
+      values: [1, 2, 3],
+      // G3 has one construction, so there is nothing for the slider to say.
+      disabled: !!applicationSettingsController.model.harmonizeG3,
     });
 
     formContents.push({
-      type: "checkbox",
-      key: "harmonizeRealignHandles",
-      label: translate("sidebar.selection-transformation.harmonize.realign-handles"),
-      value: applicationSettingsController.model.harmonizeRealignHandles,
-    });
-
-    formContents.push({
-      type: "checkbox",
-      key: "harmonizeMatchCurvature",
-      label: translate("sidebar.selection-transformation.harmonize.match-curvature"),
-      value: applicationSettingsController.model.harmonizeMatchCurvature,
+      type: "text",
+      label: "",
+      value: translate(
+        `sidebar.selection-transformation.harmonize.method.${
+          applicationSettingsController.model.harmonizeG3
+            ? 2
+            : applicationSettingsController.model.harmonizeMethod
+        }`
+      ),
     });
 
     formContents.push({
@@ -888,13 +891,9 @@ export default class TransformationPanel extends Panel {
       }
 
       if (
-        [
-          "harmonizeG3",
-          "harmonizeMoveOnCurve",
-          "harmonizeOtherSources",
-          "harmonizeMatchCurvature",
-          "harmonizeRealignHandles",
-        ].includes(fieldItem.key)
+        ["harmonizeG3", "harmonizeMethod", "harmonizeOtherSources"].includes(
+          fieldItem.key
+        )
       ) {
         applicationSettingsController.model[fieldItem.key] = value;
       }
@@ -970,10 +969,8 @@ export default class TransformationPanel extends Panel {
     const settings = applicationSettingsController.model;
     const options = {
       useG3: !!settings.harmonizeG3,
-      moveOnCurve: !!settings.harmonizeMoveOnCurve,
+      method: settings.harmonizeMethod,
       applyToOtherSources: settings.harmonizeOtherSources,
-      matchCurvature: settings.harmonizeMatchCurvature,
-      realignHandles: settings.harmonizeRealignHandles,
     };
     const reports = await this.sceneController.doHarmonize(options);
     this.setHarmonizeReport(

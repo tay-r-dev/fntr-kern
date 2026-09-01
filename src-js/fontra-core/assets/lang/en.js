@@ -738,17 +738,14 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.g3": "G3 continuity",
   "sidebar.selection-transformation.harmonize.g3.tooltip":
     "Also match the rate of change of curvature, which is what removes the crease from the curvature comb. Falls back to G2 where it has no answer.",
-  "sidebar.selection-transformation.harmonize.move-on-curve": "Move the on-curve",
-  "sidebar.selection-transformation.harmonize.move-on-curve.tooltip":
-    "Let the joint carry the correction instead of its two handles. Under G3 it searches the whole tangent between the neighbouring points for the best position, and stays put only if it is already there.",
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
-  "sidebar.selection-transformation.harmonize.match-curvature": "Match curvature",
-  "sidebar.selection-transformation.harmonize.match-curvature.tooltip":
-    "Also try the construction that gives every selected point one curvature shared by both its sides, and solves all four handle lengths of both curves to reach it. It pulls a run onto one curvature profile rather than repairing a single joint, and it is the only thing here that moves the outer handles. Use it where the ordinary repair leaves a joint far out.",
+  "sidebar.selection-transformation.harmonize.method": "Movement",
+  "sidebar.selection-transformation.harmonize.method.tooltip":
+    "How much the command may move. Position 1 changes the four handle lengths as little as it can. Position 2 moves the two inner handle lengths to one particular ratio. Position 3 also lets the joint slide along its own tangent. G3 has one construction and greys this out.",
+  "sidebar.selection-transformation.harmonize.method.1": "Nearest",
+  "sidebar.selection-transformation.harmonize.method.2": "Canonical",
+  "sidebar.selection-transformation.harmonize.method.3": "Canonical, joint free",
   "sidebar.selection-transformation.harmonize.other-sources": "Other sources",
-  "sidebar.selection-transformation.harmonize.realign-handles": "Realign handles",
-  "sidebar.selection-transformation.harmonize.realign-handles.tooltip":
-    "Put every smooth joint back on one line before anything is solved. A handle drawn dead horizontal or vertical is kept and the other is turned onto it; otherwise the joint comes to the handles. It also reaches joints where a curve meets a straight, which harmonize itself refuses.",
   "sidebar.selection-transformation.harmonize.reason.already-harmonic":
     "already harmonic",
   "sidebar.selection-transformation.harmonize.reason.below-grid":
