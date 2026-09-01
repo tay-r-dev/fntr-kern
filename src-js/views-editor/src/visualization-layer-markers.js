@@ -59,8 +59,8 @@ function* eachMarker(positionedGlyph, model) {
 // The grip a hand can find. Hover puts a ring around it, selection fills it: a marker
 // that gives no sign of being under the cursor cannot be aimed at, and a marker that
 // gives no sign of being selected cannot be deleted with any confidence.
-function drawGrips(context, parameters, geometry, isSelected, isHovered, color) {
-  for (const grip of geometry.grips) {
+function drawGrips(context, parameters, grips, isSelected, isHovered, color) {
+  for (const grip of grips) {
     if (isHovered) {
       context.strokeStyle = color;
       context.lineWidth = parameters.strokeWidth;
@@ -140,7 +140,7 @@ function drawMarkerRays(context, positionedGlyph, parameters, model, controller)
       drawGrips(
         context,
         parameters,
-        geometry,
+        geometry.grips,
         isSelected,
         isHovered,
         parameters.staleColor
@@ -162,7 +162,18 @@ function drawMarkerRays(context, positionedGlyph, parameters, model, controller)
       const direction = vector.normalizeVector(vector.subVectors(tip, anchorPoint));
       drawArrowHead(context, tip, direction, parameters.arrowSize);
     }
-    drawGrips(context, parameters, geometry, isSelected, isHovered, color);
+    // A ray reads as a dot that throws an arrow. Only the anchor gets a dot: a dot on
+    // the far tip sits on top of the arrow head and hides the very thing that says which
+    // way the ray runs. The far tips stay grabbable -- what is dropped here is the
+    // drawing of them, not the grip.
+    drawGrips(
+      context,
+      parameters,
+      geometry.grips.slice(0, 1),
+      isSelected,
+      isHovered,
+      color
+    );
 
     const midpoint = tips.length
       ? vector.addVectors(
@@ -186,7 +197,7 @@ function drawMarkerDimensions(context, positionedGlyph, parameters, model, contr
       drawGrips(
         context,
         parameters,
-        geometry,
+        geometry.grips,
         isSelected,
         isHovered,
         parameters.staleColor
@@ -212,7 +223,7 @@ function drawMarkerDimensions(context, positionedGlyph, parameters, model, contr
     strokeLine(context, q1.x, q1.y, q2.x, q2.y);
     drawArrowHead(context, q1, vector.mulVectorScalar(along, -1), parameters.arrowSize);
     drawArrowHead(context, q2, along, parameters.arrowSize);
-    drawGrips(context, parameters, geometry, isSelected, isHovered, color);
+    drawGrips(context, parameters, geometry.grips, isSelected, isHovered, color);
 
     const midpoint = vector.addVectors(
       q1,

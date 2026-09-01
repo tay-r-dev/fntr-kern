@@ -10,6 +10,7 @@ import {
   deleteGroup,
   deleteMarkers,
   renameGroup,
+  setAllMarkersVisible,
   setGroupVisible,
   setMarkerGroup,
   setMarkerTarget,
@@ -153,6 +154,29 @@ export default class MarkersPanel extends Panel {
 
     section("sidebar.markers.rays", rays);
     section("sidebar.markers.dimensions", dimensions);
+
+    // Two glyph-wide commands. They are drawn only where there is something to act on,
+    // and the visibility one reads as show-all once nothing is left to hide, so the
+    // button always says what pressing it will do.
+    if (markers.length) {
+      const allHidden = markers.every((marker) => marker.hidden);
+      formContents.push({
+        type: "single-icon",
+        // The label flips between hide-all and show-all, and the form only rebuilds a
+        // row whose description changed, so the state has to be part of the key.
+        key: `allVisible:${allHidden}`,
+        element: html.span({ style: ROW_CONTROLS_STYLE }, [
+          html.button({ onclick: () => this.setAllVisible(allHidden) }, [
+            translate(
+              allHidden ? "sidebar.markers.show-all" : "sidebar.markers.hide-all"
+            ),
+          ]),
+          html.button({ onclick: () => this.deleteAllMarkers() }, [
+            translate("sidebar.markers.erase-all"),
+          ]),
+        ]),
+      });
+    }
 
     // Groups carry visibility and a name, nothing else. Deleting one leaves its markers
     // in place and ungrouped.
@@ -354,6 +378,18 @@ export default class MarkersPanel extends Panel {
     await deleteMarkers(this.sceneController, [id]);
   }
 
+  async setAllVisible(visible) {
+    await setAllMarkersVisible(this.sceneController, visible);
+  }
+
+  async deleteAllMarkers() {
+    await deleteMarkers(
+      this.sceneController,
+      (this._markers || []).map((marker) => marker.id),
+      "Delete All Markers"
+    );
+  }
+
   async setMarkerVisible(id, visible) {
     await setMarkerVisible(this.sceneController, id, visible);
   }
@@ -415,7 +451,16 @@ function describeEnds(marker, path) {
 
 // The near end of the segment: before halfway, the point it starts from; after halfway,
 // the one it runs to.
+//
+// A marker outlives the geometry it was placed on: delete the contour and the stored
+// contour number names nothing. Asking the path for it throws, and a throw here stops
+// the whole panel from being rebuilt, which leaves it showing whatever it last drew --
+// the "no glyph selected" line it starts up with. So the number is checked against the
+// path before it is used, and a marker with nowhere to point is named as broken.
 function pointNameOfSegment(path, end) {
+  if (!path || end.contourIndex < 0 || end.contourIndex >= path.numContours) {
+    return translate("sidebar.markers.broken");
+  }
   const segments = [...path.iterContourDecomposedSegments(end.contourIndex)];
   const segment = segments[end.segmentIndex];
   if (!segment) {

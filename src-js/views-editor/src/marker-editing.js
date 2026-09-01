@@ -164,6 +164,28 @@ export async function setMarkerVisible(sceneController, id, visible) {
   });
 }
 
+// One switch for the whole glyph. Every marker takes the same state, so a glyph that is
+// half hidden ends up all hidden or all shown rather than inverted marker by marker --
+// inverting is not what the button says it does.
+export async function setAllMarkersVisible(sceneController, visible) {
+  return await runMarkerEdit(sceneController, "Toggle All Markers", (data) => {
+    data.markers = data.markers.map((marker) => {
+      const next = { ...marker };
+      if (visible) {
+        delete next.hidden;
+      } else {
+        next.hidden = true;
+      }
+      return next;
+    });
+    // A group switch hides the markers in it, so leaving a group switched off would keep
+    // its markers away after the button says they are all shown.
+    if (visible) {
+      data.groups = data.groups.map((group) => ({ ...group, visible: true }));
+    }
+  });
+}
+
 export async function setMarkerGroup(sceneController, id, groupId) {
   return await runMarkerEdit(sceneController, "Set Marker Group", (data) => {
     data.markers = data.markers.map((marker) => {
