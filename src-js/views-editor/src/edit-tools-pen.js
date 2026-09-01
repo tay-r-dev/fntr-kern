@@ -242,9 +242,16 @@ export class PenToolCubic extends BaseTool {
     return { targetPoint: path.getPoint(hoveredPointIndex) };
   }
 
-  // A click here picks the point up rather than starting a new contour. Not on
-  // generated geometry: the pen never edits a skeleton's outline.
+  // A click here picks the point up rather than starting a new contour. Only while
+  // nothing is picked up already: once something is selected the pen is drawing, and a
+  // click while drawing has to put a point down. Otherwise the click silently drops the
+  // contour being drawn and starts aiming somewhere else.
+  //
+  // Not on generated geometry either: the pen never edits a skeleton's outline.
   _canResumeFrom(path, pointIndex) {
+    if (this.sceneController.selection.size) {
+      return false;
+    }
     if (!isResumablePointIndex(path, pointIndex)) {
       return false;
     }

@@ -8,6 +8,7 @@ import {
   getDefaultSkeletonWidthKeyForGlyphName,
   getSkeletonData,
   makeSkeletonPoint,
+  measureGeneratedHalfWidths,
   resolveEffectiveSourceSkeletonDefault,
 } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
@@ -210,6 +211,10 @@ export class SkeletonPenTool extends BaseTool {
     let kind;
     if (this._getCloseTarget(hit)) {
       kind = "close";
+    } else if (this.sceneController.selection.size) {
+      // Drawing. The click puts a point down wherever it lands, this one included, so
+      // there is nothing here to pick up.
+      return null;
     } else if (
       this._getOpenEndpointAt(skeletonData, skeletonData, hit.contourId, hit.pointId)
     ) {
@@ -300,12 +305,20 @@ export class SkeletonPenTool extends BaseTool {
         eventStream.done();
         return;
       }
-      // Clicking an existing skeleton point selects it (dragging is handled by
-      // the pointer tool's skeleton behavior).
-      this.sceneController.selection = new Set([
-        makeSkeletonPointKey(skeletonHit.contourId, skeletonHit.pointId),
-      ]);
-      eventStream.done();
+      // Clicking an existing skeleton point picks it up, so the next click draws from
+      // it. Only while nothing is picked up already: once something is selected the pen
+      // is drawing, and a click while drawing has to put a point down. Otherwise the
+      // click silently drops the contour being drawn and starts aiming somewhere else.
+      if (!this.sceneController.selection.size) {
+        this.sceneController.selection = new Set([
+          makeSkeletonPointKey(skeletonHit.contourId, skeletonHit.pointId),
+        ]);
+        eventStream.done();
+        return;
+      }
+      // Drawing: the click draws to where it landed. It goes straight to adding a
+      // point, never to inserting into the centerline that runs under this point.
+      await this._handleAddSkeletonPoint(eventStream, initialEvent);
       return;
     }
 
@@ -353,7 +366,8 @@ export class SkeletonPenTool extends BaseTool {
   // Runs one editSkeleton mutation across every editable layer and folds the
   // per-layer changes into one undo item. `applyMutation(working, reference)`
   // mutates a layer's working skeleton and returns the selection keys to apply
-  // (honored from the edit layer only, where ids are canonical).
+  // (honored from the edit layer only, where ids are canonical). The layer's own glyph
+  // is handed over too, so a mutation can read the outline that layer currently draws.
   async _editSkeletonAcrossLayers(undoLabel, applyMutation) {
     await this.sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
       const editingLayers = this.sceneController.getEditingLayerFromGlyphLayers(
@@ -377,7 +391,11 @@ export class SkeletonPenTool extends BaseTool {
         const changes = editSkeleton(
           layerGlyph,
           (working) => {
-            const selectionKeys = applyMutation(working, referenceSkeletonData);
+            const selectionKeys = applyMutation(
+              working,
+              referenceSkeletonData,
+              layerGlyph
+            );
             if (isEditLayer && selectionKeys) {
               primarySelection = new Set(selectionKeys);
             }
@@ -713,10 +731,59 @@ export class SkeletonPenTool extends BaseTool {
     };
   }
 
+  // The width a point put into an existing stroke has to take: the one the stroke
+  // already has where the point landed, measured out to the generated edge on each
+  // side. A default width here pinches or bulges the stroke at the new point, which is
+  // never what inserting a point was for.
+  //
+  // The direction along the centerline is the line between the new point's two
+  // neighbours. On a straight that is the segment itself. On a curve split in two the
+  // neighbours are the two new handles, and the point sits on the line between them, so
+  // it is the tangent there.
+  //
+  // Nothing is written when the measurement fails -- an open stroke drawn on one side
+  // only, a ray that meets no edge -- and the point keeps the width it would have had.
+  _applyMeasuredWidth(working, contour, layerGlyph, pointId) {
+    const index = contour.points.findIndex((point) => point.id === pointId);
+    if (index < 0 || !layerGlyph) {
+      return;
+    }
+    const count = contour.points.length;
+    const previous =
+      contour.points[index > 0 ? index - 1 : contour.isClosed ? count - 1 : -1];
+    const next =
+      contour.points[index < count - 1 ? index + 1 : contour.isClosed ? 0 : -1];
+    if (!previous || !next) {
+      return;
+    }
+    const point = contour.points[index];
+    const measured = measureGeneratedHalfWidths(
+      working,
+      contour.id,
+      layerGlyph.path,
+      { x: point.x, y: point.y },
+      { x: next.x - previous.x, y: next.y - previous.y }
+    );
+    if (!measured) {
+      return;
+    }
+    const left = roundHalfWidth(measured.left);
+    const right = roundHalfWidth(measured.right);
+    point.width = {
+      ...point.width,
+      left,
+      right,
+      // Two sides that came back the same stay tied together, so widening the point
+      // later widens it evenly. Two that came back different must not be, or the first
+      // edit would throw one of them away.
+      linked: left === right,
+    };
+  }
+
   async _handleInsertSkeletonPoint(centerlineHit) {
     await this._editSkeletonAcrossLayers(
       translate("edit-tools-skeleton.undo.insert-point"),
-      (working, referenceSkeletonData) => {
+      (working, referenceSkeletonData, layerGlyph) => {
         const seg = this._locateHitSegment(
           working,
           referenceSkeletonData,
@@ -744,6 +811,7 @@ export class SkeletonPenTool extends BaseTool {
             ? contour.points.length
             : startIndex + 1;
           contour.points.splice(insertIndex, 0, newPoint);
+          this._applyMeasuredWidth(working, contour, layerGlyph, newPoint.id);
           return [makeSkeletonPointKey(contour.id, newPoint.id)];
         }
 
@@ -753,6 +821,7 @@ export class SkeletonPenTool extends BaseTool {
         if (newOnCurveId == null) {
           return null;
         }
+        this._applyMeasuredWidth(working, contour, layerGlyph, newOnCurveId);
         return [makeSkeletonPointKey(contour.id, newOnCurveId)];
       }
     );
@@ -1073,4 +1142,11 @@ function makeBezier(controlPoints) {
     );
   }
   return new Bezier(...coords);
+}
+
+// Half a width is stored as a number, and the edge it names sits half a unit out of
+// place if it is rounded to whole units. One decimal is finer than the grid the outline
+// itself is rounded to.
+function roundHalfWidth(value) {
+  return Math.round(value * 10) / 10;
 }

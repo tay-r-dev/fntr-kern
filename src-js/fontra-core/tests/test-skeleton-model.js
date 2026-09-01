@@ -30,6 +30,7 @@ import {
   makeEmptySkeletonData,
   makeSkeletonContour,
   makeSkeletonPoint,
+  measureGeneratedHalfWidths,
   normalizeSkeletonData,
   normalizeSkeletonPoint,
   projectSkeletonRibPoint,
@@ -61,6 +62,7 @@ import {
   translateSkeletonData,
   updateSkeletonPoint,
 } from "@fontra/core/skeleton-model.js";
+import { VarPackedPath } from "@fontra/core/var-path.js";
 import { Transform } from "@fontra/core/transform.js";
 import { expect } from "chai";
 
@@ -2059,5 +2061,77 @@ describe("the tied flag belongs to the group, not to one rib", () => {
     setSkeletonRibTiedAcrossGroup(data, data.points[4], false);
     expect(data.points[4].width.tied).to.equal(false);
     expect(data.points[0].width.tied).to.not.equal(false);
+  });
+});
+
+// Inserting a point into an existing stroke: the point has to take the width the stroke
+// already has where it lands, measured out to the drawn edges.
+describe("skeleton-model - the width where a point lands", () => {
+  function straightStroke(halfLeft, halfRight) {
+    // A horizontal centerline from (0,0) to (200,0), with its two edges drawn as one
+    // closed rectangle, registered as this contour's generated outline. Travelling east,
+    // the generator's left side is the one below the centerline.
+    const skeletonData = {
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          points: [
+            { id: 2, x: 0, y: 0, width: { left: halfLeft, right: halfRight } },
+            { id: 3, x: 200, y: 0, width: { left: halfLeft, right: halfRight } },
+          ],
+        },
+      ],
+      generated: [{ skeletonContourId: 1, pathContourIndex: 0, pointMap: [] }],
+    };
+    const path = new VarPackedPath();
+    path.appendUnpackedContour({
+      points: [
+        { x: 0, y: -halfLeft },
+        { x: 200, y: -halfLeft },
+        { x: 200, y: halfRight },
+        { x: 0, y: halfRight },
+      ],
+      isClosed: true,
+    });
+    return { skeletonData: normalizeSkeletonData(skeletonData), path };
+  }
+
+  it("measures both edges of a stroke drawn on both sides", () => {
+    const { skeletonData, path } = straightStroke(40, 25);
+    const measured = measureGeneratedHalfWidths(
+      skeletonData,
+      1,
+      path,
+      { x: 100, y: 0 },
+      { x: 1, y: 0 }
+    );
+    expect(measured.left).to.be.closeTo(40, 0.001);
+    expect(measured.right).to.be.closeTo(25, 0.001);
+  });
+
+  it("answers nothing where a ray meets no edge", () => {
+    const { skeletonData, path } = straightStroke(40, 25);
+    const measured = measureGeneratedHalfWidths(
+      skeletonData,
+      1,
+      path,
+      { x: 500, y: 0 },
+      { x: 1, y: 0 }
+    );
+    expect(measured).to.equal(null);
+  });
+
+  it("answers nothing for a contour that generated no outline", () => {
+    const { skeletonData, path } = straightStroke(40, 25);
+    expect(
+      measureGeneratedHalfWidths(
+        skeletonData,
+        99,
+        path,
+        { x: 100, y: 0 },
+        { x: 1, y: 0 }
+      )
+    ).to.equal(null);
   });
 });

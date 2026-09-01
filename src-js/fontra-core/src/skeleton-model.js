@@ -44,6 +44,7 @@ import {
   hasForwardTangentIntersection,
 } from "./tunni-calculations.js";
 import { deepCopyObject, splitGlyphNameExtension } from "./utils.ts";
+import { PathHitTester } from "./path-hit-tester.js";
 import { VarPackedPath } from "./var-path.js";
 import {
   addVectors,
@@ -2105,6 +2106,93 @@ export function getGeneratedPathContourIndices(skeletonData) {
     }
   }
   return indices;
+}
+
+// How wide the stroke actually is at a place on the centerline, measured against the
+// outline that is already drawn there.
+//
+// A point put into an existing stroke has to take the width the stroke has where it
+// lands, or the stroke pinches or bulges at the new point. That width is not stored
+// anywhere between two skeleton points -- only the two ends carry one -- so it is
+// measured: a ray leaves the centerline square to it and stops at the first generated
+// edge it meets, once each way.
+//
+// Left and right follow the generator's own convention: the travel direction turned a
+// quarter clockwise is the left side.
+//
+// Returns {left, right}, or null when either side has no edge to stop at.
+export function measureGeneratedHalfWidths(
+  skeletonData,
+  contourId,
+  path,
+  position,
+  direction
+) {
+  const outline = generatedOutlineSubPath(skeletonData, contourId, path);
+  if (!outline || !outline.numContours) {
+    return null;
+  }
+  const travel = normalizeVector(direction);
+  if (!Number.isFinite(travel.x) || !Number.isFinite(travel.y)) {
+    return null;
+  }
+  const normal = rotateVector90CW(travel);
+  const hitTester = new PathHitTester(outline, outline.getControlBounds());
+
+  // A stroke drawn on one side only has its other edge lying on the centerline itself,
+  // so a ray sent that way meets nothing belonging to this stroke and comes back with
+  // whatever else it ran into. Only the drawn side is measured, and the answer is split
+  // evenly between the two halves: the two halves add up to the width that is drawn,
+  // which is the number the generator reads, and nothing in the drawing says how a
+  // single-sided stroke divided it.
+  const drawnSide = getSkeletonContour(skeletonData, contourId)?.singleSided;
+  if (drawnSide === "left" || drawnSide === "right") {
+    const measured = firstEdgeDistance(
+      hitTester,
+      position,
+      drawnSide === "left" ? normal : mulVectorScalar(normal, -1)
+    );
+    return measured === null ? null : { left: measured / 2, right: measured / 2 };
+  }
+
+  const left = firstEdgeDistance(hitTester, position, normal);
+  const right = firstEdgeDistance(hitTester, position, mulVectorScalar(normal, -1));
+  return left === null || right === null ? null : { left, right };
+}
+
+// Just the contours this skeleton contour generated, so the ray cannot stop on some
+// other stroke that happens to lie across it.
+function generatedOutlineSubPath(skeletonData, contourId, path) {
+  if (!path) {
+    return null;
+  }
+  const outline = new VarPackedPath();
+  for (const entry of skeletonData?.generated || []) {
+    if (entry.skeletonContourId !== contourId) {
+      continue;
+    }
+    const contourIndex = entry.pathContourIndex;
+    if (!Number.isInteger(contourIndex) || contourIndex >= path.numContours) {
+      continue;
+    }
+    outline.appendUnpackedContour(path.getUnpackedContour(contourIndex));
+  }
+  return outline;
+}
+
+// The nearest crossing in front of the origin. Anything at or behind it is the edge on
+// the other side, or the centerline's own place in a single-sided stroke.
+const EDGE_DISTANCE_EPSILON = 1e-6;
+
+function firstEdgeDistance(hitTester, origin, direction) {
+  let nearest = null;
+  for (const crossing of hitTester.rayIntersections(origin, direction)) {
+    const along = dotVector(subVectors(crossing, origin), direction);
+    if (along > EDGE_DISTANCE_EPSILON && (nearest === null || along < nearest)) {
+      nearest = along;
+    }
+  }
+  return nearest;
 }
 
 export function getSkeletonPointHalfWidth(point, defaultWidth, side) {
