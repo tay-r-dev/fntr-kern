@@ -741,10 +741,10 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
   "sidebar.selection-transformation.harmonize.method": "Movement",
   "sidebar.selection-transformation.harmonize.method.tooltip":
-    "How much the command may move. Position 1 changes the four handle lengths as little as it can. Position 2 moves the two inner handle lengths to one particular ratio. Position 3 also lets the joint slide along its own tangent. G3 has one construction and greys this out.",
-  "sidebar.selection-transformation.harmonize.method.1": "Nearest",
-  "sidebar.selection-transformation.harmonize.method.2": "Canonical",
-  "sidebar.selection-transformation.harmonize.method.3": "Canonical, joint free",
+    "Every position removes the curvature step at the joint. They differ in what they do to the curve either side of it. Position 1 keeps the curvature you drew and changes the four handle lengths as little as it can. Position 2 throws that curvature away and computes a new one from the two outer handles, which the drawing then has to reach. Position 3 does the same and also lets the joint slide along its own tangent. G3 has one construction and greys this out.",
+  "sidebar.selection-transformation.harmonize.method.1": "Preserve curvature",
+  "sidebar.selection-transformation.harmonize.method.2": "Recompute curvature",
+  "sidebar.selection-transformation.harmonize.method.3": "Recompute, move the on-curve",
   "sidebar.selection-transformation.harmonize.other-sources": "Other sources",
   "sidebar.selection-transformation.harmonize.reason.already-harmonic":
     "already harmonic",
