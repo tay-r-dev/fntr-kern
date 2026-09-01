@@ -427,6 +427,9 @@ export function summarizeSkeletonSerifSelection(selectedPoints) {
     ),
     axisMode: terminal("axisMode", "perpendicular"),
     axisAngle: terminal("axisAngle", 0),
+    // Zero is the plain perpendicular, so a terminal drawn before the tilt
+    // existed reads neutral and draws exactly what it drew.
+    axisTilt: terminal("axisTilt", 0),
     undersideCup: terminal("undersideCup"),
     undersideCupTension: terminal("undersideCupTension"),
     // Neutral is the midpoint of the two tips, so a terminal drawn before the

@@ -1520,6 +1520,10 @@ export default class SkeletonParametersPanel extends Panel {
           value: "absolute",
           label: translate("sidebar.skeleton-parameters.serif-axis.absolute"),
         },
+        {
+          value: "tilt",
+          label: translate("sidebar.skeleton-parameters.serif-axis.tilt"),
+        },
       ],
     });
     if (serif.axisMode.value === "absolute" && !serif.axisMode.mixed) {
@@ -1530,6 +1534,25 @@ export default class SkeletonParametersPanel extends Panel {
         serif.axisAngle,
         -90,
         90,
+        0,
+        { step: 1, disabled: !canEdit }
+      );
+    }
+    // The tilt takes the same place the absolute angle does, because the two
+    // never appear together. Its range is 40 either way, which is the lab's own
+    // and is also where the terminal stops moving by rotation alone: past about
+    // 38 degrees the wing runs so far along the stem that the construction's
+    // searches meet the wall tangentially and the shape steps. The range is a
+    // slider bound and not a clamp in the writer, exactly as the absolute
+    // angle's is — the shape does not stop there, it steps.
+    if (serif.axisMode.value === "tilt" && !serif.axisMode.mixed) {
+      this._pushSummarySlider(
+        formContents,
+        "serif:axistilt",
+        "serif-axis-tilt",
+        serif.axisTilt,
+        -40,
+        40,
         0,
         { step: 1, disabled: !canEdit }
       );
@@ -1997,11 +2020,13 @@ export default class SkeletonParametersPanel extends Panel {
         const makeValues = (streamed) =>
           name === "axisangle"
             ? { axisAngle: Number(streamed) }
-            : name === "cuptension"
-              ? { undersideCupTension: Number(streamed) / 100 }
-              : name === "cupbalance"
-                ? { undersideCupBalance: Number(streamed) / 100 }
-                : serifHalfValuesFromField(name, streamed);
+            : name === "axistilt"
+              ? { axisTilt: Number(streamed) }
+              : name === "cuptension"
+                ? { undersideCupTension: Number(streamed) / 100 }
+                : name === "cupbalance"
+                  ? { undersideCupBalance: Number(streamed) / 100 }
+                  : serifHalfValuesFromField(name, streamed);
         if (makeValues(value)) {
           await setPanelSerifParametersStream(
             this.sceneController,
@@ -2400,6 +2425,10 @@ export default class SkeletonParametersPanel extends Panel {
     }
     if (name === "axisangle") {
       await apply({ axisAngle: Number(value) });
+      return;
+    }
+    if (name === "axistilt") {
+      await apply({ axisTilt: Number(value) });
       return;
     }
     if (name === "cup") {
