@@ -237,18 +237,81 @@ under it.
 
 ---
 
-## 9. The unknowns to check before anything is designed
+## 9. The unknowns, measured 2026-09-01
 
-1. **Continuity under a drag.** Does the nearest-answer solve stay continuous
-   while the designer drags? Every frame is recomputed. An answer that jumps
-   between two configurations is unusable however accurate it is. Gauss-Newton
-   from a fixed start with a fixed trip count is deterministic. Deterministic is
-   not continuous, and this project has paid for that distinction before.
-2. **A badly broken joint.** What does the nearest answer draw where the joint
-   arrives far out? The nearest answer may be a poor shape there, and the
-   present construction's one particular answer may be what is wanted.
-3. **The scoring layer.** With one answer instead of a field, most of the ranks
-   have nothing to choose between. Which parts are invariants that still have to
-   hold, and which parts are preferences that go?
-4. **Realign.** It is not known that this pass does anything at all. Measure
-   what it changes, and on which joints. If it changes nothing, it goes.
+Measured on `_external/problem-glyphs/N^1.json` and `I^1.json`, over the nine
+smooth joints in them that arrive with a curvature step. The reference solve was
+ported into a throwaway probe and run against our own command.
+
+### 9.1 Continuity: G2 holds, G3 does not
+
+A drag moves an on-curve point and carries its two handles. Under that drag, in
+steps of a quarter unit, the reference G2 answer moves at most 0.06 units per
+step on every joint of `N^1`, and at most 0.15 on four of the six joints of
+`I^1`. The solve is continuous.
+
+**It is continuous and it is not bounded.** On the two remaining `I^1` joints the
+node drag carries the joint toward an inflection. The two curvatures fall toward
+zero, and the answer grows smoothly to match them. Point 19, over three units of
+drag: curvature 6.5e-5 to -6.0e-6, the answer's largest tension 1.95 to 3.85, and
+the handle movement 1227 to 2517 units. Nothing jumps. The answer simply asks for
+handles far past the tension ceiling.
+
+**G3 is discontinuous.** Over the same sweeps the G3 answer steps by 1397, 2149,
+2421 and 2687 units between two adjacent frames, and reaches a tension of 11.34.
+
+### 9.2 The grid takes most of the nearest answer back
+
+The nearest answer is exact in floating point and does not survive whole units.
+Rounded, the joint it leaves:
+
+| joint      | arrives | exact  | rounded |
+| ---------- | ------- | ------ | ------- |
+| `N^1` pt12 | 4.177%  | 0.000% | 1.206%  |
+| `I^1` pt4  | 77.021% | 0.000% | 14.819% |
+| `I^1` pt19 | 15.137% | 0.000% | 3.936%  |
+| `I^1` pt13 | 11.229% | 0.000% | 0.568%  |
+
+A grid search is therefore still needed. This is the rule the log already states:
+a harmonic answer is a ratio, so rounding the two ends independently can undo all
+of it.
+
+### 9.3 A badly broken joint: ours is not worse
+
+Movement of the drawing, per joint. `ref4` is the reference over four handles,
+`ref2` the same restricted to the two handles ours moves, `ours` the present
+command with whole-unit output.
+
+| joint      | arrives | ref4 | ref2 | ours |
+| ---------- | ------- | ---- | ---- | ---- |
+| `N^1` pt12 | 4.177%  | 2.0  | 5.6  | 85.0 |
+| `N^1` pt3  | 17.382% | 11.1 | 36.2 | 36.0 |
+| `N^1` pt10 | 26.855% | 25.2 | 56.6 | 56.0 |
+| `I^1` pt4  | 77.021% | 38.5 | 43.1 | 34.2 |
+| `I^1` pt19 | 15.137% | 4.2  | 10.6 | 13.6 |
+| `I^1` pt3  | 3.783%  | 1.4  | 1.2  | 1.0  |
+| `I^1` pt6  | 0.947%  | 0.5  | 0.4  | 1.0  |
+| `I^1` pt13 | 11.229% | 8.7  | 7.0  | 7.0  |
+| `I^1` pt16 | 9.960%  | 5.2  | 4.6  | 5.0  |
+
+**The 85 units are one joint, not the command.** On seven of the nine joints ours
+moves the drawing about as far as the nearest answer restricted to the same two
+handles, and on two of them less. On `N^1` pt12 it moves fifteen times further.
+
+**Four handles buy something real on a broken joint.** `N^1` pt3 and pt10: 11.1
+against 36.2, and 25.2 against 56.6.
+
+**Ours leaves less residual than the reference does on the grid.** Ours leaves
+0.006% to 0.995% at these joints. The reference rounded leaves 0.433% to 14.819%.
+The grid search is what buys that, and it is the part that must be kept.
+
+### 9.4 Realign moves nothing
+
+Run over every smooth joint of both glyphs, on all three layers, realign moved no
+point at all. It moved 0 of 88 points. It fires only on a joint whose handles have
+drifted off the line, and no joint in either glyph has.
+
+### 9.5 What is left of the scoring layer
+
+Not answered by measurement. It is a design question, and it is the next one to
+settle.
