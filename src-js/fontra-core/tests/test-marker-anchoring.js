@@ -5,6 +5,7 @@ import {
   nearestOnCurvePlace,
   nearestOnCurvePoint,
   nearestPlaceOnSkeleton,
+  refreshedMarkers,
   resolveMarkerEnd,
   withAnchorPosition,
 } from "@fontra/core/marker-model.js";
@@ -334,5 +335,48 @@ describe("marker anchoring — on-curve points", () => {
       x: 0,
       y: 0,
     });
+  });
+});
+
+// Measured on `D^1.json`: two rays that had ridden the outline for a while, remembering
+// positions 9 and 68 units away from where they actually stood. Inserting one point on
+// their contour broke both.
+describe("marker anchoring - the remembered position goes out of date", () => {
+  function ridingMarker() {
+    const end = rayEndOn(squarePath(), 0, 0, 0.5);
+    const marker = markerWith(end);
+    const moved = squarePath();
+    moved.coordinates[1] = -40; // the whole bottom edge drops away from the memory
+    moved.coordinates[3] = -40;
+    return { marker, moved };
+  }
+
+  it("breaks a riding marker when a point is inserted, if the memory is left alone", () => {
+    const { marker, moved } = ridingMarker();
+    const grown = moved.copy();
+    grown.insertPoint(0, 1, { x: 50, y: -40 });
+    expect(markerIsStale(marker, grown)).to.equal(true);
+  });
+
+  it("survives the same insertion once the memory is brought up to date", () => {
+    const { marker, moved } = ridingMarker();
+    const refreshed = refreshedMarkers([marker], moved, null);
+    expect(refreshed[0].ends[0].at).to.deep.include({ x: 50, y: -40 });
+    const grown = moved.copy();
+    grown.insertPoint(0, 1, { x: 50, y: -40 });
+    expect(markerIsStale(refreshed[0], grown)).to.equal(false);
+  });
+
+  it("leaves a stale marker exactly as it is", () => {
+    const end = rayEndOn(squarePath(), 0, 0, 0.5);
+    const marker = markerWith(end);
+    const shrunk = squarePath();
+    shrunk.deleteContour(0);
+    expect(refreshedMarkers([marker], shrunk, null)).to.equal(null);
+  });
+
+  it("writes nothing when nothing moved", () => {
+    const marker = markerWith(rayEndOn(squarePath()));
+    expect(refreshedMarkers([marker], squarePath(), null)).to.equal(null);
   });
 });

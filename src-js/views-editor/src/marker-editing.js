@@ -20,6 +20,7 @@ import {
   nearestOnCurvePlace,
   nearestOnCurvePoint,
   nearestPlaceOnSkeleton,
+  refreshedMarkers,
   resolveMarkerEnd,
   setMarkerData,
   withAnchorPosition,
@@ -74,6 +75,38 @@ export async function runMarkerEdit(
     await sendIncrementalChange(combined.change);
     return { changes: combined, undoLabel, broadcast: true };
   }, MARKER_EDIT_SENDER);
+}
+
+// Every layer's markers brought up to date, recorded against the whole glyph so it
+// travels with the edit that caused it and undoes with it.
+//
+// A layer that draws components is skipped. A marker addresses the layer's own contours
+// by number, and a glyph built out of components has none of its own to number, so
+// anything written here would be written against the wrong outline.
+export function recordMarkerAnchorRefresh(glyph) {
+  return recordChanges(glyph, (proxy) => {
+    for (const [layerName, layer] of Object.entries(proxy.layers || {})) {
+      const layerGlyph = layer?.glyph;
+      if (!layerGlyph || layerGlyph.components?.length) {
+        continue;
+      }
+      const markers = getMarkers(layerGlyph);
+      if (!markers.length) {
+        continue;
+      }
+      const refreshed = refreshedMarkers(
+        markers,
+        layerGlyph.path,
+        getSkeletonData(layerGlyph)
+      );
+      if (!refreshed) {
+        continue;
+      }
+      mutateMarkerData(layerGlyph, (data) => {
+        data.markers = refreshed;
+      });
+    }
+  });
 }
 
 // Placement. The id is allocated once, against the edit layer, and the same id is

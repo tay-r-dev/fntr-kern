@@ -97,6 +97,7 @@ import {
   recordComponentInsert,
 } from "./composition-editing.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
+import { recordMarkerAnchorRefresh } from "./marker-editing.js";
 import { SceneModel } from "./scene-model.js";
 import {
   applyGeneratedContourRemap,
@@ -1989,6 +1990,19 @@ export class SceneController {
       }
     };
     const initialSelection = this.selection;
+
+    // A marker remembers where its anchor stood, so that an edit which renumbers the
+    // points can be checked against it. That memory is only worth anything while it is
+    // current, and it was written only when the marker was placed or dragged. A marker
+    // that rides the outline -- points moved under it, which is most edits -- was left
+    // remembering where the outline used to be, and the next edit that changed a point
+    // count judged it against that and called it broken.
+    //
+    // So it is brought up to date HERE: before the edit runs, while the outline is still
+    // the one the memory describes. It is recorded first and travels in the same change,
+    // so it undoes with the edit it was taken for.
+    const markerChanges = doInstance ? null : recordMarkerAnchorRefresh(editSubject);
+
     // editContext.editBegin();
     let result;
     try {
@@ -2000,6 +2014,10 @@ export class SceneController {
     }
 
     let { changes, undoLabel, broadcast } = result || {};
+
+    if (markerChanges?.hasChange) {
+      changes = markerChanges.concat(changes);
+    }
 
     if (addSourceChanges) {
       changes = addSourceChanges.concat(changes);

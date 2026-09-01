@@ -257,6 +257,56 @@ export function markerIsStale(marker, path, skeletonData) {
   );
 }
 
+// Bringing the remembered positions up to date, run after every glyph edit.
+//
+// The remembered position is what the repair compares against, and it was only ever
+// written when a marker was placed or dragged. A marker that rides the outline -- points
+// moved under it, which is the common edit -- kept a memory of where the outline USED to
+// be. The next edit that changed a point count then judged the marker against that old
+// memory, found the outline nowhere near it, and called the marker broken. Refreshing
+// after every edit is what makes the memory mean what the repair reads it as: where this
+// anchor stood a moment ago.
+//
+// Only markers whose every end resolves are touched. A stale marker is left exactly as
+// it is, so it keeps the spot it last stood at and stays draggable back onto geometry.
+//
+// Returns a new marker list, or null when nothing needed rewriting.
+export function refreshedMarkers(markers, path, skeletonData) {
+  let changed = false;
+  const signature = computeMarkerSignature(path);
+  const refreshed = (markers || []).map((marker) => {
+    if (marker.broken) {
+      return marker;
+    }
+    const resolved = marker.ends.map((end) =>
+      end.kind === "cast"
+        ? null
+        : resolveMarkerEnd(end, {
+            path,
+            skeletonData,
+            indicesChanged: markerIndicesChanged(marker, path, end),
+          })
+    );
+    if (resolved.some((anchor) => anchor && anchor.verdict !== "ok")) {
+      return marker;
+    }
+    const ends = marker.ends.map((end, i) =>
+      resolved[i] ? withAnchorPosition(resolved[i].end, path, skeletonData) : end
+    );
+    const next = { ...marker, ends, signature };
+    if (sameMarker(next, marker)) {
+      return marker;
+    }
+    changed = true;
+    return next;
+  });
+  return changed ? refreshed : null;
+}
+
+function sameMarker(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 function endIsPathAnchored(end) {
   return end.kind === "pathSegment" || end.kind === "pathPoint";
 }
