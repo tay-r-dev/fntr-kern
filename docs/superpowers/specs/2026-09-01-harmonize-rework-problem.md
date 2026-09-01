@@ -238,7 +238,7 @@ it on greys the slider out.
 The slider does not apply under G3. Position 1 cannot: the reference solve on two
 equations is discontinuous and asks for handles far past the tension ceiling
 (section 9.1). Position 3 is refused: moving the on-curve draws a shape the
-designer does not want under G3, and it moves the drawing 1013 units on 
+designer does not want under G3, and it moves the drawing 1013 units on `I^1`
 against 201 under G2. What is left is one answer, which is our own construction
 with the joint held still.
 
