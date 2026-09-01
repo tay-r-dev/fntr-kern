@@ -785,16 +785,21 @@ export default class TransformationPanel extends Panel {
       disabled: !!applicationSettingsController.model.harmonizeG3,
     });
 
+    // The name of the position, held as an element rather than a form value.
+    // Rebuilding the whole form to redraw one word replaces the slider under
+    // the pointer, and a slider replaced mid-gesture goes back to the value it
+    // was built with.
     formContents.push({
-      type: "text",
-      label: "",
-      value: translate(
-        `sidebar.selection-transformation.harmonize.method.${
-          applicationSettingsController.model.harmonizeG3
-            ? 2
-            : applicationSettingsController.model.harmonizeMethod
-        }`
-      ),
+      type: "universal-row",
+      field1: {},
+      field2: {
+        type: "auxiliaryElement",
+        auxiliaryElement: (this.harmonizeMethodNameElement = html.span(
+          { class: "harmonize-report" },
+          [harmonizeMethodName()]
+        )),
+      },
+      field3: {},
     });
 
     formContents.push({
@@ -899,9 +904,13 @@ export default class TransformationPanel extends Panel {
       ) {
         applicationSettingsController.model[fieldItem.key] =
           fieldItem.key === "harmonizeMethod" ? Math.round(Number(value)) : value;
-        // The row under the slider names the position, and turning G3 on greys
-        // the slider out. Neither is redrawn unless the panel is rebuilt.
-        if (fieldItem.key !== "harmonizeOtherSources") {
+        if (this.harmonizeMethodNameElement) {
+          this.harmonizeMethodNameElement.innerText = harmonizeMethodName();
+        }
+        // G3 greys the slider out, which is a property of the field and only
+        // the rebuild can change it. The position is not: its name is written
+        // straight into the row above.
+        if (fieldItem.key === "harmonizeG3") {
           this.update();
           return;
         }
@@ -1820,3 +1829,11 @@ function formatBalanceReport(reports) {
 }
 
 customElements.define("panel-transformation", TransformationPanel);
+
+// The name of the harmonize position the panel is set to. Under G3 there is one
+// construction and the slider is greyed out, so the row names that one.
+function harmonizeMethodName() {
+  const settings = applicationSettingsController.model;
+  const position = settings.harmonizeG3 ? 2 : settings.harmonizeMethod;
+  return translate(`sidebar.selection-transformation.harmonize.method.${position}`);
+}
