@@ -356,6 +356,18 @@ press settled and a hundred more moved nothing.
   settled at press 9.
 - Measured after, on the reported point: one press and forty presses are the
   same drawing, with the tick on and off alike.
+- **The balance rule was wrong on its first outing, and the designer named the
+  right one.** It picked the shared fraction by least squares over the curve,
+  which moves the drawing least in POSITION — and that inflates the segment's
+  own tension on anything lopsided: 21 per cent at 0.375 against 1.125, 64 at
+  0.225 against 1.200, 136 at 0.150 against 1.350. Holding the HARMONIC MEAN of
+  the two tensions fixed changes the split and nothing else, because that mean
+  IS the segment's tension. It is the rule the Tunni gizmo's equalize gesture
+  already used, so the fix was to stop having two.
+- **Balanced then rounded is no longer balanced**, so one pass left a little for
+  the next press and the command took two. Three fixed passes reach the position
+  the rounding is a fixed point of, and a segment that cannot be improved on
+  whole units reports `already-balanced` rather than a refusal.
 - **Two promises came out of the press with the balance.** It no longer leaves
   the drawing balanced, and it no longer keeps a handle off the tension ceiling
   — the stalled-joint fixture now lands a handle exactly on its crossing and

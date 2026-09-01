@@ -716,7 +716,7 @@ export const strings = {
   "sidebar.selection-transformation.flip.vertically": "Flip Vertically",
   "sidebar.selection-transformation.balance": "Balance",
   "sidebar.selection-transformation.balance.tooltip":
-    "Put each curve’s two handles at one shared fraction of the way to where their lines cross. It says nothing about the joints between curves, so it will move a joint that harmonizing has just fixed — balance first, or accept that it has the last word.",
+    "Bring each curve’s two handles to one shared tension, holding the curve’s own fullness exactly where it is — the same rule the Tunni gizmo’s equalize gesture uses. It says nothing about the joints between curves, so it will move a joint that harmonizing has just fixed: balance first, or accept that it has the last word.",
   "sidebar.selection-transformation.balance.apply": "Balance",
   "sidebar.selection-transformation.balance.nothing-to-do": "Nothing to balance",
   "sidebar.selection-transformation.balance.status.balanced": [
@@ -729,8 +729,6 @@ export const strings = {
   ],
   "sidebar.selection-transformation.balance.reason.already-balanced":
     "already balanced",
-  "sidebar.selection-transformation.balance.reason.cannot-balance":
-    "no single tension describes it",
   "sidebar.selection-transformation.balance.reason.degenerate": "nothing to balance",
   "sidebar.selection-transformation.balance.reason.not-curve-segment": "not a curve",
   "sidebar.selection-transformation.balance.reason.generated-contour":

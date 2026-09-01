@@ -1253,10 +1253,17 @@ is taken whole or refused, and a refusal is reported as `clamped`,
 `tension-limited` or `degenerate` — never as "already harmonic".
 
 **Balancing is not part of this command.** It is its own, beside Harmonize in the
-panel, with its own action and context-menu entry. It puts each curve's two
-handles at one shared fraction of the way to where their lines cross, refuses a
-curve whose handles sit on opposite sides of its chord, and says nothing about
-any joint. It reaches a skeleton centerline the same way harmonizing does.
+panel, with its own action and context-menu entry. It brings each curve's two
+handles to one shared tension **holding the harmonic mean of the two fixed**,
+which is the segment's own tension — so the split changes and how full the curve
+is does not. That is the same rule the Tunni gizmo's equalize gesture uses, and
+there is one copy of it. Choosing the fraction by least squares over the curve
+instead moves the drawing least in position, and on a lopsided segment it
+inflates the curve by 21 to 136 per cent; a balance is not the place to decide
+how full a curve is. It refuses a curve whose handles sit on opposite sides of
+its chord, says nothing about any joint, and reaches a skeleton centerline the
+same way harmonizing does. Three fixed passes settle it against the grid, so one
+press is the whole of it.
 
 The two cannot be one press. A curve's end curvature is set by its last three
 control points, so the inner handle is what harmonizing moves to make two curves

@@ -2214,16 +2214,26 @@ describe("harmonization: balancing is its own command", () => {
     ]);
   }
 
-  function imbalance(path, start) {
+  function tensionsOf(path, start) {
     const points = [0, 1, 2, 3].map((offset) => {
       const [x, y] = path.getPointPosition(start + offset);
       return { x, y };
     });
     const tunniPoint = calculateTunniPoint(points);
-    return Math.abs(
-      distance(points[0], points[1]) / distance(points[0], tunniPoint) -
-        distance(points[3], points[2]) / distance(points[3], tunniPoint)
-    );
+    return {
+      start: distance(points[0], points[1]) / distance(points[0], tunniPoint),
+      end: distance(points[3], points[2]) / distance(points[3], tunniPoint),
+    };
+  }
+
+  function imbalance(path, start) {
+    const { start: a, end: b } = tensionsOf(path, start);
+    return Math.abs(a - b);
+  }
+
+  function segmentTension(path, start) {
+    const { start: a, end: b } = tensionsOf(path, start);
+    return (2 * a * b) / (a + b);
   }
 
   it("balances both segments a selected joint touches", () => {
@@ -2252,6 +2262,36 @@ describe("harmonization: balancing is its own command", () => {
     const report = balancePathInPlace(path, [0, 3, 6]);
     const starts = report.map((entry) => entry.segmentIndex);
     expect(new Set(starts).size).to.equal(starts.length);
+  });
+
+  // A segment's own tension is the harmonic mean of its two handle tensions, so
+  // holding that mean fixed while the two are brought together changes the split
+  // and NOTHING about how full the curve is. This is the rule the Tunni gizmo's
+  // own equalize gesture uses, and there is one copy of it.
+  //
+  // Choosing the fraction by least squares over the curve instead moves the
+  // drawing least in POSITION, and it was chosen for that — but on a lopsided
+  // segment it inflates the segment's tension badly: 21 per cent at 0.375
+  // against 1.125, 64 per cent at 0.225 against 1.200, and 136 per cent at
+  // 0.150 against 1.350. A balance is not the place to change how full a curve
+  // is.
+  it("leaves the segment's own tension exactly where it was", () => {
+    const lopsided = () =>
+      makeContour([
+        { x: 0, y: 0, smooth: true },
+        cubic(30, 30),
+        cubic(120, 160),
+        { x: 200, y: 0, smooth: true },
+        cubic(260, 40),
+        cubic(320, 40),
+        { x: 380, y: 0, smooth: true },
+      ]);
+    const path = lopsided();
+    const before = segmentTension(path, 0);
+    balancePathInPlace(path, [3]);
+    const after = segmentTension(path, 0);
+    expect(tensionsOf(path, 0).start).to.be.closeTo(tensionsOf(path, 0).end, 0.01);
+    expect(after).to.be.closeTo(before, 0.01);
   });
 
   it("reports rather than moves what it cannot balance", () => {

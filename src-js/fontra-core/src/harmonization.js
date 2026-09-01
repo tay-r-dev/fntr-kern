@@ -23,7 +23,7 @@
 // two ways, which is what `handleBias` blends between.
 //
 
-import { balanceSegment, calculateTunniPoint } from "./tunni-calculations.js";
+import { calculateTunniPoint, equalizeTensions } from "./tunni-calculations.js";
 import { POINT_TYPE_OFF_CURVE_CUBIC } from "./var-path.js";
 import {
   addVectors,
@@ -2892,42 +2892,93 @@ export function balancePathInPlace(path, pointIndices) {
       }
       // Parallel handle lines never cross, so there is no reach for a tension to
       // be a fraction of; an S has its two handles on opposite sides of its own
-      // chord, and no one tension describes it. `balanceSegment` refuses both by
-      // handing the drawing back unchanged.
-      const balanced = balanceSegment(positions);
-      const moved = [1, 2].filter(
-        (i) => balanced[i].x !== positions[i].x || balanced[i].y !== positions[i].y
+      // chord, and no one tension describes it. Both are refused above and by
+      // the tension reader here, which returns nothing to balance.
+      //
+      // Balanced, rounded, and balanced again from where the rounding put it.
+      // A balanced pair rounded to whole units is no longer exactly balanced, so
+      // one pass leaves a little for the next press to find; three fixed passes
+      // reach the position the rounding is a fixed point of. Fixed, because a
+      // loop that picks its own trip count cannot be continuous in its input.
+      //
+      // The two tensions are brought together holding their HARMONIC MEAN
+      // fixed, because that mean is the segment's own tension — how full the
+      // curve is. So balancing changes the split and nothing else, which is
+      // exactly what the Tunni gizmo's equalize gesture does, and there is one
+      // copy of the rule.
+      //
+      // Choosing the fraction by least squares over the curve instead moves the
+      // drawing least in POSITION, and it was chosen for that. On a lopsided
+      // segment it inflates the curve badly: 21 per cent at 0.375 against
+      // 1.125, 64 per cent at 0.225 against 1.200, 136 per cent at 0.150
+      // against 1.350. A balance is not the place to decide how full a curve is.
+      let settled = positions;
+      for (let pass = 0; pass < 3; pass++) {
+        const tensions = {
+          start: handleTension(settled, "start"),
+          end: handleTension(settled, "end"),
+        };
+        const balanced = balanceSegmentPreservingTension(settled, tensions);
+        const rounded = [
+          settled[0],
+          { x: Math.round(balanced[1].x), y: Math.round(balanced[1].y) },
+          { x: Math.round(balanced[2].x), y: Math.round(balanced[2].y) },
+          settled[3],
+        ];
+        const still =
+          rounded[1].x === settled[1].x &&
+          rounded[1].y === settled[1].y &&
+          rounded[2].x === settled[2].x &&
+          rounded[2].y === settled[2].y;
+        settled = rounded;
+        if (still) {
+          break;
+        }
+      }
+      const placed = [settled[1], settled[2]];
+      const moved = [0, 1].filter(
+        (i) => placed[i].x !== positions[i + 1].x || placed[i].y !== positions[i + 1].y
       );
       if (!moved.length) {
-        const imbalance = segmentImbalance(positions);
+        // Nothing to write means the drawing is already as balanced as whole
+        // units can express it. It is not a refusal.
         report.push({
           segmentIndex: start,
           contourIndex,
           status: "skipped",
-          reason:
-            imbalance === undefined
-              ? "degenerate"
-              : imbalance > 0
-                ? "cannot-balance"
-                : "already-balanced",
+          reason: "already-balanced",
         });
         continue;
       }
-      for (const i of [1, 2]) {
-        writePoint(path, touched, indices[i], balanced[i]);
+      for (const i of [0, 1]) {
+        writePoint(path, touched, indices[i + 1], placed[i]);
       }
       report.push({ segmentIndex: start, contourIndex, status: "balanced" });
     }
   }
 
-  // Whole units, like every other command here. A point is written only where it
-  // is not already there, so a balance that rounds back onto its own coordinates
-  // takes no undo step.
-  for (const index of touched) {
-    const [x, y] = path.getPointPosition(index);
-    path.setPointPosition(index, Math.round(x), Math.round(y));
-  }
   return report;
+}
+
+// Both handles to the harmonic mean of the two tensions, along their own
+// directions. Length is tension times that end's own reach, so each handle keeps
+// its direction and only its length changes.
+function balanceSegmentPreservingTension(points, tensions) {
+  const tunniPoint = calculateTunniPoint(points);
+  if (!tunniPoint) {
+    return points;
+  }
+  const equal = equalizeTensions(tensions, 1);
+  const place = (anchor, tension) => {
+    const ray = subVectors(tunniPoint, anchor);
+    return { x: anchor.x + ray.x * tension, y: anchor.y + ray.y * tension };
+  };
+  return [
+    points[0],
+    place(points[0], equal.start),
+    place(points[3], equal.end),
+    points[3],
+  ];
 }
 
 export function balancePath(path, pointIndices) {
