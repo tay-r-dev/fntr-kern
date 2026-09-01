@@ -106,8 +106,19 @@ describe("serif frame", () => {
   });
 
   it("keeps axis and depth orthonormal in every mode", () => {
-    for (const axisMode of ["perpendicular", "horizontal", "vertical", "absolute"]) {
-      const frame = computeSerifFrame({ ...downTerminal, axisMode, axisAngle: 20 });
+    for (const axisMode of [
+      "perpendicular",
+      "horizontal",
+      "vertical",
+      "absolute",
+      "tilt",
+    ]) {
+      const frame = computeSerifFrame({
+        ...downTerminal,
+        axisMode,
+        axisAngle: 20,
+        axisTilt: 20,
+      });
       expectClose(
         Math.hypot(frame.axis.x, frame.axis.y),
         1,
@@ -136,6 +147,231 @@ describe("serif frame", () => {
     const back = frame.toGlyph(frame.toFrame(original));
     expectClose(back.x, original.x);
     expectClose(back.y, original.y);
+  });
+});
+
+describe("serif axis tilt", () => {
+  // One upright stroke, drawn from the bottom up, so its two terminals share a
+  // rib normal and face opposite ways.
+  const startTerminal = {
+    endpoint: { x: 0, y: 0 },
+    tangent: { x: 0, y: -1 },
+    normal: { x: 1, y: 0 },
+  };
+  const endTerminal = {
+    endpoint: { x: 0, y: 500 },
+    tangent: { x: 0, y: 1 },
+    normal: { x: 1, y: 0 },
+  };
+
+  const dot = (a, b) => a.x * b.x + a.y * b.y;
+
+  it("turns the axis off the rib by the stated angle", () => {
+    const base = computeSerifFrame({ ...startTerminal, axisMode: "perpendicular" });
+    for (const degrees of [-40, -12, 12, 40]) {
+      const radians = (degrees * Math.PI) / 180;
+      const frame = computeSerifFrame({
+        ...startTerminal,
+        axisMode: "tilt",
+        axisTilt: degrees,
+      });
+      expectClose(
+        dot(frame.axis, base.axis),
+        Math.cos(radians),
+        `tilt along the axis at ${degrees}`
+      );
+      expectClose(
+        dot(frame.axis, base.depth),
+        Math.sin(radians),
+        `tilt toward the depth at ${degrees}`
+      );
+    }
+  });
+
+  it("reads the same at both ends of one stroke", () => {
+    // The tilt is applied after the axis is oriented toward the contour's left,
+    // so it means the same thing at a start terminal and an end terminal.
+    // Rotated before that orientation, one number turns the two frames opposite
+    // ways on one and the same stroke.
+    for (const degrees of [-30, 30]) {
+      const radians = (degrees * Math.PI) / 180;
+      for (const terminal of [startTerminal, endTerminal]) {
+        const base = computeSerifFrame({ ...terminal, axisMode: "perpendicular" });
+        const frame = computeSerifFrame({
+          ...terminal,
+          axisMode: "tilt",
+          axisTilt: degrees,
+        });
+        expectClose(dot(frame.axis, base.axis), Math.cos(radians));
+        expectClose(dot(frame.axis, base.depth), Math.sin(radians));
+      }
+    }
+  });
+
+  it("draws the perpendicular at a tilt of zero", () => {
+    for (const degrees of [-40, 0, 25]) {
+      const radians = (degrees * Math.PI) / 180;
+      const terminal = {
+        endpoint: { x: 0, y: 0 },
+        tangent: { x: Math.sin(radians), y: -Math.cos(radians) },
+        normal: { x: Math.cos(radians), y: Math.sin(radians) },
+      };
+      const base = computeSerifFrame({ ...terminal, axisMode: "perpendicular" });
+      const frame = computeSerifFrame({ ...terminal, axisMode: "tilt", axisTilt: 0 });
+      expectClose(frame.axis.x, base.axis.x, `axis x at lean ${degrees}`);
+      expectClose(frame.axis.y, base.axis.y, `axis y at lean ${degrees}`);
+      expectClose(frame.depth.x, base.depth.x, `depth x at lean ${degrees}`);
+      expectClose(frame.depth.y, base.depth.y, `depth y at lean ${degrees}`);
+    }
+  });
+
+  it("follows the stroke, which is the whole difference from an absolute angle", () => {
+    // The tilt is stated against the rib, so the angle between the two holds
+    // however the stroke leans. An absolute angle is a direction in glyph space
+    // and does not.
+    for (const lean of [-40, -15, 15, 40]) {
+      const radians = (lean * Math.PI) / 180;
+      const terminal = {
+        endpoint: { x: 0, y: 0 },
+        tangent: { x: Math.sin(radians), y: -Math.cos(radians) },
+        normal: { x: Math.cos(radians), y: Math.sin(radians) },
+      };
+      const base = computeSerifFrame({ ...terminal, axisMode: "perpendicular" });
+      const frame = computeSerifFrame({
+        ...terminal,
+        axisMode: "tilt",
+        axisTilt: 20,
+      });
+      expectClose(
+        dot(frame.axis, base.axis),
+        Math.cos((20 * Math.PI) / 180),
+        `tilt held against the rib at lean ${lean}`
+      );
+    }
+  });
+
+  it("is held off the tangent by the guard that was already there", () => {
+    // A tilt of 89 degrees would lay the axis along the stroke. The separation
+    // runs after the tilt, so this is the same clamp an absolute angle meets.
+    const frame = computeSerifFrame({
+      ...startTerminal,
+      axisMode: "tilt",
+      axisTilt: 89,
+    });
+    const tangent = startTerminal.tangent;
+    expectClose(
+      Math.abs(frame.axis.x * tangent.y - frame.axis.y * tangent.x),
+      Math.sin((15 * Math.PI) / 180)
+    );
+    // Still on the left, which is what the second orientation pass is for.
+    expect(dot(frame.axis, startTerminal.normal)).to.be.above(0);
+  });
+
+  it("clamps to the near side of the tangent, not across it", () => {
+    // An axis five degrees off the stroke belongs fifteen degrees off on the
+    // side it came in on. Pushed across, it leaves thirty degrees from where it
+    // arrived, which under a tilt is a 150 degree flip of the whole frame at one
+    // value of one slider. Stated on an absolute angle, because the fault was
+    // reachable there before the tilt existed.
+    const frame = computeSerifFrame({
+      ...startTerminal,
+      axisMode: "absolute",
+      axisAngle: -85,
+    });
+    expectClose(frame.axis.x, Math.cos((-75 * Math.PI) / 180));
+    expectClose(frame.axis.y, Math.sin((-75 * Math.PI) / 180));
+  });
+
+  it("ignores the tilt in every other mode", () => {
+    for (const axisMode of ["perpendicular", "horizontal", "vertical", "absolute"]) {
+      const without = computeSerifFrame({ ...startTerminal, axisMode, axisAngle: 20 });
+      const with_ = computeSerifFrame({
+        ...startTerminal,
+        axisMode,
+        axisAngle: 20,
+        axisTilt: 35,
+      });
+      expectClose(with_.axis.x, without.axis.x, `axis x in ${axisMode}`);
+      expectClose(with_.axis.y, without.axis.y, `axis y in ${axisMode}`);
+    }
+  });
+
+  // A sweep rather than an assertion, per the log's own rule: hold the geometry
+  // fixed, walk the tilt through its range in fine steps, and measure the worst
+  // single-step movement of any emitted point against the step the driver took.
+  //
+  // The range swept is the range offered, plus or minus 40. Past that the wing
+  // runs so far along the stem that the construction's own searches meet the
+  // wall tangentially, and the shape steps: measured at 38 (the documented
+  // wing-swallowed snap), 47 (the tip's line stops crossing the wall) and 66
+  // (the corner ray runs parallel to it). None of the three belongs to the tilt.
+  // Each is reachable today through an absolute axis at the same effective
+  // angle, and each is its own piece of work.
+  it("moves the terminal continuously across the range it is offered", () => {
+    const params = {
+      wingLength: 40,
+      tipThickness: 20,
+      wingSlope: 20,
+      tipCutAngle: 0,
+      reach: 30,
+      tension: 0.5,
+      concavity: 0.5,
+      easeDistance: 12,
+      easeCurvature: 0.5,
+    };
+    // Both walls in glyph space, curving into the stroke. They stand still; only
+    // the frame turns.
+    const leftWallPoints = [
+      { x: 50, y: 0 },
+      { x: 50, y: 200 },
+      { x: 70, y: 400 },
+      { x: 90, y: 600 },
+    ];
+    const rightWallPoints = leftWallPoints.map((point) => ({
+      x: -point.x,
+      y: point.y,
+    }));
+    const terminalAt = (axisTilt) => {
+      const frame = computeSerifFrame({
+        ...startTerminal,
+        axisMode: "tilt",
+        axisTilt,
+      });
+      const wall = (points) => makeSerifWall(points.map((p) => frame.toFrame(p)));
+      return buildSerifTerminal({
+        frame,
+        leftWall: wall(leftWallPoints),
+        rightWall: wall(rightWallPoints),
+        left: params,
+        right: params,
+        undersideCup: 10,
+        undersideCupBalance: 0,
+      }).points;
+    };
+
+    const step = 0.5;
+    let worst = 0;
+    let worstAt = 0;
+    let previous = terminalAt(-37);
+    for (let tilt = -37 + step; tilt <= 37 + 1e-9; tilt += step) {
+      const current = terminalAt(tilt);
+      expect(current.length).to.equal(previous.length);
+      for (let i = 0; i < current.length; i++) {
+        const moved = Math.hypot(
+          current[i].x - previous[i].x,
+          current[i].y - previous[i].y
+        );
+        if (moved > worst) {
+          worst = moved;
+          worstAt = tilt;
+        }
+      }
+      previous = current;
+    }
+    // The whole movement here is the rotation: the furthest point turns 0.83
+    // units per half degree. The bound is that and nothing more, so a branch
+    // change of even a few units fails rather than hiding inside headroom.
+    expect(worst, `worst step ${worst.toFixed(2)} at tilt ${worstAt}`).to.be.below(1);
   });
 });
 

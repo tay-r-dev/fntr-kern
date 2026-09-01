@@ -20,6 +20,13 @@ function rawAxisForMode(axisMode, axisAngle, tangent, normal) {
       return { x: 0, y: 1 };
     case "absolute":
       return unitFromDegrees(axisAngle ?? 0);
+    case "tilt":
+    // The tilt starts from the rib, exactly as the perpendicular does, and is
+    // turned off it afterwards. Stating the rotation against the rib rather
+    // than against the glyph is the whole difference from `absolute`: it
+    // follows a leaning stroke, and it interpolates between masters whose
+    // stems lean differently.
+    // falls through
     default:
       // Perpendicular to the stroke: the ordinary stem foot, which sits on the
       // rib. Take the rib rather than square up the tangent again. The two agree
@@ -33,6 +40,15 @@ function rawAxisForMode(axisMode, axisAngle, tangent, normal) {
 
 // The axis is a line, not a ray, so only its angle modulo 180 degrees matters
 // here; orientation is fixed afterwards against the rib normal.
+//
+// The clamp goes to the NEAR side of the tangent — the side the axis is already
+// on. Pushed to the far side instead it crosses the tangent, so an axis
+// arriving a fraction inside the band leaves 30 degrees away from where it came
+// in. Under a tilt that is a 150 degree flip of the frame at one value of one
+// slider, which is what the tilt sweep measured at 391 units. It was reachable
+// before the tilt existed, through an absolute angle laid along the stroke, and
+// no test covered it because the one guard test sits exactly on the tangent,
+// where there is no near side to get wrong.
 function separateFromTangent(axis, tangent) {
   const cross = axis.x * tangent.y - axis.y * tangent.x;
   const dot = axis.x * tangent.x + axis.y * tangent.y;
@@ -41,31 +57,71 @@ function separateFromTangent(axis, tangent) {
     return axis;
   }
   const tangentAngle = Math.atan2(tangent.y, tangent.x);
-  const side = cross === 0 ? (dot >= 0 ? 1 : -1) : Math.sign(cross);
+  // The sine of the axis's own angle above the tangent, taken on the
+  // representative that points WITH the tangent so that "above" has one answer.
+  // An axis lying along the anti-tangent describes the same line and must clamp
+  // the same way; the caller settles orientation afterwards.
+  const above = dot >= 0 ? -cross : cross;
+  const side = above === 0 ? 1 : Math.sign(above);
   const separated =
     tangentAngle + (side * MIN_AXIS_TANGENT_SEPARATION_DEG * Math.PI) / 180;
   return { x: Math.cos(separated), y: Math.sin(separated) };
 }
 
-export function computeSerifFrame({ endpoint, tangent, normal, axisMode, axisAngle }) {
+// Positive u points at the contour's left side, matching the generator's own rib
+// convention, so a half stored as "left" is the half on the left.
+function orientToLeft(axis, normal) {
+  return axis.x * normal.x + axis.y * normal.y < 0 ? { x: -axis.x, y: -axis.y } : axis;
+}
+
+// Depth is perpendicular to the axis, not to the tangent, so the frame stays
+// orthonormal in every mode. It points back into the stroke.
+function depthForAxis(axis, outward) {
+  const depth = { x: -axis.y, y: axis.x };
+  return depth.x * outward.x + depth.y * outward.y > 0
+    ? { x: -depth.x, y: -depth.y }
+    : depth;
+}
+
+export function computeSerifFrame({
+  endpoint,
+  tangent,
+  normal,
+  axisMode,
+  axisAngle,
+  axisTilt,
+}) {
   const outward = vector.normalizeVector(tangent);
   let axis = vector.normalizeVector(
     rawAxisForMode(axisMode, axisAngle, outward, normal)
   );
-  axis = separateFromTangent(axis, outward);
 
-  // Positive u points at the contour's left side, matching the generator's own
-  // rib convention, so a half stored as "left" is the half on the left.
-  if (axis.x * normal.x + axis.y * normal.y < 0) {
-    axis = { x: -axis.x, y: -axis.y };
+  // The tilt is applied in the frame's own sense, and so has to come AFTER the
+  // axis has been oriented toward the left side. Rotated before that, one and
+  // the same number turns the frame one way at a start terminal and the other
+  // way at an end terminal, because the raw axis points opposite ways there.
+  // Positive tilt turns the axis toward the stroke on the left: the left wing
+  // climbs the stem and the right one drops away from it.
+  axis = orientToLeft(axis, normal);
+  if (axisMode === "tilt" && axisTilt) {
+    const radians = (axisTilt * Math.PI) / 180;
+    const depth = depthForAxis(axis, outward);
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    axis = {
+      x: axis.x * cos + depth.x * sin,
+      y: axis.y * cos + depth.y * sin,
+    };
   }
 
-  // Depth is perpendicular to the axis, not to the tangent, so the frame stays
-  // orthonormal in every mode. It points back into the stroke.
-  let depth = { x: -axis.y, y: axis.x };
-  if (depth.x * outward.x + depth.y * outward.y > 0) {
-    depth = { x: -depth.x, y: -depth.y };
-  }
+  // The separation runs last, so a tilt that lays the axis along the stroke is
+  // held off it by the guard that was already there, and continuously. It
+  // builds its answer off the tangent's own angle and can come back pointing
+  // either way, so the orientation is settled again afterwards. That second
+  // pass is a no-op wherever the guard did not fire.
+  axis = orientToLeft(separateFromTangent(axis, outward), normal);
+
+  const depth = depthForAxis(axis, outward);
 
   const origin = { x: endpoint.x, y: endpoint.y };
 
