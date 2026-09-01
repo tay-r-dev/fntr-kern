@@ -478,8 +478,10 @@ function describeEnds(marker, path) {
   return parts.join(" → ");
 }
 
-// The near end of the segment: before halfway, the point it starts from; after halfway,
-// the one it runs to.
+// The segment named by the two points that make it up. A marker on a segment can sit
+// anywhere along it, and where it sits is not a property of the outline, so a name that
+// changes as the marker slides names the marker rather than the place. The two end
+// points do not move as it slides.
 //
 // A marker outlives the geometry it was placed on: delete the contour and the stored
 // contour number names nothing. Asking the path for it throws, and a throw here stops
@@ -495,9 +497,11 @@ function pointNameOfSegment(path, end) {
   if (!segment) {
     return `${end.contourIndex}.?`;
   }
-  const pointIndex =
-    (end.t ?? 0) < 0.5 ? segment.pointIndices[0] : segment.pointIndices.at(-1);
-  return `${end.contourIndex}.${pointIndex}`;
+  // The walk hands back point numbers counted across the whole path, and a marker row
+  // names points the way the canvas does, counted within their own contour.
+  const first = path.getContourAndPointIndex(segment.pointIndices[0])[1];
+  const last = path.getContourAndPointIndex(segment.pointIndices.at(-1))[1];
+  return `${end.contourIndex}.${first}-${last}`;
 }
 
 function signed(value) {

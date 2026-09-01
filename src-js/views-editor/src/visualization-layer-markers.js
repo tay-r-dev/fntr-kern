@@ -194,6 +194,16 @@ function drawMarkerDimensions(context, positionedGlyph, parameters, model, contr
       continue;
     }
     if (geometry.stale) {
+      // A faint line between the two ends, which is what tells a broken dimension apart
+      // from a broken ray on sight: a ray is one dot and nothing else, a dimension is
+      // two dots that still belong to each other. It is drawn faint because it measures
+      // nothing -- the number it would carry is exactly what must not be trusted.
+      if (geometry.points.length === 2) {
+        context.strokeStyle = parameters.staleLinkColor;
+        context.lineWidth = parameters.strokeWidth;
+        const [a, b] = geometry.points;
+        strokeLine(context, a.x, a.y, b.x, b.y);
+      }
       drawGrips(
         context,
         parameters,
@@ -238,6 +248,7 @@ const MARKER_COLORS = {
     strokeColor: "#08AD",
     selectedColor: "#06CF",
     staleColor: "#0BBC",
+    staleLinkColor: "#0BB6",
     blobColor: "#FFFB",
     textColor: "#000B",
     staleBlobColor: "#8888",
@@ -247,6 +258,7 @@ const MARKER_COLORS = {
     strokeColor: "#6BFD",
     selectedColor: "#9EFF",
     staleColor: "#4CCC",
+    staleLinkColor: "#4CC6",
     blobColor: "#444B",
     textColor: "#FFFB",
     staleBlobColor: "#8888",
