@@ -24,7 +24,7 @@ export const applicationSettingsController = new ObservableController({
   harmonizeG3: false,
   harmonizeMoveOnCurve: false,
   harmonizeOtherSources: true,
-  harmonizeEqualizeTension: false,
+  harmonizeMatchCurvature: false,
   harmonizeRealignHandles: false,
   // fork: what a side-mode change does to the drawing (app-level, per D9 — not
   // written to project files). Off is the plain write: the centerline holds

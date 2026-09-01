@@ -70,6 +70,7 @@ export const strings = {
   "action.glyph.delete-source": "Delete source...",
   "action.glyph.edit-glyph-axes": "Edit glyph axes...",
   "action.harmonize": "Harmonize Curves",
+  "action.balance": "Balance Segments",
   "action.join-contours": "Join Contours",
   "action.lock-background-images": "Lock Background Images",
   "action.lock-guideline": "Lock Guideline",
@@ -713,6 +714,27 @@ export const strings = {
   "sidebar.selection-transformation.flip": "Flip",
   "sidebar.selection-transformation.flip.horizontally": "Flip Horizontally",
   "sidebar.selection-transformation.flip.vertically": "Flip Vertically",
+  "sidebar.selection-transformation.balance": "Balance",
+  "sidebar.selection-transformation.balance.tooltip":
+    "Put each curve’s two handles at one shared fraction of the way to where their lines cross. It says nothing about the joints between curves, so it will move a joint that harmonizing has just fixed — balance first, or accept that it has the last word.",
+  "sidebar.selection-transformation.balance.apply": "Balance",
+  "sidebar.selection-transformation.balance.nothing-to-do": "Nothing to balance",
+  "sidebar.selection-transformation.balance.status.balanced": [
+    "%0 balanced",
+    "%0 balanced",
+  ],
+  "sidebar.selection-transformation.balance.status.skipped": [
+    "%0 skipped",
+    "%0 skipped",
+  ],
+  "sidebar.selection-transformation.balance.reason.already-balanced":
+    "already balanced",
+  "sidebar.selection-transformation.balance.reason.cannot-balance":
+    "no single tension describes it",
+  "sidebar.selection-transformation.balance.reason.degenerate": "nothing to balance",
+  "sidebar.selection-transformation.balance.reason.not-curve-segment": "not a curve",
+  "sidebar.selection-transformation.balance.reason.generated-contour":
+    "a generated contour",
   "sidebar.selection-transformation.harmonize": "Harmonize",
   "sidebar.selection-transformation.harmonize.apply": "Harmonize",
   "sidebar.selection-transformation.harmonize.g3": "G3 continuity",
@@ -722,9 +744,9 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.move-on-curve.tooltip":
     "Let the joint carry the correction instead of its two handles. Under G3 it searches the whole tangent between the neighbouring points for the best position, and stays put only if it is already there.",
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
-  "sidebar.selection-transformation.harmonize.equalize-tension": "Equalize tension",
-  "sidebar.selection-transformation.harmonize.equalize-tension.tooltip":
-    "Even out the two segments at each joint first, so the joint itself is solved last. This is the one pass allowed to move the outer handles. It also lets the command consider Curvatura’s handle-length construction, which moves them too.",
+  "sidebar.selection-transformation.harmonize.match-curvature": "Match curvature",
+  "sidebar.selection-transformation.harmonize.match-curvature.tooltip":
+    "Also try the construction that gives every selected point one curvature shared by both its sides, and solves all four handle lengths of both curves to reach it. It pulls a run onto one curvature profile rather than repairing a single joint, and it is the only thing here that moves the outer handles. Use it where the ordinary repair leaves a joint far out.",
   "sidebar.selection-transformation.harmonize.other-sources": "Other sources",
   "sidebar.selection-transformation.harmonize.realign-handles": "Realign handles",
   "sidebar.selection-transformation.harmonize.realign-handles.tooltip":

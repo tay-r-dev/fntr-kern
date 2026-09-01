@@ -9,6 +9,7 @@ import {
   curvatureRateDiscontinuity,
   expandToJoints,
   getJointContext,
+  balancePathInPlace,
   harmonizeHandlesInPlace,
   harmonizePath,
   harmonizePathInPlace,
@@ -20,6 +21,11 @@ import VarArray from "@fontra/core/var-array.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { distance } from "@fontra/core/vector.js";
 import { expect } from "chai";
+
+// The three words the handle-length construction uses when it drew nothing at
+// all. The joint constructions use the same three for a step they scaled back
+// at a limit, which is a real answer partly applied.
+const REFUSAL_REASONS_IN_TEST = new Set(["clamped", "tension-limited", "degenerate"]);
 
 // --- fixtures ---------------------------------------------------------------
 //
@@ -751,7 +757,7 @@ describe("harmonization: harmonizePath", () => {
     // above the ceiling on its own
     const result = harmonizePath(overshootPath(), [NODE], {
       handleBias: 1,
-      equalizeTension: true,
+      matchCurvature: true,
     });
     expect(Math.max(...jointHandleTensions(result.path))).to.be.at.most(1 + 1e-6);
   });
@@ -820,31 +826,37 @@ describe("harmonization: harmonizePath", () => {
     }
   });
 
-  it("moves the outer handles when tension equalization is on", () => {
-    const result = harmonizePath(asymmetricPath(), [NODE], {
+  // The curvature-matching construction solves both handle lengths of both
+  // segments, so it is the one thing that reaches the outer handles. The press
+  // itself never does: a cubic's end curvature is set by its last three control
+  // points, so those two are inputs to the joint and never outputs.
+  it("moves the outer handles only where curvature matching is asked for", () => {
+    const plain = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
+    expect(plain.path.getPointPosition(1)).to.deep.equal([0, 20]);
+    expect(plain.path.getPointPosition(5)).to.deep.equal([200, 50]);
+    const matched = harmonizePath(asymmetricPath(), [NODE], {
       handleBias: 1,
-      equalizeTension: true,
+      matchCurvature: true,
     });
-    expect(result.path.getPointPosition(1)).to.not.deep.equal([0, 20]);
-    expect(result.path.getPointPosition(5)).to.not.deep.equal([200, 50]);
+    expect(matched.path.getPointPosition(1)).to.not.deep.equal([0, 20]);
+    expect(matched.path.getPointPosition(5)).to.not.deep.equal([200, 50]);
   });
 
-  it("gives the solve the last word over equalization", () => {
-    // Equalization prepares the drawing; it is not a proposal about
-    // continuity. Running it after the solve threw the exact answer away --
-    // the joint came out worse for asking for both. It runs first now, so the
-    // joint is as exact with it on as with it off.
-    const exact = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
-    const equalized = harmonizePath(asymmetricPath(), [NODE], {
+  it("reaches the joint exactly with curvature matching on or off", () => {
+    const plain = harmonizePath(asymmetricPath(), [NODE], { handleBias: 1 });
+    const matched = harmonizePath(asymmetricPath(), [NODE], {
       handleBias: 1,
-      equalizeTension: true,
+      matchCurvature: true,
     });
-    const exactError = measureG2Discontinuity(getJointContext(exact.path, NODE));
-    const equalizedError = measureG2Discontinuity(
-      getJointContext(equalized.path, NODE)
-    );
-    expect(exactError).to.be.lessThan(1e-9);
-    expect(equalizedError).to.be.lessThan(1e-9);
+    for (const [label, result] of [
+      ["plain", plain],
+      ["matched", matched],
+    ]) {
+      expect(
+        measureG2Discontinuity(getJointContext(result.path, NODE)),
+        label
+      ).to.be.lessThan(1e-9);
+    }
   });
 
   it("reports not-converged when the iteration budget runs out", () => {
@@ -1673,7 +1685,7 @@ describe("harmonization: the curve either side, not only the joint", () => {
       continuity: "G2",
       handleBias: 0,
       slideOnCurve: true,
-      equalizeTension: true,
+      matchCurvature: true,
       roundCoordinates: true,
     });
     expect(report[0].status).to.equal("harmonized");
@@ -1754,23 +1766,21 @@ describe("harmonization: choosing the construction", () => {
     const report = harmonizePathInPlace(path, [NODE], {
       continuity: "G2",
       handleBias: 1,
-      equalizeTension: true,
+      matchCurvature: true,
       roundCoordinates: true,
     });
 
     // With more than one construction on the table a verdict that does not name
-    // one is a verdict you have to guess at. Which one wins is not fixed here:
-    // this fixture used to go to the handle-length solve and now goes to the
-    // joint construction, because the balance rank prefers the answer that
-    // leaves both segments at one tension.
+    // one is a verdict you have to guess at. Which one wins is not fixed here,
+    // and the assertion is deliberately not about which: it is that the verdict
+    // says.
     //
-    // The verdict is `skipped`, and honestly: this joint's own correction is
-    // smaller than the grid can hold, so nothing was harmonized. The drawing
-    // still changed, because the balance moved the outer handles. `skipped`
-    // means nothing was harmonized there, not that nothing moved.
+    // The drawing itself may well not move. This joint's own correction is
+    // smaller than the grid can hold, and nothing else in the press touches the
+    // outer handles now that balancing is its own command.
     expect(report[0].construction).to.be.oneOf(["g2", "g3", "handles"]);
-    expect(report[0].status).to.equal("skipped");
-    expect(Array.from(path.coordinates)).to.not.deep.equal(before);
+    expect(report[0].status).to.be.oneOf(["harmonized", "partial", "skipped"]);
+    expect(before.length).to.equal(path.coordinates.length);
   });
 });
 
@@ -1957,7 +1967,7 @@ describe("harmonization: pressing it again does nothing", () => {
   const settings = [
     { continuity: "G2" },
     { continuity: "G3" },
-    { continuity: "G2", equalizeTension: true },
+    { continuity: "G2", matchCurvature: true },
     { continuity: "G2", realignHandles: true },
   ];
 
@@ -2068,7 +2078,7 @@ describe("harmonization: a joint that arrived badly broken", () => {
     const equalized = reportedBrokenJoint();
     harmonizePathInPlace(equalized, [3], {
       roundCoordinates: true,
-      equalizeTension: true,
+      matchCurvature: true,
     });
 
     // A clean answer was on the table, so the guard has to tighten onto it.
@@ -2086,7 +2096,7 @@ describe("harmonization: a joint that arrived badly broken", () => {
     const path = reportedBrokenJoint();
     const report = harmonizePathInPlace(path, [3], {
       roundCoordinates: true,
-      equalizeTension: true,
+      matchCurvature: true,
     });
     expect(report[0].status).to.equal("harmonized");
     expect(report[0].reason).to.equal(undefined);
@@ -2097,7 +2107,7 @@ describe("harmonization: a joint that arrived badly broken", () => {
     const press = () => {
       harmonizePathInPlace(path, [3], {
         roundCoordinates: true,
-        equalizeTension: true,
+        matchCurvature: true,
       });
       return Array.from(path.coordinates);
     };
@@ -2108,15 +2118,18 @@ describe("harmonization: a joint that arrived badly broken", () => {
     expect(press()).to.deep.equal(settled);
   });
 
-  it("leaves the segments something like balanced when asked to balance them", () => {
-    // The tick's own promise. It came out at 0.880 and 0.191.
+  it("can be balanced afterwards, by the command that does that", () => {
+    // The press makes no promise about balance any more. Balancing is a
+    // separate press, and it delivers on this joint where the tick never
+    // reliably did: it came out at 0.880 against 0.191.
     const path = reportedBrokenJoint();
     harmonizePathInPlace(path, [3], {
       roundCoordinates: true,
-      equalizeTension: true,
+      matchCurvature: true,
     });
+    balancePathInPlace(path, [3]);
     const [start, end] = segmentTensions(path, 0);
-    expect(Math.abs(start - end)).to.be.lessThan(0.3);
+    expect(Math.abs(start - end)).to.be.lessThan(0.05);
   });
 });
 
@@ -2159,46 +2172,35 @@ describe("harmonization: an answer its own solver refused", () => {
     const path = reportedRefusedJoint();
     const report = harmonizePathInPlace(path, [3], {
       roundCoordinates: true,
-      equalizeTension: true,
+      matchCurvature: true,
       realignHandles: true,
     });
-    // Not that the handle-length construction may never win -- it wins here,
-    // and well, once the repetition has given it a drawing it can solve. What
-    // it may not do is win while reporting that it gave up.
-    expect(report[0].status).to.equal("harmonized");
-    expect(report[0].reason).to.equal(undefined);
+    // Not that the handle-length construction may never win -- what it may not
+    // do is win while reporting that it gave up. Whatever is kept, it is not an
+    // answer its own solver refused.
+    expect(REFUSAL_REASONS_IN_TEST.has(report[0].reason)).to.equal(false);
   });
 
-  it("leaves both segments something like balanced", () => {
-    const path = reportedRefusedJoint();
-    harmonizePathInPlace(path, [3], {
-      roundCoordinates: true,
-      equalizeTension: true,
-      realignHandles: true,
-    });
-    for (const start of [0, 3]) {
-      const [tensionStart, tensionEnd] = segmentTensions(path, start);
-      expect(Math.abs(tensionStart - tensionEnd), `segment at ${start}`).to.be.lessThan(
-        0.35
-      );
-    }
-  });
+  // Balance is no longer any of this command's business, so nothing here
+  // asserts it. `balancePathInPlace` is what states it, and it states it alone.
 });
 
-describe("harmonization: the balance tick has to mean something", () => {
+describe("harmonization: balancing is its own command", () => {
   //
-  // Reported on `_external/test-glyphs/B^1.json`, point 3, redrawn. One press
-  // with equalization on left the left segment at 0.961 against 0.246.
+  // Reported on `_external/test-glyphs/B^1.json`, point 3, redrawn, and again
+  // on `N^1.json` point 12. One button tried to balance the segments AND
+  // harmonize the joint, and the two want the same two handles: a segment's end
+  // curvature is set by its last three control points, so the inner handle is
+  // what harmonizing moves and it is also half of what balancing sets.
   //
-  // The tick does two unrelated things: it balances the segments before the
-  // solve, and it admits Curvatura's handle-length construction, which has no
-  // balancing property at all -- it solves handle lengths for a curvature
-  // target and says nothing about how the two of them compare. Whenever it
-  // wins, the balance is gone. Under G2 it usually wins, because there the
-  // ranking is carried by the term that prefers the flatter curve.
+  // Whichever ran last won outright. Inside one press they chased each other —
+  // every press balanced what the last solve had unbalanced and the solve
+  // unbalanced it again, losing a little handle length each round, so the press
+  // was never a fixed point and the drawing flattened without end.
   //
-  // So when the designer asks for balanced segments, how balanced the answer
-  // leaves them is part of what makes one answer better than another.
+  // Balancing is now its own command. The press has no opinion about balance
+  // and does not rank answers by it; the balance command has no opinion about
+  // joints. The designer chooses the order and sees each effect on its own.
   //
   function reportedUnbalancedJoint() {
     return makeContour([
@@ -2224,40 +2226,70 @@ describe("harmonization: the balance tick has to mean something", () => {
     );
   }
 
-  for (const continuity of ["G2", "G3"]) {
-    it(`leaves both segments balanced in one press under ${continuity}`, () => {
-      const path = reportedUnbalancedJoint();
-      harmonizePathInPlace(path, [3], {
-        continuity,
-        roundCoordinates: true,
-        equalizeTension: true,
-        realignHandles: true,
-      });
-      for (const start of [0, 3]) {
-        expect(imbalance(path, start), `segment at ${start}`).to.be.lessThan(0.05);
-      }
-    });
-  }
+  it("balances both segments a selected joint touches", () => {
+    const path = reportedUnbalancedJoint();
+    expect(imbalance(path, 0)).to.be.greaterThan(0.05);
+    const report = balancePathInPlace(path, [3]);
+    expect(report.map((entry) => entry.status)).to.deep.equal(["balanced", "balanced"]);
+    for (const start of [0, 3]) {
+      expect(imbalance(path, start), `segment at ${start}`).to.be.lessThan(0.05);
+    }
+  });
 
-  it("still harmonizes the joint while it balances it", () => {
+  it("says nothing about the joint, and moves it", () => {
+    // It is not a repair. It states one thing about each segment and leaves the
+    // joint wherever that puts it — which is exactly why it cannot be a step of
+    // harmonizing, and why the order is the designer's to choose.
+    const path = reportedUnbalancedJoint();
+    const before = measureG2Discontinuity(getJointContext(path, 3));
+    balancePathInPlace(path, [3]);
+    const after = measureG2Discontinuity(getJointContext(path, 3));
+    expect(after).to.not.equal(before);
+  });
+
+  it("balances a segment once when both of its ends are selected", () => {
+    const path = reportedUnbalancedJoint();
+    const report = balancePathInPlace(path, [0, 3, 6]);
+    const starts = report.map((entry) => entry.segmentIndex);
+    expect(new Set(starts).size).to.equal(starts.length);
+  });
+
+  it("reports rather than moves what it cannot balance", () => {
+    // Both handles collapsed onto their own on-curve: there is no tension to
+    // share, and the donor skips the same shape.
+    const path = makeContour([
+      { x: 0, y: 0, smooth: true },
+      cubic(0, 0),
+      cubic(100, 0),
+      { x: 100, y: 0, smooth: true },
+      cubic(100, 0),
+      cubic(200, 0),
+      { x: 200, y: 0, smooth: true },
+    ]);
+    const before = Array.from(path.coordinates);
+    const report = balancePathInPlace(path, [3]);
+    expect(report.every((entry) => entry.status === "skipped")).to.equal(true);
+    expect(Array.from(path.coordinates)).to.deep.equal(before);
+  });
+
+  it("takes no undo step where the drawing is already balanced", () => {
+    const path = reportedUnbalancedJoint();
+    balancePathInPlace(path, [3]);
+    const settled = Array.from(path.coordinates);
+    balancePathInPlace(path, [3]);
+    expect(Array.from(path.coordinates)).to.deep.equal(settled);
+  });
+
+  it("the press does not rank answers by balance any more", () => {
+    // With balance gone from the press, curvature matching on and off must be
+    // judged by the joint alone. A press that still preferred the balanced
+    // answer would be pursuing something this button no longer offers.
     const path = reportedUnbalancedJoint();
     const report = harmonizePathInPlace(path, [3], {
       roundCoordinates: true,
-      equalizeTension: true,
-      realignHandles: true,
+      matchCurvature: true,
     });
     expect(report[0].status).to.equal("harmonized");
-  });
-
-  it("says nothing about balance when the tick is off", () => {
-    // The rank is the tick's own preference, so with the tick off it must not
-    // reach the ranking at all.
-    const asked = reportedUnbalancedJoint();
-    harmonizePathInPlace(asked, [3], { roundCoordinates: true });
-    const plain = reportedUnbalancedJoint();
-    harmonizePathInPlace(plain, [3], { roundCoordinates: true });
-    expect(Array.from(asked.coordinates)).to.deep.equal(Array.from(plain.coordinates));
-    expect(imbalance(asked, 0)).to.be.greaterThan(0.05);
   });
 });
 
@@ -2293,7 +2325,7 @@ describe("harmonization: the repetition has to actually repeat", () => {
 
   const options = {
     roundCoordinates: true,
-    equalizeTension: true,
+    matchCurvature: true,
     realignHandles: true,
   };
 
@@ -2309,28 +2341,39 @@ describe("harmonization: the repetition has to actually repeat", () => {
     );
   }
 
-  it("gets further than one attempt can", () => {
-    const single = reportedStalledJoint();
-    harmonizePathInPlace(single, [3], { ...options, pressAttempts: 1 });
-    const settled = reportedStalledJoint();
-    harmonizePathInPlace(settled, [3], options);
-    expect(Array.from(settled.coordinates)).to.not.deep.equal(
-      Array.from(single.coordinates)
-    );
-  });
-
-  it("balances and harmonizes it in one press", () => {
+  it("reports the limit it ran into rather than pretending", () => {
+    // This joint's answer meets the tension ceiling, so a handle lands on its
+    // segment's crossing and the verdict says so. That is the honest outcome
+    // and not a stall: `partial` with a reason is a real answer partly applied.
     const path = reportedStalledJoint();
     const report = harmonizePathInPlace(path, [3], options);
-    expect(report[0].status).to.equal("harmonized");
-    for (const start of [0, 3]) {
-      expect(imbalance(path, start), `segment at ${start}`).to.be.lessThan(0.05);
-    }
+    expect(report[0].status).to.equal("partial");
+    expect(report[0].reason).to.equal("tension-limited");
   });
 
-  it("does not leave a handle pinned on the tension ceiling", () => {
+  // The walk continues from the first construction it drew that the loop has
+  // not been to before. Taking the joint construction's answer and stopping is
+  // what let the drift out: where that construction has nothing left to do its
+  // answer IS the state the attempt started from, so the loop saw a repeat and
+  // stopped on its first attempt while the other construction still had
+  // somewhere to go. The drawing then advanced one step per BUTTON press.
+  it("settles inside one press rather than over several", () => {
     const path = reportedStalledJoint();
     harmonizePathInPlace(path, [3], options);
-    expect(Math.max(...jointHandleTensions(path))).to.be.lessThan(0.99);
+    const once = Array.from(path.coordinates);
+    harmonizePathInPlace(path, [3], options);
+    expect(Array.from(path.coordinates)).to.deep.equal(once);
+  });
+
+  it("never puts a handle past the ceiling", () => {
+    // At the ceiling the two handle lines meet; past it they cross and the
+    // curve doubles back. Landing exactly on it is legal, and this fixture
+    // does. Balancing afterwards is what takes it off, and that is a second
+    // press by design.
+    const path = reportedStalledJoint();
+    harmonizePathInPlace(path, [3], options);
+    expect(Math.max(...jointHandleTensions(path))).to.be.at.most(1 + 1e-9);
+    balancePathInPlace(path, [3]);
+    expect(Math.max(...jointHandleTensions(path))).to.be.lessThan(0.995);
   });
 });

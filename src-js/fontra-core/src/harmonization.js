@@ -59,15 +59,28 @@ export const HARMONIZE_DEFAULTS = {
   // How many times the whole press -- prepare, then solve -- may repeat before
   // it has to have settled. Every state is scored and the best is kept, so a
   // repetition can only improve the drawing. One is a single press.
-  pressAttempts: 8,
+  //
+  // The loop stops the moment every construction it drew has come round before,
+  // so this is a ceiling and not a cost: a drawing that settles in three
+  // attempts takes three. It was eight, which was one short of a fixed point
+  // once two constructions were competing — the second press still moved, and
+  // the number of attempts is exactly what decided whether it did.
+  pressAttempts: 16,
   // Square up a smooth joint whose handles have drifted off its tangent,
   // before anything is solved. A joint that arrives bent is corrected against
   // a tangent that is not there.
   realignHandles: false,
-  // Tunni-balance the two segments at each joint BEFORE the joint is solved,
-  // so the solve has the last word. It is what moves the outer handles PP and
-  // NN, and it is also the tick that admits the handle-length construction.
-  equalizeTension: false,
+  // Admit the second construction: give every selected point one curvature
+  // shared by both its sides, and solve all four handle lengths of both
+  // segments to reach it. It pulls a run onto one curvature profile rather than
+  // repairing one joint, so it moves the outer handles PP and NN and it is
+  // opt-in for that reason.
+  //
+  // This tick used to balance the segments as well, before the solve. Balancing
+  // is now its own command: the two want the same handles and cannot both be
+  // exact, so pressing one button for both walked the drawing flatter on every
+  // press and never settled. See `balancePathInPlace`.
+  matchCurvature: false,
   // Ceiling on how far a handle may reach toward its segment's Tunni point.
   // At 1 it lands exactly on it; past 1 the segment's two handle lines cross
   // each other and the curve doubles back.
@@ -1491,44 +1504,6 @@ function enforceHandleTension(path, ctx, maxHandleTension, touched) {
   return reduced;
 }
 
-//
-// Tunni-equalize the two segments meeting at a joint.
-//
-// This is the one thing that moves the *outer* handles, PP and NN, which belong
-// to the neighbouring segments. The G2 construction itself never does: PP and NN
-// are inputs to the curvature at the joint, not outputs.
-//
-// SuperTool's Harmonize menu command brackets its per-node harmonize with
-// `[self balance]` (SuperTool+Harmonize.m:61,75), so this is donor behaviour —
-// but note the donor's trailing balance changes handle lengths after the fact,
-// which perturbs the very curvature match harmonization just established. Off
-// by default for that reason; see HARMONIZE_DEFAULTS.equalizeTension.
-//
-function equalizeJointSegments(path, ctx, touched) {
-  for (const { indices } of jointSegments(path, ctx)) {
-    const points = segmentPositions(path, indices);
-
-    // The donor skips inflected segments, where equalizing would fight the
-    // shape rather than tidy it (SuperTool+TunniEditing.m:198-199).
-    const startTension = handleTension(points, "start");
-    const endTension = handleTension(points, "end");
-    if (!startTension && !endTension) {
-      continue;
-    }
-    if (startTension > 1 && endTension > 1) {
-      continue;
-    }
-    if (startTension < 0.01 && endTension < 0.01) {
-      continue;
-    }
-
-    const balanced = balanceSegment(points);
-    for (const i of [1, 2]) {
-      writePoint(path, touched, indices[i], balanced[i]);
-    }
-  }
-}
-
 function applyFixup(path, ctx, fixup, handleBias, touched) {
   if (handleBias < 1) {
     const delta = mulVectorScalar(fixup, -(1 - handleBias));
@@ -2149,7 +2124,7 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
 export function harmonizePathInPlace(path, pointIndices, options = {}) {
   const {
     continuity,
-    equalizeTension,
+    matchCurvature,
     realignHandles,
     maxHandleTension,
     maxCurvatureStep,
@@ -2165,58 +2140,30 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     : expandToJoints(path, undefined);
 
   //
-  // The two preparation passes, as one step.
+  // The preparation pass.
   //
-  // They run outside the gate: neither is a proposal about continuity, and the
-  // gate judges nothing else. Running the balance inside it is what made the
-  // tick do nothing at all -- a harmonic answer the gate declined took the
-  // equalization out with it.
+  // It runs outside the gate: it is not a proposal about continuity, and the
+  // gate judges nothing else.
+  //
+  // Balancing used to run here too, and it is now its own command. It wants the
+  // same handles the solve wants and neither can have them exactly, so with the
+  // two inside one press they chased each other: every press balanced what the
+  // last solve had unbalanced, the solve unbalanced it again, and each round
+  // trip lost a little handle length. On `N^1` point 12 that walked the
+  // tensions from 0.85 to 0.815 over forty presses, and no press was ever a
+  // fixed point. See `balancePathInPlace`.
   //
   function prepare(target) {
     const prepared = new Set();
 
-    // Square the joints up first of all. Balancing below reads each segment's
-    // tangent rays, and every construction after it reads the joint's tangent,
-    // so both want a drawing whose smooth flags are true.
+    // Square the joints up first of all. Every construction reads the joint's
+    // tangent, so they want a drawing whose smooth flags are true.
     if (realignHandles) {
       realignSmoothJointsInPlace(target, candidates, prepared);
     }
 
-    //
-    // Equalize BEFORE anything is solved.
-    //
-    // It used to run last, after the best-state gate, which is the donor's
-    // `balance, harmonize, balance` (SuperTool+Harmonize.m:61,75). It balanced
-    // each segment against inner handles the solve had just placed, so it
-    // overwrote the exact answer -- on the arch joint it took the G3 rate step
-    // from 5.3e-6 to 5.8e-5.
-    //
-    // Balancing is a statement about the two handles of one segment, so it
-    // prepares the drawing and the solve has the last word. That is the order
-    // both of the other donors use -- Curvatura keeps its tunnify a separate
-    // command, and the Bezier Fixer panel runs tunnify before harmonize.
-    //
-    // The ceiling is re-established here and not assumed: a balanced tension
-    // can itself land over it.
-    //
-    if (equalizeTension) {
-      for (const pointIndex of candidates) {
-        const ctx = getJointContext(target, pointIndex);
-        if (ctx.reason) {
-          continue;
-        }
-        equalizeJointSegments(target, ctx, prepared);
-        enforceHandleTension(
-          target,
-          getJointContext(target, pointIndex),
-          maxHandleTension,
-          prepared
-        );
-      }
-    }
-
     // Whole units, by rounding and not by searching. The search below is for
-    // choosing between answers; neither pass above is offering one.
+    // choosing between answers; the pass above is not offering one.
     if (roundCoordinates) {
       for (const index of prepared) {
         const [x, y] = target.getPointPosition(index);
@@ -2256,9 +2203,11 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   const limits = {
     maxHandleTension,
     maxCurvatureStep,
-    // The rank is the tick's own preference, so with the tick off it does not
-    // reach the ranking at all.
-    balanceTolerance: equalizeTension ? BALANCE_TOLERANCE : undefined,
+    // Nothing here pursues balance any more: it is its own command, and the
+    // press has no opinion about it. Ranking answers by a property the command
+    // does not try for would refuse a good joint for a reason the designer
+    // never asked this button for.
+    balanceTolerance: undefined,
   };
   const scoreWith = (candidate, ceilings) =>
     scoreJoints(candidate, candidates, continuity, { ...limits, ceilings }, arrival);
@@ -2285,11 +2234,10 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     // press.
     //
     // The handle-length solve rescales both handles of every segment, so it
-    // does move them. `equalizeTension` is already the tick that says the outer
-    // handles may move, so it is the tick that admits this candidate too. With
-    // it off there is one candidate and the default press moves exactly what it
-    // always moved.
-    if (equalizeTension) {
+    // does move them, which is what `matchCurvature` is the tick for. With it
+    // off there is one candidate and the press moves the two handles at each
+    // joint and nothing else.
+    if (matchCurvature) {
       const byHandles = from.copy();
       drawn.push({
         path: byHandles,
@@ -2345,13 +2293,28 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     // first attempt -- so `pressAttempts` made no difference at any value, and
     // the reported joint kept its tension-limited first answer.
     //
-    const next = drawn[0];
-
-    const key = Array.from(next.path.coordinates).join(",");
-    if (seen.has(key)) {
+    //
+    // The joint construction's answer, unless the loop has already been there.
+    //
+    // Taking it and stopping is what let the drift out. Where the joint
+    // construction has nothing left to do, its answer IS the drawing the
+    // attempt started from, so the repetition saw a state it had seen and
+    // stopped on its first attempt — while the curvature-matching construction
+    // still had somewhere to go. The loop then advanced that construction by
+    // exactly one step per button press, so the drawing walked for eight
+    // presses before it settled and the press was not a fixed point.
+    //
+    // Falling through to the next construction drawn keeps the two questions
+    // apart, which is the rule that matters here: where to look next is not
+    // which answer to keep. The whole field is still ranked once, at the end.
+    //
+    const next = drawn.find(
+      (candidate) => !seen.has(Array.from(candidate.path.coordinates).join(","))
+    );
+    if (!next) {
       break;
     }
-    seen.add(key);
+    seen.add(Array.from(next.path.coordinates).join(","));
     current = next.path.copy();
     // Prepared again for the next attempt, because the solve has moved the
     // inner handles and rounded them, so both passes have something to say
@@ -2844,6 +2807,133 @@ function writeSolvedHandles(path, indices, solved, cuspSafetyMargin, maxHandleTe
     return { refused: "tension-limited" };
   }
   return { settled };
+}
+
+//
+// Balance the segments a selection touches, and nothing else.
+//
+// Balancing puts a segment's two handles at one shared fraction of the way to
+// where their lines cross. It is a statement about ONE segment, and it says
+// nothing about the joints at either end of it.
+//
+// It is its own command because it cannot be a step of harmonizing. Both want
+// the same handles: a segment's end curvature is set by its last three control
+// points, so the inner handle is what harmonizing moves to make two segments
+// agree at a joint, and it is also half of what balancing sets. Whichever runs
+// last wins outright. Run inside one press they chase each other — measured on
+// `N^1` point 12, forty presses walked the tensions from 0.85 down to 0.815 and
+// the press was never a fixed point. Run balance last instead and the joint is
+// given up: the same point went 0%, 6.9%, 9.5%, 13.0%, 17.8% and on to 63%
+// across eight presses. Two exact answers to the same two numbers do not exist,
+// so the designer picks the order and sees each effect on its own.
+//
+// The call shape and the report shape follow the other commands, so the panel
+// treats all three alike. Each entry names the segment by the on-curve it
+// starts at.
+//
+export function balancePathInPlace(path, pointIndices) {
+  const report = [];
+  const seen = new Set();
+  const touched = new Set();
+  const candidates = pointIndices?.length
+    ? [...new Set(pointIndices)].sort((a, b) => a - b)
+    : expandToJoints(path, undefined);
+
+  for (const pointIndex of candidates) {
+    const point = path.getPoint(pointIndex);
+    if (!point || point.type) {
+      continue;
+    }
+    const [contourIndex, contourPointIndex] = path.getContourAndPointIndex(pointIndex);
+    // Both segments the selected on-curve is an end of. A segment shared by two
+    // selected points is balanced once: doing it twice is the same answer, and
+    // reporting it twice reads as two segments.
+    // The segment arriving at this on-curve, and the one leaving it.
+    for (const offset of [-3, 0]) {
+      const indices = [0, 1, 2, 3].map((step) =>
+        neighborIndex(path, contourIndex, contourPointIndex, offset + step)
+      );
+      if (indices.some((index) => index === undefined)) {
+        continue;
+      }
+      const start = indices[0];
+      if (seen.has(start)) {
+        continue;
+      }
+      seen.add(start);
+      const points = indices.map((index) => path.getPoint(index));
+      if (points[0].type || points[3].type || !points[1].type || !points[2].type) {
+        report.push({
+          segmentIndex: start,
+          contourIndex,
+          status: "skipped",
+          reason: "not-curve-segment",
+        });
+        continue;
+      }
+      const positions = segmentPositions(path, indices);
+      // Three shapes have no balance to state, and the donor skips the same
+      // three: both handles past their own crossing, both collapsed onto their
+      // own on-curve, and neither reaching at all.
+      const startTension = handleTension(positions, "start");
+      const endTension = handleTension(positions, "end");
+      if (
+        (!startTension && !endTension) ||
+        (startTension > 1 && endTension > 1) ||
+        (startTension < 0.01 && endTension < 0.01)
+      ) {
+        report.push({
+          segmentIndex: start,
+          contourIndex,
+          status: "skipped",
+          reason: "degenerate",
+        });
+        continue;
+      }
+      // Parallel handle lines never cross, so there is no reach for a tension to
+      // be a fraction of; an S has its two handles on opposite sides of its own
+      // chord, and no one tension describes it. `balanceSegment` refuses both by
+      // handing the drawing back unchanged.
+      const balanced = balanceSegment(positions);
+      const moved = [1, 2].filter(
+        (i) => balanced[i].x !== positions[i].x || balanced[i].y !== positions[i].y
+      );
+      if (!moved.length) {
+        const imbalance = segmentImbalance(positions);
+        report.push({
+          segmentIndex: start,
+          contourIndex,
+          status: "skipped",
+          reason:
+            imbalance === undefined
+              ? "degenerate"
+              : imbalance > 0
+                ? "cannot-balance"
+                : "already-balanced",
+        });
+        continue;
+      }
+      for (const i of [1, 2]) {
+        writePoint(path, touched, indices[i], balanced[i]);
+      }
+      report.push({ segmentIndex: start, contourIndex, status: "balanced" });
+    }
+  }
+
+  // Whole units, like every other command here. A point is written only where it
+  // is not already there, so a balance that rounds back onto its own coordinates
+  // takes no undo step.
+  for (const index of touched) {
+    const [x, y] = path.getPointPosition(index);
+    path.setPointPosition(index, Math.round(x), Math.round(y));
+  }
+  return report;
+}
+
+export function balancePath(path, pointIndices) {
+  const working = path.copy();
+  const report = balancePathInPlace(working, pointIndices);
+  return { path: working, report };
 }
 
 //

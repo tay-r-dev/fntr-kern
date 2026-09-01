@@ -25,7 +25,11 @@ import {
   getMyGlyphSets,
   readProjectGlyphSets,
 } from "@fontra/core/glyphsets-controller.js";
-import { expandToJoints, harmonizePathInPlace } from "@fontra/core/harmonization.js";
+import {
+  balancePathInPlace,
+  expandToJoints,
+  harmonizePathInPlace,
+} from "@fontra/core/harmonization.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate, translatePlural } from "@fontra/core/localization.js";
 import { MouseTracker } from "@fontra/core/mouse-tracker.js";
@@ -112,6 +116,7 @@ import {
 } from "./skeleton-editing.js";
 import {
   closePanelSkeletonContours,
+  balancePanelSkeletonPoints,
   harmonizePanelSkeletonPoints,
   joinPanelSkeletonContours,
   splitPanelSkeletonContours,
@@ -854,6 +859,7 @@ export class SceneController {
     );
 
     registerAction("action.harmonize", { topic }, () => this.doHarmonize());
+    registerAction("action.balance", { topic }, () => this.doBalance());
   }
 
   setAutoViewBox() {
@@ -1325,6 +1331,7 @@ export class SceneController {
       { actionIdentifier: "action.reverse-contour" },
       { actionIdentifier: "action.set-contour-start" },
       { actionIdentifier: "action.harmonize" },
+      { actionIdentifier: "action.balance" },
       { actionIdentifier: "action.realize-skeleton-contours" },
       {
         title: () =>
@@ -2494,7 +2501,7 @@ export class SceneController {
       useG3 = applicationSettingsController.model.harmonizeG3,
       moveOnCurve = applicationSettingsController.model.harmonizeMoveOnCurve,
       applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
-      equalizeTension = applicationSettingsController.model.harmonizeEqualizeTension,
+      matchCurvature = applicationSettingsController.model.harmonizeMatchCurvature,
       realignHandles = applicationSettingsController.model.harmonizeRealignHandles,
     } = options;
 
@@ -2523,7 +2530,7 @@ export class SceneController {
           continuity,
           slideOnCurve,
           handleBias,
-          equalizeTension,
+          matchCurvature,
           realignHandles,
         },
         translate("action.harmonize")
@@ -2602,7 +2609,7 @@ export class SceneController {
           continuity,
           slideOnCurve,
           handleBias,
-          equalizeTension,
+          matchCurvature,
           realignHandles,
           roundCoordinates: true,
         });
@@ -2617,6 +2624,112 @@ export class SceneController {
       }
 
       return translate("action.harmonize");
+    });
+
+    return reports;
+  }
+
+  //
+  // Balance the segments the current point selection touches.
+  //
+  // Its own command, not a step of harmonizing. Both want the same handles: a
+  // segment's end curvature is set by its last three control points, so the
+  // inner handle is what harmonizing moves to make two segments agree at a
+  // joint, and it is also half of what balancing sets. Neither can have them
+  // exactly, so the designer chooses the order and sees each effect on its own.
+  //
+  // Same shape as `doHarmonize` throughout: the same selection rule, the same
+  // skeleton route, the same per-source option, and a report per layer.
+  //
+  async doBalance(options = {}) {
+    const {
+      applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
+    } = options;
+
+    const reports = new Map();
+
+    const skeletonPointSelection = parseSelection(this.selection).skeletonPoint || [];
+    if (skeletonPointSelection.length) {
+      return await balancePanelSkeletonPoints(
+        this,
+        skeletonPointSelection
+          .map((item) => parseSkeletonPointKey(`${item}`))
+          .filter((address) => address),
+        translate("action.balance")
+      );
+    }
+
+    const path = this.sceneModel.getSelectedPositionedGlyph()?.glyph?.path;
+    if (!path) {
+      return reports;
+    }
+
+    // The selection as given. Balancing states one thing about a segment, and
+    // the segments a selection touches are the segments it means — there is no
+    // joint to expand to.
+    const { point: pointSelection } = parseSelection(this.selection);
+    const candidates = pointSelection?.length
+      ? pointSelection
+      : expandToJoints(path, undefined);
+
+    const refused = [];
+    const pointIndices = [];
+    for (const pointIndex of candidates) {
+      const contourIndex = path.getContourIndex(pointIndex);
+      if (this.sceneModel.isGeneratedPathContour(contourIndex)) {
+        // R-D: generated geometry is regenerated on every edit, so editing it
+        // directly would be thrown away.
+        refused.push({
+          pointIndex,
+          contourIndex,
+          status: "skipped",
+          reason: "generated-contour",
+        });
+      } else {
+        pointIndices.push(pointIndex);
+      }
+    }
+
+    if (!pointIndices.length) {
+      if (refused.length) {
+        reports.set(this.sceneSettings.editLayerName, refused);
+      }
+      return reports;
+    }
+
+    await this.editLayersAndRecordChanges((layerGlyphs) => {
+      const editLayerName = this.sceneSettings.editLayerName;
+      const targets = applyToOtherSources
+        ? Object.entries(layerGlyphs)
+        : [
+            [
+              editLayerName,
+              layerGlyphs[editLayerName] || Object.values(layerGlyphs)[0],
+            ],
+          ];
+
+      for (const [layerName, layerGlyph] of targets) {
+        if (!layerGlyph) {
+          continue;
+        }
+        // Per layer, and point by point on the way back, for the two reasons
+        // harmonize has: another source has different handles and so a
+        // different answer, and a whole-path assignment does not survive the
+        // change recorder.
+        const path = layerGlyph.path;
+        const working = path.copy();
+        const report = balancePathInPlace(working, pointIndices);
+        for (let index = 0; index < path.numPoints; index++) {
+          const [x, y] = path.getPointPosition(index);
+          const [newX, newY] = working.getPointPosition(index);
+          if (newX !== x || newY !== y) {
+            path.setPointPosition(index, newX, newY);
+          }
+        }
+        reports.set(layerName, [...report, ...refused]);
+      }
+
+      return translate("action.balance");
     });
 
     return reports;

@@ -10,7 +10,11 @@ import {
   FONTRA_INTERNAL_SECTIONS,
 } from "./fontra-internal-schema.js";
 import { getGlyphInfoFromGlyphName } from "./glyph-data.js";
-import { expandToJoints, harmonizePathInPlace } from "./harmonization.js";
+import {
+  balancePathInPlace,
+  expandToJoints,
+  harmonizePathInPlace,
+} from "./harmonization.js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
 import {
   buildContourSegments,
@@ -1291,6 +1295,29 @@ export function appendSkeletonContour(skeletonData, contourData = {}) {
 // Returns the report `harmonizePathInPlace` produced, with each entry's point
 // index replaced by the skeleton address it came from.
 export function harmonizeSkeletonPoints(skeletonData, pointKeys = null, options = {}) {
+  return runSkeletonCenterlinePass(skeletonData, pointKeys, (path, selected) =>
+    harmonizePathInPlace(path, expandToJoints(path, selected), {
+      roundCoordinates: true,
+      ...options,
+    })
+  );
+}
+
+// Balancing reaches the centerline the same way harmonizing does, and for the
+// same reason: a centerline is an ordinary path carrying ordinary smooth flags,
+// and what it makes is regenerated from it afterwards. It takes the selection
+// as given rather than expanding it to joints — balancing is a statement about
+// a segment, and the segments a selection touches are the segments it means.
+export function balanceSkeletonPoints(skeletonData, pointKeys = null) {
+  return runSkeletonCenterlinePass(skeletonData, pointKeys, (path, selected) =>
+    balancePathInPlace(path, selected)
+  );
+}
+
+// Build the centerline as a path, run one ordinary path pass over it, and write
+// back only the points that ended up somewhere else. Reports are addressed by
+// contour and point id, because the path built here is thrown away.
+function runSkeletonCenterlinePass(skeletonData, pointKeys, pass) {
   const path = new VarPackedPath();
   const addresses = [];
   const selected = [];
@@ -1314,10 +1341,7 @@ export function harmonizeSkeletonPoints(skeletonData, pointKeys = null, options 
   if (!selected.length) {
     return [];
   }
-  const report = harmonizePathInPlace(path, expandToJoints(path, selected), {
-    roundCoordinates: true,
-    ...options,
-  });
+  const report = pass(path, selected);
   // Only where the point ended up somewhere else. Writing the same number back
   // is still a recorded change, and a command that had nothing to do would take
   // an undo step for it.
@@ -1331,11 +1355,14 @@ export function harmonizeSkeletonPoints(skeletonData, pointKeys = null, options 
       point.y = moved.y;
     }
   }
-  return report.map((entry) => ({
-    ...entry,
-    contourId: addresses[entry.pointIndex]?.contourId,
-    pointId: addresses[entry.pointIndex]?.point.id,
-  }));
+  return report.map((entry) => {
+    const index = entry.pointIndex ?? entry.segmentIndex;
+    return {
+      ...entry,
+      contourId: addresses[index]?.contourId,
+      pointId: addresses[index]?.point.id,
+    };
+  });
 }
 
 // Cut a contour at one of its own on-curve points. A closed contour opens there

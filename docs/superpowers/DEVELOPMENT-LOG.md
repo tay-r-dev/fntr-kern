@@ -325,6 +325,44 @@ ranking that answers them is feature model §10.5.
   questions.** Self-inflicted, one round old, and invisible to every test: 2003
   passed while the loop ran once.
 
+### Balancing became its own command
+
+Reported on `N^1` point 12: with the tick on, every press flattened the curve a
+little more. Segment tensions went 0.853/0.847, then 0.858/0.839, 0.838/0.857,
+and on down to 0.815/0.815 after about forty presses. With the tick off one
+press settled and a hundred more moved nothing.
+
+- **Two exact answers to the same two numbers do not exist.** A curve's end
+  curvature is set by its last three control points, so the inner handle is what
+  harmonizing moves and it is also half of what balancing sets. Whichever runs
+  last wins outright. Inside one press they chased each other and each round
+  trip lost a little handle length.
+- **The designer's own proposal — balance, harmonize, balance — was built and
+  measured before anything else.** It gives up the joint entirely: on the same
+  point the mismatch ran 6.9, 9.5, 13.0, 17.8, 33.6 and 63.1 per cent over eight
+  presses while the handles stayed exactly balanced. It diverges. Reported back
+  with the numbers and the model was chosen instead.
+- **Splitting it exposed a second non-settling loop the balance had been
+  masking.** The repetition took the joint construction's answer and stopped
+  when it had seen it before — and where that construction has nothing left to
+  do, its answer IS the state the attempt started from. So the loop stopped on
+  its first attempt while the curvature-matching construction still had
+  somewhere to go, and the drawing advanced one step per button press for eight
+  presses. The walk falls through to the next construction drawn now. The
+  attempt ceiling went from 8 to 16 with it: it is a ceiling and not a cost,
+  since the loop stops as soon as everything has come round.
+- **The round count inside the handle-length solve was innocent**, and checking
+  it first is what showed the loop was the subject: 5, 20 and 60 rounds all
+  settled at press 9.
+- Measured after, on the reported point: one press and forty presses are the
+  same drawing, with the tick on and off alike.
+- **Two promises came out of the press with the balance.** It no longer leaves
+  the drawing balanced, and it no longer keeps a handle off the tension ceiling
+  — the stalled-joint fixture now lands a handle exactly on its crossing and
+  reports `partial/tension-limited`, which is honest. Balancing afterwards takes
+  it off. Both were the tick's doing rather than the solve's, and both are now a
+  second press.
+
 ### Pressing the button again
 
 A press was not a fixed point: over 2000 joints a second press moved 21 under G2

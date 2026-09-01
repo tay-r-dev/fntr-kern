@@ -25,6 +25,7 @@ import {
   getSkeletonHandleOffsetKey,
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
+  balanceSkeletonPoints,
   harmonizeSkeletonPoints,
   isSkeletonSideLocked,
   isSkeletonSideLockedAtAll,
@@ -783,6 +784,43 @@ export async function harmonizePanelSkeletonPoints(
         }
       }
       const report = harmonizeSkeletonPoints(working, pointKeys, options);
+      if (isEditLayer) {
+        reports.set(sceneController.sceneSettings?.editLayerName, report);
+      }
+    }
+  );
+  return reports;
+}
+
+// Balancing takes the same route to the centerline for the same reason: it is
+// an ordinary path pass, written through the skeleton's own write path so the
+// outline is regenerated from what it changed.
+export async function balancePanelSkeletonPoints(
+  sceneController,
+  pointAddresses,
+  undoLabel
+) {
+  if (!pointAddresses.length) {
+    return new Map();
+  }
+  const reports = new Map();
+  await runSkeletonPanelEdit(
+    sceneController,
+    undoLabel,
+    (working, reference, isEditLayer) => {
+      const pointKeys = new Set();
+      for (const address of pointAddresses) {
+        const resolved = resolveSkeletonAddressAcrossLayers(
+          reference,
+          working,
+          address.contourId,
+          address.pointId
+        );
+        if (resolved) {
+          pointKeys.add(`${resolved.contour.id}/${resolved.point.id}`);
+        }
+      }
+      const report = balanceSkeletonPoints(working, pointKeys);
       if (isEditLayer) {
         reports.set(sceneController.sceneSettings?.editLayerName, report);
       }

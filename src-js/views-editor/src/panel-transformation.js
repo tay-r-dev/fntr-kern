@@ -787,9 +787,9 @@ export default class TransformationPanel extends Panel {
 
     formContents.push({
       type: "checkbox",
-      key: "harmonizeEqualizeTension",
-      label: translate("sidebar.selection-transformation.harmonize.equalize-tension"),
-      value: applicationSettingsController.model.harmonizeEqualizeTension,
+      key: "harmonizeMatchCurvature",
+      label: translate("sidebar.selection-transformation.harmonize.match-curvature"),
+      value: applicationSettingsController.model.harmonizeMatchCurvature,
     });
 
     formContents.push({
@@ -819,6 +819,40 @@ export default class TransformationPanel extends Panel {
         auxiliaryElement: (this.harmonizeReportElement = html.span(
           { class: "harmonize-report", title: this.harmonizeReportDetail || "" },
           [this.harmonizeReportText || ""]
+        )),
+      },
+      field3: {},
+    });
+
+    // Balancing is its own command. It wants the same handles harmonizing wants
+    // and neither can have them exactly, so one button for both walked the
+    // drawing flatter on every press. Two buttons, and the order is yours.
+    formContents.push({ type: "divider" });
+    formContents.push({
+      type: "header",
+      label: translate("sidebar.selection-transformation.balance"),
+    });
+
+    formContents.push({
+      type: "universal-row",
+      field1: {},
+      field2: {
+        type: "auxiliaryElement",
+        auxiliaryElement: html.button({ onclick: () => this.doBalance() }, [
+          translate("sidebar.selection-transformation.balance.apply"),
+        ]),
+      },
+      field3: {},
+    });
+
+    formContents.push({
+      type: "universal-row",
+      field1: {},
+      field2: {
+        type: "auxiliaryElement",
+        auxiliaryElement: (this.balanceReportElement = html.span(
+          { class: "harmonize-report", title: this.balanceReportDetail || "" },
+          [this.balanceReportText || ""]
         )),
       },
       field3: {},
@@ -858,7 +892,7 @@ export default class TransformationPanel extends Panel {
           "harmonizeG3",
           "harmonizeMoveOnCurve",
           "harmonizeOtherSources",
-          "harmonizeEqualizeTension",
+          "harmonizeMatchCurvature",
           "harmonizeRealignHandles",
         ].includes(fieldItem.key)
       ) {
@@ -938,7 +972,7 @@ export default class TransformationPanel extends Panel {
       useG3: !!settings.harmonizeG3,
       moveOnCurve: !!settings.harmonizeMoveOnCurve,
       applyToOtherSources: settings.harmonizeOtherSources,
-      equalizeTension: settings.harmonizeEqualizeTension,
+      matchCurvature: settings.harmonizeMatchCurvature,
       realignHandles: settings.harmonizeRealignHandles,
     };
     const reports = await this.sceneController.doHarmonize(options);
@@ -946,6 +980,23 @@ export default class TransformationPanel extends Panel {
       formatHarmonizeReport(reports),
       detailHarmonizeReport(reports, options)
     );
+  }
+
+  async doBalance() {
+    const settings = applicationSettingsController.model;
+    const reports = await this.sceneController.doBalance({
+      applyToOtherSources: settings.harmonizeOtherSources,
+    });
+    this.setBalanceReport(formatBalanceReport(reports));
+  }
+
+  setBalanceReport(text, detail = "") {
+    this.balanceReportText = text;
+    this.balanceReportDetail = detail;
+    if (this.balanceReportElement) {
+      this.balanceReportElement.innerText = text;
+      this.balanceReportElement.title = detail;
+    }
   }
 
   setHarmonizeReport(text, detail = "") {
@@ -1671,7 +1722,7 @@ function detailHarmonizeReport(reports, options) {
     `${options.useG3 ? "G3" : "G2"}` +
       `, move the on-curve: ${options.moveOnCurve ? "on" : "off"}` +
       `, realign handles: ${options.realignHandles ? "on" : "off"}` +
-      `, equalize tension: ${options.equalizeTension ? "on" : "off"}` +
+      `, match curvature: ${options.matchCurvature ? "on" : "off"}` +
       `, other sources: ${options.applyToOtherSources ? "on" : "off"}`,
   ];
   for (const [layerName, report] of reports) {
@@ -1704,6 +1755,61 @@ function formatHarmonizeReport(reports) {
   }
   return rows
     .map(([layerName, report]) => `${layerName}: ${summarizeHarmonizeReport(report)}`)
+    .join(" · ");
+}
+
+// The balance report has its own two words — a segment is balanced or it is
+// skipped — and its own reasons, so it says what happened rather than borrowing
+// a vocabulary about joints.
+function summarizeBalanceReport(report) {
+  const byStatus = new Map();
+  for (const { status, reason } of report) {
+    if (!byStatus.has(status)) {
+      byStatus.set(status, { total: 0, reasons: new Map() });
+    }
+    const entry = byStatus.get(status);
+    entry.total += 1;
+    if (reason) {
+      entry.reasons.set(reason, (entry.reasons.get(reason) || 0) + 1);
+    }
+  }
+  const parts = [];
+  for (const status of ["balanced", "skipped"]) {
+    const entry = byStatus.get(status);
+    if (!entry) {
+      continue;
+    }
+    let part = translate(
+      `sidebar.selection-transformation.balance.status.${status}`,
+      entry.total
+    );
+    if (entry.reasons.size) {
+      const reasons = [...entry.reasons]
+        .sort((a, b) => b[1] - a[1])
+        .map(([reason, count]) =>
+          entry.reasons.size === 1 && count === entry.total
+            ? translate(`sidebar.selection-transformation.balance.reason.${reason}`)
+            : `${count} ${translate(
+                `sidebar.selection-transformation.balance.reason.${reason}`
+              )}`
+        );
+      part += ` (${reasons.join(", ")})`;
+    }
+    parts.push(part);
+  }
+  return parts.join(", ");
+}
+
+function formatBalanceReport(reports) {
+  const rows = [...reports];
+  if (!rows.length) {
+    return translate("sidebar.selection-transformation.balance.nothing-to-do");
+  }
+  if (rows.length === 1) {
+    return summarizeBalanceReport(rows[0][1]);
+  }
+  return rows
+    .map(([layerName, report]) => `${layerName}: ${summarizeBalanceReport(report)}`)
     .join(" · ");
 }
 

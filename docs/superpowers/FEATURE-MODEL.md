@@ -1252,7 +1252,21 @@ is nothing to scale back when it meets the cusp floor or the tension ceiling: it
 is taken whole or refused, and a refusal is reported as `clamped`,
 `tension-limited` or `degenerate` — never as "already harmonic".
 
-**Two preparation passes come before any of this, and both are opt-in.**
+**Balancing is not part of this command.** It is its own, beside Harmonize in the
+panel, with its own action and context-menu entry. It puts each curve's two
+handles at one shared fraction of the way to where their lines cross, refuses a
+curve whose handles sit on opposite sides of its chord, and says nothing about
+any joint. It reaches a skeleton centerline the same way harmonizing does.
+
+The two cannot be one press. A curve's end curvature is set by its last three
+control points, so the inner handle is what harmonizing moves to make two curves
+agree at a joint, and it is also half of what balancing sets. Whichever runs
+last wins outright: balance last gives equal handles and gives the joint up,
+balance first gives an exact joint and handles that drift out of balance. Inside
+one press they chase each other and lose a little handle length on every round
+trip, so the press is never a fixed point. The designer picks the order.
+
+**One preparation pass comes before any of this, and it is opt-in.**
 
 **Realign** puts a smooth joint back on one line. A smooth flag is a claim that
 the joint and its two neighbours are collinear, and nudging, interpolating and
@@ -1272,11 +1286,12 @@ both handles together, which is why the pass is not needed for continuity. What
 it buys is the flat handle: the translation carries a horizontal handle off the
 horizontal and the extreme of the curve off the joint.
 
-**Equalize** balances the two segments at each joint, and it runs **before** the
-joint is solved, so the solve has the last word. See §10.5.
+
 
 **Checkboxes, not a bias slider.** One picks the target and so the cascade; one
-says whether the joint itself may move; one swaps the construction outright.
+says whether the joint itself may move; one admits the handle-length
+construction and is named for what that construction does, which is to pull a
+run onto one shared curvature.
 Under G2 the second is the whole of the old bias — at one end the on-curve moves
 and the handles hold, at the other the handles move and the on-curve holds, and
 the relative displacement is identical either way, so the curve is the same shape
@@ -1431,13 +1446,6 @@ because a different set of handles has a different harmonic target.
   taken whole or not at all, so `clamped`, `tension-limited` and `degenerate`
   there mean it drew nothing. The joint constructions use the same three words
   for a step they scaled back at a limit, which is a real answer partly applied.
-- **Where the balance is asked for, an unbalanced answer loses.** The tick does
-  two unrelated things — it balances the segments before the solve, and it
-  admits the handle-length construction, which has no balancing property at all.
-  So an answer that leaves a segment's two tensions more than 0.05 apart ranks
-  below one that does not. A count, not a magnitude, and a flat bound rather
-  than one that stands down, so the tick means the same thing on every drawing.
-  It costs joint accuracy on the presses that ask for it, and only those.
 - **Two defects rank above any amount of residual, and are not tradeable.** A
   handle over the tension ceiling is one. A crease at a smooth point is the
   other: curvature continuity across a joint with no common tangent does not mean
@@ -1450,17 +1458,18 @@ because a different set of handles has a different harmonic target.
   chosen. Collinearity is also scored below that line, in radians alongside the
   other two terms — curvature times length is the angle a segment turns through,
   so all three are angles and there is no weight to pick.
-- **Equalization prepares the drawing; it never finishes it.** Balancing is a
-  statement about the two handles of one segment. It is not a proposal about
-  continuity and has no business being scored against one, so it runs first and
-  the solve has the last word. Running it last balanced each segment against
-  inner handles the solve had just placed, which overwrote the exact answer —
-  on the arch joint it took the G3 rate step from 5.3e-6 to 5.8e-5, against
-  1.6e-19 now. It also sat inside the best-state gate, so a harmonic answer the
-  gate declined took the equalization out with it and the tick did nothing at
-  all. The cost of the order is that the drawing does not end balanced: the
-  solve moves the inner handles afterwards. That is the same trade both other
-  donors make.
+- **The press has no opinion about balance, and must not acquire one.** It does
+  not balance and it does not rank answers by how balanced they are. Ranking by
+  a property the command does not pursue refuses a good joint for a reason the
+  designer never asked this button for.
+- **The walk continues from the first construction drawn that the loop has not
+  been to.** Taking the joint construction's answer and stopping is what let a
+  drift out: where that construction has nothing left to do its answer IS the
+  state the attempt started from, so the loop saw a repeat and stopped on its
+  first attempt while another construction still had somewhere to go. The
+  drawing then advanced one step per BUTTON press and took eight of them to
+  settle. Where to look next and which answer to keep remain different
+  questions: the whole field is still ranked once, at the end.
 - **A balance lands between the two tensions, and moves the drawing as little
   as a balance can.** Both handles go to one fraction of the way to the Tunni
   point, and that fraction is the only free number left. It is chosen by least
