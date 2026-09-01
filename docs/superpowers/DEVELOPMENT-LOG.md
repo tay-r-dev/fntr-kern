@@ -801,23 +801,23 @@ numbers to the v1 nine. One of the three is here.
   its depth answer, 40 units; at about 66 the corner ray runs parallel to the
   wall and the meeting slides 127 units. Each is reachable through an absolute
   axis at the same effective angle. The panel offers the range that moves
-  smoothly, 40 either way, which is also the lab's own.
+  smoothly, 40 either way, which is also the lab's own. Backlog S3 and S4.
 - **`depthSign` is not here, and the answer is the release rule.** The lab flips
   the depth so the wing block grows against the stroke — its reverse block and
   its lowercase entry serif. The lab can, because its flank is a line at a fixed
   `u` and nothing cares which side of the terminal plane the tip is on. Our
   terminal finds every shared point ON the wall, and outward of the rib end there
   is no wall: building one is the straight line from the rib end, closed
-  2026-08-08. It is a second feature.
+  2026-08-08. It is a second feature: backlog S1.
 - **`backset` is not here either.** Sliding the origin outward leaves the
   terminal joined to the stroke by its two brackets alone. It composes with the
-  tilt rather than competing with it.
+  tilt rather than competing with it. Backlog S2.
 
-**Manual matrix owed** (rail R-G): tilt a foot serif on an upright stem and on a
-stem leaning 20 degrees; tilt both ends of one stroke and check the two read the
-same way; tilt with a rib angle lock on; tilt with one half collapsed; tilt to
-the ends of the range and back; mirror a tilted terminal; switch a tilted
-terminal to absolute and back.
+**Manual matrix owed** (rail R-G), backlog S5: tilt a foot serif on an upright
+stem and on a stem leaning 20 degrees; tilt both ends of one stroke and check the
+two read the same way; tilt with a rib angle lock on; tilt with one half
+collapsed; tilt to the ends of the range and back; mirror a tilted terminal;
+switch a tilted terminal to absolute and back.
 
 ### Gaps, and what is left alone
 

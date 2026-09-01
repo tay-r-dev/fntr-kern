@@ -101,10 +101,12 @@ There is a real shape behind the switch, and it is the reverse block / lowercase
 a **second feature**, not a sign flip: it needs a stated answer for what the terminal attaches to
 on the outward side. It is not in this plan.
 
+Filed as backlog **S1**.
+
 **backset — not built.** Not asked for, and it has the same shape of question: sliding the origin
 outward by `b` puts the wing at negative depth and leaves the terminal joined to the stroke by the
 two brackets alone. It composes with the tilt rather than competing with it, so it can be added
-later without reworking this.
+later without reworking this. Filed as backlog **S2**.
 
 ---
 

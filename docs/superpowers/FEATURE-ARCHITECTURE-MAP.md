@@ -24,6 +24,7 @@ so retire them the same way once nothing references them.
 | `FEATURE-MODEL.md`   | The conceptual **mental model** of each feature: what it is, how it works, what to preserve |
 | `DEVELOPMENT-LOG.md` | One dossier per feature: the faults that came back, the measurements, the withdrawn ideas   |
 | `GLOSSARY.md`        | **What the words mean**: type-design terms, plus every term forkra invented or redefined    |
+| `BACKLOG.md`         | What is **wanted and not built**, one row each, with what it costs and where it lands       |
 | **this doc**         | Where everything **is**, who owns it, and (§9) why the skeleton is built this way           |
 
 ---
