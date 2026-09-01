@@ -45,7 +45,10 @@ import { isObjectEmpty, parseSelection, range } from "@fontra/core/utils.ts";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { dotVector, mulVectorScalar } from "@fontra/core/vector.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
-import { makeAxisLock } from "./tension-aware-editing.js";
+import {
+  makeAxisLock,
+  makeTensionAwareAxisScaleSolver,
+} from "./tension-aware-editing.js";
 
 export function makeSkeletonPointKey(contourId, pointId) {
   return `skeletonPoint/${contourId}/${pointId}`;
@@ -765,6 +768,88 @@ export function makeSkeletonTensionAwareTargetEntry(
     },
     makeChangeForTransformation() {
       return null;
+    },
+  };
+}
+
+/**
+ * The transform-box half of the skeleton correction, and the counterpart of the
+ * path's own transform entry. The box scales the centerline on one axis and the
+ * same rule holds the tension, so the skeleton takes X under the box exactly as
+ * it takes X under a drag.
+ *
+ * The solve is the path's solve, run on the synthetic centerline path. Only the
+ * write differs: the answer goes back through the skeleton write path, which is
+ * the one thing the ordinary entry cannot do.
+ *
+ * @param {string} axis - "x" or "y", the one axis the box is scaling
+ */
+export function makeSkeletonTensionAwareTransformEntry(
+  layer,
+  selection,
+  axis,
+  referenceSkeletonData = null
+) {
+  const skeletonData = getSkeletonData(layer);
+  if (!skeletonData) return null;
+  const reference = referenceSkeletonData || skeletonData;
+  const selected = collectSkeletonPointSelection(selection, reference, skeletonData);
+  if (!selected.length) return null;
+
+  const originalLayerGlyph = cloneLayerGlyphForSkeletonEdit(layer);
+  const synthetic = makeSyntheticSkeletonPathInstance(skeletonData, selected);
+  const originalPath = synthetic.instance.path.copy();
+  // Only a contour holding a selected point takes part, the same rule the path
+  // entry follows: a contour outside the selection is not the box's to move and
+  // must not join the solve either.
+  const { point: syntheticPointSelection } = parseSelection([
+    ...(synthetic.selection || []),
+  ]);
+  if (!syntheticPointSelection?.length) return null;
+  const contourIndices = [
+    ...new Set(
+      syntheticPointSelection.map(
+        (pointIndex) => originalPath.getContourAndPointIndex(pointIndex)[0]
+      )
+    ),
+  ].sort((a, b) => a - b);
+  if (!contourIndices.length) return null;
+  const solver = makeTensionAwareAxisScaleSolver(originalPath, contourIndices, axis);
+
+  let rollbackChange = null;
+  return {
+    get rollbackChange() {
+      return rollbackChange;
+    },
+    makeChangeForDelta() {
+      return null;
+    },
+    makeChangeForTransformation(transformation) {
+      const frames = solver.solve(transformation);
+      if (!frames) {
+        return null;
+      }
+      const corrected = new Map(); // absolute synthetic point index -> {x, y}
+      frames.forEach(({ points }, i) => {
+        const { startIndex } = solver.originals[i];
+        points.forEach((point, p) => corrected.set(startIndex + p, point));
+      });
+      const changes = makeEditSkeletonChange(originalLayerGlyph, (working) => {
+        for (const [pointIndex, address] of synthetic.pointAddresses) {
+          const target = resolveSkeletonAddressAcrossLayers(
+            skeletonData,
+            working,
+            address.contourId,
+            address.pointId
+          );
+          const point = corrected.get(pointIndex);
+          if (!target || !point) continue;
+          target.point.x = point.x;
+          target.point.y = point.y;
+        }
+      });
+      rollbackChange = changes.rollbackChange;
+      return changes.change;
     },
   };
 }

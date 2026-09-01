@@ -63,6 +63,7 @@ import {
   makeSkeletonPointKey,
   makeSkeletonPointTargetEntry,
   makeSkeletonTensionAwareTargetEntry,
+  makeSkeletonTensionAwareTransformEntry,
   parseSkeletonPointKey,
   toggleEditableGeneratedHandleDetached,
   toggleSkeletonSmooth,
@@ -1160,13 +1161,27 @@ export class PointerTool extends BaseTool {
             : null;
 
       const layerInfo = Object.entries(editingLayers).map(([layerName, layerGlyph]) => {
-        const skeletonEntry = makeSkeletonPointTargetEntry(
-          layerGlyph,
-          sceneController.selection,
-          "default",
-          referenceSkeletonData,
-          makeSkeletonModifierOptions("default", { referenceSkeletonData })
-        );
+        // Under X on one axis the skeleton is corrected on its centerline, so
+        // it takes the tension-aware entry instead of the plain one. The plain
+        // entry scales the centerline and lets the tension go, which is what a
+        // skeleton selection used to get from the box.
+        const skeletonTensionAwareEntry = tensionAwareAxis
+          ? makeSkeletonTensionAwareTransformEntry(
+              layerGlyph,
+              sceneController.selection,
+              tensionAwareAxis,
+              referenceSkeletonData
+            )
+          : null;
+        const skeletonEntry =
+          skeletonTensionAwareEntry ||
+          makeSkeletonPointTargetEntry(
+            layerGlyph,
+            sceneController.selection,
+            "default",
+            referenceSkeletonData,
+            makeSkeletonModifierOptions("default", { referenceSkeletonData })
+          );
         const tensionAwareEntries = tensionAwareAxis
           ? createTensionAwareTransformEntries(
               layerGlyph,

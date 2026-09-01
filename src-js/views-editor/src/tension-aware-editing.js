@@ -214,14 +214,9 @@ export function createTensionAwareTransformEntries(
   }
   contourIndices.sort((a, b) => a - b);
   if (!contourIndices.length) return [];
-  const originals = contourIndices.map((contourIndex) => ({
-    contourIndex,
-    startIndex: originalPath.getAbsolutePointIndex(contourIndex, 0),
-    contour: originalPath.getUnpackedContour(contourIndex),
-  }));
+  const solver = makeTensionAwareAxisScaleSolver(originalPath, contourIndices, axis);
 
   let rollbackChange = null;
-  let lastGood = null;
   // Same rule as the drag entry: once written, written on every frame after.
   const touched = new Set();
   return [
@@ -233,42 +228,14 @@ export function createTensionAwareTransformEntries(
         return null;
       },
       makeChangeForTransformation(transformation) {
-        // The box hands over a full affine, already pinned about its own
-        // point. On one axis it is a scale plus a shift, which are the only two
-        // numbers this rule reads: `new = factor * old + shift`, so the fixed
-        // coordinate is `shift / (1 - factor)`.
-        const factor = axis === "x" ? transformation.xx : transformation.yy;
-        const shift = axis === "x" ? transformation.dx : transformation.dy;
-        if (Math.abs(factor - 1) < 1e-9) {
-          return null;
-        }
-        const origin = shift / (1 - factor);
-
-        // The two axes read the same shape differently. Across x a straight is
-        // the drawn width and holds, while the curves take the change. Along y
-        // a straight is the length the scale has to change, so every point
-        // takes the plain scale and the tension correction holds the curves.
-        const solve = axis === "x" ? solveRigidLinkScale : solvePlainAxisScale;
-        const solved = solve(
-          originals.map(({ contour }) => contour),
-          axis,
-          factor,
-          origin
-        );
-        const frames = solved ? buildFrames(originals, solved, axis) : null;
-        if (
-          frames &&
-          frames.every(({ points, isClosed }) => curvesAreAboveFloor(points, isClosed))
-        ) {
-          lastGood = frames;
-        }
-        if (!lastGood) {
+        const frames = solver.solve(transformation);
+        if (!frames) {
           return null;
         }
         const scratch = { ...layerGlyph, path: originalPath.copy() };
         const changes = recordChanges(scratch, (layerGlyphProxy) => {
-          lastGood.forEach(({ points }, i) => {
-            const { startIndex, contour } = originals[i];
+          frames.forEach(({ points }, i) => {
+            const { startIndex, contour } = solver.originals[i];
             for (let p = 0; p < points.length; p++) {
               const absoluteIndex = startIndex + p;
               if (
@@ -292,6 +259,63 @@ export function createTensionAwareTransformEntries(
       },
     },
   ];
+}
+
+/**
+ * The solve behind the transform box, on whatever path it is handed. The
+ * outline entry runs it on the glyph's own path and the skeleton entry runs it
+ * on the synthetic centerline path, so the rule has one copy and the two
+ * callers differ only in how they write the answer back.
+ *
+ * It keeps the last solve that passed the curve floor and returns that again
+ * where the current one fails, so the shape stands still while the drag runs on.
+ *
+ * @param {Object} originalPath - the pre-drag path, not written to
+ * @param {number[]} contourIndices - the contours taking part, ascending
+ * @param {string} axis - "x" or "y"
+ */
+export function makeTensionAwareAxisScaleSolver(originalPath, contourIndices, axis) {
+  const originals = contourIndices.map((contourIndex) => ({
+    contourIndex,
+    startIndex: originalPath.getAbsolutePointIndex(contourIndex, 0),
+    contour: originalPath.getUnpackedContour(contourIndex),
+  }));
+  let lastGood = null;
+  return {
+    originals,
+    solve(transformation) {
+      // The box hands over a full affine, already pinned about its own
+      // point. On one axis it is a scale plus a shift, which are the only two
+      // numbers this rule reads: `new = factor * old + shift`, so the fixed
+      // coordinate is `shift / (1 - factor)`.
+      const factor = axis === "x" ? transformation.xx : transformation.yy;
+      const shift = axis === "x" ? transformation.dx : transformation.dy;
+      if (Math.abs(factor - 1) < 1e-9) {
+        return null;
+      }
+      const origin = shift / (1 - factor);
+
+      // The two axes read the same shape differently. Across x a straight is
+      // the drawn width and holds, while the curves take the change. Along y
+      // a straight is the length the scale has to change, so every point
+      // takes the plain scale and the tension correction holds the curves.
+      const solve = axis === "x" ? solveRigidLinkScale : solvePlainAxisScale;
+      const solved = solve(
+        originals.map(({ contour }) => contour),
+        axis,
+        factor,
+        origin
+      );
+      const frames = solved ? buildFrames(originals, solved, axis) : null;
+      if (
+        frames &&
+        frames.every(({ points, isClosed }) => curvesAreAboveFloor(points, isClosed))
+      ) {
+        lastGood = frames;
+      }
+      return lastGood;
+    },
+  };
 }
 
 // Move every on-curve to its solved coordinate on the scaled axis, then run the
