@@ -346,7 +346,11 @@ function buildFrames(originals, solved, axis) {
         after[handleIndex][axis] = before[handleIndex][axis] + moved;
       }
     }
-    applyTensionAwareEdit(before, after, contour.isClosed);
+    // The axis tells the slide which straights are tracks for this scale. A
+    // straight lying across the axis, held only by the curves at its two ends,
+    // is not one: sliding on it moves the drawing in the direction the scale
+    // never touched.
+    applyTensionAwareEdit(before, after, contour.isClosed, { axis });
     return { points: after, isClosed: contour.isClosed };
   });
 }

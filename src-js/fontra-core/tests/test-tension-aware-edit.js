@@ -369,6 +369,51 @@ describe("tension-aware edit — the rigid-link scale", () => {
   });
 });
 
+describe("tension-aware edit — a straight across the scaled axis", () => {
+  // A vertical straight with a curve at each end. Both its ends are tension
+  // points, so it is held by nothing but those two curves.
+  const stemBetweenTwoCurves = () => ({
+    points: [
+      control(-100, -100),
+      control(-100, 100),
+      onCurve(0, 200), // 2: tension point
+      onCurve(0, 400), // 3: tension point
+      control(0, 500),
+      control(200, 600),
+      onCurve(300, 600),
+      control(400, 600),
+      control(500, 500),
+      onCurve(500, 400),
+      control(500, 100),
+      control(300, -100),
+      onCurve(100, -100),
+    ],
+    isClosed: true,
+  });
+
+  it("does not slide either end of it under a scale on that axis", () => {
+    const before = stemBetweenTwoCurves();
+    const after = {
+      points: before.points.map((point) => ({ ...point, x: point.x * 0.6 })),
+      isClosed: true,
+    };
+    const heights = after.points.map((point) => point.y);
+    slideTensionPoints(before.points, after.points, after.isClosed, { axis: "x" });
+    expect(after.points.map((point) => point.y)).to.deep.equal(heights);
+  });
+
+  it("still slides on it when no axis is named", () => {
+    // The drag path names no axis. Nothing here changes for it.
+    const before = stemBetweenTwoCurves();
+    const after = {
+      points: before.points.map((point) => ({ ...point, x: point.x * 0.6 })),
+      isClosed: true,
+    };
+    const moved = slideTensionPoints(before.points, after.points, after.isClosed, {});
+    expect(moved).to.equal(true);
+  });
+});
+
 describe("tension-aware edit — the vertical scale", () => {
   it("squashes every on-curve point in height and nothing in width", () => {
     const contour = nContour();

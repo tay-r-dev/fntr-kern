@@ -291,7 +291,7 @@ export function slideTensionPoints(
   beforePoints,
   afterPoints,
   closed,
-  { round = Math.round } = {}
+  { round = Math.round, axis = null } = {}
 ) {
   const segments = buildIndexedSegments(beforePoints, closed);
   let changed = false;
@@ -319,6 +319,32 @@ export function slideTensionPoints(
       }
       const anchorIndex =
         straight.startIndex === nearIndex ? straight.endIndex : straight.startIndex;
+      // A straight that lies across the axis being scaled is not a track for
+      // this scale, where both of its ends are tension points.
+      //
+      // Such a straight is held by nothing but the two curves at its ends, and
+      // travel along it is travel the scale never asked for: a vertical stem
+      // under a horizontal scale would have its ends slid up and down, changing
+      // a length the scale does not touch. Worse, the two ends answer to
+      // different curves and so slide by different amounts, which stretches the
+      // straight rather than moving it.
+      //
+      // A straight with a corner or another straight at its far end is anchored
+      // there and keeps its track: the far end is not free, so the near end's
+      // travel is a real correction.
+      if (
+        axis &&
+        Math.abs(beforePoints[nearIndex][axis] - beforePoints[anchorIndex][axis]) <
+          EPSILON &&
+        segments.some(
+          (other) =>
+            other !== straight &&
+            isCubicSegment(other) &&
+            (other.startIndex === anchorIndex || other.endIndex === anchorIndex)
+        )
+      ) {
+        continue;
+      }
       const beforeAxis = handleDirection(
         beforePoints[nearIndex],
         beforePoints[anchorIndex]
