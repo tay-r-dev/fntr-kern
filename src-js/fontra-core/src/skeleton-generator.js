@@ -1,6 +1,10 @@
 import { Bezier } from "bezier-js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
-import { offsetContourAlongNormals } from "./offset-contour.js";
+import {
+  cornerMiter,
+  cornerMiterIsHeld,
+  offsetContourAlongNormals,
+} from "./offset-contour.js";
 import { offsetCubicSide } from "./offset-cubic.js";
 import {
   buildSerifTerminal,
@@ -18,9 +22,9 @@ import {
   getEffectiveNormal,
   getEffectiveRibHalfWidth,
   isStraightControlledSmoothPoint,
-  ribAngleLockReach,
   meanHalfWidth,
   normalizeSkeletonData,
+  ribAngleLockReach,
   straightSegmentNormal,
 } from "./skeleton-model.js";
 import { shiftTensionsToMean } from "./tunni-calculations.js";
@@ -3966,32 +3970,15 @@ function calculateCornerJoin(segment1, segment2) {
     dir2 = vector.normalizeVector({ x: deriv2.x, y: deriv2.y });
   }
 
-  // Compute angle bisector using atan2 (numerically stable for all angles)
-  const dot = dir1.x * dir2.x + dir1.y * dir2.y;
-  const cross = dir1.x * dir2.y - dir1.y * dir2.x;
-
-  // Angle from dir1 to dir2 (signed)
-  const angle = Math.atan2(cross, dot);
-
-  // Bisector = dir1 rotated by angle/2
-  const halfAngle = angle / 2;
-  const cosH = Math.cos(halfAngle);
-  const sinH = Math.sin(halfAngle);
-
-  const bisector = {
-    x: dir1.x * cosH - dir1.y * sinH,
-    y: dir1.x * sinH + dir1.y * cosH,
-  };
-
   // Each arm's edge ends square to that arm's own direction, so the two edge
   // ends of one side are at two different places. Carried on along their own
   // arms they meet on the split line, one half-width over the cosine of half
   // the turn out. Placing the point at a plain half-width left the corner open.
-  const cosHalfTurn = Math.abs(cosH);
-  const miterScale = cosHalfTurn > 0 ? 1 / cosHalfTurn : Infinity;
-
-  // Normal is perpendicular to bisector (rotated 90 degrees CW)
-  return { normal: { x: bisector.y, y: -bisector.x }, miterScale, dir1, dir2 };
+  //
+  // One copy of that construction, shared with the rib bar and with the drag
+  // that offsets an ordinary outline (rail R-B).
+  const miter = cornerMiter(dir1, dir2);
+  return { normal: miter.normal, miterScale: miter.scale, dir1, dir2 };
 }
 
 /**
@@ -4010,29 +3997,21 @@ function cornerSideIsOuter(dir1, dir2, sideSign) {
   return dir1.x * between.x + dir1.y * between.y >= 0;
 }
 
-// How far a corner may reach, as a multiple of ITS OWN SIDE'S half-width. Past
-// this the two arms are so nearly parallel that the place their edges meet is
-// further out than the letter is tall.
+// How far a corner may reach is a multiple of ITS OWN SIDE'S half-width, and
+// past it the two arms are so nearly parallel that the place their edges meet
+// is further out than the letter is tall. That side then ends each arm at its
+// own edge end, and the straight between the two is the corner.
 //
 // Per side, not per stroke. Stated against the whole stroke width instead, a
 // side carrying a small share of an unlinked width was allowed a spike several
 // times longer than that side is wide, while the other side of the same corner
 // was held: a 10/50 stroke let its narrow side reach twelve half-widths. Four
 // half-widths is two full stroke widths wherever the two sides are equal, so
-// nothing changes for a linked width. The drag that offsets an ordinary
-// hand-drawn outline states the same number the same way.
-const CORNER_MITER_LIMIT = 4;
-
-/**
- * Whether an outer side's apex is out of bounds.
- *
- * True past the limit, and true where the two arms are exactly parallel and
- * there is no apex at all. That side then ends each arm at its own edge end, and
- * the straight between the two is the corner.
- */
-function cornerIsHeld(miterScale) {
-  return !Number.isFinite(miterScale) || miterScale > CORNER_MITER_LIMIT;
-}
+// nothing changes for a linked width.
+//
+// The limit and the test are `offset-contour.js`'s, so the drag that offsets an
+// ordinary outline and the rib bar hold at the same turn this does (rail R-B).
+const cornerIsHeld = cornerMiterIsHeld;
 
 /**
  * A normal and how far along it the outline sits, once a forced rib is allowed

@@ -1,4 +1,3 @@
-import { Bezier } from "bezier-js";
 import {
   generateFromSkeleton,
   outlineContourToPackedPath,
@@ -7,10 +6,12 @@ import {
 import {
   SERIF_HALF_FIELDS,
   calculateGeneratedCurvatureEdits,
+  getSkeletonRibPosition,
   normalizeSkeletonData,
 } from "@fontra/core/skeleton-model.js";
 import { calculateSegmentTension } from "@fontra/core/tunni-calculations.js";
 import { packContour } from "@fontra/core/var-path.js";
+import { Bezier } from "bezier-js";
 import { expect } from "chai";
 
 import { readRepoPathAsJSON } from "./test-support.js";
@@ -3853,5 +3854,49 @@ describe("skeleton-generator serif axis tilt", () => {
       counts.add(points(stem({ axisMode: "tilt", axisTilt: tilt })).length);
     }
     expect(counts.size).to.equal(1);
+  });
+});
+
+describe("the rib bar's ends and the outline's corner", () => {
+  // (0,0) -> (100,0) -> (100,100), a quarter turn at a stroke 80 wide. The
+  // outer side's two edges are carried on along their own arms and meet on the
+  // split line; the inner side's cross there too, because straight arms do not
+  // bend away from their own directions.
+  const skeleton = normalizeSkeletonData({
+    version: 1,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 80,
+        points: [
+          { id: 2, x: 0, y: 0 },
+          { id: 3, x: 100, y: 0 },
+          { id: 4, x: 100, y: 100 },
+        ],
+      },
+    ],
+  });
+
+  it("agree, on both sides", () => {
+    const contour = skeleton.contours[0];
+    const point = contour.points[1];
+    const result = generateFromSkeleton(skeleton);
+    const map = result.provenance[0].pointMap;
+    const outlineFor = (side) => {
+      const index = map.findIndex(
+        (entry) =>
+          entry?.skeletonPointId === point.id &&
+          entry.side === side &&
+          entry.role === "onCurve"
+      );
+      return result.contours[0].points[index];
+    };
+    for (const side of ["left", "right"]) {
+      const rib = getSkeletonRibPosition(contour, point, side);
+      const outline = outlineFor(side);
+      expect(Math.abs(rib.x - outline.x), `${side} x`).to.be.at.most(1);
+      expect(Math.abs(rib.y - outline.y), `${side} y`).to.be.at.most(1);
+    }
   });
 });

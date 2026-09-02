@@ -269,6 +269,15 @@ the corner. A gap wider than four of that side's own half-widths is held the sam
 place stands further out than the letter is tall. Per side, so an unlinked width holds both sides
 of a corner at the same turn.
 
+**The rib bar reaches the meeting place too.** It lies on the split line and runs one half-width
+over the cosine of half the turn, so its two ends stand on the two points the outline draws. Where
+the outline holds the corner — folded back, or past the miter limit — the bar holds with it, square
+to the arriving arm at a plain half-width. The two share one construction and one limit, so they
+cannot answer differently at any turn. A drag of that end divides by the reach to get back to the
+width it is stating, which is what a forced rib angle already did. On a curved arm the inner side is
+the one place they differ: the outline crosses where the two drawn curves cross, and the bar states
+where their two directions cross.
+
 **A forced rib angle names its own trade.** A lock turns a point's rib off the perpendicular, and
 the point's mode says what that holds on to. `stroke` runs the rib one over the cosine of its turn
 to reach the edge, so every master draws the width its panel states and weights between masters

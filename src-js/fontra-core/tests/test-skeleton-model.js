@@ -62,8 +62,8 @@ import {
   translateSkeletonData,
   updateSkeletonPoint,
 } from "@fontra/core/skeleton-model.js";
-import { VarPackedPath } from "@fontra/core/var-path.js";
 import { Transform } from "@fontra/core/transform.js";
+import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
 
 // Splitting a contour at one of its own on-curve points: a closed one opens
@@ -1565,9 +1565,9 @@ describe("harmonizing a skeleton centerline", () => {
 });
 
 describe("skeleton rib direction at a corner", () => {
-  // (0,0) -> (100,0) -> (100,100). The arriving arm runs along +x, so its normal
-  // is straight up or straight down. The split line's normal is about
-  // (0.707, -0.707).
+  // (0,0) -> (100,0) -> (100,100). A quarter turn, so the split line's normal is
+  // about (0.707, -0.707) and the two edges of a side meet one half-width over
+  // the cosine of 45 degrees out along it — root two half-widths.
   const contour = {
     id: 1,
     closed: false,
@@ -1580,10 +1580,59 @@ describe("skeleton rib direction at a corner", () => {
     ],
   };
 
-  it("is square to the arriving arm, not to the split line", () => {
+  it("lies on the split line, not square to the arriving arm", () => {
     const normal = calculateNormalAtSkeletonPoint(contour, 1);
-    expect(normal.x).to.be.closeTo(0, 1e-9);
-    expect(Math.abs(normal.y)).to.be.closeTo(1, 1e-9);
+    expect(Math.abs(normal.x)).to.be.closeTo(Math.SQRT1_2, 1e-9);
+    expect(Math.abs(normal.y)).to.be.closeTo(Math.SQRT1_2, 1e-9);
+  });
+
+  it("reaches the place the two edges meet", () => {
+    expect(skeletonRibReach(contour, 1)).to.be.closeTo(Math.SQRT2, 1e-9);
+  });
+
+  it("puts both ends on the outline's own corner points", () => {
+    const point = contour.points[1];
+    const left = getSkeletonRibPosition(contour, point, "left");
+    const right = getSkeletonRibPosition(contour, point, "right");
+    // 40 half-widths out along (0.707, -0.707) times root two is (40, -40) from
+    // the corner, and the same distance the other way.
+    expect(left.x).to.equal(140);
+    expect(left.y).to.equal(-40);
+    expect(right.x).to.equal(60);
+    expect(right.y).to.equal(40);
+  });
+
+  it("holds the arriving arm's answer where the corner folds back", () => {
+    // The two arms run back along each other, so the edges of a side are
+    // parallel and never meet. There is no place to reach, and the bar states
+    // the width of the arriving stroke, which is what it has always done.
+    const folded = {
+      ...contour,
+      points: [
+        { id: 2, x: 0, y: 0, type: null, smooth: false },
+        { id: 3, x: 100, y: 0, type: null, smooth: false },
+        { id: 4, x: 0, y: 0.0001, type: null, smooth: false },
+      ],
+    };
+    expect(skeletonRibReach(folded, 1)).to.equal(1);
+    const normal = calculateNormalAtSkeletonPoint(folded, 1);
+    expect(normal.x).to.be.closeTo(0, 1e-6);
+    expect(Math.abs(normal.y)).to.be.closeTo(1, 1e-6);
+  });
+
+  it("holds it past the miter limit too, where the outline holds", () => {
+    // A turn sharp enough that the meeting place stands more than four
+    // half-widths out is held by the generator, so the bar is held with it —
+    // the two agree at every turn or the bar stops describing the outline.
+    const spike = {
+      ...contour,
+      points: [
+        { id: 2, x: 0, y: 0, type: null, smooth: false },
+        { id: 3, x: 100, y: 0, type: null, smooth: false },
+        { id: 4, x: 0, y: 20, type: null, smooth: false },
+      ],
+    };
+    expect(skeletonRibReach(spike, 1)).to.equal(1);
   });
 
   it("leaves a smooth point alone", () => {

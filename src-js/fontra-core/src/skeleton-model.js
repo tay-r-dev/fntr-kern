@@ -20,13 +20,14 @@ import {
   buildContourSegments,
   calculateContourNormalAtPoint,
   collectCoupledPointGroups,
-  cornerArrivingNormal,
+  cornerRibPlacement,
   isStraightControlledSmoothPoint,
   offsetContourAlongNormals,
   straightSegmentNormal,
 } from "./offset-contour.js";
 import { offsetCubicSide } from "./offset-cubic.js";
 import { alignHandle, alignHandles } from "./path-functions.js";
+import { PathHitTester } from "./path-hit-tester.js";
 import {
   DEFAULT_UNDERSIDE_CUP_TENSION,
   maxSerifEaseDistance,
@@ -44,7 +45,6 @@ import {
   hasForwardTangentIntersection,
 } from "./tunni-calculations.js";
 import { deepCopyObject, splitGlyphNameExtension } from "./utils.ts";
-import { PathHitTester } from "./path-hit-tester.js";
 import { VarPackedPath } from "./var-path.js";
 import {
   addVectors,
@@ -3701,19 +3701,33 @@ function skeletonRibGeometry(skeletonContour, pointIndexOrPointId) {
     pointIndexOrPointId >= 0 && pointIndexOrPointId < points.length
       ? pointIndexOrPointId
       : points.findIndex((point) => point.id === pointIndexOrPointId);
-  // At a corner the outline's own points stand where the two offset edges meet,
-  // further out than any half-width, so the bar cannot end on the outline
-  // whatever direction it takes. It states the width of the arriving stroke
-  // instead. Every other point keeps the answer it had.
+  // At a corner the outline's own points stand where the two offset edges of a
+  // side meet, out along the line that splits the corner. The bar lies on that
+  // line and reaches that far, so its ends land on the points the outline draws.
+  // Where the outline holds the corner instead — folded back, or past the miter
+  // limit — the bar holds with it, square to the arriving arm. Every other point
+  // keeps the answer it had.
+  const corner = cornerRibPlacement(points, skeletonContour?.closed, pointIndex);
   const unlocked =
-    cornerArrivingNormal(points, skeletonContour?.closed, pointIndex) ??
+    corner?.normal ??
     calculateContourNormalAtPoint(points, skeletonContour?.closed, pointIndex);
+  const cornerScale = corner?.scale ?? 1;
   const point = points[pointIndex];
   if (!point || point.type) {
-    return { normal: unlocked, unlocked, reach: 1 };
+    return { normal: unlocked, unlocked, reach: cornerScale };
   }
   const normal = getEffectiveNormal(point, unlocked);
-  return { normal, unlocked, reach: ribAngleLockReach(point, normal, unlocked) };
+  // A forced rib replaces the split line outright, and the generator ends each
+  // arm on the forced rib rather than at a meeting place. So a lock takes the
+  // corner's reach off the bar along with its direction; the two reaches are
+  // answers to the same question and never multiply.
+  return {
+    normal,
+    unlocked,
+    reach: point.ribAngleLock
+      ? ribAngleLockReach(point, normal, unlocked)
+      : cornerScale,
+  };
 }
 
 export function calculateNormalAtSkeletonPoint(skeletonContour, pointIndexOrPointId) {

@@ -1606,11 +1606,28 @@ turn** — 1.41 half-widths at a right angle, 2 at a 120 degree turn.
   branch treated the last index as the end of the contour, true only for an open
   one. It never showed before, because a closed contour's segments emit only
   their start points, so the dropped join had nothing to place.
-- **The rib bar is square to the arriving arm now**, keeping its length at the
-  stored half-width, so it stops short of the outline at every corner. It states
-  how wide the stroke is; it no longer states where the edges are.
-  `cornerArrivingNormal` returns null everywhere but a corner, so the shared
-  normal in `offset-contour.js` is untouched.
+- **The rib bar lies on the split line and reaches the meeting place**, so its
+  two ends land on the two points the outline draws. It was square to the
+  arriving arm at a plain half-width, on the reasoning that no direction could
+  put the ends on the outline — which is true of a plain half-width and not of
+  the reach. Where the outline holds the corner, folded back or past the miter
+  limit, the bar holds with it: the two answer at the same turn or the bar stops
+  describing the outline. `cornerRibPlacement` in `offset-contour.js` returns
+  null everywhere but a corner, so every other point keeps the answer it had.
+  - **Measured against the outline's own corner points**, on a right angle at a
+    stroke 80 wide, arms bowed from straight to 80 units. The outer side is
+    exact at every bow. The inner side is exact on straight arms and drifts to
+    45 units at the deepest bow, because the generator finds where the two drawn
+    curves cross and the bar states where their two directions cross. It is
+    better than the bar was at every bow measured: 40 to 46 on the outer side
+    before, and 40 to 69 on the inner.
+  - **A drag of that end divides by the reach**, which is the mechanism the rib
+    angle lock already had. A lock takes the corner's reach off along with its
+    direction — the generator ends each arm on the forced rib rather than at a
+    meeting place, so the two reaches answer one question and never multiply.
+  - **The miter limit and the held test are one copy now**, in
+    `offset-contour.js`, imported by the generator. Two copies of the same 4
+    were already in the tree, and the bar would have been a third.
 - **The outline point count changes in three cases**: a side past the miter
   limit, a fold-back, and an inner side whose curves cross zero times or several.
   Two masters whose corners fall in different rows do not interpolate at that

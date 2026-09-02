@@ -257,7 +257,45 @@ export function calculateContourNormalAtPoint(points, closed, pointIndex) {
 // runs to infinity. Past this much the corner point is held and its two segments
 // fall short of the offset, rather than the point leaving the glyph. It is the
 // standard miter limit, and the only limit in this drag.
-const MITER_TRAVEL_LIMIT = 4;
+//
+// The generated outline's corner reaches by the same construction and stops at
+// the same number, in half-widths there rather than in offsets. One copy, so a
+// turn the outline holds cannot be one the rib bar or an expansion drag still
+// reaches through (rail R-B).
+export const MITER_TRAVEL_LIMIT = 4;
+
+/**
+ * The line that splits a corner, and how far along it the two carried-on edges
+ * of one side meet, as a multiple of that side's own offset.
+ *
+ * One over the cosine of half the turn, and Infinity where the two arms run
+ * exactly back along each other and there is nothing to meet. `dir1` is the
+ * arriving direction and `dir2` the leaving one, both unit.
+ */
+export function cornerMiter(dir1, dir2) {
+  const dot = dir1.x * dir2.x + dir1.y * dir2.y;
+  const cross = dir1.x * dir2.y - dir1.y * dir2.x;
+  const halfAngle = Math.atan2(cross, dot) / 2;
+  const cosH = Math.cos(halfAngle);
+  const sinH = Math.sin(halfAngle);
+  const bisector = {
+    x: dir1.x * cosH - dir1.y * sinH,
+    y: dir1.x * sinH + dir1.y * cosH,
+  };
+  const cosHalfTurn = Math.abs(cosH);
+  return {
+    normal: { x: bisector.y, y: -bisector.x },
+    scale: cosHalfTurn > 0 ? 1 / cosHalfTurn : Infinity,
+  };
+}
+
+/**
+ * Whether a corner's meeting place is out of bounds: past the limit, or absent
+ * because the two arms are parallel.
+ */
+export function cornerMiterIsHeld(scale) {
+  return !Number.isFinite(scale) || scale > MITER_TRAVEL_LIMIT;
+}
 
 // The segments either side of an on-curve point, as indices into `segments`.
 function adjacentSegments(points, closed, pointIndex) {
@@ -350,13 +388,26 @@ export function resolveOffsetTravel(
 }
 
 /**
- * The normal of the arm arriving at a corner, or null where the point is not a
- * corner.
+ * Where a corner's rib bar points and how far it reaches, or null where the
+ * point is not a corner.
  *
- * A corner's generated outline points sit where the two offset edges meet, which
- * is further out than any half-width, so no direction puts a rib bar's ends on
- * the outline. Square to the arriving arm the bar states the width of the stroke
- * arriving there, which is one rule at every point.
+ * A corner's outline points stand where the two offset edges of a side meet,
+ * which is out along the line that splits the corner at one half-width over the
+ * cosine of half the turn. The bar lies on that line and reaches that far, so
+ * its two ends land on the two points the outline actually draws. `scale` is
+ * that reach as a multiple of the half-width, which is what a drag of the end
+ * divides by to get back to the width it is stating.
+ *
+ * The one exception is a corner the outline itself does not take: two arms
+ * folded back on each other never meet, and a turn past the miter limit meets
+ * further out than the letter is tall. Both hold each arm at its own edge end,
+ * so the bar holds too, square to the arriving arm at a plain half-width. The
+ * two have to agree at every turn, or the bar stops describing the outline.
+ *
+ * On a curved arm the drawn inner edges cross a little inside this place,
+ * because both curves bend toward each other over the reach and the generator
+ * finds their real crossing. The bar states the meeting of the two directions,
+ * which is exact on a straight arm and the same construction everywhere.
  *
  * A smooth point is not a corner: the centerline does not change direction
  * there. Nor is a smooth point whose direction comes from a straight on one
@@ -365,9 +416,9 @@ export function resolveOffsetTravel(
  * @param {Array} points - The contour's points
  * @param {boolean} closed - Whether the contour is closed
  * @param {number} pointIndex - Index of the on-curve point
- * @returns {Object|null} Normal {x, y}, or null
+ * @returns {Object|null} `{normal, scale}`, or null
  */
-export function cornerArrivingNormal(points, closed, pointIndex) {
+export function cornerRibPlacement(points, closed, pointIndex) {
   const point = points?.[pointIndex];
   if (!point || point.type || point.smooth) {
     return null;
@@ -382,8 +433,17 @@ export function cornerArrivingNormal(points, closed, pointIndex) {
   ) {
     return null;
   }
-  const direction = segmentEndDirection(adjacent.incoming);
-  return direction ? rotateVector90CW(direction) : null;
+  const dir1 = segmentEndDirection(adjacent.incoming);
+  const dir2 = segmentStartDirection(adjacent.outgoing);
+  if (!dir1) {
+    return null;
+  }
+  const held = { normal: rotateVector90CW(dir1), scale: 1 };
+  if (!dir2) {
+    return held;
+  }
+  const join = cornerMiter(dir1, dir2);
+  return cornerMiterIsHeld(join.scale) ? held : join;
 }
 
 function makeSegment(points, startIdx, endIdx) {
