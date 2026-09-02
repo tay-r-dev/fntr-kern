@@ -30,6 +30,7 @@ import {
   joinSkeletonContours,
   makeEmptySkeletonData,
   makeSkeletonContour,
+  makeSkeletonInsertion,
   makeSkeletonPoint,
   measureGeneratedHalfWidths,
   normalizeSkeletonData,
@@ -1712,7 +1713,10 @@ describe("skeleton rib direction at a corner", () => {
         { id: 4, x: 200, y: 0, type: null, smooth: false },
       ],
     };
-    const outline = { skeletonData: { contours: [straight], generated: [] }, path: null };
+    const outline = {
+      skeletonData: { contours: [straight], generated: [] },
+      path: null,
+    };
     const left = getSkeletonRibPosition(straight, straight.points[1], "left", outline);
     expect(left).to.deep.equal({ x: 100, y: -40 });
   });
@@ -2297,5 +2301,82 @@ describe("skeleton-model - the width where a point lands", () => {
         { x: 1, y: 0 }
       )
     ).to.equal(null);
+  });
+});
+
+describe("skeleton insertion points", () => {
+  it("normalizes a contour with no insertions to an empty list", () => {
+    const data = normalizeSkeletonData({
+      contours: [makeSkeletonContour({ id: 10, points: [] })],
+    });
+    expect(data.contours[0].insertions).to.deep.equal([]);
+  });
+
+  it("fills every insertion field and never leaves one unset", () => {
+    const data = normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          points: [makeSkeletonPoint({ id: 11, x: 0, y: 0 })],
+          insertions: [{ id: 12, pointId: 11 }],
+        }),
+      ],
+    });
+    expect(data.contours[0].insertions[0]).to.deep.equal({
+      id: 12,
+      pointId: 11,
+      t: 0.5,
+      width: { left: 1, right: 1, linked: true },
+      easing: 0,
+    });
+  });
+
+  it("clamps t into 0 to 1 and keeps a stated ratio", () => {
+    const data = normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          points: [makeSkeletonPoint({ id: 11, x: 0, y: 0 })],
+          insertions: [
+            { id: 12, pointId: 11, t: 2, width: { left: 1.5, right: 0.5 }, easing: 3 },
+          ],
+        }),
+      ],
+    });
+    const insertion = data.contours[0].insertions[0];
+    expect(insertion.t).to.equal(1);
+    expect(insertion.width.left).to.equal(1.5);
+    expect(insertion.width.right).to.equal(0.5);
+    expect(insertion.easing).to.equal(1);
+  });
+
+  it("allocates an insertion id from the same counter points use", () => {
+    const data = normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          points: [makeSkeletonPoint({ id: 11, x: 0, y: 0 })],
+          insertions: [{ pointId: 11 }],
+        }),
+      ],
+    });
+    const insertion = data.contours[0].insertions[0];
+    expect(insertion.id).to.be.a("number");
+    expect(insertion.id).to.not.equal(10);
+    expect(insertion.id).to.not.equal(11);
+    expect(data.nextId).to.be.greaterThan(insertion.id);
+  });
+
+  it("drops an insertion whose start point is not on the contour", () => {
+    const data = normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          points: [makeSkeletonPoint({ id: 11, x: 0, y: 0 })],
+          insertions: [{ id: 12, pointId: 999 }],
+        }),
+      ],
+    });
+    expect(data.contours[0].insertions).to.deep.equal([]);
   });
 });

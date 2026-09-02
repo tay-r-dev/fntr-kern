@@ -62,6 +62,11 @@ export { isStraightControlledSmoothPoint, straightSegmentNormal };
 export const SKELETON_SCHEMA_VERSION = 1;
 export const DEFAULT_SKELETON_WIDTH = 80;
 
+// An insertion point's width is a ratio of the half-width the stroke already
+// draws where the point stands, not a length. One means the stroke as it
+// stands. The identity the whole feature rests on.
+export const DEFAULT_INSERTION_RATIO = 1;
+
 // Mirrors MIN_HANDLE_LENGTH in offset-cubic.js: the shortest handle the
 // generator will emit. The on-curve gizmo stops before driving a handle past it,
 // because beyond that point the generator floors the length and the handle
@@ -1225,7 +1230,43 @@ export function normalizeSkeletonContour(contour, skeletonData = null, usedIds =
   for (const point of Array.isArray(contour?.points) ? contour.points : []) {
     normalized.points.push(normalizeSkeletonPoint(point, skeletonData, usedIds));
   }
+  // An insertion whose start point is not on this contour addresses a segment
+  // that does not exist. Dropping it is the honest answer: keeping it would put
+  // a point on the outline that no reader can place.
+  const onCurveIds = new Set(
+    normalized.points.filter((point) => !point.type).map((point) => point.id)
+  );
+  normalized.insertions = [];
+  for (const insertion of Array.isArray(contour?.insertions)
+    ? contour.insertions
+    : []) {
+    const entry = normalizeSkeletonInsertion(insertion, skeletonData, usedIds);
+    if (entry.pointId !== null && onCurveIds.has(entry.pointId)) {
+      normalized.insertions.push(entry);
+    }
+  }
   return normalized;
+}
+
+// One insertion point. `pointId` names the START point of the segment it sits
+// on, and `t` is the source parameter along that segment. Nothing stores a
+// coordinate: the position is read live from the segment, the way a rib's is.
+export function normalizeSkeletonInsertion(
+  insertion,
+  skeletonData = null,
+  usedIds = null
+) {
+  return {
+    id: normalizeId(insertion?.id, skeletonData, usedIds),
+    pointId: Number.isInteger(insertion?.pointId) ? insertion.pointId : null,
+    t: Math.min(1, Math.max(0, asFiniteNumber(insertion?.t, 0.5))),
+    width: normalizeInsertionWidth(insertion?.width),
+    easing: Math.min(1, Math.max(0, asFiniteNumber(insertion?.easing, 0))),
+  };
+}
+
+export function makeSkeletonInsertion(data = {}, skeletonData = null) {
+  return normalizeSkeletonInsertion(data, skeletonData);
 }
 
 export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = null) {
@@ -3913,6 +3954,21 @@ function normalizeId(value, skeletonData, usedIds) {
 
 function maxUsedId(usedIds) {
   return usedIds?.size ? Math.max(...usedIds) : 0;
+}
+
+// An insertion point's width is a ratio of the half-width the stroke already
+// draws where the point stands, not a length. The point's whole gesture is
+// sliding along the centerline, and on a tapering stroke a stored length would
+// hold still while the stroke under it moved. The slide would then change the
+// shape the slide exists not to change. A ratio slides and changes nothing.
+// There is no `tied` flag: an insertion point never opts a straight out of its
+// tie, and the straight's own two ends already carry that flag.
+function normalizeInsertionWidth(width) {
+  return {
+    left: asNonNegativeNumber(width?.left, DEFAULT_INSERTION_RATIO),
+    right: asNonNegativeNumber(width?.right, DEFAULT_INSERTION_RATIO),
+    linked: width?.linked !== false,
+  };
 }
 
 function normalizeWidth(width) {
