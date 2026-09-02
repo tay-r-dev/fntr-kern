@@ -6,6 +6,7 @@ import {
   findGeneratedPathAddress,
   getEffectiveRibHalfWidth,
   getGeneratedSegmentCurvature,
+  getSkeletonContour,
   getSkeletonData,
   getSkeletonRibAddress,
   getSkeletonPointHalfWidth,
@@ -1228,5 +1229,80 @@ describe("a width lock holds against every writer", () => {
     setSkeletonPointTotalWidth(point, 80, 200);
     expect(getSkeletonPointHalfWidth(point, 80, "left")).to.equal(40);
     expect(getSkeletonPointHalfWidth(point, 80, "right")).to.equal(40);
+  });
+});
+
+describe("an insertion point cuts a tie", () => {
+  // A straight from a tension point to a corner. Point 11 is a smooth point
+  // carrying one handle, so the straight sets its direction and ties the
+  // straight's two ends. Point 12 is an ordinary corner.
+  const tiedStraight = (insertions = []) =>
+    normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          defaultWidth: 60,
+          points: [
+            makeSkeletonPoint({ id: 9, x: -80, y: 60 }),
+            makeSkeletonPoint({ id: 8, x: -40, y: 30, type: "cubic" }),
+            makeSkeletonPoint({ id: 7, x: -20, y: 0, type: "cubic" }),
+            makeSkeletonPoint({ id: 11, x: 0, y: 0, smooth: true }),
+            makeSkeletonPoint({ id: 12, x: 200, y: 0 }),
+          ],
+          insertions,
+        }),
+      ],
+    });
+
+  it("ties both ends of the straight with no insertion point", () => {
+    const data = tiedStraight();
+    const contour = getSkeletonContour(data, 10);
+    const group = getTiedRibGroup(contour, contour.points[3]);
+    expect(group.map((point) => point.id).sort()).to.deep.equal([11, 12]);
+  });
+
+  it("takes the far end's place in the tie", () => {
+    const data = tiedStraight([{ id: 13, pointId: 11, t: 0.5 }]);
+    const contour = getSkeletonContour(data, 10);
+    const group = getTiedRibGroup(contour, contour.points[3]);
+    expect(group).to.equal(null);
+    expect(getTiedRibGroup(contour, contour.points[4])).to.equal(null);
+  });
+
+  it("frees the far end's width", () => {
+    // Tied, the two ends share the mean of 45 and the stored 40.
+    const tied = getSkeletonContour(tiedStraight(), 10);
+    setSkeletonPointSideWidth(tied.points[4], tied.defaultWidth, "left", 45);
+    expect(getEffectiveRibHalfWidth(tied, tied.points[4], "left")).to.equal(42.5);
+    expect(getEffectiveRibHalfWidth(tied, tied.points[3], "left")).to.equal(42.5);
+
+    // Cut, each end answers alone.
+    const cut = getSkeletonContour(tiedStraight([{ id: 13, pointId: 11, t: 0.5 }]), 10);
+    setSkeletonPointSideWidth(cut.points[4], cut.defaultWidth, "left", 45);
+    expect(getEffectiveRibHalfWidth(cut, cut.points[4], "left")).to.equal(45);
+    expect(getEffectiveRibHalfWidth(cut, cut.points[3], "left")).to.equal(40);
+  });
+
+  it("releases nothing where both ends are controlled", () => {
+    // A second curve arriving at point 12 makes it straight-controlled too.
+    const data = normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          defaultWidth: 60,
+          closed: true,
+          points: [
+            makeSkeletonPoint({ id: 11, x: 0, y: 0, smooth: true }),
+            makeSkeletonPoint({ id: 12, x: 200, y: 0, smooth: true }),
+            makeSkeletonPoint({ id: 7, x: 240, y: 60, type: "cubic" }),
+            makeSkeletonPoint({ id: 8, x: -40, y: 60, type: "cubic" }),
+          ],
+          insertions: [{ id: 13, pointId: 11, t: 0.5 }],
+        }),
+      ],
+    });
+    const contour = getSkeletonContour(data, 10);
+    const group = getTiedRibGroup(contour, contour.points[0]);
+    expect(group.map((point) => point.id).sort()).to.deep.equal([11, 12]);
   });
 });

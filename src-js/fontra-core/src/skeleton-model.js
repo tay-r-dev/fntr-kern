@@ -607,7 +607,8 @@ function expandToTiedRibGroups(contour, pointIds) {
     segments,
     isClosed,
     ribTiedByDefault,
-    collectSerifTerminals(segments, isClosed, contour?.capStyle)
+    collectSerifTerminals(segments, isClosed, contour?.capStyle),
+    collectInsertionCutSegments(segments, contour?.insertions)
   );
   if (!groupByPoint.size) return pointIds;
   const expanded = new Set(pointIds);
@@ -3226,7 +3227,8 @@ export function getTiedRibGroup(contour, point) {
       segments,
       isClosed,
       ribTiedByDefault,
-      collectSerifTerminals(segments, isClosed, contour.capStyle)
+      collectSerifTerminals(segments, isClosed, contour.capStyle),
+      collectInsertionCutSegments(segments, contour.insertions)
     ).get(point) || null
   );
 }
@@ -3254,7 +3256,8 @@ export function getSkeletonRibTieGroup(contour, point) {
       segments,
       isClosed,
       () => true,
-      collectSerifTerminals(segments, isClosed, contour.capStyle)
+      collectSerifTerminals(segments, isClosed, contour.capStyle),
+      collectInsertionCutSegments(segments, contour.insertions)
     ).get(point) || null
   );
 }
@@ -3853,9 +3856,31 @@ export function collectTiedRibGroups(
   segments,
   isClosed,
   isTied = ribTiedByDefault,
-  serifTerminals = new Set()
+  serifTerminals = new Set(),
+  cutSegments = new Set()
 ) {
-  return collectCoupledPointGroups(segments, isClosed, isTied, serifTerminals);
+  return collectCoupledPointGroups(
+    segments,
+    isClosed,
+    isTied,
+    serifTerminals,
+    cutSegments
+  );
+}
+
+// The straight segments an insertion point sits on. A tie is a run, and an
+// insertion point is a thing that stops one.
+export function collectInsertionCutSegments(segments, insertions) {
+  const cut = new Set();
+  for (const insertion of insertions || []) {
+    const segment = segments.find(
+      (candidate) => candidate.startPoint.id === insertion.pointId
+    );
+    if (segment && segment.controlPoints.length === 0) {
+      cut.add(segment);
+    }
+  }
+  return cut;
 }
 
 // The generic normal plus the skeleton's per-point rib-angle override, which is

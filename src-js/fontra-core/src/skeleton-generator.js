@@ -23,6 +23,7 @@ import {
   DEFAULT_SKELETON_WIDTH,
   SERIF_HALF_ZEROS,
   calculateNormalAtSkeletonPoint,
+  collectInsertionCutSegments,
   collectSerifTerminals,
   collectTiedRibGroups,
   getEffectiveNormal,
@@ -2296,7 +2297,13 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
     return null;
   };
 
-  const coupled = coupledHalfWidths(segments, isClosed, defaultWidth, capStyle);
+  const coupled = coupledHalfWidths(
+    segments,
+    isClosed,
+    defaultWidth,
+    capStyle,
+    skeletonContour.insertions
+  );
   const firstOnCurvePoint = segments[0].startPoint;
   const lastOnCurvePoint = segments[segments.length - 1].endPoint;
   const startCapStyle = normalizeCapStyle(firstOnCurvePoint.capStyle ?? capStyle);
@@ -4055,12 +4062,21 @@ function generateOffsetPointsForSegment(
  * @param {number} defaultWidth - Contour default width
  * @returns {Map} skeleton point -> {left, right}
  */
-function coupledHalfWidths(segments, isClosed, defaultWidth, contourCapStyle) {
+function coupledHalfWidths(
+  segments,
+  isClosed,
+  defaultWidth,
+  contourCapStyle,
+  insertions
+) {
   const groups = collectTiedRibGroups(
     segments,
     isClosed,
     (point) => point.widthTied !== false,
-    collectSerifTerminals(segments, isClosed, contourCapStyle)
+    collectSerifTerminals(segments, isClosed, contourCapStyle),
+    // Must match skeleton-model.js exactly, or the gizmo and the outline
+    // disagree about where a rib is, which is the fault the tie report was.
+    collectInsertionCutSegments(segments, insertions)
   );
   const sharedByGroup = new Map();
   const coupled = new Map();

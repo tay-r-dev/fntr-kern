@@ -57,52 +57,69 @@ export function isStraightControlledSmoothPoint(point, straightSegment, curveSeg
 }
 
 /**
- * Does this segment couple the points at its two ends to a shared offset?
+ * Which of a segment's two ends the segment couples to a shared offset.
  *
- * It does when it is a straight carrying at least one straight-controlled smooth
- * point (above). Such a point's normal is perpendicular to the straight, and the
- * generated handle leaving it stays colinear with the projected straight to keep
- * the outline smooth — so unless the far end sits at the same offset, the
- * projected straight tilts and takes the handle with it. One such point anywhere
- * on the straight is enough: the whole projected straight has to move as a unit.
+ * A straight carrying a straight-controlled smooth point couples both ends: the
+ * whole projected straight has to move as a unit or the handle at that point
+ * rotates with the width.
  *
- * It also does when a straight ends on a point the caller has named as forcing
- * the coupling. The skeleton passes its serif terminals there: a serif sits on
- * the end of a straight run of stem, and that run is one wall with one thickness.
+ * A `cutSegments` entry breaks that run. A tie is a run along the straight, from
+ * the controlled point to whatever stops it, and today only the far end stops
+ * it. An insertion point stops it too, so the run from the controlled end to
+ * the cut is held and the far end is released. Where BOTH ends are controlled
+ * nothing is released, because both runs still have to come out straight.
  *
- * Either end may opt out through `isCoupled`, which frees the segment.
- * @param {Object} segment - Candidate segment
+ * @param {Object} segment - The segment
  * @param {Object} prevSegment - Segment before it, or null
  * @param {Object} nextSegment - Segment after it, or null
  * @param {Function} isCoupled - Reads a point's opt-out flag
  * @param {Set} forcedCouplingPoints - Points that couple a straight they end
- * @returns {boolean}
+ * @param {Set} cutSegments - Segments an insertion point stops a run on
+ * @returns {Array} the coupled end points, possibly empty
  */
-function couplesItsEnds(
+function coupledEnds(
   segment,
   prevSegment,
   nextSegment,
   isCoupled,
-  forcedCouplingPoints
+  forcedCouplingPoints,
+  cutSegments
 ) {
   const startPoint = segment?.startPoint;
   const endPoint = segment?.endPoint;
   if (!startPoint || !endPoint || startPoint === endPoint) {
-    return false;
+    return [];
   }
   if (!isCoupled(startPoint) || !isCoupled(endPoint)) {
-    return false;
+    return [];
   }
-  if (
-    segment.controlPoints.length === 0 &&
-    (forcedCouplingPoints.has(startPoint) || forcedCouplingPoints.has(endPoint))
-  ) {
-    return true;
-  }
-  return (
-    isStraightControlledSmoothPoint(startPoint, segment, prevSegment) ||
-    isStraightControlledSmoothPoint(endPoint, segment, nextSegment)
+  const isStraight = segment.controlPoints.length === 0;
+  const forced =
+    isStraight &&
+    (forcedCouplingPoints.has(startPoint) || forcedCouplingPoints.has(endPoint));
+  const startControlled = isStraightControlledSmoothPoint(
+    startPoint,
+    segment,
+    prevSegment
   );
+  const endControlled = isStraightControlledSmoothPoint(endPoint, segment, nextSegment);
+  if (!forced && !startControlled && !endControlled) {
+    return [];
+  }
+  if (!cutSegments.has(segment)) {
+    return [startPoint, endPoint];
+  }
+  // Cut. Each end is held only where it is the one that needs the run straight.
+  const held = [];
+  if (startControlled || (forced && forcedCouplingPoints.has(startPoint))) {
+    held.push(startPoint);
+  }
+  if (endControlled || (forced && forcedCouplingPoints.has(endPoint))) {
+    held.push(endPoint);
+  }
+  // One held end alone has nothing to share an offset with: the run it holds
+  // ends at the insertion point, which carries no stored width of its own.
+  return held.length > 1 ? held : [];
 }
 
 /**
@@ -118,13 +135,15 @@ function couplesItsEnds(
  * @param {boolean} isClosed - Whether the contour is closed
  * @param {Function} isCoupled - Reads a point's opt-out flag; defaults to always coupled
  * @param {Set} forcedCouplingPoints - Points that couple a straight they end
+ * @param {Set} cutSegments - Segments an insertion point stops a run on
  * @returns {Map} point -> array of points
  */
 export function collectCoupledPointGroups(
   segments,
   isClosed,
   isCoupled = () => true,
-  forcedCouplingPoints = new Set()
+  forcedCouplingPoints = new Set(),
+  cutSegments = new Set()
 ) {
   const groupByPoint = new Map();
   for (let i = 0; i < segments.length; i++) {
@@ -133,21 +152,21 @@ export function collectCoupledPointGroups(
       isClosed || i > 0 ? segments[(i - 1 + segments.length) % segments.length] : null;
     const nextSegment =
       isClosed || i < segments.length - 1 ? segments[(i + 1) % segments.length] : null;
-    if (
-      !couplesItsEnds(
-        segment,
-        prevSegment,
-        nextSegment,
-        isCoupled,
-        forcedCouplingPoints
-      )
-    ) {
+    const ends = coupledEnds(
+      segment,
+      prevSegment,
+      nextSegment,
+      isCoupled,
+      forcedCouplingPoints,
+      cutSegments
+    );
+    if (ends.length < 2) {
       continue;
     }
     const group = [];
     for (const point of [
-      ...(groupByPoint.get(segment.startPoint) || [segment.startPoint]),
-      ...(groupByPoint.get(segment.endPoint) || [segment.endPoint]),
+      ...(groupByPoint.get(ends[0]) || [ends[0]]),
+      ...(groupByPoint.get(ends[1]) || [ends[1]]),
     ]) {
       if (!group.includes(point)) {
         group.push(point);
