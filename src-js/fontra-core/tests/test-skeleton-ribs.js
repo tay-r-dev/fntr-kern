@@ -1386,9 +1386,13 @@ describe("the insertion point rib drag", () => {
       ...entry,
       pathContourIndex: entry.generatedContourIndex,
     }));
+    const path = new VarPackedPath();
+    for (const contour of generated.contours) {
+      path.appendUnpackedContour(contour);
+    }
     return createSkeletonInsertionRibExecutor(
       { ...data, generated: stored },
-      generated.contours,
+      path,
       10,
       13,
       side

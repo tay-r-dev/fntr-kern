@@ -31,6 +31,7 @@ import {
   getGeneratedPathContourIndices,
   getGeneratedSegmentCurvature,
   getSkeletonData,
+  getSkeletonInsertionPosition,
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
   getSkeletonRibAddress,
@@ -61,6 +62,7 @@ import { BASE_EXPAND_BEHAVIOR_NAME } from "./base-expand-editing.js";
 import { getVisibleMarkers } from "./marker-editing.js";
 import {
   getSkeletonPointAddress,
+  makeSkeletonInsertionKey,
   makeSkeletonPointKey,
   parseSkeletonPointKey,
   skeletonRibBehaviorIsTangentSlide,
@@ -792,6 +794,15 @@ export class SceneModel {
       return { selection: skeletonPointSelection };
     }
 
+    const skeletonInsertionSelection = this.skeletonInsertionAtPoint(
+      point,
+      size,
+      parsedCurrentSelection
+    );
+    if (skeletonInsertionSelection.size) {
+      return { selection: skeletonInsertionSelection };
+    }
+
     const skeletonRibSelection = this.skeletonRibSelectionAtPoint(
       point,
       size,
@@ -1062,6 +1073,55 @@ export class SceneModel {
       }
     }
 
+    return new Set();
+  }
+
+  // An insertion point sits on the centerline, where an ordinary skeleton point
+  // and the bare segment already compete for the click. It loses to the point,
+  // because dragging a point is the more consequential gesture and it is the one
+  // the designer aims at directly. It beats the segment, because otherwise it
+  // could never be grabbed at all.
+  skeletonInsertionAtPoint(point, size, parsedCurrentSelection) {
+    const positionedGlyph = this.getSelectedPositionedGlyph();
+    if (!positionedGlyph) {
+      return new Set();
+    }
+    const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
+    if (!skeletonData?.contours?.length) {
+      return new Set();
+    }
+
+    const glyphPoint = {
+      x: point.x - positionedGlyph.x,
+      y: point.y - positionedGlyph.y,
+    };
+    const isHit = (at) =>
+      at &&
+      Math.abs(at.x - glyphPoint.x) <= size &&
+      Math.abs(at.y - glyphPoint.y) <= size;
+
+    const currentKeys = new Set(
+      (parsedCurrentSelection?.skeletonInsertion || []).map((item) => `${item}`)
+    );
+    const contours = skeletonData.contours;
+    // Prefer one already selected, the way the point hit-test cycles among
+    // stacked points.
+    for (const preferSelected of currentKeys.size ? [true, false] : [false]) {
+      for (let ci = contours.length - 1; ci >= 0; ci--) {
+        const contour = contours[ci];
+        const insertions = contour.insertions || [];
+        for (let ii = insertions.length - 1; ii >= 0; ii--) {
+          const insertion = insertions[ii];
+          const key = `${contour.id}/${insertion.id}`;
+          if (preferSelected && !currentKeys.has(key)) {
+            continue;
+          }
+          if (isHit(getSkeletonInsertionPosition(contour, insertion))) {
+            return new Set([makeSkeletonInsertionKey(contour.id, insertion.id)]);
+          }
+        }
+      }
+    }
     return new Set();
   }
 

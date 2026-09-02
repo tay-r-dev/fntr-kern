@@ -1179,14 +1179,13 @@ export function createSkeletonInsertionTargetEntries(layer, selection) {
 // It is a separate entry point from the ordinary rib drag because the two write
 // different things: a rib states a half-width, and an insertion point states a
 // multiple of the half-width the stroke already draws. The reference for that
-// multiple is read off the generated outline, which is why this needs the
-// layer's path and the ordinary rib drag does not.
+// multiple is read off the layer's own path, through the same reader that draws
+// the gizmo and hit-tests it.
 export function createSkeletonInsertionRibTargetEntries(layer, selection) {
   const skeletonData = getSkeletonData(layer);
   if (!skeletonData) {
     return [];
   }
-  const contours = generatedContoursFromLayerPath(layer, skeletonData);
   const { skeletonRib } = parseSelection([...selection]);
   const executors = [];
   for (const key of skeletonRib || []) {
@@ -1197,7 +1196,7 @@ export function createSkeletonInsertionRibTargetEntries(layer, selection) {
     const [contourId, insertionId, side] = `${key}`.split("/");
     const executor = createSkeletonInsertionRibExecutor(
       skeletonData,
-      contours,
+      layer?.path,
       Number(contourId),
       Number(insertionId),
       side
@@ -1241,22 +1240,6 @@ export function createSkeletonInsertionRibTargetEntries(layer, selection) {
       },
     },
   ];
-}
-
-// The generated contours as they stand in the layer's path, in the shape the
-// pure readers expect: one entry per stored provenance entry, at the index that
-// entry names. Read once, before a drag moves anything.
-function generatedContoursFromLayerPath(layer, skeletonData) {
-  const path = layer?.path;
-  const contours = [];
-  for (const entry of skeletonData?.generated || []) {
-    const index = entry?.pathContourIndex;
-    if (!Number.isInteger(index) || index < 0 || index >= (path?.numContours ?? 0)) {
-      continue;
-    }
-    contours[index] = path.getUnpackedContour(index);
-  }
-  return contours;
 }
 
 // Interpolation axis for alt-drag on an editable rib (donor

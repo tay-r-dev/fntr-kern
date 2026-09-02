@@ -3340,6 +3340,39 @@ function getGeneratedRibPoint(outline, contour, point, side, pointIndex) {
 // Forward projection of a rib endpoint in glyph space (the C4 gizmo position).
 // This is the single shared source used by rendering (WS-8), hit-testing
 // (WS-11) and selection bounds (WS-16); never re-derive it locally.
+// Where an insertion point's rib ends, read off the drawn outline.
+//
+// The one reader. Hit-testing, drawing and the ratio drag all come through here
+// so the gizmo cannot stand somewhere the outline is not, which is the fault the
+// tied-rib report was. There is no fallback that computes the point instead: an
+// insertion point states a ratio of a width the skeleton never states between
+// two ribs, so without the outline there is no answer to give.
+export function getSkeletonInsertionRibPosition(outline, contour, insertion, side) {
+  assertSkeletonRibSide(side);
+  const { skeletonData, path } = outline || {};
+  if (!skeletonData || !path || !contour || !insertion) {
+    return null;
+  }
+  const address = findGeneratedPathAddress(
+    skeletonData,
+    contour.id,
+    insertion.id,
+    side,
+    "onCurve"
+  );
+  if (!address) {
+    return null;
+  }
+  try {
+    const drawn = path.getPoint(
+      path.getAbsolutePointIndex(address.pathContourIndex, address.contourPointIndex)
+    );
+    return drawn ? { x: drawn.x, y: drawn.y } : null;
+  } catch {
+    return null;
+  }
+}
+
 export function getSkeletonRibPosition(contour, point, side, outline = null) {
   assertSkeletonRibSide(side);
   if (!getSkeletonRibSidesForPoint(contour, point).includes(side)) {
@@ -3574,12 +3607,12 @@ export function createSkeletonInsertionExecutor(skeletonData, contourId, inserti
 // half-width the stroke states there. That is the number a ratio of one means,
 // and it is a number the skeleton never states between two ribs.
 //
-// `contours` is the generated outline this same skeleton produced, and
-// `skeletonData.generated` is its provenance. Both are read once, before the
+// `path` is the layer's own path and `skeletonData.generated` is the provenance
+// naming where in it the emitted point sits. Both are read once, before the
 // drag moves anything.
 export function createSkeletonInsertionRibExecutor(
   skeletonData,
-  contours,
+  path,
   contourId,
   insertionId,
   side
@@ -3591,15 +3624,12 @@ export function createSkeletonInsertionRibExecutor(
     return null;
   }
   const center = getSkeletonInsertionPosition(contour, insertion);
-  const address = findGeneratedPathAddress(
-    skeletonData,
-    contourId,
-    insertionId,
-    side,
-    "onCurve"
+  const emitted = getSkeletonInsertionRibPosition(
+    { skeletonData, path },
+    contour,
+    insertion,
+    side
   );
-  const emitted =
-    contours?.[address?.pathContourIndex]?.points?.[address?.pathPointIndex];
   if (!center || !emitted) {
     return null;
   }
@@ -3765,6 +3795,32 @@ export function* iterSkeletonRibTargets(skeletonData, path = null) {
           defaultWidth: contour.defaultWidth,
           normal,
           position: getSkeletonRibPosition(contour, point, side, outline),
+        };
+      }
+    }
+    // An insertion point's two ribs join the same enumeration, so hit-testing
+    // and drawing find them without knowing there are two kinds of rib. The id
+    // in the key names an insertion, and `insertion` says which list to read.
+    for (const insertion of contour.insertions || []) {
+      for (const side of ["left", "right"]) {
+        const position = getSkeletonInsertionRibPosition(
+          outline,
+          contour,
+          insertion,
+          side
+        );
+        if (!position) {
+          continue;
+        }
+        yield {
+          selectionKey: makeSkeletonRibKey(contour.id, insertion.id, side),
+          contour,
+          contourId: contour.id,
+          insertion,
+          insertionId: insertion.id,
+          side,
+          defaultWidth: contour.defaultWidth,
+          position,
         };
       }
     }
