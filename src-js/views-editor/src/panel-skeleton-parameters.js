@@ -53,6 +53,13 @@ import {
   setPanelPointSideWidth,
   setPanelPointTied,
   setPanelPointTotalWidth,
+  editSelectedSkeletonInsertions,
+  insertionRatioToUnits,
+  insertionWidthReference,
+  setInsertionEasing,
+  setInsertionRatioFromUnits,
+  setInsertionWidthLinked,
+  setPanelInsertionValuesStream,
   setPanelPointValuesStream,
   setPanelRibAngleLock,
   setPanelRibAngleLockMode,
@@ -73,6 +80,7 @@ import {
   summarizeSkeletonCornerSelection,
   summarizeSkeletonPointWidths,
   summarizeSkeletonRibAngleLockSelection,
+  summarizeSkeletonInsertionSelection,
   summarizeSkeletonRibSelection,
   summarizeSkeletonSerifSelection,
 } from "./skeleton-panel-model.js";
@@ -469,11 +477,21 @@ export default class SkeletonParametersPanel extends Panel {
       this._buildCornerSection(formContents, widthPoints);
     }
     this._singleGeneratedHandle = singleGeneratedHandleTarget(panelSelection);
+    const insertions = panelSelection.insertions || [];
+    this._insertions = insertions;
+    if (insertions.length) {
+      this._buildInsertionSection(formContents, insertions);
+    }
     if (ribTargets.length) {
       this._buildRibSection(formContents, ribTargets, ribsDerived);
     }
 
-    if (!widthPoints.length && !panelSelection.contours.length && !ribTargets.length) {
+    if (
+      !widthPoints.length &&
+      !panelSelection.contours.length &&
+      !ribTargets.length &&
+      !insertions.length
+    ) {
       formContents.push({
         type: "text",
         value: translate("sidebar.skeleton-parameters.no-selection"),
@@ -1191,6 +1209,87 @@ export default class SkeletonParametersPanel extends Panel {
         { step: 1, ...gate }
       );
     }
+  }
+
+  // An insertion point's own parameters: the two widths and the easing.
+  //
+  // The widths are shown in units and stored as a ratio of the half-width the
+  // stroke already draws there. A designer thinks in units, and a ratio is what
+  // lets the point slide along a tapering stroke without changing the shape.
+  // The conversion has one home, in skeleton-panel-edits.js, and both the field
+  // and the scrub come through it.
+  _buildInsertionSection(formContents, insertions) {
+    const summary = summarizeSkeletonInsertionSelection(insertions);
+    formContents.push({ type: "divider" });
+    formContents.push({
+      type: "header",
+      label: translate("sidebar.skeleton-parameters.insertion"),
+    });
+    formContents.push({
+      type: "checkbox",
+      key: "insertion:linked",
+      label: translate("sidebar.skeleton-parameters.linked"),
+      value: summary.linked.mixed ? false : summary.linked.value,
+    });
+    // A tied insertion point takes its group's offset, so its own ratio does
+    // nothing. Greyed and blank rather than hidden, the same way single-sided
+    // mode treats the per-side numbers: the number is still stored and still
+    // what the point returns to once the tie is gone.
+    const tied = summary.tied.value === true && !summary.tied.mixed;
+    const gate = tied ? { disabled: true, blank: true, minValue: 0 } : { minValue: 0 };
+    for (const side of ["left", "right"]) {
+      this._pushSummaryNumber(
+        formContents,
+        `insertion:${side}`,
+        `${side}-width`,
+        this._insertionWidthSummary(insertions, side),
+        gate
+      );
+    }
+    this._pushSummarySlider(
+      formContents,
+      "insertion:easing",
+      "insertion-easing",
+      summary.easing,
+      0,
+      100,
+      0,
+      { step: 1 }
+    );
+  }
+
+  // The two width fields read units, so each selected point's stored ratio is
+  // resolved against the outline it actually draws. A selection whose members
+  // resolve to different numbers reports mixed, and one whose reference cannot
+  // be read at all reports nothing rather than a number the shape does not obey.
+  _insertionWidthSummary(insertions, side) {
+    const layerGlyph = this._getEditLayerGlyph();
+    const skeletonData = getSkeletonData(layerGlyph);
+    const values = [];
+    for (const entry of insertions) {
+      const reference = insertionWidthReference(
+        skeletonData,
+        layerGlyph?.path,
+        entry.contourId,
+        entry.insertionId,
+        side
+      );
+      values.push(
+        reference === null
+          ? null
+          : Math.round(insertionRatioToUnits(reference, entry.insertion.width[side]))
+      );
+    }
+    const first = values[0];
+    return {
+      mixed: values.some((value) => value !== first),
+      value: first,
+    };
+  }
+
+  // The easing slider reads percent and the model stores 0 to 1.
+  _insertionEasingFromSlider(value) {
+    return Math.min(1, Math.max(0, Number(value) / 100));
   }
 
   _buildRibSection(formContents, ribs, derived = false) {
@@ -2038,6 +2137,20 @@ export default class SkeletonParametersPanel extends Panel {
           return;
         }
       }
+      if (valueStream && group === "insertion" && name === "easing") {
+        await setPanelInsertionValuesStream(
+          this.sceneController,
+          this._insertions || [],
+          valueStream,
+          (insertion, contour, streamedValue) =>
+            setInsertionEasing(
+              insertion,
+              this._insertionEasingFromSlider(streamedValue)
+            ),
+          this._undo("set-insertion-easing")
+        );
+        return;
+      }
       const finalValue = await this._resolveStreamValue(value, valueStream);
       // An abandoned drag has already put the shape back; there is no value to
       // commit and committing one would undo the abandoning.
@@ -2058,6 +2171,8 @@ export default class SkeletonParametersPanel extends Panel {
         await this._onSerifChange(name, finalValue);
       } else if (group === "generator") {
         await this._onGeneratorChange(name, finalValue);
+      } else if (group === "insertion") {
+        await this._onInsertionChange(name, finalValue);
       }
     } finally {
       this._streamingFieldEdit = false;
@@ -2145,6 +2260,63 @@ export default class SkeletonParametersPanel extends Panel {
     await this.update();
   }
 
+  async _onInsertionChange(name, value) {
+    const insertions = this._insertions || [];
+    if (!insertions.length) {
+      return;
+    }
+    if (name === "linked") {
+      await editSelectedSkeletonInsertions(
+        this.sceneController,
+        insertions,
+        (insertion) => setInsertionWidthLinked(insertion, value === true),
+        this._undo("set-insertion-width")
+      );
+      return;
+    }
+    if (name === "easing") {
+      await editSelectedSkeletonInsertions(
+        this.sceneController,
+        insertions,
+        (insertion) =>
+          setInsertionEasing(insertion, this._insertionEasingFromSlider(value)),
+        this._undo("set-insertion-easing")
+      );
+      return;
+    }
+    if (name !== "left" && name !== "right") {
+      return;
+    }
+    // A typed number is units. It is divided by the reference the outline
+    // draws, once, before it is stored.
+    const layerGlyph = this._getEditLayerGlyph();
+    const skeletonData = getSkeletonData(layerGlyph);
+    const references = new Map();
+    for (const entry of insertions) {
+      references.set(
+        `${entry.contourId}/${entry.insertionId}`,
+        insertionWidthReference(
+          skeletonData,
+          layerGlyph?.path,
+          entry.contourId,
+          entry.insertionId,
+          name
+        )
+      );
+    }
+    await editSelectedSkeletonInsertions(
+      this.sceneController,
+      insertions,
+      (insertion, contour) => {
+        const reference = references.get(`${contour.id}/${insertion.id}`);
+        if (reference) {
+          setInsertionRatioFromUnits(insertion, name, reference, value);
+        }
+      },
+      this._undo("set-insertion-width")
+    );
+  }
+
   async _onScrub(group, name, valueStream) {
     const sc = this.sceneController;
     if (group === "width") {
@@ -2157,6 +2329,52 @@ export default class SkeletonParametersPanel extends Panel {
         name,
         valueStream,
         this._undo("set-width")
+      );
+      return;
+    }
+    if (group === "insertion" && (name === "left" || name === "right")) {
+      // The scrub streams a change in units. Each frame resolves it against the
+      // reference the drag opened with, so the ratio the model stores stays a
+      // statement about the stroke rather than about the drag.
+      const layerGlyph = this._getEditLayerGlyph();
+      const skeletonData = getSkeletonData(layerGlyph);
+      const references = new Map();
+      const startUnits = new Map();
+      for (const entry of this._insertions || []) {
+        const key = `${entry.contourId}/${entry.insertionId}`;
+        const reference = insertionWidthReference(
+          skeletonData,
+          layerGlyph?.path,
+          entry.contourId,
+          entry.insertionId,
+          name
+        );
+        references.set(key, reference);
+        startUnits.set(
+          key,
+          reference === null
+            ? null
+            : insertionRatioToUnits(reference, entry.insertion.width[name])
+        );
+      }
+      await setPanelInsertionValuesStream(
+        sc,
+        this._insertions || [],
+        valueStream,
+        (insertion, contour, change) => {
+          const key = `${contour.id}/${insertion.id}`;
+          const reference = references.get(key);
+          if (!reference) {
+            return;
+          }
+          setInsertionRatioFromUnits(
+            insertion,
+            name,
+            reference,
+            startUnits.get(key) + Number(change)
+          );
+        },
+        this._undo("set-insertion-width")
       );
       return;
     }

@@ -5,7 +5,10 @@
 
 import {
   SERIF_HALF_FIELDS,
+  buildSegmentsFromSkeletonPoints,
+  getSkeletonContour,
   getSkeletonHandleOffset,
+  getSkeletonInsertion,
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
   getSkeletonRibAddress,
@@ -14,6 +17,8 @@ import {
   isSkeletonSideLocked,
   parseEditableGeneratedHandleKey,
   parseEditableGeneratedPointKey,
+  getTiedRibGroup,
+  parseSkeletonInsertionKey,
   parseSkeletonRibKey,
 } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
@@ -33,6 +38,7 @@ export function collectSkeletonPanelSelection({ selection, skeletonData }) {
     ribs: [],
     generatedPoints: [],
     generatedHandles: [],
+    insertions: [],
     contours: [],
   };
   if (!skeletonData) {
@@ -81,6 +87,32 @@ export function collectSkeletonPanelSelection({ selection, skeletonData }) {
       pointIndex: address.pointIndex,
     });
     noteContour(address);
+  }
+
+  for (const item of parsed.skeletonInsertion || []) {
+    let parsedKey;
+    try {
+      parsedKey = parseSkeletonInsertionKey(`skeletonInsertion/${item}`);
+    } catch {
+      continue;
+    }
+    const contour = getSkeletonContour(skeletonData, parsedKey.contourId);
+    const insertion = getSkeletonInsertion(
+      skeletonData,
+      parsedKey.contourId,
+      Number(parsedKey.insertionId)
+    );
+    if (!contour || !insertion) continue;
+    result.insertions.push({
+      contourId: contour.id,
+      insertionId: insertion.id,
+      contour,
+      insertion,
+    });
+    noteContour({
+      contour,
+      contourIndex: skeletonData.contours.indexOf(contour),
+    });
   }
 
   for (const item of parsed.editableGeneratedPoint || []) {
@@ -551,6 +583,50 @@ export function summarizeSkeletonRibSelection(selectedRibs) {
   };
 }
 
+// The selected insertion points, as one answer per control.
+//
+// A ratio is stored, and the panel shows units. The conversion needs the
+// reference the outline draws, which the panel reads through
+// `insertionWidthReference`. A selection whose members disagree answers null,
+// the same mixed state every other summary here uses.
+export function summarizeSkeletonInsertionSelection(selectedInsertions) {
+  return {
+    ratioLeft: reduceValues(
+      selectedInsertions.map((entry) => entry.insertion.width.left)
+    ),
+    ratioRight: reduceValues(
+      selectedInsertions.map((entry) => entry.insertion.width.right)
+    ),
+    linked: reduceValues(
+      selectedInsertions.map((entry) => entry.insertion.width.linked !== false)
+    ),
+    easing: reduceValues(selectedInsertions.map((entry) => entry.insertion.easing)),
+    // A tied insertion point takes its group's offset, so its own ratio does
+    // nothing and the panel greys the two width fields rather than showing a
+    // number that the shape does not obey.
+    tied: reduceValues(
+      selectedInsertions.map((entry) => insertionIsTied(entry.contour, entry.insertion))
+    ),
+  };
+}
+
+// Whether an insertion point stands on a straight whose two ends are both held
+// to one offset. The insertion point cuts a tie it can cut; where both ends are
+// controlled there is nothing to cut and the offset is the group's.
+function insertionIsTied(contour, insertion) {
+  const points = contour?.points || [];
+  const segments = buildSegmentsFromSkeletonPoints(points, contour?.closed === true);
+  const segment = segments.find(
+    (candidate) => candidate.startPoint.id === insertion.pointId
+  );
+  if (!segment || segment.controlPoints.length) {
+    return false;
+  }
+  return (getTiedRibGroup(contour, segment.startPoint) || []).includes(
+    segment.endPoint
+  );
+}
+
 // Snapshots power donor-style profile apply/revert: capture the exact canonical
 // width objects keyed by contourId/pointId, restore them verbatim.
 export function capturePointWidthSnapshot(selectedPoints) {
@@ -600,6 +676,11 @@ export function makeSkeletonPanelStateSignature({
         // deliberately NOT tracked: they change every frame while a generated
         // handle is dragged, which would rebuild the panel per frame.
         `p:${entry.contourId}/${entry.pointId}:${JSON.stringify(entry.point.width)}:${JSON.stringify(entry.point.nudge)}:${JSON.stringify(entry.point.locked)}:${entry.point.capStyle}:${entry.point.capRadiusRatio}:${entry.point.capTension}:${entry.point.capAngle}:${entry.point.capDistance}:${entry.point.capBallRatio}:${entry.point.capBallShape}:${entry.point.capBallEasing}:${entry.point.capBallSide}:${entry.point.corner?.linked}:${JSON.stringify(entry.point.serif)}`
+      );
+    }
+    for (const entry of panelSelection.insertions || []) {
+      parts.push(
+        `i:${entry.contourId}/${entry.insertionId}:${entry.insertion.t}:${JSON.stringify(entry.insertion.width)}:${entry.insertion.easing}`
       );
     }
     for (const entry of panelSelection.contours) {

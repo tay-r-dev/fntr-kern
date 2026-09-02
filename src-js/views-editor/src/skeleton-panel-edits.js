@@ -20,8 +20,11 @@ import {
   closeSkeletonContour,
   findGeneratedOutputPosition,
   findGeneratedPathAddress,
+  createSkeletonInsertionRibExecutor,
+  getSkeletonContour,
   getSkeletonData,
   getSkeletonHandleOffset,
+  getSkeletonInsertion,
   getSkeletonHandleOffsetKey,
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
@@ -343,6 +346,128 @@ export async function setPanelPointValuesStream(
     },
     undoLabel
   );
+}
+
+// Units in, ratio out.
+//
+// The designer thinks in units and the model stores a ratio, so exactly one
+// place converts between them and every writer comes through it. The reference
+// is the half-width the stroke draws where the point stands, read off the drawn
+// outline. It is the number a ratio of one means.
+//
+// Null where the outline has not been drawn yet, or where the side is collapsed
+// onto the centerline. A ratio cannot lift a rib off a collapsed side, and the
+// panel shows no number rather than one it cannot honour.
+export function insertionWidthReference(
+  skeletonData,
+  path,
+  contourId,
+  insertionId,
+  side
+) {
+  const executor = createSkeletonInsertionRibExecutor(
+    skeletonData,
+    path,
+    contourId,
+    insertionId,
+    side
+  );
+  return executor ? executor.reference : null;
+}
+
+export function insertionUnitsToRatio(reference, units) {
+  return reference > 0 ? Math.max(0, Number(units) / reference) : null;
+}
+
+export function insertionRatioToUnits(reference, ratio) {
+  return reference > 0 ? reference * ratio : null;
+}
+
+// Every insertion-point write, across every editable layer, as one undo item.
+// The insertion is resolved by its own id, which is stable across layers the
+// same way a point id is.
+export async function editSelectedSkeletonInsertions(
+  sceneController,
+  insertionAddresses,
+  mutator,
+  undoLabel
+) {
+  if (!insertionAddresses.length) {
+    return null;
+  }
+  return runSkeletonPanelEdit(sceneController, undoLabel, (working) => {
+    for (const address of insertionAddresses) {
+      const contour = getSkeletonContour(working, address.contourId);
+      const insertion = getSkeletonInsertion(
+        working,
+        address.contourId,
+        address.insertionId
+      );
+      if (!contour || !insertion) {
+        continue;
+      }
+      mutator(insertion, contour);
+    }
+  });
+}
+
+// The scrub, frame by frame. The stream carries units, so the conversion runs
+// per frame against the reference the drag opened with.
+export async function setPanelInsertionValuesStream(
+  sceneController,
+  insertionAddresses,
+  valueStream,
+  applyToInsertion,
+  undoLabel
+) {
+  if (!insertionAddresses.length) {
+    return null;
+  }
+  return streamOntoSkeleton(
+    sceneController,
+    valueStream,
+    (working, reference, value) => {
+      for (const address of insertionAddresses) {
+        const contour = getSkeletonContour(working, address.contourId);
+        const insertion = getSkeletonInsertion(
+          working,
+          address.contourId,
+          address.insertionId
+        );
+        if (!contour || !insertion) {
+          continue;
+        }
+        applyToInsertion(insertion, contour, value);
+      }
+    },
+    undoLabel
+  );
+}
+
+// One insertion point's ratio, written from a number of units. The link
+// carries the write to the far side, the way it does on an ordinary rib.
+export function setInsertionRatioFromUnits(insertion, side, reference, units) {
+  const ratio = insertionUnitsToRatio(reference, units);
+  if (ratio === null) {
+    return;
+  }
+  insertion.width[side] = ratio;
+  if (insertion.width.linked !== false) {
+    insertion.width[side === "left" ? "right" : "left"] = ratio;
+  }
+}
+
+export function setInsertionEasing(insertion, easing) {
+  insertion.easing = Math.min(1, Math.max(0, Number(easing) || 0));
+}
+
+export function setInsertionWidthLinked(insertion, linked) {
+  insertion.width.linked = linked !== false;
+  if (insertion.width.linked) {
+    // Linking states that the two sides are one number. The left one wins, the
+    // same choice the point's own link makes.
+    insertion.width.right = insertion.width.left;
+  }
 }
 
 export async function setPanelContourValuesStream(

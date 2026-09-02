@@ -673,6 +673,8 @@ export const strings = {
   "sidebar.skeleton-parameters.corner-distance-right": "Distance right",
   "sidebar.skeleton-parameters.corner-curvature-right": "Curvature right %",
   "sidebar.skeleton-parameters.ribs": "Ribs",
+  "sidebar.skeleton-parameters.insertion": "Insertion point",
+  "sidebar.skeleton-parameters.insertion-easing": "Easing",
   "sidebar.skeleton-parameters.locked.handles": "Lock handles",
   "sidebar.skeleton-parameters.locked.slide": "Lock on-curve slide",
   "sidebar.skeleton-parameters.locked.width": "Lock width",
