@@ -3,6 +3,7 @@ import {
   generateFromSkeleton,
   outlineContourToPackedPath,
   removeCollapsedOutlinePoints,
+  solveSkeletonContourSides,
 } from "@fontra/core/skeleton-generator.js";
 import {
   SERIF_HALF_FIELDS,
@@ -3920,5 +3921,31 @@ describe("skeleton insertion points reach the generator", () => {
     const input = canonicalToGeneratorInput(canonical);
     expect(input.contours[0].insertions).to.have.length(1);
     expect(input.contours[0].insertions[0]).to.include({ pointId: 11, t: 0.25 });
+  });
+
+  it("publishes the index each segment's emitted geometry starts at", () => {
+    const canonical = normalizeSkeletonData({
+      contours: [
+        {
+          id: 10,
+          defaultWidth: 60,
+          points: [
+            { id: 11, x: 0, y: 0 },
+            { id: 12, x: 100, y: 0 },
+            { id: 13, x: 200, y: 100 },
+          ],
+        },
+      ],
+    });
+    const input = canonicalToGeneratorInput(canonical);
+    const solved = solveSkeletonContourSides(input.contours[0]);
+    expect(solved.leftSegmentAnchors).to.have.length(solved.segments.length);
+    for (let i = 0; i < solved.segments.length; i++) {
+      const anchor = solved.leftSegmentAnchors[i];
+      expect(anchor).to.be.a("number");
+      expect(solved.leftSide[anchor].type).to.equal(undefined);
+    }
+    expect(solved.leftSegmentAnchors[0]).to.equal(0);
+    expect(solved.leftSegmentAnchors[1]).to.be.greaterThan(0);
   });
 });

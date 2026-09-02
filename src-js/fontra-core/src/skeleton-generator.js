@@ -2276,6 +2276,20 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
   const leftSide = [];
   const rightSide = [];
 
+  // Where each segment's emitted geometry begins, per side. A segment pushes
+  // its own start on-curve only when the segment before it did not, so this
+  // cannot be recovered afterwards by counting. Recorded while the loop runs.
+  const leftSegmentAnchors = [];
+  const rightSegmentAnchors = [];
+  const lastOnCurveIndex = (side) => {
+    for (let i = side.length - 1; i >= 0; i--) {
+      if (!side[i].type) {
+        return i;
+      }
+    }
+    return null;
+  };
+
   const coupled = coupledHalfWidths(segments, isClosed, defaultWidth, capStyle);
   const firstOnCurvePoint = segments[0].startPoint;
   const lastOnCurvePoint = segments[segments.length - 1].endPoint;
@@ -2364,6 +2378,15 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
       authoredKeys
     );
 
+    const leftStartsOnCurve = offsetPoints.left.length && !offsetPoints.left[0].type;
+    const rightStartsOnCurve = offsetPoints.right.length && !offsetPoints.right[0].type;
+    leftSegmentAnchors.push(
+      leftStartsOnCurve ? leftSide.length : lastOnCurveIndex(leftSide)
+    );
+    rightSegmentAnchors.push(
+      rightStartsOnCurve ? rightSide.length : lastOnCurveIndex(rightSide)
+    );
+
     leftSide.push(...offsetPoints.left);
     rightSide.push(...offsetPoints.right);
   }
@@ -2372,6 +2395,8 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
     segments,
     leftSide,
     rightSide,
+    leftSegmentAnchors,
+    rightSegmentAnchors,
     authoredKeys,
     serifPins,
     resolveHalfWidth,
