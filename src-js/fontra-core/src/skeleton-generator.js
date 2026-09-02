@@ -2288,13 +2288,24 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
   // cannot be recovered afterwards by counting. Recorded while the loop runs.
   const leftSegmentAnchors = [];
   const rightSegmentAnchors = [];
-  const lastOnCurveIndex = (side) => {
-    for (let i = side.length - 1; i >= 0; i--) {
+  const lastOnCurveIndex = (side, limit = side.length) => {
+    for (let i = limit - 1; i >= 0; i--) {
       if (!side[i].type) {
         return i;
       }
     }
     return null;
+  };
+  // Read AFTER the segment has pushed, never before. The segment's end on-curve
+  // is then the last one in the side, and its start is the on-curve before that
+  // one. Which of the two the segment pushed itself does not matter, and that
+  // is the point: guessing it from whether the pushed run opens with an
+  // on-curve is wrong for every segment after the first, whose opening on-curve
+  // is its END, put there because the segment before it stopped short of the
+  // point the two of them share.
+  const segmentStartAnchor = (side) => {
+    const end = lastOnCurveIndex(side);
+    return end === null ? null : lastOnCurveIndex(side, end);
   };
 
   const coupled = coupledHalfWidths(
@@ -2391,17 +2402,10 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
       authoredKeys
     );
 
-    const leftStartsOnCurve = offsetPoints.left.length && !offsetPoints.left[0].type;
-    const rightStartsOnCurve = offsetPoints.right.length && !offsetPoints.right[0].type;
-    leftSegmentAnchors.push(
-      leftStartsOnCurve ? leftSide.length : lastOnCurveIndex(leftSide)
-    );
-    rightSegmentAnchors.push(
-      rightStartsOnCurve ? rightSide.length : lastOnCurveIndex(rightSide)
-    );
-
     leftSide.push(...offsetPoints.left);
     rightSide.push(...offsetPoints.right);
+    leftSegmentAnchors.push(segmentStartAnchor(leftSide));
+    rightSegmentAnchors.push(segmentStartAnchor(rightSide));
   }
 
   return {

@@ -50,10 +50,13 @@ import { equalGlyphSelection } from "./scene-controller.js";
 import {
   createEditableGeneratedHandleTargetEntries,
   createEditableGeneratedPointTargetEntries,
+  createSkeletonInsertionRibTargetEntries,
+  createSkeletonInsertionTargetEntries,
   createSkeletonRibTargetEntries,
   getSelectionTargetKinds,
   getSkeletonModifierBehaviorName,
   getSkeletonRibBehaviorName,
+  hasSkeletonInsertionSelection,
   hasSkeletonPointSelection,
   isFixedRibBehaviorName,
   makeSkeletonModifierOptions,
@@ -866,6 +869,25 @@ export class PointerTool extends BaseTool {
             name,
             modifierOptions
           );
+        }
+        // An insertion point slides along its segment and writes one number.
+        // Checked before the rib branch, because a selection can hold both and
+        // the two write different fields.
+        if (hasSkeletonInsertionSelection(sceneController.selection)) {
+          return createSkeletonInsertionTargetEntries(
+            layerGlyph,
+            sceneController.selection
+          );
+        }
+        // An insertion point's rib writes a ratio, not a half-width, so it has
+        // its own entry point. Checked before the ordinary rib branch, which
+        // would find no skeleton point behind the id and build nothing.
+        const insertionRibEntries = createSkeletonInsertionRibTargetEntries(
+          layerGlyph,
+          sceneController.selection
+        );
+        if (insertionRibEntries.length) {
+          return insertionRibEntries;
         }
         // Checked before the rib branch. A rib is the second entry point into
         // the skeleton drag, so under this modifier pair the selection has to

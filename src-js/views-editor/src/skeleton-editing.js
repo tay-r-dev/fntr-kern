@@ -1117,6 +1117,10 @@ export { makeSkeletonInsertionKey };
 // skeleton, held by the executor, and never against the frame before it. The
 // same field is written on every frame, so the rollback describes the whole
 // gesture rather than the last step of one.
+export function hasSkeletonInsertionSelection(selection) {
+  return !!parseSelection([...selection]).skeletonInsertion?.length;
+}
+
 export function createSkeletonInsertionTargetEntries(layer, selection) {
   const skeletonData = getSkeletonData(layer);
   if (!skeletonData) {

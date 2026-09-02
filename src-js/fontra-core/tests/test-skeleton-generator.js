@@ -4165,4 +4165,43 @@ describe("skeleton insertion points reach the generator", () => {
     // that. A backtrack or a topology change shows up here as a large number.
     expect(worst).to.be.lessThan(6);
   });
+
+  it("puts the emitted points on the segment the insertion names", () => {
+    // A curve then a straight. The bug this guards: the anchor was guessed from
+    // whether a segment's pushed run opened with an on-curve, which is true for
+    // every segment — but for every segment after the first that opening
+    // on-curve is its END, put there because the segment before it stopped
+    // short of the point they share. The ribs then landed a whole segment away.
+    const twoSegments = (insertions = []) =>
+      normalizeSkeletonData({
+        contours: [
+          {
+            id: 10,
+            defaultWidth: 60,
+            capStyle: "butt",
+            points: [
+              { id: 11, x: 0, y: 0 },
+              { id: 14, x: 0, y: 100, type: "cubic" },
+              { id: 15, x: 100, y: 150, type: "cubic" },
+              { id: 12, x: 200, y: 150 },
+              { id: 13, x: 400, y: 150 },
+            ],
+            insertions,
+          },
+        ],
+      });
+    const result = generateFromSkeleton(twoSegments([{ id: 20, pointId: 12, t: 0.5 }]));
+    const points = result.contours[0].points;
+    const emitted = result.provenance[0].pointMap
+      .map((entry, index) => (entry?.insertion ? points[index] : null))
+      .filter(Boolean);
+    expect(emitted).to.have.length(2);
+    // Halfway along the straight from x=200 to x=400, on both edges.
+    for (const point of emitted) {
+      expect(point.x).to.be.closeTo(300, 1e-6);
+    }
+    expect(emitted.map((point) => point.y).sort((a, b) => a - b)).to.deep.equal([
+      110, 190,
+    ]);
+  });
 });
