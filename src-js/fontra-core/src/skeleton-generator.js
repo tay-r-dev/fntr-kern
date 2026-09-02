@@ -223,7 +223,7 @@ function generatedHandle(basePoint, sourcePoint, side, role) {
   return withProvenance(basePoint, sourcePoint, side, role);
 }
 
-function canonicalToGeneratorInput(skeletonData) {
+export function canonicalToGeneratorInput(skeletonData) {
   return {
     contours: skeletonData.contours.map((contour) => ({
       id: contour.id,
@@ -238,6 +238,17 @@ function canonicalToGeneratorInput(skeletonData) {
       serif: contour.serif ?? null,
       reversed: contour.reversed === true,
       points: contour.points.map(canonicalPointToGeneratorPoint),
+      // A new field is invisible to the generator until something copies it
+      // here. The curvature pin stored, read back and did nothing for exactly
+      // this reason. Insertions carry their canonical point ids through
+      // unchanged.
+      insertions: (contour.insertions || []).map((entry) => ({
+        id: entry.id,
+        pointId: entry.pointId,
+        t: entry.t,
+        width: { ...entry.width },
+        easing: entry.easing,
+      })),
     })),
   };
 }

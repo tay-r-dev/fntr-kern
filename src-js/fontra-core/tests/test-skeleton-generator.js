@@ -1,4 +1,5 @@
 import {
+  canonicalToGeneratorInput,
   generateFromSkeleton,
   outlineContourToPackedPath,
   removeCollapsedOutlinePoints,
@@ -3898,5 +3899,26 @@ describe("the rib bar's ends and the outline's corner", () => {
       expect(Math.abs(rib.x - outline.x), `${side} x`).to.be.at.most(1);
       expect(Math.abs(rib.y - outline.y), `${side} y`).to.be.at.most(1);
     }
+  });
+});
+
+describe("skeleton insertion points reach the generator", () => {
+  it("carries the insertion list across canonicalToGeneratorInput", () => {
+    const canonical = normalizeSkeletonData({
+      contours: [
+        {
+          id: 10,
+          defaultWidth: 60,
+          points: [
+            { id: 11, x: 0, y: 0 },
+            { id: 12, x: 100, y: 0 },
+          ],
+          insertions: [{ id: 13, pointId: 11, t: 0.25 }],
+        },
+      ],
+    });
+    const input = canonicalToGeneratorInput(canonical);
+    expect(input.contours[0].insertions).to.have.length(1);
+    expect(input.contours[0].insertions[0]).to.include({ pointId: 11, t: 0.25 });
   });
 });
