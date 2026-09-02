@@ -11,12 +11,12 @@
 export const SPLIT_MIN_PARAMETER = 1e-9;
 export const SPLIT_MAX_PARAMETER = 1 - 1e-9;
 
-// How long the insertion point's own two handles are on a cut straight, in font
-// units. One unit, not zero: the emitted point has to read as a corner, and a
-// corner is what two handles of length one draw. They cannot be left out. The
-// piece is a cubic now, and a cubic with no handles at one end is a cubic whose
-// end tangent is whatever the far handle says, which is not a corner.
-export const INSERTION_STUB_LENGTH = 1;
+// A handle that states nothing yet. It sits exactly on its own on-curve, so the
+// piece it belongs to draws the straight line it was cut from and the joint at
+// the emitted point is a plain angle. It is emitted rather than left out,
+// because points collapse and do not disappear: the count must not change with
+// the value of a setting.
+export const INSERTION_STUB_LENGTH = 0;
 
 // How many halvings the per-side parameter search takes. Fixed on purpose: a
 // search that picks its own trip count cannot be continuous in its input, and
@@ -215,8 +215,12 @@ function splitLine(start, end, t) {
     return [{ x: at.x, y: at.y }];
   }
   const back = { x: -direction.x, y: -direction.y };
-  const firstThird = Math.hypot(at.x - start.x, at.y - start.y) / 3;
-  const secondThird = Math.hypot(end.x - at.x, end.y - at.y) / 3;
+  // An outer handle is only needed where the on-curve it belongs to is smooth:
+  // there it holds the point's other handle colinear, which is the whole reason
+  // a cut straight becomes a curve. At a corner there is nothing to hold, so it
+  // collapses onto its on-curve and the piece draws a plain straight line.
+  const firstThird = start.smooth ? Math.hypot(at.x - start.x, at.y - start.y) / 3 : 0;
+  const secondThird = end.smooth ? Math.hypot(end.x - at.x, end.y - at.y) / 3 : 0;
   return [
     along(start, direction, firstThird),
     stub(at, back),
@@ -317,13 +321,18 @@ export function applyInsertionRatio(points, insertedIndex, centerPoint, ratio) {
           y: (neighbour.y - movedAt.y) * step,
         })
       : null;
-    moved[index] = aim
-      ? {
-          ...handle,
-          x: movedAt.x + aim.x * step * length,
-          y: movedAt.y + aim.y * step * length,
-        }
-      : { ...handle, x: handle.x + shift.x, y: handle.y + shift.y };
+    if (!aim) {
+      moved[index] = { ...handle, x: handle.x + shift.x, y: handle.y + shift.y };
+      continue;
+    }
+    // The aim is published, not only applied. A collapsed handle has no
+    // direction of its own to recover, and easing needs one to grow along.
+    moved[index] = {
+      ...handle,
+      _axis: { x: aim.x * step, y: aim.y * step },
+      x: movedAt.x + aim.x * step * length,
+      y: movedAt.y + aim.y * step * length,
+    };
   }
   return moved;
 }
@@ -409,16 +418,26 @@ export function applyInsertionEasing(points, insertedIndex, easing) {
 // A handle moved along its own line toward a length, keeping its direction
 // exactly. At zero it is left as it was.
 function stretchToward(handle, anchor, fraction, smoothLength) {
-  const current = { x: handle.x - anchor.x, y: handle.y - anchor.y };
-  const length = Math.hypot(current.x, current.y);
-  if (length < 1e-9 || smoothLength === null) {
+  if (smoothLength === null) {
     return handle;
   }
-  const scale = (length + (smoothLength - length) * fraction) / length;
+  const current = { x: handle.x - anchor.x, y: handle.y - anchor.y };
+  const length = Math.hypot(current.x, current.y);
+  // A handle collapsed onto its on-curve states no direction, so it takes the
+  // one it was built on. That is the case at a corner, where the handle starts
+  // at nothing and easing is the only thing that gives it a length.
+  const unit =
+    length < 1e-9
+      ? normalize(handle._axis)
+      : { x: current.x / length, y: current.y / length };
+  if (!unit) {
+    return handle;
+  }
+  const eased = length + (smoothLength - length) * fraction;
   return {
     ...handle,
-    x: anchor.x + current.x * scale,
-    y: anchor.y + current.y * scale,
+    x: anchor.x + unit.x * eased,
+    y: anchor.y + unit.y * eased,
   };
 }
 
@@ -455,10 +474,16 @@ function neighbouringOnCurve(points, index, step) {
 function turnToward(handle, anchor, direction, fraction, smoothLength) {
   const current = { x: handle.x - anchor.x, y: handle.y - anchor.y };
   const length = Math.hypot(current.x, current.y);
-  if (length < 1e-9) {
+  // A collapsed handle states no direction, so it takes the one it was built
+  // on. Without this it could never grow: everything below scales a vector of
+  // length zero, which is still zero however far easing is pushed.
+  const unit =
+    length < 1e-9
+      ? normalize(handle._axis)
+      : { x: current.x / length, y: current.y / length };
+  if (!unit) {
     return handle;
   }
-  const unit = { x: current.x / length, y: current.y / length };
   const blended = normalize({
     x: unit.x + (direction.x - unit.x) * fraction,
     y: unit.y + (direction.y - unit.y) * fraction,

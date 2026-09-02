@@ -47,15 +47,26 @@ function sampleDeparture(original, points, insertedIndex, t) {
 
 // The angle the outline turns through at the emitted point, in degrees. Zero is
 // a smooth pass and anything above it is a corner.
+//
+// Measured from the drawn tangents, not from the two neighbouring control
+// points. A control point that sits on its own on-curve states no direction,
+// and the curve's tangent there comes from the next one along instead.
+function tangentAt(points, at, step) {
+  for (let i = at + step; i >= 0 && i < points.length; i += step) {
+    const away = {
+      x: (points[i].x - points[at].x) * step,
+      y: (points[i].y - points[at].y) * step,
+    };
+    if (Math.hypot(away.x, away.y) > 1e-9) {
+      return away;
+    }
+  }
+  return { x: 0, y: 0 };
+}
+
 function jointAngle(points, at) {
-  const incoming = {
-    x: points[at].x - points[at - 1].x,
-    y: points[at].y - points[at - 1].y,
-  };
-  const outgoing = {
-    x: points[at + 1].x - points[at].x,
-    y: points[at + 1].y - points[at].y,
-  };
+  const incoming = tangentAt(points, at, -1);
+  const outgoing = tangentAt(points, at, 1);
   const cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
   const dot = incoming.x * outgoing.x + incoming.y * outgoing.y;
   return Math.abs((Math.atan2(cross, dot) * 180) / Math.PI);
@@ -103,14 +114,60 @@ describe("splitSideAtParameter", () => {
     expect(result.points[5]._axis.y).to.be.closeTo(0, 1e-12);
   });
 
-  it("gives the insertion point two one-unit handles of its own", () => {
-    // The piece is a cubic now, and a cubic end with no handle takes its tangent
-    // from the far handle, which is not a corner. One unit is a corner drawn.
+  it("collapses the insertion point's own handles onto it", () => {
+    // They are emitted, because the count must not change with the value of a
+    // setting, and they state nothing until easing gives them a length.
     const result = splitSideAtParameter(straightSide(), 0, 0.25);
-    expect(result.points[2]).to.include({ x: 24, y: 0 });
-    expect(result.points[4]).to.include({ x: 26, y: 0 });
-    expect(result.points[2]._insertionStub).to.equal(true);
-    expect(result.points[4]._insertionStub).to.equal(true);
+    const at = result.points[3];
+    for (const index of [2, 4]) {
+      expect(result.points[index]._insertionStub).to.equal(true);
+      expect(result.points[index].x).to.be.closeTo(at.x, 1e-9);
+      expect(result.points[index].y).to.be.closeTo(at.y, 1e-9);
+    }
+  });
+
+  it("gives a straight between corners no handles at all", () => {
+    // Nothing here needs holding colinear, so the two pieces stay plain
+    // straight lines and the joint is a plain angle.
+    const cut = splitSideAtParameter(straightSide(), 0, 0.5);
+    const swollen = applyInsertionRatio(
+      cut.points,
+      cut.insertedIndex,
+      { x: 50, y: -30 },
+      2
+    );
+    for (const [handle, anchor] of [
+      [1, 0],
+      [2, 3],
+      [4, 3],
+      [5, 6],
+    ]) {
+      expect(
+        Math.hypot(
+          swollen[handle].x - swollen[anchor].x,
+          swollen[handle].y - swollen[anchor].y
+        )
+      ).to.be.closeTo(0, 1e-9);
+    }
+  });
+
+  it("keeps an outer handle where the on-curve it belongs to is smooth", () => {
+    const smoothSide = () => [
+      { x: 0, y: 0, smooth: true },
+      { x: 100, y: 0, smooth: true },
+    ];
+    const cut = splitSideAtParameter(smoothSide(), 0, 0.5);
+    const swollen = applyInsertionRatio(
+      cut.points,
+      cut.insertedIndex,
+      { x: 50, y: -30 },
+      2
+    );
+    // On the line it was built on, so the smooth end keeps its direction.
+    expect(swollen[1]).to.include({ y: 0 });
+    expect(swollen[1].x).to.be.greaterThan(0);
+    expect(swollen[5]).to.include({ y: 0 });
+    expect(swollen[5].x).to.be.lessThan(100);
   });
 
   it("aims the insertion's own handles at their neighbours when it moves", () => {
@@ -123,23 +180,23 @@ describe("splitSideAtParameter", () => {
     );
     const at = moved[cut.insertedIndex];
     expect(at).to.include({ x: 50, y: 30 });
-    // Each stub is one unit from the point, pointing at the on-curve it faces.
-    // A stub left parallel to the line it was built on would stay colinear with
-    // its partner, and two colinear handles are a smooth pass, not the angle a
-    // corner is.
-    for (const [index, neighbour] of [
-      [cut.insertedIndex - 1, { x: 0, y: 0 }],
-      [cut.insertedIndex + 1, { x: 100, y: 0 }],
+    // Each stub publishes the direction it faces, which is where easing grows
+    // it. A stub left parallel to the line it was built on would stay colinear
+    // with its partner, and two colinear handles are a smooth pass, not the
+    // angle a corner is.
+    for (const [index, neighbour, step] of [
+      [cut.insertedIndex - 1, { x: 0, y: 0 }, -1],
+      [cut.insertedIndex + 1, { x: 100, y: 0 }, 1],
     ]) {
-      const stub = moved[index];
-      expect(Math.hypot(stub.x - at.x, stub.y - at.y)).to.be.closeTo(1, 1e-9);
-      const cross =
-        (neighbour.x - at.x) * (stub.y - at.y) - (neighbour.y - at.y) * (stub.x - at.x);
-      expect(cross).to.be.closeTo(0, 1e-9);
+      const aim = moved[index]._axis;
+      const toNeighbour = {
+        x: (neighbour.x - at.x) * step,
+        y: (neighbour.y - at.y) * step,
+      };
+      const length = Math.hypot(toNeighbour.x, toNeighbour.y);
+      expect(aim.x * step).to.be.closeTo(toNeighbour.x / length, 1e-9);
+      expect(aim.y * step).to.be.closeTo(toNeighbour.y / length, 1e-9);
     }
-    // The outer handles stay on the line they were built on.
-    expect(moved[1]).to.deep.equal(cut.points[1]);
-    expect(moved[5]).to.deep.equal(cut.points[5]);
   });
 
   it("turns a cut straight into an angle, not a smooth bulge", () => {
@@ -356,7 +413,8 @@ describe("applyInsertionEasing", () => {
       const at = eased[cut.insertedIndex];
       return Math.hypot(handle.x - at.x, handle.y - at.y);
     };
-    expect(travel(0)).to.be.closeTo(1, 1e-9);
+    // Nothing at zero: the handle states only what easing gives it.
+    expect(travel(0)).to.be.closeTo(0, 1e-9);
     // A third of the way to the on-curve at the end of the piece.
     expect(travel(1)).to.be.greaterThan(10);
     // And it grows without stepping.
