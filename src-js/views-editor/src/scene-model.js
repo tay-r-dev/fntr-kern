@@ -977,11 +977,26 @@ export class SceneModel {
   }
 
   _getEditLayerSkeletonData(positionedGlyph) {
+    return getSkeletonData(this._getEditLayerGlyph(positionedGlyph));
+  }
+
+  // The layer the skeleton is being edited on. Its skeleton section and its
+  // path have to be read off the same glyph: the generator's provenance
+  // addresses points by index into the path it produced, and one layer's
+  // indices say nothing about another's.
+  _getEditLayerGlyph(positionedGlyph) {
     const editLayerName =
       this.sceneSettings?.editLayerName || positionedGlyph.glyph?.layerName;
     const layerGlyph =
       editLayerName && positionedGlyph.varGlyph?.glyph?.layers?.[editLayerName]?.glyph;
-    return getSkeletonData(layerGlyph || positionedGlyph.glyph);
+    return layerGlyph || positionedGlyph.glyph;
+  }
+
+  // Every rib gizmo, with the drawn outline handed over so the ends at a corner
+  // are the outline's own points (rail R-D).
+  *_iterSkeletonRibTargets(positionedGlyph) {
+    const layerGlyph = this._getEditLayerGlyph(positionedGlyph);
+    yield* iterSkeletonRibTargets(getSkeletonData(layerGlyph), layerGlyph?.path);
   }
 
   // Whether the given path contour index belongs to a skeleton-generated
@@ -1216,7 +1231,7 @@ export class SceneModel {
     if (!skeletonData) {
       return null;
     }
-    for (const target of iterSkeletonRibTargets(skeletonData)) {
+    for (const target of this._iterSkeletonRibTargets(positionedGlyph)) {
       if (
         target.selectionKey !== this.initialClickedSkeletonRibKey ||
         !target.position
@@ -1362,7 +1377,7 @@ d ${measure.distance.toFixed(1)}`,
     }
 
     if (this.initialClickedSkeletonRibKey) {
-      for (const target of iterSkeletonRibTargets(skeletonData)) {
+      for (const target of this._iterSkeletonRibTargets(positionedGlyph)) {
         if (
           target.selectionKey === this.initialClickedSkeletonRibKey &&
           target.position
@@ -1447,7 +1462,7 @@ d ${measure.distance.toFixed(1)}`,
       Math.abs(ribPoint.x - glyphPoint.x) <= size &&
       Math.abs(ribPoint.y - glyphPoint.y) <= size;
 
-    for (const target of iterSkeletonRibTargets(skeletonData)) {
+    for (const target of this._iterSkeletonRibTargets(positionedGlyph)) {
       if (target.position && isHit(target.position)) {
         return {
           selectionKey: target.selectionKey,
@@ -1535,7 +1550,7 @@ d ${measure.distance.toFixed(1)}`,
       (parsedCurrentSelection?.skeletonRib || []).map((item) => `skeletonRib/${item}`)
     );
     if (currentKeys.size) {
-      for (const target of iterSkeletonRibTargets(skeletonData)) {
+      for (const target of this._iterSkeletonRibTargets(positionedGlyph)) {
         if (
           currentKeys.has(target.selectionKey) &&
           target.position &&
@@ -1546,7 +1561,7 @@ d ${measure.distance.toFixed(1)}`,
       }
     }
 
-    for (const target of [...iterSkeletonRibTargets(skeletonData)].reverse()) {
+    for (const target of [...this._iterSkeletonRibTargets(positionedGlyph)].reverse()) {
       if (target.position && isHit(target.position)) {
         return new Set([target.selectionKey]);
       }
@@ -1951,7 +1966,7 @@ d ${measure.distance.toFixed(1)}`,
     // image) takes precedence and drops the rib selection. Alt-marquee
     // (handles only) never selects ribs.
     if (!selection.size && (!pointFilterFunc || pointFilterFunc({}))) {
-      for (const target of iterSkeletonRibTargets(skeletonData)) {
+      for (const target of this._iterSkeletonRibTargets(positionedGlyph)) {
         if (
           target.position &&
           pointInRect(target.position.x, target.position.y, selRect)

@@ -7,6 +7,7 @@ import {
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
   getSkeletonRibAddress,
+  getSkeletonData,
   getSkeletonRibPosition,
 } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
@@ -108,7 +109,8 @@ export class MeasureInteraction {
     if (!hit) {
       return null;
     }
-    const skeletonData = this.sceneModel._getEditLayerSkeletonData(positionedGlyph);
+    const layerGlyph = this.sceneModel._getEditLayerGlyph(positionedGlyph);
+    const skeletonData = getSkeletonData(layerGlyph);
     const address = getSkeletonRibAddress(
       skeletonData,
       hit.contourId,
@@ -125,7 +127,10 @@ export class MeasureInteraction {
     };
     return {
       p1: { x: skeletonPoint.x, y: skeletonPoint.y },
-      p2: getSkeletonRibPosition(contour, skeletonPoint, side),
+      p2: getSkeletonRibPosition(contour, skeletonPoint, side, {
+        skeletonData,
+        path: layerGlyph?.path,
+      }),
       width: getSkeletonPointWidth(skeletonPoint, defaultWidth),
       sideWidths,
       side,

@@ -21,6 +21,7 @@ import {
   getSkeletonPointHalfWidth,
   getSkeletonPointNudge,
   getSkeletonPointWidth,
+  getSkeletonRibEndpoints,
   getSkeletonRibPosition,
   getSkeletonRibSidesForPoint,
   getSkeletonRibTieGroup,
@@ -1633,6 +1634,87 @@ describe("skeleton rib direction at a corner", () => {
       ],
     };
     expect(skeletonRibReach(spike, 1)).to.equal(1);
+  });
+
+  it("takes each end from the outline where the outline is handed over", () => {
+    // The top of a one. The stem arrives straight up and the flag leaves at 159
+    // degrees, so the left side is the outer one and past the miter limit — the
+    // outline stops that arm at its own edge end — while the right side is the
+    // inner one and its two drawn edges cross a long way down, at (318,273).
+    // Neither is a reach along one normal, and both are points the generator
+    // already published. The bar takes them as they are.
+    const one = {
+      id: 1,
+      closed: false,
+      defaultWidth: 60,
+      singleSided: null,
+      points: [
+        { id: 4, x: 348, y: 0, type: null, smooth: false },
+        { id: 5, x: 348, y: 388, type: null, smooth: false },
+        { id: 6, x: 316, y: 304, type: "cubic" },
+        { id: 7, x: 280, y: 254, type: "cubic" },
+        { id: 8, x: 174, y: 226, type: null, smooth: false },
+      ],
+    };
+    const skeletonData = {
+      contours: [one],
+      generated: [
+        {
+          skeletonContourId: 1,
+          pathContourIndex: 0,
+          pointMap: [
+            { skeletonPointId: 4, role: "onCurve", side: "left" },
+            { skeletonPointId: 5, role: "onCurve", side: "left", arm: "in" },
+            { skeletonPointId: 5, role: "onCurve", side: "left", arm: "out" },
+            { skeletonPointId: 5, role: "out", side: "left" },
+            { skeletonPointId: 8, role: "in", side: "left" },
+            { skeletonPointId: 8, role: "onCurve", side: "left" },
+            { skeletonPointId: 8, role: "onCurve", side: "right" },
+            { skeletonPointId: 8, role: "in", side: "right" },
+            { skeletonPointId: 5, role: "out", side: "right" },
+            { skeletonPointId: 5, role: "onCurve", side: "right" },
+            { skeletonPointId: 4, role: "onCurve", side: "right" },
+          ],
+        },
+      ],
+    };
+    const path = VarPackedPath.fromUnpackedContours([
+      {
+        isClosed: true,
+        points: [
+          { x: 378, y: 0 },
+          { x: 381, y: 388 },
+          { x: 317, y: 400 },
+          { x: 290, y: 328, type: "cubic" },
+          { x: 266, y: 281, type: "cubic" },
+          { x: 166, y: 255 },
+          { x: 182, y: 197 },
+          { x: 246, y: 214, type: "cubic" },
+          { x: 288, y: 239, type: "cubic" },
+          { x: 318, y: 273 },
+          { x: 318, y: 0 },
+        ],
+      },
+    ]);
+    const ends = getSkeletonRibEndpoints(one, one.points[1], { skeletonData, path });
+    expect(ends.left).to.deep.equal({ x: 381, y: 388 });
+    expect(ends.right).to.deep.equal({ x: 318, y: 273 });
+  });
+
+  it("keeps the plain answer at a point that is not a corner", () => {
+    // A straight run has no corner, so nothing is read off the outline even
+    // where one is handed over: the bar states the width, not the drawing.
+    const straight = {
+      ...contour,
+      points: [
+        { id: 2, x: 0, y: 0, type: null, smooth: false },
+        { id: 3, x: 100, y: 0, type: null, smooth: false },
+        { id: 4, x: 200, y: 0, type: null, smooth: false },
+      ],
+    };
+    const outline = { skeletonData: { contours: [straight], generated: [] }, path: null };
+    const left = getSkeletonRibPosition(straight, straight.points[1], "left", outline);
+    expect(left).to.deep.equal({ x: 100, y: -40 });
   });
 
   it("leaves a smooth point alone", () => {

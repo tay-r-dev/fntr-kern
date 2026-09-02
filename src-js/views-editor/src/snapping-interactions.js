@@ -345,6 +345,7 @@ export function buildSnapScene(sceneController, excludePointIndices) {
   // construction, and aligning to one says less than aligning to what it makes.
   // Rib ends come from the model, never recomputed here.
   const skeletonData = getSkeletonData(glyph);
+  const skeletonOutline = skeletonData ? { skeletonData, path: glyph?.path } : null;
   const movedSkeletonPoints = movedSkeletonPointKeys(sceneController, excluded);
   for (const contour of skeletonData?.contours || []) {
     // The contour the drag came from is the one whose own points the designer is
@@ -370,7 +371,7 @@ export function buildSnapScene(sceneController, excludePointIndices) {
       if (point.type) {
         continue; // a handle has no rib
       }
-      const ribEnds = getSkeletonRibEndpoints(contour, point);
+      const ribEnds = getSkeletonRibEndpoints(contour, point, skeletonOutline);
       for (const end of [ribEnds.left, ribEnds.right]) {
         // A collapsed side returns the centerline point itself, which is
         // already in the list.

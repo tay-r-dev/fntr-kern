@@ -840,6 +840,9 @@ export class StaticGlyphController {
     // geometric recovery. Editable-generated addresses use the rib anchor
     // position (bounds-only approximation, see Deviations).
     const skeletonData = getSkeletonData(this.instance);
+    const skeletonOutline = skeletonData
+      ? { skeletonData, path: this.instance.path }
+      : null;
     if (
       skeletonData &&
       (skeletonPointKeys.length ||
@@ -878,7 +881,12 @@ export class StaticGlyphController {
         if (side !== "left" && side !== "right") continue;
         const address = findAddress(contourId, pointId);
         if (!address) continue;
-        const position = getSkeletonRibPosition(address.contour, address.point, side);
+        const position = getSkeletonRibPosition(
+          address.contour,
+          address.point,
+          side,
+          skeletonOutline
+        );
         if (position) {
           selectionRects.push(centeredRect(position.x, position.y, 0));
         }

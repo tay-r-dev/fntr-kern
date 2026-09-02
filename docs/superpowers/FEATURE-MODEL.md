@@ -269,14 +269,20 @@ the corner. A gap wider than four of that side's own half-widths is held the sam
 place stands further out than the letter is tall. Per side, so an unlinked width holds both sides
 of a corner at the same turn.
 
-**The rib bar reaches the meeting place too.** It lies on the split line and runs one half-width
-over the cosine of half the turn, so its two ends stand on the two points the outline draws. Where
-the outline holds the corner — folded back, or past the miter limit — the bar holds with it, square
-to the arriving arm at a plain half-width. The two share one construction and one limit, so they
-cannot answer differently at any turn. A drag of that end divides by the reach to get back to the
-width it is stating, which is what a forced rib angle already did. On a curved arm the inner side is
-the one place they differ: the outline crosses where the two drawn curves cross, and the bar states
-where their two directions cross.
+**At a corner the rib bar's ends are the outline's own points, read off it.** The two sides of a
+corner do not answer the same question. The outer side reaches a meeting place; the inner side
+crosses wherever the two drawn edges decide, which on a curved arm is nowhere a straight
+construction predicts; and past the miter limit each arm stops at its own edge end. No single
+normal and reach states all three, and every attempt to reconstruct one stood the bar off the
+outline somewhere — at the top of a one, a hundred and fifteen units off on the inner side. So the
+bar does not reconstruct it. Where the caller hands over the generated path, each end is looked up
+through the provenance the generator published and taken as it is (rail R-D). Read that way it
+cannot stand off the outline and cannot lag a frame behind it, and the skeleton section and the
+path have to come off the same layer or the indices mean nothing. Only at a corner: elsewhere the
+bar states the stroke's width, and the generator's own point may be a serif's base or a cap, which
+the bar has no business following. Away from the outline the old construction still answers, so a
+caller with no path in hand — a test, a bounds pass before the glyph is generated — gets the split
+line and a reach of one over the cosine of half the turn.
 
 **A forced rib angle names its own trade.** A lock turns a point's rib off the perpendicular, and
 the point's mode says what that holds on to. `stroke` runs the rib one over the cosine of its turn

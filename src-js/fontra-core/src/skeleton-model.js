@@ -3141,15 +3141,65 @@ export function meanHalfWidth(group, halfWidthOf) {
   return group.reduce((total, member) => total + halfWidthOf(member), 0) / group.length;
 }
 
+// The point the outline actually draws for one rib end, or null.
+//
+// Only at a corner. Everywhere else the rib bar states the stroke's width and
+// the generator's own point may be somewhere else entirely — a serif's base, a
+// cap — and the bar has no business following it there.
+//
+// `outline` is `{ skeletonData, path }`: the normalized skeleton section and the
+// path generated from it, which must be the same layer's, or the bar states one
+// frame's answer over another frame's outline.
+function getGeneratedRibPoint(outline, contour, point, side, pointIndex) {
+  const { skeletonData, path } = outline || {};
+  if (!skeletonData || !path) {
+    return null;
+  }
+  if (!cornerRibPlacement(contour.points || [], contour.closed, pointIndex)) {
+    return null;
+  }
+  const address = findGeneratedPathAddress(
+    skeletonData,
+    contour.id,
+    point.id,
+    side,
+    "onCurve"
+  );
+  if (!address) {
+    return null;
+  }
+  try {
+    const drawn = path.getPoint(
+      path.getAbsolutePointIndex(address.pathContourIndex, address.contourPointIndex)
+    );
+    return drawn ? { x: drawn.x, y: drawn.y } : null;
+  } catch {
+    return null;
+  }
+}
+
 // Forward projection of a rib endpoint in glyph space (the C4 gizmo position).
 // This is the single shared source used by rendering (WS-8), hit-testing
 // (WS-11) and selection bounds (WS-16); never re-derive it locally.
-export function getSkeletonRibPosition(contour, point, side) {
+export function getSkeletonRibPosition(contour, point, side, outline = null) {
   assertSkeletonRibSide(side);
   if (!getSkeletonRibSidesForPoint(contour, point).includes(side)) {
     return null;
   }
   const pointIndex = (contour.points || []).indexOf(point);
+  // At a corner the two sides do not answer the same question: the outer side
+  // reaches a meeting place, the inner side crosses somewhere the two drawn
+  // edges decide between them, and past the miter limit each arm stops at its
+  // own edge end. No single normal and reach states all of that, so where the
+  // caller can hand over the drawn outline the rib end is read off it, forward
+  // through the provenance the generator published (rail R-D). Read that way it
+  // is the outline point, so it cannot stand off it and cannot lag behind it.
+  if (outline) {
+    const drawn = getGeneratedRibPoint(outline, contour, point, side, pointIndex);
+    if (drawn) {
+      return drawn;
+    }
+  }
   const normal = calculateNormalAtSkeletonPoint(
     contour,
     pointIndex >= 0 ? pointIndex : point.id
@@ -3172,7 +3222,7 @@ export function getSkeletonRibPosition(contour, point, side) {
 // Both ends of one point's rib. In a single-sided contour one end is the
 // centerline itself, because that side is collapsed onto the skeleton. Null
 // where the point states no rib on that side.
-export function getSkeletonRibEndpoints(contour, point) {
+export function getSkeletonRibEndpoints(contour, point, outline = null) {
   const activeSingleSide =
     contour.singleSided === "left" || contour.singleSided === "right"
       ? contour.singleSided
@@ -3181,11 +3231,11 @@ export function getSkeletonRibEndpoints(contour, point) {
     left:
       activeSingleSide === "right"
         ? point
-        : getSkeletonRibPosition(contour, point, "left"),
+        : getSkeletonRibPosition(contour, point, "left", outline),
     right:
       activeSingleSide === "left"
         ? point
-        : getSkeletonRibPosition(contour, point, "right"),
+        : getSkeletonRibPosition(contour, point, "right", outline),
   };
 }
 
@@ -3388,7 +3438,11 @@ export function applySkeletonRibExecutorResult(address, result) {
   }
 }
 
-export function* iterSkeletonRibTargets(skeletonData) {
+// `path` is the outline generated from this same skeleton section. Handed over,
+// every rib end at a corner is read off it rather than reconstructed, so the
+// hit test, the marquee and the readout target exactly what is drawn.
+export function* iterSkeletonRibTargets(skeletonData, path = null) {
+  const outline = path ? { skeletonData, path } : null;
   for (const contour of skeletonData?.contours || []) {
     for (let pointIndex = 0; pointIndex < (contour.points || []).length; pointIndex++) {
       const point = contour.points[pointIndex];
@@ -3405,7 +3459,7 @@ export function* iterSkeletonRibTargets(skeletonData) {
           side,
           defaultWidth: contour.defaultWidth,
           normal,
-          position: getSkeletonRibPosition(contour, point, side),
+          position: getSkeletonRibPosition(contour, point, side, outline),
         };
       }
     }

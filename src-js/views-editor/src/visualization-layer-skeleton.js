@@ -33,12 +33,20 @@ import {
   strokeLine,
 } from "./visualization-layer-definitions.js";
 
-function getSkeletonDataFromGlyph(positionedGlyph, model) {
+// The layer the skeleton is being edited on. Its skeleton section and its path
+// have to come off the same glyph: the generator addresses its own points by
+// index into the path it produced, and one layer's indices say nothing about
+// another's.
+function getSkeletonLayerGlyph(positionedGlyph, model) {
   const editLayerName =
     model.sceneSettings?.editLayerName || positionedGlyph.glyph?.layerName;
   const layerGlyph =
     editLayerName && positionedGlyph.varGlyph?.glyph?.layers?.[editLayerName]?.glyph;
-  return getSkeletonData(layerGlyph || positionedGlyph.glyph);
+  return layerGlyph || positionedGlyph.glyph;
+}
+
+function getSkeletonDataFromGlyph(positionedGlyph, model) {
+  return getSkeletonData(getSkeletonLayerGlyph(positionedGlyph, model));
 }
 
 function getOnCurvePointIndices(contour) {
@@ -151,13 +159,13 @@ function drawSideLockMarks(context, parameters, sourcePoint, ribEnd, side) {
   }
 }
 
-function getRibPoints(contour, pointIndex) {
+function getRibPoints(contour, pointIndex, outline) {
   const point = contour.points[pointIndex];
   const activeSingleSide =
     contour.singleSided === "left" || contour.singleSided === "right"
       ? contour.singleSided
       : null;
-  const { left, right } = getSkeletonRibEndpoints(contour, point);
+  const { left, right } = getSkeletonRibEndpoints(contour, point, outline);
   return {
     center: point,
     left,
@@ -245,13 +253,17 @@ function fillSquareNode(context, point, size) {
 }
 
 function forEachSkeletonContour(positionedGlyph, model, callback) {
-  const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
+  const layerGlyph = getSkeletonLayerGlyph(positionedGlyph, model);
+  const skeletonData = getSkeletonData(layerGlyph);
   if (!skeletonData?.contours?.length) {
     return;
   }
+  // Handed to the rib readers, so a rib end at a corner is the outline's own
+  // point rather than a reconstruction of it, and cannot stand off it.
+  const outline = layerGlyph?.path ? { skeletonData, path: layerGlyph.path } : null;
   for (const contour of skeletonData.contours) {
     if (contour.points?.length) {
-      callback(contour);
+      callback(contour, outline);
     }
   }
 }
@@ -333,16 +345,17 @@ registerVisualizationLayerDefinition({
   },
   draw: (context, positionedGlyph, parameters, model) => {
     context.fillStyle = parameters.fillColor;
-    forEachSkeletonContour(positionedGlyph, model, (contour) => {
+    forEachSkeletonContour(positionedGlyph, model, (contour, outline) => {
       const onCurveIndices = getOnCurvePointIndices(contour);
       const segmentCount = contour.closed
         ? onCurveIndices.length
         : onCurveIndices.length - 1;
       for (let i = 0; i < segmentCount; i++) {
-        const a = getRibPoints(contour, onCurveIndices[i]);
+        const a = getRibPoints(contour, onCurveIndices[i], outline);
         const b = getRibPoints(
           contour,
-          onCurveIndices[(i + 1) % onCurveIndices.length]
+          onCurveIndices[(i + 1) % onCurveIndices.length],
+          outline
         );
         context.beginPath();
         context.moveTo(a.left.x, a.left.y);
@@ -375,9 +388,9 @@ registerVisualizationLayerDefinition({
   draw: (context, positionedGlyph, parameters, model) => {
     context.lineWidth = parameters.lineWidth;
     context.strokeStyle = parameters.strokeColor;
-    forEachSkeletonContour(positionedGlyph, model, (contour) => {
+    forEachSkeletonContour(positionedGlyph, model, (contour, outline) => {
       for (const pointIndex of getOnCurvePointIndices(contour)) {
-        const rib = getRibPoints(contour, pointIndex);
+        const rib = getRibPoints(contour, pointIndex, outline);
         strokeLine(context, rib.left.x, rib.left.y, rib.right.x, rib.right.y);
       }
     });
@@ -426,10 +439,10 @@ registerVisualizationLayerDefinition({
   draw: (context, positionedGlyph, parameters, model) => {
     const ribSelection = getSkeletonRibSelectionSets(model);
     context.lineWidth = parameters.strokeWidth;
-    forEachSkeletonContour(positionedGlyph, model, (contour) => {
+    forEachSkeletonContour(positionedGlyph, model, (contour, outline) => {
       for (const pointIndex of getOnCurvePointIndices(contour)) {
         const point = contour.points[pointIndex];
-        const rib = getRibPoints(contour, pointIndex);
+        const rib = getRibPoints(contour, pointIndex, outline);
         for (const side of ["left", "right"]) {
           if (contour.singleSided && contour.singleSided !== side) {
             continue;
