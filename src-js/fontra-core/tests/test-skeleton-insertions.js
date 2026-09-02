@@ -395,6 +395,26 @@ describe("applyInsertionEasing", () => {
     }
   });
 
+  it("fills out a cut curve without turning its joint", () => {
+    // On a cut curve the two handles are already on one line, so easing has no
+    // corner to open. It says how full the joint is instead, and it has to have
+    // a range a designer can see: it used to move the handles by a tenth of
+    // their length across the whole sweep, and the direction by a third of a
+    // degree.
+    const cut = splitSideAtParameter(cubicSide(), 0, 0.4);
+    const at = cut.insertedIndex;
+    const reach = (easing) => {
+      const eased = applyInsertionEasing(cut.points, at, easing);
+      return Math.hypot(eased[at + 1].x - eased[at].x, eased[at + 1].y - eased[at].y);
+    };
+    expect(reach(1)).to.be.greaterThan(reach(0) * 1.5);
+    // And the point stays smooth at every value.
+    for (let i = 0; i <= 20; i++) {
+      const eased = applyInsertionEasing(cut.points, at, i / 20);
+      expect(jointAngle(eased, at)).to.be.lessThan(1e-6);
+    }
+  });
+
   it("moves the drawn curve on a cut straight, where the handles are stubs", () => {
     // The fault this guards: on a cut straight the insertion point's handles are
     // one unit long, and turning a one-unit handle moves the curve by less than

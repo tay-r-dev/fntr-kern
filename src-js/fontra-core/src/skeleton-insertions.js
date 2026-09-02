@@ -1,3 +1,5 @@
+import { intersect } from "./vector.js";
+
 // An insertion point's geometry, as a pure operation on a side's emitted point
 // list. This module knows nothing about skeletons, ribs, contours or
 // provenance: the generator owns all of that, the way it owns everything about
@@ -390,20 +392,31 @@ export function applyInsertionEasing(points, insertedIndex, easing) {
   }
   const at = points[insertedIndex];
   const eased = points.slice();
-  eased[insertedIndex - 1] = turnToward(
-    before,
-    at,
-    { x: -chord.x, y: -chord.y },
-    easing,
-    smoothHandleLength(points, insertedIndex, -1)
-  );
-  eased[insertedIndex + 1] = turnToward(
-    after,
-    at,
-    chord,
-    easing,
-    smoothHandleLength(points, insertedIndex, 1)
-  );
+  for (const step of [-1, 1]) {
+    const index = insertedIndex + step;
+    const handle = points[index];
+    // On a cut curve the two handles are already on one line: the split put
+    // them there and the ratio move carried them. There is no corner to open,
+    // so easing says how full the joint is instead, and it runs the handle out
+    // toward the far end of what a smooth curve can take. Turning it as well
+    // would move a curve the designer asked only to fill out.
+    if (handle._insertionSmooth) {
+      eased[index] = stretchToward(
+        handle,
+        at,
+        easing,
+        tensionLimit(points, insertedIndex, step)
+      );
+      continue;
+    }
+    eased[index] = turnToward(
+      handle,
+      at,
+      step < 0 ? { x: -chord.x, y: -chord.y } : chord,
+      easing,
+      smoothHandleLength(points, insertedIndex, step)
+    );
+  }
   // The two handles on the far side of the joint answer to easing as well: a
   // corner that opens on one side only is not a shape anybody asked for. They
   // are lengthened toward the same third and never turned. Turning one would
@@ -464,6 +477,25 @@ function smoothHandleLength(points, insertedIndex, step) {
   const at = points[insertedIndex];
   const neighbour = neighbouringOnCurve(points, insertedIndex, step);
   return neighbour ? Math.hypot(neighbour.x - at.x, neighbour.y - at.y) / 3 : null;
+}
+
+// How long the handle at the emitted point could be before the joint stops
+// being a curve a smooth point can draw: the distance from that point to where
+// its own tangent meets the tangent at the far end of the piece. It is the
+// Tunni point of that piece, and the fullest a handle goes.
+//
+// Null where the two tangents are parallel, which is a piece with no such
+// limit. Easing then leaves the handle alone rather than sending it anywhere.
+function tensionLimit(points, insertedIndex, step) {
+  const at = points[insertedIndex];
+  const near = points[insertedIndex + step];
+  const far = points[insertedIndex + 2 * step];
+  const end = neighbouringOnCurve(points, insertedIndex, step);
+  if (!near?.type || !far?.type || !end) {
+    return null;
+  }
+  const meeting = intersect(at, near, end, far);
+  return meeting ? Math.hypot(meeting.x - at.x, meeting.y - at.y) : null;
 }
 
 // The first on-curve point on one side of an index. The one walker, so the
