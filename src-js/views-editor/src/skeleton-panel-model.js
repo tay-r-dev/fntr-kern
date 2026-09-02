@@ -5,7 +5,6 @@
 
 import {
   SERIF_HALF_FIELDS,
-  buildSegmentsFromSkeletonPoints,
   getSkeletonContour,
   getSkeletonHandleOffset,
   getSkeletonInsertion,
@@ -17,7 +16,6 @@ import {
   isSkeletonSideLocked,
   parseEditableGeneratedHandleKey,
   parseEditableGeneratedPointKey,
-  getTiedRibGroup,
   parseSkeletonInsertionKey,
   parseSkeletonRibKey,
 } from "@fontra/core/skeleton-model.js";
@@ -601,30 +599,7 @@ export function summarizeSkeletonInsertionSelection(selectedInsertions) {
       selectedInsertions.map((entry) => entry.insertion.width.linked !== false)
     ),
     easing: reduceValues(selectedInsertions.map((entry) => entry.insertion.easing)),
-    // A tied insertion point takes its group's offset, so its own ratio does
-    // nothing and the panel greys the two width fields rather than showing a
-    // number that the shape does not obey.
-    tied: reduceValues(
-      selectedInsertions.map((entry) => insertionIsTied(entry.contour, entry.insertion))
-    ),
   };
-}
-
-// Whether an insertion point stands on a straight whose two ends are both held
-// to one offset. The insertion point cuts a tie it can cut; where both ends are
-// controlled there is nothing to cut and the offset is the group's.
-function insertionIsTied(contour, insertion) {
-  const points = contour?.points || [];
-  const segments = buildSegmentsFromSkeletonPoints(points, contour?.closed === true);
-  const segment = segments.find(
-    (candidate) => candidate.startPoint.id === insertion.pointId
-  );
-  if (!segment || segment.controlPoints.length) {
-    return false;
-  }
-  return (getTiedRibGroup(contour, segment.startPoint) || []).includes(
-    segment.endPoint
-  );
 }
 
 // Snapshots power donor-style profile apply/revert: capture the exact canonical

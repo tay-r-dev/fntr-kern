@@ -1232,12 +1232,13 @@ export default class SkeletonParametersPanel extends Panel {
       label: translate("sidebar.skeleton-parameters.linked"),
       value: summary.linked.mixed ? false : summary.linked.value,
     });
-    // A tied insertion point takes its group's offset, so its own ratio does
-    // nothing. Greyed and blank rather than hidden, the same way single-sided
-    // mode treats the per-side numbers: the number is still stored and still
-    // what the point returns to once the tie is gone.
-    const tied = summary.tied.value === true && !summary.tied.mixed;
-    const gate = tied ? { disabled: true, blank: true, minValue: 0 } : { minValue: 0 };
+    // Never greyed. An insertion point's ratio used to be treated as inert on a
+    // tied straight, on the reasoning that the tie owns the offset there. That
+    // was written before a cut straight became two cubics: the ends keep their
+    // direction through their own outer handles now, whatever the middle does,
+    // so the tie has nothing left to take away from the point between them. A
+    // stem is exactly where a designer reaches for this control.
+    const gate = { minValue: 0 };
     for (const side of ["left", "right"]) {
       this._pushSummaryNumber(
         formContents,
