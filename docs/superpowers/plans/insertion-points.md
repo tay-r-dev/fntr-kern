@@ -42,7 +42,7 @@ An insertion point is stored in a new per-contour list beside `points`. Each ent
 | `id`      | stable id, from the same non-reusing counter skeleton ids use |
 | `pointId` | the stable id of the segment's **start** point                |
 | `t`       | the source parameter along that segment, in 0 to 1            |
-| `width`   | the same width block an ordinary point carries                |
+| `width`   | a ratio per side, plus the link and lock flags, section 4     |
 | `easing`  | the transition setting, section 5                             |
 
 `id` shares the skeleton's id space, so one lookup finds either kind of point and no id is ever
@@ -104,28 +104,50 @@ curvature. It states a width.
 
 ---
 
-## 4. When the width changes
+## 4. The width is a ratio
 
-**The rib's own half-width is what the split already drew.** The split puts an emitted point on
-each side. The distance from the centerline at that parameter out to that emitted point is the
-half-width the stroke already has there. It is read off the emitted geometry rather than
-interpolated between the two neighbouring ribs, because the generator states no width between
-ribs and inventing one would be a second answer to a question the outline already answers.
+**An insertion point's width is relative, always, with no absolute mode.**
 
-**A fresh insertion point stores no width**, and the generator uses that measured value. So a
-point the designer has added and not touched moves nothing, with no stored number to keep it
-honest. This follows the width cascade the ordinary points already use, where a point that stores
-nothing is a live consumer of what is above it.
+**The reference is what the split already drew.** The split puts an emitted point on each side.
+The distance from the centerline point at that parameter out to that emitted point is the
+half-width the stroke already has there. It is read off the emitted geometry. It is not
+interpolated between the two neighbouring ribs, because the generator states no width between ribs
+and inventing one would be a second answer to a question the outline already answers.
 
-Once the designer sets a width, the two emitted on-curves move along the rib normal, each by the
-difference between the stated half-width and the measured one.
+**The stored number is a multiplier of that reference**, one per side, with the link and lock
+flags an ordinary rib carries. One means the stroke as it stands. Above one the stroke swells and
+below one it narrows. There is no unset state and no cascade. The field always holds a number, the
+way every serif field does.
 
-**A move of zero must emit exactly the split points.** This is the identity the whole feature
-rests on, and it is a test rather than a claim.
+**A ratio survives the slide, and an absolute width does not.** The insertion point's whole gesture
+is sliding along the centerline. On a tapering stroke the reference changes as it slides. A stored
+absolute width would hold still while the stroke under it moved, so sliding would change the shape.
+That contradicts the promise the feature is built on. A ratio slides and changes nothing.
+
+**A ratio also survives a trip between masters.** It is dimensionless, so it never needs a units
+mode, and it interpolates between two masters drawn at different weights. Absolute lengths do not,
+which is why serif presets are held per master.
+
+Once the ratio leaves one, the two emitted on-curves move along the rib normal, each by the
+difference between the stated half-width and the reference.
+
+**A ratio of one must emit exactly the split points.** This is the identity the whole feature rests
+on, and it is a test rather than a claim.
 
 The move is applied at emission, after the authored layers, at the step the rib nudge is applied
 at. It is the same species of thing: a later and more specific statement about where an emitted
 point sits.
+
+**The panel reads and writes units, and the model stores the ratio.** A designer thinks in units.
+The field shows the resulting half-width, and a typed number is divided by the reference before it
+is stored. That is one number in a derived display, not two stored numbers. The conversion is one
+function and every writer goes through it.
+
+**Two costs, both stated.** A collapsed side is under half a unit and lies on the skeleton exactly.
+Any ratio times a collapsed side is still collapsed, so an insertion point cannot lift a rib off a
+single-sided edge. And where the stroke narrows toward a point, the swell a fixed ratio draws
+narrows with it. Both follow from the ratio being relative, and both are the behavior a relative
+number promises.
 
 ---
 
@@ -179,6 +201,15 @@ A run between two insertion points carries no controlled point and is free.
 segment and returns the group cut at them. `getTiedRibGroup`, `getEffectiveRibHalfWidth` and the
 rib drag then read the answer back through the same call they use today, so the gizmo, the stored
 width and the emitted outline cannot disagree.
+
+**A tied insertion point takes the group's offset, and its own ratio is inert.** It contributes
+nothing to the group's mean. A ratio is a statement about the stroke where the point stands, and
+while the point is tied there is no local stroke for it to be relative to. The panel greys the
+ratio rather than hiding it, the way single-sided mode already greys the per-side numbers.
+
+This is not a loss. What the insertion point buys on a tied straight is the release of the far
+end, which is the whole of what the tie cut is for. To set a width on the held run instead, free
+the straight with the switch that already exists.
 
 ---
 
@@ -240,6 +271,10 @@ collapsed ends. Point-count stability holds within a master.
 with an insertion point and a master without do not interpolate at that segment. This is the same
 contract corner rounding and cap styles already carry, and it is not made worse here.
 
+**The ratio interpolates and an absolute width would not.** Two masters drawn at different weights
+hold the same ratio at the same parameter, and every weight between them draws a swell in
+proportion to the stroke it sits on. This is the second reason the width is relative, section 4.
+
 ---
 
 ## 10. Files
@@ -265,19 +300,22 @@ contract corner rounding and cap styles already carry, and it is not made worse 
 (rail R-G).
 
 **The identity test comes first.** Generate a contour, then generate it again with an insertion
-point at several parameters and the width the stroke already draws. Every point of the first
-output must be present in the second, unchanged, with exactly two points added per insertion
-point. This is the promise, so it is the test.
+point at several parameters, at a ratio of one. Every point of the first output must be present in
+the second, unchanged, with exactly two points added per insertion point. This is the promise, so
+it is the test.
 
 **Sweeps, not assertions.** The rails are explicit and every fault in this module so far has come
 out of a sweep.
 
-1. Sweep `t` from just above 0 to just below 1 in fine steps. Measure the worst single-step
-   movement of any emitted point against the step. It must be the movement of the two inserted
-   points alone.
-2. Sweep the width from the collapsed floor upward. Measure for backtracking.
-3. Sweep easing from 0 to 1. Measure the joint angle at the emitted point. It must fall to zero.
-4. Sweep `t` onto each end and past it. The count must hold and the points must collapse.
+1. Sweep `t` from just above 0 to just below 1 in fine steps, at a ratio of one. Measure the worst
+   single-step movement of any emitted point against the step. It must be the movement of the two
+   inserted points alone, and every other point must not move at all.
+2. Run that same sweep on a **tapered** stroke at a ratio above one. The swell must slide with the
+   point and change no other point. This is the sweep the ratio exists for, and an absolute width
+   fails it.
+3. Sweep the ratio from the collapsed floor upward. Measure for backtracking.
+4. Sweep easing from 0 to 1. Measure the joint angle at the emitted point. It must fall to zero.
+5. Sweep `t` onto each end and past it. The count must hold and the points must collapse.
 
 **Tie tests.** A straight from a tension point to a corner, with one insertion point. Assert the
 group is the tension point and the insertion point. Assert the corner's rib changes width alone.
@@ -295,11 +333,13 @@ evidence for a change the corpus cannot see.
 
 ## 12. Decisions taken, and what they closed
 
-| Decision                                          | What it closed                                                                                                                                    |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cut the emitted curve, not the centerline         | Cutting the centerline makes the solver answer two short segments instead of one long one, and the letter shifts at the moment the point is added |
-| Store the address, not a coordinate               | A stored coordinate drifts when the segment is redrawn, and recovering the parameter from it is the geometric matching rail R-D forbids           |
-| The emitted point is on the curve, not the rib    | Placing it at the rib end moves the outline off the curve it drew                                                                                 |
-| The parameter is the slide, and there is no nudge | Two numbers for one movement                                                                                                                      |
-| The pin stays on the whole original segment       | A pin measured on a piece and reproduced on the whole makes the gizmo jump on first grab                                                          |
-| An insertion point cuts a tie                     | Joining the tie instead would leave the designer no way to change the width on a straight, which is the case the feature is most wanted in        |
+| Decision                                          | What it closed                                                                                                                                                               |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cut the emitted curve, not the centerline         | Cutting the centerline makes the solver answer two short segments instead of one long one, and the letter shifts at the moment the point is added                            |
+| Store the address, not a coordinate               | A stored coordinate drifts when the segment is redrawn, and recovering the parameter from it is the geometric matching rail R-D forbids                                      |
+| The emitted point is on the curve, not the rib    | Placing it at the rib end moves the outline off the curve it drew                                                                                                            |
+| The parameter is the slide, and there is no nudge | Two numbers for one movement                                                                                                                                                 |
+| The pin stays on the whole original segment       | A pin measured on a piece and reproduced on the whole makes the gizmo jump on first grab                                                                                     |
+| An insertion point cuts a tie                     | Joining the tie instead would leave the designer no way to change the width on a straight, which is the case the feature is most wanted in                                   |
+| The width is a ratio, with no absolute mode       | An absolute width holds still while the stroke under a sliding point moves, so the slide changes the shape. It also fails to interpolate between masters of different weight |
+| A tied insertion point's ratio is inert           | A ratio is relative to the local stroke, and a tied run has none. Resolving the ratio to feed the tie's own mean is circular, because the mean is what decides the stroke    |
