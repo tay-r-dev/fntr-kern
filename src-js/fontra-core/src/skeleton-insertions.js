@@ -266,17 +266,42 @@ export function applyInsertionEasing(points, insertedIndex, easing) {
     before,
     at,
     { x: -chord.x, y: -chord.y },
-    easing
+    easing,
+    smoothHandleLength(points, insertedIndex, -1)
   );
-  eased[insertedIndex + 1] = turnToward(after, at, chord, easing);
+  eased[insertedIndex + 1] = turnToward(
+    after,
+    at,
+    chord,
+    easing,
+    smoothHandleLength(points, insertedIndex, 1)
+  );
   return eased;
 }
 
-// A handle turned toward a direction by a fraction, keeping its own length.
-// Length is kept because easing is a statement about the joint's angle and not
-// about how full the two curves are. Changing the length here would move the
-// curve where the designer asked only for the corner to open.
-function turnToward(handle, anchor, direction, fraction) {
+// How long a handle at the emitted point would be if the joint were an ordinary
+// smooth one: a third of the way to the on-curve on that side. The classical
+// third, so an eased joint is as full as any other curve in the outline.
+//
+// Easing has to reach the length as well as the direction. On a cut straight the
+// insertion point's handles start one unit long, and turning a one-unit handle
+// moves the drawn curve by less than the width of the line it is drawn with. The
+// control would do nothing a designer could see.
+function smoothHandleLength(points, insertedIndex, step) {
+  const at = points[insertedIndex];
+  for (let i = insertedIndex + step; i >= 0 && i < points.length; i += step) {
+    if (!points[i].type) {
+      return Math.hypot(points[i].x - at.x, points[i].y - at.y) / 3;
+    }
+  }
+  return null;
+}
+
+// A handle turned toward a direction by a fraction, and lengthened toward the
+// length a smooth joint would give it by the same fraction. At zero it is left
+// exactly as it was, which is the identity the whole feature rests on. At one it
+// lies on the shared line at the length any other curve here would use.
+function turnToward(handle, anchor, direction, fraction, smoothLength) {
   const current = { x: handle.x - anchor.x, y: handle.y - anchor.y };
   const length = Math.hypot(current.x, current.y);
   if (length < 1e-9) {
@@ -290,10 +315,12 @@ function turnToward(handle, anchor, direction, fraction) {
   if (!blended) {
     return handle;
   }
+  const eased =
+    smoothLength === null ? length : length + (smoothLength - length) * fraction;
   return {
     ...handle,
-    x: anchor.x + blended.x * length,
-    y: anchor.y + blended.y * length,
+    x: anchor.x + blended.x * eased,
+    y: anchor.y + blended.y * eased,
   };
 }
 

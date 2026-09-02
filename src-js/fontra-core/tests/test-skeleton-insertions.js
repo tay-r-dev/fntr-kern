@@ -284,4 +284,36 @@ describe("applyInsertionEasing", () => {
     applyInsertionEasing(points, 3, 0.5);
     expect(JSON.stringify(points)).to.equal(before);
   });
+
+  it("moves the drawn curve on a cut straight, where the handles are stubs", () => {
+    // The fault this guards: on a cut straight the insertion point's handles are
+    // one unit long, and turning a one-unit handle moves the curve by less than
+    // the width of the line it is drawn with. Easing did nothing a designer
+    // could see. It has to reach the length as well as the direction.
+    const cut = splitSideAtParameter(straightSide(), 0, 0.5);
+    const swollen = applyInsertionRatio(
+      cut.points,
+      cut.insertedIndex,
+      { x: 50, y: -30 },
+      2
+    );
+    const travel = (easing) => {
+      const eased = applyInsertionEasing(swollen, cut.insertedIndex, easing);
+      const handle = eased[cut.insertedIndex + 1];
+      const at = eased[cut.insertedIndex];
+      return Math.hypot(handle.x - at.x, handle.y - at.y);
+    };
+    expect(travel(0)).to.be.closeTo(1, 1e-9);
+    // A third of the way to the on-curve at the end of the piece.
+    expect(travel(1)).to.be.greaterThan(10);
+    // And it grows without stepping.
+    let previous = travel(0);
+    let worst = 0;
+    for (let i = 1; i <= 200; i++) {
+      const now = travel(i / 200);
+      worst = Math.max(worst, Math.abs(now - previous));
+      previous = now;
+    }
+    expect(worst).to.be.lessThan(0.5);
+  });
 });
