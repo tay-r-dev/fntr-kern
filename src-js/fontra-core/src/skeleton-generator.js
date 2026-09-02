@@ -2523,6 +2523,24 @@ function applyOneInsertionToSide(
       insertion: true,
     };
   }
+  // The two handles beyond those belong to the on-curves at the ends of the cut
+  // piece, and a cut straight makes them where there were none. They are given
+  // no role, so nothing can address them, but they are given provenance: the
+  // annotation pass fills in whatever it finds unstamped, and an unstamped
+  // handle takes the label of a point that is no longer at that index.
+  for (const index of [at - 2, at + 2]) {
+    if (points[index]?.type && !points[index]._provenance) {
+      points[index] = {
+        ...points[index],
+        _provenance: {
+          skeletonPointId: insertion.id,
+          side,
+          role: null,
+          insertion: true,
+        },
+      };
+    }
+  }
   // The ratio moves the emitted on-curve out along the line from the centerline
   // point at the same parameter. The reference is the stroke as the solve drew
   // it, which is why sliding the point along a tapering stroke changes nothing.

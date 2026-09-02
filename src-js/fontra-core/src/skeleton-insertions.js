@@ -11,6 +11,13 @@
 export const SPLIT_MIN_PARAMETER = 1e-9;
 export const SPLIT_MAX_PARAMETER = 1 - 1e-9;
 
+// How long the insertion point's own two handles are on a cut straight, in font
+// units. One unit, not zero: the emitted point has to read as a corner, and a
+// corner is what two handles of length one draw. They cannot be left out. The
+// piece is a cubic now, and a cubic with no handles at one end is a cubic whose
+// end tangent is whatever the far handle says, which is not a corner.
+export const INSERTION_STUB_LENGTH = 1;
+
 /**
  * Cut one side's emitted geometry at a source parameter.
  *
@@ -71,9 +78,13 @@ export function splitSideAtParameter(sidePoints, anchorIndex, t) {
     ...cut,
     ...sidePoints.slice(endIndex),
   ];
+  // Read off the cut itself rather than counted from the input. A straight and
+  // a cubic both put the new on-curve in the middle of what they return, but a
+  // straight that states no direction falls back to a bare point, and counting
+  // would then name a handle as the emitted point.
   return {
     points,
-    insertedIndex: anchorIndex + 1 + (handles.length === 2 ? 2 : 0),
+    insertedIndex: anchorIndex + 1 + cut.findIndex((point) => !point.type),
     start,
     end,
   };
@@ -94,9 +105,59 @@ function lerp(a, b, t) {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
+// A cut straight becomes two cubics, not two straights.
+//
+// The two on-curves at the ends of a straight are often smooth points whose
+// other handle is held colinear with it. Cutting the straight into two straights
+// aims the first one at the insertion point, and once the ratio moves that point
+// off the line those ends are no longer smooth: the letter breaks where nothing
+// was asked to change. Two cubics whose OUTER handles stay on the original line
+// keep both ends pointing exactly where they pointed.
+//
+// At a ratio of one every one of the six points is on the line, so the two
+// cubics draw the straight the one straight drew. The identity holds.
+//
+// The insertion point's own two handles are stubs, and they travel with it: they
+// are what makes it a corner rather than a point with no tangent at all.
 function splitLine(start, end, t) {
   const at = lerp(start, end, t);
-  return [{ x: at.x, y: at.y }];
+  const span = { x: end.x - start.x, y: end.y - start.y };
+  const direction = normalize(span);
+  if (!direction) {
+    return [{ x: at.x, y: at.y }];
+  }
+  const back = { x: -direction.x, y: -direction.y };
+  const firstThird = Math.hypot(at.x - start.x, at.y - start.y) / 3;
+  const secondThird = Math.hypot(end.x - at.x, end.y - at.y) / 3;
+  return [
+    along(start, direction, firstThird),
+    stub(at, back),
+    { x: at.x, y: at.y },
+    stub(at, direction),
+    along(end, back, secondThird),
+  ];
+}
+
+function along(anchor, direction, distance) {
+  return {
+    x: anchor.x + direction.x * distance,
+    y: anchor.y + direction.y * distance,
+    type: "cubic",
+    // The direction this handle was built on. Without it the smoothing pass
+    // estimates one from the handle's length and rotates it off the line, which
+    // is the one thing this handle exists not to do.
+    _axis: { x: direction.x, y: direction.y },
+  };
+}
+
+// A handle belonging to the insertion point rather than to either end. The flag
+// is what tells the ratio move to carry it: the stub states the corner at the
+// point, so it has to arrive wherever the point does.
+function stub(anchor, direction) {
+  return {
+    ...along(anchor, direction, INSERTION_STUB_LENGTH),
+    _insertionStub: true,
+  };
 }
 
 // De Casteljau. The five points it returns replace the two handles between the
@@ -142,11 +203,20 @@ export function applyInsertionRatio(points, insertedIndex, centerPoint, ratio) {
   }
   const at = points[insertedIndex];
   const moved = points.slice();
-  moved[insertedIndex] = {
-    ...at,
-    x: centerPoint.x + (at.x - centerPoint.x) * ratio,
-    y: centerPoint.y + (at.y - centerPoint.y) * ratio,
+  const shift = {
+    x: centerPoint.x + (at.x - centerPoint.x) * ratio - at.x,
+    y: centerPoint.y + (at.y - centerPoint.y) * ratio - at.y,
   };
+  moved[insertedIndex] = { ...at, x: at.x + shift.x, y: at.y + shift.y };
+  // A stub handle states the corner at the emitted point, so it travels with
+  // the point. A de Casteljau handle does not: it belongs to the curve the
+  // split promised to leave alone, and moving it would move that curve.
+  for (const index of [insertedIndex - 1, insertedIndex + 1]) {
+    const handle = points[index];
+    if (handle?._insertionStub) {
+      moved[index] = { ...handle, x: handle.x + shift.x, y: handle.y + shift.y };
+    }
+  }
   return moved;
 }
 

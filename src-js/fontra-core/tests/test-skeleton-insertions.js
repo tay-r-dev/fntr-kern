@@ -66,12 +66,52 @@ describe("splitSideAtParameter", () => {
     expect(inserted.type).to.equal(undefined);
   });
 
-  it("cuts a straight by interpolation and adds no handles", () => {
+  it("cuts a straight into two cubics that still draw the straight", () => {
+    // A straight becomes a curve, because the on-curves at its two ends are
+    // often smooth points whose other handle is held colinear with it. Two
+    // straights would aim the first one at the insertion point and break that.
     const result = splitSideAtParameter(straightSide(), 0, 0.25);
-    expect(result.points).to.have.length(3);
-    expect(result.insertedIndex).to.equal(1);
-    expect(result.points[1]).to.include({ x: 25, y: 0 });
-    expect(result.points[1].type).to.equal(undefined);
+    expect(result.points).to.have.length(7);
+    expect(result.insertedIndex).to.equal(3);
+    expect(result.points[3]).to.include({ x: 25, y: 0 });
+    expect(result.points[3].type).to.equal(undefined);
+    // Every point is still on the line, so the two cubics draw the straight.
+    for (const point of result.points) {
+      expect(point.y).to.be.closeTo(0, 1e-9);
+    }
+    // The outer handles keep the line's own direction, which is what holds a
+    // smooth end point smooth once the ratio moves the middle off the line.
+    expect(result.points[1]._axis.x).to.equal(1);
+    expect(result.points[1]._axis.y).to.be.closeTo(0, 1e-12);
+    expect(result.points[5]._axis.x).to.equal(-1);
+    expect(result.points[5]._axis.y).to.be.closeTo(0, 1e-12);
+  });
+
+  it("gives the insertion point two one-unit handles of its own", () => {
+    // The piece is a cubic now, and a cubic end with no handle takes its tangent
+    // from the far handle, which is not a corner. One unit is a corner drawn.
+    const result = splitSideAtParameter(straightSide(), 0, 0.25);
+    expect(result.points[2]).to.include({ x: 24, y: 0 });
+    expect(result.points[4]).to.include({ x: 26, y: 0 });
+    expect(result.points[2]._insertionStub).to.equal(true);
+    expect(result.points[4]._insertionStub).to.equal(true);
+  });
+
+  it("carries the insertion's own handles when the ratio moves it", () => {
+    const cut = splitSideAtParameter(straightSide(), 0, 0.5);
+    const moved = applyInsertionRatio(
+      cut.points,
+      cut.insertedIndex,
+      { x: 50, y: -30 },
+      2
+    );
+    // The point goes from 30 above the centerline to 60. Its two stubs go with
+    // it. The outer handles stay on the line they were built on.
+    expect(moved[cut.insertedIndex]).to.include({ x: 50, y: 30 });
+    expect(moved[cut.insertedIndex - 1]).to.include({ x: 49, y: 30 });
+    expect(moved[cut.insertedIndex + 1]).to.include({ x: 51, y: 30 });
+    expect(moved[1]).to.deep.equal(cut.points[1]);
+    expect(moved[5]).to.deep.equal(cut.points[5]);
   });
 
   it("emits the point at a collapsed parameter rather than dropping it", () => {
@@ -97,8 +137,10 @@ describe("splitSideAtParameter", () => {
     side[1]._axis = { x: 1, y: 0 };
     side[2]._axis = { x: -1, y: 0 };
     const result = splitSideAtParameter(side, 0, 0.4);
-    expect(result.points[1]._axis).to.deep.equal({ x: 1, y: 0 });
-    expect(result.points[5]._axis).to.deep.equal({ x: -1, y: 0 });
+    expect(result.points[1]._axis.x).to.equal(1);
+    expect(result.points[1]._axis.y).to.be.closeTo(0, 1e-12);
+    expect(result.points[5]._axis.x).to.equal(-1);
+    expect(result.points[5]._axis.y).to.be.closeTo(0, 1e-12);
   });
 
   it("returns null where the anchor names no segment", () => {

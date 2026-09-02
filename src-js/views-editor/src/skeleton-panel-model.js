@@ -100,7 +100,7 @@ export function collectSkeletonPanelSelection({ selection, skeletonData }) {
     const insertion = getSkeletonInsertion(
       skeletonData,
       parsedKey.contourId,
-      Number(parsedKey.insertionId)
+      parsedKey.insertionId
     );
     if (!contour || !insertion) continue;
     result.insertions.push({

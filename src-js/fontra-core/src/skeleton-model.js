@@ -3493,8 +3493,12 @@ export function parseSkeletonInsertionKey(key) {
   if (parts.length !== 3 || parts[0] !== SKELETON_INSERTION_KEY_KIND) {
     throw new Error(`invalid skeleton insertion key: ${key}`);
   }
-  const [, contourId, insertionId] = parts;
-  if (!contourId || !insertionId) {
+  const contourId = asStrictSkeletonInteger(parts[1]);
+  const insertionId = asStrictSkeletonInteger(parts[2]);
+  // Numbers, not the strings the key is made of. Every lookup that takes these
+  // compares an id with `===`, so a string never matches and the caller sees a
+  // point that is plainly there reported as missing.
+  if (contourId === null || insertionId === null) {
     throw new Error(`invalid skeleton insertion key: ${key}`);
   }
   return { contourId, insertionId };

@@ -1137,8 +1137,8 @@ export function createSkeletonInsertionTargetEntries(layer, selection) {
     }
     const executor = createSkeletonInsertionExecutor(
       skeletonData,
-      Number(parsed.contourId),
-      Number(parsed.insertionId)
+      parsed.contourId,
+      parsed.insertionId
     );
     if (executor) {
       executors.push(executor);
