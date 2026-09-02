@@ -7,7 +7,11 @@ import {
   offsetContourAlongNormals,
 } from "./offset-contour.js";
 import { offsetCubicSide } from "./offset-cubic.js";
-import { applyInsertionRatio, splitSideAtParameter } from "./skeleton-insertions.js";
+import {
+  applyInsertionEasing,
+  applyInsertionRatio,
+  splitSideAtParameter,
+} from "./skeleton-insertions.js";
 import {
   buildSerifTerminal,
   computeSerifFrame,
@@ -2512,12 +2516,13 @@ function applyOneInsertionToSide(
   // point at the same parameter. The reference is the stroke as the solve drew
   // it, which is why sliding the point along a tapering stroke changes nothing.
   const ratio = side === "left" ? insertion.width.left : insertion.width.right;
-  return applyInsertionRatio(
+  const moved = applyInsertionRatio(
     points,
     at,
     skeletonSegmentPointAt(segment, insertion.t),
     ratio
   );
+  return applyInsertionEasing(moved, at, insertion.easing);
 }
 
 /**

@@ -149,3 +149,85 @@ export function applyInsertionRatio(points, insertedIndex, centerPoint, ratio) {
   };
   return moved;
 }
+
+/**
+ * Open the joint at an emitted insertion point.
+ *
+ * The ratio move displaces one on-curve and leaves the four handles around it
+ * pointing where the split put them, so the outline turns a corner there.
+ * Easing turns the two handles either side of that point toward one shared
+ * direction, by a fraction. At zero they keep the directions the split gave
+ * them. At one they lie on one line through the point and the joint is smooth.
+ *
+ * The shared direction is the chord between the two on-curves that bracket the
+ * pair. It is symmetric in the two sides, which a rounding has to be, and it
+ * needs nothing the caller does not already have.
+ *
+ * This moves handles only. No on-curve moves at any value, and no neighbouring
+ * rib's width is touched. A rib states a width, and a control that quietly
+ * restated one would make the panel disagree with the shape.
+ *
+ * @param {Array} points - the side's points, after the split and the ratio
+ * @param {number} insertedIndex - the emitted on-curve's index
+ * @param {number} easing - 0 to 1
+ * @returns {Array} a new array, or the input where easing is zero
+ */
+export function applyInsertionEasing(points, insertedIndex, easing) {
+  const before = points?.[insertedIndex - 1];
+  const after = points?.[insertedIndex + 1];
+  if (!easing || !before?.type || !after?.type) {
+    return points;
+  }
+  const outerBefore = points[insertedIndex - 2];
+  const outerAfter = points[insertedIndex + 2];
+  if (!outerBefore || !outerAfter) {
+    return points;
+  }
+  const chord = normalize({
+    x: outerAfter.x - outerBefore.x,
+    y: outerAfter.y - outerBefore.y,
+  });
+  if (!chord) {
+    return points;
+  }
+  const at = points[insertedIndex];
+  const eased = points.slice();
+  eased[insertedIndex - 1] = turnToward(
+    before,
+    at,
+    { x: -chord.x, y: -chord.y },
+    easing
+  );
+  eased[insertedIndex + 1] = turnToward(after, at, chord, easing);
+  return eased;
+}
+
+// A handle turned toward a direction by a fraction, keeping its own length.
+// Length is kept because easing is a statement about the joint's angle and not
+// about how full the two curves are. Changing the length here would move the
+// curve where the designer asked only for the corner to open.
+function turnToward(handle, anchor, direction, fraction) {
+  const current = { x: handle.x - anchor.x, y: handle.y - anchor.y };
+  const length = Math.hypot(current.x, current.y);
+  if (length < 1e-9) {
+    return handle;
+  }
+  const unit = { x: current.x / length, y: current.y / length };
+  const blended = normalize({
+    x: unit.x + (direction.x - unit.x) * fraction,
+    y: unit.y + (direction.y - unit.y) * fraction,
+  });
+  if (!blended) {
+    return handle;
+  }
+  return {
+    ...handle,
+    x: anchor.x + blended.x * length,
+    y: anchor.y + blended.y * length,
+  };
+}
+
+function normalize(vector) {
+  const length = Math.hypot(vector.x, vector.y);
+  return length < 1e-9 ? null : { x: vector.x / length, y: vector.y / length };
+}

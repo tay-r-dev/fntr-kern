@@ -1,4 +1,5 @@
 import {
+  applyInsertionEasing,
   applyInsertionRatio,
   splitSideAtParameter,
 } from "@fontra/core/skeleton-insertions.js";
@@ -168,6 +169,77 @@ describe("applyInsertionRatio", () => {
   it("leaves the input array untouched", () => {
     const before = JSON.stringify(points);
     applyInsertionRatio(points, 1, { x: 50, y: 0 }, 3);
+    expect(JSON.stringify(points)).to.equal(before);
+  });
+});
+
+// The angle the outline turns through at the emitted point, in degrees. Zero is
+// a smooth pass and anything above it is a corner.
+function jointAngle(points, at) {
+  const incoming = {
+    x: points[at].x - points[at - 1].x,
+    y: points[at].y - points[at - 1].y,
+  };
+  const outgoing = {
+    x: points[at + 1].x - points[at].x,
+    y: points[at + 1].y - points[at].y,
+  };
+  const cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+  const dot = incoming.x * outgoing.x + incoming.y * outgoing.y;
+  return Math.abs((Math.atan2(cross, dot) * 180) / Math.PI);
+}
+
+describe("applyInsertionEasing", () => {
+  // A cut cubic whose middle on-curve has been displaced, so the joint is bent.
+  const bent = () => [
+    { x: 0, y: 0 },
+    { x: 20, y: 20, type: "cubic" },
+    { x: 40, y: 20, type: "cubic" },
+    { x: 50, y: 40 },
+    { x: 60, y: 20, type: "cubic" },
+    { x: 80, y: 20, type: "cubic" },
+    { x: 100, y: 0 },
+  ];
+
+  it("returns the same array at zero", () => {
+    const points = bent();
+    expect(applyInsertionEasing(points, 3, 0)).to.equal(points);
+  });
+
+  it("leaves the joint bent at zero and straightens it at one", () => {
+    const points = bent();
+    expect(jointAngle(applyInsertionEasing(points, 3, 0), 3)).to.be.greaterThan(20);
+    expect(jointAngle(applyInsertionEasing(points, 3, 1), 3)).to.be.lessThan(1e-6);
+  });
+
+  it("moves no on-curve point at any value", () => {
+    const points = bent();
+    for (let i = 0; i <= 20; i++) {
+      const result = applyInsertionEasing(points, 3, i / 20);
+      for (const index of [0, 3, 6]) {
+        expect(result[index]).to.deep.equal(points[index]);
+      }
+    }
+  });
+
+  it("closes the joint angle without stepping", () => {
+    const points = bent();
+    let previous = null;
+    let worst = 0;
+    for (let i = 0; i <= 400; i++) {
+      const angle = jointAngle(applyInsertionEasing(points, 3, i / 400), 3);
+      if (previous !== null) {
+        worst = Math.max(worst, Math.abs(angle - previous));
+      }
+      previous = angle;
+    }
+    expect(worst).to.be.lessThan(1);
+  });
+
+  it("leaves the input array untouched", () => {
+    const points = bent();
+    const before = JSON.stringify(points);
+    applyInsertionEasing(points, 3, 0.5);
     expect(JSON.stringify(points)).to.equal(before);
   });
 });
