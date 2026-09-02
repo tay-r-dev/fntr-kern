@@ -4047,18 +4047,23 @@ describe("skeleton insertion points reach the generator", () => {
     // dense sampling of the other, not against an equally coarse one: two coarse
     // samplings of the same curve sit up to their own spacing apart, which would
     // report an error the geometry does not have.
+    //
+    // The bound is a fraction of a unit rather than nothing at all. The emitted
+    // point is rounded to the grid like every other point the generator writes,
+    // and a curve drawn through a rounded point departs from one drawn through
+    // the exact point by less than the grid it was rounded to.
     expect(
       worstDeparture(
         sampleContour(with_.contours[0]),
         sampleContour(without.contours[0], 4000)
       )
-    ).to.be.lessThan(0.05);
+    ).to.be.lessThan(0.6);
     expect(
       worstDeparture(
         sampleContour(without.contours[0]),
         sampleContour(with_.contours[0], 4000)
       )
-    ).to.be.lessThan(0.05);
+    ).to.be.lessThan(0.6);
   });
 
   it("holds the count at every parameter", () => {
@@ -4205,5 +4210,39 @@ describe("skeleton insertion points reach the generator", () => {
     expect(onCurves.map((point) => point.y).sort((a, b) => a - b)).to.deep.equal([
       110, 190,
     ]);
+  });
+
+  it("stands its rib at right angles to the centerline, corner or not", () => {
+    // The fault this guards: the two sides of a segment are not the same
+    // length. At a corner one is carried on to the miter and the other is cut
+    // back, so one source parameter reaches a different fraction of each and
+    // the bar leans. It leaned by eleven degrees on the stem of an F.
+    const cornered = normalizeSkeletonData({
+      contours: [
+        {
+          id: 10,
+          defaultWidth: 60,
+          capStyle: "butt",
+          points: [
+            { id: 11, x: 261, y: 266 },
+            { id: 12, x: 399, y: 266 },
+            { id: 13, x: 399, y: 138 },
+          ],
+          insertions: [{ id: 20, pointId: 11, t: 0.4 }],
+        },
+      ],
+    });
+    const result = generateFromSkeleton(cornered);
+    const points = result.contours[0].points;
+    const ends = {};
+    result.provenance[0].pointMap.forEach((entry, index) => {
+      if (entry?.skeletonPointId === 20 && entry.role === "onCurve") {
+        ends[entry.side] = points[index];
+      }
+    });
+    // The centerline runs horizontally here, so the bar must run vertically and
+    // must pass through the centerline point at that parameter.
+    expect(ends.left.x).to.be.closeTo(ends.right.x, 0.5);
+    expect(ends.left.x).to.be.closeTo(261 + 0.4 * (399 - 261), 0.5);
   });
 });

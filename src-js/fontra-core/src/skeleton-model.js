@@ -1283,6 +1283,25 @@ export function skeletonSegmentPointAt(segment, t) {
   return cubicPointAt([p0, p1, p2, p3], t);
 }
 
+// The centerline's own direction at a source parameter. The rib at that point
+// stands at right angles to this. Degenerate where a cubic's handle collapses
+// onto its on-curve, where the chord is the honest answer.
+export function skeletonSegmentTangentAt(segment, t) {
+  const p0 = segment.startPoint;
+  const p3 = segment.endPoint;
+  const chord = { x: p3.x - p0.x, y: p3.y - p0.y };
+  if (segment.controlPoints?.length !== 2) {
+    return chord;
+  }
+  const [p1, p2] = segment.controlPoints;
+  const u = 1 - t;
+  const tangent = {
+    x: 3 * (u * u * (p1.x - p0.x) + 2 * u * t * (p2.x - p1.x) + t * t * (p3.x - p2.x)),
+    y: 3 * (u * u * (p1.y - p0.y) + 2 * u * t * (p2.y - p1.y) + t * t * (p3.y - p2.y)),
+  };
+  return Math.hypot(tangent.x, tangent.y) < 1e-9 ? chord : tangent;
+}
+
 // The point on the centerline. Read live and never stored: a stored coordinate
 // drifts the moment the segment is redrawn.
 export function getSkeletonInsertionPosition(contour, insertion) {

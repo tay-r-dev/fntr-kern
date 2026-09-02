@@ -10,6 +10,7 @@ import { offsetCubicSide } from "./offset-cubic.js";
 import {
   applyInsertionEasing,
   applyInsertionRatio,
+  sideParameterOnNormal,
   splitSideAtParameter,
 } from "./skeleton-insertions.js";
 import {
@@ -34,6 +35,7 @@ import {
   ribAngleLockReach,
   straightSegmentNormal,
   skeletonSegmentPointAt,
+  skeletonSegmentTangentAt,
 } from "./skeleton-model.js";
 import { shiftTensionsToMean } from "./tunni-calculations.js";
 import { packContour } from "./var-path.js";
@@ -2489,7 +2491,22 @@ function applyOneInsertionToSide(
   if (anchorIndex === null || anchorIndex === undefined) {
     return sidePoints;
   }
-  const cut = splitSideAtParameter(sidePoints, anchorIndex, insertion.t);
+  // The parameter is resolved per side, against the rib rather than against the
+  // side's own length. The two sides of a segment are not the same length: at a
+  // corner one is carried on to the miter and the other is cut back, so the same
+  // parameter reaches a different fraction of each and the bar leans.
+  const center = skeletonSegmentPointAt(segment, insertion.t);
+  const sideParameter = sideParameterOnNormal(
+    sidePoints,
+    anchorIndex,
+    center,
+    skeletonSegmentTangentAt(segment, insertion.t)
+  );
+  const cut = splitSideAtParameter(
+    sidePoints,
+    anchorIndex,
+    sideParameter === null ? insertion.t : sideParameter
+  );
   if (!cut) {
     return sidePoints;
   }
@@ -2545,12 +2562,7 @@ function applyOneInsertionToSide(
   // point at the same parameter. The reference is the stroke as the solve drew
   // it, which is why sliding the point along a tapering stroke changes nothing.
   const ratio = side === "left" ? insertion.width.left : insertion.width.right;
-  const moved = applyInsertionRatio(
-    points,
-    at,
-    skeletonSegmentPointAt(segment, insertion.t),
-    ratio
-  );
+  const moved = applyInsertionRatio(points, at, center, ratio);
   return applyInsertionEasing(moved, at, insertion.easing);
 }
 

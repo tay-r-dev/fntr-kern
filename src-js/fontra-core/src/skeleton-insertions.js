@@ -18,6 +18,94 @@ export const SPLIT_MAX_PARAMETER = 1 - 1e-9;
 // end tangent is whatever the far handle says, which is not a corner.
 export const INSERTION_STUB_LENGTH = 1;
 
+// How many halvings the per-side parameter search takes. Fixed on purpose: a
+// search that picks its own trip count cannot be continuous in its input, and
+// this runs on every frame of a slide.
+const NORMAL_SEARCH_TRIPS = 40;
+
+/**
+ * Where on one side the rib at a centerline point lands.
+ *
+ * Not the source parameter. The two sides of a segment are not the same length:
+ * at a corner the outer side is carried on to the miter and the inner side is
+ * cut back, so the same parameter reaches a different fraction of each. The rib
+ * then leans, by eleven degrees on the stem of an F.
+ *
+ * The answer is the parameter at which the side crosses the line through the
+ * centerline point at right angles to the centerline. That is what a rib is, so
+ * the bar comes out normal to the centerline on both sides, at a corner as
+ * anywhere else. On a plain parallel offset it is the source parameter exactly.
+ *
+ * @param {Array} sidePoints - the side's emitted points
+ * @param {number} anchorIndex - index of the on-curve the piece starts at
+ * @param {Object} center - the centerline point
+ * @param {Object} tangent - the centerline direction there, any length
+ * @returns {number|null} the parameter, or null where the side has no piece
+ */
+export function sideParameterOnNormal(sidePoints, anchorIndex, center, tangent) {
+  const piece = sidePiece(sidePoints, anchorIndex);
+  const direction = normalize(tangent);
+  if (!piece || !direction || !center) {
+    return null;
+  }
+  // How far along the centerline the side sits at this parameter. Zero is on
+  // the rib. It runs from one sign to the other across a piece that spans the
+  // rib, which is what makes the halving exact.
+  const along = (u) => {
+    const at = evaluatePiece(piece, u);
+    return (at.x - center.x) * direction.x + (at.y - center.y) * direction.y;
+  };
+  let low = 0;
+  let high = 1;
+  const atLow = along(low);
+  if (atLow * along(high) > 0) {
+    // The rib does not cross this piece at all. The nearer end is the honest
+    // answer: the point collapses onto it rather than disappearing.
+    return Math.abs(atLow) <= Math.abs(along(high)) ? 0 : 1;
+  }
+  for (let trip = 0; trip < NORMAL_SEARCH_TRIPS; trip++) {
+    const middle = (low + high) / 2;
+    if (along(middle) * atLow <= 0) {
+      high = middle;
+    } else {
+      low = middle;
+    }
+  }
+  return (low + high) / 2;
+}
+
+// The four or two points of the piece a side starts at an on-curve, or null.
+function sidePiece(sidePoints, anchorIndex) {
+  if (!Array.isArray(sidePoints) || !Number.isInteger(anchorIndex)) {
+    return null;
+  }
+  const start = sidePoints[anchorIndex];
+  if (!start || start.type) {
+    return null;
+  }
+  for (let i = anchorIndex + 1; i < sidePoints.length; i++) {
+    if (!sidePoints[i].type) {
+      const handles = sidePoints.slice(anchorIndex + 1, i);
+      if (handles.length !== 0 && handles.length !== 2) {
+        return null;
+      }
+      return [start, ...handles, sidePoints[i]];
+    }
+  }
+  return null;
+}
+
+function evaluatePiece(piece, u) {
+  if (piece.length === 2) {
+    return lerp(piece[0], piece[1], u);
+  }
+  const [p0, p1, p2, p3] = piece;
+  const a = lerp(p0, p1, u);
+  const b = lerp(p1, p2, u);
+  const c = lerp(p2, p3, u);
+  return lerp(lerp(a, b, u), lerp(b, c, u), u);
+}
+
 /**
  * Cut one side's emitted geometry at a source parameter.
  *
