@@ -13,11 +13,14 @@ import {
   getGeneratedSegmentCurvature,
   getSkeletonData,
   getSkeletonHandleOffset,
+  getSkeletonInsertionPosition,
+  getSkeletonInsertionRibPosition,
   getSkeletonRibEndpoints,
   isSkeletonSideLocked,
   isSkeletonSideLockedAtAll,
   makeEditableGeneratedHandleKey,
   makeEditableGeneratedPointKey,
+  makeSkeletonInsertionKey,
   makeSkeletonRibKey,
 } from "@fontra/core/skeleton-model.js";
 import {
@@ -177,6 +180,19 @@ function getRibPoints(contour, pointIndex, outline) {
   };
 }
 
+// An insertion point's two rib ends, both read off the drawn outline through the
+// one reader. Null where the outline has not been generated yet, in which case
+// nothing is drawn: an insertion point states a ratio of a width the skeleton
+// never states between two ribs, so there is nothing to reconstruct it from.
+function getInsertionRibPoints(contour, insertion, outline) {
+  const left = getSkeletonInsertionRibPosition(outline, contour, insertion, "left");
+  const right = getSkeletonInsertionRibPosition(outline, contour, insertion, "right");
+  if (!left || !right) {
+    return null;
+  }
+  return { center: getSkeletonInsertionPosition(contour, insertion), left, right };
+}
+
 function getSkeletonRibSelectionSets(model) {
   return {
     selected: new Set(
@@ -189,6 +205,13 @@ function getSkeletonRibSelectionSets(model) {
         (item) => `skeletonRib/${item}`
       )
     ),
+  };
+}
+
+function getSkeletonInsertionSelectionSets(model) {
+  return {
+    selected: new Set(parseSelection(model.selection).skeletonInsertion || []),
+    hovered: new Set(parseSelection(model.hoverSelection).skeletonInsertion || []),
   };
 }
 
@@ -393,6 +416,12 @@ registerVisualizationLayerDefinition({
         const rib = getRibPoints(contour, pointIndex, outline);
         strokeLine(context, rib.left.x, rib.left.y, rib.right.x, rib.right.y);
       }
+      for (const insertion of contour.insertions || []) {
+        const rib = getInsertionRibPoints(contour, insertion, outline);
+        if (rib) {
+          strokeLine(context, rib.left.x, rib.left.y, rib.right.x, rib.right.y);
+        }
+      }
     });
   },
 });
@@ -438,6 +467,7 @@ registerVisualizationLayerDefinition({
   },
   draw: (context, positionedGlyph, parameters, model) => {
     const ribSelection = getSkeletonRibSelectionSets(model);
+    const insertionSelection = getSkeletonInsertionSelectionSets(model);
     context.lineWidth = parameters.strokeWidth;
     forEachSkeletonContour(positionedGlyph, model, (contour, outline) => {
       for (const pointIndex of getOnCurvePointIndices(contour)) {
@@ -470,6 +500,53 @@ registerVisualizationLayerDefinition({
           if (locked) {
             drawSideLockMarks(context, parameters, point, rib[side], side);
           }
+        }
+      }
+      // An insertion point's ribs draw on this same layer, because they are
+      // ribs and a designer reading the drawing should see them as ribs. The
+      // centerline marker is a hollow ring rather than a filled diamond, which
+      // is the one difference that says an insertion point does not bend the
+      // centerline it stands on.
+      for (const insertion of contour.insertions || []) {
+        const rib = getInsertionRibPoints(contour, insertion, outline);
+        if (!rib) {
+          continue;
+        }
+        for (const side of ["left", "right"]) {
+          if (contour.singleSided && contour.singleSided !== side) {
+            continue;
+          }
+          const key = makeSkeletonRibKey(contour.id, insertion.id, side);
+          const color = ribSelection.selected.has(key)
+            ? parameters.endpointSelectedColor
+            : ribSelection.hovered.has(key)
+              ? parameters.endpointHoverColor
+              : parameters.endpointColor;
+          context.strokeStyle = color;
+          context.fillStyle = color;
+          drawDiamondNode(
+            context,
+            rib[side],
+            parameters.endpointSize,
+            ribSelection.selected.has(key)
+          );
+        }
+        if (rib.center) {
+          const key = makeSkeletonInsertionKey(contour.id, insertion.id);
+          context.strokeStyle = insertionSelection.selected.has(key)
+            ? parameters.endpointSelectedColor
+            : insertionSelection.hovered.has(key)
+              ? parameters.endpointHoverColor
+              : parameters.endpointColor;
+          context.beginPath();
+          context.arc(
+            rib.center.x,
+            rib.center.y,
+            parameters.endpointSize / 2,
+            0,
+            2 * Math.PI
+          );
+          context.stroke();
         }
       }
     });
