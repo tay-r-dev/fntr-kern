@@ -818,6 +818,18 @@ describe("splitSideAtParameter", () => {
     expect(JSON.stringify(side)).to.equal(before);
   });
 
+  it("carries the outer handles' construction axis onto the outer pieces", () => {
+    // The smoothing pass estimates a missing axis from the handle's length and
+    // rotates it. A rotated handle draws a different curve, which is the one
+    // thing the split may not do.
+    const side = cubicSide();
+    side[1]._axis = { x: 1, y: 0 };
+    side[2]._axis = { x: -1, y: 0 };
+    const result = splitSideAtParameter(side, 0, 0.4);
+    expect(result.points[1]._axis).to.deep.equal({ x: 1, y: 0 });
+    expect(result.points[5]._axis).to.deep.equal({ x: -1, y: 0 });
+  });
+
   it("returns null where the anchor names no segment", () => {
     expect(splitSideAtParameter(cubicSide(), 3, 0.5)).to.equal(null);
     expect(splitSideAtParameter([], 0, 0.5)).to.equal(null);
@@ -911,6 +923,17 @@ export function splitSideAtParameter(sidePoints, anchorIndex, t) {
       ? splitCubic(start, handles[0], handles[1], end, parameter)
       : splitLine(start, end, parameter);
 
+  // The two OUTER pieces keep the originals' construction axis and provenance.
+  // The smoothing pass runs after this split, and where it finds a handle with
+  // no axis it estimates one from the handle's length — which rotates it, and
+  // rotating a handle here would change the curve the split promised not to
+  // change. De Casteljau puts the outer pieces on the same two lines as the
+  // originals, so the axis they were stamped with is still the true one.
+  if (handles.length === 2) {
+    carryHandleMetadata(cut[0], handles[0]);
+    carryHandleMetadata(cut[4], handles[1]);
+  }
+
   const points = [
     ...sidePoints.slice(0, anchorIndex + 1),
     ...cut,
@@ -922,6 +945,17 @@ export function splitSideAtParameter(sidePoints, anchorIndex, t) {
     start,
     end,
   };
+}
+
+// Everything a later stage reads off a handle and cannot re-derive: the axis it
+// was constructed on, and who owns it. Copied by reference to the fields the
+// generator publishes, so this module still knows nothing about what they mean.
+function carryHandleMetadata(target, source) {
+  for (const field of ["_axis", "_provenance", "_handleNudge", "_authoredAdjustment"]) {
+    if (source[field] !== undefined) {
+      target[field] = source[field];
+    }
+  }
 }
 
 function lerp(a, b, t) {
