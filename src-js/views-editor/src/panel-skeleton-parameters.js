@@ -55,7 +55,7 @@ import {
   setPanelPointTotalWidth,
   editSelectedSkeletonInsertions,
   insertionRatioToUnits,
-  insertionWidthReference,
+  insertionWidthReferenceFromSkeleton,
   setInsertionEasing,
   setInsertionRatioFromUnits,
   setInsertionWidthLinked,
@@ -374,23 +374,6 @@ export default class SkeletonParametersPanel extends Panel {
 
   // Mirror scene-model._getEditLayerSkeletonData: the panel edits and displays
   // the edit layer, whose ids are canonical for cross-layer resolution (WS-9).
-  // The edit layer's glyph itself, not just its skeleton. The insertion point's
-  // width is a ratio of what the outline draws, so reading it back in units
-  // needs the path as well as the skeleton.
-  _getEditLayerGlyph() {
-    const positionedGlyph = this._getPositionedGlyph();
-    if (!positionedGlyph) {
-      return null;
-    }
-    const editLayerName =
-      this.sceneSettingsController.model?.editLayerName ||
-      positionedGlyph.glyph?.layerName;
-    return (
-      (editLayerName &&
-        positionedGlyph.varGlyph?.glyph?.layers?.[editLayerName]?.glyph) ||
-      positionedGlyph.glyph
-    );
-  }
 
   _getEditLayerSkeletonData(positionedGlyph) {
     if (!positionedGlyph) {
@@ -1309,31 +1292,23 @@ export default class SkeletonParametersPanel extends Panel {
 
   // The half-width the stroke draws where one insertion point stands.
   //
-  // There are two glyphs carrying the drawn outline: the source layer being
-  // edited and the instance the canvas shows. They agree in an ordinary
-  // single-master font and can differ elsewhere, so both are tried rather than
-  // one being assumed. The display, the scrub and the typed value all come
-  // through here, so the number shown and the number written cannot disagree.
+  // Measured from the skeleton, which the panel already holds, rather than from
+  // the drawn path, which it has to go looking for among more than one glyph.
+  // The generator is what draws that path, so generating it here answers the
+  // question outright and no lookup can pick the wrong glyph. The display, the
+  // scrub and the typed value all come through here, so the number shown and
+  // the number written cannot disagree.
   _insertionReference(entry, side) {
-    for (const layerGlyph of [
-      this._getEditLayerGlyph(),
-      this._getPositionedGlyph()?.glyph,
-    ]) {
-      if (!layerGlyph?.path) {
-        continue;
-      }
-      const reference = insertionWidthReference(
-        getSkeletonData(layerGlyph),
-        layerGlyph.path,
-        entry.contourId,
-        entry.insertionId,
-        side
-      );
-      if (reference > 0) {
-        return reference;
-      }
+    const skeletonData = this._getEditLayerSkeletonData(this._getPositionedGlyph());
+    if (!skeletonData) {
+      return null;
     }
-    return null;
+    return insertionWidthReferenceFromSkeleton(
+      skeletonData,
+      entry.contourId,
+      entry.insertionId,
+      side
+    );
   }
 
   // The easing slider reads percent and the model stores 0 to 1.

@@ -25,6 +25,7 @@ import {
   getSkeletonData,
   getSkeletonHandleOffset,
   getSkeletonInsertion,
+  getSkeletonInsertionPosition,
   getSkeletonHandleOffsetKey,
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
@@ -373,6 +374,47 @@ export function insertionWidthReference(
     side
   );
   return executor ? executor.reference : null;
+}
+
+// The same reference, measured from the skeleton alone.
+//
+// The panel has the skeleton in hand and has to go looking for the glyph that
+// carries the drawn outline, and there is more than one candidate. Generating
+// the outline here answers the question outright: the generator is what draws
+// the path in the first place, so what it returns is the path, and no lookup
+// can pick the wrong one.
+export function insertionWidthReferenceFromSkeleton(
+  skeletonData,
+  contourId,
+  insertionId,
+  side
+) {
+  const contour = getSkeletonContour(skeletonData, contourId);
+  const insertion = getSkeletonInsertion(skeletonData, contourId, insertionId);
+  if (!contour || !insertion) {
+    return null;
+  }
+  const generated = generateFromSkeleton(skeletonData);
+  const entry = (generated.provenance || []).find(
+    (candidate) => candidate.skeletonContourId === contourId
+  );
+  if (!entry) {
+    return null;
+  }
+  const index = (entry.pointMap || []).findIndex(
+    (provenance) =>
+      provenance?.skeletonPointId === insertionId &&
+      provenance.side === side &&
+      provenance.role === "onCurve"
+  );
+  const emitted = generated.contours?.[entry.generatedContourIndex]?.points?.[index];
+  const center = getSkeletonInsertionPosition(contour, insertion);
+  if (index < 0 || !emitted || !center) {
+    return null;
+  }
+  const distance = Math.hypot(emitted.x - center.x, emitted.y - center.y);
+  const ratio = insertion.width[side];
+  return distance > 1e-9 && ratio > 0 ? distance / ratio : null;
 }
 
 export function insertionUnitsToRatio(reference, units) {
