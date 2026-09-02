@@ -954,10 +954,11 @@ registerVisualizationLayerDefinition({
 });
 
 // What the skeleton pen has under the pointer, and what a click would do with
-// it. Three marks, because the pen has three answers: a ring with a filled
-// centre closes the contour, a plain ring resumes drawing from that end, and a
-// dashed ring says the point can only be selected - the pen cannot draw on from
-// the middle of a contour.
+// it. Four marks, because the pen has four answers: a ring with a filled centre
+// closes the contour, a plain ring resumes drawing from that end, a dashed ring
+// says the point can only be selected - the pen cannot draw on from the middle
+// of a contour - and a small ring on the centerline says W will put an
+// insertion point there.
 registerVisualizationLayerDefinition({
   identifier: "fontra.skeleton.pen-hover",
   name: "Skeleton pen hover",
@@ -989,8 +990,12 @@ registerVisualizationLayerDefinition({
     if (isInert) {
       context.setLineDash([parameters.dashLength, parameters.dashLength]);
     }
+    // The insertion mark is the ring the point itself is drawn with, so what
+    // the hover promises and what lands are the same shape.
+    const ringSize =
+      target.kind === "insertion" ? parameters.dotSize * 2 : parameters.ringSize;
     context.beginPath();
-    context.arc(target.x, target.y, parameters.ringSize / 2, 0, 2 * Math.PI, false);
+    context.arc(target.x, target.y, ringSize / 2, 0, 2 * Math.PI, false);
     context.stroke();
     context.restore();
     if (target.kind === "close") {

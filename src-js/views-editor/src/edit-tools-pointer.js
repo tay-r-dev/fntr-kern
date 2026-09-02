@@ -1,7 +1,3 @@
-import {
-  eventMatchesActionBaseKey,
-  eventMatchesActionShortCut,
-} from "@fontra/core/actions.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import {
   ChangeCollector,
@@ -49,6 +45,7 @@ import { handlesEqual } from "./edit-tools-pen.js";
 import { deleteMarkers, handleMarkerDrag } from "./marker-editing.js";
 import { MeasureInteraction } from "./measure-interactions.js";
 import { getPinPoint } from "./panel-transformation.js";
+import { RealtimeModifierModes } from "./realtime-modifiers.js";
 import { equalGlyphSelection } from "./scene-controller.js";
 import {
   createEditableGeneratedHandleTargetEntries,
@@ -144,13 +141,11 @@ export class PointerTool extends BaseTool {
   constructor(...args) {
     super(...args);
     this.measureInteraction = new MeasureInteraction(this);
-    this.tangentRibMode = false;
-    this.fixedRibMode = false;
-    this.fixedRibCompressMode = false;
-    this.tensionAwareMode = false;
-    this.independentRibMode = false;
-    this._realtimeModifierKeyUpHandlers = new Map();
-    this._boundRealtimeModifierWindowBlur = null;
+    // Z, D, S, A and X: each turns a mode on for as long as its key is held.
+    this._realtimeModifiers = new RealtimeModifierModes(
+      this,
+      REALTIME_MODIFIER_ACTIONS
+    );
   }
 
   handleHover(event) {
@@ -1384,7 +1379,7 @@ export class PointerTool extends BaseTool {
     if (this.measureInteraction.handleKeyDown(event)) {
       return;
     }
-    if (this._handleRealtimeModifierKeyDown(event)) {
+    if (this._realtimeModifiers.handleKeyDown(event)) {
       event.preventDefault();
       return;
     }
@@ -1447,80 +1442,6 @@ export class PointerTool extends BaseTool {
         : 0;
 
     this.sceneSettings.selection = new Set([`${selectionType}/${newIndex}`]);
-  }
-
-  _handleRealtimeModifierKeyDown(event) {
-    const modifier = REALTIME_MODIFIER_ACTIONS.find((modifier) =>
-      eventMatchesActionShortCut(modifier.action, event)
-    );
-    if (!modifier) {
-      return false;
-    }
-    if (!this[modifier.modeProperty]) {
-      this[modifier.modeProperty] = true;
-      const keyUpHandler = (e) => this._handleRealtimeModifierKeyUp(e, modifier.action);
-      this._realtimeModifierKeyUpHandlers.set(modifier.action, keyUpHandler);
-      window.addEventListener("keyup", keyUpHandler);
-      if (!this._boundRealtimeModifierWindowBlur) {
-        this._boundRealtimeModifierWindowBlur = () =>
-          this._endAllRealtimeModifierModes();
-        window.addEventListener("blur", this._boundRealtimeModifierWindowBlur);
-      }
-      this.canvasController.requestUpdate();
-    }
-    return true;
-  }
-
-  _handleRealtimeModifierKeyUp(event, action) {
-    if (eventMatchesActionBaseKey(action, event)) {
-      this._endRealtimeModifierMode(action);
-    }
-  }
-
-  _endRealtimeModifierMode(action) {
-    const modifier = REALTIME_MODIFIER_ACTIONS.find(
-      (modifier) => modifier.action === action
-    );
-    if (!modifier || !this[modifier.modeProperty]) {
-      return;
-    }
-    this[modifier.modeProperty] = false;
-    const keyUpHandler = this._realtimeModifierKeyUpHandlers.get(action);
-    if (keyUpHandler) {
-      window.removeEventListener("keyup", keyUpHandler);
-      this._realtimeModifierKeyUpHandlers.delete(action);
-    }
-    this._removeRealtimeModifierBlurHandlerIfIdle();
-    this.canvasController.requestUpdate();
-  }
-
-  _endAllRealtimeModifierModes() {
-    let changed = false;
-    for (const modifier of REALTIME_MODIFIER_ACTIONS) {
-      if (this[modifier.modeProperty]) {
-        this[modifier.modeProperty] = false;
-        changed = true;
-      }
-      const keyUpHandler = this._realtimeModifierKeyUpHandlers.get(modifier.action);
-      if (keyUpHandler) {
-        window.removeEventListener("keyup", keyUpHandler);
-      }
-    }
-    this._realtimeModifierKeyUpHandlers.clear();
-    this._removeRealtimeModifierBlurHandlerIfIdle();
-    if (changed) {
-      this.canvasController.requestUpdate();
-    }
-  }
-
-  _removeRealtimeModifierBlurHandlerIfIdle() {
-    if (
-      this._boundRealtimeModifierWindowBlur &&
-      !this._realtimeModifierKeyUpHandlers.size
-    ) {
-      window.removeEventListener("blur", this._boundRealtimeModifierWindowBlur);
-      this._boundRealtimeModifierWindowBlur = null;
-    }
   }
 
   activate() {

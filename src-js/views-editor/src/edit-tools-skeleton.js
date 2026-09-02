@@ -3,6 +3,7 @@ import { translate } from "@fontra/core/localization.js";
 import {
   DEFAULT_SKELETON_WIDTH,
   appendSkeletonContour,
+  appendSkeletonInsertion,
   appendSkeletonPoint,
   closeSkeletonContour,
   getDefaultSkeletonWidthKeyForGlyphName,
@@ -16,10 +17,12 @@ import * as vector from "@fontra/core/vector.js";
 import { Bezier } from "bezier-js";
 import { BaseTool } from "./edit-tools-base.js";
 import { shiftConstrainPoint } from "./edit-tools-pen.js";
+import { RealtimeModifierModes } from "./realtime-modifiers.js";
 import {
   editSkeleton,
   getSkeletonPointAddress,
   hasSkeletonPointSelection,
+  makeSkeletonInsertionKey,
   makeSkeletonPointKey,
   parseSkeletonPointKey,
   resolveSkeletonAddressAcrossLayers,
@@ -34,9 +37,38 @@ export class SkeletonPenTools {
   subTools = [SkeletonPenTool, SkeletonPenToolSingleSided];
 }
 
+// W turns on insertion-point placement for as long as it is held, the way Z
+// and D do on the pointer tool. Alt is already the handle insert on this same
+// click and Shift is the angle constraint, so the third thing to place at a
+// centerline hit takes a letter.
+const REALTIME_INSERTION_POINT_ACTION = "action.realtime.insertion-point";
+
+const SKELETON_PEN_REALTIME_ACTIONS = [
+  {
+    action: REALTIME_INSERTION_POINT_ACTION,
+    modeProperty: "insertionPointMode",
+  },
+];
+
 export class SkeletonPenTool extends BaseTool {
   iconPath = "/images/skeleton-pen.svg";
   identifier = "skeleton-pen-tool-standard";
+
+  constructor(...args) {
+    super(...args);
+    this._realtimeModifiers = new RealtimeModifierModes(
+      this,
+      SKELETON_PEN_REALTIME_ACTIONS
+    );
+  }
+
+  handleKeyDown(event) {
+    if (this._realtimeModifiers.handleKeyDown(event)) {
+      event.preventDefault();
+      return true;
+    }
+    return super.handleKeyDown(event);
+  }
 
   // Which side a new contour puts its width on, or null for both. Everything
   // else about the two pens is identical, so this is the whole of the subclass
@@ -196,6 +228,19 @@ export class SkeletonPenTool extends BaseTool {
   // "select" selects a point the pen cannot draw on from. Without this the
   // designer only finds out by clicking, and the click has already committed.
   _getPenPointHoverTarget(event) {
+    // While W is held the pen places an insertion point, so the mark says where
+    // on the centerline the click would put one. It wins over the point marks
+    // below: with W down, a click on the centerline does this and nothing else.
+    if (this.insertionPointMode) {
+      const centerlineHit = this._hitTestSkeletonCenterline(event);
+      return centerlineHit?.point
+        ? {
+            x: centerlineHit.point.x,
+            y: centerlineHit.point.y,
+            kind: "insertion",
+          }
+        : null;
+    }
     const hit = this._hitTestSkeletonPoint(event);
     if (!hit) {
       return null;
@@ -249,7 +294,11 @@ export class SkeletonPenTool extends BaseTool {
   // visualization layer.
   _updateInsertHandlesPreview(event) {
     let preview = null;
-    if (event.altKey && !this._hitTestSkeletonPoint(event)) {
+    if (
+      event.altKey &&
+      !this.insertionPointMode &&
+      !this._hitTestSkeletonPoint(event)
+    ) {
       const centerlineHit = this._hitTestSkeletonCenterline(event);
       if (centerlineHit?.isLineSegment) {
         const skeletonData = this._getEditLayerSkeletonData();
@@ -331,7 +380,9 @@ export class SkeletonPenTool extends BaseTool {
         await this._handleAddSkeletonPoint(eventStream, initialEvent);
         return;
       }
-      if (initialEvent.altKey && centerlineHit.isLineSegment) {
+      if (this.insertionPointMode) {
+        await this._handleAddInsertionPoint(centerlineHit);
+      } else if (initialEvent.altKey && centerlineHit.isLineSegment) {
         await this._handleInsertSkeletonHandles(centerlineHit);
       } else {
         await this._handleInsertSkeletonPoint(centerlineHit);
@@ -780,6 +831,33 @@ export class SkeletonPenTool extends BaseTool {
     };
   }
 
+  // One insertion point, on the segment under the cursor, at the parameter the
+  // cursor landed at. It changes the centerline in no way: the point stores the
+  // segment's start id and that parameter, and the generator cuts the emitted
+  // curve rather than the curve the designer drew.
+  async _handleAddInsertionPoint(centerlineHit) {
+    await this._editSkeletonAcrossLayers(
+      translate("edit-tools-skeleton.undo.insert-insertion-point"),
+      (working, referenceSkeletonData) => {
+        const seg = this._locateHitSegment(
+          working,
+          referenceSkeletonData,
+          centerlineHit
+        );
+        if (!seg) {
+          return null;
+        }
+        const { contour, startIndex } = seg;
+        const startPoint = contour.points[startIndex];
+        const insertion = appendSkeletonInsertion(working, contour.id, {
+          pointId: startPoint.id,
+          t: centerlineHit.t,
+        });
+        return insertion ? [makeSkeletonInsertionKey(contour.id, insertion.id)] : null;
+      }
+    );
+  }
+
   async _handleInsertSkeletonPoint(centerlineHit) {
     await this._editSkeletonAcrossLayers(
       translate("edit-tools-skeleton.undo.insert-point"),
@@ -1066,6 +1144,9 @@ export class SkeletonPenTool extends BaseTool {
 
   deactivate() {
     super.deactivate();
+    // A mode is only on while its key is down, and a tool that is put away
+    // never sees that key come up.
+    this._realtimeModifiers.endAll();
     this._endSnapping();
     delete this.sceneModel.skeletonInsertHandles;
     delete this.sceneModel.skeletonPenHoverTarget;

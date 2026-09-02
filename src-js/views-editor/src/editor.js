@@ -37,6 +37,7 @@ import { isSuperset } from "@fontra/core/set-ops.js";
 import {
   SKELETON_SOURCE_DEFAULT_KEYS,
   allocateSkeletonIds,
+  deleteSkeletonInsertions,
   deleteSkeletonPoints,
   getSkeletonContour,
   getSkeletonData,
@@ -751,6 +752,11 @@ export class EditorController extends ViewController {
         topic,
         titleKey: "shortcuts.realtime.independent-rib",
         defaultShortCuts: [{ baseKey: "a" }],
+      });
+      registerActionInfo("action.realtime.insertion-point", {
+        topic,
+        titleKey: "shortcuts.realtime.insertion-point",
+        defaultShortCuts: [{ baseKey: "w" }],
       });
       registerActionInfo("action.realtime.snap-diagonals-only", {
         topic,
@@ -2534,6 +2540,7 @@ export class EditorController extends ViewController {
       guideline: guidelineSelection,
       backgroundImage: backgroundImageSelection,
       skeletonPoint: skeletonPointKeys,
+      skeletonInsertion: skeletonInsertionKeys,
       //fontGuideline: fontGuidelineSelection,
     } = parseSelection(this.sceneController.selection);
     // Markers are deleted through their own write path, not through the path edit.
@@ -2615,6 +2622,20 @@ export class EditorController extends ViewController {
         // Skeleton points delete through the one write path (WS-9 editSkeleton),
         // which regenerates the generated contours. Selection ids are canonical in
         // the edit layer; other layers resolve by structural ordinal (WS-9).
+        // An insertion point deletes with the same keystroke, in the same
+        // change, so a mixed selection is one undo step. It leaves no survivor
+        // to select: nothing on the centerline moves when one goes.
+        if (skeletonInsertionKeys?.length) {
+          const doomed = new Set(skeletonInsertionKeys.map((key) => `${key}`));
+          for (const layerGlyph of Object.values(layerGlyphs)) {
+            if (!getSkeletonData(layerGlyph)) {
+              continue;
+            }
+            editSkeleton(layerGlyph, (working) => {
+              deleteSkeletonInsertions(working, doomed);
+            });
+          }
+        }
         let survivorSelection = null;
         if (skeletonPointKeys?.length && !event.altKey) {
           const editLayerName = this.sceneController.sceneSettings.editLayerName;
