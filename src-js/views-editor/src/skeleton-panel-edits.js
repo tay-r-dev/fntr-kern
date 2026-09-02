@@ -499,16 +499,23 @@ export function setInsertionRatioFromUnits(insertion, side, reference, units) {
   }
 }
 
-export function setInsertionEasing(insertion, easing) {
-  insertion.easing = Math.min(1, Math.max(0, Number(easing) || 0));
+export function setInsertionEasing(insertion, side, easing) {
+  const value = Math.min(1, Math.max(-1, Number(easing) || 0));
+  insertion.easing[side] = value;
+  if (insertion.width.linked !== false) {
+    insertion.easing[side === "left" ? "right" : "left"] = value;
+  }
 }
 
 export function setInsertionWidthLinked(insertion, linked) {
   insertion.width.linked = linked !== false;
   if (insertion.width.linked) {
-    // Linking states that the two sides are one number. The left one wins, the
-    // same choice the point's own link makes.
+    // Linking states that the two sides are one point. The left one wins, the
+    // same choice the point's own link makes. Easing goes with the width:
+    // unlinking a point that is fat on one side and lean on the other has to
+    // let the two sides curve differently as well.
     insertion.width.right = insertion.width.left;
+    insertion.easing.right = insertion.easing.left;
   }
 }
 

@@ -1365,7 +1365,7 @@ export function normalizeSkeletonInsertion(
     pointId: Number.isInteger(insertion?.pointId) ? insertion.pointId : null,
     t: Math.min(1, Math.max(0, asFiniteNumber(insertion?.t, 0.5))),
     width: normalizeInsertionWidth(insertion?.width),
-    easing: Math.min(1, Math.max(0, asFiniteNumber(insertion?.easing, 0))),
+    easing: normalizeInsertionEasing(insertion?.easing),
   };
 }
 
@@ -4332,6 +4332,23 @@ function maxUsedId(usedIds) {
 // shape the slide exists not to change. A ratio slides and changes nothing.
 // There is no `tied` flag: an insertion point never opts a straight out of its
 // tie, and the straight's own two ends already carry that flag.
+// Easing runs from minus one to one, per side, and zero is the middle. Below
+// zero the joint tightens toward a point and above it fills out. It is a pair
+// like the width because the link governs both: unlinking a point that is fat
+// on one side and lean on the other has to let the two sides curve differently
+// as well, or half the statement is lost.
+//
+// A single number is read as both sides, which is what an insertion point
+// stored before there were two.
+function normalizeInsertionEasing(easing) {
+  const one = (value, fallback) =>
+    Math.min(1, Math.max(-1, asFiniteNumber(value, fallback)));
+  if (typeof easing === "number") {
+    return { left: one(easing, 0), right: one(easing, 0) };
+  }
+  return { left: one(easing?.left, 0), right: one(easing?.right, 0) };
+}
+
 function normalizeInsertionWidth(width) {
   return {
     left: asNonNegativeNumber(width?.left, DEFAULT_INSERTION_RATIO),

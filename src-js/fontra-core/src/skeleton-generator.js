@@ -256,7 +256,7 @@ export function canonicalToGeneratorInput(skeletonData) {
         pointId: entry.pointId,
         t: entry.t,
         width: { ...entry.width },
-        easing: entry.easing,
+        easing: { ...entry.easing },
       })),
     })),
   };
@@ -2563,7 +2563,7 @@ function applyOneInsertionToSide(
   // it, which is why sliding the point along a tapering stroke changes nothing.
   const ratio = side === "left" ? insertion.width.left : insertion.width.right;
   const moved = applyInsertionRatio(points, at, center, ratio);
-  return applyInsertionEasing(moved, at, insertion.easing);
+  return applyInsertionEasing(moved, at, insertion.easing[side]);
 }
 
 /**

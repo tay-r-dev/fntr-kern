@@ -1248,20 +1248,22 @@ export default class SkeletonParametersPanel extends Panel {
         gate
       );
     }
-    // The slider reads percent and the model stores 0 to 1.
-    this._pushSummarySlider(
-      formContents,
-      "insertion:easing",
-      "insertion-easing",
-      {
-        ...summary.easing,
-        value: summary.easing.value == null ? null : summary.easing.value * 100,
-      },
-      0,
-      100,
-      0,
-      { step: 1 }
-    );
+    // One per side, because the link governs easing as well as width. The
+    // slider reads percent and the model stores minus one to one: below zero
+    // the joint tightens toward a point, above it fills out.
+    for (const side of ["left", "right"]) {
+      const value = side === "left" ? summary.easingLeft : summary.easingRight;
+      this._pushSummarySlider(
+        formContents,
+        `insertion:easing-${side}`,
+        `insertion-easing-${side}`,
+        { ...value, value: value.value == null ? null : value.value * 100 },
+        -100,
+        100,
+        0,
+        { step: 1 }
+      );
+    }
   }
 
   // The two width fields read units, so each selected point's stored ratio is
@@ -1312,9 +1314,9 @@ export default class SkeletonParametersPanel extends Panel {
     );
   }
 
-  // The easing slider reads percent and the model stores 0 to 1.
+  // The easing slider reads percent and the model stores minus one to one.
   _insertionEasingFromSlider(value) {
-    return Math.min(1, Math.max(0, Number(value) / 100));
+    return Math.min(1, Math.max(-1, Number(value) / 100));
   }
 
   _buildRibSection(formContents, ribs, derived = false) {
@@ -2162,7 +2164,8 @@ export default class SkeletonParametersPanel extends Panel {
           return;
         }
       }
-      if (valueStream && group === "insertion" && name === "easing") {
+      if (valueStream && group === "insertion" && name.startsWith("easing-")) {
+        const side = name.slice("easing-".length);
         await setPanelInsertionValuesStream(
           this.sceneController,
           this._insertions || [],
@@ -2170,6 +2173,7 @@ export default class SkeletonParametersPanel extends Panel {
           (insertion, contour, streamedValue) =>
             setInsertionEasing(
               insertion,
+              side,
               this._insertionEasingFromSlider(streamedValue)
             ),
           this._undo("set-insertion-easing")
@@ -2299,12 +2303,13 @@ export default class SkeletonParametersPanel extends Panel {
       );
       return;
     }
-    if (name === "easing") {
+    if (name.startsWith("easing-")) {
+      const side = name.slice("easing-".length);
       await editSelectedSkeletonInsertions(
         this.sceneController,
         insertions,
         (insertion) =>
-          setInsertionEasing(insertion, this._insertionEasingFromSlider(value)),
+          setInsertionEasing(insertion, side, this._insertionEasingFromSlider(value)),
         this._undo("set-insertion-easing")
       );
       return;

@@ -2332,7 +2332,7 @@ describe("skeleton insertion points", () => {
       pointId: 11,
       t: 0.5,
       width: { left: 1, right: 1, linked: true },
-      easing: 0,
+      easing: { left: 0, right: 0 },
     });
   });
 
@@ -2343,7 +2343,13 @@ describe("skeleton insertion points", () => {
           id: 10,
           points: [makeSkeletonPoint({ id: 11, x: 0, y: 0 })],
           insertions: [
-            { id: 12, pointId: 11, t: 2, width: { left: 1.5, right: 0.5 }, easing: 3 },
+            {
+              id: 12,
+              pointId: 11,
+              t: 2,
+              width: { left: 1.5, right: 0.5 },
+              easing: { left: 3, right: -3 },
+            },
           ],
         }),
       ],
@@ -2352,7 +2358,10 @@ describe("skeleton insertion points", () => {
     expect(insertion.t).to.equal(1);
     expect(insertion.width.left).to.equal(1.5);
     expect(insertion.width.right).to.equal(0.5);
-    expect(insertion.easing).to.equal(1);
+    expect(insertion.easing.left).to.equal(1);
+    // Below zero the joint tightens rather than filling out, so minus one is a
+    // setting and not an error to clamp away.
+    expect(insertion.easing.right).to.equal(-1);
   });
 
   it("allocates an insertion id from the same counter points use", () => {

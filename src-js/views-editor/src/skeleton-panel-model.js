@@ -625,7 +625,12 @@ export function summarizeSkeletonInsertionSelection(selectedInsertions) {
     linked: reduceValues(
       selectedInsertions.map((entry) => entry.insertion.width.linked !== false)
     ),
-    easing: reduceValues(selectedInsertions.map((entry) => entry.insertion.easing)),
+    easingLeft: reduceValues(
+      selectedInsertions.map((entry) => entry.insertion.easing.left)
+    ),
+    easingRight: reduceValues(
+      selectedInsertions.map((entry) => entry.insertion.easing.right)
+    ),
   };
 }
 
@@ -682,7 +687,7 @@ export function makeSkeletonPanelStateSignature({
     }
     for (const entry of panelSelection.insertions || []) {
       parts.push(
-        `i:${entry.contourId}/${entry.insertionId}:${entry.insertion.t}:${JSON.stringify(entry.insertion.width)}:${entry.insertion.easing}`
+        `i:${entry.contourId}/${entry.insertionId}:${entry.insertion.t}:${JSON.stringify(entry.insertion.width)}:${JSON.stringify(entry.insertion.easing)}`
       );
     }
     for (const entry of panelSelection.contours) {

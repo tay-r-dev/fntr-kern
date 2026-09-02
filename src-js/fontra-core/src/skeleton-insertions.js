@@ -404,17 +404,20 @@ export function applyInsertionEasing(points, insertedIndex, easing) {
       eased[index] = stretchToward(
         handle,
         at,
-        easing,
-        tensionLimit(points, insertedIndex, step)
+        Math.abs(easing),
+        easing < 0 ? 0 : tensionLimit(points, insertedIndex, step)
       );
       continue;
     }
+    // Below zero there is no corner to open, only a handle to pull in, so the
+    // turn takes the positive part alone.
     eased[index] = turnToward(
       handle,
       at,
       step < 0 ? { x: -chord.x, y: -chord.y } : chord,
-      easing,
-      smoothHandleLength(points, insertedIndex, step)
+      Math.max(0, easing),
+      Math.abs(easing),
+      easing < 0 ? 0 : smoothHandleLength(points, insertedIndex, step)
     );
   }
   // The two handles on the far side of the joint answer to easing as well: a
@@ -429,10 +432,13 @@ export function applyInsertionEasing(points, insertedIndex, easing) {
     if (!outer?.type || !anchor) {
       continue;
     }
+    // The positive side only. Pulling a neighbour's handle to nothing would
+    // take away the direction a smooth on-curve at the end of the piece is held
+    // colinear with, which is the collinearity a cut straight exists to keep.
     eased[outerIndex] = stretchToward(
       outer,
       anchor,
-      easing,
+      Math.max(0, easing),
       Math.hypot(anchor.x - at.x, anchor.y - at.y) / 3
     );
   }
@@ -514,7 +520,8 @@ function neighbouringOnCurve(points, index, step) {
 // length a smooth joint would give it by the same fraction. At zero it is left
 // exactly as it was, which is the identity the whole feature rests on. At one it
 // lies on the shared line at the length any other curve here would use.
-function turnToward(handle, anchor, direction, fraction, smoothLength) {
+function turnToward(handle, anchor, direction, turn, reach, smoothLength) {
+  const fraction = turn;
   const current = { x: handle.x - anchor.x, y: handle.y - anchor.y };
   const length = Math.hypot(current.x, current.y);
   // A collapsed handle states no direction, so it takes the one it was built
@@ -535,7 +542,7 @@ function turnToward(handle, anchor, direction, fraction, smoothLength) {
     return handle;
   }
   const eased =
-    smoothLength === null ? length : length + (smoothLength - length) * fraction;
+    smoothLength === null ? length : length + (smoothLength - length) * reach;
   return {
     ...handle,
     x: anchor.x + blended.x * eased,
