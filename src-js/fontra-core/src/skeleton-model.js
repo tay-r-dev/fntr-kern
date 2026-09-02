@@ -21,6 +21,7 @@ import {
   calculateContourNormalAtPoint,
   collectCoupledPointGroups,
   cornerRibPlacement,
+  cubicPointAt,
   isStraightControlledSmoothPoint,
   offsetContourAlongNormals,
   straightSegmentNormal,
@@ -1248,6 +1249,89 @@ export function normalizeSkeletonContour(contour, skeletonData = null, usedIds =
   return normalized;
 }
 
+export function getSkeletonInsertion(skeletonData, contourId, insertionId) {
+  const contour = getSkeletonContour(skeletonData, contourId);
+  return contour?.insertions?.find((entry) => entry.id === insertionId) ?? null;
+}
+
+// The segment an insertion point sits on: the one whose START point carries the
+// stored id. Built from the contour's own points, so it is always current.
+export function getSkeletonInsertionSegment(contour, insertion) {
+  if (!contour || !insertion) {
+    return null;
+  }
+  const segments = buildSegmentsFromSkeletonPoints(
+    contour.points || [],
+    contour.closed === true
+  );
+  return (
+    segments.find((segment) => segment.startPoint.id === insertion.pointId) ?? null
+  );
+}
+
+// A segment's point at a source parameter. A straight interpolates. A cubic goes
+// through the one evaluator, in offset-contour.js. Nothing else in this file
+// evaluates a segment.
+export function skeletonSegmentPointAt(segment, t) {
+  const p0 = segment.startPoint;
+  const p3 = segment.endPoint;
+  if (segment.controlPoints?.length !== 2) {
+    return { x: p0.x + (p3.x - p0.x) * t, y: p0.y + (p3.y - p0.y) * t };
+  }
+  const [p1, p2] = segment.controlPoints;
+  return cubicPointAt([p0, p1, p2, p3], t);
+}
+
+// The point on the centerline. Read live and never stored: a stored coordinate
+// drifts the moment the segment is redrawn.
+export function getSkeletonInsertionPosition(contour, insertion) {
+  const segment = getSkeletonInsertionSegment(contour, insertion);
+  return segment ? skeletonSegmentPointAt(segment, insertion.t) : null;
+}
+
+// The parameter nearest a given point. Sixty-four samples, then two bisections
+// around the best one. The trip count is fixed on purpose: a search that picks
+// its own trip count cannot be continuous in its input, and this runs on every
+// frame of a drag.
+const INSERTION_PROJECTION_SAMPLES = 64;
+const INSERTION_PROJECTION_REFINEMENTS = 2;
+
+export function projectSkeletonInsertionParameter(contour, insertion, point) {
+  const segment = getSkeletonInsertionSegment(contour, insertion);
+  if (!segment || !point) {
+    return insertion?.t ?? 0.5;
+  }
+  const distanceAt = (t) => {
+    const at = skeletonSegmentPointAt(segment, t);
+    const dx = at.x - point.x;
+    const dy = at.y - point.y;
+    return dx * dx + dy * dy;
+  };
+  let best = 0;
+  let bestDistance = distanceAt(0);
+  for (let i = 1; i <= INSERTION_PROJECTION_SAMPLES; i++) {
+    const t = i / INSERTION_PROJECTION_SAMPLES;
+    const distance = distanceAt(t);
+    if (distance < bestDistance) {
+      best = t;
+      bestDistance = distance;
+    }
+  }
+  let span = 1 / INSERTION_PROJECTION_SAMPLES;
+  for (let round = 0; round < INSERTION_PROJECTION_REFINEMENTS; round++) {
+    for (const candidate of [best - span / 2, best + span / 2]) {
+      const t = Math.min(1, Math.max(0, candidate));
+      const distance = distanceAt(t);
+      if (distance < bestDistance) {
+        best = t;
+        bestDistance = distance;
+      }
+    }
+    span /= 2;
+  }
+  return best;
+}
+
 // One insertion point. `pointId` names the START point of the segment it sits
 // on, and `t` is the source parameter along that segment. Nothing stores a
 // coordinate: the position is read live from the segment, the way a rib's is.
@@ -1267,6 +1351,28 @@ export function normalizeSkeletonInsertion(
 
 export function makeSkeletonInsertion(data = {}, skeletonData = null) {
   return normalizeSkeletonInsertion(data, skeletonData);
+}
+
+export function appendSkeletonInsertion(skeletonData, contourId, data = {}) {
+  const contour = getSkeletonContour(skeletonData, contourId);
+  if (!contour) {
+    return null;
+  }
+  const insertion = normalizeSkeletonInsertion(data, skeletonData);
+  if (insertion.pointId === null) {
+    return null;
+  }
+  contour.insertions = contour.insertions || [];
+  contour.insertions.push(insertion);
+  return insertion;
+}
+
+export function deleteSkeletonInsertions(skeletonData, keys) {
+  for (const contour of skeletonData?.contours || []) {
+    contour.insertions = (contour.insertions || []).filter(
+      (entry) => !keys.has(`${contour.id}/${entry.id}`)
+    );
+  }
 }
 
 export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = null) {
@@ -1754,6 +1860,15 @@ export function deleteSkeletonPoints(skeletonData, pointRefs) {
       contourIdsToRemove.push(contourId);
     } else {
       contour.points = newPoints;
+      // Deleting a point merges the two segments beside it, so an insertion that
+      // addressed one of them would now address a different curve at the same
+      // parameter and slide on its own. Deleting it is the honest answer.
+      const survivingOnCurveIds = new Set(
+        contour.points.filter((point) => !point.type).map((point) => point.id)
+      );
+      contour.insertions = (contour.insertions || []).filter((entry) =>
+        survivingOnCurveIds.has(entry.pointId)
+      );
     }
   }
 

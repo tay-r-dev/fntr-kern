@@ -446,6 +446,28 @@ export function cornerRibPlacement(points, closed, pointIndex) {
   return cornerMiterIsHeld(join.scale) ? held : join;
 }
 
+/**
+ * A cubic's point at a parameter, by de Casteljau's weights.
+ *
+ * The one copy. The generator's corner search and the skeleton's insertion
+ * points both evaluate cubics, and an evaluator that disagreed with itself
+ * would put a rib somewhere the outline does not go.
+ * @param {Array} points - The four control points, start first
+ * @param {number} t - The source parameter
+ * @returns {Object} the point
+ */
+export function cubicPointAt(points, t) {
+  const u = 1 - t;
+  const a = u * u * u;
+  const b = 3 * u * u * t;
+  const c = 3 * u * t * t;
+  const d = t * t * t;
+  return {
+    x: a * points[0].x + b * points[1].x + c * points[2].x + d * points[3].x,
+    y: a * points[0].y + b * points[1].y + c * points[2].y + d * points[3].y,
+  };
+}
+
 function makeSegment(points, startIdx, endIdx) {
   return {
     startPoint: points[startIdx],

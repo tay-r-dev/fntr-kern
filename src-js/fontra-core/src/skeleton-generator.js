@@ -3,6 +3,7 @@ import { buildHandleDomain } from "./natural-handle-solver.js";
 import {
   cornerMiter,
   cornerMiterIsHeld,
+  cubicPointAt,
   offsetContourAlongNormals,
 } from "./offset-contour.js";
 import { offsetCubicSide } from "./offset-cubic.js";
@@ -1350,18 +1351,6 @@ function cubicCrossings(cubic1, cubic2) {
     }
   }
   return found;
-}
-
-function cubicPointAt(points, t) {
-  const u = 1 - t;
-  const a = u * u * u;
-  const b = 3 * u * u * t;
-  const c = 3 * u * t * t;
-  const d = t * t * t;
-  return {
-    x: a * points[0].x + b * points[1].x + c * points[2].x + d * points[3].x,
-    y: a * points[0].y + b * points[1].y + c * points[2].y + d * points[3].y,
-  };
 }
 
 // Every place the two curves meet, as a parameter on each, with clusters of

@@ -5,6 +5,7 @@ import {
   SKELETON_SCHEMA_VERSION,
   allocateSkeletonIds,
   appendSkeletonContour,
+  appendSkeletonInsertion,
   appendSkeletonPoint,
   applySerifPreset,
   buildSegmentsFromSkeletonPoints,
@@ -12,11 +13,14 @@ import {
   captureSerifPreset,
   clearSkeletonData,
   closeSkeletonContour,
+  deleteSkeletonInsertions,
   deleteSkeletonPoints,
   getSkeletonContour,
   getSkeletonData,
   getSkeletonHandleOffset,
   getSkeletonHandleOffsetKey,
+  getSkeletonInsertion,
+  getSkeletonInsertionPosition,
   getSkeletonPoint,
   getSkeletonPointHalfWidth,
   getSkeletonPointNudge,
@@ -35,6 +39,7 @@ import {
   measureGeneratedHalfWidths,
   normalizeSkeletonData,
   normalizeSkeletonPoint,
+  projectSkeletonInsertionParameter,
   projectSkeletonRibPoint,
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
@@ -2365,6 +2370,72 @@ describe("skeleton insertion points", () => {
     expect(insertion.id).to.not.equal(10);
     expect(insertion.id).to.not.equal(11);
     expect(data.nextId).to.be.greaterThan(insertion.id);
+  });
+
+  const straightWithInsertion = (t) =>
+    normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          defaultWidth: 60,
+          points: [
+            makeSkeletonPoint({ id: 11, x: 0, y: 0 }),
+            makeSkeletonPoint({ id: 12, x: 100, y: 0 }),
+          ],
+          insertions: [{ id: 13, pointId: 11, t }],
+        }),
+      ],
+    });
+
+  it("reads an insertion's position off the segment, live", () => {
+    const data = straightWithInsertion(0.25);
+    const contour = getSkeletonContour(data, 10);
+    const insertion = getSkeletonInsertion(data, 10, 13);
+    expect(getSkeletonInsertionPosition(contour, insertion)).to.deep.equal({
+      x: 25,
+      y: 0,
+    });
+    contour.points[1].x = 200;
+    expect(getSkeletonInsertionPosition(contour, insertion)).to.deep.equal({
+      x: 50,
+      y: 0,
+    });
+  });
+
+  it("projects a point onto the segment to give a parameter", () => {
+    const data = straightWithInsertion(0.5);
+    const contour = getSkeletonContour(data, 10);
+    const insertion = getSkeletonInsertion(data, 10, 13);
+    const t = projectSkeletonInsertionParameter(contour, insertion, { x: 70, y: 40 });
+    expect(t).to.be.closeTo(0.7, 0.02);
+  });
+
+  it("holds the projected parameter inside the segment", () => {
+    const data = straightWithInsertion(0.5);
+    const contour = getSkeletonContour(data, 10);
+    const insertion = getSkeletonInsertion(data, 10, 13);
+    expect(
+      projectSkeletonInsertionParameter(contour, insertion, { x: -50, y: 0 })
+    ).to.equal(0);
+    expect(
+      projectSkeletonInsertionParameter(contour, insertion, { x: 150, y: 0 })
+    ).to.equal(1);
+  });
+
+  it("appends an insertion with a fresh id and deletes it by key", () => {
+    const data = straightWithInsertion(0.5);
+    const added = appendSkeletonInsertion(data, 10, { pointId: 11, t: 0.25 });
+    expect(added.id).to.not.equal(13);
+    expect(getSkeletonContour(data, 10).insertions).to.have.length(2);
+    deleteSkeletonInsertions(data, new Set([`10/${added.id}`]));
+    expect(getSkeletonContour(data, 10).insertions).to.have.length(1);
+    expect(getSkeletonContour(data, 10).insertions[0].id).to.equal(13);
+  });
+
+  it("deletes the insertions on a segment when its start point goes", () => {
+    const data = straightWithInsertion(0.5);
+    deleteSkeletonPoints(data, [[10, 11]]);
+    expect(getSkeletonContour(data, 10).insertions).to.deep.equal([]);
   });
 
   it("drops an insertion whose start point is not on the contour", () => {
