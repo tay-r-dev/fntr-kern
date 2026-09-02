@@ -374,6 +374,24 @@ export default class SkeletonParametersPanel extends Panel {
 
   // Mirror scene-model._getEditLayerSkeletonData: the panel edits and displays
   // the edit layer, whose ids are canonical for cross-layer resolution (WS-9).
+  // The edit layer's glyph itself, not just its skeleton. The insertion point's
+  // width is a ratio of what the outline draws, so reading it back in units
+  // needs the path as well as the skeleton.
+  _getEditLayerGlyph() {
+    const positionedGlyph = this._getPositionedGlyph();
+    if (!positionedGlyph) {
+      return null;
+    }
+    const editLayerName =
+      this.sceneSettingsController.model?.editLayerName ||
+      positionedGlyph.glyph?.layerName;
+    return (
+      (editLayerName &&
+        positionedGlyph.varGlyph?.glyph?.layers?.[editLayerName]?.glyph) ||
+      positionedGlyph.glyph
+    );
+  }
+
   _getEditLayerSkeletonData(positionedGlyph) {
     if (!positionedGlyph) {
       return null;
@@ -1246,11 +1264,15 @@ export default class SkeletonParametersPanel extends Panel {
         gate
       );
     }
+    // The slider reads percent and the model stores 0 to 1.
     this._pushSummarySlider(
       formContents,
       "insertion:easing",
       "insertion-easing",
-      summary.easing,
+      {
+        ...summary.easing,
+        value: summary.easing.value == null ? null : summary.easing.value * 100,
+      },
       0,
       100,
       0,
