@@ -3619,7 +3619,8 @@ export function createSkeletonInsertionRibExecutor(
   path,
   contourId,
   insertionId,
-  side
+  side,
+  { independent = false } = {}
 ) {
   assertSkeletonRibSide(side);
   const contour = getSkeletonContour(skeletonData, contourId);
@@ -3655,15 +3656,18 @@ export function createSkeletonInsertionRibExecutor(
     direction,
     applyDelta(delta) {
       const along = delta.x * direction.x + delta.y * direction.y;
-      return { side, ratio: Math.max(0, (distance + along) / reference) };
+      return { side, independent, ratio: Math.max(0, (distance + along) / reference) };
     },
   };
 }
 
 export function applySkeletonInsertionRibExecutorResult(insertion, result) {
-  const linked = insertion.width.linked !== false;
   insertion.width[result.side] = result.ratio;
-  if (linked) {
+  // A carries the link's suspension here the way it does on an ordinary rib:
+  // the dragged side takes the cursor's width and the far side stays where it
+  // stands. Published on the result rather than read from the name again, so
+  // the write and the drag that asked for it cannot disagree.
+  if (insertion.width.linked !== false && !result.independent) {
     insertion.width[result.side === "left" ? "right" : "left"] = result.ratio;
   }
 }

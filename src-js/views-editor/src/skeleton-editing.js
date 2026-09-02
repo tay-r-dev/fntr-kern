@@ -1185,7 +1185,11 @@ export function createSkeletonInsertionTargetEntries(layer, selection) {
 // multiple of the half-width the stroke already draws. The reference for that
 // multiple is read off the layer's own path, through the same reader that draws
 // the gizmo and hit-tests it.
-export function createSkeletonInsertionRibTargetEntries(layer, selection) {
+export function createSkeletonInsertionRibTargetEntries(
+  layer,
+  selection,
+  behaviorName = null
+) {
   const skeletonData = getSkeletonData(layer);
   if (!skeletonData) {
     return [];
@@ -1203,7 +1207,8 @@ export function createSkeletonInsertionRibTargetEntries(layer, selection) {
       layer?.path,
       Number(contourId),
       Number(insertionId),
-      side
+      side,
+      { independent: skeletonBehaviorIsIndependentRib(behaviorName) }
     );
     if (executor) {
       executors.push(executor);

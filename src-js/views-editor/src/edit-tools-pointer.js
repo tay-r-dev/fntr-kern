@@ -884,7 +884,8 @@ export class PointerTool extends BaseTool {
         // would find no skeleton point behind the id and build nothing.
         const insertionRibEntries = createSkeletonInsertionRibTargetEntries(
           layerGlyph,
-          sceneController.selection
+          sceneController.selection,
+          name
         );
         if (insertionRibEntries.length) {
           return insertionRibEntries;

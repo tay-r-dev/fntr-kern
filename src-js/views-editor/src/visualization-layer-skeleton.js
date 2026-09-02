@@ -533,20 +533,34 @@ registerVisualizationLayerDefinition({
         }
         if (rib.center) {
           const key = makeSkeletonInsertionKey(contour.id, insertion.id);
-          context.strokeStyle = insertionSelection.selected.has(key)
+          const selected = insertionSelection.selected.has(key);
+          const hovered = insertionSelection.hovered.has(key);
+          const color = selected
             ? parameters.endpointSelectedColor
-            : insertionSelection.hovered.has(key)
+            : hovered
               ? parameters.endpointHoverColor
               : parameters.endpointColor;
+          context.strokeStyle = color;
+          context.fillStyle = color;
+          // Selected fills the ring and adds an outer circle, the way a
+          // selected rib end is filled. Hollow is the resting state, and it is
+          // what says the point does not bend the line it stands on.
+          const radius = parameters.endpointSize / 2;
           context.beginPath();
-          context.arc(
-            rib.center.x,
-            rib.center.y,
-            parameters.endpointSize / 2,
-            0,
-            2 * Math.PI
-          );
+          context.arc(rib.center.x, rib.center.y, radius, 0, 2 * Math.PI);
           context.stroke();
+          if (selected) {
+            context.fill();
+            context.beginPath();
+            context.arc(
+              rib.center.x,
+              rib.center.y,
+              radius + parameters.strokeWidth * 2,
+              0,
+              2 * Math.PI
+            );
+            context.stroke();
+          }
         }
       }
     });

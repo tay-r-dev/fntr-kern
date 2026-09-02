@@ -45,6 +45,22 @@ function sampleDeparture(original, points, insertedIndex, t) {
   return worst;
 }
 
+// The angle the outline turns through at the emitted point, in degrees. Zero is
+// a smooth pass and anything above it is a corner.
+function jointAngle(points, at) {
+  const incoming = {
+    x: points[at].x - points[at - 1].x,
+    y: points[at].y - points[at - 1].y,
+  };
+  const outgoing = {
+    x: points[at + 1].x - points[at].x,
+    y: points[at + 1].y - points[at].y,
+  };
+  const cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+  const dot = incoming.x * outgoing.x + incoming.y * outgoing.y;
+  return Math.abs((Math.atan2(cross, dot) * 180) / Math.PI);
+}
+
 describe("splitSideAtParameter", () => {
   it("cuts a cubic and draws the same curve", () => {
     const side = cubicSide();
@@ -97,7 +113,7 @@ describe("splitSideAtParameter", () => {
     expect(result.points[4]._insertionStub).to.equal(true);
   });
 
-  it("carries the insertion's own handles when the ratio moves it", () => {
+  it("aims the insertion's own handles at their neighbours when it moves", () => {
     const cut = splitSideAtParameter(straightSide(), 0, 0.5);
     const moved = applyInsertionRatio(
       cut.points,
@@ -105,13 +121,42 @@ describe("splitSideAtParameter", () => {
       { x: 50, y: -30 },
       2
     );
-    // The point goes from 30 above the centerline to 60. Its two stubs go with
-    // it. The outer handles stay on the line they were built on.
-    expect(moved[cut.insertedIndex]).to.include({ x: 50, y: 30 });
-    expect(moved[cut.insertedIndex - 1]).to.include({ x: 49, y: 30 });
-    expect(moved[cut.insertedIndex + 1]).to.include({ x: 51, y: 30 });
+    const at = moved[cut.insertedIndex];
+    expect(at).to.include({ x: 50, y: 30 });
+    // Each stub is one unit from the point, pointing at the on-curve it faces.
+    // A stub left parallel to the line it was built on would stay colinear with
+    // its partner, and two colinear handles are a smooth pass, not the angle a
+    // corner is.
+    for (const [index, neighbour] of [
+      [cut.insertedIndex - 1, { x: 0, y: 0 }],
+      [cut.insertedIndex + 1, { x: 100, y: 0 }],
+    ]) {
+      const stub = moved[index];
+      expect(Math.hypot(stub.x - at.x, stub.y - at.y)).to.be.closeTo(1, 1e-9);
+      const cross =
+        (neighbour.x - at.x) * (stub.y - at.y) - (neighbour.y - at.y) * (stub.x - at.x);
+      expect(cross).to.be.closeTo(0, 1e-9);
+    }
+    // The outer handles stay on the line they were built on.
     expect(moved[1]).to.deep.equal(cut.points[1]);
     expect(moved[5]).to.deep.equal(cut.points[5]);
+  });
+
+  it("turns a cut straight into an angle, not a smooth bulge", () => {
+    const cut = splitSideAtParameter(straightSide(), 0, 0.5);
+    const swollen = applyInsertionRatio(
+      cut.points,
+      cut.insertedIndex,
+      { x: 50, y: -30 },
+      2
+    );
+    // At easing zero the two handles either side of the point are not colinear,
+    // so the outline turns a corner there.
+    expect(jointAngle(swollen, cut.insertedIndex)).to.be.greaterThan(20);
+    // At one they are, so it passes through smoothly.
+    expect(
+      jointAngle(applyInsertionEasing(swollen, cut.insertedIndex, 1), cut.insertedIndex)
+    ).to.be.lessThan(1e-6);
   });
 
   it("emits the point at a collapsed parameter rather than dropping it", () => {
@@ -215,22 +260,6 @@ describe("applyInsertionRatio", () => {
   });
 });
 
-// The angle the outline turns through at the emitted point, in degrees. Zero is
-// a smooth pass and anything above it is a corner.
-function jointAngle(points, at) {
-  const incoming = {
-    x: points[at].x - points[at - 1].x,
-    y: points[at].y - points[at - 1].y,
-  };
-  const outgoing = {
-    x: points[at + 1].x - points[at].x,
-    y: points[at + 1].y - points[at].y,
-  };
-  const cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
-  const dot = incoming.x * outgoing.x + incoming.y * outgoing.y;
-  return Math.abs((Math.atan2(cross, dot) * 180) / Math.PI);
-}
-
 describe("applyInsertionEasing", () => {
   // A cut cubic whose middle on-curve has been displaced, so the joint is bent.
   const bent = () => [
@@ -283,6 +312,30 @@ describe("applyInsertionEasing", () => {
     const before = JSON.stringify(points);
     applyInsertionEasing(points, 3, 0.5);
     expect(JSON.stringify(points)).to.equal(before);
+  });
+
+  it("lengthens the neighbours' handles without turning them", () => {
+    const points = bent();
+    const eased = applyInsertionEasing(points, 3, 1);
+    for (const [outer, anchor] of [
+      [1, 0],
+      [5, 6],
+    ]) {
+      const before = points[outer];
+      const after = eased[outer];
+      const cross =
+        (before.x - points[anchor].x) * (after.y - points[anchor].y) -
+        (before.y - points[anchor].y) * (after.x - points[anchor].x);
+      // Same line through the same on-curve: a turn here would rotate a handle
+      // that a smooth end point is held colinear with.
+      expect(cross).to.be.closeTo(0, 1e-9);
+      expect(
+        Math.hypot(after.x - points[anchor].x, after.y - points[anchor].y)
+      ).to.not.be.closeTo(
+        Math.hypot(before.x - points[anchor].x, before.y - points[anchor].y),
+        1e-6
+      );
+    }
   });
 
   it("moves the drawn curve on a cut straight, where the handles are stubs", () => {

@@ -56,6 +56,27 @@ export function collectSkeletonPanelSelection({ selection, skeletonData }) {
     }
   };
 
+  // One insertion point, recorded once however it was reached: by its own key,
+  // or through one of the two rib keys it owns.
+  const seenInsertions = new Set();
+  const noteInsertion = (contour, insertion) => {
+    const key = `${contour.id}/${insertion.id}`;
+    if (seenInsertions.has(key)) {
+      return;
+    }
+    seenInsertions.add(key);
+    result.insertions.push({
+      contourId: contour.id,
+      insertionId: insertion.id,
+      contour,
+      insertion,
+    });
+    noteContour({
+      contour,
+      contourIndex: skeletonData.contours.indexOf(contour),
+    });
+  };
+
   for (const item of parsed.skeletonPoint || []) {
     const { contourId, pointId } = parseSkeletonPointKey(item);
     const address = resolvePointAddress(skeletonData, contourId, pointId);
@@ -73,6 +94,20 @@ export function collectSkeletonPanelSelection({ selection, skeletonData }) {
 
   for (const item of parsed.skeletonRib || []) {
     const { contourId, pointId, side } = parseSkeletonRibKey(`skeletonRib/${item}`);
+    // A rib key's middle field names a skeleton point or an insertion point. An
+    // insertion point's rib IS the insertion point as far as the panel is
+    // concerned: selecting the bar and selecting the ring have to answer with
+    // the same controls, or the two ends of one gesture disagree.
+    const insertionContour = getSkeletonContour(skeletonData, Number(contourId));
+    const insertion = getSkeletonInsertion(
+      skeletonData,
+      Number(contourId),
+      Number(pointId)
+    );
+    if (insertionContour && insertion) {
+      noteInsertion(insertionContour, insertion);
+      continue;
+    }
     const address = getSkeletonRibAddress(skeletonData, contourId, pointId, side);
     if (!address) continue;
     result.ribs.push({
@@ -100,17 +135,9 @@ export function collectSkeletonPanelSelection({ selection, skeletonData }) {
       parsedKey.contourId,
       parsedKey.insertionId
     );
-    if (!contour || !insertion) continue;
-    result.insertions.push({
-      contourId: contour.id,
-      insertionId: insertion.id,
-      contour,
-      insertion,
-    });
-    noteContour({
-      contour,
-      contourIndex: skeletonData.contours.indexOf(contour),
-    });
+    if (contour && insertion) {
+      noteInsertion(contour, insertion);
+    }
   }
 
   for (const item of parsed.editableGeneratedPoint || []) {

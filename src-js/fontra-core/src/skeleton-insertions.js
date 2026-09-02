@@ -209,13 +209,33 @@ export function applyInsertionRatio(points, insertedIndex, centerPoint, ratio) {
   };
   moved[insertedIndex] = { ...at, x: at.x + shift.x, y: at.y + shift.y };
   // A stub handle states the corner at the emitted point, so it travels with
-  // the point. A de Casteljau handle does not: it belongs to the curve the
-  // split promised to leave alone, and moving it would move that curve.
-  for (const index of [insertedIndex - 1, insertedIndex + 1]) {
+  // the point AND re-aims along the chord to the on-curve it faces. Aiming
+  // matters: a stub left parallel to the line it was built on stays colinear
+  // with its partner however far the point moves, and two colinear handles are
+  // a smooth pass, not the angle a corner is. A de Casteljau handle is left
+  // alone: it belongs to the curve the split promised not to change.
+  const movedAt = moved[insertedIndex];
+  for (const step of [-1, 1]) {
+    const index = insertedIndex + step;
     const handle = points[index];
-    if (handle?._insertionStub) {
-      moved[index] = { ...handle, x: handle.x + shift.x, y: handle.y + shift.y };
+    if (!handle?._insertionStub) {
+      continue;
     }
+    const length = Math.hypot(handle.x - at.x, handle.y - at.y);
+    const neighbour = neighbouringOnCurve(points, insertedIndex, step);
+    const aim = neighbour
+      ? normalize({
+          x: (neighbour.x - movedAt.x) * step,
+          y: (neighbour.y - movedAt.y) * step,
+        })
+      : null;
+    moved[index] = aim
+      ? {
+          ...handle,
+          x: movedAt.x + aim.x * step * length,
+          y: movedAt.y + aim.y * step * length,
+        }
+      : { ...handle, x: handle.x + shift.x, y: handle.y + shift.y };
   }
   return moved;
 }
@@ -276,7 +296,42 @@ export function applyInsertionEasing(points, insertedIndex, easing) {
     easing,
     smoothHandleLength(points, insertedIndex, 1)
   );
+  // The two handles on the far side of the joint answer to easing as well: a
+  // corner that opens on one side only is not a shape anybody asked for. They
+  // are lengthened toward the same third and never turned. Turning one would
+  // rotate the handle a smooth on-curve at the end of the piece is held colinear
+  // with, and that is the collinearity a cut straight exists to keep.
+  for (const step of [-1, 1]) {
+    const outerIndex = insertedIndex + 2 * step;
+    const anchor = neighbouringOnCurve(points, insertedIndex, step);
+    const outer = points[outerIndex];
+    if (!outer?.type || !anchor) {
+      continue;
+    }
+    eased[outerIndex] = stretchToward(
+      outer,
+      anchor,
+      easing,
+      Math.hypot(anchor.x - at.x, anchor.y - at.y) / 3
+    );
+  }
   return eased;
+}
+
+// A handle moved along its own line toward a length, keeping its direction
+// exactly. At zero it is left as it was.
+function stretchToward(handle, anchor, fraction, smoothLength) {
+  const current = { x: handle.x - anchor.x, y: handle.y - anchor.y };
+  const length = Math.hypot(current.x, current.y);
+  if (length < 1e-9 || smoothLength === null) {
+    return handle;
+  }
+  const scale = (length + (smoothLength - length) * fraction) / length;
+  return {
+    ...handle,
+    x: anchor.x + current.x * scale,
+    y: anchor.y + current.y * scale,
+  };
 }
 
 // How long a handle at the emitted point would be if the joint were an ordinary
@@ -289,9 +344,17 @@ export function applyInsertionEasing(points, insertedIndex, easing) {
 // control would do nothing a designer could see.
 function smoothHandleLength(points, insertedIndex, step) {
   const at = points[insertedIndex];
-  for (let i = insertedIndex + step; i >= 0 && i < points.length; i += step) {
+  const neighbour = neighbouringOnCurve(points, insertedIndex, step);
+  return neighbour ? Math.hypot(neighbour.x - at.x, neighbour.y - at.y) / 3 : null;
+}
+
+// The first on-curve point on one side of an index. The one walker, so the
+// handle that aims at a neighbour and the handle that measures against it
+// cannot disagree about which neighbour that is.
+function neighbouringOnCurve(points, index, step) {
+  for (let i = index + step; i >= 0 && i < points.length; i += step) {
     if (!points[i].type) {
-      return Math.hypot(points[i].x - at.x, points[i].y - at.y) / 3;
+      return points[i];
     }
   }
   return null;
