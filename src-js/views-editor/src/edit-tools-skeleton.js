@@ -1,3 +1,7 @@
+import {
+  eventMatchesActionBaseKey,
+  eventMatchesActionShortCut,
+} from "@fontra/core/actions.js";
 import { ChangeCollector } from "@fontra/core/changes.js";
 import { translate } from "@fontra/core/localization.js";
 import {
@@ -17,7 +21,6 @@ import * as vector from "@fontra/core/vector.js";
 import { Bezier } from "bezier-js";
 import { BaseTool } from "./edit-tools-base.js";
 import { shiftConstrainPoint } from "./edit-tools-pen.js";
-import { RealtimeModifierModes } from "./realtime-modifiers.js";
 import {
   editSkeleton,
   getSkeletonPointAddress,
@@ -41,14 +44,12 @@ export class SkeletonPenTools {
 // and D do on the pointer tool. Alt is already the handle insert on this same
 // click and Shift is the angle constraint, so the third thing to place at a
 // centerline hit takes a letter.
+//
+// The pointer tool keeps its own copy of this, holding five modes rather than
+// one. Two copies rather than one shared machine is deliberate: the shared one
+// meant editing a working tool that has nothing to do with insertion points,
+// and this tool needs only the single-mode half of it.
 const REALTIME_INSERTION_POINT_ACTION = "action.realtime.insertion-point";
-
-const SKELETON_PEN_REALTIME_ACTIONS = [
-  {
-    action: REALTIME_INSERTION_POINT_ACTION,
-    modeProperty: "insertionPointMode",
-  },
-];
 
 export class SkeletonPenTool extends BaseTool {
   iconPath = "/images/skeleton-pen.svg";
@@ -56,18 +57,49 @@ export class SkeletonPenTool extends BaseTool {
 
   constructor(...args) {
     super(...args);
-    this._realtimeModifiers = new RealtimeModifierModes(
-      this,
-      SKELETON_PEN_REALTIME_ACTIONS
-    );
+    this.insertionPointMode = false;
+    this._insertionPointKeyUp = null;
+    this._insertionPointBlur = null;
   }
 
   handleKeyDown(event) {
-    if (this._realtimeModifiers.handleKeyDown(event)) {
+    if (
+      !this.insertionPointMode &&
+      eventMatchesActionShortCut(REALTIME_INSERTION_POINT_ACTION, event)
+    ) {
+      this._startInsertionPointMode();
       event.preventDefault();
       return true;
     }
     return super.handleKeyDown(event);
+  }
+
+  // The mode lasts exactly as long as the key is down. It has to end on the key
+  // coming up, and also on the window losing focus, which is the case where no
+  // key-up ever arrives.
+  _startInsertionPointMode() {
+    this.insertionPointMode = true;
+    this._insertionPointKeyUp = (event) => {
+      if (eventMatchesActionBaseKey(REALTIME_INSERTION_POINT_ACTION, event)) {
+        this._endInsertionPointMode();
+      }
+    };
+    this._insertionPointBlur = () => this._endInsertionPointMode();
+    window.addEventListener("keyup", this._insertionPointKeyUp);
+    window.addEventListener("blur", this._insertionPointBlur);
+    this.canvasController.requestUpdate();
+  }
+
+  _endInsertionPointMode() {
+    if (!this.insertionPointMode) {
+      return;
+    }
+    this.insertionPointMode = false;
+    window.removeEventListener("keyup", this._insertionPointKeyUp);
+    window.removeEventListener("blur", this._insertionPointBlur);
+    this._insertionPointKeyUp = null;
+    this._insertionPointBlur = null;
+    this.canvasController.requestUpdate();
   }
 
   // Which side a new contour puts its width on, or null for both. Everything
@@ -1146,7 +1178,7 @@ export class SkeletonPenTool extends BaseTool {
     super.deactivate();
     // A mode is only on while its key is down, and a tool that is put away
     // never sees that key come up.
-    this._realtimeModifiers.endAll();
+    this._endInsertionPointMode();
     this._endSnapping();
     delete this.sceneModel.skeletonInsertHandles;
     delete this.sceneModel.skeletonPenHoverTarget;
