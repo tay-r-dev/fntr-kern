@@ -1386,3 +1386,53 @@ describe("serif wall arc length", () => {
     expectClose(wall.lengthAt(wall.parameterAtDepth(100)), 100, undefined, 1e-3);
   });
 });
+
+describe("serif wall that turns back", () => {
+  // The left stem wall of `braceright` in the terminal's own frame, at an axis
+  // laid 33 degrees off the rib. The stroke is curved enough that the wall's
+  // depth rises to about 200 and comes back down to 19 by the far end, so the
+  // depth a serif asks for is reached early and is BELOW the wall's last point.
+  const turningWall = () =>
+    makeSerifWall([
+      { u: 25.016, v: 16.068 },
+      { u: -87.281, v: 189.779 },
+      { u: -243.537, v: 201.66 },
+      { u: -345.38, v: 18.799 },
+    ]);
+
+  it("finds a depth the wall reaches before it turns back", () => {
+    const wall = turningWall();
+    // 40 is an Egyptian foot's junction depth: tip thickness 20 plus wing
+    // slope 20. The wall passes it a twentieth of the way along and never
+    // returns to it, so reading the far end's depth as the wall's deepest
+    // sends the whole terminal to the other end of the stroke.
+    const at = wall.pointAt(wall.parameterAtDepth(40));
+    expectClose(at.v, 40, "reaches the depth asked for", 0.05);
+    expect(at.u).to.be.greaterThan(0);
+  });
+
+  it("keeps the requested depth continuous across the wall's last depth", () => {
+    // A sweep rather than an assertion: the far end sits at v = 18.8, so a
+    // request either side of it is where a guard reading that number as the
+    // limit changes branch.
+    const wall = turningWall();
+    let previous = wall.pointAt(wall.parameterAtDepth(10));
+    let worst = 0;
+    for (let depth = 10.5; depth <= 60; depth += 0.5) {
+      const current = wall.pointAt(wall.parameterAtDepth(depth));
+      worst = Math.max(
+        worst,
+        Math.hypot(current.u - previous.u, current.v - previous.v)
+      );
+      previous = current;
+    }
+    expect(worst).to.be.lessThan(5);
+  });
+
+  it("holds at its deepest point once the request passes it", () => {
+    const wall = turningWall();
+    const peak = wall.parameterAtDepth(1e6);
+    expect(wall.pointAt(peak).v).to.be.greaterThan(150);
+    expect(wall.parameterAtDepth(1e9)).to.equal(peak);
+  });
+});

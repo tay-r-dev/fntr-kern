@@ -800,8 +800,32 @@ numbers to the v1 nine. One of the three is here.
   the wall, so the tip unclamps and the corner jumps back from the wall foot to
   its depth answer, 40 units; at about 66 the corner ray runs parallel to the
   wall and the meeting slides 127 units. Each is reachable through an absolute
-  axis at the same effective angle. The panel offers the range that moves
-  smoothly, 40 either way, which is also the lab's own. Backlog S3 and S4.
+  axis at the same effective angle. Backlog S3 and S4.
+- **Those three angles belong to that one wall, and reporting them as the tilt's
+  range was wrong.** Where each search meets the wall tangentially is set by how
+  hard the wall curves, so a stroke curved harder reaches all three sooner. On
+  `_external/problem-glyphs/braceright.json` the corner ray runs parallel at 28
+  degrees, worth 77 units, which is well inside the 40 the panel offers. The
+  panel's range is not evidence of anything, and the sentence that said it moves
+  smoothly out to 40 was a single sweep's configuration read as a property of
+  the feature. **One sweep on one wall states what that wall does.**
+- **The wall's deepest point is not its far end**, and reading it that way sent
+  the whole terminal to the other end of the stroke. Reported on `braceright`: a
+  tilt of −33 drew a collapsed serif and consumed the entire left edge, a step
+  of 342 units against the frame before it at −32.5. `makeSerifWall` took
+  `maxDepth` as the depth AT its last parameter, and `parameterAtDepth` returned
+  the far end whenever the request stood above that. On a stroke curved this
+  hard, seen from a frame turned 33 degrees, the wall's depth rises to 151 and
+  comes back down to 39 — so an Egyptian junction at depth 40 is reached a
+  twentieth of the way along AND sits above the last point. The guard fired on a
+  depth the wall genuinely reaches. It is the wall's own deepest point now,
+  found by scanning and bisecting the depth's rate, and the request holds there
+  once it passes it. **On a wall whose depth only rises the two are the same
+  point**, which is every straight stem and every gently curved one, and is why
+  no fixture moved and the suite went 2,344 to 2,347.
+- **It was never the tilt's either.** The same 342-unit step is reachable at an
+  absolute axis of 128 degrees on the same glyph, and had been in the tree since
+  the wall was written.
 - **`depthSign` is not here, and the answer is the release rule.** The lab flips
   the depth so the wing block grows against the stroke — its reverse block and
   its lowercase entry serif. The lab can, because its flank is a line at a fixed

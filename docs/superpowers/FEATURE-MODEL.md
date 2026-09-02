@@ -881,13 +881,21 @@ turns the axis toward the stroke on the left, so the left wing climbs the stem a
 drops away from it. Applied before that orientation, the same number turns the two terminals of one
 stroke opposite ways.
 
-The tilt moves the terminal by rotation alone out to about 38°. Past that the wing runs so far
-along the stem that the construction's own searches meet the wall tangentially, and the shape steps
-— at the wing-swallowed snap, which is deliberate, then where the tip's own line stops crossing
-the wall (backlog S3) and where the corner ray runs parallel to it (backlog S4). None of the three
-belongs to the tilt; each is reachable through an absolute axis at the same effective angle. The
-panel offers ±40, which is the range that moves smoothly, and the writer clamps nothing, because
-the shape does not stop there.
+The tilt moves the terminal by rotation alone until one of the construction's own searches meets
+the wall tangentially, and there the shape steps — at the wing-swallowed snap, which is deliberate,
+then where the tip's own line stops crossing the wall (backlog S3) and where the corner ray runs
+parallel to it (backlog S4). None of the three belongs to the tilt; each is reachable through an
+absolute axis at the same effective angle. **Where they land is set by the wall, not by an angle**:
+on a gently curved stem they sit past 38°, and on the strongly curved stroke of a `braceright` the
+corner ray runs parallel at 28°, which is inside the range the panel offers. The panel offers ±40
+and the writer clamps nothing, because the shape does not stop there.
+
+**A wall's deepest point is not its far end.** A stroke curved enough, seen from a turned frame,
+carries the wall's depth up and back down, so the depth a junction asks for is reached early and
+the wall's last point sits below it. Everything that asks the wall for a depth takes the first
+crossing, and where the request passes the wall's own deepest point it holds there rather than at
+the end of the wall. Reading the far end as the limit sends the terminal to the other end of the
+stroke.
 
 **The serif axis is its own property, and it composes with `ribAngleLock`** instead of replacing
 it. The lock sets the rib the cap is built on. The axis sets the direction the serif runs. Both

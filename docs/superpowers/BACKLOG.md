@@ -98,8 +98,13 @@ probably answers this row too.
 
 ## S3 — The tip's line stops crossing the wall
 
-**What you would see.** Dragging the axis tilt past about 47 degrees, the terminal steps: the
-wing's inner corner jumps about 40 units up the stem, in one frame.
+**What you would see.** Dragging the axis tilt, the terminal steps: the wing's inner corner jumps
+about 40 units up the stem, in one frame. On the wall the tilt sweep was run against that is at
+about 47 degrees.
+
+**The angle is the wall's, not the feature's.** Where the tip's line and the wall reach tangency is
+set by how hard the wall curves, so a stroke curved harder reaches it sooner. Do not read 47 as a
+range the shape is safe inside — see the note at the end of S4.
 
 **What it is.** `buildHalfSerif` limits the tip's thickness by where the wall crosses the line
 standing straight above the wing's end (`wall.meetRay({u: tipU, v: 0}, {u: 0, v: 1})`). As the
@@ -125,8 +130,8 @@ withdrawn twice.
 
 ## S4 — The corner ray runs parallel to the wall
 
-**What you would see.** Past about 66 degrees of tilt, the terminal steps again, and harder: about
-127 units in one frame.
+**What you would see.** The terminal steps again, and harder: about 127 units in one frame, at
+about 66 degrees on the wall the tilt sweep was run against.
 
 **What it is.** The wing's inner corner is where the wing's top surface meets the wall
 (`wall.meetRay(tipTop, cornerRay)`, with `cornerRay = {u: -side * wingLength, v: wingSlope}`). The
@@ -146,6 +151,18 @@ both are `meetRay` asked a question near tangency.
 parallel the sign change is genuine and the answer is genuinely far away; the fault is not the
 search. What is missing is a statement of when the wing's top surface stops meeting the wall in any
 useful sense.
+
+### Both of them fire inside the range the panel offers
+
+The 47 and the 66 above were measured on one wall. They are properties of that wall, and a stroke
+curved harder reaches both sooner. On `_external/problem-glyphs/braceright.json`, an Egyptian foot
+at wing 20, tip 20, slope 20, this row's own step lands at **28 degrees of tilt** and is worth 77
+units — inside the ±40 the panel offers.
+
+So the tilt has no safe range to state, and the earlier claim that it moves smoothly out to 40 was
+one sweep's configuration read as a property of the feature. Whoever takes S3 and S4 should measure
+on a strongly curved stroke as well as a gentle one, and should not restore an angle to the panel
+or to the docs as though it were a bound.
 
 ### Not an item: the snap at 38 degrees
 

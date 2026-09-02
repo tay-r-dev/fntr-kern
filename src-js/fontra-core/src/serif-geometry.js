@@ -280,7 +280,40 @@ export function makeSerifWall(points) {
     table.total > 0
       ? parameterAtLength(table, table.total * MAX_CONSUMED_FRACTION)
       : MAX_CONSUMED_FRACTION;
-  const maxDepth = evaluate(points, maxParameter).v;
+  // The deepest the wall gets, and where it gets there. NOT the depth of its
+  // far end. A wall whose depth only rises makes the two the same point, which
+  // is every straight stem and every gently curved one — so nothing already
+  // drawn moves. A wall that turns back does not: on a strongly curved stroke
+  // seen from a turned frame the depth rises to 200 and comes back to 19, so a
+  // junction at depth 40 is reached a twentieth of the way along and the far
+  // end sits below it. Read the far end as the limit and every crossing before
+  // the turn is thrown away, and the terminal consumes the whole stroke — 342
+  // units in one half-degree frame of a tilt drag, on `braceright`.
+  const depthAt = (t) => evaluate(points, t).v;
+  let peakParameter = 0;
+  let peakDepth = depthAt(0);
+  for (let i = 1; i <= SCAN_SAMPLES; i++) {
+    const t = (i / SCAN_SAMPLES) * maxParameter;
+    const depth = depthAt(t);
+    if (depth > peakDepth) {
+      peakDepth = depth;
+      peakParameter = t;
+    }
+  }
+  // Off the sample grid where the peak is an interior turn: the depth's own
+  // rate changes sign there, so one bisection lands on it. A fixed count, like
+  // every other search here.
+  const sampleStep = maxParameter / SCAN_SAMPLES;
+  if (peakParameter > 0 && peakParameter < maxParameter) {
+    const rate = (t) => derivative(points, t).v;
+    const low = peakParameter - sampleStep;
+    const high = Math.min(peakParameter + sampleStep, maxParameter);
+    if (rate(low) < 0 !== rate(high) < 0) {
+      peakParameter = bisect(rate, low, high);
+      peakDepth = depthAt(peakParameter);
+    }
+  }
+  const maxDepth = peakDepth;
   const maxLength = lengthAtParameter(table, maxParameter);
 
   const lengthAt = (t) => lengthAtParameter(table, t);
@@ -299,15 +332,15 @@ export function makeSerifWall(points) {
 
   // The first parameter whose depth reaches `depth`. "First" matters: a wall
   // that turns far enough can reach one depth twice, and the serif wants the
-  // one nearer the rib end. A wall that never gets that deep is consumed to its
-  // limit, which is the continuous answer — as the request grows the parameter
-  // slides up to the limit and stays there.
+  // one nearer the rib end. A wall that never gets that deep is consumed as far
+  // as its own deepest point, which is the continuous answer — as the request
+  // grows the parameter slides up to the peak and stays there.
   const parameterAtDepth = (depth) => {
     if (!(depth > pointAt(0).v)) {
       return 0;
     }
     if (depth >= maxDepth) {
-      return maxParameter;
+      return peakParameter;
     }
     const below = (t) => pointAt(t).v - depth;
     let previous = 0;
@@ -318,7 +351,7 @@ export function makeSerifWall(points) {
       }
       previous = t;
     }
-    return maxParameter;
+    return peakParameter;
   };
 
   // Where the wall crosses a ray. The sign function is the cross product of the
