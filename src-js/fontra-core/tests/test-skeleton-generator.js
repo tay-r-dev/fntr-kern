@@ -3948,4 +3948,165 @@ describe("skeleton insertion points reach the generator", () => {
     expect(solved.leftSegmentAnchors[0]).to.equal(0);
     expect(solved.leftSegmentAnchors[1]).to.be.greaterThan(0);
   });
+
+  const curvedStroke = (insertions = []) =>
+    normalizeSkeletonData({
+      contours: [
+        {
+          id: 10,
+          defaultWidth: 60,
+          capStyle: "butt",
+          points: [
+            { id: 11, x: 0, y: 0 },
+            { id: 14, x: 40, y: 120, type: "cubic" },
+            { id: 15, x: 160, y: 120, type: "cubic" },
+            { id: 12, x: 200, y: 0 },
+          ],
+          insertions,
+        },
+      ],
+    });
+
+  // Dense samples along a generated contour, walked as its own segments. The
+  // identity an insertion point promises is about the drawn curve, not about
+  // the point list: a cubic split replaces two handles with four, so the list
+  // grows even where the outline does not move at all.
+  function sampleContour(contour, perSegment = 60) {
+    const points = contour.points;
+    const onCurves = [];
+    for (let i = 0; i < points.length; i++) {
+      if (!points[i].type) {
+        onCurves.push(i);
+      }
+    }
+    const samples = [];
+    for (let i = 0; i < onCurves.length; i++) {
+      const startIndex = onCurves[i];
+      const endIndex = onCurves[(i + 1) % onCurves.length];
+      if (i === onCurves.length - 1 && !contour.isClosed) {
+        break;
+      }
+      const between = [];
+      for (
+        let k = (startIndex + 1) % points.length;
+        k !== endIndex;
+        k = (k + 1) % points.length
+      ) {
+        between.push(points[k]);
+      }
+      const control = [points[startIndex], ...between, points[endIndex]].map(
+        ({ x, y }) => ({ x, y })
+      );
+      const curve = control.length === 2 ? null : new Bezier(control);
+      for (let step = 0; step < perSegment; step++) {
+        const u = step / perSegment;
+        samples.push(
+          curve
+            ? curve.get(u)
+            : {
+                x: control[0].x + (control[1].x - control[0].x) * u,
+                y: control[0].y + (control[1].y - control[0].y) * u,
+              }
+        );
+      }
+    }
+    return samples;
+  }
+
+  function worstDeparture(first, second) {
+    let worst = 0;
+    for (const a of first) {
+      let nearest = Infinity;
+      for (const b of second) {
+        nearest = Math.min(nearest, Math.hypot(a.x - b.x, a.y - b.y));
+      }
+      worst = Math.max(worst, nearest);
+    }
+    return worst;
+  }
+
+  it("adds two on-curves and draws the same outline", () => {
+    const without = generateFromSkeleton(curvedStroke());
+    const with_ = generateFromSkeleton(curvedStroke([{ id: 13, pointId: 11, t: 0.4 }]));
+    const onCurves = (contour) => contour.points.filter((point) => !point.type);
+    expect(onCurves(with_.contours[0])).to.have.length(
+      onCurves(without.contours[0]).length + 2
+    );
+    // Every original on-curve is still there, to the unit, in order.
+    const original = onCurves(without.contours[0]).map((p) => `${p.x},${p.y}`);
+    const after = onCurves(with_.contours[0]).map((p) => `${p.x},${p.y}`);
+    let cursor = 0;
+    for (const point of original) {
+      const found = after.indexOf(point, cursor);
+      expect(found, `original on-curve ${point} moved or vanished`).to.be.greaterThan(
+        -1
+      );
+      cursor = found + 1;
+    }
+    // And the outline itself does not move. Each outline is measured against a
+    // dense sampling of the other, not against an equally coarse one: two coarse
+    // samplings of the same curve sit up to their own spacing apart, which would
+    // report an error the geometry does not have.
+    expect(
+      worstDeparture(
+        sampleContour(with_.contours[0]),
+        sampleContour(without.contours[0], 4000)
+      )
+    ).to.be.lessThan(0.05);
+    expect(
+      worstDeparture(
+        sampleContour(without.contours[0]),
+        sampleContour(with_.contours[0], 4000)
+      )
+    ).to.be.lessThan(0.05);
+  });
+
+  it("holds the count at every parameter", () => {
+    const counts = new Set();
+    for (let i = 0; i <= 40; i++) {
+      const result = generateFromSkeleton(
+        curvedStroke([{ id: 13, pointId: 11, t: i / 40 }])
+      );
+      counts.add(result.contours[0].points.length);
+    }
+    expect([...counts]).to.have.length(1);
+  });
+
+  it("names the insertion in the provenance of both emitted on-curves", () => {
+    const result = generateFromSkeleton(
+      curvedStroke([{ id: 13, pointId: 11, t: 0.4 }])
+    );
+    const owned = result.provenance[0].pointMap.filter(
+      (entry) => entry?.skeletonPointId === 13
+    );
+    expect(owned.filter((entry) => entry.role === "onCurve")).to.have.length(2);
+    expect(new Set(owned.map((entry) => entry.side))).to.deep.equal(
+      new Set(["left", "right"])
+    );
+    for (const entry of owned) {
+      expect(entry.insertion).to.equal(true);
+    }
+  });
+
+  it("publishes the uncut segment on the inserted on-curve", () => {
+    const result = generateFromSkeleton(
+      curvedStroke([{ id: 13, pointId: 11, t: 0.4 }])
+    );
+    const inserted = result.provenance[0].pointMap.find(
+      (entry) => entry?.skeletonPointId === 13 && entry.role === "onCurve"
+    );
+    expect(inserted.constructionSegment).to.have.length(4);
+  });
+
+  it("takes two insertion points on one segment", () => {
+    const one = generateFromSkeleton(curvedStroke([{ id: 13, pointId: 11, t: 0.3 }]));
+    const two = generateFromSkeleton(
+      curvedStroke([
+        { id: 13, pointId: 11, t: 0.3 },
+        { id: 16, pointId: 11, t: 0.7 },
+      ])
+    );
+    const onCurves = (result) => result.contours[0].points.filter((p) => !p.type);
+    expect(onCurves(two)).to.have.length(onCurves(one).length + 2);
+  });
 });

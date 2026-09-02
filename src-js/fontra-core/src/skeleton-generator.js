@@ -7,6 +7,7 @@ import {
   offsetContourAlongNormals,
 } from "./offset-contour.js";
 import { offsetCubicSide } from "./offset-cubic.js";
+import { splitSideAtParameter } from "./skeleton-insertions.js";
 import {
   buildSerifTerminal,
   computeSerifFrame,
@@ -2407,6 +2408,105 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
   };
 }
 
+// Cut both sides at every insertion point on the contour.
+//
+// Insertions on one segment are applied from the highest parameter down, so an
+// earlier cut cannot move the index a later cut was measured against. The
+// anchors are recorded once, against the uncut sides, and stay correct under
+// that order.
+function applyInsertionSplits({
+  leftSide,
+  rightSide,
+  leftSegmentAnchors,
+  rightSegmentAnchors,
+  segments,
+  insertions,
+}) {
+  if (!insertions.length) {
+    return { leftSide, rightSide };
+  }
+  let left = leftSide;
+  let right = rightSide;
+  for (let index = segments.length - 1; index >= 0; index--) {
+    const segment = segments[index];
+    const onSegment = insertions
+      .filter((entry) => entry.pointId === segment.startPoint._sourcePointId)
+      .sort((a, b) => b.t - a.t);
+    if (!onSegment.length) {
+      continue;
+    }
+    const constructionSegment = [
+      segment.startPoint,
+      ...segment.controlPoints,
+      segment.endPoint,
+    ].map(({ x, y }) => ({ x, y }));
+    for (const insertion of onSegment) {
+      left = applyOneInsertionToSide(
+        left,
+        leftSegmentAnchors[index],
+        insertion,
+        "left",
+        constructionSegment
+      );
+      right = applyOneInsertionToSide(
+        right,
+        rightSegmentAnchors[index],
+        insertion,
+        "right",
+        constructionSegment
+      );
+    }
+  }
+  return { leftSide: left, rightSide: right };
+}
+
+function applyOneInsertionToSide(
+  sidePoints,
+  anchorIndex,
+  insertion,
+  side,
+  constructionSegment
+) {
+  if (anchorIndex === null || anchorIndex === undefined) {
+    return sidePoints;
+  }
+  const cut = splitSideAtParameter(sidePoints, anchorIndex, insertion.t);
+  if (!cut) {
+    return sidePoints;
+  }
+  const points = cut.points;
+  const at = cut.insertedIndex;
+  // The emitted on-curve and its two neighbouring handles are the insertion
+  // point's own geometry. `insertion: true` says which list a reader resolving
+  // this id must look in: an insertion id is not a point id, and a lookup that
+  // searched the point list would report a missing point rather than a
+  // different kind of one.
+  points[at]._provenance = {
+    skeletonPointId: insertion.id,
+    side,
+    role: "onCurve",
+    insertion: true,
+    constructionSegment,
+  };
+  if (points[at - 1]?.type) {
+    points[at - 1]._provenance = {
+      skeletonPointId: insertion.id,
+      side,
+      role: "in",
+      insertion: true,
+    };
+  }
+  if (points[at + 1]?.type) {
+    points[at + 1]._provenance = {
+      skeletonPointId: insertion.id,
+      side,
+      role: "out",
+      insertion: true,
+    };
+  }
+  return points;
+}
+
 /**
  * Generates closed outline contour(s) from a single skeleton contour.
  * @param {Object} skeletonContour - Single skeleton contour with points array
@@ -2441,8 +2541,22 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
     endCapStyle,
   } = solved;
 
-  const joinedLeftSide = joinInnerCornersOnSide(leftSide, { isClosed });
-  const joinedRightSide = joinInnerCornersOnSide(rightSide, { isClosed });
+  // The insertion split runs here: after the solve and after every authored
+  // layer, and before the corner join. The pieces it makes draw the curve the
+  // solve produced, so nothing above this line sees it and nothing below it
+  // needs to know a cut happened.
+  const { leftSide: insertedLeftSide, rightSide: insertedRightSide } =
+    applyInsertionSplits({
+      leftSide,
+      rightSide,
+      leftSegmentAnchors: solved.leftSegmentAnchors,
+      rightSegmentAnchors: solved.rightSegmentAnchors,
+      segments,
+      insertions: skeletonContour.insertions || [],
+    });
+
+  const joinedLeftSide = joinInnerCornersOnSide(insertedLeftSide, { isClosed });
+  const joinedRightSide = joinInnerCornersOnSide(insertedRightSide, { isClosed });
 
   let roundedLeftSide = roundSharpCornersOnSide(joinedLeftSide, { isClosed });
   let roundedRightSide = roundSharpCornersOnSide(joinedRightSide, { isClosed });
