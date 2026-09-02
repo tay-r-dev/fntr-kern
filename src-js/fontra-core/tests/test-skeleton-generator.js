@@ -4109,4 +4109,60 @@ describe("skeleton insertion points reach the generator", () => {
     const onCurves = (result) => result.contours[0].points.filter((p) => !p.type);
     expect(onCurves(two)).to.have.length(onCurves(one).length + 2);
   });
+
+  it("swells the stroke at a ratio above one and nowhere else", () => {
+    const plain = generateFromSkeleton(curvedStroke([{ id: 13, pointId: 11, t: 0.4 }]));
+    const swollen = generateFromSkeleton(
+      curvedStroke([{ id: 13, pointId: 11, t: 0.4, width: { left: 1.5, right: 1.5 } }])
+    );
+    const moved = [];
+    for (let i = 0; i < plain.contours[0].points.length; i++) {
+      const a = plain.contours[0].points[i];
+      const b = swollen.contours[0].points[i];
+      if (Math.hypot(a.x - b.x, a.y - b.y) > 0.5) {
+        moved.push(i);
+      }
+    }
+    // The two emitted on-curves move. Nothing else does.
+    expect(moved).to.have.length(2);
+  });
+
+  it("slides a swell along a tapered stroke without changing anything else", () => {
+    // The sweep the ratio exists for. An absolute width fails it.
+    const tapered = (t) =>
+      normalizeSkeletonData({
+        contours: [
+          {
+            id: 10,
+            defaultWidth: 60,
+            capStyle: "butt",
+            points: [
+              { id: 11, x: 0, y: 0, width: { left: 15, right: 15 } },
+              { id: 12, x: 200, y: 0, width: { left: 45, right: 45 } },
+            ],
+            insertions: [{ id: 13, pointId: 11, t, width: { left: 1.4, right: 1.4 } }],
+          },
+        ],
+      });
+    let previous = null;
+    let worst = 0;
+    for (let i = 5; i <= 95; i++) {
+      const result = generateFromSkeleton(tapered(i / 100));
+      const points = result.contours[0].points;
+      if (previous) {
+        expect(points).to.have.length(previous.length);
+        for (let k = 0; k < points.length; k++) {
+          worst = Math.max(
+            worst,
+            Math.hypot(points[k].x - previous[k].x, points[k].y - previous[k].y)
+          );
+        }
+      }
+      previous = points;
+    }
+    // One percent of a 200-unit stroke is two units of travel per step, and the
+    // swell is 40 per cent of a stroke that runs 30 to 90. Nothing may jump past
+    // that. A backtrack or a topology change shows up here as a large number.
+    expect(worst).to.be.lessThan(6);
+  });
 });

@@ -1,4 +1,7 @@
-import { splitSideAtParameter } from "@fontra/core/skeleton-insertions.js";
+import {
+  applyInsertionRatio,
+  splitSideAtParameter,
+} from "@fontra/core/skeleton-insertions.js";
 import { Bezier } from "bezier-js";
 import { expect } from "chai";
 
@@ -116,5 +119,55 @@ describe("splitSideAtParameter", () => {
       previous = at;
     }
     expect(worst).to.be.lessThan(0.5);
+  });
+});
+
+describe("applyInsertionRatio", () => {
+  const points = [
+    { x: 0, y: 30 },
+    { x: 50, y: 30 },
+    { x: 100, y: 30 },
+  ];
+
+  it("returns the same array at a ratio of one", () => {
+    const result = applyInsertionRatio(points, 1, { x: 50, y: 0 }, 1);
+    expect(result).to.equal(points);
+  });
+
+  it("moves the on-curve out along the line from the centerline", () => {
+    const result = applyInsertionRatio(points, 1, { x: 50, y: 0 }, 2);
+    expect(result[1]).to.include({ x: 50, y: 60 });
+    expect(result[0]).to.deep.equal(points[0]);
+    expect(result[2]).to.deep.equal(points[2]);
+  });
+
+  it("moves it in at a ratio below one", () => {
+    const result = applyInsertionRatio(points, 1, { x: 50, y: 0 }, 0.5);
+    expect(result[1]).to.include({ x: 50, y: 15 });
+  });
+
+  it("takes the point onto the centerline at a ratio of zero", () => {
+    const result = applyInsertionRatio(points, 1, { x: 50, y: 0 }, 0);
+    expect(result[1]).to.include({ x: 50, y: 0 });
+  });
+
+  it("moves continuously as the ratio sweeps", () => {
+    let previous = null;
+    let worst = 0;
+    for (let i = 0; i <= 400; i++) {
+      const ratio = i / 200;
+      const at = applyInsertionRatio(points, 1, { x: 50, y: 0 }, ratio)[1];
+      if (previous) {
+        worst = Math.max(worst, Math.hypot(at.x - previous.x, at.y - previous.y));
+      }
+      previous = at;
+    }
+    expect(worst).to.be.lessThan(0.5);
+  });
+
+  it("leaves the input array untouched", () => {
+    const before = JSON.stringify(points);
+    applyInsertionRatio(points, 1, { x: 50, y: 0 }, 3);
+    expect(JSON.stringify(points)).to.equal(before);
   });
 });

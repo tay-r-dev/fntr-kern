@@ -7,7 +7,7 @@ import {
   offsetContourAlongNormals,
 } from "./offset-contour.js";
 import { offsetCubicSide } from "./offset-cubic.js";
-import { splitSideAtParameter } from "./skeleton-insertions.js";
+import { applyInsertionRatio, splitSideAtParameter } from "./skeleton-insertions.js";
 import {
   buildSerifTerminal,
   computeSerifFrame,
@@ -28,6 +28,7 @@ import {
   normalizeSkeletonData,
   ribAngleLockReach,
   straightSegmentNormal,
+  skeletonSegmentPointAt,
 } from "./skeleton-model.js";
 import { shiftTensionsToMean } from "./tunni-calculations.js";
 import { packContour } from "./var-path.js";
@@ -2446,14 +2447,16 @@ function applyInsertionSplits({
         leftSegmentAnchors[index],
         insertion,
         "left",
-        constructionSegment
+        constructionSegment,
+        segment
       );
       right = applyOneInsertionToSide(
         right,
         rightSegmentAnchors[index],
         insertion,
         "right",
-        constructionSegment
+        constructionSegment,
+        segment
       );
     }
   }
@@ -2465,7 +2468,8 @@ function applyOneInsertionToSide(
   anchorIndex,
   insertion,
   side,
-  constructionSegment
+  constructionSegment,
+  segment
 ) {
   if (anchorIndex === null || anchorIndex === undefined) {
     return sidePoints;
@@ -2504,7 +2508,16 @@ function applyOneInsertionToSide(
       insertion: true,
     };
   }
-  return points;
+  // The ratio moves the emitted on-curve out along the line from the centerline
+  // point at the same parameter. The reference is the stroke as the solve drew
+  // it, which is why sliding the point along a tapering stroke changes nothing.
+  const ratio = side === "left" ? insertion.width.left : insertion.width.right;
+  return applyInsertionRatio(
+    points,
+    at,
+    skeletonSegmentPointAt(segment, insertion.t),
+    ratio
+  );
 }
 
 /**

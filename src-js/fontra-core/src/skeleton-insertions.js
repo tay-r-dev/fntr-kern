@@ -117,3 +117,35 @@ function splitCubic(p0, p1, p2, p3, t) {
     { x: c.x, y: c.y, type: "cubic" },
   ];
 }
+
+/**
+ * Move an emitted on-curve out from the centerline by a ratio.
+ *
+ * The reference is what the split already drew: the distance from the
+ * centerline point at that parameter out to the emitted point. It is read off
+ * the geometry rather than interpolated between the two neighbouring ribs,
+ * because the generator states no width between ribs and inventing one would be
+ * a second answer to a question the outline already answers.
+ *
+ * A ratio of exactly one returns the input array. That identity is the whole
+ * promise of the feature and it is asserted rather than assumed.
+ *
+ * @param {Array} points - the side's points, after the split
+ * @param {number} insertedIndex - the split point's index
+ * @param {Object} centerPoint - the centerline point at the same parameter
+ * @param {number} ratio - the stored multiplier
+ * @returns {Array} a new array, or the input where the ratio is one
+ */
+export function applyInsertionRatio(points, insertedIndex, centerPoint, ratio) {
+  if (ratio === 1 || !centerPoint || !points?.[insertedIndex]) {
+    return points;
+  }
+  const at = points[insertedIndex];
+  const moved = points.slice();
+  moved[insertedIndex] = {
+    ...at,
+    x: centerPoint.x + (at.x - centerPoint.x) * ratio,
+    y: centerPoint.y + (at.y - centerPoint.y) * ratio,
+  };
+  return moved;
+}
