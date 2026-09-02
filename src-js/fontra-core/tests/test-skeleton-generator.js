@@ -4128,8 +4128,38 @@ describe("skeleton insertion points reach the generator", () => {
         moved.push(i);
       }
     }
-    // The two emitted on-curves move. Nothing else does.
-    expect(moved).to.have.length(2);
+    // The two emitted on-curves move, each carrying its own two handles so it
+    // stays a smooth point. Nothing else moves.
+    expect(moved).to.have.length(6);
+    const owned = new Set(
+      plain.provenance[0].pointMap
+        .map((entry, index) => (entry?.insertion ? index : null))
+        .filter((index) => index !== null)
+    );
+    for (const index of moved) {
+      expect(owned.has(index), `point ${index} moved and is not the insertion's`).to.be
+        .true;
+    }
+  });
+
+  it("keeps an inserted point on a curve smooth as its width changes", () => {
+    // Leaving the two handles behind while the on-curve moved turned every
+    // swell on a curve into a kink.
+    const result = generateFromSkeleton(
+      curvedStroke([{ id: 13, pointId: 11, t: 0.4, width: { left: 1.6, right: 1.6 } }])
+    );
+    const points = result.contours[0].points;
+    const index = result.provenance[0].pointMap.findIndex(
+      (entry) => entry?.insertion && entry.role === "onCurve" && entry.side === "left"
+    );
+    const [before, at, after] = [points[index - 1], points[index], points[index + 1]];
+    expect(at.smooth).to.equal(true);
+    const cross =
+      (at.x - before.x) * (after.y - at.y) - (at.y - before.y) * (after.x - at.x);
+    const scale =
+      Math.hypot(at.x - before.x, at.y - before.y) *
+      Math.hypot(after.x - at.x, after.y - at.y);
+    expect(Math.abs(cross) / scale).to.be.lessThan(0.02);
   });
 
   it("slides a swell along a tapered stroke without changing anything else", () => {

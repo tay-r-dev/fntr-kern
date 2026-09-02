@@ -262,11 +262,15 @@ function splitCubic(p0, p1, p2, p3, t) {
   const d = lerp(a, b, t);
   const e = lerp(b, c, t);
   const at = lerp(d, e, t);
+  // De Casteljau leaves the two inner handles and the new on-curve on one line:
+  // that is what makes the two pieces meet without a kink. The point is marked
+  // smooth to say so, and the two handles are marked as its own so the ratio
+  // move carries them with it and the line survives the move.
   return [
     { x: a.x, y: a.y, type: "cubic" },
-    { x: d.x, y: d.y, type: "cubic" },
-    { x: at.x, y: at.y },
-    { x: e.x, y: e.y, type: "cubic" },
+    { x: d.x, y: d.y, type: "cubic", _insertionSmooth: true },
+    { x: at.x, y: at.y, smooth: true },
+    { x: e.x, y: e.y, type: "cubic", _insertionSmooth: true },
     { x: c.x, y: c.y, type: "cubic" },
   ];
 }
@@ -310,6 +314,13 @@ export function applyInsertionRatio(points, insertedIndex, centerPoint, ratio) {
   for (const step of [-1, 1]) {
     const index = insertedIndex + step;
     const handle = points[index];
+    // On a cut curve the two handles are on one line through the point. They
+    // travel with it, so the point stays a smooth one however far the width
+    // takes it. Leaving them behind turned every swell on a curve into a kink.
+    if (handle?._insertionSmooth) {
+      moved[index] = { ...handle, x: handle.x + shift.x, y: handle.y + shift.y };
+      continue;
+    }
     if (!handle?._insertionStub) {
       continue;
     }
