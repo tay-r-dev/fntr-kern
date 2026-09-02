@@ -1285,28 +1285,55 @@ export default class SkeletonParametersPanel extends Panel {
   // resolve to different numbers reports mixed, and one whose reference cannot
   // be read at all reports nothing rather than a number the shape does not obey.
   _insertionWidthSummary(insertions, side) {
-    const layerGlyph = this._getEditLayerGlyph();
-    const skeletonData = getSkeletonData(layerGlyph);
-    const values = [];
-    for (const entry of insertions) {
-      const reference = insertionWidthReference(
-        skeletonData,
-        layerGlyph?.path,
-        entry.contourId,
-        entry.insertionId,
-        side
-      );
-      values.push(
-        reference === null
-          ? null
-          : Math.round(insertionRatioToUnits(reference, entry.insertion.width[side]))
-      );
-    }
-    const first = values[0];
+    const values = insertions.map((entry) => this._insertionWidthInUnits(entry, side));
+    const first = values[0] ?? null;
     return {
       mixed: values.some((value) => value !== first),
       value: first,
     };
+  }
+
+  // One insertion point's half-width at that side, in units.
+  //
+  // The reference comes off the drawn outline, and there are two glyphs that
+  // carry it: the source layer being edited and the instance the canvas shows.
+  // They agree in an ordinary single-master font and can differ elsewhere, so
+  // both are tried rather than one being assumed. A field left blank is a field
+  // the designer cannot use, and guessing which glyph is the right one is what
+  // left it blank.
+  _insertionWidthInUnits(entry, side) {
+    const reference = this._insertionReference(entry, side);
+    const units = insertionRatioToUnits(reference, entry.insertion.width[side]);
+    return Number.isFinite(units) ? Math.round(units) : null;
+  }
+
+  // The half-width the stroke draws where one insertion point stands.
+  //
+  // There are two glyphs carrying the drawn outline: the source layer being
+  // edited and the instance the canvas shows. They agree in an ordinary
+  // single-master font and can differ elsewhere, so both are tried rather than
+  // one being assumed. The display, the scrub and the typed value all come
+  // through here, so the number shown and the number written cannot disagree.
+  _insertionReference(entry, side) {
+    for (const layerGlyph of [
+      this._getEditLayerGlyph(),
+      this._getPositionedGlyph()?.glyph,
+    ]) {
+      if (!layerGlyph?.path) {
+        continue;
+      }
+      const reference = insertionWidthReference(
+        getSkeletonData(layerGlyph),
+        layerGlyph.path,
+        entry.contourId,
+        entry.insertionId,
+        side
+      );
+      if (reference > 0) {
+        return reference;
+      }
+    }
+    return null;
   }
 
   // The easing slider reads percent and the model stores 0 to 1.
@@ -2311,19 +2338,11 @@ export default class SkeletonParametersPanel extends Panel {
     }
     // A typed number is units. It is divided by the reference the outline
     // draws, once, before it is stored.
-    const layerGlyph = this._getEditLayerGlyph();
-    const skeletonData = getSkeletonData(layerGlyph);
     const references = new Map();
     for (const entry of insertions) {
       references.set(
         `${entry.contourId}/${entry.insertionId}`,
-        insertionWidthReference(
-          skeletonData,
-          layerGlyph?.path,
-          entry.contourId,
-          entry.insertionId,
-          name
-        )
+        this._insertionReference(entry, name)
       );
     }
     await editSelectedSkeletonInsertions(
@@ -2358,19 +2377,11 @@ export default class SkeletonParametersPanel extends Panel {
       // The scrub streams a change in units. Each frame resolves it against the
       // reference the drag opened with, so the ratio the model stores stays a
       // statement about the stroke rather than about the drag.
-      const layerGlyph = this._getEditLayerGlyph();
-      const skeletonData = getSkeletonData(layerGlyph);
       const references = new Map();
       const startUnits = new Map();
       for (const entry of this._insertions || []) {
         const key = `${entry.contourId}/${entry.insertionId}`;
-        const reference = insertionWidthReference(
-          skeletonData,
-          layerGlyph?.path,
-          entry.contourId,
-          entry.insertionId,
-          name
-        );
+        const reference = this._insertionReference(entry, name);
         references.set(key, reference);
         startUnits.set(
           key,
