@@ -2143,12 +2143,17 @@ git commit -m "feat(skeleton): the insertion point panel"
 
 **Interfaces:**
 
-- An action, on the context menu, that adds an insertion point at the clicked place on a selected skeleton segment. It resolves the segment through `skeletonSegmentSelectionAtPoint` and the parameter through `projectSkeletonInsertionParameter`.
+- A held-key click on the skeleton pen tool that adds an insertion point where the cursor meets the centerline, with a hover preview of the two points the click will place. The key is `w`.
+
+The pen tool already does this gesture for a real skeleton point: it hit-tests the centerline and a plain click inserts a point there, while Alt-click on a straight inserts handles instead and previews itself while Alt is down. An insertion point is a third thing to place at the same hit, so it takes the same click with its own held key and its own preview. Alt and Shift are both taken, which is why the key is a letter.
+
+The insertion goes in through `editSkeleton`, resolving the segment from the existing centerline hit and the parameter through `projectSkeletonInsertionParameter`.
+
 - Delete removes a selected insertion point through `deleteSkeletonInsertions`.
 
 Both go through `editSkeleton`. The undo labels name the effect: "Add Insertion Point" and "Delete Insertion Point".
 
-- [ ] **Step 1: Add the two actions** in `editor.js`, registered the way the existing skeleton actions are.
+- [ ] **Step 1: Add the placement gesture** in `edit-tools-skeleton.js`, beside the Alt-click handle insert. Hold `w`, hover the centerline for a preview, click to place. Add the delete action in `editor.js`, registered the way the existing skeleton actions are.
 
 - [ ] **Step 2: Route delete.** Find where the delete action collects selected skeleton points and add the insertion keys to the same collection, so one keystroke removes a mixed selection in one change.
 
