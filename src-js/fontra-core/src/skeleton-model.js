@@ -3446,6 +3446,45 @@ function asStrictSkeletonInteger(value) {
 }
 
 const SKELETON_RIB_KEY_KIND = "skeletonRib";
+const SKELETON_INSERTION_KEY_KIND = "skeletonInsertion";
+
+// An insertion point's own selection key. `parseSelection` keeps a remainder
+// that is not a plain integer raw, so a compound key of this shape parses
+// today and needs nothing added there.
+export function makeSkeletonInsertionKey(contourId, insertionId) {
+  return `${SKELETON_INSERTION_KEY_KIND}/${contourId}/${insertionId}`;
+}
+
+export function parseSkeletonInsertionKey(key) {
+  const parts = `${key}`.split("/");
+  if (parts.length !== 3 || parts[0] !== SKELETON_INSERTION_KEY_KIND) {
+    throw new Error(`invalid skeleton insertion key: ${key}`);
+  }
+  const [, contourId, insertionId] = parts;
+  if (!contourId || !insertionId) {
+    throw new Error(`invalid skeleton insertion key: ${key}`);
+  }
+  return { contourId, insertionId };
+}
+
+// Whether a rib key names an insertion point rather than a skeleton point. The
+// two share the rib key shape, because a rib is a rib whichever kind of point
+// emitted it, and the id says which list to look in.
+export function skeletonRibKeyNamesInsertion(skeletonData, key) {
+  let parsed;
+  try {
+    parsed = parseSkeletonRibKey(key);
+  } catch {
+    return false;
+  }
+  return (
+    getSkeletonInsertion(
+      skeletonData,
+      asStrictSkeletonInteger(parsed.contourId),
+      asStrictSkeletonInteger(parsed.pointId)
+    ) !== null
+  );
+}
 
 export function makeSkeletonRibKey(contourId, pointId, side) {
   assertSkeletonRibSide(side);
@@ -3490,6 +3529,113 @@ export function getSkeletonRibAddress(skeletonData, contourId, pointId, side) {
     normal: calculateNormalAtSkeletonPoint(contour, pointIndex),
     ribReach: skeletonRibReach(contour, pointIndex),
   };
+}
+
+// The slide, as one frame-by-frame reader of a drag.
+//
+// It answers a parameter and nothing else. An insertion point stores no
+// coordinate, so the drag has no position to write. Every frame is measured
+// from the pre-drag segment, held here, rather than from the previous frame,
+// so an abandoned frame cannot leave the gesture describing its last step.
+//
+// The delta comes from the drag; the position it started at comes from the
+// segment. The cursor is their sum, which is what the projection needs.
+export function createSkeletonInsertionExecutor(skeletonData, contourId, insertionId) {
+  const contour = getSkeletonContour(skeletonData, contourId);
+  const insertion = getSkeletonInsertion(skeletonData, contourId, insertionId);
+  if (!contour || !insertion) {
+    return null;
+  }
+  // Read once, from the skeleton as it stood when the drag opened.
+  const startContour = deepCopyObject(contour);
+  const startInsertion = deepCopyObject(insertion);
+  const position = getSkeletonInsertionPosition(startContour, startInsertion);
+  return {
+    contourId: contour.id,
+    insertionId: insertion.id,
+    position,
+    applyDelta(delta) {
+      const cursor = {
+        x: (position?.x ?? 0) + delta.x,
+        y: (position?.y ?? 0) + delta.y,
+      };
+      return {
+        t: projectSkeletonInsertionParameter(startContour, startInsertion, cursor),
+      };
+    },
+  };
+}
+
+// The ratio drag, as one frame-by-frame reader.
+//
+// The reference is read off the outline, not out of the width fields. The
+// emitted point already stands at the stroke's own half-width times whatever
+// ratio is stored, so dividing that distance by the stored ratio gives the
+// half-width the stroke states there. That is the number a ratio of one means,
+// and it is a number the skeleton never states between two ribs.
+//
+// `contours` is the generated outline this same skeleton produced, and
+// `skeletonData.generated` is its provenance. Both are read once, before the
+// drag moves anything.
+export function createSkeletonInsertionRibExecutor(
+  skeletonData,
+  contours,
+  contourId,
+  insertionId,
+  side
+) {
+  assertSkeletonRibSide(side);
+  const contour = getSkeletonContour(skeletonData, contourId);
+  const insertion = getSkeletonInsertion(skeletonData, contourId, insertionId);
+  if (!contour || !insertion) {
+    return null;
+  }
+  const center = getSkeletonInsertionPosition(contour, insertion);
+  const address = findGeneratedPathAddress(
+    skeletonData,
+    contourId,
+    insertionId,
+    side,
+    "onCurve"
+  );
+  const emitted =
+    contours?.[address?.pathContourIndex]?.points?.[address?.pathPointIndex];
+  if (!center || !emitted) {
+    return null;
+  }
+  const out = { x: emitted.x - center.x, y: emitted.y - center.y };
+  const distance = Math.hypot(out.x, out.y);
+  const storedRatio = side === "left" ? insertion.width.left : insertion.width.right;
+  // A collapsed side states no direction and no length, so there is nothing to
+  // measure a ratio against and the drag refuses rather than inventing one.
+  if (distance < 1e-9 || !(storedRatio > 0)) {
+    return null;
+  }
+  const direction = { x: out.x / distance, y: out.y / distance };
+  const reference = distance / storedRatio;
+  return {
+    contourId: contour.id,
+    insertionId: insertion.id,
+    side,
+    reference,
+    direction,
+    applyDelta(delta) {
+      const along = delta.x * direction.x + delta.y * direction.y;
+      return { side, ratio: Math.max(0, (distance + along) / reference) };
+    },
+  };
+}
+
+export function applySkeletonInsertionRibExecutorResult(insertion, result) {
+  const linked = insertion.width.linked !== false;
+  insertion.width[result.side] = result.ratio;
+  if (linked) {
+    insertion.width[result.side === "left" ? "right" : "left"] = result.ratio;
+  }
+}
+
+export function applySkeletonInsertionExecutorResult(insertion, result) {
+  insertion.t = result.t;
 }
 
 export function createSkeletonRibExecutor(

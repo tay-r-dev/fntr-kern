@@ -7,14 +7,19 @@ import {
 import {
   alignSkeletonSmoothHandles,
   applyFixedRibDelta,
+  applySkeletonInsertionExecutorResult,
+  applySkeletonInsertionRibExecutorResult,
   applySkeletonRibExecutorResult,
   clearSkeletonSegmentCurvatureForHandle,
+  createSkeletonInsertionExecutor,
+  createSkeletonInsertionRibExecutor,
   createSkeletonRibExecutor,
   equalizeEditableGeneratedHandleOffsets,
   equalizeSkeletonHandleFromDelta,
   equalizeSkeletonHandleToPoint,
   findGeneratedPathAddress,
   getSkeletonData,
+  getSkeletonInsertion,
   getSkeletonHandleDirectionForPoint,
   getSkeletonHandleEqualizeInfo,
   getSkeletonHandleOffset,
@@ -28,7 +33,10 @@ import {
   makeEditableGeneratedHandleKey,
   makeEditableGeneratedPointKey,
   makeEmptySkeletonData,
+  makeSkeletonInsertionKey,
   makeSkeletonRibKey,
+  parseSkeletonInsertionKey,
+  skeletonRibKeyNamesInsertion,
   normalizeSkeletonData,
   parseEditableGeneratedHandleKey,
   parseEditableGeneratedPointKey,
@@ -118,6 +126,7 @@ export function getSelectionTargetKinds(selection) {
   const kinds = new Set();
   if (parsed.skeletonPoint?.length) kinds.add("skeletonPoint");
   if (parsed.skeletonRib?.length) kinds.add("skeletonRib");
+  if (parsed.skeletonInsertion?.length) kinds.add("skeletonInsertion");
   if (parsed.editableGeneratedPoint?.length) kinds.add("editableGeneratedPoint");
   if (parsed.editableGeneratedHandle?.length) kinds.add("editableGeneratedHandle");
   return kinds;
@@ -1097,6 +1106,157 @@ export function createSkeletonRibTargetEntries(
       },
     },
   ];
+}
+
+export { makeSkeletonInsertionKey };
+
+// The slide, as target entries.
+//
+// An insertion point stores an address and no coordinate, so the drag writes
+// one number. Every frame is measured against a fresh copy of the pre-drag
+// skeleton, held by the executor, and never against the frame before it. The
+// same field is written on every frame, so the rollback describes the whole
+// gesture rather than the last step of one.
+export function createSkeletonInsertionTargetEntries(layer, selection) {
+  const skeletonData = getSkeletonData(layer);
+  if (!skeletonData) {
+    return [];
+  }
+  const { skeletonInsertion } = parseSelection([...selection]);
+  const executors = [];
+  for (const key of skeletonInsertion || []) {
+    let parsed;
+    try {
+      parsed = parseSkeletonInsertionKey(`skeletonInsertion/${key}`);
+    } catch {
+      continue;
+    }
+    const executor = createSkeletonInsertionExecutor(
+      skeletonData,
+      Number(parsed.contourId),
+      Number(parsed.insertionId)
+    );
+    if (executor) {
+      executors.push(executor);
+    }
+  }
+  if (!executors.length) {
+    return [];
+  }
+  const originalLayerGlyph = cloneLayerGlyphForSkeletonEdit(layer);
+  let rollbackChange = null;
+  return [
+    {
+      get rollbackChange() {
+        return rollbackChange;
+      },
+      makeChangeForDelta(delta) {
+        const changes = makeEditSkeletonChange(originalLayerGlyph, (working) => {
+          for (const executor of executors) {
+            const insertion = getSkeletonInsertion(
+              working,
+              executor.contourId,
+              executor.insertionId
+            );
+            if (!insertion) {
+              continue;
+            }
+            applySkeletonInsertionExecutorResult(insertion, executor.applyDelta(delta));
+          }
+        });
+        rollbackChange = changes.rollbackChange;
+        return changes.change;
+      },
+      makeChangeForTransformation() {
+        return null;
+      },
+    },
+  ];
+}
+
+// The ratio drag on an insertion point's rib.
+//
+// It is a separate entry point from the ordinary rib drag because the two write
+// different things: a rib states a half-width, and an insertion point states a
+// multiple of the half-width the stroke already draws. The reference for that
+// multiple is read off the generated outline, which is why this needs the
+// layer's path and the ordinary rib drag does not.
+export function createSkeletonInsertionRibTargetEntries(layer, selection) {
+  const skeletonData = getSkeletonData(layer);
+  if (!skeletonData) {
+    return [];
+  }
+  const contours = generatedContoursFromLayerPath(layer, skeletonData);
+  const { skeletonRib } = parseSelection([...selection]);
+  const executors = [];
+  for (const key of skeletonRib || []) {
+    const fullKey = `skeletonRib/${key}`;
+    if (!skeletonRibKeyNamesInsertion(skeletonData, fullKey)) {
+      continue;
+    }
+    const [contourId, insertionId, side] = `${key}`.split("/");
+    const executor = createSkeletonInsertionRibExecutor(
+      skeletonData,
+      contours,
+      Number(contourId),
+      Number(insertionId),
+      side
+    );
+    if (executor) {
+      executors.push(executor);
+    }
+  }
+  if (!executors.length) {
+    return [];
+  }
+  const originalLayerGlyph = cloneLayerGlyphForSkeletonEdit(layer);
+  let rollbackChange = null;
+  return [
+    {
+      get rollbackChange() {
+        return rollbackChange;
+      },
+      makeChangeForDelta(delta) {
+        const changes = makeEditSkeletonChange(originalLayerGlyph, (working) => {
+          for (const executor of executors) {
+            const insertion = getSkeletonInsertion(
+              working,
+              executor.contourId,
+              executor.insertionId
+            );
+            if (!insertion) {
+              continue;
+            }
+            applySkeletonInsertionRibExecutorResult(
+              insertion,
+              executor.applyDelta(delta)
+            );
+          }
+        });
+        rollbackChange = changes.rollbackChange;
+        return changes.change;
+      },
+      makeChangeForTransformation() {
+        return null;
+      },
+    },
+  ];
+}
+
+// The generated contours as they stand in the layer's path, in the shape the
+// pure readers expect: one entry per stored provenance entry, at the index that
+// entry names. Read once, before a drag moves anything.
+function generatedContoursFromLayerPath(layer, skeletonData) {
+  const path = layer?.path;
+  const contours = [];
+  for (const entry of skeletonData?.generated || []) {
+    const index = entry?.pathContourIndex;
+    if (!Number.isInteger(index) || index < 0 || index >= (path?.numContours ?? 0)) {
+      continue;
+    }
+    contours[index] = path.getUnpackedContour(index);
+  }
+  return contours;
 }
 
 // Interpolation axis for alt-drag on an editable rib (donor

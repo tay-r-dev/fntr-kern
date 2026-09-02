@@ -2,6 +2,8 @@ import { applyChange } from "@fontra/core/changes.js";
 import { generateFromSkeleton } from "@fontra/core/skeleton-generator.js";
 import {
   applySkeletonRibExecutorResult,
+  createSkeletonInsertionExecutor,
+  createSkeletonInsertionRibExecutor,
   createSkeletonRibExecutor,
   findGeneratedPathAddress,
   getEffectiveRibHalfWidth,
@@ -1304,5 +1306,136 @@ describe("an insertion point cuts a tie", () => {
     const contour = getSkeletonContour(data, 10);
     const group = getTiedRibGroup(contour, contour.points[0]);
     expect(group.map((point) => point.id).sort()).to.deep.equal([11, 12]);
+  });
+});
+
+describe("the insertion point slide", () => {
+  const withInsertion = () =>
+    normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          defaultWidth: 60,
+          points: [
+            makeSkeletonPoint({ id: 11, x: 0, y: 0 }),
+            makeSkeletonPoint({ id: 12, x: 100, y: 0 }),
+          ],
+          insertions: [{ id: 13, pointId: 11, t: 0.5 }],
+        }),
+      ],
+    });
+
+  it("stands where the parameter says before any drag", () => {
+    const data = withInsertion();
+    const executor = createSkeletonInsertionExecutor(data, 10, 13);
+    expect(executor.position).to.deep.equal({ x: 50, y: 0 });
+    expect(executor.applyDelta({ x: 0, y: 0 }).t).to.equal(0.5);
+  });
+
+  it("writes only the parameter", () => {
+    const data = withInsertion();
+    const executor = createSkeletonInsertionExecutor(data, 10, 13);
+    const result = executor.applyDelta({ x: -25, y: 10 });
+    expect(Object.keys(result)).to.deep.equal(["t"]);
+    expect(result.t).to.be.closeTo(0.25, 0.02);
+    const contour = getSkeletonContour(data, 10);
+    expect(contour.points[0]).to.include({ x: 0, y: 0 });
+    expect(contour.points[1]).to.include({ x: 100, y: 0 });
+    expect(contour.insertions[0].t).to.equal(0.5);
+  });
+
+  it("holds the parameter inside the segment", () => {
+    const data = withInsertion();
+    const executor = createSkeletonInsertionExecutor(data, 10, 13);
+    expect(executor.applyDelta({ x: -150, y: 0 }).t).to.equal(0);
+    expect(executor.applyDelta({ x: 250, y: 0 }).t).to.equal(1);
+  });
+
+  it("measures every frame from the pre-drag segment, not the last frame", () => {
+    const data = withInsertion();
+    const executor = createSkeletonInsertionExecutor(data, 10, 13);
+    executor.applyDelta({ x: 40, y: 0 });
+    expect(executor.applyDelta({ x: -25, y: 0 }).t).to.be.closeTo(0.25, 0.02);
+  });
+});
+
+describe("the insertion point rib drag", () => {
+  // A straight stroke 60 wide. The emitted point sits 30 out from the
+  // centerline at a ratio of one, so the reference is 30 and a drag of 15
+  // further out asks for a ratio of 1.5.
+  const straight = (width = { left: 1, right: 1, linked: true }) =>
+    normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          defaultWidth: 60,
+          points: [
+            makeSkeletonPoint({ id: 11, x: 0, y: 0, width: { left: 30, right: 30 } }),
+            makeSkeletonPoint({ id: 12, x: 100, y: 0, width: { left: 30, right: 30 } }),
+          ],
+          insertions: [{ id: 13, pointId: 11, t: 0.5, width }],
+        }),
+      ],
+    });
+
+  const executorFor = (data, side) => {
+    const generated = generateFromSkeleton(data);
+    // The editor stores the provenance with the index the contour landed at in
+    // the layer's path. Nothing else has run here, so the two indexes agree.
+    const stored = generated.provenance.map((entry) => ({
+      ...entry,
+      pathContourIndex: entry.generatedContourIndex,
+    }));
+    return createSkeletonInsertionRibExecutor(
+      { ...data, generated: stored },
+      generated.contours,
+      10,
+      13,
+      side
+    );
+  };
+
+  it("reads the reference off the outline and answers a ratio of one", () => {
+    const data = straight();
+    const executor = executorFor(data, "left");
+    expect(executor.reference).to.be.closeTo(30, 1e-6);
+    expect(executor.applyDelta({ x: 0, y: 0 }).ratio).to.be.closeTo(1, 1e-6);
+  });
+
+  it("turns a drag along the rib into a ratio", () => {
+    const data = straight();
+    const executor = executorFor(data, "left");
+    const outward = executor.direction;
+    const result = executor.applyDelta({ x: outward.x * 15, y: outward.y * 15 });
+    expect(result.ratio).to.be.closeTo(1.5, 1e-6);
+  });
+
+  it("measures against the stroke, not against a swell already stored", () => {
+    // At a stored ratio of 2 the emitted point stands 60 out, but the reference
+    // is still the 30 the stroke states. A drag of 15 further out reads 2.5.
+    const data = straight({ left: 2, right: 2, linked: false });
+    const executor = executorFor(data, "left");
+    expect(executor.reference).to.be.closeTo(30, 1e-6);
+    const outward = executor.direction;
+    const result = executor.applyDelta({ x: outward.x * 15, y: outward.y * 15 });
+    expect(result.ratio).to.be.closeTo(2.5, 1e-6);
+  });
+
+  it("never answers a negative ratio", () => {
+    const data = straight();
+    const executor = executorFor(data, "left");
+    const outward = executor.direction;
+    expect(
+      executor.applyDelta({ x: outward.x * -500, y: outward.y * -500 }).ratio
+    ).to.equal(0);
+  });
+
+  it("answers the same for the right side, measured its own way out", () => {
+    const data = straight();
+    const executor = executorFor(data, "right");
+    expect(executor.reference).to.be.closeTo(30, 1e-6);
+    const outward = executor.direction;
+    const result = executor.applyDelta({ x: outward.x * 15, y: outward.y * 15 });
+    expect(result.ratio).to.be.closeTo(1.5, 1e-6);
   });
 });
