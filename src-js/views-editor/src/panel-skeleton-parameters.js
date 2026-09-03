@@ -55,7 +55,7 @@ import {
   setPanelPointTotalWidth,
   editSelectedSkeletonInsertions,
   insertionRatioToUnits,
-  insertionWidthReferenceFromSkeleton,
+  insertionWidthReference,
   setInsertionEasing,
   setInsertionRatioFromUnits,
   setInsertionWidthLinked,
@@ -375,7 +375,7 @@ export default class SkeletonParametersPanel extends Panel {
   // Mirror scene-model._getEditLayerSkeletonData: the panel edits and displays
   // the edit layer, whose ids are canonical for cross-layer resolution (WS-9).
 
-  _getEditLayerSkeletonData(positionedGlyph) {
+  _getEditLayerGlyph(positionedGlyph) {
     if (!positionedGlyph) {
       return null;
     }
@@ -384,7 +384,11 @@ export default class SkeletonParametersPanel extends Panel {
       positionedGlyph.glyph?.layerName;
     const layerGlyph =
       editLayerName && positionedGlyph.varGlyph?.glyph?.layers?.[editLayerName]?.glyph;
-    return getSkeletonData(layerGlyph || positionedGlyph.glyph);
+    return layerGlyph || positionedGlyph.glyph || null;
+  }
+
+  _getEditLayerSkeletonData(positionedGlyph) {
+    return getSkeletonData(this._getEditLayerGlyph(positionedGlyph));
   }
 
   getSelectedGlyphName() {
@@ -1281,12 +1285,11 @@ export default class SkeletonParametersPanel extends Panel {
 
   // One insertion point's half-width at that side, in units.
   //
-  // The reference comes off the drawn outline, and there are two glyphs that
-  // carry it: the source layer being edited and the instance the canvas shows.
-  // They agree in an ordinary single-master font and can differ elsewhere, so
-  // both are tried rather than one being assumed. A field left blank is a field
-  // the designer cannot use, and guessing which glyph is the right one is what
-  // left it blank.
+  // The reference comes off the drawn outline of the layer the panel edits,
+  // which is the same layer its skeleton comes from. There is no candidate to
+  // choose between: a skeleton and the outline it drew are one layer's two
+  // halves, and taking them off the same one is what makes the number shown and
+  // the number written describe one stroke.
   _insertionWidthInUnits(entry, side) {
     const reference = this._insertionReference(entry, side);
     const units = insertionRatioToUnits(reference, entry.insertion.width[side]);
@@ -1295,19 +1298,24 @@ export default class SkeletonParametersPanel extends Panel {
 
   // The half-width the stroke draws where one insertion point stands.
   //
-  // Measured from the skeleton, which the panel already holds, rather than from
-  // the drawn path, which it has to go looking for among more than one glyph.
-  // The generator is what draws that path, so generating it here answers the
-  // question outright and no lookup can pick the wrong glyph. The display, the
-  // scrub and the typed value all come through here, so the number shown and
-  // the number written cannot disagree.
+  // Read off the drawn outline through the provenance the generator published,
+  // which is the same lookup the rib gizmo and the drawing layer already use.
+  // It was measured by regenerating the whole glyph instead, once per side and
+  // on every rebuild of the panel, plus twice more to open a scrub. The
+  // generator is the largest file in the fork and it draws the shape the panel
+  // is already looking at.
+  //
+  // The display, the scrub and the typed value all come through here, so the
+  // number shown and the number written cannot disagree.
   _insertionReference(entry, side) {
-    const skeletonData = this._getEditLayerSkeletonData(this._getPositionedGlyph());
-    if (!skeletonData) {
+    const glyph = this._getEditLayerGlyph(this._getPositionedGlyph());
+    const skeletonData = getSkeletonData(glyph);
+    if (!skeletonData || !glyph?.path) {
       return null;
     }
-    return insertionWidthReferenceFromSkeleton(
+    return insertionWidthReference(
       skeletonData,
+      glyph.path,
       entry.contourId,
       entry.insertionId,
       side
