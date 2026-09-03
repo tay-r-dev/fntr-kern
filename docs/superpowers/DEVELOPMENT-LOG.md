@@ -1953,6 +1953,46 @@ a gap total of zero.
 
 ---
 
+## Interpolation and the hidden data block (map F7, skeleton)
+
+**State: settled.** The layer's `fontra.internal` block reaches two comparisons, and it
+was given one answer where it needed two.
+
+**The whole block was dropped, and a new source came out with no skeleton.** A source is
+created from an interpolated instance, so a strip that runs before the variation model
+hands the new layer an outline with no recipe behind it. Reported on `G^1.json`, one
+source and two skeleton contours: the new source arrived with the outline and nothing
+else, and the glyph stopped being a skeleton glyph the moment a second source existed.
+The same instance draws a font source that does not exist yet, so that display went with
+it.
+
+- **The strip was the right fix for the wrong reader.** The block stopped the itemwise
+  comparison and was reported as an interpolation error on a glyph whose outlines
+  matched exactly, measured on `F^1.json` at 26 matching points. The panel's warning
+  must drop the block. The model must not.
+- **Normalization is what makes the block comparable**, because the entry that stopped
+  the comparison was missing rather than different. Normalizing every master
+  materializes every field, so two masters carrying the same skeleton carry the same
+  entry set.
+- **Two spots stay sparse after normalization and one of them is the reported one.**
+  The handle offsets write an entry only for a handle that was moved, so every master
+  gains the entries the others hold, at zero. `nextId` is the id allocator's bookmark
+  rather than a drawing, so every master takes the highest of them and the model carries
+  one number through.
+- **The rest is answered by dropping rather than by more filling.** Where the masters
+  still do not compare, the skeleton comes out of every master and the old behaviour
+  stands. A hand-drawn master beside a skeleton master is a real thing to have, and two
+  different placements of one handle are not a difference a number can carry.
+- **The guard that should have caught it was vacuous.** The test asserted
+  `getSkeletonData(stripped)` is not `undefined`, and that reader answers a missing
+  block with `null`, so it went on passing through the whole regression. Written as an
+  assertion about the value rather than about the thing.
+- **Open: the interpolated skeleton carries fractional coordinates.** The new source's
+  path is rounded and its skeleton is not. The generator quantizes what it emits, so the
+  outline is right and the panel shows fractions.
+
+---
+
 ## Markers (map F11)
 
 **The count rule was wrong, and use showed it in a day.** The design started with

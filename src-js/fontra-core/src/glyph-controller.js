@@ -8,7 +8,12 @@ import {
   findNearestLocationIndex,
 } from "./discrete-variation-model.js";
 import { VariationError } from "./errors.js";
-import { withoutNonInterpolableData } from "./fontra-internal-schema.js";
+import {
+  FONTRA_INTERNAL_KEY,
+  FONTRA_INTERNAL_SCHEMA_VERSION,
+  FONTRA_INTERNAL_SECTIONS,
+  withoutNonInterpolableData,
+} from "./fontra-internal-schema.js";
 import { filterPathByPointIndices } from "./path-functions.js";
 import { PathHitTester } from "./path-hit-tester.js";
 import {
@@ -23,7 +28,11 @@ import {
   registerRepresentationFactory,
 } from "./representation-cache.js";
 import { setPopFirst } from "./set-ops.js";
-import { getSkeletonData, getSkeletonRibPosition } from "./skeleton-model.js";
+import {
+  getSkeletonData,
+  getSkeletonRibPosition,
+  normalizeSkeletonData,
+} from "./skeleton-model.js";
 import {
   Transform,
   decomposedToTransform,
@@ -33,6 +42,7 @@ import {
   areGuidelinesCompatible,
   assert,
   compare,
+  deepCopyObject,
   enumerate,
   filterObject,
   mapObjectValues,
@@ -1391,32 +1401,104 @@ export function ensureGlyphCompatibility(layers, glyphDependencies) {
   }
 
   const guidelinesAreCompatible = areGuidelinesCompatible(layerGlyphs);
+  const interpolableCustomDatas = interpolableCustomDatasForMasters(layers);
 
-  return layers.map(({ sourceLocation, glyph, componentLocationFallbackValues }) =>
-    StaticGlyph.fromObject(
-      {
-        ...glyph,
-        components: componentsAreCompatible
-          ? normalizeComponents(
-              glyph,
-              sourceLocation,
-              componentLocationFallbackValues,
-              componentCustomDatasAreCompatible
-            )
-          : stripComponentCustomData(glyph.components),
-        anchors: glyph.anchors.slice().sort((a, b) => compare(a.name, b.name)),
-        guidelines: guidelinesAreCompatible
-          ? normalizeGuidelines(glyph.guidelines, true)
-          : [],
-        backgroundImage: undefined, // The background image isn't meant to interpolate
-        // The skeleton and the markers are not interpolable data, and two masters need
-        // not carry the same ones. Left in, adjusting a gizmo in one master alone makes
-        // the glyph incompatible. They live on masters only.
-        customData: withoutNonInterpolableData(glyph.customData),
-      },
-      true // noCopy
-    )
+  return layers.map(
+    ({ sourceLocation, glyph, componentLocationFallbackValues }, layerIndex) =>
+      StaticGlyph.fromObject(
+        {
+          ...glyph,
+          components: componentsAreCompatible
+            ? normalizeComponents(
+                glyph,
+                sourceLocation,
+                componentLocationFallbackValues,
+                componentCustomDatasAreCompatible
+              )
+            : stripComponentCustomData(glyph.components),
+          anchors: glyph.anchors.slice().sort((a, b) => compare(a.name, b.name)),
+          guidelines: guidelinesAreCompatible
+            ? normalizeGuidelines(glyph.guidelines, true)
+            : [],
+          backgroundImage: undefined, // The background image isn't meant to interpolate
+          customData: interpolableCustomDatas[layerIndex],
+        },
+        true // noCopy
+      )
   );
+}
+
+// The skeleton reaches the model, and everything else in the hidden block does not.
+//
+// A new source is created from an interpolated instance, and the same instance draws a
+// font source that does not exist yet. A model that drops the skeleton hands both an
+// outline with no recipe behind it, so a glyph stops being a skeleton glyph the moment
+// a second source is made from it.
+//
+// The markers are ids and address kinds rather than numbers, and the letterspacer,
+// composition and per-source default sections belong to a source rather than to a
+// drawing. None of them interpolate, and all of them are dropped here.
+//
+// The skeleton is normalized first. The stored block writes an entry only where a value
+// is not the default, so two masters edited differently carry different entry sets and
+// the itemwise comparison stops on a glyph whose outlines match exactly. Measured on
+// `F^1.json`: 26 matching points in both masters, stopped on a skeleton point holding
+// handle offsets in one master and none in the other. Normalization materializes every
+// field, so the sets agree wherever the two skeletons have the same shape.
+//
+// Where they do not have the same shape the skeleton is dropped from every master. A
+// master drawn by hand beside a master drawn from a centerline is a real thing to have,
+// and it must not report an interpolation error.
+function interpolableCustomDatasForMasters(layers) {
+  const customDatas = layers.map(({ glyph }) =>
+    withInterpolableSkeleton(glyph.customData)
+  );
+  shareSkeletonNextId(customDatas);
+  shareSkeletonHandleOffsetKeys(customDatas);
+  const [first, ...rest] = customDatas;
+  for (const other of rest) {
+    try {
+      addItemwise(first, other);
+    } catch (error) {
+      return layers.map(({ glyph }) => withoutNonInterpolableData(glyph.customData));
+    }
+  }
+  return customDatas;
+}
+
+function withInterpolableSkeleton(customData) {
+  const internal = customData?.[FONTRA_INTERNAL_KEY];
+  if (internal === undefined) {
+    return customData;
+  }
+  const stripped = { ...customData };
+  delete stripped[FONTRA_INTERNAL_KEY];
+  const skeleton = internal[FONTRA_INTERNAL_SECTIONS.SKELETON];
+  if (skeleton === undefined) {
+    return stripped;
+  }
+  stripped[FONTRA_INTERNAL_KEY] = {
+    schemaVersion: FONTRA_INTERNAL_SCHEMA_VERSION,
+    [FONTRA_INTERNAL_SECTIONS.SKELETON]: normalizeSkeletonData(skeleton),
+  };
+  return stripped;
+}
+
+// `nextId` is the id allocator's own bookmark, not a drawing. Interpolated it lands
+// between two integers, and an id is a name rather than a quantity. Every master takes
+// the highest of them, so the number is the same in each and the model carries it
+// through unchanged.
+function shareSkeletonNextId(customDatas) {
+  const skeletons = customDatas
+    .map((customData) => customData?.[FONTRA_INTERNAL_KEY]?.skeleton)
+    .filter((skeleton) => skeleton);
+  if (!skeletons.length) {
+    return;
+  }
+  const nextId = Math.max(...skeletons.map((skeleton) => skeleton.nextId));
+  for (const skeleton of skeletons) {
+    skeleton.nextId = nextId;
+  }
 }
 
 function areComponentsCompatible(glyphs) {
@@ -1656,4 +1738,57 @@ export function roundComponentOrigins(components) {
       component.transformation.translateY
     );
   });
+}
+
+// The handle offsets are the one place normalization leaves sparse, and they are the
+// place the reported fault was measured: an entry is written only where a handle was
+// moved off where the construction put it, so a master with an untouched handle carries
+// no entry for it at all.
+//
+// A missing entry means no adjustment, so every master gains the entries the others
+// have, with the numbers at zero and the flags copied from the master that wrote one.
+// Where two masters disagree about a flag — one handle detached and the other not — the
+// comparison still stops and the caller drops the skeleton, which is the honest answer.
+// Two different placements of one handle are not a difference a number can carry.
+function shareSkeletonHandleOffsetKeys(customDatas) {
+  const pointsById = new Map();
+  for (const customData of customDatas) {
+    const skeleton = customData?.[FONTRA_INTERNAL_KEY]?.skeleton;
+    for (const contour of skeleton?.contours || []) {
+      for (const point of contour.points) {
+        if (!point.handleOffsets) {
+          continue;
+        }
+        const key = `${contour.id}/${point.id}`;
+        if (!pointsById.has(key)) {
+          pointsById.set(key, []);
+        }
+        pointsById.get(key).push(point);
+      }
+    }
+  }
+
+  for (const points of pointsById.values()) {
+    const template = {};
+    for (const point of points) {
+      for (const [offsetKey, offset] of Object.entries(point.handleOffsets)) {
+        template[offsetKey] ||= zeroNumbers(offset);
+      }
+    }
+    for (const point of points) {
+      for (const [offsetKey, zeroed] of Object.entries(template)) {
+        point.handleOffsets[offsetKey] ||= deepCopyObject(zeroed);
+      }
+    }
+  }
+}
+
+function zeroNumbers(value) {
+  if (typeof value === "number") {
+    return 0;
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  return mapObjectValues(value, zeroNumbers);
 }

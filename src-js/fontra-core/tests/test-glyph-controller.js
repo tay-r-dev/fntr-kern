@@ -12,6 +12,7 @@ import {
   setSkeletonData,
 } from "@fontra/core/skeleton-model.js";
 import { getDecomposedIdentity } from "@fontra/core/transform.js";
+import { addItemwise } from "@fontra/core/var-funcs.js";
 import { range } from "@fontra/core/utils.ts";
 import { StaticGlyph, VariableGlyph } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
@@ -396,15 +397,24 @@ describe("interpolation ignores markers", () => {
     expect(getMarkers(stripped)).to.deep.equal([]);
   });
 
-  it("neither drops anything else in fontra.internal", () => {
+  // This assertion used to read `to.not.equal(undefined)`, and getSkeletonData answers
+  // a missing block with null, so it went on passing when the skeleton stopped
+  // reaching the model. Assert the thing itself.
+
+  it("the compatibility check drops the skeleton as well", () => {
+    // The check asks whether two drawings match, and the skeleton is not a drawing.
     const glyph = layerGlyphWithMarker();
     setSkeletonData(glyph, { contours: [], generated: [], nextId: 1 });
-    for (const stripped of [
-      stripNonInterpolatablesAndSortAnchors(glyph),
-      ensureGlyphCompatibility([{ sourceLocation: {}, glyph }], {})[0],
-    ]) {
-      expect(getSkeletonData(stripped)).to.not.equal(undefined);
-    }
+    expect(getSkeletonData(stripNonInterpolatablesAndSortAnchors(glyph))).to.equal(
+      null
+    );
+  });
+
+  it("the interpolation model keeps the skeleton", () => {
+    const glyph = layerGlyphWithMarker();
+    setSkeletonData(glyph, { contours: [], generated: [], nextId: 1 });
+    const [stripped] = ensureGlyphCompatibility([{ sourceLocation: {}, glyph }], {});
+    expect(getSkeletonData(stripped)).to.not.equal(null);
   });
 
   it("leaves the original glyph's markers alone", () => {
@@ -412,5 +422,109 @@ describe("interpolation ignores markers", () => {
     stripNonInterpolatablesAndSortAnchors(glyph);
     ensureGlyphCompatibility([{ sourceLocation: {}, glyph }], {});
     expect(getMarkers(glyph)).to.have.lengthOf(1);
+  });
+});
+
+describe("the interpolation model carries the skeleton", () => {
+  // The skeleton is the recipe the outline was drawn from, and a new source is created
+  // from an interpolated instance. A model that drops the skeleton hands the new source
+  // an outline with no recipe behind it, so the glyph stops being editable as a
+  // skeleton the moment a second source exists. The same instance feeds the display at
+  // a not-yet-created font source, which is why this is the model's own contract and
+  // not the source panel's.
+  //
+  // What must not come back is the fault that made the skeleton dropped in the first
+  // place: two masters holding different sets of entries stopped the itemwise
+  // comparison and were reported to the designer as an interpolation error on a glyph
+  // whose outlines matched exactly. So the block is normalized before the model sees
+  // it, and it is dropped only where the two skeletons genuinely do not match.
+
+  function skeletonGlyph(skeleton) {
+    const glyph = StaticGlyph.fromObject(makeTestStaticGlyphObject());
+    setSkeletonData(glyph, skeleton);
+    return glyph;
+  }
+
+  function makeSkeleton(points) {
+    return {
+      version: 1,
+      nextId: 100,
+      contours: [{ id: 1, closed: false, defaultWidth: 80, singleSided: null, points }],
+      generated: [],
+    };
+  }
+
+  function onCurve(id, x, y, extra = {}) {
+    return { id, x, y, type: null, smooth: false, ...extra };
+  }
+
+  it("keeps the skeleton on a single master", () => {
+    const glyph = skeletonGlyph(makeSkeleton([onCurve(2, 0, 0), onCurve(3, 100, 0)]));
+    const [master] = ensureGlyphCompatibility([{ sourceLocation: {}, glyph }], {});
+    expect(getSkeletonData(master)?.contours).to.have.lengthOf(1);
+  });
+
+  it("keeps skeletons that differ only in the entries one master stores", () => {
+    // The measured F^1.json case: a handle offset written in one master and absent in
+    // the other. Normalization materializes both, so the entry sets agree.
+    const masters = ensureGlyphCompatibility(
+      [
+        {
+          sourceLocation: {},
+          glyph: skeletonGlyph(
+            makeSkeleton([
+              onCurve(2, 0, 0, { handleOffsets: { leftIn: { x: 3, y: 4 } } }),
+              onCurve(3, 100, 0),
+            ])
+          ),
+        },
+        {
+          sourceLocation: { wght: 1 },
+          glyph: skeletonGlyph(makeSkeleton([onCurve(2, 0, 0), onCurve(3, 120, 0)])),
+        },
+      ],
+      {}
+    );
+    for (const master of masters) {
+      expect(getSkeletonData(master)?.contours).to.have.lengthOf(1);
+    }
+    expect(() =>
+      addItemwise(masters[0].customData, masters[1].customData)
+    ).to.not.throw();
+  });
+
+  it("drops the skeleton from every master where two skeletons do not match", () => {
+    const masters = ensureGlyphCompatibility(
+      [
+        {
+          sourceLocation: {},
+          glyph: skeletonGlyph(makeSkeleton([onCurve(2, 0, 0), onCurve(3, 100, 0)])),
+        },
+        {
+          sourceLocation: { wght: 1 },
+          glyph: skeletonGlyph(
+            makeSkeleton([onCurve(2, 0, 0), onCurve(3, 100, 0), onCurve(4, 200, 0)])
+          ),
+        },
+      ],
+      {}
+    );
+    for (const master of masters) {
+      expect(getSkeletonData(master)).to.equal(null);
+    }
+    expect(() =>
+      addItemwise(masters[0].customData, masters[1].customData)
+    ).to.not.throw();
+  });
+
+  it("still drops the markers it always dropped", () => {
+    const glyph = skeletonGlyph(makeSkeleton([onCurve(2, 0, 0), onCurve(3, 100, 0)]));
+    setMarkerData(glyph, {
+      markers: [{ id: "marker0", ends: [], signature: {} }],
+      groups: [],
+    });
+    const [master] = ensureGlyphCompatibility([{ sourceLocation: {}, glyph }], {});
+    expect(getMarkers(master)).to.deep.equal([]);
+    expect(getSkeletonData(master)?.contours).to.have.lengthOf(1);
   });
 });
