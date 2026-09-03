@@ -7,11 +7,11 @@ import { intersect } from "./vector.js";
 // skeleton-generator.js is deliberate. That file is the fork's largest and is
 // where defect P6 still bites.
 
-// A parameter is never pushed off its own ends. Zero and one are legal
+// The parameter is clamped to 0 and 1 and no further in. Zero and one are legal
 // settings: the emitted point lands on its neighbour and is emitted anyway,
-// because points collapse and do not disappear.
-export const SPLIT_MIN_PARAMETER = 1e-9;
-export const SPLIT_MAX_PARAMETER = 1 - 1e-9;
+// because points collapse and do not disappear. A pair of constants here once
+// held the ends open by a billionth and was applied nowhere, which is the same
+// rule stated twice and obeyed once.
 
 // A handle that states nothing yet. It sits exactly on its own on-curve, so the
 // piece it belongs to draws the straight line it was cut from and the joint at
@@ -212,10 +212,14 @@ function lerp(a, b, t) {
 function splitLine(start, end, t) {
   const at = lerp(start, end, t);
   const span = { x: end.x - start.x, y: end.y - start.y };
-  const direction = normalize(span);
-  if (!direction) {
-    return [{ x: at.x, y: at.y }];
-  }
+  // A straight of no length states no direction, and every one of the five
+  // points then sits on the one place the straight occupies. They are still all
+  // five emitted: the two sides of a stroke are cut by the same insertion, and a
+  // side that answered with one point where its partner answered with five would
+  // give the two edges of one stroke different point counts, which is the
+  // interpolation contract broken by a degenerate input rather than by a
+  // setting.
+  const direction = normalize(span) ?? { x: 0, y: 0 };
   const back = { x: -direction.x, y: -direction.y };
   // An outer handle is only needed where the on-curve it belongs to is smooth:
   // there it holds the point's other handle colinear, which is the whole reason
@@ -233,15 +237,23 @@ function splitLine(start, end, t) {
 }
 
 function along(anchor, direction, distance) {
-  return {
+  const handle = {
     x: anchor.x + direction.x * distance,
     y: anchor.y + direction.y * distance,
     type: "cubic",
-    // The direction this handle was built on. Without it the smoothing pass
-    // estimates one from the handle's length and rotates it off the line, which
-    // is the one thing this handle exists not to do.
-    _axis: { x: direction.x, y: direction.y },
   };
+  // The direction this handle was built on. Without it the smoothing pass
+  // estimates one from the handle's length and rotates it off the line, which
+  // is the one thing this handle exists not to do.
+  //
+  // A straight of no length has no direction to state, and a zero axis is not
+  // one: it would say "this way" and point nowhere. The handle is emitted
+  // without an axis there, and the estimate it falls back to has nothing to
+  // rotate.
+  if (direction.x || direction.y) {
+    handle._axis = { x: direction.x, y: direction.y };
+  }
+  return handle;
 }
 
 // A handle belonging to the insertion point rather than to either end. The flag
@@ -476,9 +488,9 @@ function stretchToward(handle, anchor, fraction, smoothLength) {
 // third, so an eased joint is as full as any other curve in the outline.
 //
 // Easing has to reach the length as well as the direction. On a cut straight the
-// insertion point's handles start one unit long, and turning a one-unit handle
-// moves the drawn curve by less than the width of the line it is drawn with. The
-// control would do nothing a designer could see.
+// insertion point's handles start on the point itself, and turning a handle of
+// no length moves nothing at all. The control would do nothing a designer could
+// see.
 function smoothHandleLength(points, insertedIndex, step) {
   const at = points[insertedIndex];
   const neighbour = neighbouringOnCurve(points, insertedIndex, step);

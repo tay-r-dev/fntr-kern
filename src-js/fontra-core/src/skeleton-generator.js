@@ -2454,28 +2454,40 @@ function applyInsertionSplits({
       continue;
     }
     for (const insertion of onSegment) {
-      left = applyOneInsertionToSide(
+      // Both sides are cut, or neither is. An insertion adds three points to a
+      // side, so a refusal taken on one side alone would leave the two edges of
+      // one stroke with different point counts, and the glyph would stop
+      // interpolating at a value of a setting rather than at a change of shape.
+      // The refusal is taken before either side is committed.
+      const cutLeft = cutOneSide(
         left,
         leftSegmentAnchors[index],
         insertion,
         "left",
         segment
       );
-      right = applyOneInsertionToSide(
+      const cutRight = cutOneSide(
         right,
         rightSegmentAnchors[index],
         insertion,
         "right",
         segment
       );
+      if (!cutLeft || !cutRight) {
+        continue;
+      }
+      left = cutLeft;
+      right = cutRight;
     }
   }
   return { leftSide: left, rightSide: right };
 }
 
-function applyOneInsertionToSide(sidePoints, anchorIndex, insertion, side, segment) {
+// One side's cut, or null if this side cannot take it. The caller commits both
+// sides together.
+function cutOneSide(sidePoints, anchorIndex, insertion, side, segment) {
   if (anchorIndex === null || anchorIndex === undefined) {
-    return sidePoints;
+    return null;
   }
   // The parameter is resolved per side, against the rib rather than against the
   // side's own length. The two sides of a segment are not the same length: at a
@@ -2494,7 +2506,7 @@ function applyOneInsertionToSide(sidePoints, anchorIndex, insertion, side, segme
     sideParameter === null ? insertion.t : sideParameter
   );
   if (!cut) {
-    return sidePoints;
+    return null;
   }
   const points = cut.points;
   const at = cut.insertedIndex;

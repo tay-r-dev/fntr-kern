@@ -4233,7 +4233,7 @@ describe("skeleton insertion points reach the generator", () => {
     const emitted = result.provenance[0].pointMap
       .map((entry, index) => (entry?.insertion ? points[index] : null))
       .filter(Boolean);
-    // Two on-curves, plus the one-unit handles either side of each.
+    // Two on-curves, plus the collapsed handles either side of each.
     const onCurves = emitted.filter((point) => !point.type);
     expect(onCurves).to.have.length(2);
     // Halfway along the straight from x=200 to x=400, on both edges.

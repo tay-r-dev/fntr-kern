@@ -447,4 +447,25 @@ describe("applyInsertionEasing", () => {
     }
     expect(worst).to.be.lessThan(0.5);
   });
+  // A degenerate input must not change the count, for the same reason a
+  // degenerate SETTING must not: the two sides of a stroke are cut by one
+  // insertion, and a side answering with fewer points than its partner gives the
+  // two edges different counts.
+  it("emits the whole cut from a straight of no length", () => {
+    const cut = splitSideAtParameter(
+      [
+        { x: 40, y: 40 },
+        { x: 40, y: 40 },
+      ],
+      0,
+      0.5
+    );
+    expect(cut).to.not.equal(null);
+    expect(cut.points).to.have.length(7);
+    expect(cut.insertedIndex).to.equal(3);
+    for (const point of cut.points) {
+      expect(point.x).to.equal(40);
+      expect(point.y).to.equal(40);
+    }
+  });
 });
