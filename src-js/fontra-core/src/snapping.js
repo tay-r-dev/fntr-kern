@@ -1,3 +1,5 @@
+import { cubicVelocityAt } from "./offset-contour.js";
+
 // A kind is a direction, not a source. Two lines that run the same way pull the
 // same, whether one came from a guide the designer placed, a font metric, a
 // point's own ray or a skeleton rib end. What the source was decides how the
@@ -77,18 +79,7 @@ function cubicAt(points, t) {
 }
 
 function cubicTangentAt(points, t) {
-  const u = 1 - t;
-  const a = 3 * u * u;
-  const b = 6 * u * t;
-  const c = 3 * t * t;
-  const dx =
-    a * (points[1].x - points[0].x) +
-    b * (points[2].x - points[1].x) +
-    c * (points[3].x - points[2].x);
-  const dy =
-    a * (points[1].y - points[0].y) +
-    b * (points[2].y - points[1].y) +
-    c * (points[3].y - points[2].y);
+  const { x: dx, y: dy } = cubicVelocityAt(points, t);
   const length = Math.hypot(dx, dy);
   return length < 1e-12 ? { dx: 1, dy: 0 } : { dx: dx / length, dy: dy / length };
 }

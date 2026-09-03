@@ -1,3 +1,4 @@
+import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 import { intersect } from "./vector.js";
 
 // An insertion point's geometry, as a pure operation on a side's emitted point
@@ -98,14 +99,7 @@ function sidePiece(sidePoints, anchorIndex) {
 }
 
 function evaluatePiece(piece, u) {
-  if (piece.length === 2) {
-    return lerp(piece[0], piece[1], u);
-  }
-  const [p0, p1, p2, p3] = piece;
-  const a = lerp(p0, p1, u);
-  const b = lerp(p1, p2, u);
-  const c = lerp(p2, p3, u);
-  return lerp(lerp(a, b, u), lerp(b, c, u), u);
+  return piece.length === 2 ? lerp(piece[0], piece[1], u) : cubicPointAt(piece, u);
 }
 
 /**
@@ -270,12 +264,9 @@ function stub(anchor, direction) {
 // two on-curves: the first piece's two handles, the new on-curve, and the
 // second piece's two handles.
 function splitCubic(p0, p1, p2, p3, t) {
-  const a = lerp(p0, p1, t);
-  const b = lerp(p1, p2, t);
-  const c = lerp(p2, p3, t);
-  const d = lerp(a, b, t);
-  const e = lerp(b, c, t);
-  const at = lerp(d, e, t);
+  const { first, second } = splitCubicAt([p0, p1, p2, p3], t);
+  const [, a, d, at] = first;
+  const [, e, c] = second;
   // De Casteljau leaves the two inner handles and the new on-curve on one line:
   // that is what makes the two pieces meet without a kink. The point is marked
   // smooth to say so, and the two handles are marked as its own so the ratio

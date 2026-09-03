@@ -487,6 +487,57 @@ export function cubicPointAt(points, t) {
   };
 }
 
+/**
+ * A cubic's velocity at a parameter: the derivative, unnormalized.
+ *
+ * The one copy, beside `cubicPointAt` and for the same reason. Four places
+ * carried this formula — the curvature reading and the bending energy in
+ * harmonization, the tangent step in snapping, and the skeleton's own segment
+ * tangent, which insertion points ask for the direction a rib stands square to.
+ * A derivative that disagreed with itself would put a rib somewhere the outline
+ * does not go.
+ *
+ * Unnormalized, because two of the four readers need the speed and not only the
+ * direction, and a caller that wants a unit vector normalizes what it is given.
+ * Zero-length where both handles collapse onto their on-curves, which every
+ * caller answers for itself: there is no direction there to stand in for.
+ * @param {Array} points - The four control points, start first
+ * @param {number} t - The source parameter
+ * @returns {Object} the velocity
+ */
+export function cubicVelocityAt([p0, p1, p2, p3], t) {
+  const u = 1 - t;
+  return {
+    x: 3 * (u * u * (p1.x - p0.x) + 2 * u * t * (p2.x - p1.x) + t * t * (p3.x - p2.x)),
+    y: 3 * (u * u * (p1.y - p0.y) + 2 * u * t * (p2.y - p1.y) + t * t * (p3.y - p2.y)),
+  };
+}
+
+/**
+ * A cubic cut in two at a parameter, by de Casteljau.
+ *
+ * The one copy in glyph coordinates. The exact split is what lets a cut promise
+ * to draw the curve it cut, so the generator's corner search and the skeleton's
+ * insertion points take it from here rather than each writing it out.
+ *
+ * `serif-geometry.js` keeps its own, deliberately: it works in the serif's own
+ * frame on points named `u` and `v`, and reaching into that frame from here
+ * would teach this module a coordinate system it has no other business with.
+ * @param {Array} points - The four control points, start first
+ * @param {number} t - The source parameter
+ * @returns {Object} {first, second}, four points each, sharing the cut point
+ */
+export function splitCubicAt([p0, p1, p2, p3], t) {
+  const lerp = (a, b) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  const a = lerp(p0, p1);
+  const b = lerp(p1, p2);
+  const c = lerp(p2, p3);
+  const d = lerp(a, b);
+  const e = lerp(b, c);
+  const at = lerp(d, e);
+  return { first: [p0, a, d, at], second: [at, e, c, p3] };
+}
+
 function makeSegment(points, startIdx, endIdx) {
   return {
     startPoint: points[startIdx],

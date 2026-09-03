@@ -5,6 +5,7 @@ import {
   cornerMiterIsHeld,
   cubicPointAt,
   offsetContourAlongNormals,
+  splitCubicAt,
 } from "./offset-contour.js";
 import { offsetCubicSide } from "./offset-cubic.js";
 import {
@@ -1295,17 +1296,8 @@ function asCubic(curve) {
 }
 
 function splitCubicInHalf(points) {
-  const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-  const a = mid(points[0], points[1]);
-  const b = mid(points[1], points[2]);
-  const c = mid(points[2], points[3]);
-  const d = mid(a, b);
-  const e = mid(b, c);
-  const f = mid(d, e);
-  return [
-    [points[0], a, d, f],
-    [f, e, c, points[3]],
-  ];
+  const { first, second } = splitCubicAt(points, 0.5);
+  return [first, second];
 }
 
 function controlBox(points) {

@@ -22,6 +22,7 @@ import {
   collectCoupledPointGroups,
   cornerRibPlacement,
   cubicPointAt,
+  cubicVelocityAt,
   isStraightControlledSmoothPoint,
   offsetContourAlongNormals,
   straightSegmentNormal,
@@ -1294,11 +1295,7 @@ export function skeletonSegmentTangentAt(segment, t) {
     return chord;
   }
   const [p1, p2] = segment.controlPoints;
-  const u = 1 - t;
-  const tangent = {
-    x: 3 * (u * u * (p1.x - p0.x) + 2 * u * t * (p2.x - p1.x) + t * t * (p3.x - p2.x)),
-    y: 3 * (u * u * (p1.y - p0.y) + 2 * u * t * (p2.y - p1.y) + t * t * (p3.y - p2.y)),
-  };
+  const tangent = cubicVelocityAt([p0, p1, p2, p3], t);
   return Math.hypot(tangent.x, tangent.y) < 1e-9 ? chord : tangent;
 }
 

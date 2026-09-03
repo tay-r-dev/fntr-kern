@@ -24,6 +24,7 @@
 //
 
 import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
+import { cubicVelocityAt } from "./offset-contour.js";
 import { calculateTunniPoint, equalizeTensions } from "./tunni-calculations.js";
 import { POINT_TYPE_OFF_CURVE_CUBIC } from "./var-path.js";
 import {
@@ -912,10 +913,7 @@ function isBetter(candidate, incumbent) {
 //
 function curvatureAtParameter([p0, p1, p2, p3], t) {
   const u = 1 - t;
-  const first = {
-    x: 3 * (u * u * (p1.x - p0.x) + 2 * u * t * (p2.x - p1.x) + t * t * (p3.x - p2.x)),
-    y: 3 * (u * u * (p1.y - p0.y) + 2 * u * t * (p2.y - p1.y) + t * t * (p3.y - p2.y)),
-  };
+  const first = cubicVelocityAt([p0, p1, p2, p3], t);
   const second = {
     x: 6 * (u * (p2.x - 2 * p1.x + p0.x) + t * (p3.x - 2 * p2.x + p1.x)),
     y: 6 * (u * (p2.y - 2 * p1.y + p0.y) + t * (p3.y - 2 * p2.y + p1.y)),
@@ -976,7 +974,7 @@ function bendingEnergyOf(points) {
   for (let i = 0; i <= COMB_SAMPLES; i++) {
     const t = i / COMB_SAMPLES;
     const curvature = curvatureAtParameter(points, t);
-    const speed = vectorLength(cubicVelocity(points, t));
+    const speed = vectorLength(cubicVelocityAt(points, t));
     const value = curvature * curvature * speed;
     if (previous !== null) {
       total += (previous + value) / 2 / COMB_SAMPLES;
@@ -984,14 +982,6 @@ function bendingEnergyOf(points) {
     previous = value;
   }
   return Number.isFinite(total) ? total : Infinity;
-}
-
-function cubicVelocity([p0, p1, p2, p3], t) {
-  const u = 1 - t;
-  return {
-    x: 3 * (u * u * (p1.x - p0.x) + 2 * u * t * (p2.x - p1.x) + t * t * (p3.x - p2.x)),
-    y: 3 * (u * u * (p1.y - p0.y) + 2 * u * t * (p2.y - p1.y) + t * t * (p3.y - p2.y)),
-  };
 }
 
 //
