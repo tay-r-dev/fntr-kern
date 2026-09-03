@@ -2453,18 +2453,12 @@ function applyInsertionSplits({
     if (!onSegment.length) {
       continue;
     }
-    const constructionSegment = [
-      segment.startPoint,
-      ...segment.controlPoints,
-      segment.endPoint,
-    ].map(({ x, y }) => ({ x, y }));
     for (const insertion of onSegment) {
       left = applyOneInsertionToSide(
         left,
         leftSegmentAnchors[index],
         insertion,
         "left",
-        constructionSegment,
         segment
       );
       right = applyOneInsertionToSide(
@@ -2472,7 +2466,6 @@ function applyInsertionSplits({
         rightSegmentAnchors[index],
         insertion,
         "right",
-        constructionSegment,
         segment
       );
     }
@@ -2480,14 +2473,7 @@ function applyInsertionSplits({
   return { leftSide: left, rightSide: right };
 }
 
-function applyOneInsertionToSide(
-  sidePoints,
-  anchorIndex,
-  insertion,
-  side,
-  constructionSegment,
-  segment
-) {
+function applyOneInsertionToSide(sidePoints, anchorIndex, insertion, side, segment) {
   if (anchorIndex === null || anchorIndex === undefined) {
     return sidePoints;
   }
@@ -2517,12 +2503,17 @@ function applyOneInsertionToSide(
   // this id must look in: an insertion id is not a point id, and a lookup that
   // searched the point list would report a missing point rather than a
   // different kind of one.
+  //
+  // No `constructionSegment` is published here. That field names the whole curve
+  // the generator solved, so that a gizmo measures what its write governs; the
+  // two pieces of a cut segment carry no gizmo at all, and the only value this
+  // side has ever had to offer was the centerline, which is half a stroke width
+  // away from the edge a gizmo would have written to.
   points[at]._provenance = {
     skeletonPointId: insertion.id,
     side,
     role: "onCurve",
     insertion: true,
-    constructionSegment,
   };
   if (points[at - 1]?.type) {
     points[at - 1]._provenance = {

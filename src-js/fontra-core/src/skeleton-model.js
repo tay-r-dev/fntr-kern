@@ -4902,6 +4902,23 @@ export function buildGeneratedTunniSegments(skeletonData, path) {
       if (provenance.some((item) => !item)) {
         continue;
       }
+      // A segment an insertion point cut carries no gizmo, on either piece.
+      //
+      // The two pieces are a different curve from the one the generator solved,
+      // and the segment's pin is stored against its start point — which for the
+      // second piece is the insertion, whose stored fields are id, pointId, t,
+      // width and easing and have nowhere to keep a curvature. On a cut straight
+      // the piece's outer handles carry no role at all, so the drag declines
+      // them and the control draws without being able to move. One refusal
+      // answers all three: the segment the gizmo governs is the uncut one, and
+      // that curve is not on the outline any more.
+      //
+      // This is the reader of `insertion: true`. The flag says the id belongs to
+      // the insertion list rather than the point list, which is exactly the
+      // question asked here.
+      if (provenance.some((item) => item.insertion)) {
+        continue;
+      }
       const side = provenance[0].side;
       if (
         (side !== "left" && side !== "right") ||

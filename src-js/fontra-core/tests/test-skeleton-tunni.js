@@ -1066,6 +1066,67 @@ describe("the curvature gizmo at a bulb terminal", () => {
     expect(eased).to.have.length(crisp.length - 1);
     expect(eased.every((side) => !side || crisp.includes(side))).to.equal(true);
   });
+
+  // A cut segment's two pieces are a different curve from the one the generator
+  // solved, and the second piece's pin would be addressed to an insertion, which
+  // has nowhere to keep one. So neither piece is offered a gizmo.
+  function makeInsertionGlyph(insertions, points) {
+    const layer = {
+      path: new VarPackedPath(),
+      components: [],
+      anchors: [],
+      guidelines: [],
+      customData: {},
+    };
+    setSkeletonData(
+      layer,
+      normalizeSkeletonData({
+        contours: [
+          makeSkeletonContour({
+            id: 90,
+            defaultWidth: 60,
+            points,
+            insertions,
+          }),
+        ],
+      })
+    );
+    editSkeleton(layer, () => {});
+    return layer;
+  }
+
+  const curvedPoints = [
+    makeSkeletonPoint({ id: 1, x: 60, y: 250 }),
+    makeSkeletonPoint({ id: 2, x: 160, y: 110, type: "cubic" }),
+    makeSkeletonPoint({ id: 3, x: 300, y: 60, type: "cubic" }),
+    makeSkeletonPoint({ id: 4, x: 430, y: 90 }),
+  ];
+
+  const straightPoints = [
+    makeSkeletonPoint({ id: 1, x: 60, y: 100 }),
+    makeSkeletonPoint({ id: 4, x: 430, y: 100 }),
+  ];
+
+  it("offers no gizmo on either piece of a cut curve", () => {
+    const uncut = makeInsertionGlyph([], curvedPoints);
+    const cut = makeInsertionGlyph([{ id: 13, pointId: 1, t: 0.4 }], curvedPoints);
+    const gizmos = (layer) =>
+      buildGeneratedTunniSegments(getSkeletonData(layer), layer.path);
+    // The uncut stroke's first skeleton segment carries one gizmo per side. Both
+    // go, and no piece takes their place.
+    expect(gizmos(cut)).to.have.length(gizmos(uncut).length - 2);
+    for (const segment of gizmos(cut)) {
+      expect(segment.provenance.some((entry) => entry?.insertion)).to.equal(false);
+    }
+  });
+
+  it("offers no gizmo on a cut straight", () => {
+    const cut = makeInsertionGlyph([{ id: 13, pointId: 1, t: 0.5 }], straightPoints);
+    const segments = buildGeneratedTunniSegments(getSkeletonData(cut), cut.path);
+    // A cut straight emits four cubic segments whose outer handles carry no
+    // role. Every one of them declined the drag while still being drawn.
+    expect(segments).to.have.length(0);
+  });
 });
 
 // End-to-end: an on-curve drag must slide the rib ends along the outline and

@@ -4093,14 +4093,17 @@ describe("skeleton insertion points reach the generator", () => {
     }
   });
 
-  it("publishes the uncut segment on the inserted on-curve", () => {
+  it("publishes no construction segment on the inserted on-curve", () => {
     const result = generateFromSkeleton(
       curvedStroke([{ id: 13, pointId: 11, t: 0.4 }])
     );
-    const inserted = result.provenance[0].pointMap.find(
+    const inserted = result.provenance[0].pointMap.filter(
       (entry) => entry?.skeletonPointId === 13 && entry.role === "onCurve"
     );
-    expect(inserted.constructionSegment).to.have.length(4);
+    expect(inserted).to.have.length(2);
+    for (const entry of inserted) {
+      expect(entry.constructionSegment).to.equal(undefined);
+    }
   });
 
   it("takes two insertion points on one segment", () => {
