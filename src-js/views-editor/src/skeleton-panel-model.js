@@ -16,7 +16,7 @@ import {
   isSkeletonSideLocked,
   parseEditableGeneratedHandleKey,
   parseEditableGeneratedPointKey,
-  parseSkeletonInsertionKey,
+  parseSkeletonInsertionSelectionItem,
   parseSkeletonRibKey,
 } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
@@ -125,7 +125,7 @@ export function collectSkeletonPanelSelection({ selection, skeletonData }) {
   for (const item of parsed.skeletonInsertion || []) {
     let parsedKey;
     try {
-      parsedKey = parseSkeletonInsertionKey(`skeletonInsertion/${item}`);
+      parsedKey = parseSkeletonInsertionSelectionItem(item);
     } catch {
       continue;
     }

@@ -35,7 +35,7 @@ import {
   makeEmptySkeletonData,
   makeSkeletonInsertionKey,
   makeSkeletonRibKey,
-  parseSkeletonInsertionKey,
+  parseSkeletonInsertionSelectionItem,
   skeletonRibKeyNamesInsertion,
   normalizeSkeletonData,
   parseEditableGeneratedHandleKey,
@@ -1131,7 +1131,7 @@ export function createSkeletonInsertionTargetEntries(layer, selection) {
   for (const key of skeletonInsertion || []) {
     let parsed;
     try {
-      parsed = parseSkeletonInsertionKey(`skeletonInsertion/${key}`);
+      parsed = parseSkeletonInsertionSelectionItem(key);
     } catch {
       continue;
     }

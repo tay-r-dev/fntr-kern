@@ -20,7 +20,9 @@ import {
   isSkeletonSideLockedAtAll,
   makeEditableGeneratedHandleKey,
   makeEditableGeneratedPointKey,
+  SKELETON_INSERTION_KEY_KIND,
   makeSkeletonInsertionKey,
+  skeletonInsertionKeyFromSelectionItem,
   makeSkeletonRibKey,
 } from "@fontra/core/skeleton-model.js";
 import {
@@ -208,15 +210,11 @@ function getSkeletonRibSelectionSets(model) {
   };
 }
 
-// `parseSelection` hands back the remainder of each key, so the kind has to be
-// put back on before comparing against a whole key. Without it every comparison
-// is false and the mark never changes, which is what left a selected insertion
-// point looking exactly like an unselected one.
 function getSkeletonInsertionSelectionSets(model) {
   const keys = (selection) =>
     new Set(
-      (parseSelection(selection).skeletonInsertion || []).map(
-        (item) => `skeletonInsertion/${item}`
+      (parseSelection(selection)[SKELETON_INSERTION_KEY_KIND] || []).map(
+        skeletonInsertionKeyFromSelectionItem
       )
     );
   return {

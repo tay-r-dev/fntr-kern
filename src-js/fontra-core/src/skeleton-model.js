@@ -3498,13 +3498,26 @@ function asStrictSkeletonInteger(value) {
 }
 
 const SKELETON_RIB_KEY_KIND = "skeletonRib";
-const SKELETON_INSERTION_KEY_KIND = "skeletonInsertion";
+export const SKELETON_INSERTION_KEY_KIND = "skeletonInsertion";
 
 // An insertion point's own selection key. `parseSelection` keeps a remainder
 // that is not a plain integer raw, so a compound key of this shape parses
 // today and needs nothing added there.
 export function makeSkeletonInsertionKey(contourId, insertionId) {
   return `${SKELETON_INSERTION_KEY_KIND}/${contourId}/${insertionId}`;
+}
+
+// `parseSelection` strips the kind off and hands back the remainder, so a reader
+// comparing against a whole key has to put it back on. Every place that did so
+// by hand is one place the word could be mistyped, and one of them was: a
+// selected insertion point drew exactly like an unselected one until the kind
+// was restored. The ritual happens here.
+export function skeletonInsertionKeyFromSelectionItem(item) {
+  return `${SKELETON_INSERTION_KEY_KIND}/${item}`;
+}
+
+export function parseSkeletonInsertionSelectionItem(item) {
+  return parseSkeletonInsertionKey(skeletonInsertionKeyFromSelectionItem(item));
 }
 
 export function parseSkeletonInsertionKey(key) {
