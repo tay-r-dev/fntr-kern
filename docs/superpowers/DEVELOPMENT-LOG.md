@@ -1987,9 +1987,11 @@ it.
   `getSkeletonData(stripped)` is not `undefined`, and that reader answers a missing
   block with `null`, so it went on passing through the whole regression. Written as an
   assertion about the value rather than about the thing.
-- **Open: the interpolated skeleton carries fractional coordinates.** The new source's
-  path is rounded and its skeleton is not. The generator quantizes what it emits, so the
-  outline is right and the panel shows fractions.
+- **The interpolated skeleton is the only one that arrives fractional**, because every
+  writer in the model rounds what it writes. It is rounded beside the path, which
+  upstream already rounded there. Only the fields measured in font units are rounded. A
+  tension, a curvature, a ratio and an angle are not units, and rounding one would move
+  the shape rather than tidy a number.
 
 ---
 

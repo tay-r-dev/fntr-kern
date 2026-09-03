@@ -15,6 +15,11 @@ import {
 } from "@fontra/core/glyph-controller.js";
 import * as html from "@fontra/core/html-utils.js";
 import { htmlToElement } from "@fontra/core/html-utils.js";
+import {
+  getSkeletonData,
+  roundSkeletonCoordinates,
+  setSkeletonData,
+} from "@fontra/core/skeleton-model.js";
 import { translate } from "@fontra/core/localization.js";
 import { ObservableController, controllerKey } from "@fontra/core/observable-object.ts";
 import {
@@ -36,6 +41,7 @@ import {
   compare,
   enumerate,
   escapeHTMLCharacters,
+  deepCopyObject,
   filterObject,
   isObjectEmpty,
   modulo,
@@ -2365,6 +2371,13 @@ export default class DesignspaceNavigationPanel extends Panel {
     // Round coordinates and component positions
     instance.path = instance.path.roundCoordinates();
     roundComponentOrigins(instance.components);
+    // The skeleton arrives from the variation model, so it is the one part of the
+    // instance no writer has rounded. Round it beside the path it drew.
+    const skeletonData = getSkeletonData(instance);
+    if (skeletonData) {
+      // getSkeletonData hands back a cached normalization, so round a copy of it.
+      setSkeletonData(instance, roundSkeletonCoordinates(deepCopyObject(skeletonData)));
+    }
 
     await this.sceneController.editGlyphAndRecordChanges((glyph) => {
       glyph.sources.push(

@@ -4259,6 +4259,61 @@ export function getSkeletonData(layerOrCustomData) {
   return _getNormalizedSkeleton(internalSkeleton);
 }
 
+// Round a skeleton's unit-valued fields to whole units, in place.
+//
+// A skeleton reaches the editor from the variation model when a source is created
+// between two masters, and every writer in this file already rounds what it writes. So
+// an interpolated skeleton is the one that arrives fractional, and the panel shows the
+// fractions. The glyph path beside it is rounded the same way, by upstream.
+//
+// Only the fields measured in font units are rounded. A tension, a curvature, a ratio
+// and an angle are not units and must keep what the model computed, so rounding them
+// would move the shape rather than tidy a number.
+export function roundSkeletonCoordinates(skeletonData, round = Math.round) {
+  const roundField = (holder, field) => {
+    if (holder && Number.isFinite(holder[field])) {
+      holder[field] = round(holder[field]);
+    }
+  };
+
+  for (const contour of skeletonData?.contours || []) {
+    roundField(contour, "defaultWidth");
+    for (const point of contour.points || []) {
+      roundField(point, "x");
+      roundField(point, "y");
+      if (point.type) {
+        continue;
+      }
+      for (const side of ["left", "right"]) {
+        roundField(point.width, side);
+        roundField(point.nudge, side);
+        roundField(point.handleNudge, side);
+        roundField(point.corner?.[side], "distance");
+        for (const field of SERIF_UNIT_FIELDS) {
+          roundField(point.serif?.[side], field);
+        }
+      }
+      for (const offset of Object.values(point.handleOffsets || {})) {
+        roundField(offset, "x");
+        roundField(offset, "y");
+      }
+      roundField(point, "capDistance");
+    }
+  }
+  return skeletonData;
+}
+
+// The serif half's fields that are distances. `skeleton-generator.js` scales the same
+// five by the stroke width under the normalized units mode, and the two lists are the
+// same list for the same reason: these are the lengths.
+const SERIF_UNIT_FIELDS = [
+  "wingLength",
+  "tipThickness",
+  "wingSlope",
+  "reach",
+  "easeDistance",
+];
+
 export function setSkeletonData(layer, skeletonData) {
   if (!layer) {
     return;

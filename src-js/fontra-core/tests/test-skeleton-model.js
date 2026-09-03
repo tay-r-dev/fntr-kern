@@ -68,6 +68,7 @@ import {
   transformSkeletonPointMetadata,
   translateSkeletonData,
   updateSkeletonPoint,
+  roundSkeletonCoordinates,
 } from "@fontra/core/skeleton-model.js";
 import { Transform } from "@fontra/core/transform.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
@@ -2458,5 +2459,81 @@ describe("skeleton insertion points", () => {
       ],
     });
     expect(data.contours[0].insertions).to.deep.equal([]);
+  });
+});
+
+describe("roundSkeletonCoordinates", () => {
+  // A skeleton interpolated between two masters is the only one that arrives
+  // fractional: every writer in the model rounds what it writes. The glyph path beside
+  // it is rounded the same way, so the skeleton is rounded too.
+
+  function fractionalSkeleton() {
+    return normalizeSkeletonData({
+      version: SKELETON_SCHEMA_VERSION,
+      nextId: 20,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80.4,
+          points: [
+            {
+              id: 2,
+              x: 10.4,
+              y: 20.6,
+              type: null,
+              smooth: false,
+              width: { left: 30.6, right: 20.4, linked: false },
+              nudge: { left: 1.6, right: -2.4 },
+              handleNudge: { left: 0.4, right: 0.6 },
+              handleOffsets: { leftIn: { x: 3.6, y: -4.4, detached: false } },
+              corner: {
+                linked: false,
+                left: { distance: 5.6, curvature: 0.55 },
+                right: { distance: 0, curvature: 0.55 },
+              },
+              serif: { left: { wingLength: 20.6, tension: 0.75 } },
+              segmentCurvature: { left: 0.625, right: null },
+              capDistance: 12.4,
+              capTension: 0.6,
+            },
+            { id: 3, x: 100.5, y: 0.5, type: null, smooth: false },
+          ],
+        },
+      ],
+      generated: [],
+    });
+  }
+
+  it("rounds the fields measured in font units", () => {
+    const skeleton = roundSkeletonCoordinates(fractionalSkeleton());
+    const contour = skeleton.contours[0];
+    const [point] = contour.points;
+    expect(contour.defaultWidth).to.equal(80);
+    expect([point.x, point.y]).to.deep.equal([10, 21]);
+    expect(point.width.left).to.equal(31);
+    expect(point.width.right).to.equal(20);
+    expect(point.nudge).to.deep.equal({ left: 2, right: -2 });
+    expect(point.handleNudge).to.deep.equal({ left: 0, right: 1 });
+    expect(point.handleOffsets.leftIn.x).to.equal(4);
+    expect(point.handleOffsets.leftIn.y).to.equal(-4);
+    expect(point.corner.left.distance).to.equal(6);
+    expect(point.serif.left.wingLength).to.equal(21);
+    expect(point.capDistance).to.equal(12);
+  });
+
+  it("leaves the tensions, curvatures and ratios alone", () => {
+    const skeleton = roundSkeletonCoordinates(fractionalSkeleton());
+    const [point] = skeleton.contours[0].points;
+    expect(point.segmentCurvature.left).to.equal(0.625);
+    expect(point.corner.left.curvature).to.equal(0.55);
+    expect(point.serif.left.tension).to.equal(0.75);
+    expect(point.capTension).to.equal(0.6);
+  });
+
+  it("leaves an already-whole skeleton byte-identical", () => {
+    const skeleton = roundSkeletonCoordinates(fractionalSkeleton());
+    const before = JSON.stringify(skeleton);
+    expect(JSON.stringify(roundSkeletonCoordinates(skeleton))).to.equal(before);
   });
 });
