@@ -1322,9 +1322,14 @@ export default class SkeletonParametersPanel extends Panel {
     );
   }
 
-  // The easing slider reads percent and the model stores minus one to one.
+  // The easing slider reads percent and the model stores minus one to one. A
+  // change of unit and no bound: the bound belongs in the writer, which is
+  // `setInsertionEasing`, with normalization as the final gate on what is
+  // stored. A panel that clamps as well is a third statement of one rule, and
+  // this project has spent two rounds on a model that was correct because a
+  // panel was showing a number the model had already rejected.
   _insertionEasingFromSlider(value) {
-    return Math.min(1, Math.max(-1, Number(value) / 100));
+    return Number(value) / 100;
   }
 
   _buildRibSection(formContents, ribs, derived = false) {

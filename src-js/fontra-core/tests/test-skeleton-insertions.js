@@ -416,10 +416,10 @@ describe("applyInsertionEasing", () => {
   });
 
   it("moves the drawn curve on a cut straight, where the handles are stubs", () => {
-    // The fault this guards: on a cut straight the insertion point's handles are
-    // one unit long, and turning a one-unit handle moves the curve by less than
-    // the width of the line it is drawn with. Easing did nothing a designer
-    // could see. It has to reach the length as well as the direction.
+    // The fault this guards: on a cut straight the insertion point's handles
+    // start on the point itself, and turning a handle of no length moves the
+    // curve not at all. Easing did nothing a designer could see. It has to reach
+    // the length as well as the direction.
     const cut = splitSideAtParameter(straightSide(), 0, 0.5);
     const swollen = applyInsertionRatio(
       cut.points,
@@ -447,6 +447,51 @@ describe("applyInsertionEasing", () => {
     }
     expect(worst).to.be.lessThan(0.5);
   });
+  // The negative half of the range draws the joint in rather than opening it,
+  // and it was reached by no test that drew anything. Swept on both shapes,
+  // because the two take different branches: a cut curve's handles are already
+  // colinear and only shorten, and a cut straight's are stubs that are turned as
+  // well.
+  it("draws both joints in across the negative half, without stepping", () => {
+    const cases = [
+      (() => {
+        const cut = splitSideAtParameter(cubicSide(), 0, 0.4);
+        return { points: cut.points, at: cut.insertedIndex };
+      })(),
+      (() => {
+        const cut = splitSideAtParameter(straightSide(), 0, 0.5);
+        return {
+          points: applyInsertionRatio(
+            cut.points,
+            cut.insertedIndex,
+            { x: 50, y: -30 },
+            2
+          ),
+          at: cut.insertedIndex,
+        };
+      })(),
+    ];
+    for (const { points, at } of cases) {
+      const reach = (easing) => {
+        const eased = applyInsertionEasing(points, at, easing);
+        return Math.hypot(eased[at + 1].x - eased[at].x, eased[at + 1].y - eased[at].y);
+      };
+      // At the bottom of the range the handle sits on its own point. Zero is a
+      // legal setting: points collapse and do not disappear.
+      expect(reach(-1)).to.be.closeTo(0, 1e-9);
+      // Never longer going down, and never a step.
+      let previous = reach(0);
+      let worst = 0;
+      for (let i = 1; i <= 200; i++) {
+        const now = reach(-i / 200);
+        expect(now).to.be.at.most(previous + 1e-9);
+        worst = Math.max(worst, Math.abs(now - previous));
+        previous = now;
+      }
+      expect(worst).to.be.lessThan(0.5);
+    }
+  });
+
   // A degenerate input must not change the count, for the same reason a
   // degenerate SETTING must not: the two sides of a stroke are cut by one
   // insertion, and a side answering with fewer points than its partner gives the
