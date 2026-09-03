@@ -24,7 +24,6 @@ import {
   getSkeletonContour,
   getSkeletonData,
   getSkeletonHandleOffset,
-  getSkeletonInsertion,
   getSkeletonHandleOffsetKey,
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
@@ -58,6 +57,7 @@ import {
 import {
   editSkeleton,
   resolveSkeletonAddressAcrossLayers,
+  resolveSkeletonInsertionAcrossLayers,
 } from "./skeleton-editing.js";
 import { skeletonContourEndpointIndices } from "./skeleton-panel-model.js";
 
@@ -384,8 +384,9 @@ export function insertionRatioToUnits(reference, ratio) {
 }
 
 // Every insertion-point write, across every editable layer, as one undo item.
-// The insertion is resolved by its own id, which is stable across layers the
-// same way a point id is.
+// The insertion is resolved by structural ordinal, the way a point is: an
+// insertion id is minted off each layer's own counter, so it is canonical in the
+// edit layer alone.
 export async function editSelectedSkeletonInsertions(
   sceneController,
   insertionAddresses,
@@ -395,18 +396,18 @@ export async function editSelectedSkeletonInsertions(
   if (!insertionAddresses.length) {
     return null;
   }
-  return runSkeletonPanelEdit(sceneController, undoLabel, (working) => {
+  return runSkeletonPanelEdit(sceneController, undoLabel, (working, reference) => {
     for (const address of insertionAddresses) {
-      const contour = getSkeletonContour(working, address.contourId);
-      const insertion = getSkeletonInsertion(
+      const resolved = resolveSkeletonInsertionAcrossLayers(
+        reference,
         working,
         address.contourId,
         address.insertionId
       );
-      if (!contour || !insertion) {
+      if (!resolved) {
         continue;
       }
-      mutator(insertion, contour);
+      mutator(resolved.insertion, resolved.contour);
     }
   });
 }
@@ -428,16 +429,16 @@ export async function setPanelInsertionValuesStream(
     valueStream,
     (working, reference, value) => {
       for (const address of insertionAddresses) {
-        const contour = getSkeletonContour(working, address.contourId);
-        const insertion = getSkeletonInsertion(
+        const resolved = resolveSkeletonInsertionAcrossLayers(
+          reference,
           working,
           address.contourId,
           address.insertionId
         );
-        if (!contour || !insertion) {
+        if (!resolved) {
           continue;
         }
-        applyToInsertion(insertion, contour, value);
+        applyToInsertion(resolved.insertion, resolved.contour, value);
       }
     },
     undoLabel

@@ -173,6 +173,44 @@ export function resolveSkeletonAddressAcrossLayers(
   };
 }
 
+// The same resolution for an insertion point.
+//
+// An insertion's id is minted per layer, off that layer's own `nextId`, so two
+// layers that were not both editable when a point was added carry different ids
+// for it. Matching the id literally then hits one layer and misses the other,
+// which leaves one master carrying the insertion and the other not — different
+// point counts, and the glyph stops interpolating with nothing said. The
+// ordinal is what the point path already declines to do without.
+export function resolveSkeletonInsertionAcrossLayers(
+  referenceSkeletonData,
+  targetSkeletonData,
+  contourId,
+  insertionId
+) {
+  const contourIndex = (referenceSkeletonData?.contours || []).findIndex(
+    (contour) => contour.id === contourId
+  );
+  if (contourIndex < 0) {
+    return null;
+  }
+  const referenceContour = referenceSkeletonData.contours[contourIndex];
+  const insertionIndex = (referenceContour.insertions || []).findIndex(
+    (entry) => entry.id === insertionId
+  );
+  if (insertionIndex < 0) {
+    return null;
+  }
+  if (referenceSkeletonData === targetSkeletonData) {
+    return {
+      contour: referenceContour,
+      insertion: referenceContour.insertions[insertionIndex],
+    };
+  }
+  const contour = targetSkeletonData?.contours?.[contourIndex];
+  const insertion = contour?.insertions?.[insertionIndex];
+  return contour && insertion ? { contour, insertion } : null;
+}
+
 // Master-wide generator settings. Every edit regenerates through one path, and
 // that path has no route back to the font, so the editor hands it a reader for
 // the master it is on. Twenty-five call sites would otherwise each have to

@@ -39,6 +39,7 @@ import {
   allocateSkeletonIds,
   deleteSkeletonInsertions,
   deleteSkeletonPoints,
+  parseSkeletonInsertionSelectionItem,
   getSkeletonContour,
   getSkeletonData,
   getSkeletonPoint,
@@ -109,6 +110,7 @@ import {
   makeSkeletonPointKey,
   parseSkeletonPointKey,
   resolveSkeletonAddressAcrossLayers,
+  resolveSkeletonInsertionAcrossLayers,
   setSkeletonGenerationOptionsReader,
 } from "./skeleton-editing.js";
 import "./visualization-layer-composition.js";
@@ -2626,12 +2628,35 @@ export class EditorController extends ViewController {
         // change, so a mixed selection is one undo step. It leaves no survivor
         // to select: nothing on the centerline moves when one goes.
         if (skeletonInsertionKeys?.length) {
-          const doomed = new Set(skeletonInsertionKeys.map((key) => `${key}`));
+          // Resolved per layer by structural ordinal, the way a point is. An
+          // insertion id is minted off each layer's own counter, so matching it
+          // literally would delete the point in one master and leave it standing
+          // in another, and the glyph would stop interpolating with nothing said.
+          const insertionEditLayerName =
+            this.sceneController.sceneSettings.editLayerName;
+          const insertionReference = getSkeletonData(
+            layerGlyphs[insertionEditLayerName] || Object.values(layerGlyphs)[0]
+          );
+          const doomedAddresses = skeletonInsertionKeys.map(
+            parseSkeletonInsertionSelectionItem
+          );
           for (const layerGlyph of Object.values(layerGlyphs)) {
             if (!getSkeletonData(layerGlyph)) {
               continue;
             }
             editSkeleton(layerGlyph, (working) => {
+              const doomed = new Set();
+              for (const address of doomedAddresses) {
+                const resolved = resolveSkeletonInsertionAcrossLayers(
+                  insertionReference,
+                  working,
+                  address.contourId,
+                  address.insertionId
+                );
+                if (resolved) {
+                  doomed.add(`${resolved.contour.id}/${resolved.insertion.id}`);
+                }
+              }
               deleteSkeletonInsertions(working, doomed);
             });
           }
