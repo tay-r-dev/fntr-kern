@@ -45,8 +45,14 @@ const NORMAL_SEARCH_TRIPS = 40;
  * @param {Object} tangent - the centerline direction there, any length
  * @returns {number|null} the parameter, or null where the side has no piece
  */
-export function sideParameterOnNormal(sidePoints, anchorIndex, center, tangent) {
-  const piece = sidePiece(sidePoints, anchorIndex);
+export function sideParameterOnNormal(
+  sidePoints,
+  anchorIndex,
+  center,
+  tangent,
+  closed = false
+) {
+  const piece = sidePiece(sidePoints, anchorIndex, closed);
   const direction = normalize(tangent);
   if (!piece || !direction || !center) {
     return null;
@@ -77,8 +83,16 @@ export function sideParameterOnNormal(sidePoints, anchorIndex, center, tangent) 
   return (low + high) / 2;
 }
 
-// The four or two points of the piece a side starts at an on-curve, or null.
-function sidePiece(sidePoints, anchorIndex) {
+// Where the piece starting at an on-curve ends, and what lies between.
+//
+// The last piece of a closed side wraps: its end is the on-curve the side opens
+// with, and its handles are the tail. Walking forward and giving up at the end
+// of the array is what left every insertion point on the last segment of a
+// closed contour uncut, and so undrawn.
+//
+// Null where the anchor is not an on-curve, where nothing closes the piece, or
+// where what lies between is neither nothing nor two handles.
+function locatePiece(sidePoints, anchorIndex, closed) {
   if (!Array.isArray(sidePoints) || !Number.isInteger(anchorIndex)) {
     return null;
   }
@@ -86,16 +100,28 @@ function sidePiece(sidePoints, anchorIndex) {
   if (!start || start.type) {
     return null;
   }
+  const answer = (handles, endIndex, wrapped) =>
+    handles.length === 0 || handles.length === 2
+      ? { start, handles, end: sidePoints[endIndex], endIndex, wrapped }
+      : null;
   for (let i = anchorIndex + 1; i < sidePoints.length; i++) {
     if (!sidePoints[i].type) {
-      const handles = sidePoints.slice(anchorIndex + 1, i);
-      if (handles.length !== 0 && handles.length !== 2) {
-        return null;
-      }
-      return [start, ...handles, sidePoints[i]];
+      return answer(sidePoints.slice(anchorIndex + 1, i), i, false);
     }
   }
-  return null;
+  // The wrap. The side has to open with an on-curve for the piece to close on
+  // it: a side opening with a handle would put part of this very piece at both
+  // ends of the array, and the splice below states one place to put the cut.
+  if (!closed || anchorIndex === 0 || sidePoints[0]?.type) {
+    return null;
+  }
+  return answer(sidePoints.slice(anchorIndex + 1), 0, true);
+}
+
+// The four or two points of the piece a side starts at an on-curve, or null.
+function sidePiece(sidePoints, anchorIndex, closed = false) {
+  const piece = locatePiece(sidePoints, anchorIndex, closed);
+  return piece ? [piece.start, ...piece.handles, piece.end] : null;
 }
 
 function evaluatePiece(piece, u) {
@@ -114,31 +140,15 @@ function evaluatePiece(piece, u) {
  * @param {Array} sidePoints - the side's emitted points, on-curves and handles
  * @param {number} anchorIndex - index of the on-curve the segment starts at
  * @param {number} t - the source parameter, 0 to 1
+ * @param {boolean} closed - whether the side closes on its own first on-curve
  * @returns {Object|null} {points, insertedIndex, start, end}
  */
-export function splitSideAtParameter(sidePoints, anchorIndex, t) {
-  if (!Array.isArray(sidePoints) || !Number.isInteger(anchorIndex)) {
+export function splitSideAtParameter(sidePoints, anchorIndex, t, closed = false) {
+  const piece = locatePiece(sidePoints, anchorIndex, closed);
+  if (!piece) {
     return null;
   }
-  const start = sidePoints[anchorIndex];
-  if (!start || start.type) {
-    return null;
-  }
-  let endIndex = -1;
-  for (let i = anchorIndex + 1; i < sidePoints.length; i++) {
-    if (!sidePoints[i].type) {
-      endIndex = i;
-      break;
-    }
-  }
-  if (endIndex < 0) {
-    return null;
-  }
-  const handles = sidePoints.slice(anchorIndex + 1, endIndex);
-  if (handles.length !== 0 && handles.length !== 2) {
-    return null;
-  }
-  const end = sidePoints[endIndex];
+  const { start, handles, endIndex, end, wrapped } = piece;
   const parameter = Math.min(1, Math.max(0, t));
 
   const cut =
@@ -157,11 +167,12 @@ export function splitSideAtParameter(sidePoints, anchorIndex, t) {
     carryHandleMetadata(cut[4], handles[1]);
   }
 
-  const points = [
-    ...sidePoints.slice(0, anchorIndex + 1),
-    ...cut,
-    ...sidePoints.slice(endIndex),
-  ];
+  // The cut replaces whatever lay between the two on-curves. On the wrapping
+  // piece that is the tail of the array, and the end on-curve is already at the
+  // front, so there is nothing to put back after it.
+  const points = wrapped
+    ? [...sidePoints.slice(0, anchorIndex + 1), ...cut]
+    : [...sidePoints.slice(0, anchorIndex + 1), ...cut, ...sidePoints.slice(endIndex)];
   // Read off the cut itself rather than counted from the input. A straight and
   // a cubic both put the new on-curve in the middle of what they return, but a
   // straight that states no direction falls back to a bare point, and counting

@@ -4066,6 +4066,87 @@ describe("skeleton insertion points reach the generator", () => {
     ).to.be.lessThan(0.6);
   });
 
+  // A closed contour emits the point at each segment's START, where an open one
+  // emits the point at its end. The anchor was read as "the on-curve before the
+  // last", which is the open reading, so on a closed contour it named the
+  // previous segment's start and named nothing at all for the first segment.
+  // Every insertion point on a closed contour was refused, and drew nowhere.
+  //
+  // The last segment then needs the wrap: its end on-curve is the one the side
+  // opens with, and walking forward for it runs off the end of the array.
+  const closedRing = (insertions = []) =>
+    normalizeSkeletonData({
+      contours: [
+        {
+          id: 10,
+          defaultWidth: 60,
+          closed: true,
+          points: [
+            { id: 11, x: 200, y: 60, smooth: true },
+            { id: 21, x: 280, y: 60, type: "cubic" },
+            { id: 22, x: 340, y: 120, type: "cubic" },
+            { id: 12, x: 340, y: 200, smooth: true },
+            { id: 23, x: 340, y: 280, type: "cubic" },
+            { id: 24, x: 280, y: 340, type: "cubic" },
+            { id: 13, x: 200, y: 340, smooth: true },
+            { id: 25, x: 120, y: 340, type: "cubic" },
+            { id: 26, x: 60, y: 280, type: "cubic" },
+            { id: 14, x: 60, y: 200, smooth: true },
+            { id: 27, x: 60, y: 120, type: "cubic" },
+            { id: 28, x: 120, y: 60, type: "cubic" },
+          ],
+          insertions,
+        },
+      ],
+    });
+
+  const closedRingPointIds = [11, 12, 13, 14];
+
+  it("cuts every segment of a closed contour, the last one included", () => {
+    for (const pointId of closedRingPointIds) {
+      const result = generateFromSkeleton(closedRing([{ id: 30, pointId, t: 0.4 }]));
+      // A closed contour emits two generated contours, so the two sides are in
+      // two provenance entries.
+      const owned = result.provenance.flatMap((generated) =>
+        (generated.pointMap || []).filter(
+          (entry) => entry?.skeletonPointId === 30 && entry.role === "onCurve"
+        )
+      );
+      expect(
+        owned.map((entry) => entry.side).sort(),
+        `no insertion geometry on the segment at point ${pointId}`
+      ).to.deep.equal(["left", "right"]);
+    }
+  });
+
+  it("holds a closed contour's point count whichever segment is cut", () => {
+    const counts = new Set(
+      closedRingPointIds.map((pointId) =>
+        generateFromSkeleton(closedRing([{ id: 30, pointId, t: 0.4 }])).contours.reduce(
+          (total, contour) => total + contour.points.length,
+          0
+        )
+      )
+    );
+    expect(counts.size).to.equal(1);
+  });
+
+  it("leaves a closed outline where it was, on every segment", () => {
+    const without = generateFromSkeleton(closedRing());
+    for (const pointId of closedRingPointIds) {
+      const withOne = generateFromSkeleton(closedRing([{ id: 30, pointId, t: 0.4 }]));
+      for (let contourIndex = 0; contourIndex < 2; contourIndex++) {
+        expect(
+          worstDeparture(
+            sampleContour(withOne.contours[contourIndex]),
+            sampleContour(without.contours[contourIndex], 4000)
+          ),
+          `outline moved cutting the segment at point ${pointId}`
+        ).to.be.lessThan(0.9);
+      }
+    }
+  });
+
   it("holds the count at every parameter", () => {
     const counts = new Set();
     for (let i = 0; i <= 40; i++) {

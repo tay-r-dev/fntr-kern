@@ -2290,16 +2290,37 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
     }
     return null;
   };
-  // Read AFTER the segment has pushed, never before. The segment's end on-curve
-  // is then the last one in the side, and its start is the on-curve before that
-  // one. Which of the two the segment pushed itself does not matter, and that
-  // is the point: guessing it from whether the pushed run opens with an
-  // on-curve is wrong for every segment after the first, whose opening on-curve
-  // is its END, put there because the segment before it stopped short of the
-  // point the two of them share.
-  const segmentStartAnchor = (side) => {
-    const end = lastOnCurveIndex(side);
-    return end === null ? null : lastOnCurveIndex(side, end);
+  // Read AFTER the segment has pushed, and answered from the provenance the
+  // emission stamped rather than by counting back from the end of the side.
+  //
+  // Counting back is what this used to do, on the reading that the last on-curve
+  // is the segment's END and the one before it is therefore its start. That
+  // holds on an open contour, where a segment emits the point at its end and
+  // only the first also emits its start. It is false on a closed one, where
+  // every segment emits the point at its own START and the last segment's end is
+  // the on-curve the first segment already put at index zero. So on a closed
+  // contour the rule named the PREVIOUS segment's start, and for the first
+  // segment it named nothing at all. Every insertion point on a closed contour
+  // was refused, and drew nowhere.
+  //
+  // The two conventions have nothing in common to count with, so nothing is
+  // counted. An emitted on-curve says which skeleton point it belongs to, and
+  // the anchor is the one that says this segment's start. Preferring the
+  // segment's own run is what separates the two on-curves an inner corner emits
+  // for one point: the first is the arriving arm's edge end and the second is
+  // this segment's own. Where the segment emitted no on-curve of its own start,
+  // the segment before it did, and that is the on-curve immediately before the
+  // run.
+  const segmentStartAnchor = (side, runStart, startPointId) => {
+    const owns = (index) =>
+      !side[index].type && side[index]._provenance?.skeletonPointId === startPointId;
+    for (let i = runStart; i < side.length; i++) {
+      if (owns(i)) {
+        return i;
+      }
+    }
+    const before = lastOnCurveIndex(side, runStart);
+    return before !== null && owns(before) ? before : null;
   };
 
   const coupled = coupledHalfWidths(
@@ -2396,10 +2417,15 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
       authoredKeys
     );
 
+    const leftRunStart = leftSide.length;
+    const rightRunStart = rightSide.length;
     leftSide.push(...offsetPoints.left);
     rightSide.push(...offsetPoints.right);
-    leftSegmentAnchors.push(segmentStartAnchor(leftSide));
-    rightSegmentAnchors.push(segmentStartAnchor(rightSide));
+    const startPointId = segment.startPoint._sourcePointId;
+    leftSegmentAnchors.push(segmentStartAnchor(leftSide, leftRunStart, startPointId));
+    rightSegmentAnchors.push(
+      segmentStartAnchor(rightSide, rightRunStart, startPointId)
+    );
   }
 
   return {
@@ -2431,6 +2457,7 @@ function applyInsertionSplits({
   rightSegmentAnchors,
   segments,
   insertions,
+  isClosed,
 }) {
   if (!insertions.length) {
     return { leftSide, rightSide };
@@ -2456,14 +2483,16 @@ function applyInsertionSplits({
         leftSegmentAnchors[index],
         insertion,
         "left",
-        segment
+        segment,
+        isClosed
       );
       const cutRight = cutOneSide(
         right,
         rightSegmentAnchors[index],
         insertion,
         "right",
-        segment
+        segment,
+        isClosed
       );
       if (!cutLeft || !cutRight) {
         continue;
@@ -2477,7 +2506,7 @@ function applyInsertionSplits({
 
 // One side's cut, or null if this side cannot take it. The caller commits both
 // sides together.
-function cutOneSide(sidePoints, anchorIndex, insertion, side, segment) {
+function cutOneSide(sidePoints, anchorIndex, insertion, side, segment, isClosed) {
   if (anchorIndex === null || anchorIndex === undefined) {
     return null;
   }
@@ -2490,12 +2519,14 @@ function cutOneSide(sidePoints, anchorIndex, insertion, side, segment) {
     sidePoints,
     anchorIndex,
     center,
-    skeletonSegmentTangentAt(segment, insertion.t)
+    skeletonSegmentTangentAt(segment, insertion.t),
+    isClosed
   );
   const cut = splitSideAtParameter(
     sidePoints,
     anchorIndex,
-    sideParameter === null ? insertion.t : sideParameter
+    sideParameter === null ? insertion.t : sideParameter,
+    isClosed
   );
   if (!cut) {
     return null;
@@ -2607,6 +2638,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
       rightSegmentAnchors: solved.rightSegmentAnchors,
       segments,
       insertions: skeletonContour.insertions || [],
+      isClosed,
     });
 
   const joinedLeftSide = joinInnerCornersOnSide(insertedLeftSide, { isClosed });
