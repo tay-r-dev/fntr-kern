@@ -192,6 +192,30 @@ describe("pairsForRerun", () => {
     const result = pairsForRerun(cache, "everything");
     expect(result).to.deep.equal([]);
   });
+
+  it("'everything' with a candidatePairsList surfaces a brand-new pair not yet cached", () => {
+    let cache = createCache();
+    cache = setPairValue(cache, "a", "b", 1);
+    const result = pairsForRerun(cache, "everything", [
+      { left: "a", right: "b" },
+      { left: "c", right: "d" }, // never measured, not in the cache at all
+    ]);
+    expect(result.sort((x, y) => x.left.localeCompare(y.left))).to.deep.equal([
+      { left: "a", right: "b" },
+      { left: "c", right: "d" },
+    ]);
+  });
+
+  it("'everything' with a candidatePairsList still excludes a pair that is cached AND junk AND in the list", () => {
+    let cache = createCache();
+    cache = setPairValue(cache, "a", "b", 1);
+    cache = markPairJunk(cache, "a", "b", true);
+    const result = pairsForRerun(cache, "everything", [
+      { left: "a", right: "b" }, // cached, junk, and (redundantly) listed as a candidate
+      { left: "c", right: "d" },
+    ]);
+    expect(result).to.deep.equal([{ left: "c", right: "d" }]);
+  });
 });
 
 // ---------------------------------------------------------------------------
