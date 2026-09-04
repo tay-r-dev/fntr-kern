@@ -24,8 +24,12 @@ export class SelectTool extends BaseTool {
 
   async handleDrag(eventStream, initialEvent) {
     // Every mousedown gesture -- click, double-click or an actual drag --
-    // starts here (scene-controller.js calls only handleDrag/handleHover/
-    // handleArrowKeys on the selected tool). Double-click is already known
+    // starts here. (scene-controller.js also calls handleHover, handleKeyDown
+    // and handleArrowKeys on the selected tool; this tool doesn't override
+    // any of those, and the inherited/fallback behavior for both is a no-op
+    // for a glyph this view never marks isEditing -- see BaseTool.handleKeyDown
+    // and scene-controller.js's own isEditing-gated handleArrowKeys fallback.)
+    // Double-click is already known
     // synchronously from initialEvent, before consuming the event stream, so
     // it is checked first; shouldInitiateDrag consumes the stream, so it can
     // only be asked once and only for the remaining (non-double-click) case.
