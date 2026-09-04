@@ -5,12 +5,16 @@
 // renders the editor's scene, reused via the widened views-editor exports
 // (spec §8: "widen the views-editor exports map and import across views").
 //
-// In scope: a read-only glyph-string scene, pan/zoom only (the hand tool,
-// always active), driven by a plain text input standing in for the future
-// phrase presets/parameters panel. Nothing else -- see spec §6 for what the
-// left pane eventually becomes, and the workstream brief for the explicit
-// list of what does NOT belong here yet (sidebearing tool, kerning tool, the
-// chip selector, the right pane, double-click-to-open-editor, undo, menus).
+// In scope (workstream 5): a read-only glyph-string scene, pan/zoom only (the
+// hand tool, always active), driven by a plain text input standing in for the
+// future phrase presets/parameters panel.
+//
+// WORKSTREAM 6 adds: a bespoke, selection-only pointer tool
+// (edit-tools-select.js) alongside the hand tool, and a minimal two-button
+// tool switcher. Still nothing else -- see spec §6 for what the left pane
+// eventually becomes, and the workstream brief for the explicit list of what
+// does NOT belong here yet (sidebearing tool, kerning tool, the chip
+// selector, the right pane, undo, menus).
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { CanvasController } from "@fontra/core/canvas-controller.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
@@ -24,6 +28,7 @@ import {
   VisualizationContext,
   VisualizationLayers,
 } from "@fontra/views-editor/visualization-layers.js";
+import { SelectTool } from "./edit-tools-select.js";
 
 export class KerningViewController extends ViewController {
   constructor(font, projectIdentifier) {
@@ -74,12 +79,18 @@ export class KerningViewController extends ViewController {
     canvasController.sceneView = sceneView;
     this.defaultSceneView = sceneView;
 
-    // Hand tool only, always active, no tool-switching UI (explicit scope:
-    // pan/zoom only, no other tools of any kind).
-    const handTool = new HandTool(this);
-    this.sceneController.setSelectedTool(handTool);
+    // Workstream 6: a minimal two-tool switcher (pointer, hand). Pointer is
+    // selected by default, mirroring editor.js's own default
+    // (this.setSelectedTool("pointer-tool")). Mirrors editor.js's `this.tools`
+    // convention: tools are stored by their `identifier` field.
+    this.tools = {};
+    for (const tool of [new SelectTool(this), new HandTool(this)]) {
+      this.tools[tool.identifier] = tool;
+    }
+    this.setSelectedTool("pointer-tool");
 
     this.initPhraseInput();
+    this.initToolSwitcher();
 
     // Live theme changes (spec-neutral, but a real gap without it: this
     // canvas seeds its color scheme once at construction otherwise, and
@@ -105,6 +116,22 @@ export class KerningViewController extends ViewController {
     };
     phraseInput.addEventListener("input", setText);
     phraseInput.addEventListener("change", setText);
+  }
+
+  setSelectedTool(toolIdentifier) {
+    this.selectedToolIdentifier = toolIdentifier;
+    this.sceneController.setSelectedTool(this.tools[toolIdentifier]);
+    for (const button of document.querySelectorAll("[data-tool]")) {
+      // Inline style rather than a CSS rule, to keep this workstream's touch
+      // confined to kerning.js/kerning.html/edit-tools-select.js.
+      button.style.fontWeight = button.dataset.tool === toolIdentifier ? "bold" : "";
+    }
+  }
+
+  initToolSwitcher() {
+    for (const button of document.querySelectorAll("[data-tool]")) {
+      button.addEventListener("click", () => this.setSelectedTool(button.dataset.tool));
+    }
   }
 
   canvasMagnificationChanged(magnification) {
