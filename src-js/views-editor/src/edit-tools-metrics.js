@@ -430,7 +430,7 @@ function _drawMiniSideBearings(
   }
 }
 
-class SidebearingTool extends MetricsBaseTool {
+export class SidebearingTool extends MetricsBaseTool {
   iconPath = "/images/sidebearingtool.svg";
   identifier = "sidebearing-tool";
 
@@ -1025,7 +1025,7 @@ registerVisualizationLayerDefinition({
   defaultOn: true,
 });
 
-class KerningTool extends MetricsBaseTool {
+export class KerningTool extends MetricsBaseTool {
   iconPath = "/images/kerningtool.svg";
   identifier = "kerning-tool";
 

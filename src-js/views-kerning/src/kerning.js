@@ -85,6 +85,10 @@ import { themeController } from "@fontra/core/theme-settings.js";
 import { ViewController } from "@fontra/core/view-controller.js";
 import { dialogSetup } from "@fontra/web-components/modal-dialog.js";
 import { HandTool } from "@fontra/views-editor/edit-tools-hand.js";
+import {
+  KerningTool,
+  SidebearingTool,
+} from "@fontra/views-editor/edit-tools-metrics.js";
 import { SceneController } from "@fontra/views-editor/scene-controller.js";
 import { visualizationLayerDefinitions } from "@fontra/views-editor/visualization-layer-definitions.js";
 import {
@@ -183,7 +187,9 @@ export class KerningViewController extends ViewController {
     // that view does beyond the scene: no sidebars, no other tools, no
     // undo, no double-click handling, no CJK design frame.
 
-    const canvas = document.querySelector("#kerning-canvas");
+    // Workstream 17: the id is "edit-canvas", not "kerning-canvas" -- see
+    // the comment on the canvas element in kerning.html.
+    const canvas = document.querySelector("#edit-canvas");
     canvas.focus();
 
     const canvasController = new CanvasController(canvas, (magnification) =>
@@ -227,8 +233,21 @@ export class KerningViewController extends ViewController {
     // selected by default, mirroring editor.js's own default
     // (this.setSelectedTool("pointer-tool")). Mirrors editor.js's `this.tools`
     // convention: tools are stored by their `identifier` field.
+    //
+    // WORKSTREAM 17, spec §6: "Four tools only: pointer, sidebearing,
+    // kerning, hand... The sidebearing tool edits a glyph layer, so this view
+    // carries the glyph edit path and its undo beside the kerning one."
+    // SidebearingTool and KerningTool are edit-tools-metrics.js's own
+    // classes, constructed exactly as editor.js's addEditTool constructs
+    // them for MetricsTool's subTools (`new subToolClass(this)`, `this`
+    // being the controller/editor object) -- reused, not copied (spec §8).
     this.tools = {};
-    for (const tool of [new SelectTool(this), new HandTool(this)]) {
+    for (const tool of [
+      new SelectTool(this),
+      new SidebearingTool(this),
+      new KerningTool(this),
+      new HandTool(this),
+    ]) {
       this.tools[tool.identifier] = tool;
     }
     this.setSelectedTool("pointer-tool");

@@ -21,18 +21,30 @@
     <div class="top-bar-container"></div>
     <div class="main-container">
       <div id="kerning-view-container">
+        <!-- id is "edit-canvas", not "kerning-canvas": edit-tools-metrics.js's
+             SidebearingTool/KerningTool (workstream 17) hardcode
+             document.querySelector("#edit-canvas") to forward events, the
+             same id editor.html's own canvas uses. This view reuses those
+             tools unmodified (spec §8: import across views, never copy),
+             so it must match the DOM contract they expect rather than
+             patch the shared tool code. -->
         <canvas
-          id="kerning-canvas"
+          id="edit-canvas"
           class="focus-preferred"
           tabindex="1"
           lang="en"
           style="position: absolute; width: 100%; height: 100%"
         ></canvas>
+        <div id="metric-handle-container">
+          <!-- content will be filled in dynamically -->
+        </div>
         <div
           id="kerning-tool-switcher"
           style="position: absolute; top: 0; left: 0; z-index: 1"
         >
           <button data-tool="pointer-tool" title="Pointer">Pointer</button>
+          <button data-tool="sidebearing-tool" title="Sidebearing">Sidebearing</button>
+          <button data-tool="kerning-tool" title="Kerning">Kerning</button>
           <button data-tool="hand-tool" title="Hand">Hand</button>
         </div>
         <div
