@@ -33,6 +33,29 @@
 // guessing at a cache/worker interface that hasn't been built for this view
 // yet (autokern-cache.js and autokern-engine.js exist and are tested, but
 // nothing in views-kerning calls them).
+//
+// WORKSTREAM 11 adds §7.3's pair table: a glyph field (overridden by the
+// left pane's single-glyph selection via sceneSettings.selectedGlyphName),
+// three sections (side-1-class-vs-every-side-2-class,
+// every-side-1-class-vs-side-2-class, flat/unclassed), reading classes only
+// from what's already stored (kerningController.leftPairGroupMapping /
+// rightPairGroupMapping, i.e. groupsSide1/groupsSide2 -- NOT §5.3
+// derivation), every filter named in §7.3 (side, grouping, sign, state,
+// junk, plus the existing threshold control), an excluded-glyph field
+// (stored only, not wired into a rerun -- runAutokern above has no
+// excluded-glyph parameter to wire into), and the five actions (apply
+// selected, apply all with a second-press confirm, reset to current, reset
+// to zero, mark junk). Deliberately NOT built here: §5.2's fold (every row
+// stays one flat pair; "apply" therefore always writes a flat exception,
+// never a class cell -- see the writePairValues comment), §5.3 derivation,
+// §7.4 calibration readout, §7.5 status strip. See applyPairs's own comment
+// for the honest state of undo: this writes real, broadcast, persisted font
+// kerning data through the exact path editor.js's kerning tool uses
+// (kerningController.getEditContext(...).edit(...) ->
+// fontController.editFinal), but does NOT reach this view's own undo stack,
+// because this view has none (see the workstream comments above -- no undo
+// mechanism exists in kerning.js at all yet).
+import { markPairJunk, pairKey } from "@fontra/core/autokern-cache.js";
 import {
   doPerformAction,
   getActionIdentifierFromKeyEvent,
@@ -40,7 +63,10 @@ import {
 } from "@fontra/core/actions.js";
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { CanvasController } from "@fontra/core/canvas-controller.js";
-import { parsePhrasePresets } from "@fontra/core/character-lines.js";
+import {
+  characterLinesFromString,
+  parsePhrasePresets,
+} from "@fontra/core/character-lines.js";
 import { rasterizeGlyph } from "@fontra/core/glyph-raster.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
 import { SceneView } from "@fontra/core/scene-view.js";
@@ -121,6 +147,7 @@ export class KerningViewController extends ViewController {
     this.initPhraseSection();
     this.initParametersSection();
     this.initRunSection();
+    this.initPairTableSection();
     this.initToolSwitcher();
     this.initToolShortcuts();
 
@@ -217,6 +244,13 @@ export class KerningViewController extends ViewController {
         this.autokernParamsController.setItem(key, convert(element.value));
       });
     }
+
+    // Threshold filters the pair table's display (spec §7.2: "filters the
+    // display, on the delta"), not just the run -- re-render on every
+    // change, including scrubs from other bound copies of the control.
+    this.autokernParamsController.addKeyListener("threshold", () => {
+      this.renderPairTable();
+    });
   }
 
   // This workstream: the run worker (spec §4) and the Run button
@@ -375,6 +409,7 @@ export class KerningViewController extends ViewController {
         } else if (data.type === "done") {
           this.autokernCache = new Map(data.cache);
           this.autokernCalibration = data.calibration;
+          this.renderPairTable();
           resolve("done");
         } else if (data.type === "cancelled") {
           resolve("cancelled");
@@ -416,6 +451,524 @@ export class KerningViewController extends ViewController {
     dialog.cancel();
     worker.terminate();
     return outcome;
+  }
+
+  // WORKSTREAM 11, spec §7.3. See the file-top comment for the overall scope
+  // of this workstream.
+  async initPairTableSection() {
+    // Real KerningController for this font's "kern" table -- the same one
+    // panel-selection-info.js and edit-tools-metrics.js use, obtained the
+    // same way (fontController.getKerningController(kernTag), cached
+    // per-tag by font-controller.js). Its leftPairGroupMapping /
+    // rightPairGroupMapping are groupsSide1/groupsSide2 already resolved
+    // glyph -> class name (kerning-controller.js's own
+    // makeGlyphGroupMapping), which is exactly "read existing stored
+    // classes only" -- nothing here derives or assigns a class.
+    this.kerningController = await this.fontController.getKerningController("kern");
+
+    // Per-pair "was this row's suggestion applied this session" (spec §7.3's
+    // "state" filter's "applied" bucket). In-memory only, like
+    // this.autokernCache itself -- no persistence workstream exists for
+    // this yet either, so this Set (and therefore the "applied" state) is
+    // lost on reload, same honesty as the WORKSTREAM 10 comment above about
+    // this.autokernCache.
+    this.autokernAppliedPairs = new Set();
+
+    this.autokernFiltersController = new ObservableController({
+      glyphName: "",
+      excludedGlyphs: "",
+      side: "both",
+      grouping: "both",
+      sign: "both",
+      state: "pending",
+      showJunk: false,
+      showCurrent: false,
+      sortAlphabetical: false,
+    });
+    this.autokernFiltersController.synchronizeWithLocalStorage(
+      "fontra-kerning-pairtable-filters."
+    );
+    const filters = this.autokernFiltersController.model;
+
+    const glyphInput = document.querySelector("#kerning-pairtable-glyph");
+    glyphInput.value = filters.glyphName;
+    glyphInput.addEventListener("input", () => {
+      this.autokernFiltersController.setItem("glyphName", glyphInput.value.trim());
+    });
+
+    // Left-pane selection override (spec §7.3: "A glyph input, overridden by
+    // the selection in the left pane"). Traced: scene-controller.js sets
+    // sceneSettings.selectedGlyphName to the single selected glyph's name
+    // whenever the selection resolves to exactly one glyph, and to null
+    // otherwise (scene-controller.js, the "Set up convenience property
+    // selectedGlyphName" comment, ~line 287). This view already owns
+    // this.sceneSettingsController (constructor above, shared with the left
+    // pane's scene). Only override on an actual single-glyph selection --
+    // clearing the selection leaves whatever the designer typed alone
+    // rather than blanking the field.
+    this.sceneSettingsController.addKeyListener("selectedGlyphName", (event) => {
+      if (event.newValue) {
+        glyphInput.value = event.newValue;
+        this.autokernFiltersController.setItem("glyphName", event.newValue);
+      }
+    });
+
+    const excludedInput = document.querySelector("#kerning-pairtable-excluded");
+    excludedInput.value = filters.excludedGlyphs;
+    excludedInput.addEventListener("change", () => {
+      // Stored on the controller only. NOT wired into runAutokern's
+      // excludedGlyphNames above: that method hardcodes
+      // `excludedGlyphNames = []` with its own comment ("§4.2's
+      // excluded-glyph field is not built yet"), so there is no rerun
+      // interface here to plug into without guessing at one -- exactly the
+      // brief's instruction not to half-wire it.
+      this.autokernFiltersController.setItem("excludedGlyphs", excludedInput.value);
+    });
+
+    const selectBindings = [
+      ["#kerning-pairtable-filter-side", "side"],
+      ["#kerning-pairtable-filter-grouping", "grouping"],
+      ["#kerning-pairtable-filter-sign", "sign"],
+      ["#kerning-pairtable-filter-state", "state"],
+    ];
+    for (const [selector, key] of selectBindings) {
+      const element = document.querySelector(selector);
+      element.value = filters[key];
+      element.addEventListener("change", () => {
+        this.autokernFiltersController.setItem(key, element.value);
+      });
+    }
+
+    const junkCheckbox = document.querySelector("#kerning-pairtable-filter-junk");
+    junkCheckbox.checked = filters.showJunk;
+    junkCheckbox.addEventListener("change", () => {
+      this.autokernFiltersController.setItem("showJunk", junkCheckbox.checked);
+    });
+
+    const currentCheckbox = document.querySelector("#kerning-pairtable-show-current");
+    currentCheckbox.checked = filters.showCurrent;
+    currentCheckbox.addEventListener("change", () => {
+      this.autokernFiltersController.setItem("showCurrent", currentCheckbox.checked);
+    });
+
+    const sortButton = document.querySelector("#kerning-pairtable-sort-toggle");
+    const updateSortButtonLabel = () => {
+      sortButton.textContent = this.autokernFiltersController.model.sortAlphabetical
+        ? "Sort: alphabetical"
+        : "Sort: worst delta first";
+    };
+    updateSortButtonLabel();
+    sortButton.addEventListener("click", () => {
+      this.autokernFiltersController.setItem(
+        "sortAlphabetical",
+        !this.autokernFiltersController.model.sortAlphabetical
+      );
+      updateSortButtonLabel();
+    });
+
+    this.autokernFiltersController.addListener(() => this.renderPairTable());
+
+    document
+      .querySelector("#kerning-pairtable-apply-selected")
+      .addEventListener("click", () => this.applySelectedPairRows());
+
+    const applyAllButton = document.querySelector("#kerning-pairtable-apply-all");
+    this._applyAllArmed = false;
+    this._applyAllDefaultLabel = applyAllButton.textContent;
+    applyAllButton.addEventListener("click", () => this.applyAllPairRows(applyAllButton));
+
+    document
+      .querySelector("#kerning-pairtable-reset-current")
+      .addEventListener("click", () => this.resetSelectedPairRows("current"));
+    document
+      .querySelector("#kerning-pairtable-reset-zero")
+      .addEventListener("click", () => this.resetSelectedPairRows("zero"));
+
+    this.renderPairTable();
+  }
+
+  // Parses the excluded-glyph field the same way the phrase field is parsed
+  // (spec §4.2: "parsed the same way as the phrase field, so a glyph with no
+  // character can be named directly") -- reusing characterLinesFromString
+  // (character-lines.js) rather than a bespoke splitter, by turning each
+  // comma/space-separated token into a "/glyphname" reference the same way
+  // the phrase field's own /glyphname syntax works, then reading back each
+  // token's resolved glyphName. A token naming a glyph that exists in the
+  // font's glyphMap comes back unchanged (character-lines.js only rewrites
+  // glyphName when the literal name is NOT in glyphMap, via its
+  // expandGlyphName fallback) -- so a glyph with no character still names
+  // itself directly, per spec.
+  parseExcludedGlyphNames(text) {
+    const tokens = (text || "").split(/[\s,]+/).filter((token) => token.length > 0);
+    if (!tokens.length) {
+      return [];
+    }
+    const asPhrase = tokens.map((token) => `/${token}`).join(" ");
+    const characterLines = characterLinesFromString(
+      asPhrase,
+      this.fontController.characterMap,
+      this.fontController.glyphMap,
+      {},
+      {},
+      undefined
+    );
+    const names = [];
+    for (const line of characterLines) {
+      for (const info of line) {
+        if (info.glyphName) {
+          names.push(info.glyphName);
+        }
+      }
+    }
+    return names;
+  }
+
+  // Builds the display row for one cache entry: reads the font's actually
+  // stored kerning for this exact glyph pair (resolved through classes the
+  // same way any other consumer reads kerning -- getGlyphPairValueForLocation
+  // uses kerning-controller.js's own getPairsToTry cascade, spec §5.1's
+  // [glyph,glyph] -> [glyph,@class] -> [@class,glyph] -> [@class,@class]
+  // order), at the default (non-variable) location `{}` -- this view has no
+  // design-space location control, so there is only ever the one location to
+  // read. `delta` is the suggestion minus that stored value (spec §7.3: "The
+  // delta is the suggestion minus what is stored"), with no stored value
+  // read as 0.
+  pairRowData(entry, classed) {
+    const current =
+      this.kerningController.getGlyphPairValueForLocation(entry.left, entry.right, {}) ??
+      0;
+    return {
+      left: entry.left,
+      right: entry.right,
+      suggestion: entry.value,
+      current,
+      delta: entry.value - current,
+      junk: entry.junk,
+      stale: entry.stale,
+      classed,
+    };
+  }
+
+  // Every filter named in spec §7.3, composed with the threshold (§7.2: "the
+  // threshold... filters the display, not the run"). Returns false the
+  // moment any active filter rejects the row -- order doesn't matter, all
+  // are independent AND conditions.
+  pairRowVisible(row, filters, threshold, glyphName) {
+    if (row.junk && !filters.showJunk) {
+      return false;
+    }
+    if (Math.abs(row.delta) < threshold) {
+      return false;
+    }
+    if (filters.side === "left" && row.left !== glyphName) {
+      return false;
+    }
+    if (filters.side === "right" && row.right !== glyphName) {
+      return false;
+    }
+    if (filters.grouping === "classed" && !row.classed) {
+      return false;
+    }
+    if (filters.grouping === "flat" && row.classed) {
+      return false;
+    }
+    if (filters.sign === "negative" && !(row.delta < 0)) {
+      return false;
+    }
+    if (filters.sign === "positive" && !(row.delta > 0)) {
+      return false;
+    }
+
+    const applied = this.autokernAppliedPairs.has(pairKey(row.left, row.right));
+    if (filters.state === "applied" && !applied) {
+      return false;
+    }
+    if (filters.state === "stale" && !row.stale) {
+      return false;
+    }
+    if (filters.state === "pending" && (applied || row.stale)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  // Rebuilds all three <tbody> elements from this.autokernCache. Called on
+  // every filter change, every threshold change, and once a run finishes.
+  // Guards on missing state (this.autokernCache is set synchronously by
+  // initRunSection, but this.kerningController/this.autokernFiltersController
+  // are set asynchronously by initPairTableSection, and the threshold
+  // listener in initParametersSection can fire before that promise settles)
+  // by simply doing nothing until every piece exists.
+  renderPairTable() {
+    const bodies = [1, 2, 3].map((n) =>
+      document.querySelector(`#kerning-pairtable-body-${n}`)
+    );
+    if (!this.autokernCache || !this.kerningController || !this.autokernFiltersController) {
+      return;
+    }
+    const filters = this.autokernFiltersController.model;
+    const threshold = this.autokernParamsController.model.threshold;
+    const glyphName = filters.glyphName;
+
+    for (const body of bodies) {
+      body.textContent = "";
+    }
+
+    for (const el of document.querySelectorAll(".kerning-pairtable-current-col")) {
+      el.style.display = filters.showCurrent ? "" : "none";
+    }
+
+    if (!glyphName) {
+      return;
+    }
+
+    // Spec §7.3: "its side-1 class against every side-2 class" / "every
+    // side-1 class against its side-2 class" / "flat rows for whatever is
+    // unclassed on either side". No fold (§5.2 is out of scope): each cache
+    // entry is still its own row, just sorted into one of the three
+    // sections below by which of the glyph's two class memberships (if
+    // either) the pair actually uses -- spec §7.3: "A glyph has two class
+    // memberships and they are different lists. Sections 1 and 2 are not
+    // redundant."
+    //   Section 1: glyphName is the LEFT member, glyphName has a side-1
+    //     class, and the RIGHT glyph has a side-2 class (both sides of the
+    //     pair resolve through a class).
+    //   Section 2: glyphName is the RIGHT member, glyphName has a side-2
+    //     class, and the LEFT glyph has a side-1 class.
+    //   Section 3: everything else touching glyphName (either member is
+    //     unclassed on the relevant side) -- flat/unclassed.
+    const rowsBySection = { 1: [], 2: [], 3: [] };
+    const hasSide1Class = !!this.kerningController.leftPairGroupMapping[glyphName];
+    const hasSide2Class = !!this.kerningController.rightPairGroupMapping[glyphName];
+
+    for (const entry of this.autokernCache.values()) {
+      if (entry.left !== glyphName && entry.right !== glyphName) {
+        continue;
+      }
+      let section;
+      if (
+        entry.left === glyphName &&
+        hasSide1Class &&
+        this.kerningController.rightPairGroupMapping[entry.right]
+      ) {
+        section = 1;
+      } else if (
+        entry.right === glyphName &&
+        hasSide2Class &&
+        this.kerningController.leftPairGroupMapping[entry.left]
+      ) {
+        section = 2;
+      } else {
+        section = 3;
+      }
+      rowsBySection[section].push(entry);
+    }
+
+    for (const section of [1, 2, 3]) {
+      const classed = section !== 3;
+      const rows = rowsBySection[section]
+        .map((entry) => this.pairRowData(entry, classed))
+        .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
+
+      // Spec §7.3: "Sorted by delta magnitude, worst first... Alphabetical
+      // is a second sort and not the default."
+      if (filters.sortAlphabetical) {
+        rows.sort((a, b) => (a.left + "\0" + a.right).localeCompare(b.left + "\0" + b.right));
+      } else {
+        rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+      }
+
+      for (const row of rows) {
+        bodies[section - 1].appendChild(this.buildPairRowElement(row));
+      }
+    }
+  }
+
+  buildPairRowElement(row) {
+    const tr = document.createElement("tr");
+    tr.dataset.left = row.left;
+    tr.dataset.right = row.right;
+
+    const selectCell = document.createElement("td");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "kerning-pairtable-row-select";
+    selectCell.appendChild(checkbox);
+    tr.appendChild(selectCell);
+
+    const leftCell = document.createElement("td");
+    leftCell.textContent = row.left;
+    tr.appendChild(leftCell);
+
+    const deltaCell = document.createElement("td");
+    deltaCell.textContent = row.delta > 0 ? `+${row.delta.toFixed(1)}` : row.delta.toFixed(1);
+    tr.appendChild(deltaCell);
+
+    const rightCell = document.createElement("td");
+    rightCell.textContent = row.right;
+    tr.appendChild(rightCell);
+
+    const currentCell = document.createElement("td");
+    currentCell.className = "kerning-pairtable-current-col";
+    currentCell.textContent = row.current;
+    currentCell.style.display = this.autokernFiltersController.model.showCurrent
+      ? ""
+      : "none";
+    tr.appendChild(currentCell);
+
+    const junkCell = document.createElement("td");
+    const junkButton = document.createElement("button");
+    junkButton.type = "button";
+    junkButton.textContent = row.junk ? "Unmark junk" : "Mark junk";
+    junkButton.addEventListener("click", () =>
+      this.togglePairJunk(row.left, row.right, !row.junk)
+    );
+    junkCell.appendChild(junkButton);
+    tr.appendChild(junkCell);
+
+    return tr;
+  }
+
+  togglePairJunk(left, right, junk) {
+    // autokern-cache.js's markPairJunk is a pure function (returns a NEW
+    // Map, spec §4.2: "a mark... can be found and undone") -- this module
+    // is not touched, only called, per the brief's file-ownership rule.
+    this.autokernCache = markPairJunk(this.autokernCache, left, right, junk);
+    this.renderPairTable();
+  }
+
+  getSelectedPairTableRows() {
+    return [...document.querySelectorAll(".kerning-pairtable-row-select:checked")]
+      .map((checkbox) => checkbox.closest("tr"))
+      .map((tr) => ({ left: tr.dataset.left, right: tr.dataset.right }));
+  }
+
+  async applySelectedPairRows() {
+    await this.writePairValues(
+      this.getSelectedPairTableRows(),
+      (entry) => entry.value,
+      true
+    );
+  }
+
+  applyAllPairRows(button) {
+    const visibleRows = [...document.querySelectorAll(".kerning-pairtable-table tbody tr")].map(
+      (tr) => ({ left: tr.dataset.left, right: tr.dataset.right })
+    );
+
+    // Spec §7.3: "Apply all states how many cells it will write and needs a
+    // second press." First press arms and relabels the button; a second
+    // press within the window commits. Re-rendering the table (any filter
+    // change, a Run finishing) between the two presses would silently
+    // change what "all" means, so a fresh render is not forced here, but
+    // the re-count on commit below uses whatever is on screen AT THE TIME
+    // OF THE SECOND PRESS, not the count shown on the first press -- if the
+    // table changed underneath, the write still matches what's actually
+    // visible rather than a stale number.
+    if (!this._applyAllArmed) {
+      this._applyAllArmed = true;
+      button.textContent = `Confirm: write ${visibleRows.length} cell(s)`;
+      clearTimeout(this._applyAllArmTimeout);
+      this._applyAllArmTimeout = setTimeout(() => {
+        this._applyAllArmed = false;
+        button.textContent = this._applyAllDefaultLabel;
+      }, 8000);
+      return;
+    }
+
+    clearTimeout(this._applyAllArmTimeout);
+    this._applyAllArmed = false;
+    button.textContent = this._applyAllDefaultLabel;
+    this.writePairValues(visibleRows, (entry) => entry.value, true);
+  }
+
+  async resetSelectedPairRows(mode) {
+    const rows = this.getSelectedPairTableRows();
+    // "Reset to current" writes the pair's already-resolved stored value
+    // back as an explicit flat entry (useful to break a class cell's value
+    // out into a flat exception without changing the number, or to
+    // re-confirm a value after inspecting it here). "Reset to zero" writes
+    // 0, clearing the pair's effective kerning. Neither is "accepting the
+    // suggestion", so neither marks the row applied (see writePairValues'
+    // markApplied parameter) -- the state filter's "applied" bucket means
+    // specifically "the suggestion was applied".
+    const valueFn =
+      mode === "zero"
+        ? () => 0
+        : (entry, left, right) =>
+            this.kerningController.getGlyphPairValueForLocation(left, right, {}) ?? 0;
+    await this.writePairValues(rows, valueFn, false);
+  }
+
+  // The single write path every pair-table action goes through. Reaches
+  // REAL font kerning data: kerningController.getEditContext(...).edit(...)
+  // is the exact mechanism kerning-controller.js documents and
+  // edit-tools-metrics.js (editor.js's own kerning-drag tool) uses --
+  // fontController.editFinal underneath, which writes to the font's
+  // backend, broadcasts the change to every other open view (including a
+  // live editor tab on the same font), and is what the project actually
+  // saves. This is real, not a local mock.
+  //
+  // What it does NOT do: push onto an undo stack in THIS view. Spec §7.3
+  // says "Each action is one undo step" and this workstream cannot deliver
+  // that honestly. editor.js's kerning tool gets its undo step from
+  // pushUndoItem, a mechanism belonging to that PARTICULAR tool
+  // (edit-tools-metrics.js's own `this.undoStack`, fed to
+  // sceneController.doUndoRedo). This view (kerning.js) has no undo stack
+  // at all -- not for glyph edits, not for kerning edits, nothing; grep the
+  // whole file, there is no `undoStack` here before this workstream and
+  // this workstream does not add one. Building a real one is a batch-apply
+  // undo mechanism in its own right (multiple pairs, one step, per spec's
+  // "each action is one undo step") and is out of scope for this pass.
+  // Concretely: applying a row from this table changes the saved font
+  // immediately and permanently as far as this view is concerned; the
+  // designer's only way back is to apply the opposite value by hand (e.g.
+  // "reset to current" before the fact, or typing the old number back).
+  async writePairValues(pairs, valueFn, markApplied) {
+    if (!pairs.length) {
+      return;
+    }
+    const sourceIdentifier =
+      this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation({}, false);
+    if (!sourceIdentifier) {
+      // Mirrors edit-tools-metrics.js's own guard (getEditContext there:
+      // "if (!sourceIdentifier && wantValues) { this.showDialogLocationNotAtSource(); }")
+      // -- this view has no design-space location control to be "not at",
+      // so in practice this only fires for a font with zero sources, which
+      // has no kerning to write regardless.
+      console.error(
+        "kerning view: cannot apply, no font source resolves at the default location"
+      );
+      return;
+    }
+
+    const pairSelectors = [];
+    const values = [];
+    const keys = [];
+    for (const { left, right } of pairs) {
+      const entry = this.autokernCache.get(pairKey(left, right));
+      if (!entry) {
+        continue;
+      }
+      pairSelectors.push({ leftName: left, rightName: right, sourceIdentifier });
+      values.push(Math.round(valueFn(entry, left, right)));
+      keys.push(pairKey(left, right));
+    }
+    if (!pairSelectors.length) {
+      return;
+    }
+
+    const editContext = this.kerningController.getEditContext(pairSelectors);
+    await editContext.edit(values, "kerning view: pair table write");
+
+    if (markApplied) {
+      for (const key of keys) {
+        this.autokernAppliedPairs.add(key);
+      }
+    }
+
+    this.renderPairTable();
   }
 
   setSelectedTool(toolIdentifier) {

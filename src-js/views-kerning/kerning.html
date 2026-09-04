@@ -74,6 +74,117 @@
             <input type="number" id="kerning-param-strength" min="0" step="0.05" />
           </details>
         </div>
+        <div id="kerning-pairtable-section">
+          <div id="kerning-pairtable-controls">
+            <label for="kerning-pairtable-glyph">Glyph</label>
+            <input type="text" id="kerning-pairtable-glyph" placeholder="glyph name" />
+
+            <label for="kerning-pairtable-excluded">Excluded glyphs</label>
+            <input
+              type="text"
+              id="kerning-pairtable-excluded"
+              placeholder="glyph names, comma or space separated"
+            />
+
+            <div id="kerning-pairtable-filters">
+              <select id="kerning-pairtable-filter-side" title="Side">
+                <option value="both">Left or right</option>
+                <option value="left">Glyph on left</option>
+                <option value="right">Glyph on right</option>
+              </select>
+              <select id="kerning-pairtable-filter-grouping" title="Grouping">
+                <option value="both">Classed and flat</option>
+                <option value="classed">Classed only</option>
+                <option value="flat">Flat only</option>
+              </select>
+              <select id="kerning-pairtable-filter-sign" title="Sign">
+                <option value="both">Either sign</option>
+                <option value="negative">Negative</option>
+                <option value="positive">Positive</option>
+              </select>
+              <select id="kerning-pairtable-filter-state" title="State">
+                <option value="pending">Pending</option>
+                <option value="applied">Applied</option>
+                <option value="stale">Stale</option>
+              </select>
+              <label
+                ><input type="checkbox" id="kerning-pairtable-filter-junk" /> Show
+                junk</label
+              >
+              <label
+                ><input type="checkbox" id="kerning-pairtable-show-current" /> Show
+                current</label
+              >
+              <button id="kerning-pairtable-sort-toggle" type="button">
+                Sort: worst delta first
+              </button>
+            </div>
+
+            <div id="kerning-pairtable-actions">
+              <button id="kerning-pairtable-apply-selected" type="button">
+                Apply selected
+              </button>
+              <button id="kerning-pairtable-apply-all" type="button">Apply all</button>
+              <button id="kerning-pairtable-reset-current" type="button">
+                Reset selected to current
+              </button>
+              <button id="kerning-pairtable-reset-zero" type="button">
+                Reset selected to zero
+              </button>
+            </div>
+          </div>
+
+          <div class="kerning-pairtable-group">
+            <h4>The glyph's side-1 class against every side-2 class</h4>
+            <table class="kerning-pairtable-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Left</th>
+                  <th>Delta</th>
+                  <th>Right</th>
+                  <th class="kerning-pairtable-current-col">Current</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="kerning-pairtable-body-1"></tbody>
+            </table>
+          </div>
+
+          <div class="kerning-pairtable-group">
+            <h4>Every side-1 class against the glyph's side-2 class</h4>
+            <table class="kerning-pairtable-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Left</th>
+                  <th>Delta</th>
+                  <th>Right</th>
+                  <th class="kerning-pairtable-current-col">Current</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="kerning-pairtable-body-2"></tbody>
+            </table>
+          </div>
+
+          <div class="kerning-pairtable-group">
+            <h4>Flat / unclassed</h4>
+            <table class="kerning-pairtable-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Left</th>
+                  <th>Delta</th>
+                  <th>Right</th>
+                  <th class="kerning-pairtable-current-col">Current</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="kerning-pairtable-body-3"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </body>

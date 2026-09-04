@@ -83,3 +83,48 @@
   cursor: pointer;
   margin-bottom: 0.35em;
 }
+
+/* Workstream 11 (spec §7.3): the pair table. */
+#kerning-pairtable-section {
+  margin-top: 1em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75em;
+}
+
+#kerning-pairtable-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+
+#kerning-pairtable-glyph,
+#kerning-pairtable-excluded {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#kerning-pairtable-filters,
+#kerning-pairtable-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.kerning-pairtable-group h4 {
+  margin: 0.5em 0 0.25em 0;
+}
+
+.kerning-pairtable-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.kerning-pairtable-table th,
+.kerning-pairtable-table td {
+  text-align: left;
+  padding: 0.15em 0.4em;
+  border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
+}
