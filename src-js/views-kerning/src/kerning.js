@@ -57,6 +57,11 @@
 // mechanism exists in kerning.js at all yet).
 import { markPairJunk, pairKey } from "@fontra/core/autokern-cache.js";
 import {
+  classSpread,
+  deriveKernRowClusters,
+  inheritCompositeClasses,
+} from "@fontra/core/autokern-classes.js";
+import {
   doPerformAction,
   getActionIdentifierFromKeyEvent,
   registerAction,
@@ -67,7 +72,12 @@ import {
   characterLinesFromString,
   parsePhrasePresets,
 } from "@fontra/core/character-lines.js";
+import {
+  getGlyphInfoFromCodePoint,
+  getGlyphInfoFromGlyphName,
+} from "@fontra/core/glyph-data.js";
 import { rasterizeGlyph } from "@fontra/core/glyph-raster.js";
+import { script as scriptOfCodePoint } from "@fontra/core/unicode-scripts-blocks.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
 import { getOPFS } from "@fontra/core/opfs.js";
 import { SceneView } from "@fontra/core/scene-view.js";
@@ -665,6 +675,11 @@ export class KerningViewController extends ViewController {
       showJunk: false,
       showCurrent: false,
       sortAlphabetical: false,
+      // WORKSTREAM 15, spec §5.2: "A toggle above the table folds every row
+      // whose pair resolves to the same cell into one parent." Off by
+      // default so this workstream never changes the existing flat-row
+      // behaviour unless the designer opts in.
+      foldClasses: false,
     });
     this.autokernFiltersController.synchronizeWithLocalStorage(
       "fontra-kerning-pairtable-filters."
@@ -761,6 +776,14 @@ export class KerningViewController extends ViewController {
       this.autokernFiltersController.setItem("showCurrent", currentCheckbox.checked);
     });
 
+    // WORKSTREAM 15, spec §5.2. See renderPairTable/buildFoldGroups for the
+    // fold logic itself; this checkbox only toggles it.
+    const foldCheckbox = document.querySelector("#kerning-pairtable-fold-classes");
+    foldCheckbox.checked = filters.foldClasses;
+    foldCheckbox.addEventListener("change", () => {
+      this.autokernFiltersController.setItem("foldClasses", foldCheckbox.checked);
+    });
+
     const sortButton = document.querySelector("#kerning-pairtable-sort-toggle");
     const updateSortButtonLabel = () => {
       sortButton.textContent = this.autokernFiltersController.model.sortAlphabetical
@@ -793,6 +816,16 @@ export class KerningViewController extends ViewController {
     document
       .querySelector("#kerning-pairtable-reset-zero")
       .addEventListener("click", () => this.resetSelectedPairRows("zero"));
+
+    // WORKSTREAM 15, spec §5.3: "The derive action sits beside the fold
+    // toggle." this.autokernDeriveProposals holds nothing until Derive is
+    // clicked, and stays empty (writes nothing) until a proposal is
+    // individually accepted -- see deriveClasses/renderDeriveProposals/
+    // acceptDeriveProposal below.
+    this.autokernDeriveProposals = [];
+    document
+      .querySelector("#kerning-derive-button")
+      .addEventListener("click", () => this.deriveClasses());
 
     this.renderPairTable();
   }
@@ -1016,10 +1049,401 @@ export class KerningViewController extends ViewController {
         rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
       }
 
-      for (const row of rows) {
-        bodies[section - 1].appendChild(this.buildPairRowElement(row));
+      // WORKSTREAM 15, spec §5.2: the fold only applies to sections 1 and 2
+      // (both sides classed already, per isEntryClassed) -- section 3 is
+      // flat/unclassed, and a group with only one member folds to nothing
+      // (buildFoldGroups below), so it renders exactly like today either
+      // way. classed is `section !== 3` from above.
+      if (filters.foldClasses && classed) {
+        for (const group of this.buildFoldGroups(section, rows, glyphName)) {
+          if (group.members.length < 2) {
+            bodies[section - 1].appendChild(this.buildPairRowElement(group.rows[0]));
+            continue;
+          }
+          const { parentRow, childRows } = this.buildFoldRowElements(group, section);
+          bodies[section - 1].appendChild(parentRow);
+          for (const childRow of childRows) {
+            bodies[section - 1].appendChild(childRow);
+          }
+        }
+      } else {
+        for (const row of rows) {
+          bodies[section - 1].appendChild(this.buildPairRowElement(row));
+        }
       }
     }
+  }
+
+  // WORKSTREAM 15, spec §5.2: "A toggle above the table folds every row
+  // whose pair resolves to the same cell into one parent." The table is
+  // already scoped to one glyph (the field above it), so within section 1
+  // the LEFT side of every row resolves to the same side-1 class (the
+  // glyph's own) -- what varies, and can repeat, is which side-2 class each
+  // row's right glyph belongs to. Section 2 is the mirror: RIGHT is fixed,
+  // LEFT varies. Grouping by the varying side's resolved class is therefore
+  // the same grouping "same (left-class-or-glyph, right-class-or-glyph)
+  // cell" the spec describes, scoped to what this table already shows.
+  //
+  // Returns Array<{ key, members: string[] (the varying side's resolved
+  // class's full membership, from kerningController.kernData -- spec §5.2:
+  // "the table shows its membership instead"), rows: pairRowData[] (the
+  // folded rows themselves, i.e. the ones actually visible), leftClassName,
+  // rightClassName }>. `members.length < 2` (the underlying class itself
+  // has one member, or -- defensively -- the lookup failed) means "nothing
+  // to fold", the caller falls back to the plain row.
+  buildFoldGroups(section, rows, glyphName) {
+    const kernData = this.kerningController.kernData;
+    const groups = new Map();
+    const order = [];
+
+    for (const row of rows) {
+      let leftClassName, rightClassName, key;
+      if (section === 1) {
+        leftClassName = this.kerningController.leftPairGroupMapping[glyphName];
+        rightClassName = this.kerningController.rightPairGroupMapping[row.right];
+        key = rightClassName;
+      } else {
+        leftClassName = this.kerningController.leftPairGroupMapping[row.left];
+        rightClassName = this.kerningController.rightPairGroupMapping[glyphName];
+        key = leftClassName;
+      }
+      let group = groups.get(key);
+      if (!group) {
+        const varyingClassName = section === 1 ? rightClassName : leftClassName;
+        const members =
+          (section === 1
+            ? kernData.groupsSide2[varyingClassName]
+            : kernData.groupsSide1[varyingClassName]) || [];
+        group = { key, members, rows: [], leftClassName, rightClassName };
+        groups.set(key, group);
+        order.push(key);
+      }
+      group.rows.push(row);
+    }
+
+    return order.map((key) => groups.get(key));
+  }
+
+  // Median (not mean, spec §5.2: "the median is the reducer... a mean can
+  // [get dragged]") of the folded rows' suggestion values -- these are the
+  // cache's own `entry.value` (via row.suggestion, pairRowData above), the
+  // same source applySelectedPairRows/applyAllPairRows write from for a
+  // flat row.
+  static medianOf(values) {
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2
+      ? sorted[mid]
+      : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+
+  buildFoldRowElements(group, section) {
+    const tr = document.createElement("tr");
+    tr.className = "kerning-pairtable-fold-row";
+
+    const selectCell = document.createElement("td");
+    tr.appendChild(selectCell);
+
+    const median = KerningViewController.medianOf(group.rows.map((row) => row.suggestion));
+
+    // WORKSTREAM 15, spec §5.2: "Spread is the class quality readout... call
+    // it, don't reimplement" -- classSpread (autokern-classes.js) computes
+    // it over the WHOLE class's cached rows (every partner it has data
+    // against, not just this table's fixed glyph), which is the class-wide
+    // quality reading the spec describes, not a narrower one scoped to this
+    // one cell.
+    const cacheEntries = [...this.autokernCache.values()];
+    const side = section === 1 ? "right" : "left";
+    const spread = classSpread(group.members, cacheEntries, side);
+
+    const nameCell = document.createElement("td");
+    nameCell.textContent = truncateGlyphList(group.members);
+    tr.appendChild(nameCell);
+
+    const deltaCell = document.createElement("td");
+    deltaCell.textContent = median > 0 ? `+${median.toFixed(1)}` : median.toFixed(1);
+    tr.appendChild(deltaCell);
+
+    const otherCell = document.createElement("td");
+    otherCell.textContent =
+      section === 1 ? group.rows[0].left : group.rows[0].right;
+    tr.appendChild(otherCell);
+
+    const currentCell = document.createElement("td");
+    currentCell.className = "kerning-pairtable-current-col";
+    currentCell.style.display = this.autokernFiltersController.model.showCurrent
+      ? ""
+      : "none";
+    tr.appendChild(currentCell);
+
+    const infoCell = document.createElement("td");
+    infoCell.textContent = `${group.rows.length} pairs, spread ${spread.overall.toFixed(1)}`;
+    tr.appendChild(infoCell);
+
+    const applyButton = document.createElement("button");
+    applyButton.type = "button";
+    applyButton.textContent = "Apply class";
+    applyButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.applyFoldedParentRow(group, section, median);
+    });
+    infoCell.appendChild(applyButton);
+
+    const childRows = group.rows.map((row) => {
+      const childTr = this.buildPairRowElement(row);
+      childTr.className = "kerning-pairtable-fold-children";
+      return childTr;
+    });
+
+    tr.addEventListener("click", () => {
+      const expanded = childRows[0]?.classList.contains(
+        "kerning-pairtable-fold-expanded"
+      );
+      for (const childTr of childRows) {
+        childTr.classList.toggle("kerning-pairtable-fold-expanded", !expanded);
+      }
+    });
+
+    return { parentRow: tr, childRows };
+  }
+
+  // WORKSTREAM 15, spec §5.2: "Applying a parent writes one cell at the
+  // median of its members." The pair-selector shape is the SAME one
+  // getPairsToTry/kerning-controller.js's own [@class, @class] address uses
+  // (kerning-controller.js: `addGroupPrefix` prepends "@" to a stored group
+  // name before it is used as a lookup/write key into kernData.values) --
+  // KerningEditContext (kerning-controller.js) writes into
+  // kernData.values[leftName][rightName] for whatever leftName/rightName a
+  // pairSelector carries, with no restriction to bare glyph names, so an
+  // "@ClassName" pairSelector reaches the real class cell, not a flat
+  // shadow of it (spec §5.1's whole argument against a flat write).
+  async applyFoldedParentRow(group, section, median) {
+    const sourceIdentifier =
+      this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation({}, false);
+    if (!sourceIdentifier) {
+      console.error(
+        "kerning view: cannot apply, no font source resolves at the default location"
+      );
+      return;
+    }
+    const leftName = "@" + group.leftClassName;
+    const rightName = "@" + group.rightClassName;
+    const editContext = this.kerningController.getEditContext([
+      { leftName, rightName, sourceIdentifier },
+    ]);
+    await editContext.edit([Math.round(median)], "kerning view: fold parent apply");
+
+    for (const row of group.rows) {
+      this.autokernAppliedPairs.add(pairKey(row.left, row.right));
+    }
+    this.renderPairTable();
+  }
+
+  // ---------------------------------------------------------------------
+  // WORKSTREAM 15, spec §5.3: derive.
+  // ---------------------------------------------------------------------
+
+  // script/category maps, per glyph, the same source glyph-organizer.js
+  // itself reads a glyph's "category" from (glyph-data.js's
+  // getGlyphInfoFromCodePoint/getGlyphInfoFromGlyphName) and "script" from
+  // (unicode-scripts-blocks.js's script(codePoint)) -- reused rather than
+  // guessing at a second source, so the cross-script/category merge guard
+  // inside deriveKernRowClusters agrees with what the rest of the app
+  // already calls a glyph's script/category. A glyph with no resolvable
+  // code point (no entry in glyphMap, or an empty one) is left OUT of both
+  // maps entirely -- deriveKernRowClusters treats a glyph missing from
+  // either map as blocking any merge involving it (autokern-classes.js's
+  // rowsAgree: "a glyph missing from either map blocks the merge exactly
+  // like a genuine mismatch would"), which is the safe default for a glyph
+  // this view cannot classify.
+  buildGlyphScriptCategoryMaps() {
+    const scripts = new Map();
+    const categories = new Map();
+    for (const glyphName of Object.keys(this.fontController.glyphMap || {})) {
+      const codePoint = this.fontController.glyphMap[glyphName]?.[0];
+      const glyphInfo =
+        (codePoint != null ? getGlyphInfoFromCodePoint(codePoint) : null) ||
+        getGlyphInfoFromGlyphName(glyphName);
+      if (glyphInfo?.category != null) {
+        categories.set(glyphName, glyphInfo.category);
+      }
+      if (codePoint != null) {
+        scripts.set(glyphName, scriptOfCodePoint(codePoint));
+      }
+    }
+    return { scripts, categories };
+  }
+
+  // A composite's declared base, per glyph -- the first component's name,
+  // if any (spec §5.3: "a glyph built from components takes its base
+  // glyph's classes"; this view has no notion of "which component is the
+  // base" beyond declaration order, the same simplification BubbleKern's
+  // "bubbles" comment in autokern-classes.js's own file-top comment
+  // gestures at without resolving it either). A glyph with no components
+  // is absent from the returned map, exactly the input contract
+  // inheritCompositeClasses documents ("compositeBases: ... already
+  // resolved by the caller").
+  async buildCompositeBases() {
+    const compositeBases = new Map();
+    for (const glyphName of Object.keys(this.fontController.glyphMap || {})) {
+      const glyphInstance = await this.fontController.getGlyphInstance(glyphName, {});
+      const baseName = glyphInstance?.components?.[0]?.compo?.name;
+      if (baseName) {
+        compositeBases.set(glyphName, baseName);
+      }
+    }
+    return compositeBases;
+  }
+
+  // Runs both §5.3 tactics, in the order the spec gives them, and turns
+  // their output into proposals -- writes nothing (autokern-classes.js's own
+  // functions are pure, and neither tactic's result is written to the font
+  // here). Populates this.autokernDeriveProposals and re-renders; accepting
+  // one is a separate, explicit action (acceptDeriveProposal).
+  async deriveClasses() {
+    const { scripts, categories } = this.buildGlyphScriptCategoryMaps();
+    const compositeBases = await this.buildCompositeBases();
+    const cacheEntries = [...this.autokernCache.values()];
+    const tolerance = Number(
+      document.querySelector("#kerning-derive-tolerance").value || 0
+    );
+
+    const proposals = [];
+    let proposalId = 0;
+
+    // Tactic 1: composite inheritance (exact, spec §5.3 tactic 1), one side
+    // at a time (the two sides are independent, spec §5).
+    for (const [side, existingMapping, editSide] of [
+      ["left", this.kerningController.leftPairGroupMapping, "side1"],
+      ["right", this.kerningController.rightPairGroupMapping, "side2"],
+    ]) {
+      const existingClasses = new Map(Object.entries(existingMapping));
+      const inherited = inheritCompositeClasses(existingClasses, compositeBases);
+      // Group the newly-inherited composites (glyphs that had NO class of
+      // their own before, per inheritCompositeClasses's own contract: "never
+      // overwrites a glyph's own explicit class") by the class name they
+      // inherited, so accepting one proposal joins every composite that
+      // inherited that base's class in one go.
+      const byClassName = new Map();
+      for (const [glyphName, className] of inherited) {
+        if (!className || existingClasses.get(glyphName) != null) {
+          continue; // already had a class of its own -- nothing to propose
+        }
+        if (!byClassName.has(className)) {
+          byClassName.set(className, []);
+        }
+        byClassName.get(className).push(glyphName);
+      }
+      for (const [className, members] of byClassName) {
+        proposals.push({
+          id: proposalId++,
+          tactic: "composite",
+          side,
+          editSide,
+          className,
+          members: members.sort(),
+        });
+      }
+    }
+
+    // Tactic 2: kern-row clustering (needs the tolerance, spec §5.3), one
+    // side at a time. No class name exists yet for a cluster -- the
+    // designer names it before accepting (renderDeriveProposals).
+    for (const [side, editSide] of [
+      ["left", "side1"],
+      ["right", "side2"],
+    ]) {
+      const clusters = deriveKernRowClusters(
+        cacheEntries,
+        side,
+        tolerance,
+        scripts,
+        categories
+      );
+      for (const members of clusters) {
+        proposals.push({
+          id: proposalId++,
+          tactic: "cluster",
+          side,
+          editSide,
+          className: null,
+          members,
+        });
+      }
+    }
+
+    this.autokernDeriveProposals = proposals;
+    this.renderDeriveProposals();
+  }
+
+  renderDeriveProposals() {
+    const container = document.querySelector("#kerning-derive-proposals");
+    container.textContent = "";
+    for (const proposal of this.autokernDeriveProposals) {
+      container.appendChild(this.buildDeriveProposalElement(proposal));
+    }
+  }
+
+  buildDeriveProposalElement(proposal) {
+    const row = document.createElement("div");
+    row.className = "kerning-derive-proposal";
+
+    const label = document.createElement("span");
+    label.className = "kerning-derive-proposal-label";
+    label.textContent = `PROPOSED (${proposal.tactic}, ${proposal.side}): `;
+    row.appendChild(label);
+
+    const members = document.createElement("span");
+    members.textContent = truncateGlyphList(proposal.members);
+    row.appendChild(members);
+
+    let nameInput;
+    if (proposal.className) {
+      const nameSpan = document.createElement("span");
+      nameSpan.textContent = ` -> ${proposal.className}`;
+      row.appendChild(nameSpan);
+    } else {
+      nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.placeholder = "class name";
+      row.appendChild(nameInput);
+    }
+
+    const acceptButton = document.createElement("button");
+    acceptButton.type = "button";
+    acceptButton.textContent = "Accept";
+    acceptButton.addEventListener("click", async () => {
+      const className = proposal.className || nameInput.value.trim();
+      if (!className) {
+        return;
+      }
+      await this.acceptDeriveProposal(proposal, className);
+    });
+    row.appendChild(acceptButton);
+
+    return row;
+  }
+
+  // WORKSTREAM 15, spec §5.3: accepting a proposal writes group membership
+  // through the SAME mechanism panel-selection-info.js's existing per-glyph
+  // class field uses (panel-selection-info.js:326:
+  // `kerningController.editGroupSide2(glyphName, value)` /
+  // `editGroupSide1`), called once per member glyph -- kerning-controller.js
+  // is not touched, and no second write mechanism is invented. Nothing is
+  // written until this method runs (deriveClasses above is pure/read-only).
+  async acceptDeriveProposal(proposal, className) {
+    const editFn =
+      proposal.editSide === "side1"
+        ? (glyphName) => this.kerningController.editGroupSide1(glyphName, className)
+        : (glyphName) => this.kerningController.editGroupSide2(glyphName, className);
+    for (const glyphName of proposal.members) {
+      await editFn(glyphName);
+    }
+    this.autokernDeriveProposals = this.autokernDeriveProposals.filter(
+      (p) => p.id !== proposal.id
+    );
+    this.renderDeriveProposals();
+    this.renderPairTable();
   }
 
   // WORKSTREAM 14, spec §7.5: "font-level counts: pairs cached, pairs above
@@ -1516,6 +1940,16 @@ export class KerningViewController extends ViewController {
       return themeValue === "dark";
     }
   }
+}
+
+// WORKSTREAM 15, spec §5.2: "A class's stored name is an address, and the
+// table shows its membership instead... Long lists truncate with a count."
+const GLYPH_LIST_TRUNCATE_AT = 6;
+function truncateGlyphList(members) {
+  if (members.length <= GLYPH_LIST_TRUNCATE_AT) {
+    return members.join(" ");
+  }
+  return `${members.slice(0, GLYPH_LIST_TRUNCATE_AT).join(" ")}… (${members.length})`;
 }
 
 // A copy of editor.js's (unexported) newVisualizationLayersSettings, with our

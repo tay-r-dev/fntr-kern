@@ -105,11 +105,49 @@
 }
 
 #kerning-pairtable-filters,
-#kerning-pairtable-actions {
+#kerning-pairtable-actions,
+#kerning-pairtable-class-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5em;
+}
+
+#kerning-derive-tolerance {
+  width: 4em;
+}
+
+/* Workstream 15 (spec §5.2/§5.3): fold parent rows and derive proposals. */
+.kerning-pairtable-fold-row {
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.kerning-pairtable-fold-children {
+  display: none;
+}
+
+.kerning-pairtable-fold-children.kerning-pairtable-fold-expanded {
+  display: table-row;
+}
+
+#kerning-derive-proposals {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+
+.kerning-derive-proposal {
+  border: 1px solid var(--horizontal-rule-color, #ccc);
+  padding: 0.35em 0.5em;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.kerning-derive-proposal-label {
+  font-style: italic;
 }
 
 .kerning-pairtable-group h4 {
