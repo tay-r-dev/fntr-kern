@@ -87,10 +87,18 @@ glyphs from landing a step apart, which §5 depends on.
 
 ### 2.6 Strength, and the units
 
-The original halves a negative kern and passes a positive one through whole. That asymmetry is
-empirical: the blur model over-tightens round and diagonal pairs, while a positive kern marks a
-real collision that wants fixing in full. It is a hardcoded constant there and is **one number the
-designer sets** here.
+**Strength is one multiplier on the answer, applied whatever its sign.** It is a control here, and
+halfkern has it as a hardcoded constant.
+
+That constant is also asymmetric there. `kern_pair` returns `kern // 2 if half and kern < 0 else
+kern`, so it halves a kern that tightens and passes a kern that loosens through whole. `half`
+defaults on and no command-line flag reaches it, and the tool is named after the behaviour. The
+source states it and never says why.
+
+**We do not carry the asymmetry.** A case can be made for it: the envelope method over-tightens
+round and diagonal pairs, so a fraction of a tightening answer is the safer number, while a
+loosening answer usually marks a real collision that wants fixing in full. It was put to the
+designer and declined. One number, both signs, decided 2026-09-04.
 
 The answer converts as the kern in pixels over the rendering size, times the units per em.
 
@@ -432,26 +440,24 @@ steps and measure the worst single-step movement. Start away from a degenerate c
 
 ## 9. Closed during design
 
-| idea                                                  | why it is closed                                                                                                                                |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Run halfkern as a Python subprocess                   | Needs a compiled font every run, three native libraries on the designer's machine, and it can never answer while the cursor sits on a pair. §3. |
-| Copy `views-editor` into `views-kerning` and strip it | 18,714 lines duplicated, against rail R-B and defect P4. Two implementations of `positionedLines` is the specific harm. §8.                     |
-| Apply a whole-font run as flat pairs                  | Every flat cell shadows the class cell that would answer, so the classes stay in the file and stop working. §5.1.                               |
-| A write-granularity parameter                         | The fold in the table already says it: parent writes a class cell, child writes an exception. §5.2.                                             |
-| Keep the halving of negative kerns as a constant      | It is a taste, so it is a control. §2.6.                                                                                                        |
-| Name a class after a representative glyph             | A class holding `o c e d q` is not the `o` class. The name is an address and the table shows membership. §5.2.                                  |
-| Build the panel inside the editor first               | Offered and declined. The separate view is wanted, and the exports route makes it affordable.                                                   |
-| Drop stale rows on a glyph edit                       | Deleting a row hides that it went stale. Marked and left, with a marked-only rerun. §4.                                                         |
-| Run across every source at once                       | One source per run. The cache is keyed by source and the source selector lives in the status strip. §4.1.                                       |
-| Rebuild the cache each session                        | It is expensive enough that a session must not start by rebuilding it. Stored, locally, because it is derived. §4.1.                            |
-| Exclude junk pairs by category or by a word list      | Neither knows what this designer considers junk. A per-pair mark and an excluded-glyph field do, and both are the designer's own. §4.2.         |
+| idea                                                       | why it is closed                                                                                                                                |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Run halfkern as a Python subprocess                        | Needs a compiled font every run, three native libraries on the designer's machine, and it can never answer while the cursor sits on a pair. §3. |
+| Copy `views-editor` into `views-kerning` and strip it      | 18,714 lines duplicated, against rail R-B and defect P4. Two implementations of `positionedLines` is the specific harm. §8.                     |
+| Apply a whole-font run as flat pairs                       | Every flat cell shadows the class cell that would answer, so the classes stay in the file and stop working. §5.1.                               |
+| A write-granularity parameter                              | The fold in the table already says it: parent writes a class cell, child writes an exception. §5.2.                                             |
+| Keep the halving of negative kerns as a constant           | It is a taste, so it is a control. §2.6.                                                                                                        |
+| Name a class after a representative glyph                  | A class holding `o c e d q` is not the `o` class. The name is an address and the table shows membership. §5.2.                                  |
+| Build the panel inside the editor first                    | Offered and declined. The separate view is wanted, and the exports route makes it affordable.                                                   |
+| Drop stale rows on a glyph edit                            | Deleting a row hides that it went stale. Marked and left, with a marked-only rerun. §4.                                                         |
+| Run across every source at once                            | One source per run. The cache is keyed by source and the source selector lives in the status strip. §4.1.                                       |
+| Rebuild the cache each session                             | It is expensive enough that a session must not start by rebuilding it. Stored, locally, because it is derived. §4.1.                            |
+| Exclude junk pairs by category or by a word list           | Neither knows what this designer considers junk. A per-pair mark and an excluded-glyph field do, and both are the designer's own. §4.2.         |
+| Scale a tightening answer differently from a loosening one | halfkern does, and the tool is named after it. Declined by the designer 2026-09-04. One strength, both signs. §2.6.                             |
 
 ---
 
 ## 10. Open
 
-- **The default strength.** A suggestion that tightens a pair and a suggestion that loosens one may
-  be scaled by the same amount or by different ones. Scaling them differently is defensible, because
-  the envelope method over-tightens round and diagonal pairs while a pair that wants loosening is
-  usually a real collision that should be fixed in full. Whether the default is symmetric should be
-  settled by measurement on real fonts rather than argued.
+Nothing. Build order is the measurement module first, with its tests, because it is the only part
+with a harness and every other part consumes its output.
