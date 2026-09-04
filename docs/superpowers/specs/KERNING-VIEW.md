@@ -142,6 +142,42 @@ Three things the run needs.
 A marked row is a suggestion for a shape that no longer exists. It is not deleted, because deleting
 it hides the fact that it went stale.
 
+### 4.1 The cache is per source, and it is stored
+
+**A run measures and writes one source.** The outlines differ per source, so the cache is keyed by
+source and switching source shows a different cache, not a converted one. The source is chosen in
+the status strip (§7.5), which is therefore an interactive control and not a readout.
+
+**The cache persists between sessions.** It is expensive enough to rebuild that a session should not
+start by rebuilding it.
+
+**Derived data is stored locally; decisions are stored in the project.** The cache is derived, it is
+large — a few hundred glyphs give tens of thousands of surviving entries per source — and it can
+always be recomputed, so it belongs in browser-side storage. The junk marks and the excluded-glyph
+list of §4.2 are the designer's judgement rather than derived data, they are small, and they must
+survive a change of machine, so they belong in the project's own data beside the other per-font
+settings.
+
+Writing a cache of that size into the project file would put derived data permanently into the
+designer's sources, which every backend round-trips.
+
+### 4.2 Junk
+
+A whole-font run measures pairs no language produces. They clutter the table, and they corrupt class
+derivation (§5.3), which is the worse of the two.
+
+Three mechanisms, and they are separate.
+
+- **An excluded-glyph field** sits beside the table. Glyphs named in it take no part in a run and
+  appear in no row. It is parsed the same way as the phrase field, so a glyph with no character can
+  be named directly.
+- **A pair can be marked junk** from its row. The mark is per pair, it survives a rerun, and a junk
+  pair is never measured again, never shown by default, and never reaches class derivation.
+- **A junk filter** on the table shows or hides marked pairs, so a mark can be found and undone.
+
+The excluded-glyph field is the blunt instrument for whole categories. The junk mark is for the
+individual pair that survives it.
+
 ---
 
 ## 5. Classes
@@ -321,9 +357,14 @@ Filters, composing with the threshold:
 - **State.** Pending, applied, or stale. **This one is load-bearing.** Applying a row drops its
   delta to nothing, so it falls under the threshold and leaves the table. With no way to show
   applied rows every apply reads as the row vanishing.
+- **Junk.** Marked pairs hidden or shown (§4.2). Hidden is the default, and the filter is the only
+  way back to a mark.
 
-Actions: **apply selected**, **apply all**, **reset to current**, **reset to zero**. Apply all
-states how many cells it will write and needs a second press. Each action is one undo step.
+An **excluded-glyph field** sits beside the table, holding glyphs that take no part in a run at all.
+
+Actions: **apply selected**, **apply all**, **reset to current**, **reset to zero**, and **mark
+junk** on a row. Apply all states how many cells it will write and needs a second press. Each action
+is one undo step.
 
 ### 7.4 Calibration
 
@@ -332,7 +373,10 @@ whether the three disagreed and it had to widen.
 
 ### 7.5 Status
 
-The bottom of the pane, always visible: the source being written to, and font-level counts.
+The bottom of the pane, always visible, and **interactive rather than a readout**. It holds the
+**source selector**, which decides what the preview draws, which cache the table shows and where an
+apply writes (§4.1). Beside it, font-level counts: pairs cached, pairs above the threshold, pairs
+marked junk, and how many cells are covered by a class against how many are flat.
 
 ---
 
@@ -398,16 +442,16 @@ steps and measure the worst single-step movement. Start away from a degenerate c
 | Name a class after a representative glyph             | A class holding `o c e d q` is not the `o` class. The name is an address and the table shows membership. §5.2.                                  |
 | Build the panel inside the editor first               | Offered and declined. The separate view is wanted, and the exports route makes it affordable.                                                   |
 | Drop stale rows on a glyph edit                       | Deleting a row hides that it went stale. Marked and left, with a marked-only rerun. §4.                                                         |
+| Run across every source at once                       | One source per run. The cache is keyed by source and the source selector lives in the status strip. §4.1.                                       |
+| Rebuild the cache each session                        | It is expensive enough that a session must not start by rebuilding it. Stored, locally, because it is derived. §4.1.                            |
+| Exclude junk pairs by category or by a word list      | Neither knows what this designer considers junk. A per-pair mark and an excluded-glyph field do, and both are the designer's own. §4.2.         |
 
 ---
 
 ## 10. Open
 
-- **Source scope of a run.** The run happens at the left pane's location and writes that source's
-  slot. Whether a run should cover every source is undecided; it multiplies the cost by the source
-  count and leaves a variable font's table half finished either way.
-- **The default strength.** Whether it applies symmetrically, which is a change from halfkern, or
-  keeps the original asymmetry. Decide on measurement.
-- **Junk pairs.** An unfiltered run measures pairs no language produces, and they pollute the
-  clustering in §5.3 as well as the table. Whether they are excluded by category, by a word list, or
-  not at all is undecided.
+- **The default strength.** A suggestion that tightens a pair and a suggestion that loosens one may
+  be scaled by the same amount or by different ones. Scaling them differently is defensible, because
+  the envelope method over-tightens round and diagonal pairs while a pair that wants loosening is
+  usually a real collision that should be fixed in full. Whether the default is symmetric should be
+  settled by measurement on real fonts rather than argued.
