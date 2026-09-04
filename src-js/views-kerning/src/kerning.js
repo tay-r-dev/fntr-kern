@@ -80,6 +80,22 @@ export class KerningViewController extends ViewController {
     this.sceneController.setSelectedTool(handTool);
 
     this.initPhraseInput();
+
+    // Live theme changes (spec-neutral, but a real gap without it: this
+    // canvas seeds its color scheme once at construction otherwise, and
+    // never updates again if the app theme changes while the view stays
+    // open). Mirrors editor.js's own theme wiring exactly.
+    window
+      .matchMedia("(prefers-color-scheme: dark)")
+      .addListener((event) => this.themeChanged());
+    themeController.addListener((event) => {
+      this.themeChanged();
+    });
+  }
+
+  themeChanged() {
+    this.visualizationLayers.darkTheme = this.isThemeDark;
+    this.canvasController.requestUpdate();
   }
 
   initPhraseInput() {
