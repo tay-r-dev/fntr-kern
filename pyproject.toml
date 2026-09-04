@@ -59,6 +59,7 @@ editor = "fontra.client"
 fontoverview = "fontra.client"
 fontinfo = "fontra.client"
 applicationsettings = "fontra.client"
+kerning = "fontra.client"
 
 
 [project.entry-points."fontra.projectmanagers"]

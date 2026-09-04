@@ -190,7 +190,7 @@ function getFontMenuItems(viewController) {
     [undefined, undefined], // divider
     ["font-overview.title", null],
   ];
-  return menuItems.map(([title, panelID]) =>
+  const items = menuItems.map(([title, panelID]) =>
     title
       ? {
           title: translate(title),
@@ -231,6 +231,21 @@ function getFontMenuItems(viewController) {
         }
       : MenuItemDivider
   );
+
+  // Kerning view (spec KERNING-VIEW.md §8): its own item, kept separate from
+  // the map() above rather than folded into its panelID/no-panelID branching,
+  // which is already narrowly tuned for the fontinfo/fontoverview pair.
+  items.push({
+    title: translate("kerning.title"),
+    callback: () => {
+      const url = new URL(window.location);
+      url.hash = "";
+      url.pathname = rerouteViewPath(url.pathname, "kerning");
+      window.open(url.toString(), `fontra.kerning.${viewController.projectIdentifier}`);
+    },
+  });
+
+  return items;
 }
 
 function getGlyphMenuItems() {

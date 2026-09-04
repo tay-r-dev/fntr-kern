@@ -1,0 +1,15 @@
+{
+  "name": "@fontra/views-kerning",
+  "scripts": {
+    "test": "echo \"No test specified for @fontra/views-kerning\""
+  },
+  "exports": {
+    "./start.js": "./src/start.js",
+    "./kerning.js": "./src/kerning.js",
+    "./kerning.html": "./kerning.html"
+  },
+  "type": "module",
+  "fontra": {
+    "view": "kerning"
+  }
+}

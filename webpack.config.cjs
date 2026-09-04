@@ -19,6 +19,7 @@ module.exports = (_env, argv) => {
             fontinfo: require.resolve("@fontra/views-fontinfo/fontinfo.html"),
             fontoverview:
               require.resolve("@fontra/views-fontoverview/fontoverview.html"),
+            kerning: require.resolve("@fontra/views-kerning/kerning.html"),
           },
           js: {
             // JS output filename, relative to `output.path` Webpack option

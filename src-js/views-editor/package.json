@@ -6,7 +6,14 @@
   "exports": {
     "./start.js": "./src/start.js",
     "./editor.js": "./src/editor.js",
-    "./editor.html": "./editor.html"
+    "./editor.html": "./editor.html",
+    "./scene-controller.js": "./src/scene-controller.js",
+    "./scene-model.js": "./src/scene-model.js",
+    "./edit-tools-base.js": "./src/edit-tools-base.js",
+    "./edit-tools-metrics.js": "./src/edit-tools-metrics.js",
+    "./edit-tools-hand.js": "./src/edit-tools-hand.js",
+    "./visualization-layers.js": "./src/visualization-layers.js",
+    "./visualization-layer-definitions.js": "./src/visualization-layer-definitions.js"
   },
   "type": "module",
   "fontra": {
