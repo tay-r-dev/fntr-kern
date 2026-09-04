@@ -292,8 +292,11 @@ Selecting a parent row lists its members and edits them, which replaces the one-
 
 ## 6. The left pane
 
-The editor's scene, with three tools only: **sidebearing**, **kerning**, **hand**. No drawing tools,
-which is the point of a separate view.
+The editor's scene, with four tools only: **pointer**, **sidebearing**, **kerning**, **hand**. No
+drawing tools, which is the point of a separate view. Pointer is the plain click-to-select tool —
+without it there is no way to select a glyph in the string at all, which every other tool and the
+pair table's row-to-scene selection depend on. Corrected 2026-09-04: an earlier pass of this spec
+said three tools and dropped pointer by mistake.
 
 - **Double-click a glyph** opens the editor on it in a new tab. `getFontMenuItems` in
   `fontra-menus.js` already does this, through `rerouteViewPath` and a URL fragment carrying view
@@ -412,7 +415,8 @@ any of this gets a test.
 | `views-kerning/`                  | a new workspace: the view controller, the panel, the run worker       |
 
 **The scene is imported, never copied.** `views-kerning` needs the scene controller, the scene
-model, the tool base, the metrics tool, the hand tool and the visualization layers. The closure is
+model, the tool base, the pointer tool, the metrics tool, the hand tool and the visualization
+layers. The closure is
 18,714 lines of the 48,114 in `views-editor`, and it does not strip further, because the scene model
 imports skeleton editing and base-expand editing for its hit tests and the scene controller imports
 six more.
