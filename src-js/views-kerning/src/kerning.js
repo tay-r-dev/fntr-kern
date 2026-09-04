@@ -15,6 +15,11 @@
 // eventually becomes, and the workstream brief for the explicit list of what
 // does NOT belong here yet (sidebearing tool, kerning tool, the chip
 // selector, the right pane, undo, menus).
+import {
+  doPerformAction,
+  getActionIdentifierFromKeyEvent,
+  registerAction,
+} from "@fontra/core/actions.js";
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { CanvasController } from "@fontra/core/canvas-controller.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
@@ -91,6 +96,10 @@ export class KerningViewController extends ViewController {
 
     this.initPhraseInput();
     this.initToolSwitcher();
+    this.initToolShortcuts();
+
+    window.addEventListener("keydown", (event) => this.keyDownHandler(event));
+    window.addEventListener("keyup", (event) => this.keyUpHandler(event));
 
     // Live theme changes (spec-neutral, but a real gap without it: this
     // canvas seeds its color scheme once at construction otherwise, and
@@ -132,6 +141,82 @@ export class KerningViewController extends ViewController {
     for (const button of document.querySelectorAll("[data-tool]")) {
       button.addEventListener("click", () => this.setSelectedTool(button.dataset.tool));
     }
+  }
+
+  // Number-key tool shortcuts (mirrors editor.js: each tool gets its 1-based
+  // position among the tools as a default key) and hold-space-for-hand-tool
+  // (the same mechanism as editor.js's action.canvas.clean-view-and-hand-tool,
+  // minus the "clean view" part -- there is no sidebar chrome here to hide).
+  initToolShortcuts() {
+    const topic = "0020-action-topics.menu.view";
+
+    Object.keys(this.tools).forEach((toolIdentifier, index) => {
+      registerAction(
+        `actions.kerning.tools.${toolIdentifier}`,
+        {
+          topic,
+          titleKey: `editor.${toolIdentifier}`,
+          defaultShortCuts: [{ baseKey: `${index + 1}` }],
+        },
+        () => this.setSelectedTool(toolIdentifier)
+      );
+    });
+
+    registerAction(
+      "action.kerning.hold-hand-tool",
+      {
+        topic,
+        titleKey: "kerning.hold-hand-tool",
+        // Matches Space with any modifier combination, same hack editor.js
+        // uses, so a stray Shift/Alt/Meta/Ctrl held alongside Space doesn't
+        // stop this from firing.
+        defaultShortCuts: [...Array(1 << 4).keys()].map((i) => ({
+          baseKey: "Space",
+          altKey: !!(i & 0x01),
+          shiftKey: !!(i & 0x02),
+          metaKey: !!(i & 0x04),
+          ctrlKey: !!(i & 0x08),
+        })),
+      },
+      (event) => this.enterTemporaryHandTool(event)
+    );
+  }
+
+  keyDownHandler(event) {
+    const actionIdentifier = getActionIdentifierFromKeyEvent(event);
+    if (actionIdentifier) {
+      event.preventDefault();
+      doPerformAction(actionIdentifier, event);
+    }
+  }
+
+  keyUpHandler(event) {
+    if (
+      this._matchingKeyUpHandler &&
+      // At least on macOS, in Chrome and Safari, if the space key is held
+      // when Meta is additionally pressed, no keyup ever arrives for space
+      // itself -- so also respond to a keyup for Meta (event.metaKey reads
+      // false by then, hence checking event.key instead). Same quirk
+      // editor.js works around.
+      (this._matchingKeyUpHandler.code == event.code || event.key == "Meta")
+    ) {
+      this._matchingKeyUpHandler.callback(event);
+      delete this._matchingKeyUpHandler;
+    }
+  }
+
+  enterTemporaryHandTool(event) {
+    this.savedSelectedToolIdentifier = this.selectedToolIdentifier;
+    this.setSelectedTool("hand-tool");
+    this._matchingKeyUpHandler = {
+      code: event.code,
+      callback: () => this.leaveTemporaryHandTool(),
+    };
+  }
+
+  leaveTemporaryHandTool() {
+    this.setSelectedTool(this.savedSelectedToolIdentifier);
+    delete this.savedSelectedToolIdentifier;
   }
 
   canvasMagnificationChanged(magnification) {

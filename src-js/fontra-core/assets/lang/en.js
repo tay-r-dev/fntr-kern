@@ -324,6 +324,7 @@ export const strings = {
   "guideline.labels.angle": "Angle",
   "guideline.labels.locked": "Locked",
   "guideline.labels.name": "Name",
+  "kerning.hold-hand-tool": "Hold for Hand Tool",
   "kerning.title": "Kerning",
   "language.en": "English",
   "language.zh-cn": "Simplified Chinese",
