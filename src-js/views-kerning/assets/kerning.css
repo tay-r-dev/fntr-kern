@@ -1,0 +1,9 @@
+/* Minimal layout for the kerning view (workstream 5 fix: .main-container had
+   no height anywhere -- core.css only sets html/body to 100%, and every
+   other view supplies its own .main-container rule (see fontoverview.css,
+   editor.css). Without one, a percentage-height child of this auto-height
+   div resolves to 0, so the canvas rendered at 0x0 -- a blank screen. */
+.main-container {
+  width: 100vw;
+  height: calc(100vh - var(--top-bar-height));
+}
