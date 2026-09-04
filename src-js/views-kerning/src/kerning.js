@@ -615,7 +615,11 @@ export class KerningViewController extends ViewController {
       source,
       renderSize,
       unitsPerEm,
-      params,
+      // params is ObservableController's model, which is a Proxy
+      // (observable-object.ts's newModelProxy) -- postMessage's structured
+      // clone algorithm cannot clone a Proxy ("Proxy object could not be
+      // cloned"). Spread it into a plain object of the same values.
+      params: { ...params },
       rasters,
       envelopes,
       controlGlyphNames: CONTROL_GLYPH_NAMES,
