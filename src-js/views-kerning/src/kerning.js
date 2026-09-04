@@ -223,10 +223,20 @@ export class KerningViewController extends ViewController {
     }
     this.setSelectedTool("pointer-tool");
 
+    // WORKSTREAM 14, spec §4.1/§7.5: "the source is chosen in the status
+    // strip". this.autokernSource (getter below) reads this field, and
+    // initRunSection's loadAutokernCacheFromStorage (called synchronously
+    // below) reads that getter -- so this must be set before initRunSection
+    // runs. this.fontController.defaultSourceIdentifier (font-controller.js)
+    // is the same "no explicit choice yet" default
+    // panel-designspace-navigation.js's own source list falls back to.
+    this._autokernSourceIdentifier = this.fontController.defaultSourceIdentifier;
+
     this.initPhraseSection();
     this.initParametersSection();
     this.initRunSection();
     this.initPairTableSection();
+    this.initAutokernStatusSection();
     this.initToolSwitcher();
     this.initToolShortcuts();
 
@@ -369,13 +379,14 @@ export class KerningViewController extends ViewController {
     this.loadAutokernCacheFromStorage();
   }
 
-  // §7.5's source selector doesn't exist yet (out of scope, spec says so
-  // explicitly and the workstream 12 brief repeats it): there's exactly one
-  // hardcoded source today. Centralized here so the cache's read path (this
-  // getter, used by loadAutokernCacheFromStorage) and its write path
-  // (runAutokern, below) can never disagree about which source they mean.
+  // WORKSTREAM 14, spec §7.5: the source selector is real now, and this
+  // getter reads the identifier it set (this._autokernSourceIdentifier,
+  // constructor above / initAutokernStatusSection below). Still centralized
+  // here so the cache's read path (loadAutokernCacheFromStorage) and its
+  // write path (runAutokern) can never disagree about which source they
+  // mean.
   get autokernSource() {
-    return "default";
+    return this._autokernSourceIdentifier;
   }
 
   // Spec §4.1: "The cache persists between sessions. It is expensive enough
@@ -394,11 +405,11 @@ export class KerningViewController extends ViewController {
       this.projectIdentifier,
       this.autokernSource
     );
-    if (entries) {
-      this.autokernCache = new Map(
-        entries.map((entry) => [pairKey(entry.left, entry.right), entry])
-      );
-    }
+    // No file for this source (never run) must reset to empty, not leave
+    // whatever source was loaded previously on screen under the new label.
+    this.autokernCache = entries
+      ? new Map(entries.map((entry) => [pairKey(entry.left, entry.right), entry]))
+      : new Map();
     this.autokernCache = this.applyStoredJunkMarksToCache(this.autokernCache);
     this.renderPairTable();
   }
@@ -476,11 +487,9 @@ export class KerningViewController extends ViewController {
       (name) => !excludedGlyphNames.includes(name)
     );
 
-    // §7.5's source selector doesn't exist yet either, but the job still
-    // carries a `source` identifier so the cache/job shape is ready for it:
-    // right now there is exactly one selectable source, the font's default
-    // (this.autokernSource, also what the OPFS cache file is keyed by --
-    // see the file-top comment).
+    // WORKSTREAM 14: §7.5's source selector now sets this.autokernSource
+    // (see the getter above); the job's `source` field, and the OPFS cache
+    // file this run writes to (writeAutokernCacheToStorage), both follow it.
     const source = this.autokernSource;
 
     const glyphsToRasterize = new Set([...CONTROL_GLYPH_NAMES, ...glyphNames]);
@@ -858,7 +867,7 @@ export class KerningViewController extends ViewController {
     if (row.junk && !filters.showJunk) {
       return false;
     }
-    if (Math.abs(row.delta) < threshold) {
+    if (!this.isRowAboveThreshold(row, threshold)) {
       return false;
     }
     if (filters.side === "left" && row.left !== glyphName) {
@@ -894,6 +903,32 @@ export class KerningViewController extends ViewController {
     return true;
   }
 
+  // WORKSTREAM 14: the pair table's own threshold comparison (spec §7.2:
+  // "filters the display, on the delta"), pulled out to a standalone method
+  // so the status strip's "pairs above the threshold" count (§7.5) uses the
+  // exact same abs-value comparison rather than a second, possibly-diverging
+  // copy of it.
+  isRowAboveThreshold(row, threshold) {
+    return Math.abs(row.delta) >= threshold;
+  }
+
+  // WORKSTREAM 14: whether one cache entry counts as "classed" -- both
+  // glyphs resolve into a class on the relevant side (spec §7.3's sections 1
+  // and 2, as opposed to section 3's flat/unclassed). Pulled out of
+  // renderPairTable's per-glyph section assignment below (which is anchored
+  // to whichever glyph is in the field) so the status strip's font-wide
+  // classed-vs-flat coverage count (§7.5) reads the SAME classification, not
+  // a second copy of it that could diverge. See renderPairTable's own
+  // comment for why section 1's "glyphName has a side-1 class, right glyph
+  // has a side-2 class" and section 2's mirror of that are, underneath, the
+  // one condition below: both sides of the pair resolve through a class.
+  isEntryClassed(entry) {
+    return (
+      !!this.kerningController.leftPairGroupMapping[entry.left] &&
+      !!this.kerningController.rightPairGroupMapping[entry.right]
+    );
+  }
+
   // Rebuilds all three <tbody> elements from this.autokernCache. Called on
   // every filter change, every threshold change, and once a run finishes.
   // Guards on missing state (this.autokernCache is set synchronously by
@@ -908,6 +943,13 @@ export class KerningViewController extends ViewController {
     if (!this.autokernCache || !this.kerningController || !this.autokernFiltersController) {
       return;
     }
+
+    // WORKSTREAM 14, spec §7.5: called from every place renderPairTable
+    // already is (this method's own callers -- see this method's top
+    // comment), so the status strip's counts never go stale relative to
+    // what's on screen.
+    this.renderAutokernStatus();
+
     const filters = this.autokernFiltersController.model;
     const threshold = this.autokernParamsController.model.threshold;
     const glyphName = filters.glyphName;
@@ -939,29 +981,23 @@ export class KerningViewController extends ViewController {
     //     class, and the LEFT glyph has a side-1 class.
     //   Section 3: everything else touching glyphName (either member is
     //     unclassed on the relevant side) -- flat/unclassed.
+    // WORKSTREAM 14: the "both sides resolve through a class" test itself is
+    // isEntryClassed (above) -- section 1 vs section 2 here is only about
+    // which side of the pair equals glyphName, not a different classed
+    // test.
     const rowsBySection = { 1: [], 2: [], 3: [] };
-    const hasSide1Class = !!this.kerningController.leftPairGroupMapping[glyphName];
-    const hasSide2Class = !!this.kerningController.rightPairGroupMapping[glyphName];
 
     for (const entry of this.autokernCache.values()) {
       if (entry.left !== glyphName && entry.right !== glyphName) {
         continue;
       }
       let section;
-      if (
-        entry.left === glyphName &&
-        hasSide1Class &&
-        this.kerningController.rightPairGroupMapping[entry.right]
-      ) {
-        section = 1;
-      } else if (
-        entry.right === glyphName &&
-        hasSide2Class &&
-        this.kerningController.leftPairGroupMapping[entry.left]
-      ) {
-        section = 2;
-      } else {
+      if (!this.isEntryClassed(entry)) {
         section = 3;
+      } else if (entry.left === glyphName) {
+        section = 1;
+      } else {
+        section = 2;
       }
       rowsBySection[section].push(entry);
     }
@@ -984,6 +1020,123 @@ export class KerningViewController extends ViewController {
         bodies[section - 1].appendChild(this.buildPairRowElement(row));
       }
     }
+  }
+
+  // WORKSTREAM 14, spec §7.5: "font-level counts: pairs cached, pairs above
+  // the threshold, pairs marked junk, and how many cells are covered by a
+  // class against how many are flat" -- font-wide (every entry in
+  // this.autokernCache for the CURRENT source), unlike the pair table above,
+  // which is scoped to whatever glyph is in the field. Reuses
+  // isRowAboveThreshold/isEntryClassed (above) and pairRowData (which
+  // reads real stored kerning through kerningController the same way the
+  // pair table does) rather than a second, possibly-diverging copy of any
+  // of that logic. `junk` is read directly off the cache entry -- no
+  // pairRowData needed for that one, it's already a plain field
+  // (autokern-cache.js: "cache entry: { ..., junk: boolean, ... }").
+  computeAutokernStatusCounts() {
+    const counts = { cached: 0, aboveThreshold: 0, junk: 0, classed: 0, flat: 0 };
+    if (!this.autokernCache || !this.kerningController) {
+      return counts;
+    }
+    const threshold = this.autokernParamsController.model.threshold;
+    counts.cached = this.autokernCache.size;
+    for (const entry of this.autokernCache.values()) {
+      if (entry.junk) {
+        counts.junk++;
+      }
+      const row = this.pairRowData(entry, this.isEntryClassed(entry));
+      if (this.isRowAboveThreshold(row, threshold)) {
+        counts.aboveThreshold++;
+      }
+      if (row.classed) {
+        counts.classed++;
+      } else {
+        counts.flat++;
+      }
+    }
+    return counts;
+  }
+
+  // Renders the counts above into the status strip (§7.5, kerning.html's
+  // #kerning-status-section). No-ops if the strip's elements aren't in the
+  // DOM yet -- mirrors renderCalibration's own guard, for the same reason
+  // (this can be called before initAutokernStatusSection's DOM lookups run,
+  // e.g. from loadAutokernCacheFromStorage during construction).
+  renderAutokernStatus() {
+    const cachedEl = document.querySelector("#kerning-status-cached");
+    if (!cachedEl) {
+      return;
+    }
+    const counts = this.computeAutokernStatusCounts();
+    cachedEl.textContent = `Pairs cached: ${counts.cached}`;
+    document.querySelector("#kerning-status-threshold").textContent =
+      `Above threshold: ${counts.aboveThreshold}`;
+    document.querySelector("#kerning-status-junk").textContent =
+      `Marked junk: ${counts.junk}`;
+    document.querySelector("#kerning-status-coverage").textContent =
+      `Classed cells: ${counts.classed} — Flat cells: ${counts.flat}`;
+  }
+
+  // WORKSTREAM 14, spec §7.5/§4.1: "the source selector... decides what the
+  // preview draws, which cache the table shows and where an apply writes."
+  // Lists the font's actual sources (this.fontController.sources, the same
+  // dict font-controller.js's own getSortedSourceIdentifiers/sources getters
+  // expose and panel-designspace-navigation.js's own source list is built
+  // from), in the same sorted order that panel builds its list in
+  // (fontController.getSortedSourceIdentifiers()).
+  initAutokernStatusSection() {
+    const select = document.querySelector("#kerning-status-source-select");
+    const sourceIdentifiers = this.fontController.getSortedSourceIdentifiers();
+    for (const sourceIdentifier of sourceIdentifiers) {
+      const option = document.createElement("option");
+      option.value = sourceIdentifier;
+      option.textContent =
+        this.fontController.sources[sourceIdentifier].name || sourceIdentifier;
+      select.appendChild(option);
+    }
+    select.value = this.autokernSource;
+
+    select.addEventListener("change", async () => {
+      const sourceIdentifier = select.value;
+      this._autokernSourceIdentifier = sourceIdentifier;
+
+      // (a) What the left-pane scene draws: this is the SAME mechanism
+      // panel-designspace-navigation.js uses for its own source list
+      // selection (panel-designspace-navigation.js, e.g. its
+      // "sourceListSetSelectedSource"/arrow-key navigation path around line
+      // 2115-2116: `this.sceneSettings.fontLocationSourceMapped =
+      // this.fontController.sources[newSourceIdentifier].location`).
+      // sceneSettings here is this.sceneSettingsController.model, the exact
+      // controller this view shares with the editor's scene (constructor
+      // above) -- setting fontLocationSourceMapped to the chosen source's
+      // own stored location is what makes the shared scene model resolve
+      // and render that source's outlines, the same way it does when a
+      // designer picks a source in the editor's own sources list.
+      this.sceneSettingsController.setItem(
+        "fontLocationSourceMapped",
+        this.fontController.sources[sourceIdentifier].location
+      );
+
+      // (d, partial) A different source's cache is a different cache, never
+      // a converted one (spec §4.1) -- a calibration readout carried over
+      // from the PREVIOUS source's run would misdescribe this one, so clear
+      // it until this source is run again.
+      this.autokernCalibration = null;
+      this.renderCalibration();
+
+      // (b)/(c)/(d): this.autokernSource (the getter above) now reads the
+      // new identifier, so loadAutokernCacheFromStorage below reads/writes
+      // the newly-selected source's own OPFS cache file
+      // (autokernCacheFileName keys on `source`), replaces
+      // this.autokernCache with whatever that source's cache holds (or an
+      // empty Map if it has never been run), and re-renders the pair table
+      // and status counts for it (loadAutokernCacheFromStorage ->
+      // renderPairTable -> renderAutokernStatus, see those methods' own
+      // comments).
+      await this.loadAutokernCacheFromStorage();
+    });
+
+    this.renderAutokernStatus();
   }
 
   // Spec §7.4: "Collapsed. It names the three control glyphs, what each
