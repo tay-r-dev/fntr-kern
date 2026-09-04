@@ -128,3 +128,22 @@
   padding: 0.15em 0.4em;
   border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
 }
+
+/* Workstream 13 (spec §7.4): the calibration readout. Collapsed by default,
+   same <details>/<summary> pattern as #kerning-parameters-collapsible. A
+   readout only -- no controls live here. */
+#kerning-calibration-section {
+  margin-top: 1em;
+}
+
+#kerning-calibration-collapsible summary {
+  cursor: pointer;
+  margin-bottom: 0.35em;
+}
+
+#kerning-calibration-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  font-size: 0.9em;
+}

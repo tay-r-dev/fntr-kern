@@ -349,11 +349,13 @@ export class KerningViewController extends ViewController {
   //   - the status strip / source selector (§7.5) -- see the `autokernSource`
   //     getter below for how the job shape stays ready for it anyway.
   //   - classing UI (§5).
-  //   - the calibration readout (§7.4) -- the calibration result IS kept
-  //     (this.autokernCalibration), just not displayed yet.
+  //   - the calibration readout (§7.4) is now built -- see renderCalibration
+  //     below, called here (initial "not yet calibrated" state) and again
+  //     whenever this.autokernCalibration changes.
   initRunSection() {
     this.autokernCache = new Map();
     this.autokernCalibration = null;
+    this.renderCalibration();
 
     const runButton = document.querySelector("#kerning-run-button");
     runButton.addEventListener("click", () => this.runAutokern());
@@ -564,6 +566,7 @@ export class KerningViewController extends ViewController {
           progressContent.textContent = `Measuring pairs: ${data.done} / ${data.total}`;
         } else if (data.type === "calibration") {
           this.autokernCalibration = data.calibration;
+          this.renderCalibration();
         } else if (data.type === "done") {
           this.autokernCache = new Map(data.cache);
           // The worker's own cache already carries forward whatever junk
@@ -575,6 +578,7 @@ export class KerningViewController extends ViewController {
           this.autokernCache = this.applyStoredJunkMarksToCache(this.autokernCache);
           this.autokernCalibration = data.calibration;
           this.renderPairTable();
+          this.renderCalibration();
           // Spec §4.1: "A run measures and writes one source" -- write path
           // for the browser-side cache (see the file-top comment).
           await this.writeAutokernCacheToStorage();
@@ -980,6 +984,60 @@ export class KerningViewController extends ViewController {
         bodies[section - 1].appendChild(this.buildPairRowElement(row));
       }
     }
+  }
+
+  // Spec §7.4: "Collapsed. It names the three control glyphs, what each
+  // measured, the reach it settled on, and whether the three disagreed and
+  // it had to widen." A readout only, no controls.
+  //
+  // Every value here traces to autokern-engine.js's calibrateBand (called
+  // via AutokernEngine.calibrate in autokern-worker.js, posted back
+  // unmodified as data.calibration and stored on this.autokernCalibration):
+  // it returns { bias, measurements, widened, band: { min, max } }, where
+  // `measurements` is the three control glyphs' own overlap values in the
+  // same order as CONTROL_GLYPH_NAMES ("l", "n", "o") and `widened` is
+  // already the true/false the engine settled on (min < max/2 forced at
+  // least one extra widening pass) -- nothing here is recomputed or guessed.
+  renderCalibration() {
+    const body = document.querySelector("#kerning-calibration-body");
+    if (!body) {
+      return;
+    }
+    body.textContent = "";
+
+    if (!this.autokernCalibration) {
+      const p = document.createElement("p");
+      p.textContent = "Not yet calibrated. Run autokern to calibrate.";
+      body.appendChild(p);
+      return;
+    }
+
+    const { bias, measurements, widened, band } = this.autokernCalibration;
+
+    const list = document.createElement("ul");
+    CONTROL_GLYPH_NAMES.forEach((name, i) => {
+      const li = document.createElement("li");
+      const measured = measurements[i];
+      li.textContent = `${name}: measured ${
+        Number.isFinite(measured) ? measured.toFixed(3) : measured
+      }`;
+      list.appendChild(li);
+    });
+    body.appendChild(list);
+
+    const bandLine = document.createElement("p");
+    bandLine.textContent = `Target band: ${band.min.toFixed(3)} – ${band.max.toFixed(3)}`;
+    body.appendChild(bandLine);
+
+    const reachLine = document.createElement("p");
+    reachLine.textContent = `Envelope reach settled at ${bias}`;
+    body.appendChild(reachLine);
+
+    const widenLine = document.createElement("p");
+    widenLine.textContent = widened
+      ? "The three control glyphs disagreed, so calibration widened the reach."
+      : "The three control glyphs agreed; calibration did not need to widen.";
+    body.appendChild(widenLine);
   }
 
   buildPairRowElement(row) {
