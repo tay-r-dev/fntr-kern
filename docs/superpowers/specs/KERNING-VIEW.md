@@ -482,3 +482,14 @@ flagged honestly during the build, not unbuilt spec:
   cross-product §5.2's own illustrative example shows** (the `T Tcaron Tbar` × `o ó ö` example).
   Building the general case means the table stops being anchored to one typed/selected glyph -- a
   re-architecture, not a small fix.
+- **No on-canvas display of a suggestion.** The left pane never draws a measured suggestion -- it
+  reuses the editor's scene unmodified, which lays out text with whatever kerning is actually stored,
+  so `pair` mode shows the pair as kerned *today*, not as the pair table's delta proposes. The editor's
+  own kerning/sidebearing tools (`edit-tools-metrics.js`, wired into this view's left pane in
+  workstream 17) already draw adjustment values and distance lines for the *stored* kern when that
+  tool is active; nothing equivalent exists for the *suggested* value from `this.autokernCache`. A
+  designer currently has to read the delta number in the table and imagine it, or apply the row (which
+  is permanent, since there's no undo yet -- see above) to actually see it. Requested 2026-09-04: draw
+  the suggestion the same way the editor draws a stored kern -- values and lines -- probably as a
+  visualization layer or an extension of the kerning tool's own handle rendering, gated to `pair` mode
+  since it only makes sense for a single selected pair.
