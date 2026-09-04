@@ -47,3 +47,39 @@
   width: 100%;
   box-sizing: border-box;
 }
+
+/* Workstream 9 (spec §7.2): "Threshold and Run are always visible. The rest
+   may collapse." kerning-parameters-always-visible is a plain row, never
+   hidden; kerning-parameters-collapsible is a <details> holding the rest
+   (envelope reach, envelope type, reduction, strength). */
+#kerning-parameters-section {
+  margin-top: 1em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+
+#kerning-parameters-always-visible {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+#kerning-param-threshold {
+  width: 5em;
+}
+
+#kerning-run-button {
+  margin-left: auto;
+}
+
+#kerning-parameters-collapsible {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+
+#kerning-parameters-collapsible summary {
+  cursor: pointer;
+  margin-bottom: 0.35em;
+}

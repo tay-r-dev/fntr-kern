@@ -23,6 +23,16 @@
 // presets/parameters panel") with the real thing, in the new
 // #kerning-panel-container. §7.2 onward are out of scope for this
 // workstream; the rest of the right pane is deliberately empty.
+//
+// WORKSTREAM 9 adds §7.2's parameters section: threshold and Run (always
+// visible), and a collapsible group for envelope reach, envelope type,
+// reduction and strength. This wires the controls to an observable
+// this.autokernParamsController only -- it does NOT run anything yet. The
+// Run button and the values it reads are plumbing for the run worker of
+// §4/§7.3, which is a later workstream; wiring them up here would mean
+// guessing at a cache/worker interface that hasn't been built for this view
+// yet (autokern-cache.js and autokern-engine.js exist and are tested, but
+// nothing in views-kerning calls them).
 import {
   doPerformAction,
   getActionIdentifierFromKeyEvent,
@@ -104,6 +114,7 @@ export class KerningViewController extends ViewController {
     this.setSelectedTool("pointer-tool");
 
     this.initPhraseSection();
+    this.initParametersSection();
     this.initToolSwitcher();
     this.initToolShortcuts();
 
@@ -164,6 +175,41 @@ export class KerningViewController extends ViewController {
       option.value = preset.name;
       option.textContent = preset.name;
       presetSelect.appendChild(option);
+    }
+  }
+
+  // Workstream 9, spec §7.2. `defaultOn` engine values here are placeholders
+  // that get replaced once §2.4 calibration exists in this view; that's why
+  // reach has no principled default yet (calibration is what settles it) and
+  // gets a plainly-arbitrary starting number instead. threshold is display
+  // filtering (§7.3), not an engine input, and lives here anyway because the
+  // spec table (§7.2) lists it alongside the engine parameters.
+  initParametersSection() {
+    this.autokernParamsController = new ObservableController({
+      threshold: 5,
+      reach: 10,
+      envelope: "distanceField",
+      reduce: "sum",
+      strength: 1,
+    });
+    this.autokernParamsController.synchronizeWithLocalStorage(
+      "fontra-kerning-autokern-params."
+    );
+    const params = this.autokernParamsController.model;
+
+    const bindings = [
+      ["#kerning-param-threshold", "threshold", Number],
+      ["#kerning-param-reach", "reach", Number],
+      ["#kerning-param-envelope", "envelope", String],
+      ["#kerning-param-reduce", "reduce", String],
+      ["#kerning-param-strength", "strength", Number],
+    ];
+    for (const [selector, key, convert] of bindings) {
+      const element = document.querySelector(selector);
+      element.value = params[key];
+      element.addEventListener("change", () => {
+        this.autokernParamsController.setItem(key, convert(element.value));
+      });
     }
   }
 

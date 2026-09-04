@@ -47,6 +47,33 @@
             rows="3"
           ></textarea>
         </div>
+        <div id="kerning-parameters-section">
+          <div id="kerning-parameters-always-visible">
+            <label for="kerning-param-threshold">Threshold</label>
+            <input type="number" id="kerning-param-threshold" min="0" step="1" />
+            <button id="kerning-run-button">Run</button>
+          </div>
+          <details id="kerning-parameters-collapsible">
+            <summary>Parameters</summary>
+            <label for="kerning-param-reach">Envelope reach</label>
+            <input type="number" id="kerning-param-reach" min="1" step="1" />
+
+            <label for="kerning-param-envelope">Envelope type</label>
+            <select id="kerning-param-envelope">
+              <option value="distanceField">Distance field</option>
+              <option value="gaussian">Gaussian</option>
+            </select>
+
+            <label for="kerning-param-reduce">Reduction</label>
+            <select id="kerning-param-reduce">
+              <option value="sum">Sum of squares</option>
+              <option value="max">Maximum</option>
+            </select>
+
+            <label for="kerning-param-strength">Strength</label>
+            <input type="number" id="kerning-param-strength" min="0" step="0.05" />
+          </details>
+        </div>
       </div>
     </div>
   </body>
