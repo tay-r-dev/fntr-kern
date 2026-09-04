@@ -15,6 +15,14 @@
 // eventually becomes, and the workstream brief for the explicit list of what
 // does NOT belong here yet (sidebearing tool, kerning tool, the chip
 // selector, the right pane, undo, menus).
+//
+// WORKSTREAM 8 adds the right pane's container and its first section (spec
+// §7.1: preview phrase field + presets dropdown). This replaces the
+// workstream-5 temporary phrase input (which lived inside
+// #kerning-view-container, "standing in for the future phrase
+// presets/parameters panel") with the real thing, in the new
+// #kerning-panel-container. §7.2 onward are out of scope for this
+// workstream; the rest of the right pane is deliberately empty.
 import {
   doPerformAction,
   getActionIdentifierFromKeyEvent,
@@ -22,6 +30,7 @@ import {
 } from "@fontra/core/actions.js";
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { CanvasController } from "@fontra/core/canvas-controller.js";
+import { parsePhrasePresets } from "@fontra/core/character-lines.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
 import { SceneView } from "@fontra/core/scene-view.js";
 import { themeController } from "@fontra/core/theme-settings.js";
@@ -94,7 +103,7 @@ export class KerningViewController extends ViewController {
     }
     this.setSelectedTool("pointer-tool");
 
-    this.initPhraseInput();
+    this.initPhraseSection();
     this.initToolSwitcher();
     this.initToolShortcuts();
 
@@ -118,13 +127,44 @@ export class KerningViewController extends ViewController {
     this.canvasController.requestUpdate();
   }
 
-  initPhraseInput() {
+  // Workstream 8, spec §7.1: the phrase field and its presets dropdown, in
+  // the right pane. Replaces workstream 5's temporary plain input in the
+  // left pane (see the file-top comment) -- that input's own "input"/
+  // "change" listeners are gone along with the element itself; this method
+  // is their only replacement, on the new #kerning-phrase-input textarea.
+  async initPhraseSection() {
     const phraseInput = document.querySelector("#kerning-phrase-input");
+    const presetSelect = document.querySelector("#kerning-preset-select");
+
     const setText = () => {
       this.sceneSettingsController.setItem("text", phraseInput.value);
     };
     phraseInput.addEventListener("input", setText);
     phraseInput.addEventListener("change", setText);
+
+    presetSelect.addEventListener("change", () => {
+      const preset = this.phrasePresets[presetSelect.selectedIndex - 1];
+      if (!preset) {
+        return;
+      }
+      phraseInput.value = preset.text;
+      setText();
+    });
+
+    // Presets file format (spec §7.1) is NOT a phrase string -- it's parsed
+    // by parsePhrasePresets (character-lines.js), a separate, pure parser
+    // for the presets file's own name-comment-block format. Each preset's
+    // own text is still, in turn, a phrase string, parsed the usual way by
+    // characterLinesFromString once it lands in sceneSettings.text.
+    const response = await fetch("./assets/phrase-presets.txt");
+    const presetsText = await response.text();
+    this.phrasePresets = parsePhrasePresets(presetsText);
+    for (const preset of this.phrasePresets) {
+      const option = document.createElement("option");
+      option.value = preset.name;
+      option.textContent = preset.name;
+      presetSelect.appendChild(option);
+    }
   }
 
   setSelectedTool(toolIdentifier) {

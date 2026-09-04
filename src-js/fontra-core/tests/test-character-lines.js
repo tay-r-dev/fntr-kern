@@ -1,5 +1,6 @@
 import {
   characterLinesFromString,
+  parsePhrasePresets,
   stringFromCharacterLines,
 } from "@fontra/core/character-lines.js";
 import { getSuggestedGlyphName } from "@fontra/core/glyph-data.js";
@@ -170,6 +171,38 @@ describe("character-lines", () => {
       expect(stringFromCharacterLines(input)).to.deep.equal(expectedOutput);
     }
   );
+  const parsePhrasePresetsTestData = [
+    {
+      input:
+        "# Lowercase control\nnnonoono\n\n# Caps and rounds\nHAMBURGEFONSTIV\nHOHOHOOO\n",
+      expectedOutput: [
+        { name: "Lowercase control", text: "nnonoono" },
+        { name: "Caps and rounds", text: "HAMBURGEFONSTIV\nHOHOHOOO" },
+      ],
+    },
+    {
+      // more than one blank line between blocks
+      input: "# One\nAAA\n\n\n# Two\nBBB",
+      expectedOutput: [
+        { name: "One", text: "AAA" },
+        { name: "Two", text: "BBB" },
+      ],
+    },
+    {
+      // leading/trailing blank lines, and no trailing newline
+      input: "\n\n# One\nAAA\n",
+      expectedOutput: [{ name: "One", text: "AAA" }],
+    },
+    {
+      input: "",
+      expectedOutput: [],
+    },
+  ];
+
+  parametrize("parsePhrasePresets tests", parsePhrasePresetsTestData, (testItem) => {
+    const { input, expectedOutput } = testItem;
+    expect(parsePhrasePresets(input)).to.deep.equal(expectedOutput);
+  });
 });
 
 function ord(s) {

@@ -3,7 +3,47 @@
    other view supplies its own .main-container rule (see fontoverview.css,
    editor.css). Without one, a percentage-height child of this auto-height
    div resolves to 0, so the canvas rendered at 0x0 -- a blank screen. */
+/* Workstream 8 (spec §1/§6/§7): "The left half is a string preview with
+   three tools. The right half computes kerning suggestions...". A two-column
+   grid, fixed 1fr/1fr split down the middle, rather than flex: there is no
+   need for either side to grow/shrink asymmetrically or to wrap, and a grid
+   with two equal tracks says "two halves" more directly than two flex items
+   with matching flex-basis. */
 .main-container {
   width: 100vw;
   height: calc(100vh - var(--top-bar-height));
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+#kerning-view-container {
+  position: relative;
+  height: 100%;
+}
+
+#kerning-panel-container {
+  position: relative;
+  height: 100%;
+  overflow-y: auto;
+  border-left: 1px solid var(--horizontal-rule-color, #ccc);
+  box-sizing: border-box;
+  padding: 1em;
+}
+
+#kerning-phrase-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+
+#kerning-phrase-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 3em;
+  resize: vertical;
+}
+
+#kerning-preset-select {
+  width: 100%;
+  box-sizing: border-box;
 }
