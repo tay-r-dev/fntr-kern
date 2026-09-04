@@ -463,5 +463,22 @@ steps and measure the worst single-step movement. Start away from a degenerate c
 
 ## 10. Open
 
-Nothing. Build order is the measurement module first, with its tests, because it is the only part
-with a harness and every other part consumes its output.
+Every numbered section above is built (2026-09-04: workstreams 1 through 17, engine through the
+sidebearing/kerning tools). Build order was the measurement module first, with its tests, because it
+was the only part with a harness and every other part consumed its output. What remains is debt
+flagged honestly during the build, not unbuilt spec:
+
+- **No undo stack routed to Ctrl-Z in this view.** The sidebearing and kerning tools each construct
+  their own `UndoStack` (workstream 17) and pair-table/derive writes reach real, persisted font data
+  (workstreams 11, 15) -- but nothing in `kerning.js` registers `action.undo`/`action.redo`, so none of
+  it is locally reversible from this view yet.
+- **The excluded-glyph field isn't wired into a rerun.** It's parsed, stored, and persisted as project
+  data (workstream 11/12) exactly like a junk mark, but `runAutokern` doesn't read it, so it currently
+  has no effect on what a run measures.
+- **A derived class's Accept has no rollback on partial failure.** `acceptDeriveProposal` (workstream
+  15) writes one glyph's group membership at a time; a failure partway through a proposal's member
+  list leaves some glyphs joined and others not, with nothing to undo it.
+- **The fold is anchored to the pair table's existing per-glyph sections, not the full class×class
+  cross-product §5.2's own illustrative example shows** (the `T Tcaron Tbar` × `o ó ö` example).
+  Building the general case means the table stops being anchored to one typed/selected glyph -- a
+  re-architecture, not a small fix.

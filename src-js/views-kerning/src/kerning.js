@@ -83,7 +83,7 @@ import { getOPFS } from "@fontra/core/opfs.js";
 import { SceneView } from "@fontra/core/scene-view.js";
 import { themeController } from "@fontra/core/theme-settings.js";
 import { ViewController } from "@fontra/core/view-controller.js";
-import { dialogSetup } from "@fontra/web-components/modal-dialog.js";
+import { dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import { HandTool } from "@fontra/views-editor/edit-tools-hand.js";
 import {
   KerningTool,
@@ -428,7 +428,12 @@ export class KerningViewController extends ViewController {
     this.renderCalibration();
 
     const runButton = document.querySelector("#kerning-run-button");
-    runButton.addEventListener("click", () => this.runAutokern());
+    runButton.addEventListener("click", () =>
+      this.runAutokern().catch((error) => {
+        console.error(error);
+        message("Autokern run failed", error.message || String(error));
+      })
+    );
 
     // Fire-and-forget: this.autokernCache is already a valid (empty) Map
     // synchronously above, so nothing else in this constructor waits on the
@@ -551,6 +556,24 @@ export class KerningViewController extends ViewController {
     // (see the getter above); the job's `source` field, and the OPFS cache
     // file this run writes to (writeAutokernCacheToStorage), both follow it.
     const source = this.autokernSource;
+
+    // Spec §2.4: calibration needs l, n and o. Check before doing any
+    // rasterization work, and surface it to the designer instead of an
+    // uncaught exception -- a font that's missing one of these (a test
+    // project, an in-progress alphabet) is a real, expected state, not a
+    // bug.
+    const missingControlGlyphs = CONTROL_GLYPH_NAMES.filter(
+      (name) => !this.fontController.glyphMap?.[name]
+    );
+    if (missingControlGlyphs.length) {
+      await message(
+        "Can't run autokern",
+        `The font is missing the control glyph(s) calibration needs: ${missingControlGlyphs.join(
+          ", "
+        )}. Add ${missingControlGlyphs.length > 1 ? "them" : "it"} to the font first.`
+      );
+      return;
+    }
 
     const glyphsToRasterize = new Set([...CONTROL_GLYPH_NAMES, ...glyphNames]);
     const rasters = {};
