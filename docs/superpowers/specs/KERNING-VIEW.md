@@ -512,9 +512,22 @@ flagged honestly during the build, not unbuilt spec:
   exclusion for rasterization/calibration purposes (calibration structurally requires their rasters),
   but still excluded from the candidate pool like any other named glyph, so excluding a control glyph
   means "calibrate with it, but don't kern it against anything."
-- **A derived class's Accept has no rollback on partial failure.** `acceptDeriveProposal` (workstream
-  15) writes one glyph's group membership at a time; a failure partway through a proposal's member
-  list leaves some glyphs joined and others not, with nothing to undo it.
+- **Done: a derived class's Accept rolls back on partial failure, honestly.** `acceptDeriveProposal`
+  (workstream 15) still writes one glyph's group membership at a time (`editGroupSide1`/
+  `editGroupSide2`, the same call panel-selection-info.js's own per-glyph class field uses -- no
+  second write mechanism exists to reach for). If a write throws partway through a proposal's member
+  list, it now catches the error and re-invokes the same editFn on every member that already
+  succeeded, with that member's *before* group name, to walk the font back to how it was before
+  Accept. This is real rollback, not assumed: because the rollback write is the identical call as the
+  forward write, it is subject to the exact same failure modes (dropped connection, backend rejection)
+  and is not guaranteed to succeed either. If every rollback write succeeds, the designer sees one
+  message naming the glyph that failed and confirming the rest were rolled back -- true all-or-nothing.
+  If a rollback write itself also fails, the affected glyph(s) are left classed with no further
+  automatic retry attempted; instead of hiding that, the method pushes an undo record onto
+  `this.autokernUndoStack` for exactly those still-classed glyphs (so Ctrl-Z can retry the same
+  before-value write later) and shows the designer both the original error and which glyph(s) the
+  rollback itself failed on, by name. Proposals are only removed from the pending list on full
+  success; a failed or partially-failed Accept leaves the proposal in place to retry.
 - **The fold is anchored to the pair table's existing per-glyph sections, not the full class×class
   cross-product §5.2's own illustrative example shows** (the `T Tcaron Tbar` × `o ó ö` example).
   Building the general case means the table stops being anchored to one typed/selected glyph -- a

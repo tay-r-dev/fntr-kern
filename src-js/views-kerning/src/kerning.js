@@ -1615,8 +1615,85 @@ export class KerningViewController extends ViewController {
       after: className,
     }));
 
-    for (const glyphName of proposal.members) {
-      await editFn(glyphName, className);
+    // Partial-failure handling (spec §10 "A derived class's Accept has no
+    // rollback on partial failure"): editFn is the SAME
+    // kerningController.editGroupSide1/editGroupSide2 call used above and by
+    // doAutokernUndoRedo, so a rollback here is just another call to editFn
+    // with a glyph's `before` value -- there is no second, more-reliable
+    // write path to reach for. That means a rollback write is subject to the
+    // exact same failure modes as the forward write (dropped connection,
+    // backend rejection, ...) -- it is NOT guaranteed to succeed. So this
+    // does not claim atomicity it cannot back up: it attempts a rollback of
+    // every write that succeeded before the failure, and if every rollback
+    // write also succeeds, the font is left exactly as it was before Accept
+    // (real all-or-nothing, achieved, not merely assumed). If a rollback
+    // write itself fails, the corresponding glyph is left classed into
+    // className with no clean write path left to try synchronously -- rather
+    // than hide that, this pushes an incremental undo record for exactly the
+    // still-classed glyphs (so Ctrl-Z can retry the before-value write later)
+    // and reports BOTH the original error and the rollback failure(s) to the
+    // designer by name, so they know precisely which glyphs are and are not
+    // still in the class.
+    const succeeded = [];
+    let writeError = null;
+    let failedGlyphName = null;
+    for (const entry of entries) {
+      try {
+        await editFn(entry.glyphName, className);
+        succeeded.push(entry);
+      } catch (error) {
+        writeError = error;
+        failedGlyphName = entry.glyphName;
+        break;
+      }
+    }
+
+    if (writeError) {
+      const rollbackFailures = [];
+      for (const entry of succeeded) {
+        try {
+          await editFn(entry.glyphName, entry.before);
+        } catch (rollbackError) {
+          rollbackFailures.push({ glyphName: entry.glyphName, error: rollbackError });
+        }
+      }
+
+      if (rollbackFailures.length === 0) {
+        message(
+          "Accept derive proposal failed",
+          `Writing class "${className}" failed on glyph "${failedGlyphName}" ` +
+            `(${writeError.message || String(writeError)}). ` +
+            `${succeeded.length} earlier write(s) were rolled back; no member of ` +
+            `this proposal is in the class.`
+        );
+      } else {
+        const stillClassed = rollbackFailures.map((failure) =>
+          succeeded.find((entry) => entry.glyphName === failure.glyphName)
+        );
+        this.autokernUndoStack.pushUndoRecord({
+          info: {
+            label: "kerning view: accept derive proposal (partial)",
+            kind: "groupMembership",
+            editSide: proposal.editSide,
+            entries: stillClassed,
+          },
+        });
+        message(
+          "Accept derive proposal partially failed",
+          `Writing class "${className}" failed on glyph "${failedGlyphName}" ` +
+            `(${writeError.message || String(writeError)}). Rolling back also failed ` +
+            `for: ${rollbackFailures
+              .map((f) => `${f.glyphName} (${f.error.message || String(f.error)})`)
+              .join(", ")}. ` +
+            `${rollbackFailures.length === 1 ? "That glyph is" : "Those glyphs are"} still ` +
+            `in class "${className}" -- use Undo (Ctrl-Z) to retry removing ` +
+            `${rollbackFailures.length === 1 ? "it" : "them"}, or fix manually.`
+        );
+      }
+
+      this.renderDeriveProposals();
+      this.renderPairTable();
+      return;
     }
 
     this.autokernUndoStack.pushUndoRecord({
