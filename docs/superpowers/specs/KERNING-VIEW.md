@@ -468,10 +468,42 @@ sidebearing/kerning tools). Build order was the measurement module first, with i
 was the only part with a harness and every other part consumed its output. What remains is debt
 flagged honestly during the build, not unbuilt spec:
 
-- **No undo stack routed to Ctrl-Z in this view.** The sidebearing and kerning tools each construct
-  their own `UndoStack` (workstream 17) and pair-table/derive writes reach real, persisted font data
-  (workstreams 11, 15) -- but nothing in `kerning.js` registers `action.undo`/`action.redo`, so none of
-  it is locally reversible from this view yet.
+- **Ctrl-Z now reaches all three: sidebearing/kerning tool drags, pair-table writes, and
+  derive-accept writes.** `kerning.js` registers `action.undo`/`action.redo` (`initUndoActions`),
+  routed through a `callDelegateMethod` copied from `editor.js`'s own: the active tool's `doUndoRedo`
+  runs if it has one; otherwise `KerningViewController`'s own `doUndoRedo` runs, which checks a
+  second, font-level `UndoStack` this controller now owns (`this.autokernUndoStack`, built in the
+  constructor) before falling through to the shared `SceneController`'s (per-glyph,
+  `fontController`-backed) undo. The sidebearing and kerning tools (`edit-tools-metrics.js`'s
+  `MetricsBaseTool`, each with its own `UndoStack`, workstream 17) still implement `doUndoRedo`
+  themselves, so a drag with either tool is undoable exactly as before. What changed: pair-table
+  apply/reset (`writePairValues`) and derive-accept class writes (`acceptDeriveProposal`) now push
+  onto `this.autokernUndoStack` too. The earlier claim that no font-level (as opposed to per-glyph)
+  undo mechanism existed anywhere in the tree was wrong -- `views-fontinfo/src/panel-base.js`'s
+  `BaseInfoPanel` already solves this exact problem (a non-per-glyph, font-root-key edit that still
+  needs to be locally undoable) by owning its own `UndoStack` instance instead of routing through
+  `fontController.pushUndoRecord`, and `KerningViewController` now does the same:
+  `kerningController.getEditContext(...).edit(...)` (used by `writePairValues`) already calls
+  `fontController.editFinal` and returns the `{change, rollbackChange}` it built, which is pushed
+  straight onto `this.autokernUndoStack` and replayed by `KerningViewController.doAutokernUndoRedo`
+  the same way `BaseInfoPanel.doUndoRedo` replays its own records. `acceptDeriveProposal`'s writes go
+  through `kerningController.editGroupSide1`/`editGroupSide2`, which call
+  `fontController.performEdit` internally and discard its return value, so no `{change,
+  rollbackChange}` is capturable there without editing `kerning-controller.js` (out of scope); instead
+  a differently-shaped record is pushed (each affected glyph's group name on the relevant side before
+  and after the accept), and undo/redo re-invokes `editGroupSide1`/`editGroupSide2` with the
+  appropriate side.
+  Two honest limitations remain, both documented in `kerning.js` itself:
+  (1) while a sidebearing/kerning tool is the active tool, `callDelegateMethod` always defers to that
+  tool's own `doUndoRedo` (it only checks the method exists, not whether that tool's stack is
+  non-empty), so a more recent `autokernUndoStack` edit is skipped until a metrics tool's own stack is
+  exhausted or pointer/hand becomes active -- there is no single chronological stack merging tool
+  edits and autokern edits, only a two-tier fallback;
+  (2) junk marks and the excluded-glyph list (`writeJunkMarksToProject`, also written via
+  `fontController.performEdit`) are deliberately left out of `autokernUndoStack` -- spec §4.2 frames
+  them as the designer's judgement/settings rather than a kerning suggestion being applied, and they
+  are not among the actions §7.3 calls "one undo step"; this is a scoping decision, not an oversight,
+  and can be revisited on request.
 - **The excluded-glyph field isn't wired into a rerun.** It's parsed, stored, and persisted as project
   data (workstream 11/12) exactly like a junk mark, but `runAutokern` doesn't read it, so it currently
   has no effect on what a run measures.

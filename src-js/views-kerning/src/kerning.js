@@ -48,13 +48,42 @@
 // to zero, mark junk). Deliberately NOT built here: §5.2's fold (every row
 // stays one flat pair; "apply" therefore always writes a flat exception,
 // never a class cell -- see the writePairValues comment), §5.3 derivation,
-// §7.4 calibration readout, §7.5 status strip. See applyPairs's own comment
-// for the honest state of undo: this writes real, broadcast, persisted font
-// kerning data through the exact path editor.js's kerning tool uses
-// (kerningController.getEditContext(...).edit(...) ->
-// fontController.editFinal), but does NOT reach this view's own undo stack,
-// because this view has none (see the workstream comments above -- no undo
-// mechanism exists in kerning.js at all yet).
+// §7.4 calibration readout, §7.5 status strip.
+//
+// Undo, current state (see writePairValues's and acceptDeriveProposal's own
+// comments for the full trace): this view now carries its OWN font-level
+// undo stack, this.autokernUndoStack (a plain UndoStack, built in the
+// constructor, imported from font-controller.js), for exactly the pair-table
+// writes (writePairValues, real broadcast/persisted font kerning data
+// through the same kerningController.getEditContext(...).edit(...) path
+// editor.js's kerning tool uses) and derive-accept class writes
+// (acceptDeriveProposal's kerningController.editGroupSide1/editGroupSide2
+// calls) this comment used to say were structurally unreachable from any
+// undo stack. They still cannot use fontController's own per-glyph
+// `undoStacks` (font-controller.js's pushUndoRecord asserts exactly one
+// glyph name touched; a "kerning" root-key change touches zero) -- but that
+// was never the only option: views-fontinfo/src/panel-base.js's
+// BaseInfoPanel already solves this exact problem (a non-per-glyph,
+// font-root-key edit that still needs to be locally undoable) by owning its
+// own UndoStack instance instead of using fontController's, and this view
+// now does the same. Junk marks and the excluded-glyph list
+// (writeJunkMarksToProject, also a fontController.performEdit under
+// "customData") are deliberately left OUT of this undo stack: spec section
+// 4.2 frames them as the designer's judgement/settings, not a kerning
+// suggestion being applied, and they are not among the actions spec section
+// 7.3 enumerates as "one undo step" -- this is a judgement call, not a
+// limitation, and can be revisited if a designer explicitly asks for
+// Ctrl-Z on a junk mark. Glyph-layer edits made through this view's
+// sidebearing/kerning TOOLS (edit-tools-metrics.js, workstream 17) reach
+// Ctrl-Z through a third, independent path -- see initUndoActions/
+// callDelegateMethod below, which routes "action.undo"/"action.redo" to the
+// active tool's own doUndoRedo first, and only falls through to
+// this.autokernUndoStack (then the shared per-glyph scene undo) when no
+// metrics tool is active. callDelegateMethod's own comment states the exact,
+// honest limitation this produces: while a sidebearing/kerning tool IS the
+// active tool, its own undo stack always wins over a more recent autokern
+// edit, because the dispatch only checks whether the tool implements the
+// method, not whether its own stack is non-empty.
 import { markPairJunk, pairKey } from "@fontra/core/autokern-cache.js";
 import {
   classSpread,
@@ -65,6 +94,7 @@ import {
   doPerformAction,
   getActionIdentifierFromKeyEvent,
   registerAction,
+  registerActionCallbacks,
 } from "@fontra/core/actions.js";
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { CanvasController } from "@fontra/core/canvas-controller.js";
@@ -77,6 +107,8 @@ import {
   getGlyphInfoFromGlyphName,
 } from "@fontra/core/glyph-data.js";
 import { rasterizeGlyph } from "@fontra/core/glyph-raster.js";
+import { UndoStack, reverseUndoRecord } from "@fontra/core/font-controller.js";
+import { translate } from "@fontra/core/localization.js";
 import { script as scriptOfCodePoint } from "@fontra/core/unicode-scripts-blocks.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
 import { getOPFS } from "@fontra/core/opfs.js";
@@ -252,9 +284,22 @@ export class KerningViewController extends ViewController {
     }
     this.setSelectedTool("pointer-tool");
 
+    // Font-level (not per-glyph) undo for pair-table writes and derive-accept
+    // class writes -- see writePairValues's and acceptDeriveProposal's own
+    // comments, and initUndoActions/callDelegateMethod below for how this
+    // reaches Ctrl-Z. Same construction BaseInfoPanel uses
+    // (views-fontinfo/src/panel-base.js's `this.undoStack = new UndoStack()`)
+    // for exactly the same reason: a non-per-glyph, font-root-key edit still
+    // needs to be locally undoable, and UndoStack itself needs no font data,
+    // so building it here in the constructor is safe (unlike the font-data
+    // reads that crashed construction order before, see the comment on
+    // start() below).
+    this.autokernUndoStack = new UndoStack();
+
     this.initToolSwitcher();
     this.initChipSection();
     this.initToolShortcuts();
+    this.initUndoActions();
 
     window.addEventListener("keydown", (event) => this.keyDownHandler(event));
     window.addEventListener("keyup", (event) => this.keyUpHandler(event));
@@ -1508,14 +1553,54 @@ export class KerningViewController extends ViewController {
   // `editGroupSide1`), called once per member glyph -- kerning-controller.js
   // is not touched, and no second write mechanism is invented. Nothing is
   // written until this method runs (deriveClasses above is pure/read-only).
+  //
+  // Undo: editGroupSide1/editGroupSide2 (kerning-controller.js's own
+  // `_editGroup`) call fontController.performEdit internally and discard its
+  // returned {change, rollbackChange} -- there is no change/rollbackChange
+  // to capture from the outside without editing kerning-controller.js, which
+  // is out of scope here. So this pushes a differently-shaped record onto
+  // the SAME this.autokernUndoStack used by writePairValues (UndoStack
+  // itself is agnostic about what a record contains -- it is popped by
+  // doAutokernUndoRedo below, not replayed through
+  // fontController.applyChange/editFinal the way a {change, rollbackChange}
+  // record is): one entry per member glyph, the group name it belonged to
+  // on the relevant side BEFORE this call (read off
+  // kerningController.leftPairGroupMapping/rightPairGroupMapping, the same
+  // already-computed mapping §7.3's pair table reads from -- no group is
+  // written until after this snapshot) and the group name (`className`)
+  // AFTER. Undo replays editGroupSide1/editGroupSide2 with each glyph's
+  // `before` name (empty string if it had none); redo replays with `after`.
   async acceptDeriveProposal(proposal, className) {
+    const groupMapping =
+      proposal.editSide === "side1"
+        ? this.kerningController.leftPairGroupMapping
+        : this.kerningController.rightPairGroupMapping;
     const editFn =
       proposal.editSide === "side1"
-        ? (glyphName) => this.kerningController.editGroupSide1(glyphName, className)
-        : (glyphName) => this.kerningController.editGroupSide2(glyphName, className);
+        ? (glyphName, groupName) =>
+            this.kerningController.editGroupSide1(glyphName, groupName)
+        : (glyphName, groupName) =>
+            this.kerningController.editGroupSide2(glyphName, groupName);
+
+    const entries = proposal.members.map((glyphName) => ({
+      glyphName,
+      before: groupMapping[glyphName] || "",
+      after: className,
+    }));
+
     for (const glyphName of proposal.members) {
-      await editFn(glyphName);
+      await editFn(glyphName, className);
     }
+
+    this.autokernUndoStack.pushUndoRecord({
+      info: {
+        label: "kerning view: accept derive proposal",
+        kind: "groupMembership",
+        editSide: proposal.editSide,
+        entries,
+      },
+    });
+
     this.autokernDeriveProposals = this.autokernDeriveProposals.filter(
       (p) => p.id !== proposal.id
     );
@@ -1864,21 +1949,30 @@ export class KerningViewController extends ViewController {
   // live editor tab on the same font), and is what the project actually
   // saves. This is real, not a local mock.
   //
-  // What it does NOT do: push onto an undo stack in THIS view. Spec §7.3
-  // says "Each action is one undo step" and this workstream cannot deliver
-  // that honestly. editor.js's kerning tool gets its undo step from
-  // pushUndoItem, a mechanism belonging to that PARTICULAR tool
-  // (edit-tools-metrics.js's own `this.undoStack`, fed to
-  // sceneController.doUndoRedo). This view (kerning.js) has no undo stack
-  // at all -- not for glyph edits, not for kerning edits, nothing; grep the
-  // whole file, there is no `undoStack` here before this workstream and
-  // this workstream does not add one. Building a real one is a batch-apply
-  // undo mechanism in its own right (multiple pairs, one step, per spec's
-  // "each action is one undo step") and is out of scope for this pass.
-  // Concretely: applying a row from this table changes the saved font
-  // immediately and permanently as far as this view is concerned; the
-  // designer's only way back is to apply the opposite value by hand (e.g.
-  // "reset to current" before the fact, or typing the old number back).
+  // Undo: fontController's own `undoStacks` (font-controller.js's
+  // pushUndoRecord/getUndoRedoInfo/undoRedoGlyph) is keyed one stack per
+  // GLYPH NAME, fed exclusively by GlyphEditContext.editFinal, and its
+  // pushUndoRecord asserts the change touches exactly one glyph name -- a
+  // kerning-table change, under the "kerning" root key, touches zero, so it
+  // structurally cannot use that mechanism (this was the previous state of
+  // this comment, and remains true: that specific stack is still closed to
+  // kerning writes). What changed: this view now carries its OWN font-level
+  // undo stack for exactly this situation, `this.autokernUndoStack` (built
+  // in the constructor), following the SAME pattern
+  // views-fontinfo/src/panel-base.js's BaseInfoPanel already uses for a
+  // non-per-glyph, font-root-key edit that still needs to be locally
+  // undoable (BaseInfoPanel's own `this.undoStack`/`postChange`). The
+  // difference from BaseInfoPanel's postChange: KernPairEditContext.edit
+  // (kerning-controller.js's editContinuous, called via
+  // getEditContext(...).edit(...) below) already calls
+  // fontController.editFinal itself and returns the ChangeCollector
+  // (`{change, rollbackChange}`) it built -- so this method does not call
+  // editFinal a second time; it captures that return value and pushes it
+  // straight onto this.autokernUndoStack, in the same {change,
+  // rollbackChange, info: {label}} shape BaseInfoPanel's postChange pushes.
+  // doAutokernUndoRedo (see callDelegateMethod below) pops it and replays it
+  // exactly the way BaseInfoPanel.doUndoRedo does: fontController.applyChange
+  // then a rollback-direction fontController.editFinal.
   async writePairValues(pairs, valueFn, markApplied) {
     if (!pairs.length) {
       return;
@@ -1914,7 +2008,18 @@ export class KerningViewController extends ViewController {
     }
 
     const editContext = this.kerningController.getEditContext(pairSelectors);
-    await editContext.edit(values, "kerning view: pair table write");
+    const changes = await editContext.edit(values, "kerning view: pair table write");
+
+    if (changes?.hasChange) {
+      this.autokernUndoStack.pushUndoRecord({
+        change: changes.change,
+        rollbackChange: changes.rollbackChange,
+        info: {
+          label: "kerning view: pair table write",
+          kind: "pairValues",
+        },
+      });
+    }
 
     if (markApplied) {
       for (const key of keys) {
@@ -2073,6 +2178,172 @@ export class KerningViewController extends ViewController {
       },
       (event) => this.enterTemporaryHandTool(event)
     );
+  }
+
+  // Routes Ctrl-Z/Cmd-Z (and shift for redo) to whichever undo mechanism the
+  // active tool actually has, closing the spec §10 backlog item ("No undo
+  // stack routed to Ctrl-Z in this view"). This is editor.js's own mechanism,
+  // copied exactly rather than reinvented:
+  //
+  // - The action identifiers "action.undo"/"action.redo" are NOT registered
+  //   here from scratch -- their actionInfo (topic, Cmd/Ctrl+Z default
+  //   shortcut) is already registered once, at module-load time, by
+  //   fontra-menus.js's own top-level registerActionInfo("action.undo", ...)
+  //   / ("action.redo", ...) calls (fontra-menus.js:264-273). That module is
+  //   already part of this view's bundle (edit-tools-select.js imports
+  //   rerouteViewPath from it), so those two actionInfo entries exist before
+  //   this method ever runs. Only the CALLBACKS are missing here -- exactly
+  //   the gap this method closes -- which is why this calls
+  //   registerActionCallbacks, not registerAction (registerAction would
+  //   re-register the actionInfo too, which is unnecessary and not what
+  //   editor.js does either: editor.js:383-395 also calls
+  //   registerActionCallbacks only).
+  // - callDelegateMethod below is editor.js's callDelegateMethod
+  //   (editor.js:1642-1649) verbatim, adapted to this controller's own
+  //   `this.tools`/`this.selectedToolIdentifier` (editor.js reads
+  //   `this.sceneController.selectedTool` instead -- this view never set that
+  //   property, see setSelectedTool above, so it tracks the active tool on
+  //   the controller itself).
+  initUndoActions() {
+    registerActionCallbacks(
+      "action.undo",
+      () => this.callDelegateMethod("doUndoRedo", false),
+      () => this.callDelegateMethod("canUndoRedo", false),
+      () => this.callDelegateMethod("getUndoRedoLabel", false)
+    );
+
+    registerActionCallbacks(
+      "action.redo",
+      () => this.callDelegateMethod("doUndoRedo", true),
+      () => this.callDelegateMethod("canUndoRedo", true),
+      () => this.callDelegateMethod("getUndoRedoLabel", true)
+    );
+  }
+
+  // editor.js:1642-1649, verbatim mechanism: the active tool wins if it
+  // implements the method itself, otherwise the call falls through to this
+  // controller's own same-named method. SidebearingTool/KerningTool
+  // (edit-tools-metrics.js's MetricsBaseTool) implement doUndoRedo,
+  // canUndoRedo and getUndoRedoLabel themselves, backed by their own
+  // `this.undoStack` (a `UndoStack` instance, edit-tools-metrics.js:58) --
+  // this is what makes a sidebearing/kerning-tool drag on this view's own
+  // canvas actually undoable via Ctrl-Z for the first time. pointer-tool and
+  // hand-tool implement none of the three, so they fall through to this
+  // controller's own versions below.
+  //
+  // Ordering (three stacks total, not two): a tool that implements these
+  // methods (sidebearing/kerning tool) always wins outright -- `tool?.[
+  // methodName]` only checks the method EXISTS, not whether that tool's own
+  // stack has anything to undo, so while one of those two tools is active,
+  // this.autokernUndoStack is never consulted even if it holds a more
+  // recent pair-table/derive-accept edit than the tool's own stack. This is
+  // a real, documented limitation, not a bug introduced here: fixing it
+  // would mean changing callDelegateMethod's dispatch (or MetricsBaseTool's
+  // own canUndoRedo) to compare timestamps/emptiness across independently-
+  // owned stacks, which is a deeper change to shared tool code
+  // (edit-tools-metrics.js) than this task's file scope allows. While
+  // pointer-tool or hand-tool is active (the common case for pair-table
+  // work, since applying a row doesn't require a metrics tool to be
+  // selected), this controller's own doUndoRedo/canUndoRedo/getUndoRedoLabel
+  // below run, and THERE the ordering is correct: this.autokernUndoStack
+  // (pair-table/derive-accept edits) is checked first, falling through to
+  // the shared SceneController's fontController-backed per-glyph undo
+  // (editor.js's own fallback, editor.js:1651-1665) only if
+  // this.autokernUndoStack has nothing at the requested end. That ordering
+  // choice -- autokern edits ahead of per-glyph edits, at this tier -- rests
+  // on both being reachable only when no metrics tool is selected, so
+  // neither can be "more recently touched" by a currently-active tool;
+  // autokern edits are checked first simply because they are this tier's
+  // more common case (the pair table and derive panel are this view's main
+  // controls when pointer/hand is selected). Net effect: Ctrl-Z reverses
+  // the true most-recent edit correctly UNLESS a sidebearing/kerning-tool
+  // drag is currently the active tool AND an autokern edit happened more
+  // recently than that tool's own last edit -- in that one case, Ctrl-Z
+  // undoes the tool's (older) edit first. Switching to pointer/hand tool
+  // before undoing avoids it.
+  callDelegateMethod(methodName, ...args) {
+    const tool = this.tools[this.selectedToolIdentifier];
+    if (tool?.[methodName]) {
+      return tool[methodName](...args);
+    } else {
+      return this[methodName](...args);
+    }
+  }
+
+  getUndoRedoLabel(isRedo) {
+    const autokernInfo = this.autokernUndoStack.getTopUndoRedoRecord(isRedo)?.info;
+    const info = autokernInfo || this.sceneController.getUndoRedoInfo(isRedo);
+    return (
+      (isRedo ? translate("action.redo") : translate("action.undo")) +
+      (info ? " " + info.label : "")
+    );
+  }
+
+  canUndoRedo(isRedo) {
+    return (
+      !!this.autokernUndoStack.getTopUndoRedoRecord(isRedo) ||
+      !!this.sceneController.getUndoRedoInfo(isRedo)
+    );
+  }
+
+  async doUndoRedo(isRedo) {
+    if (this.autokernUndoStack.getTopUndoRedoRecord(isRedo)) {
+      await this.doAutokernUndoRedo(isRedo);
+      return;
+    }
+    await this.sceneController.doUndoRedo(isRedo);
+  }
+
+  // Pops this.autokernUndoStack and replays it. Two record shapes, see
+  // writePairValues's and acceptDeriveProposal's own comments for why each
+  // exists:
+  //
+  // - "pairValues": a real {change, rollbackChange} pair, replayed exactly
+  //   the way BaseInfoPanel.doUndoRedo (views-fontinfo/src/panel-base.js)
+  //   replays its own records -- reverseUndoRecord on redo, then
+  //   fontController.applyChange(rollbackChange) followed by a
+  //   rollback-direction fontController.editFinal.
+  // - "groupMembership": no change/rollbackChange exists to replay (see
+  //   acceptDeriveProposal's comment for why) -- instead this re-invokes
+  //   editGroupSide1/editGroupSide2 per member glyph, with each glyph's
+  //   `before` group name on undo or `after` group name on redo.
+  async doAutokernUndoRedo(isRedo) {
+    let undoRecord = this.autokernUndoStack.popUndoRedoRecord(isRedo);
+    if (!undoRecord) {
+      return;
+    }
+
+    if (undoRecord.info.kind === "groupMembership") {
+      const editFn =
+        undoRecord.info.editSide === "side1"
+          ? (glyphName, groupName) =>
+              this.kerningController.editGroupSide1(glyphName, groupName)
+          : (glyphName, groupName) =>
+              this.kerningController.editGroupSide2(glyphName, groupName);
+      for (const entry of undoRecord.info.entries) {
+        await editFn(entry.glyphName, isRedo ? entry.after : entry.before);
+      }
+      this.renderDeriveProposals();
+      this.renderPairTable();
+      return;
+    }
+
+    // kind === "pairValues"
+    if (isRedo) {
+      undoRecord = reverseUndoRecord(undoRecord);
+    }
+    this.fontController.applyChange(undoRecord.rollbackChange);
+
+    const error = await this.fontController.editFinal(
+      undoRecord.rollbackChange,
+      undoRecord.change,
+      undoRecord.info.label,
+      true
+    );
+    // TODO handle error
+    this.fontController.notifyEditListeners("editFinal", this);
+
+    this.renderPairTable();
   }
 
   keyDownHandler(event) {
