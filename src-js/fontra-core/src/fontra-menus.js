@@ -252,7 +252,7 @@ function getGlyphMenuItems() {
   return [];
 }
 
-function rerouteViewPath(path, targetView) {
+export function rerouteViewPath(path, targetView) {
   return targetView + ".html";
 }
 
