@@ -69,6 +69,7 @@ import {
 } from "@fontra/core/character-lines.js";
 import { rasterizeGlyph } from "@fontra/core/glyph-raster.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
+import { getOPFS } from "@fontra/core/opfs.js";
 import { SceneView } from "@fontra/core/scene-view.js";
 import { themeController } from "@fontra/core/theme-settings.js";
 import { ViewController } from "@fontra/core/view-controller.js";
@@ -84,6 +85,84 @@ import { SelectTool } from "./edit-tools-select.js";
 
 // Spec §2.4: the three control glyphs calibration reads.
 const CONTROL_GLYPH_NAMES = ["l", "n", "o"];
+
+// WORKSTREAM 12, spec §4.1: "Derived data is stored locally; decisions are
+// stored in the project." Two separate mechanisms follow from that one
+// sentence, and they are not interchangeable:
+//
+// - The cache itself (this.autokernCache's contents) is derived, large, and
+//   always recomputable from a run -- it is machine-local, browser-side
+//   storage, keyed by font + source. OPFS is the established pattern for
+//   this in this codebase (fontra-core/opfs.js, used the same way by
+//   views-editor/panel-reference-font.js for dropped reference font files:
+//   "browser-side storage" for something derived/large/per-something). No
+//   IndexedDB usage exists anywhere in this tree to imitate instead (grepped
+//   the whole src-js tree for indexedDB/IDBDatabase; nothing), so OPFS,
+//   already imported above, is reused rather than inventing a second
+//   browser-storage mechanism.
+// - Junk marks and the excluded-glyph list are the designer's judgement,
+//   small, and must survive a change of machine (spec §4.1) -- they go
+//   through the font backend as ordinary per-font customData, the exact
+//   mechanism glyphsets-controller.js's PROJECT_GLYPH_SETS_CUSTOM_DATA_KEY
+//   already uses for a different piece of project-level designer data:
+//   fontController.performEdit(editLabel, "customData", (root) => { ...
+//   root.customData[KEY] = value ... }, senderID) to write, and
+//   fontController.customData[KEY] to read (font-controller.js:151-153,
+//   populated from the backend's getCustomData() at initialize() time --
+//   font-controller.js:84 -- i.e. already loaded before this view's
+//   constructor runs, since ViewController.start() awaits
+//   fontController.initialize() before the view is constructed).
+const AUTOKERN_CACHE_OPFS_DIR = ["kerning-autokern-cache"];
+const AUTOKERN_JUNK_PAIRS_CUSTOM_DATA_KEY = "fontra.autokernJunkPairs";
+const AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY = "fontra.autokernExcludedGlyphs";
+
+let _autokernOPFS;
+async function getAutokernOPFS() {
+  if (!_autokernOPFS) {
+    _autokernOPFS = await getOPFS();
+  }
+  return _autokernOPFS;
+}
+
+// One cache file per font + source (spec §4.1: "the cache is keyed by
+// source"). `projectIdentifier` stands in for "font identity" here -- it's
+// the same identifier ViewController.fromBackend() reads from the `project`
+// URL parameter and passes into every view's constructor, so it already
+// distinguishes one font/project from another the same way the rest of the
+// app does. encodeURIComponent guards against a project identifier that
+// isn't a bare filesystem-safe token (it can be a path).
+function autokernCacheFileName(projectIdentifier, source) {
+  return `${encodeURIComponent(projectIdentifier || "")}--${encodeURIComponent(source)}.json`;
+}
+
+// Returns a plain array of cache entries, or null if nothing is stored yet
+// (never-run font, first session on this machine, or an unreadable/corrupt
+// file) -- the caller's job in that case is to "start with an empty cache
+// exactly as today" (workstream 12 brief), which is what an untouched
+// this.autokernCache already is.
+async function readAutokernCacheFromOPFS(projectIdentifier, source) {
+  const opfs = await getAutokernOPFS();
+  try {
+    const file = await opfs.readFile([
+      ...AUTOKERN_CACHE_OPFS_DIR,
+      autokernCacheFileName(projectIdentifier, source),
+    ]);
+    return JSON.parse(await file.text());
+  } catch (e) {
+    return null;
+  }
+}
+
+async function writeAutokernCacheToOPFS(projectIdentifier, source, cache) {
+  const opfs = await getAutokernOPFS();
+  await opfs.createDirectory(AUTOKERN_CACHE_OPFS_DIR);
+  const entries = [...cache.values()];
+  const blob = new Blob([JSON.stringify(entries)], { type: "application/json" });
+  await opfs.writeFile(
+    [...AUTOKERN_CACHE_OPFS_DIR, autokernCacheFileName(projectIdentifier, source)],
+    blob
+  );
+}
 
 export class KerningViewController extends ViewController {
   constructor(font, projectIdentifier) {
@@ -255,14 +334,20 @@ export class KerningViewController extends ViewController {
 
   // This workstream: the run worker (spec §4) and the Run button
   // (#kerning-run-button, previously unwired -- see the workstream-9 comment
-  // above). What this method does NOT build, deliberately:
-  //   - persistence (§4.1's "the cache persists between sessions") -- the
-  //     cache built here is in-memory only, on this.autokernCache, and is
-  //     gone on reload. IndexedDB/localStorage row storage is a separate,
-  //     later workstream.
+  // above).
+  //
+  // WORKSTREAM 12 adds persistence (§4.1's "the cache persists between
+  // sessions"): this.autokernCache is written to browser-side storage
+  // (OPFS, see the file-top comment) on every successful run and read back
+  // on load, before the designer clicks Run. Junk marks and the
+  // excluded-glyph list persist separately, through the font backend as
+  // project customData -- see togglePairJunk and the excluded-glyph input's
+  // "change" listener in initPairTableSection.
+  //
+  // What this method still does NOT build, deliberately:
   //   - the pair table UI (§7.3) that reads this.autokernCache.
-  //   - the status strip / source selector (§7.5) -- see the `source`
-  //     comment below for how the job shape stays ready for it anyway.
+  //   - the status strip / source selector (§7.5) -- see the `autokernSource`
+  //     getter below for how the job shape stays ready for it anyway.
   //   - classing UI (§5).
   //   - the calibration readout (§7.4) -- the calibration result IS kept
   //     (this.autokernCalibration), just not displayed yet.
@@ -272,6 +357,77 @@ export class KerningViewController extends ViewController {
 
     const runButton = document.querySelector("#kerning-run-button");
     runButton.addEventListener("click", () => this.runAutokern());
+
+    // Fire-and-forget: this.autokernCache is already a valid (empty) Map
+    // synchronously above, so nothing else in this constructor waits on the
+    // load. loadAutokernCacheFromStorage re-renders the pair table itself
+    // once it resolves, whether or not the pair table's own init has run
+    // yet (renderPairTable no-ops until its own preconditions are met, see
+    // its comment below).
+    this.loadAutokernCacheFromStorage();
+  }
+
+  // §7.5's source selector doesn't exist yet (out of scope, spec says so
+  // explicitly and the workstream 12 brief repeats it): there's exactly one
+  // hardcoded source today. Centralized here so the cache's read path (this
+  // getter, used by loadAutokernCacheFromStorage) and its write path
+  // (runAutokern, below) can never disagree about which source they mean.
+  get autokernSource() {
+    return "default";
+  }
+
+  // Spec §4.1: "The cache persists between sessions. It is expensive enough
+  // to rebuild that a session should not start by rebuilding it." Read path:
+  // OPFS -> plain array of entries -> a fresh Map keyed by pairKey(left,
+  // right), the exact shape autokern-cache.js's own functions expect and
+  // produce (mirrors how runAutokernWorker's "done" handler builds
+  // this.autokernCache from the worker's own [...cache.entries()] array).
+  // Then overlay the project's own junk marks (see
+  // applyStoredJunkMarksToCache) so a cache that predates a junk mark made
+  // on a DIFFERENT machine still shows it correctly -- the junk mark is
+  // project data and outranks whatever the browser-local cache file itself
+  // says about that pair's `junk` flag.
+  async loadAutokernCacheFromStorage() {
+    const entries = await readAutokernCacheFromOPFS(
+      this.projectIdentifier,
+      this.autokernSource
+    );
+    if (entries) {
+      this.autokernCache = new Map(
+        entries.map((entry) => [pairKey(entry.left, entry.right), entry])
+      );
+    }
+    this.autokernCache = this.applyStoredJunkMarksToCache(this.autokernCache);
+    this.renderPairTable();
+  }
+
+  // Write path, called after every successful run (runAutokernWorker's
+  // "done" handler) and after every junk-mark toggle (togglePairJunk), so
+  // the browser-side cache file never falls out of sync with
+  // this.autokernCache between the two events a reload could happen after.
+  async writeAutokernCacheToStorage() {
+    await writeAutokernCacheToOPFS(
+      this.projectIdentifier,
+      this.autokernSource,
+      this.autokernCache
+    );
+  }
+
+  // Overlays the project's stored junk-pair list (customData, see the
+  // file-top comment) onto `cache`, via autokern-cache.js's own
+  // markPairJunk (pure, returns a new Map -- `cache` itself is never
+  // mutated). A pair the project marks junk that this browser's cache has
+  // never seen still gets an entry (markPairJunk's own documented behavior:
+  // "if the pair has no existing entry, one is created... with value: 0"),
+  // so the mark is never silently dropped for a pair not yet measured here.
+  applyStoredJunkMarksToCache(cache) {
+    const junkPairs =
+      this.fontController.customData?.[AUTOKERN_JUNK_PAIRS_CUSTOM_DATA_KEY] || [];
+    let result = cache;
+    for (const { left, right } of junkPairs) {
+      result = markPairJunk(result, left, right, true);
+    }
+    return result;
   }
 
   // Rendering size: pixels at which the raster is built (spec §2.1: "derived
@@ -320,8 +476,10 @@ export class KerningViewController extends ViewController {
 
     // §7.5's source selector doesn't exist yet either, but the job still
     // carries a `source` identifier so the cache/job shape is ready for it:
-    // right now there is exactly one selectable source, the font's default.
-    const source = "default";
+    // right now there is exactly one selectable source, the font's default
+    // (this.autokernSource, also what the OPFS cache file is keyed by --
+    // see the file-top comment).
+    const source = this.autokernSource;
 
     const glyphsToRasterize = new Set([...CONTROL_GLYPH_NAMES, ...glyphNames]);
     const rasters = {};
@@ -400,7 +558,7 @@ export class KerningViewController extends ViewController {
     dialog.setContent(progressContent);
 
     const runResult = new Promise((resolve) => {
-      worker.onmessage = (event) => {
+      worker.onmessage = async (event) => {
         const data = event.data;
         if (data.type === "progress") {
           progressContent.textContent = `Measuring pairs: ${data.done} / ${data.total}`;
@@ -408,8 +566,18 @@ export class KerningViewController extends ViewController {
           this.autokernCalibration = data.calibration;
         } else if (data.type === "done") {
           this.autokernCache = new Map(data.cache);
+          // The worker's own cache already carries forward whatever junk
+          // flags this.autokernCache had when the job was built (it never
+          // re-measures a junk pair, see autokern-cache.js's
+          // pairsForRerun), but overlay the project's junk list again
+          // anyway -- cheap, and it means a run is never the one place that
+          // could silently drop a project-level junk mark.
+          this.autokernCache = this.applyStoredJunkMarksToCache(this.autokernCache);
           this.autokernCalibration = data.calibration;
           this.renderPairTable();
+          // Spec §4.1: "A run measures and writes one source" -- write path
+          // for the browser-side cache (see the file-top comment).
+          await this.writeAutokernCacheToStorage();
           resolve("done");
         } else if (data.type === "cancelled") {
           resolve("cancelled");
@@ -514,15 +682,44 @@ export class KerningViewController extends ViewController {
     });
 
     const excludedInput = document.querySelector("#kerning-pairtable-excluded");
-    excludedInput.value = filters.excludedGlyphs;
-    excludedInput.addEventListener("change", () => {
-      // Stored on the controller only. NOT wired into runAutokern's
+    // WORKSTREAM 12, spec §4.1/§4.2: the excluded-glyph list is the
+    // designer's judgement, not derived data, so it must survive a change
+    // of machine -- the project's own customData (read here from
+    // this.fontController.customData, already populated before this view's
+    // constructor runs, see the file-top comment) is authoritative over
+    // whatever localStorage happened to sync onto THIS machine via
+    // `filters.excludedGlyphs` above.
+    const storedExcludedGlyphs =
+      this.fontController.customData?.[AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY];
+    const initialExcludedGlyphs =
+      storedExcludedGlyphs !== undefined ? storedExcludedGlyphs : filters.excludedGlyphs;
+    excludedInput.value = initialExcludedGlyphs;
+    if (initialExcludedGlyphs !== filters.excludedGlyphs) {
+      this.autokernFiltersController.setItem("excludedGlyphs", initialExcludedGlyphs);
+    }
+    excludedInput.addEventListener("change", async () => {
+      // Stored on the controller (as before) AND, new in workstream 12,
+      // written through to the project (see the file-top comment for the
+      // exact mechanism). Still NOT wired into runAutokern's
       // excludedGlyphNames above: that method hardcodes
       // `excludedGlyphNames = []` with its own comment ("§4.2's
       // excluded-glyph field is not built yet"), so there is no rerun
       // interface here to plug into without guessing at one -- exactly the
-      // brief's instruction not to half-wire it.
+      // brief's instruction not to half-wire it. Persisting the FIELD's
+      // value is a separate concern from wiring it into a run.
       this.autokernFiltersController.setItem("excludedGlyphs", excludedInput.value);
+      await this.fontController.performEdit(
+        "kerning view: edit excluded glyphs",
+        "customData",
+        (root) => {
+          if (excludedInput.value) {
+            root.customData[AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY] = excludedInput.value;
+          } else {
+            delete root.customData[AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY];
+          }
+        },
+        this
+      );
     });
 
     const selectBindings = [
@@ -830,12 +1027,45 @@ export class KerningViewController extends ViewController {
     return tr;
   }
 
-  togglePairJunk(left, right, junk) {
+  async togglePairJunk(left, right, junk) {
     // autokern-cache.js's markPairJunk is a pure function (returns a NEW
     // Map, spec §4.2: "a mark... can be found and undone") -- this module
     // is not touched, only called, per the brief's file-ownership rule.
     this.autokernCache = markPairJunk(this.autokernCache, left, right, junk);
     this.renderPairTable();
+
+    // WORKSTREAM 12. Two separate writes, per the file-top comment's split:
+    // the cache file (browser-side, derived data, kept in sync so a reload
+    // between now and the next run still shows this mark) and the
+    // project's own junk-pair list (font backend customData, the designer's
+    // judgement, must survive a change of machine).
+    await this.writeAutokernCacheToStorage();
+    await this.writeJunkMarksToProject();
+  }
+
+  // Spec §4.1: junk marks "belong in the project's own data beside the
+  // other per-font settings" -- written the same way
+  // glyphsets-controller.js's PROJECT_GLYPH_SETS_CUSTOM_DATA_KEY is (see
+  // the file-top comment for the exact citation). Recomputes the FULL junk
+  // list from this.autokernCache each time (rather than patching one pair
+  // in) so the project's list can never drift from what the cache itself
+  // currently marks junk.
+  async writeJunkMarksToProject() {
+    const junkPairs = [...this.autokernCache.values()]
+      .filter((entry) => entry.junk)
+      .map((entry) => ({ left: entry.left, right: entry.right }));
+    await this.fontController.performEdit(
+      "kerning view: mark pair junk",
+      "customData",
+      (root) => {
+        if (junkPairs.length) {
+          root.customData[AUTOKERN_JUNK_PAIRS_CUSTOM_DATA_KEY] = junkPairs;
+        } else {
+          delete root.customData[AUTOKERN_JUNK_PAIRS_CUSTOM_DATA_KEY];
+        }
+      },
+      this
+    );
   }
 
   getSelectedPairTableRows() {
