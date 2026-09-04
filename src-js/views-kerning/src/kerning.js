@@ -43,7 +43,9 @@
 // derivation), every filter named in §7.3 (side, grouping, sign, state,
 // junk, plus the existing threshold control), an excluded-glyph field
 // (stored only, not wired into a rerun -- runAutokern above has no
-// excluded-glyph parameter to wire into), and the five actions (apply
+// excluded-glyph parameter to wire into -- CORRECTION, a later fix: it now
+// is, via this.autokernExcludedGlyphNames -- see runAutokern's own comment),
+// and the five actions (apply
 // selected, apply all with a second-press confirm, reset to current, reset
 // to zero, mark junk). Deliberately NOT built here: §5.2's fold (every row
 // stays one flat pair; "apply" therefore always writes a flat exception,
@@ -590,9 +592,26 @@ export class KerningViewController extends ViewController {
     // whatever raster it is given).
     const bias = params.reach;
 
-    // §4.2's excluded-glyph field is not built yet (out of scope), so no
-    // glyph is excluded from this workstream's run.
-    const excludedGlyphNames = [];
+    // Spec §4.2: the excluded-glyph field's own already-parsed list
+    // (initPairTableSection, on `this.autokernExcludedGlyphNames` -- parsed
+    // by parseExcludedGlyphNames, kept in sync with the field on load and on
+    // every "change"). Read here, not re-parsed: one source of truth for
+    // what "excluded" means. Falls back to an empty array if the pair-table
+    // section hasn't initialized yet (initRunSection and
+    // initPairTableSection both run from start(), but nothing enforces their
+    // order against each other).
+    //
+    // Control glyphs (CONTROL_GLYPH_NAMES) are deliberately NOT filtered out
+    // of the candidate pool here even if a designer names one in the
+    // excluded-glyph field: calibration (below) structurally requires their
+    // rasters, and excluding "l"/"n"/"o" from being KERNED against other
+    // glyphs is still honored -- see glyphsToRasterize below, which unions
+    // CONTROL_GLYPH_NAMES back in only for rasterization, not for
+    // `glyphNames` (the candidate pool the worker turns into pairs), so a
+    // designer who excludes a control glyph still gets calibration but no
+    // pairs involving it, which is the sensible reading of "excluded from a
+    // run" for a glyph the run structurally cannot omit entirely.
+    const excludedGlyphNames = this.autokernExcludedGlyphNames || [];
     const glyphNames = Object.keys(this.fontController.glyphMap || {}).filter(
       (name) => !excludedGlyphNames.includes(name)
     );
@@ -847,17 +866,25 @@ export class KerningViewController extends ViewController {
     if (initialExcludedGlyphs !== filters.excludedGlyphs) {
       this.autokernFiltersController.setItem("excludedGlyphs", initialExcludedGlyphs);
     }
+    // The single source of truth for a RUN's excluded-glyph list
+    // (runAutokern reads this property, not the raw text field): parsed
+    // once here at load and again on every "change" below, via
+    // parseExcludedGlyphNames (this method's own comment explains why that
+    // parser, not a second one). Kept as a plain instance property, not a
+    // key on this.autokernFiltersController, because that controller is
+    // localStorage-synchronized (synchronizeWithLocalStorage above) and the
+    // raw text it already stores (`excludedGlyphs`) is enough to
+    // reconstruct this on reload -- a second, redundant persisted copy of
+    // the same data would just be one more place for the two to disagree.
+    this.autokernExcludedGlyphNames = this.parseExcludedGlyphNames(initialExcludedGlyphs);
     excludedInput.addEventListener("change", async () => {
-      // Stored on the controller (as before) AND, new in workstream 12,
-      // written through to the project (see the file-top comment for the
-      // exact mechanism). Still NOT wired into runAutokern's
-      // excludedGlyphNames above: that method hardcodes
-      // `excludedGlyphNames = []` with its own comment ("§4.2's
-      // excluded-glyph field is not built yet"), so there is no rerun
-      // interface here to plug into without guessing at one -- exactly the
-      // brief's instruction not to half-wire it. Persisting the FIELD's
-      // value is a separate concern from wiring it into a run.
+      // Stored on the controller (as before), reparsed into
+      // this.autokernExcludedGlyphNames (the property runAutokern actually
+      // reads -- see the comment above), AND, since workstream 12, written
+      // through to the project (see the file-top comment for the exact
+      // mechanism).
       this.autokernFiltersController.setItem("excludedGlyphs", excludedInput.value);
+      this.autokernExcludedGlyphNames = this.parseExcludedGlyphNames(excludedInput.value);
       await this.fontController.performEdit(
         "kerning view: edit excluded glyphs",
         "customData",

@@ -504,9 +504,14 @@ flagged honestly during the build, not unbuilt spec:
   them as the designer's judgement/settings rather than a kerning suggestion being applied, and they
   are not among the actions §7.3 calls "one undo step"; this is a scoping decision, not an oversight,
   and can be revisited on request.
-- **The excluded-glyph field isn't wired into a rerun.** It's parsed, stored, and persisted as project
-  data (workstream 11/12) exactly like a junk mark, but `runAutokern` doesn't read it, so it currently
-  has no effect on what a run measures.
+- **Done: the excluded-glyph field is wired into a rerun.** It's parsed, stored, and persisted as
+  project data (workstream 11/12) exactly like a junk mark, and `runAutokern` now reads the field's
+  already-parsed list (`this.autokernExcludedGlyphNames`, kept in sync with the field on load and on
+  every "change" in `initPairTableSection`) instead of a hardcoded empty array, filtering both the
+  candidate pool and rasterization. The three control glyphs (`l`, `n`, `o`) are exempt from
+  exclusion for rasterization/calibration purposes (calibration structurally requires their rasters),
+  but still excluded from the candidate pool like any other named glyph, so excluding a control glyph
+  means "calibrate with it, but don't kern it against anything."
 - **A derived class's Accept has no rollback on partial failure.** `acceptDeriveProposal` (workstream
   15) writes one glyph's group membership at a time; a failure partway through a proposal's member
   list leaves some glyphs joined and others not, with nothing to undo it.
