@@ -248,6 +248,7 @@ export class KerningViewController extends ViewController {
     this.initPairTableSection();
     this.initAutokernStatusSection();
     this.initToolSwitcher();
+    this.initChipSection();
     this.initToolShortcuts();
 
     window.addEventListener("keydown", (event) => this.keyDownHandler(event));
@@ -278,10 +279,23 @@ export class KerningViewController extends ViewController {
   async initPhraseSection() {
     const phraseInput = document.querySelector("#kerning-phrase-input");
     const presetSelect = document.querySelector("#kerning-preset-select");
+    this.phraseInputElement = phraseInput;
 
+    // WORKSTREAM 16, spec §6: "switching back to `phrase` restores what was
+    // typed, which is not destroyed." The chip selector (initChipSection)
+    // owns the scene text while its mode is "pair" -- the phrase textarea
+    // itself is never written to by pair mode (see selectPairForScene
+    // below), so its own value survives untouched. This guard is what keeps
+    // ordinary typing here from clobbering the pair's scene text while pair
+    // mode is active; setChipMode reapplies phraseInput.value verbatim the
+    // moment the chip flips back to "phrase".
     const setText = () => {
+      if (this._chipMode === "pair") {
+        return;
+      }
       this.sceneSettingsController.setItem("text", phraseInput.value);
     };
+    this.applyPhraseText = setText;
     phraseInput.addEventListener("input", setText);
     phraseInput.addEventListener("change", setText);
 
@@ -1622,6 +1636,18 @@ export class KerningViewController extends ViewController {
     tr.dataset.left = row.left;
     tr.dataset.right = row.right;
 
+    // WORKSTREAM 16, spec §6: "Clicking a row in the table selects that pair
+    // and flips the chip to `pair`." Ignores clicks on the row's own
+    // checkbox/junk-mark button (event.target.closest guard) so selecting
+    // for apply/reset and marking junk are unaffected -- only a click on the
+    // row itself (its plain cells) selects the pair for the scene.
+    tr.addEventListener("click", (event) => {
+      if (event.target.closest("input, button")) {
+        return;
+      }
+      this.selectPairForScene(row.left, row.right);
+    });
+
     const selectCell = document.createElement("td");
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
@@ -1852,6 +1878,101 @@ export class KerningViewController extends ViewController {
     }
   }
 
+  // WORKSTREAM 16, spec §6: "A chip selector sits in the bottom left corner,
+  // holding `pair` and `phrase`. It is the only thing that decides what the
+  // pane draws. `pair` is disabled until a pair is selected. It has a
+  // hotkey." this._chipMode is the single source of truth read by
+  // initPhraseSection's setText guard above and by selectPairForScene below.
+  // `pair` starts disabled in kerning.html (the `disabled` attribute on
+  // #kerning-chip-selector's [data-chip="pair"] button) and stays disabled
+  // here until selectPairForScene (a pair-table row click) supplies a pair,
+  // matching "disabled until a pair is selected" literally rather than
+  // pre-enabling it and merely leaving it empty.
+  initChipSection() {
+    this._chipMode = "phrase";
+    this._selectedPairText = null;
+
+    const chipButtons = {};
+    for (const button of document.querySelectorAll("[data-chip]")) {
+      chipButtons[button.dataset.chip] = button;
+      button.addEventListener("click", () => this.setChipMode(button.dataset.chip));
+    }
+    this._chipButtons = chipButtons;
+    this.updateChipButtons();
+
+    // Spec §6: "It has a hotkey." Tab is not used by any other action
+    // registered in this file (registerAction calls above/below: the
+    // per-tool number-key shortcuts and action.kerning.hold-hand-tool's
+    // Space binding), so it is free here.
+    registerAction(
+      "action.kerning.toggle-chip",
+      {
+        topic: "0020-action-topics.menu.view",
+        titleKey: "kerning.toggle-chip",
+        defaultShortCuts: [{ baseKey: "Tab" }],
+      },
+      () => {
+        // Tab is a text-field navigation key: firing while the phrase
+        // textarea or any other text input/select has focus would hijack
+        // normal tabbing/typing (and this handler's own preventDefault
+        // would swallow the keystroke). Bail out and let the field behave
+        // normally instead.
+        const activeTag = document.activeElement?.tagName;
+        if (activeTag === "TEXTAREA" || activeTag === "INPUT" || activeTag === "SELECT") {
+          return;
+        }
+        this.setChipMode(this._chipMode === "phrase" ? "pair" : "phrase");
+      }
+    );
+  }
+
+  updateChipButtons() {
+    for (const [mode, button] of Object.entries(this._chipButtons || {})) {
+      button.style.fontWeight = mode === this._chipMode ? "bold" : "";
+    }
+  }
+
+  // Spec §6: switching the chip is the only thing that decides what the left
+  // pane draws. Switching to "pair" is refused (no-op) while no pair has
+  // been selected yet -- selectPairForScene below is the only caller that
+  // enables the "pair" button, so this can only be reached once a row has
+  // been clicked.
+  setChipMode(mode) {
+    if (mode === "pair" && !this._selectedPairText) {
+      return;
+    }
+    this._chipMode = mode;
+    this.updateChipButtons();
+    if (mode === "pair") {
+      this.sceneSettingsController.setItem("text", this._selectedPairText);
+    } else {
+      // Spec §6: "switching back to `phrase` restores what was typed, which
+      // is not destroyed." The phrase textarea's own value was never
+      // touched while pair mode was active (setText's guard in
+      // initPhraseSection), so re-applying it here restores exactly what
+      // the designer typed.
+      this.applyPhraseText();
+    }
+  }
+
+  // Called from buildPairRowElement's row-click handler (spec §6: "Clicking
+  // a row in the table selects that pair and flips the chip to `pair`").
+  // Builds a two-glyph display string the same "/glyphname" syntax
+  // characterLinesFromString already parses (character-lines.js) --
+  // parseExcludedGlyphNames above uses the identical "/name" convention for
+  // the same reason: it resolves whether or not the glyph has a literal
+  // character, so an unencoded glyph name (e.g. a ligature or a name with no
+  // Unicode mapping) still names itself directly rather than being silently
+  // dropped or misread as literal text.
+  selectPairForScene(left, right) {
+    this._selectedPairText = `/${left} /${right}`;
+    const pairButton = this._chipButtons?.pair;
+    if (pairButton) {
+      pairButton.disabled = false;
+    }
+    this.setChipMode("pair");
+  }
+
   // Number-key tool shortcuts (mirrors editor.js: each tool gets its 1-based
   // position among the tools as a default key) and hold-space-for-hand-tool
   // (the same mechanism as editor.js's action.canvas.clean-view-and-hand-tool,
@@ -1892,6 +2013,16 @@ export class KerningViewController extends ViewController {
   }
 
   keyDownHandler(event) {
+    // Tab is a text-field navigation key (spec §6's chip hotkey): if a text
+    // input/textarea/select has focus, leave it alone entirely -- even
+    // preventDefault() on the keydown here would swallow normal tabbing
+    // and typing before the action callback gets a chance to no-op.
+    if (event.key === "Tab") {
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === "TEXTAREA" || activeTag === "INPUT" || activeTag === "SELECT") {
+        return;
+      }
+    }
     const actionIdentifier = getActionIdentifierFromKeyEvent(event);
     if (actionIdentifier) {
       event.preventDefault();

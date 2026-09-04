@@ -167,6 +167,12 @@
   border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
 }
 
+/* Workstream 16 (spec §6): a row click selects that pair for the left
+   pane's chip selector (kerning.js's buildPairRowElement/selectPairForScene). */
+.kerning-pairtable-table tbody tr {
+  cursor: pointer;
+}
+
 /* Workstream 13 (spec §7.4): the calibration readout. Collapsed by default,
    same <details>/<summary> pattern as #kerning-parameters-collapsible. A
    readout only -- no controls live here. */
