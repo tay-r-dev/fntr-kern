@@ -1319,6 +1319,61 @@ export class KerningViewController extends ViewController {
       : (sorted[mid - 1] + sorted[mid]) / 2;
   }
 
+  // Spec §10/§5.2, Direction A: the per-glyph sections (§7.3) stay anchored
+  // to the typed/selected glyph -- `group.rows` (built in buildFoldGroups
+  // from the cache entries that touch `glyphName`) is still exactly what
+  // decides which rows are VISIBLE and expandable under a folded parent.
+  // What this method fixes is what the parent's own STATS describe: spec
+  // §5.2's own illustrative example folds `T` into a `T Tcaron Tbar` x
+  // `o ó ö` parent whose "40 pairs, spread 8" is stated as covering the
+  // WHOLE class x class product, not only the rows that happen to involve
+  // `T`. Before this method existed, the parent's median/count were
+  // `medianOf(group.rows.map(...))` / `group.rows.length` -- i.e. only the
+  // cache rows touching the one typed glyph, understating both the moment a
+  // second member of `T`'s own class (say `Tcaron`) also had cached rows
+  // against the same `o`/`ó`/`ö` class.
+  //
+  // leftMembers/rightMembers are the FULL membership of both classes
+  // (kernData.groupsSide1/groupsSide2, spec §5.2: "the table shows its
+  // membership"), not just group.members (which, before this method, was
+  // only the varying side's class -- see buildFoldGroups' own comment).
+  // `entries` is every cache entry whose left is in leftMembers AND whose
+  // right is in rightMembers -- the FULL class x class product's cache
+  // coverage, queried against the WHOLE this.autokernCache, regardless of
+  // whether either endpoint is the typed glyph. `count` is entries.length
+  // (spec's "N pairs"), `median` is medianOf(entries' values) (unmodified,
+  // reused). `spread` reuses classSpread (autokern-classes.js, unmodified)
+  // exactly as before, except the cache it is handed is now `entries` (the
+  // class x class filtered set) instead of the whole flat cache -- so
+  // classSpread's own "every column the cache has data for" (its file-top
+  // comment) is naturally restricted to columns inside the OTHER class,
+  // instead of picking up an unrelated glyph that happens to share a class
+  // member's row. The `side` argument and the member list it is called
+  // with (the varying side's full members) are unchanged from before.
+  computeFoldGroupStats(group, section) {
+    const kernData = this.kerningController.kernData;
+    const leftMembers = kernData.groupsSide1[group.leftClassName] || [];
+    const rightMembers = kernData.groupsSide2[group.rightClassName] || [];
+    const leftSet = new Set(leftMembers);
+    const rightSet = new Set(rightMembers);
+
+    const entries = [];
+    for (const entry of this.autokernCache.values()) {
+      if (leftSet.has(entry.left) && rightSet.has(entry.right)) {
+        entries.push(entry);
+      }
+    }
+
+    const median = entries.length
+      ? KerningViewController.medianOf(entries.map((entry) => entry.value))
+      : KerningViewController.medianOf(group.rows.map((row) => row.suggestion));
+    const side = section === 1 ? "right" : "left";
+    const varyingMembers = section === 1 ? rightMembers : leftMembers;
+    const spread = classSpread(varyingMembers, entries, side);
+
+    return { leftMembers, rightMembers, entries, median, spread };
+  }
+
   buildFoldRowElements(group, section) {
     const tr = document.createElement("tr");
     tr.className = "kerning-pairtable-fold-row";
@@ -1326,20 +1381,23 @@ export class KerningViewController extends ViewController {
     const selectCell = document.createElement("td");
     tr.appendChild(selectCell);
 
-    const median = KerningViewController.medianOf(group.rows.map((row) => row.suggestion));
+    // Spec §5.2/§10 Direction A: stats come from the FULL class x class
+    // product (computeFoldGroupStats, above), not from group.rows (which
+    // stays scoped to the typed glyph, for the browsing structure §7.3
+    // wants -- see childRows below).
+    const stats = this.computeFoldGroupStats(group, section);
+    const { median, spread, leftMembers, rightMembers } = stats;
 
-    // WORKSTREAM 15, spec §5.2: "Spread is the class quality readout... call
-    // it, don't reimplement" -- classSpread (autokern-classes.js) computes
-    // it over the WHOLE class's cached rows (every partner it has data
-    // against, not just this table's fixed glyph), which is the class-wide
-    // quality reading the spec describes, not a narrower one scoped to this
-    // one cell.
-    const cacheEntries = [...this.autokernCache.values()];
-    const side = section === 1 ? "right" : "left";
-    const spread = classSpread(group.members, cacheEntries, side);
-
+    // Spec §5.2's own example folds into "T Tcaron Tbar   -48   o ó ö" --
+    // BOTH sides show their full class membership, not the one typed glyph.
+    // section 1: leftMembers is the glyph's own (fixed) class, rightMembers
+    // is the varying class. section 2 is the mirror. nameCell keeps its
+    // established column (the varying side, matching what the ordinary
+    // per-row table calls "left" for section 1's rows) and otherCell keeps
+    // its column (the fixed side) -- only the CONTENT changes, from a
+    // single glyph name to the full class list.
     const nameCell = document.createElement("td");
-    nameCell.textContent = truncateGlyphList(group.members);
+    nameCell.textContent = truncateGlyphList(section === 1 ? rightMembers : leftMembers);
     tr.appendChild(nameCell);
 
     const deltaCell = document.createElement("td");
@@ -1347,8 +1405,7 @@ export class KerningViewController extends ViewController {
     tr.appendChild(deltaCell);
 
     const otherCell = document.createElement("td");
-    otherCell.textContent =
-      section === 1 ? group.rows[0].left : group.rows[0].right;
+    otherCell.textContent = truncateGlyphList(section === 1 ? leftMembers : rightMembers);
     tr.appendChild(otherCell);
 
     const currentCell = document.createElement("td");
@@ -1359,7 +1416,7 @@ export class KerningViewController extends ViewController {
     tr.appendChild(currentCell);
 
     const infoCell = document.createElement("td");
-    infoCell.textContent = `${group.rows.length} pairs, spread ${spread.overall.toFixed(1)}`;
+    infoCell.textContent = `${stats.entries.length} pairs, spread ${spread.overall.toFixed(1)}`;
     tr.appendChild(infoCell);
 
     const applyButton = document.createElement("button");

@@ -254,7 +254,15 @@ can.
 
 **Spread is the class quality readout.** The parent carries the range across its members. Tight
 means the class is right. Wide means the class is wrong or one member genuinely wants an exception,
-and expanding shows which. Nothing in the fork gives this today.
+and expanding shows which.
+
+**The parent's membership, count, median and spread are the full class×class product's cache
+coverage** -- every member of the side-1 class against every member of the side-2 class, drawn from
+the whole cache, not only the pairs that happen to touch whichever glyph is currently typed into the
+table above. "40 pairs" is how many of that product the cache actually holds a value for, which can
+be fewer than the two classes' sizes multiplied together if the run never measured every combination.
+A row only appears when the typed glyph happens to be a member of one of the two classes; once it
+does, the parent it folds into describes the whole class pairing, not a slice of it.
 
 **A class's stored name is an address, and the table shows its membership instead.** Naming a class
 after one representative glyph is the field's convention and it is misleading, because a class
@@ -528,10 +536,27 @@ flagged honestly during the build, not unbuilt spec:
   before-value write later) and shows the designer both the original error and which glyph(s) the
   rollback itself failed on, by name. Proposals are only removed from the pending list on full
   success; a failed or partially-failed Accept leaves the proposal in place to retry.
-- **The fold is anchored to the pair table's existing per-glyph sections, not the full class×class
-  cross-product §5.2's own illustrative example shows** (the `T Tcaron Tbar` × `o ó ö` example).
-  Building the general case means the table stops being anchored to one typed/selected glyph -- a
-  re-architecture, not a small fix.
+- **Done: a folded parent's stats (member count, median, spread) come from the full class×class
+  product, not a subset anchored to the typed glyph.** Direction A, not Direction B (spec §10's own
+  fork between the two): the per-glyph sections (§7.3, "for THIS glyph") stay anchored to the typed
+  glyph -- `buildFoldGroups`' `group.rows` (the cache entries that actually touch the typed glyph)
+  is still exactly what decides which rows are visible and expandable under a folded parent. What
+  changed is `buildFoldRowElements` no longer derives the parent's median/count/name lists from
+  `group.rows`; a new `computeFoldGroupStats(group, section)` reads both classes' full membership
+  from `kerningController.kernData.groupsSide1`/`groupsSide2`, filters `this.autokernCache` (the
+  WHOLE cache, not the rows touching the typed glyph) to every entry whose left is in the side-1
+  class and whose right is in the side-2 class, and computes the parent's median and "N pairs" count
+  from that filtered set. `classSpread` (`autokern-classes.js`, unmodified, still the sole reducer)
+  is now called with that same class×class-filtered set as its cache argument, so its own "every
+  column the cache has data for" is naturally restricted to the paired class's members rather than
+  any unrelated glyph that happens to share a cache row with a class member. The parent row's name
+  and "other" cells were also changed to display each side's FULL class membership
+  (`T Tcaron Tbar` / `o ó ö`, truncated the same way `truncateGlyphList` already truncates a derive
+  proposal's member list) instead of the single typed glyph name previously shown on the fixed side.
+  `medianOf` is unchanged. One documented limitation: if the class×class product has zero cache
+  coverage (defensive-only; a fold group can only exist when `group.rows` is non-empty, so this
+  cannot happen through the UI today) the median falls back to `group.rows`' own values rather than
+  being undefined.
 - **Done: on-canvas display of a suggestion.** `kerning.js` now draws the pair-mode-selected pair's
   measured suggestion (`this.autokernCache`) directly on the left-pane canvas, via a new
   visualization-layer definition built once in the constructor
