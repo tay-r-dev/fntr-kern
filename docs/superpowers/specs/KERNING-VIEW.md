@@ -532,14 +532,33 @@ flagged honestly during the build, not unbuilt spec:
   cross-product §5.2's own illustrative example shows** (the `T Tcaron Tbar` × `o ó ö` example).
   Building the general case means the table stops being anchored to one typed/selected glyph -- a
   re-architecture, not a small fix.
-- **No on-canvas display of a suggestion.** The left pane never draws a measured suggestion -- it
-  reuses the editor's scene unmodified, which lays out text with whatever kerning is actually stored,
-  so `pair` mode shows the pair as kerned *today*, not as the pair table's delta proposes. The editor's
-  own kerning/sidebearing tools (`edit-tools-metrics.js`, wired into this view's left pane in
-  workstream 17) already draw adjustment values and distance lines for the *stored* kern when that
-  tool is active; nothing equivalent exists for the *suggested* value from `this.autokernCache`. A
-  designer currently has to read the delta number in the table and imagine it, or apply the row (which
-  is permanent, since there's no undo yet -- see above) to actually see it. Requested 2026-09-04: draw
-  the suggestion the same way the editor draws a stored kern -- values and lines -- probably as a
-  visualization layer or an extension of the kerning tool's own handle rendering, gated to `pair` mode
-  since it only makes sense for a single selected pair.
+- **Done: on-canvas display of a suggestion.** `kerning.js` now draws the pair-mode-selected pair's
+  measured suggestion (`this.autokernCache`) directly on the left-pane canvas, via a new
+  visualization-layer definition built once in the constructor
+  (`buildAutokernSuggestionVisualizationLayerDefinition`) and appended to a *copy* of the shared
+  `visualizationLayerDefinitions` array -- never pushed into that shared array itself, so it stays
+  invisible to `views-editor`'s own editor view. Traced before building: `KerningTool`
+  (`edit-tools-metrics.js`) draws no canvas line of its own for a stored kern -- its numeric label
+  (`KerningHandle`) is a DOM custom element, not canvas, and only exists while the kerning tool is
+  the active tool and a pair is hovered/selected. The part of "how the editor draws a stored kern"
+  that genuinely is a visualization layer is `fontra.kerning-indicators-tool`: a translucent
+  `fillRect` band over the kern gap, tool-gated (only draws while `KerningTool.isActive`), not
+  scene-gated -- so it can be visible at the same time as this new layer, on the same pair, and the
+  two must read as different facts. This layer mirrors that band's mechanism (a fill plus a stroked
+  boundary, using the same `strokeLine` helper `fontra.baseline` and the sidebearing layers already
+  use, both already exported from `visualization-layer-definitions.js` -- no new export was needed)
+  but distinguishes itself with a dashed, violet boundary, a "suggest: <value>" text label (canvas
+  `fillText`, since this view has no DOM-handle infrastructure to reuse), and a different zIndex (195,
+  just above the stored-kern band's 190) so it never disappears underneath it. Gating: the draw
+  function no-ops immediately unless `this._chipMode === "pair"` (spec: "gated to `pair` mode"), and
+  again unless `this.autokernCache.get(pairKey(left, right))` finds an entry for the pair
+  `selectPairForScene` most recently selected (`this._selectedPairLeft`/`this._selectedPairRight`,
+  set together with `this._chipMode` in that one method) -- no entry (no run yet, or an
+  excluded/filtered pair) draws nothing, never a placeholder or a zero. Which positioned glyph is the
+  pair's right member is found by object identity against `model.positionedLines[0].glyphs[1]`, exact
+  because pair mode always sets the scene text to exactly `"/left /right"`, not by name comparison
+  (which would be ambiguous for a pair like `o`/`o`). Live updates: switching pairs repaints through
+  the same scene-text change `selectPairForScene`/`setChipMode` already trigger; a new run, a reload
+  from OPFS, and an apply all end in `renderPairTable()`, which now also calls
+  `this.canvasController.requestUpdate()` -- added there, once, because nothing else forced a
+  repaint when only the cache changed while the chip stayed on `pair`.

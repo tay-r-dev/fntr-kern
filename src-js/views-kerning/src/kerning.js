@@ -112,6 +112,7 @@ import { rasterizeGlyph } from "@fontra/core/glyph-raster.js";
 import { UndoStack, reverseUndoRecord } from "@fontra/core/font-controller.js";
 import { translate } from "@fontra/core/localization.js";
 import { script as scriptOfCodePoint } from "@fontra/core/unicode-scripts-blocks.js";
+import { round } from "@fontra/core/utils.ts";
 import { ObservableController } from "@fontra/core/observable-object.ts";
 import { getOPFS } from "@fontra/core/opfs.js";
 import { SceneView } from "@fontra/core/scene-view.js";
@@ -124,7 +125,11 @@ import {
   SidebearingTool,
 } from "@fontra/views-editor/edit-tools-metrics.js";
 import { SceneController } from "@fontra/views-editor/scene-controller.js";
-import { visualizationLayerDefinitions } from "@fontra/views-editor/visualization-layer-definitions.js";
+import {
+  glyphSelector,
+  strokeLine,
+  visualizationLayerDefinitions,
+} from "@fontra/views-editor/visualization-layer-definitions.js";
 import {
   VisualizationContext,
   VisualizationLayers,
@@ -231,8 +236,25 @@ export class KerningViewController extends ViewController {
     );
     this.canvasController = canvasController;
 
+    // Spec §10 ("No on-canvas display of a suggestion"): a view-specific
+    // visualization layer, drawing the CURRENTLY SELECTED pair's measured
+    // suggestion (this.autokernCache) the same visual language the editor's
+    // own KerningTool uses for a STORED kern -- see
+    // buildAutokernSuggestionVisualizationLayerDefinition below for why this
+    // is a layer definition (matching the mechanism KerningTool's own
+    // "fontra.kerning-indicators"/"-tool" layers in edit-tools-metrics.js
+    // already use for the stored kern) rather than a second draw pass bolted
+    // onto KerningTool itself. Appended to a COPY of the shared
+    // visualizationLayerDefinitions array, never pushed into the shared
+    // array itself (registerVisualizationLayerDefinition mutates a
+    // module-level singleton that views-editor's own EditorController reads
+    // from the same import -- pushing into it here would leak this
+    // kerning-view-only layer into the editor view too).
     this.visualizationLayers = new VisualizationLayers(
-      visualizationLayerDefinitions,
+      [
+        ...visualizationLayerDefinitions,
+        this.buildAutokernSuggestionVisualizationLayerDefinition(),
+      ],
       this.isThemeDark
     );
 
@@ -1125,6 +1147,17 @@ export class KerningViewController extends ViewController {
     if (!this.autokernCache || !this.kerningController || !this.autokernFiltersController) {
       return;
     }
+
+    // Spec §10: the on-canvas suggestion layer
+    // (buildAutokernSuggestionVisualizationLayerDefinition) reads
+    // this.autokernCache directly on every draw, but nothing else forces a
+    // repaint when only the CACHE changes and the chip stays on "pair" (a
+    // new run, a reload from OPFS, or an apply that doesn't change which
+    // pair is selected) -- every caller of renderPairTable is exactly the
+    // set of places the cache or an applied/junk mark can change, so this is
+    // the one place to force it rather than duplicating this call at each
+    // of those call sites.
+    this.canvasController.requestUpdate();
 
     // WORKSTREAM 14, spec §7.5: called from every place renderPairTable
     // already is (this method's own callers -- see this method's top
@@ -2163,6 +2196,15 @@ export class KerningViewController extends ViewController {
   initChipSection() {
     this._chipMode = "phrase";
     this._selectedPairText = null;
+    // The currently selected pair's two glyph names (spec §6/§10), read by
+    // the suggestion visualization layer's draw function
+    // (buildAutokernSuggestionVisualizationLayerDefinition below) to look up
+    // this.autokernCache -- set once, in selectPairForScene, and never
+    // cleared on switching back to "phrase": the layer itself re-gates on
+    // this._chipMode === "pair" on every draw, so a stale pair name sitting
+    // here while in "phrase" mode is inert, not wrong.
+    this._selectedPairLeft = null;
+    this._selectedPairRight = null;
 
     const chipButtons = {};
     for (const button of document.querySelectorAll("[data-chip]")) {
@@ -2238,11 +2280,160 @@ export class KerningViewController extends ViewController {
   // dropped or misread as literal text.
   selectPairForScene(left, right) {
     this._selectedPairText = `/${left} /${right}`;
+    this._selectedPairLeft = left;
+    this._selectedPairRight = right;
     const pairButton = this._chipButtons?.pair;
     if (pairButton) {
       pairButton.disabled = false;
     }
     this.setChipMode("pair");
+  }
+
+  // Spec §10 ("No on-canvas display of a suggestion"), closing it: draws the
+  // pair-mode-selected pair's measured suggestion (this.autokernCache) as a
+  // distance line + numeric label, matching the visual language
+  // edit-tools-metrics.js's KerningTool already uses for a STORED kern.
+  //
+  // What "the visual language" actually is, traced from
+  // edit-tools-metrics.js before choosing this: KerningTool itself draws NO
+  // canvas line -- its numeric label (KerningHandle, a DOM custom element
+  // positioned via canvasController.canvasPoint) is DOM, not canvas, and only
+  // exists per-handle while the kerning tool is the active tool and a pair is
+  // hovered/selected. The one thing that IS drawn on canvas for a stored kern
+  // regardless of hover/selection, whenever the kerning tool is active, is
+  // the registered visualization layer "fontra.kerning-indicators-tool"
+  // (zIndex 190): a translucent fillRect spanning the kern gap, colored by
+  // sign. That fillRect (not a DOM handle, which this view has no
+  // infrastructure for and which would need building from scratch) is the
+  // part of "how the editor draws a stored kern" that is actually a
+  // visualization layer, so it -- not the DOM handle -- is what this layer
+  // mirrors: a filled band over the same gap, at zIndex 195 (just above the
+  // stored-kern band, so it never disappears underneath it), plus a
+  // stroked boundary line (strokeLine, imported from
+  // visualization-layer-definitions.js, the same helper
+  // fontra.baseline/fontra.sidebearings-tool use for their own lines) at the
+  // suggestion's edge, plus a canvas text label reading "suggest: <value>" --
+  // the "suggest:" prefix and a dashed, differently-colored boundary line are
+  // the distinguishing treatment from the kerning tool's own stored-kern
+  // band, chosen because both CAN be visible at once (the kerning-indicators
+  // layer is gated on KerningTool being the active tool, not on pair mode --
+  // it draws for every glyph in the string, in every tool... no: re-checked,
+  // kerningVisualizationSelector(true)'s selectionFunc returns [] unless
+  // theKerningTool.isActive is true, i.e. it IS tool-gated, not scene-gated;
+  // but it draws for every glyph pair in the whole string whenever the
+  // kerning tool happens to be active, including while pair mode is also
+  // showing a two-glyph pair -- so the two layers CAN legitimately overlap on
+  // exactly the pair this layer draws, and must read as two different facts,
+  // not one blurred shape).
+  //
+  // Gating (spec §10: "gated to pair mode since it only makes sense for a
+  // single selected pair"): this._chipMode !== "pair" is an immediate no-op.
+  // Within pair mode, selectPairForScene (above) is the only place that ever
+  // sets this._chipMode to "pair" in the first place, and it always sets
+  // this._selectedPairLeft/Right in the same call, so by the time
+  // this._chipMode is "pair" here, both names are already set to the pair
+  // that produced it (selectPairForScene sets all three together, in that
+  // order, before setChipMode("pair") does anything scene-visible).
+  //
+  // Identifying WHICH positioned glyph is the pair's right member: pair mode
+  // always sets the scene text to exactly "/left /right" (selectPairForScene
+  // above), so model.positionedLines[0].glyphs is always exactly the pair's
+  // two glyphs when in pair mode, in order. Comparing the drawn item against
+  // that exact array slot by object identity (both come from the same
+  // model.positionedLines on the same frame) is exact, not name-matching --
+  // so a pair like o/o (identical glyph names on both sides) is not
+  // ambiguous here the way name comparison alone would be.
+  //
+  // No cache entry (spec §10: "before a run, or an excluded/filtered pair --
+  // draws nothing, not a placeholder/zero"): this.autokernCache.get(...)
+  // returning undefined is the same no-op return every other guard here uses.
+  //
+  // Live updates: this method builds the layer definition ONCE, in the
+  // constructor -- draw itself is a closure that reads
+  // this._chipMode/this._selectedPairLeft/this._selectedPairRight/
+  // this.autokernCache fresh on every call, so nothing about live update
+  // lives here. It lives in what actually repaints the canvas afterward: (1)
+  // switching pairs -- selectPairForScene -> setChipMode("pair") ->
+  // sceneSettingsController.setItem("text", ...), the same scene-text change
+  // that already repaints the left pane's glyphs today; (2) a new run or a
+  // reload from storage -- runAutokernWorker's "done" handler and
+  // loadAutokernCacheFromStorage both call renderPairTable(), which now also
+  // calls this.canvasController.requestUpdate() (see renderPairTable's own
+  // comment) specifically because nothing else forced a repaint when only
+  // this.autokernCache changed and the chip stayed on "pair"; (3) applying a
+  // row -- writePairValues also ends with renderPairTable(), the same call,
+  // so an apply's repaint is the identical mechanism as (2), not a third one.
+  buildAutokernSuggestionVisualizationLayerDefinition() {
+    return {
+      identifier: "forkra.kerning.autokern-suggestion",
+      name: "Autokern suggestion (kerning view)",
+      selectionFunc: glyphSelector("all"),
+      // Not userSwitchable: gating is entirely on pair mode + a cache entry
+      // existing (spec §10), not a designer-facing visibility toggle -- there
+      // is no equivalent toggle for the kerning tool's own stored-kern band
+      // either while pair mode is what's deciding visibility.
+      userSwitchable: false,
+      defaultOn: true,
+      zIndex: 195,
+      screenParameters: { strokeWidth: 1.5, fontSize: 11 },
+      colors: {
+        lineColor: "#9B30FFCC",
+        fillColor: "#9B30FF26",
+        textColor: "#9B30FF",
+      },
+      colorsDarkMode: {
+        lineColor: "#C77DFFCC",
+        fillColor: "#C77DFF26",
+        textColor: "#C77DFF",
+      },
+      draw: (context, positionedGlyph, parameters, model, controller) => {
+        if (this._chipMode !== "pair") {
+          return;
+        }
+        const line = model.positionedLines?.[0];
+        if (!line || positionedGlyph !== line.glyphs?.[1]) {
+          return;
+        }
+        const left = this._selectedPairLeft;
+        const right = this._selectedPairRight;
+        if (!left || !right || !this.autokernCache) {
+          return;
+        }
+        const entry = this.autokernCache.get(pairKey(left, right));
+        if (!entry) {
+          return;
+        }
+        const suggestionValue = entry.value;
+
+        const ascender = model.ascender ?? 0;
+        const descender = model.descender ?? 0;
+
+        context.strokeStyle = parameters.lineColor;
+        context.lineWidth = parameters.strokeWidth;
+        context.fillStyle = parameters.fillColor;
+        context.fillRect(0, descender, -suggestionValue, ascender - descender);
+        context.setLineDash([4, 3]);
+        strokeLine(context, 0, descender, 0, ascender);
+        strokeLine(
+          context,
+          -suggestionValue,
+          descender,
+          -suggestionValue,
+          ascender
+        );
+        context.setLineDash([]);
+
+        context.fillStyle = parameters.textColor;
+        context.textAlign = "center";
+        context.font = `${parameters.fontSize}px fontra-ui-regular, sans-serif`;
+        context.scale(1, -1);
+        context.fillText(
+          `suggest: ${round(suggestionValue, 1)}`,
+          -suggestionValue / 2,
+          -(ascender + parameters.fontSize * 1.5)
+        );
+      },
+    };
   }
 
   // Number-key tool shortcuts (mirrors editor.js: each tool gets its 1-based
