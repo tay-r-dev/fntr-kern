@@ -252,20 +252,6 @@ export class KerningViewController extends ViewController {
     }
     this.setSelectedTool("pointer-tool");
 
-    // WORKSTREAM 14, spec §4.1/§7.5: "the source is chosen in the status
-    // strip". this.autokernSource (getter below) reads this field, and
-    // initRunSection's loadAutokernCacheFromStorage (called synchronously
-    // below) reads that getter -- so this must be set before initRunSection
-    // runs. this.fontController.defaultSourceIdentifier (font-controller.js)
-    // is the same "no explicit choice yet" default
-    // panel-designspace-navigation.js's own source list falls back to.
-    this._autokernSourceIdentifier = this.fontController.defaultSourceIdentifier;
-
-    this.initPhraseSection();
-    this.initParametersSection();
-    this.initRunSection();
-    this.initPairTableSection();
-    this.initAutokernStatusSection();
     this.initToolSwitcher();
     this.initChipSection();
     this.initToolShortcuts();
@@ -283,6 +269,37 @@ export class KerningViewController extends ViewController {
     themeController.addListener((event) => {
       this.themeChanged();
     });
+  }
+
+  // ViewController.fromBackend() constructs the controller (`new this(...)`)
+  // and only AFTER that awaits start(), which is what actually calls
+  // fontController.initialize() (see ViewController.start() in
+  // view-controller.js). Reading font data -- customData, sources,
+  // defaultSourceIdentifier, anything on fontController that isn't just the
+  // font/projectIdentifier passed to the constructor -- from inside the
+  // constructor throws, because fontController._rootObject doesn't exist
+  // yet. editor.js follows the same rule: its own start() override does
+  // `await super.start()` before touching anything font-shaped. This was a
+  // real bug (workstreams 12 and 14 put font-data reads straight in the
+  // constructor) that crashed every kerning-view page load; fixed by moving
+  // all of it here.
+  async start() {
+    await super.start();
+
+    // Spec §4.1/§7.5: "the source is chosen in the status strip".
+    // this.autokernSource (getter below) reads this field, and
+    // initRunSection's loadAutokernCacheFromStorage reads that getter -- so
+    // this must be set before initRunSection runs.
+    // this.fontController.defaultSourceIdentifier is the same "no explicit
+    // choice yet" default panel-designspace-navigation.js's own source list
+    // falls back to.
+    this._autokernSourceIdentifier = this.fontController.defaultSourceIdentifier;
+
+    this.initPhraseSection();
+    this.initParametersSection();
+    this.initRunSection();
+    this.initPairTableSection();
+    this.initAutokernStatusSection();
   }
 
   themeChanged() {
