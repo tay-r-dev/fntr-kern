@@ -41,10 +41,12 @@ import {
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { CanvasController } from "@fontra/core/canvas-controller.js";
 import { parsePhrasePresets } from "@fontra/core/character-lines.js";
+import { rasterizeGlyph } from "@fontra/core/glyph-raster.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
 import { SceneView } from "@fontra/core/scene-view.js";
 import { themeController } from "@fontra/core/theme-settings.js";
 import { ViewController } from "@fontra/core/view-controller.js";
+import { dialogSetup } from "@fontra/web-components/modal-dialog.js";
 import { HandTool } from "@fontra/views-editor/edit-tools-hand.js";
 import { SceneController } from "@fontra/views-editor/scene-controller.js";
 import { visualizationLayerDefinitions } from "@fontra/views-editor/visualization-layer-definitions.js";
@@ -53,6 +55,9 @@ import {
   VisualizationLayers,
 } from "@fontra/views-editor/visualization-layers.js";
 import { SelectTool } from "./edit-tools-select.js";
+
+// Spec §2.4: the three control glyphs calibration reads.
+const CONTROL_GLYPH_NAMES = ["l", "n", "o"];
 
 export class KerningViewController extends ViewController {
   constructor(font, projectIdentifier) {
@@ -115,6 +120,7 @@ export class KerningViewController extends ViewController {
 
     this.initPhraseSection();
     this.initParametersSection();
+    this.initRunSection();
     this.initToolSwitcher();
     this.initToolShortcuts();
 
@@ -211,6 +217,205 @@ export class KerningViewController extends ViewController {
         this.autokernParamsController.setItem(key, convert(element.value));
       });
     }
+  }
+
+  // This workstream: the run worker (spec §4) and the Run button
+  // (#kerning-run-button, previously unwired -- see the workstream-9 comment
+  // above). What this method does NOT build, deliberately:
+  //   - persistence (§4.1's "the cache persists between sessions") -- the
+  //     cache built here is in-memory only, on this.autokernCache, and is
+  //     gone on reload. IndexedDB/localStorage row storage is a separate,
+  //     later workstream.
+  //   - the pair table UI (§7.3) that reads this.autokernCache.
+  //   - the status strip / source selector (§7.5) -- see the `source`
+  //     comment below for how the job shape stays ready for it anyway.
+  //   - classing UI (§5).
+  //   - the calibration readout (§7.4) -- the calibration result IS kept
+  //     (this.autokernCalibration), just not displayed yet.
+  initRunSection() {
+    this.autokernCache = new Map();
+    this.autokernCalibration = null;
+
+    const runButton = document.querySelector("#kerning-run-button");
+    runButton.addEventListener("click", () => this.runAutokern());
+  }
+
+  // Rendering size: pixels at which the raster is built (spec §2.1: "derived
+  // from the font's units per em so that one pixel is a few units", against
+  // halfkern's fixed-100 which the spec calls too coarse). No further spec
+  // constant is given, so this keeps roughly halfkern's own pixel density
+  // (100px at 1000 upm) scaled to the font's actual unitsPerEm.
+  get autokernRenderSize() {
+    const unitsPerEm = this.fontController.unitsPerEm || 1000;
+    return Math.round((unitsPerEm / 1000) * 100);
+  }
+
+  // Vertical extent shared by every raster in a run (glyph-raster.js: "so
+  // two different glyphs' rasters put the same absolute vertical position on
+  // the same row"). No ascender/descender metric is exposed by
+  // font-controller.js today, so this is a placeholder fraction of
+  // unitsPerEm, not a read font metric -- a real gap, left for whoever wires
+  // §7.4/real vertical metrics, noted here rather than silently guessed at
+  // without comment.
+  get autokernVerticalExtent() {
+    const unitsPerEm = this.fontController.unitsPerEm || 1000;
+    return { yTop: unitsPerEm * 0.8, yBottom: unitsPerEm * -0.25 };
+  }
+
+  async runAutokern() {
+    const params = this.autokernParamsController.model;
+    const renderSize = this.autokernRenderSize;
+    const unitsPerEm = this.fontController.unitsPerEm;
+    const verticalExtent = this.autokernVerticalExtent;
+    // Pre-calibration bias: the starting envelope reach (spec §2.4: "a
+    // starting value, not a fixed one"). Rasters are padded by this bias at
+    // build time (glyph-raster.js). If calibration widens the bias beyond
+    // this padding, the envelope built from a too-narrow raster gets clipped
+    // at its own edge -- a known, documented gap of this workstream (fixing
+    // it means re-rasterizing survivors after calibration, out of scope
+    // here; the search/calibration math itself is unaffected and correct on
+    // whatever raster it is given).
+    const bias = params.reach;
+
+    // §4.2's excluded-glyph field is not built yet (out of scope), so no
+    // glyph is excluded from this workstream's run.
+    const excludedGlyphNames = [];
+    const glyphNames = Object.keys(this.fontController.glyphMap || {}).filter(
+      (name) => !excludedGlyphNames.includes(name)
+    );
+
+    // §7.5's source selector doesn't exist yet either, but the job still
+    // carries a `source` identifier so the cache/job shape is ready for it:
+    // right now there is exactly one selectable source, the font's default.
+    const source = "default";
+
+    const glyphsToRasterize = new Set([...CONTROL_GLYPH_NAMES, ...glyphNames]);
+    const rasters = {};
+    const envelopes = {};
+    for (const glyphName of glyphsToRasterize) {
+      const glyphInstance = await this.fontController.getGlyphInstance(glyphName, {});
+      if (!glyphInstance) {
+        continue;
+      }
+      const raster = rasterizeGlyph(glyphInstance, {
+        renderSize,
+        unitsPerEm,
+        bias,
+        verticalExtent,
+      });
+      // Structured-clone-friendly: a plain array, not the Float64Array
+      // itself (Float64Array clones fine too, but the worker rebuilds its
+      // own typed array either way -- see autokern-worker.js's
+      // reviveRaster).
+      rasters[glyphName] = { ...raster, data: Array.from(raster.data) };
+
+      const scale = renderSize / unitsPerEm;
+      const bounds = glyphInstance.controlBounds;
+      envelopes[glyphName] = {
+        xMin: bounds ? scale * bounds.xMin : 0,
+        xMax: bounds ? scale * bounds.xMax : 0,
+        advance: scale * glyphInstance.xAdvance,
+      };
+    }
+
+    if (CONTROL_GLYPH_NAMES.some((name) => !rasters[name])) {
+      throw new Error(
+        `autokern: control glyph(s) missing from font (need ${CONTROL_GLYPH_NAMES.join(", ")})`
+      );
+    }
+
+    const mode = "everything";
+    const job = {
+      source,
+      renderSize,
+      unitsPerEm,
+      params,
+      rasters,
+      envelopes,
+      controlGlyphNames: CONTROL_GLYPH_NAMES,
+      glyphNames,
+      mode,
+      existingCache: [...this.autokernCache.entries()],
+    };
+
+    await this.runAutokernWorker(job);
+  }
+
+  // Spec §4: "A worker, with progress and cancel, shown in a popup." Reuses
+  // the existing <modal-dialog> element (kerning.html) and its
+  // dialogSetup/run pattern (fontra-webcomponents/modal-dialog.js), the same
+  // one font-overview.js uses for its own dialogs -- no new popup mechanism
+  // invented for this.
+  async runAutokernWorker(job) {
+    const worker = new Worker(
+      /* webpackChunkName: "autokern-worker" */ new URL(
+        "./autokern-worker.js",
+        import.meta.url
+      ),
+      { type: "module" } // this worker script uses ES `import`, unlike opfs-write-worker.js
+    );
+
+    const progressContent = document.createElement("div");
+    progressContent.textContent = "Starting…";
+
+    const dialog = await dialogSetup(
+      "Running autokern",
+      null,
+      [{ title: "Cancel", resultValue: "cancel", isCancelButton: true }]
+    );
+    dialog.setContent(progressContent);
+
+    const runResult = new Promise((resolve) => {
+      worker.onmessage = (event) => {
+        const data = event.data;
+        if (data.type === "progress") {
+          progressContent.textContent = `Measuring pairs: ${data.done} / ${data.total}`;
+        } else if (data.type === "calibration") {
+          this.autokernCalibration = data.calibration;
+        } else if (data.type === "done") {
+          this.autokernCache = new Map(data.cache);
+          this.autokernCalibration = data.calibration;
+          resolve("done");
+        } else if (data.type === "cancelled") {
+          resolve("cancelled");
+        } else if (data.type === "error") {
+          console.error("autokern worker error:", data.error);
+          resolve("error");
+        }
+      };
+      worker.onerror = (event) => {
+        console.error("autokern worker error:", event);
+        resolve("error");
+      };
+    });
+
+    worker.postMessage({ type: "run", job });
+
+    // Two ways this popup closes: the designer clicks Cancel/Escape (the
+    // dialog's own run() promise resolves first), or the worker finishes or
+    // errors out on its own (runResult resolves first). Race them; whichever
+    // wins drives the other to a close so neither promise is left dangling.
+    const dialogRunPromise = dialog.run();
+    const outcome = await Promise.race([
+      dialogRunPromise.then((result) =>
+        result === "cancel" || result === null ? "cancel-clicked" : result
+      ),
+      runResult,
+    ]);
+
+    if (outcome === "cancel-clicked") {
+      worker.postMessage({ type: "cancel" });
+      await runResult; // wait for the worker to actually acknowledge cancellation
+      dialog.cancel();
+      worker.terminate();
+      return "cancelled";
+    }
+
+    // The worker finished (done/cancelled/error) before the designer clicked
+    // anything -- close the still-open dialog ourselves.
+    dialog.cancel();
+    worker.terminate();
+    return outcome;
   }
 
   setSelectedTool(toolIdentifier) {
