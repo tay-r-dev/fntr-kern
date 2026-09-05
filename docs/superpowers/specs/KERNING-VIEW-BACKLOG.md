@@ -270,27 +270,30 @@ toggle." Visibility is currently controlled only by being in `pair` chip mode wi
 the selected pair; there is no way to hide it on demand while still in pair mode, and it never appears
 in `phrase` mode at all (gated to pair mode by the draw function's own no-op check).
 
-**Ask.** An eye icon in the preview pane's upper-right corner, plus a keyboard shortcut, to toggle the
-suggestion overlay's visibility on demand — described as wanting a "real-time suggestion preview."
+**Ask.** An eye icon in the preview pane's upper-right corner, plus a keyboard shortcut, to control the
+suggestion overlay's visibility — described as wanting a "real-time suggestion preview."
 
-**Open sub-question before implementing.** Two different features could satisfy this ask, and they're
-different amounts of work:
-- **A visibility toggle only**, scoped to what already exists: flip `userSwitchable` to `true` (or add
-  a dedicated toggle, since the existing mechanism assumes a design-space-style layer list the eye icon
-  described here may not want to reuse verbatim) so the same pair-mode, cache-gated overlay can be
-  hidden/shown on demand. Small: `this.visualizationLayers.toggle(...)` plus
-  `this.canvasController.requestUpdate()` already do this for every other layer in this codebase
-  (see the constructor's `visualizationLayersSettings.addListener`, `kerning.js:264`), and a hotkey is
-  a `registerAction` call in the same style already used for this view's own actions (e.g.
-  `action.kerning.toggle-chip`, `kerning.js:2278-2284`).
-- **Extending the overlay to phrase mode**, showing every visible pair's suggestion live across the
-  whole typed phrase rather than only the one selected pair — genuinely new behavior (today's draw
-  function no-ops outside pair mode by design), and the larger reading of "real-time preview."
+**Resolved: it's a selector, not a binary toggle.** Two states, `all` / `selected`:
+- **Selected** — today's behavior, kept as the default: only the one selected pair's suggestion draws.
+- **All** — every visible pair in the current preview draws its own suggestion live, not just the
+  selected one. This is the phrase-mode extension called out below, now in scope rather than deferred:
+  the eye icon (plus hotkey to cycle the two states) is what exposes it, so the icon isn't a plain
+  show/hide but a two-position switch, mirroring how a design tool's "show all guides" vs. "show
+  selected guide's guides" toggle usually reads.
 
-**Suggested approach.** Confirm which of the two (or both, toggle first) is wanted before starting;
-the toggle alone is a small, mechanical change reusing an existing pattern, while the phrase-mode
-extension needs its own short design pass (at minimum: performance across a full phrase's worth of
-pairs, and whether every pair's suggestion or only above-threshold ones should draw).
+**What this means for implementation.**
+- The `selected` state is the existing mechanism: flip `userSwitchable` to `true` (or add a dedicated
+  control, since the existing mechanism assumes a design-space-style layer list this eye icon may not
+  want to reuse verbatim) so the same pair-mode, cache-gated overlay can be hidden/shown on demand.
+  `this.visualizationLayers.toggle(...)` plus `this.canvasController.requestUpdate()` already do this
+  for every other layer in this codebase (constructor's `visualizationLayersSettings.addListener`,
+  `kerning.js:264`); a hotkey is a `registerAction` call in the same style already used for this view's
+  own actions (e.g. `action.kerning.toggle-chip`, `kerning.js:2278-2284`).
+- The `all` state is genuinely new behavior: today's draw function no-ops outside pair mode by design,
+  and even within a phrase it only ever draws for the one selected pair. Needs its own short design
+  pass before implementing — at minimum: performance across a full phrase's worth of pairs, and whether
+  every pair's suggestion draws regardless of magnitude or only ones above the existing threshold (to
+  avoid cluttering the preview with near-zero suggestions).
 
 Both fixes are additive positioning logic on top of existing, working draw calls — no change to what
 data is shown or when (the gating logic in item 6's handles and this item's suggestion layer,
