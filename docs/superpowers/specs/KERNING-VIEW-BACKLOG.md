@@ -232,6 +232,32 @@ not one shared fix:
   `canvasController.canvasPoint`, the same helper `SidebearingHandle.update` already uses at
   `edit-tools-metrics.js:867`).
 
+---
+
+## 8. Override transparency: a unique value shadowing an existing class
+
+**Problem.** Spec §5.1 already names the hazard: a literal glyph×glyph kerning value always wins over
+a class cell that would otherwise answer for that pair (the lookup cascade tries the most specific
+address first), so writing a unique value onto a pair whose sides are both classed silently and
+permanently shadows the class for that one pair — the class stays in the file, stays in the panel, and
+stops affecting that pair, with no error and no warning at write time. The
+`2026-09-05-kerning-view-layout-overhaul-design.md` redesign (§1.1) makes this visible as a filter
+bucket (unique×class / class×unique rows) but deliberately ships with override disabled rather than
+deciding how to make it transparent, per the designer's explicit call: "right now no override."
+
+**Open decision, not yet made.** Two shapes were discussed and left unresolved:
+- A confirmation dialog every time an apply would create this kind of shadow, naming which class cell
+  is being overridden.
+- A persistent visual marker instead — no interrupting dialog, but a flagged row before applying and a
+  permanent "override" indicator on that pair wherever it's shown afterward.
+
+**Suggested approach.** Whichever shape is chosen, the check itself is cheap and already has everything
+it needs: `KerningController.getPairsToTry` (`kerning-controller.js:216`) already computes, for any
+glyph pair, whether a class-resolved address exists at a less-specific cascade position than the flat
+one about to be written — the override case is exactly "the flat address isn't the only one on the
+list, and a class address on the list currently has a stored value." No new resolution logic is
+needed, only a UI decision on how to surface it, deferred to a future brainstorm.
+
 Both fixes are additive positioning logic on top of existing, working draw calls — no change to what
 data is shown or when (the gating logic in item 6's handles and this item's suggestion layer,
 `kerning.js:2446-2462`, stays as is).

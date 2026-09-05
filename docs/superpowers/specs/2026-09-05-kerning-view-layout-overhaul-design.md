@@ -2,28 +2,52 @@
 
 **Date:** 2026-09-05. **Branch:** `feature/kerning-view`. **State:** designed, not built.
 
-Supersedes `KERNING-VIEW.md` §6 (left pane) and §7 (right pane) on layout only. The
-algorithm (§2), the cache (§4), the class data model (§5.1–5.3), and every "Closed
-during design" decision in §9 are unchanged — this document is about where things sit
-on screen and how a class gets built by hand, not about what a class is or how it's
-measured.
+Supersedes `KERNING-VIEW.md` §6 (left pane), §7 (right pane), and part of §5.3
+(derivation tactics). The algorithm (§2), the cache (§4), the class data model itself
+(§5.1/§5.2), and every "Closed during design" decision in §9 are unchanged. What
+changed after a follow-up brainstorm on 2026-09-05, once the actual purpose of a class
+was worked through from first principles (see §5 below), is derivation scope and the
+pair table's own model — both now folded into this document rather than left as
+separate open threads.
 
-Two related but separate items came out of the conversation that produced this design
-and are deliberately **not** part of it, to keep this document buildable as one plan:
+**Automatic junk detection** remains a genuinely separate, not-yet-brainstormed item,
+tracked in `KERNING-VIEW-BACKLOG.md`.
 
-- **Kern-row clustering tolerance.** `deriveKernRowClusters` (`autokern-classes.js`)
-  requires a glyph to agree, within tolerance, with *every* shared column of every
-  existing cluster member before it can join — one disagreeing column anywhere blocks
-  the merge. This is why composite inheritance is the only tactic that has ever
-  produced a proposal in practice: it's exact by construction, while the clique
-  requirement makes row clustering fire close to never on real measured data, so
-  optically-driven classes (`O C G Q`-style) are never proposed. Fixing this means
-  changing what "agree" means (tolerate a minority of outlier columns, the same
-  "exceptions allowed" posture §5.2's fold view already has via median + spread), which
-  is its own design question, not a layout one. Tracked for a follow-up brainstorm.
-- **Automatic junk detection.** Also flagged as a follow-up brainstorm, and likely
-  related to the clustering fix above (both are "mostly agrees, flag the outlier"
-  problems).
+---
+
+## 0. What a class actually is (the premise the rest of this document builds on)
+
+A stored kerning value is addressed by two sides, and each side is either a literal
+glyph name or a class name — spec §5.1's four-step lookup cascade
+(`[glyph,glyph] -> [glyph,@class] -> [@class,glyph] -> [@class,@class]`) is just those
+four combinations in specificity order. A class name is a **shared variable**: many
+glyphs answer to the same stored number. A literal glyph name is **unique**: it answers
+only for itself. Class-to-class kerning is therefore not a summary statistic over
+individually-measured member pairs — it is a real, storable, first-class kerning entry
+in exactly the same sense a flat pair is one. Measuring a class's members is how a
+*starting value* for that variable gets estimated; spread (spec §5.2) is how the
+designer checks whether the members were actually a good bet for sharing one variable
+in the first place. §5 below reworks the pair table around this idea directly.
+
+A follow-up consequence, decided the same session: **kern-row clustering
+(`deriveKernRowClusters` in `autokern-classes.js`) is removed, not fixed.** Investigated
+first: it requires a glyph to agree, within tolerance, with *every* shared column of
+every existing cluster member (a clique, zero exceptions), which is why composite
+inheritance — exact by construction — has been the only tactic that ever actually
+produced a proposal; optically-driven classes (`O C G Q`-style) were never reachable
+through it. A pass over real shipped fonts (Inter, Involve — see conversation, not
+re-derived here) confirmed a fixed shape taxonomy (round/vertical/diagonal) wouldn't
+have reproduced their actual classes either: Inter's own groups split per side in ways
+no 2–3-bucket rule predicts (`g` is its own class, not "round"; `G`/`Q` join it only on
+their tail side; `H` groups with `B`/`a`, not with other vertical stems), and Involve
+ships zero Latin kerning classes at all — flat pairs sufficed. Real classing reads as a
+designer's optical judgement call, not a fixed rule or a tolerant statistical merge.
+Derivation is therefore simplified to what's actually reliable:
+
+- **Manual grouping** (font mode multi-select, §2) is the primary path.
+- **Composite inheritance** (exact, spec §5.3 tactic 1) stays, unchanged.
+- Kern-row clustering, its tolerance field, and the tolerance UI control are removed
+  from the Derive section (§1.2).
 
 ---
 
@@ -33,14 +57,43 @@ Three resizable columns, using the same drag-splitter mechanism `views-editor` a
 uses for its own panels — reused, not reimplemented. Replaces the current two-pane
 (scene | parameters+table) split entirely.
 
-### 1.1 Left column — the pair/results table
+### 1.1 Left column — the results table
 
-Today's §7.3 content, moved here unchanged: the glyph field (overridden by the scene
-selection), the three sections (side-1-class-vs-every-side-2-class,
-every-side-1-class-vs-side-2-class, flat/unclassed), every filter (side, grouping,
-sign, state, junk, threshold), the excluded-glyph field, and the five actions (apply
-selected, apply all, reset to current, reset to zero, mark junk). No logic changes —
-this is a relocation.
+Moved here from today's right pane, but reworked around §0's variable model rather than
+relocated unchanged. Today's three glyph-anchored sections (side-1-class-vs-every-
+side-2-class, every-side-1-class-vs-side-2-class, flat/unclassed) are replaced by a
+filter over the four pair kinds the cascade already defines: **unique×unique**,
+**unique×class**, **class×unique**, **class×class**. A row is no longer only "a cache
+entry that happens to touch the typed glyph" — a class×class row exists once its two
+classes have any measured coverage between their members, independent of any glyph
+being typed at all, the same way a fold's parent row already computes real member
+stats today (`computeFoldGroupStats`) except no longer gated behind first expanding a
+row anchored to a typed glyph.
+
+Every row, regardless of bucket, carries the same suggestion/current/delta/apply shape
+already built (`pairRowData`) — a class×class row's suggestion is the median across its
+members' measured pairs (unchanged computation, `classSpread`'s reducer), its "current"
+is whatever's stored at that class cell (usually nothing, so effectively zero), and its
+delta and apply behave exactly like any other row's. Spread displays alongside a
+class×class row as its quality readout (spec §5.2, unchanged): tight spread says the
+shared variable is a good fit, wide spread says at least one member disagrees and the
+class should be expanded to find out which before trusting the number.
+
+Every filter that exists today (side, grouping — now the four-bucket filter above,
+sign, state, junk, threshold) carries over, plus the excluded-glyph field and the five
+actions (apply selected, apply all, reset to current, reset to zero, mark junk). A
+manual, directly-typed value is also always available on any row as an alternative to
+accepting the computed suggestion — one input, one apply, regardless of bucket.
+
+**No override in v1.** Applying a value onto a unique×unique or unique×class/class×unique
+row when both sides would otherwise resolve through an existing class cell is not
+supported yet — doing so silently shadows the class for that one pair (spec §5.1's
+already-documented hazard), and making that transparent (a confirmation naming which
+class gets shadowed, versus a persistent visual marker on already-overridden rows) is
+an open decision, tracked in `KERNING-VIEW-BACKLOG.md` rather than resolved here. Until
+it's designed, a suggestion for a pair that would create a silent override is shown but
+its apply action is disabled, with a note pointing at the class cell that already
+answers for it.
 
 ### 1.2 Middle column — preview, two rows
 
@@ -59,10 +112,12 @@ switches. Contents, top to bottom:
   membership later never touches the other. This adds no new concept to the data
   model (spec §5: "a glyph holds one class per side and the two are independent"); it
   just does two of today's single-side writes in one action.
-- **Derive** control: the tolerance field and Derive button, relocated from today's
-  pair-table section, unchanged in behavior. Proposals it produces are inserted into
-  the class list below, marked proposed, exactly as today (spec §5.3) — a proposal is
-  not a separate UI concept from an accepted class, only a display state of one.
+- **Derive** control: the Derive button, relocated from today's pair-table section.
+  No tolerance field — per §0, composite inheritance is exact and needs no tolerance
+  input; kern-row clustering (the only tactic that used one) is removed. Proposals it
+  produces are inserted into the class list below, marked proposed, exactly as today
+  (spec §5.3) — a proposal is not a separate UI concept from an accepted class, only a
+  display state of one.
 - **Class list**: one flat list, every class from both `groupsSide1` and
   `groupsSide2`, each row tagged with a small 1st/2nd badge (same icon convention as
   the New class buttons) and colored by its assigned swatch (§3). Long membership
@@ -75,6 +130,22 @@ switches. Contents, top to bottom:
   switching to font mode or hunting through the pair table — it answers the "I
   accepted a class and can't see what's in it" complaint directly, independent of
   the pair table's own cache-coverage-gated display.
+- **Show class** (context menu, on a glyph in any scene mode): opens a dialog to pick
+  one or more target glyphs — typing plus preview swatches, same input style as the
+  excluded-glyph field — then previews the selected glyph's class(es) against every
+  chosen target in the scene, one row per member. This is the optical check spread
+  can't give by itself: a number says a class disagrees, this shows what it looks
+  like.
+
+**Rerun scoping.** Joining or leaving a class now marks that glyph the same way an
+edited outline already does (spec §4's per-glyph keys) — class membership changing
+is a reason its row set may need new coverage, exactly like a shape edit is. This
+makes the existing marked-only rerun mode (already built) the cheap way to fill in a
+newly-classed glyph's missing pairs, rather than requiring a full whole-font run. A
+further, narrower scope — restricting a run's candidate pool to only pairs where both
+sides already resolve to a class — is a reasonable default for the common
+"grouped-first" workflow but wasn't pinned down to a specific button/toggle in this
+design; left as an implementation detail.
 
 ### 1.3 Right column — parameters and status
 
@@ -133,11 +204,14 @@ useful without a concrete need for it yet.
 
 ## 4. What this does not change
 
-- The algorithm (§2 of `KERNING-VIEW.md`), the cache and its persistence (§4), the
-  junk mechanisms (§4.2), and the class data model itself (§5.1–5.3) are untouched.
-  This document only relocates existing UI and adds the class list, font mode, and
-  color as new UI surfaces over the same data.
+- The measurement algorithm (§2 of `KERNING-VIEW.md`), the cache and its persistence
+  (§4), the junk mechanisms (§4.2), and the class data model itself (§5.1/§5.2 — what
+  a class is, the cascade, the fold's median/spread reducer) are untouched. What
+  changed is derivation scope (§0: kern-row clustering removed) and how the pair table
+  presents and filters what the cache already contains (§1.1: four buckets instead of
+  three glyph-anchored sections).
 - Resizable panes and glyph-color marking are not new engineering: both already exist
   in `views-editor` and are reused, not rebuilt.
-- Kern-row clustering's strictness and automatic junk detection are explicitly out of
-  scope (see the top of this document) and will each get their own brainstorm.
+- Automatic junk detection remains a separate, not-yet-brainstormed item
+  (`KERNING-VIEW-BACKLOG.md`). Override transparency for a unique value shadowing an
+  existing class (§1.1) is also tracked there rather than decided here.
