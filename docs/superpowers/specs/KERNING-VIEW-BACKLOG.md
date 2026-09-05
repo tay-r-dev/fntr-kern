@@ -1,0 +1,237 @@
+# Kerning view backlog
+
+Post-build UX/functionality gaps the designer raised after using the feature (§10 marks the spec
+itself as fully built; these are additions on top, not unbuilt spec). Grounded in the actual
+implementation as of `feature/kerning-view`. No code changed to produce this document.
+
+---
+
+## 1. Preset phrase file needs an "Add" button with a file browser
+
+**Problem.** The preset dropdown (`kerning.html:60-62`, `#kerning-preset-select`) is populated once,
+at load, from a single hardcoded asset fetched by URL:
+`src-js/views-kerning/src/kerning.js:421` — `const response = await fetch("./assets/phrase-presets.txt");`
+followed by `parsePhrasePresets(presetsText)` (`character-lines.js`). There is no UI path to point at
+a different presets file; the only way to change the preset list today is to edit
+`src-js/views-kerning/assets/phrase-presets.txt` in the repo and rebuild.
+
+**Suggested approach.** Add a button beside `#kerning-preset-select` (in the
+`#kerning-phrase-section` block, `kerning.html:59-68`) that opens a file picker (a hidden
+`<input type="file" accept=".txt">` triggered by the button, the same pattern used elsewhere in the
+tree for file import — e.g. `panel-reference-font.js`'s dropped-file handling, which already reads a
+local file into memory for this app). On selection, read the file's text with `FileReader`/
+`file.text()`, run it through the same `parsePhrasePresets` already imported at
+`kerning.js:105-106`, and either replace or append to `this.phrasePresets` before repopulating
+`#kerning-preset-select`'s `<option>` list (the loop at `kerning.js:424-428`). Whether "Add" replaces
+the built-in list or appends to it is a product decision the designer should make; either way it
+should go through `parsePhrasePresets` unchanged, since that parser is already spec-correct
+(§7.1) and untouched.
+
+---
+
+## 2. "Flush cache" button in the right pane
+
+**Problem.** There is no way to discard a stale or corrupt per-source cache and start over. The
+cache module `src-js/fontra-core/src/autokern-cache.js` exports `createCache` (line 107),
+`setPairValue` (125), `markPairJunk` (150), `markGlyphStale` (173), and `pairsForRerun` (201), but no
+`clearCache`/`flushCache` function — there is no bulk-clear primitive at all, only per-pair and
+per-glyph mutation. On the view side, `kerning.js` reads/writes the OPFS-persisted cache file via
+`readAutokernCacheFromOPFS`/`writeAutokernCacheToOPFS` (`kerning.js:196-218`) but exposes no action
+that empties it; the only way to reset today is to re-run the whole font, which does not remove
+stale/junk-marked history first (§4 keeps marked rows "in place" by design, which is correct for a
+glyph edit, but is not the same as a designer-initiated full flush).
+
+**Suggested approach.** Add a "Flush cache" button to the status strip (§7.5,
+`kerning.html:230-239`, `#kerning-status-section`), gated on the currently-selected source
+(`this.autokernSource`, read the same way `initRunSection`'s load path does at `kerning.js:538-547`).
+On click: set `this.autokernCache = createCache()` (or `new Map()`, matching what
+`readAutokernCacheFromOPFS` returning `null` already falls back to per the comment at
+`kerning.js:191-195`), call `writeAutokernCacheToOPFS` for the current source to persist the empty
+cache, then `renderPairTable()` and update the status counts (`updateStatusCounts`-equivalent code
+around `kerning.js:1808-1823`). This should almost certainly require a confirmation step, matching
+"apply all" states how many cells it will write and needs a second press" (§7.3) — flushing is
+similarly destructive and per-source, not per-font, so the confirmation copy should name the source.
+
+---
+
+## 3. Category-adder shortcuts for the excluded-glyph field
+
+**Problem.** The excluded-glyph field (`#kerning-pairtable-excluded`, `kerning.html:101-106`) is a
+single free-text input parsed by `parseExcludedGlyphNames` (`kerning.js:1015`), which only knows how
+to split a hand-typed list — there is no bulk "add all punctuation" or "add all diacritics" control.
+Typing every glyph name in a category by hand is the exact blunt-instrument use case §4.2 names for
+this field ("The excluded-glyph field is the blunt instrument for whole categories"), but the UI
+gives no shortcut for it.
+
+Category data already exists elsewhere in the tree and is not glyph-name guesswork: `glyph-data.js`
+resolves a `category`/`subCategory` pair per glyph from `fontra-core/assets/data/glyph-data.csv`
+(referenced at `glyph-data.js:178`, `info?.category === "Letter"`), and Font Overview's
+`glyph-organizer.js` already groups glyphs by exactly this data (`glyph-organizer.js:59-60`,
+`groupByInfo.category`/`.subCategory` at lines 257-262). Nothing in `views-kerning` currently imports
+this module.
+
+**Suggested approach.** Add a small menu or button row beside the excluded-glyph input, one entry per
+category value the font's `glyphMap` actually contains (querying `glyph-data.js`'s lookup, mirroring
+how `glyph-organizer.js` groups by it), e.g. "Add all Punctuation", "Add all Marks" (which is the
+category `glyph-data.csv` uses for diacritics/combining marks, not a literal "diacritics" label —
+confirm the exact category/subCategory strings the CSV uses before wording the buttons). Each button
+appends the matching glyph names to `#kerning-pairtable-excluded`'s current value (comma-separated,
+consistent with the existing manual format) and fires the same `"change"` handling already wired at
+`kerning.js:902-915`, so no second write path is needed — this is presentation on top of the existing
+field, not a new excluded-glyph mechanism (§4.2's two mechanisms, excluded-glyph field and per-pair
+junk mark, stay exactly as they are; this is only faster data entry into the first one).
+
+---
+
+## 4. Autokern cache storage location: OPFS vs. disk beside the .fontra file
+
+**Problem — investigated, not assumed.** The cache is stored in the browser's Origin Private File
+System, not on disk near the font file. Confirmed in
+`src-js/views-kerning/src/kerning.js:117` (`import { getOPFS } from "@fontra/core/opfs.js"`),
+`kerning.js:168` (`AUTOKERN_CACHE_OPFS_DIR = ["kerning-autokern-cache"]`), and the read/write pair at
+`kerning.js:196-218` (`readAutokernCacheFromOPFS`/`writeAutokernCacheToOPFS`), which key each cache
+file by `${projectIdentifier}--${source}.json` (`autokernCacheFileName`, `kerning.js:187-189`). No
+IndexedDB or localStorage usage exists for the cache itself (localStorage is used only for the
+filter-panel UI state, via `autokernFiltersController`'s `synchronizeWithLocalStorage`, a separate,
+much smaller thing). The file-top comment at `kerning.js:142-167` states this was a deliberate choice
+following the established pattern in `panel-reference-font.js`, which uses OPFS the same way for
+dropped reference font files.
+
+**Tension with spec §4.1, flagged rather than silently overridden.** §4.1's own stated rationale for
+"browser-side storage" is specifically that the cache "can always be recomputed" and should not be
+written into the designer's font sources ("Writing a cache of that size into the project file would
+put derived data permanently into the designer's sources, which every backend round-trips"). That
+argument is about *not* putting the cache in the `.fontra` project file itself (i.e., not routing it
+through `fontController.performEdit`/backend round-trip) — it does not, on its own, require the
+*browser's* storage specifically; a file written to local disk beside the `.fontra` file, outside the
+project's own data model, would equally satisfy "derived, recomputable, not in the sources." The
+real cost of OPFS the designer is likely reacting to: OPFS is sandboxed per browser origin/profile,
+so the cache does not survive a browser profile change, a different browser, or being found/inspected
+by hand next to the font file the way the designer might expect "stored" to mean.
+
+**Suggested approach, offered as an option rather than a decision.** If a disk-based cache is wanted,
+it needs a backend endpoint (this app's client has no direct filesystem access outside OPFS/dropped
+files), analogous to how the `.fontra` backend already reads/writes project data — e.g. a sibling
+file such as `<fontname>.fontra/autokern-cache/<source>.json` written through a new backend route,
+not through `fontController.performEdit` (that path is reserved, per §4.1 and the existing comment at
+`kerning.js:156-167`, for the *decisions* — junk marks and excluded glyphs — not the derived cache).
+This is a larger change than the other items here (new backend surface, not just view code) and
+should be scoped as its own workstream if the designer confirms OPFS's per-browser-profile
+non-portability is the actual pain point, rather than assumed.
+
+---
+
+## 5. Bug: accepted derive-classes proposal's membership is not visible anywhere after Accept
+
+**Problem — verified in code, appears to be a display gap, not a data-loss bug.** Before Accept, a
+derive proposal's membership is shown as a truncated list right on its row:
+`kerning.js:1635-1637` (`members.textContent = truncateGlyphList(proposal.members)`), inside
+`buildDeriveProposalElement` (`kerning.js:1626-1664`), rendered into `#kerning-derive-proposals`
+(`renderDeriveProposals`, `kerning.js:1618-1624`). Accepting writes real group membership through
+`kerningController.editGroupSide1`/`editGroupSide2` (`acceptDeriveProposal`, `kerning.js:1690` on —
+the same call `panel-selection-info.js`'s own per-glyph class field uses, confirmed at
+`panel-selection-info.js:324-333`, `kerningController.editGroupSide2(glyphName, value.trim())` /
+`editGroupSide1`), so the data write itself is real. But once accepted, the proposal is removed from
+`this.autokernDeriveProposals` and `renderDeriveProposals()` re-runs (`kerning.js:1801`, "Proposals
+are only removed from the pending list on full success") — its membership list disappears from the
+UI along with the proposal row.
+
+The only other place a class's full membership renders anywhere in this view is the pair table's
+folded parent row, via `computeFoldGroupStats` (per spec §10's own note, "the folded parent's
+membership... come[s] from the full class×class product") and `truncateGlyphList` at
+`kerning.js:1400`/`1408`. That only appears when: a fold row happens to exist for the *currently
+typed* glyph (`buildFoldGroups`, gated on `group.rows` being non-empty), a run has already been done,
+and the typed glyph is a member of one of the two classes shown. `panel-selection-info.js`'s own
+per-glyph field (lines 321-333) shows only the class's *name* (the address), never its membership —
+consistent with spec §5.2's point that "a class's stored name is an address," but that means neither
+existing UI reliably shows "here is everyone now in the class you just created" immediately after
+Accept, unless the designer separately types a member glyph into the pair table's glyph field.
+
+**Suggested approach.** After a successful `acceptDeriveProposal`, surface the just-written class's
+membership somewhere durable — e.g. a small confirmation line ("`o ó ö` -> class `X`, N members")
+left in place of the removed proposal row for a few seconds, or (more durably) auto-populating the
+pair table's glyph field (`#kerning-pairtable-glyph`) with one of the newly-classed members so
+`computeFoldGroupStats`'s existing membership display (`kerning.js:1400`/`1408`) picks it up
+immediately without the designer having to know to type a name in. Either approach reuses
+`truncateGlyphList` and the data `acceptDeriveProposal` already has in hand (`proposal.members`,
+`className`) — no new membership-tracking mechanism is needed, only a render step that survives past
+the proposal's removal from the pending list.
+
+---
+
+## 6. Left pane shows no numeric readout while dragging the sidebearing/kerning tools
+
+**Problem — root cause found, appears to be a missing stylesheet, not missing logic.** The kerning
+view reuses `views-editor`'s `SidebearingTool`/`KerningTool` classes unmodified (per §8's
+import-across-views architecture), and their DOM-handle machinery is wired up identically to the
+editor: both `kerning.html` and `editor.html` contain a `#metric-handle-container` div
+(`kerning.html:38`, `editor.html:36`), which `edit-tools-metrics.js:36-37` requires
+(`document.querySelector("#metric-handle-container")`, `assert(this.handleContainer)`) and appends
+`<sidebearing-handle>`/`<kerning-handle>` custom elements into
+(`SidebearingTool.addHandle`, `edit-tools-metrics.js:457-462`; the kerning equivalent at
+`kerning.js:1221-1223`). Those elements' `update()` methods do set numeric text
+(`SidebearingHandle.update`, `edit-tools-metrics.js:866-901`, sets `innerText` to
+`formatMetricValue(...)` for advance/left/right) and inline `style.left`/`style.top` positions.
+
+The positioning CSS that makes those inline styles do anything, however — `position: absolute` on
+`.advance`/`.left-sidebearing`/`.right-sidebearing`/`kerning-handle` — lives only in
+`src-js/views-editor/assets/editor.css:504-598` (`sidebearing-handle > .advance`,
+`kerning-handle { position: absolute; ... }`, etc.). `kerning.html:1-16` links only `shared.css`,
+`core.css`, `kerning.css`, and `tooltip.css` — it does not link `editor.css`. Without that stylesheet,
+the handle child elements default to `position: static`, so the inline `top`/`left` assignments have
+no effect: the numeric labels are present in the DOM and populated with real values, but not
+positioned over the glyph at all (most likely collapsed at the top of `#metric-handle-container`,
+which is why the designer sees no usable readout while dragging).
+
+**Suggested approach.** Move the relevant CSS rules (`sidebearing-handle`, `kerning-handle`, and their
+child selectors, `editor.css:504-598`) into a stylesheet both views load — either `kerning.css` (a
+copy, if `views-kerning` is meant to stay decoupled from `views-editor`'s asset file) or a small
+shared CSS file both `editor.html` and `kerning.html` link, whichever this codebase's asset-sharing
+convention prefers (check whether other view pairs already share a CSS file the way they share JS
+through the exports map in §8, before duplicating). No JS change should be needed — the handle
+elements and their `update()` logic are already correct and already firing.
+
+---
+
+## 7. On-canvas numeric labels are not clamped to the viewport
+
+**Problem.** Two independent label mechanisms in this view position text without checking whether the
+result stays visible:
+
+- The metrics-tool handles (`sidebearing-handle`/`kerning-handle`, item 6 above) are positioned by
+  `canvasController.canvasPoint(...)` in `SidebearingHandle.update`
+  (`edit-tools-metrics.js:866-884`) and the equivalent in `KerningHandle`
+  (`edit-tools-metrics.js:1455` on), writing straight to `style.left`/`style.top` with a CSS
+  `transform: translate(...)` offset (`editor.css:519`, `547`, `554`, `576`) and no bounds check
+  against the canvas or container size. A glyph positioned near the edge of the visible pane —
+  common while scrolled or zoomed in — can push the handle partly or fully outside
+  `#metric-handle-container`.
+- The on-canvas suggestion label (workstream "on-canvas display of a suggestion", spec §10) draws
+  directly into the 2D canvas context with `context.fillText` at `kerning.js:2487-2488`
+  (`` `suggest: ${round(suggestionValue, 1)}` ``), inside
+  `buildAutokernSuggestionVisualizationLayerDefinition` (`kerning.js:2423` on). Canvas `fillText` has
+  no notion of the surrounding page layout at all — it will draw past the edge of the canvas element
+  outright if the glyph's screen position plus the label's width/offset exceeds the canvas bounds,
+  and, being on a plain 2D canvas, it can never be "behind other UI" (there is no other UI sharing
+  that canvas's z-order) but it can go off the visible edge of the pane the same way the DOM handles
+  can.
+
+**Suggested approach.** These are two different rendering mechanisms and need two different clamps,
+not one shared fix:
+- For the DOM handles: after setting `style.left`/`style.top` in `SidebearingHandle.update`/
+  `KerningHandle`'s equivalent, measure the container's bounding box
+  (`this.handleContainer.getBoundingClientRect()`, already available via `this.handleContainer` at
+  `edit-tools-metrics.js:36`) and clamp the computed left/top so the handle's own rendered width/height
+  stays within it, the same general technique tooltip positioning already uses elsewhere in this tree
+  (`tooltip.css`/whatever JS drives it — worth checking before writing a second clamping routine from
+  scratch).
+- For the canvas-drawn suggestion label: clamp the `fillText` x/y coordinates against
+  `context.canvas.width`/`height` (adjusted for the current scene transform, since the draw call
+  works in glyph-space coordinates before the canvas's own transform is applied — the clamp needs to
+  happen in screen space, so either transform the intended point first or compute the clamp using
+  `canvasController.canvasPoint`, the same helper `SidebearingHandle.update` already uses at
+  `edit-tools-metrics.js:867`).
+
+Both fixes are additive positioning logic on top of existing, working draw calls — no change to what
+data is shown or when (the gating logic in item 6's handles and this item's suggestion layer,
+`kerning.js:2446-2462`, stays as is).
