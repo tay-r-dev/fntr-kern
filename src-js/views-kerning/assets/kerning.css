@@ -176,6 +176,20 @@
   white-space: nowrap;
 }
 
+/* Part 5 fix 1: the per-row delete-class control, same small-square sizing
+   convention as .autokern-class-color-swatch above (icon-button.js itself
+   scales its icon to 100% of its host's box). */
+.autokern-class-delete-button {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
+.autokern-class-delete-button:hover {
+  opacity: 1;
+}
+
 #autokern-class-swatch-strip {
   display: flex;
   flex-wrap: wrap;
@@ -183,6 +197,17 @@
   overflow-y: auto;
   border-top: 1px solid var(--horizontal-rule-color, #ccc);
   padding-top: 0.5em;
+}
+
+/* Part 5 fix 3: the split-color glyph-tile wrapper (kerning.js's
+   buildSplitColorGlyphSwatch) -- only created for a glyph with at least one
+   colored side; an uncolored glyph's GlyphCell is appended directly with no
+   wrapper, so this rule never applies to it. border-radius matches
+   glyph-cell.js's own #glyph-cell-container radius (0.3rem) so the gradient
+   doesn't peek out past the cell's rounded corners through its 1px margin. */
+.autokern-glyph-swatch-split {
+  display: inline-block;
+  border-radius: 0.3rem;
 }
 
 /* The "Show class" dialog's target-glyph field/preview (kerning.js's

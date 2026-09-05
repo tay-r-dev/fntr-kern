@@ -113,10 +113,17 @@ import { glyphMapToItemList, round } from "@fontra/core/utils.ts";
 import { ObservableController } from "@fontra/core/observable-object.ts";
 import { getOPFS } from "@fontra/core/opfs.js";
 import { SceneView } from "@fontra/core/scene-view.js";
+// Bug fix (kerning view, font mode grid): Shift/Ctrl/Cmd-click modifier
+// handling, used only to override GlyphCellView.handleSingleClick on THIS
+// view's own instance below (initFontModeSection) -- see that override's own
+// comment for why font-overview.js's shared glyph-cell-view.js is read, not
+// edited, and for the exact live-tested symptom this fixes.
+import { difference, union } from "@fontra/core/set-ops.js";
 import { themeController } from "@fontra/core/theme-settings.js";
 import { ViewController } from "@fontra/core/view-controller.js";
 import { GlyphCell } from "@fontra/web-components/glyph-cell.js";
 import { GlyphCellView } from "@fontra/web-components/glyph-cell-view.js";
+import { IconButton } from "@fontra/web-components/icon-button.js"; // for <icon-button>, the delete-class control
 import { MenuItemDivider, showMenu } from "@fontra/web-components/menu-panel.js";
 import { dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import { HandTool } from "@fontra/views-editor/edit-tools-hand.js";
@@ -2194,10 +2201,17 @@ export class KerningViewController extends ViewController {
     }
 
     // Design doc §1.2: "each row tagged with a small 1st/2nd badge (same
-    // icon convention as the New class buttons)".
+    // icon convention as the New class buttons)". Part 5 fix: the visible
+    // text is "Left"/"Right" (plain, immediately understood), the more
+    // precise "side 1"/"side 2" meaning stays one hover away via `title` --
+    // the underlying `entry.side` value ("side1"/"side2") is unchanged.
     const badge = document.createElement("span");
     badge.className = "autokern-class-badge";
-    badge.textContent = entry.side === "side1" ? "1st" : "2nd";
+    badge.textContent = entry.side === "side1" ? "Left" : "Right";
+    badge.title =
+      entry.side === "side1"
+        ? "Kerning side 1 (left member of a pair)"
+        : "Kerning side 2 (right member of a pair)";
     row.appendChild(badge);
 
     // Design doc §3: "the color shows as the swatch background behind a
@@ -2245,9 +2259,135 @@ export class KerningViewController extends ViewController {
     membersSpan.textContent = truncateGlyphList(entry.members);
     row.appendChild(membersSpan);
 
+    // Part 5 fix 1: "No way to delete a class." Same trash-icon convention
+    // panel-axes.js's own delete-axis control uses (icon-button.js,
+    // tabler-icons/trash.svg) -- no new delete-affordance widget invented.
+    // icon-button.js's own click handling calls event.stopImmediatePropagation()
+    // from its INTERNAL button, which stops the click from ever bubbling up
+    // to this row's own "click" listener (selectClass) -- so the row is never
+    // accidentally selected by a delete click, and no separate stopPropagation
+    // guard is needed the way the color swatch above needs one (that swatch's
+    // own click listener is on a plain <button>, not an <icon-button>, so it
+    // bubbles unless stopped explicitly).
+    const deleteButton = document.createElement("icon-button");
+    deleteButton.className = "autokern-class-delete-button";
+    deleteButton.setAttribute("src", "/tabler-icons/trash.svg");
+    deleteButton.setAttribute("data-tooltip", `Delete class "${entry.name}"`);
+    deleteButton.setAttribute("data-tooltipposition", "left");
+    deleteButton.onclick = () => this.confirmAndDeleteClass(entry.side, entry.name);
+    row.appendChild(deleteButton);
+
     row.addEventListener("click", () => this.selectClass(entry.side, entry.name));
 
     return row;
+  }
+
+  // ---- Delete class (Part 5 fix 1) ----
+  //
+  // The data model has no separate "class exists" registry (see
+  // createNewClassViaDialog's own comment): a class IS its glyphs' own
+  // membership. So "delete class X on side S" means "clear every member
+  // glyph's side-S class assignment" -- there is no second thing to delete.
+  // Confirmed by reading kernData's own groupsSide1/groupsSide2 getters
+  // (kerning-controller.js's `_updatePairGroupMappings`/constructor): they
+  // are derived straight from the stored kerning table's own groupsSide1/
+  // groupsSide2 dictionaries, which in turn only ever hold a name because
+  // some glyph's editGroupSide1/editGroupSide2 call put it there -- deleting
+  // every glyph out of a group's list is equivalent to the group never
+  // having existed (kerning-controller.js's own _editGroup already deletes
+  // the dictionary entry itself once its glyph list goes empty).
+  //
+  // Clearing mechanism: `_editGroup` (kerning-controller.js) already
+  // supports a falsy `newGroupName` as "remove this glyph from every group
+  // on this side" (its own comment: "The glyph is not part of any group
+  // anymore") -- editGroupSide1(glyphName, "")/editGroupSide2(glyphName, "")
+  // is the existing, unmodified clear-path; no new support needed there.
+  //
+  // Undo: editGroupSide1/editGroupSide2 do NOT push anything onto
+  // this.autokernUndoStack themselves (confirmed by reading them -- they
+  // only call fontController.performEdit and discard its return value, the
+  // same finding acceptDeriveProposal's own comment already states). Even
+  // addGlyphsToClass (the ordinary "join a class" write path, above) pushes
+  // no undo record. So a plain confirm() dialog alone would NOT be backed by
+  // Ctrl-Z here -- unlike acceptDeriveProposal, which manually builds and
+  // pushes a "groupMembership"-kind record before its own writes. This
+  // method does the same: builds and pushes that identical record shape
+  // (doAutokernUndoRedo, below the pair-table section, already knows how to
+  // replay a "groupMembership" record generically -- no new undo-replay code
+  // needed) so Ctrl-Z genuinely restores every glyph's membership if the
+  // confirm was a misclick.
+  async confirmAndDeleteClass(side, name) {
+    const kernData = this.kerningController.kernData;
+    const groups = side === "side1" ? kernData.groupsSide1 : kernData.groupsSide2;
+    const members = groups?.[name] || [];
+    const sideLabel = side === "side1" ? "side 1 (left)" : "side 2 (right)";
+    const dialog = await dialogSetup(
+      `Delete class "${name}"?`,
+      `This clears the ${sideLabel} class assignment on ${members.length} ` +
+        `glyph${members.length === 1 ? "" : "s"}: ${truncateGlyphList(members)}. ` +
+        `This can be undone with Ctrl-Z.`,
+      [
+        { title: translate("dialog.cancel"), isCancelButton: true },
+        { title: "Delete", resultValue: "delete", isDefaultButton: true },
+      ]
+    );
+    const result = await dialog.run();
+    if (result !== "delete") {
+      return;
+    }
+    await this.deleteClass(side, name, members);
+  }
+
+  async deleteClass(side, name, members) {
+    const editFn =
+      side === "side1"
+        ? (glyphName, groupName) => this.kerningController.editGroupSide1(glyphName, groupName)
+        : (glyphName, groupName) => this.kerningController.editGroupSide2(glyphName, groupName);
+
+    const entries = members.map((glyphName) => ({ glyphName, before: name, after: "" }));
+    for (const entry of entries) {
+      await editFn(entry.glyphName, entry.after);
+    }
+    this.autokernUndoStack.pushUndoRecord({
+      info: {
+        label: `kerning view: delete class "${name}"`,
+        kind: "groupMembership",
+        editSide: side,
+        entries,
+      },
+    });
+
+    // Design doc §3: color storage must not accumulate an orphaned entry for
+    // a class that no longer exists -- same performEdit-under-"customData"
+    // pattern setClassColor already uses (copy both sides, mutate the copy,
+    // reassign the whole object), just deleting the one (side, name) entry
+    // instead of setting it.
+    await this.fontController.performEdit(
+      "kerning view: delete class color",
+      "customData",
+      (root) => {
+        const stored = root.customData[AUTOKERN_CLASS_COLORS_CUSTOM_DATA_KEY];
+        if (stored?.[side]?.[name] === undefined) {
+          return;
+        }
+        const colors = {
+          side1: { ...(stored.side1 || {}) },
+          side2: { ...(stored.side2 || {}) },
+        };
+        delete colors[side][name];
+        root.customData[AUTOKERN_CLASS_COLORS_CUSTOM_DATA_KEY] = colors;
+      },
+      this
+    );
+
+    this.markGlyphsStaleForClassEdit(members);
+    if (this.selectedClass?.side === side && this.selectedClass?.name === name) {
+      this.selectedClass = null;
+    }
+    // Same refresh pattern addGlyphsToClass already uses.
+    this.renderClassList();
+    this.renderClassSwatchStrip();
+    this.renderPairTable();
   }
 
   // Design doc §1.2: "Selecting a row is what 'selected class' means
@@ -2286,7 +2426,13 @@ export class KerningViewController extends ViewController {
   }
 
   // Shared by the swatch strip and the "Show class" dialog's live preview
-  // below -- one glyph-tile builder, not two.
+  // below -- one glyph-tile builder, not two. Part 5 fix 3: each tile's
+  // background is now split, left half = the glyph's side-1 class color,
+  // right half = its side-2 class color -- explicitly NOT the font-mode
+  // grid's own GlyphCellView tiles (design doc §3 declined grid tinting
+  // there; that component is untouched by this method, which only ever
+  // builds bare GlyphCell instances for THIS panel and the Show-class
+  // dialog).
   renderGlyphSwatches(container, glyphNames) {
     container.textContent = "";
     for (const glyphName of glyphNames) {
@@ -2294,15 +2440,60 @@ export class KerningViewController extends ViewController {
       if (codePoints === undefined) {
         continue; // not a real glyph in this font -- nothing to show
       }
-      const cell = new GlyphCell(
-        this.fontController,
-        glyphName,
-        codePoints,
-        this._classPanelLocationController,
-        "location"
-      );
-      container.appendChild(cell);
+      container.appendChild(this.buildSplitColorGlyphSwatch(glyphName, codePoints));
     }
+  }
+
+  // One glyph tile, colored per Part 5 fix 3. Lookup mirrors
+  // openShowClassDialog's own side1Name/side2Name reads
+  // (leftPairGroupMapping/rightPairGroupMapping); the color for each comes
+  // from getClassColor (design doc §3), already built by the class-color
+  // work. DOM/styling approach: GlyphCell (glyph-cell.js) exposes its
+  // resting background only through the CSS custom property
+  // `--cell-background-color` (its shadow-DOM `#glyph-cell-container` sets
+  // `--this-background-color: var(--cell-background-color)`, which every
+  // other state -- hover/active/selected -- overrides on top of, so
+  // overriding just this one custom property on the host element changes
+  // only the resting/idle look, never fighting hover/selection) -- a real,
+  // already-existing hook, not a new one added to glyph-cell.js. That alone
+  // only allows ONE flat color, not a split, so an outer wrapper `<div>`
+  // (`.autokern-glyph-swatch-split`) supplies the actual two-color
+  // background as a hard-stop linear-gradient behind the cell, and the
+  // cell's own `--cell-background-color` is set to `transparent` (only when
+  // at least one side has a color -- see below) so the wrapper's gradient
+  // shows through instead of being hidden underneath the cell's normal
+  // opaque background.
+  //
+  // No color on either side (or neither side classed) renders EXACTLY as
+  // before: no wrapper is created at all, and the cell's own
+  // --cell-background-color is left untouched -- the uncolored case is not
+  // regressed.
+  buildSplitColorGlyphSwatch(glyphName, codePoints) {
+    const cell = new GlyphCell(
+      this.fontController,
+      glyphName,
+      codePoints,
+      this._classPanelLocationController,
+      "location"
+    );
+
+    const side1Name = this.kerningController.leftPairGroupMapping[glyphName];
+    const side2Name = this.kerningController.rightPairGroupMapping[glyphName];
+    const side1Color = side1Name ? this.getClassColor("side1", side1Name) : undefined;
+    const side2Color = side2Name ? this.getClassColor("side2", side2Name) : undefined;
+
+    if (!side1Color && !side2Color) {
+      return cell;
+    }
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "autokern-glyph-swatch-split";
+    wrapper.style.background = `linear-gradient(to right, ${
+      side1Color || "transparent"
+    } 50%, ${side2Color || "transparent"} 50%)`;
+    cell.style.setProperty("--cell-background-color", "transparent");
+    wrapper.appendChild(cell);
+    return wrapper;
   }
 
   // ---- Class color (design doc §3) ----
@@ -3128,6 +3319,54 @@ export class KerningViewController extends ViewController {
     this.fontModeGlyphCellView.oncontextmenu = (event) =>
       this.handleFontModeContextMenu(event);
 
+    // Bug fix, live-verified (CDP-driven click simulation against the running
+    // view; window.kerningViewController.fontModeSettingsController.model.
+    // glyphSelection read back after each click -- see the workstream's own
+    // report for the exact before/after selections observed):
+    //
+    // glyph-cell-view.js's OWN handleSingleClick (read in full before writing
+    // this) gives Shift a Finder/Explorer-style RANGE select
+    // (extendSelection -> getGlyphNamesForRange, walking every cell between
+    // the last-clicked cell and this one) and gives plain additive toggle
+    // ONLY to event.metaKey/event.altKey -- event.ctrlKey is never checked
+    // anywhere in that file. On a non-Mac keyboard "Ctrl" IS the platform's
+    // multi-select modifier, but metaKey there is the Windows/Super key, so a
+    // Ctrl-click there falls through to the plain-click branch and just
+    // re-selects the single clicked glyph -- confirmed live: clicking A, then
+    // Shift-clicking N (of A,F,G,N,b,d,...) selected the whole {A,F,G,N}
+    // range, and clicking A then Ctrl-clicking G left the selection
+    // unchanged from whatever it was before (no additive effect at all).
+    // Design doc §2 wants Shift to be simple additive toggle here, not range
+    // select, and Ctrl/Cmd to also toggle -- font-overview.js itself (the
+    // "same selection machinery" this view is told to reuse, per its own
+    // brief) is the thing that actually depends on the shared class's range-
+    // select convention for Shift today, so that convention is NOT changed
+    // in glyph-cell-view.js itself (would silently change font-overview.js's
+    // own behavior too). Instead, only THIS view's own GlyphCellView
+    // instance gets its handleSingleClick method replaced -- an own-property
+    // on this one object shadows the shared prototype method for every
+    // caller that already does `this.handleSingleClick(...)` (glyph-cell-
+    // view.js's own onclick/ondblclick/oncontextmenu wiring, all of which
+    // call it via `this.`, so the override is picked up with no further
+    // change needed there) -- font-overview.js's OWN GlyphCellView instance
+    // is untouched, prototype and all.
+    this.fontModeGlyphCellView.handleSingleClick = (event, glyphCell) => {
+      if (event.detail > 1) {
+        // Part of a double click -- let glyph-cell-view.js's own ondblclick
+        // handler deal with it, same guard the shared method itself uses.
+        return;
+      }
+      const glyphName = glyphCell.glyphName;
+      const view = this.fontModeGlyphCellView;
+      if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) {
+        view.glyphSelection = view.glyphSelection.has(glyphName)
+          ? difference(view.glyphSelection, [glyphName])
+          : union(view.glyphSelection, [glyphName]);
+      } else {
+        view.glyphSelection = new Set([glyphName]);
+      }
+    };
+
     document
       .querySelector("#kerning-font-grid-container")
       .appendChild(this.fontModeGlyphCellView);
@@ -3304,15 +3543,22 @@ export class KerningViewController extends ViewController {
       { title: "Add", resultValue: "add", isDefaultButton: true },
     ]);
 
+    // Part 5 fix 2: "Left"/"Right", not "1st"/"2nd" -- display label only,
+    // the underlying option `value` ("side1"/"side2"/"both", read into
+    // sideController.model.side and passed straight to
+    // addFontModeSelectionToClass below) is unchanged.
     const sideSelect = document.createElement("select");
-    for (const [value, label] of [
-      ["side1", "1st"],
-      ["side2", "2nd"],
-      ["both", "Both"],
+    for (const [value, label, title] of [
+      ["side1", "Left", "Kerning side 1 (left member of a pair)"],
+      ["side2", "Right", "Kerning side 2 (right member of a pair)"],
+      ["both", "Both", ""],
     ]) {
       const option = document.createElement("option");
       option.value = value;
       option.textContent = label;
+      if (title) {
+        option.title = title;
+      }
       sideSelect.appendChild(option);
     }
     sideSelect.value = sideController.model.side;
@@ -3713,6 +3959,13 @@ export class KerningViewController extends ViewController {
         await editFn(entry.glyphName, isRedo ? entry.after : entry.before);
       }
       this.renderDeriveProposals();
+      // Part 5 addition: a "groupMembership" record can now also be a class
+      // deletion (confirmAndDeleteClass/deleteClass, class panel section) --
+      // undoing/redoing one changes which classes exist, so the class list
+      // (and, if the deleted class was selected, the now-stale swatch strip)
+      // must refresh here too, not just the pair table.
+      this.renderClassList();
+      this.renderClassSwatchStrip();
       this.renderPairTable();
       return;
     }
