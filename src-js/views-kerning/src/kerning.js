@@ -125,6 +125,7 @@ import {
   SidebearingTool,
 } from "@fontra/views-editor/edit-tools-metrics.js";
 import { SceneController } from "@fontra/views-editor/scene-controller.js";
+import { Sidebar } from "@fontra/views-editor/sidebar.js";
 import {
   glyphSelector,
   strokeLine,
@@ -320,6 +321,7 @@ export class KerningViewController extends ViewController {
     // start() below).
     this.autokernUndoStack = new UndoStack();
 
+    this.initColumnSplitters();
     this.initToolSwitcher();
     this.initChipSection();
     this.initToolShortcuts();
@@ -832,17 +834,24 @@ export class KerningViewController extends ViewController {
       glyphName: "",
       excludedGlyphs: "",
       side: "both",
-      grouping: "both",
+      // Layout overhaul, design doc §1.1: the old three-value (classed/flat/
+      // both) grouping filter is replaced by the four-bucket filter the
+      // cascade itself defines (spec §5.1). "all" replaces the old "both".
+      grouping: "all",
       sign: "both",
       state: "pending",
       showJunk: false,
       showCurrent: false,
       sortAlphabetical: false,
       // WORKSTREAM 15, spec §5.2: "A toggle above the table folds every row
-      // whose pair resolves to the same cell into one parent." Off by
-      // default so this workstream never changes the existing flat-row
-      // behaviour unless the designer opts in.
-      foldClasses: false,
+      // whose pair resolves to the same cell into one parent."
+      // Layout overhaul, design doc §1.1: class×class rows are now ALWAYS
+      // the class-pair aggregate, independent of any typed glyph -- default
+      // flipped to true so that is what a designer sees without first
+      // finding and checking this box. Unchecking it is now the escape
+      // hatch back to the old per-cache-entry, glyph-anchored class×class
+      // rows (requires a typed glyph, exactly like before this overhaul).
+      foldClasses: true,
     });
     this.autokernFiltersController.synchronizeWithLocalStorage(
       "fontra-kerning-pairtable-filters."
@@ -998,6 +1007,23 @@ export class KerningViewController extends ViewController {
       .querySelector("#kerning-derive-button")
       .addEventListener("click", () => this.deriveClasses());
 
+    // Layout overhaul, design doc §1.1: "A manual, directly-typed value is
+    // also always available on any row as an alternative to accepting the
+    // computed suggestion -- one input, one apply, regardless of bucket."
+    // Applies to whichever row(s) are checked, the same selection
+    // apply-selected/reset-* already read (getSelectedPairTableRows) --
+    // this is not a per-row input, it is the one input/one apply the design
+    // doc describes, made to act on a selection like the other actions.
+    document.querySelector("#kerning-pairtable-manual-apply").addEventListener(
+      "click",
+      () => {
+        const manualValue = Number(
+          document.querySelector("#kerning-pairtable-manual-value").value || 0
+        );
+        this.writePairValues(this.getSelectedPairTableRows(), () => manualValue, true);
+      }
+    );
+
     this.renderPairTable();
   }
 
@@ -1067,6 +1093,14 @@ export class KerningViewController extends ViewController {
   // threshold... filters the display, not the run"). Returns false the
   // moment any active filter rejects the row -- order doesn't matter, all
   // are independent AND conditions.
+  //
+  // Layout overhaul, design doc §1.1: the old "grouping" classed/flat check
+  // that lived here is gone -- which BUCKET a row belongs to is now decided
+  // once, up front (bucketForEntry), and the grouping filter shows or hides
+  // whole buckets (renderPairTable), rather than this per-row predicate
+  // re-deriving classed-ness from `row.classed` (still set by pairRowData,
+  // now meaning "at least one side resolves through a class", used only by
+  // the shadow-write guard below, not by this filter).
   pairRowVisible(row, filters, threshold, glyphName) {
     if (row.junk && !filters.showJunk) {
       return false;
@@ -1078,12 +1112,6 @@ export class KerningViewController extends ViewController {
       return false;
     }
     if (filters.side === "right" && row.right !== glyphName) {
-      return false;
-    }
-    if (filters.grouping === "classed" && !row.classed) {
-      return false;
-    }
-    if (filters.grouping === "flat" && row.classed) {
       return false;
     }
     if (filters.sign === "negative" && !(row.delta < 0)) {
@@ -1133,16 +1161,102 @@ export class KerningViewController extends ViewController {
     );
   }
 
-  // Rebuilds all three <tbody> elements from this.autokernCache. Called on
-  // every filter change, every threshold change, and once a run finishes.
-  // Guards on missing state (this.autokernCache is set synchronously by
-  // initRunSection, but this.kerningController/this.autokernFiltersController
-  // are set asynchronously by initPairTableSection, and the threshold
-  // listener in initParametersSection can fire before that promise settles)
-  // by simply doing nothing until every piece exists.
+  // Layout overhaul, design doc §1.1/§0: whether ONE side alone resolves
+  // through a class -- the per-side half of isEntryClassed above, needed
+  // because the four-bucket model (unique×unique / unique×class /
+  // class×unique / class×class) cares about each side independently, not
+  // just "both sides classed or not" (isEntryClassed, kept unchanged and
+  // still used by the status strip's classed-vs-flat coverage count).
+  isLeftClassed(glyphName) {
+    return !!this.kerningController.leftPairGroupMapping[glyphName];
+  }
+
+  isRightClassed(glyphName) {
+    return !!this.kerningController.rightPairGroupMapping[glyphName];
+  }
+
+  // The cascade's own four addresses (spec §5.1), named the way design doc
+  // §1.1 names them: "unique-unique", "unique-class", "class-unique",
+  // "class-class". A bucket name is a statement about which cascade address
+  // is the MOST SPECIFIC one available for this exact pair -- not about
+  // which address currently holds a value.
+  bucketForPair(left, right) {
+    return `${this.isLeftClassed(left) ? "class" : "unique"}-${
+      this.isRightClassed(right) ? "class" : "unique"
+    }`;
+  }
+
+  // §1.1 "No override in v1": writing THIS pair as a literal [glyph,glyph]
+  // flat cell (which every action on a per-entry row does --
+  // writePairValues) always outranks any class-based address that would
+  // otherwise answer for it (spec §5.1's cascade, most-specific-wins). That
+  // is only a real hazard -- something the write would silently SHADOW --
+  // if a class-based address for this exact pair already has kerning data.
+  // A pair with no class on either side (unique×unique) has no class-based
+  // address at all, so it can never shadow anything.
+  //
+  // This is a conservative, honestly-approximate detector, not the
+  // override-transparency feature the design doc explicitly defers
+  // (KERNING-VIEW-BACKLOG.md item 8): it does not distinguish "the current
+  // value came from a class cell" from "the current value happens to be
+  // zero for an unrelated reason" -- getGlyphPairValueForLocation returns
+  // whatever the cascade resolves to today, and a nonzero result while
+  // either side is classed is treated as "a class-based address currently
+  // answers for this pair", which is the only signal available without
+  // building the "which address answered" plumbing the backlog item defers.
+  wouldShadowClassCell(left, right) {
+    if (!this.isLeftClassed(left) && !this.isRightClassed(right)) {
+      return false;
+    }
+    const current =
+      this.kerningController.getGlyphPairValueForLocation(left, right, {}) ?? 0;
+    return current !== 0;
+  }
+
+  // Names the class-based address that answers today, for the shadow note
+  // (§1.1: "a note pointing at the class cell that already answers for
+  // it"). Mirrors getPairsToTry's own specificity order (spec §5.1) without
+  // calling it directly (that method is private to kerning-controller.js's
+  // own module scope in spirit, even though not underscore-prefixed --
+  // leftPairGroupMapping/rightPairGroupMapping are the same public maps
+  // every other read in this file already uses).
+  describeShadowedClassCell(left, right) {
+    const leftClass = this.kerningController.leftPairGroupMapping[left];
+    const rightClass = this.kerningController.rightPairGroupMapping[right];
+    if (leftClass && rightClass) {
+      return `@${leftClass} × @${rightClass}`;
+    }
+    return leftClass ? `@${leftClass} × ${right}` : `${left} × @${rightClass}`;
+  }
+
+  // Rebuilds all four bucket <tbody> elements from this.autokernCache.
+  // Called on every filter change, every threshold change, and once a run
+  // finishes. Guards on missing state (this.autokernCache is set
+  // synchronously by initRunSection, but
+  // this.kerningController/this.autokernFiltersController are set
+  // asynchronously by initPairTableSection, and the threshold listener in
+  // initParametersSection can fire before that promise settles) by simply
+  // doing nothing until every piece exists.
+  //
+  // Layout overhaul, design doc §1.1: the old three glyph-anchored sections
+  // (side-1-class-vs-every-side-2-class / every-side-1-class-vs-side-2-class
+  // / flat) are replaced by the four buckets the cascade itself defines
+  // (spec §5.1): unique×unique, unique×class, class×unique, class×class.
+  // The first three stay anchored to the typed/selected glyph (`glyphName`)
+  // exactly like the old table was -- each is a per-cache-entry row, sorted
+  // into its bucket by bucketForPair. class×class is different, per §0/§1.1:
+  // "a class×class row exists once its two classes have any measured
+  // coverage between their members, independent of any glyph being typed at
+  // all" -- buildClassClassGroups below enumerates every side-1-class ×
+  // side-2-class pair with cache coverage, font-wide, not merely the ones
+  // touching glyphName (glyphName, when set, narrows this to classes that
+  // glyphName is actually a member of -- a documented scoping choice, not a
+  // requirement of the design doc, made so the bucket stays navigable
+  // instead of listing the whole font's classes at all times).
   renderPairTable() {
-    const bodies = [1, 2, 3].map((n) =>
-      document.querySelector(`#kerning-pairtable-body-${n}`)
+    const bodyIds = ["unique-unique", "unique-class", "class-unique", "class-class"];
+    const bodies = Object.fromEntries(
+      bodyIds.map((id) => [id, document.querySelector(`#kerning-pairtable-body-${id}`)])
     );
     if (!this.autokernCache || !this.kerningController || !this.autokernFiltersController) {
       return;
@@ -1169,7 +1283,7 @@ export class KerningViewController extends ViewController {
     const threshold = this.autokernParamsController.model.threshold;
     const glyphName = filters.glyphName;
 
-    for (const body of bodies) {
+    for (const body of Object.values(bodies)) {
       body.textContent = "";
     }
 
@@ -1177,133 +1291,110 @@ export class KerningViewController extends ViewController {
       el.style.display = filters.showCurrent ? "" : "none";
     }
 
-    if (!glyphName) {
-      return;
+    // §1.1's grouping filter now shows/hides whole buckets, one
+    // .kerning-pairtable-group per bucket (data-bucket attribute, matching
+    // the bucket names above).
+    for (const groupEl of document.querySelectorAll(".kerning-pairtable-group")) {
+      const bucket = groupEl.dataset.bucket;
+      const visible = filters.grouping === "all" || filters.grouping === bucket;
+      groupEl.classList.toggle("kerning-pairtable-bucket-hidden", !visible);
     }
 
-    // Spec §7.3: "its side-1 class against every side-2 class" / "every
-    // side-1 class against its side-2 class" / "flat rows for whatever is
-    // unclassed on either side". No fold (§5.2 is out of scope): each cache
-    // entry is still its own row, just sorted into one of the three
-    // sections below by which of the glyph's two class memberships (if
-    // either) the pair actually uses -- spec §7.3: "A glyph has two class
-    // memberships and they are different lists. Sections 1 and 2 are not
-    // redundant."
-    //   Section 1: glyphName is the LEFT member, glyphName has a side-1
-    //     class, and the RIGHT glyph has a side-2 class (both sides of the
-    //     pair resolve through a class).
-    //   Section 2: glyphName is the RIGHT member, glyphName has a side-2
-    //     class, and the LEFT glyph has a side-1 class.
-    //   Section 3: everything else touching glyphName (either member is
-    //     unclassed on the relevant side) -- flat/unclassed.
-    // WORKSTREAM 14: the "both sides resolve through a class" test itself is
-    // isEntryClassed (above) -- section 1 vs section 2 here is only about
-    // which side of the pair equals glyphName, not a different classed
-    // test.
-    const rowsBySection = { 1: [], 2: [], 3: [] };
-
-    for (const entry of this.autokernCache.values()) {
-      if (entry.left !== glyphName && entry.right !== glyphName) {
-        continue;
-      }
-      let section;
-      if (!this.isEntryClassed(entry)) {
-        section = 3;
-      } else if (entry.left === glyphName) {
-        section = 1;
-      } else {
-        section = 2;
-      }
-      rowsBySection[section].push(entry);
-    }
-
-    for (const section of [1, 2, 3]) {
-      const classed = section !== 3;
-      const rows = rowsBySection[section]
-        .map((entry) => this.pairRowData(entry, classed))
-        .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
-
-      // Spec §7.3: "Sorted by delta magnitude, worst first... Alphabetical
-      // is a second sort and not the default."
-      if (filters.sortAlphabetical) {
-        rows.sort((a, b) => (a.left + "\0" + a.right).localeCompare(b.left + "\0" + b.right));
-      } else {
-        rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-      }
-
-      // WORKSTREAM 15, spec §5.2: the fold only applies to sections 1 and 2
-      // (both sides classed already, per isEntryClassed) -- section 3 is
-      // flat/unclassed, and a group with only one member folds to nothing
-      // (buildFoldGroups below), so it renders exactly like today either
-      // way. classed is `section !== 3` from above.
-      if (filters.foldClasses && classed) {
-        for (const group of this.buildFoldGroups(section, rows, glyphName)) {
-          if (group.members.length < 2) {
-            bodies[section - 1].appendChild(this.buildPairRowElement(group.rows[0]));
-            continue;
-          }
-          const { parentRow, childRows } = this.buildFoldRowElements(group, section);
-          bodies[section - 1].appendChild(parentRow);
-          for (const childRow of childRows) {
-            bodies[section - 1].appendChild(childRow);
-          }
+    // unique×unique / unique×class / class×unique: per-cache-entry rows,
+    // anchored to the typed glyph exactly like the old table was (spec
+    // §7.3's original anchoring, carried over unchanged in behavior for
+    // these three buckets -- only class×class, below, is freed from it).
+    if (glyphName) {
+      const rowsByBucket = { "unique-unique": [], "unique-class": [], "class-unique": [] };
+      for (const entry of this.autokernCache.values()) {
+        if (entry.left !== glyphName && entry.right !== glyphName) {
+          continue;
         }
-      } else {
+        const bucket = this.bucketForPair(entry.left, entry.right);
+        if (bucket === "class-class") {
+          continue; // handled by the independent class×class builder below
+        }
+        rowsByBucket[bucket].push(entry);
+      }
+
+      for (const bucket of ["unique-unique", "unique-class", "class-unique"]) {
+        if (filters.grouping !== "all" && filters.grouping !== bucket) {
+          continue;
+        }
+        const rows = rowsByBucket[bucket]
+          .map((entry) => this.pairRowData(entry, bucket !== "unique-unique"))
+          .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
+
+        // Spec §7.3: "Sorted by delta magnitude, worst first... Alphabetical
+        // is a second sort and not the default."
+        if (filters.sortAlphabetical) {
+          rows.sort((a, b) =>
+            (a.left + "\0" + a.right).localeCompare(b.left + "\0" + b.right)
+          );
+        } else {
+          rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+        }
+
         for (const row of rows) {
-          bodies[section - 1].appendChild(this.buildPairRowElement(row));
+          bodies[bucket].appendChild(this.buildPairRowElement(row));
         }
       }
     }
-  }
 
-  // WORKSTREAM 15, spec §5.2: "A toggle above the table folds every row
-  // whose pair resolves to the same cell into one parent." The table is
-  // already scoped to one glyph (the field above it), so within section 1
-  // the LEFT side of every row resolves to the same side-1 class (the
-  // glyph's own) -- what varies, and can repeat, is which side-2 class each
-  // row's right glyph belongs to. Section 2 is the mirror: RIGHT is fixed,
-  // LEFT varies. Grouping by the varying side's resolved class is therefore
-  // the same grouping "same (left-class-or-glyph, right-class-or-glyph)
-  // cell" the spec describes, scoped to what this table already shows.
-  //
-  // Returns Array<{ key, members: string[] (the varying side's resolved
-  // class's full membership, from kerningController.kernData -- spec §5.2:
-  // "the table shows its membership instead"), rows: pairRowData[] (the
-  // folded rows themselves, i.e. the ones actually visible), leftClassName,
-  // rightClassName }>. `members.length < 2` (the underlying class itself
-  // has one member, or -- defensively -- the lookup failed) means "nothing
-  // to fold", the caller falls back to the plain row.
-  buildFoldGroups(section, rows, glyphName) {
-    const kernData = this.kerningController.kernData;
-    const groups = new Map();
-    const order = [];
+    // class×class: independent of glyphName (§0/§1.1), when "Fold classes"
+    // is on (the new default -- see the filters-controller comment above).
+    // A class×class row is then always the class-pair aggregate
+    // (computeFoldGroupStats' median/spread/count over the WHOLE class
+    // product), never a single cache entry, and needs no typed glyph to
+    // exist at all. Unchecking "Fold classes" is the escape hatch back to
+    // the pre-overhaul per-cache-entry rows (both sides classed,
+    // isEntryClassed), which -- like the other three buckets -- still needs
+    // a typed glyph to anchor them.
+    if (filters.grouping === "all" || filters.grouping === "class-class") {
+      if (filters.foldClasses) {
+        const groups = this.buildClassClassGroups(glyphName, filters, threshold);
+        if (filters.sortAlphabetical) {
+          groups.sort((a, b) =>
+            (a.group.leftClassName + "\0" + a.group.rightClassName).localeCompare(
+              b.group.leftClassName + "\0" + b.group.rightClassName
+            )
+          );
+        } else {
+          groups.sort((a, b) => Math.abs(b.median) - Math.abs(a.median));
+        }
+        for (const { group, stats, median } of groups) {
+          const { parentRow, childRows } = this.buildClassClassRowElement(
+            group,
+            stats,
+            median
+          );
+          bodies["class-class"].appendChild(parentRow);
+          for (const childRow of childRows) {
+            bodies["class-class"].appendChild(childRow);
+          }
+        }
+      } else if (glyphName) {
+        const rows = [...this.autokernCache.values()]
+          .filter(
+            (entry) =>
+              (entry.left === glyphName || entry.right === glyphName) &&
+              this.isEntryClassed(entry)
+          )
+          .map((entry) => this.pairRowData(entry, true))
+          .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
 
-    for (const row of rows) {
-      let leftClassName, rightClassName, key;
-      if (section === 1) {
-        leftClassName = this.kerningController.leftPairGroupMapping[glyphName];
-        rightClassName = this.kerningController.rightPairGroupMapping[row.right];
-        key = rightClassName;
-      } else {
-        leftClassName = this.kerningController.leftPairGroupMapping[row.left];
-        rightClassName = this.kerningController.rightPairGroupMapping[glyphName];
-        key = leftClassName;
+        if (filters.sortAlphabetical) {
+          rows.sort((a, b) =>
+            (a.left + "\0" + a.right).localeCompare(b.left + "\0" + b.right)
+          );
+        } else {
+          rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+        }
+        for (const row of rows) {
+          bodies["class-class"].appendChild(this.buildPairRowElement(row));
+        }
       }
-      let group = groups.get(key);
-      if (!group) {
-        const varyingClassName = section === 1 ? rightClassName : leftClassName;
-        const members =
-          (section === 1
-            ? kernData.groupsSide2[varyingClassName]
-            : kernData.groupsSide1[varyingClassName]) || [];
-        group = { key, members, rows: [], leftClassName, rightClassName };
-        groups.set(key, group);
-        order.push(key);
-      }
-      group.rows.push(row);
     }
-
-    return order.map((key) => groups.get(key));
   }
 
   // Median (not mean, spec §5.2: "the median is the reducer... a mean can
@@ -1319,38 +1410,117 @@ export class KerningViewController extends ViewController {
       : (sorted[mid - 1] + sorted[mid]) / 2;
   }
 
-  // Spec §10/§5.2, Direction A: the per-glyph sections (§7.3) stay anchored
-  // to the typed/selected glyph -- `group.rows` (built in buildFoldGroups
-  // from the cache entries that touch `glyphName`) is still exactly what
-  // decides which rows are VISIBLE and expandable under a folded parent.
-  // What this method fixes is what the parent's own STATS describe: spec
-  // §5.2's own illustrative example folds `T` into a `T Tcaron Tbar` x
-  // `o ó ö` parent whose "40 pairs, spread 8" is stated as covering the
-  // WHOLE class x class product, not only the rows that happen to involve
-  // `T`. Before this method existed, the parent's median/count were
-  // `medianOf(group.rows.map(...))` / `group.rows.length` -- i.e. only the
-  // cache rows touching the one typed glyph, understating both the moment a
-  // second member of `T`'s own class (say `Tcaron`) also had cached rows
-  // against the same `o`/`ó`/`ö` class.
+  // Layout overhaul, design doc §1.1/§0: every side-1-class × side-2-class
+  // pair that has ANY measured coverage between their members, font-wide --
+  // "a class×class row exists once its two classes have any measured
+  // coverage between their members, independent of any glyph being typed at
+  // all". When glyphName is set, narrowed to class pairs where glyphName is
+  // actually a member of one of the two classes (a scoping choice for
+  // navigability, not a requirement of the design doc -- see this method's
+  // own caller comment in renderPairTable).
   //
-  // leftMembers/rightMembers are the FULL membership of both classes
-  // (kernData.groupsSide1/groupsSide2, spec §5.2: "the table shows its
-  // membership"), not just group.members (which, before this method, was
-  // only the varying side's class -- see buildFoldGroups' own comment).
-  // `entries` is every cache entry whose left is in leftMembers AND whose
-  // right is in rightMembers -- the FULL class x class product's cache
-  // coverage, queried against the WHOLE this.autokernCache, regardless of
-  // whether either endpoint is the typed glyph. `count` is entries.length
-  // (spec's "N pairs"), `median` is medianOf(entries' values) (unmodified,
-  // reused). `spread` reuses classSpread (autokern-classes.js, unmodified)
-  // exactly as before, except the cache it is handed is now `entries` (the
-  // class x class filtered set) instead of the whole flat cache -- so
-  // classSpread's own "every column the cache has data for" (its file-top
-  // comment) is naturally restricted to columns inside the OTHER class,
-  // instead of picking up an unrelated glyph that happens to share a class
-  // member's row. The `side` argument and the member list it is called
-  // with (the varying side's full members) are unchanged from before.
-  computeFoldGroupStats(group, section) {
+  // Returns Array<{ group: {leftClassName, rightClassName, rows}, stats
+  // (computeFoldGroupStats' return, unmodified), median }>, already filtered
+  // by classClassRowVisible (sign/threshold) and already carrying each
+  // group's own filtered, visible child rows for expand-to-browse (the same
+  // per-row filters -- side/sign/state/junk/threshold -- that any other
+  // bucket's rows go through, via pairRowVisible).
+  buildClassClassGroups(glyphName, filters, threshold) {
+    const kernData = this.kerningController.kernData;
+    const side1Names = Object.keys(kernData.groupsSide1 || {});
+    const side2Names = Object.keys(kernData.groupsSide2 || {});
+    // §1.1: the side filter ("glyph on left"/"glyph on right") presumes an
+    // anchor glyph; with none typed, a class×class row has no single glyph
+    // to test it against, so it is bypassed rather than hiding every row.
+    const effectiveFilters = glyphName ? filters : { ...filters, side: "both" };
+
+    const results = [];
+    for (const leftClassName of side1Names) {
+      const leftMembers = kernData.groupsSide1[leftClassName] || [];
+      const leftHasGlyph = !!glyphName && leftMembers.includes(glyphName);
+      for (const rightClassName of side2Names) {
+        const rightMembers = kernData.groupsSide2[rightClassName] || [];
+        if (glyphName && !leftHasGlyph && !rightMembers.includes(glyphName)) {
+          continue;
+        }
+        const leftSet = new Set(leftMembers);
+        const rightSet = new Set(rightMembers);
+        let hasCoverage = false;
+        for (const entry of this.autokernCache.values()) {
+          if (leftSet.has(entry.left) && rightSet.has(entry.right)) {
+            hasCoverage = true;
+            break;
+          }
+        }
+        if (!hasCoverage) {
+          continue;
+        }
+
+        const group = { leftClassName, rightClassName, rows: [] };
+        const stats = this.computeFoldGroupStats(group);
+        // §1.1: "its 'current' is whatever's stored at that class cell
+        // (usually nothing, so effectively zero)" -- taken literally: the
+        // aggregate row's own delta is its median against zero, the same
+        // "usually nothing" reading the design doc gives it (a real stored
+        // class-cell value, if any, is still visible on request via
+        // kerningController.getPairFunction, deliberately not read here to
+        // keep this exactly what the design doc describes).
+        const median = stats.median;
+        if (!this.classClassRowVisible(median, threshold, effectiveFilters)) {
+          continue;
+        }
+
+        group.rows = stats.entries
+          .map((entry) => this.pairRowData(entry, true))
+          .filter((row) =>
+            this.pairRowVisible(row, effectiveFilters, threshold, glyphName || row.left)
+          );
+
+        results.push({ group, stats, median });
+      }
+    }
+    return results;
+  }
+
+  // §1.1's sign/threshold filters, applied to a class×class row's own
+  // aggregate delta (median, current treated as zero -- see
+  // buildClassClassGroups' own comment). Junk and state (pending/applied/
+  // stale) are per-PAIR concepts (spec §4.2/§7.3) with no single value for
+  // an aggregate row spanning many pairs, so neither filters an aggregate
+  // row out here -- a documented limitation, not an oversight: those two
+  // filters still apply normally to the row's own child rows (via
+  // pairRowVisible, in buildClassClassGroups above), which is where a junk
+  // mark or an applied state actually lives.
+  classClassRowVisible(median, threshold, filters) {
+    if (Math.abs(median) < threshold) {
+      return false;
+    }
+    if (filters.sign === "negative" && !(median < 0)) {
+      return false;
+    }
+    if (filters.sign === "positive" && !(median > 0)) {
+      return false;
+    }
+    return true;
+  }
+
+  // Spec §5.2/§10 Direction A (unmodified by the layout overhaul): computes
+  // a class-pair's median/spread/count from the FULL class×class product --
+  // every cache entry whose left is in leftClassName's full membership AND
+  // whose right is in rightClassName's, drawn from the WHOLE cache, not
+  // whatever `group.rows` happens to hold. `group.rows` is used only as a
+  // defensive fallback for the median if the class product somehow has zero
+  // cache coverage (cannot happen through the UI today -- buildClassClassGroups
+  // only calls this once a coverage check has already passed).
+  //
+  // The `side`/`varyingMembers` choice for classSpread's own "which side is
+  // varying" is fixed to "right" here (matching the old call sites'
+  // `section === 1` branch) -- with no glyph anchoring one side as "fixed"
+  // anymore (layout overhaul, §0/§1.1: a class×class row is independent of
+  // any typed glyph), there is no principled "the other side is fixed"
+  // choice to make; "right" is an arbitrary but consistent convention, not a
+  // claim that side is somehow more relevant.
+  computeFoldGroupStats(group) {
     const kernData = this.kerningController.kernData;
     const leftMembers = kernData.groupsSide1[group.leftClassName] || [];
     const rightMembers = kernData.groupsSide2[group.rightClassName] || [];
@@ -1367,46 +1537,39 @@ export class KerningViewController extends ViewController {
     const median = entries.length
       ? KerningViewController.medianOf(entries.map((entry) => entry.value))
       : KerningViewController.medianOf(group.rows.map((row) => row.suggestion));
-    const side = section === 1 ? "right" : "left";
-    const varyingMembers = section === 1 ? rightMembers : leftMembers;
-    const spread = classSpread(varyingMembers, entries, side);
+    const spread = classSpread(rightMembers, entries, "right");
 
     return { leftMembers, rightMembers, entries, median, spread };
   }
 
-  buildFoldRowElements(group, section) {
+  // Builds a class×class row (§1.1's fourth bucket): "Left class" and
+  // "Right class" columns show each side's FULL membership (truncated the
+  // same way a derive proposal's member list truncates, truncateGlyphList),
+  // matching spec §5.2's own illustration ("T Tcaron Tbar   -48   o ó ö" --
+  // left class first, right class last). Clicking the row expands/collapses
+  // its filtered child rows (the class product's own actual cache entries,
+  // already computed in buildClassClassGroups) -- the same "spread says a
+  // class disagrees, expanding shows which" browsing behavior spec §5.2
+  // describes, now available without first anchoring the table to one of
+  // the class's members.
+  buildClassClassRowElement(group, stats, median) {
     const tr = document.createElement("tr");
     tr.className = "kerning-pairtable-fold-row";
 
     const selectCell = document.createElement("td");
     tr.appendChild(selectCell);
 
-    // Spec §5.2/§10 Direction A: stats come from the FULL class x class
-    // product (computeFoldGroupStats, above), not from group.rows (which
-    // stays scoped to the typed glyph, for the browsing structure §7.3
-    // wants -- see childRows below).
-    const stats = this.computeFoldGroupStats(group, section);
-    const { median, spread, leftMembers, rightMembers } = stats;
-
-    // Spec §5.2's own example folds into "T Tcaron Tbar   -48   o ó ö" --
-    // BOTH sides show their full class membership, not the one typed glyph.
-    // section 1: leftMembers is the glyph's own (fixed) class, rightMembers
-    // is the varying class. section 2 is the mirror. nameCell keeps its
-    // established column (the varying side, matching what the ordinary
-    // per-row table calls "left" for section 1's rows) and otherCell keeps
-    // its column (the fixed side) -- only the CONTENT changes, from a
-    // single glyph name to the full class list.
-    const nameCell = document.createElement("td");
-    nameCell.textContent = truncateGlyphList(section === 1 ? rightMembers : leftMembers);
-    tr.appendChild(nameCell);
+    const leftCell = document.createElement("td");
+    leftCell.textContent = truncateGlyphList(stats.leftMembers);
+    tr.appendChild(leftCell);
 
     const deltaCell = document.createElement("td");
     deltaCell.textContent = median > 0 ? `+${median.toFixed(1)}` : median.toFixed(1);
     tr.appendChild(deltaCell);
 
-    const otherCell = document.createElement("td");
-    otherCell.textContent = truncateGlyphList(section === 1 ? leftMembers : rightMembers);
-    tr.appendChild(otherCell);
+    const rightCell = document.createElement("td");
+    rightCell.textContent = truncateGlyphList(stats.rightMembers);
+    tr.appendChild(rightCell);
 
     const currentCell = document.createElement("td");
     currentCell.className = "kerning-pairtable-current-col";
@@ -1416,7 +1579,7 @@ export class KerningViewController extends ViewController {
     tr.appendChild(currentCell);
 
     const infoCell = document.createElement("td");
-    infoCell.textContent = `${stats.entries.length} pairs, spread ${spread.overall.toFixed(1)}`;
+    infoCell.textContent = `${stats.entries.length} pairs, spread ${stats.spread.overall.toFixed(1)}`;
     tr.appendChild(infoCell);
 
     const applyButton = document.createElement("button");
@@ -1424,7 +1587,7 @@ export class KerningViewController extends ViewController {
     applyButton.textContent = "Apply class";
     applyButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      this.applyFoldedParentRow(group, section, median);
+      this.applyFoldedParentRow(group, median);
     });
     infoCell.appendChild(applyButton);
 
@@ -1446,17 +1609,19 @@ export class KerningViewController extends ViewController {
     return { parentRow: tr, childRows };
   }
 
-  // WORKSTREAM 15, spec §5.2: "Applying a parent writes one cell at the
-  // median of its members." The pair-selector shape is the SAME one
-  // getPairsToTry/kerning-controller.js's own [@class, @class] address uses
-  // (kerning-controller.js: `addGroupPrefix` prepends "@" to a stored group
-  // name before it is used as a lookup/write key into kernData.values) --
-  // KerningEditContext (kerning-controller.js) writes into
-  // kernData.values[leftName][rightName] for whatever leftName/rightName a
-  // pairSelector carries, with no restriction to bare glyph names, so an
-  // "@ClassName" pairSelector reaches the real class cell, not a flat
-  // shadow of it (spec §5.1's whole argument against a flat write).
-  async applyFoldedParentRow(group, section, median) {
+  // WORKSTREAM 15, spec §5.2, now also the layout overhaul's class×class
+  // apply (§1.1: "its delta and apply behave exactly like any other row's"):
+  // "Applying a parent writes one cell at the median of its members." The
+  // pair-selector shape is the SAME one getPairsToTry/kerning-controller.js's
+  // own [@class, @class] address uses (kerning-controller.js: `addGroupPrefix`
+  // prepends "@" to a stored group name before it is used as a lookup/write
+  // key into kernData.values) -- KerningEditContext (kerning-controller.js)
+  // writes into kernData.values[leftName][rightName] for whatever
+  // leftName/rightName a pairSelector carries, with no restriction to bare
+  // glyph names, so an "@ClassName" pairSelector reaches the real class
+  // cell, not a flat shadow of it (spec §5.1's whole argument against a flat
+  // write).
+  async applyFoldedParentRow(group, median) {
     const sourceIdentifier =
       this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation({}, false);
     if (!sourceIdentifier) {
@@ -1994,6 +2159,17 @@ export class KerningViewController extends ViewController {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.className = "kerning-pairtable-row-select";
+    // §1.1 "No override in v1": a flat apply on this row would silently
+    // shadow an existing class cell -- disable the row's own apply/reset
+    // eligibility (its checkbox is what apply-selected/apply-all/reset-*/
+    // the manual-value apply all read from, getSelectedPairTableRows) and
+    // point at the class cell that already answers for it, rather than
+    // building the override-transparency UI the design doc defers
+    // (KERNING-VIEW-BACKLOG.md item 8).
+    if (this.wouldShadowClassCell(row.left, row.right)) {
+      checkbox.disabled = true;
+      checkbox.title = "Would shadow an existing class cell -- edit the class cell instead.";
+    }
     selectCell.appendChild(checkbox);
     tr.appendChild(selectCell);
 
@@ -2025,6 +2201,12 @@ export class KerningViewController extends ViewController {
       this.togglePairJunk(row.left, row.right, !row.junk)
     );
     junkCell.appendChild(junkButton);
+    if (this.wouldShadowClassCell(row.left, row.right)) {
+      const note = document.createElement("span");
+      note.className = "kerning-pairtable-shadow-note";
+      note.textContent = ` shadows ${this.describeShadowedClassCell(row.left, row.right)}`;
+      junkCell.appendChild(note);
+    }
     tr.appendChild(junkCell);
 
     return tr;
@@ -2234,6 +2416,42 @@ export class KerningViewController extends ViewController {
     }
   }
 
+  // Layout overhaul, design doc §1: "Three resizable columns, using the same
+  // drag-splitter mechanism `views-editor` already uses for its own panels
+  // -- reused, not reimplemented." Sidebar (views-editor/src/sidebar.js,
+  // exported cross-view via that package's widened exports map, spec §8's
+  // own pattern) already owns exactly this: a pointer-drag handler that
+  // clamps a width and writes it to a CSS custom property
+  // (`--sidebar-content-width-<identifier>`), plus the min/max clamp and
+  // localStorage persistence, keyed by identifier. Two instances here own
+  // the left and right column widths; the middle column is the `1fr` grid
+  // track left over between them (kerning.css). Identifiers are
+  // "kerning-left"/"kerning-right", NOT the editor's own "left"/"right" --
+  // Sidebar's localStorage keys and its width/visibility state are keyed
+  // only by identifier, and this view shares the same origin (hence the
+  // same localStorage) as the editor view, so reusing "left"/"right" here
+  // would read and write the EDITOR's own sidebar width/visibility state.
+  // (This also required one small, behavior-preserving fix to sidebar.js
+  // itself: its resize-drag handler hardcoded the CSS property name for
+  // exactly the "left"/"right" identifiers instead of reading
+  // `this.identifier` generically -- see that file's own comment.)
+  //
+  // What is deliberately NOT reused from Sidebar: its tab-toggle machinery
+  // (addPanel, toggle, the tab-overlay-container/sidebar-tab/sidebar-shadow-
+  // box DOM it expects) -- this view's columns are always visible, not
+  // collapsible tabs, so only attach() (which itself only wires up the
+  // resize gutter and restores a stored width) is called; addPanel/toggle
+  // are simply never invoked. kerning.css supplies its own always-visible
+  // width rule (via the same CSS custom property Sidebar's own drag handler
+  // writes to) instead of Sidebar's own `.sidebar-container.visible` rule,
+  // which this view's markup never adds the "visible" class to trigger.
+  initColumnSplitters() {
+    this.leftColumnSplitter = new Sidebar("kerning-left");
+    this.leftColumnSplitter.attach(document.querySelector(".kerning-left"));
+    this.rightColumnSplitter = new Sidebar("kerning-right");
+    this.rightColumnSplitter.attach(document.querySelector(".kerning-right"));
+  }
+
   initToolSwitcher() {
     for (const button of document.querySelectorAll("[data-tool]")) {
       button.addEventListener("click", () => this.setSelectedTool(button.dataset.tool));
@@ -2250,6 +2468,15 @@ export class KerningViewController extends ViewController {
   // here until selectPairForScene (a pair-table row click) supplies a pair,
   // matching "disabled until a pair is selected" literally rather than
   // pre-enabling it and merely leaving it empty.
+  // TODO(font mode, design doc §2 -- NOT this workstream's scope): a third
+  // chip value, "font", reusing font-overview.js's own grid/selection
+  // machinery (rail R-A) for a multi-select glyph grid. The extension point
+  // is here and in setChipMode/updateChipButtons below: add a
+  // `<button data-chip="font">` (kerning.html's #kerning-chip-selector
+  // already has a matching TODO comment) and a branch in setChipMode that
+  // swaps #kerning-middle-top's content for the grid instead of setting
+  // sceneSettings.text, the same way "pair" swaps it to a two-glyph string
+  // today.
   initChipSection() {
     this._chipMode = "phrase";
     this._selectedPairText = null;

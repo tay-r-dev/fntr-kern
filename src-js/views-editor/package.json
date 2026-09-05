@@ -13,7 +13,8 @@
     "./edit-tools-metrics.js": "./src/edit-tools-metrics.js",
     "./edit-tools-hand.js": "./src/edit-tools-hand.js",
     "./visualization-layers.js": "./src/visualization-layers.js",
-    "./visualization-layer-definitions.js": "./src/visualization-layer-definitions.js"
+    "./visualization-layer-definitions.js": "./src/visualization-layer-definitions.js",
+    "./sidebar.js": "./src/sidebar.js"
   },
   "type": "module",
   "fontra": {

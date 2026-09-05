@@ -3,17 +3,110 @@
    other view supplies its own .main-container rule (see fontoverview.css,
    editor.css). Without one, a percentage-height child of this auto-height
    div resolves to 0, so the canvas rendered at 0x0 -- a blank screen. */
-/* Workstream 8 (spec §1/§6/§7): "The left half is a string preview with
-   three tools. The right half computes kerning suggestions...". A two-column
-   grid, fixed 1fr/1fr split down the middle, rather than flex: there is no
-   need for either side to grow/shrink asymmetrically or to wrap, and a grid
-   with two equal tracks says "two halves" more directly than two flex items
-   with matching flex-basis. */
+/* Layout overhaul (docs/superpowers/specs/2026-09-05-kerning-view-layout-
+   overhaul-design.md §1): three resizable columns -- left (results table),
+   middle (scene + class-panel slot), right (parameters/status) -- replacing
+   the old fixed 1fr/1fr two-pane split. The outer two columns' widths are
+   driven by the SAME CSS-custom-property mechanism views-editor's own
+   Sidebar class already uses for its sidebars
+   (src-js/views-editor/src/sidebar.js: `--sidebar-content-width-<identifier>`,
+   written by that class's pointer-drag handler) -- reused via kerning.js's
+   initColumnSplitters, not reimplemented (rail R-A). The identifiers here
+   are "kerning-left"/"kerning-right" (not the editor's own "left"/"right"),
+   so this view's column widths persist under their own localStorage keys
+   and never collide with the editor's actual sidebar widths. */
+:root {
+  --sidebar-content-width-kerning-left: 420px;
+  --sidebar-content-width-kerning-right: 320px;
+  --resize-cursor: col-resize;
+}
+
+:root.sidebar-resizing {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: var(--resize-cursor);
+}
+
 .main-container {
   width: 100vw;
   height: calc(100vh - var(--top-bar-height));
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns:
+    var(--sidebar-content-width-kerning-left)
+    1fr
+    var(--sidebar-content-width-kerning-right);
+}
+
+.kerning-column {
+  position: relative;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.kerning-column.animating {
+  transition: 120ms;
+}
+
+/* Sidebar's own resize-gutter styling (sidebar-container/sidebar-resize-
+   gutter class names, reused verbatim so Sidebar's querySelectors -- which
+   look for exactly these class names -- find this view's markup). */
+.sidebar-resize-gutter {
+  height: 100%;
+  width: 4px;
+  cursor: var(--resize-cursor);
+  position: absolute;
+  z-index: 2;
+}
+
+.kerning-left .sidebar-resize-gutter {
+  right: -2px;
+}
+
+.kerning-right .sidebar-resize-gutter {
+  left: -2px;
+}
+
+/* §1.1: the results table, now the left column. */
+#kerning-pairtable-section {
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 1em;
+  border-right: 1px solid var(--horizontal-rule-color, #ccc);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75em;
+}
+
+/* §1.2: the middle column, two rows -- the scene on top, the class-panel
+   slot (populated by a different worker) below it. No drag-resize between
+   these two rows: the design doc's §1 only calls for three resizable
+   COLUMNS, not a resizable split within the middle column. */
+.kerning-middle {
+  display: grid;
+  grid-template-rows: minmax(200px, 1fr) minmax(140px, auto);
+}
+
+#kerning-middle-top {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#kerning-middle-bottom {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--horizontal-rule-color, #ccc);
+}
+
+/* TODO(class panel worker): #autokern-class-panel-slot is an intentionally
+   empty hook -- style its actual contents in that worker's own pass rather
+   than here. */
+#autokern-class-panel-slot {
+  height: 100%;
+  box-sizing: border-box;
 }
 
 #kerning-view-container {
@@ -25,9 +118,11 @@
   position: relative;
   height: 100%;
   overflow-y: auto;
-  border-left: 1px solid var(--horizontal-rule-color, #ccc);
   box-sizing: border-box;
   padding: 1em;
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
 }
 
 #kerning-phrase-section {
@@ -53,7 +148,6 @@
    hidden; kerning-parameters-collapsible is a <details> holding the rest
    (envelope reach, envelope type, reduction, strength). */
 #kerning-parameters-section {
-  margin-top: 1em;
   display: flex;
   flex-direction: column;
   gap: 0.5em;
@@ -84,14 +178,9 @@
   margin-bottom: 0.35em;
 }
 
-/* Workstream 11 (spec §7.3): the pair table. */
-#kerning-pairtable-section {
-  margin-top: 1em;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75em;
-}
-
+/* Workstream 11 (spec §7.3): the pair table controls. (#kerning-pairtable-
+   section itself is styled above, in the layout-overhaul block, since it is
+   now the whole left column.) */
 #kerning-pairtable-controls {
   display: flex;
   flex-direction: column;
@@ -177,7 +266,6 @@
    same <details>/<summary> pattern as #kerning-parameters-collapsible. A
    readout only -- no controls live here. */
 #kerning-calibration-section {
-  margin-top: 1em;
 }
 
 #kerning-calibration-collapsible summary {
@@ -192,13 +280,14 @@
   font-size: 0.9em;
 }
 
-/* Workstream 14 (spec §7.5): the status strip. "Always visible, and
-   interactive rather than a readout" -- unlike the sections above, this one
-   is a plain div, never a <details>. */
+/* Workstream 14 (spec §7.5), repositioned by the layout overhaul (design doc
+   §1.3): "the status strip... moves to the TOP of this column, always
+   visible." Unlike the sections below it, this one is a plain div, never a
+   <details>. Border moved from top to bottom since it now leads the column
+   instead of trailing it. */
 #kerning-status-section {
-  margin-top: 1em;
-  padding-top: 0.75em;
-  border-top: 1px solid var(--horizontal-rule-color, #ccc);
+  padding-bottom: 0.75em;
+  border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
   display: flex;
   flex-direction: column;
   gap: 0.5em;
@@ -219,4 +308,36 @@
   flex-wrap: wrap;
   gap: 0.75em;
   font-size: 0.9em;
+}
+
+/* §1.1: "A manual, directly-typed value is also always available on any
+   row." One field + one apply action, applying to whichever row(s) are
+   currently checked (the same selection apply-selected/reset-* already use),
+   regardless of which bucket they're in. */
+#kerning-pairtable-manual-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+#kerning-pairtable-manual-value {
+  width: 6em;
+}
+
+/* §1.1: the four-bucket grouping filter shows/hides whole bucket groups
+   (kerning.js's renderPairTable toggles this class per .kerning-pairtable-
+   group, keyed by its data-bucket attribute) rather than filtering rows
+   within a fixed set of sections, since a hidden bucket's underlying table
+   is not populated at all when the filter excludes it. */
+.kerning-pairtable-group.kerning-pairtable-bucket-hidden {
+  display: none;
+}
+
+/* §1.1 "No override in v1": a suggestion whose apply would silently shadow
+   an existing class cell is still shown, but its own apply control is
+   disabled and annotated -- no separate override-transparency UI is built
+   here (tracked in KERNING-VIEW-BACKLOG.md, backlog item 8). */
+.kerning-pairtable-shadow-note {
+  font-style: italic;
+  opacity: 0.8;
 }
