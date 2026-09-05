@@ -258,6 +258,40 @@ one about to be written — the override case is exactly "the flat address isn't
 list, and a class address on the list currently has a stored value." No new resolution logic is
 needed, only a UI decision on how to surface it, deferred to a future brainstorm.
 
+---
+
+## 9. A visibility toggle (eye icon + hotkey) for the on-canvas suggestion display
+
+**Problem.** The on-canvas suggestion overlay (spec §10's "on-canvas display of a suggestion",
+`buildAutokernSuggestionVisualizationLayerDefinition` at `kerning.js:2423`) is deliberately built
+non-optional today: `userSwitchable: false` (`kerning.js:2432`), with a comment stating this outright
+— "gating is entirely on pair mode + a cache entry existing... not a designer-facing visibility
+toggle." Visibility is currently controlled only by being in `pair` chip mode with a cache entry for
+the selected pair; there is no way to hide it on demand while still in pair mode, and it never appears
+in `phrase` mode at all (gated to pair mode by the draw function's own no-op check).
+
+**Ask.** An eye icon in the preview pane's upper-right corner, plus a keyboard shortcut, to toggle the
+suggestion overlay's visibility on demand — described as wanting a "real-time suggestion preview."
+
+**Open sub-question before implementing.** Two different features could satisfy this ask, and they're
+different amounts of work:
+- **A visibility toggle only**, scoped to what already exists: flip `userSwitchable` to `true` (or add
+  a dedicated toggle, since the existing mechanism assumes a design-space-style layer list the eye icon
+  described here may not want to reuse verbatim) so the same pair-mode, cache-gated overlay can be
+  hidden/shown on demand. Small: `this.visualizationLayers.toggle(...)` plus
+  `this.canvasController.requestUpdate()` already do this for every other layer in this codebase
+  (see the constructor's `visualizationLayersSettings.addListener`, `kerning.js:264`), and a hotkey is
+  a `registerAction` call in the same style already used for this view's own actions (e.g.
+  `action.kerning.toggle-chip`, `kerning.js:2278-2284`).
+- **Extending the overlay to phrase mode**, showing every visible pair's suggestion live across the
+  whole typed phrase rather than only the one selected pair — genuinely new behavior (today's draw
+  function no-ops outside pair mode by design), and the larger reading of "real-time preview."
+
+**Suggested approach.** Confirm which of the two (or both, toggle first) is wanted before starting;
+the toggle alone is a small, mechanical change reusing an existing pattern, while the phrase-mode
+extension needs its own short design pass (at minimum: performance across a full phrase's worth of
+pairs, and whether every pair's suggestion or only above-threshold ones should draw).
+
 Both fixes are additive positioning logic on top of existing, working draw calls — no change to what
 data is shown or when (the gating logic in item 6's handles and this item's suggestion layer,
 `kerning.js:2446-2462`, stays as is).
