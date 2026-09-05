@@ -306,13 +306,19 @@
                    only relocated. -->
               <div id="kerning-derive-proposals"></div>
 
-              <!-- §1.2 "Class list": one flat list, every class from both
-                   groupsSide1 and groupsSide2 (kerning.js's renderClassList). -->
-              <div id="autokern-class-list"></div>
+              <!-- Class list and its selected class's contents sit side by
+                   side, not stacked -- the list is a nav column, the strip
+                   is what it's navigating to, same as e.g. a mail app's
+                   folder-list-beside-message-list convention. -->
+              <div id="autokern-class-panel-body">
+                <!-- §1.2 "Class list": one flat list, every class from both
+                     groupsSide1 and groupsSide2 (kerning.js's renderClassList). -->
+                <div id="autokern-class-list"></div>
 
-              <!-- §1.2 "Glyph-swatch strip": the selected class's members,
-                   as glyph-cell tiles (kerning.js's renderClassSwatchStrip). -->
-              <div id="autokern-class-swatch-strip"></div>
+                <!-- §1.2 "Glyph-swatch strip": the selected class's members,
+                     as glyph-cell tiles (kerning.js's renderClassSwatchStrip). -->
+                <div id="autokern-class-swatch-strip"></div>
+              </div>
             </div>
           </div>
         </div>

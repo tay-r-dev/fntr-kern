@@ -383,7 +383,19 @@ export class KerningViewController extends ViewController {
     this.initPhraseSection();
     this.initParametersSection();
     this.initRunSection();
-    this.initPairTableSection();
+    // Awaited: initPairTableSection is async and awaits
+    // fontController.getKerningController internally to build
+    // this.kerningController. It used to be called without awaiting here,
+    // so start() raced ahead into initFontModeSection/initClassPanelSection
+    // below before this.kerningController existed -- initClassPanelSection's
+    // own initial renderClassList() call (guarded to no-op when
+    // this.kerningController is still undefined) silently did nothing, so
+    // existing classes only appeared once some later action (e.g. creating
+    // a class) called renderClassList() again after the controller had
+    // since become available. The comment on initClassPanelSection below
+    // already assumed "runs after it" meant "runs after it completes" --
+    // true only once this call is actually awaited.
+    await this.initPairTableSection();
     this.initAutokernStatusSection();
     // Design doc §2: font mode. Needs this.fontController.glyphMap (populated
     // by super.start() above), so it can't run from the constructor the same
@@ -879,6 +891,25 @@ export class KerningViewController extends ViewController {
     this.autokernFiltersController.synchronizeWithLocalStorage(
       "fontra-kerning-pairtable-filters."
     );
+    // Migration guard: a browser that used the pre-overhaul three-value
+    // grouping filter ("both"/"classed"/"flat") has that value persisted in
+    // localStorage, and synchronizeWithLocalStorage above just overwrote the
+    // "all" default with it. renderPairTable's bucket-visibility check
+    // (`filters.grouping === "all" || filters.grouping === bucket`) hides
+    // every bucket -- none of the four current names match "both" -- which
+    // reads as "the results table disappeared." Reset to "all" whenever the
+    // persisted value isn't one of today's five valid options (this was
+    // flagged, not fixed, when the four-bucket filter was first built).
+    const validGroupingValues = new Set([
+      "all",
+      "unique-unique",
+      "unique-class",
+      "class-unique",
+      "class-class",
+    ]);
+    if (!validGroupingValues.has(this.autokernFiltersController.model.grouping)) {
+      this.autokernFiltersController.setItem("grouping", "all");
+    }
     const filters = this.autokernFiltersController.model;
 
     const glyphInput = document.querySelector("#kerning-pairtable-glyph");
@@ -2271,7 +2302,18 @@ export class KerningViewController extends ViewController {
     // bubbles unless stopped explicitly).
     const deleteButton = document.createElement("icon-button");
     deleteButton.className = "autokern-class-delete-button";
-    deleteButton.setAttribute("src", "/tabler-icons/trash.svg");
+    // `src` is IconButton's own reactive property (html-utils.js's
+    // UnlitElement._setupProperties defines it via Object.defineProperty,
+    // entirely separate from the HTML attribute of the same name -- there is
+    // no observedAttributes/attributeChangedCallback on IconButton to sync
+    // the two). Setting the ATTRIBUTE here (as this line used to) left the
+    // PROPERTY undefined, so render()'s `this.src` read undefined and handed
+    // inline-svg.js an unset src -- the "svgElement.removeAttribute is not a
+    // function" crash reported live. panel-axes.js's own delete-axis control
+    // gets this right via `html.createDomElement("icon-button", {src: ...})`,
+    // which assigns the PROPERTY (`element[key] = value`); assigning the
+    // property directly here matches that, once diagnosed.
+    deleteButton.src = "/tabler-icons/trash.svg";
     deleteButton.setAttribute("data-tooltip", `Delete class "${entry.name}"`);
     deleteButton.setAttribute("data-tooltipposition", "left");
     deleteButton.onclick = () => this.confirmAndDeleteClass(entry.side, entry.name);
