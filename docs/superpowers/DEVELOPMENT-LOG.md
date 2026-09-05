@@ -2069,3 +2069,26 @@ corrected days earlier. The map carries a "grep before trusting a filename here"
 note rather than just a fixed row. **A code comment pointed at a deleted spec for
 several commits**: cited paths rot silently. **Documents that were already
 unformatted are left that way**, because reformatting buries a change in noise.
+
+---
+
+## The kerning view (autokern)
+
+**`offsetLeft`/`offsetTop` are offsetParent-relative, not viewport-relative,
+and every existing caller's layout happened to have exactly one positioned
+ancestor between the canvas and the page** — the only condition under which
+the two coincide. `CanvasController.localPoint`/`getViewBox` (shared by every
+scene canvas) used them as a stand-in for on-screen position; correct in
+`editor.js` only because `.editor-container` sits flush at the document
+origin and `#edit-canvas` is a direct child of the one `position: relative`
+element beneath it. The kerning view's own three-column grid nests a second
+positioned wrapper, and `offsetLeft` silently read `0` against a real 420px
+on-screen offset — every click landed 408px away from what was clicked.
+Fixed by switching to `getBoundingClientRect()` (already used correctly two
+getters above, for width/height) everywhere position is read, which agrees
+with `offsetLeft` exactly whenever there is no page-level scroll — true of
+every view in this app (`html, body { height: 100vh }`, no body overflow) —
+so the fix is a no-op for existing callers and a real correction for any
+future view that nests one more positioned ancestor than the last one did.
+Any new view that wraps the shared canvas in extra positioned containers
+should assume the OLD code, not this fix, was the trap.

@@ -19,12 +19,34 @@
   --sidebar-content-width-kerning-left: 420px;
   --sidebar-content-width-kerning-right: 320px;
   --resize-cursor: col-resize;
+  /* Task 2 (part6): the middle column's bottom row (class panel) height,
+     drag-adjustable the same way the two outer columns' widths are -- see
+     initMiddleRowSplitter in kerning.js. Follows the same one-fixed/one-
+     flexible convention the three-column grid already uses (left/right
+     columns fixed via a CSS custom property, middle column 1fr): here the
+     bottom row is the fixed one (a custom property), the top row (the scene)
+     is the flexible one, `minmax(200px, 1fr)` below, so it keeps whatever
+     space dragging the bottom row's height doesn't claim. */
+  --kerning-middle-bottom-height: 140px;
 }
 
 :root.sidebar-resizing {
   user-select: none;
   -webkit-user-select: none;
   cursor: var(--resize-cursor);
+}
+
+/* Task 2 (part6): row-resize cursor lock while dragging the middle column's
+   own row divider -- same mechanism as :root.sidebar-resizing above (a
+   document-root class toggled for the drag's duration so the cursor doesn't
+   flicker between the gutter and whatever's under the pointer mid-drag), a
+   separate class because the cursor itself differs (row-resize, not
+   col-resize) and Sidebar's own class already hardcodes col-resize via
+   --resize-cursor. */
+:root.kerning-row-resizing {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: row-resize;
 }
 
 .main-container {
@@ -80,18 +102,44 @@
 }
 
 /* §1.2: the middle column, two rows -- the scene on top, the class-panel
-   slot (populated by a different worker) below it. No drag-resize between
-   these two rows: the design doc's §1 only calls for three resizable
-   COLUMNS, not a resizable split within the middle column. */
+   slot (populated by a different worker) below it.
+   Task 2 (part6): drag-resizable between the two rows now -- see
+   initMiddleRowSplitter in kerning.js and #kerning-middle-resize-gutter
+   below. The top row keeps its own min (200px) via minmax; the bottom row's
+   height is the CSS custom property the drag writes to, itself clamped
+   between 140px and (total height - 200px) in JS so the top row's own min
+   can never be violated by a drag (see the clamp in initMiddleRowSplitter). */
 .kerning-middle {
   display: grid;
-  grid-template-rows: minmax(200px, 1fr) minmax(140px, auto);
+  grid-template-rows: minmax(200px, 1fr) var(--kerning-middle-bottom-height);
 }
 
 #kerning-middle-top {
   position: relative;
   min-height: 0;
   overflow: hidden;
+}
+
+/* Task 2 (part6): the row divider itself. A direct child of .kerning-middle
+   (position:relative via .kerning-column), NOT nested inside
+   #kerning-middle-top -- that was tried first and live-tested broken:
+   #kerning-middle-top's own `overflow: hidden` clipped the gutter, since its
+   -2px straddle of the row boundary put half of it outside
+   #kerning-middle-top's own box (see kerning.html's own comment on this same
+   element for the exact live symptom). Positioned directly off
+   .kerning-middle's own box instead, anchored from the bottom by the same
+   custom property that sizes the bottom row
+   (--kerning-middle-bottom-height), minus half its own height, so it always
+   sits exactly astride the row boundary regardless of what that height
+   currently is. */
+#kerning-middle-resize-gutter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--kerning-middle-bottom-height) - 2px);
+  height: 4px;
+  cursor: row-resize;
+  z-index: 3;
 }
 
 #kerning-middle-bottom {

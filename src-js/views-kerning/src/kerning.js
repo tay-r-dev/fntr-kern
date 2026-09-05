@@ -3180,6 +3180,149 @@ export class KerningViewController extends ViewController {
     this.leftColumnSplitter.attach(document.querySelector(".kerning-left"));
     this.rightColumnSplitter = new Sidebar("kerning-right");
     this.rightColumnSplitter.attach(document.querySelector(".kerning-right"));
+    // Task 2 (part6): the middle column's own row divider (scene on top,
+    // class panel below). See this method's own comment for why this is a
+    // narrow, view-local handler rather than a third Sidebar instance or a
+    // generalized vertical mode on the Sidebar class itself.
+    this.initMiddleRowSplitter();
+  }
+
+  // Task 2 (part6, layout overhaul design doc §1.2): "make the divider
+  // between the middle column's two rows... drag-resizable, reusing the same
+  // views-editor Sidebar-style drag mechanism already reused for the three
+  // columns... rather than inventing a new one."
+  //
+  // Read Sidebar (sidebar.js) in full first, per the brief, to decide (a)
+  // generalize it to a vertical/row mode reused by both this splitter and
+  // its existing horizontal ones, or (b) a narrowly-scoped, view-local
+  // handler. Chose (b), for concrete reasons found by reading, not by
+  // default caution:
+  //
+  //   - Sidebar.initResizeGutter/applyWidth/getStoredWidth are not just
+  //     "horizontal-only" as a matter of an unparameterized axis (that part
+  //     would be a small change: read clientY instead of clientX, write
+  //     "height" instead of "width"). They are hardcoded to the EDITOR's
+  //     own sidebar semantics in ways a row splitter doesn't share at all:
+  //     MIN_SIDEBAR_WIDTH/MAX_SIDEBAR_WIDTH (200-500) are module-level
+  //     constants shared by every Sidebar instance, but this row split needs
+  //     a 140px minimum on one side and a 200px minimum on the OTHER side
+  //     (the design doc's own grid-template-rows minimums,
+  //     `minmax(200px, 1fr) minmax(140px, auto)`) -- an asymmetric
+  //     constraint Sidebar has no parameter for today, and widening it to
+  //     accept per-instance min/max risks every existing editor sidebar call
+  //     site silently inheriting a new, unexercised code path.
+  //   - Sidebar.attach/toggle/addPanel assume the sidebar-tab/sidebar-shadow-
+  //     box/"visible" show-hide machinery (a collapsible panel with tabs) --
+  //     none of which the middle row split has or wants; attach() itself
+  //     calls initResizeGutter() as a side effect of a method whose whole
+  //     other job is show/hide-tab wiring this splitter doesn't need, so
+  //     "just call attach()" isn't actually available without either that
+  //     unwanted machinery running too or splitting attach() apart (a
+  //     bigger, riskier change to a class three other real sidebars, in
+  //     views-editor, depend on).
+  //   - The gutter/container selectors Sidebar's own methods query
+  //     (`.sidebar-container.${identifier} .sidebar-resize-gutter`) assume
+  //     the `sidebar-container`/`sidebar-content` class-name contract this
+  //     view's own kerning-left/kerning-right columns already carry (see
+  //     kerning.html's own comment on why: Sidebar's querySelectors look for
+  //     exactly these class names) -- the middle column's two rows are not
+  //     sidebar-containers and were never going to be made into one just to
+  //     fit this one call.
+  //
+  // What IS reused, deliberately, rather than reinvented: the exact
+  // mechanism, not the class -- one CSS custom property
+  // (--kerning-middle-bottom-height, kerning.css) written on pointer-drag,
+  // the same document-root cursor-lock class convention Sidebar's own
+  // :root.sidebar-resizing uses (this view's own :root.kerning-row-resizing,
+  // kerning.css), and localStorage persistence, keyed the same way
+  // (`fontra-kerning-middle-bottom-height`, parallel to Sidebar's own
+  // `fontra-sidebar-width-${identifier}` key shape).
+  initMiddleRowSplitter() {
+    const MIN_BOTTOM_HEIGHT = 140; // matches the design doc's own row minimum
+    const MIN_TOP_HEIGHT = 200; // ditto, for the scene row
+    const gutter = document.querySelector("#kerning-middle-resize-gutter");
+    const middleColumn = document.querySelector(".kerning-middle");
+
+    const clampBottomHeight = (height) => {
+      const totalHeight = middleColumn.getBoundingClientRect().height;
+      const maxBottomHeight = Math.max(
+        MIN_BOTTOM_HEIGHT,
+        totalHeight - MIN_TOP_HEIGHT
+      );
+      return Math.min(Math.max(height, MIN_BOTTOM_HEIGHT), maxBottomHeight);
+    };
+
+    const applyBottomHeight = (height, saveLocalStorage = false) => {
+      if (height === undefined) {
+        return;
+      }
+      if (saveLocalStorage) {
+        localStorage.setItem("fontra-kerning-middle-bottom-height", height);
+      }
+      document.documentElement.style.setProperty(
+        "--kerning-middle-bottom-height",
+        `${height}px`
+      );
+    };
+
+    // Restore whatever height was last dragged to, same "read localStorage
+    // once, at attach time" convention as Sidebar.initResizeGutter's own
+    // `this.getStoredWidth()`/`this.applyWidth(sidebarWidth)` pair.
+    const storedHeight = localStorage.getItem("fontra-kerning-middle-bottom-height");
+    if (storedHeight) {
+      applyBottomHeight(clampBottomHeight(parseInt(storedHeight)));
+    }
+
+    let dragging = false;
+    let initialHeight;
+    let initialPointerCoordinateY;
+    let height;
+
+    const onPointerMove = (event) => {
+      if (!dragging) {
+        return;
+      }
+      // The gutter sits at the TOP edge of the bottom row (kerning.css:
+      // `bottom: -2px` inside #kerning-middle-top) -- dragging it UP (a
+      // smaller clientY) grows the bottom row, dragging it DOWN shrinks it,
+      // which is why this is a subtraction of the delta, not an addition
+      // (the mirror image of Sidebar's own "growDirection" sign flip, here
+      // fixed rather than configurable since there is only one gutter and
+      // one direction it can mean).
+      height = clampBottomHeight(
+        initialHeight - (event.clientY - initialPointerCoordinateY)
+      );
+      applyBottomHeight(height);
+    };
+    const onPointerUp = () => {
+      applyBottomHeight(height, true);
+      middleColumn.classList.add("animating");
+      dragging = false;
+      initialHeight = undefined;
+      initialPointerCoordinateY = undefined;
+      document.documentElement.classList.remove("kerning-row-resizing");
+      document.removeEventListener("pointermove", onPointerMove);
+      // Trigger the canvas's own resize handling explicitly: the
+      // ResizeObserver in canvas-controller.js already observes
+      // #kerning-view-container's own box (see canvas-controller.js's
+      // constructor), so a row-height drag that changes the scene row's
+      // actual pixel size is picked up the same way a column-splitter drag
+      // already is -- nothing extra needed here for that. This call is only
+      // to be certain the canvas repaints promptly at drag-end even if the
+      // ResizeObserver's own callback (already async by spec) hasn't fired
+      // yet on this exact frame.
+      this.canvasController?.requestUpdate();
+    };
+    gutter.addEventListener("pointerdown", (event) => {
+      dragging = true;
+      const bottomElement = document.querySelector("#kerning-middle-bottom");
+      initialHeight = bottomElement.getBoundingClientRect().height;
+      initialPointerCoordinateY = event.clientY;
+      middleColumn.classList.remove("animating");
+      document.documentElement.classList.add("kerning-row-resizing");
+      document.addEventListener("pointermove", onPointerMove);
+      document.addEventListener("pointerup", onPointerUp, { once: true });
+    });
   }
 
   initToolSwitcher() {

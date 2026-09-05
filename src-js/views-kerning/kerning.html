@@ -212,6 +212,25 @@
            Not built here: the class panel's own contents (New class /
            Derive / class list / glyph-swatch strip / Show class dialog). -->
       <div class="kerning-column kerning-middle">
+        <!-- Task 2 (part6): the drag-resizable divider between the two rows.
+             NOT a views-editor Sidebar instance -- see
+             initMiddleRowSplitter's own comment in kerning.js for why a
+             view-local handler, mirroring Sidebar's own mechanism (a CSS
+             custom property write on pointer-drag, the same
+             sidebar-resizing cursor-lock convention) without touching the
+             shared class, was judged lower-risk than generalizing Sidebar to
+             a vertical/row axis it has never needed before. A direct child
+             of .kerning-middle itself (NOT nested inside #kerning-middle-top,
+             which has overflow:hidden -- nesting it there was tried first
+             and live-tested as visually/hit-test broken: the gutter's own
+             -2px straddle of the row boundary put half of it outside
+             #kerning-middle-top's own box, where overflow:hidden clipped it,
+             so document.elementFromPoint at the gutter's own center returned
+             #kerning-middle-bottom, not the gutter, and no drag could ever
+             start). .kerning-middle itself has no overflow rule (only its
+             two row children do), so a gutter positioned directly against
+             ITS box is never clipped. -->
+        <div id="kerning-middle-resize-gutter"></div>
         <div id="kerning-middle-top">
           <div id="kerning-view-container">
             <!-- id is "edit-canvas", not "kerning-canvas": edit-tools-metrics.js's

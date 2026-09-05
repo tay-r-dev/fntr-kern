@@ -86,6 +86,31 @@ export class CanvasController {
     return h;
   }
 
+  // Bug fix (kerning view, task 1): localPoint/getViewBox/setupSize used to
+  // read canvas.parentElement.offsetLeft/offsetTop and treat them as if they
+  // were the container's position relative to the VIEWPORT -- which is only
+  // true when there is exactly one positioned ancestor between the canvas
+  // container and the page's own top-left corner (editor.js's own layout
+  // happens to have exactly that: .main-container's offsetParent,
+  // .editor-container, itself sits flush at the viewport's origin, so
+  // .main-container's offsetLeft/offsetTop happen to equal its real on-screen
+  // position). offsetLeft/offsetTop are only ever relative to the nearest
+  // POSITIONED ancestor (the element's own offsetParent), not the viewport --
+  // they silently read 0 whenever an extra positioned wrapper sits between
+  // the canvas container and the viewport, which is exactly what
+  // views-kerning's three-column CSS grid introduces (#kerning-middle-top,
+  // itself position:relative, becomes #kerning-view-container's offsetParent,
+  // so its offsetLeft/offsetTop read 0 even though the whole middle column is
+  // pushed right by the left sidebar's width). getBoundingClientRect() is
+  // always relative to the viewport regardless of how many positioned
+  // ancestors sit in between, which is why canvasWidth/canvasHeight above
+  // already use it -- this getter reuses the same call so every consumer of
+  // the container's screen position (this getter, localPoint, getViewBox)
+  // agrees on one, DOM-nesting-independent source of truth.
+  get canvasRect() {
+    return this.canvas.parentElement.getBoundingClientRect();
+  }
+
   get devicePixelRatio() {
     // return 1;  // To test normal resolution on Retina displays
     return window.devicePixelRatio;
@@ -122,8 +147,13 @@ export class CanvasController {
     this.canvas.style.width = this.canvas.width / scale + "px";
     this.canvas.style.height = this.canvas.height / scale + "px";
 
-    const parentOffsetX = this.canvas.parentElement.offsetLeft;
-    const parentOffsetY = this.canvas.parentElement.offsetTop;
+    // See the canvasRect getter's comment above: viewport-relative, not
+    // offsetParent-relative, so this scroll-position-preserving delta stays
+    // correct regardless of how many positioned ancestors sit between the
+    // canvas container and the viewport (e.g. a column-splitter drag in a
+    // view like views-kerning that nests an extra positioned wrapper).
+    const parentOffsetX = this.canvasRect.left;
+    const parentOffsetY = this.canvasRect.top;
 
     if (this.previousOffsets) {
       // Try to keep the scroll position constant relative to the
@@ -293,12 +323,15 @@ export class CanvasController {
     if (event.x === undefined) {
       event = { x: event.pageX, y: event.pageY };
     }
-    const x =
-      (event.x - this.canvas.parentElement.offsetLeft - this.origin.x) /
-      this.magnification;
-    const y =
-      -(event.y - this.canvas.parentElement.offsetTop - this.origin.y) /
-      this.magnification;
+    // See the canvasRect getter's comment above for why this is
+    // getBoundingClientRect()-based rather than offsetLeft/offsetTop-based:
+    // event.x/event.y (clientX/clientY on a real MouseEvent) are always
+    // viewport-relative, and offsetLeft/offsetTop are not (they are relative
+    // to the nearest positioned ancestor, which is not necessarily the
+    // viewport's own origin).
+    const rect = this.canvasRect;
+    const x = (event.x - rect.left - this.origin.x) / this.magnification;
+    const y = -(event.y - rect.top - this.origin.y) / this.magnification;
 
     assert(isNumber(x));
     assert(isNumber(y));
@@ -320,8 +353,12 @@ export class CanvasController {
   getViewBox() {
     const width = this.canvasWidth;
     const height = this.canvasHeight;
-    const left = this.canvas.parentElement.offsetLeft;
-    const top = this.canvas.parentElement.offsetTop;
+    // Same fix as localPoint above: viewport-relative, not offsetParent-
+    // relative, so this composes correctly with the now-also-viewport-
+    // relative localPoint() below.
+    const rect = this.canvasRect;
+    const left = rect.left;
+    const top = rect.top;
     const bottomLeft = this.localPoint({ x: 0 + left, y: 0 + top });
     const topRight = this.localPoint({ x: width + left, y: height + top });
     const viewBox = normalizeRect({
