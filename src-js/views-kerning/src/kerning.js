@@ -1972,12 +1972,10 @@ export class KerningViewController extends ViewController {
   // writing this comment), so no renaming or reconciliation is needed there.
   // `addGlyphsToClass(side, className, glyphNames)` is the public write path
   // other code should call to join glyphs to a class through this view (used
-  // by createNewClassViaDialog below); the font-mode worker's own
-  // showFontModeAddToDialog currently duplicates this inline (its own
-  // comment flags this as a likely reconciliation point) -- swapping that
-  // dialog's write loop to call `this.addGlyphsToClass` instead of its
-  // direct editGroupSide1/editGroupSide2 calls is a small follow-up, not
-  // done here to avoid editing the other worker's delimited block.
+  // by createNewClassViaDialog below). Reconciled post-merge: font mode's
+  // own addFontModeSelectionToClass (further down this file) now delegates
+  // to this method per glyph rather than duplicating its editGroupSide1/
+  // editGroupSide2 write loop inline.
   // ---------------------------------------------------------------------
 
   initClassPanelSection() {
@@ -3236,31 +3234,21 @@ export class KerningViewController extends ViewController {
     if (!glyphNames.length) {
       return;
     }
-    const editFn =
-      targetClass.side === "side1"
-        ? (glyphName) => this.kerningController.editGroupSide1(glyphName, targetClass.name)
-        : (glyphName) => this.kerningController.editGroupSide2(glyphName, targetClass.name);
-
+    // Reconciled per both workstreams' reports: this used to duplicate
+    // addGlyphsToClass's own write loop (editGroupSide1/editGroupSide2 +
+    // markGlyphStale) inline. Font mode's own failure needs (partial
+    // success is reportable, not rolled back -- see this method's own
+    // comment above) are met by wrapping each glyph's write in its own
+    // try/catch here and delegating the actual write to the class panel's
+    // public method, rather than keeping a second copy of the write path.
     const failed = [];
     for (const glyphName of glyphNames) {
       try {
-        await editFn(glyphName);
-        // Design doc §1.2 "Rerun scoping": "Joining or leaving a class now
-        // marks that glyph the same way an edited outline already does" --
-        // autokern-cache.js's own markGlyphStale is that per-glyph marking
-        // mechanism (the ONLY caller of it anywhere in this codebase today
-        // is this file's own tests, confirmed by grep before writing this;
-        // no outline-edit call site exists yet to match names with, so this
-        // calls the mechanism directly, exactly the way togglePairJunk below
-        // calls markPairJunk directly).
-        this.autokernCache = markGlyphStale(this.autokernCache, glyphName);
+        await this.addGlyphsToClass(targetClass.side, targetClass.name, [glyphName]);
       } catch (error) {
         failed.push({ glyphName, error });
       }
     }
-
-    this.renderPairTable();
-    await this.writeAutokernCacheToStorage();
 
     if (failed.length) {
       await message(
@@ -3273,14 +3261,13 @@ export class KerningViewController extends ViewController {
   // Design doc §2's second context-menu entry: "Add to…" -- opens a picker
   // dialog to choose a different existing class (by side) or create a new
   // one, using the same 1st/2nd/both control §1.2's own New class action
-  // describes. The class panel's own "new class" function/method was not
-  // visible in this file at the time this was written (no
-  // `// ---- Class panel (design doc §1.2) ----` block existed yet to read),
-  // so this is a minimal, INLINE equivalent -- flagged here, and in this
-  // workstream's report, as a likely duplicate to reconcile once both land:
-  // if the class panel exposes its own new-class method by the time this is
-  // reviewed, this dialog's "create new" path should call that instead of
-  // writing groups directly.
+  // describes. Its actual write now goes through addFontModeSelectionToClass
+  // -> addGlyphsToClass (reconciled post-merge, no direct group writes
+  // here). What remains a small, cosmetic duplicate of
+  // createNewClassViaDialog is the side/name PICKER UI itself (this dialog
+  // was written before that class-panel block existed in this file) -- not
+  // a correctness issue, just two similar-looking dialogs; left as-is to
+  // avoid touching the other worker's delimited block.
   async handleFontModeContextMenu(event) {
     event.preventDefault();
     const glyphNames = [...(this.fontModeGlyphCellView?.glyphSelection || [])];
