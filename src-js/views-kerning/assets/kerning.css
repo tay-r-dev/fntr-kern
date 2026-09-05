@@ -101,12 +101,110 @@
   border-top: 1px solid var(--horizontal-rule-color, #ccc);
 }
 
-/* TODO(class panel worker): #autokern-class-panel-slot is an intentionally
-   empty hook -- style its actual contents in that worker's own pass rather
-   than here. */
 #autokern-class-panel-slot {
   height: 100%;
   box-sizing: border-box;
+}
+
+/* ---- Class panel (design doc §1.2) ---- */
+#autokern-class-panel {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0.5em 1em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+
+#autokern-class-new-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+}
+
+#autokern-class-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.autokern-class-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.15em 0.3em;
+  cursor: pointer;
+  border-radius: 0.2em;
+}
+
+.autokern-class-list-row:hover {
+  background-color: var(--editor-background-color-dimmed, rgba(128, 128, 128, 0.15));
+}
+
+.autokern-class-list-row-selected {
+  background-color: var(--editor-background-color-selected, rgba(128, 128, 128, 0.3));
+}
+
+.autokern-class-badge {
+  font-size: 0.75em;
+  font-weight: bold;
+  opacity: 0.7;
+  min-width: 2em;
+}
+
+.autokern-class-color-swatch {
+  width: 1em;
+  height: 1em;
+  padding: 0;
+  border: 1px solid var(--horizontal-rule-color, #ccc);
+  border-radius: 0.2em;
+  cursor: pointer;
+}
+
+.autokern-class-name {
+  font-weight: bold;
+}
+
+.autokern-class-members {
+  opacity: 0.8;
+  font-size: 0.9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#autokern-class-swatch-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15em;
+  overflow-y: auto;
+  border-top: 1px solid var(--horizontal-rule-color, #ccc);
+  padding-top: 0.5em;
+}
+
+/* The "Show class" dialog's target-glyph field/preview (kerning.js's
+   openShowClassDialog) -- same input-box-sizing convention as the
+   excluded-glyph field (#kerning-pairtable-excluded). */
+.autokern-show-class-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  min-width: 20em;
+}
+
+.autokern-show-class-dialog input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.autokern-show-class-dialog-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15em;
+  min-height: 3em;
 }
 
 #kerning-view-container {
@@ -200,10 +298,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5em;
-}
-
-#kerning-derive-tolerance {
-  width: 4em;
 }
 
 /* Workstream 15 (spec §5.2/§5.3): fold parent rows and derive proposals. */
@@ -340,4 +434,39 @@
 .kerning-pairtable-shadow-note {
   font-style: italic;
   opacity: 0.8;
+}
+
+/* Design doc §2: font mode's glyph grid fills the same area the canvas
+   occupies (#kerning-view-container is position:relative, height:100%,
+   see above) -- the tool switcher and chip selector stay on top (z-index 1
+   inline on those two elements already) as overlays, unchanged in either
+   mode. */
+#kerning-font-grid-container {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 1em;
+  box-sizing: border-box;
+}
+
+#kerning-font-grid-container.kerning-font-grid-hidden {
+  display: none;
+}
+
+/* fontoverview.css's own glyph-cell-view host rule (grid, no gap) -- the
+   custom element styles its OWN accordion/cell contents internally
+   (glyph-cell-view.js's getContentElement/appendStyle), this is only the
+   host element's own box. */
+#kerning-font-grid-container glyph-cell-view {
+  position: relative;
+  display: grid;
+  gap: 0;
+}
+
+/* Design doc §2: the two font-mode add-to-class actions (button lives in
+   #autokern-class-panel-slot, appended beside -- not inside -- the class
+   panel worker's own delimited markup). */
+#kerning-font-mode-actions {
+  padding: 0.5em 1em;
+  border-top: 1px solid var(--horizontal-rule-color, #ccc);
 }

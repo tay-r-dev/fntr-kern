@@ -111,17 +111,12 @@
                 ><input type="checkbox" id="kerning-pairtable-fold-classes" /> Fold
                 classes</label
               >
-              <label for="kerning-derive-tolerance">Derive tolerance</label>
-              <input
-                type="number"
-                id="kerning-derive-tolerance"
-                min="0"
-                step="0.5"
-                value="2"
-              />
-              <button id="kerning-derive-button" type="button">Derive classes</button>
+              <!-- The Derive button, its tolerance field and the proposals
+                   list moved to the class panel (design doc §1.2) -- see
+                   #autokern-class-panel-slot below. Design doc §0: kern-row
+                   clustering (the only tactic that used a tolerance) is
+                   removed, so no tolerance control exists anywhere anymore. -->
             </div>
-            <div id="kerning-derive-proposals"></div>
 
             <!-- §1.1: "A manual, directly-typed value is also always
                  available on any row" -- one field, applying to whichever
@@ -251,22 +246,63 @@
             >
               <button data-chip="phrase" type="button" title="Phrase">Phrase</button>
               <button data-chip="pair" type="button" title="Pair" disabled>Pair</button>
-              <!-- Design doc §2 (Open, part of this overhaul but NOT this
-                   worker's scope): a third chip value, "font" -- a
-                   font-overview-style multi-select grid. Left as an easy
-                   extension point (one more button here, one more branch in
-                   kerning.js's setChipMode) rather than built now. -->
-              <!-- TODO(font mode): add <button data-chip="font">Font</button>
-                   here and a matching branch in setChipMode/updateChipButtons
-                   once font-overview.js's grid is wired in (design doc §2). -->
+              <!-- Design doc §2: a third chip value, "font" -- a
+                   font-overview-style multi-select glyph grid, swapped in for
+                   the canvas by kerning.js's setChipMode (see
+                   initFontModeSection/showFontModeGrid). Unlike "pair", this
+                   one starts enabled -- font mode needs no prior selection to
+                   be useful. -->
+              <button data-chip="font" type="button" title="Font">Font</button>
             </div>
+            <!-- Design doc §2: font mode's glyph grid, reusing
+                 font-overview.js's own grid/selection machinery (GlyphCellView
+                 + GlyphOrganizer, rail R-A) -- see initFontModeSection in
+                 kerning.js for why composition (mounting these two pieces),
+                 not importing/subclassing FontOverviewController itself, is
+                 the reuse path. Hidden by default; setChipMode toggles
+                 kerning-font-grid-hidden alongside hiding the canvas. -->
+            <div id="kerning-font-grid-container" class="kerning-font-grid-hidden"></div>
           </div>
         </div>
         <div id="kerning-middle-bottom">
-          <!-- Class panel, §1.2 bottom row -- built by a different worker.
-               This slot is the seam: populate it, do not replace it, so the
-               middle column's grid rows (kerning.css) stay correct. -->
-          <div id="autokern-class-panel-slot"></div>
+          <!-- Class panel, §1.2 bottom row. The static structure below is
+               THIS worker's own delimited addition; the font-mode worker
+               (concurrent, different file region) appends its own
+               "Add selection to selected class" button as a plain child of
+               #autokern-class-panel-slot at runtime (initFontModeAddToClassActions
+               in kerning.js) -- it never edits this markup, so the two
+               workers' DOM insertions cannot collide. -->
+          <div id="autokern-class-panel-slot">
+            <div id="autokern-class-panel">
+              <!-- §1.2 "New class" control: 1st / 2nd / both, each opening a
+                   name+members dialog (kerning.js's createNewClassViaDialog). -->
+              <div id="autokern-class-new-controls">
+                <span>New class:</span>
+                <button id="autokern-class-new-side1" type="button">1st</button>
+                <button id="autokern-class-new-side2" type="button">2nd</button>
+                <button id="autokern-class-new-both" type="button">Both</button>
+                <!-- §1.2 "Derive" control, relocated here from the pair-table
+                     section (design doc §0: no tolerance field anymore --
+                     composite inheritance needs none, and kern-row
+                     clustering, the only tactic that used one, is removed).
+                     Same element id as before kerning.js's existing
+                     deriveClasses() wiring (initPairTableSection) still
+                     finds it by that id -- only its DOM location moved. -->
+                <button id="kerning-derive-button" type="button">Derive classes</button>
+              </div>
+              <!-- Same id/rendering as before (renderDeriveProposals) --
+                   only relocated. -->
+              <div id="kerning-derive-proposals"></div>
+
+              <!-- §1.2 "Class list": one flat list, every class from both
+                   groupsSide1 and groupsSide2 (kerning.js's renderClassList). -->
+              <div id="autokern-class-list"></div>
+
+              <!-- §1.2 "Glyph-swatch strip": the selected class's members,
+                   as glyph-cell tiles (kerning.js's renderClassSwatchStrip). -->
+              <div id="autokern-class-swatch-strip"></div>
+            </div>
+          </div>
         </div>
       </div>
 
