@@ -556,3 +556,113 @@
   padding: 0.5em 1em;
   border-top: 1px solid var(--horizontal-rule-color, #ccc);
 }
+
+/* Backlog item 6: this view reuses views-editor's SidebearingTool/KerningTool
+   (edit-tools-metrics.js) unmodified, but kerning.html never linked
+   editor.css, so the DOM handles those tools create (<sidebearing-handle>,
+   <kerning-handle>) had no positioning CSS -- their inline style.left/
+   style.top had nothing to position against (default position: static).
+   Copied verbatim from src-js/views-editor/assets/editor.css:498-598 rather
+   than shared, since no view-pair CSS-sharing convention exists in this tree
+   (unlike JS, which is shared via the exports map per spec §8) -- see
+   KERNING-VIEW-BACKLOG.md item 6. */
+:root {
+  --metrics-handle-color: rgb(153 153 153);
+  --positive-metrics-handle-color: rgb(23 89 241);
+  --negative-metrics-handle-color: rgb(241 23 89);
+}
+
+sidebearing-handle {
+  font-size: 0.8em;
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+sidebearing-handle > .advance,
+sidebearing-handle > .left-sidebearing,
+sidebearing-handle > .right-sidebearing {
+  --sb-bg-color: var(--metrics-handle-color);
+  position: absolute;
+  box-sizing: border-box;
+  padding: 0.1em 0.6em 0.1em 0.6em;
+  border-radius: 0.66em;
+  transform: translate(-50%, 100%);
+  background-color: rgb(from var(--sb-bg-color) r g b / 63%);
+  color: white;
+  pointer-events: auto;
+}
+
+sidebearing-handle > .positive {
+  --sb-bg-color: var(--positive-metrics-handle-color);
+}
+
+sidebearing-handle > .negative {
+  --sb-bg-color: var(--negative-metrics-handle-color);
+}
+
+sidebearing-handle > .selected {
+  background-color: var(--sb-bg-color);
+}
+
+sidebearing-handle > .hovered {
+  box-shadow: 0 0 0.7em var(--sb-bg-color);
+}
+
+sidebearing-handle > .advance {
+  left: 50%;
+  pointer-events: none;
+}
+
+sidebearing-handle > .left-sidebearing {
+  transform: translate(0%, 100%);
+  left: 0%;
+  cursor: w-resize;
+  border-radius: 0.1em 0.66em 0.66em 0.1em;
+}
+
+sidebearing-handle > .right-sidebearing {
+  transform: translate(-100%, 100%);
+  left: 100%;
+  cursor: e-resize;
+  border-radius: 0.66em 0.1em 0.1em 0.66em;
+}
+
+kerning-handle {
+  --kern-bg-color: var(--metrics-handle-color);
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0em 0.5em;
+  justify-items: center;
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  font-size: 0.8em;
+  padding: 0.2em 0.8em 0.2em 0.8em;
+  border-radius: 0.66em;
+  color: white;
+  background-color: rgb(from var(--kern-bg-color) r g b / 63%);
+  cursor: ew-resize;
+  user-select: none;
+  transform: translate(-50%, 50%);
+}
+
+kerning-handle > .value {
+  grid-column-start: span 2;
+}
+
+kerning-handle > .group {
+  font-weight: bold;
+}
+
+kerning-handle.selected {
+  background-color: var(--kern-bg-color);
+}
+
+kerning-handle.positive {
+  --kern-bg-color: var(--positive-metrics-handle-color);
+}
+
+kerning-handle.negative {
+  --kern-bg-color: var(--negative-metrics-handle-color);
+}
