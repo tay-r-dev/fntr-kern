@@ -206,6 +206,11 @@ elements and their `update()` logic are already correct and already firing.
 **Status (2026-09-06): still not fixed.** Designer re-raised: the basic kerning tool shows no numeric
 readout at all while dragging. Same missing-stylesheet root cause as above until verified otherwise.
 
+**Resolved (2026-09-06, `532ab2584`).** Copied the missing rules into `kerning.css` (no existing
+view-pair CSS-sharing convention to hook into, so copy not link). Live-verified: `getComputedStyle`
+on a real handle now reports `position: absolute` with a real non-zero bounding rect, where it
+previously read `static`.
+
 ---
 
 ## 7. On-canvas numeric labels are not clamped to the viewport
@@ -247,11 +252,21 @@ not one shared fix:
   `canvasController.canvasPoint`, the same helper `SidebearingHandle.update` already uses at
   `edit-tools-metrics.js:867`).
 
+**Suggestion label resolved (2026-09-06, `f2ca0d86e`) as a HUD line instead of a clamp** — see the
+designer follow-up below; this made the canvas-label half of the clamp work moot. The DOM-handle
+clamp (SidebearingHandle/KerningHandle, first bullet above) is still open and was explicitly left
+untouched this round.
+
 **Designer follow-up (2026-09-06): still absolutely-positioned, still not fixed.** The designer's
 preferred fix for the suggestion number specifically is not an edge-clamp that keeps it near the
 glyph — it's to pin the suggestion readout to a fixed spot at the top of the viewport (a small HUD
 line), so it never tracks the glyph and never needs clamping. That is a different treatment from the
 metrics-tool handles, which should still be positioned on the glyph and edge-clamped as above.
+
+**HUD line resolved (2026-09-06, `f2ca0d86e`).** The `suggest: N` draw call resets to canvas CSS-pixel
+space and draws at a fixed `(canvasWidth/2, 20)`, no longer glyph-relative. Live-verified via pan+zoom:
+identical screen position across two screenshots while the glyph itself moved. Metrics-tool handles
+(`edit-tools-metrics.js`) untouched — their edge-clamp is still open, tracked in item 6/7 above.
 
 ---
 
@@ -360,6 +375,10 @@ glyph on the right"? Spec §5.2 treats a class name as an address, but the side 
 spelled out in the UI. Add a `?` affordance next to the Left/Right labels that shows a one-line
 tooltip stating the convention (reuse `tooltip.css`, already linked by `kerning.html`).
 
+**Resolved (2026-09-06, `bcca4a06d`).** `?` badge added next to the New-class Left/Right buttons using
+the existing `[data-tooltip]` CSS-only convention. Wording checked against `kerning-controller.js`
+(`groupsSide1`/left name vs `groupsSide2`/right name in `getPairsToTry`) before writing it, not guessed.
+
 ---
 
 ## 13. Select-all checkbox in the pair table header
@@ -368,6 +387,12 @@ tooltip stating the convention (reuse `tooltip.css`, already linked by `kerning.
 (`getSelectedPairTableRows`, consumed by apply-selected / reset-* at `kerning.js:1039-1051`); this is
 one checkbox in the header row that toggles all currently-visible (post-filter) rows, with the usual
 indeterminate state when only some are checked.
+
+**Resolved (2026-09-06, `8c0b72bd3`, indeterminate fix `f08f5dce8`).** One checkbox per bucket's own
+`<thead>` (each bucket is its own `<table>`, no single shared header across buckets), reusing the
+existing per-row checkboxes. Live testing (CDP) caught a real bug — indeterminate stayed `true` after
+clicking select-all, since a programmatic `.checked =` doesn't auto-clear it — fixed by clearing it
+explicitly in the change handler, then re-verified live.
 
 ---
 
@@ -390,6 +415,10 @@ the suggestion column — one checkbox that hides/shows the suggested values acr
 not a per-row control. Add a `showSuggestion` item to `autokernFiltersController` (`kerning.js:868`)
 and a matching checkbox; `renderPairTable` reads it to skip the suggestion column.
 
+**Resolved (2026-09-06, `be4686667`).** `showSuggestion` filter added, checkbox beside show-current.
+There's no separately-labeled "Suggestion" column — Delta is the table's suggestion display — so that
+column is what toggles. Live-verified: `th`/`td` both switch to `display: none` on uncheck.
+
 ---
 
 ## 16. Right panel lacks a vertical divider
@@ -398,3 +427,7 @@ and a matching checkbox; `renderPairTable` reads it to skip the suggestion colum
 column, so the boundary reads as ambiguous. CSS-only: a `border-left` (or a divider element) on the
 right-panel container in `kerning.css`, matching whatever the other panel edges in this view already
 use.
+
+**Resolved (2026-09-06, `6eb3a7225`).** `border-left` on `#kerning-panel-container`, matching the
+existing `border-right` on `#kerning-pairtable-section`'s opposite edge. Confirmed visually in a live
+screenshot.
