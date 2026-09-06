@@ -106,6 +106,7 @@ import {
   parsePhrasePresets,
 } from "@fontra/core/character-lines.js";
 import { rasterizeGlyph } from "@fontra/core/glyph-raster.js";
+import { getGlyphInfoFromGlyphName } from "@fontra/core/glyph-data.js";
 import { GlyphOrganizer } from "@fontra/core/glyph-organizer.js";
 import { UndoStack, reverseUndoRecord } from "@fontra/core/font-controller.js";
 import { translate } from "@fontra/core/localization.js";
@@ -908,6 +909,16 @@ export class KerningViewController extends ViewController {
       // true (visible) since that is the table's existing, unchanged
       // behavior for anyone who has never touched this new checkbox.
       showSuggestion: true,
+      // Backlog item 3 (designer follow-up 2026-09-06): category-based
+      // row-hiding, view-only, same as every other filter in this model --
+      // nothing about the run or the cache changes, only which rows the
+      // table shows. Category membership comes from glyph-data.js; "Mark",
+      // "Number", "Punctuation" are the exact CSV category strings
+      // (confirmed against glyph-data.csv). Default false (don't hide)
+      // matches every other checkbox filter's non-restrictive default.
+      hideNonStandalone: false,
+      hideNumbers: false,
+      hidePunctuation: false,
       sortAlphabetical: false,
       // WORKSTREAM 15, spec §5.2: "A toggle above the table folds every row
       // whose pair resolves to the same cell into one parent."
@@ -1047,6 +1058,21 @@ export class KerningViewController extends ViewController {
     suggestionCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem("showSuggestion", suggestionCheckbox.checked);
     });
+
+    // Backlog item 3 (designer follow-up): one checkbox per category
+    // shortcut, same pattern as junkCheckbox/currentCheckbox above.
+    const categoryFilterBindings = [
+      ["#kerning-pairtable-hide-nonstandalone", "hideNonStandalone"],
+      ["#kerning-pairtable-hide-numbers", "hideNumbers"],
+      ["#kerning-pairtable-hide-punctuation", "hidePunctuation"],
+    ];
+    for (const [selector, key] of categoryFilterBindings) {
+      const checkbox = document.querySelector(selector);
+      checkbox.checked = filters[key];
+      checkbox.addEventListener("change", () => {
+        this.autokernFiltersController.setItem(key, checkbox.checked);
+      });
+    }
 
     // WORKSTREAM 15, spec §5.2. See renderPairTable/buildFoldGroups for the
     // fold logic itself; this checkbox only toggles it.
@@ -1275,7 +1301,49 @@ export class KerningViewController extends ViewController {
       return false;
     }
 
+    // Backlog item 3 (designer follow-up): category shortcuts. row.left/
+    // row.right can be a class name (class×* buckets) rather than a glyph
+    // name -- glyphCategory returns undefined for those and the checks
+    // below simply never hide them, which is correct: a category filter
+    // hiding individual glyphs has no meaning for a class-aggregate row.
+    if (filters.hideNonStandalone) {
+      if (this.isNonStandaloneGlyph(row.left) || this.isNonStandaloneGlyph(row.right)) {
+        return false;
+      }
+    }
+    if (filters.hideNumbers) {
+      if (this.glyphCategory(row.left) === "Number" || this.glyphCategory(row.right) === "Number") {
+        return false;
+      }
+    }
+    if (filters.hidePunctuation) {
+      if (
+        this.glyphCategory(row.left) === "Punctuation" ||
+        this.glyphCategory(row.right) === "Punctuation"
+      ) {
+        return false;
+      }
+    }
+
     return true;
+  }
+
+  // Backlog item 3 (designer follow-up): glyph-data.js lookup, shared by all
+  // three category checkboxes above.
+  glyphCategory(glyphName) {
+    return getGlyphInfoFromGlyphName(glyphName)?.category;
+  }
+
+  // ponytail: "non-standalone" is approximated by glyph-data.js's "Mark"
+  // category (combining marks are reliably tagged this way in
+  // glyph-data.csv) rather than measuring the font's own actual advance
+  // width per glyph, which would need an async getGlyphInstance call per
+  // row and isn't available synchronously from cached pair-table data.
+  // Upgrade path: cache each glyph's xAdvance (already computed once per
+  // run in runAutokern's envelope-building loop) and check for zero there
+  // instead, if a glyph shows up that's zero-advance but not category "Mark".
+  isNonStandaloneGlyph(glyphName) {
+    return this.glyphCategory(glyphName) === "Mark";
   }
 
   // WORKSTREAM 14: the pair table's own threshold comparison (spec §7.2:

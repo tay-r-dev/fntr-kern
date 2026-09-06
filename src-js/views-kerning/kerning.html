@@ -98,6 +98,23 @@
                 ><input type="checkbox" id="kerning-pairtable-show-suggestion" checked /> Show
                 suggestion</label
               >
+              <!-- Backlog item 3 (designer follow-up 2026-09-06): category
+                   row-hiding shortcuts, view-only -- see
+                   pairRowVisible/glyphCategory/isNonStandaloneGlyph in
+                   kerning.js. Lives in the filter panel per the designer's
+                   explicit decision, not the excluded-glyph text field. -->
+              <label
+                ><input type="checkbox" id="kerning-pairtable-hide-nonstandalone" /> Hide
+                non-standalone (marks)</label
+              >
+              <label
+                ><input type="checkbox" id="kerning-pairtable-hide-numbers" /> Hide
+                numbers</label
+              >
+              <label
+                ><input type="checkbox" id="kerning-pairtable-hide-punctuation" /> Hide
+                punctuation</label
+              >
               <button id="kerning-pairtable-sort-toggle" type="button">
                 Sort: worst delta first
               </button>
