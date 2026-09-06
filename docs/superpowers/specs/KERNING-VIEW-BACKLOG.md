@@ -351,6 +351,16 @@ Both fixes are additive positioning logic on top of existing, working draw calls
 data is shown or when (the gating logic in item 6's handles and this item's suggestion layer,
 `kerning.js:2446-2462`, stays as is).
 
+**Resolved (2026-09-06, `a856c030b` + `7dc3a31ff` + `25824d413`), together with item 10.** Built as
+one settings-driven mechanism instead of a canvas eye icon + hotkey: a "Suggestion preview" accordion
+in the right pane (below Parameters), reusing the exact `Accordion`/`ui-accordion.js` convention
+views-editor's own grid-layer settings already use (`panel-designspace-navigation.js`'s
+`coarse-grid-accordion-item`). The accordion's own master checkbox is the visibility control this
+item asked for — on by default, matching the pre-existing label's `defaultOn: true` — replacing the
+originally-floated eye icon/hotkey design, which was never built. See item 10's own resolution note
+for the accordion's other two settings and the full re-spacing mechanism this visibility toggle now
+gates.
+
 ---
 
 ## 10. Live non-destructive suggestion preview (actually move the letters in the preview pane)
@@ -366,6 +376,32 @@ This one needs the scene/positioning layer to offset glyph advances by a per-pai
 is display-only — never routed through `fontController.performEdit` or the pair-table write path.
 Scope with §9's `all`/`selected` design pass, since "preview every visible pair" has the same
 per-phrase performance question.
+
+**Resolved (2026-09-06, `a856c030b` + `7dc3a31ff` + `25824d413`), together with item 9.** Closed as
+one combined feature across three commits:
+
+- `a856c030b`: the settings accordion (item 9's visibility control, plus opacity/show-numbers/
+  show-band) — UI only, no behavior yet.
+- `7dc3a31ff`: pair mode — the selected pair's right-hand glyph is genuinely moved on screen by
+  `this.autokernCache`'s entry for that pair (the same lookup/gating the `suggest: N` label already
+  used, reused unchanged, not recomputed a second way).
+- `25824d413`: phrase mode — every adjacent glyph pair in the current phrase shifts simultaneously,
+  each by its own cache entry, threaded cumulatively along the line the way a real applied kern
+  accumulates (matched against `shaper.js`'s own `previousGlyph.xAdvance += kernValue` convention
+  before picking the sign).
+
+Mechanism: a positioned-glyph's `x` is mutated directly on the scene's own positioned-line objects,
+never through `fontController.performEdit` or the pair-table write path — display-only, confirmed by
+inspection (no new write call was added) and live-verified (`suggestionPreviewSettings.enabled =
+false` snaps every shifted glyph back to its pre-shift position on the next repaint, `= true`
+reproduces the identical shift, byte-for-byte, every time).
+
+One flagged divergence: the settings accordion's opacity control applies to the highlight band and
+the numeric label (the two visual elements this feature draws under its own control), not to the
+re-spaced glyph's own fill — that fill is drawn by views-editor's shared `fontra.context.glyphs`
+layer (`visualization-layer-definitions.js`), which this work was constrained to import, not edit.
+The glyph is still genuinely repositioned; only its fill's opacity isn't independently adjustable
+from this accordion.
 
 ---
 
