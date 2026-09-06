@@ -88,6 +88,16 @@
                 ><input type="checkbox" id="kerning-pairtable-show-current" /> Show
                 current</label
               >
+              <!-- Backlog item 15: table-wide mirror of "Show current" above,
+                   hiding/showing the Delta column (this table's own
+                   suggestion display -- see kerning.js's pairRowData/
+                   buildPairRowElement, there is no separately-labeled
+                   "Suggestion" column, Delta already renders the computed
+                   suggestion relative to the current value). -->
+              <label
+                ><input type="checkbox" id="kerning-pairtable-show-suggestion" checked /> Show
+                suggestion</label
+              >
               <button id="kerning-pairtable-sort-toggle" type="button">
                 Sort: worst delta first
               </button>
@@ -146,7 +156,7 @@
                        Checkboxes in kerning.js. -->
                   <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
                   <th>Left</th>
-                  <th>Delta</th>
+                  <th class="kerning-pairtable-suggestion-col">Delta</th>
                   <th>Right</th>
                   <th class="kerning-pairtable-current-col">Current</th>
                   <th></th>
@@ -163,7 +173,7 @@
                 <tr>
                   <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
                   <th>Left</th>
-                  <th>Delta</th>
+                  <th class="kerning-pairtable-suggestion-col">Delta</th>
                   <th>Right</th>
                   <th class="kerning-pairtable-current-col">Current</th>
                   <th></th>
@@ -180,7 +190,7 @@
                 <tr>
                   <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
                   <th>Left</th>
-                  <th>Delta</th>
+                  <th class="kerning-pairtable-suggestion-col">Delta</th>
                   <th>Right</th>
                   <th class="kerning-pairtable-current-col">Current</th>
                   <th></th>
@@ -197,7 +207,7 @@
                 <tr>
                   <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
                   <th>Left class</th>
-                  <th>Delta</th>
+                  <th class="kerning-pairtable-suggestion-col">Delta</th>
                   <th>Right class</th>
                   <th class="kerning-pairtable-current-col">Current</th>
                   <th></th>

@@ -877,6 +877,11 @@ export class KerningViewController extends ViewController {
       state: "pending",
       showJunk: false,
       showCurrent: false,
+      // Backlog item 15: mirrors showCurrent above -- one checkbox hides/
+      // shows the suggestion column across the whole table. Defaults to
+      // true (visible) since that is the table's existing, unchanged
+      // behavior for anyone who has never touched this new checkbox.
+      showSuggestion: true,
       sortAlphabetical: false,
       // WORKSTREAM 15, spec §5.2: "A toggle above the table folds every row
       // whose pair resolves to the same cell into one parent."
@@ -1008,6 +1013,13 @@ export class KerningViewController extends ViewController {
     currentCheckbox.checked = filters.showCurrent;
     currentCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem("showCurrent", currentCheckbox.checked);
+    });
+
+    // Backlog item 15: mirrors the showCurrent checkbox immediately above.
+    const suggestionCheckbox = document.querySelector("#kerning-pairtable-show-suggestion");
+    suggestionCheckbox.checked = filters.showSuggestion;
+    suggestionCheckbox.addEventListener("change", () => {
+      this.autokernFiltersController.setItem("showSuggestion", suggestionCheckbox.checked);
     });
 
     // WORKSTREAM 15, spec §5.2. See renderPairTable/buildFoldGroups for the
@@ -1390,6 +1402,13 @@ export class KerningViewController extends ViewController {
       el.style.display = filters.showCurrent ? "" : "none";
     }
 
+    // Backlog item 15: same header-toggle mechanism as showCurrent above --
+    // this only affects the <th> (tbody cells are cleared/rebuilt below and
+    // set their own inline display at creation time, same as currentCell).
+    for (const el of document.querySelectorAll(".kerning-pairtable-suggestion-col")) {
+      el.style.display = filters.showSuggestion ? "" : "none";
+    }
+
     // §1.1's grouping filter now shows/hides whole buckets, one
     // .kerning-pairtable-group per bucket (data-bucket attribute, matching
     // the bucket names above).
@@ -1669,7 +1688,11 @@ export class KerningViewController extends ViewController {
     tr.appendChild(leftCell);
 
     const deltaCell = document.createElement("td");
+    deltaCell.className = "kerning-pairtable-suggestion-col";
     deltaCell.textContent = median > 0 ? `+${median.toFixed(1)}` : median.toFixed(1);
+    deltaCell.style.display = this.autokernFiltersController.model.showSuggestion
+      ? ""
+      : "none";
     tr.appendChild(deltaCell);
 
     const rightCell = document.createElement("td");
@@ -2966,7 +2989,11 @@ export class KerningViewController extends ViewController {
     tr.appendChild(leftCell);
 
     const deltaCell = document.createElement("td");
+    deltaCell.className = "kerning-pairtable-suggestion-col";
     deltaCell.textContent = row.delta > 0 ? `+${row.delta.toFixed(1)}` : row.delta.toFixed(1);
+    deltaCell.style.display = this.autokernFiltersController.model.showSuggestion
+      ? ""
+      : "none";
     tr.appendChild(deltaCell);
 
     const rightCell = document.createElement("td");
