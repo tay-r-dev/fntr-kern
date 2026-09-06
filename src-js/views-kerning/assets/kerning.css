@@ -298,12 +298,17 @@
   height: 100%;
 }
 
+/* Backlog item 16: matches #kerning-pairtable-section's own border-right on
+   the left column -- a plain 1px rule on the box that already has the
+   column's padding, delimiting the right panel from the scene column beside
+   it the same way the left column is already delimited from the scene. */
 #kerning-panel-container {
   position: relative;
   height: 100%;
   overflow-y: auto;
   box-sizing: border-box;
   padding: 1em;
+  border-left: 1px solid var(--horizontal-rule-color, #ccc);
   display: flex;
   flex-direction: column;
   gap: 1em;
