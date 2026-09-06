@@ -396,6 +396,20 @@
             <select id="kerning-preset-select">
               <option value="" selected disabled>Presets…</option>
             </select>
+            <!-- Backlog item 1: load an additional presets file at runtime.
+                 Hidden file input, same pattern as panel-reference-font.js's
+                 own file-input-plus-click-proxy convention (an <input
+                 type="file"> never appended/visible, triggered by a plain
+                 button's click handler). Parsed results are APPENDED to
+                 this.phrasePresets, not a replacement -- see
+                 initPhraseSection's own comment in kerning.js for why. -->
+            <button id="kerning-preset-add-button" type="button">Add…</button>
+            <input
+              type="file"
+              id="kerning-preset-file-input"
+              accept=".txt"
+              hidden
+            />
             <textarea
               id="kerning-phrase-input"
               placeholder="Type a phrase"

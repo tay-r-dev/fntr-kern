@@ -458,7 +458,33 @@ export class KerningViewController extends ViewController {
     const response = await fetch("./assets/phrase-presets.txt");
     const presetsText = await response.text();
     this.phrasePresets = parsePhrasePresets(presetsText);
-    for (const preset of this.phrasePresets) {
+    this.appendPresetOptions(this.phrasePresets);
+
+    // Backlog item 1: "Add…" button beside the dropdown, opening a hidden
+    // file input (panel-reference-font.js's own hidden-input-plus-button
+    // convention). Chosen file's presets are APPENDED to this.phrasePresets,
+    // not a replacement -- appending is the least-surprising default for a
+    // designer adding a second presets file on top of the built-in one; the
+    // backlog doc left this as an open product decision.
+    const presetAddButton = document.querySelector("#kerning-preset-add-button");
+    const presetFileInput = document.querySelector("#kerning-preset-file-input");
+    presetAddButton.addEventListener("click", () => presetFileInput.click());
+    presetFileInput.addEventListener("change", async () => {
+      const file = presetFileInput.files[0];
+      presetFileInput.value = null;
+      if (!file) {
+        return;
+      }
+      const addedText = await file.text();
+      const addedPresets = parsePhrasePresets(addedText);
+      this.phrasePresets = [...this.phrasePresets, ...addedPresets];
+      this.appendPresetOptions(addedPresets);
+    });
+  }
+
+  appendPresetOptions(presets) {
+    const presetSelect = document.querySelector("#kerning-preset-select");
+    for (const preset of presets) {
       const option = document.createElement("option");
       option.value = preset.name;
       option.textContent = preset.name;
