@@ -727,10 +727,16 @@ export class KerningViewController extends ViewController {
       {
         topic: "0020-action-topics.menu.view",
         titleKey: "kerning.toggle-suggestion-preview",
+        // Lowercase, matching every other single-letter hotkey in this tree
+        // (editor.js: "q", "z", "d", ...) -- getBaseKeyFromKeyEvent resolves
+        // the Keyboard API layout map / fallback keycode path to a lowercase
+        // letter, so an uppercase baseKey here never matches and the hotkey
+        // silently never fires.
+        //
         // Same text-field guard as action.kerning.toggle-chip above: bail out
         // while a text input/textarea/select has focus rather than hijacking
         // the keystroke.
-        defaultShortCuts: [{ baseKey: "P" }],
+        defaultShortCuts: [{ baseKey: "p" }],
       },
       () => {
         const activeTag = document.activeElement?.tagName;
