@@ -81,6 +81,18 @@ consistent with the existing manual format) and fires the same `"change"` handli
 field, not a new excluded-glyph mechanism (§4.2's two mechanisms, excluded-glyph field and per-pair
 junk mark, stay exactly as they are; this is only faster data entry into the first one).
 
+**Designer follow-up (2026-09-06).** Concrete categories wanted as one-click filter-outs:
+non-standalone glyphs (combining marks / anything that doesn't advance on its own), numbers, and
+punctuation. Decision made: these go in the **filter panel** (`autokernFiltersController`,
+`kerning.js:868`), not the excluded-glyph field. Everything is still computed and cached on the run;
+these are view-only toggles that hide the matching rows from the table. Add them as filter-panel
+checkboxes alongside the existing side/grouping/sign/state filters. Category membership comes from
+`glyph-data.js` (`info?.category` — "Number", "Punctuation", "Mark"; confirm exact strings against
+`glyph-data.csv`); "non-standalone" needs its own predicate (zero-advance / combining) since it is
+not a single CSV category.
+
+Note: these checkboxes do not exist yet in the filter panel — this is new UI, not a wiring fix.
+
 ---
 
 ## 4. Autokern cache storage location: OPFS vs. disk beside the .fontra file
@@ -191,6 +203,9 @@ convention prefers (check whether other view pairs already share a CSS file the 
 through the exports map in §8, before duplicating). No JS change should be needed — the handle
 elements and their `update()` logic are already correct and already firing.
 
+**Status (2026-09-06): still not fixed.** Designer re-raised: the basic kerning tool shows no numeric
+readout at all while dragging. Same missing-stylesheet root cause as above until verified otherwise.
+
 ---
 
 ## 7. On-canvas numeric labels are not clamped to the viewport
@@ -231,6 +246,12 @@ not one shared fix:
   happen in screen space, so either transform the intended point first or compute the clamp using
   `canvasController.canvasPoint`, the same helper `SidebearingHandle.update` already uses at
   `edit-tools-metrics.js:867`).
+
+**Designer follow-up (2026-09-06): still absolutely-positioned, still not fixed.** The designer's
+preferred fix for the suggestion number specifically is not an edge-clamp that keeps it near the
+glyph — it's to pin the suggestion readout to a fixed spot at the top of the viewport (a small HUD
+line), so it never tracks the glyph and never needs clamping. That is a different treatment from the
+metrics-tool handles, which should still be positioned on the glyph and edge-clamped as above.
 
 ---
 
@@ -298,3 +319,82 @@ suggestion overlay's visibility — described as wanting a "real-time suggestion
 Both fixes are additive positioning logic on top of existing, working draw calls — no change to what
 data is shown or when (the gating logic in item 6's handles and this item's suggestion layer,
 `kerning.js:2446-2462`, stays as is).
+
+---
+
+## 10. Live non-destructive suggestion preview (actually move the letters in the preview pane)
+
+**Ask (2026-09-06).** Still no true preview of a suggestion. Today the overlay only draws a
+`suggest: N` text label (§7/§9, `kerning.js:2487-2488`); the glyphs in the preview stay at their
+current (unkerned or already-applied) spacing. The designer wants the preview pane to actually
+re-space the letters by the suggested delta so the kerning can be judged visually, without writing
+anything to the font.
+
+**Not yet code-investigated.** Distinct from §9 (§9 is a visibility selector for the numeric label).
+This one needs the scene/positioning layer to offset glyph advances by a per-pair preview delta that
+is display-only — never routed through `fontController.performEdit` or the pair-table write path.
+Scope with §9's `all`/`selected` design pass, since "preview every visible pair" has the same
+per-phrase performance question.
+
+---
+
+## 11. Sortable table columns (click a column header to sort by it)
+
+**Ask (2026-09-06).** Sorting the results table by an arbitrary column. Today sorting is a single
+two-state toggle button, `#kerning-pairtable-sort-toggle` — "worst delta first" (default) vs
+"alphabetical" (`kerning.js:1021-1034`, sort logic at `kerning.js:1382-1445`). Designer wants
+click-a-header, asc/desc, per column (glyph, current value, suggestion, delta, state).
+
+**Not yet code-investigated.** The two existing sort orders already cover delta and name; this is
+extending `autokernFiltersController`'s `sortAlphabetical` boolean into a `{column, direction}` pair
+and moving the control onto the `<th>` cells. Check whether the fold-classes grouping
+(`buildFoldGroups`) constrains which columns can be sorted before promising all of them.
+
+---
+
+## 12. "?" tooltip in the class pane explaining what "Left" / "Right" name
+
+**Ask (2026-09-06).** The Left/Right labels in the class/group pane are ambiguous: does "Right" mean
+"this class is used on the right side of a pair" (i.e. the kern sits to this glyph's left) or "the
+glyph on the right"? Spec §5.2 treats a class name as an address, but the side label's meaning is not
+spelled out in the UI. Add a `?` affordance next to the Left/Right labels that shows a one-line
+tooltip stating the convention (reuse `tooltip.css`, already linked by `kerning.html`).
+
+---
+
+## 13. Select-all checkbox in the pair table header
+
+**Ask (2026-09-06).** No way to select every visible row at once. Per-row selection already exists
+(`getSelectedPairTableRows`, consumed by apply-selected / reset-* at `kerning.js:1039-1051`); this is
+one checkbox in the header row that toggles all currently-visible (post-filter) rows, with the usual
+indeterminate state when only some are checked.
+
+---
+
+## 14. Editable value cells in the pair table
+
+**Ask (2026-09-06).** Edit a pair's value directly in its table cell. Today the only in-table write
+path is the manual-value input plus "apply" button (`#kerning-pairtable-manual-value` /
+`#kerning-pairtable-manual-apply`, `kerning.js:1071-1079`), which writes one value to all selected
+rows. Designer wants to type into a row's value cell and commit that single pair. Reuse
+`writePairValues` (the same function manual-apply calls); the new surface is an inline editable cell
+per row instead of the shared input.
+
+---
+
+## 15. Table-wide "hide suggestion" toggle, same as "show current"
+
+**Ask (2026-09-06).** The table has a `#kerning-pairtable-show-current` checkbox that turns the
+current-value column on/off for the whole table (`kerning.js:1007-1011`). Want the mirror control for
+the suggestion column — one checkbox that hides/shows the suggested values across the entire table,
+not a per-row control. Add a `showSuggestion` item to `autokernFiltersController` (`kerning.js:868`)
+and a matching checkbox; `renderPairTable` reads it to skip the suggestion column.
+
+---
+
+## 16. Right panel lacks a vertical divider
+
+**Ask (2026-09-06).** The right panel has no vertical rule separating it from the canvas / adjacent
+column, so the boundary reads as ambiguous. CSS-only: a `border-left` (or a divider element) on the
+right-panel container in `kerning.css`, matching whatever the other panel edges in this view already
+use.
