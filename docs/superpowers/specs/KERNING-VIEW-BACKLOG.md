@@ -325,6 +325,15 @@ in `phrase` mode at all (gated to pair mode by the draw function's own no-op che
 **Ask.** An eye icon in the preview pane's upper-right corner, plus a keyboard shortcut, to control the
 suggestion overlay's visibility — described as wanting a "real-time suggestion preview."
 
+**Resolved (2026-09-06, `a856c030b`..`cf356d97c`), built as one combined feature with item 10.** First
+pass wrongly substituted a settings-accordion checkbox for the eye icon; corrected in `cf356d97c` to an
+actual `<icon-button>` in the preview pane's own upper-right corner plus a "P" hotkey
+(`action.kerning.toggle-suggestion-preview`), matching this section's original ask exactly. This is the
+one master on/off switch for the whole feature (re-spacing + band + label, see item 10). The accordion
+(opacity, show numbers, show band) remains as secondary settings below it, not a second on/off switch.
+The all/selected design below was superseded: phrase mode always previews every visible pair (no
+selected-only mode within phrase), decided when item 10 was scoped as one combined ask rather than two.
+
 **Resolved: it's a selector, not a binary toggle.** Two states, `all` / `selected`:
 - **Selected** — today's behavior, kept as the default: only the one selected pair's suggestion draws.
 - **All** — every visible pair in the current preview draws its own suggestion live, not just the
