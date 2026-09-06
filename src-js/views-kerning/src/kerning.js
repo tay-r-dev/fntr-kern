@@ -108,6 +108,7 @@ import {
 import { rasterizeGlyph } from "@fontra/core/glyph-raster.js";
 import { getGlyphInfoFromGlyphName } from "@fontra/core/glyph-data.js";
 import { GlyphOrganizer } from "@fontra/core/glyph-organizer.js";
+import * as html from "@fontra/core/html-utils.js";
 import { UndoStack, reverseUndoRecord } from "@fontra/core/font-controller.js";
 import { translate } from "@fontra/core/localization.js";
 import { glyphMapToItemList, round } from "@fontra/core/utils.ts";
@@ -127,6 +128,11 @@ import { GlyphCellView } from "@fontra/web-components/glyph-cell-view.js";
 import { IconButton } from "@fontra/web-components/icon-button.js"; // for <icon-button>, the delete-class control
 import { MenuItemDivider, showMenu } from "@fontra/web-components/menu-panel.js";
 import { dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
+// Backlog items 9+10 (combined): the exact settings-accordion mechanism
+// views-editor's own visualization-layer settings already use (e.g.
+// panel-designspace-navigation.js's coarse-grid-accordion-item) -- imported
+// unmodified, not reinvented.
+import { Accordion } from "@fontra/web-components/ui-accordion.js";
 import { HandTool } from "@fontra/views-editor/edit-tools-hand.js";
 import {
   KerningTool,
@@ -266,6 +272,16 @@ export class KerningViewController extends ViewController {
     // module-level singleton that views-editor's own EditorController reads
     // from the same import -- pushing into it here would leak this
     // kerning-view-only layer into the editor view too).
+    // Backlog item 10: per-glyph "before the preview shift was applied" x
+    // positions, captured lazily (WeakMap keyed by the positioned-glyph
+    // object itself, so a fresh buildScene() -- new objects -- naturally
+    // invalidates old entries via garbage collection, no manual reset
+    // needed) by _applySuggestionPreviewRepositioning below. Always the
+    // basis the shift is added to, never accumulated onto an
+    // already-shifted value, so re-running the shift pass (every repaint,
+    // including a settings toggle) is idempotent.
+    this._previewOriginalX = new WeakMap();
+
     this.visualizationLayers = new VisualizationLayers(
       [
         ...visualizationLayerDefinitions,
@@ -383,6 +399,7 @@ export class KerningViewController extends ViewController {
 
     this.initPhraseSection();
     this.initParametersSection();
+    this.initSuggestionPreviewSettingsSection();
     this.initRunSection();
     // Awaited: initPairTableSection is async and awaits
     // fontController.getKerningController internally to build
@@ -533,6 +550,157 @@ export class KerningViewController extends ViewController {
     this.autokernParamsController.addKeyListener("threshold", () => {
       this.renderPairTable();
     });
+  }
+
+  // Backlog items 9+10, closed together as one settings-driven mechanism
+  // (see the docstring on buildAutokernSuggestionVisualizationLayerDefinition
+  // and _applySuggestionPreviewRepositioning below for what each setting
+  // actually gates):
+  //
+  // - "enabled" is the master switch -- item 9's ask for a way to turn the
+  //   on-canvas suggestion overlay on/off. Replaces the originally-floated
+  //   eye-icon-plus-hotkey design (never built) with this accordion's own
+  //   display-toggle checkbox, the same convention
+  //   panel-designspace-navigation.js's "coarse-grid-accordion-item" uses for
+  //   its own layer (a checkbox named "...-display-toggle", not a canvas
+  //   icon) -- reusing that exact mechanism, per the assignment, rather than
+  //   inventing a second one. Defaults to true, matching the pre-existing
+  //   "suggest: N" label's own defaultOn: true, so nobody who never opens
+  //   this accordion sees a behavior change.
+  // - "opacity" (item 2a) is applied (context.globalAlpha) to the two visual
+  //   elements this feature draws under its own control: the highlight band
+  //   and the "suggest: N" label. It is NOT applied to the re-spaced glyph's
+  //   own fill -- that fill is drawn by views-editor's shared
+  //   "fontra.context.glyphs" layer (visualization-layer-definitions.js),
+  //   which this view is constrained to import, not edit (assignment: "don't
+  //   touch anything outside views-kerning"). The glyph is still genuinely
+  //   moved (see _applySuggestionPreviewRepositioning) -- only its opacity
+  //   isn't independently adjustable from here. Flagged as a deliberate
+  //   divergence, not an oversight.
+  // - "showNumbers" (item 2b) toggles the "suggest: N" label independently of
+  //   the band/re-spacing, exactly as asked.
+  // - "showBand" (item 2c) toggles the highlight band (the fillRect + dashed
+  //   boundary lines already drawn today) specifically, and its own control
+  //   is disabled (not merely inert) whenever the master toggle is off --
+  //   _updateSuggestionPreviewControlsEnabled below, same
+  //   element.disabled = !enabled convention
+  //   panel-designspace-navigation.js's _updateCoarseGridControlsEnabled uses
+  //   for its own toggle's dependent controls. Chosen reading of the
+  //   assignment's admittedly ambiguous wording ("a checkbox that
+  //   shows/enables the overlay... depends on the preview toggle being on"):
+  //   "the overlay" here means the band specifically (the one visual element
+  //   distinct from both re-spacing itself and the numeric label, which
+  //   already have their own controls), and "the preview toggle" is this
+  //   section's own master "enabled" switch.
+  //
+  // Re-spacing itself (item 10) is NOT gated by any of these three settings
+  // individually -- only by "enabled" -- and works in both pair and phrase
+  // mode unconditionally once "enabled" is on (assignment: "This must work in
+  // BOTH... not gated behind an extra checkbox").
+  initSuggestionPreviewSettingsSection() {
+    this.suggestionPreviewSettings = new ObservableController({
+      enabled: true,
+      opacity: 1,
+      showNumbers: true,
+      showBand: true,
+    });
+    this.suggestionPreviewSettings.synchronizeWithLocalStorage(
+      "fontra-kerning-suggestion-preview."
+    );
+
+    const settings = this.suggestionPreviewSettings.model;
+
+    const enabledToggle = html.input({
+      type: "checkbox",
+      id: "kerning-suggestion-preview-enabled",
+    });
+    enabledToggle.checked = settings.enabled;
+    enabledToggle.addEventListener("change", () => {
+      this.suggestionPreviewSettings.setItem("enabled", enabledToggle.checked);
+    });
+
+    const opacityInput = html.input({
+      type: "range",
+      id: "kerning-suggestion-preview-opacity",
+      min: "0",
+      max: "1",
+      step: "0.05",
+    });
+    opacityInput.value = String(settings.opacity);
+    opacityInput.addEventListener("input", () => {
+      this.suggestionPreviewSettings.setItem("opacity", Number(opacityInput.value));
+    });
+
+    const numbersToggle = html.input({
+      type: "checkbox",
+      id: "kerning-suggestion-preview-numbers",
+    });
+    numbersToggle.checked = settings.showNumbers;
+    numbersToggle.addEventListener("change", () => {
+      this.suggestionPreviewSettings.setItem("showNumbers", numbersToggle.checked);
+    });
+
+    const bandToggle = html.input({
+      type: "checkbox",
+      id: "kerning-suggestion-preview-band",
+    });
+    bandToggle.checked = settings.showBand;
+    bandToggle.addEventListener("change", () => {
+      this.suggestionPreviewSettings.setItem("showBand", bandToggle.checked);
+    });
+    this._suggestionPreviewBandToggle = bandToggle;
+
+    const content = html.div(
+      {
+        style: `
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 0.5em;
+          align-items: center;
+        `,
+      },
+      [
+        html.label({ for: "kerning-suggestion-preview-enabled" }, [
+          "Suggestion preview",
+        ]),
+        enabledToggle,
+        html.label({ for: "kerning-suggestion-preview-opacity" }, ["Opacity"]),
+        opacityInput,
+        html.label({ for: "kerning-suggestion-preview-numbers" }, ["Show numbers"]),
+        numbersToggle,
+        html.label({ for: "kerning-suggestion-preview-band" }, [
+          "Show highlight band",
+        ]),
+        bandToggle,
+      ]
+    );
+
+    const accordion = new Accordion();
+    accordion.items = [
+      {
+        id: "kerning-suggestion-preview-accordion-item",
+        label: "Suggestion preview",
+        open: false,
+        content,
+      },
+    ];
+    document
+      .querySelector("#kerning-suggestion-preview-section")
+      .appendChild(accordion);
+
+    this._updateSuggestionPreviewControlsEnabled();
+
+    this.suggestionPreviewSettings.addListener(() => {
+      this._updateSuggestionPreviewControlsEnabled();
+      this.canvasController.requestUpdate();
+    });
+  }
+
+  _updateSuggestionPreviewControlsEnabled() {
+    if (this._suggestionPreviewBandToggle) {
+      this._suggestionPreviewBandToggle.disabled =
+        !this.suggestionPreviewSettings.model.enabled;
+    }
   }
 
   // This workstream: the run worker (spec §4) and the Run button

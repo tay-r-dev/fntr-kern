@@ -471,6 +471,17 @@
             </details>
           </div>
 
+          <!-- Backlog items 9+10 (combined, see kerning.js's
+               initSuggestionPreviewSettingsSection): a settings-driven
+               visibility/opacity control for the on-canvas suggestion
+               overlay and its live glyph re-spacing preview. Built entirely
+               in JS below, mounted into this slot -- same convention
+               views-editor's own grid-layer settings accordion uses
+               (panel-designspace-navigation.js's "coarse-grid-accordion-item",
+               an Accordion item with a master display-toggle checkbox plus
+               dependent settings). -->
+          <div id="kerning-suggestion-preview-section"></div>
+
           <div id="kerning-calibration-section">
             <details id="kerning-calibration-collapsible">
               <summary>Calibration</summary>
