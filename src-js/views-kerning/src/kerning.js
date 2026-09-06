@@ -4356,6 +4356,20 @@ export class KerningViewController extends ViewController {
         textColor: "#C77DFF",
       },
       draw: (context, positionedGlyph, parameters, model, controller) => {
+        // Backlog item 10: the actual glyph re-spacing. This must run before
+        // any of the pair-mode gating below returns early, and it must apply
+        // regardless of chip mode (pair or phrase) -- see
+        // _applySuggestionPreviewRepositioning's own comment for how one pass
+        // covers both. Runs exactly once per frame, triggered by the first
+        // glyph this layer sees (selectionFunc("all") iterates
+        // model.positionedLines in order, so the first item overall IS
+        // positionedLines[0].glyphs[0]) -- see that method's own comment for
+        // why gating on object identity here, rather than a separate
+        // "already ran this frame" flag, is enough.
+        if (positionedGlyph === model.positionedLines?.[0]?.glyphs?.[0]) {
+          this._applySuggestionPreviewRepositioning(model);
+        }
+
         if (this._chipMode !== "pair") {
           return;
         }
@@ -4374,23 +4388,36 @@ export class KerningViewController extends ViewController {
         }
         const suggestionValue = entry.value;
 
+        const settings = this.suggestionPreviewSettings.model;
+        if (!settings.enabled) {
+          return;
+        }
+
         const ascender = model.ascender ?? 0;
         const descender = model.descender ?? 0;
 
-        context.strokeStyle = parameters.lineColor;
-        context.lineWidth = parameters.strokeWidth;
-        context.fillStyle = parameters.fillColor;
-        context.fillRect(0, descender, -suggestionValue, ascender - descender);
-        context.setLineDash([4, 3]);
-        strokeLine(context, 0, descender, 0, ascender);
-        strokeLine(
-          context,
-          -suggestionValue,
-          descender,
-          -suggestionValue,
-          ascender
-        );
-        context.setLineDash([]);
+        if (settings.showBand) {
+          context.globalAlpha = settings.opacity;
+          context.strokeStyle = parameters.lineColor;
+          context.lineWidth = parameters.strokeWidth;
+          context.fillStyle = parameters.fillColor;
+          context.fillRect(0, descender, -suggestionValue, ascender - descender);
+          context.setLineDash([4, 3]);
+          strokeLine(context, 0, descender, 0, ascender);
+          strokeLine(
+            context,
+            -suggestionValue,
+            descender,
+            -suggestionValue,
+            ascender
+          );
+          context.setLineDash([]);
+          context.globalAlpha = 1;
+        }
+
+        if (!settings.showNumbers) {
+          return;
+        }
 
         // Designer follow-up (2026-09-06, backlog item 7's HUD variant):
         // pinned to a fixed spot at the top of the viewport instead of
@@ -4413,6 +4440,7 @@ export class KerningViewController extends ViewController {
           0,
           0
         );
+        context.globalAlpha = settings.opacity;
         context.fillStyle = parameters.textColor;
         context.textAlign = "center";
         context.font = `${parameters.fontSize}px fontra-ui-regular, sans-serif`;
@@ -4421,8 +4449,69 @@ export class KerningViewController extends ViewController {
           controller.canvasWidth / 2,
           20
         );
+        context.globalAlpha = 1;
       },
     };
+  }
+
+  // Backlog item 10: re-space glyphs on screen by their cached suggestion
+  // delta, display-only -- never through fontController.performEdit or the
+  // pair-table write path, and never touching this.autokernCache itself
+  // (read-only lookup, same cache/gating the "suggest: N" label already
+  // uses). This commit covers "pair" mode only: the selected pair's
+  // right-hand glyph shifts by exactly the same this.autokernCache
+  // entry.value the label already shows for that pair. "phrase" mode (every
+  // adjacent pair in the current phrase, threaded cumulatively along the
+  // line the same way a real applied kern would accumulate -- shaper.js:
+  // "previousGlyph.xAdvance += kernValue", a positive suggestion pushes
+  // everything after it right, confirmed against that convention before
+  // picking the sign here) is added in the next commit, in the same
+  // function, on top of this same idempotent per-glyph shift mechanism. Sign
+  // convention shared with pair mode: cache entry.value is added directly to
+  // the glyph's x, matching shaper.js exactly.
+  // "font" mode has no relevant positionedLines (grid, not scene text) --
+  // the loop below simply no-ops on an empty/irrelevant array.
+  //
+  // Idempotent by construction: every call recomputes every glyph's x from
+  // its own captured original (this._previewOriginalX), never from the
+  // possibly-already-shifted current value, so toggling
+  // suggestionPreviewSettings.enabled off (without a scene rebuild) snaps
+  // positions back immediately on the next repaint, and repeated repaints of
+  // an unchanged frame never compound the shift.
+  _applySuggestionPreviewRepositioning(model) {
+    const settings = this.suggestionPreviewSettings?.model;
+    const cache = this.autokernCache;
+    for (const line of model.positionedLines || []) {
+      const glyphs = line.glyphs || [];
+      let cumulative = 0;
+      for (let i = 0; i < glyphs.length; i++) {
+        const glyph = glyphs[i];
+        if (!this._previewOriginalX.has(glyph)) {
+          this._previewOriginalX.set(glyph, glyph.x);
+        }
+        const originalX = this._previewOriginalX.get(glyph);
+
+        if (i > 0 && settings?.enabled && cache) {
+          let pairValue = 0;
+          if (this._chipMode === "pair") {
+            if (
+              line === model.positionedLines[0] &&
+              i === 1 &&
+              glyphs[0].glyphName === this._selectedPairLeft &&
+              glyph.glyphName === this._selectedPairRight
+            ) {
+              pairValue = cache.get(pairKey(this._selectedPairLeft, glyph.glyphName))
+                ?.value ?? 0;
+            }
+          }
+          // Phrase mode (every adjacent pair, not just the selected one) is
+          // added in the next commit -- see the backlog entry's own note.
+          cumulative += pairValue;
+        }
+
+        glyph.x = originalX + (settings?.enabled ? cumulative : 0);
+      }
+    }
   }
 
   // Number-key tool shortcuts (mirrors editor.js: each tool gets its 1-based
