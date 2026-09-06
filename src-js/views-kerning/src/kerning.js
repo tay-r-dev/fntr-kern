@@ -1078,7 +1078,52 @@ export class KerningViewController extends ViewController {
       }
     );
 
+    // Backlog item 13: one select-all checkbox per bucket table's own
+    // header row (each bucket is its own <table>, so there is no single
+    // shared header across buckets). Wired once here, not rebuilt on every
+    // renderPairTable -- the checkboxes themselves are static markup
+    // (kerning.html), only their checked/indeterminate state and the rows
+    // they toggle change per render.
+    for (const selectAll of document.querySelectorAll(".kerning-pairtable-select-all")) {
+      selectAll.addEventListener("change", () => {
+        for (const checkbox of this.getVisiblePairTableRowCheckboxes(
+          selectAll.closest("table")
+        )) {
+          checkbox.checked = selectAll.checked;
+        }
+      });
+    }
+
     this.renderPairTable();
+  }
+
+  // Backlog item 13: rows hidden behind a collapsed fold parent
+  // (.kerning-pairtable-fold-children without .kerning-pairtable-fold-
+  // expanded, see buildClassClassRowElement) are not "currently visible",
+  // so select-all skips them -- same post-filter/post-fold row set the
+  // designer sees on screen, not merely the ones present in the DOM.
+  getVisiblePairTableRowCheckboxes(table) {
+    return [...table.querySelectorAll(".kerning-pairtable-row-select")].filter((checkbox) => {
+      const tr = checkbox.closest("tr");
+      return (
+        !tr.classList.contains("kerning-pairtable-fold-children") ||
+        tr.classList.contains("kerning-pairtable-fold-expanded")
+      );
+    });
+  }
+
+  // Backlog item 13: called at the end of every renderPairTable so each
+  // bucket's select-all checkbox reflects the rows that render just put on
+  // screen -- checked when every visible row in that table is checked,
+  // indeterminate when some but not all are, unchecked when none are (or
+  // the table has no rows at all).
+  syncSelectAllCheckboxes() {
+    for (const selectAll of document.querySelectorAll(".kerning-pairtable-select-all")) {
+      const checkboxes = this.getVisiblePairTableRowCheckboxes(selectAll.closest("table"));
+      const checkedCount = checkboxes.filter((checkbox) => checkbox.checked).length;
+      selectAll.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
+      selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+    }
   }
 
   // Parses the excluded-glyph field the same way the phrase field is parsed
@@ -1449,6 +1494,12 @@ export class KerningViewController extends ViewController {
         }
       }
     }
+
+    // Backlog item 13: every tbody was just rebuilt from scratch above, so
+    // each bucket's select-all checkbox needs to reflect the freshly
+    // rendered (empty, by default -- new rows always start unchecked) row
+    // set.
+    this.syncSelectAllCheckboxes();
   }
 
   // Median (not mean, spec §5.2: "the median is the reducer... a mean can
@@ -1658,6 +1709,9 @@ export class KerningViewController extends ViewController {
       for (const childTr of childRows) {
         childTr.classList.toggle("kerning-pairtable-fold-expanded", !expanded);
       }
+      // Backlog item 13: expanding/collapsing changes which rows count as
+      // "currently visible" without firing any checkbox's own change event.
+      this.syncSelectAllCheckboxes();
     });
 
     return { parentRow: tr, childRows };
@@ -2900,6 +2954,10 @@ export class KerningViewController extends ViewController {
       checkbox.disabled = true;
       checkbox.title = "Would shadow an existing class cell -- edit the class cell instead.";
     }
+    // Backlog item 13: keeps this bucket's select-all checkbox's checked/
+    // indeterminate state truthful when a row is (un)checked by hand rather
+    // than via select-all itself.
+    checkbox.addEventListener("change", () => this.syncSelectAllCheckboxes());
     selectCell.appendChild(checkbox);
     tr.appendChild(selectCell);
 
