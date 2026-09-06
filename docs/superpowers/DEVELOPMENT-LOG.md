@@ -2092,3 +2092,25 @@ so the fix is a no-op for existing callers and a real correction for any
 future view that nests one more positioned ancestor than the last one did.
 Any new view that wraps the shared canvas in extra positioned containers
 should assume the OLD code, not this fix, was the trap.
+
+**A layer appended to the definitions array keeps its declared zIndex and
+loses its place.** `VisualizationLayers` draws its definitions in plain array
+order and sorts nothing; only `registerVisualizationLayerDefinition` inserts
+by zIndex. The kerning view builds its layer list by spreading the shared
+array and appending its own suggestion layer, so `zIndex: 195` was a comment
+and the layer drew last, after the glyph fill at 200. The suggestion preview's
+glyph re-spacing ran inside that layer's draw and therefore mutated every
+positioned glyph's x after the glyphs were already painted, leaving the whole
+preview one repaint behind. Five separate reports came out of that one fact,
+and four of them named the wrong culprit: unchecking a settings box, clicking
+a glyph, and holding Space to pan were each reported as turning the preview
+off, when all three merely forced the repaint that revealed a toggle made
+earlier. The fifth was "the P hotkey does nothing" -- the key fired, the
+setting flipped, the repaint drew the previous frame, and in phrase mode,
+which drew no band or label at all, the lagging re-spacing was the only
+visible effect the key had. **The designer named the cause**: the hotkey works
+and the screen does not show it. The re-spacing runs once per frame from the
+scene-view draw callback now, ahead of every layer. **Two static reading passes
+missed this** because both looked for a write to the `enabled` setting, which
+is what the reports described, rather than at when the shift reaches the
+screen.

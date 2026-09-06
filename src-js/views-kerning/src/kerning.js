@@ -281,6 +281,13 @@ export class KerningViewController extends ViewController {
     // already-shifted value, so re-running the shift pass (every repaint,
     // including a settings toggle) is idempotent.
     this._previewOriginalX = new WeakMap();
+    // The cached suggestion for the pair ENDING at each positioned glyph,
+    // recorded by the same once-per-frame pass that does the shifting, so
+    // the band/label draw and the shift can never disagree about which
+    // pairs have a suggestion. `undefined` means "no cache entry for that
+    // pair" and draws nothing (spec §10: never a placeholder or a zero) --
+    // distinct from a cached entry whose value happens to be 0.
+    this._previewPairValue = new WeakMap();
 
     this.visualizationLayers = new VisualizationLayers(
       [
@@ -309,11 +316,27 @@ export class KerningViewController extends ViewController {
     this.sceneSettings = this.sceneSettingsController.model;
     this.sceneModel = this.sceneController.sceneModel;
 
-    const sceneView = new SceneView(this.sceneModel, (model, controller) =>
+    // Backlog item 10: the preview's glyph re-spacing runs ONCE per frame,
+    // here, BEFORE any visualization layer draws. It used to run from inside
+    // the suggestion layer's own draw function, which is one frame too late:
+    // VisualizationLayers walks its definitions array in plain array order
+    // and never sorts, and this view appends its layer to a copy of the
+    // shared array rather than going through
+    // registerVisualizationLayerDefinition (the only thing that inserts by
+    // zIndex) -- so the layer's declared zIndex of 195 had no effect and it
+    // drew LAST, after "fontra.context.glyphs" (zIndex 200) had already
+    // painted every glyph at the previous frame's x. The whole preview was
+    // therefore one repaint behind: toggling it (eye icon or the P hotkey)
+    // requested a repaint that still showed the old positions, and the next
+    // unrelated repaint -- a pointer click, a Space-drag pan, a settings
+    // checkbox -- was what finally revealed the change, which read as those
+    // actions turning the preview on or off.
+    const sceneView = new SceneView(this.sceneModel, (model, controller) => {
+      this._applySuggestionPreviewRepositioning(model);
       this.visualizationLayers.drawVisualizationLayers(
         new VisualizationContext(model, controller)
-      )
-    );
+      );
+    });
     canvasController.sceneView = sceneView;
     this.defaultSceneView = sceneView;
 
@@ -653,9 +676,7 @@ export class KerningViewController extends ViewController {
         opacityInput,
         html.label({ for: "kerning-suggestion-preview-numbers" }, ["Show numbers"]),
         numbersToggle,
-        html.label({ for: "kerning-suggestion-preview-band" }, [
-          "Show highlight band",
-        ]),
+        html.label({ for: "kerning-suggestion-preview-band" }, ["Show highlight band"]),
         bandToggle,
       ]
     );
@@ -740,7 +761,11 @@ export class KerningViewController extends ViewController {
       },
       () => {
         const activeTag = document.activeElement?.tagName;
-        if (activeTag === "TEXTAREA" || activeTag === "INPUT" || activeTag === "SELECT") {
+        if (
+          activeTag === "TEXTAREA" ||
+          activeTag === "INPUT" ||
+          activeTag === "SELECT"
+        ) {
           return;
         }
         button.onclick();
@@ -1011,11 +1036,9 @@ export class KerningViewController extends ViewController {
     const progressContent = document.createElement("div");
     progressContent.textContent = "Starting…";
 
-    const dialog = await dialogSetup(
-      "Running autokern",
-      null,
-      [{ title: "Cancel", resultValue: "cancel", isCancelButton: true }]
-    );
+    const dialog = await dialogSetup("Running autokern", null, [
+      { title: "Cancel", resultValue: "cancel", isCancelButton: true },
+    ]);
     dialog.setContent(progressContent);
 
     const runResult = new Promise((resolve) => {
@@ -1209,7 +1232,9 @@ export class KerningViewController extends ViewController {
     const storedExcludedGlyphs =
       this.fontController.customData?.[AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY];
     const initialExcludedGlyphs =
-      storedExcludedGlyphs !== undefined ? storedExcludedGlyphs : filters.excludedGlyphs;
+      storedExcludedGlyphs !== undefined
+        ? storedExcludedGlyphs
+        : filters.excludedGlyphs;
     excludedInput.value = initialExcludedGlyphs;
     if (initialExcludedGlyphs !== filters.excludedGlyphs) {
       this.autokernFiltersController.setItem("excludedGlyphs", initialExcludedGlyphs);
@@ -1224,7 +1249,8 @@ export class KerningViewController extends ViewController {
     // raw text it already stores (`excludedGlyphs`) is enough to
     // reconstruct this on reload -- a second, redundant persisted copy of
     // the same data would just be one more place for the two to disagree.
-    this.autokernExcludedGlyphNames = this.parseExcludedGlyphNames(initialExcludedGlyphs);
+    this.autokernExcludedGlyphNames =
+      this.parseExcludedGlyphNames(initialExcludedGlyphs);
     excludedInput.addEventListener("change", async () => {
       // Stored on the controller (as before), reparsed into
       // this.autokernExcludedGlyphNames (the property runAutokern actually
@@ -1232,13 +1258,16 @@ export class KerningViewController extends ViewController {
       // through to the project (see the file-top comment for the exact
       // mechanism).
       this.autokernFiltersController.setItem("excludedGlyphs", excludedInput.value);
-      this.autokernExcludedGlyphNames = this.parseExcludedGlyphNames(excludedInput.value);
+      this.autokernExcludedGlyphNames = this.parseExcludedGlyphNames(
+        excludedInput.value
+      );
       await this.fontController.performEdit(
         "kerning view: edit excluded glyphs",
         "customData",
         (root) => {
           if (excludedInput.value) {
-            root.customData[AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY] = excludedInput.value;
+            root.customData[AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY] =
+              excludedInput.value;
           } else {
             delete root.customData[AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY];
           }
@@ -1274,10 +1303,15 @@ export class KerningViewController extends ViewController {
     });
 
     // Backlog item 15: mirrors the showCurrent checkbox immediately above.
-    const suggestionCheckbox = document.querySelector("#kerning-pairtable-show-suggestion");
+    const suggestionCheckbox = document.querySelector(
+      "#kerning-pairtable-show-suggestion"
+    );
     suggestionCheckbox.checked = filters.showSuggestion;
     suggestionCheckbox.addEventListener("change", () => {
-      this.autokernFiltersController.setItem("showSuggestion", suggestionCheckbox.checked);
+      this.autokernFiltersController.setItem(
+        "showSuggestion",
+        suggestionCheckbox.checked
+      );
     });
 
     // Backlog item 3 (designer follow-up): one checkbox per category
@@ -1340,7 +1374,9 @@ export class KerningViewController extends ViewController {
     const applyAllButton = document.querySelector("#kerning-pairtable-apply-all");
     this._applyAllArmed = false;
     this._applyAllDefaultLabel = applyAllButton.textContent;
-    applyAllButton.addEventListener("click", () => this.applyAllPairRows(applyAllButton));
+    applyAllButton.addEventListener("click", () =>
+      this.applyAllPairRows(applyAllButton)
+    );
 
     document
       .querySelector("#kerning-pairtable-reset-current")
@@ -1366,15 +1402,14 @@ export class KerningViewController extends ViewController {
     // apply-selected/reset-* already read (getSelectedPairTableRows) --
     // this is not a per-row input, it is the one input/one apply the design
     // doc describes, made to act on a selection like the other actions.
-    document.querySelector("#kerning-pairtable-manual-apply").addEventListener(
-      "click",
-      () => {
+    document
+      .querySelector("#kerning-pairtable-manual-apply")
+      .addEventListener("click", () => {
         const manualValue = Number(
           document.querySelector("#kerning-pairtable-manual-value").value || 0
         );
         this.writePairValues(this.getSelectedPairTableRows(), () => manualValue, true);
-      }
-    );
+      });
 
     // Backlog item 13: one select-all checkbox per bucket table's own
     // header row (each bucket is its own <table>, so there is no single
@@ -1382,7 +1417,9 @@ export class KerningViewController extends ViewController {
     // renderPairTable -- the checkboxes themselves are static markup
     // (kerning.html), only their checked/indeterminate state and the rows
     // they toggle change per render.
-    for (const selectAll of document.querySelectorAll(".kerning-pairtable-select-all")) {
+    for (const selectAll of document.querySelectorAll(
+      ".kerning-pairtable-select-all"
+    )) {
       selectAll.addEventListener("change", () => {
         // A real user click always clears indeterminate natively before this
         // handler runs; set it explicitly too so a programmatic `.checked =`
@@ -1407,13 +1444,15 @@ export class KerningViewController extends ViewController {
   // so select-all skips them -- same post-filter/post-fold row set the
   // designer sees on screen, not merely the ones present in the DOM.
   getVisiblePairTableRowCheckboxes(table) {
-    return [...table.querySelectorAll(".kerning-pairtable-row-select")].filter((checkbox) => {
-      const tr = checkbox.closest("tr");
-      return (
-        !tr.classList.contains("kerning-pairtable-fold-children") ||
-        tr.classList.contains("kerning-pairtable-fold-expanded")
-      );
-    });
+    return [...table.querySelectorAll(".kerning-pairtable-row-select")].filter(
+      (checkbox) => {
+        const tr = checkbox.closest("tr");
+        return (
+          !tr.classList.contains("kerning-pairtable-fold-children") ||
+          tr.classList.contains("kerning-pairtable-fold-expanded")
+        );
+      }
+    );
   }
 
   // Backlog item 13: called at the end of every renderPairTable so each
@@ -1422,8 +1461,12 @@ export class KerningViewController extends ViewController {
   // indeterminate when some but not all are, unchecked when none are (or
   // the table has no rows at all).
   syncSelectAllCheckboxes() {
-    for (const selectAll of document.querySelectorAll(".kerning-pairtable-select-all")) {
-      const checkboxes = this.getVisiblePairTableRowCheckboxes(selectAll.closest("table"));
+    for (const selectAll of document.querySelectorAll(
+      ".kerning-pairtable-select-all"
+    )) {
+      const checkboxes = this.getVisiblePairTableRowCheckboxes(
+        selectAll.closest("table")
+      );
       const checkedCount = checkboxes.filter((checkbox) => checkbox.checked).length;
       selectAll.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
       selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
@@ -1478,8 +1521,11 @@ export class KerningViewController extends ViewController {
   // read as 0.
   pairRowData(entry, classed) {
     const current =
-      this.kerningController.getGlyphPairValueForLocation(entry.left, entry.right, {}) ??
-      0;
+      this.kerningController.getGlyphPairValueForLocation(
+        entry.left,
+        entry.right,
+        {}
+      ) ?? 0;
     return {
       left: entry.left,
       right: entry.right,
@@ -1546,7 +1592,10 @@ export class KerningViewController extends ViewController {
       }
     }
     if (filters.hideNumbers) {
-      if (this.glyphCategory(row.left) === "Number" || this.glyphCategory(row.right) === "Number") {
+      if (
+        this.glyphCategory(row.left) === "Number" ||
+        this.glyphCategory(row.right) === "Number"
+      ) {
         return false;
       }
     }
@@ -1642,7 +1691,8 @@ export class KerningViewController extends ViewController {
   // back to this bucket's own default (worst median first), rather than
   // silently no-op'ing or crashing on an undefined field.
   sortClassClassGroups(groups, filters) {
-    const columnApplies = filters.sortColumn === "glyph" || filters.sortColumn === "delta";
+    const columnApplies =
+      filters.sortColumn === "glyph" || filters.sortColumn === "delta";
     const column = columnApplies ? filters.sortColumn : "delta";
     const dirMul = columnApplies ? (filters.sortDirection === "desc" ? -1 : 1) : -1;
     groups.sort((a, b) => {
@@ -1785,7 +1835,11 @@ export class KerningViewController extends ViewController {
     const bodies = Object.fromEntries(
       bodyIds.map((id) => [id, document.querySelector(`#kerning-pairtable-body-${id}`)])
     );
-    if (!this.autokernCache || !this.kerningController || !this.autokernFiltersController) {
+    if (
+      !this.autokernCache ||
+      !this.kerningController ||
+      !this.autokernFiltersController
+    ) {
       return;
     }
 
@@ -1843,7 +1897,11 @@ export class KerningViewController extends ViewController {
     // §7.3's original anchoring, carried over unchanged in behavior for
     // these three buckets -- only class×class, below, is freed from it).
     if (glyphName) {
-      const rowsByBucket = { "unique-unique": [], "unique-class": [], "class-unique": [] };
+      const rowsByBucket = {
+        "unique-unique": [],
+        "unique-class": [],
+        "class-unique": [],
+      };
       for (const entry of this.autokernCache.values()) {
         if (entry.left !== glyphName && entry.right !== glyphName) {
           continue;
@@ -1929,9 +1987,7 @@ export class KerningViewController extends ViewController {
   static medianOf(values) {
     const sorted = [...values].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2
-      ? sorted[mid]
-      : (sorted[mid - 1] + sorted[mid]) / 2;
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   }
 
   // Layout overhaul, design doc §1.1/§0: every side-1-class × side-2-class
@@ -2158,7 +2214,10 @@ export class KerningViewController extends ViewController {
   // write).
   async applyFoldedParentRow(group, median) {
     const sourceIdentifier =
-      this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation({}, false);
+      this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation(
+        {},
+        false
+      );
     if (!sourceIdentifier) {
       console.error(
         "kerning view: cannot apply, no font source resolves at the default location"
@@ -2864,10 +2923,16 @@ export class KerningViewController extends ViewController {
   async deleteClass(side, name, members) {
     const editFn =
       side === "side1"
-        ? (glyphName, groupName) => this.kerningController.editGroupSide1(glyphName, groupName)
-        : (glyphName, groupName) => this.kerningController.editGroupSide2(glyphName, groupName);
+        ? (glyphName, groupName) =>
+            this.kerningController.editGroupSide1(glyphName, groupName)
+        : (glyphName, groupName) =>
+            this.kerningController.editGroupSide2(glyphName, groupName);
 
-    const entries = members.map((glyphName) => ({ glyphName, before: name, after: "" }));
+    const entries = members.map((glyphName) => ({
+      glyphName,
+      before: name,
+      after: "",
+    }));
     for (const entry of entries) {
       await editFn(entry.glyphName, entry.after);
     }
@@ -3022,7 +3087,8 @@ export class KerningViewController extends ViewController {
   // ---- Class color (design doc §3) ----
 
   getClassColor(side, name) {
-    const colors = this.fontController.customData?.[AUTOKERN_CLASS_COLORS_CUSTOM_DATA_KEY];
+    const colors =
+      this.fontController.customData?.[AUTOKERN_CLASS_COLORS_CUSTOM_DATA_KEY];
     return colors?.[side]?.[name];
   }
 
@@ -3066,7 +3132,9 @@ export class KerningViewController extends ViewController {
       return;
     }
     const positionedGlyph =
-      this.sceneModel.positionedLines?.[glyphHit.lineIndex]?.glyphs?.[glyphHit.glyphIndex];
+      this.sceneModel.positionedLines?.[glyphHit.lineIndex]?.glyphs?.[
+        glyphHit.glyphIndex
+      ];
     const glyphName = positionedGlyph?.glyphName;
     if (!glyphName) {
       return;
@@ -3137,7 +3205,12 @@ export class KerningViewController extends ViewController {
       return;
     }
 
-    this.showClassPreviewInScene(sourceGlyphName, side1Name, side2Name, targetGlyphNames);
+    this.showClassPreviewInScene(
+      sourceGlyphName,
+      side1Name,
+      side2Name,
+      targetGlyphNames
+    );
   }
 
   // Builds one "/left /right" line per (class member, target glyph)
@@ -3379,7 +3452,8 @@ export class KerningViewController extends ViewController {
     // (KERNING-VIEW-BACKLOG.md item 8).
     if (this.wouldShadowClassCell(row.left, row.right)) {
       checkbox.disabled = true;
-      checkbox.title = "Would shadow an existing class cell -- edit the class cell instead.";
+      checkbox.title =
+        "Would shadow an existing class cell -- edit the class cell instead.";
     }
     // Backlog item 13: keeps this bucket's select-all checkbox's checked/
     // indeterminate state truthful when a row is (un)checked by hand rather
@@ -3394,7 +3468,8 @@ export class KerningViewController extends ViewController {
 
     const deltaCell = document.createElement("td");
     deltaCell.className = "kerning-pairtable-suggestion-col";
-    deltaCell.textContent = row.delta > 0 ? `+${row.delta.toFixed(1)}` : row.delta.toFixed(1);
+    deltaCell.textContent =
+      row.delta > 0 ? `+${row.delta.toFixed(1)}` : row.delta.toFixed(1);
     deltaCell.style.display = this.autokernFiltersController.model.showSuggestion
       ? ""
       : "none";
@@ -3487,9 +3562,9 @@ export class KerningViewController extends ViewController {
   }
 
   applyAllPairRows(button) {
-    const visibleRows = [...document.querySelectorAll(".kerning-pairtable-table tbody tr")].map(
-      (tr) => ({ left: tr.dataset.left, right: tr.dataset.right })
-    );
+    const visibleRows = [
+      ...document.querySelectorAll(".kerning-pairtable-table tbody tr"),
+    ].map((tr) => ({ left: tr.dataset.left, right: tr.dataset.right }));
 
     // Spec §7.3: "Apply all states how many cells it will write and needs a
     // second press." First press arms and relabels the button; a second
@@ -3573,7 +3648,10 @@ export class KerningViewController extends ViewController {
       return;
     }
     const sourceIdentifier =
-      this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation({}, false);
+      this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation(
+        {},
+        false
+      );
     if (!sourceIdentifier) {
       // Mirrors edit-tools-metrics.js's own guard (getEditContext there:
       // "if (!sourceIdentifier && wantValues) { this.showDialogLocationNotAtSource(); }")
@@ -3734,10 +3812,7 @@ export class KerningViewController extends ViewController {
 
     const clampBottomHeight = (height) => {
       const totalHeight = middleColumn.getBoundingClientRect().height;
-      const maxBottomHeight = Math.max(
-        MIN_BOTTOM_HEIGHT,
-        totalHeight - MIN_TOP_HEIGHT
-      );
+      const maxBottomHeight = Math.max(MIN_BOTTOM_HEIGHT, totalHeight - MIN_TOP_HEIGHT);
       return Math.min(Math.max(height, MIN_BOTTOM_HEIGHT), maxBottomHeight);
     };
 
@@ -3874,7 +3949,11 @@ export class KerningViewController extends ViewController {
         // would swallow the keystroke). Bail out and let the field behave
         // normally instead.
         const activeTag = document.activeElement?.tagName;
-        if (activeTag === "TEXTAREA" || activeTag === "INPUT" || activeTag === "SELECT") {
+        if (
+          activeTag === "TEXTAREA" ||
+          activeTag === "INPUT" ||
+          activeTag === "SELECT"
+        ) {
           return;
         }
         this.setChipMode(this._chipMode === "phrase" ? "pair" : "phrase");
@@ -4166,7 +4245,9 @@ export class KerningViewController extends ViewController {
     if (failed.length) {
       await message(
         "Add to class: some glyphs failed",
-        failed.map(({ glyphName, error }) => `${glyphName}: ${error.message || error}`).join("\n")
+        failed
+          .map(({ glyphName, error }) => `${glyphName}: ${error.message || error}`)
+          .join("\n")
       );
     }
   }
@@ -4340,32 +4421,32 @@ export class KerningViewController extends ViewController {
   // exactly the pair this layer draws, and must read as two different facts,
   // not one blurred shape).
   //
-  // Gating (spec §10: "gated to pair mode since it only makes sense for a
-  // single selected pair"): this._chipMode !== "pair" is an immediate no-op.
-  // Within pair mode, selectPairForScene (above) is the only place that ever
-  // sets this._chipMode to "pair" in the first place, and it always sets
-  // this._selectedPairLeft/Right in the same call, so by the time
-  // this._chipMode is "pair" here, both names are already set to the pair
-  // that produced it (selectPairForScene sets all three together, in that
-  // order, before setChipMode("pair") does anything scene-visible).
-  //
-  // Identifying WHICH positioned glyph is the pair's right member: pair mode
-  // always sets the scene text to exactly "/left /right" (selectPairForScene
-  // above), so model.positionedLines[0].glyphs is always exactly the pair's
-  // two glyphs when in pair mode, in order. Comparing the drawn item against
-  // that exact array slot by object identity (both come from the same
-  // model.positionedLines on the same frame) is exact, not name-matching --
-  // so a pair like o/o (identical glyph names on both sides) is not
-  // ambiguous here the way name comparison alone would be.
+  // Gating: BOTH chip modes draw. Pair mode draws one band, over the
+  // selected pair's own gap, with the pinned "suggest: N" HUD; phrase mode
+  // draws a band per adjacent pair with its number above its own gap.
+  // Neither reads this._chipMode to decide WHICH pairs have a suggestion --
+  // _applySuggestionPreviewRepositioning does that once per frame and
+  // records the answer per positioned glyph in this._previewPairValue, so
+  // the shift and the overlay cannot disagree. Pair mode's own "only the
+  // selected pair" rule lives there, and its object-identity check against
+  // model.positionedLines[0].glyphs is exact rather than name-matching, so a
+  // pair like o/o is not ambiguous.
   //
   // No cache entry (spec §10: "before a run, or an excluded/filtered pair --
-  // draws nothing, not a placeholder/zero"): this.autokernCache.get(...)
-  // returning undefined is the same no-op return every other guard here uses.
+  // draws nothing, not a placeholder/zero"): a recorded `undefined` is the
+  // no-op return, and it is deliberately distinct from a cached value of 0.
+  //
+  // On zIndex: this layer is appended to a COPY of the shared definitions
+  // array, and only registerVisualizationLayerDefinition inserts by zIndex,
+  // so the 195 below is documentation rather than an instruction -- the
+  // layer actually draws last, over the glyph fill. That is fine now that
+  // the re-spacing has moved out of here (the constructor's scene-view
+  // callback owns it): the band is translucent, and the label wants to be on
+  // top anyway. It was NOT fine while the re-spacing lived here.
   //
   // Live updates: this method builds the layer definition ONCE, in the
-  // constructor -- draw itself is a closure that reads
-  // this._chipMode/this._selectedPairLeft/this._selectedPairRight/
-  // this.autokernCache fresh on every call, so nothing about live update
+  // constructor -- draw itself is a closure that reads its state fresh on
+  // every call, so nothing about live update
   // lives here. It lives in what actually repaints the canvas afterward: (1)
   // switching pairs -- selectPairForScene -> setChipMode("pair") ->
   // sceneSettingsController.setItem("text", ...), the same scene-text change
@@ -4401,40 +4482,24 @@ export class KerningViewController extends ViewController {
         textColor: "#C77DFF",
       },
       draw: (context, positionedGlyph, parameters, model, controller) => {
-        // Backlog item 10: the actual glyph re-spacing. This must run before
-        // any of the pair-mode gating below returns early, and it must apply
-        // regardless of chip mode (pair or phrase) -- see
-        // _applySuggestionPreviewRepositioning's own comment for how one pass
-        // covers both. Runs exactly once per frame, triggered by the first
-        // glyph this layer sees (selectionFunc("all") iterates
-        // model.positionedLines in order, so the first item overall IS
-        // positionedLines[0].glyphs[0]) -- see that method's own comment for
-        // why gating on object identity here, rather than a separate
-        // "already ran this frame" flag, is enough.
-        if (positionedGlyph === model.positionedLines?.[0]?.glyphs?.[0]) {
-          this._applySuggestionPreviewRepositioning(model);
-        }
-
-        if (this._chipMode !== "pair") {
-          return;
-        }
-        const line = model.positionedLines?.[0];
-        if (!line || positionedGlyph !== line.glyphs?.[1]) {
-          return;
-        }
-        const left = this._selectedPairLeft;
-        const right = this._selectedPairRight;
-        if (!left || !right || !this.autokernCache) {
-          return;
-        }
-        const entry = this.autokernCache.get(pairKey(left, right));
-        if (!entry) {
-          return;
-        }
-        const suggestionValue = entry.value;
-
+        // The re-spacing itself is NOT done here -- it runs once per frame
+        // from the scene-view draw callback (see the constructor), which is
+        // what puts it ahead of the glyph fill instead of one frame behind
+        // it. This layer only draws, and it draws in BOTH chip modes: the
+        // old `if (this._chipMode !== "pair") return;` guard sat above every
+        // band/label line, so phrase mode got the silent shift and no
+        // visible overlay at all, which is not what was asked for.
         const settings = this.suggestionPreviewSettings.model;
         if (!settings.enabled) {
+          return;
+        }
+        // Set by that same once-per-frame pass, for the pair ENDING at this
+        // glyph. undefined means no cache entry (no run yet, an excluded or
+        // filtered pair, or -- in pair mode -- any glyph that is not the
+        // selected pair's right-hand member), so this is also what keeps
+        // pair mode drawing exactly one band, as before.
+        const suggestionValue = this._previewPairValue.get(positionedGlyph);
+        if (suggestionValue === undefined) {
           return;
         }
 
@@ -4449,18 +4514,34 @@ export class KerningViewController extends ViewController {
           context.fillRect(0, descender, -suggestionValue, ascender - descender);
           context.setLineDash([4, 3]);
           strokeLine(context, 0, descender, 0, ascender);
-          strokeLine(
-            context,
-            -suggestionValue,
-            descender,
-            -suggestionValue,
-            ascender
-          );
+          strokeLine(context, -suggestionValue, descender, -suggestionValue, ascender);
           context.setLineDash([]);
           context.globalAlpha = 1;
         }
 
         if (!settings.showNumbers) {
+          return;
+        }
+
+        // Phrase mode draws a number per pair, so it cannot use the pinned
+        // HUD below -- every pair would stack on the same spot. It stays in
+        // glyph space, just above the ascender over its own gap, using the
+        // scale(1, -1)-then-negate-y convention every other text-drawing
+        // layer in visualization-layer-definitions.js uses. parameters.
+        // fontSize is already multiplied by the layer scale factor, so it
+        // holds a constant size on screen.
+        if (this._chipMode !== "pair") {
+          context.globalAlpha = settings.opacity;
+          context.fillStyle = parameters.textColor;
+          context.textAlign = "center";
+          context.font = `${parameters.fontSize}px fontra-ui-regular, sans-serif`;
+          context.scale(1, -1);
+          context.fillText(
+            `${round(suggestionValue, 1)}`,
+            -suggestionValue / 2,
+            -ascender - 0.5 * parameters.fontSize
+          );
+          context.globalAlpha = 1;
           return;
         }
 
@@ -4524,6 +4605,13 @@ export class KerningViewController extends ViewController {
   // suggestionPreviewSettings.enabled off (without a scene rebuild) snaps
   // positions back immediately on the next repaint, and repeated repaints of
   // an unchanged frame never compound the shift.
+  //
+  // Called once per frame from the scene-view draw callback (constructor),
+  // BEFORE any visualization layer draws -- see that call site's comment for
+  // why calling it from inside the suggestion layer's own draw was one frame
+  // too late. It also records each pair's suggestion in
+  // this._previewPairValue for that layer to draw from, so the shift and the
+  // overlay always describe the same pairs.
   _applySuggestionPreviewRepositioning(model) {
     const settings = this.suggestionPreviewSettings?.model;
     const cache = this.autokernCache;
@@ -4538,7 +4626,11 @@ export class KerningViewController extends ViewController {
         const originalX = this._previewOriginalX.get(glyph);
 
         if (i > 0 && settings?.enabled && cache) {
-          let pairValue = 0;
+          // undefined = this pair has no cache entry at all. The shift
+          // treats that as zero; the band/label draw treats it as "draw
+          // nothing" (spec §10). Keeping the two apart is why this is
+          // recorded rather than recomputed in the draw function.
+          let entryValue;
           if (this._chipMode === "pair") {
             if (
               line === model.positionedLines[0] &&
@@ -4546,14 +4638,19 @@ export class KerningViewController extends ViewController {
               glyphs[0].glyphName === this._selectedPairLeft &&
               glyph.glyphName === this._selectedPairRight
             ) {
-              pairValue = cache.get(pairKey(this._selectedPairLeft, glyph.glyphName))
-                ?.value ?? 0;
+              entryValue = cache.get(
+                pairKey(this._selectedPairLeft, glyph.glyphName)
+              )?.value;
             }
           } else if (this._chipMode === "phrase") {
-            pairValue =
-              cache.get(pairKey(glyphs[i - 1].glyphName, glyph.glyphName))?.value ?? 0;
+            entryValue = cache.get(
+              pairKey(glyphs[i - 1].glyphName, glyph.glyphName)
+            )?.value;
           }
-          cumulative += pairValue;
+          this._previewPairValue.set(glyph, entryValue);
+          cumulative += entryValue ?? 0;
+        } else {
+          this._previewPairValue.set(glyph, undefined);
         }
 
         glyph.x = originalX + (settings?.enabled ? cumulative : 0);
