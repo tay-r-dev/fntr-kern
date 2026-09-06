@@ -171,6 +171,23 @@
   gap: 0.5em;
 }
 
+/* Backlog item 12: the "?" affordance next to the Left/Right New-class
+   buttons -- tooltip.css's [data-tooltip] already handles the hover
+   popup itself, this only makes the "?" read as a small clickable-looking
+   badge rather than plain text. */
+.autokern-help-tooltip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1em;
+  height: 1.1em;
+  border-radius: 50%;
+  border: 1px solid var(--horizontal-rule-color, #ccc);
+  font-size: 0.8em;
+  cursor: help;
+  opacity: 0.8;
+}
+
 /* Class list beside its contents, not stacked above them -- the list is a
    nav column, the strip beside it is what's selected in that column. */
 #autokern-class-panel-body {

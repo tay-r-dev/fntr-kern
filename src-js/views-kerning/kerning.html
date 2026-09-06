@@ -311,6 +311,20 @@
                 >
                   Right
                 </button>
+                <!-- Backlog item 12: "Left"/"Right" name which side of a kern
+                     PAIR a class's members sit on (side1 = left glyph of the
+                     pair, side2 = right glyph), not e.g. reading direction --
+                     a "?" affordance states that convention explicitly,
+                     reusing tooltip.css's data-tooltip attribute convention
+                     (see the per-row class-list badge's own title attribute,
+                     kerning.js's buildClassListRowElement, for the same
+                     wording via the browser's native tooltip instead). -->
+                <span
+                  class="autokern-help-tooltip"
+                  data-tooltip="Left = this class's members appear as the LEFT glyph of a kerning pair. Right = the RIGHT glyph."
+                  data-tooltipposition="bottom"
+                  >?</span
+                >
                 <button id="autokern-class-new-both" type="button">Both</button>
                 <!-- §1.2 "Derive" control, relocated here from the pair-table
                      section (design doc §0: no tolerance field anymore --
