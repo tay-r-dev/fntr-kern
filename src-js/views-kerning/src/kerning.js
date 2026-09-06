@@ -4458,17 +4458,18 @@ export class KerningViewController extends ViewController {
   // delta, display-only -- never through fontController.performEdit or the
   // pair-table write path, and never touching this.autokernCache itself
   // (read-only lookup, same cache/gating the "suggest: N" label already
-  // uses). This commit covers "pair" mode only: the selected pair's
-  // right-hand glyph shifts by exactly the same this.autokernCache
-  // entry.value the label already shows for that pair. "phrase" mode (every
-  // adjacent pair in the current phrase, threaded cumulatively along the
-  // line the same way a real applied kern would accumulate -- shaper.js:
-  // "previousGlyph.xAdvance += kernValue", a positive suggestion pushes
-  // everything after it right, confirmed against that convention before
-  // picking the sign here) is added in the next commit, in the same
-  // function, on top of this same idempotent per-glyph shift mechanism. Sign
-  // convention shared with pair mode: cache entry.value is added directly to
-  // the glyph's x, matching shaper.js exactly.
+  // uses). Two chip modes:
+  //   - "pair": only the selected pair's right-hand glyph shifts, by exactly
+  //     the same this.autokernCache entry.value the label already shows for
+  //     that pair.
+  //   - "phrase": every adjacent glyph pair in every positioned line shifts
+  //     simultaneously, each by its own cache entry (0 if no cached
+  //     suggestion exists for that specific pair), threaded cumulatively
+  //     along the line the same way a real applied kern would accumulate
+  //     (shaper.js: "previousGlyph.xAdvance += kernValue" -- a positive
+  //     suggestion pushes everything after it right; confirmed against that
+  //     exact convention before picking the sign used here, which is the
+  //     same sign pair mode already used).
   // "font" mode has no relevant positionedLines (grid, not scene text) --
   // the loop below simply no-ops on an empty/irrelevant array.
   //
@@ -4503,9 +4504,10 @@ export class KerningViewController extends ViewController {
               pairValue = cache.get(pairKey(this._selectedPairLeft, glyph.glyphName))
                 ?.value ?? 0;
             }
+          } else if (this._chipMode === "phrase") {
+            pairValue =
+              cache.get(pairKey(glyphs[i - 1].glyphName, glyph.glyphName))?.value ?? 0;
           }
-          // Phrase mode (every adjacent pair, not just the selected one) is
-          // added in the next commit -- see the backlog entry's own note.
           cumulative += pairValue;
         }
 
