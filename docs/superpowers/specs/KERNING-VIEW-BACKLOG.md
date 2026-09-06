@@ -27,6 +27,11 @@ the built-in list or appends to it is a product decision the designer should mak
 should go through `parsePhrasePresets` unchanged, since that parser is already spec-correct
 (§7.1) and untouched.
 
+**Resolved (2026-09-06, `8569eab13`).** An "Add…" button beside `#kerning-preset-select` opens a
+file picker (hidden `<input type="file" accept=".txt">`); the chosen file's presets are parsed with
+the existing `parsePhrasePresets` and **appended** to the dropdown's existing option list, not a
+replacement.
+
 ---
 
 ## 2. "Flush cache" button in the right pane
@@ -92,6 +97,11 @@ checkboxes alongside the existing side/grouping/sign/state filters. Category mem
 not a single CSV category.
 
 Note: these checkboxes do not exist yet in the filter panel — this is new UI, not a wiring fix.
+
+**Resolved (2026-09-06, `ad3251705`).** Three filter-panel checkboxes added — hide non-standalone/
+marks, hide numbers, hide punctuation — pure display filters (nothing about the run or the cache
+changes, only which rows the table shows). Category membership comes from `glyph-data.js`, matching
+the exact category strings confirmed against `glyph-data.csv`.
 
 ---
 
@@ -168,6 +178,12 @@ immediately without the designer having to know to type a name in. Either approa
 `truncateGlyphList` and the data `acceptDeriveProposal` already has in hand (`proposal.members`,
 `className`) — no new membership-tracking mechanism is needed, only a render step that survives past
 the proposal's removal from the pending list.
+
+**Resolved (2026-09-06) — investigated, not a bug.** Confirmed directly in code:
+`acceptDeriveProposal`'s success path (`kerning.js:2252-2254`) already calls `this.renderClassList()`
+immediately after the write, alongside `renderDeriveProposals()`/`renderPairTable()`. The class panel
+already refreshes and shows the new class with its membership right away — no further designer
+action needed, and no code change was made (no commit exists for this item).
 
 ---
 
@@ -364,6 +380,19 @@ click-a-header, asc/desc, per column (glyph, current value, suggestion, delta, s
 extending `autokernFiltersController`'s `sortAlphabetical` boolean into a `{column, direction}` pair
 and moving the control onto the `<th>` cells. Check whether the fold-classes grouping
 (`buildFoldGroups`) constrains which columns can be sorted before promising all of them.
+
+**Resolved (2026-09-06, `b6335e273`).** `sortAlphabetical` replaced with `{sortColumn,
+sortDirection}`; each bucket table's `<th>` cells (Left/Right, Delta, Current, and a new "State"
+header on what was previously an unlabeled actions column) are clickable, flip direction on a
+second click, and carry a ▲/▼ indicator. The old `#kerning-pairtable-sort-toggle` button was
+removed rather than kept alongside header clicks, to avoid two competing sort UIs. Confirmed via
+`buildFoldGroups`/`computeFoldGroupStats` before implementing that a folded class×class parent row
+has no per-row current or state value; clicking those two headers while folded falls back to the
+bucket's own default (worst median first) instead of sorting on an undefined field. Live-verified
+against a real Fontra server + webpack build + headless Edge over raw CDP: each header click
+produced the correct new row order and label/arrow, a second click flipped direction, and the
+class×class fallback updated the model without crashing (only one class×class group existed in the
+test cache, so the fallback's multi-row ordering itself wasn't exercised, noted as a limitation).
 
 ---
 
