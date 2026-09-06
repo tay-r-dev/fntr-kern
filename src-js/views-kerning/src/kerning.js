@@ -4039,14 +4039,34 @@ export class KerningViewController extends ViewController {
         );
         context.setLineDash([]);
 
+        // Designer follow-up (2026-09-06, backlog item 7's HUD variant):
+        // pinned to a fixed spot at the top of the viewport instead of
+        // tracked to the glyph's screen position, so it needs no
+        // edge-clamping -- only the box/reference lines above stay in
+        // glyph space and move with the glyph. Reset to the canvas's own
+        // CSS-pixel coordinate space (undoing draw()'s glyph-space
+        // scale/translate and this layer's own per-glyph translate,
+        // src-js/views-editor/src/visualization-layers.js:90) so the text
+        // draws at a fixed canvas position every time regardless of scroll,
+        // zoom, or which glyph is selected. The outer drawVisualizationLayers
+        // call already wraps this whole draw() in its own context.save()/
+        // restore() (withSavedState), so this transform never leaks into
+        // the next layer or glyph.
+        context.setTransform(
+          controller.devicePixelRatio,
+          0,
+          0,
+          controller.devicePixelRatio,
+          0,
+          0
+        );
         context.fillStyle = parameters.textColor;
         context.textAlign = "center";
         context.font = `${parameters.fontSize}px fontra-ui-regular, sans-serif`;
-        context.scale(1, -1);
         context.fillText(
           `suggest: ${round(suggestionValue, 1)}`,
-          -suggestionValue / 2,
-          -(ascender + parameters.fontSize * 1.5)
+          controller.canvasWidth / 2,
+          20
         );
       },
     };
