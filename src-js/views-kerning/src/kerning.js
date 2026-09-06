@@ -1098,6 +1098,12 @@ export class KerningViewController extends ViewController {
     // they toggle change per render.
     for (const selectAll of document.querySelectorAll(".kerning-pairtable-select-all")) {
       selectAll.addEventListener("change", () => {
+        // A real user click always clears indeterminate natively before this
+        // handler runs; set it explicitly too so a programmatic `.checked =`
+        // assignment (not a real click) still lands in a determinate
+        // all-on/all-off state rather than leaving a stale indeterminate
+        // flag behind.
+        selectAll.indeterminate = false;
         for (const checkbox of this.getVisiblePairTableRowCheckboxes(
           selectAll.closest("table")
         )) {
