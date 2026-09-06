@@ -731,12 +731,19 @@ export class KerningViewController extends ViewController {
     };
     updateButton();
 
-    button.onclick = () => {
+    // One copy of the toggle (rail R-B), called by both the icon and the
+    // hotkey. The hotkey used to call button.onclick() instead, which throws:
+    // IconButton declares a SETTER for onclick and no getter (it forwards the
+    // callback to its inner <button> and deliberately never assigns
+    // this.onclick), so reading it back gives undefined. IconButton.click()
+    // would work, but routing a keystroke through the DOM to reach a setting
+    // this method already owns is a detour.
+    const toggle = () =>
       this.suggestionPreviewSettings.setItem(
         "enabled",
         !this.suggestionPreviewSettings.model.enabled
       );
-    };
+    button.onclick = toggle;
     this.suggestionPreviewSettings.addListener(updateButton);
 
     document
@@ -768,7 +775,7 @@ export class KerningViewController extends ViewController {
         ) {
           return;
         }
-        button.onclick();
+        toggle();
       }
     );
   }

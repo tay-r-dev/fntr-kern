@@ -47,19 +47,29 @@ to redraw it after it had already been switched off.
 
 ---
 
-## 3. The P hotkey does nothing
+## 3. The P hotkey does nothing -- its own fault, not the repaint lag
 
-**Explained by the root cause. The designer proposed this reading and it holds.** The hotkey fires,
-the setting flips, and a repaint is requested -- but that repaint drew the previous frame's glyph
-positions, so nothing on screen changed. In phrase mode there was no band and no label either (item
-5), so the re-spacing was the only visible effect the key had, and it was exactly the thing that
-lagged.
+**A third fault, found only by running it.** The key fired and threw:
 
-This also explains why the number keys 1 to 3 work: switching tools changes the tool chrome
-immediately, with no dependence on the canvas repaint.
+```
+Uncaught TypeError: button.onclick is not a function
+```
+
+`IconButton` declares a **setter** for `onclick` and no getter. It forwards the callback to its inner
+`<button>` and deliberately never assigns `this.onclick`, so reading the property back gives
+`undefined`. The hotkey's callback did exactly that, `button.onclick()`, so every press threw before
+reaching the setting.
+
+The lag hypothesis was wrong here, and so was the reasoning behind it. Two static reading passes and
+one more after that missed this, because all of them checked whether the action was registered and
+reachable and never checked what its callback did with the button.
 
 The lowercase `baseKey` correction in `df8cc78ee` was still necessary. An uppercase key never
-matches, so both faults had to be fixed for the key to work.
+matches, so both faults had to go for the key to work, and fixing only the first turned a silent
+no-op into a thrown error.
+
+**Fix (written, unverified).** One toggle function, called by both the icon and the hotkey, writing
+the setting directly instead of routing a keystroke through the DOM.
 
 ---
 

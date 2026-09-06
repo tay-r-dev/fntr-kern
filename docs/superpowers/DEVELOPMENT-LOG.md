@@ -2105,12 +2105,19 @@ preview one repaint behind. Five separate reports came out of that one fact,
 and four of them named the wrong culprit: unchecking a settings box, clicking
 a glyph, and holding Space to pan were each reported as turning the preview
 off, when all three merely forced the repaint that revealed a toggle made
-earlier. The fifth was "the P hotkey does nothing" -- the key fired, the
-setting flipped, the repaint drew the previous frame, and in phrase mode,
-which drew no band or label at all, the lagging re-spacing was the only
-visible effect the key had. **The designer named the cause**: the hotkey works
-and the screen does not show it. The re-spacing runs once per frame from the
+earlier. The re-spacing runs once per frame from the
 scene-view draw callback now, ahead of every layer. **Two static reading passes
 missed this** because both looked for a write to the `enabled` setting, which
 is what the reports described, rather than at when the shift reaches the
 screen.
+
+**The P hotkey was a third fault, and only running it found it.** `IconButton`
+declares a SETTER for `onclick` and no getter -- it forwards the callback to
+its inner `<button>` and never assigns `this.onclick` -- so the hotkey's
+`button.onclick()` read `undefined` and threw on every press. Three reading
+passes checked that the action was registered and that its key resolved, and
+none checked what its callback did with the button. Fixing the earlier
+uppercase-`baseKey` fault alone turned a silent no-op into a thrown error, so
+the report "still doesn't work" was accurate both times and meant something
+different each time. **A hypothesis that explains four reports will happily
+absorb a fifth it does not fit.**
