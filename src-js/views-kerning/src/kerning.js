@@ -919,7 +919,15 @@ export class KerningViewController extends ViewController {
       hideNonStandalone: false,
       hideNumbers: false,
       hidePunctuation: false,
-      sortAlphabetical: false,
+      // Backlog item 11: replaces the old two-state sortAlphabetical
+      // boolean. sortColumn is one of "glyph" (Left/Right headers,
+      // left+right localeCompare, same as the old alphabetical mode) /
+      // "current" / "delta" (the table's own suggestion display, spec §15's
+      // note that there is no separately-labeled suggestion column) /
+      // "state" (pending/stale/applied). Defaults reproduce the old
+      // toggle's own default ("worst delta first") exactly.
+      sortColumn: "delta",
+      sortDirection: "desc",
       // WORKSTREAM 15, spec §5.2: "A toggle above the table folds every row
       // whose pair resolves to the same cell into one parent."
       // Layout overhaul, design doc §1.1: class×class rows are now ALWAYS
@@ -1082,20 +1090,33 @@ export class KerningViewController extends ViewController {
       this.autokernFiltersController.setItem("foldClasses", foldCheckbox.checked);
     });
 
-    const sortButton = document.querySelector("#kerning-pairtable-sort-toggle");
-    const updateSortButtonLabel = () => {
-      sortButton.textContent = this.autokernFiltersController.model.sortAlphabetical
-        ? "Sort: alphabetical"
-        : "Sort: worst delta first";
-    };
-    updateSortButtonLabel();
-    sortButton.addEventListener("click", () => {
-      this.autokernFiltersController.setItem(
-        "sortAlphabetical",
-        !this.autokernFiltersController.model.sortAlphabetical
-      );
-      updateSortButtonLabel();
-    });
+    // Backlog item 11: click a column header to sort by it, click again to
+    // flip direction -- one sort UI (headers), not two (the old toggle
+    // button is gone). Global across all four bucket tables, same scope the
+    // old toggle button had; clicking any one bucket's header updates the
+    // shared filters model, and updateSortHeaders (called from every
+    // renderPairTable) keeps every bucket's headers in sync with it.
+    for (const th of document.querySelectorAll(".kerning-pairtable-sortable")) {
+      th.addEventListener("click", () => {
+        const column = th.dataset.sortColumn;
+        const current = this.autokernFiltersController.model;
+        if (current.sortColumn === column) {
+          this.autokernFiltersController.setItem(
+            "sortDirection",
+            current.sortDirection === "desc" ? "asc" : "desc"
+          );
+        } else {
+          this.autokernFiltersController.setItem("sortColumn", column);
+          // Delta's default direction matches the old toggle's own default
+          // ("worst delta first" = descending by magnitude); every other
+          // column defaults to ascending on first click.
+          this.autokernFiltersController.setItem(
+            "sortDirection",
+            column === "delta" ? "desc" : "asc"
+          );
+        }
+      });
+    }
 
     this.autokernFiltersController.addListener(() => this.renderPairTable());
 
@@ -1355,6 +1376,88 @@ export class KerningViewController extends ViewController {
     return Math.abs(row.delta) >= threshold;
   }
 
+  // Backlog item 11: pending/stale/applied has no other natural numeric
+  // order, so this rank (0/1/2) is only a sort key, not shown anywhere --
+  // matches the same three states the "State" filter select already tests
+  // (pairRowVisible above).
+  pairStateRank(row) {
+    if (this.autokernAppliedPairs.has(pairKey(row.left, row.right))) {
+      return 2;
+    }
+    return row.stale ? 1 : 0;
+  }
+
+  // Backlog item 11: one comparator shared by every per-cache-entry row
+  // list (all three glyph-anchored buckets, the unfolded class×class rows,
+  // and a folded class×class row's own expandable child rows), driven by
+  // autokernFiltersController's {sortColumn, sortDirection}. Delta always
+  // sorts by magnitude (spec §7.3's original "worst first" meaning), so
+  // that its default direction ("desc") reproduces the old two-state
+  // toggle's own default unchanged; every other column sorts by its actual
+  // value, since ascending/descending has an ordinary spreadsheet-column
+  // meaning there.
+  sortPairRows(rows, filters) {
+    const dirMul = filters.sortDirection === "desc" ? -1 : 1;
+    rows.sort((a, b) => {
+      let cmp;
+      switch (filters.sortColumn) {
+        case "glyph":
+          cmp = (a.left + "\0" + a.right).localeCompare(b.left + "\0" + b.right);
+          break;
+        case "current":
+          cmp = a.current - b.current;
+          break;
+        case "state":
+          cmp = this.pairStateRank(a) - this.pairStateRank(b);
+          break;
+        case "delta":
+        default:
+          cmp = Math.abs(a.delta) - Math.abs(b.delta);
+          break;
+      }
+      return cmp * dirMul;
+    });
+  }
+
+  // Backlog item 11: the folded class×class parent row's own sort. A prior
+  // pass's scoping note, confirmed by reading buildClassClassGroups/
+  // computeFoldGroupStats before implementing: a fold parent has no
+  // per-row "current" (its delta is a median measured against an assumed
+  // zero, not a real stored current value) and no per-row "state" (junk/
+  // applied/stale are per-PAIR concepts with no single value across the
+  // whole class product) -- so a click on either of those two headers falls
+  // back to this bucket's own default (worst median first), rather than
+  // silently no-op'ing or crashing on an undefined field.
+  sortClassClassGroups(groups, filters) {
+    const columnApplies = filters.sortColumn === "glyph" || filters.sortColumn === "delta";
+    const column = columnApplies ? filters.sortColumn : "delta";
+    const dirMul = columnApplies ? (filters.sortDirection === "desc" ? -1 : 1) : -1;
+    groups.sort((a, b) => {
+      const cmp =
+        column === "glyph"
+          ? (a.group.leftClassName + "\0" + a.group.rightClassName).localeCompare(
+              b.group.leftClassName + "\0" + b.group.rightClassName
+            )
+          : Math.abs(a.median) - Math.abs(b.median);
+      return cmp * dirMul;
+    });
+  }
+
+  // Backlog item 11: keeps every bucket table's header row in sync with the
+  // shared sort state (one designer action, all four tables agree, same
+  // global scope the old toggle button had). Called on every renderPairTable
+  // rather than only from the click handler, so a filter change from
+  // elsewhere (e.g. localStorage sync on load) still shows the right label.
+  updateSortHeaders() {
+    const { sortColumn, sortDirection } = this.autokernFiltersController.model;
+    for (const th of document.querySelectorAll(".kerning-pairtable-sortable")) {
+      const isActive = th.dataset.sortColumn === sortColumn;
+      th.classList.toggle("kerning-pairtable-sort-active", isActive);
+      const arrow = isActive ? (sortDirection === "desc" ? " ▼" : " ▲") : "";
+      th.textContent = th.dataset.sortLabel + arrow;
+    }
+  }
+
   // WORKSTREAM 14: whether one cache entry counts as "classed" -- both
   // glyphs resolve into a class on the relevant side (spec §7.3's sections 1
   // and 2, as opposed to section 3's flat/unclassed). Pulled out of
@@ -1509,6 +1612,10 @@ export class KerningViewController extends ViewController {
       el.style.display = filters.showSuggestion ? "" : "none";
     }
 
+    // Backlog item 11: keeps every bucket's header label/arrow in sync with
+    // the current sort column/direction on every render, not only on click.
+    this.updateSortHeaders();
+
     // §1.1's grouping filter now shows/hides whole buckets, one
     // .kerning-pairtable-group per bucket (data-bucket attribute, matching
     // the bucket names above).
@@ -1543,15 +1650,9 @@ export class KerningViewController extends ViewController {
           .map((entry) => this.pairRowData(entry, bucket !== "unique-unique"))
           .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
 
-        // Spec §7.3: "Sorted by delta magnitude, worst first... Alphabetical
-        // is a second sort and not the default."
-        if (filters.sortAlphabetical) {
-          rows.sort((a, b) =>
-            (a.left + "\0" + a.right).localeCompare(b.left + "\0" + b.right)
-          );
-        } else {
-          rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-        }
+        // Spec §7.3's default ("worst delta first") plus backlog item 11's
+        // extension to every column, via sortPairRows.
+        this.sortPairRows(rows, filters);
 
         for (const row of rows) {
           bodies[bucket].appendChild(this.buildPairRowElement(row));
@@ -1571,15 +1672,7 @@ export class KerningViewController extends ViewController {
     if (filters.grouping === "all" || filters.grouping === "class-class") {
       if (filters.foldClasses) {
         const groups = this.buildClassClassGroups(glyphName, filters, threshold);
-        if (filters.sortAlphabetical) {
-          groups.sort((a, b) =>
-            (a.group.leftClassName + "\0" + a.group.rightClassName).localeCompare(
-              b.group.leftClassName + "\0" + b.group.rightClassName
-            )
-          );
-        } else {
-          groups.sort((a, b) => Math.abs(b.median) - Math.abs(a.median));
-        }
+        this.sortClassClassGroups(groups, filters);
         for (const { group, stats, median } of groups) {
           const { parentRow, childRows } = this.buildClassClassRowElement(
             group,
@@ -1601,13 +1694,7 @@ export class KerningViewController extends ViewController {
           .map((entry) => this.pairRowData(entry, true))
           .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
 
-        if (filters.sortAlphabetical) {
-          rows.sort((a, b) =>
-            (a.left + "\0" + a.right).localeCompare(b.left + "\0" + b.right)
-          );
-        } else {
-          rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-        }
+        this.sortPairRows(rows, filters);
         for (const row of rows) {
           bodies["class-class"].appendChild(this.buildPairRowElement(row));
         }
@@ -1699,6 +1786,10 @@ export class KerningViewController extends ViewController {
           .filter((row) =>
             this.pairRowVisible(row, effectiveFilters, threshold, glyphName || row.left)
           );
+        // Backlog item 11: these child rows are real per-pair entries (they
+        // DO have a current/state, unlike the fold parent itself), so the
+        // same column sort applies to them for consistency when expanded.
+        this.sortPairRows(group.rows, filters);
 
         results.push({ group, stats, median });
       }

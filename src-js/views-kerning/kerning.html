@@ -115,9 +115,9 @@
                 ><input type="checkbox" id="kerning-pairtable-hide-punctuation" /> Hide
                 punctuation</label
               >
-              <button id="kerning-pairtable-sort-toggle" type="button">
-                Sort: worst delta first
-              </button>
+              <!-- Backlog item 11: the old two-state sort toggle button is
+                   replaced by clicking a column header directly (one sort
+                   UI, not two) -- see kerning-pairtable-sortable th's above. -->
             </div>
 
             <div id="kerning-pairtable-actions">
@@ -172,11 +172,14 @@
                        tbody -- see initPairTableSelectAll/syncSelectAll-
                        Checkboxes in kerning.js. -->
                   <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
-                  <th>Left</th>
-                  <th class="kerning-pairtable-suggestion-col">Delta</th>
-                  <th>Right</th>
-                  <th class="kerning-pairtable-current-col">Current</th>
-                  <th></th>
+                  <!-- Backlog item 11: click a header to sort by it, asc/desc
+                       on a second click -- see initPairTableSection's header
+                       click wiring and updateSortHeaders in kerning.js. -->
+                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left"></th>
+                  <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
+                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right"></th>
+                  <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
+                  <th class="kerning-pairtable-sortable" data-sort-column="state" data-sort-label="State"></th>
                 </tr>
               </thead>
               <tbody id="kerning-pairtable-body-unique-unique"></tbody>
@@ -189,11 +192,11 @@
               <thead>
                 <tr>
                   <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
-                  <th>Left</th>
-                  <th class="kerning-pairtable-suggestion-col">Delta</th>
-                  <th>Right</th>
-                  <th class="kerning-pairtable-current-col">Current</th>
-                  <th></th>
+                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left"></th>
+                  <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
+                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right"></th>
+                  <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
+                  <th class="kerning-pairtable-sortable" data-sort-column="state" data-sort-label="State"></th>
                 </tr>
               </thead>
               <tbody id="kerning-pairtable-body-unique-class"></tbody>
@@ -206,11 +209,11 @@
               <thead>
                 <tr>
                   <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
-                  <th>Left</th>
-                  <th class="kerning-pairtable-suggestion-col">Delta</th>
-                  <th>Right</th>
-                  <th class="kerning-pairtable-current-col">Current</th>
-                  <th></th>
+                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left"></th>
+                  <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
+                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right"></th>
+                  <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
+                  <th class="kerning-pairtable-sortable" data-sort-column="state" data-sort-label="State"></th>
                 </tr>
               </thead>
               <tbody id="kerning-pairtable-body-class-unique"></tbody>
@@ -223,11 +226,17 @@
               <thead>
                 <tr>
                   <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
-                  <th>Left class</th>
-                  <th class="kerning-pairtable-suggestion-col">Delta</th>
-                  <th>Right class</th>
-                  <th class="kerning-pairtable-current-col">Current</th>
-                  <th></th>
+                  <!-- Backlog item 11: a folded class×class row has no
+                       per-row current/state value (buildClassClassGroups
+                       computes only a median against an assumed zero
+                       current) -- Current/State clicks here fall back to the
+                       bucket's own default sort (worst median first) in
+                       sortClassClassGroups, rather than doing nothing. -->
+                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left class"></th>
+                  <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
+                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right class"></th>
+                  <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
+                  <th class="kerning-pairtable-sortable" data-sort-column="state" data-sort-label="State"></th>
                 </tr>
               </thead>
               <tbody id="kerning-pairtable-body-class-class"></tbody>

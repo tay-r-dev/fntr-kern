@@ -464,6 +464,19 @@
   cursor: pointer;
 }
 
+/* Backlog item 11: click a header to sort by it -- replaces the old
+   #kerning-pairtable-sort-toggle button. Label text and the asc/desc arrow
+   are both written by kerning.js's updateSortHeaders (data-sort-label holds
+   the base text since the <th> itself carries no static text anymore). */
+.kerning-pairtable-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.kerning-pairtable-sortable.kerning-pairtable-sort-active {
+  font-weight: bold;
+}
+
 /* Workstream 13 (spec §7.4): the calibration readout. Collapsed by default,
    same <details>/<summary> pattern as #kerning-parameters-collapsible. A
    readout only -- no controls live here. */
