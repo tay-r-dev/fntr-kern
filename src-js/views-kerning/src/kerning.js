@@ -86,7 +86,13 @@
 // active tool, its own undo stack always wins over a more recent autokern
 // edit, because the dispatch only checks whether the tool implements the
 // method, not whether its own stack is non-empty.
-import { markGlyphStale, markPairJunk, pairKey } from "@fontra/core/autokern-cache.js";
+import {
+  markGlyphStale,
+  markPairJunk,
+  markPairOverride,
+  medianDroppingOutliers,
+  pairKey,
+} from "@fontra/core/autokern-cache.js";
 // Design doc §0: kern-row clustering (deriveKernRowClusters) is removed from
 // this view's derive UI/call site -- composite inheritance is now the only
 // tactic -- but the function itself stays exported/unmodified in
@@ -543,6 +549,14 @@ export class KerningViewController extends ViewController {
   initParametersSection() {
     this.autokernParamsController = new ObservableController({
       threshold: 5,
+      // Backlog item 8 part 1: a SECOND, independent threshold -- divergence
+      // of a shadowing pair's suggestion from the value its class cell
+      // currently resolves to (isOverrideCandidate / overrideDivergence),
+      // not from the pair's own stored value (that is `threshold` above).
+      // Display-only: it never feeds the run or the cache, only the
+      // pair-table render path (the "Potential overrides" section and the
+      // outlier-dropped class×class median). Default 10 font units.
+      groupThreshold: 10,
       reach: 10,
       envelope: "distanceField",
       reduce: "sum",
@@ -555,6 +569,7 @@ export class KerningViewController extends ViewController {
 
     const bindings = [
       ["#kerning-param-threshold", "threshold", Number],
+      ["#kerning-param-group-threshold", "groupThreshold", Number],
       ["#kerning-param-reach", "reach", Number],
       ["#kerning-param-envelope", "envelope", String],
       ["#kerning-param-reduce", "reduce", String],
@@ -572,6 +587,13 @@ export class KerningViewController extends ViewController {
     // display, on the delta"), not just the run -- re-render on every
     // change, including scrubs from other bound copies of the control.
     this.autokernParamsController.addKeyListener("threshold", () => {
+      this.renderPairTable();
+    });
+
+    // Backlog item 8 part 1: same display-only re-render wiring as threshold
+    // above -- groupThreshold changes what the "Potential overrides" section
+    // and the class×class median show, nothing else.
+    this.autokernParamsController.addKeyListener("groupThreshold", () => {
       this.renderPairTable();
     });
   }
@@ -1415,7 +1437,12 @@ export class KerningViewController extends ViewController {
         const manualValue = Number(
           document.querySelector("#kerning-pairtable-manual-value").value || 0
         );
-        this.writePairValues(this.getSelectedPairTableRows(), () => manualValue, true);
+        this.writePairValues(
+          this.getSelectedPairTableRows(),
+          () => manualValue,
+          true,
+          true
+        );
       });
 
     // Backlog item 13: one select-all checkbox per bucket table's own
@@ -1541,6 +1568,10 @@ export class KerningViewController extends ViewController {
       delta: entry.value - current,
       junk: entry.junk,
       stale: entry.stale,
+      // Backlog item 8 part 5: a confirmed deliberate override (markPairOverride,
+      // persisted in the OPFS cache entry) -- flips the row's shadow warning
+      // to a neutral state label in buildPairRowElement.
+      override: !!entry.override,
       classed,
     };
   }
@@ -1813,6 +1844,37 @@ export class KerningViewController extends ViewController {
     return leftClass ? `@${leftClass} × ${right}` : `${left} × @${rightClass}`;
   }
 
+  // Backlog item 8 part 2: a shadowing pair's divergence FROM THE GROUP --
+  // its suggested value minus whatever the class cascade currently resolves
+  // that pair to (the same value wouldShadowClassCell reads,
+  // getGlyphPairValueForLocation(left, right, {})). Numerically this equals
+  // a normal row's `delta` (pairRowData.current reads the same cascade
+  // value), but it is named and computed in its own terms here so the
+  // "Potential overrides" section (part 3) and the outlier-dropped
+  // class×class median (part 6) share one definition. Orthogonal to
+  // isRowAboveThreshold, which compares against the pair's own STORED value.
+  overrideDivergence(left, right, suggestedValue) {
+    const groupResolved =
+      this.kerningController.getGlyphPairValueForLocation(left, right, {}) ?? 0;
+    return suggestedValue - groupResolved;
+  }
+
+  // Backlog item 8 part 2: a row is an "override candidate" when applying its
+  // suggestion as a literal glyph×glyph value would shadow a class cell that
+  // currently answers for the pair (wouldShadowClassCell) AND that value
+  // diverges from the class cell by at least the group threshold (part 1).
+  // Shared by renderPairTable's "Potential overrides" section (part 3) and,
+  // via overrideDivergence, the class×class median filter (part 6).
+  isOverrideCandidate(left, right, suggestedValue) {
+    if (!this.wouldShadowClassCell(left, right)) {
+      return false;
+    }
+    const groupThreshold = this.autokernParamsController.model.groupThreshold;
+    return (
+      Math.abs(this.overrideDivergence(left, right, suggestedValue)) >= groupThreshold
+    );
+  }
+
   // Rebuilds all four bucket <tbody> elements from this.autokernCache.
   // Called on every filter change, every threshold change, and once a run
   // finishes. Guards on missing state (this.autokernCache is set
@@ -1838,7 +1900,15 @@ export class KerningViewController extends ViewController {
   // requirement of the design doc, made so the bucket stays navigable
   // instead of listing the whole font's classes at all times).
   renderPairTable() {
-    const bodyIds = ["unique-unique", "unique-class", "class-unique", "class-class"];
+    const bodyIds = [
+      "unique-unique",
+      "unique-class",
+      "class-unique",
+      "class-class",
+      // Backlog item 8 part 3: a derived section, not a fifth cascade bucket
+      // (bucketForPair stays four-valued). Cleared/rebuilt like the others.
+      "potential-overrides",
+    ];
     const bodies = Object.fromEntries(
       bodyIds.map((id) => [id, document.querySelector(`#kerning-pairtable-body-${id}`)])
     );
@@ -1869,6 +1939,7 @@ export class KerningViewController extends ViewController {
 
     const filters = this.autokernFiltersController.model;
     const threshold = this.autokernParamsController.model.threshold;
+    const groupThreshold = this.autokernParamsController.model.groupThreshold;
     const glyphName = filters.glyphName;
 
     for (const body of Object.values(bodies)) {
@@ -1895,7 +1966,14 @@ export class KerningViewController extends ViewController {
     // the bucket names above).
     for (const groupEl of document.querySelectorAll(".kerning-pairtable-group")) {
       const bucket = groupEl.dataset.bucket;
-      const visible = filters.grouping === "all" || filters.grouping === bucket;
+      // Backlog item 8 part 3: the "Potential overrides" section is a derived
+      // view, not a cascade bucket the grouping filter enumerates -- keep it
+      // visible in every grouping mode so a magnitude outlier is never hidden
+      // by a filter that only knows the four cascade addresses.
+      const visible =
+        bucket === "potential-overrides" ||
+        filters.grouping === "all" ||
+        filters.grouping === bucket;
       groupEl.classList.toggle("kerning-pairtable-bucket-hidden", !visible);
     }
 
@@ -1926,6 +2004,14 @@ export class KerningViewController extends ViewController {
         }
         const rows = rowsByBucket[bucket]
           .map((entry) => this.pairRowData(entry, bucket !== "unique-unique"))
+          // Backlog item 8 part 3: an override candidate is LIFTED OUT of its
+          // home cascade bucket into the "Potential overrides" section below,
+          // not shown in both -- getSelectedPairTableRows, apply-all's
+          // `tbody tr` scan and syncSelectAllCheckboxes all query row
+          // checkboxes document-wide and assume each pair-row appears once.
+          .filter(
+            (row) => !this.isOverrideCandidate(row.left, row.right, row.suggestion)
+          )
           .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
 
         // Spec §7.3's default ("worst delta first") plus backlog item 11's
@@ -1949,7 +2035,12 @@ export class KerningViewController extends ViewController {
     // a typed glyph to anchor them.
     if (filters.grouping === "all" || filters.grouping === "class-class") {
       if (filters.foldClasses) {
-        const groups = this.buildClassClassGroups(glyphName, filters, threshold);
+        const groups = this.buildClassClassGroups(
+          glyphName,
+          filters,
+          threshold,
+          groupThreshold
+        );
         this.sortClassClassGroups(groups, filters);
         for (const { group, stats, median } of groups) {
           const { parentRow, childRows } = this.buildClassClassRowElement(
@@ -1970,12 +2061,50 @@ export class KerningViewController extends ViewController {
               this.isEntryClassed(entry)
           )
           .map((entry) => this.pairRowData(entry, true))
+          // Backlog item 8 part 3: same lift-out as the three buckets above
+          // (the unfolded class×class rows are per-cache-entry rows too).
+          .filter(
+            (row) => !this.isOverrideCandidate(row.left, row.right, row.suggestion)
+          )
           .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
 
         this.sortPairRows(rows, filters);
         for (const row of rows) {
           bodies["class-class"].appendChild(this.buildPairRowElement(row));
         }
+      }
+    }
+
+    // Backlog item 8 part 3: the derived "Potential overrides" section, below
+    // the four cascade buckets. One pass over the typed glyph's cache entries
+    // (same glyphName anchoring as the three glyph-anchored buckets -- with
+    // no glyph typed there is nothing to anchor these against either), kept
+    // when isOverrideCandidate: applying the suggestion as a literal pair
+    // would shadow a class cell AND the divergence from that cell is at least
+    // the group threshold. class×class candidates are only lifted here when
+    // "Fold classes" is OFF -- when folded (the default) they stay reachable
+    // as a fold parent's expandable child rows (part 6 leaves those
+    // untouched), and rendering them here too would double-render their row
+    // checkboxes.
+    if (glyphName) {
+      const overrideRows = [...this.autokernCache.values()]
+        .filter((entry) => entry.left === glyphName || entry.right === glyphName)
+        .filter(
+          (entry) =>
+            !(
+              filters.foldClasses &&
+              this.bucketForPair(entry.left, entry.right) === "class-class"
+            )
+        )
+        .filter((entry) =>
+          this.isOverrideCandidate(entry.left, entry.right, entry.value)
+        )
+        .map((entry) => this.pairRowData(entry, true))
+        .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
+
+      this.sortPairRows(overrideRows, filters);
+      for (const row of overrideRows) {
+        bodies["potential-overrides"].appendChild(this.buildPairRowElement(row));
       }
     }
 
@@ -2012,7 +2141,7 @@ export class KerningViewController extends ViewController {
   // group's own filtered, visible child rows for expand-to-browse (the same
   // per-row filters -- side/sign/state/junk/threshold -- that any other
   // bucket's rows go through, via pairRowVisible).
-  buildClassClassGroups(glyphName, filters, threshold) {
+  buildClassClassGroups(glyphName, filters, threshold, groupThreshold) {
     const kernData = this.kerningController.kernData;
     const side1Names = Object.keys(kernData.groupsSide1 || {});
     const side2Names = Object.keys(kernData.groupsSide2 || {});
@@ -2044,7 +2173,7 @@ export class KerningViewController extends ViewController {
         }
 
         const group = { leftClassName, rightClassName, rows: [] };
-        const stats = this.computeFoldGroupStats(group);
+        const stats = this.computeFoldGroupStats(group, groupThreshold);
         // §1.1: "its 'current' is whatever's stored at that class cell
         // (usually nothing, so effectively zero)" -- taken literally: the
         // aggregate row's own delta is its median against zero, the same
@@ -2111,7 +2240,7 @@ export class KerningViewController extends ViewController {
   // any typed glyph), there is no principled "the other side is fixed"
   // choice to make; "right" is an arbitrary but consistent convention, not a
   // claim that side is somehow more relevant.
-  computeFoldGroupStats(group) {
+  computeFoldGroupStats(group, groupThreshold) {
     const kernData = this.kerningController.kernData;
     const leftMembers = kernData.groupsSide1[group.leftClassName] || [];
     const rightMembers = kernData.groupsSide2[group.rightClassName] || [];
@@ -2125,8 +2254,22 @@ export class KerningViewController extends ViewController {
       }
     }
 
+    // Backlog item 8 part 6: the aggregate median drops member pairs whose
+    // own divergence from the class cell is at least the group threshold (the
+    // same magnitude test as isOverrideCandidate, part 2), so the number a
+    // class×class row shows isn't dragged by the very pairs a designer is
+    // likely to override out. medianDroppingOutliers falls back to the
+    // unfiltered median if EVERY member is an outlier. `classClassRowVisible`
+    // and the expanded child rows (group.rows) are unaffected -- only this
+    // aggregate changes.
     const median = entries.length
-      ? KerningViewController.medianOf(entries.map((entry) => entry.value))
+      ? medianDroppingOutliers(
+          entries.map((entry) => ({
+            value: entry.value,
+            divergence: this.overrideDivergence(entry.left, entry.right, entry.value),
+          })),
+          groupThreshold
+        )
       : KerningViewController.medianOf(group.rows.map((row) => row.suggestion));
     const spread = classSpread(rightMembers, entries, "right");
 
@@ -3450,17 +3593,13 @@ export class KerningViewController extends ViewController {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.className = "kerning-pairtable-row-select";
-    // §1.1 "No override in v1": a flat apply on this row would silently
-    // shadow an existing class cell -- disable the row's own apply/reset
-    // eligibility (its checkbox is what apply-selected/apply-all/reset-*/
-    // the manual-value apply all read from, getSelectedPairTableRows) and
-    // point at the class cell that already answers for it, rather than
-    // building the override-transparency UI the design doc defers
-    // (KERNING-VIEW-BACKLOG.md item 8).
-    if (this.wouldShadowClassCell(row.left, row.right)) {
-      checkbox.disabled = true;
+    // Backlog item 8 part 4: the hard-disable is gone. A flat apply on a
+    // shadowing row is now allowed but routed through a confirmation dialogue
+    // (confirmShadowingWrite, from writePairValues) -- the checkbox stays
+    // enabled; only a hint is shown until the override is deliberate.
+    if (this.wouldShadowClassCell(row.left, row.right) && !row.override) {
       checkbox.title =
-        "Would shadow an existing class cell -- edit the class cell instead.";
+        "Applying this pair writes a value that shadows a class cell -- you'll be asked to confirm.";
     }
     // Backlog item 13: keeps this bucket's select-all checkbox's checked/
     // indeterminate state truthful when a row is (un)checked by hand rather
@@ -3504,8 +3643,17 @@ export class KerningViewController extends ViewController {
     junkCell.appendChild(junkButton);
     if (this.wouldShadowClassCell(row.left, row.right)) {
       const note = document.createElement("span");
-      note.className = "kerning-pairtable-shadow-note";
-      note.textContent = ` shadows ${this.describeShadowedClassCell(row.left, row.right)}`;
+      const address = this.describeShadowedClassCell(row.left, row.right);
+      if (row.override) {
+        // Backlog item 8 part 5: a deliberate, confirmed override -- the same
+        // address text, but a neutral state label, not the pre-confirmation
+        // warning.
+        note.className = "kerning-pairtable-override-note";
+        note.textContent = ` override: ${address}`;
+      } else {
+        note.className = "kerning-pairtable-shadow-note";
+        note.textContent = ` shadows ${address}`;
+      }
       junkCell.appendChild(note);
     }
     tr.appendChild(junkCell);
@@ -3564,6 +3712,7 @@ export class KerningViewController extends ViewController {
     await this.writePairValues(
       this.getSelectedPairTableRows(),
       (entry) => entry.value,
+      true,
       true
     );
   }
@@ -3596,7 +3745,7 @@ export class KerningViewController extends ViewController {
     clearTimeout(this._applyAllArmTimeout);
     this._applyAllArmed = false;
     button.textContent = this._applyAllDefaultLabel;
-    this.writePairValues(visibleRows, (entry) => entry.value, true);
+    this.writePairValues(visibleRows, (entry) => entry.value, true, true);
   }
 
   async resetSelectedPairRows(mode) {
@@ -3650,7 +3799,17 @@ export class KerningViewController extends ViewController {
   // doAutokernUndoRedo (see callDelegateMethod below) pops it and replays it
   // exactly the way BaseInfoPanel.doUndoRedo does: fontController.applyChange
   // then a rollback-direction fontController.editFinal.
-  async writePairValues(pairs, valueFn, markApplied) {
+  //
+  // Backlog item 8 part 4: `confirmShadow` is passed true by the apply paths
+  // (row apply / apply-selected / apply-all / manual-value apply) and left
+  // false by the reset paths -- resetting a pair to its resolved value or to
+  // zero is a deliberate flat-exception action, not an accidental shadow, and
+  // must not pop a dialogue. When true and the batch contains any pair whose
+  // write would shadow a class cell (wouldShadowClassCell), ONE dialogue
+  // summarising the batch is shown before anything is written; on "Apply as
+  // override" the write proceeds unchanged and each shadowing pair's cache
+  // entry is marked with markPairOverride (part 5).
+  async writePairValues(pairs, valueFn, markApplied, confirmShadow = false) {
     if (!pairs.length) {
       return;
     }
@@ -3687,6 +3846,20 @@ export class KerningViewController extends ViewController {
       return;
     }
 
+    // Backlog item 8 part 4: confirm before writing any value that shadows a
+    // class cell. One dialogue for the whole batch, not one per row.
+    const shadowingPairs = confirmShadow
+      ? pairSelectors
+          .filter((sel) => this.wouldShadowClassCell(sel.leftName, sel.rightName))
+          .map((sel) => ({ left: sel.leftName, right: sel.rightName }))
+      : [];
+    if (shadowingPairs.length) {
+      const proceed = await this.confirmShadowingWrite(shadowingPairs, valueFn);
+      if (!proceed) {
+        return;
+      }
+    }
+
     const editContext = this.kerningController.getEditContext(pairSelectors);
     const changes = await editContext.edit(values, "kerning view: pair table write");
 
@@ -3707,7 +3880,61 @@ export class KerningViewController extends ViewController {
       }
     }
 
+    // Backlog item 8 part 5: a confirmed shadowing write is now a deliberate
+    // override -- flag each such pair's cache entry (markPairOverride, pure,
+    // returns a new Map) and persist to the OPFS cache file so the neutral
+    // "override" badge survives a reload, the same way junk marks do.
+    if (shadowingPairs.length) {
+      for (const { left, right } of shadowingPairs) {
+        this.autokernCache = markPairOverride(this.autokernCache, left, right);
+      }
+      await this.writeAutokernCacheToStorage();
+    }
+
     this.renderPairTable();
+  }
+
+  // Backlog item 8 part 4: the confirmation dialogue for a batch that would
+  // write one or more values on top of a class cell that currently answers
+  // for the pair. Names the shadowed address (describeShadowedClassCell) and
+  // shows both numbers -- the group value now, and the value about to be
+  // written -- for up to a handful of pairs, then a count for the rest.
+  // Reuses this codebase's standard modal (modal-dialog.js's dialogSetup/run,
+  // the same one every other dialogue in this view uses). Returns true only
+  // on "Apply as override".
+  async confirmShadowingWrite(shadowingPairs, valueFn) {
+    const shown = shadowingPairs.slice(0, 6);
+    const lines = shown.map(({ left, right }) => {
+      const entry = this.autokernCache.get(pairKey(left, right));
+      const groupValue =
+        this.kerningController.getGlyphPairValueForLocation(left, right, {}) ?? 0;
+      const newValue = Math.round(valueFn(entry, left, right));
+      return (
+        `  ${left} × ${right}: ${this.describeShadowedClassCell(left, right)} ` +
+        `resolves to ${groupValue}, this writes ${newValue}`
+      );
+    });
+    const extra = shadowingPairs.length - shown.length;
+    const more = extra > 0 ? `\n  …and ${extra} more.` : "";
+    const headline =
+      shadowingPairs.length === 1
+        ? "Write a value that shadows a class cell?"
+        : `Write ${shadowingPairs.length} values that shadow class cells?`;
+    const dialog = await dialogSetup(
+      headline,
+      `A literal glyph-pair value always wins over the class cell that would ` +
+        `otherwise answer for the pair, and stays in the font as a per-pair ` +
+        `exception until it is reset:\n${lines.join("\n")}${more}`,
+      [
+        { title: translate("dialog.cancel"), isCancelButton: true },
+        {
+          title: "Apply as override",
+          resultValue: "override",
+          isDefaultButton: true,
+        },
+      ]
+    );
+    return (await dialog.run()) === "override";
   }
 
   setSelectedTool(toolIdentifier) {

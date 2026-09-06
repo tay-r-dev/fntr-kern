@@ -3,6 +3,8 @@ import {
   createCache,
   markGlyphStale,
   markPairJunk,
+  markPairOverride,
+  medianDroppingOutliers,
   pairEnvelopesCanTouch,
   pairKey,
   pairsForRerun,
@@ -133,6 +135,45 @@ describe("markPairJunk", () => {
     const cache2 = markPairJunk(cache1, "a", "b", true);
     expect(cache1.get(pairKey("a", "b")).junk).to.equal(false);
     expect(cache2.get(pairKey("a", "b")).junk).to.equal(true);
+  });
+});
+
+describe("markPairOverride", () => {
+  it("round-trips override:true, leaves other fields intact, returns a new Map", () => {
+    let cache = setPairValue(createCache(), "a", "b", 42);
+    cache = markPairJunk(cache, "a", "b", true);
+    const before = cache;
+    const after = markPairOverride(cache, "a", "b");
+    expect(after).to.be.an.instanceof(Map);
+    expect(after).to.not.equal(before);
+    expect(before.get(pairKey("a", "b")).override).to.not.equal(true);
+    const entry = after.get(pairKey("a", "b"));
+    expect(entry.override).to.equal(true);
+    expect(entry.value).to.equal(42);
+    expect(entry.junk).to.equal(true);
+    expect(entry.stale).to.equal(false);
+  });
+});
+
+describe("medianDroppingOutliers", () => {
+  it("excludes a gross outlier past the threshold from the median", () => {
+    // Inliers cluster at 10; one member pair diverges by 200, far past a
+    // threshold of 20 -- it must not drag the reported median.
+    const samples = [
+      { value: 8, divergence: 2 },
+      { value: 10, divergence: 0 },
+      { value: 12, divergence: 3 },
+      { value: 210, divergence: 200 },
+    ];
+    expect(medianDroppingOutliers(samples, 20)).to.equal(10);
+  });
+
+  it("falls back to the unfiltered median when every sample is an outlier", () => {
+    const samples = [
+      { value: 100, divergence: 100 },
+      { value: 300, divergence: 300 },
+    ];
+    expect(medianDroppingOutliers(samples, 20)).to.equal(200);
   });
 });
 

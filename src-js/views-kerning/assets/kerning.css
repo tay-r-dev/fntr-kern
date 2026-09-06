@@ -575,6 +575,15 @@
   opacity: 0.8;
 }
 
+/* Backlog item 8 part 5: once a shadowing write has been confirmed as a
+   deliberate override (the cache entry's `override` flag), the same address
+   text reads as a neutral state, not the pre-confirmation warning. Shares the
+   shadow-note layout; a distinct class so the two can diverge later. */
+.kerning-pairtable-override-note {
+  font-style: italic;
+  opacity: 0.55;
+}
+
 /* Design doc §2: font mode's glyph grid fills the same area the canvas
    occupies (#kerning-view-container is position:relative, height:100%,
    see above) -- the tool switcher and chip selector stay on top (z-index 1

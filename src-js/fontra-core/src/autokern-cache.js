@@ -30,10 +30,13 @@
 // test", done at no cost).
 //
 // cache entry: { left: string, right: string, value: number, junk: boolean,
-// stale: boolean }. `left`/`right` are glyph names; `value` is whatever unit
-// the caller uses (mirrors autokern-classes.js's convention -- this module
-// never interprets it). `junk` and `stale` are flags this module manages
-// (spec §4, §4.2).
+// stale: boolean, override?: boolean }. `left`/`right` are glyph names;
+// `value` is whatever unit the caller uses (mirrors autokern-classes.js's
+// convention -- this module never interprets it). `junk` and `stale` are
+// flags this module manages (spec §4, §4.2). `override` (KERNING-VIEW-BACKLOG.md
+// item 8) is the designer's deliberate decision that this literal glyph×glyph
+// value is meant to shadow the class cell that would otherwise answer for the
+// pair -- independent of `junk` and `stale`, set/cleared by markPairOverride.
 //
 // cache: a Map<string, entry> keyed by pairKey(left, right) (see below) --
 // deliberately NOT keyed by class (spec §4: "addressed by two glyph names,
@@ -132,6 +135,10 @@ export function setPairValue(cache, left, right, value) {
     value,
     junk: existing ? existing.junk : false,
     stale: false,
+    // Carry an existing override decision through a remeasurement, the same
+    // reason junk is carried above: it is the designer's judgement (item 8),
+    // not something a fresh measurement should silently discard.
+    override: existing ? !!existing.override : false,
   });
   return result;
 }
@@ -157,8 +164,53 @@ export function markPairJunk(cache, left, right, junk = true) {
     value: existing ? existing.value : 0,
     junk,
     stale: existing ? existing.stale : false,
+    // Independent flag -- a junk toggle must not clear an override decision.
+    override: existing ? !!existing.override : false,
   });
   return result;
+}
+
+// Sets (or clears, when `override` is false) a pair's override flag
+// (KERNING-VIEW-BACKLOG.md item 8: "a unique value shadowing an existing
+// class"). Returns a NEW cache. Mirrors markPairJunk exactly: same
+// immutability, same "create a value:0 entry if the pair somehow has none
+// yet" guard so the mark is never silently dropped, and `override` is an
+// independent flag alongside `junk`/`stale` -- setting it never touches
+// either. Persists for free through the OPFS cache file (whole entry objects
+// are serialised and rebuilt, no field whitelist).
+export function markPairOverride(cache, left, right, override = true) {
+  const key = pairKey(left, right);
+  const existing = cache.get(key);
+  const result = new Map(cache);
+  result.set(key, {
+    left,
+    right,
+    value: existing ? existing.value : 0,
+    junk: existing ? existing.junk : false,
+    stale: existing ? existing.stale : false,
+    override,
+  });
+  return result;
+}
+
+// KERNING-VIEW-BACKLOG.md item 8 part 6: median of a class-pair's member
+// values with override-candidate outliers dropped, so the aggregate a
+// class×class row shows isn't dragged by the very pairs a designer is likely
+// to override out. `samples` is Array<{ value, divergence }> -- `divergence`
+// is the member pair's own suggestion minus the value its class cascade
+// currently resolves to (computed by the caller, which owns the font lookup).
+// A sample whose |divergence| >= groupThreshold is an outlier (the same
+// magnitude test the view uses for "override candidate", part 2) and is left
+// out of the median. If EVERY sample is an outlier, fall back to the
+// unfiltered median rather than returning NaN. Assumes a non-empty `samples`.
+export function medianDroppingOutliers(samples, groupThreshold) {
+  const inliers = samples.filter(
+    (sample) => Math.abs(sample.divergence) < groupThreshold
+  );
+  const source = inliers.length ? inliers : samples;
+  const sorted = source.map((sample) => sample.value).sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 // Marks every cache row with `glyphName` on either side as stale. Returns a

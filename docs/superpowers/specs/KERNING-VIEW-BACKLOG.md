@@ -297,18 +297,133 @@ stops affecting that pair, with no error and no warning at write time. The
 bucket (unique×class / class×unique rows) but deliberately ships with override disabled rather than
 deciding how to make it transparent, per the designer's explicit call: "right now no override."
 
-**Open decision, not yet made.** Two shapes were discussed and left unresolved:
-- A confirmation dialog every time an apply would create this kind of shadow, naming which class cell
-  is being overridden.
-- A persistent visual marker instead — no interrupting dialog, but a flagged row before applying and a
-  permanent "override" indicator on that pair wherever it's shown afterward.
+**What already exists (v1 "no override" stopgap).** `wouldShadowClassCell(left, right)`
+(`kerning.js:1791`) is a conservative detector: at least one side classed **and** the cascade
+currently resolves that pair to a nonzero value. When it fires today, the row's select checkbox is
+**disabled** (`kerning.js:3460-3464`) so the pair can't be applied at all, and a `shadows @L × @R`
+note is shown beside the junk button (`kerning.js:3505-3510`, address string from
+`describeShadowedClassCell`, `kerning.js:1807`). The four cascade buckets already exist
+(`bucketForPair`, `kerning.js:1767`: unique×unique / unique×class / class×unique / class×class). The
+unique-threshold param (`autokernParamsController`, default 5, `#kerning-param-threshold`) is a
+display filter comparing `|suggestion − current stored value|` (`isRowAboveThreshold`,
+`kerning.js:1644`). class×class rows already display the **median** of the full class product as the
+aggregate suggestion (`computeFoldGroupStats`, `kerning.js:2114`; `medianOf` helper).
 
-**Suggested approach.** Whichever shape is chosen, the check itself is cheap and already has everything
-it needs: `KerningController.getPairsToTry` (`kerning-controller.js:216`) already computes, for any
-glyph pair, whether a class-resolved address exists at a less-specific cascade position than the flat
-one about to be written — the override case is exactly "the flat address isn't the only one on the
-list, and a class address on the list currently has a stored value." No new resolution logic is
-needed, only a UI decision on how to surface it, deferred to a future brainstorm.
+---
+
+### Decided design (2026-09-07)
+
+**1. New param: group divergence threshold.** A second threshold control beside
+`#kerning-param-threshold`, same style, display-only (never touches the run or the cache). Default
+**10** font units. It measures a different quantity from the unique threshold — divergence from the
+group, not from the current stored value.
+
+**2. New per-row quantity: divergence from the group value.** For any row where `wouldShadowClassCell`
+is true, compute `suggestedValue − groupResolvedValue`. The group value is already in hand —
+`wouldShadowClassCell` reads it via `getGlyphPairValueForLocation(left, right, {})`
+(`kerning.js:1796`). A row is an **override candidate** when `|divergence| ≥ groupThreshold`. This is
+orthogonal to `isRowAboveThreshold` (which compares against the current stored value, not the group).
+
+**3. "Potential overrides" bucket in the pair table.** Override candidates are surfaced as their own
+visible section at the **bottom** of the pair table, labelled "Potential overrides", below the four
+cascade buckets, drawn from the three classed buckets. Structurally this is a **filter**, not a fifth
+`bucketForPair` value — `bucketForPair`'s return is a statement about which cascade address is most
+specific (`kerning.js:1764-1766`), a structural fact, whereas "override candidate" is a judgement
+about magnitude. Implement as an extra state in the existing `state` filter (pending / applied /
+stale → + "override candidate") or a dedicated toggle; render the matching rows in their own
+`<tbody>`/section so it reads as a bucket to the user without corrupting the cascade-bucket model.
+
+**4. Replace the hard-disable with a confirmation dialogue.** Re-enable the select checkbox for
+shadowing rows. Any apply that would shadow a class cell — row apply, apply-selected, the
+manual-value apply, apply-all — routes through a dialogue that names the shadowed address
+(`describeShadowedClassCell`) and shows both numbers (group value vs. the value about to be written).
+Two actions:
+- **Apply as override** — proceed through `writePairValues` unchanged, then set an `override` flag on
+  the pair's cache entry (see 5).
+- **Cancel** — nothing is written.
+
+"Take the glyph out of its group" was considered and **dropped**: group membership is global per side,
+so removing a glyph to fix one pair changes every other pair that glyph forms. The per-pair opt-out
+*is* the individual override (the first action) — that is the only resolution the dialogue offers.
+Editing real group membership stays where it already lives (the class panel /
+`panel-selection-info.js`), untouched by this feature.
+
+**5. Persistent override marker.** Store `override: true` on the pair's cache entry, alongside the
+existing junk mark. `autokern-cache.js` currently exposes `markPairJunk` and is "called, not edited"
+under the file-ownership rule — this item needs a sibling `markPairOverride` there, so the ownership
+boundary moves for this one module. Persist it in the OPFS cache file so it survives reload, matching
+how junk marks persist. Render it as a badge on the row wherever the pair shows; the existing
+`shadows @L × @R` note (`kerning.js:3505-3510`) changes from a red-flag warning to a neutral state
+label once the override is deliberate.
+
+**6. Group suggestion = median with outliers dropped.** `computeFoldGroupStats` (`kerning.js:2114`)
+already returns `medianOf(entries.map(e => e.value))` over the full class×class product. Add one
+filter step: before the median, drop member pairs whose own divergence exceeds the group threshold
+(the test from 2), so the aggregate isn't dragged by the very pairs that are override candidates.
+`classClassRowVisible` and the expanded child rows are unaffected.
+
+**Out of scope this pass.** The self-scaling sensitivity knob (cutoff derived from each group's own
+spread via median-absolute-deviation instead of a fixed font-unit value) — a later refinement, agreed
+in the design conversation. Also out: any way to edit real group membership from this dialogue.
+
+**Resolved (2026-09-07).** All six parts built.
+
+1. **Group threshold param** — `groupThreshold` on `autokernParamsController`, default 10, bound to a
+   new `#kerning-param-group-threshold` number input beside `#kerning-param-threshold`, with the same
+   `Number`-converting `change` binding and a `renderPairTable` key listener. Display-only: it is read
+   only on the pair-table render path, never by `runAutokern` or any cache write.
+2. **Per-row divergence** — `overrideDivergence(left, right, suggestedValue)` returns
+   `suggestedValue − getGlyphPairValueForLocation(left, right, {})`; `isOverrideCandidate(...)` gates
+   that on `wouldShadowClassCell` being true and `|divergence| ≥ groupThreshold`. Both parts 3 and 6
+   call these. (Note: the divergence equals a normal row's `delta`, since `pairRowData.current` reads
+   the same cascade value — the distinction is purely the threshold constant and the shadow gate.)
+3. **"Potential overrides" section** — a fifth `<tbody>`/section
+   (`#kerning-pairtable-body-potential-overrides`, `data-bucket="potential-overrides"`) rendered below
+   the four cascade buckets, kept visible in every grouping mode. `bucketForPair` is untouched
+   (still four-valued). Candidate rows are **lifted out** of their home cascade bucket rather than
+   shown in both, because `getSelectedPairTableRows`, apply-all's `tbody tr` scan and
+   `syncSelectAllCheckboxes` all query row checkboxes document-wide and assume each pair-row appears
+   once. Implemented as the dedicated section (not a new `state`-filter value). When "Fold classes" is
+   on (default), class×class candidates stay reachable only as fold-parent child rows and are not also
+   lifted here, to avoid double-rendering their checkboxes; when unfolded they are lifted like the
+   other classed buckets. The section only populates when a glyph is typed, same anchoring as the
+   three glyph-anchored buckets.
+4. **Confirmation dialogue** — the `checkbox.disabled` hard-disable in `buildPairRowElement` is
+   removed. `writePairValues` takes a new `confirmShadow` arg, passed `true` by apply-selected,
+   apply-all and the manual-value apply, left `false` by the reset paths (reset-to-current /
+   reset-to-zero are deliberate flat-exception writes, not accidental shadows). When set and the batch
+   contains any `wouldShadowClassCell` pair, one `dialogSetup`/`run` modal (the codebase's standard
+   one) summarises the batch — shadowed address via `describeShadowedClassCell`, group value vs. value
+   to be written, up to 6 pairs then a count — with **Apply as override** / **Cancel**. Cancel writes
+   nothing.
+5. **Persistent `override` flag** — `markPairOverride` added to `autokern-cache.js` as a pure sibling
+   of `markPairJunk` (new Map, same entry-shape/guard, independent flag). `setPairValue` and
+   `markPairJunk` now carry an existing `override` through so a re-run or a junk toggle doesn't drop
+   it. It round-trips the OPFS cache file with no whitelist change (whole entry objects are
+   serialised and rebuilt). On a confirmed override the row's `shadows @L × @R` note becomes a neutral
+   `override: @L × @R` label (`.kerning-pairtable-override-note`); the warning note stays for an
+   un-confirmed candidate.
+6. **Outlier-dropped median** — `medianDroppingOutliers(samples, groupThreshold)` added to
+   `autokern-cache.js` (pure); `computeFoldGroupStats` takes `groupThreshold` (threaded through
+   `buildClassClassGroups` from `renderPairTable`, same as `threshold`) and feeds it each member
+   pair's `{value, divergence}`. Members with `|divergence| ≥ groupThreshold` are dropped from the
+   aggregate median; if every member is an outlier it falls back to the unfiltered median.
+   `classClassRowVisible` and the expanded child rows are unchanged.
+
+Files: `src-js/fontra-core/src/autokern-cache.js` (+ `tests/test-autokern-cache.js`),
+`src-js/views-kerning/src/kerning.js`, `kerning.html`, `assets/kerning.css`.
+
+**Verified:** `npm run bundle` clean (only the pre-existing asset-size warnings); fontra-core mocha
+suite green (2518 passing) including two new `test-autokern-cache.js` cases — `markPairOverride`
+round-trips `override: true` leaving other fields intact and returning a new Map, and
+`medianDroppingOutliers` excludes a gross outlier / falls back when all are outliers; `prettier
+--check` clean on every touched file except `kerning.html`, which was already non-conformant at HEAD
+(whole-file reflow) and was left as-is — the added lines themselves match prettier output.
+
+**Not verified (no live server this pass):** the dialogue's actual on-screen appearance and
+button wiring, the OPFS round-trip of the `override` flag across a real browser reload, and the
+"Potential overrides" section's live show/hide and lift-out behaviour against a real run. All reasoned
+from code, not exercised in a browser.
 
 ---
 
