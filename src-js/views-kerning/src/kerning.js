@@ -400,6 +400,7 @@ export class KerningViewController extends ViewController {
     this.initPhraseSection();
     this.initParametersSection();
     this.initSuggestionPreviewSettingsSection();
+    this.initSuggestionPreviewToggle();
     this.initRunSection();
     // Awaited: initPairTableSection is async and awaits
     // fontController.getKerningController internally to build
@@ -557,16 +558,13 @@ export class KerningViewController extends ViewController {
   // and _applySuggestionPreviewRepositioning below for what each setting
   // actually gates):
   //
-  // - "enabled" is the master switch -- item 9's ask for a way to turn the
-  //   on-canvas suggestion overlay on/off. Replaces the originally-floated
-  //   eye-icon-plus-hotkey design (never built) with this accordion's own
-  //   display-toggle checkbox, the same convention
-  //   panel-designspace-navigation.js's "coarse-grid-accordion-item" uses for
-  //   its own layer (a checkbox named "...-display-toggle", not a canvas
-  //   icon) -- reusing that exact mechanism, per the assignment, rather than
-  //   inventing a second one. Defaults to true, matching the pre-existing
-  //   "suggest: N" label's own defaultOn: true, so nobody who never opens
-  //   this accordion sees a behavior change.
+  // - "enabled" is the master switch -- item 9's actual ask: an eye icon in
+  //   the preview pane's own upper-right corner, plus a hotkey (initSuggestionPreviewToggle
+  //   below), not a settings-panel checkbox -- the accordion checkbox this
+  //   used to be was a wrong first reading and has been removed; the eye icon
+  //   and hotkey are the only master control now. Defaults to true, matching
+  //   the pre-existing "suggest: N" label's own defaultOn: true, so nobody
+  //   who never touches either control sees a behavior change.
   // - "opacity" (item 2a) is applied (context.globalAlpha) to the two visual
   //   elements this feature draws under its own control: the highlight band
   //   and the "suggest: N" label. It is NOT applied to the re-spaced glyph's
@@ -610,15 +608,6 @@ export class KerningViewController extends ViewController {
 
     const settings = this.suggestionPreviewSettings.model;
 
-    const enabledToggle = html.input({
-      type: "checkbox",
-      id: "kerning-suggestion-preview-enabled",
-    });
-    enabledToggle.checked = settings.enabled;
-    enabledToggle.addEventListener("change", () => {
-      this.suggestionPreviewSettings.setItem("enabled", enabledToggle.checked);
-    });
-
     const opacityInput = html.input({
       type: "range",
       id: "kerning-suggestion-preview-opacity",
@@ -660,10 +649,6 @@ export class KerningViewController extends ViewController {
         `,
       },
       [
-        html.label({ for: "kerning-suggestion-preview-enabled" }, [
-          "Suggestion preview",
-        ]),
-        enabledToggle,
         html.label({ for: "kerning-suggestion-preview-opacity" }, ["Opacity"]),
         opacityInput,
         html.label({ for: "kerning-suggestion-preview-numbers" }, ["Show numbers"]),
@@ -701,6 +686,60 @@ export class KerningViewController extends ViewController {
       this._suggestionPreviewBandToggle.disabled =
         !this.suggestionPreviewSettings.model.enabled;
     }
+  }
+
+  // Backlog #9's actual ask: an eye icon in the preview pane's own
+  // upper-right corner, plus a hotkey, as the ONE master on/off control for
+  // the suggestion-preview overlay (re-spacing + band + label) -- not a
+  // settings-panel checkbox (that was this feature's first, wrong reading;
+  // removed). Same <icon-button>/tabler-icons construction the class panel's
+  // delete button already uses (assigning the `src` PROPERTY, not the
+  // attribute -- see that code's own comment on why the attribute crashes).
+  initSuggestionPreviewToggle() {
+    const button = document.createElement("icon-button");
+    button.id = "kerning-suggestion-preview-toggle";
+    button.setAttribute("data-tooltipposition", "left");
+
+    const updateButton = () => {
+      const enabled = this.suggestionPreviewSettings.model.enabled;
+      button.src = enabled ? "/tabler-icons/eye.svg" : "/tabler-icons/eye-closed.svg";
+      button.setAttribute(
+        "data-tooltip",
+        `${enabled ? "Hide" : "Show"} suggestion preview (P)`
+      );
+    };
+    updateButton();
+
+    button.onclick = () => {
+      this.suggestionPreviewSettings.setItem(
+        "enabled",
+        !this.suggestionPreviewSettings.model.enabled
+      );
+    };
+    this.suggestionPreviewSettings.addListener(updateButton);
+
+    document
+      .querySelector("#kerning-suggestion-preview-toggle-container")
+      .appendChild(button);
+
+    registerAction(
+      "action.kerning.toggle-suggestion-preview",
+      {
+        topic: "0020-action-topics.menu.view",
+        titleKey: "kerning.toggle-suggestion-preview",
+        // Same text-field guard as action.kerning.toggle-chip above: bail out
+        // while a text input/textarea/select has focus rather than hijacking
+        // the keystroke.
+        defaultShortCuts: [{ baseKey: "P" }],
+      },
+      () => {
+        const activeTag = document.activeElement?.tagName;
+        if (activeTag === "TEXTAREA" || activeTag === "INPUT" || activeTag === "SELECT") {
+          return;
+        }
+        button.onclick();
+      }
+    );
   }
 
   // This workstream: the run worker (spec §4) and the Run button

@@ -265,6 +265,24 @@
   opacity: 1;
 }
 
+/* Backlog #9: eye icon, preview pane's own upper-right corner (icon-button
+   created in initSuggestionPreviewToggle, kerning.js). Sized/padded for
+   visibility over the canvas rather than 1em like the class-panel delete
+   button, which sits in a text row instead. */
+#kerning-suggestion-preview-toggle {
+  width: 1.4em;
+  height: 1.4em;
+  margin: 0.4em;
+  padding: 0.3em;
+  border-radius: 0.3em;
+  background-color: var(--editor-background-color-translucent, rgba(0, 0, 0, 0.1));
+  opacity: 0.7;
+}
+
+#kerning-suggestion-preview-toggle:hover {
+  opacity: 1;
+}
+
 #autokern-class-swatch-strip {
   display: flex;
   flex-wrap: wrap;
