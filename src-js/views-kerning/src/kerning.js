@@ -112,8 +112,13 @@ import {
   parsePhrasePresets,
 } from "@fontra/core/character-lines.js";
 import { rasterizeGlyph } from "@fontra/core/glyph-raster.js";
-import { getGlyphInfoFromGlyphName } from "@fontra/core/glyph-data.js";
 import { GlyphOrganizer } from "@fontra/core/glyph-organizer.js";
+import {
+  getMyGlyphSets,
+  GlyphSetsController,
+  readProjectGlyphSets,
+  THIS_FONTS_GLYPHSET,
+} from "@fontra/core/glyphsets-controller.js";
 import * as html from "@fontra/core/html-utils.js";
 import { UndoStack, reverseUndoRecord } from "@fontra/core/font-controller.js";
 import { translate } from "@fontra/core/localization.js";
@@ -165,8 +170,12 @@ import {
 } from "./input-tokens.js";
 import {
   explicitPairExists,
+  glyphMatchesCategory,
+  pairMatchesGlyphset,
+  pairMatchesUnicodeTypes,
   passesNumericFilters,
   rowId,
+  rowMatchesRelationships,
   rowVisibleInDefault,
   rowVisibleInPotential,
   valuesForDisplay,
@@ -1243,16 +1252,33 @@ export class KerningViewController extends ViewController {
       // suggestion (Task 5's own decision note: its warning must stay
       // discoverable).
       hideZeroCurrentSuggestions: false,
-      // Backlog item 3 (designer follow-up 2026-09-06): category-based
-      // row-hiding, view-only, same as every other filter in this model --
-      // nothing about the run or the cache changes, only which rows the
-      // table shows. Category membership comes from glyph-data.js; "Mark",
-      // "Number", "Punctuation" are the exact CSV category strings
-      // (confirmed against glyph-data.csv). Default false (don't hide)
-      // matches every other checkbox filter's non-restrictive default.
-      hideNonStandalone: false,
-      hideNumbers: false,
-      hidePunctuation: false,
+      // Task 9, spec F09/F14, ledger §8.3/§8.4: two multi-select filters,
+      // persisted as plain arrays (JSON-safe for synchronizeWithLocalStorage
+      // below -- Sets don't round-trip through JSON.stringify/parse), read
+      // as Sets only at the point results-model.js's predicates need one
+      // (plan Task 9's own bullet: "Normalize persisted arrays into Sets at
+      // the UI boundary and back into arrays for storage"). Replaces the old
+      // hideNonStandalone/hideNumbers/hidePunctuation ad hoc checkboxes
+      // (Backlog item 3) entirely -- same glyph-data.js category source,
+      // now the one dropdown F09 asks for.
+      //
+      // unicodeTypes defaults to every category except "non-unicode" (F09:
+      // "unchecked by default"), so this replacement does not itself hide
+      // any row that was visible before Task 9.
+      unicodeTypes: [
+        "uppercase",
+        "lowercase",
+        "punctuation",
+        "symbols",
+        "marks",
+        "numbers",
+      ],
+      // relationships defaults to all four buckets checked -- F14 is a new
+      // filter with no prior equivalent, so "everything" is the only
+      // non-restrictive default.
+      relationships: ["class-class", "class-unique", "unique-unique", "exceptions"],
+      // F14: All by default (ledger §8.4), a glyphset URL/key otherwise.
+      tableGlyphsetId: null,
       // Backlog item 11: sortColumn is one of "glyph" (Glyph L/Glyph R
       // headers, left+right localeCompare) / "current" / "delta" (the
       // table's own suggestion display). Task 8: "state" is no longer a
@@ -1319,7 +1345,14 @@ export class KerningViewController extends ViewController {
     // the pair, relative to whatever is in Glyph (ledger §8.1).
     const pairInput = document.querySelector("#kerning-pairtable-pair");
     const pairInputError = document.querySelector("#kerning-pairtable-pair-error");
-    pairInput.addEventListener("input", () => this.updatePairPreview());
+    pairInput.addEventListener("input", () => {
+      this.updatePairPreview();
+      // Task 9: the Pair input isn't part of the persisted filter model
+      // (it only ever restricts preview, per F06 -- unchanged by this
+      // task), so it doesn't trigger renderPairTable on its own; the
+      // non-Unicode note still needs to react to it directly.
+      this.updateNonUnicodeNote();
+    });
     this._pairInputElements = { glyphInput, pairInput, pairInputError };
 
     const excludedInput = document.querySelector("#kerning-pairtable-excluded");
@@ -1434,20 +1467,113 @@ export class KerningViewController extends ViewController {
       );
     });
 
-    // Backlog item 3 (designer follow-up): one checkbox per category
-    // shortcut, same pattern as junkCheckbox/currentCheckbox above.
-    const categoryFilterBindings = [
-      ["#kerning-pairtable-hide-nonstandalone", "hideNonStandalone"],
-      ["#kerning-pairtable-hide-numbers", "hideNumbers"],
-      ["#kerning-pairtable-hide-punctuation", "hidePunctuation"],
-    ];
-    for (const [selector, key] of categoryFilterBindings) {
-      const checkbox = document.querySelector(selector);
-      checkbox.checked = filters[key];
-      checkbox.addEventListener("change", () => {
-        this.autokernFiltersController.setItem(key, checkbox.checked);
-      });
+    // Task 9, spec F09/F14: binds one checkbox group to one array-valued
+    // filter key -- checking/unchecking one box adds/removes its value from
+    // the persisted array (OR-combined by results-model.js's predicates at
+    // render time, never re-derived here).
+    const bindCheckboxGroup = (bindings, key) => {
+      for (const [selector, value] of bindings) {
+        const checkbox = document.querySelector(selector);
+        checkbox.checked = filters[key].includes(value);
+        checkbox.addEventListener("change", () => {
+          const current = new Set(this.autokernFiltersController.model[key]);
+          if (checkbox.checked) {
+            current.add(value);
+          } else {
+            current.delete(value);
+          }
+          this.autokernFiltersController.setItem(key, [...current]);
+        });
+      }
+    };
+    bindCheckboxGroup(
+      [
+        ["#kerning-pairtable-unicode-uppercase", "uppercase"],
+        ["#kerning-pairtable-unicode-lowercase", "lowercase"],
+        ["#kerning-pairtable-unicode-punctuation", "punctuation"],
+        ["#kerning-pairtable-unicode-symbols", "symbols"],
+        ["#kerning-pairtable-unicode-marks", "marks"],
+        ["#kerning-pairtable-unicode-numbers", "numbers"],
+        ["#kerning-pairtable-unicode-non-unicode", "non-unicode"],
+      ],
+      "unicodeTypes"
+    );
+    bindCheckboxGroup(
+      [
+        ["#kerning-pairtable-rel-class-class", "class-class"],
+        ["#kerning-pairtable-rel-class-unique", "class-unique"],
+        ["#kerning-pairtable-rel-unique-unique", "unique-unique"],
+        ["#kerning-pairtable-rel-exceptions", "exceptions"],
+      ],
+      "relationships"
+    );
+
+    // Task 9, spec F14: the table Glyphset filter. Reuses the existing
+    // glyphsets-controller.js primitives (readProjectGlyphSets/
+    // getMyGlyphSets/GlyphSetsController) that views-fontoverview.js
+    // already wires up the same way -- this view only lists glyphsets the
+    // project has already added, it does not offer an "add glyphset" UI of
+    // its own (that already lives in Font Overview/the editor). Kept
+    // entirely separate from the Font-mode preview glyphset selector
+    // (F08/Task 13) -- distinct scopes, distinct controllers.
+    this.tableGlyphsetSettingsController = new ObservableController({
+      projectGlyphSets: readProjectGlyphSets(this.fontController),
+      myGlyphSets: getMyGlyphSets(),
+      projectGlyphSetSelection: [],
+      myGlyphSetSelection: [],
+    });
+    this.tableGlyphsetsController = new GlyphSetsController(
+      this.fontController,
+      this.tableGlyphsetSettingsController
+    );
+    // null == "All", no restriction (ledger §8.4); populated below whenever
+    // a real glyphset is selected. Read by pairRowVisible/
+    // classClassRowVisible via pairMatchesGlyphset.
+    this._tableGlyphsetMembers = null;
+
+    const glyphsetSelect = document.querySelector("#kerning-pairtable-filter-glyphset");
+    const glyphsetSettings = this.tableGlyphsetSettingsController.model;
+    for (const info of Object.values({
+      ...glyphsetSettings.projectGlyphSets,
+      ...glyphsetSettings.myGlyphSets,
+    })) {
+      // THIS_FONTS_GLYPHSET ("") means "the font's own glyphs" -- that's
+      // already what "All" means for this filter, so it isn't offered as a
+      // second, redundant option.
+      if (info.url === THIS_FONTS_GLYPHSET) {
+        continue;
+      }
+      const option = document.createElement("option");
+      option.value = info.url;
+      option.textContent = info.name;
+      glyphsetSelect.appendChild(option);
     }
+    glyphsetSelect.value = filters.tableGlyphsetId || "";
+
+    const applyTableGlyphsetSelection = async (glyphsetId) => {
+      if (!glyphsetId) {
+        this._tableGlyphsetMembers = null;
+      } else {
+        const entries = await this.tableGlyphsetsController.loadGlyphSet(glyphsetId);
+        // ponytail: membership by the glyphset's own literal glyph name
+        // only, no font-characterMap disambiguation (that's
+        // getCombinedGlyphMap's own job for the different "merge glyph
+        // sets into one browsable map" feature). Correct whenever the
+        // glyphset's names already match the font's; upgrade to the
+        // disambiguated cross-reference if a real project's glyphset uses
+        // different names for the same character than this font does.
+        this._tableGlyphsetMembers = new Set(entries.map((entry) => entry.glyphName));
+      }
+      this.renderPairTable();
+    };
+    if (filters.tableGlyphsetId) {
+      applyTableGlyphsetSelection(filters.tableGlyphsetId);
+    }
+    glyphsetSelect.addEventListener("change", () => {
+      const glyphsetId = glyphsetSelect.value || null;
+      this.autokernFiltersController.setItem("tableGlyphsetId", glyphsetId);
+      applyTableGlyphsetSelection(glyphsetId);
+    });
 
     // Task 8, spec F22: broad member exposure, off by default -- see the
     // filters-controller comment above (replaces the old "Fold classes"
@@ -1834,52 +1960,39 @@ export class KerningViewController extends ViewController {
       return false;
     }
 
-    // Backlog item 3 (designer follow-up): category shortcuts. row.left/
-    // row.right can be a class name (class×* buckets) rather than a glyph
-    // name -- glyphCategory returns undefined for those and the checks
-    // below simply never hide them, which is correct: a category filter
-    // hiding individual glyphs has no meaning for a class-aggregate row.
-    if (filters.hideNonStandalone) {
-      if (this.isNonStandaloneGlyph(row.left) || this.isNonStandaloneGlyph(row.right)) {
-        return false;
-      }
+    // Task 9, spec F09: Unicode types (this.pairRowVisible's own callers --
+    // see this method's call sites -- only ever pass literal pair rows,
+    // never a class-name address, so row.left/row.right are always real
+    // glyph names here; a class-summary row's own mixed-membership category
+    // check is classClassRowVisible's job, below).
+    if (
+      !pairMatchesUnicodeTypes([row.left], [row.right], filters.side, this._unicodeTypesSet)
+    ) {
+      return false;
     }
-    if (filters.hideNumbers) {
-      if (
-        this.glyphCategory(row.left) === "Number" ||
-        this.glyphCategory(row.right) === "Number"
-      ) {
-        return false;
-      }
+
+    // Task 9, spec F14: Class relationship. leftClassed/rightClassed are
+    // read fresh per row (cheap object-lookup helpers, no caching needed)
+    // rather than threaded through from pairRowData, keeping this filter's
+    // own state (which buckets are checked) entirely local to this method.
+    if (
+      !rowMatchesRelationships(
+        row,
+        this.isLeftClassed(row.left),
+        this.isRightClassed(row.right),
+        this._relationshipsSet
+      )
+    ) {
+      return false;
     }
-    if (filters.hidePunctuation) {
-      if (
-        this.glyphCategory(row.left) === "Punctuation" ||
-        this.glyphCategory(row.right) === "Punctuation"
-      ) {
-        return false;
-      }
+
+    // Task 9, spec F14, ledger §8.4: table Glyphset filter -- "any glyph
+    // involved" (either side), never "both sides required".
+    if (!pairMatchesGlyphset([row.left], [row.right], this._tableGlyphsetMembers)) {
+      return false;
     }
 
     return true;
-  }
-
-  // Backlog item 3 (designer follow-up): glyph-data.js lookup, shared by all
-  // three category checkboxes above.
-  glyphCategory(glyphName) {
-    return getGlyphInfoFromGlyphName(glyphName)?.category;
-  }
-
-  // ponytail: "non-standalone" is approximated by glyph-data.js's "Mark"
-  // category (combining marks are reliably tagged this way in
-  // glyph-data.csv) rather than measuring the font's own actual advance
-  // width per glyph, which would need an async getGlyphInstance call per
-  // row and isn't available synchronously from cached pair-table data.
-  // Upgrade path: cache each glyph's xAdvance (already computed once per
-  // run in runAutokern's envelope-building loop) and check for zero there
-  // instead, if a glyph shows up that's zero-advance but not category "Mark".
-  isNonStandaloneGlyph(glyphName) {
-    return this.glyphCategory(glyphName) === "Mark";
   }
 
   // WORKSTREAM 14: the pair table's own threshold comparison (spec §7.2:
@@ -2135,7 +2248,35 @@ export class KerningViewController extends ViewController {
     const glyphName = filters.glyphName;
     const tab = this.activeResultsTab || "default";
 
+    // Task 9, spec F09/F14: converted once per render (plan's own bullet:
+    // "Normalize persisted arrays into Sets at the UI boundary"), read by
+    // pairRowVisible/classClassRowVisible below via `this`.
+    this._unicodeTypesSet = new Set(filters.unicodeTypes);
+    this._relationshipsSet = new Set(filters.relationships);
+
     tbody.textContent = "";
+    // Ledger §8.4: zero checked categories or zero checked relationships is
+    // its own "nothing selected" empty state, distinct from "all" -- render
+    // it directly and stop, rather than letting every row predicate above
+    // reject everything and produce an ordinary-looking, unexplained empty
+    // table.
+    if (this._unicodeTypesSet.size === 0 || this._relationshipsSet.size === 0) {
+      const emptyRow = document.createElement("tr");
+      const emptyCell = document.createElement("td");
+      emptyCell.colSpan = 7;
+      emptyCell.className = "kerning-pairtable-nothing-selected";
+      emptyCell.textContent =
+        this._unicodeTypesSet.size === 0
+          ? "No results: no Unicode types selected. Check at least one type to show results."
+          : "No results: no Class relationships selected. Check at least one relationship to show results.";
+      emptyRow.appendChild(emptyCell);
+      tbody.appendChild(emptyRow);
+      this.syncSelectAllCheckboxes();
+      this.resultSelection = retainVisible(this.resultSelection, new Set());
+      this.refreshResetArmState();
+      this.updatePairPreview();
+      return;
+    }
     // Task 8: rebuilt fresh every render, keyed by a class-summary row's own
     // stable ID -- expandHighlightedRowsToPairs (Task 7's own open decision,
     // resolved by ledger §8.1) reads this to expand a highlighted
@@ -2175,6 +2316,11 @@ export class KerningViewController extends ViewController {
     // rowVisibleInDefault); every other kind is always in Default.
     const exposedNames = this.getExposedMemberNames();
     const showIndividualMembers = filters.showIndividualMembers;
+    // Task 9, plan's own bullet, ledger §8.2: the Non-Unicode filter governs
+    // the table only -- a /glyphname or %glyphname%! request for a
+    // non-Unicode glyph still won't appear in the table while the box is
+    // unchecked, but that must be explained, not a silent, unremarked gap.
+    this.updateNonUnicodeNote();
 
     // Every row this render could possibly show, as one flat list, each
     // tagged with enough to sort/filter/render it uniformly regardless of
@@ -2349,6 +2495,46 @@ export class KerningViewController extends ViewController {
     return names;
   }
 
+  // Task 9, plan's own bullet, ledger §8.2: same token source as
+  // getExposedMemberNames above, but for BOTH "glyph" (/name) and "member"
+  // (%name%!) tokens -- ledger §8.2's exact wording: "A non-Unicode glyph
+  // named explicitly (/glyphname or %glyphname%!)". Only reports a note
+  // when the Non-Unicode box is actually unchecked (otherwise nothing is
+  // being excluded, no note needed).
+  updateNonUnicodeNote() {
+    const note = document.querySelector("#kerning-pairtable-nonunicode-note");
+    if (!note) {
+      return;
+    }
+    const filters = this.autokernFiltersController?.model;
+    const elements = this._pairInputElements;
+    if (!filters || !elements || filters.unicodeTypes.includes("non-unicode")) {
+      note.textContent = "";
+      return;
+    }
+    const named = new Set();
+    for (const text of [elements.glyphInput.value, elements.pairInput.value]) {
+      let tokens;
+      try {
+        tokens = parseTokenList(text);
+      } catch {
+        continue;
+      }
+      for (const token of tokens) {
+        if (
+          (token.kind === "glyph" || token.kind === "member") &&
+          glyphMatchesCategory(token.name, "non-unicode")
+        ) {
+          named.add(token.name);
+        }
+      }
+    }
+    note.textContent = named.size
+      ? `${[...named].join(", ")} ${named.size === 1 ? "is" : "are"} excluded from the table ` +
+        `by the unchecked Non-Unicode glyphs filter (still available in preview).`
+      : "";
+  }
+
   // Median (not mean, spec §5.2: "the median is the reducer... a mean can
   // [get dragged]") of the folded rows' suggestion values -- these are the
   // cache's own `entry.value` (via row.suggestion, pairRowData above), the
@@ -2370,8 +2556,9 @@ export class KerningViewController extends ViewController {
   //
   // Returns Array<{ group: {leftClassName, rightClassName, rows}, stats
   // (computeFoldGroupStats' return, unmodified), median }>, already filtered
-  // by classClassRowVisible (sign/threshold) and already carrying each
-  // group's own filtered, visible child rows for expand-to-browse (the same
+  // by classClassRowVisible (threshold, Task 9's Unicode types/relationship/
+  // glyphset) and already carrying each group's own filtered, visible child
+  // rows for expand-to-browse (the same
   // per-row filters -- side/sign/state/junk/threshold -- that any other
   // bucket's rows go through, via pairRowVisible).
   buildClassClassGroups(glyphName, filters, threshold, groupThreshold) {
@@ -2415,7 +2602,15 @@ export class KerningViewController extends ViewController {
         // kerningController.getPairFunction, deliberately not read here to
         // keep this exactly what the design doc describes).
         const median = stats.median;
-        if (!this.classClassRowVisible(median, threshold, effectiveFilters)) {
+        if (
+          !this.classClassRowVisible(
+            median,
+            threshold,
+            effectiveFilters,
+            leftMembers,
+            rightMembers
+          )
+        ) {
           continue;
         }
 
@@ -2444,7 +2639,7 @@ export class KerningViewController extends ViewController {
   // filters still apply normally to the row's own child rows (via
   // pairRowVisible, in buildClassClassGroups above), which is where a junk
   // mark or an applied state actually lives.
-  classClassRowVisible(median, threshold, filters) {
+  classClassRowVisible(median, threshold, filters, leftMembers, rightMembers) {
     if (Math.abs(median) < threshold) {
       return false;
     }
@@ -2454,6 +2649,28 @@ export class KerningViewController extends ViewController {
     if (maxThreshold != null && Math.abs(median) > maxThreshold) {
       return false;
     }
+
+    // Task 9, spec F09, ledger §8.3: "mixed-category class summary matches
+    // a checked category if ANY member belongs to it" -- the exact same
+    // predicate pairRowVisible uses, given the class's full membership
+    // list instead of one glyph name.
+    if (!pairMatchesUnicodeTypes(leftMembers, rightMembers, filters.side, this._unicodeTypesSet)) {
+      return false;
+    }
+    // Task 9, spec F14: a class-summary row is always both-sides-classed by
+    // construction (that's what makes it a class-summary row at all) with
+    // no "explicit rule" concept of its own (its own saved value, if any,
+    // is deliberately not read here -- see this method's own top comment) --
+    // it is always exactly "Class-to-class".
+    if (!this._relationshipsSet.has("class-class")) {
+      return false;
+    }
+    // Task 9, spec F14, ledger §8.4: "any single member of the class" --
+    // the same union-any rule as a flat pair row's own two glyphs.
+    if (!pairMatchesGlyphset(leftMembers, rightMembers, this._tableGlyphsetMembers)) {
+      return false;
+    }
+
     return true;
   }
 

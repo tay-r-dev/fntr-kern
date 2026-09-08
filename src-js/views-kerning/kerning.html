@@ -123,22 +123,96 @@
                   >?</span
                 ></label
               >
-              <!-- Backlog item 3 (designer follow-up 2026-09-06): category
-                   row-hiding shortcuts, view-only -- see
-                   pairRowVisible/glyphCategory/isNonStandaloneGlyph in
-                   kerning.js. Lives in the filter panel per the designer's
-                   explicit decision, not the excluded-glyph text field. -->
+              <!-- Task 9, spec F09, ledger §8.3: Unicode types, one
+                   multi-select filter -- reuses the Columns fieldset's own
+                   "grouped checkboxes under a legend" idiom immediately
+                   above, rather than a bespoke dropdown widget, for the
+                   same OR-combined multi-select behavior. Non-Unicode
+                   glyphs is unchecked by default (F09); every other box is
+                   checked by default (kerning.js's own filter-model
+                   default), matching every other checkbox filter's
+                   non-restrictive default. Replaces the old Hide
+                   non-standalone/numbers/punctuation checkboxes (Backlog
+                   item 3) entirely. -->
+              <fieldset id="kerning-pairtable-unicode-types">
+                <legend>Unicode types</legend>
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-unicode-uppercase" checked />
+                  Uppercase</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-unicode-lowercase" checked />
+                  Lowercase</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-unicode-punctuation" checked />
+                  Punctuation</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-unicode-symbols" checked />
+                  Symbols</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-unicode-marks" checked />
+                  Combining diacritics</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-unicode-numbers" checked />
+                  Numbers</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-unicode-non-unicode" />
+                  Non-Unicode glyphs</label
+                >
+                <!-- Task 9, plan's own bullet: "if the filter still excludes
+                     a named request, explain the empty result rather than
+                     silently showing nothing unexplained." Ledger §8.2: the
+                     Non-Unicode filter governs the results TABLE only (not
+                     the pair preview) -- a /glyphname or %glyphname%! token
+                     naming a non-Unicode glyph stays out of the table while
+                     this box is unchecked; this note says why, rather than
+                     leaving an unexplained gap. -->
+                <span
+                  id="kerning-pairtable-nonunicode-note"
+                  class="kerning-pairtable-filter-help"
+                ></span>
+              </fieldset>
+              <!-- Task 9, spec F14: Class relationship, the same
+                   OR-combined multi-select idiom as Unicode types above.
+                   All four checked by default -- new filter, no prior
+                   equivalent to preserve, so "everything" is the
+                   non-restrictive default. -->
+              <fieldset id="kerning-pairtable-relationships">
+                <legend>Class relationship</legend>
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-rel-class-class" checked />
+                  Class-to-class</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-rel-class-unique" checked />
+                  Class-to-unique</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-rel-unique-unique" checked />
+                  Unique-to-unique</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-rel-exceptions" checked />
+                  Class exceptions</label
+                >
+              </fieldset>
+              <!-- Task 9, spec F14: table Glyphset filter -- single-select,
+                   All by default (ledger §8.4). Options are populated in
+                   kerning.js from the project's already-added glyphsets
+                   (glyphsets-controller.js); this control does not offer an
+                   "add a glyphset" UI of its own. Distinct from the Font
+                   mode preview glyphset selector (F08/Task 13) -- neither
+                   changes the other. -->
               <label
-                ><input type="checkbox" id="kerning-pairtable-hide-nonstandalone" /> Hide
-                non-standalone (marks)</label
-              >
-              <label
-                ><input type="checkbox" id="kerning-pairtable-hide-numbers" /> Hide
-                numbers</label
-              >
-              <label
-                ><input type="checkbox" id="kerning-pairtable-hide-punctuation" /> Hide
-                punctuation</label
+                >Glyphset
+                <select id="kerning-pairtable-filter-glyphset" title="Table glyphset">
+                  <option value="">All</option>
+                </select></label
               >
               <!-- Task 8, spec F22: broad exposure of every grouped member's
                    individual row at once, without typing "%name%!" for each
