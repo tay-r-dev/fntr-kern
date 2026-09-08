@@ -28,6 +28,20 @@
      is the flexible one, `minmax(200px, 1fr)` below, so it keeps whatever
      space dragging the bottom row's height doesn't claim. */
   --kerning-middle-bottom-height: 140px;
+  /* Task 13, spec F08: the preview toolbar's own row (Phrase/Pair/Font chip
+     selector + Font-mode Glyphset selector) is grid-template-rows' middle
+     `auto` track below, not this property -- it's non-resizable and its
+     content (a small flex row, wrapping if the column gets narrow, spec
+     F28's "use responsive layout rather than clipping" logic applied here
+     too) should be free to grow if it ever wraps to two lines, rather than
+     clipping or overflowing a hardcoded height. This property exists only
+     so #kerning-middle-resize-gutter (below) can position itself relative
+     to the toolbar's ACTUAL rendered height -- kerning.js's
+     initMiddleRowSplitter measures the live element and keeps this synced
+     on load and on window resize, the same "measure once, write a custom
+     property, let CSS calc() consume it" convention
+     --kerning-middle-bottom-height itself already uses for the drag. */
+  --kerning-preview-toolbar-height: 2.4em;
 }
 
 :root.sidebar-resizing {
@@ -111,13 +125,42 @@
    can never be violated by a drag (see the clamp in initMiddleRowSplitter). */
 .kerning-middle {
   display: grid;
-  grid-template-rows: minmax(200px, 1fr) var(--kerning-middle-bottom-height);
+  grid-template-rows: minmax(200px, 1fr) auto var(--kerning-middle-bottom-height);
 }
 
 #kerning-middle-top {
   position: relative;
   min-height: 0;
   overflow: hidden;
+}
+
+/* Task 13, spec F08: "Place Phrase / Pair / Font controls in their own
+   section with an opaque background, outside the drawable preview area."
+   Its own grid row (see .kerning-middle above), not an overlay on the
+   canvas -- opaque background so it visually reads as chrome, the same way
+   #kerning-middle-bottom's own border-top already separates it from the
+   scene above it. */
+.kerning-preview-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  padding: 0.3em 0.5em;
+  box-sizing: border-box;
+  /* --background-color is core.css's own always-defined theme token (both
+     light/dark, root.css:64) -- unlike the --editor-background-color-*
+     variants used elsewhere in this file (kerning-view-only tokens that
+     rely entirely on their literal rgba fallback, since nothing in this
+     tree ever sets them), this one is real and theme-aware, giving this
+     row genuine opacity in both themes rather than a guessed gray. */
+  background-color: var(--background-color);
+  border-top: 1px solid var(--horizontal-rule-color, #ccc);
+  border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
+}
+
+#kerning-chip-selector {
+  display: flex;
+  gap: 0.25em;
 }
 
 /* Task 2 (part6): the row divider itself. A direct child of .kerning-middle
@@ -136,7 +179,15 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(var(--kerning-middle-bottom-height) - 2px);
+  /* Task 13, spec F08: the preview toolbar row (.kerning-preview-toolbar)
+     now sits between the scene and the class panel, so the boundary this
+     gutter straddles moved down by that row's own (possibly wrapped, hence
+     variable) height too -- not just --kerning-middle-bottom-height any
+     more. --kerning-preview-toolbar-height is kept in sync with the real
+     element by initMiddleRowSplitter in kerning.js. */
+  bottom: calc(
+    var(--kerning-middle-bottom-height) + var(--kerning-preview-toolbar-height) - 2px
+  );
   height: 4px;
   cursor: row-resize;
   z-index: 3;

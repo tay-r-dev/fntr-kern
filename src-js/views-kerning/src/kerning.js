@@ -5082,10 +5082,43 @@ export class KerningViewController extends ViewController {
     const MIN_TOP_HEIGHT = 200; // ditto, for the scene row
     const gutter = document.querySelector("#kerning-middle-resize-gutter");
     const middleColumn = document.querySelector(".kerning-middle");
+    // Task 13, spec F08: the preview toolbar row (.kerning-preview-toolbar)
+    // is a third `auto`-height grid row added between the scene and the
+    // class panel (kerning.css: `grid-template-rows: minmax(200px, 1fr)
+    // auto var(--kerning-middle-bottom-height)`) -- it claims real height
+    // from `totalHeight` below just like the bottom row already does, so it
+    // must be subtracted here too or dragging the class panel taller could
+    // silently squeeze the scene row below its own MIN_TOP_HEIGHT. Always
+    // measured live (never assumed fixed): the toolbar's own row wraps to
+    // two lines at a narrow enough column width (F28's "use responsive
+    // layout" applied to this row too, kerning.css's flex-wrap on
+    // .kerning-preview-toolbar), so its height genuinely varies.
+    const toolbar = document.querySelector(".kerning-preview-toolbar");
+
+    // --kerning-preview-toolbar-height (kerning.css) only exists so
+    // #kerning-middle-resize-gutter's own CSS `bottom: calc(...)` can
+    // position itself without duplicating this measurement in two places --
+    // kept in sync here (mirrors --kerning-middle-bottom-height's own
+    // "measure/drag once, write the custom property, let calc() read it"
+    // convention) rather than read fresh by the gutter's positioning, since
+    // that positioning is pure CSS, not JS.
+    const syncToolbarHeightProperty = () => {
+      const height = toolbar?.getBoundingClientRect().height || 0;
+      document.documentElement.style.setProperty(
+        "--kerning-preview-toolbar-height",
+        `${height}px`
+      );
+    };
+    syncToolbarHeightProperty();
+    window.addEventListener("resize", syncToolbarHeightProperty);
 
     const clampBottomHeight = (height) => {
       const totalHeight = middleColumn.getBoundingClientRect().height;
-      const maxBottomHeight = Math.max(MIN_BOTTOM_HEIGHT, totalHeight - MIN_TOP_HEIGHT);
+      const toolbarHeight = toolbar?.getBoundingClientRect().height || 0;
+      const maxBottomHeight = Math.max(
+        MIN_BOTTOM_HEIGHT,
+        totalHeight - MIN_TOP_HEIGHT - toolbarHeight
+      );
       return Math.min(Math.max(height, MIN_BOTTOM_HEIGHT), maxBottomHeight);
     };
 
@@ -5251,6 +5284,14 @@ export class KerningViewController extends ViewController {
     }
     this._chipMode = mode;
     this.updateChipButtons();
+    // Task 13, spec F08: "Keep this dropdown visible but disabled outside
+    // Font mode." Guarded with optional chaining, same defensive style as
+    // showFontModeGrid just below -- initFontModeSection (which creates
+    // this select) runs later, from start(), so a designer hitting the Tab
+    // hotkey before start() completes must not crash here.
+    if (this._fontPreviewGlyphsetSelect) {
+      this._fontPreviewGlyphsetSelect.disabled = mode !== "font";
+    }
     // Design doc §2: "font" swaps the scene area for the glyph grid instead
     // of setting sceneSettings.text -- the canvas/metric-handle-container
     // stay in the DOM (untouched, just hidden) so switching away from font
@@ -5399,8 +5440,76 @@ export class KerningViewController extends ViewController {
 
     this.fontModeGlyphOrganizer = new GlyphOrganizer();
 
+    // Task 13, spec F08: "Put the font-mode Glyphset dropdown in the same
+    // section [as Phrase/Pair/Font]. List available added glyphsets and
+    // filter displayed font-mode glyphs by the selected set... The preview
+    // glyphset selector and the table glyphset filter in F14 have distinct
+    // scopes; neither should silently change the other." Deliberately a
+    // SEPARATE ObservableController/GlyphSetsController pair and a separate
+    // `_fontPreviewGlyphsetMembers` field from initPairTableSection's own
+    // `tableGlyphsetSettingsController`/`_tableGlyphsetMembers` (Task 9) --
+    // same reusable primitives, entirely independent state, exactly the
+    // isolation the finding asks for.
+    this.fontPreviewGlyphsetSettingsController = new ObservableController({
+      projectGlyphSets: readProjectGlyphSets(this.fontController),
+      myGlyphSets: getMyGlyphSets(),
+      projectGlyphSetSelection: [],
+      myGlyphSetSelection: [],
+    });
+    this.fontPreviewGlyphsetsController = new GlyphSetsController(
+      this.fontController,
+      this.fontPreviewGlyphsetSettingsController
+    );
+    // null == "All", no restriction -- matches the table filter's own
+    // convention (ledger §8.4) for the same reason: "All" is the common,
+    // no-glyphset-loaded-yet default, not a real membership set.
+    this._fontPreviewGlyphsetMembers = null;
+
+    const fontPreviewGlyphsetSelect = document.querySelector(
+      "#kerning-font-preview-glyphset-select"
+    );
+    const previewGlyphsetSettings = this.fontPreviewGlyphsetSettingsController.model;
+    for (const info of Object.values({
+      ...previewGlyphsetSettings.projectGlyphSets,
+      ...previewGlyphsetSettings.myGlyphSets,
+    })) {
+      // THIS_FONTS_GLYPHSET ("") is already what the static "All" option
+      // (kerning.html) means for this selector -- not offered twice.
+      if (info.url === THIS_FONTS_GLYPHSET) {
+        continue;
+      }
+      const option = document.createElement("option");
+      option.value = info.url;
+      option.textContent = info.name;
+      fontPreviewGlyphsetSelect.appendChild(option);
+    }
+    this._fontPreviewGlyphsetSelect = fontPreviewGlyphsetSelect;
+
+    fontPreviewGlyphsetSelect.addEventListener("change", async () => {
+      const glyphsetId = fontPreviewGlyphsetSelect.value || null;
+      if (!glyphsetId) {
+        this._fontPreviewGlyphsetMembers = null;
+      } else {
+        const entries = await this.fontPreviewGlyphsetsController.loadGlyphSet(
+          glyphsetId
+        );
+        // ponytail: membership by the glyphset's own literal glyph name
+        // only, same simplification and same upgrade note as the table
+        // filter's applyTableGlyphsetSelection just above.
+        this._fontPreviewGlyphsetMembers = new Set(
+          entries.map((entry) => entry.glyphName)
+        );
+      }
+      this.updateFontModeGlyphSections();
+    });
+
     this.updateFontModeGlyphSections = () => {
-      const itemList = glyphMapToItemList(this.fontController.glyphMap);
+      let itemList = glyphMapToItemList(this.fontController.glyphMap);
+      if (this._fontPreviewGlyphsetMembers) {
+        itemList = itemList.filter((item) =>
+          this._fontPreviewGlyphsetMembers.has(item.glyphName)
+        );
+      }
       const sorted = this.fontModeGlyphOrganizer.sortGlyphs(itemList);
       const filtered = this.fontModeGlyphOrganizer.filterGlyphs(sorted);
       const sections = this.fontModeGlyphOrganizer.groupGlyphs(filtered);

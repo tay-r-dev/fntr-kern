@@ -332,11 +332,13 @@
         </div>
       </div>
 
-      <!-- §1.2: the middle column, two rows -- top: the scene (moved from
-           the old #kerning-view-container's standalone position); bottom:
-           an empty slot for the class panel, built by a different worker.
-           Not built here: the class panel's own contents (New class /
-           Derive / class list / glyph-swatch strip / Show class dialog). -->
+      <!-- §1.2: the middle column. Top: the scene (moved from the old
+           #kerning-view-container's standalone position). Bottom: an empty
+           slot for the class panel, built by a different worker. Not built
+           here: the class panel's own contents (New class / Derive / class
+           list / glyph-swatch strip / Show class dialog). Task 13, spec F08
+           added a third, fixed-height row in between -- the preview toolbar
+           (.kerning-preview-toolbar, below #kerning-middle-top). -->
       <div class="kerning-column kerning-middle">
         <!-- Task 2 (part6): the drag-resizable divider between the two rows.
              NOT a views-editor Sidebar instance -- see
@@ -393,20 +395,6 @@
               <button data-tool="kerning-tool" title="Kerning">Kerning</button>
               <button data-tool="hand-tool" title="Hand">Hand</button>
             </div>
-            <div
-              id="kerning-chip-selector"
-              style="position: absolute; bottom: 0; left: 0; z-index: 1"
-            >
-              <button data-chip="phrase" type="button" title="Phrase">Phrase</button>
-              <button data-chip="pair" type="button" title="Pair" disabled>Pair</button>
-              <!-- Design doc §2: a third chip value, "font" -- a
-                   font-overview-style multi-select glyph grid, swapped in for
-                   the canvas by kerning.js's setChipMode (see
-                   initFontModeSection/showFontModeGrid). Unlike "pair", this
-                   one starts enabled -- font mode needs no prior selection to
-                   be useful. -->
-              <button data-chip="font" type="button" title="Font">Font</button>
-            </div>
             <!-- Design doc §2: font mode's glyph grid, reusing
                  font-overview.js's own grid/selection machinery (GlyphCellView
                  + GlyphOrganizer, rail R-A) -- see initFontModeSection in
@@ -416,6 +404,43 @@
                  kerning-font-grid-hidden alongside hiding the canvas. -->
             <div id="kerning-font-grid-container" class="kerning-font-grid-hidden"></div>
           </div>
+        </div>
+        <!-- Task 13, spec F08: "Place Phrase / Pair / Font controls in their
+             own section with an opaque background, outside the drawable
+             preview area." This used to be #kerning-chip-selector,
+             position:absolute INSIDE #kerning-view-container (the canvas's
+             own box) -- an overlay that could sit on top of drawn glyphs.
+             It is now its own grid row, a sibling of #kerning-middle-top and
+             #kerning-middle-bottom (see .kerning-preview-toolbar in
+             kerning.css for the row-height wiring), with a real opaque
+             background instead of floating transparently over the canvas.
+             The Font-mode Glyphset selector (same finding) lives in this
+             same row -- populated and wired in kerning.js's
+             initFontModeSection, disabled outside Font mode. This is a
+             SEPARATE control/state from #kerning-pairtable-filter-glyphset
+             (the table's own Glyphset filter, F14) -- distinct ids,
+             distinct controllers, neither one's kerning.js code touches the
+             other's state. -->
+        <div class="kerning-preview-toolbar">
+          <div id="kerning-chip-selector">
+            <button data-chip="phrase" type="button" title="Phrase">Phrase</button>
+            <button data-chip="pair" type="button" title="Pair" disabled>Pair</button>
+            <!-- Design doc §2: a third chip value, "font" -- a
+                 font-overview-style multi-select glyph grid, swapped in for
+                 the canvas by kerning.js's setChipMode (see
+                 initFontModeSection/showFontModeGrid). Unlike "pair", this
+                 one starts enabled -- font mode needs no prior selection to
+                 be useful. -->
+            <button data-chip="font" type="button" title="Font">Font</button>
+          </div>
+          <label for="kerning-font-preview-glyphset-select">Glyphset</label>
+          <select
+            id="kerning-font-preview-glyphset-select"
+            title="Font mode glyphset"
+            disabled
+          >
+            <option value="" selected>All</option>
+          </select>
         </div>
         <div id="kerning-middle-bottom">
           <!-- Class panel, §1.2 bottom row. The static structure below is
