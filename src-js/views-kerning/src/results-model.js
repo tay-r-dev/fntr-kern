@@ -217,6 +217,31 @@ export function pairMatchesGlyphset(leftNames, rightNames, memberNames) {
   );
 }
 
+// Task 11, spec F10/F17, ledger's own interface note: "retain backend/cache
+// compatibility behind the UI label if existing storage uses `junk`;
+// introduce no data rename unless migration requires it." The OPFS cache
+// entry and the project's saved junk-pair list (kerning.js's
+// AUTOKERN_JUNK_PAIRS_CUSTOM_DATA_KEY) both keep the `junk` field/shape
+// exactly as-is -- renaming either would be a real data migration for no
+// UI benefit. This is the one seam where that stored field becomes the
+// normalized row's own presentation-facing `hidden` flag (spec §2.1's
+// "Hidden result" concept), so the mapping decision has exactly one place
+// to be wrong.
+export function hiddenFromCacheEntry(entry) {
+  return !!entry?.junk;
+}
+
+// F10: "Hiding removes the result from normal display without deleting
+// kerning" -- a hidden row is display-suppressed unless Show hidden (F17)
+// is on. Mirrors the exact shape passesNumericFilters/pairRowVisible's
+// other per-row gates use, so pairRowVisible's `row.junk && !filters.showJunk`
+// inline check (the pre-Task-11 form) becomes one named, tested predicate
+// instead of staying an anonymous condition duplicated at each row kind
+// (a pair row here, a class-summary row in kerning.js's own render loop).
+export function rowVisibleForHiddenState(hidden, showHidden) {
+  return !hidden || showHidden;
+}
+
 export function passesNumericFilters(row, filters) {
   if (
     filters.hideZeroCurrentSuggestions &&
