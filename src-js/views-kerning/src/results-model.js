@@ -49,6 +49,43 @@ export function explicitPairExists(controller, leftName, rightName) {
 // (stale/missing suggestion, per valuesForDisplay above) always passes --
 // its warning must stay discoverable regardless of the numeric bounds in
 // effect (plan Task 5's own decision note).
+// Task 8, spec §2.1 invariants 5/6 and F19/F22: which of the two results
+// tabs a normalized row belongs to. Only a "member-pair" row (a grouped
+// glyph's own individual pair, part of a class-class product, with no
+// saved rule of its own -- Task 2's own kind taxonomy) is gated by
+// exposure; every other kind (a class-summary "class-rule" row, a plain
+// "unique-pair" row, or a saved "pair-exception") is always in Default
+// (invariant 5's own carve-outs -- deliberate exposure, saved exceptions,
+// and the Potential tab are the ONLY three ways an individual member
+// appears; a summary is never itself hidden by the exposure mechanism).
+// `exposedNames` is the set of glyph names named directly via "%name%!" in
+// either input (kerning.js's own token parsing, not repeated here);
+// `showIndividualMembers` is the broad-exposure checkbox (F22). Exposing a
+// member never removes its class summary (invariant 6) -- this predicate
+// only ever adds a member-pair row in, it never removes a class-rule row,
+// because callers apply it per-row independently.
+export function rowVisibleInDefault(row, exposedNames, showIndividualMembers) {
+  if (row.kind !== "member-pair") {
+    return true;
+  }
+  return (
+    showIndividualMembers || exposedNames.has(row.left) || exposedNames.has(row.right)
+  );
+}
+
+// F19: "Potential exceptions displays individual member pairs whose
+// suggestions fall outside class tolerance." `row.isCandidate` is supplied
+// by the caller (kerning.js's own isOverrideCandidate) -- this predicate
+// does not compute candidacy, per plan Task 8's own interface ("It
+// consumes a candidate list supplied by the autokern adapter; it does not
+// calculate candidates"). A row can be a candidate and still also appear
+// in Default once exposed (F19: "including members that also qualify as
+// candidates") -- the two tabs are independent views of the same row set,
+// not a partition.
+export function rowVisibleInPotential(row) {
+  return !!row.isCandidate;
+}
+
 export function passesNumericFilters(row, filters) {
   if (
     filters.hideZeroCurrentSuggestions &&
