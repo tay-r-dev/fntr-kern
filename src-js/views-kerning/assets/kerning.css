@@ -703,6 +703,18 @@ tr[data-kind="pair-exception"] {
   opacity: 0.7;
 }
 
+/* Task 17, spec F23: "!" in place of an unreliable Proposed/Delta number.
+   Same hover-explanation idiom as .kerning-pairtable-filter-help above
+   (cursor: help), plus a warning color and bold weight so it reads as an
+   alert rather than plain text, and is focusable (buildPairRowElement/
+   buildClassSummaryRowElement give it tabindex="0") so the same
+   explanation is reachable by keyboard, not only by hover. */
+.kerning-pairtable-stale-marker {
+  cursor: help;
+  font-weight: bold;
+  color: var(--fontra-red-color, #c00);
+}
+
 /* Task 3, spec F04: highlight (preview selection) is visually distinct
    from a ticked (action-target) checkbox -- the two layers are
    independent, so their styling must not collapse into one look. */

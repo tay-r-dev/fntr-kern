@@ -57,6 +57,13 @@
 // against if kerning.js changes computeFoldGroupStats, overrideDivergence,
 // isOverrideCandidate, wouldShadowClassCell, isLeftClassed, isRightClassed,
 // or the static medianOf.
+//
+// Task 17 update (2026-09-09): computeFoldGroupStats' own copy below is
+// re-diffed against kerning.js's post-Task-17 version (NaN->null guard,
+// includedCount/excludedCount, stale) -- see that method's own comment in
+// kerning.js for the line-by-line reasoning. countMedianContributors and
+// aggregateStale are the REAL, directly-importable results-model.js
+// functions (no import problem there), used unmodified.
 import { FontSourcesInstancer } from "@fontra/core/font-sources-instancer.js";
 import {
   createCache,
@@ -67,6 +74,7 @@ import {
 import { KerningController } from "@fontra/core/kerning-controller.js";
 import { deepCopyObject } from "@fontra/core/utils.ts";
 import { expect } from "chai";
+import { aggregateStale, countMedianContributors } from "../src/results-model.js";
 
 // ---------------------------------------------------------------------
 // Verbatim copies (kerning.js:2285-2382, 2752-2756, 2903-2937 at the commit
@@ -123,7 +131,9 @@ class AggregateProbe {
     return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   }
 
-  // kerning.js:2903-2937
+  // kerning.js's post-Task-17 computeFoldGroupStats (re-diffed 2026-09-09).
+  // `stale`/includedCount/excludedCount/null-guard added; spread (classSpread)
+  // stays irrelevant to this task's contract questions, omitted from the probe.
   computeFoldGroupStats(group, groupThreshold) {
     const kernData = this.kerningController.kernData;
     const leftMembers = kernData.groupsSide1[group.leftClassName] || [];
@@ -138,18 +148,19 @@ class AggregateProbe {
       }
     }
 
-    const median = entries.length
-      ? medianDroppingOutliers(
-          entries.map((entry) => ({
-            value: entry.value,
-            divergence: this.overrideDivergence(entry.left, entry.right, entry.value),
-          })),
-          groupThreshold
-        )
+    const samples = entries.map((entry) => ({
+      value: entry.value,
+      divergence: this.overrideDivergence(entry.left, entry.right, entry.value),
+    }));
+    const rawMedian = entries.length
+      ? medianDroppingOutliers(samples, groupThreshold)
       : AggregateProbe.medianOf(group.rows.map((row) => row.suggestion));
-    // spread (classSpread) is irrelevant to this task's contract questions
-    // (median contributors / candidate baseline), omitted from the probe.
-    return { leftMembers, rightMembers, entries, median };
+    const median = Number.isNaN(rawMedian) ? null : rawMedian;
+    const { includedCount, excludedCount } = entries.length
+      ? countMedianContributors(samples, groupThreshold)
+      : { includedCount: 0, excludedCount: 0 };
+    const stale = aggregateStale(entries);
+    return { leftMembers, rightMembers, entries, median, includedCount, excludedCount, stale };
   }
 }
 
@@ -317,24 +328,76 @@ describe("Task 16: aggregate class-median and candidate-detection contract, real
     expect(stats.median).to.equal(-82);
   });
 
-  it("computeFoldGroupStats: zero cache coverage falls back to medianOf(group.rows), which returns NaN for an empty group -- confirmed, not asserted safe", () => {
+  it("computeFoldGroupStats: zero cache coverage falls back to medianOf(group.rows), and Task 17's own guard turns the resulting NaN into null", () => {
     const probe = freshProbe(10);
     // A class pair with no cache coverage at all -- unreachable through the
     // real UI (buildClassClassGroups only calls computeFoldGroupStats after
-    // its own hasCoverage check passes, kerning.js:2794-2803), but the raw
-    // function itself has no null-guard: entries.length is 0, so it falls
-    // through to AggregateProbe.medianOf(group.rows.map(...)), and an empty
-    // `rows` array produces NaN (sorted=[], mid=0, even-length branch reads
-    // sorted[-1] and sorted[0], both undefined). This directly matters to
-    // Task 16's contract: `getAggregateProposal(...) -> {value:
-    // number|null, ...}` must explicitly guard against NaN if any future
-    // caller invokes this path without the coverage gate -- NaN is neither
-    // a number nor null under the contract's own type.
+    // its own hasCoverage check passes), but the raw function itself used
+    // to have no guard here: entries.length is 0, so it falls through to
+    // AggregateProbe.medianOf(group.rows.map(...)), and an empty `rows`
+    // array produces NaN (sorted=[], mid=0, even-length branch reads
+    // sorted[-1] and sorted[0], both undefined). Task 17 added the explicit
+    // `Number.isNaN(rawMedian) ? null : rawMedian` guard this test now
+    // confirms -- matching the contract's own `value: number|null` type.
     const stats = probe.computeFoldGroupStats(
       { leftClassName: "NoSuchClass", rightClassName: "NoSuchClass", rows: [] },
       10
     );
     expect(stats.entries.length).to.equal(0);
-    expect(Number.isNaN(stats.median)).to.equal(true);
+    expect(stats.median).to.equal(null);
+    expect(stats.includedCount).to.equal(0);
+    expect(stats.excludedCount).to.equal(0);
+  });
+
+  // Task 17 (ledger §11.4/§11.5 gap 1): included/excluded contributor count.
+  it("computeFoldGroupStats: includedCount/excludedCount mirror the median's own outlier drop", () => {
+    const probe = freshProbe(10);
+    const stats = probe.computeFoldGroupStats(
+      { leftClassName: "A", rightClassName: "V", rows: [] },
+      10
+    );
+    // Same fixture as the outlier-dropped median test above: 4 inliers
+    // (A x V, Adieresis x V, Adieresis x W, Aacute x W), 1 outlier (A x W).
+    expect(stats.includedCount).to.equal(4);
+    expect(stats.excludedCount).to.equal(1);
+  });
+
+  it("computeFoldGroupStats: when every contributor is an outlier, includedCount falls back to every sample (the same fallback the median itself takes)", () => {
+    const probe = freshProbe(10);
+    const stats = probe.computeFoldGroupStats(
+      { leftClassName: "A", rightClassName: "V", rows: [] },
+      0.5
+    );
+    expect(stats.includedCount).to.equal(5);
+    expect(stats.excludedCount).to.equal(0);
+  });
+
+  // Task 17 (F23's own open question, judgment call): "any contributor
+  // stale" marks the whole aggregate stale.
+  it("computeFoldGroupStats: stale is true because the fixture's Adieresis x W contributor is stale, even though every other contributor is current", () => {
+    const probe = freshProbe(10);
+    const stats = probe.computeFoldGroupStats(
+      { leftClassName: "A", rightClassName: "V", rows: [] },
+      10
+    );
+    expect(stats.stale).to.equal(true);
+  });
+
+  it("computeFoldGroupStats: stale is false when no contributor is stale", () => {
+    const probe = freshProbe(10);
+    // Adieresis x W is the fixture's only stale entry -- clear it directly
+    // (this probe has no per-pair primitive for that either, same reason
+    // freshCache() constructs the entry by hand).
+    const cleared = new Map(probe.autokernCache);
+    cleared.set(pairKey("Adieresis", "W"), {
+      ...cleared.get(pairKey("Adieresis", "W")),
+      stale: false,
+    });
+    probe.autokernCache = cleared;
+    const stats = probe.computeFoldGroupStats(
+      { leftClassName: "A", rightClassName: "V", rows: [] },
+      10
+    );
+    expect(stats.stale).to.equal(false);
   });
 });

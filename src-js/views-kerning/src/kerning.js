@@ -2697,6 +2697,11 @@ export class KerningViewController extends ViewController {
     // class-summary row's own tick actually do something on Apply, not just
     // highlight -- see writePairValues' own comment).
     this._classSummaryMedianByRowId = new Map();
+    // Task 17, spec F23: same idea, for the row's own aggregate staleness
+    // (aggregateStale, results-model.js) -- isPairStale/applySelectedPairRows
+    // read this to skip a stale class-summary row's tick the same way they
+    // skip a stale literal pair.
+    this._classSummaryStaleByRowId = new Map();
 
     for (const el of document.querySelectorAll(".kerning-pairtable-current-col")) {
       el.style.display = filters.showCurrent ? "" : "none";
@@ -3018,6 +3023,13 @@ export class KerningViewController extends ViewController {
         // kerningController.getPairFunction, deliberately not read here to
         // keep this exactly what the design doc describes).
         const median = stats.median;
+        // Task 17 (ledger §11.4/§11.5 gap 2): computeFoldGroupStats' own
+        // NaN guard can produce `null` here (unreachable today -- the
+        // hasCoverage check just above already guarantees real coverage --
+        // but defensive, not a claim this path is reachable).
+        if (median == null) {
+          continue;
+        }
         if (
           !this.classClassRowVisible(
             median,
@@ -3128,18 +3140,43 @@ export class KerningViewController extends ViewController {
     // unfiltered median if EVERY member is an outlier. `classClassRowVisible`
     // and the expanded child rows (group.rows) are unaffected -- only this
     // aggregate changes.
-    const median = entries.length
-      ? medianDroppingOutliers(
-          entries.map((entry) => ({
-            value: entry.value,
-            divergence: this.overrideDivergence(entry.left, entry.right, entry.value),
-          })),
-          groupThreshold
-        )
+    const samples = entries.map((entry) => ({
+      value: entry.value,
+      divergence: this.overrideDivergence(entry.left, entry.right, entry.value),
+    }));
+    const rawMedian = entries.length
+      ? medianDroppingOutliers(samples, groupThreshold)
       : KerningViewController.medianOf(group.rows.map((row) => row.suggestion));
+    // Task 17 (ledger §11.4/§11.5 gap 2): an empty class product with no
+    // fallback rows (unreachable through the real UI today --
+    // buildClassClassGroups only calls this after its own coverage check
+    // passes -- but not type-safe if reused directly) produces NaN, which
+    // satisfies neither branch of the `value: number|null` contract.
+    const median = Number.isNaN(rawMedian) ? null : rawMedian;
+    // Task 17 (ledger §11.4/§11.5 gap 1): included/excluded contributor
+    // count, so F21's "disclose contributing-pair count and excluded-result
+    // count" is fully met, not only the total shown before this task.
+    const { includedCount, excludedCount } = entries.length
+      ? countMedianContributors(samples, groupThreshold)
+      : { includedCount: 0, excludedCount: 0 };
+    // Task 17 (F23's own open question, ledger §10.4: "a real open decision
+    // for whoever builds Task 17's F23 display"). JUDGMENT CALL: "any
+    // contributor stale" marks the whole aggregate stale -- see
+    // aggregateStale's own comment (results-model.js) for the full
+    // reasoning and the flag to the designer.
+    const stale = aggregateStale(entries);
     const spread = classSpread(rightMembers, entries, "right");
 
-    return { leftMembers, rightMembers, entries, median, spread };
+    return {
+      leftMembers,
+      rightMembers,
+      entries,
+      median,
+      includedCount,
+      excludedCount,
+      stale,
+      spread,
+    };
   }
 
   // Task 8: a class-summary row is now the SAME kind of row as an
@@ -3179,6 +3216,10 @@ export class KerningViewController extends ViewController {
       rightMembers: stats.rightMembers,
     });
     this._classSummaryMedianByRowId.set(id, median);
+    // Task 17, spec F23/F21: aggregateStale (results-model.js), the
+    // "any contributor stale" judgment call -- see computeFoldGroupStats'
+    // own comment for the full reasoning.
+    this._classSummaryStaleByRowId.set(id, !!stats.stale);
 
     tr.addEventListener("click", (event) => {
       if (event.target.closest("input, button")) {
@@ -3208,8 +3249,13 @@ export class KerningViewController extends ViewController {
     leftLabel.textContent = `${left} (${truncateGlyphList(stats.leftMembers)})`;
     // F21 recommended detail: "disclose contributing-pair count and
     // excluded-result count in row details" -- no 8th column exists for
-    // this (F32 fixes the header set at seven), so it is a tooltip.
-    leftLabel.title = `${stats.entries.length} pairs, spread ${stats.spread.overall.toFixed(1)}`;
+    // this (F32 fixes the header set at seven), so it is a tooltip. Task 17
+    // gap (ledger §11.4/§11.5 #1): includedCount/excludedCount now actually
+    // exist on `stats` (computeFoldGroupStats, countMedianContributors) --
+    // previously only the total contributor count was disclosed.
+    leftLabel.title =
+      `${stats.entries.length} pairs, spread ${stats.spread.overall.toFixed(1)} ` +
+      `(${stats.includedCount} in median, ${stats.excludedCount} excluded as outliers)`;
     leftCell.appendChild(leftLabel);
     tr.appendChild(leftCell);
 
@@ -3224,10 +3270,18 @@ export class KerningViewController extends ViewController {
       : "none";
     tr.appendChild(currentCell);
 
-    // Proposed IS the aggregate suggestion for this class rule.
+    // Proposed IS the aggregate suggestion for this class rule. Task 17,
+    // spec F23/F21 (ledger §10.4's own open question, resolved here as a
+    // judgment call -- see computeFoldGroupStats' own comment): the
+    // aggregate is unreliable when ANY contributing pair is stale, shown
+    // the same "!" way an ordinary stale row is.
     const proposedCell = document.createElement("td");
     proposedCell.className = "kerning-pairtable-proposed-col";
-    proposedCell.textContent = median > 0 ? `+${median.toFixed(1)}` : median.toFixed(1);
+    if (stats.stale) {
+      proposedCell.appendChild(buildStaleMarker());
+    } else {
+      proposedCell.textContent = median > 0 ? `+${median.toFixed(1)}` : median.toFixed(1);
+    }
     proposedCell.style.display = this.autokernFiltersController.model.showProposed
       ? ""
       : "none";
@@ -3235,7 +3289,11 @@ export class KerningViewController extends ViewController {
 
     const deltaCell = document.createElement("td");
     deltaCell.className = "kerning-pairtable-suggestion-col";
-    deltaCell.textContent = median > 0 ? `+${median.toFixed(1)}` : median.toFixed(1);
+    if (stats.stale) {
+      deltaCell.appendChild(buildStaleMarker());
+    } else {
+      deltaCell.textContent = median > 0 ? `+${median.toFixed(1)}` : median.toFixed(1);
+    }
     deltaCell.style.display = this.autokernFiltersController.model.showSuggestion
       ? ""
       : "none";
@@ -3258,6 +3316,14 @@ export class KerningViewController extends ViewController {
     const applyButton = document.createElement("button");
     applyButton.type = "button";
     applyButton.textContent = "Apply class";
+    // Task 17, spec F23: the aggregate's own median is unreliable when any
+    // contributor is stale (aggregateStale) -- disable its one write action
+    // the same way a stale pair row's tick is excluded from Apply selected.
+    if (stats.stale) {
+      applyButton.disabled = true;
+      applyButton.title =
+        "This class suggestion is out of date -- re-run stale glyphs first.";
+    }
     applyButton.addEventListener("click", (event) => {
       event.stopPropagation();
       this.applyFoldedParentRow(group, median);
@@ -4624,6 +4690,15 @@ export class KerningViewController extends ViewController {
       checkbox.title =
         "Applying this pair writes a value that shadows a class cell -- you'll be asked to confirm.";
     }
+    // Task 17, spec F23: "disable applying that stale suggestion. Reset to
+    // zero remains a separate manual action" -- the tick itself stays
+    // available (Reset still needs it), but applySelectedPairRows below
+    // skips a stale row's own pair rather than writing its unreliable
+    // suggestion.
+    if (row.stale) {
+      checkbox.title =
+        "This suggestion is out of date -- Apply selected will skip it. Reset selected still works.";
+    }
     checkbox.checked = this.resultSelection.ticked.has(id);
     // Task 3 (spec F04 table): checking/unchecking a HIGHLIGHTED row acts
     // on every highlighted row; an unhighlighted row's tick changes alone
@@ -4661,10 +4736,22 @@ export class KerningViewController extends ViewController {
     // Task 5, spec F13/F32: Proposed is its own column (the raw
     // suggestion, row.suggestion), independent of Delta (suggestion minus
     // current) below.
+    // Task 17, spec F23: valuesForDisplay (results-model.js, Task 2/5 --
+    // already existed but was never actually wired into this cell's own
+    // text before this task) hides Proposed/Delta when the row is stale;
+    // both cells show buildStaleMarker's "!" instead, with the accessible
+    // explanation on hover and keyboard focus.
+    const display = valuesForDisplay(row.current, row.suggestion, row.stale);
     const proposedCell = document.createElement("td");
     proposedCell.className = "kerning-pairtable-proposed-col";
-    proposedCell.textContent =
-      row.suggestion > 0 ? `+${row.suggestion.toFixed(1)}` : row.suggestion.toFixed(1);
+    if (display.stale) {
+      proposedCell.appendChild(buildStaleMarker());
+    } else {
+      proposedCell.textContent =
+        display.proposed > 0
+          ? `+${display.proposed.toFixed(1)}`
+          : display.proposed.toFixed(1);
+    }
     proposedCell.style.display = this.autokernFiltersController.model.showProposed
       ? ""
       : "none";
@@ -4672,8 +4759,12 @@ export class KerningViewController extends ViewController {
 
     const deltaCell = document.createElement("td");
     deltaCell.className = "kerning-pairtable-suggestion-col";
-    deltaCell.textContent =
-      row.delta > 0 ? `+${row.delta.toFixed(1)}` : row.delta.toFixed(1);
+    if (display.stale) {
+      deltaCell.appendChild(buildStaleMarker());
+    } else {
+      deltaCell.textContent =
+        display.delta > 0 ? `+${display.delta.toFixed(1)}` : display.delta.toFixed(1);
+    }
     deltaCell.style.display = this.autokernFiltersController.model.showSuggestion
       ? ""
       : "none";
@@ -4845,13 +4936,25 @@ export class KerningViewController extends ViewController {
     });
   }
 
+  // Task 17, spec F23: "disable applying that stale suggestion... Reset to
+  // zero remains a separate manual action." A ticked row stays ticked (so
+  // Reset can still target it -- resetSelectedPairRows below is
+  // deliberately unfiltered), but Apply skips any pair whose own suggestion
+  // is unreliable rather than writing it.
+  isPairStale(left, right) {
+    if (left.startsWith("@") && right.startsWith("@")) {
+      const id = rowId(this.activeSourceIdentifier(), left, right);
+      return !!this._classSummaryStaleByRowId?.get(id);
+    }
+    const entry = this.autokernCache.get(pairKey(left, right));
+    return !!entry?.stale;
+  }
+
   async applySelectedPairRows() {
-    await this.writePairValues(
-      this.getSelectedPairTableRows(),
-      (entry) => entry.value,
-      true,
-      true
+    const applicableRows = this.getSelectedPairTableRows().filter(
+      ({ left, right }) => !this.isPairStale(left, right)
     );
+    await this.writePairValues(applicableRows, (entry) => entry.value, true, true);
   }
 
   // Task 4, spec F20: "Remove Reset to current, Apply all, and the
@@ -6871,6 +6974,22 @@ function truncateGlyphList(members) {
     return members.join(" ");
   }
   return `${members.slice(0, GLYPH_LIST_TRUNCATE_AT).join(" ")}… (${members.length})`;
+}
+
+// Task 17, spec F23: "a row with an unreliable suggestion shows `!` in place
+// of its Proposed number... available by hover and keyboard focus." One
+// shared builder for both buildPairRowElement (Proposed/Delta cells) and
+// buildClassSummaryRowElement (the aggregate row's own Proposed/Delta),
+// so the marker/explanation/tabindex convention is defined exactly once.
+const STALE_EXPLANATION = "Suggestion out of date — re-run required";
+function buildStaleMarker() {
+  const span = document.createElement("span");
+  span.className = "kerning-pairtable-stale-marker";
+  span.textContent = "!";
+  span.title = STALE_EXPLANATION;
+  span.setAttribute("aria-label", STALE_EXPLANATION);
+  span.tabIndex = 0;
+  return span;
 }
 
 // A copy of editor.js's (unexported) newVisualizationLayersSettings, with our
