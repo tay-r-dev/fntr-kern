@@ -334,3 +334,207 @@ scope (active source vs. filtered vs. all). No invented quality/confidence score
   `wouldShadowClassCell`/`overrideDivergence`/`isOverrideCandidate`/`computeFoldGroupStats` before writing
   any new aggregation code (§6) — most of what those tasks call "investigation" is already built and
   documented in `KERNING-VIEW.md`.
+
+---
+
+## 10. Task 15 — Freshness and scoped-rerun contract (F01, F02, F23)
+
+**Date:** 2026-09-09. **Branch:** `feature/kerning-view`. **Commit at time of writing:**
+`4663b22ff55eba6b9a69d7a61c6ce88cd88c8409`. This section is Task 15 of the same plan. It appends to,
+and does not overwrite, §1–§9 above. All commits Tasks 2–14 made since Task 1 was written were read
+(`git log --oneline main..HEAD`); none touch `autokern-worker.js` or `autokern-cache.js`'s stale
+primitives — the code traced below is exactly what §6 already enumerated, now traced line-by-line rather
+than only listed.
+
+### 10.1 The mechanism, exactly as it exists today
+
+- `markGlyphStale(cache, glyphName)` (`autokern-cache.js:225-233`): marks every cache entry with
+  `glyphName` on either side `stale: true`. Pure, returns a new Map, never deletes a row. A junk pair is
+  not exempt (junk and stale are independent flags, same file, comment at 221-224).
+- `pairsForRerun(cache, mode, candidatePairsList)` (`autokern-cache.js:253-287`): mode `"marked"` returns
+  every non-junk entry with `stale: true`, reading **only the cache's own stored entries** — it never
+  looks at `candidatePairsList` in this mode (`autokern-cache.js:254-263`). Mode `"everything"` returns
+  every non-junk cached entry, plus (only if a candidate list is supplied) any brand-new pair from that
+  list not already in the cache (`264-287`).
+- `setPairValue` (`autokern-cache.js:128-144`) is what clears `stale` — a fresh measurement is
+  definitionally not stale (comment at 114-116). A pair is never un-staled any other way.
+- `autokern-worker.js`'s `runJob` (`autokern-worker.js:74-155`) already fully respects `job.mode`: line
+  123 calls `pairsForRerun(cache, mode, candidates)` directly, unmodified, and loops only over whatever
+  that returns. **Mode `"marked"` is not a placeholder — it is live, correct code, already exercised by
+  this task's own reproduction test (§10.3).**
+- `markGlyphStale` **does have a real caller today**: `kerning.js`'s `markGlyphsStaleForClassEdit`
+  (`kerning.js:3630-3635`), invoked from `addGlyphsToClass` (`kerning.js:3604-3618`) whenever a glyph
+  joins/leaves a class. Its own comment (`kerning.js:3620-3629`) states plainly that nothing else in this
+  view calls it — no outline-edit change-listener wires it yet, confirmed by grep, matching
+  `KERNING-VIEW.md` §4's own "the font controller's change listener names the glyph that changed" being
+  the intended trigger, not yet built.
+- **`pairsForRerun` has zero callers in `kerning.js`.** `runAutokern()` (`kerning.js:1101-1217`) hardcodes
+  `const mode = "everything";` at line 1198 and never reads or writes `"marked"` anywhere — grepped the
+  whole file for the literal string `"marked"`, zero matches. There is no UI entry point, button, or
+  method anywhere in `kerning.js` that requests a scoped rerun. `no autokern-view-adapter.js file exists
+  in the repo at all` (confirmed by glob/grep, both empty).
+
+### 10.2 What "successful partial completion" means today — it doesn't exist yet
+
+- Progress: `postMessage({type:"progress", source, done, total})` (`autokern-worker.js:144-146`), every 25
+  pairs and on the last one. `done`/`total` count **pairs**, not glyphs, and there is no `unit` field —
+  the plan's guessed `onProgress({completed, total, unit})` shape does not match; the real shape is
+  `{done, total, source}` with the unit implicit (always pairs).
+- Completion: `postMessage({type:"done", source, cache, calibration})` (`autokern-worker.js:149-154`) sends
+  the **entire** resulting cache (every entry, not just the ones this job ran) — there is no
+  `completedGlyphs`/`remainingGlyphs` breakdown anywhere in the message.
+- Cancellation: `if (cancelled) { postMessage({type:"cancelled", source}); return; }`
+  (`autokern-worker.js:127-130`) discards the in-progress `cache` variable entirely — **every pair already
+  remeasured in that run before the cancel is thrown away**, not persisted. `kerning.js`'s handler for
+  `"cancelled"` (`kerning.js:1265-1266`) does nothing but resolve the promise; `this.autokernCache` is
+  never touched, so a cancelled run correctly leaves prior state exactly as it was (satisfies F02's "must
+  not label unprocessed results fresh" by construction, since nothing is written) — but it also means
+  cancellation has no partial-credit concept at all: a run cancelled at 99% redoes 99% of the work next
+  time.
+- **Missing-raster silent skip, confirmed by this task's own reproduction test (§10.3, second case):** the
+  worker's per-pair loop (`autokern-worker.js:126-147`) does `if (!leftRaster || !rightRaster) continue;`
+  (134-139) with no error, no count, no signal of any kind — a pair whose raster wasn't supplied is simply
+  never measured, and the run still ends by posting `"done"`. If a caller built a job's `rasters`/`envelopes`
+  covering only the glyph that was marked stale (the literal shortcut the plan's own text warns against:
+  "not an inferred shortcut such as restricting both sides to the stale set"), every stale pair whose OTHER
+  side lacks a raster is **silently left `stale: true` forever**, in a run that self-reports success. This
+  is not hypothetical — the second reproduction test below demonstrates it against the real,
+  unmodified worker file.
+- **No `completedGlyphs`/`remainingGlyphs` result shape exists anywhere in the current worker or
+  `kerning.js`.** Building the plan's proposed `runStale(...) -> Promise<{completedGlyphs, remainingGlyphs}>`
+  return value requires new code (deriving which glyph names the recomputed pairs actually cover, and
+  which stale pairs — if any, e.g. from a raster that failed to build — remain stale after the run). This
+  does not require new WORKER code (the worker already reports the full resulting cache, from which
+  completed/remaining can be derived on the main thread by diffing `stale` flags before and after), but it
+  does require new `kerning.js`/adapter code that does not exist today.
+
+### 10.3 Reproduction test — real `autokern-worker.js`, unmodified
+
+`src-js/views-kerning/tests/test-stale-rerun.js` (new file, this task). Drives the actual
+`autokern-worker.js` module through its real `onmessage`/`postMessage` protocol (predefining those two
+globals before a dynamic `import()`, since the file's top-level `onmessage = ...` assumes a Worker
+context and throws under plain Node/mocha otherwise — confirmed by a throwaway `node --input-type=module`
+repro before writing the test). No worker code was modified.
+
+Two cases, three glyphs (`l`, `n`, `o` — reused as autokern's own control glyphs, so one raster fixture
+serves calibration and the pairs under test):
+
+1. **Full partner coverage.** Seed a 3×3 cache (all fresh), `markGlyphStale(cache, "n")` (marks the 5
+   entries touching `n`), run `mode: "marked"` with rasters/envelopes for **all three** glyphs. Result:
+   exactly those 5 entries come back `stale: false` (recomputed); the 4 entries never touching `n`
+   (`l×l`, `l×o`, `o×l`, `o×o`) are untouched (still the seeded value `999`). **Confirms `"marked"` mode
+   is correct when given full partner coverage.**
+2. **Restricted-to-the-marked-glyph coverage** (the shortcut the plan warns against). Same seed, same
+   `markGlyphStale(cache, "n")`, but `rasters`/`envelopes` supplied for `"n"` only. Result: the worker
+   still reports `"done"` (no error), and the 4 pairs needing a partner raster (`l×n`, `n×l`, `n×o`,
+   `o×n`) come back **still `stale: true`** — silently unresolved. **Confirms the missing-raster silent
+   skip in §10.2 against real code, not inference.**
+
+Run (`npx mocha tests/test-stale-rerun.js --extension js --reporter spec` from
+`src-js/views-kerning`, and `npm test` from repo root):
+
+```
+Task 15: stale-glyph scoped rerun, real autokern-worker.js
+  ✔ mode 'marked' recomputes only pairs touching the stale glyph, when rasters cover BOTH sides of every stale pair
+  ✔ mode 'marked' with rasters restricted to ONLY the marked glyph silently leaves its stale pairs unresolved -- confirms the plan's warned-against shortcut is unsafe
+
+2 passing (7ms)
+```
+
+Full-repo `npm test` after adding this file: **2608 passing, 0 failing** (2518 in `fontra-core` + 90 in
+`views-kerning`, up from the 88 recorded in §4 before this task's 2 new tests).
+
+### 10.4 Class membership and aggregate (class-summary row) staleness — confirmed open, not answered
+
+- A glyph joining/leaving a class already marks it stale via the real caller in §10.1 — class-membership
+  change is handled today, for the glyph itself.
+- **Required pair coverage for a correct rerun is "every pair with the stale glyph on either side," not
+  "only pairs against other members of its own class."** `markGlyphStale` marks by literal glyph identity
+  on either side of the flat cache (`autokern-cache.js:225-233`) — the cache has no concept of class
+  membership at all (§4's own header comment: "never by a class"). A stale glyph's rerun scope is exactly
+  `pairsForRerun(cache, "marked")`'s output; no class-aware narrowing or widening exists or is implied by
+  any code read for this task.
+- **Aggregate (class-summary row) staleness is not computed anywhere.** `computeFoldGroupStats`
+  (`kerning.js:2903-2937`) collects every cache entry whose `left`/`right` fall inside the two classes and
+  folds them into a median (`entries.map((entry) => ({ value: entry.value, divergence: ... }))`,
+  `kerning.js:2926-2932`) — it reads `entry.value` but **never reads `entry.stale`**. A class-summary row
+  whose contributors include a stale pair shows a median computed as if every contributor were current,
+  with no warning. This is F23's own open investigation question ("determine when a class-summary
+  suggestion becomes stale because of its contributors") and it is **not decided by any existing code** —
+  whether "any contributor stale" or "all contributors stale" (or some threshold) should trigger the `!`
+  on a class-summary row is a real open decision for whoever builds Task 17's F23 display, not something
+  this investigation found already answered.
+
+### 10.5 Source ownership — confirmed gap, already named by the plan for Task 17
+
+`runAutokernWorker`'s `"done"` handler (`kerning.js:1249-1264`) applies `data.cache` to
+`this.autokernCache` unconditionally — it never checks `data.source === this.autokernSource` first. If the
+source selector (§5.4) is changed while a run for the previous source is still in flight, that run's
+result silently overwrites the cache now displayed for the newly selected source. This is not a new
+finding invented here — it is exactly the item the plan's own Task 17 checklist already names ("reject
+results belonging to another active source," plan line 585) — recorded here only because "which source
+owns staleness" was this task's explicit question. Not fixed in this task, per Task 15's own scope.
+
+### 10.6 The UI-facing contract, adjusted to what real code supports
+
+```text
+getStaleGlyphs(sourceId) -> string[]           // NEW code, thin: derive from
+                                                // pairsForRerun(cache, "marked") by
+                                                // collecting left/right names into a
+                                                // Set, ordered however the caller wants
+                                                // (no ordering primitive exists today).
+
+runStale({ sourceId, glyphNames, signal, onProgress })
+  -> Promise<{ completedGlyphs: string[], remainingGlyphs: string[] }>
+                                                // NEW code: build a job exactly like
+                                                // runAutokern() does (kerning.js:1101-1217)
+                                                // but with mode: "marked" instead of the
+                                                // hardcoded "everything", and rasters/
+                                                // envelopes covering every glyph that
+                                                // appears on EITHER side of ANY stale pair
+                                                // (not just `glyphNames` itself -- §10.2's
+                                                // silent-skip finding is exactly what
+                                                // happens if this is gotten wrong).
+                                                // completedGlyphs/remainingGlyphs must be
+                                                // derived on the main thread by diffing
+                                                // `stale` flags before/after -- the worker
+                                                // itself reports no such breakdown (§10.2).
+                                                // `signal` (cancellation) has no existing
+                                                // hookup point beyond the worker's own
+                                                // {type:"cancel"} postMessage
+                                                // (kerning.js:1293), which already exists
+                                                // and already discards in-flight work
+                                                // cleanly (§10.2) -- reusable as-is.
+
+onProgress({ done, total, source })            // ADJUSTED shape, not the plan's guess:
+                                                // real worker messages are
+                                                // {type:"progress", source, done, total} --
+                                                // no `unit` field, `done` not `completed`,
+                                                // pair counts not glyph counts
+                                                // (autokern-worker.js:144-146).
+```
+
+### 10.7 Status: blocked, not ready for Task 17 to bind directly
+
+**Ready:** the cache-layer primitives (`markGlyphStale`, `pairsForRerun` mode `"marked"`) and the worker's
+mode dispatch are correct, tested (both by the pre-existing `test-autokern-cache.js` suite and by this
+task's new `test-stale-rerun.js`), and need no changes.
+
+**Blocked on new code Task 17 must write (not a worker/cache change — a `kerning.js`/adapter change),
+listed so Task 17 does not have to re-derive it:**
+
+1. No caller anywhere requests mode `"marked"` — Task 17 is the first. It must build the job's
+   `rasters`/`envelopes` from the full set of glyphs touching any currently-stale pair, not from the
+   glyph(s) the designer marked/edited — §10.2's reproduction proves the silent-skip failure mode if this
+   is gotten wrong.
+2. `getStaleGlyphs`/`runStale`'s `completedGlyphs`/`remainingGlyphs` return shape must be computed on the
+   main thread (diff `stale` flags before/after) — the worker does not provide it.
+3. The source-ownership check named in §10.5 (already on the plan's own Task 17 checklist) must guard the
+   `"done"` handler before any stale-rerun result is applied, or a source switch mid-run corrupts the
+   cache silently.
+4. Aggregate/class-summary staleness (§10.4, F23's open question) has no existing answer and must be
+   designed, not assumed, before a class-summary row's `!` can be shown correctly.
+
+This task did **not** write any of items 1–4 — per its own scope (investigation + contract only; building
+the rerun action is Task 17's job, and any of 1–4 would be exactly that). The two commits from this task
+are the reproduction test and this ledger section.
