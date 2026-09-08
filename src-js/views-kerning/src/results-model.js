@@ -12,6 +12,7 @@ import {
   getCodePointFromGlyphName,
   getGlyphInfoFromGlyphName,
 } from "@fontra/core/glyph-data.js";
+import { pairsForRerun } from "@fontra/core/autokern-cache.js";
 
 // A row's identity must include its source (a pair can have different
 // stored values per source) and the exact left/right names as addressed
@@ -258,6 +259,75 @@ export function isStaleAsyncResult(
     revisionAtStart !== currentRevision ||
     sourceIdentifierAtStart !== currentSourceIdentifier
   );
+}
+
+// Task 17 (plan 2026-09-08-kerning-view-ux.md; ledger §10.6's proposed
+// `getStaleGlyphs` contract, gap 2: "the underlying engine doesn't provide a
+// ready-made completed/remaining list -- this must be computed from what the
+// worker actually reports"). Every glyph name touching a non-junk stale pair
+// on EITHER side, via the real, already-tested `pairsForRerun(cache,
+// "marked")` primitive -- not a second, hand-rolled scan of the cache. This
+// is deliberately the SAME set used both to populate the Stale glyphs panel
+// and to decide which glyphs' rasters a scoped rerun job must build (ledger
+// §10.2/§10.7 gap 1: restricting raster coverage to only the glyph the
+// designer edited, rather than every glyph any stale pair names, silently
+// leaves the OTHER side's stale pairs stuck stale forever even though the
+// run reports success).
+export function getStaleGlyphNames(cache) {
+  const names = new Set();
+  for (const { left, right } of pairsForRerun(cache, "marked")) {
+    names.add(left);
+    names.add(right);
+  }
+  return [...names].sort();
+}
+
+// Task 17, ledger §10.6/§10.7 gap 2: "completedGlyphs/remainingGlyphs must be
+// derived on the main thread by diffing `stale` flags before/after -- the
+// worker itself reports no such breakdown." Works uniformly whether the run
+// finished, was cancelled, errored, or was rejected for belonging to a
+// stale/mismatched source (ledger §10.5/gap 3): in every one of those cases
+// `afterCache` is either the freshly-applied result or the untouched prior
+// cache, and a target glyph that still has any stale pair on it is simply
+// still in `getStaleGlyphNames(afterCache)` -- no separate "did it succeed"
+// branch is needed here.
+export function diffStaleRerun(targetGlyphNames, afterCache) {
+  const stillStale = new Set(getStaleGlyphNames(afterCache));
+  return {
+    completedGlyphs: targetGlyphNames.filter((name) => !stillStale.has(name)),
+    remainingGlyphs: targetGlyphNames.filter((name) => stillStale.has(name)),
+  };
+}
+
+// Task 17 (ledger §11.4/§11.5 gap 1): `medianDroppingOutliers`
+// (autokern-cache.js) computes its own inlier filter internally but does not
+// return the count -- mirrors that exact filter (`|divergence| <
+// groupThreshold`) and its exact fallback ("if that leaves zero inliers, the
+// median falls back to the UNFILTERED set", so every sample counts as
+// included in that case, not excluded) so this always agrees with what the
+// median actually used. Kept here as a second, pure computation (the ledger's
+// own named alternative to changing medianDroppingOutliers's return shape,
+// which would touch every existing caller/test of that fontra-core function)
+// rather than duplicating the filter inline at each render call site.
+export function countMedianContributors(samples, groupThreshold) {
+  const inlierCount = samples.filter(
+    (sample) => Math.abs(sample.divergence) < groupThreshold
+  ).length;
+  const includedCount = inlierCount ? inlierCount : samples.length;
+  return { includedCount, excludedCount: samples.length - includedCount };
+}
+
+// Task 17 (F23's own open question, ledger §10.4/§11.4: "a real open decision
+// for whoever builds Task 17's F23 display, not something this investigation
+// found already answered"). JUDGMENT CALL, not settled by any existing code:
+// a class-summary row is treated as stale when ANY contributing pair is
+// stale, not only when every contributor is -- the safer default per F23's
+// own acceptance test ("the table does not display an obsolete suggestion as
+// though it were current and reliable"), matching the plan's own suggested
+// default. Flag this to the designer for confirmation; a future "only ALL
+// contributors stale" reading would only need this one predicate changed.
+export function aggregateStale(entries) {
+  return entries.some((entry) => entry.stale);
 }
 
 export function passesNumericFilters(row, filters) {

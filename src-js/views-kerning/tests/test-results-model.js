@@ -1,6 +1,16 @@
 import { expect } from "chai";
 import {
+  createCache,
+  markGlyphStale,
+  markPairJunk,
+  setPairValue,
+} from "@fontra/core/autokern-cache.js";
+import {
+  aggregateStale,
+  countMedianContributors,
+  diffStaleRerun,
   explicitPairExists,
+  getStaleGlyphNames,
   isStaleAsyncResult,
   passesNumericFilters,
   rowId,
@@ -120,5 +130,119 @@ describe("results-model", () => {
 
   it("isStaleAsyncResult: the same revision but the active source changed mid-flight is stale", () => {
     expect(isStaleAsyncResult(1, 1, "a", "b")).to.equal(true);
+  });
+
+  // Task 17, ledger §10.6/§10.7 gap 2.
+  describe("getStaleGlyphNames / diffStaleRerun", () => {
+    function threeGlyphCache() {
+      let cache = createCache();
+      cache = setPairValue(cache, "l", "l", 999);
+      cache = setPairValue(cache, "l", "n", 999);
+      cache = setPairValue(cache, "n", "l", 999);
+      cache = setPairValue(cache, "n", "o", 999);
+      cache = setPairValue(cache, "o", "n", 999);
+      return cache;
+    }
+
+    it("collects every glyph on either side of a non-junk stale pair, not just the marked glyph", () => {
+      const cache = markGlyphStale(threeGlyphCache(), "n");
+      // markGlyphStale marks every entry touching "n": l x n, n x l, n x o
+      // (o x n has no entry). The affected glyph set is n's own partners too
+      // -- "l" and "o" -- not only "n" itself, matching the raster-coverage
+      // requirement (§10.2's silent-skip finding).
+      expect(getStaleGlyphNames(cache)).to.deep.equal(["l", "n", "o"]);
+    });
+
+    it("excludes a stale pair that is also marked junk (pairsForRerun's own rule)", () => {
+      let cache = markGlyphStale(threeGlyphCache(), "n");
+      // Junk every entry touching n except one, so only that one remains a
+      // real rerun target.
+      cache = markPairJunk(cache, "l", "n", true);
+      cache = markPairJunk(cache, "n", "l", true);
+      // Only "n" x "o" is left stale and non-junk.
+      expect(getStaleGlyphNames(cache)).to.deep.equal(["n", "o"]);
+    });
+
+    it("empty when nothing is stale -- the panel's own empty-state condition", () => {
+      expect(getStaleGlyphNames(threeGlyphCache())).to.deep.equal([]);
+    });
+
+    it("diffStaleRerun: a fully-recomputed target set has no remaining stale glyphs", () => {
+      const before = markGlyphStale(threeGlyphCache(), "n");
+      const target = getStaleGlyphNames(before); // ["l", "n", "o"]
+      let after = setPairValue(before, "l", "n", 1);
+      after = setPairValue(after, "n", "l", 1);
+      after = setPairValue(after, "n", "o", 1);
+      after = setPairValue(after, "o", "n", 1);
+      expect(diffStaleRerun(target, after)).to.deep.equal({
+        completedGlyphs: ["l", "n", "o"],
+        remainingGlyphs: [],
+      });
+    });
+
+    it("diffStaleRerun: a partner glyph with no raster is left stale -- reported as remaining, not silently dropped", () => {
+      const before = markGlyphStale(threeGlyphCache(), "n");
+      const target = getStaleGlyphNames(before);
+      // Only "n" x "l" got remeasured (e.g. only n's own raster was
+      // supplied); "l" x "n" and "n" x "o" are still stale.
+      const after = setPairValue(before, "n", "l", 1);
+      expect(diffStaleRerun(target, after)).to.deep.equal({
+        completedGlyphs: [],
+        remainingGlyphs: ["l", "n", "o"],
+      });
+    });
+
+    it("diffStaleRerun: a cancelled/rejected run whose cache is untouched reports every target still remaining", () => {
+      const before = markGlyphStale(threeGlyphCache(), "n");
+      const target = getStaleGlyphNames(before);
+      // Cache never changed (cancel, error, or a source-mismatch rejection
+      // per ledger §10.5/gap 3) -- F02's own requirement: "a failed or
+      // cancelled run must not label unprocessed results fresh."
+      expect(diffStaleRerun(target, before)).to.deep.equal({
+        completedGlyphs: [],
+        remainingGlyphs: ["l", "n", "o"],
+      });
+    });
+  });
+
+  // Task 17, ledger §11.4/§11.5 gap 1.
+  describe("countMedianContributors", () => {
+    it("counts inliers only, when at least one inlier exists", () => {
+      const samples = [
+        { divergence: 2 }, // inlier
+        { divergence: -70 }, // outlier
+        { divergence: 4 }, // inlier
+      ];
+      expect(countMedianContributors(samples, 10)).to.deep.equal({
+        includedCount: 2,
+        excludedCount: 1,
+      });
+    });
+
+    it("when every sample is an outlier, mirrors medianDroppingOutliers's own fallback -- everyone counts as included", () => {
+      const samples = [{ divergence: 20 }, { divergence: -30 }];
+      expect(countMedianContributors(samples, 10)).to.deep.equal({
+        includedCount: 2,
+        excludedCount: 0,
+      });
+    });
+  });
+
+  // Task 17 (F23's own open question, judgment call): "any contributor
+  // stale" marks the aggregate stale.
+  describe("aggregateStale", () => {
+    it("stale when at least one contributing entry is stale", () => {
+      expect(
+        aggregateStale([{ stale: false }, { stale: true }, { stale: false }])
+      ).to.equal(true);
+    });
+
+    it("not stale when no contributor is stale", () => {
+      expect(aggregateStale([{ stale: false }, { stale: false }])).to.equal(false);
+    });
+
+    it("not stale for an empty contributor set", () => {
+      expect(aggregateStale([])).to.equal(false);
+    });
   });
 });

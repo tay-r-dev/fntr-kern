@@ -1353,7 +1353,11 @@ export class KerningViewController extends ViewController {
       // autokernParamsController's threshold/maxThreshold below. A
       // pre-existing "sign" value synced in from localStorage is simply
       // never read by anything anymore.
-      state: "pending",
+      // Task 17, spec F01: the current/applied/stale "state" filter is
+      // removed entirely -- the Stale glyphs panel (initStaleSection) is
+      // its replacement, and "applied" had no lasting meaning beyond one
+      // session anyway. A pre-existing persisted `state` value is simply
+      // never read by anything anymore, same as the "sign" key above.
       // Task 11, spec F17: renamed from `showJunk` ("Show junk" -> "Show
       // hidden") -- this is the per-browser display-filter setting, not
       // the font/cache's own stored `junk` field (that stays as-is, see
@@ -1535,10 +1539,10 @@ export class KerningViewController extends ViewController {
       );
     });
 
-    const selectBindings = [
-      ["#kerning-pairtable-filter-side", "side"],
-      ["#kerning-pairtable-filter-state", "state"],
-    ];
+    // Task 17, spec F01: "Remove the current/applied/stale filter from the
+    // results controls" -- the state dropdown itself is gone from
+    // kerning.html; only the "side" binding remains here.
+    const selectBindings = [["#kerning-pairtable-filter-side", "side"]];
     for (const [selector, key] of selectBindings) {
       const element = document.querySelector(selector);
       element.value = filters[key];
@@ -2146,16 +2150,12 @@ export class KerningViewController extends ViewController {
       return false;
     }
 
-    const applied = this.autokernAppliedPairs.has(pairKey(row.left, row.right));
-    if (filters.state === "applied" && !applied) {
-      return false;
-    }
-    if (filters.state === "stale" && !row.stale) {
-      return false;
-    }
-    if (filters.state === "pending" && (applied || row.stale)) {
-      return false;
-    }
+    // Task 17, spec F01: the current/applied/stale filter is removed --
+    // "applied" and "stale" no longer hide a row from the table at all.
+    // A stale row instead gets the F23 warning presentation
+    // (buildPairRowElement/buildClassSummaryRowElement), and this.
+    // autokernAppliedPairs is still recorded (writePairValues/
+    // applyFoldedParentRow) but is no longer read by any filter.
 
     // Task 9, spec F09: Unicode types (this.pairRowVisible's own callers --
     // see this method's call sites -- only ever pass literal pair rows,

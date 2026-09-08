@@ -80,11 +80,11 @@
                    removed -- signs stay visible on Current/Proposed/Delta,
                    magnitude filtering is the Minimum/Maximum |Δ| pair
                    below. -->
-              <select id="kerning-pairtable-filter-state" title="State">
-                <option value="pending">Pending</option>
-                <option value="applied">Applied</option>
-                <option value="stale">Stale</option>
-              </select>
+              <!-- Task 17, spec F01: the current/applied/stale filter is
+                   removed entirely. Its replacement is the Stale glyphs
+                   section (#kerning-stale-section) below, and a stale row's
+                   own warning presentation (F23) always stays visible
+                   regardless of any other filter. -->
               <!-- Task 11, spec F17: renamed from "Show junk." Hidden rows
                    reappear here with the distinguishable hidden styling
                    (kerning.css) plus their own restore (eye) action. -->
