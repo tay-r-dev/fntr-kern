@@ -620,7 +620,13 @@ tr:focus-within .kerning-pairtable-hide-action {
    rowRelationship groups it there too, not as a fourth category. */
 tr[data-kind="class-rule"],
 tr[data-kind="member-pair"] {
-  border-left: 3px solid var(--metrics-handle-color, #888);
+  /* Plain #888, not var(--metrics-handle-color): that custom property is
+     defined in editor.css, which this view never links (see backlog item 6's
+     own note on why -- kerning.css carries copies of the handful of rules it
+     actually needs instead). Referencing an unset variable here would still
+     "work" via its fallback, silently, which is worse than just stating the
+     color directly. */
+  border-left: 3px solid #888;
 }
 
 tr[data-kind="unique-pair"] {
