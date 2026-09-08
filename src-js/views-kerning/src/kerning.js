@@ -156,7 +156,11 @@ import {
   VisualizationLayers,
 } from "@fontra/views-editor/visualization-layers.js";
 import { SelectTool } from "./edit-tools-select.js";
-import { appendGlyphToken, replaceGlyphToken } from "./input-tokens.js";
+import {
+  appendGlyphToken,
+  pairsFromInputs,
+  replaceGlyphToken,
+} from "./input-tokens.js";
 import {
   explicitPairExists,
   passesNumericFilters,
@@ -1296,6 +1300,7 @@ export class KerningViewController extends ViewController {
     glyphInput.value = filters.glyphName;
     glyphInput.addEventListener("input", () => {
       this.autokernFiltersController.setItem("glyphName", glyphInput.value.trim());
+      this.updatePairPreview();
     });
     this._glyphInputElement = glyphInput;
 
@@ -1308,6 +1313,14 @@ export class KerningViewController extends ViewController {
     // that is still correct. Its replacement is deliberate-only: Ctrl+Click
     // and Shift+Ctrl+Click on a preview glyph, wired in edit-tools-select.js
     // to this.handleGlyphInputModifierClick below.
+
+    // Task 7, spec F06/F22: replaces the old exception input. Holds a
+    // comma-separated list of single glyph-tokens -- the "other side" of
+    // the pair, relative to whatever is in Glyph (ledger §8.1).
+    const pairInput = document.querySelector("#kerning-pairtable-pair");
+    const pairInputError = document.querySelector("#kerning-pairtable-pair-error");
+    pairInput.addEventListener("input", () => this.updatePairPreview());
+    this._pairInputElements = { glyphInput, pairInput, pairInputError };
 
     const excludedInput = document.querySelector("#kerning-pairtable-excluded");
     // WORKSTREAM 12, spec §4.1/§4.2: the excluded-glyph list is the
@@ -1495,6 +1508,9 @@ export class KerningViewController extends ViewController {
       this.applyResultSelectionToDom();
       this.syncSelectAllCheckboxes();
       this.refreshResetArmState();
+      // Task 7, spec F24: "Preview falls back according to the input/
+      // selection rules in F06 when no highlighted rows remain."
+      this.updatePairPreview();
     });
 
     // WORKSTREAM 15, spec §5.3: "The derive action sits beside the fold
@@ -2288,6 +2304,9 @@ export class KerningViewController extends ViewController {
     // must disarm Reset (it would otherwise silently commit against a
     // smaller set than the one shown when it was armed).
     this.refreshResetArmState();
+    // Task 7, spec F25: "Update preview and action counts accordingly"
+    // when a highlighted row leaves the displayed set.
+    this.updatePairPreview();
   }
 
   // Median (not mean, spec §5.2: "the median is the reducer... a mean can
@@ -3780,19 +3799,21 @@ export class KerningViewController extends ViewController {
     // Task 3 (spec F04 table): ordinary click highlights this row alone;
     // Shift-click adds/removes it from the highlighted set, never a range.
     // Highlight is the preview-selection layer -- separate from the tick
-    // (action-target) layer below. Scene preview still follows an ordinary
-    // (non-Shift) click only, matching the pre-existing single-pair preview
-    // behavior; wiring Shift-highlighted rows into multi-pair preview is
-    // plan Task 7, not this one.
+    // (action-target) layer below. Task 7: updatePairPreview reads the
+    // highlighted set itself (every currently highlighted row's pair,
+    // together -- spec F04: "Highlighted rows populate pair-mode preview
+    // together"), so both an ordinary click and a Shift-click feed pair
+    // preview now; only an ordinary click also flips the chip to `pair`
+    // (WORKSTREAM 16, spec §6), matching the pre-existing single-pair
+    // click behavior instead of forcing every Shift-click to jump the
+    // designer out of whatever mode they're in.
     tr.addEventListener("click", (event) => {
       if (event.target.closest("input, button")) {
         return;
       }
       this.resultSelection = selectRow(this.resultSelection, id, event.shiftKey);
       this.applyResultSelectionToDom();
-      if (!event.shiftKey) {
-        this.selectPairForScene(row.left, row.right);
-      }
+      this.updatePairPreview({ switchToPairMode: !event.shiftKey });
     });
 
     const selectCell = document.createElement("td");
@@ -4832,22 +4853,146 @@ export class KerningViewController extends ViewController {
   // Unicode mapping) still names itself directly rather than being silently
   // dropped or misread as literal text.
   selectPairForScene(left, right) {
-    this._selectedPairText = `/${left} /${right}`;
-    this._selectedPairLeft = left;
-    this._selectedPairRight = right;
+    this.setPreviewPairs([[left, right]]);
+    this.setChipMode("pair");
+  }
+
+  // Task 7, spec F06/F04: the single arbitration point between "pairs
+  // supplied by highlighted table rows" and "pairs supplied by the Glyph/
+  // Pair inputs" -- "highlighted rows take precedence while any remain;
+  // clearing them restores the input-driven preview, if valid pairs are
+  // specified" (F06 recommended detail). Reads DOM state (highlighted rows,
+  // the two input fields) and writes DOM state (the error message, the
+  // Pair chip's disabled attribute, the scene text via setPreviewPairs) --
+  // this is the one non-pure seam that calls the pure input-tokens.js
+  // pipeline with real font data.
+  updatePairPreview({ switchToPairMode = false } = {}) {
+    const elements = this._pairInputElements;
+    if (!elements) {
+      // initPairTableSection hasn't wired the inputs yet -- nothing to do.
+      return;
+    }
+    const selectedPairs = this.expandHighlightedRowsToPairs();
+    let previewPairs = selectedPairs;
+    let matchResult = null;
+    if (!previewPairs.length) {
+      matchResult = pairsFromInputs(
+        elements.glyphInput.value,
+        elements.pairInput.value,
+        this.pairInputResolver()
+      );
+      if (matchResult.explicit) {
+        previewPairs = matchResult.pairs;
+      }
+    }
+    if (elements.pairInputError) {
+      elements.pairInputError.textContent = matchResult?.error || "";
+    }
+    if (previewPairs.length) {
+      this.setPreviewPairs(previewPairs);
+      if (switchToPairMode) {
+        this.setChipMode("pair");
+      }
+    } else {
+      this._selectedPairText = null;
+      this._selectedPairLeft = null;
+      this._selectedPairRight = null;
+      const pairButton = this._chipButtons?.pair;
+      if (pairButton) {
+        pairButton.disabled = true;
+      }
+      // Spec F06/Task 7: "If the active Pair mode loses every pair, restore
+      // Phrase mode and its phrase."
+      if (this._chipMode === "pair") {
+        this.setChipMode("phrase");
+      }
+    }
+  }
+
+  // F04's own open decision, resolved by the ledger (§8.1): a highlighted
+  // row's pair is read straight off the DOM element buildPairRowElement
+  // already stamped with `dataset.left`/`dataset.right` (the literal
+  // addresses used for that row's own ID) -- every row type that currently
+  // participates in resultSelection.highlighted (unique-unique, unique-
+  // class, class-unique, and a class-class group's expanded member rows)
+  // already carries a concrete pair this way. A class-summary PARENT row
+  // (buildClassClassRowElement) has no resultSelection wiring at all yet --
+  // it isn't selectable today, so it contributes nothing here; giving it
+  // its own cross-product expansion is bucket-removal's job (plan Task 8),
+  // not this one's, per this dispatch's explicit boundary.
+  expandHighlightedRowsToPairs() {
+    const pairs = [];
+    for (const tr of document.querySelectorAll(
+      ".kerning-pairtable-table tr[data-row-id]"
+    )) {
+      if (
+        this.resultSelection.highlighted.has(tr.dataset.rowId) &&
+        tr.dataset.left &&
+        tr.dataset.right
+      ) {
+        pairs.push([tr.dataset.left, tr.dataset.right]);
+      }
+    }
+    return pairs;
+  }
+
+  // Duck-typed resolver input-tokens.js's pure resolveTokenToGlyphNames/
+  // pairsFromInputs consume (kerning-ux-integration.md §8.1: a `@ClassName`
+  // token's side is "left" for the Glyph input, "right" for the Pair
+  // input -- kernData.groupsSide1/groupsSide2 are exactly that pair of
+  // maps, already loaded onto this.kerningController by initPairTableSection).
+  pairInputResolver() {
+    return {
+      characterMap: this.fontController.characterMap,
+      glyphMap: this.fontController.glyphMap,
+      classMembers: (className, side) => {
+        const kernData = this.kerningController?.kernData;
+        if (!kernData) {
+          return undefined;
+        }
+        return side === "left"
+          ? kernData.groupsSide1?.[className]
+          : kernData.groupsSide2?.[className];
+      },
+    };
+  }
+
+  // Task 7's `setPreviewPairs(pairs)` interface (plan text): each pair is
+  // `[leftGlyphName, rightGlyphName]`. Spec: "never concatenate them in a
+  // way that introduces unintended cross-pair kerning" -- one pair per
+  // line (characterLinesFromString/character-lines.js already treats each
+  // "\n"-separated line as its own independent run, the same mechanism the
+  // phrase field's multi-line text already relies on), not one long run of
+  // every glyph back to back. this._selectedPairLeft/Right keep pointing at
+  // the FIRST pair only: the on-canvas suggestion overlay
+  // (buildAutokernSuggestionVisualizationLayerDefinition /
+  // _applySuggestionPreviewRepositioning, both outside this dispatch's file
+  // map) reads exactly those two fields and only ever draws its band/HUD
+  // for positionedLines[0] -- extending that overlay to every previewed
+  // pair is a leftover for whichever task next touches that visualization
+  // layer, not silently done here.
+  setPreviewPairs(pairs) {
+    if (!pairs.length) {
+      return;
+    }
+    this._selectedPairText = pairs.map(([left, right]) => `/${left} /${right}`).join("\n");
+    this._selectedPairLeft = pairs[0][0];
+    this._selectedPairRight = pairs[0][1];
     const pairButton = this._chipButtons?.pair;
     if (pairButton) {
       pairButton.disabled = false;
     }
-    this.setChipMode("pair");
+    if (this._chipMode === "pair") {
+      this.sceneSettingsController.setItem("text", this._selectedPairText);
+    }
   }
 
   // Task 6, spec F07: called by edit-tools-select.js's SelectTool on a
   // Ctrl+Click (`additive` false, replaces the Glyph input) or a
   // Shift+Ctrl+Click (`additive` true, appends -- appendGlyphToken's own
   // comma-separated, duplicate-ignoring behavior). Only ever touches the
-  // Glyph input; there is no Pair input yet (plan Task 7) and pointer
-  // shortcuts have no defined role there regardless.
+  // Glyph input; the Pair input is never written by a pointer click (spec
+  // gives pointer shortcuts no defined role there).
   handleGlyphInputModifierClick(glyphName, additive) {
     const glyphInput = this._glyphInputElement;
     if (!glyphInput) {
@@ -4857,6 +5002,7 @@ export class KerningViewController extends ViewController {
       ? appendGlyphToken(glyphInput.value, glyphName)
       : replaceGlyphToken(glyphName);
     this.autokernFiltersController.setItem("glyphName", glyphInput.value.trim());
+    this.updatePairPreview();
   }
 
   // Spec §10 ("No on-canvas display of a suggestion"), closing it: draws the

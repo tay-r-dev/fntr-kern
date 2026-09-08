@@ -43,7 +43,25 @@
         <div id="kerning-pairtable-section">
           <div id="kerning-pairtable-controls">
             <label for="kerning-pairtable-glyph">Glyph</label>
-            <input type="text" id="kerning-pairtable-glyph" placeholder="glyph name" />
+            <input
+              type="text"
+              id="kerning-pairtable-glyph"
+              placeholder="A, /Adieresis, @ClassName, %member%!"
+            />
+
+            <!-- Task 6/7, spec F06/F22: replaces the old exception input.
+                 Holds a comma-separated list of single glyph-tokens -- the
+                 "other side" of the pair, relative to whatever is in Glyph
+                 (docs/superpowers/kerning-ux-integration.md §8.1: neither
+                 input ever holds a pair-token; the preview pairs are the
+                 cross product of the two token lists). -->
+            <label for="kerning-pairtable-pair">Pair</label>
+            <input
+              type="text"
+              id="kerning-pairtable-pair"
+              placeholder="V, /W, @ClassName, %member%!"
+            />
+            <span id="kerning-pairtable-pair-error" class="kerning-pairtable-input-error"></span>
 
             <label for="kerning-pairtable-excluded">Excluded glyphs</label>
             <input

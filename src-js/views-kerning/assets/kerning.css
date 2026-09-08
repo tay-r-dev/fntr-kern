@@ -736,3 +736,11 @@ kerning-handle.positive {
 kerning-handle.negative {
   --kern-bg-color: var(--negative-metrics-handle-color);
 }
+
+/* Task 7, spec F22 recommended detail: inline error for an unresolvable
+   Glyph/Pair input token, instead of silently producing a misleading
+   match. */
+.kerning-pairtable-input-error {
+  color: var(--negative-metrics-handle-color, #c00);
+  font-size: 0.9em;
+}
