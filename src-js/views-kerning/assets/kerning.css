@@ -548,22 +548,27 @@
   font-size: 0.9em;
 }
 
-/* §1.1 "No override in v1": a suggestion whose apply would silently shadow
-   an existing class cell is still shown, but its own apply control is
-   disabled and annotated -- no separate override-transparency UI is built
-   here (tracked in KERNING-VIEW-BACKLOG.md, backlog item 8). */
-.kerning-pairtable-shadow-note {
-  font-style: italic;
-  opacity: 0.8;
+/* Task 10, spec F12: the pair-exception lock/Remove-exception control in the
+   Exception column (buildPairRowElement). Replaces the old
+   .kerning-pairtable-shadow-note/-override-note text notes -- see that
+   method's own comment for why ground truth moved from the cache's
+   `override` flag to explicitPairExists. */
+.kerning-pairtable-exception-indicator {
+  width: 1.1em;
+  height: 1.1em;
+  display: inline-flex;
 }
 
-/* Backlog item 8 part 5: once a shadowing write has been confirmed as a
-   deliberate override (the cache entry's `override` flag), the same address
-   text reads as a neutral state, not the pre-confirmation warning. Shares the
-   shadow-note layout; a distinct class so the two can diverge later. */
-.kerning-pairtable-override-note {
-  font-style: italic;
-  opacity: 0.55;
+/* F12: "An inherited pair's lock is muted until hover or focus." Revealed by
+   the row's own hover/focus, not the button's, so keyboard users tabbing
+   into the row's checkbox also see it -- not just the lock itself. */
+.kerning-pairtable-exception-create {
+  opacity: 0.35;
+}
+
+tr:hover .kerning-pairtable-exception-create,
+tr:focus-within .kerning-pairtable-exception-create {
+  opacity: 1;
 }
 
 /* Task 5, spec F13: the Columns menu sits inline with the other filter

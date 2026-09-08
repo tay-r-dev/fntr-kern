@@ -4191,26 +4191,74 @@ export class KerningViewController extends ViewController {
     rightCell.textContent = row.right;
     tr.appendChild(rightCell);
 
-    // F32's override-action column. Task 10 builds the real lock/Remove-
-    // exception control here; today's existing shadow/override note (rule
-    // provenance -- which class cell this pair does or would take
-    // precedence over) is the closest built equivalent, so it moves here
-    // rather than sharing the Hide column.
+    // F32's override-action column. Task 10, spec F12/F29/F19: the real
+    // lock/Remove-exception control, plus the Potential tab's own
+    // accept-candidate action in the same position. Ground truth is
+    // row.explicitPairExists (Task 2's literal-address read), never the
+    // cache's historical `row.override` badge (F12: "Do not infer exception
+    // state solely from ... a historical cache badge") -- once any write
+    // (this control OR a confirmed Apply-selected override) creates a
+    // literal rule, explicitPairExists is true and this cell shows the same
+    // Remove-exception control regardless of which path wrote it.
     const exceptionCell = document.createElement("td");
-    if (this.wouldShadowClassCell(row.left, row.right)) {
-      const note = document.createElement("span");
-      const address = this.describeShadowedClassCell(row.left, row.right);
-      if (row.override) {
-        // Backlog item 8 part 5: a deliberate, confirmed override -- the same
-        // address text, but a neutral state label, not the pre-confirmation
-        // warning.
-        note.className = "kerning-pairtable-override-note";
-        note.textContent = `override: ${address}`;
+    const tab = this.activeResultsTab || "default";
+    const hasApplicableClass = this.isLeftClassed(row.left) || this.isRightClassed(row.right);
+
+    if (tab === "potential" && row.isCandidate) {
+      // F19: "An apply-exception action must identify the exact pair and
+      // proposed value it will save" -- row.suggestion (the candidate's own
+      // proposed value), never row.current.
+      const acceptButton = document.createElement("button");
+      acceptButton.type = "button";
+      acceptButton.className = "kerning-pairtable-accept-exception";
+      acceptButton.textContent = "Apply exception";
+      acceptButton.title = `Save ${row.left} × ${row.right} = ${row.suggestion} as a pair exception`;
+      acceptButton.addEventListener("click", () =>
+        this.createPairException(row.left, row.right, row.suggestion)
+      );
+      exceptionCell.appendChild(acceptButton);
+    } else if (hasApplicableClass) {
+      // F12: the lock only ever appears "for an individual pair with
+      // applicable class kerning" -- a fully unique pair (neither side
+      // classed) has no class rule to except from, so this cell stays empty
+      // for it, same as before.
+      if (row.explicitPairExists) {
+        // F12: "A saved exception's indicator remains visible" (not muted,
+        // unlike the create-lock below).
+        const removeButton = document.createElement("icon-button");
+        removeButton.className =
+          "kerning-pairtable-exception-indicator kerning-pairtable-exception-saved";
+        removeButton.src = "/tabler-icons/lock.svg";
+        removeButton.setAttribute(
+          "aria-label",
+          `Remove pair exception for ${row.left} × ${row.right}`
+        );
+        removeButton.setAttribute(
+          "data-tooltip",
+          `Pair exception. Remove exception to restore the inherited value ` +
+            `(${this.inheritedFallbackValue(row.left, row.right)}).`
+        );
+        removeButton.onclick = () => this.removePairException(row.left, row.right);
+        exceptionCell.appendChild(removeButton);
       } else {
-        note.className = "kerning-pairtable-shadow-note";
-        note.textContent = `shadows ${address}`;
+        // F12: "An inherited pair's lock is muted until hover or focus" --
+        // kerning.css's own .kerning-pairtable-exception-create rule holds
+        // the muted/reveal styling; this only assigns the class.
+        const lockButton = document.createElement("icon-button");
+        lockButton.className =
+          "kerning-pairtable-exception-indicator kerning-pairtable-exception-create";
+        lockButton.src = "/tabler-icons/lock-open-2.svg";
+        lockButton.setAttribute(
+          "aria-label",
+          `Create a pair exception for ${row.left} × ${row.right}`
+        );
+        lockButton.setAttribute(
+          "data-tooltip",
+          `Inherited value: ${row.current} (Class value). Create exception to save it as a pair exception.`
+        );
+        lockButton.onclick = () => this.createPairException(row.left, row.right, row.current);
+        exceptionCell.appendChild(lockButton);
       }
-      exceptionCell.appendChild(note);
     }
     tr.appendChild(exceptionCell);
 
@@ -4518,6 +4566,99 @@ export class KerningViewController extends ViewController {
       ]
     );
     return (await dialog.run()) === "override";
+  }
+
+  // Task 10, spec F12/F29: the lock control's own "create an exception" and
+  // "Remove exception" actions, and F19's accept-a-candidate action (which
+  // is the SAME path, just with the candidate's own suggested value instead
+  // of the current value -- see buildPairRowElement's own call site below).
+  // Ledger §5.2/§5.3: binds directly to KerningController.getEditContext(...)
+  // .edit(...)/.delete(...), the exact real-font-write mechanism
+  // writePairValues already uses, pushing the SAME {change, rollbackChange,
+  // info: {label, kind}} shape onto this.autokernUndoStack so
+  // doAutokernUndoRedo already replays it with no further changes needed
+  // there. Deliberately NOT routed through writePairValues itself: that
+  // method reads its values from this.autokernCache by pairKey (an autokern
+  // suggestion-cache entry), which has nothing to do with "save the
+  // CURRENT effective value" (a plain lock click) or "save this candidate's
+  // own suggested value" (F19) -- both are already-known numbers here, not
+  // cache lookups.
+  //
+  // F12: "Creating an exception saves an explicit glyph-glyph rule while
+  // preserving both glyphs' class memberships" -- getEditContext only ever
+  // touches font.kerning[...].values, never groupsSide1/groupsSide2, so
+  // membership is untouched by construction, not by a separate guard here.
+  async createPairException(left, right, value) {
+    const sourceIdentifier =
+      this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation(
+        {},
+        false
+      );
+    if (!sourceIdentifier) {
+      // Mirrors writePairValues' own guard/comment above.
+      console.error(
+        "kerning view: cannot create a pair exception, no font source resolves at the default location"
+      );
+      return;
+    }
+    const editContext = this.kerningController.getEditContext([
+      { leftName: left, rightName: right, sourceIdentifier },
+    ]);
+    const changes = await editContext.edit(
+      [Math.round(value)],
+      "kerning view: create pair exception"
+    );
+    if (changes?.hasChange) {
+      this.autokernUndoStack.pushUndoRecord({
+        change: changes.change,
+        rollbackChange: changes.rollbackChange,
+        info: { label: "kerning view: create pair exception", kind: "pairValues" },
+      });
+    }
+    this.renderPairTable();
+  }
+
+  // F12: "the action becomes Remove exception. It deletes the explicit rule
+  // and restores the applicable inherited value; it does not copy that
+  // value into another explicit pair rule." Ledger §5.2: this is the FIRST
+  // caller of KerningEditContext.delete anywhere in the app -- real
+  // deletion (`delete values[leftName][rightName]`), never a zero write.
+  async removePairException(left, right) {
+    const editContext = this.kerningController.getEditContext([
+      // delete() reads only leftName/rightName from its selectors -- it
+      // deletes the whole per-source values array in one step, it does not
+      // address a single source, so no sourceIdentifier is needed here
+      // (unlike createPairException's selector).
+      { leftName: left, rightName: right },
+    ]);
+    const changes = await editContext.delete("kerning view: remove pair exception");
+    if (changes?.hasChange) {
+      this.autokernUndoStack.pushUndoRecord({
+        change: changes.change,
+        rollbackChange: changes.rollbackChange,
+        info: { label: "kerning view: remove pair exception", kind: "pairValues" },
+      });
+    }
+    this.renderPairTable();
+  }
+
+  // F12's own "Recommended detail: show the inherited value in a tooltip or
+  // row detail" for the Remove-exception control. Mirrors
+  // getGlyphPairValueForLocation's own cascade (getPairsToTry, most
+  // specific first) but starts one entry later -- pairsToTry[0] is always
+  // this exact literal pair itself, which is precisely the exception being
+  // considered for removal, so this reads what the SECOND-most-specific
+  // address (a partial or full class fallback) currently resolves to,
+  // i.e. what removal would restore.
+  inheritedFallbackValue(left, right) {
+    const pairsToTry = this.kerningController.getPairsToTry(left, right).slice(1);
+    for (const [leftName, rightName] of pairsToTry) {
+      const pairFunction = this.kerningController.getPairFunction(leftName, rightName);
+      if (pairFunction) {
+        return pairFunction({});
+      }
+    }
+    return 0;
   }
 
   setSelectedTool(toolIdentifier) {
