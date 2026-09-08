@@ -584,6 +584,13 @@
   opacity: 0.55;
 }
 
+/* Task 3, spec F04: highlight (preview selection) is visually distinct
+   from a ticked (action-target) checkbox -- the two layers are
+   independent, so their styling must not collapse into one look. */
+.kerning-pairtable-row-highlighted {
+  background-color: color-mix(in srgb, var(--foreground-color) 12%, transparent);
+}
+
 /* Design doc §2: font mode's glyph grid fills the same area the canvas
    occupies (#kerning-view-container is position:relative, height:100%,
    see above) -- the tool switcher and chip selector stay on top (z-index 1

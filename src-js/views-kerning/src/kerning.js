@@ -156,7 +156,8 @@ import {
   VisualizationLayers,
 } from "@fontra/views-editor/visualization-layers.js";
 import { SelectTool } from "./edit-tools-select.js";
-import { explicitPairExists } from "./results-model.js";
+import { explicitPairExists, rowId } from "./results-model.js";
+import { deselectAll, retainVisible, selectRow, tickRow } from "./results-selection.js";
 
 // Spec §2.4: the three control glyphs calibration reads.
 const CONTROL_GLYPH_NAMES = ["l", "n", "o"];
@@ -1158,6 +1159,12 @@ export class KerningViewController extends ViewController {
     // this.autokernCache.
     this.autokernAppliedPairs = new Set();
 
+    // Task 3 (spec F04/F24/F25): highlight (preview selection) and tick
+    // (action-target selection) are two independent Sets of row IDs, kept
+    // outside the DOM -- see results-selection.js. renderPairTable prunes
+    // this after every rebuild (F25); Deselect below clears it (F24).
+    this.resultSelection = deselectAll();
+
     this.autokernFiltersController = new ObservableController({
       glyphName: "",
       excludedGlyphs: "",
@@ -1415,6 +1422,14 @@ export class KerningViewController extends ViewController {
       .querySelector("#kerning-pairtable-reset-zero")
       .addEventListener("click", () => this.resetSelectedPairRows("zero"));
 
+    // Task 3, spec F24: Deselect clears highlight and tick only -- it does
+    // not touch filters, class membership, or saved kerning.
+    document.querySelector("#kerning-pairtable-deselect").addEventListener("click", () => {
+      this.resultSelection = deselectAll();
+      this.applyResultSelectionToDom();
+      this.syncSelectAllCheckboxes();
+    });
+
     // WORKSTREAM 15, spec §5.3: "The derive action sits beside the fold
     // toggle." this.autokernDeriveProposals holds nothing until Derive is
     // clicked, and stays empty (writes nothing) until a proposal is
@@ -1554,6 +1569,37 @@ export class KerningViewController extends ViewController {
   // read. `delta` is the suggestion minus that stored value (spec §7.3: "The
   // delta is the suggestion minus what is stored"), with no stored value
   // read as 0.
+  // Task 3: the source identity component of a row's stable ID
+  // (results-model.js's rowId). Uses the same empty-location resolution
+  // writePairValues already uses (kerning-ux-integration.md §5.4 documents
+  // that this always resolves to the font's default source, independent of
+  // the status-strip source selector -- a real inconsistency, but fixing
+  // it is Task 12's job, not this one's).
+  defaultSourceIdentifier() {
+    return this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation(
+      {},
+      false
+    );
+  }
+
+  // Task 3: re-applies this.resultSelection onto whatever rows are
+  // currently in the DOM -- called after every state change and after
+  // every renderPairTable rebuild (tbodies are rebuilt from scratch each
+  // time, so freshly built rows start with no selection styling).
+  applyResultSelectionToDom() {
+    for (const tr of document.querySelectorAll(".kerning-pairtable-table tr[data-row-id]")) {
+      const id = tr.dataset.rowId;
+      tr.classList.toggle(
+        "kerning-pairtable-row-highlighted",
+        this.resultSelection.highlighted.has(id)
+      );
+      const checkbox = tr.querySelector(".kerning-pairtable-row-select");
+      if (checkbox) {
+        checkbox.checked = this.resultSelection.ticked.has(id);
+      }
+    }
+  }
+
   pairRowData(entry, classed) {
     const current =
       this.kerningController.getGlyphPairValueForLocation(
@@ -2122,9 +2168,21 @@ export class KerningViewController extends ViewController {
 
     // Backlog item 13: every tbody was just rebuilt from scratch above, so
     // each bucket's select-all checkbox needs to reflect the freshly
-    // rendered (empty, by default -- new rows always start unchecked) row
-    // set.
+    // rendered (Task 3: each row's own checkbox is now initialized from
+    // this.resultSelection.ticked in buildPairRowElement, not always
+    // unchecked) row set.
     this.syncSelectAllCheckboxes();
+
+    // Task 3 (spec F25): every tbody was just rebuilt, so this is exactly
+    // the full set of rows now actually displayed -- prune highlight/tick
+    // state for any row ID that didn't render this time (filtered out,
+    // bucket hidden, cache reloaded, etc).
+    const visibleRowIds = new Set(
+      [...document.querySelectorAll(".kerning-pairtable-table tr[data-row-id]")].map(
+        (tr) => tr.dataset.rowId
+      )
+    );
+    this.resultSelection = retainVisible(this.resultSelection, visibleRowIds);
   }
 
   // Median (not mean, spec §5.2: "the median is the reducer... a mean can
@@ -3589,16 +3647,37 @@ export class KerningViewController extends ViewController {
     tr.dataset.left = row.left;
     tr.dataset.right = row.right;
 
+    // Task 3 (spec F04): stable row ID for the highlight/tick selection
+    // layer, independent of scene preview selection below.
+    const id = rowId(this.defaultSourceIdentifier(), row.left, row.right);
+    tr.dataset.rowId = id;
+    tr.classList.toggle(
+      "kerning-pairtable-row-highlighted",
+      this.resultSelection.highlighted.has(id)
+    );
+
     // WORKSTREAM 16, spec §6: "Clicking a row in the table selects that pair
     // and flips the chip to `pair`." Ignores clicks on the row's own
     // checkbox/junk-mark button (event.target.closest guard) so selecting
     // for apply/reset and marking junk are unaffected -- only a click on the
     // row itself (its plain cells) selects the pair for the scene.
+    //
+    // Task 3 (spec F04 table): ordinary click highlights this row alone;
+    // Shift-click adds/removes it from the highlighted set, never a range.
+    // Highlight is the preview-selection layer -- separate from the tick
+    // (action-target) layer below. Scene preview still follows an ordinary
+    // (non-Shift) click only, matching the pre-existing single-pair preview
+    // behavior; wiring Shift-highlighted rows into multi-pair preview is
+    // plan Task 7, not this one.
     tr.addEventListener("click", (event) => {
       if (event.target.closest("input, button")) {
         return;
       }
-      this.selectPairForScene(row.left, row.right);
+      this.resultSelection = selectRow(this.resultSelection, id, event.shiftKey);
+      this.applyResultSelectionToDom();
+      if (!event.shiftKey) {
+        this.selectPairForScene(row.left, row.right);
+      }
     });
 
     const selectCell = document.createElement("td");
@@ -3613,10 +3692,21 @@ export class KerningViewController extends ViewController {
       checkbox.title =
         "Applying this pair writes a value that shadows a class cell -- you'll be asked to confirm.";
     }
+    checkbox.checked = this.resultSelection.ticked.has(id);
+    // Task 3 (spec F04 table): checking/unchecking a HIGHLIGHTED row acts
+    // on every highlighted row; an unhighlighted row's tick changes alone
+    // (tickRow in results-selection.js). Re-applies to the DOM afterward
+    // because this can change checkboxes on rows other than the one that
+    // was actually clicked.
+    //
     // Backlog item 13: keeps this bucket's select-all checkbox's checked/
     // indeterminate state truthful when a row is (un)checked by hand rather
     // than via select-all itself.
-    checkbox.addEventListener("change", () => this.syncSelectAllCheckboxes());
+    checkbox.addEventListener("change", () => {
+      this.resultSelection = tickRow(this.resultSelection, id, checkbox.checked);
+      this.applyResultSelectionToDom();
+      this.syncSelectAllCheckboxes();
+    });
     selectCell.appendChild(checkbox);
     tr.appendChild(selectCell);
 
