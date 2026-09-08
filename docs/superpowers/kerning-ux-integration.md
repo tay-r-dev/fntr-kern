@@ -538,3 +538,234 @@ listed so Task 17 does not have to re-derive it:**
 This task did **not** write any of items 1–4 — per its own scope (investigation + contract only; building
 the rerun action is Task 17's job, and any of 1–4 would be exactly that). The two commits from this task
 are the reproduction test and this ledger section.
+
+---
+
+## 11. Task 16 — Aggregate proposals and potential exceptions (F18, F19, F21)
+
+**Date:** 2026-09-09. **Branch:** `feature/kerning-view`. **Commit at time of writing:**
+`3b8ce8fc466d0172d83254213f9cc6b469b4d153`. This section is Task 16 of the same plan. It appends to,
+and does not overwrite, §1–§10 above. This task's own question: **which suggestions contribute to a
+class median, and what baseline determines an out-of-tolerance candidate?**
+
+### 11.1 The mechanism, exactly as it exists today — confirmed already built, already wired
+
+§6 already named `computeFoldGroupStats`, `overrideDivergence`, `isOverrideCandidate`,
+`wouldShadowClassCell`, and `medianDroppingOutliers`. This section traces them line-by-line and confirms
+they are not a stub: `buildClassClassGroups` (`kerning.js:2774-2841`, Task 8) already calls
+`computeFoldGroupStats` for every class×class row in **both** table tabs, and `rowVisibleInPotential`
+(`results-model.js:90-92`, Task 8) already gates the Potential tab on `isOverrideCandidate`'s own output.
+There is no separate "candidate calculation" left to build — Tasks 8/9 already bound the real functions to
+both tabs.
+
+- `isLeftClassed`/`isRightClassed` (`kerning.js:2285-2291`): whether a glyph name is a key in
+  `kerningController.leftPairGroupMapping`/`rightPairGroupMapping`.
+- `wouldShadowClassCell(left, right)` (`kerning.js:2325-2330`): false if neither side is classed;
+  otherwise true **only when no literal rule already exists** for this exact pair
+  (`kerningController.getPairValues(left, right) === undefined`). A pair with any explicit stored value —
+  including a saved exception, including an explicit zero — returns false here.
+- `overrideDivergence(left, right, suggestedValue)` (`kerning.js:2358-2366`): `suggestedValue -
+  (kerningController.getGlyphPairValueForSource(left, right, this.autokernSource) ?? 0)`. The baseline is
+  **always the pair's own current, cascade-resolved value at the active source** — for a pair with a saved
+  exception, that cascade resolution (`getGlyphPairValueForSource`, `kerning-controller.js:233-251`,
+  most-specific-first) returns the **exception's own stored value**, not the class value. **This answers
+  F18/F19's "current versus proposed class baseline" question directly: there is no "proposed class
+  baseline" concept anywhere in this code. The comparison is always against the pair's own current
+  effective value, exactly the way an ordinary row's Delta is computed** — `overrideDivergence` and
+  `pairRowData`'s `delta` read the identical cascade call, just named separately (kerning.js:2348-2354's own
+  comment already says so).
+- `isOverrideCandidate(left, right, suggestedValue)` (`kerning.js:2374-2382`): `wouldShadowClassCell(left,
+  right) && Math.abs(overrideDivergence(...)) >= groupThreshold`. `groupThreshold` is a single existing,
+  real, already-wired UI control (`#kerning-param-group-threshold`, `kerning.html:587-591`, default `10`,
+  `autokernParamsController.model.groupThreshold`) — this is the same value spec F18 calls "Class
+  tolerance" (its label currently reads "Group threshold," a copy-only mismatch, not a missing feature —
+  Task 17's job to rename, not build).
+- `computeFoldGroupStats(group, groupThreshold)` (`kerning.js:2903-2937`): collects every entry in
+  `this.autokernCache` (the **whole** cache, not merely rows currently displayed) whose `left` is a member
+  of `group.leftClassName` and `right` a member of `group.rightClassName`, then calls
+  `medianDroppingOutliers` (`autokern-cache.js:206-214`) on `{value, divergence: overrideDivergence(...)}`
+  for every one of those entries. **No filter in this loop reads `entry.junk` or `entry.stale` at all** —
+  confirmed by reading the loop body (`kerning.js:2910-2915`), not inferred.
+- `medianDroppingOutliers(samples, groupThreshold)` (`autokern-cache.js:206-214`): drops any sample whose
+  `|divergence| >= groupThreshold`; if that leaves zero inliers, falls back to the **unfiltered** median of
+  every sample rather than producing `NaN`. The median itself (`(sorted[mid-1] + sorted[mid]) / 2` for an
+  even count) is a **plain arithmetic average of the two middle values — no rounding is applied anywhere in
+  this function or in `computeFoldGroupStats`.** Rounding happens only once, later, at write time:
+  `applyFoldedParentRow` (`kerning.js:3126-3145`) calls `editContext.edit([Math.round(median)], ...)` —
+  the on-screen aggregate Proposed value (`kerning.js:2559`, `row.delta = median`, displayed via
+  `.toFixed(1)`) can therefore show a value like `-80.5` that the actual write would round to `-81` or
+  `-80`. This is a real, confirmed display/write rounding split, not a bug this task is asked to fix.
+
+### 11.2 The six-pair fixture and reproduction test
+
+`src-js/views-kerning/tests/test-aggregate-proposals.js` (new file, this task). The class×class product of
+`@A = [A, Adieresis, Aacute]` × `@V = [V, W]`, exactly six pairs, one of each kind the plan's own text
+names:
+
+| Pair | Kind | Cache entry | Notes |
+| --- | --- | --- | --- |
+| `A × V` | ordinary | value −82 | small divergence from the class's −80 (inlier) |
+| `A × W` | ordinary | value −150 | large divergence (outlier, and a candidate) |
+| `Adieresis × V` | hidden | value −79, `junk: true` | small divergence |
+| `Adieresis × W` | stale | value −83, `stale: true` | small divergence |
+| `Aacute × V` | **missing** | no cache entry at all | — |
+| `Aacute × W` | saved exception | value −28, kernData has an explicit `Aacute → W = −30` | current resolves to −30, not the class's −80 |
+
+**Confirmed blocker, before the results:** `kerning.js` could not be imported directly under Mocha/Node for
+this test. Reproduced directly (not assumed) with three throwaway `node --import <loader>` runs from
+`src-js/views-kerning`: (1) `kerning.js`'s own transitive graph (via `edit-tools-select.js` →
+`views-editor`) reaches `views-editor/src/snapping-interactions.js`, which imports
+`"@fontra/core/utils.js"` — a specifier that does not resolve, because only `utils.ts` exists on disk and
+no other working import in this codebase relies on extension substitution (every other caller uses the
+real `.ts` extension explicitly, e.g. `kerning-controller.js:4`); (2) past a throwaway loader that maps an
+unresolvable `*.js` specifier to `*.ts`, the same graph hits real browser-only side effects at **module
+top level**: `fontra-core/src/localization.js` calls `synchronizeWithLocalStorage` at import time
+(`localStorage`, `window.addEventListener`), and past a shim for those, `fontra-core/src/theme-settings.js`
+touches `document.documentElement.classList` at import time too. This is a real, deep, cascading chain of
+browser dependencies — not a single fixable specifier — and building a DOM shim deep enough to satisfy it
+would mean emulating a browser, which the dispatch brief's "no live-server/CDP browser-testing harness"
+rules out building as new scope for an investigation task. No test in this repo imports `kerning.js`
+directly today (grepped every file in `views-kerning/tests/`); this is the first attempt, and it is the
+reason no earlier task's tests do either.
+
+Given that confirmed blocker, the test runs the **verbatim current source text** of the six methods above
+(copied character-for-character from the line numbers cited in §11.1, at the commit named at the top of
+this section — not reimplemented or paraphrased) as plain methods on a throwaway probe object, against real
+fixture data built from the actually-importable `KerningController` and `autokern-cache.js` primitives
+(both used unmodified, no import problem). This observes real numeric output from the real algorithm as it
+exists today; a future edit to `kerning.js`'s own copies of these methods will not be reflected here
+automatically, so they must be re-diffed against the cited line numbers if `kerning.js` changes them — the
+test file's own header comment says so.
+
+Run (`npx mocha tests --extension js --reporter spec` from `src-js/views-kerning`):
+
+```
+Task 16: aggregate class-median and candidate-detection contract, real KerningController + real cache primitives, verbatim kerning.js method copies
+  ✔ current baseline resolves through the cascade -- explicit exception wins over the class value, exactly like an ordinary read
+  ✔ isOverrideCandidate: a pair with an existing saved exception can NEVER be a candidate, regardless of divergence
+  ✔ isOverrideCandidate evaluates hidden and stale entries at face value -- neither flag gates candidacy
+  ✔ computeFoldGroupStats: median contributors include hidden and stale entries, exclude only genuinely MISSING pairs
+  ✔ computeFoldGroupStats: outlier-dropped median, groupThreshold=10 -- A x W (divergence -70) is dropped, the rest (all |divergence|<10) are averaged
+  ✔ computeFoldGroupStats: when EVERY contributor is an outlier (groupThreshold below every real divergence), medianDroppingOutliers falls back to the unfiltered median of all 5 present entries
+  ✔ computeFoldGroupStats: zero cache coverage falls back to medianOf(group.rows), which returns NaN for an empty group -- confirmed, not asserted safe
+
+7 passing (7ms)
+```
+
+Full-repo `npm test` after adding this file: **2518 passing in `fontra-core` + 97 in `views-kerning`** (up
+from the 90 recorded in §10.3), **0 failing**.
+
+### 11.3 Resolved investigation questions
+
+- **Median contributors.** Every cache entry whose glyphs fall inside the two classes contributes,
+  **regardless of `junk` (hidden) or `stale`** — confirmed by the fixture (`Adieresis × V`, junk, and
+  `Adieresis × W`, stale, both appear in `stats.entries`) and by reading the loop, which never touches
+  either flag. A **missing** pair (no cache entry, `Aacute × V`) is naturally absent — there is nothing to
+  include. **Hiding a result is display-only for this calculation, exactly as §12.1's own required outcome
+  asked to establish** — the hidden filter (`rowVisibleForHiddenState`/`pairRowVisible`) only ever runs on
+  `group.rows` (the table's rendered child rows), never on `computeFoldGroupStats`'s own `entries` loop,
+  which reads the raw cache directly.
+- **Saved-exception treatment.** No special exclusion exists for a pair with a saved exception **in the
+  median**: it contributes an ordinary entry, and whether it survives `medianDroppingOutliers`'s
+  outlier-drop depends purely on its own divergence from its own current (exception) value, the identical
+  test every other contributor gets — confirmed by the fixture (`Aacute × W` stayed an inlier because its
+  suggestion was close to its *own* −30, not because of any exception-specific carve-out). Saved exceptions
+  ARE specially excluded from **candidacy** (`isOverrideCandidate`/the Potential tab) — but that exclusion
+  is a side effect of `wouldShadowClassCell` (a pair with any existing literal rule can never "shadow" a
+  class cell, since none currently answers for it), not a divergence comparison. No circular dependency
+  exists between the two: candidacy exclusion and median inclusion are two independent code paths that
+  happen to both read the same cache entry.
+- **Outlier handling.** `medianDroppingOutliers` drops any contributor whose `|divergence| >= groupThreshold`
+  and falls back to the **unfiltered** median if that would drop every contributor — confirmed both ways by
+  the fixture (`groupThreshold=10` drops only `A × W`; `groupThreshold=0.5` drops everything and falls back
+  to the plain median of all 5 present entries).
+- **Rounding.** None, anywhere in the median computation (`medianDroppingOutliers`/`computeFoldGroupStats`);
+  the aggregate value can be a `.5` fraction, and the table displays it unrounded via `.toFixed(1)`.
+  Rounding happens exactly once, at write time, via `Math.round` in `applyFoldedParentRow`
+  (`kerning.js:3139`) — confirmed by reading that call site, not by the fixture (writing was out of this
+  task's scope).
+- **No-valid-contributor / empty-aggregate behavior.** Confirmed by the fixture's last case:
+  `computeFoldGroupStats` on a class pair with **zero** cache coverage falls through to
+  `medianOf(group.rows.map(...))`, and an empty `group.rows` produces `NaN` (not `null`, not `0`). This path
+  is **unreachable through the real UI today** — `buildClassClassGroups` only calls
+  `computeFoldGroupStats` after its own `hasCoverage` check already found at least one entry
+  (`kerning.js:2794-2803`) — but the raw function itself has no guard against it, which matters directly to
+  Task 16's own proposed contract (`value: number|null`): `NaN` satisfies neither branch of that type, so
+  any future direct caller of `computeFoldGroupStats` (bypassing `buildClassClassGroups`'s gate) must add
+  an explicit `Number.isNaN` guard, not assume the existing code already returns `null` safely.
+- **Tolerance comparison baseline.** Always the pair's own current, cascade-resolved value — confirmed
+  directly above (§11.1) and by the fixture. There is no "proposed class value" concept anywhere in this
+  code for the comparison to use instead.
+
+### 11.4 The UI-facing contract, adjusted to what real code already supports
+
+```text
+getAggregateProposal(address, sourceId)
+  -> { value: number|null, stale: boolean, includedCount: number, excludedCount: number }
+```
+
+**Mostly already satisfied, one real gap.** `computeFoldGroupStats` already returns `{ leftMembers,
+rightMembers, entries, median, spread }` — `median` is `value` (add a `Number.isNaN` guard per §11.3's
+empty-aggregate finding to produce `null` instead, since that never happens via the real UI path today but
+would violate the contract's own type if it ever did). **No `stale` field exists on this return at all** —
+this is exactly F21's own still-open question, already recorded as unresolved in §10.4 ("Aggregate
+(class-summary row) staleness is not computed anywhere... a real open decision for whoever builds Task 17's
+F23 display"); this task's own tracing confirms that finding again from the aggregate side and does not
+re-open or re-decide it. **`includedCount`/`excludedCount` do not exist as a return value anywhere** — the
+real gap this task found: `medianDroppingOutliers` computes its own `inliers` array internally
+(`autokern-cache.js:207-210`) but does not return its length to its caller, and `computeFoldGroupStats`
+never asks for it. The row-detail tooltip that already exists (`kerning.js:3003-3006`,
+`` `${stats.entries.length} pairs, spread ...` ``) only discloses the **total** contributor count, not a
+included-vs-excluded split — so F21's own recommended detail ("disclose contributing-pair count and
+excluded-result count") is only half-built today. **This is genuinely new, small code Task 17 must add**
+(have `medianDroppingOutliers` return `{ median, includedCount, excludedCount }` instead of a bare number,
+or compute the same inlier count a second time at the call site) — not a algorithm change, a return-shape
+change to an already-correct calculation.
+
+```text
+getPotentialExceptions(sourceId, tolerance)
+  -> [{ left, right, proposed, baselineValue, baselineAddress, divergence }]
+```
+
+**Already fully satisfied by Tasks 8/9's existing code — no new binding work needed here.**
+`buildClassClassGroups` → `pairRowData` → `isOverrideCandidate` already computes exactly this per row
+(`row.suggestion` is `proposed`; `row.current`, read via the same cascade call `overrideDivergence` uses, is
+`baselineValue`; `row.delta` is `divergence`), and `rowVisibleInPotential` (`results-model.js:90-92`)
+already filters the Potential tab to exactly the candidate set, already reactive to the `groupThreshold`
+("tolerance") control via `isOverrideCandidate`'s own read of
+`autokernParamsController.model.groupThreshold`. The only field the plan's shape names that the real row
+does not carry as its own explicit property is `baselineAddress` (which class/pair address the baseline
+value came from) — but this is derivable on demand from the same inputs `describeShadowedClassCell`
+already computes (`kerning.js:2339-2346`) and is not needed by anything Task 17's own checklist asks for; it
+is not a gap worth flagging as blocking.
+
+### 11.5 Status: ready for Task 17, with one small named gap and one testing-infrastructure leftover
+
+**Ready, and already doing real work today, not merely a fixture:** `computeFoldGroupStats`,
+`overrideDivergence`, `isOverrideCandidate`, `wouldShadowClassCell`, `medianDroppingOutliers`, and their
+wiring into both the Default and Potential tabs (Tasks 8/9) are correct, exercised by the passing 2518 + 97
+suite (including this task's 7 new tests against verbatim real-code copies), and need **no algorithm
+changes**. `getPotentialExceptions`'s contract is fully satisfied by existing code today. F18's "Class
+tolerance" concept is already one real, wired control (`groupThreshold`) shared correctly by both the
+median outlier-drop and candidate detection — not two concepts that need reconciling.
+
+**Left for Task 17 (small, named, not algorithmic):**
+
+1. Have the median calculation return an included/excluded contributor-count split (§11.4) — a return-shape
+   change to `medianDroppingOutliers`/`computeFoldGroupStats`, not a new calculation — so F21's own
+   "disclose... excluded-result count" recommendation is fully met, not half-met.
+2. Add a `NaN` guard to whatever wraps `computeFoldGroupStats` for the `getAggregateProposal`-shaped
+   contract, per §11.3's empty-aggregate finding — currently unreachable via the UI, but not
+   type-safe if reused directly.
+3. Rename the `#kerning-param-group-threshold` control's label from "Group threshold" to spec's "Class
+   tolerance" (F18) — copy-only, already the correct single control underneath.
+4. Aggregate/class-summary staleness for F23's `!` marker (already recorded as open in §10.4, reconfirmed
+   here, not newly found) — a real design decision, not something this task's code reading resolved.
+
+**Testing-infrastructure leftover, not gating Task 17's UI work:** `kerning.js` cannot be imported under
+plain Node/Mocha today (§11.2's confirmed blocker: a wrong `.js`/`.ts` extension in
+`views-editor/src/snapping-interactions.js`, plus real browser-only top-level side effects in
+`fontra-core/src/localization.js` and `theme-settings.js`). Fixing the first (a one-line specifier
+correction) is unrelated to Task 16's own subject and was not made here, per this task's own
+investigation-only scope — flagged for whoever next needs to test `kerning.js`'s own class methods
+directly rather than through verbatim copies or full-browser acceptance testing.
