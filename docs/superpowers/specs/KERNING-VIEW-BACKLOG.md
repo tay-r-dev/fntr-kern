@@ -620,3 +620,20 @@ use.
 **Resolved (2026-09-06, `6eb3a7225`).** `border-left` on `#kerning-panel-container`, matching the
 existing `border-right` on `#kerning-pairtable-section`'s opposite edge. Confirmed visually in a live
 screenshot.
+
+---
+
+## 17. On-canvas "suggest: N" overlay only shows a value for the first pair in a multi-pair preview
+
+**Problem (found 2026-09-08, during the kerning UX rework's Task 7).** Since Task 7 added multi-pair
+preview (several highlighted or typed pairs shown together, each on its own line), the suggestion
+overlay's numeric label — `buildAutokernSuggestionVisualizationLayerDefinition` /
+`_applySuggestionPreviewRepositioning` in `kerning.js` — still only ever draws for
+`positionedLines[0]`, i.e. the first previewed pair. Every other pair in the set shows no "suggest: N"
+label at all, even when it has a real cached suggestion.
+
+**Not yet fixed.** Left alone by the Task 7 worker since the relevant draw code sits outside that
+task's file scope (not `initPairTableSection`/`selectPairForScene`/`setChipMode`) — flagged rather than
+touched speculatively. Needs its own pass: either loop the label draw over every positioned line instead
+of hardcoding index 0, or decide the label should only ever apply to one "primary" pair by design and
+say so explicitly in the UI (not just as a silent limitation).
