@@ -171,11 +171,13 @@ import {
 import {
   explicitPairExists,
   glyphMatchesCategory,
+  hiddenFromCacheEntry,
   pairMatchesGlyphset,
   pairMatchesUnicodeTypes,
   passesNumericFilters,
   rowId,
   rowMatchesRelationships,
+  rowVisibleForHiddenState,
   rowVisibleInDefault,
   rowVisibleInPotential,
   valuesForDisplay,
@@ -221,6 +223,18 @@ const AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY = "fontra.autokernExcludedGlyphs"
 // mechanism as the two keys above -- see the file-top comment for the exact
 // citation and pattern this follows.
 const AUTOKERN_CLASS_COLORS_CUSTOM_DATA_KEY = "fontra.autokernClassColors";
+
+// Task 11, spec F15: the non-color, textual half of the class/unique/
+// exception distinction -- kerning.css keys the color cue off the exact
+// same `data-kind` attribute already set by buildPairRowElement/
+// buildClassSummaryRowElement (Task 8), so this is the one place both
+// row builders read a row's category label from.
+const ROW_KIND_CATEGORY_LABELS = {
+  "class-rule": "Class rule",
+  "member-pair": "Class member (inherits the class rule)",
+  "unique-pair": "Unique pair",
+  "pair-exception": "Pair exception",
+};
 
 let _autokernOPFS;
 async function getAutokernOPFS() {
@@ -1235,7 +1249,13 @@ export class KerningViewController extends ViewController {
       // pre-existing "sign" value synced in from localStorage is simply
       // never read by anything anymore.
       state: "pending",
-      showJunk: false,
+      // Task 11, spec F17: renamed from `showJunk` ("Show junk" -> "Show
+      // hidden") -- this is the per-browser display-filter setting, not
+      // the font/cache's own stored `junk` field (that stays as-is, see
+      // pairRowData's own comment), so renaming this key is not a data
+      // migration, the same way Task 8/9 already left old persisted keys
+      // (bucket/status/sortColumn "state") unread rather than migrated.
+      showHidden: false,
       // Task 5, spec F13: "Provide a Columns menu with independent
       // visibility controls for Current, Proposed, and Delta." Current
       // defaults hidden (unchanged pre-existing behavior); Proposed and
@@ -1422,10 +1442,13 @@ export class KerningViewController extends ViewController {
       });
     }
 
-    const junkCheckbox = document.querySelector("#kerning-pairtable-filter-junk");
-    junkCheckbox.checked = filters.showJunk;
-    junkCheckbox.addEventListener("change", () => {
-      this.autokernFiltersController.setItem("showJunk", junkCheckbox.checked);
+    // Task 11, spec F17: "Show junk" -> "Show hidden."
+    const showHiddenCheckbox = document.querySelector(
+      "#kerning-pairtable-filter-hidden"
+    );
+    showHiddenCheckbox.checked = filters.showHidden;
+    showHiddenCheckbox.addEventListener("change", () => {
+      this.autokernFiltersController.setItem("showHidden", showHiddenCheckbox.checked);
     });
 
     const currentCheckbox = document.querySelector("#kerning-pairtable-show-current");
@@ -1887,7 +1910,11 @@ export class KerningViewController extends ViewController {
       suggestion: entry.value,
       current,
       delta: entry.value - current,
-      junk: entry.junk,
+      // Task 11, spec F10/F17: the cache/project storage field stays named
+      // `junk` (results-model.js's hiddenFromCacheEntry is the one mapping
+      // seam) -- the normalized row exposes it as `hidden`, the term the
+      // rest of this task's UI/predicates use.
+      hidden: hiddenFromCacheEntry(entry),
       stale: entry.stale,
       // Backlog item 8 part 5: a confirmed deliberate override (markPairOverride,
       // persisted in the OPFS cache entry) -- flips the row's shadow warning
@@ -1918,7 +1945,10 @@ export class KerningViewController extends ViewController {
   // now meaning "at least one side resolves through a class", used only by
   // the shadow-write guard below, not by this filter).
   pairRowVisible(row, filters, threshold, glyphName) {
-    if (row.junk && !filters.showJunk) {
+    // Task 11, spec F10: a hidden result is display-suppressed unless
+    // Show hidden is on -- results-model.js's own named predicate, shared
+    // with the class-summary row's own hide gate in renderPairTable.
+    if (!rowVisibleForHiddenState(row.hidden, filters.showHidden)) {
       return false;
     }
     if (!this.isRowAboveThreshold(row, threshold)) {
@@ -2744,6 +2774,8 @@ export class KerningViewController extends ViewController {
     tr.dataset.left = left;
     tr.dataset.right = right;
     tr.dataset.kind = "class-rule";
+    // Task 11, spec F15: same textual category cue buildPairRowElement uses.
+    tr.title = ROW_KIND_CATEGORY_LABELS["class-rule"];
 
     // Task 3 (spec F04): same stable row ID mechanism a pair row uses.
     const id = rowId(this.defaultSourceIdentifier(), left, right);
@@ -4085,6 +4117,14 @@ export class KerningViewController extends ViewController {
     // reads a pair row's literal left/right directly but a class-summary
     // row's full membership instead.
     tr.dataset.kind = row.kind;
+    // Task 11, spec F15: "reinforce those distinctions with names, icons,
+    // or labels" -- a non-color cue alongside kerning.css's own
+    // data-kind-keyed accent color, so the three categories (classes,
+    // uniques, exceptions) are distinguishable without relying on color
+    // alone. "member-pair" reads as a class row here (its cascade is still
+    // class-derived; F15 groups it with "classes," not as a fourth
+    // category) -- the same grouping rowRelationship already uses.
+    tr.title = ROW_KIND_CATEGORY_LABELS[row.kind] || "";
 
     // Task 3 (spec F04): stable row ID for the highlight/tick selection
     // layer, independent of scene preview selection below.
@@ -4262,17 +4302,35 @@ export class KerningViewController extends ViewController {
     }
     tr.appendChild(exceptionCell);
 
-    // F32's hide-action column. Task 11 replaces this with the eye
-    // control; today's existing Mark/Unmark junk button is the closest
-    // built equivalent to "hide this result," so it moves here.
+    // F32's hide-action column. Task 11, spec F10/F17: the eye control.
+    // Reveal-on-hover/focus uses the exact same row-hover convention Task
+    // 10's lock/Remove-exception cell already established (kerning.css's
+    // tr:hover/tr:focus-within rule), not a second one.
+    tr.classList.toggle("kerning-pairtable-row-hidden", !!row.hidden);
     const hideCell = document.createElement("td");
-    const junkButton = document.createElement("button");
-    junkButton.type = "button";
-    junkButton.textContent = row.junk ? "Unmark junk" : "Mark junk";
-    junkButton.addEventListener("click", () =>
-      this.togglePairJunk(row.left, row.right, !row.junk)
-    );
-    hideCell.appendChild(junkButton);
+    const hideButton = document.createElement("icon-button");
+    hideButton.className =
+      "kerning-pairtable-hide-indicator kerning-pairtable-hide-action";
+    if (row.hidden) {
+      hideButton.src = "/tabler-icons/eye-closed.svg";
+      hideButton.setAttribute(
+        "aria-label",
+        `Restore hidden result ${row.left} × ${row.right}`
+      );
+      hideButton.setAttribute(
+        "data-tooltip",
+        "Hidden. Restore to show this result again -- its saved kerning value is unchanged."
+      );
+    } else {
+      hideButton.src = "/tabler-icons/eye.svg";
+      hideButton.setAttribute("aria-label", `Hide result ${row.left} × ${row.right}`);
+      hideButton.setAttribute(
+        "data-tooltip",
+        "Hide this result from normal browsing -- it does not delete saved kerning."
+      );
+    }
+    hideButton.onclick = () => this.togglePairJunk(row.left, row.right, !row.hidden);
+    hideCell.appendChild(hideButton);
     tr.appendChild(hideCell);
 
     return tr;

@@ -85,9 +85,12 @@
                 <option value="applied">Applied</option>
                 <option value="stale">Stale</option>
               </select>
+              <!-- Task 11, spec F17: renamed from "Show junk." Hidden rows
+                   reappear here with the distinguishable hidden styling
+                   (kerning.css) plus their own restore (eye) action. -->
               <label
-                ><input type="checkbox" id="kerning-pairtable-filter-junk" /> Show
-                junk</label
+                ><input type="checkbox" id="kerning-pairtable-filter-hidden" /> Show
+                hidden</label
               >
               <!-- Task 5, spec F13: "Provide a Columns menu with independent
                    visibility controls for Current, Proposed, and Delta."
