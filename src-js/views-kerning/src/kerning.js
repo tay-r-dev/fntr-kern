@@ -5468,6 +5468,38 @@ export class KerningViewController extends ViewController {
       .querySelector("#kerning-font-grid-container")
       .appendChild(this.fontModeGlyphCellView);
 
+    // Task 14, spec F30/F31: GlyphCell (glyph-cell.js's shared web
+    // component, used identically by font-overview.js) has no public API to
+    // add a class-color edge indicator or to suppress its editor-status
+    // bar, and both live inside its own shadow DOM, unreachable from
+    // outside CSS. Patching glyph-cell.js itself, or GlyphCellView's
+    // private cell-construction method, would also change font-overview
+    // .js's own tiles. Instead, a MutationObserver -- a native platform
+    // primitive, not a new dependency -- watches only THIS view's own font-
+    // mode grid for newly inserted <glyph-cell> elements and decorates each
+    // one directly (decorateFontModeGlyphCell, below); font-overview.js's
+    // grid is a wholly separate GlyphCellView instance this code never
+    // touches, prototype or otherwise.
+    this._fontModeCellObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) {
+            continue;
+          }
+          if (node.tagName === "GLYPH-CELL") {
+            this.decorateFontModeGlyphCell(node);
+          }
+          node.querySelectorAll?.("glyph-cell").forEach((cell) =>
+            this.decorateFontModeGlyphCell(cell)
+          );
+        }
+      }
+    });
+    this._fontModeCellObserver.observe(this.fontModeGlyphCellView, {
+      childList: true,
+      subtree: true,
+    });
+
     this.fontModeGlyphOrganizer = new GlyphOrganizer();
 
     // Task 13, spec F08: "Put the font-mode Glyphset dropdown in the same
@@ -5565,6 +5597,68 @@ export class KerningViewController extends ViewController {
       this.updateFontModeAddToClassButton()
     );
     this.updateFontModeAddToClassButton();
+  }
+
+  // Task 14, spec F30/F31, called once per <glyph-cell> the MutationObserver
+  // above discovers in this view's own font-mode grid.
+  //
+  // F30: side1/side2 class-color edge indicators, reusing the exact color
+  // source the class swatch strip already reads (getClassColor,
+  // leftPairGroupMapping/rightPairGroupMapping -- see
+  // buildSplitColorGlyphSwatch above; no second color scheme invented
+  // here). The two CSS custom properties this sets are read by the
+  // box-shadow rule in kerning.css (`#kerning-font-grid-container
+  // glyph-cell`), which paints on the cell's own light-DOM host box, the
+  // only part of this shared component reachable without touching its
+  // shadow DOM. `title` supplies the recommended class-name tooltip; it
+  // resolves through shadow boundaries by the browser's normal hit-testing,
+  // no special wiring needed.
+  //
+  // F31: shadows this ONE cell instance's own `_glyphStatusColor` field
+  // (read directly by glyph-cell.js's render()) with an accessor that
+  // always reports "no color" and ignores every future write -- so a
+  // redraw (glyph edited, location changed, scrolled into view again) stays
+  // suppressed too, not just the first paint. This does not touch
+  // GlyphCell's prototype, so font-overview.js's own tiles (built from a
+  // wholly separate set of GlyphCell instances) are unaffected. Selection
+  // highlighting and hover/active states are a separate mechanism entirely
+  // (the "selected"/"dragging" classes on glyph-cell.js's own
+  // #glyph-cell-container, inside its shadow DOM) and are not touched here.
+  decorateFontModeGlyphCell(cell) {
+    if (cell._kerningFontModeDecorated) {
+      return;
+    }
+    cell._kerningFontModeDecorated = true;
+
+    Object.defineProperty(cell, "_glyphStatusColor", {
+      configurable: true,
+      get: () => "var(--cell-background-color)",
+      set: () => {},
+    });
+
+    const side1Name = this.kerningController.leftPairGroupMapping[cell.glyphName];
+    const side2Name = this.kerningController.rightPairGroupMapping[cell.glyphName];
+    const side1Color = side1Name ? this.getClassColor("side1", side1Name) : null;
+    const side2Color = side2Name ? this.getClassColor("side2", side2Name) : null;
+    cell.style.setProperty(
+      "--kerning-font-tile-left-color",
+      side1Color || "transparent"
+    );
+    cell.style.setProperty(
+      "--kerning-font-tile-right-color",
+      side2Color || "transparent"
+    );
+
+    const tooltipParts = [];
+    if (side1Name) {
+      tooltipParts.push(`Left class: ${side1Name}`);
+    }
+    if (side2Name) {
+      tooltipParts.push(`Right class: ${side2Name}`);
+    }
+    if (tooltipParts.length) {
+      cell.title = tooltipParts.join(" / ");
+    }
   }
 
   // Design doc §2: "A button on the class panel... Disabled unless both a

@@ -737,6 +737,22 @@ tr[data-kind="pair-exception"] {
   gap: 0;
 }
 
+/* Task 14, spec F30: side1/side2 class-color edge indicators on font-mode
+   tiles. The two custom properties are set per glyph-cell instance by
+   kerning.js's decorateFontModeGlyphCell (not a static value here) --
+   reusing the exact color source the class swatch strip already reads
+   (getClassColor), not a second color scheme. inset box-shadow paints
+   directly on <glyph-cell>'s own host box from OUTSIDE its shadow DOM,
+   which is the only part of that shared component reachable without
+   touching glyph-cell.js itself or affecting font-overview.js's own grid
+   (a separate GlyphCellView instance, never selected by this rule). Falls
+   back to transparent so an unclassed glyph's tile is unchanged. */
+#kerning-font-grid-container glyph-cell {
+  box-shadow:
+    inset 3px 0 0 var(--kerning-font-tile-left-color, transparent),
+    inset -3px 0 0 var(--kerning-font-tile-right-color, transparent);
+}
+
 /* Task 13, spec F28: the font-mode "Add selection to selected class" button
    now lives inside #autokern-class-new-controls (kerning.html), the same
    flex-wrap row as Left/Right/Both/Derive -- it no longer gets its own
