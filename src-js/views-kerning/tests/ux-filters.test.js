@@ -110,38 +110,68 @@ describe("results-model: pairMatchesCategory / pairMatchesUnicodeTypes (F09 pair
 
 describe("results-model: rowRelationship / rowMatchesRelationships (F14 Class relationship)", () => {
   it("both sides classed, no saved rule -- Class-to-class (covers class-summary rows and exposed members alike)", () => {
-    expect(rowRelationship({ kind: "member-pair" }, true, true)).to.equal("class-class");
+    expect(
+      rowRelationship({ kind: "member-pair", explicitPairExists: false }, true, true)
+    ).to.equal("class-class");
   });
 
-  it("exactly one side classed -- Class-to-unique, either orientation", () => {
-    expect(rowRelationship({ kind: "unique-pair" }, true, false)).to.equal("class-unique");
-    expect(rowRelationship({ kind: "unique-pair" }, false, true)).to.equal("class-unique");
+  it("exactly one side classed, no saved rule -- Class-to-unique, either orientation", () => {
+    expect(
+      rowRelationship({ kind: "unique-pair", explicitPairExists: false }, true, false)
+    ).to.equal("class-unique");
+    expect(
+      rowRelationship({ kind: "unique-pair", explicitPairExists: false }, false, true)
+    ).to.equal("class-unique");
   });
 
-  it("neither side classed -- Unique-to-unique", () => {
-    expect(rowRelationship({ kind: "unique-pair" }, false, false)).to.equal(
-      "unique-unique"
-    );
+  it("neither side classed -- Unique-to-unique, even with its own stored value (nothing to diverge from)", () => {
+    expect(
+      rowRelationship({ kind: "unique-pair", explicitPairExists: false }, false, false)
+    ).to.equal("unique-unique");
+    expect(
+      rowRelationship({ kind: "unique-pair", explicitPairExists: true }, false, false)
+    ).to.equal("unique-unique");
   });
 
-  it("a saved explicit pair over an applicable class rule -- Class exceptions", () => {
-    expect(rowRelationship({ kind: "pair-exception" }, true, true)).to.equal("exceptions");
+  it("a saved explicit pair over an applicable class rule, both sides classed -- Class exceptions", () => {
+    expect(
+      rowRelationship({ kind: "pair-exception", explicitPairExists: true }, true, true)
+    ).to.equal("exceptions");
+  });
+
+  it("corrected 2026-09-08 (designer): a saved explicit value on just ONE classed side is still a Class exception -- it diverges from other class members against the same partner", () => {
+    expect(
+      rowRelationship({ kind: "unique-pair", explicitPairExists: true }, true, false)
+    ).to.equal("exceptions");
+    expect(
+      rowRelationship({ kind: "unique-pair", explicitPairExists: true }, false, true)
+    ).to.equal("exceptions");
   });
 
   it("an exposed member with no saved exception is NOT classified as Class exceptions (ledger §8.4)", () => {
     // Same class pairing as its class-summary row -- Class-to-class, not
     // Class exceptions, exactly the ledger's own correction.
-    const exposedNoException = { kind: "member-pair" };
+    const exposedNoException = { kind: "member-pair", explicitPairExists: false };
     expect(rowRelationship(exposedNoException, true, true)).to.equal("class-class");
   });
 
   it("rowMatchesRelationships ORs multiple checked buckets", () => {
     const relationships = new Set(["class-class", "exceptions"]);
     expect(
-      rowMatchesRelationships({ kind: "member-pair" }, true, true, relationships)
+      rowMatchesRelationships(
+        { kind: "member-pair", explicitPairExists: false },
+        true,
+        true,
+        relationships
+      )
     ).to.equal(true);
     expect(
-      rowMatchesRelationships({ kind: "unique-pair" }, false, false, relationships)
+      rowMatchesRelationships(
+        { kind: "unique-pair", explicitPairExists: false },
+        false,
+        false,
+        relationships
+      )
     ).to.equal(false);
   });
 

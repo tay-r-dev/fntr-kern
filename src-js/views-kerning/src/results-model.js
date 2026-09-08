@@ -159,19 +159,26 @@ export function pairMatchesUnicodeTypes(leftNames, rightNames, side, categories)
   return false;
 }
 
-// F14's Class relationship filter. Reuses Task 8's own kind taxonomy
-// (pairRowData's `kind`/`explicitPairExists`) rather than re-deriving
-// classed-ness: "Class exceptions" is reserved for a row with its own
-// saved explicit rule where a class rule was actually applicable (ledger
-// §8.4: "not into Class exceptions -- that bucket is reserved for rows
-// where explicitPairExists is true" -- read together with pairRowData's own
-// taxonomy, this means kind === "pair-exception", which only exists when
-// BOTH sides are classed; a fully unique pair's own stored value is not an
-// "exception" to anything and stays Unique-to-unique/Class-to-unique).
+// F14's Class relationship filter.
+//
+// Corrected 2026-09-08 by the designer directly: "Class exceptions are
+// essentially when a member of a class has different kerning value against
+// anything (class/unique) than other members." This is broader than the
+// original reading (kind === "pair-exception", which pairRowData only ever
+// sets when BOTH sides are classed) -- a member of just ONE classed side
+// with its own stored value, kerned against a unique glyph, is still a
+// class exception: that member's value against that glyph diverges from
+// what the rest of the class would get. So the real test is
+// `row.explicitPairExists && at least one side is classed`, independent of
+// pairRowData's `kind` (which drives EXPOSURE-gating -- whether a row is
+// hidden by default under a class×class summary -- a separate concern from
+// which relationship bucket it's filed under here). A fully unique pair
+// (neither side classed) has no class to diverge from, so its own stored
+// value is never an "exception," just Unique-to-unique.
 // `leftClassed`/`rightClassed` are the caller's own isLeftClassed/
 // isRightClassed reads -- this module has no font/controller access.
 export function rowRelationship(row, leftClassed, rightClassed) {
-  if (row.kind === "pair-exception") {
+  if (row.explicitPairExists && (leftClassed || rightClassed)) {
     return "exceptions";
   }
   if (leftClassed && rightClassed) {
