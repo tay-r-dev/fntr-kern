@@ -1239,6 +1239,19 @@ export class KerningViewController extends ViewController {
     // this after every rebuild (F25); Deselect below clears it (F24).
     this.resultSelection = deselectAll();
 
+    // Task 11, spec F10, ledger §8.5 (APPROVED): a class-summary row's own
+    // hidden state, keyed by its own stable rowId. Unlike a pair row's
+    // hidden state (the OPFS/project-persisted cache `junk` field, one
+    // entry per literal pair -- see pairRowData/togglePairJunk), a
+    // class-summary row has no per-row cache entry to carry a flag on
+    // (its "current" is a computed aggregate, not a stored cache entry) --
+    // ponytail: in-memory only for now, lost on reload, the same honesty
+    // this.autokernAppliedPairs above already documents for its own
+    // session-only state; add project-customData persistence (matching
+    // AUTOKERN_JUNK_PAIRS_CUSTOM_DATA_KEY's pattern) if designers need a
+    // hidden class row to survive a reload.
+    this.hiddenClassRuleIds = new Set();
+
     this.autokernFiltersController = new ObservableController({
       glyphName: "",
       excludedGlyphs: "",
@@ -2387,6 +2400,9 @@ export class KerningViewController extends ViewController {
         delta: median,
         isCandidate: false,
         sortId: rowId(sourceIdentifier, left, right),
+        // Task 11, ledger §8.5: this row's OWN hidden state only -- never
+        // derived from or applied to group.rows below.
+        hidden: this.hiddenClassRuleIds.has(rowId(sourceIdentifier, left, right)),
       });
       // group.rows are this class pair's own real cache entries (both
       // sides classed), already pairRowVisible-filtered by
@@ -2448,7 +2464,12 @@ export class KerningViewController extends ViewController {
     // rowVisibleInPotential).
     const visibleItems = displayItems.filter((item) => {
       if (item.renderKind === "class-rule") {
-        return tab === "default";
+        // Task 11, spec F10, ledger §8.5: this row's own hidden state,
+        // never its members' (each "pair" item below carries its own
+        // row.hidden, gated independently through pairRowVisible).
+        return (
+          tab === "default" && rowVisibleForHiddenState(item.hidden, filters.showHidden)
+        );
       }
       return tab === "potential"
         ? rowVisibleInPotential(item.row)
@@ -2876,13 +2897,56 @@ export class KerningViewController extends ViewController {
     exceptionCell.appendChild(applyButton);
     tr.appendChild(exceptionCell);
 
-    // F32's hide-action column: Task 11 builds the eye control (ledger
-    // §8.5: hiding a class-summary row hides only that row, never its
-    // members) -- left empty for now, not invented here.
+    // F32's hide-action column. Task 11, ledger §8.5 (APPROVED): hiding a
+    // class-summary row hides only this displayed aggregate row -- it never
+    // cascades to its exposed members or saved exceptions, each of which is
+    // hidden (or not) through its own separate rowId in
+    // this.autokernCache's per-pair `junk` field, not this Set.
+    const hidden = this.hiddenClassRuleIds.has(id);
+    tr.classList.toggle("kerning-pairtable-row-hidden", hidden);
     const hideCell = document.createElement("td");
+    const hideButton = document.createElement("icon-button");
+    hideButton.className =
+      "kerning-pairtable-hide-indicator kerning-pairtable-hide-action";
+    if (hidden) {
+      hideButton.src = "/tabler-icons/eye-closed.svg";
+      hideButton.setAttribute(
+        "aria-label",
+        `Restore hidden class rule ${left} × ${right}`
+      );
+      hideButton.setAttribute(
+        "data-tooltip",
+        "Hidden. Restore to show this class rule again -- its exposed members and saved exceptions were never affected."
+      );
+    } else {
+      hideButton.src = "/tabler-icons/eye.svg";
+      hideButton.setAttribute("aria-label", `Hide class rule ${left} × ${right}`);
+      hideButton.setAttribute(
+        "data-tooltip",
+        "Hide this class-rule row from normal browsing -- its exposed members and saved exceptions stay visible, subject to their own filters."
+      );
+    }
+    hideButton.onclick = (event) => {
+      event.stopPropagation();
+      this.toggleClassRuleHidden(id, !hidden);
+    };
+    hideCell.appendChild(hideButton);
     tr.appendChild(hideCell);
 
     return tr;
+  }
+
+  // Task 11, ledger §8.5: the class-summary row's own hide/restore action.
+  // Presentation-only, like togglePairJunk -- does not touch median/stats
+  // computation (computeFoldGroupStats reads the full cache regardless) or
+  // any member/exception row's own hidden state.
+  toggleClassRuleHidden(id, hidden) {
+    if (hidden) {
+      this.hiddenClassRuleIds.add(id);
+    } else {
+      this.hiddenClassRuleIds.delete(id);
+    }
+    this.renderPairTable();
   }
 
   // WORKSTREAM 15, spec §5.2, now also the layout overhaul's class×class
