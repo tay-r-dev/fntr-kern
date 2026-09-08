@@ -175,7 +175,11 @@ import {
   replaceGlyphToken,
 } from "./input-tokens.js";
 import {
+  aggregateStale,
+  countMedianContributors,
+  diffStaleRerun,
   explicitPairExists,
+  getStaleGlyphNames,
   glyphMatchesCategory,
   hiddenFromCacheEntry,
   isStaleAsyncResult,
@@ -487,6 +491,11 @@ export class KerningViewController extends ViewController {
     this.initSuggestionPreviewSettingsSection();
     this.initSuggestionPreviewToggle();
     this.initRunSection();
+    // Task 17, spec F01/F02: reads this.autokernCache, which initRunSection
+    // above just set (synchronously, to an empty Map) -- same ordering
+    // requirement initAutokernStatusSection's own comment already
+    // documents for the source getter.
+    this.initStaleSection();
     // Awaited: initPairTableSection is async and awaits
     // fontController.getKerningController internally to build
     // this.kerningController. It used to be called without awaiting here,
@@ -991,6 +1000,173 @@ export class KerningViewController extends ViewController {
     this.loadAutokernCacheFromStorage();
   }
 
+  // Task 17, spec F01/F02 (plan's own file map: initRunSection/
+  // initAutokernStatusSection, kerning.html). Wires the Re-run button;
+  // rendering itself is renderStaleSection, called from renderPairTable's
+  // own top (alongside renderAutokernStatus) so this panel is refreshed by
+  // every place the cache already refreshes the table -- a run, a source
+  // switch, a junk toggle, a class-membership edit (markGlyphsStaleForClassEdit).
+  initStaleSection() {
+    const rerunButton = document.querySelector("#kerning-stale-rerun-button");
+    rerunButton.addEventListener("click", () =>
+      this.runStaleGlyphs().catch((error) => {
+        console.error(error);
+        message("Re-run stale glyphs failed", error.message || String(error));
+      })
+    );
+    this.renderStaleSection();
+  }
+
+  // F01: "affected glyphs, their count, a rerun action... an explicit empty
+  // state when nothing requires recalculation." Reads getStaleGlyphNames
+  // (results-model.js), the same set runStaleGlyphs below uses as its own
+  // job scope, so the panel never claims a glyph is stale that the rerun
+  // action itself would not cover, or vice versa.
+  renderStaleSection() {
+    const emptyEl = document.querySelector("#kerning-stale-empty");
+    const summaryEl = document.querySelector("#kerning-stale-summary");
+    const countEl = document.querySelector("#kerning-stale-count");
+    const namesEl = document.querySelector("#kerning-stale-names");
+    const rerunButton = document.querySelector("#kerning-stale-rerun-button");
+    if (!emptyEl || !summaryEl || !countEl || !namesEl || !rerunButton) {
+      return;
+    }
+    const staleGlyphNames = this.autokernCache
+      ? getStaleGlyphNames(this.autokernCache)
+      : [];
+    const hasStale = staleGlyphNames.length > 0;
+    emptyEl.hidden = hasStale;
+    summaryEl.hidden = !hasStale;
+    countEl.textContent = `${staleGlyphNames.length} glyph${
+      staleGlyphNames.length === 1 ? "" : "s"
+    } need${staleGlyphNames.length === 1 ? "s" : ""} recalculation:`;
+    namesEl.textContent = truncateGlyphList(staleGlyphNames);
+    // F02: "disable duplicate runs" -- this._staleRerunInFlight is set by
+    // runStaleGlyphs below for the duration of one run.
+    rerunButton.disabled = !hasStale || !!this._staleRerunInFlight;
+  }
+
+  // Task 17, spec F02. Uses Task 15's own contract (ledger §10.6/§10.7):
+  // mode "marked" (not runAutokern's hardcoded "everything"), rasters/
+  // envelopes built for every glyph touching ANY stale pair -- not only the
+  // glyph(s) the designer actually edited -- because a stale pair's OTHER
+  // side needs its own raster too, or that pair silently stays stale
+  // forever even though the run reports success (§10.2's own reproduced
+  // finding). completedGlyphs/remainingGlyphs are derived on the main
+  // thread (diffStaleRerun), since the worker itself reports no such
+  // breakdown.
+  async runStaleGlyphs() {
+    if (this._staleRerunInFlight) {
+      return;
+    }
+    const staleGlyphNames = getStaleGlyphNames(this.autokernCache);
+    if (!staleGlyphNames.length) {
+      return;
+    }
+    this._staleRerunInFlight = true;
+    this.renderStaleSection();
+    const progressEl = document.querySelector("#kerning-stale-progress");
+    if (progressEl) {
+      progressEl.textContent = "";
+    }
+    try {
+      const params = this.autokernParamsController.model;
+      const renderSize = this.autokernRenderSize;
+      const unitsPerEm = this.fontController.unitsPerEm;
+      const verticalExtent = this.autokernVerticalExtent;
+      const bias = params.reach;
+      const source = this.autokernSource;
+
+      const missingControlGlyphs = CONTROL_GLYPH_NAMES.filter(
+        (name) => !this.fontController.glyphMap?.[name]
+      );
+      if (missingControlGlyphs.length) {
+        await message(
+          "Can't re-run stale glyphs",
+          `The font is missing the control glyph(s) calibration needs: ${missingControlGlyphs.join(
+            ", "
+          )}. Add ${missingControlGlyphs.length > 1 ? "them" : "it"} to the font first.`
+        );
+        return;
+      }
+
+      // Coverage: every glyph touching any stale pair, plus the control
+      // glyphs calibration always needs -- see this method's own top
+      // comment. Deliberately NOT restricted to whatever glyph the designer
+      // just edited.
+      const glyphsToRasterize = new Set([...CONTROL_GLYPH_NAMES, ...staleGlyphNames]);
+      const rasters = {};
+      const envelopes = {};
+      for (const glyphName of glyphsToRasterize) {
+        const glyphInstance = await this.fontController.getGlyphInstance(
+          glyphName,
+          {}
+        );
+        if (!glyphInstance) {
+          continue;
+        }
+        const raster = rasterizeGlyph(glyphInstance, {
+          renderSize,
+          unitsPerEm,
+          bias,
+          verticalExtent,
+        });
+        rasters[glyphName] = { ...raster, data: Array.from(raster.data) };
+        const scale = renderSize / unitsPerEm;
+        const bounds = glyphInstance.controlBounds;
+        envelopes[glyphName] = {
+          xMin: bounds ? scale * bounds.xMin : 0,
+          xMax: bounds ? scale * bounds.xMax : 0,
+          advance: scale * glyphInstance.xAdvance,
+        };
+      }
+      if (CONTROL_GLYPH_NAMES.some((name) => !rasters[name])) {
+        throw new Error(
+          `autokern: control glyph(s) missing from font (need ${CONTROL_GLYPH_NAMES.join(", ")})`
+        );
+      }
+
+      const job = {
+        source,
+        renderSize,
+        unitsPerEm,
+        params: { ...params },
+        rasters,
+        envelopes,
+        controlGlyphNames: CONTROL_GLYPH_NAMES,
+        glyphNames: staleGlyphNames,
+        mode: "marked",
+        existingCache: [...this.autokernCache.entries()],
+      };
+
+      await this.runAutokernWorker(job, {
+        title: "Re-running stale glyphs",
+        description: `Scope: ${truncateGlyphList(staleGlyphNames)}`,
+      });
+
+      // Task 15's own gap 2: no completed/remaining breakdown exists on the
+      // worker's own messages -- derive it by diffing stale flags before/
+      // after, which works uniformly whether the run finished, was
+      // cancelled, errored, or was rejected for a mid-run source switch
+      // (runAutokernWorker's own "done" handler leaves this.autokernCache
+      // untouched in every one of those non-success cases, per §10.5/gap 3
+      // below) -- see diffStaleRerun's own comment.
+      const { completedGlyphs, remainingGlyphs } = diffStaleRerun(
+        staleGlyphNames,
+        this.autokernCache
+      );
+      if (progressEl) {
+        progressEl.textContent = remainingGlyphs.length
+          ? `Recomputed ${completedGlyphs.length} of ${staleGlyphNames.length} glyphs. ` +
+            `Still stale: ${truncateGlyphList(remainingGlyphs)}.`
+          : `All ${completedGlyphs.length} stale glyphs recomputed.`;
+      }
+    } finally {
+      this._staleRerunInFlight = false;
+      this.renderStaleSection();
+    }
+  }
+
   // WORKSTREAM 14, spec §7.5: the source selector is real now, and this
   // getter reads the identifier it set (this._autokernSourceIdentifier,
   // constructor above / initAutokernStatusSection below). Still centralized
@@ -1221,7 +1397,11 @@ export class KerningViewController extends ViewController {
   // dialogSetup/run pattern (fontra-webcomponents/modal-dialog.js), the same
   // one font-overview.js uses for its own dialogs -- no new popup mechanism
   // invented for this.
-  async runAutokernWorker(job) {
+  // Task 17: `title`/`description` let runStaleGlyphs show a scoped popup
+  // ("Re-running stale glyphs" / "Scope: l, n, o") without a second copy of
+  // this method -- runAutokern's own call site keeps the pre-existing
+  // defaults.
+  async runAutokernWorker(job, { title = "Running autokern", description = null } = {}) {
     const worker = new Worker(
       /* webpackChunkName: "autokern-worker" */ new URL(
         "./autokern-worker.js",
@@ -1233,10 +1413,17 @@ export class KerningViewController extends ViewController {
     const progressContent = document.createElement("div");
     progressContent.textContent = "Starting…";
 
-    const dialog = await dialogSetup("Running autokern", null, [
+    const dialog = await dialogSetup(title, description, [
       { title: "Cancel", resultValue: "cancel", isCancelButton: true },
     ]);
     dialog.setContent(progressContent);
+
+    // Task 17, spec F02 / ledger §10.5 (already named on the plan's own
+    // Task 17 checklist): capture which source this job was built for so
+    // the "done" handler below can reject a result that no longer belongs
+    // to the currently-selected source, rather than silently overwriting
+    // the cache the designer is now looking at.
+    const sourceAtStart = job.source;
 
     const runResult = new Promise((resolve) => {
       worker.onmessage = async (event) => {
@@ -1247,6 +1434,22 @@ export class KerningViewController extends ViewController {
           this.autokernCalibration = data.calibration;
           this.renderCalibration();
         } else if (data.type === "done") {
+          if (sourceAtStart !== this.autokernSource) {
+            // The designer switched the source selector while this job was
+            // still running. This result belongs to a source that is no
+            // longer displayed -- reject it outright (nothing is applied,
+            // nothing is written) rather than corrupting the cache now
+            // shown for the newly selected source. F02: "A failed or
+            // cancelled run must not label unprocessed results fresh" --
+            // the same must hold for a result whose own source moved on.
+            message(
+              "Autokern run finished on a different source",
+              `The active source changed while this run was in progress. Its ` +
+                `results were discarded; re-run it after switching back if needed.`
+            );
+            resolve("rejected-source-changed");
+            return;
+          }
           this.autokernCache = new Map(data.cache);
           // The worker's own cache already carries forward whatever junk
           // flags this.autokernCache had when the job was built (it never
@@ -2443,6 +2646,9 @@ export class KerningViewController extends ViewController {
     // comment), so the status strip's counts never go stale relative to
     // what's on screen.
     this.renderAutokernStatus();
+    // Task 17, spec F01: same reasoning -- every place that can change
+    // which glyphs are stale already calls renderPairTable.
+    this.renderStaleSection();
 
     const filters = this.autokernFiltersController.model;
     const threshold = this.autokernParamsController.model.threshold;

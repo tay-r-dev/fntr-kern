@@ -540,6 +540,25 @@
             </div>
           </div>
 
+          <!-- Task 17, spec F01/F02: replaces the removed current/applied/
+               stale results filter. "Affected glyphs, their count, a rerun
+               action, and an explicit empty state" (F01), "Re-run stale
+               glyphs" with progress and the scope being processed (F02).
+               kerning.js's initStaleSection/renderStaleSection/
+               runStaleGlyphs own this markup. -->
+          <div id="kerning-stale-section">
+            <h3>Stale glyphs</h3>
+            <p id="kerning-stale-empty">No glyphs need recalculation.</p>
+            <p id="kerning-stale-summary" hidden>
+              <span id="kerning-stale-count"></span>
+              <span id="kerning-stale-names"></span>
+            </p>
+            <button id="kerning-stale-rerun-button" type="button" disabled>
+              Re-run stale glyphs
+            </button>
+            <p id="kerning-stale-progress"></p>
+          </div>
+
           <div id="kerning-phrase-section">
             <select id="kerning-preset-select">
               <option value="" selected disabled>Presets…</option>
@@ -584,7 +603,12 @@
                    class×class median), never the run or the cache. Wired into
                    autokernParamsController the same way Threshold is
                    (initParametersSection in kerning.js). -->
-              <label for="kerning-param-group-threshold">Group threshold</label>
+              <!-- Task 17, spec F18: "Recommended labels: ... Class
+                   tolerance." Renamed from "Group threshold" -- this is the
+                   ONLY UI-facing occurrence of that copy anywhere in this
+                   view (grepped); the id/`groupThreshold` model key are
+                   left unchanged (internal naming, not designer-facing). -->
+              <label for="kerning-param-group-threshold">Class tolerance</label>
               <input
                 type="number"
                 id="kerning-param-group-threshold"
