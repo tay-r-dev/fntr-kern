@@ -262,6 +262,16 @@ function autokernCacheFileName(projectIdentifier, source) {
   return `${encodeURIComponent(projectIdentifier || "")}--${encodeURIComponent(source)}.json`;
 }
 
+// Task 13, spec F27: "scope phrase persistence to the project so another
+// font does not inherit unrelated text unintentionally." Same
+// encodeURIComponent(projectIdentifier) convention as autokernCacheFileName
+// just above -- localStorage keys are global across every project this
+// browser profile has ever opened, so the project identifier must be part
+// of the key, not a separate lookup inside one shared key.
+export function kerningPhraseStorageKey(projectIdentifier) {
+  return `fontra-kerning-phrase.${encodeURIComponent(projectIdentifier || "")}`;
+}
+
 // Returns a plain array of cache entries, or null if nothing is stored yet
 // (never-run font, first session on this machine, or an unreadable/corrupt
 // file) -- the caller's job in that case is to "start with an empty cache
@@ -512,6 +522,27 @@ export class KerningViewController extends ViewController {
   // left pane (see the file-top comment) -- that input's own "input"/
   // "change" listeners are gone along with the element itself; this method
   // is their only replacement, on the new #kerning-phrase-input textarea.
+  //
+  // Task 13, spec F27: restore the typed phrase across a page refresh.
+  // Confirmed by reading (git log/grep, not assumed): no persistence of
+  // phraseInput.value existed anywhere before this change -- "empty after
+  // refresh" was not a race in existing restore code, there simply was no
+  // restore code. Scoped to the project (kerningPhraseStorageKey below,
+  // same encodeURIComponent(projectIdentifier) convention
+  // autokernCacheFileName already uses a few hundred lines up) so switching
+  // fonts does not inherit another project's leftover phrase text (spec's
+  // own recommended detail).
+  //
+  // Ordering: the restore (localStorage read, phraseInput.value assignment,
+  // setText() call) happens synchronously, BEFORE the `await fetch(...)`
+  // for phrase-presets.txt below -- not after it. A slow or failed preset
+  // fetch therefore can never delay or suppress the restored phrase; the
+  // two are on independent paths, matching the plan's explicit instruction
+  // not to depend on preset-load completion. This method already runs from
+  // start(), after `await super.start()` (see start()'s own comment on why
+  // font-data reads and this.sceneSettingsController must wait that long),
+  // so "restore early, apply after scene/font readiness" collapses to one
+  // step here: this whole method IS the first point both are ready.
   async initPhraseSection() {
     const phraseInput = document.querySelector("#kerning-phrase-input");
     const presetSelect = document.querySelector("#kerning-preset-select");
@@ -532,8 +563,36 @@ export class KerningViewController extends ViewController {
       this.sceneSettingsController.setItem("text", phraseInput.value);
     };
     this.applyPhraseText = setText;
+
+    const storageKey = kerningPhraseStorageKey(this.projectIdentifier);
+    const savePhraseText = () => {
+      try {
+        localStorage.setItem(storageKey, phraseInput.value);
+      } catch (error) {
+        // Storage can legitimately fail (quota, private browsing) -- losing
+        // persistence is not worth losing the phrase the designer just
+        // typed, so this is deliberately swallowed, not surfaced.
+      }
+    };
     phraseInput.addEventListener("input", setText);
     phraseInput.addEventListener("change", setText);
+    phraseInput.addEventListener("input", savePhraseText);
+    phraseInput.addEventListener("change", savePhraseText);
+
+    // Restore BEFORE the presets fetch below, and unconditionally: an empty
+    // stored value (never typed anything yet, or a designer who cleared the
+    // field) is a legitimate saved state and must not fall back to some
+    // other default text.
+    let restoredText = null;
+    try {
+      restoredText = localStorage.getItem(storageKey);
+    } catch (error) {
+      restoredText = null;
+    }
+    if (restoredText !== null) {
+      phraseInput.value = restoredText;
+      setText();
+    }
 
     presetSelect.addEventListener("change", () => {
       const preset = this.phrasePresets[presetSelect.selectedIndex - 1];
@@ -542,13 +601,16 @@ export class KerningViewController extends ViewController {
       }
       phraseInput.value = preset.text;
       setText();
+      savePhraseText();
     });
 
     // Presets file format (spec §7.1) is NOT a phrase string -- it's parsed
     // by parsePhrasePresets (character-lines.js), a separate, pure parser
     // for the presets file's own name-comment-block format. Each preset's
     // own text is still, in turn, a phrase string, parsed the usual way by
-    // characterLinesFromString once it lands in sceneSettings.text.
+    // characterLinesFromString once it lands in sceneSettings.text. This
+    // fetch is deliberately awaited AFTER the restore above, not before it
+    // -- see this method's own top comment.
     const response = await fetch("./assets/phrase-presets.txt");
     const presetsText = await response.text();
     this.phrasePresets = parsePhrasePresets(presetsText);
