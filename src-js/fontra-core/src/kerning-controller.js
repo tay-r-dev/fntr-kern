@@ -568,6 +568,15 @@ class KerningEditContext {
     let changes = recordChanges(font, (font) => {
       const values = font.kerning[this.kerningController.kernTag].values;
       for (const { leftName, rightName } of this.pairSelectors) {
+        // Task 10 fix: editContinuous (above) always clears the controller's
+        // memoized pair function for each selector it touches before writing
+        // -- delete() is the one write path that didn't, so a read of this
+        // exact address immediately after deletion could return a stale
+        // cached value instead of the newly-restored inherited one. Cleared
+        // unconditionally (before the `values[leftName][rightName]` guard
+        // below), since a stale cache entry can exist even when there is
+        // nothing left to delete.
+        this.kerningController.clearPairCache(leftName, rightName);
         if (!values[leftName][rightName]) {
           continue;
         }
