@@ -250,6 +250,10 @@ the pair. The actual preview pairs are the cross-product of the Glyph input's to
 input's token(s): each Glyph-input token paired with each Pair-input token. E.g. Glyph = `A`, Pair =
 `V, /Adieresis` produces the two pairs `A×V` and `A×Adieresis`. This is why the two inputs are named
 "Glyph" and "Pair" rather than "Left"/"Right" — Pair only makes sense relative to whatever is in Glyph.
+**Glyph input also holds a comma-separated list, not one token** — this follows directly from F07's own
+Shift+Ctrl+Click append behavior (`appendGlyphToken`, comma-separated), which only makes sense if Glyph
+already supports multiple entries. So the real relationship is many-to-many: every Glyph-input token
+cross-produced against every Pair-input token.
 A highlighted class-summary row still expands to the full cross-product of both sides' class membership,
 capped at 50 pairs (matching the existing `truncateGlyphList` display convention) with the remainder
 disclosed as a count, not silently dropped — that part of the original proposal stands.
@@ -286,13 +290,15 @@ fields (§7):
   it (inclusive), so a class is never hidden from review because one atypical member's category differs
   from the rest.
 
-### 8.4 Glyphset matching, empty multi-select semantics, exposed-member relationship filtering (F14)
+### 8.4 Glyphset matching, empty multi-select semantics, exposed-member relationship filtering (F14) — APPROVED, corrected 2026-09-08
 
-**Proposed:**
+**Decided, uniform "any" rule (not "both" for pair rows as originally proposed):**
 
-- A flat/exception pair row matches a selected table glyphset only if *both* glyphs are members of it.
-- A class-summary row matches a selected glyphset if the class contains *any* member of it (consistent
-  with the mixed-category rule above, so switching glyphsets doesn't make classes disappear entirely).
+- A flat/exception pair row matches a selected table glyphset if *either* of its two glyphs is a member
+  of it.
+- A class-summary row matches a selected glyphset if *any single member* of the class is a member of it.
+- Same rule both times — a row matches if at least one glyph involved (either side of a pair, or any
+  member of a class) belongs to the selected glyphset.
 - An empty multi-select (zero categories or zero relationships checked) shows an explicit "nothing
   selected" empty state, distinct from "all," rather than silently defaulting back to showing everything.
 - An exposed member with no saved exception is classified into the same relationship bucket as its class
