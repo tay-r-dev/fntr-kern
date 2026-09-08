@@ -120,13 +120,14 @@
                    UI, not two) -- see kerning-pairtable-sortable th's above. -->
             </div>
 
+            <!-- Task 4, spec F20: "Remove Reset to current, Apply all, and
+                 the manual-value input. Keep Apply selected and Reset
+                 selected." Reset selected writes an explicit 0 and needs a
+                 second press on an unchanged ticked set -- see
+                 resetSelectedPairRows/pressReset in kerning.js. -->
             <div id="kerning-pairtable-actions">
               <button id="kerning-pairtable-apply-selected" type="button">
                 Apply selected
-              </button>
-              <button id="kerning-pairtable-apply-all" type="button">Apply all</button>
-              <button id="kerning-pairtable-reset-current" type="button">
-                Reset selected to current
               </button>
               <button id="kerning-pairtable-reset-zero" type="button">
                 Reset selected to zero
@@ -146,18 +147,6 @@
                    #autokern-class-panel-slot below. Design doc §0: kern-row
                    clustering (the only tactic that used a tolerance) is
                    removed, so no tolerance control exists anywhere anymore. -->
-            </div>
-
-            <!-- §1.1: "A manual, directly-typed value is also always
-                 available on any row" -- one field, applying to whichever
-                 row(s) are checked, alongside the existing apply/reset
-                 actions rather than replacing them. -->
-            <div id="kerning-pairtable-manual-entry">
-              <label for="kerning-pairtable-manual-value">Manual value</label>
-              <input type="number" id="kerning-pairtable-manual-value" step="1" />
-              <button id="kerning-pairtable-manual-apply" type="button">
-                Apply to selected
-              </button>
             </div>
           </div>
 

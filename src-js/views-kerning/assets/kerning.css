@@ -543,20 +543,6 @@
   font-size: 0.9em;
 }
 
-/* §1.1: "A manual, directly-typed value is also always available on any
-   row." One field + one apply action, applying to whichever row(s) are
-   currently checked (the same selection apply-selected/reset-* already use),
-   regardless of which bucket they're in. */
-#kerning-pairtable-manual-entry {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-}
-
-#kerning-pairtable-manual-value {
-  width: 6em;
-}
-
 /* §1.1: the four-bucket grouping filter shows/hides whole bucket groups
    (kerning.js's renderPairTable toggles this class per .kerning-pairtable-
    group, keyed by its data-bucket attribute) rather than filtering rows

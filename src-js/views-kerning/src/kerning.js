@@ -1408,19 +1408,14 @@ export class KerningViewController extends ViewController {
       .querySelector("#kerning-pairtable-apply-selected")
       .addEventListener("click", () => this.applySelectedPairRows());
 
-    const applyAllButton = document.querySelector("#kerning-pairtable-apply-all");
-    this._applyAllArmed = false;
-    this._applyAllDefaultLabel = applyAllButton.textContent;
-    applyAllButton.addEventListener("click", () =>
-      this.applyAllPairRows(applyAllButton)
-    );
-
-    document
-      .querySelector("#kerning-pairtable-reset-current")
-      .addEventListener("click", () => this.resetSelectedPairRows("current"));
-    document
-      .querySelector("#kerning-pairtable-reset-zero")
-      .addEventListener("click", () => this.resetSelectedPairRows("zero"));
+    // Task 4, spec F20: "Apply all", "Reset to current", and the
+    // manual-value input are removed entirely (kerning.html) -- only Apply
+    // selected and Reset selected (now a double-press-to-zero action)
+    // remain.
+    const resetZeroButton = document.querySelector("#kerning-pairtable-reset-zero");
+    this._resetZeroDefaultLabel = resetZeroButton.textContent;
+    this.resetArmedKey = null;
+    resetZeroButton.addEventListener("click", () => this.resetSelectedPairRows());
 
     // Task 3, spec F24: Deselect clears highlight and tick only -- it does
     // not touch filters, class membership, or saved kerning.
@@ -1428,6 +1423,7 @@ export class KerningViewController extends ViewController {
       this.resultSelection = deselectAll();
       this.applyResultSelectionToDom();
       this.syncSelectAllCheckboxes();
+      this.refreshResetArmState();
     });
 
     // WORKSTREAM 15, spec §5.3: "The derive action sits beside the fold
@@ -1439,27 +1435,6 @@ export class KerningViewController extends ViewController {
     document
       .querySelector("#kerning-derive-button")
       .addEventListener("click", () => this.deriveClasses());
-
-    // Layout overhaul, design doc §1.1: "A manual, directly-typed value is
-    // also always available on any row as an alternative to accepting the
-    // computed suggestion -- one input, one apply, regardless of bucket."
-    // Applies to whichever row(s) are checked, the same selection
-    // apply-selected/reset-* already read (getSelectedPairTableRows) --
-    // this is not a per-row input, it is the one input/one apply the design
-    // doc describes, made to act on a selection like the other actions.
-    document
-      .querySelector("#kerning-pairtable-manual-apply")
-      .addEventListener("click", () => {
-        const manualValue = Number(
-          document.querySelector("#kerning-pairtable-manual-value").value || 0
-        );
-        this.writePairValues(
-          this.getSelectedPairTableRows(),
-          () => manualValue,
-          true,
-          true
-        );
-      });
 
     // Backlog item 13: one select-all checkbox per bucket table's own
     // header row (each bucket is its own <table>, so there is no single
@@ -1481,7 +1456,17 @@ export class KerningViewController extends ViewController {
           selectAll.closest("table")
         )) {
           checkbox.checked = selectAll.checked;
+          // Task 4: select-all sets .checked directly rather than firing a
+          // "change" event per checkbox, so it must update
+          // this.resultSelection itself -- otherwise Apply/Reset selected
+          // (which now read the state, not the DOM) would silently ignore
+          // rows ticked this way.
+          const id = checkbox.closest("tr")?.dataset.rowId;
+          if (id) {
+            this.resultSelection = tickRow(this.resultSelection, id, selectAll.checked);
+          }
         }
+        this.refreshResetArmState();
       });
     }
 
@@ -1597,6 +1582,35 @@ export class KerningViewController extends ViewController {
       if (checkbox) {
         checkbox.checked = this.resultSelection.ticked.has(id);
       }
+    }
+  }
+
+  // Task 4, spec F20: "Changing targets must cancel the armed state so the
+  // second press cannot affect a different set." Called after every
+  // resultSelection change (tick, select-all, Deselect, filter-driven
+  // pruning) so the button label never keeps advertising a target count
+  // that no longer matches what's actually ticked.
+  refreshResetArmState() {
+    const currentTargetIds = [...this.resultSelection.ticked];
+    const currentKey = currentTargetIds.length
+      ? JSON.stringify([...currentTargetIds].sort())
+      : null;
+    if (this.resetArmedKey && this.resetArmedKey !== currentKey) {
+      this.resetArmedKey = null;
+    }
+    this.updateResetButtonLabel();
+  }
+
+  updateResetButtonLabel() {
+    const button = document.querySelector("#kerning-pairtable-reset-zero");
+    if (!button) {
+      return;
+    }
+    if (this.resetArmedKey) {
+      const count = JSON.parse(this.resetArmedKey).length;
+      button.textContent = `Reset ${count} row${count === 1 ? "" : "s"} to 0 — press again`;
+    } else {
+      button.textContent = this._resetZeroDefaultLabel;
     }
   }
 
@@ -2064,9 +2078,8 @@ export class KerningViewController extends ViewController {
           .map((entry) => this.pairRowData(entry, bucket !== "unique-unique"))
           // Backlog item 8 part 3: an override candidate is LIFTED OUT of its
           // home cascade bucket into the "Potential overrides" section below,
-          // not shown in both -- getSelectedPairTableRows, apply-all's
-          // `tbody tr` scan and syncSelectAllCheckboxes all query row
-          // checkboxes document-wide and assume each pair-row appears once.
+          // not shown in both -- each pair-row's stable ID (Task 3's rowId)
+          // is assumed to appear once across the whole table.
           .filter(
             (row) => !this.isOverrideCandidate(row.left, row.right, row.suggestion)
           )
@@ -2183,13 +2196,16 @@ export class KerningViewController extends ViewController {
       )
     );
     this.resultSelection = retainVisible(this.resultSelection, visibleRowIds);
+    // Task 4, spec F20: a filter/render change that dropped a ticked row
+    // must disarm Reset (it would otherwise silently commit against a
+    // smaller set than the one shown when it was armed).
+    this.refreshResetArmState();
   }
 
   // Median (not mean, spec §5.2: "the median is the reducer... a mean can
   // [get dragged]") of the folded rows' suggestion values -- these are the
   // cache's own `entry.value` (via row.suggestion, pairRowData above), the
-  // same source applySelectedPairRows/applyAllPairRows write from for a
-  // flat row.
+  // same source applySelectedPairRows writes from for a flat row.
   static medianOf(values) {
     const sorted = [...values].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
@@ -3706,6 +3722,7 @@ export class KerningViewController extends ViewController {
       this.resultSelection = tickRow(this.resultSelection, id, checkbox.checked);
       this.applyResultSelectionToDom();
       this.syncSelectAllCheckboxes();
+      this.refreshResetArmState();
     });
     selectCell.appendChild(checkbox);
     tr.appendChild(selectCell);
@@ -3804,10 +3821,17 @@ export class KerningViewController extends ViewController {
     );
   }
 
+  // Task 4: reads TICKED rows from this.resultSelection, the state Task 3
+  // introduced -- not a DOM-wide checkbox query. Parses each ticked row ID
+  // (results-model.js's rowId, `JSON.stringify([sourceId, leftName,
+  // rightName])`) back into an address. Addresses are snapshotted here,
+  // before any asynchronous write, per plan Task 4's "snapshot addresses
+  // before asynchronous writes."
   getSelectedPairTableRows() {
-    return [...document.querySelectorAll(".kerning-pairtable-row-select:checked")]
-      .map((checkbox) => checkbox.closest("tr"))
-      .map((tr) => ({ left: tr.dataset.left, right: tr.dataset.right }));
+    return [...this.resultSelection.ticked].map((id) => {
+      const [, left, right] = JSON.parse(id);
+      return { left, right };
+    });
   }
 
   async applySelectedPairRows() {
@@ -3819,53 +3843,38 @@ export class KerningViewController extends ViewController {
     );
   }
 
-  applyAllPairRows(button) {
-    const visibleRows = [
-      ...document.querySelectorAll(".kerning-pairtable-table tbody tr"),
-    ].map((tr) => ({ left: tr.dataset.left, right: tr.dataset.right }));
-
-    // Spec §7.3: "Apply all states how many cells it will write and needs a
-    // second press." First press arms and relabels the button; a second
-    // press within the window commits. Re-rendering the table (any filter
-    // change, a Run finishing) between the two presses would silently
-    // change what "all" means, so a fresh render is not forced here, but
-    // the re-count on commit below uses whatever is on screen AT THE TIME
-    // OF THE SECOND PRESS, not the count shown on the first press -- if the
-    // table changed underneath, the write still matches what's actually
-    // visible rather than a stale number.
-    if (!this._applyAllArmed) {
-      this._applyAllArmed = true;
-      button.textContent = `Confirm: write ${visibleRows.length} cell(s)`;
-      clearTimeout(this._applyAllArmTimeout);
-      this._applyAllArmTimeout = setTimeout(() => {
-        this._applyAllArmed = false;
-        button.textContent = this._applyAllDefaultLabel;
-      }, 8000);
+  // Task 4, spec F20: "Remove Reset to current, Apply all, and the
+  // manual-value input. Keep Apply selected and Reset selected." Reset
+  // always writes explicit 0 -- it is not "reset to current" and it is not
+  // "remove exception" (that stays its own, separate control -- plan
+  // Task 10, not built yet). First press arms and shows the target count;
+  // a second press with the SAME ticked set commits. Any change to the
+  // ticked set between presses disarms (results-selection.js's pressReset,
+  // called via refreshResetArmState from every place resultSelection.ticked
+  // can change).
+  //
+  // "Scope-aware" routing of a class-summary row to its class address
+  // versus a member row to its literal pair address (plan Task 4's own
+  // text) has no material counterpart yet: this codebase's pair table
+  // (buckets, not the single class/exception row model plan Task 8 adds)
+  // only ever exposes literal glyph pairs through the tick/checkbox
+  // mechanism today -- a folded class×class row's own "Apply class" button
+  // (applyFoldedParentRow) is a separate, pre-existing control, not part of
+  // this tick/Reset selection. Left as a note for Task 8/10, not invented
+  // here.
+  async resetSelectedPairRows() {
+    const targetIds = [...this.resultSelection.ticked];
+    const { commit, armedKey } = pressReset(this.resetArmedKey, targetIds);
+    this.resetArmedKey = armedKey;
+    this.updateResetButtonLabel();
+    if (!commit) {
       return;
     }
-
-    clearTimeout(this._applyAllArmTimeout);
-    this._applyAllArmed = false;
-    button.textContent = this._applyAllDefaultLabel;
-    this.writePairValues(visibleRows, (entry) => entry.value, true, true);
-  }
-
-  async resetSelectedPairRows(mode) {
-    const rows = this.getSelectedPairTableRows();
-    // "Reset to current" writes the pair's already-resolved stored value
-    // back as an explicit flat entry (useful to break a class cell's value
-    // out into a flat exception without changing the number, or to
-    // re-confirm a value after inspecting it here). "Reset to zero" writes
-    // 0, clearing the pair's effective kerning. Neither is "accepting the
-    // suggestion", so neither marks the row applied (see writePairValues'
-    // markApplied parameter) -- the state filter's "applied" bucket means
-    // specifically "the suggestion was applied".
-    const valueFn =
-      mode === "zero"
-        ? () => 0
-        : (entry, left, right) =>
-            this.kerningController.getGlyphPairValueForLocation(left, right, {}) ?? 0;
-    await this.writePairValues(rows, valueFn, false);
+    const rows = targetIds.map((id) => {
+      const [, left, right] = JSON.parse(id);
+      return { left, right };
+    });
+    await this.writePairValues(rows, () => 0, false);
   }
 
   // The single write path every pair-table action goes through. Reaches
@@ -3902,11 +3911,13 @@ export class KerningViewController extends ViewController {
   // exactly the way BaseInfoPanel.doUndoRedo does: fontController.applyChange
   // then a rollback-direction fontController.editFinal.
   //
-  // Backlog item 8 part 4: `confirmShadow` is passed true by the apply paths
-  // (row apply / apply-selected / apply-all / manual-value apply) and left
-  // false by the reset paths -- resetting a pair to its resolved value or to
-  // zero is a deliberate flat-exception action, not an accidental shadow, and
-  // must not pop a dialogue. When true and the batch contains any pair whose
+  // Backlog item 8 part 4, updated by Task 4 (spec F20 removed Apply all,
+  // Reset to current, and the manual-value input; only Apply selected and
+  // Reset selected remain): `confirmShadow` is passed true by
+  // applySelectedPairRows and left false by resetSelectedPairRows --
+  // writing an explicit zero is a deliberate flat-exception action, not an
+  // accidental shadow, and must not pop a dialogue. When true and the batch
+  // contains any pair whose
   // write would shadow a class cell (wouldShadowClassCell), ONE dialogue
   // summarising the batch is shown before anything is written; on "Apply as
   // override" the write proceeds unchanged and each shadowing pair's cache
