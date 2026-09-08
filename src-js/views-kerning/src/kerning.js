@@ -197,7 +197,13 @@ import {
   rowVisibleInPotential,
   valuesForDisplay,
 } from "./results-model.js";
-import { deselectAll, retainVisible, selectRow, tickRow } from "./results-selection.js";
+import {
+  deselectAll,
+  pressReset,
+  retainVisible,
+  selectRow,
+  tickRow,
+} from "./results-selection.js";
 
 // Spec §2.4: the three control glyphs calibration reads.
 const CONTROL_GLYPH_NAMES = ["l", "n", "o"];
@@ -1783,11 +1789,15 @@ export class KerningViewController extends ViewController {
     const pairInputError = document.querySelector("#kerning-pairtable-pair-error");
     pairInput.addEventListener("input", () => {
       this.updatePairPreview();
-      // Task 9: the Pair input isn't part of the persisted filter model
-      // (it only ever restricts preview, per F06 -- unchanged by this
-      // task), so it doesn't trigger renderPairTable on its own; the
-      // non-Unicode note still needs to react to it directly.
       this.updateNonUnicodeNote();
+      // Task 19 audit fix: the Pair input isn't part of the persisted
+      // filter model, but getExposedMemberNames() (Task 8) already reads
+      // ITS value too, for table row visibility (rowVisibleInDefault) --
+      // not merely preview, contrary to this listener's original comment.
+      // Without this call, typing "%glyphname%!" into Pair (spec F19/F22's
+      // own recommended exposure workflow, scenario 11.2 step 1) silently
+      // exposed nothing until an unrelated event happened to re-render.
+      this.renderPairTable();
     });
     this._pairInputElements = { glyphInput, pairInput, pairInputError };
 
@@ -4809,7 +4819,7 @@ export class KerningViewController extends ViewController {
     // enabled; only a hint is shown until the override is deliberate.
     if (this.wouldShadowClassCell(row.left, row.right) && !row.override) {
       checkbox.title =
-        "Applying this pair writes a value that shadows a class cell -- you'll be asked to confirm.";
+        "Applying this pair overrides the class value -- you'll be asked to confirm.";
     }
     // Task 17, spec F23: "disable applying that stale suggestion. Reset to
     // zero remains a separate manual action" -- the tick itself stays
@@ -5289,8 +5299,8 @@ export class KerningViewController extends ViewController {
     const more = extra > 0 ? `\n  …and ${extra} more.` : "";
     const headline =
       shadowingPairs.length === 1
-        ? "Write a value that shadows a class cell?"
-        : `Write ${shadowingPairs.length} values that shadow class cells?`;
+        ? "Write a value that overrides the class value?"
+        : `Write ${shadowingPairs.length} values that override class values?`;
     const dialog = await dialogSetup(
       headline,
       `A literal glyph-pair value always wins over the class cell that would ` +
