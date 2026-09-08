@@ -8,6 +8,11 @@
 // KerningController.getPairValues, not the approximate wouldShadowClassCell
 // detector).
 
+import {
+  getCodePointFromGlyphName,
+  getGlyphInfoFromGlyphName,
+} from "@fontra/core/glyph-data.js";
+
 // A row's identity must include its source (a pair can have different
 // stored values per source) and the exact left/right names as addressed
 // (a class address like "@A" is a different row from the literal pair it
@@ -84,6 +89,125 @@ export function rowVisibleInDefault(row, exposedNames, showIndividualMembers) {
 // not a partition.
 export function rowVisibleInPotential(row) {
   return !!row.isCandidate;
+}
+
+// Task 9, spec F09, ledger §8.3/§7 (the confirmed CSV fields: `category`,
+// `case`). One glyph's own membership in one Unicode-types checkbox --
+// looked up through the real glyph-data.js service, never guessed from the
+// name string. "non-unicode" is the one category that reads
+// getCodePointFromGlyphName instead of category/case (ledger §7: "a glyph
+// with no `unicode` field and no recognized uniXXXX/uXXXXXX name pattern
+// returns null -- this is the correct, existing primitive").
+export function glyphMatchesCategory(glyphName, category) {
+  if (category === "non-unicode") {
+    return getCodePointFromGlyphName(glyphName) == null;
+  }
+  const info = getGlyphInfoFromGlyphName(glyphName);
+  switch (category) {
+    case "uppercase":
+      return info?.case === "upper" || info?.case === "smallCaps";
+    case "lowercase":
+      return info?.case === "lower";
+    case "punctuation":
+      return info?.category === "Punctuation";
+    case "symbols":
+      return info?.category === "Symbol";
+    case "marks":
+      return info?.category === "Mark";
+    case "numbers":
+      return info?.category === "Number";
+    default:
+      return false;
+  }
+}
+
+// Ledger §8.3: pair-side matching and mixed-category class-summary matching
+// are the SAME rule underneath -- "does any glyph on the tested side(s)
+// belong to this category." `leftNames`/`rightNames` are the caller's own
+// resolved glyph-name lists: a single-element array for an ordinary pair
+// row, the full membership list for a class-summary row (that's what makes
+// "any member belongs to it" fall out of the same code, not a second
+// implementation). `side` is the Side filter's own value ("left"/"right"/
+// anything else meaning "all"); Side = All checks either side, mirroring
+// F14's own "Class-to-unique includes both orientations" resolution.
+export function pairMatchesCategory(leftNames, rightNames, side, category) {
+  const matchesAny = (names) => names.some((name) => glyphMatchesCategory(name, category));
+  if (side === "left") {
+    return matchesAny(leftNames);
+  }
+  if (side === "right") {
+    return matchesAny(rightNames);
+  }
+  return matchesAny(leftNames) || matchesAny(rightNames);
+}
+
+// Multiple checked categories combine as alternatives (F14: "Multiple
+// choices within a filter combine as alternatives"). Ledger §8.4: zero
+// checked categories is its own "nothing selected" state, not "show
+// everything" -- this predicate returns false for every row in that case,
+// and the caller (kerning.js) is responsible for rendering the distinct
+// empty-state message rather than an ordinary empty table.
+export function pairMatchesUnicodeTypes(leftNames, rightNames, side, categories) {
+  if (!categories || categories.size === 0) {
+    return false;
+  }
+  for (const category of categories) {
+    if (pairMatchesCategory(leftNames, rightNames, side, category)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// F14's Class relationship filter. Reuses Task 8's own kind taxonomy
+// (pairRowData's `kind`/`explicitPairExists`) rather than re-deriving
+// classed-ness: "Class exceptions" is reserved for a row with its own
+// saved explicit rule where a class rule was actually applicable (ledger
+// §8.4: "not into Class exceptions -- that bucket is reserved for rows
+// where explicitPairExists is true" -- read together with pairRowData's own
+// taxonomy, this means kind === "pair-exception", which only exists when
+// BOTH sides are classed; a fully unique pair's own stored value is not an
+// "exception" to anything and stays Unique-to-unique/Class-to-unique).
+// `leftClassed`/`rightClassed` are the caller's own isLeftClassed/
+// isRightClassed reads -- this module has no font/controller access.
+export function rowRelationship(row, leftClassed, rightClassed) {
+  if (row.kind === "pair-exception") {
+    return "exceptions";
+  }
+  if (leftClassed && rightClassed) {
+    return "class-class";
+  }
+  if (leftClassed || rightClassed) {
+    return "class-unique";
+  }
+  return "unique-unique";
+}
+
+// Multiple checked relationships combine as alternatives, same "nothing
+// selected" carve-out as pairMatchesUnicodeTypes above (ledger §8.4).
+export function rowMatchesRelationships(row, leftClassed, rightClassed, relationships) {
+  if (!relationships || relationships.size === 0) {
+    return false;
+  }
+  return relationships.has(rowRelationship(row, leftClassed, rightClassed));
+}
+
+// F14's table Glyphset filter, ledger §8.4's corrected uniform "any" rule:
+// "a row matches if at least one glyph involved (either side of a pair, or
+// any member of a class) belongs to the selected glyphset" -- deliberately
+// NOT "both sides required," which was the plan's original wrong
+// assumption, explicitly overridden. `memberNames` is null for "All" (no
+// restriction); otherwise a Set of glyph names in the selected glyphset,
+// already resolved by the caller (kerning.js owns loading/caching the
+// actual glyphset data -- this module stays pure).
+export function pairMatchesGlyphset(leftNames, rightNames, memberNames) {
+  if (!memberNames) {
+    return true;
+  }
+  return (
+    leftNames.some((name) => memberNames.has(name)) ||
+    rightNames.some((name) => memberNames.has(name))
+  );
 }
 
 export function passesNumericFilters(row, filters) {
