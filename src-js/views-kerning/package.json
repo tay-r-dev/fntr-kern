@@ -1,7 +1,7 @@
 {
   "name": "@fontra/views-kerning",
   "scripts": {
-    "test": "echo \"No test specified for @fontra/views-kerning\""
+    "test": "mocha tests --extension js --reporter spec"
   },
   "exports": {
     "./start.js": "./src/start.js",

@@ -156,6 +156,7 @@ import {
   VisualizationLayers,
 } from "@fontra/views-editor/visualization-layers.js";
 import { SelectTool } from "./edit-tools-select.js";
+import { explicitPairExists } from "./results-model.js";
 
 // Spec §2.4: the three control glyphs calibration reads.
 const CONTROL_GLYPH_NAMES = ["l", "n", "o"];
@@ -1573,6 +1574,16 @@ export class KerningViewController extends ViewController {
       // to a neutral state label in buildPairRowElement.
       override: !!entry.override,
       classed,
+      // Task 2 (kerning-ux-integration.md §5.1/§9): whether THIS literal
+      // pair has an explicit stored rule, read via
+      // KerningController.getPairValues -- true for a stored zero, false
+      // only when nothing at all is stored for this exact address. Not
+      // derived from `current`'s numeric value.
+      explicitPairExists: explicitPairExists(
+        this.kerningController,
+        entry.left,
+        entry.right
+      ),
     };
   }
 
@@ -1810,22 +1821,23 @@ export class KerningViewController extends ViewController {
   // A pair with no class on either side (unique×unique) has no class-based
   // address at all, so it can never shadow anything.
   //
-  // This is a conservative, honestly-approximate detector, not the
-  // override-transparency feature the design doc explicitly defers
-  // (KERNING-VIEW-BACKLOG.md item 8): it does not distinguish "the current
-  // value came from a class cell" from "the current value happens to be
-  // zero for an unrelated reason" -- getGlyphPairValueForLocation returns
-  // whatever the cascade resolves to today, and a nonzero result while
-  // either side is classed is treated as "a class-based address currently
-  // answers for this pair", which is the only signal available without
-  // building the "which address answered" plumbing the backlog item defers.
+  // Task 2 fix (kerning-ux-integration.md §5.1, "a confirmed, in-code-
+  // acknowledged limitation"): this used to treat "the resolved cascade
+  // value is nonzero" as evidence a class cell currently answers, which
+  // cannot distinguish an explicit stored pair zero (not shadowing --
+  // writing here would just update that existing literal rule) from
+  // "nothing stored at this literal address, cascade fell through to 0"
+  // (which IS shadowing -- the class cell answers with 0, and a flat write
+  // would silently outrank it). Reading getPairValues at the literal
+  // address (the same primitive Task 2's explicitPairExists uses) settles
+  // it directly instead of inferring it from a number: a class-based
+  // address can currently answer for this pair if, and only if, no literal
+  // rule already exists for it.
   wouldShadowClassCell(left, right) {
     if (!this.isLeftClassed(left) && !this.isRightClassed(right)) {
       return false;
     }
-    const current =
-      this.kerningController.getGlyphPairValueForLocation(left, right, {}) ?? 0;
-    return current !== 0;
+    return this.kerningController.getPairValues(left, right) === undefined;
   }
 
   // Names the class-based address that answers today, for the shadow note
