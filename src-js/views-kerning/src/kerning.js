@@ -2877,7 +2877,10 @@ export class KerningViewController extends ViewController {
     tr.appendChild(deltaCell);
 
     const rightCell = document.createElement("td");
-    rightCell.textContent = `${right} (${truncateGlyphList(stats.rightMembers)})`;
+    const rightLabel = document.createElement("span");
+    rightLabel.className = "kerning-pairtable-class-name";
+    rightLabel.textContent = `${right} (${truncateGlyphList(stats.rightMembers)})`;
+    rightCell.appendChild(rightLabel);
     tr.appendChild(rightCell);
 
     // F32's override-action column: this row's own primary write action
@@ -4258,6 +4261,10 @@ export class KerningViewController extends ViewController {
     });
     leftCell.appendChild(checkbox);
     const leftLabel = document.createElement("span");
+    // Task 11, spec F17: the class kerning.css's own
+    // .kerning-pairtable-row-hidden rule targets for the dimmed/
+    // struck-through hidden-row name styling.
+    leftLabel.className = "kerning-pairtable-glyph-name";
     leftLabel.textContent = row.left;
     leftCell.appendChild(leftLabel);
     tr.appendChild(leftCell);
@@ -4292,7 +4299,10 @@ export class KerningViewController extends ViewController {
     tr.appendChild(deltaCell);
 
     const rightCell = document.createElement("td");
-    rightCell.textContent = row.right;
+    const rightLabel = document.createElement("span");
+    rightLabel.className = "kerning-pairtable-glyph-name";
+    rightLabel.textContent = row.right;
+    rightCell.appendChild(rightLabel);
     tr.appendChild(rightCell);
 
     // F32's override-action column. Task 10, spec F12/F29/F19: the real

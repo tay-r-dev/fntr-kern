@@ -571,6 +571,66 @@ tr:focus-within .kerning-pairtable-exception-create {
   opacity: 1;
 }
 
+/* Task 11, spec F10: the eye/eye-closed hide-action control in the Hide
+   column (buildPairRowElement/buildClassSummaryRowElement). Same sizing as
+   the Exception column's own indicator, and the SAME row-hover/focus reveal
+   convention as .kerning-pairtable-exception-create above -- not a second
+   one -- so a row's two hover-only action columns behave identically. */
+.kerning-pairtable-hide-indicator {
+  width: 1.1em;
+  height: 1.1em;
+  display: inline-flex;
+}
+
+.kerning-pairtable-hide-action {
+  opacity: 0.35;
+}
+
+tr:hover .kerning-pairtable-hide-action,
+tr:focus-within .kerning-pairtable-hide-action {
+  opacity: 1;
+}
+
+/* Task 11, spec F17: "hidden rows reappear... with a distinguishable hidden
+   state" when Show hidden is on. Dims and strikes through the row's own
+   name text without hiding the row's other cells (Current/Proposed/Delta
+   stay legible, so the designer can still judge whether it's worth
+   restoring) -- deliberately not opacity on the whole `tr`, which would
+   also wash out the highlight/tick states F04 requires to stay
+   discernible on every row type (F15's own acceptance line). */
+.kerning-pairtable-row-hidden .kerning-pairtable-glyph-name,
+.kerning-pairtable-row-hidden .kerning-pairtable-class-name {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+/* Task 11, spec F15: "consistent color coding for classes, uniques, and
+   exceptions... reinforced with names, icons, or labels" (the row's own
+   `title` attribute, set in buildPairRowElement/buildClassSummaryRowElement,
+   carries the textual half). A left border-accent, keyed off the SAME
+   `data-kind` attribute Task 8 already sets for row identity, is the color
+   half -- a border, not a background-color, so it never competes with
+   .kerning-pairtable-row-highlighted's own background (F04/F15: highlight
+   and tick must stay visually distinguishable on every row kind) and is
+   deliberately separate from the per-class membership swatch colors built
+   for Font mode/preview tiles elsewhere in this view (F30, a different DOM
+   region entirely -- neither overwrites the other). "member-pair" (a
+   grouped member with no saved rule of its own) reads as the SAME class
+   accent as its own class-summary row -- results-model.js's own
+   rowRelationship groups it there too, not as a fourth category. */
+tr[data-kind="class-rule"],
+tr[data-kind="member-pair"] {
+  border-left: 3px solid var(--metrics-handle-color, #888);
+}
+
+tr[data-kind="unique-pair"] {
+  border-left: 3px solid transparent;
+}
+
+tr[data-kind="pair-exception"] {
+  border-left: 3px solid var(--fontra-red-color, #c00);
+}
+
 /* Task 5, spec F13: the Columns menu sits inline with the other filter
    controls rather than breaking onto its own block by default (fieldset's
    native display). */
