@@ -241,27 +241,34 @@ are grounded in the spec's own "Recommended detail" text where one exists, and i
 schema found in §7 above. A later task must get explicit designer sign-off before treating any of these
 as settled; nothing here overrides a decision the spec itself already marks Must/settled.
 
-### 8.1 Pair-input grammar and class-row expansion into preview pairs (F04, F06, F22)
+### 8.1 Pair-input grammar and class-row expansion into preview pairs (F04, F06, F22) — APPROVED, corrected 2026-09-08
 
-**Proposed:** the Pair input accepts a comma-separated list of pair-tokens. Each pair-token is exactly two
-space-separated glyph-tokens (literal character, `/glyphname`, `@ClassName`, or `%glyphname%!`), e.g.
-`A V, /Adieresis /W, @A @V`. No adjacent-character-string expansion (do not read `AVW` as the pairs
-`A-V`, `V-W`) — the spec explicitly flags this as unresolved and unresolved ambiguity should fail loud,
-not guess; a bare multi-character run with no separator is an inline error, not a silent adjacent-pair
-guess. A highlighted class-summary row expands to the full cross-product of both sides' class membership,
-capped at 50 pairs (matching the existing `truncateGlyphList` display convention already used for class
-member lists) with the remainder disclosed as a count, not silently dropped.
+**Original framing in this section was wrong** — corrected by the designer directly, not a proposed
+default. The Pair input does **not** hold pair-tokens at all. It holds a **comma-separated list of single
+glyph-tokens** (literal character, `/glyphname`, `@ClassName`, or `%glyphname%!`) — the *other side* of
+the pair. The actual preview pairs are the cross-product of the Glyph input's token(s) against the Pair
+input's token(s): each Glyph-input token paired with each Pair-input token. E.g. Glyph = `A`, Pair =
+`V, /Adieresis` produces the two pairs `A×V` and `A×Adieresis`. This is why the two inputs are named
+"Glyph" and "Pair" rather than "Left"/"Right" — Pair only makes sense relative to whatever is in Glyph.
+A highlighted class-summary row still expands to the full cross-product of both sides' class membership,
+capped at 50 pairs (matching the existing `truncateGlyphList` display convention) with the remainder
+disclosed as a count, not silently dropped — that part of the original proposal stands.
 
-### 8.2 Explicit non-Unicode name request vs. the unchecked inclusion filter (F09, F22)
+### 8.2 Explicit non-Unicode name request vs. the unchecked inclusion filter (F09, F22) — APPROVED, corrected 2026-09-08
 
-**Proposed:** adopt the spec's own stated default verbatim — retain the filter. An explicit `/glyphname`
-or `%glyphname%!` request for a glyph with no Unicode assignment is still excluded by an unchecked
-"Non-Unicode glyphs" filter, and the UI names the exact reason ("excluded by the Non-Unicode filter") next
-to the input rather than a silent empty result.
+**Decided, not the originally proposed default.** The Non-Unicode filter governs the **results table**
+only. It does **not** govern the **pair preview**. A non-Unicode glyph named explicitly (`/glyphname` or
+`%glyphname%!`) still shows in the on-canvas pair preview whenever it actually forms a real pair — i.e.
+whenever it's placed in Glyph or Pair input with the other input non-empty — regardless of the table
+filter's state. It stays hidden from the results **table** while the filter is unchecked, same as before.
+Table row visibility and preview eligibility are two separate gates; the filter only ever controls the
+former.
 
-### 8.3 Unicode category coverage, pair-side matching, mixed-class matching (F09)
+### 8.3 Unicode category coverage, pair-side matching, mixed-class matching (F09) — APPROVED, Numbers added 2026-09-08
 
-**Proposed**, using the confirmed CSV fields (§7):
+**Decided:** Numbers gets its own explicit category in the dropdown — the gap flagged below is real and
+is now closed, not left open. Everything else in this section stands as proposed, using the confirmed CSV
+fields (§7):
 
 - Uppercase = `case === "upper"` (also count `smallCaps` as uppercase — visually cased-upper).
   Lowercase = `case === "lower"`.
@@ -269,11 +276,9 @@ to the input rather than a silent empty result.
 - Combining diacritics = `category === "Mark"` (regardless of `subCategory`, so both `Nonspacing` and
   `Spacing Combining` marks are covered by one checkbox, matching the spec's six-item list which does not
   split marks further).
-- **Gap not covered by the spec's six-item list:** `Number` (digits) and any glyph with blank `case`
-  (CJK, uncased scripts) have no home in Uppercase/Lowercase/Punctuation/Symbols/Marks/Non-Unicode. Do
-  not silently fold Numbers into Symbols — flag this to the designer explicitly as a seventh item the
-  spec's dropdown needs, or an accepted "falls through every filter" behavior, before Task 9 builds the
-  dropdown.
+- **Numbers = `category === "Number"`, its own checkbox, seventh dropdown item** (approved). Any glyph
+  with blank `case` and no other matching category (CJK, other uncased scripts not covered above) still
+  has no home — not decided here, flag again if it becomes a real font's problem in practice.
 - Pair-side matching: a pair matches a checked category if the glyph on the side named by the Side filter
   matches it, or (when Side = All) if *either* side matches — mirroring the spec's own resolution of
   Class-to-unique matching "either orientation."
@@ -294,17 +299,15 @@ to the input rather than a silent empty result.
   pairing (Class-to-class / Class-to-unique), not into "Class exceptions" — that bucket is reserved for
   rows where `explicitPairExists` (§5.1) is true.
 
-### 8.5 Hiding scope for class-summary rows (F10)
+### 8.5 Hiding scope for class-summary rows (F10) — APPROVED 2026-09-08
 
-**Proposed:** hiding a class-summary row hides only that displayed aggregate row. It never cascades to
-its exposed members or saved exceptions — each row's visibility is tracked by its own stable identity
-(Task 2), and the spec's instruction not to silently cascade is taken at face value.
+Hiding a class-summary row hides only that displayed aggregate row. It never cascades to its exposed
+members or saved exceptions — each row's visibility is tracked by its own stable identity (Task 2).
 
-### 8.6 Final analytics metrics (F03)
+### 8.6 Final analytics metrics (F03) — APPROVED 2026-09-08
 
-**Proposed:** adopt the spec's own recommended initial set verbatim — stale glyphs, saved pair
-exceptions, potential exceptions, hidden results — each labeled with its exact scope (active source vs.
-filtered vs. all). No invented quality/confidence score, per the spec's explicit prohibition.
+Stale glyphs, saved pair exceptions, potential exceptions, hidden results — each labeled with its exact
+scope (active source vs. filtered vs. all). No invented quality/confidence score.
 
 ---
 
