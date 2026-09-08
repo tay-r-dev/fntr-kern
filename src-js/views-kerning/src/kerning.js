@@ -156,6 +156,7 @@ import {
   VisualizationLayers,
 } from "@fontra/views-editor/visualization-layers.js";
 import { SelectTool } from "./edit-tools-select.js";
+import { appendGlyphToken, replaceGlyphToken } from "./input-tokens.js";
 import {
   explicitPairExists,
   passesNumericFilters,
@@ -1296,23 +1297,17 @@ export class KerningViewController extends ViewController {
     glyphInput.addEventListener("input", () => {
       this.autokernFiltersController.setItem("glyphName", glyphInput.value.trim());
     });
+    this._glyphInputElement = glyphInput;
 
-    // Left-pane selection override (spec §7.3: "A glyph input, overridden by
-    // the selection in the left pane"). Traced: scene-controller.js sets
-    // sceneSettings.selectedGlyphName to the single selected glyph's name
-    // whenever the selection resolves to exactly one glyph, and to null
-    // otherwise (scene-controller.js, the "Set up convenience property
-    // selectedGlyphName" comment, ~line 287). This view already owns
-    // this.sceneSettingsController (constructor above, shared with the left
-    // pane's scene). Only override on an actual single-glyph selection --
-    // clearing the selection leaves whatever the designer typed alone
-    // rather than blanking the field.
-    this.sceneSettingsController.addKeyListener("selectedGlyphName", (event) => {
-      if (event.newValue) {
-        glyphInput.value = event.newValue;
-        this.autokernFiltersController.setItem("glyphName", event.newValue);
-      }
-    });
+    // Task 6, spec F07: "Ordinary clicks on preview glyphs do not change the
+    // Glyph input." The pre-existing "left-pane selection override" listener
+    // that used to live here (sceneSettings.selectedGlyphName -> glyphInput.
+    // value on every single-glyph selection, including a plain click) did
+    // exactly what F07 now forbids, so it is removed rather than modified --
+    // there is no reduced form of "every selection change edits the input"
+    // that is still correct. Its replacement is deliberate-only: Ctrl+Click
+    // and Shift+Ctrl+Click on a preview glyph, wired in edit-tools-select.js
+    // to this.handleGlyphInputModifierClick below.
 
     const excludedInput = document.querySelector("#kerning-pairtable-excluded");
     // WORKSTREAM 12, spec §4.1/§4.2: the excluded-glyph list is the
@@ -4845,6 +4840,23 @@ export class KerningViewController extends ViewController {
       pairButton.disabled = false;
     }
     this.setChipMode("pair");
+  }
+
+  // Task 6, spec F07: called by edit-tools-select.js's SelectTool on a
+  // Ctrl+Click (`additive` false, replaces the Glyph input) or a
+  // Shift+Ctrl+Click (`additive` true, appends -- appendGlyphToken's own
+  // comma-separated, duplicate-ignoring behavior). Only ever touches the
+  // Glyph input; there is no Pair input yet (plan Task 7) and pointer
+  // shortcuts have no defined role there regardless.
+  handleGlyphInputModifierClick(glyphName, additive) {
+    const glyphInput = this._glyphInputElement;
+    if (!glyphInput) {
+      return;
+    }
+    glyphInput.value = additive
+      ? appendGlyphToken(glyphInput.value, glyphName)
+      : replaceGlyphToken(glyphName);
+    this.autokernFiltersController.setItem("glyphName", glyphInput.value.trim());
   }
 
   // Spec §10 ("No on-canvas display of a suggestion"), closing it: draws the

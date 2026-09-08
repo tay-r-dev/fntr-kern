@@ -53,7 +53,27 @@ export class SelectTool extends BaseTool {
       return;
     }
 
-    this.sceneSettings.selectedGlyph = this.sceneModel.glyphAtPoint(point);
+    const hitGlyph = this.sceneModel.glyphAtPoint(point);
+    this.sceneSettings.selectedGlyph = hitGlyph;
+
+    // Task 6, spec F07: "Ordinary clicks on preview glyphs do not change
+    // the Glyph input" (handled above -- selectedGlyph only drives scene
+    // selection, nothing here writes to any input) "Ctrl+Click replaces
+    // the Glyph input with the clicked glyph. Shift+Ctrl+Click appends the
+    // clicked glyph, using comma separation." Reads the glyph name directly
+    // off the positioned line hitGlyph identifies rather than waiting on
+    // sceneSettings.selectedGlyphName's own listener chain (scene-
+    // controller.js), which only fires asynchronously and would still be
+    // running -- and readable -- for an ordinary click too if reused here.
+    if ((initialEvent.ctrlKey || initialEvent.metaKey) && hitGlyph) {
+      const glyphName =
+        this.sceneModel.positionedLines?.[hitGlyph.lineIndex]?.glyphs?.[
+          hitGlyph.glyphIndex
+        ]?.glyphName;
+      if (glyphName && this.editor.handleGlyphInputModifierClick) {
+        this.editor.handleGlyphInputModifierClick(glyphName, initialEvent.shiftKey);
+      }
+    }
   }
 
   openSelectedGlyphForEditing(initialEvent) {
