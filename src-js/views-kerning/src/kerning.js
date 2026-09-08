@@ -5423,6 +5423,25 @@ export class KerningViewController extends ViewController {
         // handler deal with it, same guard the shared method itself uses.
         return;
       }
+      // Task 14, spec F33, ledger's own reuse convention (this file's own
+      // instance-property-shadowing pattern, see this override's header
+      // comment above): confirmed by reading glyph-cell-view.js's shared
+      // `_addCellsIfNeeded` (glyph-cell-view.js:375-378) that EVERY
+      // right-click already calls `this.handleSingleClick(event, glyphCell,
+      // false)` before the optional `onCellContextMenu` hook runs -- so this
+      // override, not just the shared class, is the thing that decides
+      // whether a right-click can mutate `glyphSelection`. Without this
+      // guard, a plain right-click on a glyph NOT already in the selection
+      // falls into the shared method's own "else" branch and replaces the
+      // whole selection with just that one glyph (reproduced by reading:
+      // resetGlyphSelection=false only suppresses the "click on an
+      // already-selected glyph" branch, not this one) -- confirmed
+      // in-code, not assumed. Bail out entirely for a context-menu click;
+      // `onCellContextMenu` below captures which glyph was right-clicked so
+      // the menu can still target it, without touching selection state.
+      if (event.type === "contextmenu") {
+        return;
+      }
       const glyphName = glyphCell.glyphName;
       const view = this.fontModeGlyphCellView;
       if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) {
@@ -5432,6 +5451,17 @@ export class KerningViewController extends ViewController {
       } else {
         view.glyphSelection = new Set([glyphName]);
       }
+    };
+
+    // Task 14, spec F33: the shared `onCellContextMenu` hook (glyph-cell-
+    // view.js:375-378) fires at the individual cell that was actually
+    // right-clicked, strictly before the native event bubbles up to this
+    // view element's own `oncontextmenu` (set just above). Captured here and
+    // consumed once by handleFontModeContextMenu below -- read-then-clear so
+    // a later right-click on empty grid background (no cell, hook never
+    // fires) can never reuse a stale glyph name from an earlier click.
+    this.fontModeGlyphCellView.onCellContextMenu = (event, glyphCell) => {
+      this._fontModeContextGlyphName = glyphCell.glyphName;
     };
 
     document
@@ -5603,11 +5633,17 @@ export class KerningViewController extends ViewController {
   // already-existing selection to an already-existing class is not that --
   // a partial success (some glyphs joined, one failed) is still a real,
   // useful, reportable outcome, not something to unwind.
-  async addFontModeSelectionToClass(targetClass = this.selectedClass) {
+  // `glyphNames`, added for Task 14/F33: the toolbar button (no args) still
+  // targets the live selection; the font-mode context menu now passes its
+  // own already-resolved target (see handleFontModeContextMenu above)
+  // instead of re-reading `glyphSelection` here, so the two callers can
+  // disagree about scope (whole selection vs. one clicked-but-unselected
+  // glyph) without this method needing to know why.
+  async addFontModeSelectionToClass(targetClass = this.selectedClass, glyphNames = null) {
     if (!targetClass?.name) {
       return;
     }
-    const glyphNames = [...(this.fontModeGlyphCellView?.glyphSelection || [])];
+    glyphNames ??= [...(this.fontModeGlyphCellView?.glyphSelection || [])];
     if (!glyphNames.length) {
       return;
     }
@@ -5647,18 +5683,41 @@ export class KerningViewController extends ViewController {
   // was written before that class-panel block existed in this file) -- not
   // a correctness issue, just two similar-looking dialogs; left as-is to
   // avoid touching the other worker's delimited block.
+  // Task 14, spec F33: "the context menu acts on the clicked glyph,
+  // including when that glyph is outside the selection" and "a context
+  // action on an unselected glyph does not clear or replace the existing
+  // selection." Reads (and clears) `_fontModeContextGlyphName`, set by
+  // `onCellContextMenu` above at the moment of the actual right-click --
+  // never `glyphSelection` at menu-open time, which the fix above no longer
+  // lets a right-click mutate.
+  //
+  // Target resolution: if the clicked glyph is already part of the current
+  // selection, the menu targets the whole selection (this is the existing,
+  // still-correct multi-select behavior -- confirmed in glyph-cell-view.js's
+  // own handleSingleClick that right-clicking an ALREADY-selected glyph was
+  // never the buggy path: resetGlyphSelection=false only suppresses that
+  // branch's mutation, it does not shrink the selection). Only when the
+  // clicked glyph is NOT part of the selection does the menu narrow its
+  // target to that one glyph, leaving the untouched selection exactly as it
+  // was on screen.
   async handleFontModeContextMenu(event) {
     event.preventDefault();
-    const glyphNames = [...(this.fontModeGlyphCellView?.glyphSelection || [])];
-    if (!glyphNames.length) {
+    const contextGlyphName = this._fontModeContextGlyphName;
+    this._fontModeContextGlyphName = null;
+    if (!contextGlyphName) {
+      // Right-click landed on empty grid background, not a glyph cell.
       return;
     }
+    const selection = this.fontModeGlyphCellView?.glyphSelection || new Set();
+    const glyphNames = selection.has(contextGlyphName)
+      ? [...selection]
+      : [contextGlyphName];
     showMenu(
       [
         {
           title: "Add to selected class",
           enabled: () => !!this.selectedClass?.name,
-          callback: () => this.addFontModeSelectionToClass(),
+          callback: () => this.addFontModeSelectionToClass(undefined, glyphNames),
         },
         {
           title: "Add to…",
@@ -5744,7 +5803,17 @@ export class KerningViewController extends ViewController {
     const side = sideController.model.side;
     const sidesToWrite = side === "both" ? ["side1", "side2"] : [side];
     for (const oneSide of sidesToWrite) {
-      await this.addFontModeSelectionToClass({ side: oneSide, name: className });
+      // Task 14/F33 fix: this call used to drop its own `glyphNames`
+      // parameter on the floor and let addFontModeSelectionToClass fall
+      // back to re-reading the live selection -- confirmed by reading this
+      // method's own body, `glyphNames` was never referenced before this
+      // line. That silently defeated the context menu's clicked-glyph
+      // target (a glyph right-clicked while unselected would never actually
+      // reach the class it was just "added" to). Passed through explicitly
+      // now so the toolbar button (glyphNames omitted -> live selection) and
+      // the context menu (glyphNames captured at click time) keep behaving
+      // differently, as designed.
+      await this.addFontModeSelectionToClass({ side: oneSide, name: className }, glyphNames);
     }
   }
   // ---------------------------------------------------------------------
