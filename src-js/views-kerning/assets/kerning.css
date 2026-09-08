@@ -570,6 +570,21 @@
   opacity: 0.55;
 }
 
+/* Task 5, spec F13: the Columns menu sits inline with the other filter
+   controls rather than breaking onto its own block by default (fieldset's
+   native display). */
+#kerning-pairtable-columns {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.1em 0.5em;
+}
+
+.kerning-pairtable-filter-help {
+  cursor: help;
+  opacity: 0.7;
+}
+
 /* Task 3, spec F04: highlight (preview selection) is visually distinct
    from a ticked (action-target) checkbox -- the two layers are
    independent, so their styling must not collapse into one look. */

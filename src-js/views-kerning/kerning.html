@@ -70,11 +70,10 @@
                 <option value="class-unique">Class × unique</option>
                 <option value="class-class">Class × class</option>
               </select>
-              <select id="kerning-pairtable-filter-sign" title="Sign">
-                <option value="both">Either sign</option>
-                <option value="negative">Negative</option>
-                <option value="positive">Positive</option>
-              </select>
+              <!-- Task 5, spec F16: the sign filter (negative/positive) is
+                   removed -- signs stay visible on Current/Proposed/Delta,
+                   magnitude filtering is the Minimum/Maximum |Δ| pair
+                   below. -->
               <select id="kerning-pairtable-filter-state" title="State">
                 <option value="pending">Pending</option>
                 <option value="applied">Applied</option>
@@ -84,19 +83,39 @@
                 ><input type="checkbox" id="kerning-pairtable-filter-junk" /> Show
                 junk</label
               >
+              <!-- Task 5, spec F13: "Provide a Columns menu with independent
+                   visibility controls for Current, Proposed, and Delta."
+                   Hiding a column here changes display only -- it never
+                   changes which rows are shown (that's the numeric filters
+                   below) or which rows an action targets. -->
+              <fieldset id="kerning-pairtable-columns">
+                <legend>Columns</legend>
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-show-current" /> Current</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-show-proposed" checked /> Proposed</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-show-suggestion" checked /> Delta</label
+                >
+              </fieldset>
+              <!-- Task 5, spec F13: exact predicate `Current == 0 &&
+                   Proposed != 0` -- a row whose stored value is zero but
+                   whose suggestion is not. Does not apply to a stale/
+                   unavailable suggestion (kerning.js's pairRowVisible), so
+                   that warning stays discoverable regardless of this
+                   filter. -->
               <label
-                ><input type="checkbox" id="kerning-pairtable-show-current" /> Show
-                current</label
-              >
-              <!-- Backlog item 15: table-wide mirror of "Show current" above,
-                   hiding/showing the Delta column (this table's own
-                   suggestion display -- see kerning.js's pairRowData/
-                   buildPairRowElement, there is no separately-labeled
-                   "Suggestion" column, Delta already renders the computed
-                   suggestion relative to the current value). -->
-              <label
-                ><input type="checkbox" id="kerning-pairtable-show-suggestion" checked /> Show
-                suggestion</label
+                ><input
+                  type="checkbox"
+                  id="kerning-pairtable-hide-zero-current"
+                /> Hide zero-current suggestions
+                <span
+                  class="kerning-pairtable-filter-help"
+                  title="Hides rows where the stored Current value is 0 but the Proposed suggestion is not. A stored zero can still be a real, explicit rule."
+                  >?</span
+                ></label
               >
               <!-- Backlog item 3 (designer follow-up 2026-09-06): category
                    row-hiding shortcuts, view-only -- see
@@ -168,6 +187,9 @@
                        on a second click -- see initPairTableSection's header
                        click wiring and updateSortHeaders in kerning.js. -->
                   <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left"></th>
+                  <!-- Task 5, spec F13: Proposed is its own column,
+                       independently hideable from Current and Delta. -->
+                  <th class="kerning-pairtable-proposed-col">Proposed</th>
                   <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
                   <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right"></th>
                   <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
@@ -185,6 +207,9 @@
                 <tr>
                   <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
                   <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left"></th>
+                  <!-- Task 5, spec F13: Proposed is its own column,
+                       independently hideable from Current and Delta. -->
+                  <th class="kerning-pairtable-proposed-col">Proposed</th>
                   <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
                   <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right"></th>
                   <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
@@ -202,6 +227,9 @@
                 <tr>
                   <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
                   <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left"></th>
+                  <!-- Task 5, spec F13: Proposed is its own column,
+                       independently hideable from Current and Delta. -->
+                  <th class="kerning-pairtable-proposed-col">Proposed</th>
                   <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
                   <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right"></th>
                   <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
@@ -225,6 +253,9 @@
                        bucket's own default sort (worst median first) in
                        sortClassClassGroups, rather than doing nothing. -->
                   <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left class"></th>
+                  <!-- Task 5, spec F13: Proposed is its own column,
+                       independently hideable from Current and Delta. -->
+                  <th class="kerning-pairtable-proposed-col">Proposed</th>
                   <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
                   <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right class"></th>
                   <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
@@ -247,6 +278,9 @@
                 <tr>
                   <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
                   <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left"></th>
+                  <!-- Task 5, spec F13: Proposed is its own column,
+                       independently hideable from Current and Delta. -->
+                  <th class="kerning-pairtable-proposed-col">Proposed</th>
                   <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
                   <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right"></th>
                   <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
@@ -467,8 +501,16 @@
 
           <div id="kerning-parameters-section">
             <div id="kerning-parameters-always-visible">
-              <label for="kerning-param-threshold">Threshold</label>
+              <!-- Task 5, spec F18: "Retain the lower threshold for absolute
+                   Delta and add an upper threshold." This control only ever
+                   fed the pair table's display filter (renderPairTable's
+                   `threshold`/isRowAboveThreshold), never the run itself --
+                   relabeled to say so plainly. Blank maximum means no
+                   maximum. -->
+              <label for="kerning-param-threshold">Minimum |Δ|</label>
               <input type="number" id="kerning-param-threshold" min="0" step="1" />
+              <label for="kerning-param-max-threshold">Maximum |Δ|</label>
+              <input type="number" id="kerning-param-max-threshold" min="0" step="1" />
               <!-- Backlog item 8 part 1: a second, display-only threshold --
                    divergence of a shadowing pair's suggestion from the value
                    its class cell resolves to. Feeds only the pair-table

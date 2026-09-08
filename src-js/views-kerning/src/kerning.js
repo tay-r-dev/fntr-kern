@@ -156,7 +156,12 @@ import {
   VisualizationLayers,
 } from "@fontra/views-editor/visualization-layers.js";
 import { SelectTool } from "./edit-tools-select.js";
-import { explicitPairExists, rowId } from "./results-model.js";
+import {
+  explicitPairExists,
+  passesNumericFilters,
+  rowId,
+  valuesForDisplay,
+} from "./results-model.js";
 import { deselectAll, retainVisible, selectRow, tickRow } from "./results-selection.js";
 
 // Spec §2.4: the three control glyphs calibration reads.
@@ -551,6 +556,10 @@ export class KerningViewController extends ViewController {
   initParametersSection() {
     this.autokernParamsController = new ObservableController({
       threshold: 5,
+      // Task 5, spec F18: "add an upper threshold." Blank/null means no
+      // maximum (inclusive bound, same as the minimum above) -- see
+      // passesNumericFilters in results-model.js.
+      maxThreshold: null,
       // Backlog item 8 part 1: a SECOND, independent threshold -- divergence
       // of a shadowing pair's suggestion from the value its class cell
       // currently resolves to (isOverrideCandidate / overrideDivergence),
@@ -585,10 +594,43 @@ export class KerningViewController extends ViewController {
       });
     }
 
+    // Task 5, spec F18: "use inclusive bounds; a blank maximum means no
+    // maximum. Reject a minimum greater than the maximum with an inline
+    // explanation." Handled separately from the generic `bindings` loop
+    // above because Number("") is 0, not "no maximum".
+    const maxThresholdInput = document.querySelector("#kerning-param-max-threshold");
+    maxThresholdInput.value = params.maxThreshold ?? "";
+    maxThresholdInput.addEventListener("change", () => {
+      const raw = maxThresholdInput.value.trim();
+      const newMax = raw === "" ? null : Number(raw);
+      const minThreshold = this.autokernParamsController.model.threshold;
+      if (newMax != null && (!Number.isFinite(newMax) || newMax < 0)) {
+        maxThresholdInput.setCustomValidity("Maximum |Δ| must be a non-negative number.");
+        maxThresholdInput.reportValidity();
+        maxThresholdInput.value = this.autokernParamsController.model.maxThreshold ?? "";
+        return;
+      }
+      if (newMax != null && newMax < minThreshold) {
+        maxThresholdInput.setCustomValidity(
+          "Maximum |Δ| cannot be smaller than Minimum |Δ|."
+        );
+        maxThresholdInput.reportValidity();
+        maxThresholdInput.value = this.autokernParamsController.model.maxThreshold ?? "";
+        return;
+      }
+      maxThresholdInput.setCustomValidity("");
+      this.autokernParamsController.setItem("maxThreshold", newMax);
+    });
+
     // Threshold filters the pair table's display (spec §7.2: "filters the
     // display, on the delta"), not just the run -- re-render on every
     // change, including scrubs from other bound copies of the control.
     this.autokernParamsController.addKeyListener("threshold", () => {
+      this.renderPairTable();
+    });
+    // Task 5: same wiring as threshold above -- maxThreshold only affects
+    // the pair table's own display filter.
+    this.autokernParamsController.addKeyListener("maxThreshold", () => {
       this.renderPairTable();
     });
 
@@ -1173,15 +1215,29 @@ export class KerningViewController extends ViewController {
       // both) grouping filter is replaced by the four-bucket filter the
       // cascade itself defines (spec §5.1). "all" replaces the old "both".
       grouping: "all",
-      sign: "both",
+      // Task 5, spec F16: the sign filter is removed -- Current/Proposed/
+      // Delta keep their signs, magnitude filtering lives in
+      // autokernParamsController's threshold/maxThreshold below. A
+      // pre-existing "sign" value synced in from localStorage is simply
+      // never read by anything anymore.
       state: "pending",
       showJunk: false,
+      // Task 5, spec F13: "Provide a Columns menu with independent
+      // visibility controls for Current, Proposed, and Delta." Current
+      // defaults hidden (unchanged pre-existing behavior); Proposed and
+      // Delta default visible (Task 5's own migration default: "all
+      // visible").
       showCurrent: false,
-      // Backlog item 15: mirrors showCurrent above -- one checkbox hides/
-      // shows the suggestion column across the whole table. Defaults to
-      // true (visible) since that is the table's existing, unchanged
-      // behavior for anyone who has never touched this new checkbox.
+      showProposed: true,
+      // Backlog item 15: hides/shows the Delta column across the whole
+      // table.
       showSuggestion: true,
+      // Task 5, spec F13: exact predicate `Current == 0 && Proposed != 0`,
+      // applied in pairRowVisible via results-model.js's
+      // passesNumericFilters. Does not apply to a stale/unavailable
+      // suggestion (Task 5's own decision note: its warning must stay
+      // discoverable).
+      hideZeroCurrentSuggestions: false,
       // Backlog item 3 (designer follow-up 2026-09-06): category-based
       // row-hiding, view-only, same as every other filter in this model --
       // nothing about the run or the cache changes, only which rows the
@@ -1316,7 +1372,6 @@ export class KerningViewController extends ViewController {
     const selectBindings = [
       ["#kerning-pairtable-filter-side", "side"],
       ["#kerning-pairtable-filter-grouping", "grouping"],
-      ["#kerning-pairtable-filter-sign", "sign"],
       ["#kerning-pairtable-filter-state", "state"],
     ];
     for (const [selector, key] of selectBindings) {
@@ -1348,6 +1403,27 @@ export class KerningViewController extends ViewController {
       this.autokernFiltersController.setItem(
         "showSuggestion",
         suggestionCheckbox.checked
+      );
+    });
+
+    // Task 5, spec F13: Proposed column visibility, same pattern as
+    // showCurrent/showSuggestion above.
+    const proposedCheckbox = document.querySelector("#kerning-pairtable-show-proposed");
+    proposedCheckbox.checked = filters.showProposed;
+    proposedCheckbox.addEventListener("change", () => {
+      this.autokernFiltersController.setItem("showProposed", proposedCheckbox.checked);
+    });
+
+    // Task 5, spec F13: the exact `Current == 0 && Proposed != 0` predicate,
+    // independent of column visibility above.
+    const hideZeroCurrentCheckbox = document.querySelector(
+      "#kerning-pairtable-hide-zero-current"
+    );
+    hideZeroCurrentCheckbox.checked = filters.hideZeroCurrentSuggestions;
+    hideZeroCurrentCheckbox.addEventListener("change", () => {
+      this.autokernFiltersController.setItem(
+        "hideZeroCurrentSuggestions",
+        hideZeroCurrentCheckbox.checked
       );
     });
 
@@ -1672,10 +1748,22 @@ export class KerningViewController extends ViewController {
     if (filters.side === "right" && row.right !== glyphName) {
       return false;
     }
-    if (filters.sign === "negative" && !(row.delta < 0)) {
-      return false;
-    }
-    if (filters.sign === "positive" && !(row.delta > 0)) {
+    // Task 5, spec F18 (numeric interval) and F13 (exact zero-current
+    // predicate): `threshold` above is the existing lower |Δ| bound;
+    // maxThreshold and hideZeroCurrentSuggestions are independent
+    // conditions layered on top via the shared predicate, so this and
+    // results-model.js's own test agree on one definition. A stale/
+    // unavailable suggestion (valuesForDisplay -> delta: null) always
+    // passes here, per Task 5's decision note -- its warning must stay
+    // visible regardless of these bounds.
+    const display = valuesForDisplay(row.current, row.suggestion, row.stale);
+    if (
+      !passesNumericFilters(display, {
+        minDelta: 0,
+        maxDelta: this.autokernParamsController.model.maxThreshold,
+        hideZeroCurrentSuggestions: filters.hideZeroCurrentSuggestions,
+      })
+    ) {
       return false;
     }
 
@@ -2022,6 +2110,11 @@ export class KerningViewController extends ViewController {
       el.style.display = filters.showCurrent ? "" : "none";
     }
 
+    // Task 5, spec F13: same header-toggle mechanism as showCurrent above.
+    for (const el of document.querySelectorAll(".kerning-pairtable-proposed-col")) {
+      el.style.display = filters.showProposed ? "" : "none";
+    }
+
     // Backlog item 15: same header-toggle mechanism as showCurrent above --
     // this only affects the <th> (tbody cells are cleared/rebuilt below and
     // set their own inline display at creation time, same as currentCell).
@@ -2301,10 +2394,10 @@ export class KerningViewController extends ViewController {
     if (Math.abs(median) < threshold) {
       return false;
     }
-    if (filters.sign === "negative" && !(median < 0)) {
-      return false;
-    }
-    if (filters.sign === "positive" && !(median > 0)) {
+    // Task 5, spec F18: same inclusive upper bound as pairRowVisible. F16
+    // removed the sign filter entirely -- magnitude only.
+    const maxThreshold = this.autokernParamsController.model.maxThreshold;
+    if (maxThreshold != null && Math.abs(median) > maxThreshold) {
       return false;
     }
     return true;
@@ -2382,6 +2475,17 @@ export class KerningViewController extends ViewController {
     const leftCell = document.createElement("td");
     leftCell.textContent = truncateGlyphList(stats.leftMembers);
     tr.appendChild(leftCell);
+
+    // Task 5, spec F13: Proposed column. A folded class×class row has no
+    // single per-row Current (comment above on this method), so its Delta
+    // already equals its median suggestion -- Proposed is left blank here
+    // rather than duplicating that number under a misleading label.
+    const proposedCell = document.createElement("td");
+    proposedCell.className = "kerning-pairtable-proposed-col";
+    proposedCell.style.display = this.autokernFiltersController.model.showProposed
+      ? ""
+      : "none";
+    tr.appendChild(proposedCell);
 
     const deltaCell = document.createElement("td");
     deltaCell.className = "kerning-pairtable-suggestion-col";
@@ -3730,6 +3834,18 @@ export class KerningViewController extends ViewController {
     const leftCell = document.createElement("td");
     leftCell.textContent = row.left;
     tr.appendChild(leftCell);
+
+    // Task 5, spec F13/F32: Proposed is its own column (the raw
+    // suggestion, row.suggestion), independent of Delta (suggestion minus
+    // current) below.
+    const proposedCell = document.createElement("td");
+    proposedCell.className = "kerning-pairtable-proposed-col";
+    proposedCell.textContent =
+      row.suggestion > 0 ? `+${row.suggestion.toFixed(1)}` : row.suggestion.toFixed(1);
+    proposedCell.style.display = this.autokernFiltersController.model.showProposed
+      ? ""
+      : "none";
+    tr.appendChild(proposedCell);
 
     const deltaCell = document.createElement("td");
     deltaCell.className = "kerning-pairtable-suggestion-col";

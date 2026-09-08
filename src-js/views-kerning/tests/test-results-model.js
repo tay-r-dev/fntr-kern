@@ -78,6 +78,25 @@ describe("results-model", () => {
     ).to.equal(true);
   });
 
+  it("passesNumericFilters: F18 inclusive bounds -- min and max are both eligible at the boundary", () => {
+    const f = { minDelta: 5, maxDelta: 20, hideZeroCurrentSuggestions: false };
+    expect(passesNumericFilters({ current: 0, proposed: 5, delta: 5 }, f)).to.equal(
+      true
+    );
+    expect(passesNumericFilters({ current: 0, proposed: -5, delta: -5 }, f)).to.equal(
+      true
+    );
+    expect(passesNumericFilters({ current: 0, proposed: 20, delta: 20 }, f)).to.equal(
+      true
+    );
+    expect(passesNumericFilters({ current: 0, proposed: 21, delta: 21 }, f)).to.equal(
+      false
+    );
+    expect(
+      passesNumericFilters({ current: 0, proposed: 4.9, delta: 4.9 }, f)
+    ).to.equal(false);
+  });
+
   it("passesNumericFilters: an unavailable delta always passes the numeric bounds", () => {
     const f = { minDelta: 50, maxDelta: 60, hideZeroCurrentSuggestions: false };
     expect(
