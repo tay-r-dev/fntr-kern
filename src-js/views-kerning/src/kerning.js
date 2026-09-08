@@ -158,13 +158,17 @@ import {
 import { SelectTool } from "./edit-tools-select.js";
 import {
   appendGlyphToken,
+  crossProductPairs,
   pairsFromInputs,
+  parseTokenList,
   replaceGlyphToken,
 } from "./input-tokens.js";
 import {
   explicitPairExists,
   passesNumericFilters,
   rowId,
+  rowVisibleInDefault,
+  rowVisibleInPotential,
   valuesForDisplay,
 } from "./results-model.js";
 import { deselectAll, retainVisible, selectRow, tickRow } from "./results-selection.js";
@@ -1216,10 +1220,6 @@ export class KerningViewController extends ViewController {
       glyphName: "",
       excludedGlyphs: "",
       side: "both",
-      // Layout overhaul, design doc §1.1: the old three-value (classed/flat/
-      // both) grouping filter is replaced by the four-bucket filter the
-      // cascade itself defines (spec §5.1). "all" replaces the old "both".
-      grouping: "all",
       // Task 5, spec F16: the sign filter is removed -- Current/Proposed/
       // Delta keep their signs, magnitude filtering lives in
       // autokernParamsController's threshold/maxThreshold below. A
@@ -1253,46 +1253,46 @@ export class KerningViewController extends ViewController {
       hideNonStandalone: false,
       hideNumbers: false,
       hidePunctuation: false,
-      // Backlog item 11: replaces the old two-state sortAlphabetical
-      // boolean. sortColumn is one of "glyph" (Left/Right headers,
-      // left+right localeCompare, same as the old alphabetical mode) /
-      // "current" / "delta" (the table's own suggestion display, spec §15's
-      // note that there is no separately-labeled suggestion column) /
-      // "state" (pending/stale/applied). Defaults reproduce the old
+      // Backlog item 11: sortColumn is one of "glyph" (Glyph L/Glyph R
+      // headers, left+right localeCompare) / "current" / "delta" (the
+      // table's own suggestion display). Task 8: "state" is no longer a
+      // valid value -- its column is gone (F01/F23's stale section, Tasks
+      // 15/17, replaces it; this filter model's own "state" select stays
+      // for now, that removal is those tasks' job, not this one's, but
+      // SORTING by it is this task's own bullet: "Remove status sorting
+      // when the status column disappears"). Defaults reproduce the old
       // toggle's own default ("worst delta first") exactly.
       sortColumn: "delta",
       sortDirection: "desc",
-      // WORKSTREAM 15, spec §5.2: "A toggle above the table folds every row
-      // whose pair resolves to the same cell into one parent."
-      // Layout overhaul, design doc §1.1: class×class rows are now ALWAYS
-      // the class-pair aggregate, independent of any typed glyph -- default
-      // flipped to true so that is what a designer sees without first
-      // finding and checking this box. Unchecking it is now the escape
-      // hatch back to the old per-cache-entry, glyph-anchored class×class
-      // rows (requires a typed glyph, exactly like before this overhaul).
-      foldClasses: true,
+      // Task 8, spec F22: "Add Show individual class members, off by
+      // default, for broad exposure without entering each member
+      // explicitly." Replaces the old per-bucket "Fold classes" escape
+      // hatch (WORKSTREAM 15/layout overhaul) -- that toggle used to REPLACE
+      // a class summary with its ungrouped member rows; this checkbox ADDS
+      // member rows alongside the summary instead (spec §2.1 invariant 6:
+      // exposing a member must not remove its class summary), which is a
+      // deliberate, designer-visible behavior change, not a rename.
+      showIndividualMembers: false,
     });
     this.autokernFiltersController.synchronizeWithLocalStorage(
       "fontra-kerning-pairtable-filters."
     );
-    // Migration guard: a browser that used the pre-overhaul three-value
-    // grouping filter ("both"/"classed"/"flat") has that value persisted in
-    // localStorage, and synchronizeWithLocalStorage above just overwrote the
-    // "all" default with it. renderPairTable's bucket-visibility check
-    // (`filters.grouping === "all" || filters.grouping === bucket`) hides
-    // every bucket -- none of the four current names match "both" -- which
-    // reads as "the results table disappeared." Reset to "all" whenever the
-    // persisted value isn't one of today's five valid options (this was
-    // flagged, not fixed, when the four-bucket filter was first built).
-    const validGroupingValues = new Set([
-      "all",
-      "unique-unique",
-      "unique-class",
-      "class-unique",
-      "class-class",
-    ]);
-    if (!validGroupingValues.has(this.autokernFiltersController.model.grouping)) {
-      this.autokernFiltersController.setItem("grouping", "all");
+    // Task 8, spec F11: a browser that used the pre-Task-8 four-bucket
+    // "grouping" filter or the "foldClasses" toggle has those keys
+    // persisted in localStorage; synchronizeWithLocalStorage above restores
+    // them onto this.autokernFiltersController.model even though neither
+    // key is declared above and neither is read by renderPairTable anymore
+    // -- ObservableObject/synchronizeWithLocalStorage do not prune unknown
+    // persisted keys. Harmless (nothing reads them), left in place rather
+    // than deleted, so a designer's other unrelated persisted filter values
+    // on the same key prefix are not disturbed by an extra write here.
+    // Task 8: a browser with a persisted sortColumn of "state" (the now-
+    // removed State column/sort) would otherwise silently fall back to
+    // sortPairRows' own default-case delta sort forever without the header
+    // ever showing as active -- reset the stored value itself so the
+    // headers and the actual sort agree.
+    if (this.autokernFiltersController.model.sortColumn === "state") {
+      this.autokernFiltersController.setItem("sortColumn", "delta");
     }
     const filters = this.autokernFiltersController.model;
 
@@ -1379,7 +1379,6 @@ export class KerningViewController extends ViewController {
 
     const selectBindings = [
       ["#kerning-pairtable-filter-side", "side"],
-      ["#kerning-pairtable-filter-grouping", "grouping"],
       ["#kerning-pairtable-filter-state", "state"],
     ];
     for (const [selector, key] of selectBindings) {
@@ -1450,12 +1449,16 @@ export class KerningViewController extends ViewController {
       });
     }
 
-    // WORKSTREAM 15, spec §5.2. See renderPairTable/buildFoldGroups for the
-    // fold logic itself; this checkbox only toggles it.
-    const foldCheckbox = document.querySelector("#kerning-pairtable-fold-classes");
-    foldCheckbox.checked = filters.foldClasses;
-    foldCheckbox.addEventListener("change", () => {
-      this.autokernFiltersController.setItem("foldClasses", foldCheckbox.checked);
+    // Task 8, spec F22: broad member exposure, off by default -- see the
+    // filters-controller comment above (replaces the old "Fold classes"
+    // toggle).
+    const showMembersCheckbox = document.querySelector("#kerning-pairtable-show-members");
+    showMembersCheckbox.checked = filters.showIndividualMembers;
+    showMembersCheckbox.addEventListener("change", () => {
+      this.autokernFiltersController.setItem(
+        "showIndividualMembers",
+        showMembersCheckbox.checked
+      );
     });
 
     // Backlog item 11: click a column header to sort by it, click again to
@@ -1523,12 +1526,20 @@ export class KerningViewController extends ViewController {
       .querySelector("#kerning-derive-button")
       .addEventListener("click", () => this.deriveClasses());
 
-    // Backlog item 13: one select-all checkbox per bucket table's own
-    // header row (each bucket is its own <table>, so there is no single
-    // shared header across buckets). Wired once here, not rebuilt on every
-    // renderPairTable -- the checkboxes themselves are static markup
-    // (kerning.html), only their checked/indeterminate state and the rows
-    // they toggle change per render.
+    // Task 8, spec F19: Default / Potential exceptions tabs. Wired once
+    // here, like every other control in this method; renderPairTable reads
+    // this.activeResultsTab and rebuilds the one row list for whichever tab
+    // is active.
+    this.activeResultsTab = "default";
+    for (const tabButton of document.querySelectorAll(".kerning-pairtable-tab")) {
+      tabButton.addEventListener("click", () => this.setResultsTab(tabButton.dataset.tab));
+    }
+
+    // Backlog item 13, Task 8: one select-all checkbox for the one table
+    // (F11 removed the per-bucket tables, so there is only ever one now).
+    // Wired once here, not rebuilt on every renderPairTable -- the
+    // checkbox itself is static markup (kerning.html), only its checked/
+    // indeterminate state and the rows it toggles change per render.
     for (const selectAll of document.querySelectorAll(
       ".kerning-pairtable-select-all"
     )) {
@@ -1560,21 +1571,30 @@ export class KerningViewController extends ViewController {
     this.renderPairTable();
   }
 
-  // Backlog item 13: rows hidden behind a collapsed fold parent
-  // (.kerning-pairtable-fold-children without .kerning-pairtable-fold-
-  // expanded, see buildClassClassRowElement) are not "currently visible",
-  // so select-all skips them -- same post-filter/post-fold row set the
-  // designer sees on screen, not merely the ones present in the DOM.
+  // Backlog item 13: every checkbox currently in the DOM is, by
+  // construction, a currently-rendered/visible row -- renderPairTable
+  // rebuilds the one tbody from scratch on every render (Task 8 removed
+  // the old click-to-expand fold-parent/fold-children distinction that
+  // used to need filtering out here; see buildClassSummaryRowElement).
   getVisiblePairTableRowCheckboxes(table) {
-    return [...table.querySelectorAll(".kerning-pairtable-row-select")].filter(
-      (checkbox) => {
-        const tr = checkbox.closest("tr");
-        return (
-          !tr.classList.contains("kerning-pairtable-fold-children") ||
-          tr.classList.contains("kerning-pairtable-fold-expanded")
-        );
-      }
-    );
+    return [...table.querySelectorAll(".kerning-pairtable-row-select")];
+  }
+
+  // Task 8, spec F19: switches which tab's row set renderPairTable builds.
+  // Not itself a filter -- kept as its own piece of view state so a tab
+  // switch reads exactly like any other renderPairTable trigger (filter
+  // change, threshold change, run finishing).
+  setResultsTab(tab) {
+    if (tab !== "default" && tab !== "potential") {
+      return;
+    }
+    this.activeResultsTab = tab;
+    for (const tabButton of document.querySelectorAll(".kerning-pairtable-tab")) {
+      const active = tabButton.dataset.tab === tab;
+      tabButton.classList.toggle("kerning-pairtable-tab-active", active);
+      tabButton.setAttribute("aria-selected", active ? "true" : "false");
+    }
+    this.renderPairTable();
   }
 
   // Backlog item 13: called at the end of every renderPairTable so each
@@ -1708,6 +1728,33 @@ export class KerningViewController extends ViewController {
         entry.right,
         {}
       ) ?? 0;
+    // Task 2 (kerning-ux-integration.md §5.1/§9): whether THIS literal
+    // pair has an explicit stored rule, read via
+    // KerningController.getPairValues -- true for a stored zero, false
+    // only when nothing at all is stored for this exact address. Not
+    // derived from `current`'s numeric value.
+    const hasExplicitPair = explicitPairExists(
+      this.kerningController,
+      entry.left,
+      entry.right
+    );
+    // Task 8's kind taxonomy (plan Task 2 text: "class-rule, unique-pair,
+    // member-pair, or pair-exception"). A "member-pair"/"pair-exception"
+    // distinction only exists for a pair that is actually part of a
+    // class×class product (BOTH sides classed) -- that is the only case
+    // with a real class-summary row for it to be exposed FROM (spec §2.1
+    // invariant 5). A pair with only one classed side (this.bucketForPair's
+    // "unique-class"/"class-unique") has no class-summary aggregate built
+    // for it anywhere in this codebase, so it stays "unique-pair" and is
+    // never exposure-gated, unchanged from its pre-Task-8 always-visible
+    // behavior -- not this task's job to invent a second aggregate kind.
+    const bothSidesClassed =
+      this.isLeftClassed(entry.left) && this.isRightClassed(entry.right);
+    const kind = !bothSidesClassed
+      ? "unique-pair"
+      : hasExplicitPair
+        ? "pair-exception"
+        : "member-pair";
     return {
       left: entry.left,
       right: entry.right,
@@ -1721,16 +1768,14 @@ export class KerningViewController extends ViewController {
       // to a neutral state label in buildPairRowElement.
       override: !!entry.override,
       classed,
-      // Task 2 (kerning-ux-integration.md §5.1/§9): whether THIS literal
-      // pair has an explicit stored rule, read via
-      // KerningController.getPairValues -- true for a stored zero, false
-      // only when nothing at all is stored for this exact address. Not
-      // derived from `current`'s numeric value.
-      explicitPairExists: explicitPairExists(
-        this.kerningController,
-        entry.left,
-        entry.right
-      ),
+      explicitPairExists: hasExplicitPair,
+      kind,
+      // F19: reuses the existing, already-built isOverrideCandidate
+      // (wouldShadowClassCell AND divergence >= groupThreshold) -- this
+      // does not compute a new candidate rule, per plan Task 8's own
+      // interface ("consumes a candidate list supplied by the autokern
+      // adapter; it does not calculate candidates").
+      isCandidate: this.isOverrideCandidate(entry.left, entry.right, entry.value),
     };
   }
 
@@ -1846,26 +1891,19 @@ export class KerningViewController extends ViewController {
     return Math.abs(row.delta) >= threshold;
   }
 
-  // Backlog item 11: pending/stale/applied has no other natural numeric
-  // order, so this rank (0/1/2) is only a sort key, not shown anywhere --
-  // matches the same three states the "State" filter select already tests
-  // (pairRowVisible above).
-  pairStateRank(row) {
-    if (this.autokernAppliedPairs.has(pairKey(row.left, row.right))) {
-      return 2;
-    }
-    return row.stale ? 1 : 0;
-  }
-
-  // Backlog item 11: one comparator shared by every per-cache-entry row
-  // list (all three glyph-anchored buckets, the unfolded class×class rows,
-  // and a folded class×class row's own expandable child rows), driven by
+  // Backlog item 11, Task 8: one comparator shared by the whole flat row
+  // list now (class-summary rows and pair rows alike -- Task 8's own
+  // bullet: "apply it uniformly to normalized numeric fields"), driven by
   // autokernFiltersController's {sortColumn, sortDirection}. Delta always
   // sorts by magnitude (spec §7.3's original "worst first" meaning), so
-  // that its default direction ("desc") reproduces the old two-state
-  // toggle's own default unchanged; every other column sorts by its actual
-  // value, since ascending/descending has an ordinary spreadsheet-column
-  // meaning there.
+  // that its default direction ("desc") reproduces the old toggle's own
+  // default unchanged; every other column sorts by its actual value, since
+  // ascending/descending has an ordinary spreadsheet-column meaning there.
+  // Task 8: "state" is no longer a sortable column -- its header is gone
+  // (F01/F23's stale section, Tasks 15/17, replaces the status concept).
+  // Ties fall back to each row's own stable ID (rowId), a deterministic
+  // order rather than whatever iteration order the cache happened to
+  // produce.
   sortPairRows(rows, filters) {
     const dirMul = filters.sortDirection === "desc" ? -1 : 1;
     rows.sort((a, b) => {
@@ -1877,55 +1915,37 @@ export class KerningViewController extends ViewController {
         case "current":
           cmp = a.current - b.current;
           break;
-        case "state":
-          cmp = this.pairStateRank(a) - this.pairStateRank(b);
-          break;
         case "delta":
         default:
           cmp = Math.abs(a.delta) - Math.abs(b.delta);
           break;
       }
+      if (cmp === 0) {
+        cmp = (a.sortId || "").localeCompare(b.sortId || "");
+      }
       return cmp * dirMul;
     });
   }
 
-  // Backlog item 11: the folded class×class parent row's own sort. A prior
-  // pass's scoping note, confirmed by reading buildClassClassGroups/
-  // computeFoldGroupStats before implementing: a fold parent has no
-  // per-row "current" (its delta is a median measured against an assumed
-  // zero, not a real stored current value) and no per-row "state" (junk/
-  // applied/stale are per-PAIR concepts with no single value across the
-  // whole class product) -- so a click on either of those two headers falls
-  // back to this bucket's own default (worst median first), rather than
-  // silently no-op'ing or crashing on an undefined field.
-  sortClassClassGroups(groups, filters) {
-    const columnApplies =
-      filters.sortColumn === "glyph" || filters.sortColumn === "delta";
-    const column = columnApplies ? filters.sortColumn : "delta";
-    const dirMul = columnApplies ? (filters.sortDirection === "desc" ? -1 : 1) : -1;
-    groups.sort((a, b) => {
-      const cmp =
-        column === "glyph"
-          ? (a.group.leftClassName + "\0" + a.group.rightClassName).localeCompare(
-              b.group.leftClassName + "\0" + b.group.rightClassName
-            )
-          : Math.abs(a.median) - Math.abs(b.median);
-      return cmp * dirMul;
-    });
-  }
 
   // Backlog item 11: keeps every bucket table's header row in sync with the
   // shared sort state (one designer action, all four tables agree, same
   // global scope the old toggle button had). Called on every renderPairTable
   // rather than only from the click handler, so a filter change from
   // elsewhere (e.g. localStorage sync on load) still shows the right label.
+  // Task 8: writes into a `.kerning-pairtable-sort-label` child span when
+  // one exists (kerning.html's Glyph L header also carries the one
+  // select-all checkbox now that buckets are gone -- overwriting the whole
+  // th's textContent, as before, would silently delete that checkbox) and
+  // falls back to the th itself for any header that has no such span.
   updateSortHeaders() {
     const { sortColumn, sortDirection } = this.autokernFiltersController.model;
     for (const th of document.querySelectorAll(".kerning-pairtable-sortable")) {
       const isActive = th.dataset.sortColumn === sortColumn;
       th.classList.toggle("kerning-pairtable-sort-active", isActive);
       const arrow = isActive ? (sortDirection === "desc" ? " ▼" : " ▲") : "";
-      th.textContent = th.dataset.sortLabel + arrow;
+      const label = th.querySelector(".kerning-pairtable-sort-label") || th;
+      label.textContent = th.dataset.sortLabel + arrow;
     }
   }
 
@@ -2070,23 +2090,24 @@ export class KerningViewController extends ViewController {
   // glyphName is actually a member of -- a documented scoping choice, not a
   // requirement of the design doc, made so the bucket stays navigable
   // instead of listing the whole font's classes at all times).
+  // Task 8, spec F11/F19/F32: rebuilds the ONE row list from
+  // this.autokernCache, for whichever tab (this.activeResultsTab) is
+  // active. Replaces the pre-Task-8 four-bucket-table model entirely --
+  // there is exactly one <tbody> now, and a class-summary row renders
+  // through the same builder/selection mechanism (selectRow/tickRow) an
+  // ordinary pair row does, not a separate display element. Called on
+  // every filter change, every threshold change, a tab switch, and once a
+  // run finishes. Guards on missing state (this.autokernCache is set
+  // synchronously by initRunSection, but this.kerningController/
+  // this.autokernFiltersController are set asynchronously by
+  // initPairTableSection) by doing nothing until every piece exists.
   renderPairTable() {
-    const bodyIds = [
-      "unique-unique",
-      "unique-class",
-      "class-unique",
-      "class-class",
-      // Backlog item 8 part 3: a derived section, not a fifth cascade bucket
-      // (bucketForPair stays four-valued). Cleared/rebuilt like the others.
-      "potential-overrides",
-    ];
-    const bodies = Object.fromEntries(
-      bodyIds.map((id) => [id, document.querySelector(`#kerning-pairtable-body-${id}`)])
-    );
+    const tbody = document.querySelector("#kerning-pairtable-body");
     if (
       !this.autokernCache ||
       !this.kerningController ||
-      !this.autokernFiltersController
+      !this.autokernFiltersController ||
+      !tbody
     ) {
       return;
     }
@@ -2112,10 +2133,21 @@ export class KerningViewController extends ViewController {
     const threshold = this.autokernParamsController.model.threshold;
     const groupThreshold = this.autokernParamsController.model.groupThreshold;
     const glyphName = filters.glyphName;
+    const tab = this.activeResultsTab || "default";
 
-    for (const body of Object.values(bodies)) {
-      body.textContent = "";
-    }
+    tbody.textContent = "";
+    // Task 8: rebuilt fresh every render, keyed by a class-summary row's own
+    // stable ID -- expandHighlightedRowsToPairs (Task 7's own open decision,
+    // resolved by ledger §8.1) reads this to expand a highlighted
+    // class-summary row into its capped cross-product of concrete pairs.
+    this._classSummaryMembersByRowId = new Map();
+    // Task 8: same idea, for the row's own aggregate value -- writePairValues
+    // has no autokernCache entry for a class address ("@Left"×"@Right" is
+    // never a literal cache key), so a ticked class-summary row's Apply/
+    // Reset write reads its median from here instead (this is what makes a
+    // class-summary row's own tick actually do something on Apply, not just
+    // highlight -- see writePairValues' own comment).
+    this._classSummaryMedianByRowId = new Map();
 
     for (const el of document.querySelectorAll(".kerning-pairtable-current-col")) {
       el.style.display = filters.showCurrent ? "" : "none";
@@ -2133,167 +2165,148 @@ export class KerningViewController extends ViewController {
       el.style.display = filters.showSuggestion ? "" : "none";
     }
 
-    // Backlog item 11: keeps every bucket's header label/arrow in sync with
-    // the current sort column/direction on every render, not only on click.
+    // Backlog item 11: keeps the header label/arrow in sync with the
+    // current sort column/direction on every render, not only on click.
     this.updateSortHeaders();
 
-    // §1.1's grouping filter now shows/hides whole buckets, one
-    // .kerning-pairtable-group per bucket (data-bucket attribute, matching
-    // the bucket names above).
-    for (const groupEl of document.querySelectorAll(".kerning-pairtable-group")) {
-      const bucket = groupEl.dataset.bucket;
-      // Backlog item 8 part 3: the "Potential overrides" section is a derived
-      // view, not a cascade bucket the grouping filter enumerates -- keep it
-      // visible in every grouping mode so a magnitude outlier is never hidden
-      // by a filter that only knows the four cascade addresses.
-      const visible =
-        bucket === "potential-overrides" ||
-        filters.grouping === "all" ||
-        filters.grouping === bucket;
-      groupEl.classList.toggle("kerning-pairtable-bucket-hidden", !visible);
+    // Task 8, spec F22: exposure state -- glyph names named directly via
+    // "%name%!" in either input, plus the broad "Show individual class
+    // members" checkbox. Only gates "member-pair" rows (results-model.js's
+    // rowVisibleInDefault); every other kind is always in Default.
+    const exposedNames = this.getExposedMemberNames();
+    const showIndividualMembers = filters.showIndividualMembers;
+
+    // Every row this render could possibly show, as one flat list, each
+    // tagged with enough to sort/filter/render it uniformly regardless of
+    // kind -- this IS "replace buckets with one row list" (F11): a
+    // class-summary row and a literal pair row differ only in which
+    // builder renders them, never in which table/section they belong to.
+    const displayItems = [];
+
+    // class-summary rows (§0/§1.1: independent of any typed glyph -- a
+    // class×class row exists once its two classes have any measured
+    // coverage between their members, font-wide). Always the class-pair
+    // aggregate now -- Task 8 removes the old "Fold classes" escape hatch;
+    // "Show individual class members" (below) is its declarative
+    // replacement, and it ADDS member rows rather than replacing the
+    // summary (invariant 6).
+    const classGroups = this.buildClassClassGroups(
+      glyphName,
+      filters,
+      threshold,
+      groupThreshold
+    );
+    const sourceIdentifier = this.defaultSourceIdentifier();
+    for (const { group, stats, median } of classGroups) {
+      const left = "@" + group.leftClassName;
+      const right = "@" + group.rightClassName;
+      displayItems.push({
+        renderKind: "class-rule",
+        group,
+        stats,
+        median,
+        left,
+        right,
+        current: 0,
+        delta: median,
+        isCandidate: false,
+        sortId: rowId(sourceIdentifier, left, right),
+      });
+      // group.rows are this class pair's own real cache entries (both
+      // sides classed), already pairRowVisible-filtered by
+      // buildClassClassGroups -- these become "member-pair"/"pair-exception"
+      // rows, gated by exposure in Default and by candidacy in Potential.
+      // Flattened onto the item (left/right/current/delta) so sortPairRows
+      // below can sort every item -- class-rule or pair -- uniformly.
+      for (const row of group.rows) {
+        displayItems.push({
+          renderKind: "pair",
+          row,
+          left: row.left,
+          right: row.right,
+          current: row.current,
+          delta: row.delta,
+          isCandidate: row.isCandidate,
+          sortId: rowId(sourceIdentifier, row.left, row.right),
+        });
+      }
     }
 
-    // unique×unique / unique×class / class×unique: per-cache-entry rows,
-    // anchored to the typed glyph exactly like the old table was (spec
-    // §7.3's original anchoring, carried over unchanged in behavior for
-    // these three buckets -- only class×class, below, is freed from it).
+    // unique-pair rows (bucketForPair anything other than "class-class"):
+    // glyph-anchored, same scoping this table has always used for these
+    // (Task 8 does not change WHEN they appear, only how they render --
+    // see this method's own commit message for that scoping decision).
     if (glyphName) {
-      const rowsByBucket = {
-        "unique-unique": [],
-        "unique-class": [],
-        "class-unique": [],
-      };
       for (const entry of this.autokernCache.values()) {
         if (entry.left !== glyphName && entry.right !== glyphName) {
           continue;
         }
-        const bucket = this.bucketForPair(entry.left, entry.right);
-        if (bucket === "class-class") {
-          continue; // handled by the independent class×class builder below
+        if (this.bucketForPair(entry.left, entry.right) === "class-class") {
+          continue; // handled by the class-summary groups above
         }
-        rowsByBucket[bucket].push(entry);
-      }
-
-      for (const bucket of ["unique-unique", "unique-class", "class-unique"]) {
-        if (filters.grouping !== "all" && filters.grouping !== bucket) {
+        const row = this.pairRowData(
+          entry,
+          this.bucketForPair(entry.left, entry.right) !== "unique-unique"
+        );
+        if (!this.pairRowVisible(row, filters, threshold, glyphName)) {
           continue;
         }
-        const rows = rowsByBucket[bucket]
-          .map((entry) => this.pairRowData(entry, bucket !== "unique-unique"))
-          // Backlog item 8 part 3: an override candidate is LIFTED OUT of its
-          // home cascade bucket into the "Potential overrides" section below,
-          // not shown in both -- each pair-row's stable ID (Task 3's rowId)
-          // is assumed to appear once across the whole table.
-          .filter(
-            (row) => !this.isOverrideCandidate(row.left, row.right, row.suggestion)
-          )
-          .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
-
-        // Spec §7.3's default ("worst delta first") plus backlog item 11's
-        // extension to every column, via sortPairRows.
-        this.sortPairRows(rows, filters);
-
-        for (const row of rows) {
-          bodies[bucket].appendChild(this.buildPairRowElement(row));
-        }
+        displayItems.push({
+          renderKind: "pair",
+          row,
+          left: row.left,
+          right: row.right,
+          current: row.current,
+          delta: row.delta,
+          isCandidate: row.isCandidate,
+          sortId: rowId(sourceIdentifier, row.left, row.right),
+        });
       }
     }
 
-    // class×class: independent of glyphName (§0/§1.1), when "Fold classes"
-    // is on (the new default -- see the filters-controller comment above).
-    // A class×class row is then always the class-pair aggregate
-    // (computeFoldGroupStats' median/spread/count over the WHOLE class
-    // product), never a single cache entry, and needs no typed glyph to
-    // exist at all. Unchecking "Fold classes" is the escape hatch back to
-    // the pre-overhaul per-cache-entry rows (both sides classed,
-    // isEntryClassed), which -- like the other three buckets -- still needs
-    // a typed glyph to anchor them.
-    if (filters.grouping === "all" || filters.grouping === "class-class") {
-      if (filters.foldClasses) {
-        const groups = this.buildClassClassGroups(
-          glyphName,
-          filters,
-          threshold,
-          groupThreshold
+    // Task 8, spec F19: which of the two tabs is active decides which items
+    // from the SAME list above are kept -- not a second computation. A
+    // class-rule row is Default-only (never itself a candidate); a pair
+    // row is gated by exposure in Default and by its own isCandidate flag
+    // in Potential (results-model.js's rowVisibleInDefault/
+    // rowVisibleInPotential).
+    const visibleItems = displayItems.filter((item) => {
+      if (item.renderKind === "class-rule") {
+        return tab === "default";
+      }
+      return tab === "potential"
+        ? rowVisibleInPotential(item.row)
+        : rowVisibleInDefault(item.row, exposedNames, showIndividualMembers);
+    });
+
+    // Backlog item 11's column sort, now applied to the WHOLE flat list
+    // (Task 8's own bullet: "apply it uniformly to normalized numeric
+    // fields... use a stable row-ID tie-breaker"). sortPairRows only reads
+    // .left/.right/.current/.delta, which every item above carries
+    // (a class-rule item's own current/delta stand-ins, set above).
+    this.sortPairRows(visibleItems, filters);
+
+    for (const item of visibleItems) {
+      if (item.renderKind === "class-rule") {
+        tbody.appendChild(
+          this.buildClassSummaryRowElement(item.group, item.stats, item.median)
         );
-        this.sortClassClassGroups(groups, filters);
-        for (const { group, stats, median } of groups) {
-          const { parentRow, childRows } = this.buildClassClassRowElement(
-            group,
-            stats,
-            median
-          );
-          bodies["class-class"].appendChild(parentRow);
-          for (const childRow of childRows) {
-            bodies["class-class"].appendChild(childRow);
-          }
-        }
-      } else if (glyphName) {
-        const rows = [...this.autokernCache.values()]
-          .filter(
-            (entry) =>
-              (entry.left === glyphName || entry.right === glyphName) &&
-              this.isEntryClassed(entry)
-          )
-          .map((entry) => this.pairRowData(entry, true))
-          // Backlog item 8 part 3: same lift-out as the three buckets above
-          // (the unfolded class×class rows are per-cache-entry rows too).
-          .filter(
-            (row) => !this.isOverrideCandidate(row.left, row.right, row.suggestion)
-          )
-          .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
-
-        this.sortPairRows(rows, filters);
-        for (const row of rows) {
-          bodies["class-class"].appendChild(this.buildPairRowElement(row));
-        }
+      } else {
+        tbody.appendChild(this.buildPairRowElement(item.row));
       }
     }
 
-    // Backlog item 8 part 3: the derived "Potential overrides" section, below
-    // the four cascade buckets. One pass over the typed glyph's cache entries
-    // (same glyphName anchoring as the three glyph-anchored buckets -- with
-    // no glyph typed there is nothing to anchor these against either), kept
-    // when isOverrideCandidate: applying the suggestion as a literal pair
-    // would shadow a class cell AND the divergence from that cell is at least
-    // the group threshold. class×class candidates are only lifted here when
-    // "Fold classes" is OFF -- when folded (the default) they stay reachable
-    // as a fold parent's expandable child rows (part 6 leaves those
-    // untouched), and rendering them here too would double-render their row
-    // checkboxes.
-    if (glyphName) {
-      const overrideRows = [...this.autokernCache.values()]
-        .filter((entry) => entry.left === glyphName || entry.right === glyphName)
-        .filter(
-          (entry) =>
-            !(
-              filters.foldClasses &&
-              this.bucketForPair(entry.left, entry.right) === "class-class"
-            )
-        )
-        .filter((entry) =>
-          this.isOverrideCandidate(entry.left, entry.right, entry.value)
-        )
-        .map((entry) => this.pairRowData(entry, true))
-        .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
-
-      this.sortPairRows(overrideRows, filters);
-      for (const row of overrideRows) {
-        bodies["potential-overrides"].appendChild(this.buildPairRowElement(row));
-      }
-    }
-
-    // Backlog item 13: every tbody was just rebuilt from scratch above, so
-    // each bucket's select-all checkbox needs to reflect the freshly
-    // rendered (Task 3: each row's own checkbox is now initialized from
+    // Backlog item 13: the tbody was just rebuilt from scratch above, so
+    // the select-all checkbox needs to reflect the freshly rendered (Task
+    // 3: each row's own checkbox is now initialized from
     // this.resultSelection.ticked in buildPairRowElement, not always
     // unchecked) row set.
     this.syncSelectAllCheckboxes();
 
-    // Task 3 (spec F25): every tbody was just rebuilt, so this is exactly
-    // the full set of rows now actually displayed -- prune highlight/tick
-    // state for any row ID that didn't render this time (filtered out,
-    // bucket hidden, cache reloaded, etc).
+    // Task 3 (spec F25): every row was just rebuilt, so this is exactly the
+    // full set of rows now actually displayed -- prune highlight/tick state
+    // for any row ID that didn't render this time (filtered out, tab
+    // switched, cache reloaded, etc).
     const visibleRowIds = new Set(
       [...document.querySelectorAll(".kerning-pairtable-table tr[data-row-id]")].map(
         (tr) => tr.dataset.rowId
@@ -2307,6 +2320,33 @@ export class KerningViewController extends ViewController {
     // Task 7, spec F25: "Update preview and action counts accordingly"
     // when a highlighted row leaves the displayed set.
     this.updatePairPreview();
+  }
+
+  // Task 8, spec F22: the exact glyph names named via "%name%!" in either
+  // input -- reuses input-tokens.js's own parseTokenList/parseToken (Task
+  // 6/7) rather than a second parser. A "member" token's `name` is already
+  // the literal glyph name (parseToken slices it straight out of the
+  // "%...%!" text), so no font-data resolution is needed here.
+  getExposedMemberNames() {
+    const names = new Set();
+    const elements = this._pairInputElements;
+    if (!elements) {
+      return names;
+    }
+    for (const text of [elements.glyphInput.value, elements.pairInput.value]) {
+      let tokens;
+      try {
+        tokens = parseTokenList(text);
+      } catch {
+        continue; // an invalid token is reported inline by updatePairPreview
+      }
+      for (const token of tokens) {
+        if (token.kind === "member") {
+          names.add(token.name);
+        }
+      }
+    }
+    return names;
   }
 
   // Median (not mean, spec §5.2: "the median is the reducer... a mean can
@@ -2469,33 +2509,90 @@ export class KerningViewController extends ViewController {
     return { leftMembers, rightMembers, entries, median, spread };
   }
 
-  // Builds a class×class row (§1.1's fourth bucket): "Left class" and
-  // "Right class" columns show each side's FULL membership (truncated the
-  // same way a derive proposal's member list truncates, truncateGlyphList),
-  // matching spec §5.2's own illustration ("T Tcaron Tbar   -48   o ó ö" --
-  // left class first, right class last). Clicking the row expands/collapses
-  // its filtered child rows (the class product's own actual cache entries,
-  // already computed in buildClassClassGroups) -- the same "spread says a
-  // class disagrees, expanding shows which" browsing behavior spec §5.2
-  // describes, now available without first anchoring the table to one of
-  // the class's members.
-  buildClassClassRowElement(group, stats, median) {
+  // Task 8: a class-summary row is now the SAME kind of row as an
+  // individual pair row -- clickable, Shift-clickable, tickable,
+  // highlightable, through the exact same selectRow/tickRow/retainVisible
+  // mechanism buildPairRowElement uses (results-selection.js). It is not a
+  // separate, non-interactive display element; the only difference from a
+  // pair row is that its Glyph L/Glyph R columns show class names (F32)
+  // instead of glyph names. "Left class"/"Right class" show each side's
+  // FULL membership (truncated the same way a derive proposal's member
+  // list truncates, truncateGlyphList), matching spec §5.2's own
+  // illustration ("T Tcaron Tbar   -48   o ó ö").
+  buildClassSummaryRowElement(group, stats, median) {
     const tr = document.createElement("tr");
-    tr.className = "kerning-pairtable-fold-row";
+    tr.className = "kerning-pairtable-summary-row";
+    const left = "@" + group.leftClassName;
+    const right = "@" + group.rightClassName;
+    tr.dataset.left = left;
+    tr.dataset.right = right;
+    tr.dataset.kind = "class-rule";
 
-    const selectCell = document.createElement("td");
-    tr.appendChild(selectCell);
+    // Task 3 (spec F04): same stable row ID mechanism a pair row uses.
+    const id = rowId(this.defaultSourceIdentifier(), left, right);
+    tr.dataset.rowId = id;
+    tr.classList.toggle(
+      "kerning-pairtable-row-highlighted",
+      this.resultSelection.highlighted.has(id)
+    );
+    // F04's own open decision, resolved by the ledger (§8.1): a highlighted
+    // class-summary row expands to the capped cross-product of both sides'
+    // full class membership -- expandHighlightedRowsToPairs reads this map
+    // by rowId rather than re-deriving membership from the DOM.
+    this._classSummaryMembersByRowId.set(id, {
+      leftMembers: stats.leftMembers,
+      rightMembers: stats.rightMembers,
+    });
+    this._classSummaryMedianByRowId.set(id, median);
 
+    tr.addEventListener("click", (event) => {
+      if (event.target.closest("input, button")) {
+        return;
+      }
+      this.resultSelection = selectRow(this.resultSelection, id, event.shiftKey);
+      this.applyResultSelectionToDom();
+      this.updatePairPreview({ switchToPairMode: !event.shiftKey });
+    });
+
+    // F32: the tick lives inside the Glyph L cell, same placement a pair
+    // row's own tick uses.
     const leftCell = document.createElement("td");
-    leftCell.textContent = truncateGlyphList(stats.leftMembers);
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "kerning-pairtable-row-select";
+    checkbox.checked = this.resultSelection.ticked.has(id);
+    checkbox.addEventListener("change", () => {
+      this.resultSelection = tickRow(this.resultSelection, id, checkbox.checked);
+      this.applyResultSelectionToDom();
+      this.syncSelectAllCheckboxes();
+      this.refreshResetArmState();
+    });
+    leftCell.appendChild(checkbox);
+    const leftLabel = document.createElement("span");
+    leftLabel.className = "kerning-pairtable-class-name";
+    leftLabel.textContent = `${left} (${truncateGlyphList(stats.leftMembers)})`;
+    // F21 recommended detail: "disclose contributing-pair count and
+    // excluded-result count in row details" -- no 8th column exists for
+    // this (F32 fixes the header set at seven), so it is a tooltip.
+    leftLabel.title = `${stats.entries.length} pairs, spread ${stats.spread.overall.toFixed(1)}`;
+    leftCell.appendChild(leftLabel);
     tr.appendChild(leftCell);
 
-    // Task 5, spec F13: Proposed column. A folded class×class row has no
-    // single per-row Current (comment above on this method), so its Delta
-    // already equals its median suggestion -- Proposed is left blank here
-    // rather than duplicating that number under a misleading label.
+    // A class-summary row has no single stored Current (§1.1: its own
+    // "current" is whatever's stored at the class cell, usually nothing --
+    // read on request via kerningController.getPairFunction, deliberately
+    // not shown here to keep this exactly what the design doc describes).
+    const currentCell = document.createElement("td");
+    currentCell.className = "kerning-pairtable-current-col";
+    currentCell.style.display = this.autokernFiltersController.model.showCurrent
+      ? ""
+      : "none";
+    tr.appendChild(currentCell);
+
+    // Proposed IS the aggregate suggestion for this class rule.
     const proposedCell = document.createElement("td");
     proposedCell.className = "kerning-pairtable-proposed-col";
+    proposedCell.textContent = median > 0 ? `+${median.toFixed(1)}` : median.toFixed(1);
     proposedCell.style.display = this.autokernFiltersController.model.showProposed
       ? ""
       : "none";
@@ -2510,20 +2607,16 @@ export class KerningViewController extends ViewController {
     tr.appendChild(deltaCell);
 
     const rightCell = document.createElement("td");
-    rightCell.textContent = truncateGlyphList(stats.rightMembers);
+    rightCell.textContent = `${right} (${truncateGlyphList(stats.rightMembers)})`;
     tr.appendChild(rightCell);
 
-    const currentCell = document.createElement("td");
-    currentCell.className = "kerning-pairtable-current-col";
-    currentCell.style.display = this.autokernFiltersController.model.showCurrent
-      ? ""
-      : "none";
-    tr.appendChild(currentCell);
-
-    const infoCell = document.createElement("td");
-    infoCell.textContent = `${stats.entries.length} pairs, spread ${stats.spread.overall.toFixed(1)}`;
-    tr.appendChild(infoCell);
-
+    // F32's override-action column: this row's own primary write action
+    // (writes the class rule at the median -- applyFoldedParentRow,
+    // unchanged). Task 10 owns building the per-pair lock this column
+    // holds for member/exception rows; a class-summary row has no single
+    // concrete pair to lock (F12: "A class-summary row must not create an
+    // arbitrary representative-glyph exception").
+    const exceptionCell = document.createElement("td");
     const applyButton = document.createElement("button");
     applyButton.type = "button";
     applyButton.textContent = "Apply class";
@@ -2531,27 +2624,16 @@ export class KerningViewController extends ViewController {
       event.stopPropagation();
       this.applyFoldedParentRow(group, median);
     });
-    infoCell.appendChild(applyButton);
+    exceptionCell.appendChild(applyButton);
+    tr.appendChild(exceptionCell);
 
-    const childRows = group.rows.map((row) => {
-      const childTr = this.buildPairRowElement(row);
-      childTr.className = "kerning-pairtable-fold-children";
-      return childTr;
-    });
+    // F32's hide-action column: Task 11 builds the eye control (ledger
+    // §8.5: hiding a class-summary row hides only that row, never its
+    // members) -- left empty for now, not invented here.
+    const hideCell = document.createElement("td");
+    tr.appendChild(hideCell);
 
-    tr.addEventListener("click", () => {
-      const expanded = childRows[0]?.classList.contains(
-        "kerning-pairtable-fold-expanded"
-      );
-      for (const childTr of childRows) {
-        childTr.classList.toggle("kerning-pairtable-fold-expanded", !expanded);
-      }
-      // Backlog item 13: expanding/collapsing changes which rows count as
-      // "currently visible" without firing any checkbox's own change event.
-      this.syncSelectAllCheckboxes();
-    });
-
-    return { parentRow: tr, childRows };
+    return tr;
   }
 
   // WORKSTREAM 15, spec §5.2, now also the layout overhaul's class×class
@@ -3780,6 +3862,12 @@ export class KerningViewController extends ViewController {
     const tr = document.createElement("tr");
     tr.dataset.left = row.left;
     tr.dataset.right = row.right;
+    // Task 8: row kind (unique-pair/member-pair/pair-exception, from
+    // pairRowData) -- distinguishes this row from a class-summary row
+    // (dataset.kind "class-rule") for expandHighlightedRowsToPairs, which
+    // reads a pair row's literal left/right directly but a class-summary
+    // row's full membership instead.
+    tr.dataset.kind = row.kind;
 
     // Task 3 (spec F04): stable row ID for the highlight/tick selection
     // layer, independent of scene preview selection below.
@@ -3816,7 +3904,10 @@ export class KerningViewController extends ViewController {
       this.updatePairPreview({ switchToPairMode: !event.shiftKey });
     });
 
-    const selectCell = document.createElement("td");
+    // F32: "place the tick inside the left-name cell so it does not add an
+    // unrequested column" -- Glyph L (name) / Current / Proposed / Delta /
+    // Glyph R (name) / Exception / Hide, in that order.
+    const leftCell = document.createElement("td");
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.className = "kerning-pairtable-row-select";
@@ -3835,7 +3926,7 @@ export class KerningViewController extends ViewController {
     // because this can change checkboxes on rows other than the one that
     // was actually clicked.
     //
-    // Backlog item 13: keeps this bucket's select-all checkbox's checked/
+    // Backlog item 13: keeps the select-all checkbox's checked/
     // indeterminate state truthful when a row is (un)checked by hand rather
     // than via select-all itself.
     checkbox.addEventListener("change", () => {
@@ -3844,12 +3935,19 @@ export class KerningViewController extends ViewController {
       this.syncSelectAllCheckboxes();
       this.refreshResetArmState();
     });
-    selectCell.appendChild(checkbox);
-    tr.appendChild(selectCell);
-
-    const leftCell = document.createElement("td");
-    leftCell.textContent = row.left;
+    leftCell.appendChild(checkbox);
+    const leftLabel = document.createElement("span");
+    leftLabel.textContent = row.left;
+    leftCell.appendChild(leftLabel);
     tr.appendChild(leftCell);
+
+    const currentCell = document.createElement("td");
+    currentCell.className = "kerning-pairtable-current-col";
+    currentCell.textContent = row.current;
+    currentCell.style.display = this.autokernFiltersController.model.showCurrent
+      ? ""
+      : "none";
+    tr.appendChild(currentCell);
 
     // Task 5, spec F13/F32: Proposed is its own column (the raw
     // suggestion, row.suggestion), independent of Delta (suggestion minus
@@ -3876,22 +3974,12 @@ export class KerningViewController extends ViewController {
     rightCell.textContent = row.right;
     tr.appendChild(rightCell);
 
-    const currentCell = document.createElement("td");
-    currentCell.className = "kerning-pairtable-current-col";
-    currentCell.textContent = row.current;
-    currentCell.style.display = this.autokernFiltersController.model.showCurrent
-      ? ""
-      : "none";
-    tr.appendChild(currentCell);
-
-    const junkCell = document.createElement("td");
-    const junkButton = document.createElement("button");
-    junkButton.type = "button";
-    junkButton.textContent = row.junk ? "Unmark junk" : "Mark junk";
-    junkButton.addEventListener("click", () =>
-      this.togglePairJunk(row.left, row.right, !row.junk)
-    );
-    junkCell.appendChild(junkButton);
+    // F32's override-action column. Task 10 builds the real lock/Remove-
+    // exception control here; today's existing shadow/override note (rule
+    // provenance -- which class cell this pair does or would take
+    // precedence over) is the closest built equivalent, so it moves here
+    // rather than sharing the Hide column.
+    const exceptionCell = document.createElement("td");
     if (this.wouldShadowClassCell(row.left, row.right)) {
       const note = document.createElement("span");
       const address = this.describeShadowedClassCell(row.left, row.right);
@@ -3900,14 +3988,27 @@ export class KerningViewController extends ViewController {
         // address text, but a neutral state label, not the pre-confirmation
         // warning.
         note.className = "kerning-pairtable-override-note";
-        note.textContent = ` override: ${address}`;
+        note.textContent = `override: ${address}`;
       } else {
         note.className = "kerning-pairtable-shadow-note";
-        note.textContent = ` shadows ${address}`;
+        note.textContent = `shadows ${address}`;
       }
-      junkCell.appendChild(note);
+      exceptionCell.appendChild(note);
     }
-    tr.appendChild(junkCell);
+    tr.appendChild(exceptionCell);
+
+    // F32's hide-action column. Task 11 replaces this with the eye
+    // control; today's existing Mark/Unmark junk button is the closest
+    // built equivalent to "hide this result," so it moves here.
+    const hideCell = document.createElement("td");
+    const junkButton = document.createElement("button");
+    junkButton.type = "button";
+    junkButton.textContent = row.junk ? "Unmark junk" : "Mark junk";
+    junkButton.addEventListener("click", () =>
+      this.togglePairJunk(row.left, row.right, !row.junk)
+    );
+    hideCell.appendChild(junkButton);
+    tr.appendChild(hideCell);
 
     return tr;
   }
@@ -3987,13 +4088,14 @@ export class KerningViewController extends ViewController {
   //
   // "Scope-aware" routing of a class-summary row to its class address
   // versus a member row to its literal pair address (plan Task 4's own
-  // text) has no material counterpart yet: this codebase's pair table
-  // (buckets, not the single class/exception row model plan Task 8 adds)
-  // only ever exposes literal glyph pairs through the tick/checkbox
-  // mechanism today -- a folded class×class row's own "Apply class" button
-  // (applyFoldedParentRow) is a separate, pre-existing control, not part of
-  // this tick/Reset selection. Left as a note for Task 8/10, not invented
-  // here.
+  // text): Task 8 closes this gap. A ticked class-summary row's rowId
+  // carries a "@ClassName" address (buildClassSummaryRowElement), which
+  // writePairValues now resolves through its own stashed median rather
+  // than a literal autokernCache lookup -- see writePairValues' own
+  // comment. applyFoldedParentRow (the class-summary row's own dedicated
+  // "Apply class" button) remains a separate, still-working control; this
+  // tick/Reset path is an additional way to reach the same class address,
+  // not a replacement for it.
   async resetSelectedPairRows() {
     const targetIds = [...this.resultSelection.ticked];
     const { commit, armedKey } = pressReset(this.resetArmedKey, targetIds);
@@ -4079,6 +4181,25 @@ export class KerningViewController extends ViewController {
     const values = [];
     const keys = [];
     for (const { left, right } of pairs) {
+      // Task 8: a ticked class-summary row addresses "@LeftClass"/
+      // "@RightClass" (buildClassSummaryRowElement's own rowId), which is
+      // never a literal autokernCache key -- its value is its own median,
+      // stashed at render time (renderPairTable), not a per-pair cache
+      // entry. `keys` (autokernAppliedPairs) still gets the class address
+      // itself; nothing else reads that Set by class-address shape, so
+      // this is harmless bookkeeping, not a claim that a class rule is a
+      // "pair."
+      if (left.startsWith("@") && right.startsWith("@")) {
+        const id = rowId(sourceIdentifier, left, right);
+        const median = this._classSummaryMedianByRowId?.get(id);
+        if (median === undefined) {
+          continue; // not currently rendered -- nothing to write
+        }
+        pairSelectors.push({ leftName: left, rightName: right, sourceIdentifier });
+        values.push(Math.round(valueFn({ value: median }, left, right)));
+        keys.push(pairKey(left, right));
+        continue;
+      }
       const entry = this.autokernCache.get(pairKey(left, right));
       if (!entry) {
         continue;
@@ -4886,7 +5007,17 @@ export class KerningViewController extends ViewController {
       }
     }
     if (elements.pairInputError) {
-      elements.pairInputError.textContent = matchResult?.error || "";
+      // Ledger §8.1: a highlighted class-summary row's cross-product
+      // remainder is "disclosed as a count, not silently dropped" --
+      // shares the same error/status span an input-parse error uses; the
+      // two never fire together (a truncation only happens when highlighted
+      // rows already supplied pairs, in which case matchResult is null).
+      const truncationCount = this._classSummaryTruncationCount || 0;
+      elements.pairInputError.textContent =
+        matchResult?.error ||
+        (truncationCount
+          ? `Preview capped at 50 pairs per highlighted class summary (${truncationCount} summar${truncationCount === 1 ? "y" : "ies"} truncated).`
+          : "");
     }
     if (previewPairs.length) {
       this.setPreviewPairs(previewPairs);
@@ -4909,30 +5040,56 @@ export class KerningViewController extends ViewController {
     }
   }
 
-  // F04's own open decision, resolved by the ledger (§8.1): a highlighted
-  // row's pair is read straight off the DOM element buildPairRowElement
-  // already stamped with `dataset.left`/`dataset.right` (the literal
-  // addresses used for that row's own ID) -- every row type that currently
-  // participates in resultSelection.highlighted (unique-unique, unique-
-  // class, class-unique, and a class-class group's expanded member rows)
-  // already carries a concrete pair this way. A class-summary PARENT row
-  // (buildClassClassRowElement) has no resultSelection wiring at all yet --
-  // it isn't selectable today, so it contributes nothing here; giving it
-  // its own cross-product expansion is bucket-removal's job (plan Task 8),
-  // not this one's, per this dispatch's explicit boundary.
+  // F04's own open decision, resolved by the ledger (§8.1) and closed by
+  // Task 8: a highlighted PAIR row's pair is read straight off the DOM
+  // element (dataset.left/dataset.right, the literal addresses used for
+  // that row's own ID). A highlighted class-summary row (dataset.kind
+  // "class-rule") has no single concrete pair -- it expands to the capped
+  // cross-product of both sides' full class membership (ledger §8.1: "a
+  // highlighted class-summary row still expands to the full cross-product
+  // of both sides' class membership, capped at 50 pairs... with the
+  // remainder disclosed as a count, not silently dropped"), reusing
+  // input-tokens.js's crossProductPairs (Task 7) rather than a second
+  // combinatorial helper. Membership is read from
+  // this._classSummaryMembersByRowId (stashed by buildClassSummaryRowElement
+  // at render time), not re-derived from the DOM.
+  // Returns the flat pair list (updatePairPreview's own `previewPairs`
+  // shape); a truncation note is stashed on `this._classSummaryTruncation`
+  // rather than written straight to the error span here, because
+  // updatePairPreview unconditionally overwrites that span right after
+  // calling this method (its own `matchResult?.error || ""` -- writing here
+  // too would just be immediately erased).
   expandHighlightedRowsToPairs() {
     const pairs = [];
+    let truncatedCount = 0;
     for (const tr of document.querySelectorAll(
       ".kerning-pairtable-table tr[data-row-id]"
     )) {
-      if (
-        this.resultSelection.highlighted.has(tr.dataset.rowId) &&
-        tr.dataset.left &&
-        tr.dataset.right
-      ) {
+      if (!this.resultSelection.highlighted.has(tr.dataset.rowId)) {
+        continue;
+      }
+      if (tr.dataset.kind === "class-rule") {
+        const members = this._classSummaryMembersByRowId?.get(tr.dataset.rowId);
+        if (!members) {
+          continue;
+        }
+        // Ledger §8.1: capped at 50 pairs per highlighted class-summary
+        // row (matching truncateGlyphList's own per-row display cap), not
+        // a shared budget across the whole highlighted selection.
+        const { pairs: expanded, truncated } = crossProductPairs(
+          members.leftMembers,
+          members.rightMembers,
+          50
+        );
+        pairs.push(...expanded);
+        if (truncated) {
+          truncatedCount++;
+        }
+      } else if (tr.dataset.left && tr.dataset.right) {
         pairs.push([tr.dataset.left, tr.dataset.right]);
       }
     }
+    this._classSummaryTruncationCount = truncatedCount;
     return pairs;
   }
 

@@ -426,18 +426,27 @@
   gap: 0.5em;
 }
 
-/* Workstream 15 (spec §5.2/§5.3): fold parent rows and derive proposals. */
-.kerning-pairtable-fold-row {
+/* Task 8: a class-summary row is the same kind of row as a pair row (F32) --
+   bold weight is its only visual distinction, not a separate structure. */
+.kerning-pairtable-summary-row {
   font-weight: bold;
+}
+
+/* Task 8, spec F19: Default / Potential exceptions tabs, replacing the old
+   four bucket sections (F11). */
+#kerning-pairtable-tabs {
+  display: flex;
+  gap: 0.25em;
+  margin: 0.5em 0;
+}
+
+.kerning-pairtable-tab {
   cursor: pointer;
 }
 
-.kerning-pairtable-fold-children {
-  display: none;
-}
-
-.kerning-pairtable-fold-children.kerning-pairtable-fold-expanded {
-  display: table-row;
+.kerning-pairtable-tab.kerning-pairtable-tab-active {
+  font-weight: bold;
+  text-decoration: underline;
 }
 
 #kerning-derive-proposals {
@@ -457,10 +466,6 @@
 
 .kerning-derive-proposal-label {
   font-style: italic;
-}
-
-.kerning-pairtable-group h4 {
-  margin: 0.5em 0 0.25em 0;
 }
 
 .kerning-pairtable-table {
@@ -541,15 +546,6 @@
   flex-wrap: wrap;
   gap: 0.75em;
   font-size: 0.9em;
-}
-
-/* §1.1: the four-bucket grouping filter shows/hides whole bucket groups
-   (kerning.js's renderPairTable toggles this class per .kerning-pairtable-
-   group, keyed by its data-bucket attribute) rather than filtering rows
-   within a fixed set of sections, since a hidden bucket's underlying table
-   is not populated at all when the filter excludes it. */
-.kerning-pairtable-group.kerning-pairtable-bucket-hidden {
-  display: none;
 }
 
 /* §1.1 "No override in v1": a suggestion whose apply would silently shadow

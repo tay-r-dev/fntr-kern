@@ -76,18 +76,6 @@
                 <option value="left">Glyph on left</option>
                 <option value="right">Glyph on right</option>
               </select>
-              <!-- §1.1: "the new four-bucket grouping filter" -- replaces the
-                   old three-value (classed/flat/both) grouping filter. The
-                   four bucket values name the cascade's own four addresses
-                   (spec §5.1: [glyph,glyph] -> [glyph,@class] ->
-                   [@class,glyph] -> [@class,@class]). -->
-              <select id="kerning-pairtable-filter-grouping" title="Grouping">
-                <option value="all">All buckets</option>
-                <option value="unique-unique">Unique × unique</option>
-                <option value="unique-class">Unique × class</option>
-                <option value="class-unique">Class × unique</option>
-                <option value="class-class">Class × class</option>
-              </select>
               <!-- Task 5, spec F16: the sign filter (negative/positive) is
                    removed -- signs stay visible on Current/Proposed/Delta,
                    magnitude filtering is the Minimum/Maximum |Δ| pair
@@ -152,6 +140,15 @@
                 ><input type="checkbox" id="kerning-pairtable-hide-punctuation" /> Hide
                 punctuation</label
               >
+              <!-- Task 8, spec F22: broad exposure of every grouped member's
+                   individual row at once, without typing "%name%!" for each
+                   one -- off by default. Named glyphs
+                   (getExposedMemberNames) expose individually regardless of
+                   this checkbox. -->
+              <label
+                ><input type="checkbox" id="kerning-pairtable-show-members" /> Show
+                individual class members</label
+              >
               <!-- Backlog item 11: the old two-state sort toggle button is
                    replaced by clicking a column header directly (one sort
                    UI, not two) -- see kerning-pairtable-sortable th's above. -->
@@ -174,138 +171,85 @@
               <button id="kerning-pairtable-deselect" type="button">Deselect</button>
             </div>
 
-            <div id="kerning-pairtable-class-controls">
-              <label
-                ><input type="checkbox" id="kerning-pairtable-fold-classes" /> Fold
-                classes</label
-              >
-              <!-- The Derive button, its tolerance field and the proposals
-                   list moved to the class panel (design doc §1.2) -- see
-                   #autokern-class-panel-slot below. Design doc §0: kern-row
-                   clustering (the only tactic that used a tolerance) is
-                   removed, so no tolerance control exists anywhere anymore. -->
-            </div>
+            <!-- The Derive button, its tolerance field and the proposals
+                 list moved to the class panel (design doc §1.2) -- see
+                 #autokern-class-panel-slot below. Design doc §0: kern-row
+                 clustering (the only tactic that used a tolerance) is
+                 removed, so no tolerance control exists anywhere anymore. -->
           </div>
 
-          <!-- §1.1: four buckets replace the old three glyph-anchored
-               sections (side-1-class-vs-every-side-2-class /
-               every-side-1-class-vs-side-2-class / flat). One <tbody> per
-               bucket; kerning.js's renderPairTable decides which bucket(s)
-               are populated and shown, per the grouping filter above. -->
-          <div class="kerning-pairtable-group" data-bucket="unique-unique">
-            <h4>Unique × unique</h4>
+          <!-- Task 8, spec F19: Default / Potential exceptions tabs replace
+               the old four bucket sections (F11) -- one row list, one table,
+               kerning.js's renderPairTable decides ROW VISIBILITY from each
+               row's kind/exposure/tab, not which of several tables to
+               populate. See activeResultsTab / setResultsTab in kerning.js. -->
+          <div id="kerning-pairtable-tabs" role="tablist">
+            <button
+              type="button"
+              class="kerning-pairtable-tab"
+              data-tab="default"
+              role="tab"
+              aria-selected="true"
+            >
+              Default
+            </button>
+            <button
+              type="button"
+              class="kerning-pairtable-tab"
+              data-tab="potential"
+              role="tab"
+              aria-selected="false"
+            >
+              Potential exceptions
+            </button>
+          </div>
+
+          <!-- Task 8, spec F32: Glyph L (name) / Current / Proposed / Delta /
+               Glyph R (name) / Exception / Hide, in that order. The tick
+               lives inside the Glyph L cell (buildPairRowElement/
+               buildClassSummaryRowElement in kerning.js) so it does not add
+               an unrequested column. A class-summary row and an ordinary
+               pair row share this one table/thead -- a class-summary row is
+               not a separate display element (kerning.js's
+               buildClassSummaryRowElement wires the same selectRow/tickRow
+               mechanism buildPairRowElement uses). -->
+          <div class="kerning-pairtable-group">
             <table class="kerning-pairtable-table">
               <thead>
                 <tr>
-                  <!-- Backlog item 13: select-all for this bucket's own
-                       tbody -- see initPairTableSelectAll/syncSelectAll-
-                       Checkboxes in kerning.js. -->
-                  <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
-                  <!-- Backlog item 11: click a header to sort by it, asc/desc
-                       on a second click -- see initPairTableSection's header
-                       click wiring and updateSortHeaders in kerning.js. -->
-                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left"></th>
+                  <!-- Backlog item 13's select-all is now one checkbox for
+                       the one table (no more per-bucket duplicates) --
+                       lives in the Glyph L header cell, same "tick belongs
+                       with the name column" placement F32 uses for a row's
+                       own tick. Sort label is its own span so
+                       updateSortHeaders (kerning.js) can rewrite just the
+                       label text without erasing the checkbox. -->
+                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Glyph L">
+                    <input type="checkbox" class="kerning-pairtable-select-all" title="Select all visible rows" />
+                    <span class="kerning-pairtable-sort-label"></span>
+                  </th>
+                  <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"><span class="kerning-pairtable-sort-label"></span></th>
                   <!-- Task 5, spec F13: Proposed is its own column,
                        independently hideable from Current and Delta. -->
                   <th class="kerning-pairtable-proposed-col">Proposed</th>
-                  <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right"></th>
-                  <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="state" data-sort-label="State"></th>
+                  <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"><span class="kerning-pairtable-sort-label"></span></th>
+                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Glyph R"><span class="kerning-pairtable-sort-label"></span></th>
+                  <!-- F32: "The Potential exceptions tab exposes its
+                       create/apply-exception action in the override-action
+                       position. The Default view provides the lock in that
+                       position for eligible exposed members and saved
+                       exceptions" -- that action itself is Task 10's build;
+                       this column carries today's existing shadow/override
+                       note and the class-summary row's own "Apply class"
+                       action, the closest built equivalents. -->
+                  <th>Exception</th>
+                  <!-- F32's Hide action -- Task 11 replaces today's Mark
+                       junk button with the eye control; this column is
+                       where it already lives. -->
+                  <th>Hide</th>
                 </tr>
               </thead>
-              <tbody id="kerning-pairtable-body-unique-unique"></tbody>
-            </table>
-          </div>
-
-          <div class="kerning-pairtable-group" data-bucket="unique-class">
-            <h4>Unique × class</h4>
-            <table class="kerning-pairtable-table">
-              <thead>
-                <tr>
-                  <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left"></th>
-                  <!-- Task 5, spec F13: Proposed is its own column,
-                       independently hideable from Current and Delta. -->
-                  <th class="kerning-pairtable-proposed-col">Proposed</th>
-                  <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right"></th>
-                  <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="state" data-sort-label="State"></th>
-                </tr>
-              </thead>
-              <tbody id="kerning-pairtable-body-unique-class"></tbody>
-            </table>
-          </div>
-
-          <div class="kerning-pairtable-group" data-bucket="class-unique">
-            <h4>Class × unique</h4>
-            <table class="kerning-pairtable-table">
-              <thead>
-                <tr>
-                  <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left"></th>
-                  <!-- Task 5, spec F13: Proposed is its own column,
-                       independently hideable from Current and Delta. -->
-                  <th class="kerning-pairtable-proposed-col">Proposed</th>
-                  <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right"></th>
-                  <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="state" data-sort-label="State"></th>
-                </tr>
-              </thead>
-              <tbody id="kerning-pairtable-body-class-unique"></tbody>
-            </table>
-          </div>
-
-          <div class="kerning-pairtable-group" data-bucket="class-class">
-            <h4>Class × class</h4>
-            <table class="kerning-pairtable-table">
-              <thead>
-                <tr>
-                  <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
-                  <!-- Backlog item 11: a folded class×class row has no
-                       per-row current/state value (buildClassClassGroups
-                       computes only a median against an assumed zero
-                       current) -- Current/State clicks here fall back to the
-                       bucket's own default sort (worst median first) in
-                       sortClassClassGroups, rather than doing nothing. -->
-                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left class"></th>
-                  <!-- Task 5, spec F13: Proposed is its own column,
-                       independently hideable from Current and Delta. -->
-                  <th class="kerning-pairtable-proposed-col">Proposed</th>
-                  <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right class"></th>
-                  <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="state" data-sort-label="State"></th>
-                </tr>
-              </thead>
-              <tbody id="kerning-pairtable-body-class-class"></tbody>
-            </table>
-          </div>
-
-          <!-- Backlog item 8 part 3: a derived section, not a fifth cascade
-               bucket. renderPairTable lifts every "override candidate" (a
-               shadowing pair whose suggestion diverges from its class cell by
-               at least the group threshold) out of its home cascade bucket
-               into here. Kept visible in every grouping mode. -->
-          <div class="kerning-pairtable-group" data-bucket="potential-overrides">
-            <h4>Potential overrides</h4>
-            <table class="kerning-pairtable-table">
-              <thead>
-                <tr>
-                  <th><input type="checkbox" class="kerning-pairtable-select-all" /></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Left"></th>
-                  <!-- Task 5, spec F13: Proposed is its own column,
-                       independently hideable from Current and Delta. -->
-                  <th class="kerning-pairtable-proposed-col">Proposed</th>
-                  <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Right"></th>
-                  <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="state" data-sort-label="State"></th>
-                </tr>
-              </thead>
-              <tbody id="kerning-pairtable-body-potential-overrides"></tbody>
+              <tbody id="kerning-pairtable-body"></tbody>
             </table>
           </div>
         </div>
