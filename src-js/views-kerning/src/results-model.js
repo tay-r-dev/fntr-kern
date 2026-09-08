@@ -330,6 +330,79 @@ export function aggregateStale(entries) {
   return entries.some((entry) => entry.stale);
 }
 
+// Task 18, spec F03, ledger §8.6. "Saved pair exceptions" must be counted
+// from the real rule-provenance data (kernData.values, the same map
+// explicitPairExists reads), never a historical cache badge -- so this
+// starts from the raw stored-pair map, not the autokern cache (which only
+// ever holds pairs autokern has actually measured; a manually created
+// exception with no suggestion of its own would be invisible there).
+// `values` is KerningController.values (kernData.values):
+// {leftName: {rightName: [values per source]}}. A key on EITHER side
+// starting with "@" addresses a class rule (addGroupPrefix's own
+// convention: `_getPairNamesWithFallbacks`, kerning-controller.js), never a
+// member-pair exception -- excluded here so a class rule's own stored value
+// is never miscounted as one of its own exceptions (F03's no-double-count
+// requirement).
+export function flattenPairAddresses(values) {
+  const addresses = [];
+  for (const leftName of Object.keys(values || {})) {
+    if (leftName.startsWith("@")) {
+      continue;
+    }
+    for (const rightName of Object.keys(values[leftName] || {})) {
+      if (rightName.startsWith("@")) {
+        continue;
+      }
+      addresses.push({ left: leftName, right: rightName });
+    }
+  }
+  return addresses;
+}
+
+// A saved pair exception is a literal-glyph address (flattenPairAddresses
+// above) with at least one classed side -- the same "a member of a class
+// kerns differently than the rest" test rowRelationship's own "exceptions"
+// bucket uses (F14, above), not pairRowData's narrower `kind` field (which
+// only calls a pair "pair-exception" when BOTH sides are classed). A fully
+// unique pair's own stored value has no class to diverge from, so it is
+// never counted here. `isLeftClassed`/`isRightClassed` are the caller's own
+// live class-membership lookups -- this module has no font/controller
+// access to derive them itself.
+export function countSavedPairExceptions(addresses, isLeftClassed, isRightClassed) {
+  return addresses.filter(
+    ({ left, right }) => isLeftClassed(left) || isRightClassed(right)
+  ).length;
+}
+
+// Task 18: "hidden results," the pair half -- every cache entry currently
+// marked hidden (hiddenFromCacheEntry, Task 11's own field mapping), counted
+// directly from the cache rather than from a render-time filtered row list.
+// The render-time row list is the wrong source for this: pairRowVisible
+// (kerning.js) already excludes a hidden row unless Show hidden is on, so a
+// count taken from displayed rows would always read 0 while Show hidden is
+// off -- exactly backwards for an analytics count meant to say how many
+// things ARE hidden.
+export function countHiddenPairs(cacheEntries) {
+  return cacheEntries.filter(hiddenFromCacheEntry).length;
+}
+
+// Task 18: "hidden results," the class-summary half (Task 11/ledger §8.5's
+// own separate per-class-row hide state, `hiddenClassRuleIds`, never
+// cascaded to or from its members -- so this is a genuinely separate count,
+// not a duplicate of countHiddenPairs above). Scoped to one source, since
+// rowId embeds the source and a class row hidden under one source says
+// nothing about another.
+export function countHiddenClassRules(hiddenClassRuleIds, sourceIdentifier) {
+  let count = 0;
+  for (const id of hiddenClassRuleIds) {
+    const [sourceId] = JSON.parse(id);
+    if (sourceId === sourceIdentifier) {
+      count++;
+    }
+  }
+  return count;
+}
+
 export function passesNumericFilters(row, filters) {
   if (
     filters.hideZeroCurrentSuggestions &&

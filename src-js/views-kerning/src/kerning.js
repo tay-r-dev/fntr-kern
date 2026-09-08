@@ -176,9 +176,13 @@ import {
 } from "./input-tokens.js";
 import {
   aggregateStale,
+  countHiddenClassRules,
+  countHiddenPairs,
   countMedianContributors,
+  countSavedPairExceptions,
   diffStaleRerun,
   explicitPairExists,
+  flattenPairAddresses,
   getStaleGlyphNames,
   glyphMatchesCategory,
   hiddenFromCacheEntry,
@@ -510,6 +514,10 @@ export class KerningViewController extends ViewController {
     // true only once this call is actually awaited.
     await this.initPairTableSection();
     this.initAutokernStatusSection();
+    // Task 18, spec F03: reads this.autokernFiltersController/
+    // this.kerningController, both set up by initPairTableSection just
+    // above -- same ordering requirement as initAutokernStatusSection.
+    this.initAnalyticsSection();
     // Design doc §2: font mode. Needs this.fontController.glyphMap (populated
     // by super.start() above), so it can't run from the constructor the same
     // way initChipSection does -- see the file-top comment above start()
@@ -1044,6 +1052,102 @@ export class KerningViewController extends ViewController {
     // F02: "disable duplicate runs" -- this._staleRerunInFlight is set by
     // runStaleGlyphs below for the duration of one run.
     rerunButton.disabled = !hasStale || !!this._staleRerunInFlight;
+  }
+
+  // Task 18, spec F03, ledger §8.6: wires the three metrics that have an
+  // existing, already-safe single control to jump to. "Saved pair
+  // exceptions" has no such target -- the closest, the Class relationship
+  // checkbox group, is an array-valued multi-select whose own checkboxes
+  // are synced from the filter model only once at init (initPairTableSection's
+  // bindCheckboxGroup); flipping the filter model from here without also
+  // updating those checkboxes would desync the UI from what they show, a
+  // real bug, not a cheap navigation win -- so that metric stays plain text
+  // per this task's own "render it as text rather than a dead-looking
+  // button," and kerning.html gives it no button element to wire here.
+  initAnalyticsSection() {
+    document.querySelector("#kerning-analytics-stale")?.addEventListener("click", () => {
+      document
+        .querySelector("#kerning-stale-section")
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      document.querySelector("#kerning-stale-rerun-button")?.focus();
+    });
+    document
+      .querySelector("#kerning-analytics-potential")
+      ?.addEventListener("click", () => this.setResultsTab("potential"));
+    document
+      .querySelector("#kerning-analytics-hidden")
+      ?.addEventListener("click", () => {
+        const checkbox = document.querySelector("#kerning-pairtable-filter-hidden");
+        if (checkbox) {
+          checkbox.checked = true;
+        }
+        this.autokernFiltersController.setItem("showHidden", true);
+      });
+  }
+
+  // F03: four metrics, each with a DELIBERATELY DIFFERENT scope -- see each
+  // field's own comment below, not one uniform "whatever's on screen" total
+  // (spec: "avoid mixing glyph counts with pair counts under an ambiguous
+  // total"). Reads only state already held in memory by this render pass
+  // and by earlier tasks' own mechanisms (this.autokernCache,
+  // this.kerningController.values, this.hiddenClassRuleIds, and --
+  // `potentialCount`, this render's own flat row list before the
+  // Default/Potential split) -- no new async work, no new autokern run, per
+  // the plan's own "without triggering new computation." Called from
+  // renderPairTable, so every trigger that already re-renders the table
+  // (an edit, a source change, hiding/restoring, a completed run) recounts
+  // these too, with no separate wiring needed.
+  renderAnalyticsSection(potentialCount) {
+    const staleEl = document.querySelector("#kerning-analytics-stale-count");
+    const savedEl = document.querySelector("#kerning-analytics-exceptions-count");
+    const potentialEl = document.querySelector("#kerning-analytics-potential-count");
+    const hiddenEl = document.querySelector("#kerning-analytics-hidden-count");
+    if (!staleEl || !savedEl || !potentialEl || !hiddenEl || !this.kerningController) {
+      return;
+    }
+
+    // Scope: active source, unfiltered by any table control -- the exact
+    // same set the Stale glyphs panel above already shows (Task 17); not
+    // recomputed a second way.
+    const staleCount = this.autokernCache
+      ? getStaleGlyphNames(this.autokernCache).length
+      : 0;
+    staleEl.textContent = `${staleCount} glyph${staleCount === 1 ? "" : "s"}`;
+
+    // Scope: all sources combined, unfiltered by any table control -- the
+    // real stored kerning data (kernData.values, the same map
+    // explicitPairExists reads), not the autokern cache, which only covers
+    // pairs autokern has actually measured and would miss a manually
+    // created exception.
+    const addresses = flattenPairAddresses(this.kerningController.values);
+    const savedCount = countSavedPairExceptions(
+      addresses,
+      (name) => this.isLeftClassed(name),
+      (name) => this.isRightClassed(name)
+    );
+    savedEl.textContent = `${savedCount} pair${savedCount === 1 ? "" : "s"}`;
+
+    // Scope: current filtered view -- this render's own row list, before
+    // the Default/Potential tab split, so the count doesn't flip to 0
+    // merely because Default is the active tab. Reuses Task 8/16's own
+    // isOverrideCandidate result (row.isCandidate); computed nowhere else
+    // here.
+    potentialEl.textContent = `${potentialCount} pair${potentialCount === 1 ? "" : "s"}`;
+
+    // Scope: active source, unfiltered by any table control -- a hidden
+    // pair (Task 11's own `junk` field) plus a hidden class-summary row
+    // (ledger §8.5's own, never-cascaded hide state) counted separately,
+    // since one can never stand in for the other (F03's no-double-count
+    // requirement).
+    const hiddenPairCount = this.autokernCache
+      ? countHiddenPairs([...this.autokernCache.values()])
+      : 0;
+    const hiddenClassCount = countHiddenClassRules(
+      this.hiddenClassRuleIds,
+      this.activeSourceIdentifier()
+    );
+    const hiddenCount = hiddenPairCount + hiddenClassCount;
+    hiddenEl.textContent = `${hiddenCount} row${hiddenCount === 1 ? "" : "s"}`;
   }
 
   // Task 17, spec F02. Uses Task 15's own contract (ledger §10.6/§10.7):
@@ -2683,6 +2787,11 @@ export class KerningViewController extends ViewController {
       this.resultSelection = retainVisible(this.resultSelection, new Set());
       this.refreshResetArmState();
       this.updatePairPreview();
+      // Task 18: this filter state legitimately shows zero rows in either
+      // tab, so 0 is the correct "current filtered view" potential count
+      // here, not a placeholder -- the other three metrics don't depend on
+      // this filter state at all and are still computed normally.
+      this.renderAnalyticsSection(0);
       return;
     }
     // Task 8: rebuilt fresh every render, keyed by a class-summary row's own
@@ -2825,6 +2934,18 @@ export class KerningViewController extends ViewController {
         });
       }
     }
+
+    // Task 18, spec F03: "current filtered view" scope for the Potential
+    // exceptions metric -- read from the flat list above BEFORE the
+    // Default/Potential tab split just below, so the count reflects what
+    // the Potential tab would show right now regardless of which tab is
+    // actually active (not the item-count check itself, which is only
+    // for the "renderKind" pair items; a class-rule item's own
+    // isCandidate is already always false, see its own literal above).
+    this.renderAnalyticsSection(
+      displayItems.filter((item) => item.renderKind === "pair" && item.isCandidate)
+        .length
+    );
 
     // Task 8, spec F19: which of the two tabs is active decides which items
     // from the SAME list above are kept -- not a second computation. A

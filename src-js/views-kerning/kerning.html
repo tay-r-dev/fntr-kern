@@ -559,6 +559,67 @@
             <p id="kerning-stale-progress"></p>
           </div>
 
+          <!-- Task 18, spec F03, ledger §8.6: four metrics, each with its
+               own scope disclosed via data-tooltip (hover/focus, tooltip.css)
+               rather than left implicit. "Stale glyphs" and "Potential
+               exceptions" and "Hidden results" are clickable (they have an
+               existing, single-control target to jump to); "Saved pair
+               exceptions" has none (see kerning.js's initAnalyticsSection
+               comment) and is deliberately plain text, not a button. -->
+          <div id="kerning-analytics-section">
+            <h3>Analytics</h3>
+            <dl id="kerning-analytics-list">
+              <div class="kerning-analytics-row">
+                <dt>
+                  <button
+                    id="kerning-analytics-stale"
+                    type="button"
+                    class="kerning-analytics-metric-button"
+                    data-tooltip="Scope: active source, every glyph currently stale — ignores the table's own filters. Activates the Stale glyphs panel above."
+                  >
+                    Stale glyphs
+                  </button>
+                </dt>
+                <dd id="kerning-analytics-stale-count">0 glyphs</dd>
+              </div>
+              <div class="kerning-analytics-row">
+                <dt
+                  class="kerning-analytics-metric-label"
+                  data-tooltip="Scope: all sources combined, every saved glyph-to-glyph exception in the font — ignores the table's own filters. No dedicated view to jump to yet."
+                >
+                  Saved pair exceptions
+                </dt>
+                <dd id="kerning-analytics-exceptions-count">0 pairs</dd>
+              </div>
+              <div class="kerning-analytics-row">
+                <dt>
+                  <button
+                    id="kerning-analytics-potential"
+                    type="button"
+                    class="kerning-analytics-metric-button"
+                    data-tooltip="Scope: current filtered view — pairs outside class tolerance, under today's filters. Activates the Potential exceptions tab."
+                  >
+                    Potential exceptions
+                  </button>
+                </dt>
+                <dd id="kerning-analytics-potential-count">0 pairs</dd>
+              </div>
+              <div class="kerning-analytics-row">
+                <dt>
+                  <button
+                    id="kerning-analytics-hidden"
+                    type="button"
+                    class="kerning-analytics-metric-button"
+                    data-tooltip="Scope: active source, every hidden pair and hidden class row — ignores the table's own filters. Turns on Show hidden."
+                  >
+                    Hidden results
+                  </button>
+                </dt>
+                <dd id="kerning-analytics-hidden-count">0 rows</dd>
+              </div>
+            </dl>
+          </div>
+
           <div id="kerning-phrase-section">
             <select id="kerning-preset-select">
               <option value="" selected disabled>Presets…</option>
