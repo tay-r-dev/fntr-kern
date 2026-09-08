@@ -1814,26 +1814,23 @@ export class KerningViewController extends ViewController {
   }
 
   // Builds the display row for one cache entry: reads the font's actually
-  // stored kerning for this exact glyph pair (resolved through classes the
-  // same way any other consumer reads kerning -- getGlyphPairValueForLocation
-  // uses kerning-controller.js's own getPairsToTry cascade, spec §5.1's
-  // [glyph,glyph] -> [glyph,@class] -> [@class,glyph] -> [@class,@class]
-  // order), at the default (non-variable) location `{}` -- this view has no
-  // design-space location control, so there is only ever the one location to
-  // read. `delta` is the suggestion minus that stored value (spec §7.3: "The
-  // delta is the suggestion minus what is stored"), with no stored value
-  // read as 0.
-  // Task 3: the source identity component of a row's stable ID
-  // (results-model.js's rowId). Uses the same empty-location resolution
-  // writePairValues already uses (kerning-ux-integration.md §5.4 documents
-  // that this always resolves to the font's default source, independent of
-  // the status-strip source selector -- a real inconsistency, but fixing
-  // it is Task 12's job, not this one's).
-  defaultSourceIdentifier() {
-    return this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation(
-      {},
-      false
-    );
+  // stored kerning for this exact glyph pair, addressed at the active
+  // source (Task 12 fix, see activeSourceIdentifier below -- reads and
+  // writes must agree on which source they mean). `delta` is the
+  // suggestion minus that stored value (spec §7.3: "The delta is the
+  // suggestion minus what is stored"), with no stored value read as 0.
+  // Task 12 fix (kerning-ux-integration.md §5.4, spec F26/§12.3): every
+  // rowId/read/write in this file used to resolve its source via
+  // getSourceIdentifierForLocation({}, false), which always merges `{}`
+  // with the font's defaultSourceLocation and so ALWAYS answers the
+  // default source -- independent of the status-strip source selector.
+  // This is the single place that used to do that; it now simply returns
+  // the identifier the selector already set (this.autokernSource), no
+  // location round-trip needed, since the view already knows the exact
+  // source it means. Renamed from `defaultSourceIdentifier` to name what
+  // it now actually returns.
+  activeSourceIdentifier() {
+    return this.autokernSource;
   }
 
   // Task 3: re-applies this.resultSelection onto whatever rows are
@@ -1884,11 +1881,15 @@ export class KerningViewController extends ViewController {
   }
 
   pairRowData(entry, classed) {
+    // Task 12 fix: reads the exact source the status strip has selected
+    // (this.autokernSource), the same identifier writePairValues/
+    // applyFoldedParentRow/createPairException now write to -- not a
+    // location-interpolated value at the font's default source.
     const current =
-      this.kerningController.getGlyphPairValueForLocation(
+      this.kerningController.getGlyphPairValueForSource(
         entry.left,
         entry.right,
-        {}
+        this.autokernSource
       ) ?? 0;
     // Task 2 (kerning-ux-integration.md §5.1/§9): whether THIS literal
     // pair has an explicit stored rule, read via
@@ -2193,16 +2194,21 @@ export class KerningViewController extends ViewController {
 
   // Backlog item 8 part 2: a shadowing pair's divergence FROM THE GROUP --
   // its suggested value minus whatever the class cascade currently resolves
-  // that pair to (the same value wouldShadowClassCell reads,
-  // getGlyphPairValueForLocation(left, right, {})). Numerically this equals
-  // a normal row's `delta` (pairRowData.current reads the same cascade
-  // value), but it is named and computed in its own terms here so the
-  // "Potential overrides" section (part 3) and the outlier-dropped
-  // class×class median (part 6) share one definition. Orthogonal to
-  // isRowAboveThreshold, which compares against the pair's own STORED value.
+  // that pair to at the active source (the same value wouldShadowClassCell
+  // reads). Numerically this equals a normal row's `delta` (pairRowData.
+  // current reads the same cascade value), but it is named and computed in
+  // its own terms here so the "Potential overrides" section (part 3) and
+  // the outlier-dropped class×class median (part 6) share one definition.
+  // Orthogonal to isRowAboveThreshold, which compares against the pair's
+  // own STORED value. Task 12 fix: reads this.autokernSource, not the
+  // font's default source.
   overrideDivergence(left, right, suggestedValue) {
     const groupResolved =
-      this.kerningController.getGlyphPairValueForLocation(left, right, {}) ?? 0;
+      this.kerningController.getGlyphPairValueForSource(
+        left,
+        right,
+        this.autokernSource
+      ) ?? 0;
     return suggestedValue - groupResolved;
   }
 
@@ -2385,7 +2391,7 @@ export class KerningViewController extends ViewController {
       threshold,
       groupThreshold
     );
-    const sourceIdentifier = this.defaultSourceIdentifier();
+    const sourceIdentifier = this.activeSourceIdentifier();
     for (const { group, stats, median } of classGroups) {
       const left = "@" + group.leftClassName;
       const right = "@" + group.rightClassName;
@@ -2799,7 +2805,7 @@ export class KerningViewController extends ViewController {
     tr.title = ROW_KIND_CATEGORY_LABELS["class-rule"];
 
     // Task 3 (spec F04): same stable row ID mechanism a pair row uses.
-    const id = rowId(this.defaultSourceIdentifier(), left, right);
+    const id = rowId(this.activeSourceIdentifier(), left, right);
     tr.dataset.rowId = id;
     tr.classList.toggle(
       "kerning-pairtable-row-highlighted",
@@ -2965,15 +2971,11 @@ export class KerningViewController extends ViewController {
   // cell, not a flat shadow of it (spec §5.1's whole argument against a flat
   // write).
   async applyFoldedParentRow(group, median) {
-    const sourceIdentifier =
-      this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation(
-        {},
-        false
-      );
+    // Task 12 fix (ledger §5.4): write to the source the status strip has
+    // selected, not always the font's default source.
+    const sourceIdentifier = this.autokernSource;
     if (!sourceIdentifier) {
-      console.error(
-        "kerning view: cannot apply, no font source resolves at the default location"
-      );
+      console.error("kerning view: cannot apply, no source is selected");
       return;
     }
     const leftName = "@" + group.leftClassName;
@@ -4195,7 +4197,7 @@ export class KerningViewController extends ViewController {
 
     // Task 3 (spec F04): stable row ID for the highlight/tick selection
     // layer, independent of scene preview selection below.
-    const id = rowId(this.defaultSourceIdentifier(), row.left, row.right);
+    const id = rowId(this.activeSourceIdentifier(), row.left, row.right);
     tr.dataset.rowId = id;
     tr.classList.toggle(
       "kerning-pairtable-row-highlighted",
@@ -4557,20 +4559,18 @@ export class KerningViewController extends ViewController {
     if (!pairs.length) {
       return;
     }
-    const sourceIdentifier =
-      this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation(
-        {},
-        false
-      );
+    // Task 12 fix (ledger §5.4): write to the source the status strip has
+    // selected, not always the font's default source -- this used to
+    // resolve via getSourceIdentifierForLocation({}, false), which always
+    // merges {} with the font's defaultSourceLocation and so always
+    // answered the default source no matter which source was picked.
+    const sourceIdentifier = this.autokernSource;
     if (!sourceIdentifier) {
       // Mirrors edit-tools-metrics.js's own guard (getEditContext there:
       // "if (!sourceIdentifier && wantValues) { this.showDialogLocationNotAtSource(); }")
-      // -- this view has no design-space location control to be "not at",
-      // so in practice this only fires for a font with zero sources, which
-      // has no kerning to write regardless.
-      console.error(
-        "kerning view: cannot apply, no font source resolves at the default location"
-      );
+      // -- this only fires for a font with zero sources, which has no
+      // kerning to write regardless.
+      console.error("kerning view: cannot apply, no source is selected");
       return;
     }
 
@@ -4669,8 +4669,13 @@ export class KerningViewController extends ViewController {
     const shown = shadowingPairs.slice(0, 6);
     const lines = shown.map(({ left, right }) => {
       const entry = this.autokernCache.get(pairKey(left, right));
+      // Task 12 fix: same active-source read as pairRowData/overrideDivergence.
       const groupValue =
-        this.kerningController.getGlyphPairValueForLocation(left, right, {}) ?? 0;
+        this.kerningController.getGlyphPairValueForSource(
+          left,
+          right,
+          this.autokernSource
+        ) ?? 0;
       const newValue = Math.round(valueFn(entry, left, right));
       return (
         `  ${left} × ${right}: ${this.describeShadowedClassCell(left, right)} ` +
@@ -4721,16 +4726,12 @@ export class KerningViewController extends ViewController {
   // touches font.kerning[...].values, never groupsSide1/groupsSide2, so
   // membership is untouched by construction, not by a separate guard here.
   async createPairException(left, right, value) {
-    const sourceIdentifier =
-      this.fontController.fontSourcesInstancer.getSourceIdentifierForLocation(
-        {},
-        false
-      );
+    // Task 12 fix (ledger §5.4): same active-source write as
+    // writePairValues/applyFoldedParentRow.
+    const sourceIdentifier = this.autokernSource;
     if (!sourceIdentifier) {
       // Mirrors writePairValues' own guard/comment above.
-      console.error(
-        "kerning view: cannot create a pair exception, no font source resolves at the default location"
-      );
+      console.error("kerning view: cannot create a pair exception, no source is selected");
       return;
     }
     const editContext = this.kerningController.getEditContext([
@@ -4776,18 +4777,27 @@ export class KerningViewController extends ViewController {
 
   // F12's own "Recommended detail: show the inherited value in a tooltip or
   // row detail" for the Remove-exception control. Mirrors
-  // getGlyphPairValueForLocation's own cascade (getPairsToTry, most
-  // specific first) but starts one entry later -- pairsToTry[0] is always
-  // this exact literal pair itself, which is precisely the exception being
-  // considered for removal, so this reads what the SECOND-most-specific
-  // address (a partial or full class fallback) currently resolves to,
-  // i.e. what removal would restore.
+  // getGlyphPairValueForSource's own cascade (getPairsToTry, most specific
+  // first) but starts one entry later -- pairsToTry[0] is always this exact
+  // literal pair itself, which is precisely the exception being considered
+  // for removal, so this reads what the SECOND-most-specific address (a
+  // partial or full class fallback) currently resolves to at the active
+  // source, i.e. what removal would restore. Task 12 fix: reads
+  // getPairValueForSource(..., this.autokernSource) instead of a
+  // default-location pairFunction({}) call, matching every other read in
+  // this file; skips a sparse null the same way getGlyphPairValueForSource
+  // itself does (a stored-but-null entry at this source is not "resolved,"
+  // the cascade keeps going).
   inheritedFallbackValue(left, right) {
     const pairsToTry = this.kerningController.getPairsToTry(left, right).slice(1);
     for (const [leftName, rightName] of pairsToTry) {
-      const pairFunction = this.kerningController.getPairFunction(leftName, rightName);
-      if (pairFunction) {
-        return pairFunction({});
+      const value = this.kerningController.getPairValueForSource(
+        leftName,
+        rightName,
+        this.autokernSource
+      );
+      if (value != undefined) {
+        return value;
       }
     }
     return 0;
