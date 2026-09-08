@@ -5383,17 +5383,21 @@ export class KerningViewController extends ViewController {
   // landed class panel names this field differently, every reference is
   // isolated to this block and the two methods immediately following it,
   // so retargeting is a small, localized fix, not a rewrite.
+  // Task 13, spec F28: this button used to land in its own bordered block,
+  // appended as a sibling AFTER #autokern-class-panel (which is itself
+  // height:100% of the fixed-height #autokern-class-panel-slot) -- that
+  // extra block's own padding/border pushed the slot's total content past
+  // its parent #kerning-middle-bottom's fixed height, which is exactly why
+  // #kerning-middle-bottom needed `overflow-y: auto` (kerning.css) to avoid
+  // clipping it: confirmed by reading the CSS, #kerning-font-mode-actions
+  // had no height accounted for anywhere in the grid/flex sizing above it.
+  // Moving the button INTO #autokern-class-new-controls -- the existing
+  // Left/Right/Both/Derive row, already `display:flex; flex-wrap:wrap`
+  // (kerning.css) -- removes that extra block entirely instead of shrinking
+  // or clipping it, which is what F28's "use responsive layout rather than
+  // clipping controls" actually asks for.
   initFontModeAddToClassActions() {
-    const slot = document.querySelector("#autokern-class-panel-slot");
-
-    // ---- Font mode add-to-class actions (design doc §2) ----
-    // Appended AFTER whatever the class panel worker's own delimited block
-    // has already put in the slot (or before it lands, if this runs first --
-    // either order is safe, this only ever appends a new child, never
-    // touches existing ones) so the two workers' DOM insertions can never
-    // collide.
-    const actionsContainer = document.createElement("div");
-    actionsContainer.id = "kerning-font-mode-actions";
+    const row = document.querySelector("#autokern-class-new-controls");
 
     const addButton = document.createElement("button");
     addButton.type = "button";
@@ -5401,9 +5405,8 @@ export class KerningViewController extends ViewController {
     addButton.textContent = "Add selection to selected class";
     addButton.disabled = true;
     addButton.addEventListener("click", () => this.addFontModeSelectionToClass());
-    actionsContainer.appendChild(addButton);
+    row?.appendChild(addButton);
 
-    slot?.appendChild(actionsContainer);
     this._fontModeAddToClassButton = addButton;
   }
 

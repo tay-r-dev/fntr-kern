@@ -686,13 +686,12 @@ tr[data-kind="pair-exception"] {
   gap: 0;
 }
 
-/* Design doc §2: the two font-mode add-to-class actions (button lives in
-   #autokern-class-panel-slot, appended beside -- not inside -- the class
-   panel worker's own delimited markup). */
-#kerning-font-mode-actions {
-  padding: 0.5em 1em;
-  border-top: 1px solid var(--horizontal-rule-color, #ccc);
-}
+/* Task 13, spec F28: the font-mode "Add selection to selected class" button
+   now lives inside #autokern-class-new-controls (kerning.html), the same
+   flex-wrap row as Left/Right/Both/Derive -- it no longer gets its own
+   bordered block (that block was the confirmed cause of the middle-bottom
+   pane needing a vertical scrollbar; see initFontModeAddToClassActions in
+   kerning.js). No rule needed here any more. */
 
 /* Backlog item 6: this view reuses views-editor's SidebearingTool/KerningTool
    (edit-tools-metrics.js) unmodified, but kerning.html never linked

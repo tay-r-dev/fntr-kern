@@ -419,12 +419,14 @@
         </div>
         <div id="kerning-middle-bottom">
           <!-- Class panel, §1.2 bottom row. The static structure below is
-               THIS worker's own delimited addition; the font-mode worker
-               (concurrent, different file region) appends its own
-               "Add selection to selected class" button as a plain child of
-               #autokern-class-panel-slot at runtime (initFontModeAddToClassActions
-               in kerning.js) -- it never edits this markup, so the two
-               workers' DOM insertions cannot collide. -->
+               THIS worker's own delimited addition. Task 13, spec F28: the
+               font-mode "Add selection to selected class" button is appended
+               at runtime (initFontModeAddToClassActions in kerning.js)
+               directly INTO #autokern-class-new-controls below, the same row
+               as Left/Right/Both/Derive -- it used to be its own sibling
+               block here, which was the confirmed cause of this pane needing
+               a vertical scrollbar (that block's height was unaccounted for
+               by the fixed-height grid row above). -->
           <div id="autokern-class-panel-slot">
             <div id="autokern-class-panel">
               <!-- §1.2 "New class" control: 1st / 2nd / both, each opening a
