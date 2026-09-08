@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import {
   explicitPairExists,
+  isStaleAsyncResult,
   passesNumericFilters,
   rowId,
   valuesForDisplay,
@@ -102,5 +103,22 @@ describe("results-model", () => {
     expect(
       passesNumericFilters({ current: -80, proposed: null, delta: null }, f)
     ).to.equal(true);
+  });
+
+  // Task 12, spec F26/§12.3: loadAutokernCacheFromStorage's own async guard
+  // (kerning.js) is exactly `isStaleAsyncResult(revisionAtStart,
+  // this.autokernCacheLoadRevision, sourceIdentifierAtStart,
+  // this.autokernSource)`, called after the await, before installing the
+  // result.
+  it("isStaleAsyncResult: a matching revision and source is not stale", () => {
+    expect(isStaleAsyncResult(1, 1, "a", "a")).to.equal(false);
+  });
+
+  it("isStaleAsyncResult: a revision that has moved on (a newer call started) is stale", () => {
+    expect(isStaleAsyncResult(1, 2, "a", "a")).to.equal(true);
+  });
+
+  it("isStaleAsyncResult: the same revision but the active source changed mid-flight is stale", () => {
+    expect(isStaleAsyncResult(1, 1, "a", "b")).to.equal(true);
   });
 });

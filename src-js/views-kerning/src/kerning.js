@@ -107,6 +107,12 @@ import {
 } from "@fontra/core/actions.js";
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { CanvasController } from "@fontra/core/canvas-controller.js";
+// Task 12, spec F26/§12.3, ledger §5.5: the exact wildcard-match-pattern
+// primitive KerningController's own constructor already subscribes with
+// (kerning-controller.js: `{ kerning: { [wildcard]: { values: null } } }`)
+// -- reused here for kerning.js's own subscription, not a second wildcard
+// convention.
+import { wildcard } from "@fontra/core/changes.js";
 import {
   characterLinesFromString,
   parsePhrasePresets,
@@ -172,6 +178,7 @@ import {
   explicitPairExists,
   glyphMatchesCategory,
   hiddenFromCacheEntry,
+  isStaleAsyncResult,
   pairMatchesGlyphset,
   pairMatchesUnicodeTypes,
   passesNumericFilters,
@@ -901,6 +908,8 @@ export class KerningViewController extends ViewController {
   initRunSection() {
     this.autokernCache = new Map();
     this.autokernCalibration = null;
+    // Task 12: loadAutokernCacheFromStorage's own stale-read guard.
+    this.autokernCacheLoadRevision = 0;
     this.renderCalibration();
 
     const runButton = document.querySelector("#kerning-run-button");
@@ -941,11 +950,32 @@ export class KerningViewController extends ViewController {
   // on a DIFFERENT machine still shows it correctly -- the junk mark is
   // project data and outranks whatever the browser-local cache file itself
   // says about that pair's `junk` flag.
+  // Task 12, spec F26/§12.3: guards against a rapid double source-switch --
+  // the OPFS read below is the one async, per-source read in this file that
+  // can race. Plan's own proposed pattern (results-model.js's
+  // isStaleAsyncResult, pure and tested on its own): capture the revision
+  // and the source this call means BEFORE awaiting, and refuse to install
+  // whichever read resolves last if either moved on while it was in flight
+  // -- an older read finishing after a newer one must not clobber it, and a
+  // read begun for a source that is no longer selected must not be shown
+  // under the new source's label.
   async loadAutokernCacheFromStorage() {
+    const revisionAtStart = ++this.autokernCacheLoadRevision;
+    const sourceIdentifierAtStart = this.autokernSource;
     const entries = await readAutokernCacheFromOPFS(
       this.projectIdentifier,
-      this.autokernSource
+      sourceIdentifierAtStart
     );
+    if (
+      isStaleAsyncResult(
+        revisionAtStart,
+        this.autokernCacheLoadRevision,
+        sourceIdentifierAtStart,
+        this.autokernSource
+      )
+    ) {
+      return;
+    }
     // No file for this source (never run) must reset to empty, not leave
     // whatever source was loaded previously on screen under the new label.
     this.autokernCache = entries
@@ -1730,7 +1760,68 @@ export class KerningViewController extends ViewController {
       });
     }
 
+    // Task 12, spec F26, ledger §5.5: "kerning.js itself does not subscribe
+    // to either [kerning change pattern]... the pair table is refreshed
+    // only by explicit local calls to renderPairTable() after actions THIS
+    // view itself performs. An external kerning edit -- another open tab,
+    // or the on-canvas KerningTool's own preview-drag edits in this same
+    // view's left pane -- would not visibly update the table." This is
+    // that subscription. Reuses the exact match-pattern shape
+    // KerningController's own constructor already listens with (that
+    // controller's cache invalidation and this table's refresh are two
+    // separate, correctly-timed reactions to the SAME notification, not a
+    // duplicated cache). `wantLiveChanges: true` (3rd arg) so a live
+    // preview drag (fontController.editIncremental, throttled but real)
+    // updates Current/Delta as it happens, not only once the drag commits
+    // -- matches F26's "immediately as edits are reported." Current reads
+    // (getGlyphPairValueForSource, Task 12's other fix) read straight from
+    // kernData.values, not KerningController's own interpolation cache, so
+    // there is no separate cache-freshness concern here to duplicate.
+    // renderPairTable itself already does everything the plan's own
+    // interface note asks for on every rebuild: recomputes each row's
+    // Current/Delta from the unchanged Proposed cache entry against the
+    // now-current stored value (pairRowData), preserves resultSelection for
+    // any row ID still present, and prunes it for any row that no longer
+    // matches (retainVisible, at renderPairTable's own end) -- so the
+    // listener body is exactly one call, not a second parallel update path.
+    this._kerningValuesChangeMatchPattern = {
+      kerning: { [wildcard]: { values: null } },
+    };
+    this._kerningValuesChangeListener = () => this.renderPairTable();
+    this.fontController.addChangeListener(
+      this._kerningValuesChangeMatchPattern,
+      this._kerningValuesChangeListener,
+      true, // wantLiveChanges
+      true // immediate
+    );
+    // "On view disposal, release the subscription." This app has no
+    // internal view-teardown lifecycle to hook (grepped the whole tree:
+    // no `dispose(`/`beforeunload`/`pagehide` anywhere -- each view is its
+    // own full page load, per pyproject.toml's per-view entry points, torn
+    // down only by browser navigation). "pagehide" is the real browser
+    // event for exactly that moment; used here rather than inventing a
+    // view-level dispose() this codebase has no other caller for.
+    window.addEventListener("pagehide", () => this.disposeKerningChangeSubscription());
+
     this.renderPairTable();
+  }
+
+  // Task 12: the exact inverse of the addChangeListener call above --
+  // removeChangeListener compares the matchPattern object by reference
+  // (font-controller.js's own filterFunc), so the same object stored above
+  // is reused here rather than a freshly-built equal-looking one (a new
+  // `{kerning: {...}}` literal would never match and silently leak the
+  // listener).
+  disposeKerningChangeSubscription() {
+    if (!this._kerningValuesChangeListener) {
+      return;
+    }
+    this.fontController.removeChangeListener(
+      this._kerningValuesChangeMatchPattern,
+      this._kerningValuesChangeListener,
+      true
+    );
+    this._kerningValuesChangeListener = null;
   }
 
   // Backlog item 13: every checkbox currently in the DOM is, by
@@ -4082,6 +4173,26 @@ export class KerningViewController extends ViewController {
     select.addEventListener("change", async () => {
       const sourceIdentifier = select.value;
       this._autokernSourceIdentifier = sourceIdentifier;
+
+      // Task 12, spec F26/§12.3: "On a source change, cancel any armed
+      // Reset and make sure a pending action can't target the wrong
+      // source." Done SYNCHRONOUSLY, before the await below -- rowId's
+      // source component means every currently-displayed row's ID is about
+      // to be stale (renderPairTable, once it eventually reruns via
+      // loadAutokernCacheFromStorage, will rebuild rows addressed at the
+      // NEW source), but that rebuild is asynchronous; a click landing in
+      // the gap between selecting a new source and that rebuild completing
+      // must not resolve targets from the OLD source's still-displayed
+      // rows (getSelectedPairTableRows reads left/right only, not source --
+      // writePairValues/resetSelectedPairRows always write to
+      // this.autokernSource, so a stale ticked row from the old source
+      // would otherwise silently write into the NEW source instead).
+      // Clearing selection outright is also what disarms Reset
+      // (resetArmedKey's own target-key comparison, refreshResetArmState).
+      this.resultSelection = deselectAll();
+      this.resetArmedKey = null;
+      this.applyResultSelectionToDom();
+      this.refreshResetArmState();
 
       // (a) What the left-pane scene draws: this is the SAME mechanism
       // panel-designspace-navigation.js uses for its own source list

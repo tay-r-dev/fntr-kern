@@ -242,6 +242,24 @@ export function rowVisibleForHiddenState(hidden, showHidden) {
   return !hidden || showHidden;
 }
 
+// Task 12, spec F26/§12.3, plan's own proposed pattern: guards an
+// asynchronous per-source read (loadAutokernCacheFromStorage's OPFS read is
+// the one call site in this file that races on rapid source switching) so a
+// result that resolves after either the revision counter moved on or the
+// active source changed mid-flight is rejected rather than installed. Pure
+// so the exact comparison is testable without a real async OPFS round-trip.
+export function isStaleAsyncResult(
+  revisionAtStart,
+  currentRevision,
+  sourceIdentifierAtStart,
+  currentSourceIdentifier
+) {
+  return (
+    revisionAtStart !== currentRevision ||
+    sourceIdentifierAtStart !== currentSourceIdentifier
+  );
+}
+
 export function passesNumericFilters(row, filters) {
   if (
     filters.hideZeroCurrentSuggestions &&
