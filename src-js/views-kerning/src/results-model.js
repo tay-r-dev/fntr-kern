@@ -99,26 +99,29 @@ export function rowVisibleInPotential(row) {
 // getCodePointFromGlyphName instead of category/case (ledger §7: "a glyph
 // with no `unicode` field and no recognized uniXXXX/uXXXXXX name pattern
 // returns null -- this is the correct, existing primitive").
-export function glyphMatchesCategory(glyphName, category) {
-  if (category === "non-unicode") {
-    return getCodePointFromGlyphName(glyphName) == null;
+export function glyphMatchesCategory(glyphName, category, glyphMap) {
+  // Name metadata is a fallback for callers without a font. In the view,
+  // Unicode assignment comes exclusively from this font's glyph map.
+  const codePoints = glyphMap ? glyphMap[glyphName] || []
+    : [getCodePointFromGlyphName(glyphName)].filter((cp) => cp != null);
+  if (category === "non-unicode") return !codePoints.length;
+  if (glyphMap) {
+    const expressions = {
+      uppercase: /\p{Lu}/u, lowercase: /\p{Ll}/u,
+      punctuation: /\p{P}/u, symbols: /\p{S}/u,
+      marks: /\p{M}/u, numbers: /\p{N}/u,
+    };
+    return codePoints.some((cp) => expressions[category]?.test(String.fromCodePoint(cp)));
   }
   const info = getGlyphInfoFromGlyphName(glyphName);
   switch (category) {
-    case "uppercase":
-      return info?.case === "upper" || info?.case === "smallCaps";
-    case "lowercase":
-      return info?.case === "lower";
-    case "punctuation":
-      return info?.category === "Punctuation";
-    case "symbols":
-      return info?.category === "Symbol";
-    case "marks":
-      return info?.category === "Mark";
-    case "numbers":
-      return info?.category === "Number";
-    default:
-      return false;
+    case "uppercase": return info?.case === "upper" || info?.case === "smallCaps";
+    case "lowercase": return info?.case === "lower";
+    case "punctuation": return info?.category === "Punctuation";
+    case "symbols": return info?.category === "Symbol";
+    case "marks": return info?.category === "Mark";
+    case "numbers": return info?.category === "Number";
+    default: return false;
   }
 }
 

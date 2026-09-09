@@ -73,6 +73,8 @@ export class SelectTool extends BaseTool {
       if (glyphName && this.editor.handleGlyphInputModifierClick) {
         this.editor.handleGlyphInputModifierClick(glyphName, initialEvent.shiftKey);
       }
+    } else if (initialEvent.shiftKey && hitGlyph) {
+      this.editor.handlePreviewPairModifierClick(hitGlyph);
     }
   }
 

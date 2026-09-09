@@ -953,3 +953,12 @@ kerning-handle.negative {
 .kerning-analytics-metric-label {
   cursor: help;
 }
+
+.kerning-pairtable-load-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75em;
+  padding: 0.75em;
+}
+#kerning-pairtable-load-more[hidden] { display: none; }

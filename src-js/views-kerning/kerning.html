@@ -46,25 +46,14 @@
             <input
               type="text"
               id="kerning-pairtable-glyph"
-              placeholder="A, /Adieresis, @ClassName, %member%!"
+              placeholder="A, Adieresis, @ClassName"
+              title="One glyph: all its pairs. Multiple glyphs: pairs between them. Ctrl-click replaces; Ctrl+Shift-click toggles a glyph. Shift-click in preview narrows to adjacent pairs."
             />
 
-            <!-- Task 6/7, spec F06/F22: replaces the old exception input.
-                 Holds a comma-separated list of single glyph-tokens -- the
-                 "other side" of the pair, relative to whatever is in Glyph
-                 (docs/superpowers/kerning-ux-integration.md §8.1: neither
-                 input ever holds a pair-token; the preview pairs are the
-                 cross product of the two token lists). -->
-            <label for="kerning-pairtable-pair">Pair</label>
-            <input
-              type="text"
-              id="kerning-pairtable-pair"
-              placeholder="V, /W, @ClassName, %member%!"
-            />
-            <span
-              id="kerning-pairtable-pair-error"
-              class="kerning-pairtable-input-error"
-            ></span>
+            <span id="kerning-pairtable-glyph-error"
+              class="kerning-pairtable-input-error" role="status"></span>
+            <button id="kerning-preview-pairs-filter" type="button" hidden
+              title="Clear the preview-pair filter"></button>
 
             <label for="kerning-pairtable-excluded">Excluded glyphs</label>
             <input
@@ -361,7 +350,7 @@
                     <input
                       type="checkbox"
                       class="kerning-pairtable-select-all"
-                      title="Select all visible rows"
+                      title="Select all loaded rows"
                     />
                     <span class="kerning-pairtable-sort-label"></span>
                   </th>
@@ -406,6 +395,10 @@
               </thead>
               <tbody id="kerning-pairtable-body"></tbody>
             </table>
+            <div class="kerning-pairtable-load-controls">
+              <span id="kerning-pairtable-load-status" role="status" aria-live="polite"></span>
+              <button id="kerning-pairtable-load-more" type="button" hidden>Load next 100</button>
+            </div>
           </div>
         </div>
       </div>
