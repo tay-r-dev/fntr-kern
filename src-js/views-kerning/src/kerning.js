@@ -173,6 +173,7 @@ import {
   pairMatchesGlyphFilter,
   resolveGlyphFilter,
   parseTokenList,
+  serializeToken,
   replaceGlyphToken,
 } from "./input-tokens.js";
 import {
@@ -310,21 +311,38 @@ async function readAutokernCacheFromOPFS(projectIdentifier, source) {
     ]);
     const stored = JSON.parse(await file.text());
     if (Array.isArray(stored)) {
-      return { entries: stored, calibration: null };
+      return { entries: stored, calibration: null, coveredGlyphNames: null };
     }
     return {
       entries: stored?.entries || [],
       calibration: stored?.calibration || null,
+      coveredGlyphNames: stored?.coveredGlyphNames || null,
     };
   } catch (e) {
     return null;
   }
 }
 
-async function writeAutokernCacheToOPFS(projectIdentifier, source, cache, calibration) {
+// `coveredGlyphNames` is which glyphs a run actually considered, which is not
+// the same question as which glyphs the cache holds an entry for. A glyph with
+// no ink -- a space -- is considered and then produces no entry at all,
+// because the prefilter rejects every pair it could form. Without this record
+// such a glyph reads as "never measured" for ever, and the panel nags to
+// re-run glyphs a re-run can never change.
+async function writeAutokernCacheToOPFS(
+  projectIdentifier,
+  source,
+  cache,
+  calibration,
+  coveredGlyphNames
+) {
   const opfs = await getAutokernOPFS();
   await opfs.createDirectory(AUTOKERN_CACHE_OPFS_DIR);
-  const stored = { entries: [...cache.values()], calibration: calibration || null };
+  const stored = {
+    entries: [...cache.values()],
+    calibration: calibration || null,
+    coveredGlyphNames: coveredGlyphNames ? [...coveredGlyphNames].sort() : null,
+  };
   const blob = new Blob([JSON.stringify(stored)], { type: "application/json" });
   await opfs.writeFile(
     [...AUTOKERN_CACHE_OPFS_DIR, autokernCacheFileName(projectIdentifier, source)],
@@ -1042,6 +1060,8 @@ export class KerningViewController extends ViewController {
   initRunSection() {
     this.autokernCache = new Map();
     this.autokernCalibration = null;
+    // Which glyphs the last run considered -- see writeAutokernCacheToOPFS.
+    this.autokernCoveredGlyphNames = new Set();
     // Task 12: loadAutokernCacheFromStorage's own stale-read guard.
     this.autokernCacheLoadRevision = 0;
     this.renderCalibration();
@@ -1102,12 +1122,20 @@ export class KerningViewController extends ViewController {
     // An empty cache means no run has happened yet, which is a reason to run
     // the font, not a font of new glyphs. Reporting every glyph as new there
     // would put the whole font behind a button labelled as a repair.
-    const added = this.autokernCache.size
-      ? glyphNamesNotInCache(
-          this.autokernCache,
-          Object.keys(this.fontController.glyphMap || {})
-        )
-      : [];
+    let added = [];
+    if (this.autokernCache.size) {
+      const fontGlyphNames = Object.keys(this.fontController.glyphMap || {});
+      // What the last run CONSIDERED, not what it produced an entry for. A
+      // space forms no measurable pair, so it never reaches the cache however
+      // often it is run -- asked the cache, the panel would name it new for
+      // ever. A cache file written before this record existed has no covered
+      // set, so it falls back to the cache and self-heals on the next run.
+      added = this.autokernCoveredGlyphNames?.size
+        ? fontGlyphNames
+            .filter((name) => !this.autokernCoveredGlyphNames.has(name))
+            .sort()
+        : glyphNamesNotInCache(this.autokernCache, fontGlyphNames);
+    }
     return { stale, added, all: [...new Set([...stale, ...added])].sort() };
   }
 
@@ -1295,6 +1323,7 @@ export class KerningViewController extends ViewController {
       const candidatePool = added.length
         ? Object.keys(this.fontController.glyphMap || {})
         : staleGlyphNames;
+
       const glyphsToRasterize = new Set([
         ...CONTROL_GLYPH_NAMES,
         ...staleGlyphNames,
@@ -1341,10 +1370,20 @@ export class KerningViewController extends ViewController {
         existingCache: [...this.autokernCache.entries()],
       };
 
-      await this.runAutokernWorker(job, {
+      const outcome = await this.runAutokernWorker(job, {
         title: "Re-running stale and new glyphs",
         description: `Scope: ${truncateGlyphList(staleGlyphNames)}`,
       });
+      // A scoped rerun considers only its own pool, so it ADDS to the record
+      // rather than replacing it: everything an earlier whole-font run
+      // covered is still covered. Only on success, for the reason runAutokern
+      // states.
+      if (outcome === "done") {
+        for (const name of candidatePool) {
+          this.autokernCoveredGlyphNames.add(name);
+        }
+        await this.writeAutokernCacheToStorage();
+      }
 
       // Task 15's own gap 2: no completed/remaining breakdown exists on the
       // worker's own messages -- derive it by diffing stale flags before/
@@ -1442,6 +1481,7 @@ export class KerningViewController extends ViewController {
     // calibrated" after every reload, beside a table full of numbers that
     // calibration had in fact produced.
     this.autokernCalibration = stored?.calibration || null;
+    this.autokernCoveredGlyphNames = new Set(stored?.coveredGlyphNames || []);
     this.renderCalibration();
     this.renderPairTable();
   }
@@ -1455,7 +1495,8 @@ export class KerningViewController extends ViewController {
       this.projectIdentifier,
       this.autokernSource,
       this.autokernCache,
-      this.autokernCalibration
+      this.autokernCalibration,
+      this.autokernCoveredGlyphNames
     );
   }
 
@@ -1591,7 +1632,17 @@ export class KerningViewController extends ViewController {
       existingCache: [...this.autokernCache.entries()],
     };
 
-    await this.runAutokernWorker(job);
+    const outcome = await this.runAutokernWorker(job);
+    // Only a finished run may claim to have considered these glyphs. A
+    // cancelled or rejected one leaves the record exactly as it was, so the
+    // panel keeps asking for the work that was not done. A whole-font run
+    // REPLACES the set rather than adding to it, so a glyph removed from the
+    // font since the last run leaves the record with it.
+    if (outcome === "done") {
+      this.autokernCoveredGlyphNames = new Set(glyphNames);
+      await this.writeAutokernCacheToStorage();
+      this.renderStaleSection();
+    }
   }
 
   // Spec §4: "A worker, with progress and cancel, shown in a popup." Reuses
@@ -3036,11 +3087,17 @@ export class KerningViewController extends ViewController {
     // current sort column/direction on every render, not only on click.
     this.updateSortHeaders();
 
-    // Task 8, spec F22: exposure state -- glyph names named directly via
-    // "%name%!" in either input, plus the broad "Show individual class
-    // members" checkbox. Only gates "member-pair" rows (results-model.js's
-    // rowVisibleInDefault); every other kind is always in Default.
-    const exposedNames = new Set();
+    // Task 8, spec F22: exposure state -- the glyph names the Glyph field
+    // marked with a trailing "!" (input-tokens.js's own grammar, resolved
+    // once per render into this._glyphFilter above), plus the broad "Show
+    // individual class members" checkbox. Only gates "member-pair" rows
+    // (results-model.js's rowVisibleInDefault); every other kind is always
+    // in Default.
+    //
+    // This set used to be built and left empty, so the exposure half of the
+    // predicate could never fire and the "!" was rejected by the parser as
+    // well: a reader with no writer, on both sides at once.
+    const exposedNames = this._glyphFilter.exposed || new Set();
     const showIndividualMembers = filters.showIndividualMembers;
     // Task 9, plan's own bullet, ledger §8.2: the Non-Unicode filter governs
     // the table only -- a /glyphname or %glyphname%! request for a
@@ -6978,11 +7035,11 @@ export class KerningViewController extends ViewController {
     let names = [];
     try {
       names = parseTokenList(glyphInput.value).map((token) => {
-        if (token.kind === "class") return "@" + token.name;
-        return (
+        if (token.kind === "class") return serializeToken(token);
+        const resolved =
           resolveGlyphFilter(token.name, this.pairInputResolver()).left.values().next()
-            .value || token.name
-        );
+            .value || token.name;
+        return serializeToken({ ...token, name: resolved });
       });
     } catch {
       /* A deliberate click replaces invalid typed input. */
