@@ -2,11 +2,10 @@ import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
 import {
   applyTensionAwareEdit,
-  buildIndexedSegments,
   curvesAreAboveFloor,
-  isCubicSegment,
   solvePlainAxisScale,
   solveRigidLinkScale,
+  scaleSegmentHandles,
 } from "@fontra/core/tension-aware-edit.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 import { EditBehaviorFactory } from "./edit-behavior.js";
@@ -324,28 +323,14 @@ function buildFrames(originals, solved, axis) {
   return originals.map(({ contour }, i) => {
     const before = contour.points;
     const after = before.map((point) => ({ ...point }));
-    // Which on-curve point each handle belongs to. A handle travels with its
-    // own point, exactly as the point rules carry it under a drag. Left behind,
-    // a handle stops being collinear with the straight its point stands on, and
-    // the tension point's joint breaks.
-    const ownerOfHandle = new Map();
-    for (const segment of buildIndexedSegments(before, contour.isClosed)) {
-      if (!isCubicSegment(segment)) continue;
-      ownerOfHandle.set(segment.controlIndices[0], segment.startIndex);
-      ownerOfHandle.set(segment.controlIndices[1], segment.endIndex);
-    }
-    const displacement = new Map();
     for (const [index, coordinate] of solved[i]) {
-      const rounded = Math.round(coordinate);
-      displacement.set(index, rounded - before[index][axis]);
-      after[index][axis] = rounded;
+      after[index][axis] = Math.round(coordinate);
     }
-    for (const [handleIndex, ownerIndex] of ownerOfHandle) {
-      const moved = displacement.get(ownerIndex);
-      if (moved) {
-        after[handleIndex][axis] = before[handleIndex][axis] + moved;
-      }
-    }
+    // Every handle takes its own segment's factor along the scaled axis. A
+    // segment the scale only moved has a factor of one, so this carries it with
+    // its own point the way the point rules do, and a segment the scale pulled
+    // wider keeps the proportions of the curve that was drawn.
+    scaleSegmentHandles(before, after, contour.isClosed, axis);
     // The axis tells the slide which straights are tracks for this scale. A
     // straight lying across the axis, held only by the curves at its two ends,
     // is not one: sliding on it moves the drawing in the direction the scale

@@ -804,6 +804,52 @@ export function solvePlainAxisScale(contours, axis, factor, origin) {
   });
 }
 
+/**
+ * Place every handle after an axis scale has moved the on-curve points.
+ *
+ * A handle belongs to one on-curve point, and the simple answer is to carry it
+ * by however far that point moved. That answer is right only where the segment
+ * moved rigidly. Where the scale pulled a curve's two ends apart, a carried
+ * handle keeps the horizontal reach it had while the curve around it got wider,
+ * so the curve stops being the curve that was drawn: it flattens in the middle
+ * and its proportions are not the proportions of the same curve scaled.
+ *
+ * So a handle takes its own segment's factor along the scaled axis. A rigidly
+ * moved segment has a factor of one, which is the carry, so this replaces that
+ * rule rather than sitting beside it. `afterPoints` is mutated in place, on the
+ * scaled axis only.
+ *
+ * @param {Array} beforePoints - the contour as it stood, read only
+ * @param {Array} afterPoints - the contour with its on-curve points already placed
+ * @param {boolean} closed
+ * @param {string} axis - "x" or "y"
+ */
+export function scaleSegmentHandles(beforePoints, afterPoints, closed, axis) {
+  for (const segment of buildIndexedSegments(beforePoints, closed)) {
+    if (!isCubicSegment(segment)) {
+      continue;
+    }
+    const spanBefore =
+      beforePoints[segment.endIndex][axis] - beforePoints[segment.startIndex][axis];
+    const spanAfter =
+      afterPoints[segment.endIndex][axis] - afterPoints[segment.startIndex][axis];
+    // A segment with no extent along this axis states no factor -- a vertical
+    // curve under a horizontal scale. It is carried by its own point, which is
+    // what a factor of one does.
+    const factor = Math.abs(spanBefore) < EPSILON ? 1 : spanAfter / spanBefore;
+    const owners = [segment.startIndex, segment.endIndex];
+    segment.controlIndices.forEach((controlIndex, side) => {
+      const owner = owners[side];
+      afterPoints[controlIndex] = {
+        ...afterPoints[controlIndex],
+        [axis]:
+          afterPoints[owner][axis] +
+          (beforePoints[controlIndex][axis] - beforePoints[owner][axis]) * factor,
+      };
+    });
+  }
+}
+
 // Move an on-curve point and the handles that belong to it, the way the point
 // rules carry a handle with its own point.
 function moveOnCurveWithHandles(points, segments, index, delta, round) {

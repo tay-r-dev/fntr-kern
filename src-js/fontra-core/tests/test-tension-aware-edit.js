@@ -621,3 +621,49 @@ describe("tension-aware edit — the drag does not slide", () => {
     expect(after[2].x).to.equal(377);
   });
 });
+
+import { scaleSegmentHandles } from "@fontra/core/tension-aware-edit.js";
+
+describe("tension-aware edit — handles under an axis scale", () => {
+  // One cubic, 100 wide, with both handles a third of the way in.
+  const arch = {
+    points: [onCurve(0, 0), control(33, 80), control(67, 80), onCurve(100, 0)],
+    isClosed: false,
+  };
+
+  it("scales a handle's reach with its own segment, not by its point's move", () => {
+    const before = arch.points;
+    const after = before.map((point) => ({ ...point }));
+    after[3].x = 200; // the scale pulled the far end out to twice the width
+    scaleSegmentHandles(before, after, arch.isClosed, "x");
+    // Proportions held: each handle still reaches a third of the way across.
+    expect(after[1].x).to.be.closeTo(66, 1e-6);
+    expect(after[2].x).to.be.closeTo(134, 1e-6);
+    // The scaled axis only. Height is not this rule's business.
+    expect(after[1].y).to.equal(80);
+  });
+
+  it("carries a rigidly moved segment with its own point", () => {
+    const before = arch.points;
+    const after = before.map((point) => ({ ...point, x: point.x + 50 }));
+    // Undo the handle moves so the rule has to put them back itself.
+    after[1].x = before[1].x;
+    after[2].x = before[2].x;
+    scaleSegmentHandles(before, after, arch.isClosed, "x");
+    expect(after[1].x).to.be.closeTo(83, 1e-6);
+    expect(after[2].x).to.be.closeTo(117, 1e-6);
+  });
+
+  it("carries a segment with no width under a horizontal scale", () => {
+    const upright = {
+      points: [onCurve(0, 0), control(40, 30), control(40, 70), onCurve(0, 100)],
+      isClosed: false,
+    };
+    const after = upright.points.map((point) => ({ ...point, x: point.x + 25 }));
+    after[1].x = 40;
+    after[2].x = 40;
+    scaleSegmentHandles(upright.points, after, upright.isClosed, "x");
+    expect(after[1].x).to.be.closeTo(65, 1e-6);
+    expect(after[2].x).to.be.closeTo(65, 1e-6);
+  });
+});
