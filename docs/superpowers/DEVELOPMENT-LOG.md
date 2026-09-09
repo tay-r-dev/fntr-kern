@@ -2193,3 +2193,31 @@ it, under two separate pairs of custom-property names.
   strip.** The third such omission in this panel: every membership or colour
   write has its own hand-written list of what to re-render, and each list was
   missing a different entry.
+
+**Three faults around a class write, and each one hid a step the write was
+expected to have taken.**
+
+- **A class could only be created on a font that already had kerning.**
+  `_editGroup` read `root.kerning[kernTag]` and asserted on its groups; the
+  value-edit path calls `ensureKerningData` first and the group path did not.
+  So the very first kerning edit a designer makes in this view threw, and
+  every font that had ever been kerned hid it. **The two write paths into one
+  table had different preconditions**, which is the same shape as the dead
+  level this log has found four times: one writer, one reader, and nobody
+  comparing them.
+- **A kerning write does not rebuild the scene, and never did.**
+  `scene-model.js`'s `{ kerning: null }` listener is `_resetKerningInstance`
+  and nothing else, so the drawn spacing catches up only when something else
+  rebuilds. Phrase mode looked correct because a phrase is rebuilt often;
+  pair mode sets its scene text from `setPreviewPairs`, and re-setting the
+  same text is a no-op, so nothing rebuilt it at all. **The two modes were not
+  two behaviours -- one of them was being carried by a coincidence.** Reported
+  as a pair-mode bug, and pair mode was only where the missing rebuild showed.
+- **Applying a class rule made its own row disappear**, which is spec §7.3's
+  named failure, written down and then reintroduced: the state filter that
+  answered it was removed as having "no lasting meaning beyond one session",
+  and the exemption it carried went with it. A pair row survives because
+  `pairRowVisible` passes `minDelta: 0`; a class rule was filtered at the real
+  threshold, and applying one drops its delta to zero by definition. **A
+  filter deleted for being weak took a guarantee with it that nothing else
+  restated.**
