@@ -1,3 +1,4 @@
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
 import {
@@ -335,7 +336,15 @@ function buildFrames(originals, solved, axis) {
     // straight lying across the axis, held only by the curves at its two ends,
     // is not one: sliding on it moves the drawing in the direction the scale
     // never touched.
-    applyTensionAwareEdit(before, after, contour.isClosed, { axis });
+    // A straight that runs exactly across the scaled axis stands still unless
+    // the designer asks for it to travel. The setting is app-wide, next to skew
+    // in the transform panel. A slanted straight travels either way: it has
+    // extent along the axis, so the scale does touch it.
+    applyTensionAwareEdit(before, after, contour.isClosed, {
+      axis,
+      slideBothTensionPoints:
+        !!applicationSettingsController.model.slideBothTensionPoints,
+    });
     return { points: after, isClosed: contour.isClosed };
   });
 }

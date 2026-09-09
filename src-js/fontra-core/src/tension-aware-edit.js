@@ -291,9 +291,15 @@ export function slideTensionPoints(
   beforePoints,
   afterPoints,
   closed,
-  { round = Math.round, axis = null } = {}
+  { round = Math.round, axis = null, slideBothTensionPoints = false } = {}
 ) {
   const segments = buildIndexedSegments(beforePoints, closed);
+  // Every travel is measured against the same state. Applied as they are found,
+  // the first slide moves a point the second one measures from, and the second
+  // then reads its own straight as one the designer already dragged along and
+  // stands down. That is why one end of a slanted straight used to move while
+  // the other stayed. The two ends answer to their own curves, and both answer.
+  const measured = afterPoints.map((point) => ({ ...point }));
   let changed = false;
   for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
     const segment = segments[segmentIndex];
@@ -319,21 +325,23 @@ export function slideTensionPoints(
       }
       const anchorIndex =
         straight.startIndex === nearIndex ? straight.endIndex : straight.startIndex;
-      // A straight that lies across the axis being scaled is not a track for
-      // this scale, where both of its ends are tension points.
+      // A straight that lies exactly across the axis being scaled is held by
+      // nothing but the two curves at its ends, and travel along it is travel
+      // the scale never asked for: a vertical stem under a horizontal scale
+      // would have its ends slid up and down, changing a length the scale does
+      // not touch. So by default it is not a track for this scale.
       //
-      // Such a straight is held by nothing but the two curves at its ends, and
-      // travel along it is travel the scale never asked for: a vertical stem
-      // under a horizontal scale would have its ends slid up and down, changing
-      // a length the scale does not touch. Worse, the two ends answer to
-      // different curves and so slide by different amounts, which stretches the
-      // straight rather than moving it.
+      // `slideBothTensionPoints` says the designer wants that travel anyway.
+      // The two ends then both slide, each to what its own curve asks for. A
+      // slanted straight always does this: it has extent along the axis, so the
+      // scale does touch it and standing still is not an option.
       //
       // A straight with a corner or another straight at its far end is anchored
       // there and keeps its track: the far end is not free, so the near end's
       // travel is a real correction.
       if (
         axis &&
+        !slideBothTensionPoints &&
         Math.abs(beforePoints[nearIndex][axis] - beforePoints[anchorIndex][axis]) <
           EPSILON &&
         segments.some(
@@ -349,10 +357,7 @@ export function slideTensionPoints(
         beforePoints[nearIndex],
         beforePoints[anchorIndex]
       );
-      const afterAxis = handleDirection(
-        afterPoints[nearIndex],
-        afterPoints[anchorIndex]
-      );
+      const afterAxis = handleDirection(measured[nearIndex], measured[anchorIndex]);
       if (!beforeAxis || !afterAxis) {
         continue;
       }
@@ -370,7 +375,7 @@ export function slideTensionPoints(
       // one reads that tilt as travel along it, which would stand the slide
       // down exactly when a single-point drag needs it most.
       const alongAfter = dotVector(
-        subVectors(afterPoints[nearIndex], afterPoints[anchorIndex]),
+        subVectors(measured[nearIndex], measured[anchorIndex]),
         beforeAxis
       );
       if (Math.abs(alongAfter - alongBefore) > EPSILON) {
@@ -380,8 +385,8 @@ export function slideTensionPoints(
       // either end moves, so the near end moving sideways calls for a slide as
       // surely as the far end moving does. Only a segment that took the same
       // delta at both ends is unchanged, and that one keeps its drawing already.
-      const nearDelta = subVectors(afterPoints[nearIndex], beforePoints[nearIndex]);
-      const farDelta = subVectors(afterPoints[farIndex], beforePoints[farIndex]);
+      const nearDelta = subVectors(measured[nearIndex], beforePoints[nearIndex]);
+      const farDelta = subVectors(measured[farIndex], beforePoints[farIndex]);
       if (
         Math.abs(nearDelta.x - farDelta.x) < EPSILON &&
         Math.abs(nearDelta.y - farDelta.y) < EPSILON
@@ -389,15 +394,15 @@ export function slideTensionPoints(
         continue;
       }
       const nearPoint = beforePoints[nearIndex];
-      const afterNear = afterPoints[nearIndex];
+      const afterNear = measured[nearIndex];
       const nearDirection =
-        handleDirection(afterPoints[nearControl], afterNear) ||
+        handleDirection(measured[nearControl], afterNear) ||
         handleDirection(beforePoints[nearControl], nearPoint);
       const beforeFar = beforePoints[farIndex];
-      const afterFar = afterPoints[farIndex];
+      const afterFar = measured[farIndex];
       const beforeFarDirection = handleDirection(beforePoints[farControl], beforeFar);
       const afterFarDirection =
-        handleDirection(afterPoints[farControl], afterFar) || beforeFarDirection;
+        handleDirection(measured[farControl], afterFar) || beforeFarDirection;
       const beforeReaches = tangentReaches(
         nearPoint,
         nearDirection,
@@ -430,7 +435,7 @@ export function slideTensionPoints(
       // straight's own line, at the distance the corner asks for. A corner
       // point's handle is not parallel to the straight, so this projection is
       // what keeps it on the line.
-      const anchor = afterPoints[anchorIndex];
+      const anchor = measured[anchorIndex];
       const travel = Math.max(
         dotVector(subVectors(wanted, anchor), afterAxis),
         MIN_STRAIGHT_LENGTH
@@ -438,11 +443,11 @@ export function slideTensionPoints(
       const target = addVectors(anchor, mulVectorScalar(afterAxis, travel));
       const x = round(target.x);
       const y = round(target.y);
-      if (afterPoints[nearIndex].x !== x || afterPoints[nearIndex].y !== y) {
+      if (measured[nearIndex].x !== x || measured[nearIndex].y !== y) {
         // The point carries its own handle, the same way the ordinary rules do.
         // A handle left behind would end up on the wrong side of its point and
         // the restore would then rebuild it pointing backwards.
-        const slide = subVectors({ x, y }, afterPoints[nearIndex]);
+        const slide = subVectors({ x, y }, measured[nearIndex]);
         afterPoints[nearIndex] = { ...afterPoints[nearIndex], x, y };
         const handle = afterPoints[nearControl];
         afterPoints[nearControl] = {

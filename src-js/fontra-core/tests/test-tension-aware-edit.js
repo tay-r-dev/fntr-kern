@@ -402,6 +402,62 @@ describe("tension-aware edit — a straight across the scaled axis", () => {
     expect(after.points.map((point) => point.y)).to.deep.equal(heights);
   });
 
+  it("slides both of its ends when the designer asks for it", () => {
+    // The app-wide option under skew. Both tension points travel, each to what
+    // its own curve asks for, instead of both standing still.
+    const before = stemBetweenTwoCurves();
+    const after = {
+      points: before.points.map((point) => ({ ...point, x: point.x * 0.6 })),
+      isClosed: true,
+    };
+    slideTensionPoints(before.points, after.points, after.isClosed, {
+      axis: "x",
+      slideBothTensionPoints: true,
+    });
+    expect(after.points[2].y).to.not.equal(200);
+    expect(after.points[3].y).to.not.equal(400);
+  });
+
+  it("slides both ends of a slanted straight whatever the option says", () => {
+    // The left side of an OE skeleton: the straight leans one unit over three
+    // hundred and forty-six, so the scale does touch it and both of its
+    // tension points answer. The option is about exact verticals only.
+    const oeLeftSide = () => ({
+      points: [
+        onCurve(216, 30),
+        onCurve(158, 30, true),
+        control(37, 30),
+        control(-2, 80),
+        onCurve(-2, 201, true), // 4: tension point
+        onCurve(-1, 547, true), // 5: tension point
+        control(-1, 640),
+        control(57, 670),
+        onCurve(144, 670, true),
+        onCurve(217, 670),
+      ],
+      isClosed: false,
+    });
+    // The whole scale, the way the transform box runs it. A uniform scale of
+    // every point does not show this: the corner only changes because the
+    // straights stay rigid and the curves take the change.
+    for (const slideBothTensionPoints of [false, true]) {
+      const contour = oeLeftSide();
+      const [solved] = solveRigidLinkScale([contour], "x", 0.8, 0);
+      const before = contour.points;
+      const after = before.map((point) => ({ ...point }));
+      for (const [index, coordinate] of solved) {
+        after[index].x = Math.round(coordinate);
+      }
+      scaleSegmentHandles(before, after, contour.isClosed, "x");
+      applyTensionAwareEdit(before, after, contour.isClosed, {
+        axis: "x",
+        slideBothTensionPoints,
+      });
+      expect(after[4].y).to.not.equal(201);
+      expect(after[5].y).to.not.equal(547);
+    }
+  });
+
   it("still slides on it when no axis is named", () => {
     // The drag path names no axis. Nothing here changes for it.
     const before = stemBetweenTwoCurves();

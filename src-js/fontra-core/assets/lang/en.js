@@ -805,6 +805,8 @@ export const strings = {
   "sidebar.selection-transformation.rotate": "Rotate",
   "sidebar.selection-transformation.scale": "Scale",
   "sidebar.selection-transformation.skew": "Skew",
+  "sidebar.selection-transformation.slide-both-tension-points":
+    "Slide both tension points on a vertical",
   "sidebar.selection-transformation.title": "Transformation",
   "sidebar.text-entry": "Text Entry",
   "sidebar.text-entry.apply-text-shaping": "Apply text shaping and features",

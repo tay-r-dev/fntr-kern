@@ -389,6 +389,17 @@ export default class TransformationPanel extends Panel {
       },
     });
 
+    // A straight running exactly across the axis being scaled stands still by
+    // default: travel along it is travel the scale never asked for. On, both of
+    // its tension points travel, each to what its own curve asks for. A slanted
+    // straight travels either way. App-wide, not per segment.
+    formContents.push({
+      type: "checkbox",
+      key: "slideBothTensionPoints",
+      label: translate("sidebar.selection-transformation.slide-both-tension-points"),
+      value: applicationSettingsController.model.slideBothTensionPoints,
+    });
+
     formContents.push({ type: "divider" });
 
     const buttonDimensions = html.createDomElement("icon-button", {
@@ -912,6 +923,7 @@ export default class TransformationPanel extends Panel {
           "harmonizeMethod",
           "harmonizeEqualize",
           "harmonizeOtherSources",
+          "slideBothTensionPoints",
         ].includes(fieldItem.key)
       ) {
         applicationSettingsController.model[fieldItem.key] =
