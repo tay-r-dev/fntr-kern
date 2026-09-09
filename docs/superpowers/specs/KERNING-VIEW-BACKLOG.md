@@ -637,3 +637,252 @@ task's file scope (not `initPairTableSection`/`selectPairForScene`/`setChipMode`
 touched speculatively. Needs its own pass: either loop the label draw over every positioned line instead
 of hardcoding index 0, or decide the label should only ever apply to one "primary" pair by design and
 say so explicitly in the UI (not just as a silent limitation).
+
+---
+
+# UX round 2 — designer review 2026-09-09
+
+Ten issues raised after using the rebuilt view. Grounded in the tree at `544e34a53`. No code changed
+to produce this section. They are ordered as the designer listed them; each is meant to be fixed on
+its own commit. Items 18–20 and 24 are one cluster (the Glyph/Pair inputs never actually drive the
+table); fix them together or in that order.
+
+---
+
+## 18. Ctrl+Click inserts `/name`; the token grammar should accept a bare glyph name and drop `%name%!`
+
+**Problem.** The Glyph/Pair token grammar (`input-tokens.js:17-33`, `parseToken`) recognises four
+token shapes: a single literal character, `/glyphname`, `@ClassName`, and `%glyphname%!` (kind
+`member`). A bare multi-character string such as `Adieresis` throws
+`"Use a character, /glyphname, @class, or %glyphname%!"`. `replaceGlyphToken`
+(`input-tokens.js:61-63`) and `appendGlyphToken` (`input-tokens.js:51-58`) both serialise a
+Ctrl+Click / Shift+Ctrl+Click as `"/" + name`, so a click always writes `/name` into the field.
+
+The designer's model is simpler: a bare glyph name **is** the glyph token. `%…%` in the review
+notes was only a way to point at "this is a name" in prose, not proposed syntax — `%glyphname%!`
+should not exist as a user-facing shape at all, and its job (name a class member directly, bypassing
+the character map) is covered by a bare name.
+
+**What the fix needs.**
+- `parseToken`: a token that is not a single character and does not start with `/` or `@` resolves as
+  kind `glyph` (bare name). Keep `/name` accepted as an explicit synonym so existing typed input and
+  serialised clicks still parse. A single character stays kind `literal` (character-map lookup);
+  a one-character string that is also a real glyph name is the one genuine ambiguity — decide
+  literal-wins (current behaviour) unless the designer wants `/` to force the name reading.
+- Remove kind `member` and the `%…%!` branch. Every reader of kind `member` must move to kind
+  `glyph`: `resolveTokenToGlyphNames` (`input-tokens.js:83-89`, already identical handling),
+  `getExposedMemberNames` (`kerning.js:3028-3045`, the `token.kind === "member"` test — see item 20
+  for what "exposed member" should mean afterward).
+- `replaceGlyphToken` / `appendGlyphToken`: write the bare `name`, not `"/" + name`.
+- `.kerning-pairtable-input-error` copy and the two input `placeholder`s
+  (`kerning.html`, `#kerning-pairtable-glyph` / `#kerning-pairtable-pair`) lose the `%…%!` example.
+
+---
+
+## 19. The Glyph/Pair inputs must filter the results table, not only feed the preview
+
+**Problem.** Typing in `#kerning-pairtable-glyph` sets `filters.glyphName` to the **raw trimmed
+field text** (`kerning.js:1769-1772`) and calls `updatePairPreview()`. `updatePairPreview`
+(`kerning.js:6378-6429`) only sets the scene preview pairs. The table is re-rendered because
+`autokernFiltersController`'s own listener calls `renderPairTable` (`kerning.js:2067`), but
+`renderPairTable` filters unique-pair rows with a raw identity compare —
+`if (entry.left !== glyphName && entry.right !== glyphName) continue;` (`kerning.js:2920-2924`) —
+against `glyphName = filters.glyphName` (`kerning.js:2770`), i.e. the un-parsed field text.
+
+So the table only narrows when the field holds **exactly one bare glyph name**. A literal character
+(`A`), a `/name` token, an `@class` token, or any comma-separated list never matches
+`entry.left`/`entry.right` and the `if (glyphName)` block yields nothing — combined with item 21,
+that reads as "the table went blank / ignored me."
+
+`#kerning-pairtable-pair` does not filter the table at all. Its `input` listener
+(`kerning.js:1790-1801`) calls `updatePairPreview` + `renderPairTable`, but nothing in
+`renderPairTable` reads the Pair field as a row filter — only `getExposedMemberNames`
+(`kerning.js:3034`) reads it, for member-exposure.
+
+**What the fix needs.**
+- Resolve both fields through `input-tokens.js` (`parseTokenList` + `resolveTokenToGlyphNames`, or
+  `pairsFromInputs` when both are non-empty) to concrete glyph-name sets, once per render, the way
+  `updatePairPreview` already does via `pairInputResolver()` (`kerning.js:6489-6503`).
+- Glyph field only: keep every cache row (and every class-summary row) that involves any resolved
+  Glyph-field name on either side — the existing `if (glyphName)` anchor generalised from one string
+  to a set, and applied to the class-summary path too (`buildClassClassGroups`'s `glyphName`
+  argument, `kerning.js:3116-3133`, currently a single string `.includes` test).
+- Both fields non-empty: restrict to the cross-product pairs `pairsFromInputs` returns (this is
+  also the preview set — one resolution, two consumers).
+- The `filters.side` "glyph on left/right" tests (`pairRowVisible`, `kerning.js:2445-2450`) compare
+  `row.left`/`row.right` against the single `glyphName` string — regeneralise to "is on the named
+  side" against the resolved set.
+
+---
+
+## 20. A typed class must collapse to one class row, `@ClassName (glyph)`, unless "Show individual class members" is on
+
+**Problem.** When the Glyph field holds a glyph that belongs to a class, `renderPairTable` still
+emits that glyph's individual pair rows. Rows where the glyph is classed on **one** side only
+(bucket `class-unique`) go through the `if (glyphName)` unique-pair path (`kerning.js:2920-2946`)
+and `pairRowVisible`, which has **no** `showIndividualMembers` gate — only `member-pair` rows (both
+sides classed, no saved rule) are gated, in `rowVisibleInDefault`
+(`results-model.js`, via `kerning.js:2977`). So a one-side-classed member spills its rows whatever
+the checkbox says.
+
+The designer wants the opposite default: a typed glyph that resolves into a class is represented
+**by its class** — a single summary row labelled `@ClassName (typedGlyph)` so it is clear which
+class and why it is shown — and the individual member pairs appear only when **Show individual
+class members** (`filters.showIndividualMembers`, `kerning.js:2850`) is ticked.
+
+**What the fix needs.**
+- Decide the label form: the class-summary row builder (`buildClassSummaryRowElement`,
+  around `kerning.js:3320`/`3380`/`3436`) currently shows full membership per side
+  (`truncateGlyphList`). Add the `(typedGlyph)` annotation on the side the typed glyph is a member
+  of when the table is glyph-anchored.
+- Extend the `showIndividualMembers` gate so it also suppresses `class-unique` / `unique`-anchored
+  rows for a glyph that is classed on the relevant side — not just `member-pair` rows. The class
+  summary for that side stands in for them.
+- Interacts with item 19: "resolve the field to a set" must know, per name, whether it is classed
+  (`isLeftClassed`/`isRightClassed`, `kerning.js:2285-2291`) to choose class-row vs pair-row
+  representation.
+
+---
+
+## 21. Empty Glyph input must show the whole table
+
+**Problem.** `renderPairTable` guards all non-class-summary rows behind `if (glyphName)`
+(`kerning.js:2920`). With the field empty, `glyphName` is `""`, the block is skipped, and the table
+shows **only** class×class summary rows — every unique×unique, unique×class and class×unique row in
+the cache is invisible until a glyph is typed.
+
+The designer expects an empty field to mean "no glyph filter" — show every cached pair (still
+subject to the other filters: threshold, side, Unicode types, relationships, glyphset, hidden).
+
+**What the fix needs.** An `else` branch (or drop the guard) that iterates the whole
+`this.autokernCache` through the same `pairRowData` → `pairRowVisible` path the `if (glyphName)`
+block uses, with no glyph anchor. Watch cost: a few hundred glyphs is tens of thousands of cache
+rows (spec §4), all built into DOM — confirm `pairRowVisible`'s threshold/filters cut it to a sane
+count first, or page it, before shipping. The class-summary path already runs font-wide with no
+anchor and can stay as is.
+
+---
+
+## 22. Selecting a pair previews only one direction
+
+**Problem.** `selectPairForScene(left, right)` (`kerning.js:6364-6367`) sets exactly one ordered
+pair: `setPreviewPairs([[left, right]])`. A row click for `A V` previews `A V` and never `V A`, so
+the designer cannot judge the reverse pair without retyping.
+
+**What the fix needs.** Decide the product behaviour: preview both `left right` and `right left`
+(two lines) on a row click, or add a control to flip. If both lines: `setPreviewPairs`
+(`kerning.js:6519`) already emits one line per pair, so `[[left, right], [right, left]]` is enough
+for the scene — but the suggestion overlay only repositions/draws for `positionedLines[0]` in pair
+mode (item 25 / existing item 17), so this needs item 25 fixed first or the second line shows no
+shift and no number.
+
+---
+
+## 23. "Unicode types" filter appears to do nothing — confirm the intended model
+
+**Problem.** The filter is fully wired: `filters.unicodeTypes` → `this._unicodeTypesSet`
+(`kerning.js:2776`) → `pairMatchesUnicodeTypes` in `pairRowVisible` (`kerning.js:2482-2486`) and
+`classClassRowVisible` (`kerning.js:3216`), with per-glyph category resolution through the real
+`glyph-data.js` service (`results-model.js:102-122`, `glyphMatchesCategory` — `case === "upper"` etc.).
+It is not ignored in code.
+
+Why it reads as inert:
+- The default has **every** category checked except `non-unicode` (`kerning.js:1707-1712`), and a
+  row matches if **any** glyph on **any** tested side belongs to **any** checked category
+  (`pairMatchesCategory`, `results-model.js:134-143`). With six of seven boxes checked, essentially
+  every real pair passes — the filter only visibly bites once the designer *unchecks* most of it.
+- Unchecking everything hits the "nothing selected" empty state (`kerning.js:2785-2806`), not "show
+  all" — deliberate (ledger §8.4) but easy to read as broken.
+- With an empty Glyph field the table today shows only class-summary rows (item 21), and their
+  Unicode test is "any member of the class matches" — the most permissive form.
+
+**What the fix needs.** A decision, not code first: does the designer want this as a positive
+include filter (check `uppercase` → show only pairs where the tested side is uppercase), which is
+what it already is once you invert the default? If so, flip the default to few/none checked and
+label it as an include filter. If the intent is different (e.g. exclude, or "both sides must
+match"), state it and rewire `pairMatchesCategory`'s side logic. Blocked on designer input.
+
+---
+
+## 24. Ctrl+Click token not recognised by the table filter
+
+**Problem.** Same root as items 18 + 19, called out separately because the designer listed it
+separately: Ctrl+Click writes `/name` (`replaceGlyphToken`), the preview parser accepts it
+(`parseToken`, `input-tokens.js:26-28`), but the table filter's raw `entry.left !== glyphName`
+compare (`kerning.js:2922`) sees `/name` and never matches a bare cache name. Fixed for free once
+18 (bare-name serialisation) and 19 (resolve the field through `input-tokens.js` before filtering)
+land. No separate work — listed so it is ticked off explicitly.
+
+---
+
+## 25. Pair-mode suggestion preview is broken; make it use the phrase-mode mechanism
+
+**Problem.** `_applySuggestionPreviewRepositioning` (`kerning.js:6781-6825`) has two code paths:
+- **phrase** mode (`kerning.js:6811-6815`): every glyph after the first shifts by
+  `cache.get(pairKey(prev, cur))?.value`, accumulated along the line — correct, and what the
+  designer wants everywhere.
+- **pair** mode (`kerning.js:6800-6810`): shifts only when `line === positionedLines[0]` **and**
+  `i === 1` **and** `glyphs[0].glyphName === this._selectedPairLeft` **and**
+  `glyph.glyphName === this._selectedPairRight`. So only the first previewed pair on the first line
+  ever moves or draws a band/number. Multi-pair pair-mode previews (items 17, 22) and the reverse
+  direction get nothing.
+
+The overlay draw (`buildAutokernSuggestionVisualizationLayerDefinition`, `kerning.js:6650-6745`)
+already reads `this._previewPairValue.get(positionedGlyph)` per glyph and would draw per pair — it
+is starved only because the repositioning pass populates `_previewPairValue` for one glyph.
+
+**What the fix needs.** Drop the pair-mode special case: run the phrase-mode per-adjacent-pair
+cumulative logic in both chip modes (a pair-mode line is just a two-glyph line, so the same loop
+handles it). Keep `this._selectedPairLeft/Right` only for the HUD "which pair is primary" text if
+that distinction is still wanted; the band + glyph-space number should draw for every pair with a
+cache entry, same as phrase mode. This also closes existing item 17.
+
+---
+
+## 26. Kerning-tool handle should show the suggested value, at the bottom of the ribbon
+
+**Problem.** With the kerning tool engaged, the `<kerning-handle>` custom element
+(`edit-tools-metrics.js`, imported unmodified from `views-editor` per spec §8) shows the **stored**
+kern value on the handle ribbon, always visible. There is no readout of the autokern **suggestion**
+for the pair under the tool. The designer wants the suggestion shown the same always-on way,
+positioned at the bottom edge of the ribbon (so stored value and suggestion read as two rows).
+
+**What the fix needs — scope carefully.** `kerning-handle` lives in the shared
+`views-editor/src/edit-tools-metrics.js`; editing it changes the editor too. Options, cheapest
+first:
+- Draw the suggestion as part of this view's own visualization layer
+  (`buildAutokernSuggestionVisualizationLayerDefinition`) gated to "kerning tool active" instead of
+  "pair chip mode", positioned at the band's bottom — no shared-file edit, but it is canvas text,
+  not part of the DOM handle.
+- A `kerning.css`-only `::after` on `kerning-handle` fed by a CSS custom property this view sets per
+  hovered pair — only if the handle's DOM exposes a hook.
+- Subclass `KerningTool`/`KerningHandle` in `views-kerning` (the pattern spec §8 and the
+  single-sided-pen precedent both endorse over copying) and add the second line there.
+Decide with the designer whether the suggestion tracks the hovered pair or the selected one.
+
+---
+
+## 27. Font mode: class colours still not shown; Fontra status-colour labels still not dropped
+
+**Problem.** `decorateFontModeGlyphCell` (`kerning.js:6067-6102`) already tries both halves:
+- drops the status colour by shadowing the cell instance's `_glyphStatusColor` with a getter
+  returning `"var(--cell-background-color)"` (`kerning.js:6073-6077`);
+- sets `--kerning-font-tile-left-color` / `--kerning-font-tile-right-color` from `getClassColor`
+  (`kerning.js:6079-6090`), consumed by the `#kerning-font-grid-container glyph-cell` `box-shadow`
+  rule in `kerning.css:762-766`.
+
+The designer reports neither works, so one or more of these is true and needs checking on a live
+run:
+- the `MutationObserver` wiring (`kerning.js:5920-5933`) is not finding the `<glyph-cell>` nodes,
+  or runs before `cell.glyphName` is set, so `decorateFontModeGlyphCell` never resolves a class;
+- `glyph-cell.js` no longer reads an instance field named `_glyphStatusColor` (renamed, or the
+  colour now comes from a shadow-DOM element / a `::part`), so the `defineProperty` shadow is inert;
+- the `box-shadow` custom-property rule does not match — element name (`glyph-cell` vs
+  `glyph-cell-view`), or the host box is overpainted inside the shadow DOM;
+- `getClassColor` returns null because `leftPairGroupMapping`/`rightPairGroupMapping`
+  (`kerning.js:6079-6080`) are empty for these glyphs (no classes in the test font, or mapping not
+  loaded yet).
+
+**What the fix needs.** Live-verify against a real Fontra server which of the above it is, then fix
+that one. Confirm the exact status-colour mechanism in the current `glyph-cell.js` before trusting
+the `_glyphStatusColor` shadow. This is a debugging pass, not a design decision.
