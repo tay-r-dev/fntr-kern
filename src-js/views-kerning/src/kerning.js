@@ -87,6 +87,7 @@
 // edit, because the dispatch only checks whether the tool implements the
 // method, not whether its own stack is non-empty.
 import {
+  glyphNamesWithGeometryChange,
   markGlyphStale,
   markPairJunk,
   markPairOverride,
@@ -292,6 +293,17 @@ export function kerningPhraseStorageKey(projectIdentifier) {
 // file) -- the caller's job in that case is to "start with an empty cache
 // exactly as today" (workstream 12 brief), which is what an untouched
 // this.autokernCache already is.
+// The stored file is `{entries, calibration}`. It used to be the bare
+// `entries` array, and a file written by that version still reads correctly
+// here (the array branch below) -- a cache that predates the calibration
+// readout simply has no calibration to restore, which is the honest answer
+// for it rather than a fabricated band.
+//
+// Calibration rides with the cache because it describes the same run: the
+// reach calibration settled on and the band it measured are what every
+// number in that file was produced against (spec 2.4). Kept out of the
+// project's own data for the same reason the cache is -- it is derived, and
+// spec 4.1 puts derived data in browser-side storage.
 async function readAutokernCacheFromOPFS(projectIdentifier, source) {
   const opfs = await getAutokernOPFS();
   try {
@@ -299,17 +311,24 @@ async function readAutokernCacheFromOPFS(projectIdentifier, source) {
       ...AUTOKERN_CACHE_OPFS_DIR,
       autokernCacheFileName(projectIdentifier, source),
     ]);
-    return JSON.parse(await file.text());
+    const stored = JSON.parse(await file.text());
+    if (Array.isArray(stored)) {
+      return { entries: stored, calibration: null };
+    }
+    return {
+      entries: stored?.entries || [],
+      calibration: stored?.calibration || null,
+    };
   } catch (e) {
     return null;
   }
 }
 
-async function writeAutokernCacheToOPFS(projectIdentifier, source, cache) {
+async function writeAutokernCacheToOPFS(projectIdentifier, source, cache, calibration) {
   const opfs = await getAutokernOPFS();
   await opfs.createDirectory(AUTOKERN_CACHE_OPFS_DIR);
-  const entries = [...cache.values()];
-  const blob = new Blob([JSON.stringify(entries)], { type: "application/json" });
+  const stored = { entries: [...cache.values()], calibration: calibration || null };
+  const blob = new Blob([JSON.stringify(stored)], { type: "application/json" });
   await opfs.writeFile(
     [...AUTOKERN_CACHE_OPFS_DIR, autokernCacheFileName(projectIdentifier, source)],
     blob
@@ -737,9 +756,12 @@ export class KerningViewController extends ViewController {
       const newMax = raw === "" ? null : Number(raw);
       const minThreshold = this.autokernParamsController.model.threshold;
       if (newMax != null && (!Number.isFinite(newMax) || newMax < 0)) {
-        maxThresholdInput.setCustomValidity("Maximum |Δ| must be a non-negative number.");
+        maxThresholdInput.setCustomValidity(
+          "Maximum |Δ| must be a non-negative number."
+        );
         maxThresholdInput.reportValidity();
-        maxThresholdInput.value = this.autokernParamsController.model.maxThreshold ?? "";
+        maxThresholdInput.value =
+          this.autokernParamsController.model.maxThreshold ?? "";
         return;
       }
       if (newMax != null && newMax < minThreshold) {
@@ -747,7 +769,8 @@ export class KerningViewController extends ViewController {
           "Maximum |Δ| cannot be smaller than Minimum |Δ|."
         );
         maxThresholdInput.reportValidity();
-        maxThresholdInput.value = this.autokernParamsController.model.maxThreshold ?? "";
+        maxThresholdInput.value =
+          this.autokernParamsController.model.maxThreshold ?? "";
         return;
       }
       maxThresholdInput.setCustomValidity("");
@@ -831,13 +854,20 @@ export class KerningViewController extends ViewController {
     const settings = this.suggestionPreviewSettings.model;
 
     const pairsPerRowInput = html.input({
-      type: "number", id: "kerning-preview-pairs-per-row",
-      min: "1", max: "100", step: "1", required: true,
+      type: "number",
+      id: "kerning-preview-pairs-per-row",
+      min: "1",
+      max: "100",
+      step: "1",
+      required: true,
     });
     pairsPerRowInput.value = String(normalizePairsPerRow(settings.pairsPerRow));
     pairsPerRowInput.addEventListener("change", () => {
       if (!pairsPerRowInput.reportValidity()) return;
-      this.suggestionPreviewSettings.setItem("pairsPerRow", Number(pairsPerRowInput.value));
+      this.suggestionPreviewSettings.setItem(
+        "pairsPerRow",
+        Number(pairsPerRowInput.value)
+      );
     });
 
     const opacityInput = html.input({
@@ -1043,8 +1073,9 @@ export class KerningViewController extends ViewController {
   // rendering itself is renderStaleSection, called from renderPairTable's
   // own top (alongside renderAutokernStatus) so this panel is refreshed by
   // every place the cache already refreshes the table -- a run, a source
-  // switch, a junk toggle, a class-membership edit (markGlyphsStaleForClassEdit).
+  // switch, a junk toggle, a geometry edit (initGeometryStaleListener).
   initStaleSection() {
+    this.initGeometryStaleListener();
     const rerunButton = document.querySelector("#kerning-stale-rerun-button");
     rerunButton.addEventListener("click", () =>
       this.runStaleGlyphs().catch((error) => {
@@ -1095,12 +1126,14 @@ export class KerningViewController extends ViewController {
   // per this task's own "render it as text rather than a dead-looking
   // button," and kerning.html gives it no button element to wire here.
   initAnalyticsSection() {
-    document.querySelector("#kerning-analytics-stale")?.addEventListener("click", () => {
-      document
-        .querySelector("#kerning-stale-section")
-        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      document.querySelector("#kerning-stale-rerun-button")?.focus();
-    });
+    document
+      .querySelector("#kerning-analytics-stale")
+      ?.addEventListener("click", () => {
+        document
+          .querySelector("#kerning-stale-section")
+          ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        document.querySelector("#kerning-stale-rerun-button")?.focus();
+      });
     document
       .querySelector("#kerning-analytics-potential")
       ?.addEventListener("click", () => this.setResultsTab("potential"));
@@ -1232,10 +1265,7 @@ export class KerningViewController extends ViewController {
       const rasters = {};
       const envelopes = {};
       for (const glyphName of glyphsToRasterize) {
-        const glyphInstance = await this.fontController.getGlyphInstance(
-          glyphName,
-          {}
-        );
+        const glyphInstance = await this.fontController.getGlyphInstance(glyphName, {});
         if (!glyphInstance) {
           continue;
         }
@@ -1334,7 +1364,7 @@ export class KerningViewController extends ViewController {
   async loadAutokernCacheFromStorage() {
     const revisionAtStart = ++this.autokernCacheLoadRevision;
     const sourceIdentifierAtStart = this.autokernSource;
-    const entries = await readAutokernCacheFromOPFS(
+    const stored = await readAutokernCacheFromOPFS(
       this.projectIdentifier,
       sourceIdentifierAtStart
     );
@@ -1350,10 +1380,27 @@ export class KerningViewController extends ViewController {
     }
     // No file for this source (never run) must reset to empty, not leave
     // whatever source was loaded previously on screen under the new label.
-    this.autokernCache = entries
-      ? new Map(entries.map((entry) => [pairKey(entry.left, entry.right), entry]))
+    // Values are rounded on the way in: the engine rounds its own answers
+    // now, but a cache file written before it did still holds fractions,
+    // and every reader downstream (the table, the delta, the preview the
+    // kerning tool adjusts from) must see whole units.
+    this.autokernCache = stored
+      ? new Map(
+          stored.entries.map((entry) => [
+            pairKey(entry.left, entry.right),
+            Number.isFinite(entry.value)
+              ? { ...entry, value: Math.round(entry.value) }
+              : entry,
+          ])
+        )
       : new Map();
     this.autokernCache = this.applyStoredJunkMarksToCache(this.autokernCache);
+    // Spec 7.4's readout is a statement about the run that produced this
+    // cache, so it is restored with it. Without this the panel read "Not yet
+    // calibrated" after every reload, beside a table full of numbers that
+    // calibration had in fact produced.
+    this.autokernCalibration = stored?.calibration || null;
+    this.renderCalibration();
     this.renderPairTable();
   }
 
@@ -1365,7 +1412,8 @@ export class KerningViewController extends ViewController {
     await writeAutokernCacheToOPFS(
       this.projectIdentifier,
       this.autokernSource,
-      this.autokernCache
+      this.autokernCache,
+      this.autokernCalibration
     );
   }
 
@@ -1535,7 +1583,10 @@ export class KerningViewController extends ViewController {
   // ("Re-running stale glyphs" / "Scope: l, n, o") without a second copy of
   // this method -- runAutokern's own call site keeps the pre-existing
   // defaults.
-  async runAutokernWorker(job, { title = "Running autokern", description = null } = {}) {
+  async runAutokernWorker(
+    job,
+    { title = "Running autokern", description = null } = {}
+  ) {
     const worker = new Worker(
       /* webpackChunkName: "autokern-worker" */ new URL(
         "./autokern-worker.js",
@@ -1791,8 +1842,12 @@ export class KerningViewController extends ViewController {
     const glyphInput = document.querySelector("#kerning-pairtable-glyph");
     glyphInput.value = filters.glyphName;
     this._pairTableLoadMore = document.querySelector("#kerning-pairtable-load-more");
-    this._pairTableLoadStatus = document.querySelector("#kerning-pairtable-load-status");
-    this._pairTableLoadMore.addEventListener("click", () => this.loadNextPairTableBatch());
+    this._pairTableLoadStatus = document.querySelector(
+      "#kerning-pairtable-load-status"
+    );
+    this._pairTableLoadMore.addEventListener("click", () =>
+      this.loadNextPairTableBatch()
+    );
     this._glyphInputElement = glyphInput;
     this._previewPairSelections = new Map();
     this._glyphFilterError = document.querySelector("#kerning-pairtable-glyph-error");
@@ -2041,7 +2096,9 @@ export class KerningViewController extends ViewController {
     // Task 8, spec F22: broad member exposure, off by default -- see the
     // filters-controller comment above (replaces the old "Fold classes"
     // toggle).
-    const showMembersCheckbox = document.querySelector("#kerning-pairtable-show-members");
+    const showMembersCheckbox = document.querySelector(
+      "#kerning-pairtable-show-members"
+    );
     showMembersCheckbox.checked = filters.showIndividualMembers;
     showMembersCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem(
@@ -2095,15 +2152,17 @@ export class KerningViewController extends ViewController {
 
     // Task 3, spec F24: Deselect clears highlight and tick only -- it does
     // not touch filters, class membership, or saved kerning.
-    document.querySelector("#kerning-pairtable-deselect").addEventListener("click", () => {
-      this.resultSelection = deselectAll();
-      this.applyResultSelectionToDom();
-      this.syncSelectAllCheckboxes();
-      this.refreshResetArmState();
-      // Task 7, spec F24: "Preview falls back according to the input/
-      // selection rules in F06 when no highlighted rows remain."
-      this.updatePairPreview();
-    });
+    document
+      .querySelector("#kerning-pairtable-deselect")
+      .addEventListener("click", () => {
+        this.resultSelection = deselectAll();
+        this.applyResultSelectionToDom();
+        this.syncSelectAllCheckboxes();
+        this.refreshResetArmState();
+        // Task 7, spec F24: "Preview falls back according to the input/
+        // selection rules in F06 when no highlighted rows remain."
+        this.updatePairPreview();
+      });
 
     // WORKSTREAM 15, spec §5.3: "The derive action sits beside the fold
     // toggle." this.autokernDeriveProposals holds nothing until Derive is
@@ -2121,7 +2180,9 @@ export class KerningViewController extends ViewController {
     // is active.
     this.activeResultsTab = "default";
     for (const tabButton of document.querySelectorAll(".kerning-pairtable-tab")) {
-      tabButton.addEventListener("click", () => this.setResultsTab(tabButton.dataset.tab));
+      tabButton.addEventListener("click", () =>
+        this.setResultsTab(tabButton.dataset.tab)
+      );
     }
 
     // Backlog item 13, Task 8: one select-all checkbox for the one table
@@ -2169,7 +2230,8 @@ export class KerningViewController extends ViewController {
     );
     // The scene rebuild is also the completion signal for local tool edits.
     this.sceneSettingsController.addKeyListener(
-      "positionedLines", this._kerningValuesChangeListener
+      "positionedLines",
+      this._kerningValuesChangeListener
     );
     // "On view disposal, release the subscription." This app has no
     // internal view-teardown lifecycle to hook (grepped the whole tree:
@@ -2199,16 +2261,26 @@ export class KerningViewController extends ViewController {
       const result = getEditContext(...args);
       if (!result.editContext) return result;
       const pairs = tool.selectedHandles.map((handle) => {
-        const { leftGlyph, rightGlyph } = tool.getGlyphNamesFromSelector(handle.selector);
+        const { leftGlyph, rightGlyph } = tool.getGlyphNamesFromSelector(
+          handle.selector
+        );
         return [leftGlyph, rightGlyph];
       });
       const source = tool.getSourceIdentifier() || this.autokernSource;
-      if (this.suggestionPreviewSettings?.model.enabled &&
-          (this._chipMode === "phrase" || this._chipMode === "pair")) {
+      if (
+        this.suggestionPreviewSettings?.model.enabled &&
+        (this._chipMode === "phrase" || this._chipMode === "pair")
+      ) {
         result.values = result.values.map((stored, index) => {
           const [left, right] = pairs[index];
-          return this.getSuggestionPreviewValue(left, right,
-            this.autokernCache?.get(pairKey(left, right)), source) ?? stored;
+          return (
+            this.getSuggestionPreviewValue(
+              left,
+              right,
+              this.autokernCache?.get(pairKey(left, right)),
+              source
+            ) ?? stored
+          );
         });
       }
       const beginEdit = () => this.beginManualKerningPreviewEdit(pairs, source);
@@ -2243,8 +2315,10 @@ export class KerningViewController extends ViewController {
     this.sceneController.autoViewBox = false;
     this.sceneController.scrollAdjustBehavior = null;
     for (const [left, right] of pairs) {
-      this._manualPreviewPairs.set(rowId(source, left, right),
-        this.autokernCache?.get(pairKey(left, right)));
+      this._manualPreviewPairs.set(
+        rowId(source, left, right),
+        this.autokernCache?.get(pairKey(left, right))
+      );
     }
     this.canvasController.requestUpdate();
   }
@@ -2255,11 +2329,15 @@ export class KerningViewController extends ViewController {
       if (this._manualPreviewPairs.get(key) === entry) {
         // Follow incremental edits, subsequent nudges, and undo/redo. The
         // spacing follows the manually adjusted value.
-        return this.kerningController.getGlyphPairValueForSource(left, right, source) ?? 0;
+        return (
+          this.kerningController.getGlyphPairValueForSource(left, right, source) ?? 0
+        );
       }
       this._manualPreviewPairs.delete(key);
     }
-    return entry && !entry.stale && Number.isFinite(entry.value) ? entry.value : undefined;
+    return entry && !entry.stale && Number.isFinite(entry.value)
+      ? entry.value
+      : undefined;
   }
 
   installPairPreviewLayout() {
@@ -2267,8 +2345,11 @@ export class KerningViewController extends ViewController {
     this.sceneModel.buildScene = async (...args) => {
       const scene = await buildScene(...args);
       if (scene && this._chipMode === "pair") {
-        layoutPairPreview(scene, this.suggestionPreviewSettings?.model.pairsPerRow,
-          this.fontController.unitsPerEm);
+        layoutPairPreview(
+          scene,
+          this.suggestionPreviewSettings?.model.pairsPerRow,
+          this.fontController.unitsPerEm
+        );
       }
       return scene;
     };
@@ -2290,7 +2371,8 @@ export class KerningViewController extends ViewController {
       true
     );
     this.sceneSettingsController.removeKeyListener(
-      "positionedLines", this._kerningValuesChangeListener
+      "positionedLines",
+      this._kerningValuesChangeListener
     );
     if (this._pairTableRefreshFrame != null) {
       cancelAnimationFrame(this._pairTableRefreshFrame);
@@ -2404,7 +2486,9 @@ export class KerningViewController extends ViewController {
   // every renderPairTable rebuild (tbodies are rebuilt from scratch each
   // time, so freshly built rows start with no selection styling).
   applyResultSelectionToDom() {
-    for (const tr of document.querySelectorAll(".kerning-pairtable-table tr[data-row-id]")) {
+    for (const tr of document.querySelectorAll(
+      ".kerning-pairtable-table tr[data-row-id]"
+    )) {
       const id = tr.dataset.rowId;
       tr.classList.toggle(
         "kerning-pairtable-row-highlighted",
@@ -2469,8 +2553,7 @@ export class KerningViewController extends ViewController {
     );
     // Any inherited class member is summarized by its class rule, including
     // class-to-unique combinations. Explicit pair rules remain separate.
-    const hasClass =
-      this.isLeftClassed(entry.left) || this.isRightClassed(entry.right);
+    const hasClass = this.isLeftClassed(entry.left) || this.isRightClassed(entry.right);
     const kind = !hasClass
       ? "unique-pair"
       : hasExplicitPair
@@ -2560,9 +2643,7 @@ export class KerningViewController extends ViewController {
     // never a class-name address, so row.left/row.right are always real
     // glyph names here; a class-summary row's own mixed-membership category
     // check is classClassRowVisible's job, below).
-    if (
-      !this.pairMatchesTypes(row.left, row.right)
-    ) {
+    if (!this.pairMatchesTypes(row.left, row.right)) {
       return false;
     }
 
@@ -2634,7 +2715,6 @@ export class KerningViewController extends ViewController {
       return cmp * dirMul;
     });
   }
-
 
   // Backlog item 11: keeps every bucket table's header row in sync with the
   // shared sort state (one designer action, all four tables agree, same
@@ -2864,8 +2944,13 @@ export class KerningViewController extends ViewController {
     this._relationshipsSet = new Set(filters.relationships);
 
     const queryKey = JSON.stringify([
-      filters, threshold, groupThreshold, this.autokernParamsController.model.maxThreshold,
-      tab, this.activeSourceIdentifier(), previewPairs,
+      filters,
+      threshold,
+      groupThreshold,
+      this.autokernParamsController.model.maxThreshold,
+      tab,
+      this.activeSourceIdentifier(),
+      previewPairs,
       this._tableGlyphsetMembers ? [...this._tableGlyphsetMembers] : null,
     ]);
     const previousLoaded = this.getPairTableLoadLimit(queryKey);
@@ -3064,7 +3149,8 @@ export class KerningViewController extends ViewController {
         // never its members' (each "pair" item below carries its own
         // row.hidden, gated independently through pairRowVisible).
         return (
-          tab === "default" && item.group.summaryVisible &&
+          tab === "default" &&
+          item.group.summaryVisible &&
           rowVisibleForHiddenState(item.hidden, filters.showHidden)
         );
       }
@@ -3082,12 +3168,15 @@ export class KerningViewController extends ViewController {
 
     this._pairTableItems = visibleItems;
     // Selection belongs to the filtered result set, not the DOM page.
-    this.resultSelection = retainVisible(this.resultSelection,
-      new Set(visibleItems.map((item) => item.sortId)));
+    this.resultSelection = retainVisible(
+      this.resultSelection,
+      new Set(visibleItems.map((item) => item.sortId))
+    );
     for (const item of visibleItems) {
       if (item.renderKind !== "class-rule") continue;
       this._classSummaryMembersByRowId.set(item.sortId, {
-        leftMembers: item.stats.leftMembers, rightMembers: item.stats.rightMembers,
+        leftMembers: item.stats.leftMembers,
+        rightMembers: item.stats.rightMembers,
       });
       this._classSummaryMedianByRowId.set(item.sortId, item.median);
       this._classSummaryStaleByRowId.set(item.sortId, !!item.stats.stale);
@@ -3101,7 +3190,8 @@ export class KerningViewController extends ViewController {
 
   getPairTableLoadLimit(queryKey) {
     return this._pairTableQueryKey === queryKey
-      ? Math.max(100, this._pairTableLoadLimit || 100) : 100;
+      ? Math.max(100, this._pairTableLoadLimit || 100)
+      : 100;
   }
 
   loadNextPairTableBatch() {
@@ -3112,12 +3202,17 @@ export class KerningViewController extends ViewController {
   appendPairTableRows(count) {
     const tbody = document.querySelector("#kerning-pairtable-body");
     if (!tbody || !this._pairTableItems) return;
-    const end = Math.min(this._pairTableLoadedCount + count, this._pairTableItems.length);
+    const end = Math.min(
+      this._pairTableLoadedCount + count,
+      this._pairTableItems.length
+    );
     for (; this._pairTableLoadedCount < end; this._pairTableLoadedCount++) {
       const item = this._pairTableItems[this._pairTableLoadedCount];
-      tbody.appendChild(item.renderKind === "class-rule"
-        ? this.buildClassSummaryRowElement(item.group, item.stats, item.median)
-        : this.buildPairRowElement(item.row));
+      tbody.appendChild(
+        item.renderKind === "class-rule"
+          ? this.buildClassSummaryRowElement(item.group, item.stats, item.median)
+          : this.buildPairRowElement(item.row)
+      );
     }
     this.syncSelectAllCheckboxes();
     this.updatePairTableLoadStatus();
@@ -3136,27 +3231,43 @@ export class KerningViewController extends ViewController {
   }
 
   previewFilterPairs() {
-    return [...new Map([...this._previewPairSelections.values()].flat()
-      .map((pair) => [JSON.stringify(pair), pair])).values()];
+    return [
+      ...new Map(
+        [...this._previewPairSelections.values()]
+          .flat()
+          .map((pair) => [JSON.stringify(pair), pair])
+      ).values(),
+    ];
   }
 
   pairMatchesInputScope(left, right) {
-    if (!pairMatchesGlyphFilter(left, right, this._glyphFilter,
-      this.autokernFiltersController.model.side)) return false;
+    if (
+      !pairMatchesGlyphFilter(
+        left,
+        right,
+        this._glyphFilter,
+        this.autokernFiltersController.model.side
+      )
+    )
+      return false;
     const pairs = this.previewFilterPairs();
     return !pairs.length || pairs.some(([l, r]) => l === left && r === right);
   }
 
   pairMatchesTypes(left, right) {
-    const matches = (name) => [...this._unicodeTypesSet].some((category) =>
-      glyphMatchesCategory(name, category, this.fontController.glyphMap));
+    const matches = (name) =>
+      [...this._unicodeTypesSet].some((category) =>
+        glyphMatchesCategory(name, category, this.fontController.glyphMap)
+      );
     // With one focus glyph, types describe its partners. Otherwise both
     // members must be included. Unencoded glyphs use the actual font map.
     const focus = this._glyphFilter;
     const side = this.autokernFiltersController.model.side;
     if (focus.count === 1) {
-      return (side !== "right" && focus.left.has(left) && matches(right)) ||
-        (side !== "left" && focus.right.has(right) && matches(left));
+      return (
+        (side !== "right" && focus.left.has(left) && matches(right)) ||
+        (side !== "left" && focus.right.has(right) && matches(left))
+      );
     }
     return matches(left) && matches(right);
   }
@@ -3178,8 +3289,9 @@ export class KerningViewController extends ViewController {
 
   classAddressLabel(address, members) {
     if (!address.startsWith("@")) return address;
-    const focused = members.filter((name) => this._glyphFilter.left.has(name) ||
-      this._glyphFilter.right.has(name));
+    const focused = members.filter(
+      (name) => this._glyphFilter.left.has(name) || this._glyphFilter.right.has(name)
+    );
     return focused.length ? `${address}(${focused.join(", ")})` : address;
   }
 
@@ -3194,27 +3306,41 @@ export class KerningViewController extends ViewController {
       const left = leftClassName ? "@" + leftClassName : entry.left;
       const right = rightClassName ? "@" + rightClassName : entry.right;
       const key = pairKey(left, right);
-      if (!groups.has(key)) groups.set(key, {
-        left, right, leftClassName, rightClassName, rows: [], entries: [],
-      });
+      if (!groups.has(key))
+        groups.set(key, {
+          left,
+          right,
+          leftClassName,
+          rightClassName,
+          rows: [],
+          entries: [],
+        });
       groups.get(key).entries.push(entry);
     }
     const results = [];
     for (const group of groups.values()) {
       const stats = this.computeFoldGroupStats(group, groupThreshold);
       if (stats.median == null) continue;
-      group.rows = stats.entries.map((entry) => this.pairRowData(entry, true))
+      group.rows = stats.entries
+        .map((entry) => this.pairRowData(entry, true))
         .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
-      const matching = stats.entries.filter((entry) =>
-        this.pairMatchesInputScope(entry.left, entry.right) &&
-        this.pairMatchesTypes(entry.left, entry.right) &&
-        pairMatchesGlyphset([entry.left], [entry.right], this._tableGlyphsetMembers));
-      const relationship = group.leftClassName && group.rightClassName
-        ? "class-class" : "class-unique";
-      const current = this.kerningController.getPairValueForSource(
-        group.left, group.right, this.autokernSource) ?? 0;
+      const matching = stats.entries.filter(
+        (entry) =>
+          this.pairMatchesInputScope(entry.left, entry.right) &&
+          this.pairMatchesTypes(entry.left, entry.right) &&
+          pairMatchesGlyphset([entry.left], [entry.right], this._tableGlyphsetMembers)
+      );
+      const relationship =
+        group.leftClassName && group.rightClassName ? "class-class" : "class-unique";
+      const current =
+        this.kerningController.getPairValueForSource(
+          group.left,
+          group.right,
+          this.autokernSource
+        ) ?? 0;
       group.current = current;
-      group.summaryVisible = matching.length > 0 &&
+      group.summaryVisible =
+        matching.length > 0 &&
         this._relationshipsSet.has(relationship) &&
         passesNumericFilters(valuesForDisplay(current, stats.median, stats.stale), {
           minDelta: threshold,
@@ -3249,9 +3375,11 @@ export class KerningViewController extends ViewController {
   computeFoldGroupStats(group, groupThreshold) {
     const kernData = this.kerningController.kernData;
     const leftMembers = group.leftClassName
-      ? kernData.groupsSide1[group.leftClassName] || [] : [group.left];
+      ? kernData.groupsSide1[group.leftClassName] || []
+      : [group.left];
     const rightMembers = group.rightClassName
-      ? kernData.groupsSide2[group.rightClassName] || [] : [group.right];
+      ? kernData.groupsSide2[group.rightClassName] || []
+      : [group.right];
     const entries = group.entries;
 
     // Backlog item 8 part 6: the aggregate median drops member pairs whose
@@ -3269,6 +3397,10 @@ export class KerningViewController extends ViewController {
     const rawMedian = entries.length
       ? medianDroppingOutliers(samples, groupThreshold)
       : KerningViewController.medianOf(group.rows.map((row) => row.suggestion));
+    // (medianOf is defined below in the class-panel block -- it was called
+    // here and never declared, so this fallback branch threw instead of
+    // falling back. Unreachable through the UI today, per the note below,
+    // which is why nothing caught it.)
     // Task 17 (ledger §11.4/§11.5 gap 2): an empty class product with no
     // fallback rows (unreachable through the real UI today --
     // buildClassClassGroups only calls this after its own coverage check
@@ -3400,7 +3532,8 @@ export class KerningViewController extends ViewController {
     if (stats.stale) {
       proposedCell.appendChild(buildStaleMarker());
     } else {
-      proposedCell.textContent = median > 0 ? `+${median.toFixed(1)}` : median.toFixed(1);
+      proposedCell.textContent =
+        median > 0 ? `+${median.toFixed(1)}` : median.toFixed(1);
     }
     proposedCell.style.display = this.autokernFiltersController.model.showProposed
       ? ""
@@ -3517,8 +3650,11 @@ export class KerningViewController extends ViewController {
   // cell, not a flat shadow of it (spec §5.1's whole argument against a flat
   // write).
   async applyFoldedParentRow(group, median) {
-    await this.writePairValues([{ left: group.left, right: group.right }],
-      () => Math.round(median), true);
+    await this.writePairValues(
+      [{ left: group.left, right: group.right }],
+      () => Math.round(median),
+      true
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -3773,18 +3909,13 @@ export class KerningViewController extends ViewController {
         );
       }
 
-      // Design doc §1.2 "Rerun scoping": the glyphs left classed after a
-      // partial-failure rollback still JOINED a class -- mark them the same
-      // way any other class-membership change is marked (see
-      // markGlyphsStaleForClassEdit, class panel section below). Glyphs that
-      // rolled all the way back never actually joined anything, so they are
-      // not in `stillClassed` and are correctly left unmarked.
-      if (rollbackFailures.length) {
-        this.markGlyphsStaleForClassEdit(stillClassed.map((entry) => entry.glyphName));
-      }
-
+      // Nothing is marked stale here. The glyphs left classed after a
+      // failed rollback joined a class; none of them was redrawn, and a
+      // cached suggestion is a statement about a shape (see
+      // initGeometryStaleListener, class panel section below).
       this.renderDeriveProposals();
       this.renderClassList();
+      this.renderClassSwatchStrip();
       this.renderPairTable();
       return;
     }
@@ -3801,13 +3932,30 @@ export class KerningViewController extends ViewController {
     this.autokernDeriveProposals = this.autokernDeriveProposals.filter(
       (p) => p.id !== proposal.id
     );
-    // Design doc §1.2 "Rerun scoping": every accepted member just joined a
-    // class -- mark it the same way an edited outline already is (see
-    // markGlyphsStaleForClassEdit, class panel section below).
-    this.markGlyphsStaleForClassEdit(entries.map((entry) => entry.glyphName));
     this.renderDeriveProposals();
     this.renderClassList();
+    // The swatch strip is the tile preview of the selected class, and an
+    // accepted proposal is exactly a change of membership -- it has to be
+    // rebuilt here or the strip goes on showing the class as it was before
+    // the accept until something else happens to re-render it.
+    this.renderClassSwatchStrip();
+    this.refreshFontModeClassColors?.();
     this.renderPairTable();
+  }
+
+  // The plain median, whole units. `medianDroppingOutliers` is the ordinary
+  // reducer (it drops override-candidate outliers); this is only the
+  // no-cache-coverage fallback above. Rounded for the same reason that one
+  // is: this number reaches "apply", and the kerning tool writes whole units.
+  static medianOf(values) {
+    if (!values.length) {
+      return NaN;
+    }
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return Math.round(
+      sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -3846,6 +3994,11 @@ export class KerningViewController extends ViewController {
     // the one property other code is meant to read, per this method's own
     // block comment above.
     this.selectedClass = null;
+    // The swatch strip's own selection (renderClassSwatchStrip below).
+    // Initialized here as well as there so a handler can never see it
+    // undefined, whatever order the panel is built in.
+    this.swatchSelection = new Set();
+    this._swatchAnchorGlyphName = null;
 
     document
       .querySelector("#autokern-class-new-side1")
@@ -3986,7 +4139,6 @@ export class KerningViewController extends ViewController {
     for (const glyphName of glyphNames) {
       await editFn(glyphName);
     }
-    this.markGlyphsStaleForClassEdit(glyphNames);
     this.renderClassList();
     if (this.selectedClass?.side === side && this.selectedClass?.name === className) {
       this.renderClassSwatchStrip();
@@ -4004,11 +4156,57 @@ export class KerningViewController extends ViewController {
   // writing this -- no such call site exists anywhere else in this file
   // either), so this calls it directly, the exact way togglePairJunk below
   // calls markPairJunk directly for the same kind of per-pair mark.
-  markGlyphsStaleForClassEdit(glyphNames) {
-    for (const glyphName of glyphNames) {
-      this.autokernCache = markGlyphStale(this.autokernCache, glyphName);
-    }
-    this.writeAutokernCacheToStorage();
+  // Stale means "this number was measured on a shape that no longer exists"
+  // (spec section 4). Only a redrawn glyph can make that true, so this is
+  // wired to the font's own change stream and reads the change's paths
+  // through autokern-cache.js's glyphNamesWithGeometryChange -- a
+  // development-status mark, a glyph lock, a source rename or a
+  // class-membership edit leaves every measured number as true as it was,
+  // and marks nothing.
+  //
+  // This replaces an earlier rule that marked on class membership as well.
+  // That rule read as "everything makes everything stale": joining a class,
+  // leaving one and deleting one each marked every member, so the stale list
+  // filled with glyphs whose outlines nobody had touched. A class decides
+  // where a number is WRITTEN, not what it measures.
+  initGeometryStaleListener() {
+    this._geometryChangeMatchPattern = { glyphs: null };
+    this._geometryChangeListener = (change) => {
+      const glyphNames = glyphNamesWithGeometryChange(change);
+      if (!glyphNames.length || !this.autokernCache?.size) {
+        return;
+      }
+      // Nothing to do if this run never measured any of these glyphs.
+      // markGlyphStale returns a new Map whichever way it goes, so this has
+      // to be asked before calling it, not inferred from its result.
+      const touched = new Set(glyphNames);
+      let hasNewlyStaleRow = false;
+      for (const entry of this.autokernCache.values()) {
+        if ((touched.has(entry.left) || touched.has(entry.right)) && !entry.stale) {
+          hasNewlyStaleRow = true;
+          break;
+        }
+      }
+      if (!hasNewlyStaleRow) {
+        return;
+      }
+      let cache = this.autokernCache;
+      for (const glyphName of glyphNames) {
+        cache = markGlyphStale(cache, glyphName);
+      }
+      this.autokernCache = cache;
+      this.writeAutokernCacheToStorage();
+      // renderPairTable calls renderStaleSection itself, at its own top.
+      this.renderPairTable();
+    };
+    // Final changes only, never live ones: a drag emits a change per frame,
+    // and marking on each would rewrite the whole OPFS cache file at frame
+    // rate for one gesture. The final change carries the same paths.
+    this.fontController.addChangeListener(
+      this._geometryChangeMatchPattern,
+      this._geometryChangeListener,
+      false
+    );
   }
 
   // ---- Class list (design doc §1.2) ----
@@ -4252,7 +4450,6 @@ export class KerningViewController extends ViewController {
       this
     );
 
-    this.markGlyphsStaleForClassEdit(members);
     if (this.selectedClass?.side === side && this.selectedClass?.name === name) {
       this.selectedClass = null;
     }
@@ -4266,6 +4463,12 @@ export class KerningViewController extends ViewController {
   // everywhere else in this panel and in font mode's add-to-class actions."
   selectClass(side, name) {
     this.selectedClass = { side, name };
+    // A different class is a different membership list, so the strip's
+    // selection means nothing under it. Cleared here rather than relying on
+    // the strip's own prune, which keeps a name the new class happens to
+    // hold too -- a glyph can be in a class on each side.
+    this.swatchSelection = new Set();
+    this._swatchAnchorGlyphName = null;
     this.renderClassList();
     this.renderClassSwatchStrip();
     // Font mode's own "Add selection to selected class" button is disabled
@@ -4281,6 +4484,11 @@ export class KerningViewController extends ViewController {
 
   // ---- Glyph-swatch strip (design doc §1.2) ----
 
+  // The strip's own selection, by glyph name. It belongs to the class
+  // currently selected, so switching class drops it -- a name carried across
+  // would silently select a glyph in a class the designer is no longer
+  // looking at. _swatchAnchorGlyphName is the other end of a shift-range,
+  // the plain list-selection convention.
   renderClassSwatchStrip() {
     const container = document.querySelector("#autokern-class-swatch-strip");
     if (!container) {
@@ -4288,13 +4496,149 @@ export class KerningViewController extends ViewController {
     }
     container.textContent = "";
     if (!this.selectedClass) {
+      this.swatchSelection = new Set();
+      this._swatchAnchorGlyphName = null;
       return;
+    }
+    const members = this.getSelectedClassMembers();
+    if (!this.swatchSelection) {
+      this.swatchSelection = new Set();
+    }
+    // Drop anything the class no longer holds, so a removal cannot leave a
+    // selected name behind for the next action to act on.
+    const memberSet = new Set(members);
+    for (const glyphName of [...this.swatchSelection]) {
+      if (!memberSet.has(glyphName)) {
+        this.swatchSelection.delete(glyphName);
+      }
+    }
+    this.renderGlyphSwatches(container, members, true);
+    container.oncontextmenu = (event) => this.handleSwatchStripContextMenu(event);
+  }
+
+  getSelectedClassMembers() {
+    if (!this.selectedClass) {
+      return [];
     }
     const kernData = this.kerningController.kernData;
     const groups =
       this.selectedClass.side === "side1" ? kernData.groupsSide1 : kernData.groupsSide2;
-    const members = groups?.[this.selectedClass.name] || [];
-    this.renderGlyphSwatches(container, members);
+    return groups?.[this.selectedClass.name] || [];
+  }
+
+  // Click selects one. Shift-click extends from the anchor to here, over the
+  // class's own member order, which is the order the strip draws in. Ctrl or
+  // Cmd toggles one without disturbing the rest.
+  handleSwatchClick(event, glyphName) {
+    const members = this.getSelectedClassMembers();
+    if (event.shiftKey && this._swatchAnchorGlyphName) {
+      const from = members.indexOf(this._swatchAnchorGlyphName);
+      const to = members.indexOf(glyphName);
+      if (from >= 0 && to >= 0) {
+        const [lo, hi] = from <= to ? [from, to] : [to, from];
+        this.swatchSelection = new Set(members.slice(lo, hi + 1));
+      }
+    } else if (event.ctrlKey || event.metaKey) {
+      if (this.swatchSelection.has(glyphName)) {
+        this.swatchSelection.delete(glyphName);
+      } else {
+        this.swatchSelection.add(glyphName);
+      }
+      this._swatchAnchorGlyphName = glyphName;
+    } else {
+      this.swatchSelection = new Set([glyphName]);
+      this._swatchAnchorGlyphName = glyphName;
+    }
+    this.updateSwatchSelectionState();
+  }
+
+  // Repaints the selected state in place rather than rebuilding the strip: a
+  // GlyphCell renders its glyph asynchronously, so rebuilding on every click
+  // makes the whole strip blink.
+  updateSwatchSelectionState() {
+    const container = document.querySelector("#autokern-class-swatch-strip");
+    if (!container) {
+      return;
+    }
+    for (const cell of container.querySelectorAll("glyph-cell")) {
+      cell.selected = this.swatchSelection.has(cell.glyphName);
+    }
+  }
+
+  // Right-click acts on the selection. A right-click on a tile outside the
+  // selection selects that tile first, so the menu never acts on something
+  // the designer cannot see is chosen.
+  handleSwatchStripContextMenu(event) {
+    if (!this.selectedClass) {
+      return;
+    }
+    const cell = event.target.closest?.("glyph-cell");
+    const glyphName = cell?.glyphName;
+    if (!glyphName) {
+      return;
+    }
+    if (!this.swatchSelection.has(glyphName)) {
+      this.swatchSelection = new Set([glyphName]);
+      this._swatchAnchorGlyphName = glyphName;
+      this.updateSwatchSelectionState();
+    }
+    event.preventDefault();
+    const glyphNames = [...this.swatchSelection];
+    const { name } = this.selectedClass;
+    const title =
+      glyphNames.length === 1
+        ? 'Remove "' + glyphNames[0] + '" from class "' + name + '"'
+        : "Remove " + glyphNames.length + ' glyphs from class "' + name + '"';
+    showMenu(
+      [
+        {
+          title,
+          callback: () => this.removeGlyphsFromSelectedClass(glyphNames),
+        },
+      ],
+      { x: event.x + 1, y: event.y - 1 }
+    );
+  }
+
+  // Leaving a class is the same write as joining one with an empty name --
+  // kerning-controller.js's _editGroup already reads a falsy group name as
+  // "not in any group on this side", which is the mechanism deleteClass
+  // above uses for every member at once. Undo goes onto the same
+  // autokernUndoStack under the same "groupMembership" record shape
+  // doAutokernUndoRedo already replays.
+  async removeGlyphsFromSelectedClass(glyphNames) {
+    if (!this.selectedClass || !glyphNames.length) {
+      return;
+    }
+    const { side, name } = this.selectedClass;
+    const editFn =
+      side === "side1"
+        ? (glyphName, groupName) =>
+            this.kerningController.editGroupSide1(glyphName, groupName)
+        : (glyphName, groupName) =>
+            this.kerningController.editGroupSide2(glyphName, groupName);
+    const entries = glyphNames.map((glyphName) => ({
+      glyphName,
+      before: name,
+      after: "",
+    }));
+    for (const entry of entries) {
+      await editFn(entry.glyphName, entry.after);
+    }
+    this.autokernUndoStack.pushUndoRecord({
+      info: {
+        label: 'kerning view: remove from class "' + name + '"',
+        kind: "groupMembership",
+        editSide: side,
+        entries,
+      },
+    });
+    this.swatchSelection = new Set();
+    this._swatchAnchorGlyphName = null;
+    this.renderClassList();
+    this.renderClassSwatchStrip();
+    this.refreshFontModeClassColors?.();
+    this.renderPairTable();
   }
 
   // Shared by the swatch strip and the "Show class" dialog's live preview
@@ -4305,14 +4649,20 @@ export class KerningViewController extends ViewController {
   // there; that component is untouched by this method, which only ever
   // builds bare GlyphCell instances for THIS panel and the Show-class
   // dialog).
-  renderGlyphSwatches(container, glyphNames) {
+  // `selectable` is opt-in and only the class strip passes it. The
+  // Show-class dialog's preview uses this same builder for the same look,
+  // and a click there means nothing -- wiring the strip's selection onto it
+  // would give the dialog a selection nothing reads.
+  renderGlyphSwatches(container, glyphNames, selectable = false) {
     container.textContent = "";
     for (const glyphName of glyphNames) {
       const codePoints = this.fontController.glyphMap?.[glyphName];
       if (codePoints === undefined) {
         continue; // not a real glyph in this font -- nothing to show
       }
-      container.appendChild(this.buildSplitColorGlyphSwatch(glyphName, codePoints));
+      container.appendChild(
+        this.buildSplitColorGlyphSwatch(glyphName, codePoints, selectable)
+      );
     }
   }
 
@@ -4340,7 +4690,7 @@ export class KerningViewController extends ViewController {
   // before: no wrapper is created at all, and the cell's own
   // --cell-background-color is left untouched -- the uncolored case is not
   // regressed.
-  buildSplitColorGlyphSwatch(glyphName, codePoints) {
+  buildSplitColorGlyphSwatch(glyphName, codePoints, selectable = false) {
     const cell = new GlyphCell(
       this.fontController,
       glyphName,
@@ -4348,6 +4698,19 @@ export class KerningViewController extends ViewController {
       this._classPanelLocationController,
       "location"
     );
+
+    // A tile here states class membership. The development-status bar is the
+    // editor's readout about how finished a drawing is, which says nothing
+    // about classes and reads as a second colour cue competing with the
+    // split class colours behind it. Turned off through glyph-cell.js's own
+    // --glyph-cell-status-display hook; the component is otherwise untouched.
+    cell.style.setProperty("--glyph-cell-status-display", "none");
+    if (selectable) {
+      cell.selected = !!this.swatchSelection?.has(glyphName);
+      cell.addEventListener("click", (event) =>
+        this.handleSwatchClick(event, glyphName)
+      );
+    }
 
     const side1Name = this.kerningController.leftPairGroupMapping[glyphName];
     const side2Name = this.kerningController.rightPairGroupMapping[glyphName];
@@ -4894,7 +5257,8 @@ export class KerningViewController extends ViewController {
     // Remove-exception control regardless of which path wrote it.
     const exceptionCell = document.createElement("td");
     const tab = this.activeResultsTab || "default";
-    const hasApplicableClass = this.isLeftClassed(row.left) || this.isRightClassed(row.right);
+    const hasApplicableClass =
+      this.isLeftClassed(row.left) || this.isRightClassed(row.right);
 
     if (tab === "potential" && row.isCandidate) {
       // F19: "An apply-exception action must identify the exact pair and
@@ -4948,7 +5312,8 @@ export class KerningViewController extends ViewController {
           "data-tooltip",
           `Inherited value: ${row.current} (Class value). Create exception to save it as a pair exception.`
         );
-        lockButton.onclick = () => this.createPairException(row.left, row.right, row.current);
+        lockButton.onclick = () =>
+          this.createPairException(row.left, row.right, row.current);
         exceptionCell.appendChild(lockButton);
       }
     }
@@ -5319,7 +5684,9 @@ export class KerningViewController extends ViewController {
     const sourceIdentifier = this.autokernSource;
     if (!sourceIdentifier) {
       // Mirrors writePairValues' own guard/comment above.
-      console.error("kerning view: cannot create a pair exception, no source is selected");
+      console.error(
+        "kerning view: cannot create a pair exception, no source is selected"
+      );
       return;
     }
     const editContext = this.kerningController.getEditContext([
@@ -5897,20 +6264,26 @@ export class KerningViewController extends ViewController {
           if (node.tagName === "GLYPH-CELL") {
             this.decorateFontModeGlyphCell(node);
           }
-          node.querySelectorAll?.("glyph-cell").forEach((cell) =>
-            this.decorateFontModeGlyphCell(cell)
-          );
+          node
+            .querySelectorAll?.("glyph-cell")
+            .forEach((cell) => this.decorateFontModeGlyphCell(cell));
         }
       }
     });
-    this._fontModeCellObserver.observe(this.fontModeGlyphCellView.accordion.shadowRoot, {
-      childList: true,
-      subtree: true,
-    });
+    this._fontModeCellObserver.observe(
+      this.fontModeGlyphCellView.accordion.shadowRoot,
+      {
+        childList: true,
+        subtree: true,
+      }
+    );
 
     this.refreshFontModeClassColors();
-    this.fontController.addChangeListener({ kerning: null, customData: null },
-      () => this.refreshFontModeClassColors(), false);
+    this.fontController.addChangeListener(
+      { kerning: null, customData: null },
+      () => this.refreshFontModeClassColors(),
+      false
+    );
 
     this.fontModeGlyphOrganizer = new GlyphOrganizer();
 
@@ -5964,9 +6337,8 @@ export class KerningViewController extends ViewController {
       if (!glyphsetId) {
         this._fontPreviewGlyphsetMembers = null;
       } else {
-        const entries = await this.fontPreviewGlyphsetsController.loadGlyphSet(
-          glyphsetId
-        );
+        const entries =
+          await this.fontPreviewGlyphsetsController.loadGlyphSet(glyphsetId);
         // ponytail: membership by the glyphset's own literal glyph name
         // only, same simplification and same upgrade note as the table
         // filter's applyTableGlyphsetSelection just above.
@@ -6054,7 +6426,8 @@ export class KerningViewController extends ViewController {
   }
 
   refreshFontModeClassColors() {
-    this.fontModeGlyphCellView?.accordion.shadowRoot.querySelectorAll("glyph-cell")
+    this.fontModeGlyphCellView?.accordion.shadowRoot
+      .querySelectorAll("glyph-cell")
       .forEach((cell) => this.decorateFontModeGlyphCell(cell));
   }
 
@@ -6130,7 +6503,10 @@ export class KerningViewController extends ViewController {
   // instead of re-reading `glyphSelection` here, so the two callers can
   // disagree about scope (whole selection vs. one clicked-but-unselected
   // glyph) without this method needing to know why.
-  async addFontModeSelectionToClass(targetClass = this.selectedClass, glyphNames = null) {
+  async addFontModeSelectionToClass(
+    targetClass = this.selectedClass,
+    glyphNames = null
+  ) {
     if (!targetClass?.name) {
       return;
     }
@@ -6304,7 +6680,10 @@ export class KerningViewController extends ViewController {
       // now so the toolbar button (glyphNames omitted -> live selection) and
       // the context menu (glyphNames captured at click time) keep behaving
       // differently, as designed.
-      await this.addFontModeSelectionToClass({ side: oneSide, name: className }, glyphNames);
+      await this.addFontModeSelectionToClass(
+        { side: oneSide, name: className },
+        glyphNames
+      );
     }
   }
   // ---------------------------------------------------------------------
@@ -6334,21 +6713,34 @@ export class KerningViewController extends ViewController {
   // pipeline with real font data.
   updatePairPreview({ switchToPairMode = false } = {}) {
     if (!this._glyphInputElement) return;
-    const filter = this._glyphFilter || resolveGlyphFilter(
-      this._glyphInputElement.value, this.pairInputResolver());
+    const filter =
+      this._glyphFilter ||
+      resolveGlyphFilter(this._glyphInputElement.value, this.pairInputResolver());
     let previewPairs = this.expandHighlightedRowsToPairs();
     let truncated = false;
     if (!previewPairs.length && !filter.error) {
       const selected = this.previewFilterPairs();
-      if (selected.length) previewPairs = selected.filter(([l, r]) =>
-        pairMatchesGlyphFilter(l, r, filter, this.autokernFiltersController.model.side));
+      if (selected.length)
+        previewPairs = selected.filter(([l, r]) =>
+          pairMatchesGlyphFilter(
+            l,
+            r,
+            filter,
+            this.autokernFiltersController.model.side
+          )
+        );
       else if (filter.count > 1) {
-        ({ pairs: previewPairs, truncated } = crossProductPairs(filter.left, filter.right));
+        ({ pairs: previewPairs, truncated } = crossProductPairs(
+          filter.left,
+          filter.right
+        ));
       }
     }
-    this._glyphFilterError.textContent = filter.error ||
+    this._glyphFilterError.textContent =
+      filter.error ||
       (truncated || this._classSummaryTruncationCount
-        ? "Preview capped at 100 pairs total, up to 50 per class. Load table rows below." : "");
+        ? "Preview capped at 100 pairs total, up to 50 per class. Load table rows below."
+        : "");
     if (previewPairs.length) {
       this.setPreviewPairs(previewPairs);
       if (switchToPairMode) {
@@ -6394,9 +6786,18 @@ export class KerningViewController extends ViewController {
     let truncatedCount = 0;
     for (const item of this._pairTableItems || []) {
       if (!this.resultSelection.highlighted.has(item.sortId)) continue;
-      if (pairs.length >= 100) { truncatedCount++; break; }
-      const tr = { dataset: { rowId: item.sortId, kind: item.renderKind,
-        left: item.left, right: item.right } };
+      if (pairs.length >= 100) {
+        truncatedCount++;
+        break;
+      }
+      const tr = {
+        dataset: {
+          rowId: item.sortId,
+          kind: item.renderKind,
+          left: item.left,
+          right: item.right,
+        },
+      };
       if (tr.dataset.kind === "class-rule") {
         const members = this._classSummaryMembersByRowId?.get(tr.dataset.rowId);
         if (!members) {
@@ -6411,7 +6812,8 @@ export class KerningViewController extends ViewController {
           for (const right of members.rightMembers) {
             if (!this.pairMatchesInputScope(left, right)) continue;
             if (expanded.length === Math.min(50, 100 - pairs.length)) {
-              truncated = true; break outer;
+              truncated = true;
+              break outer;
             }
             expanded.push([left, right]);
           }
@@ -6450,7 +6852,9 @@ export class KerningViewController extends ViewController {
     if (!pairs.length) {
       return;
     }
-    this._selectedPairText = pairs.map(([left, right]) => `/${left} /${right}`).join("\n");
+    this._selectedPairText = pairs
+      .map(([left, right]) => `/${left} /${right}`)
+      .join("\n");
     this._selectedPairLeft = pairs[0][0];
     this._selectedPairRight = pairs[0][1];
     const pairButton = this._chipButtons?.pair;
@@ -6473,12 +6877,19 @@ export class KerningViewController extends ViewController {
     try {
       names = parseTokenList(glyphInput.value).map((token) => {
         if (token.kind === "class") return "@" + token.name;
-        return resolveGlyphFilter(token.name, this.pairInputResolver()).left.values().next().value || token.name;
+        return (
+          resolveGlyphFilter(token.name, this.pairInputResolver()).left.values().next()
+            .value || token.name
+        );
       });
-    } catch { /* A deliberate click replaces invalid typed input. */ }
+    } catch {
+      /* A deliberate click replaces invalid typed input. */
+    }
     glyphInput.value = additive
-      ? (names.includes(glyphName) ? names.filter((name) => name !== glyphName)
-        : [...names, glyphName]).join(", ")
+      ? (names.includes(glyphName)
+          ? names.filter((name) => name !== glyphName)
+          : [...names, glyphName]
+        ).join(", ")
       : replaceGlyphToken(glyphName);
     this.autokernFiltersController.setItem("glyphName", glyphInput.value.trim());
     this.renderPairTable();
@@ -6499,14 +6910,18 @@ export class KerningViewController extends ViewController {
       colorsDarkMode: { textColor: "#EEEEEE" },
       draw: (context, glyph, parameters, model) => {
         if (this.sceneController.selectedTool?.identifier !== "kerning-tool") return;
-        if (!model.positionedLines.some((line) => line.glyphs.indexOf(glyph) > 0)) return;
+        if (!model.positionedLines.some((line) => line.glyphs.indexOf(glyph) > 0))
+          return;
         const value = glyph.kernValue ?? 0;
         context.fillStyle = parameters.textColor;
         context.font = `${parameters.fontSize}px fontra-ui-regular, sans-serif`;
         context.textAlign = "center";
         context.scale(1, -1);
-        context.fillText(`${round(value, 1)}`, -value / 2,
-          -(model.descender ?? 0) + 1.5 * parameters.fontSize);
+        context.fillText(
+          `${round(value, 1)}`,
+          -value / 2,
+          -(model.descender ?? 0) + 1.5 * parameters.fontSize
+        );
       },
     };
   }
@@ -6571,8 +6986,11 @@ export class KerningViewController extends ViewController {
         context.textAlign = "center";
         context.font = `${parameters.fontSize}px fontra-ui-regular, sans-serif`;
         context.scale(1, -1);
-        context.fillText(`${round(suggestionValue, 1)}`, -suggestionValue / 2,
-          -ascender - 0.5 * parameters.fontSize);
+        context.fillText(
+          `${round(suggestionValue, 1)}`,
+          -suggestionValue / 2,
+          -ascender - 0.5 * parameters.fontSize
+        );
         context.globalAlpha = 1;
       },
     };
@@ -6599,18 +7017,26 @@ export class KerningViewController extends ViewController {
           // treats that as zero; the band/label draw treats it as "draw
           // nothing" (spec §10). Keeping the two apart is why this is
           // recorded rather than recomputed in the draw function.
-          const entry = this._chipMode === "pair" || this._chipMode === "phrase"
-            ? cache.get(pairKey(glyphs[i - 1].glyphName, glyph.glyphName)) : null;
+          const entry =
+            this._chipMode === "pair" || this._chipMode === "phrase"
+              ? cache.get(pairKey(glyphs[i - 1].glyphName, glyph.glyphName))
+              : null;
           const entryValue = this.getSuggestionPreviewValue(
-            glyphs[i - 1].glyphName, glyph.glyphName, entry);
+            glyphs[i - 1].glyphName,
+            glyph.glyphName,
+            entry
+          );
           // The ribbon measures the remaining adjustment to the cached
           // proposal, independently of the spacing used for manual preview.
-          const suggestionDelta = entry && !entry.stale && Number.isFinite(entry.value)
-            ? entry.value - (glyph.kernValue || 0) : undefined;
+          const suggestionDelta =
+            entry && !entry.stale && Number.isFinite(entry.value)
+              ? entry.value - (glyph.kernValue || 0)
+              : undefined;
           this._previewPairValue.set(glyph, suggestionDelta);
           // Scene positions already include the saved kern. Replace it
           // with the proposal rather than adding the proposal a second time.
-          if (entryValue !== undefined) cumulative += entryValue - (glyph.kernValue || 0);
+          if (entryValue !== undefined)
+            cumulative += entryValue - (glyph.kernValue || 0);
         } else {
           this._previewPairValue.set(glyph, undefined);
         }

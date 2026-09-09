@@ -128,6 +128,11 @@ export class GlyphCell extends UnlitElement {
   }
 
   .glyph-status-color {
+    /* The development-status bar. A host that shows glyph tiles for a reason
+       other than editing them -- the kerning view's class panel, where a tile
+       states class membership and nothing else -- turns it off by setting
+       --glyph-cell-status-display: none on the cell. Default unchanged. */
+    display: var(--glyph-cell-status-display, block);
     height: 0.3rem;
     justify-self: stretch;
   }

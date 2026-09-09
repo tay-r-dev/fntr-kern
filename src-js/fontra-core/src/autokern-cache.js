@@ -210,7 +210,63 @@ export function medianDroppingOutliers(samples, groupThreshold) {
   const source = inliers.length ? inliers : samples;
   const sorted = source.map((sample) => sample.value).sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  // Rounded, because this number is what "apply" writes to the font and the
+  // kerning tool only ever writes whole units. An even-sized member list's
+  // midpoint is the only way a half unit gets in here; every sample is
+  // already whole (autokern-engine.js's kernPair rounds its own answer).
+  const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  return Math.round(median);
+}
+
+// Which glyphs a font change redrew (issue 4). A cached suggestion is a
+// statement about a shape, so only a change to that shape can make it
+// wrong -- a renamed source, a development-status mark, a glyph lock or a
+// note leaves every measured number exactly as true as it was. Marking on
+// those turns the stale list into noise the designer learns to ignore.
+//
+// Geometry here is anything under a glyph's `layers`: the outline itself,
+// its components, its advance width (the tool kerns relative to the spacing
+// already there, spec 1), and the skeleton customData a layer's generated
+// outline is built from. Everything else on a glyph -- its own customData,
+// its sources' names, locations and customData -- is not.
+//
+// Takes a change object of the shape font-controller.js hands its change
+// listeners; returns a sorted array of glyph names. Pure: it reads the
+// change's own paths and nothing else.
+export function glyphNamesWithGeometryChange(change) {
+  const glyphNames = new Set();
+  collectGeometryChangedGlyphNames(change, [], glyphNames);
+  return [...glyphNames].sort();
+}
+
+function collectGeometryChangedGlyphNames(change, prefix, glyphNames) {
+  if (!change) {
+    return;
+  }
+  const path = prefix.concat(change.p || []);
+  if (change.f) {
+    if (path[0] !== "glyphs") {
+      return;
+    }
+    if (path.length === 1) {
+      // A whole glyph written at once (added, replaced, pasted): its
+      // geometry is part of what was written, so it counts.
+      if (change.a?.length) {
+        glyphNames.add(change.a[0]);
+      }
+      return;
+    }
+    // path is ["glyphs", glyphName, ...], and the field the change writes
+    // is its own last step -- so `layers` can be the path's third element
+    // or, for a change addressing the layer dictionary itself, the field.
+    if (path[2] === "layers" || (path.length === 2 && change.a?.[0] === "layers")) {
+      glyphNames.add(path[1]);
+    }
+    return;
+  }
+  for (const childChange of change.c || []) {
+    collectGeometryChangedGlyphNames(childChange, path, glyphNames);
+  }
 }
 
 // Marks every cache row with `glyphName` on either side as stale. Returns a

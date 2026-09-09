@@ -452,6 +452,13 @@ export class AutokernEngine {
       return null;
     }
     const units = kernPixelsToUnits(kernPixels, this.renderSize, this.unitsPerEm);
-    return applyStrength(units, this.strength);
+    // Whole font units, always. Sub-pixel interpolation (spec 2.5) and the
+    // strength multiplier (spec 2.6) both produce fractions, and this is the
+    // one place the answer becomes font units -- so it is the one place the
+    // rounding belongs. Everything downstream (the pair table, the apply
+    // write, the on-canvas suggestion, the preview the kerning tool adjusts
+    // from) reads this number, and the kerning tool itself only ever writes
+    // whole units.
+    return Math.round(applyStrength(units, this.strength));
   }
 }

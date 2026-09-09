@@ -438,3 +438,41 @@ describe("sweep: continuity and monotonicity of the search (spec section 8)", ()
     expect(kernA).to.equal(kernB);
   });
 });
+
+describe("whole-number answers (issue 1)", () => {
+  // The kerning tool writes whole font units, so a suggestion the designer
+  // can apply, preview or adjust from must be a whole number too. Sub-pixel
+  // interpolation (spec §2.5) and the strength multiplier (§2.6) both
+  // produce fractions; kernPair is where the answer becomes font units, so
+  // it is the one place the rounding belongs.
+  function paddedRectCoverage(shapeWidth, shapeHeight, bias, advance) {
+    const width = shapeWidth + 2 * bias;
+    const height = shapeHeight + 2 * bias;
+    const data = new Float64Array(width * height);
+    for (let y = bias; y < bias + shapeHeight; y++) {
+      for (let x = bias; x < bias + shapeWidth; x++) {
+        data[y * width + x] = 1;
+      }
+    }
+    return { data, width, height, originX: bias, originY: bias, advance };
+  }
+
+  it("kernPair returns a whole number of font units at every strength", () => {
+    for (const strength of [1, 0.5, 0.37, 1.618]) {
+      const engine = new AutokernEngine({
+        renderSize: 100,
+        reach: 4,
+        reduce: "sum",
+        strength,
+        unitsPerEm: 1000,
+      });
+      const control = paddedRectCoverage(8, 8, 4, 8);
+      engine.calibrate([control, control, control]);
+      const left = paddedRectCoverage(12, 8, engine.bias, 20);
+      const right = paddedRectCoverage(9, 8, engine.bias, 14);
+      const kern = engine.kernPair(left, right);
+      expect(kern).to.not.equal(null);
+      expect(kern).to.equal(Math.round(kern));
+    }
+  });
+});

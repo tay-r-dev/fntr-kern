@@ -160,7 +160,15 @@ class AggregateProbe {
       ? countMedianContributors(samples, groupThreshold)
       : { includedCount: 0, excludedCount: 0 };
     const stale = aggregateStale(entries);
-    return { leftMembers, rightMembers, entries, median, includedCount, excludedCount, stale };
+    return {
+      leftMembers,
+      rightMembers,
+      entries,
+      median,
+      includedCount,
+      excludedCount,
+      stale,
+    };
   }
 }
 
@@ -193,7 +201,7 @@ describe("Task 16: aggregate class-median and candidate-detection contract, real
       sourceIdentifiers: ["a"],
       values: {
         "@A": { "@V": [-80] },
-        Aacute: { W: [-30] }, // pre-existing saved exception
+        "Aacute": { W: [-30] }, // pre-existing saved exception
       },
     },
   };
@@ -313,8 +321,11 @@ describe("Task 16: aggregate class-median and candidate-detection contract, real
     );
     // Inliers: A x V (-82), Adieresis x V (-79), Adieresis x W (-83),
     // Aacute x W (-28). Sorted: -83, -82, -79, -28. Even count -> average
-    // of the two middle values: (-82 + -79) / 2 = -80.5. NOT rounded.
-    expect(stats.median).to.equal(-80.5);
+    // of the two middle values: (-82 + -79) / 2 = -80.5, then ROUNDED --
+    // this number is what "apply" writes to the font, and the kerning tool
+    // only ever writes whole units (issue 1). Math.round takes a .5 toward
+    // positive infinity, so -80.5 lands on -80.
+    expect(stats.median).to.equal(-80);
   });
 
   it("computeFoldGroupStats: when EVERY contributor is an outlier (groupThreshold below every real divergence), medianDroppingOutliers falls back to the unfiltered median of all 5 present entries", () => {

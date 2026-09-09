@@ -4,6 +4,7 @@ import {
   markGlyphStale,
   markPairJunk,
   markPairOverride,
+  glyphNamesWithGeometryChange,
   medianDroppingOutliers,
   pairEnvelopesCanTouch,
   pairKey,
@@ -175,6 +176,18 @@ describe("medianDroppingOutliers", () => {
     ];
     expect(medianDroppingOutliers(samples, 20)).to.equal(200);
   });
+
+  // Issue 1: a class row's aggregate is written to the font by "apply", and
+  // the kerning tool only ever writes whole units, so an even-sized member
+  // list must not produce a half unit.
+  it("returns a whole number when the even-count midpoint falls on a half", () => {
+    const samples = [
+      { value: 9, divergence: 0 },
+      { value: 10, divergence: 0 },
+    ];
+    expect(medianDroppingOutliers(samples, 20)).to.equal(Math.round(9.5));
+    expect(medianDroppingOutliers(samples, 20) % 1).to.equal(0);
+  });
 });
 
 describe("markGlyphStale", () => {
@@ -296,5 +309,64 @@ describe("candidatePairs", () => {
     const glyphs = ["o"];
     const result = candidatePairs(glyphs, [], () => true);
     expect(result).to.deep.equal([{ left: "o", right: "o" }]);
+  });
+});
+
+describe("glyphNamesWithGeometryChange (issue 4)", () => {
+  // A cached suggestion describes a shape. Only a change to that shape can
+  // make it wrong, so only a change to that shape may mark it stale. The
+  // font's change objects carry the path that was written, which is enough
+  // to tell a redrawn outline from a renamed source or a development-status
+  // mark set in the editor.
+  const glyphChange = (glyphName, rest) => ({
+    p: ["glyphs", glyphName, ...rest.slice(0, -1)],
+    f: "=",
+    a: [rest.at(-1), 1],
+  });
+
+  it("names a glyph whose layer outline changed", () => {
+    const change = glyphChange("a", ["layers", "foreground", "glyph", "path", "x"]);
+    expect(glyphNamesWithGeometryChange(change)).to.deep.equal(["a"]);
+  });
+
+  it("names a glyph whose layer advance width changed", () => {
+    const change = glyphChange("a", ["layers", "foreground", "glyph", "xAdvance"]);
+    expect(glyphNamesWithGeometryChange(change)).to.deep.equal(["a"]);
+  });
+
+  it("ignores a development-status mark on a glyph source", () => {
+    const change = glyphChange("a", [
+      "sources",
+      0,
+      "customData",
+      "fontra.development.status",
+    ]);
+    expect(glyphNamesWithGeometryChange(change)).to.deep.equal([]);
+  });
+
+  it("ignores glyph-level customData, and the glyph's own lock flag", () => {
+    const change = glyphChange("a", ["customData", "fontra.glyph.locked"]);
+    expect(glyphNamesWithGeometryChange(change)).to.deep.equal([]);
+  });
+
+  it("ignores a change outside the glyphs tree entirely", () => {
+    const change = { p: ["kerning", "kern"], f: "=", a: ["a", 1] };
+    expect(glyphNamesWithGeometryChange(change)).to.deep.equal([]);
+  });
+
+  it("names a wholly replaced glyph", () => {
+    const change = { p: ["glyphs"], f: "=", a: ["a", {}] };
+    expect(glyphNamesWithGeometryChange(change)).to.deep.equal(["a"]);
+  });
+
+  it("collects every changed glyph from a nested change, geometry only", () => {
+    const change = {
+      c: [
+        glyphChange("a", ["layers", "foreground", "glyph", "path", "x"]),
+        glyphChange("b", ["sources", 0, "customData", "fontra.development.status"]),
+        glyphChange("c", ["layers", "background", "glyph", "components"]),
+      ],
+    };
+    expect(glyphNamesWithGeometryChange(change)).to.deep.equal(["a", "c"]);
   });
 });
