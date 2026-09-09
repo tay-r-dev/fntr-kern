@@ -167,6 +167,7 @@ import {
   VisualizationLayers,
 } from "@fontra/views-editor/visualization-layers.js";
 import { SelectTool } from "./edit-tools-select.js";
+import { layoutPairPreview, normalizePairsPerRow } from "./pair-preview-layout.js";
 import {
   crossProductPairs,
   adjacentPairsForGlyph,
@@ -392,6 +393,8 @@ export class KerningViewController extends ViewController {
     this.sceneSettingsController = this.sceneController.sceneSettingsController;
     this.sceneSettings = this.sceneSettingsController.model;
     this.sceneModel = this.sceneController.sceneModel;
+    this.sceneSettings.align = "left";
+    this.installPairPreviewLayout();
 
     // Backlog item 10: the preview's glyph re-spacing runs ONCE per frame,
     // here, BEFORE any visualization layer draws. It used to run from inside
@@ -438,6 +441,9 @@ export class KerningViewController extends ViewController {
     ]) {
       this.tools[tool.identifier] = tool;
     }
+    // Keep this view stationary while kerning changes; editor tools elsewhere
+    // retain their normal handle-pinning behavior.
+    this.tools["kerning-tool"].getScrollAdjustBehavior = () => null;
     this.setSelectedTool("pointer-tool");
 
     // Font-level (not per-glyph) undo for pair-table writes and derive-accept
@@ -815,12 +821,23 @@ export class KerningViewController extends ViewController {
       opacity: 1,
       showNumbers: true,
       showBand: true,
+      pairsPerRow: 6,
     });
     this.suggestionPreviewSettings.synchronizeWithLocalStorage(
       "fontra-kerning-suggestion-preview."
     );
 
     const settings = this.suggestionPreviewSettings.model;
+
+    const pairsPerRowInput = html.input({
+      type: "number", id: "kerning-preview-pairs-per-row",
+      min: "1", max: "100", step: "1", required: true,
+    });
+    pairsPerRowInput.value = String(normalizePairsPerRow(settings.pairsPerRow));
+    pairsPerRowInput.addEventListener("change", () => {
+      if (!pairsPerRowInput.reportValidity()) return;
+      this.suggestionPreviewSettings.setItem("pairsPerRow", Number(pairsPerRowInput.value));
+    });
 
     const opacityInput = html.input({
       type: "range",
@@ -863,6 +880,8 @@ export class KerningViewController extends ViewController {
         `,
       },
       [
+        html.label({ for: "kerning-preview-pairs-per-row" }, ["Pairs per row"]),
+        pairsPerRowInput,
         html.label({ for: "kerning-suggestion-preview-opacity" }, ["Opacity"]),
         opacityInput,
         html.label({ for: "kerning-suggestion-preview-numbers" }, ["Show numbers"]),
@@ -876,7 +895,7 @@ export class KerningViewController extends ViewController {
     accordion.items = [
       {
         id: "kerning-suggestion-preview-accordion-item",
-        label: "Suggestion preview",
+        label: "Visual settings",
         open: false,
         content,
       },
@@ -887,7 +906,10 @@ export class KerningViewController extends ViewController {
 
     this._updateSuggestionPreviewControlsEnabled();
 
-    this.suggestionPreviewSettings.addListener(() => {
+    this.suggestionPreviewSettings.addListener((event) => {
+      if (event.key === "pairsPerRow" && this._chipMode === "pair") {
+        this.sceneModel.updateScene();
+      }
       this._updateSuggestionPreviewControlsEnabled();
       this.canvasController.requestUpdate();
     });
@@ -2134,39 +2156,19 @@ export class KerningViewController extends ViewController {
       });
     }
 
-    // Task 12, spec F26, ledger §5.5: "kerning.js itself does not subscribe
-    // to either [kerning change pattern]... the pair table is refreshed
-    // only by explicit local calls to renderPairTable() after actions THIS
-    // view itself performs. An external kerning edit -- another open tab,
-    // or the on-canvas KerningTool's own preview-drag edits in this same
-    // view's left pane -- would not visibly update the table." This is
-    // that subscription. Reuses the exact match-pattern shape
-    // KerningController's own constructor already listens with (that
-    // controller's cache invalidation and this table's refresh are two
-    // separate, correctly-timed reactions to the SAME notification, not a
-    // duplicated cache). `wantLiveChanges: true` (3rd arg) so a live
-    // preview drag (fontController.editIncremental, throttled but real)
-    // updates Current/Delta as it happens, not only once the drag commits
-    // -- matches F26's "immediately as edits are reported." Current reads
-    // (getGlyphPairValueForSource, Task 12's other fix) read straight from
-    // kernData.values, not KerningController's own interpolation cache, so
-    // there is no separate cache-freshness concern here to duplicate.
-    // renderPairTable itself already does everything the plan's own
-    // interface note asks for on every rebuild: recomputes each row's
-    // Current/Delta from the unchanged Proposed cache entry against the
-    // now-current stored value (pairRowData), preserves resultSelection for
-    // any row ID still present, and prunes it for any row that no longer
-    // matches (retainVisible, at renderPairTable's own end) -- so the
-    // listener body is exactly one call, not a second parallel update path.
-    this._kerningValuesChangeMatchPattern = {
-      kerning: { [wildcard]: { values: null } },
-    };
-    this._kerningValuesChangeListener = () => this.renderPairTable();
+    // Include new/replaced kerning tables as well as leaf value edits.
+    // Coalesce until the next frame, after edits and controller caches settle.
+    this._kerningValuesChangeMatchPattern = { kerning: null };
+    this._kerningValuesChangeListener = () => this.schedulePairTableRefresh();
     this.fontController.addChangeListener(
       this._kerningValuesChangeMatchPattern,
       this._kerningValuesChangeListener,
-      true, // wantLiveChanges
-      true // immediate
+      true,
+      true
+    );
+    // The scene rebuild is also the completion signal for local tool edits.
+    this.sceneSettingsController.addKeyListener(
+      "positionedLines", this._kerningValuesChangeListener
     );
     // "On view disposal, release the subscription." This app has no
     // internal view-teardown lifecycle to hook (grepped the whole tree:
@@ -2178,6 +2180,26 @@ export class KerningViewController extends ViewController {
     window.addEventListener("pagehide", () => this.disposeKerningChangeSubscription());
 
     this.renderPairTable();
+  }
+
+  schedulePairTableRefresh() {
+    if (this._pairTableRefreshFrame != null) return;
+    this._pairTableRefreshFrame = requestAnimationFrame(() => {
+      this._pairTableRefreshFrame = null;
+      this.renderPairTable();
+    });
+  }
+
+  installPairPreviewLayout() {
+    const buildScene = this.sceneModel.buildScene.bind(this.sceneModel);
+    this.sceneModel.buildScene = async (...args) => {
+      const scene = await buildScene(...args);
+      if (scene && this._chipMode === "pair") {
+        layoutPairPreview(scene, this.suggestionPreviewSettings?.model.pairsPerRow,
+          this.fontController.unitsPerEm);
+      }
+      return scene;
+    };
   }
 
   // Task 12: the exact inverse of the addChangeListener call above --
@@ -2195,6 +2217,13 @@ export class KerningViewController extends ViewController {
       this._kerningValuesChangeListener,
       true
     );
+    this.sceneSettingsController.removeKeyListener(
+      "positionedLines", this._kerningValuesChangeListener
+    );
+    if (this._pairTableRefreshFrame != null) {
+      cancelAnimationFrame(this._pairTableRefreshFrame);
+      this._pairTableRefreshFrame = null;
+    }
     this._kerningValuesChangeListener = null;
   }
 

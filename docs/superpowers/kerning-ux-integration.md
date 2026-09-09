@@ -29,6 +29,28 @@ This section supersedes the historical two-input and `%member%!` decisions below
   positioning replaces saved kerning; it does not add the proposal on top of it.
 - Font tiles show separate left/right class-color edges and hide editor-status bars.
 
+## Live edits and visual settings
+
+Kerning changes now listen at the whole kerning root (including newly created
+rules/tables) and schedule one table refresh on the next frame. Scene rebuilds
+also trigger this refresh so local metric-tool edits update row filtering and
+values after the edit has settled. Existing source-aware reads and pagination stay
+in use; the refresh does not rerun autokerning.
+
+The kerning view uses left text alignment and disables the kerning tool's
+handle-pinning scroll adjustment on its own tool instance. Shared editor behavior
+is unchanged.
+
+Pair preview retains one independently shaped pair per scene line, arranged in a
+six-column display grid, left-to-right then down. Visual settings (renamed from
+Suggestion preview) includes a persisted Pairs per row field, from 1 to 100. Grid
+cell widths use unkerned advances, so changing a kern does not move other cells.
+Glyph bounds, line bounds, and origins move together for pointer/metric hit testing.
+
+Targeted checks cover refresh coalescing, six-column wrapping, configurable columns,
+geometry translation, and stable cell origins across kerning edits. Browser
+verification remains outstanding.
+
 ## Progressive table loading
 
 The table initially renders 100 rows. Load next 100 appends another batch without
