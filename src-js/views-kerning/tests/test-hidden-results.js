@@ -27,15 +27,14 @@ describe("hidden results (Task 11)", () => {
 
   it("hiding a selected row removes it from the visible set, which prunes its highlight/tick (F10 + F25)", () => {
     const id = rowId("s1", "A", "V");
-    let selection = { highlighted: new Set([id]), ticked: new Set([id]) };
+    let selection = { selected: new Set([id]) };
     // Simulate a render pass: the row is now hidden, so it is not part of
     // the visible-row-id set the next renderPairTable computes -- exactly
     // how kerning.js's own retainVisible call already works for filtering
     // (Task 3/F25); Task 11 introduces no second pruning mechanism.
     const visibleIdsAfterHiding = new Set(); // this row no longer renders
     selection = retainVisible(selection, visibleIdsAfterHiding);
-    expect(selection.highlighted.size).to.equal(0);
-    expect(selection.ticked.size).to.equal(0);
+    expect(selection.selected.size).to.equal(0);
   });
 
   it("restoring a hidden row (Show hidden + eye action) does not require re-selecting it automatically", () => {
@@ -43,10 +42,9 @@ describe("hidden results (Task 11)", () => {
     // what an eye action touches -- a restored row starts unselected, same
     // as any other row appearing in a fresh render.
     const id = rowId("s1", "A", "V");
-    let selection = { highlighted: new Set(), ticked: new Set() };
+    let selection = { selected: new Set() };
     const visibleIdsAfterRestore = new Set([id]);
     selection = retainVisible(selection, visibleIdsAfterRestore);
-    expect(selection.highlighted.has(id)).to.equal(false);
-    expect(selection.ticked.has(id)).to.equal(false);
+    expect(selection.selected.has(id)).to.equal(false);
   });
 });

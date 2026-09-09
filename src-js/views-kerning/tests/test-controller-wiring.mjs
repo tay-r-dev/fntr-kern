@@ -106,7 +106,7 @@ test("Shift-click rerenders through the restored table renderer and toggles he/e
       },
     },
     autokernParamsController: { model: { threshold: 0, groupThreshold: 0 } },
-    resultSelection: { highlighted: new Set(), ticked: new Set() },
+    resultSelection: { selected: new Set() },
     sceneModel: {
       positionedLines: [{ glyphs: [..."hello"].map((glyphName) => ({ glyphName })) }],
     },
@@ -183,7 +183,7 @@ test("highlighted individual rows cannot produce more than 100 canvas pairs", ()
     right: String(i),
   }));
   view.resultSelection = {
-    highlighted: new Set(view._pairTableItems.map((r) => r.sortId)),
+    selected: new Set(view._pairTableItems.map((r) => r.sortId)),
   };
   assert.equal(view.expandHighlightedRowsToPairs().length, 100);
   assert.ok(view._classSummaryTruncationCount);
@@ -444,8 +444,15 @@ test("every pair row carries a check that writes its own proposal", async () => 
   const view = Object.create(Controller.prototype);
   const written = [];
   Object.assign(view, {
+    resultSelection: { selected: new Set() },
+    activeSourceIdentifier: () => "s1",
     async writePairValues(pairs, valueFn, markApplied, confirmShadow) {
-      written.push({ pairs, value: valueFn(), markApplied, confirmShadow });
+      written.push({
+        pairs: pairs.map(({ left, right }) => ({ left, right })),
+        value: valueFn({ value: -42 }),
+        markApplied,
+        confirmShadow,
+      });
     },
   });
 
@@ -476,4 +483,33 @@ test("every pair row carries a check that writes its own proposal", async () => 
   });
   assert.equal(stale.disabled, true);
   assert.equal(stale.onclick, undefined);
+});
+
+test("a row's icon acts on every selected row, and alone when the row is not selected", () => {
+  const view = Object.create(Controller.prototype);
+  const rowAV = { left: "A", right: "V", suggestion: -40 };
+  const rowAW = { left: "A", right: "W", suggestion: -30 };
+  const rowTo = { left: "T", right: "o", suggestion: -50 };
+  const idOf = (row) => JSON.stringify(["s1", row.left, row.right]);
+  Object.assign(view, {
+    activeSourceIdentifier: () => "s1",
+    _pairRowByRowId: new Map([
+      [idOf(rowAV), rowAV],
+      [idOf(rowAW), rowAW],
+      [idOf(rowTo), rowTo],
+    ]),
+    resultSelection: { selected: new Set([idOf(rowAV), idOf(rowAW)]) },
+  });
+
+  // Compared as text: the arrays come back from the vm realm, where
+  // deepStrictEqual refuses to match a plain array of this realm.
+  const rights = (row) =>
+    JSON.stringify(view.rowActionTargets(row).map((target) => target.right));
+  // Pressed on a selected row: the whole selection.
+  assert.equal(rights(rowAV), JSON.stringify(["V", "W"]));
+  // Pressed outside the selection: that row alone.
+  assert.equal(rights(rowTo), JSON.stringify(["o"]));
+  // One selected row is still one row.
+  view.resultSelection = { selected: new Set([idOf(rowAV)]) };
+  assert.equal(rights(rowAV), JSON.stringify(["V"]));
 });

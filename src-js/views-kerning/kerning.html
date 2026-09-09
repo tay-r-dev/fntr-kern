@@ -339,13 +339,12 @@
             <table class="kerning-pairtable-table">
               <thead>
                 <tr>
-                  <!-- Backlog item 13's select-all is now one checkbox for
-                       the one table (no more per-bucket duplicates) --
-                       lives in the Glyph L header cell, same "tick belongs
-                       with the name column" placement F32 uses for a row's
-                       own tick. Sort label is its own span so
-                       updateSortHeaders (kerning.js) can rewrite just the
-                       label text without erasing the checkbox. -->
+                  <!-- The one select-all tick. Rows carry no tick of their
+                       own: click and shift-click are the selection, and this
+                       header tick selects or clears every loaded row at once.
+                       Sort label is its own span so updateSortHeaders
+                       (kerning.js) can rewrite just the label text without
+                       erasing the checkbox. -->
                   <th
                     class="kerning-pairtable-sortable"
                     data-sort-column="glyph"

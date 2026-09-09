@@ -665,12 +665,11 @@ tr:hover .kerning-pairtable-current-input {
   outline: none;
 }
 
-/* The class-summary row's Apply action. Same sizing as the Exception
-   column's lock and the Hide column's eye, so the three row actions read as
-   one family. Its reveal rule is stricter than theirs on purpose: the
-   designer asked for it to stay invisible until the row is click-selected,
-   and to stay transparent until the row is hovered, so an accidental click
-   on a row nobody chose cannot write a class rule. */
+/* A row's Apply action. Same sizing and the SAME row-hover reveal as the
+   lock, the eye and the preview mark, so every row action reads as one
+   family. It used to appear only once a row was click-selected, back when
+   selection was a tick layer of its own -- now selection says which rows an
+   action covers, and hover is what shows the action. */
 .kerning-pairtable-apply-indicator {
   width: 1.1em;
   height: 1.1em;
@@ -682,13 +681,13 @@ tr:hover .kerning-pairtable-current-input {
   pointer-events: none;
 }
 
-tr.kerning-pairtable-row-highlighted .kerning-pairtable-apply-class,
+tr:hover .kerning-pairtable-apply-class,
 tr:focus-within .kerning-pairtable-apply-class {
   opacity: 0.35;
   pointer-events: auto;
 }
 
-tr.kerning-pairtable-row-highlighted:hover .kerning-pairtable-apply-class,
+tr:hover .kerning-pairtable-apply-class:hover,
 tr:focus-within .kerning-pairtable-apply-class:focus {
   opacity: 1;
 }

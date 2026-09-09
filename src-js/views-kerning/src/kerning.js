@@ -203,7 +203,6 @@ import {
   pressReset,
   retainVisible,
   selectRow,
-  tickRow,
 } from "./results-selection.js";
 
 // Spec §2.4: the three control glyphs calibration reads.
@@ -2304,36 +2303,23 @@ export class KerningViewController extends ViewController {
       );
     }
 
-    // Backlog item 13, Task 8: one select-all checkbox for the one table
-    // (F11 removed the per-bucket tables, so there is only ever one now).
-    // Wired once here, not rebuilt on every renderPairTable -- the
-    // checkbox itself is static markup (kerning.html), only its checked/
-    // indeterminate state and the rows it toggles change per render.
+    // The one select-all tick, in the table header (kerning.html). Rows
+    // carry no tick of their own any more, so this one writes the selection
+    // itself: every loaded row in, or the selection cleared. Wired once
+    // here; renderPairTable only refreshes its checked/indeterminate state.
     for (const selectAll of document.querySelectorAll(
       ".kerning-pairtable-select-all"
     )) {
       selectAll.addEventListener("change", () => {
-        // A real user click always clears indeterminate natively before this
-        // handler runs; set it explicitly too so a programmatic `.checked =`
-        // assignment (not a real click) still lands in a determinate
-        // all-on/all-off state rather than leaving a stale indeterminate
-        // flag behind.
         selectAll.indeterminate = false;
-        for (const checkbox of this.getVisiblePairTableRowCheckboxes(
-          selectAll.closest("table")
-        )) {
-          checkbox.checked = selectAll.checked;
-          // Task 4: select-all sets .checked directly rather than firing a
-          // "change" event per checkbox, so it must update
-          // this.resultSelection itself -- otherwise Apply/Reset selected
-          // (which now read the state, not the DOM) would silently ignore
-          // rows ticked this way.
-          const id = checkbox.closest("tr")?.dataset.rowId;
-          if (id) {
-            this.resultSelection = tickRow(this.resultSelection, id, selectAll.checked);
-          }
-        }
+        const ids = this.loadedPairTableRowIds();
+        this.resultSelection = selectAll.checked
+          ? { selected: new Set(ids) }
+          : deselectAll();
+        this.applyResultSelectionToDom();
+        this.syncSelectAllCheckboxes();
         this.refreshResetArmState();
+        this.updatePairPreview();
       });
     }
 
@@ -2546,15 +2532,6 @@ export class KerningViewController extends ViewController {
     this._kerningValuesChangeListener = null;
   }
 
-  // Backlog item 13: every checkbox currently in the DOM is, by
-  // construction, a currently-rendered/visible row -- renderPairTable
-  // rebuilds the one tbody from scratch on every render (Task 8 removed
-  // the old click-to-expand fold-parent/fold-children distinction that
-  // used to need filtering out here; see buildClassSummaryRowElement).
-  getVisiblePairTableRowCheckboxes(table) {
-    return [...table.querySelectorAll(".kerning-pairtable-row-select")];
-  }
-
   // Task 8, spec F19: switches which tab's row set renderPairTable builds.
   // Not itself a filter -- kept as its own piece of view state so a tab
   // switch reads exactly like any other renderPairTable trigger (filter
@@ -2570,24 +2547,6 @@ export class KerningViewController extends ViewController {
       tabButton.setAttribute("aria-selected", active ? "true" : "false");
     }
     this.renderPairTable();
-  }
-
-  // Backlog item 13: called at the end of every renderPairTable so each
-  // bucket's select-all checkbox reflects the rows that render just put on
-  // screen -- checked when every visible row in that table is checked,
-  // indeterminate when some but not all are, unchecked when none are (or
-  // the table has no rows at all).
-  syncSelectAllCheckboxes() {
-    for (const selectAll of document.querySelectorAll(
-      ".kerning-pairtable-select-all"
-    )) {
-      const checkboxes = this.getVisiblePairTableRowCheckboxes(
-        selectAll.closest("table")
-      );
-      const checkedCount = checkboxes.filter((checkbox) => checkbox.checked).length;
-      selectAll.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
-      selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
-    }
   }
 
   // Parses a comma/space separated glyph-name list the same way the phrase
@@ -2647,6 +2606,29 @@ export class KerningViewController extends ViewController {
     return this.autokernSource;
   }
 
+  // Every row currently in the table, by row ID. renderPairTable rebuilds
+  // the one tbody from scratch, so what is in the DOM is what is loaded.
+  loadedPairTableRowIds() {
+    return [
+      ...document.querySelectorAll(".kerning-pairtable-table tr[data-row-id]"),
+    ].map((tr) => tr.dataset.rowId);
+  }
+
+  // The header tick states what the selection covers: every loaded row,
+  // some of them, or none.
+  syncSelectAllCheckboxes() {
+    const ids = this.loadedPairTableRowIds();
+    const selectedCount = ids.filter((id) =>
+      this.resultSelection.selected.has(id)
+    ).length;
+    for (const selectAll of document.querySelectorAll(
+      ".kerning-pairtable-select-all"
+    )) {
+      selectAll.checked = ids.length > 0 && selectedCount === ids.length;
+      selectAll.indeterminate = selectedCount > 0 && selectedCount < ids.length;
+    }
+  }
+
   // Task 3: re-applies this.resultSelection onto whatever rows are
   // currently in the DOM -- called after every state change and after
   // every renderPairTable rebuild (tbodies are rebuilt from scratch each
@@ -2658,12 +2640,8 @@ export class KerningViewController extends ViewController {
       const id = tr.dataset.rowId;
       tr.classList.toggle(
         "kerning-pairtable-row-highlighted",
-        this.resultSelection.highlighted.has(id)
+        this.resultSelection.selected.has(id)
       );
-      const checkbox = tr.querySelector(".kerning-pairtable-row-select");
-      if (checkbox) {
-        checkbox.checked = this.resultSelection.ticked.has(id);
-      }
     }
   }
 
@@ -2673,7 +2651,7 @@ export class KerningViewController extends ViewController {
   // pruning) so the button label never keeps advertising a target count
   // that no longer matches what's actually ticked.
   refreshResetArmState() {
-    const currentTargetIds = [...this.resultSelection.ticked];
+    const currentTargetIds = [...this.resultSelection.selected];
     const currentKey = currentTargetIds.length
       ? JSON.stringify([...currentTargetIds].sort())
       : null;
@@ -3157,6 +3135,10 @@ export class KerningViewController extends ViewController {
     // stable ID -- expandHighlightedRowsToPairs (Task 7's own open decision,
     // resolved by ledger §8.1) reads this to expand a highlighted
     // class-summary row into its capped cross-product of concrete pairs.
+    // Every pair row now on screen, by its own row ID. A row's icons act on
+    // the whole selection when the row pressed is part of it, and that needs
+    // each selected row's own numbers and state, not just its two names.
+    this._pairRowByRowId = new Map();
     this._classSummaryMembersByRowId = new Map();
     // Task 8: same idea, for the row's own aggregate value -- writePairValues
     // has no autokernCache entry for a class address ("@Left"×"@Right" is
@@ -3352,7 +3334,7 @@ export class KerningViewController extends ViewController {
     // items (this._pairTableItems is still the old list here) so the preview
     // can keep drawing them when the prune, rather than the designer, is what
     // emptied the highlight.
-    const highlightCountBeforePrune = this.resultSelection.highlighted.size;
+    const highlightCountBeforePrune = this.resultSelection.selected.size;
     const pairsBeforePrune = highlightCountBeforePrune
       ? this.expandHighlightedRowsToPairs()
       : [];
@@ -3364,7 +3346,7 @@ export class KerningViewController extends ViewController {
       new Set(visibleItems.map((item) => item.sortId))
     );
     const highlightLostToPrune =
-      highlightCountBeforePrune > 0 && this.resultSelection.highlighted.size === 0;
+      highlightCountBeforePrune > 0 && this.resultSelection.selected.size === 0;
     for (const item of visibleItems) {
       if (item.renderKind !== "class-rule") continue;
       this._classSummaryMembersByRowId.set(item.sortId, {
@@ -3659,6 +3641,23 @@ export class KerningViewController extends ViewController {
   // where the proposal is out of date, the same way a class-summary row's check
   // is, because applying a stale number is the one thing the table knows is
   // wrong.
+  // Which rows one row's icon acts on. An icon on a selected row acts on
+  // every selected row, so a designer selects a run and presses once. An icon
+  // on a row outside the selection acts on that row alone, and so does a
+  // single selected row. Class-summary rows are not in this map, so a
+  // selection that includes one leaves it to its own Apply check.
+  rowActionTargets(row) {
+    const id = rowId(this.activeSourceIdentifier(), row.left, row.right);
+    const selected = this.resultSelection.selected;
+    if (selected.size < 2 || !selected.has(id)) {
+      return [row];
+    }
+    const rows = [...selected]
+      .map((key) => this._pairRowByRowId?.get(key))
+      .filter(Boolean);
+    return rows.length ? rows : [row];
+  }
+
   buildApplyProposalButton(row) {
     const button = document.createElement("icon-button");
     button.className =
@@ -3682,12 +3681,13 @@ export class KerningViewController extends ViewController {
     );
     button.onclick = (event) => {
       event.stopPropagation();
-      this.writePairValues(
-        [{ left: row.left, right: row.right }],
-        () => Math.round(row.suggestion),
-        true,
-        true
+      // One write for the whole target set, so a run of selected rows is one
+      // undo step. A stale row is skipped rather than written, the same rule
+      // Apply selected follows.
+      const targets = this.rowActionTargets(row).filter(
+        (target) => !target.stale && Number.isFinite(target.suggestion)
       );
+      this.writePairValues(targets, (entry) => entry.value, true, true);
     };
     return button;
   }
@@ -3696,7 +3696,8 @@ export class KerningViewController extends ViewController {
   // when the preview is on. Follows the row-hover convention the lock and the
   // eye already use, except when the pair is out, which stays visible -- a
   // control that says "not shown" has to be readable without hovering.
-  buildPreviewExclusionToggle(left, right) {
+  buildPreviewExclusionToggle(row) {
+    const { left, right } = row;
     const excluded = this.isPairExcludedFromPreview(left, right);
     const button = document.createElement("icon-button");
     button.className = excluded
@@ -3717,9 +3718,11 @@ export class KerningViewController extends ViewController {
         ? "Left out of the suggestion preview. Its saved kerning is unchanged."
         : "Leave this pair out of the suggestion preview."
     );
-    button.onclick = (event) => {
+    button.onclick = async (event) => {
       event.stopPropagation();
-      this.setPairExcludedFromPreview(left, right, !excluded);
+      for (const target of this.rowActionTargets(row)) {
+        await this.setPairExcludedFromPreview(target.left, target.right, !excluded);
+      }
     };
     return button;
   }
@@ -3771,7 +3774,7 @@ export class KerningViewController extends ViewController {
     tr.dataset.rowId = id;
     tr.classList.toggle(
       "kerning-pairtable-row-highlighted",
-      this.resultSelection.highlighted.has(id)
+      this.resultSelection.selected.has(id)
     );
     // F04's own open decision, resolved by the ledger (§8.1): a highlighted
     // class-summary row expands to the capped cross-product of both sides'
@@ -3793,23 +3796,12 @@ export class KerningViewController extends ViewController {
       }
       this.resultSelection = selectRow(this.resultSelection, id, event.shiftKey);
       this.applyResultSelectionToDom();
-      this.updatePairPreview({ switchToPairMode: !event.shiftKey });
-    });
-
-    // F32: the tick lives inside the Glyph L cell, same placement a pair
-    // row's own tick uses.
-    const leftCell = document.createElement("td");
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.className = "kerning-pairtable-row-select";
-    checkbox.checked = this.resultSelection.ticked.has(id);
-    checkbox.addEventListener("change", () => {
-      this.resultSelection = tickRow(this.resultSelection, id, checkbox.checked);
-      this.applyResultSelectionToDom();
       this.syncSelectAllCheckboxes();
       this.refreshResetArmState();
+      this.updatePairPreview();
     });
-    leftCell.appendChild(checkbox);
+
+    const leftCell = document.createElement("td");
     const leftLabel = document.createElement("span");
     leftLabel.className = "kerning-pairtable-class-name";
     leftLabel.textContent = left;
@@ -5455,9 +5447,10 @@ export class KerningViewController extends ViewController {
     // layer, independent of scene preview selection below.
     const id = rowId(this.activeSourceIdentifier(), row.left, row.right);
     tr.dataset.rowId = id;
+    this._pairRowByRowId?.set(id, row);
     tr.classList.toggle(
       "kerning-pairtable-row-highlighted",
-      this.resultSelection.highlighted.has(id)
+      this.resultSelection.selected.has(id)
     );
 
     // WORKSTREAM 16, spec §6: "Clicking a row in the table selects that pair
@@ -5483,50 +5476,16 @@ export class KerningViewController extends ViewController {
       }
       this.resultSelection = selectRow(this.resultSelection, id, event.shiftKey);
       this.applyResultSelectionToDom();
-      this.updatePairPreview({ switchToPairMode: !event.shiftKey });
-    });
-
-    // F32: "place the tick inside the left-name cell so it does not add an
-    // unrequested column" -- Glyph L (name) / Current / Proposed / Delta /
-    // Glyph R (name) / Exception / Hide, in that order.
-    const leftCell = document.createElement("td");
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.className = "kerning-pairtable-row-select";
-    // Backlog item 8 part 4: the hard-disable is gone. A flat apply on a
-    // shadowing row is now allowed but routed through a confirmation dialogue
-    // (confirmShadowingWrite, from writePairValues) -- the checkbox stays
-    // enabled; only a hint is shown until the override is deliberate.
-    if (this.wouldShadowClassCell(row.left, row.right) && !row.override) {
-      checkbox.title =
-        "Applying this pair overrides the class value -- you'll be asked to confirm.";
-    }
-    // Task 17, spec F23: "disable applying that stale suggestion. Reset to
-    // zero remains a separate manual action" -- the tick itself stays
-    // available (Reset still needs it), but applySelectedPairRows below
-    // skips a stale row's own pair rather than writing its unreliable
-    // suggestion.
-    if (row.stale) {
-      checkbox.title =
-        "This suggestion is out of date -- Apply selected will skip it. Reset selected still works.";
-    }
-    checkbox.checked = this.resultSelection.ticked.has(id);
-    // Task 3 (spec F04 table): checking/unchecking a HIGHLIGHTED row acts
-    // on every highlighted row; an unhighlighted row's tick changes alone
-    // (tickRow in results-selection.js). Re-applies to the DOM afterward
-    // because this can change checkboxes on rows other than the one that
-    // was actually clicked.
-    //
-    // Backlog item 13: keeps the select-all checkbox's checked/
-    // indeterminate state truthful when a row is (un)checked by hand rather
-    // than via select-all itself.
-    checkbox.addEventListener("change", () => {
-      this.resultSelection = tickRow(this.resultSelection, id, checkbox.checked);
-      this.applyResultSelectionToDom();
       this.syncSelectAllCheckboxes();
       this.refreshResetArmState();
+      this.updatePairPreview();
     });
-    leftCell.appendChild(checkbox);
+
+    // Glyph L (name) / Current / Proposed / Delta / Glyph R (name) /
+    // Apply / Hide, in that order. No tick: selection is the row itself
+    // (see results-selection.js), and a row's actions act on every selected
+    // row.
+    const leftCell = document.createElement("td");
     const leftLabel = document.createElement("span");
     // Task 11, spec F17: the class kerning.css's own
     // .kerning-pairtable-row-hidden rule targets for the dimmed/
@@ -5557,7 +5516,7 @@ export class KerningViewController extends ViewController {
     const display = valuesForDisplay(row.current, row.suggestion, row.stale);
     const proposedCell = document.createElement("td");
     proposedCell.className = "kerning-pairtable-proposed-col";
-    proposedCell.appendChild(this.buildPreviewExclusionToggle(row.left, row.right));
+    proposedCell.appendChild(this.buildPreviewExclusionToggle(row));
     if (display.stale) {
       proposedCell.appendChild(buildStaleMarker());
     } else {
@@ -5666,7 +5625,13 @@ export class KerningViewController extends ViewController {
           `Pair exception. Remove exception to restore the inherited value ` +
             `(${this.inheritedFallbackValue(row.left, row.right)}).`
         );
-        removeButton.onclick = () => this.removePairException(row.left, row.right);
+        removeButton.onclick = async () => {
+          for (const target of this.rowActionTargets(row)) {
+            if (target.explicitPairExists) {
+              await this.removePairException(target.left, target.right);
+            }
+          }
+        };
         applyCell.appendChild(removeButton);
       } else {
         // F12: "An inherited pair's lock is muted until hover or focus" --
@@ -5684,8 +5649,13 @@ export class KerningViewController extends ViewController {
           "data-tooltip",
           `Inherited value: ${row.current} (Class value). Create exception to save it as a pair exception.`
         );
-        lockButton.onclick = () =>
-          this.createPairException(row.left, row.right, row.current);
+        lockButton.onclick = async () => {
+          for (const target of this.rowActionTargets(row)) {
+            if (!target.explicitPairExists) {
+              await this.createPairException(target.left, target.right, target.current);
+            }
+          }
+        };
         applyCell.appendChild(lockButton);
       }
     }
@@ -5718,7 +5688,13 @@ export class KerningViewController extends ViewController {
         "Hide this result from normal browsing -- it does not delete saved kerning."
       );
     }
-    hideButton.onclick = () => this.togglePairJunk(row.left, row.right, !row.hidden);
+    hideButton.onclick = async () => {
+      // The pressed row states the intent; every selected row is put into
+      // that same state, whatever each one was in before.
+      for (const target of this.rowActionTargets(row)) {
+        await this.togglePairJunk(target.left, target.right, !row.hidden);
+      }
+    };
     hideCell.appendChild(hideButton);
     tr.appendChild(hideCell);
 
@@ -5773,7 +5749,7 @@ export class KerningViewController extends ViewController {
   // before any asynchronous write, per plan Task 4's "snapshot addresses
   // before asynchronous writes."
   getSelectedPairTableRows() {
-    return [...this.resultSelection.ticked].map((id) => {
+    return [...this.resultSelection.selected].map((id) => {
       const [, left, right] = JSON.parse(id);
       return { left, right };
     });
@@ -5821,7 +5797,7 @@ export class KerningViewController extends ViewController {
   // tick/Reset path is an additional way to reach the same class address,
   // not a replacement for it.
   async resetSelectedPairRows() {
-    const targetIds = [...this.resultSelection.ticked];
+    const targetIds = [...this.resultSelection.selected];
     const { commit, armedKey } = pressReset(this.resetArmedKey, targetIds);
     this.resetArmedKey = armedKey;
     this.updateResetButtonLabel();
@@ -7056,7 +7032,7 @@ export class KerningViewController extends ViewController {
   // emptied the highlight" set -- see the comment beside highlightLostToPrune
   // there. It is consulted last, so it never overrules a live highlight or the
   // Glyph field.
-  updatePairPreview({ switchToPairMode = false, fallbackPairs = null } = {}) {
+  updatePairPreview({ fallbackPairs = null } = {}) {
     if (!this._glyphInputElement) return;
     const filter =
       this._glyphFilter ||
@@ -7090,10 +7066,10 @@ export class KerningViewController extends ViewController {
         ? "Preview capped at 100 pairs total, up to 50 per class. Load table rows below."
         : "");
     if (previewPairs.length) {
+      // Selecting a row feeds pair-mode preview but never switches the mode
+      // to it. Which mode is on screen is the designer's own choice, made on
+      // the chips -- a click in the table used to take it away from them.
       this.setPreviewPairs(previewPairs);
-      if (switchToPairMode) {
-        this.setChipMode("pair");
-      }
     } else {
       this._selectedPairText = null;
       this._selectedPairLeft = null;
@@ -7133,7 +7109,7 @@ export class KerningViewController extends ViewController {
     const pairs = [];
     let truncatedCount = 0;
     for (const item of this._pairTableItems || []) {
-      if (!this.resultSelection.highlighted.has(item.sortId)) continue;
+      if (!this.resultSelection.selected.has(item.sortId)) continue;
       if (pairs.length >= 100) {
         truncatedCount++;
         break;
