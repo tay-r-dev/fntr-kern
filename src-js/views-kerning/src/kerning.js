@@ -3655,6 +3655,43 @@ export class KerningViewController extends ViewController {
   // handler already ignores anything inside an input, so highlighting a row
   // and editing its value do not fight. kerning.css keeps it looking like
   // text until it is hovered or focused.
+  // The check that writes one row's proposal to that row's own pair. Disabled
+  // where the proposal is out of date, the same way a class-summary row's check
+  // is, because applying a stale number is the one thing the table knows is
+  // wrong.
+  buildApplyProposalButton(row) {
+    const button = document.createElement("icon-button");
+    button.className =
+      "kerning-pairtable-apply-indicator kerning-pairtable-apply-class";
+    button.src = "/tabler-icons/check.svg";
+    button.setAttribute(
+      "aria-label",
+      `Save ${row.left} × ${row.right} = ${row.suggestion} at this pair`
+    );
+    if (row.stale || !Number.isFinite(row.suggestion)) {
+      button.disabled = true;
+      button.setAttribute(
+        "data-tooltip",
+        "This suggestion is out of date -- re-run stale glyphs first."
+      );
+      return button;
+    }
+    button.setAttribute(
+      "data-tooltip",
+      `Save ${row.left} × ${row.right} = ${row.suggestion.toFixed(1)} at this pair.`
+    );
+    button.onclick = (event) => {
+      event.stopPropagation();
+      this.writePairValues(
+        [{ left: row.left, right: row.right }],
+        () => Math.round(row.suggestion),
+        true,
+        true
+      );
+    };
+    return button;
+  }
+
   // The mark to the left of a proposed value: is this pair drawn on the canvas
   // when the preview is on. Follows the row-hover convention the lock and the
   // eye already use, except when the pair is out, which stays visible -- a
@@ -5578,6 +5615,15 @@ export class KerningViewController extends ViewController {
     const tab = this.activeResultsTab || "default";
     const hasApplicableClass =
       this.isLeftClassed(row.left) || this.isRightClassed(row.right);
+
+    // Every row's own primary write: save this row's proposed value at this
+    // exact pair. It used to appear only on the Potential tab, so an ordinary
+    // row could be applied only through the batch action, with nothing in the
+    // row itself to press. Routed through writePairValues, so it inherits the
+    // shadow confirmation, the applied mark and the undo record the batch has.
+    if (!(tab === "potential" && row.isCandidate)) {
+      applyCell.appendChild(this.buildApplyProposalButton(row));
+    }
 
     if (tab === "potential" && row.isCandidate) {
       // F19: "An apply-exception action must identify the exact pair and

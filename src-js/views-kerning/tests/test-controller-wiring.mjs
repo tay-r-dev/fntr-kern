@@ -45,6 +45,21 @@ const Controller = vm.runInNewContext(`${classSource}\nKerningViewController;`, 
     querySelector: (selector) =>
       selector === "#kerning-pairtable-body" ? tbody : null,
     querySelectorAll: () => [],
+    // Enough of an element for the row-action builders: they set properties,
+    // set attributes and append children, and nothing here renders.
+    createElement: (tagName) => ({
+      tagName,
+      attributes: {},
+      children: [],
+      style: {},
+      classList: { toggle() {} },
+      setAttribute(name, value) {
+        this.attributes[name] = value;
+      },
+      appendChild(child) {
+        this.children.push(child);
+      },
+    }),
   },
 });
 
@@ -423,4 +438,42 @@ test("leaving a pair out of the preview is one undo step", async () => {
   // Setting it to what it already is writes nothing and pushes nothing.
   await view.setPairExcludedFromPreview("r", "o", false);
   assert.equal(pushed.length, 2);
+});
+
+test("every pair row carries a check that writes its own proposal", async () => {
+  const view = Object.create(Controller.prototype);
+  const written = [];
+  Object.assign(view, {
+    async writePairValues(pairs, valueFn, markApplied, confirmShadow) {
+      written.push({ pairs, value: valueFn(), markApplied, confirmShadow });
+    },
+  });
+
+  const button = view.buildApplyProposalButton({
+    left: "A",
+    right: "V",
+    suggestion: -42.4,
+  });
+  assert.equal(button.src, "/tabler-icons/check.svg");
+  assert.equal(button.disabled, undefined);
+  button.onclick({ stopPropagation() {} });
+  assert.equal(written.length, 1);
+  assert.equal(written[0].value, -42);
+  assert.equal(written[0].markApplied, true);
+  // The same shadow warning the batch action gives, for the same reason.
+  assert.equal(written[0].confirmShadow, true);
+  assert.equal(
+    JSON.stringify(written[0].pairs),
+    JSON.stringify([{ left: "A", right: "V" }])
+  );
+
+  // A stale proposal is the one number the table knows is wrong.
+  const stale = view.buildApplyProposalButton({
+    left: "A",
+    right: "V",
+    suggestion: -42,
+    stale: true,
+  });
+  assert.equal(stale.disabled, true);
+  assert.equal(stale.onclick, undefined);
 });
