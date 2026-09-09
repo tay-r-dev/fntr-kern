@@ -1,5 +1,5 @@
 import { Bezier } from "bezier-js";
-import { POINT_TYPE_OFF_CURVE_CUBIC, VarPackedPath } from "./var-path.js";
+import { VarPackedPath } from "./var-path.js";
 
 // How far past the corner each side runs. One number, in font units, the same
 // for every selected point.
@@ -146,19 +146,20 @@ function contourSegments(points, isClosed) {
   for (let i = 0; i < lastPair; i++) {
     const startIndex = onCurveIndices[i];
     const endIndex = onCurveIndices[(i + 1) % onCurveIndices.length];
-    const controls = [];
+    const controlIndices = [];
     for (
       let j = (startIndex + 1) % points.length;
       j !== endIndex;
       j = (j + 1) % points.length
     ) {
-      controls.push(points[j]);
+      controlIndices.push(j);
     }
+    const controls = controlIndices.map((j) => points[j]);
     segments.push({
       startIndex,
       endIndex,
+      controlIndices,
       kind: controls.length === 2 ? "cubic" : controls.length === 1 ? "quad" : "line",
-      controlType: controls[0]?.type || POINT_TYPE_OFF_CURVE_CUBIC,
       points: [points[startIndex], ...controls, points[endIndex]],
     });
   }
@@ -192,26 +193,35 @@ function overlapContour(unpacked, selectedIndices) {
     )
   );
 
+  // Every point keeps the point it came from: its curve type, its name, its
+  // smooth flag. Only the coordinates are the extension's to state. Rebuilding
+  // them as bare positions turned each extended handle into an on-curve point,
+  // which is a curve replaced by two corners.
   const newPoints = [];
+  const carry = (index, position) => ({
+    ...points[index],
+    x: position.x,
+    y: position.y,
+  });
   for (const segment of extended) {
     const [start, ...rest] = segment.points;
     const end = rest.pop();
     // A corner point splits in two: this segment's own end, and the next
-    // segment's own start. Both are emitted, and they are what cross.
-    newPoints.push({ ...points[segment.startIndex], x: start.x, y: start.y });
-    for (const control of rest) {
-      newPoints.push({ ...control, x: control.x, y: control.y });
-    }
-    if (corners.has(segment.endIndex) || (!isClosed && segment === extended.at(-1))) {
-      newPoints.push({ ...points[segment.endIndex], x: end.x, y: end.y });
-    }
-  }
-  // The corner is no longer smooth: the two sides now run past each other, and
-  // a smooth flag there would ask the editor to keep two crossing tangents
-  // aligned.
-  for (const point of newPoints) {
-    if (!point.type) {
-      point.smooth = false;
+    // segment's own start. Both are emitted, and they are what cross. Neither
+    // is smooth any more -- the two sides now run past each other, and a smooth
+    // flag would ask the editor to keep two crossing tangents aligned. Every
+    // other point's flag is left as the designer set it.
+    newPoints.push({
+      ...carry(segment.startIndex, start),
+      ...(corners.has(segment.startIndex) ? { smooth: false } : {}),
+    });
+    rest.forEach((control, i) => {
+      newPoints.push(carry(segment.controlIndices[i], control));
+    });
+    if (corners.has(segment.endIndex)) {
+      newPoints.push({ ...carry(segment.endIndex, end), smooth: false });
+    } else if (!isClosed && segment === extended.at(-1)) {
+      newPoints.push(carry(segment.endIndex, end));
     }
   }
   return { points: newPoints, isClosed };

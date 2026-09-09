@@ -110,6 +110,31 @@ describe("corner overlap", () => {
     expect(after.getPoint(4).x).to.be.closeTo(144, 1e-6);
   });
 
+  it("keeps the extended handles off-curve and every other flag as drawn", () => {
+    const path = new VarPackedPath();
+    path.appendUnpackedContour({
+      isClosed: true,
+      points: [
+        { x: 186, y: 526, smooth: true },
+        { x: 153, y: 526, type: "cubic" },
+        { x: 129, y: 510, type: "cubic" },
+        { x: 114, y: 478 },
+        { x: 113, y: 478 },
+        { x: 107, y: 520 },
+      ],
+    });
+    const after = addOverlap(path, [3]);
+    // Still a curve, not two corners: rebuilding the handles as bare positions
+    // dropped their type and replaced the segment with straight lines.
+    expect(after.getPoint(1).type).to.equal("cubic");
+    expect(after.getPoint(2).type).to.equal("cubic");
+    // A smooth point elsewhere on the contour is none of the overlap's business.
+    expect(after.getPoint(0).smooth).to.equal(true);
+    // The corner itself is no longer smooth on either of its two halves.
+    expect(after.getPoint(3).smooth).to.not.equal(true);
+    expect(after.getPoint(4).smooth).to.not.equal(true);
+  });
+
   it("leaves an unselected corner alone", () => {
     const before = cornerPath();
     const after = addOverlap(before, []);
