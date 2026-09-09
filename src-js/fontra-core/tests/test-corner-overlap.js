@@ -1,6 +1,10 @@
 import { expect } from "chai";
 import { addOverlap } from "@fontra/core/corner-overlap.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
+import { Bezier } from "bezier-js";
+
+const arcLength = ([p1, p2, p3, p4]) =>
+  new Bezier(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, p4.x, p4.y).length();
 
 // A cubic quarter-arc into a sharp corner, then a straight line out of it.
 function cornerPath() {
@@ -78,6 +82,32 @@ describe("corner overlap", () => {
     const lineStart = after.getPoint(4);
     expect(lineStart.y).to.equal(0);
     expect(lineStart.x).to.equal(130);
+  });
+
+  it("runs exactly the overlap distance past the corner", () => {
+    // The n's upper right terminal: a short arc arriving at a corner fast.
+    // Stepping the curve's parameter by the distance over its length overshoots
+    // here, and an extrapolated cubic bends harder the further out it goes, so
+    // the overshoot showed up as the corner curling away.
+    const path = new VarPackedPath();
+    path.appendUnpackedContour({
+      isClosed: true,
+      points: [
+        { x: 186, y: 526 },
+        { x: 153, y: 526, type: "cubic" },
+        { x: 129, y: 510, type: "cubic" },
+        { x: 114, y: 478 },
+        { x: 113, y: 478 },
+        { x: 107, y: 520 },
+      ],
+    });
+    const before = [0, 1, 2, 3].map((i) => path.getPoint(i));
+    const after = addOverlap(path, [3]);
+    const extended = [0, 1, 2, 3].map((i) => after.getPoint(i));
+    const added = arcLength(extended) - arcLength(before);
+    expect(added).to.be.closeTo(30, 0.05);
+    // The straight side runs the same distance the other way.
+    expect(after.getPoint(4).x).to.be.closeTo(144, 1e-6);
   });
 
   it("leaves an unselected corner alone", () => {

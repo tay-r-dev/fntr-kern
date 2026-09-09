@@ -75,20 +75,60 @@ function extendSegment(segment, startDistance, endDistance) {
   }
   let points = segment.points;
   if (endDistance) {
-    const length = cubicArcLength(points);
-    if (length) {
-      points = splitCubicAtT(points, (length + endDistance) / length)[0];
-    }
+    points = extendCubic(points, endDistance, true);
   }
   if (startDistance) {
-    // Measured again: the end extension above made this a different curve, and
-    // the parameter is a fraction of the curve actually being extended.
-    const length = cubicArcLength(points);
-    if (length) {
-      points = splitCubicAtT(points, -startDistance / length)[1];
-    }
+    points = extendCubic(points, startDistance, false);
   }
   return { ...segment, points };
+}
+
+// How far past the domain to run, for a given distance in font units.
+//
+// A curve's parameter is not its arc length: it runs faster where the curve is
+// flatter, and at a corner it is usually running fast. Treating the parameter
+// as length -- stepping t by the distance over the whole curve's length -- then
+// overshoots, and an extrapolated cubic bends harder the further out it goes,
+// so a small overshoot in t reads as a large change of curvature. Asking for 30
+// units of a short arc could carry the end nearly 50 and curl it.
+//
+// So the step is searched rather than assumed: how much arc the extension adds
+// grows with the step, so a bisection settles it. The cost is a few length
+// measurements on a curve, once per corner.
+const EXTENSION_SEARCH_STEPS = 40;
+
+function extendCubic(points, distance, atEnd) {
+  const base = cubicArcLength(points);
+  if (!base) {
+    return points;
+  }
+  const extendedBy = (step) => {
+    const extended = atEnd
+      ? splitCubicAtT(points, 1 + step)[0]
+      : splitCubicAtT(points, -step)[1];
+    return { extended, added: cubicArcLength(extended) - base };
+  };
+  // A bracket first. The parameter step is never more than the distance over
+  // the length, because the curve runs at least that fast somewhere, but it can
+  // be much less, so the upper bound is grown until it is one.
+  let high = distance / base;
+  for (
+    let i = 0;
+    i < EXTENSION_SEARCH_STEPS && extendedBy(high).added < distance;
+    i++
+  ) {
+    high *= 2;
+  }
+  let low = 0;
+  for (let i = 0; i < EXTENSION_SEARCH_STEPS; i++) {
+    const middle = (low + high) / 2;
+    if (extendedBy(middle).added < distance) {
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+  return extendedBy((low + high) / 2).extended;
 }
 
 // The contour as segments between on-curve points. Each carries the index of
