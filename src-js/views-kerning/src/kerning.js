@@ -427,7 +427,13 @@ export class KerningViewController extends ViewController {
     this.sceneSettingsController = this.sceneController.sceneSettingsController;
     this.sceneSettings = this.sceneSettingsController.model;
     this.sceneModel = this.sceneController.sceneModel;
-    this.sceneSettings.align = "left";
+    // NOT `this.sceneSettings.align = "left"` here. A write to the scene
+    // settings dispatches to SceneModel.updateScene, which reads the font's
+    // axes -- and the font controller has not been initialized yet in the
+    // constructor, so that read threw "can't access property axes,
+    // this._rootObject is undefined" as an uncaught rejection on every load.
+    // The assignment moved into start(), after `await super.start()`, which
+    // is the rule this file's own comment on start() already states.
     this.installPairPreviewLayout();
 
     // Backlog item 10: the preview's glyph re-spacing runs ONCE per frame,
@@ -528,6 +534,9 @@ export class KerningViewController extends ViewController {
   // all of it here.
   async start() {
     await super.start();
+    // Font-shaped, so it waits for the font controller -- see the note where
+    // the scene controller is built.
+    this.sceneSettings.align = "left";
 
     // Spec §4.1/§7.5: "the source is chosen in the status strip".
     // this.autokernSource (getter below) reads this field, and
