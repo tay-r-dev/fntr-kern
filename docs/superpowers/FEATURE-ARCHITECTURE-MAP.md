@@ -61,11 +61,14 @@ so retire them the same way once nothing references them.
 | F9  | **Base-curve expansion** | shipped                         | fork-original                  | 1 core + 1 editor module                                 | hold **D**/**S**, drag an outline on-curve  |
 | F11 | **Markers**              | shipped                         | fork-original                  | 2 core + 3 editor + panel + tool                         | Marker tool, `fontra.markers.*` layers      |
 | F12 | **Snapping**             | shipped                         | fork-original                  | 1 core + 1 editor + 1 layer                              | any drag, and the pen while it hovers       |
+| F13 | **Kerning view / autokern** | shipped                       | fork-original view, engine ported from halfkern (Google) | 4 core + a new `views-kerning` workspace (12 src files) | Font menu → Kerning, its own view/tab       |
 
 Feature sizes, owned code only, shared-file hunks excluded. The skeleton is an order of magnitude
 above everything else: skeleton ~16,300 lines, measure and labels ~2,050 (F2 and F5 share
-`distance-angle.js`), letterspacer ~1,900, Tunni ~1,850, snapping ~1,180, base expansion ~875
-(shared with the skeleton's drag), SpeedPunk ~460, corner overlap ~350, coarse grid ~66.
+`distance-angle.js`), letterspacer ~1,900, Tunni ~1,850, kerning view ~11,600 (about 10,400 of it
+in `views-kerning`, which is its own workspace and carries no shared-file hunks in this count),
+snapping ~1,180, base expansion ~875 (shared with the skeleton's drag), SpeedPunk ~460, corner
+overlap ~350, coarse grid ~66.
 
 ---
 
@@ -102,10 +105,15 @@ the semantics. `skeleton-editing.js` maps an event or a key to a behavior name.
 > There is no `skeleton-modifiers.js`. An earlier draft of this doc claimed one file in core and
 > one in the editor. Neither has ever existed in the tree.
 
-**R-G — Test split.** Only `fontra-core` has a test harness (mocha + chai, `npm test`).
+**R-G — Test split.** `fontra-core` has a test harness (mocha + chai, `npm test`).
 `views-editor` has no harness, so a change to `views-editor` carries a manual test matrix in its
 plan. Every commit runs three commands: `node --check` on each touched editor file, then
 `npx prettier --write`, then `npm run bundle`. All three must pass.
+
+`views-kerning` is the one exception. It carries its own harness, run from its own directory:
+`mocha tests --extension js` for the JS suite, plus `node --test tests/test-controller-wiring.mjs`
+for the one file that needs the real ES module loader instead of mocha's. Both are wired as the one
+`npm test` script in `views-kerning/package.json`.
 
 ---
 
@@ -420,6 +428,86 @@ it makes.
 
 ---
 
+### F13 — Kerning view / autokern
+
+A spacing and kerning workspace, reached from the Font menu after Font Overview. It types a phrase
+and reads its spacing on the left, and runs an all-pairs kerning suggestion engine on the right. The
+suggestion engine is ported from **halfkern** (Google, Behdad Esfahbod); its Python, its native
+dependencies and its `scikit-fmm` distance-field solve are all replaced, none of its code is kept.
+Full behavior is spec `KERNING-VIEW.md`.
+
+**Core (pure, mocha-tested):**
+
+| File                                       | Lines | Role                                                                                                                        |
+| ------------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/autokern-engine.js`        | 464   | **NEW** — the distance transform, the Gaussian, the overlap, the calibration, the search. Takes typed arrays and numbers, no DOM. |
+| `fontra-core/src/autokern-cache.js`         | 418   | **NEW** — the flat pair cache: creation, per-pair write, junk mark, override mark, stale mark, rerun set, outlier-dropped median |
+| `fontra-core/src/autokern-classes.js`       | 272   | **NEW** — composite inheritance and kern-row clustering over a cache, for class derivation                                    |
+| `fontra-core/src/glyph-raster.js`           | 67    | **NEW** — path to coverage bitmap. Needs a canvas, so it stays small and thin                                                  |
+| `fontra-core/tests/test-autokern-engine.js` | 478   | tests                                                                                                                         |
+| `fontra-core/tests/test-autokern-cache.js`  | 438   | tests                                                                                                                         |
+| `fontra-core/tests/test-autokern-classes.js`| 345   | tests                                                                                                                         |
+
+**View — `views-kerning`, a new workspace, not part of `views-editor`:**
+
+| File                                        | Lines | Role                                                                                                    |
+| -------------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------- |
+| `views-kerning/src/kerning.js`              | 7535  | **NEW** — the view controller: run worker wiring, pair table, classing UI, calibration, status strip, font-level undo |
+| `views-kerning/kerning.html`                | 819   | **NEW** — view markup                                                                                    |
+| `views-kerning/assets/kerning.css`          | 1014  | **NEW** — view styles                                                                                    |
+| `views-kerning/src/results-model.js`        | 448   | **NEW** — pair-row visibility, filtering and fold-group model consumed by `kerning.js`                    |
+| `views-kerning/src/autokern-worker.js`      | 172   | **NEW** — the run worker, with progress and cancel                                                        |
+| `views-kerning/src/input-tokens.js`         | 152   | **NEW** — the Glyph/Pair field token grammar                                                              |
+| `views-kerning/src/edit-tools-select.js`    | 95    | **NEW** — the pointer tool, selection only                                                                |
+| `views-kerning/src/results-selection.js`    | 65    | **NEW** — table row selection state                                                                       |
+| `views-kerning/src/pair-preview-layout.js`  | 39    | **NEW** — positions the left-pane preview pairs                                                            |
+| `views-kerning/src/start.js`                | 9     | **NEW** — view bootstrap                                                                                  |
+| `views-kerning/package.json`                | 15    | **NEW** — workspace manifest: exports, `fontra.view`, the view's own test harness (rail R-G exception)   |
+| `views-kerning/assets/phrase-presets.txt`   | 9     | **NEW** — shipped preset phrases, parsed by `parsePhrasePresets` (`character-lines.js`)                    |
+
+`views-kerning/tests/` holds 15 files, 2413 lines total, run by the view's own harness (§2, R-G):
+`test-aggregate-proposals.js` (414), `test-results-model.js` (249), `test-pair-exceptions.js` (218),
+`test-stale-rerun.js` (212), `ux-filters.test.js` (204), `test-input-tokens.js` (113),
+`test-async-revision-guard.js` (111), `test-source-consistency.js` (106), `test-pairtable-writes.js`
+(107), `test-results-rows.js` (77), `test-results-selection.js` (67), `test-analytics.js` (84),
+`test-hidden-results.js` (52), `test-phrase-restoration.js` (52), plus
+`test-controller-wiring.mjs` (347), which needs the real ES module loader and runs under
+`node --test` rather than mocha.
+
+Five claims that matter here.
+
+**The scene is imported from `views-editor`, never copied.** `kerning.js` imports the scene
+controller, the scene model, the hand tool, the metrics tools and the visualization-layer
+definitions straight from `@fontra/views-editor/...`. Nothing else in the tree imports across
+views — every other view (`views-fontinfo`, `views-fontoverview`, `views-applicationsettings`)
+only ever imports its own `start.js`. That is the honest cost of this choice: the closure is
+18,714 lines of `views-editor`, and it does not strip further, because the scene model imports
+skeleton editing and base-expand editing for its hit tests. Copying it instead would put two
+implementations of where glyphs sit in a line in the tree, since kerning is applied exactly where
+the scene model builds `positionedLines`. `views-editor/package.json` widened its `exports` map for
+this (`scene-controller.js`, `scene-model.js`, `edit-tools-metrics.js` and others), and
+`edit-tools-metrics.js` exports `SidebearingTool` and `KerningTool`, which it did not before.
+
+**The cache is derived data, and it lives in browser-side storage (OPFS), keyed per font and per
+source.** A run measures one source; switching source shows a different cache. It is expensive to
+rebuild and it can always be recomputed, so nothing writes it into the project. The designer's own
+judgement does go into the project, as two `customData` keys: `fontra.autokernJunkPairs` (per-pair
+junk marks) and `fontra.autokernClassColors` (the class panel's colours). Both round-trip through
+`fontController.performEdit`, exactly like any other project data.
+
+**One backend/registration set makes the view reachable.** A workspace entry
+(`src-js/views-kerning`) in the root `package.json`, a `"fontra": { "view": "kerning" }` field in
+`views-kerning/package.json`, a `kerning = "fontra.client"` entry point in `pyproject.toml` beside
+the other four views, and a menu item in `getFontMenuItems` (`fontra-menus.js`), added after
+`font-overview.title`.
+
+**`webpack.config.cjs` gives async chunks a content hash**, not only the entry bundles. Without one
+an async chunk keeps one filename forever, so a browser goes on serving its cached copy of that
+chunk while every hashed file around it is fresh. The autokern worker is exactly such a chunk, and
+without the hash a stale worker runs last week's code against this week's job.
+
+---
+
 ## 4. Shared-file reverse index
 
 Twelve files carry hunks from more than one feature. **Read this before you edit them.**
@@ -439,7 +527,7 @@ Twelve files carry hunks from more than one feature. **Read this before you edit
 | `fontra-webcomponents/src/range-slider.js`            | +53/−10  | **Skeleton panel** — `allowInputBeyondRange`, `displayValue`, `values`, `step`                                                     |
 | `fontra-webcomponents/src/ui-form.js`                 | +56/−0   | **Skeleton panel** — passes those slider options through; adds checkbox with indeterminate                                         |
 | `views-editor/src/panel-selection-info.js`            | +24/−1   | Hosts **letterspacer** + **skeleton-defaults** sub-panels                                                                          |
-| `fontra-core/assets/lang/en.js`                       | +107/−0  | skeleton-parameters 73, designspace-navigation 11, letterspacer 7, realtime shortcuts 5, skeleton tool 6, markers 8                |
+| `fontra-core/assets/lang/en.js`                       | +107/−0  | skeleton-parameters 73, designspace-navigation 11, letterspacer 7, realtime shortcuts 5, skeleton tool 6, markers 8, kerning view 3 |
 
 Small shared edits worth knowing about:
 
@@ -450,6 +538,13 @@ Small shared edits worth knowing about:
 | `fontra-core/src/var-path.js`       | +8/−2   | `copy()` tolerates a Proxy-wrapped `coordinates`                                                    |
 | `fontra-core/src/path-functions.js` | +45/−12 | quad handles + corner-overlap entry                                                                 |
 | `fontra-core/src/mouse-tracker.js`  | +2/−1   | —                                                                                                   |
+| `fontra-core/src/kerning-controller.js` | +15/−0 | **Kerning view** — `ensureKerningData` before a class edit on an unkerned font; clear the pair-function cache on `delete()`, matching `editContinuous` |
+| `fontra-core/src/canvas-controller.js` | +47/−10 | **Kerning view** — a `canvasRect` getter using `getBoundingClientRect()`. The old `offsetLeft`/`offsetTop` reads were only correct with `views-editor`'s exact layout nesting; the kerning view's three-column grid adds a positioned ancestor that made them read 0 |
+| `fontra-core/src/character-lines.js` | +26/−0 | **Kerning view** — `parsePhrasePresets`, the presets-file parser (spec §7.1), alongside the unchanged `characterLinesFromString` |
+| `fontra-core/src/fontra-menus.js`   | +24/−2  | **Kerning view** — the Font menu item, after `font-overview.title`; exports `rerouteViewPath` for reuse. Also carries a small, unrelated composition-feature hunk not yet in this map |
+| `fontra-core/assets/tabler-icons/check.svg` | +1/−0 | **Kerning view** — apply/accept icon in the pair table and the derive proposals list |
+| `fontra-webcomponents/src/glyph-cell.js` | +60/−8 | **Kerning view** — a stale-tile opacity rule and a `--glyph-cell-status-display` toggle for the class panel's tiles; renames the shared `throttledUpdate` listener into two named listeners |
+| `views-editor/src/edit-tools-metrics.js` | +3/−3 | **Kerning view** — exports `SidebearingTool` and `KerningTool` so `views-kerning` can import them (§3 F13) |
 
 ---
 
@@ -517,10 +612,13 @@ Run `cd src-js/fontra-core && npm test`. The suite currently holds **1690 tests*
 | Letterspacer                        | engine + persistence round-trip                                                             | panel, apply, overlay                                       |
 | Skeleton                            | model, generator (+ golden masters), modifiers, ribs, tunni, source defaults, interpolation | **all interaction** — drag, marquee, transform, tool, panel |
 | Corner overlap / quad / pen-connect | none                                                                                        | all                                                         |
+| Kerning view / autokern             | `fontra-core`: engine, cache, class derivation. `views-kerning`: its own mocha + `node --test` suite (results model, fold groups, token grammar, undo, controller wiring) | the imported scene and tools (rail R-G exception, own harness), on-canvas overlay, class panel |
 
 The gap in that right-hand column is structural, not an oversight. By forkra convention
 `views-editor` has no test harness. That is why every editor-side plan carries an explicit manual
-test matrix, and why "I ran the bundle" is not evidence that an interaction works.
+test matrix, and why "I ran the bundle" is not evidence that an interaction works. `views-kerning`
+is the one view with its own harness (§2, R-G), so its row above is automated on the JS logic it
+owns; the reused `views-editor` scene and tools stay manual, same as they are in the editor.
 
 ---
 
@@ -630,6 +728,17 @@ reader that resolves it. Go through that reader. Do not measure a generated segm
 **"Add a visualization"**
 Add a new draw in the feature's `visualization-layer-*.js`. Register it in
 `visualization-layer-definitions.js` with `draw: <importedFn>` only.
+
+**"Work on the kerning view"**
+Read spec `KERNING-VIEW.md` first, and its backlog `KERNING-VIEW-BACKLOG.md` for what changed since
+the spec was written and what is still open. Then §3 F13 above for the file map. The measurement
+math lives in `fontra-core/src/autokern-engine.js`, pure and mocha-tested — change it there, never
+in `views-kerning`. The cache shape lives in `autokern-cache.js`. Everything else — the run worker,
+the pair table, the classing UI, the calibration readout and the status strip — is
+`views-kerning/src/kerning.js`, which runs under the view's own harness (§2, R-G):
+`cd src-js/views-kerning && npm test`. Remember the scene is imported from `views-editor`, never
+copied (§3 F13) — a scene or tool fix belongs in `views-editor`, and `views-kerning` picks it up
+through the import, not through a second copy.
 
 ---
 

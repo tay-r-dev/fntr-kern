@@ -2072,7 +2072,10 @@ unformatted are left that way**, because reformatting buries a change in noise.
 
 ---
 
-## The kerning view (autokern)
+## The kerning view (autokern, map F13)
+
+**State: shipped, in active revision.** Ninety-eight commits touch this
+view since it branched from main.
 
 **`offsetLeft`/`offsetTop` are offsetParent-relative, not viewport-relative,
 and every existing caller's layout happened to have exactly one positioned
@@ -2193,6 +2196,10 @@ it, under two separate pairs of custom-property names.
   strip.** The third such omission in this panel: every membership or colour
   write has its own hand-written list of what to re-render, and each list was
   missing a different entry.
+- **The edge bar then pointed at the wrong edge.** It sat on the class's own
+  side; the kerned edge is the opposite one, since a side-1 class describes a
+  glyph's right profile. The custom properties are named after the class
+  rather than the edge now, so the two cannot be swapped back by accident.
 
 **Three faults around a class write, and each one hid a step the write was
 expected to have taken.**
@@ -2221,3 +2228,54 @@ expected to have taken.**
   threshold, and applying one drops its delta to zero by definition. **A
   filter deleted for being weak took a guarantee with it that nothing else
   restated.**
+
+**The exposure mark and the scoped rerun were a dead reader and a dead
+writer, at the same time.** Typing `o!` to show one class member's own rows
+beside its class rule did nothing: the token parser rejected any token
+containing `!`, and `exposedNames` -- the set `rowVisibleInDefault` reads to
+decide what a mark exposes -- was built and never filled. Fixing either
+alone would have left the report unchanged. The parser now accepts a
+trailing `!`, `_glyphFilter.exposed` is filled from it, and a glyph typed
+twice keeps one token, so a Ctrl-click rewrite of the field cannot silently
+drop the mark.
+
+**The scoped rerun asked the cache what it had measured, and a glyph with no
+ink is never in it.** Reported as "Recomputed 0 of 3 glyphs. Still stale:
+nbspace ruble space." A glyph with no ink forms no measurable pair, so the
+prefilter rejects it before it ever reaches the cache, and a reader that
+infers "new" from cache absence names it new for ever, however many times
+it is rerun. A run now writes `coveredGlyphNames` beside the cache, in
+`writeAutokernCacheToOPFS`; "new" means absent from that record, not absent
+from the cache, and only a finished run may write it, so a cancelled run
+leaves the record alone.
+
+**The pair preview read its pairs from the highlighted table rows, so any
+write that moved a row out of the filtered set threw the designer out of
+pair mode.** Applying a class rule drops its delta to zero, which prunes the
+row; a kerning drag through zero deletes the literal exception, which turns
+it into a plain class member. Either write emptied the highlight
+`updatePairPreview` reads, and pair mode fell back to phrase with no
+warning. `renderPairTable` now captures the highlighted pairs through
+`expandHighlightedRowsToPairs` before the prune and hands them to
+`updatePairPreview` directly.
+
+**Async chunks carried no content hash, so a cached worker ran old code
+against new jobs.** Entry chunks were named `[name].[contenthash].js`;
+`chunkFilename` in `webpack.config.cjs` was `[name].chunk.js`, one name
+forever. The autokern worker is such a chunk: a browser serving it from
+cache ran a build from an hour earlier against a fresh job and rejected a
+run mode that had been in the source, the build and the commit that whole
+hour. Reported twice as two different faults, because the same stale copy
+also carried the chunk-hash map and revived an already-fixed startup fault.
+Async chunks now take the same content hash the entry chunks take.
+
+**A font-data read placed in the constructor rather than in `start()`
+failed twice, the same way.** `ViewController.fromBackend` constructs a
+controller before awaiting `start()`, so a constructor read of font data
+runs before `fontController.initialize()` has populated it. Fixed once by
+moving `defaultSourceIdentifier`/`customData`/`sources` reads into an
+overridden `start()` after `await super.start()`; a later commit set the
+scene alignment in the constructor and threw the identical "can't access
+property 'axes', this._rootObject is undefined" until it moved to the same
+place. **Reading font data before `start()` finishes is not a mistake
+specific to one field.**
