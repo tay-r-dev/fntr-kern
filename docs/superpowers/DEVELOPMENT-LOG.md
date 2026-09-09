@@ -2121,3 +2121,47 @@ uppercase-`baseKey` fault alone turned a silent no-op into a thrown error, so
 the report "still doesn't work" was accurate both times and meant something
 different each time. **A hypothesis that explains four reports will happily
 absorb a fifth it does not fit.**
+
+**Four faults reported together, and three of them were one habit: a rule
+written where the work happened rather than where the question is answered.**
+
+- **Rounding was owed at the seam, not at each reader.** Fractions reached the
+  font because `kernPair` handed back the raw product of a sub-pixel search
+  and a strength multiplier, and each downstream reader was left to decide.
+  The seam is where the kern becomes font units, and it is one line. The
+  kerning tool's own arithmetic was already integral -- its step is 1, 5, 10
+  or 50 -- so the fraction always arrived in the base value it was adding to.
+  A tool that quantizes its delta and not its result quantizes nothing.
+- **`KerningViewController.medianOf` was called and never declared**, on the
+  fold-group fallback branch. The branch is unreachable through the UI, which
+  is why nothing threw, and the comment beside it says so -- it documented the
+  branch as defensive while the branch could only crash. **A guarded path
+  nothing exercises is not defensive; it is unverified.**
+- **Calibration read "Not yet calibrated" after every reload**, beside a full
+  table of numbers calibration had produced. Not a display bug and not a
+  calibration bug: the readout was in memory only, while the cache it
+  describes is in OPFS. Two halves of one run's result, stored in two places,
+  one of which forgets. It rides in the cache file now, which is also the only
+  store keyed per source, and the file grew a shape (`{entries, calibration}`)
+  that still reads the bare array the old version wrote.
+- **Stale marking was on class membership and on nothing else.** Every class
+  edit marked every member, and no outline edit marked anything -- the exact
+  inverse of what spec §4 asks for. Joining a class changes where a number is
+  WRITTEN; only redrawing a glyph changes what the number measures. The
+  filter is `glyphNamesWithGeometryChange` in `autokern-cache.js`: a change
+  under a glyph's `layers` counts, its own customData and its sources' do not,
+  so a development-status mark set in the editor no longer stales the font.
+  The guard has to ask whether any cache row touches those glyphs BEFORE
+  calling `markGlyphStale`, which returns a new Map whichever way it goes --
+  an identity check on its result is always true and always wrong.
+- **The class strip's tiles were the editor's tiles.** They carried the
+  development-status bar, which says how finished a drawing is and nothing
+  about classes, competing with the split class colours behind it. Turned off
+  through a new `--glyph-cell-status-display` custom property on
+  `glyph-cell.js` rather than a second tile component: the shadow DOM is
+  reachable from outside only through the properties it declares, and this is
+  the same hook `--cell-background-color` already is.
+- **Accepting a derived class refreshed the class list and not the strip.**
+  The strip IS the membership view, so it was the one thing that had to be
+  rebuilt. Three call sites re-render after a membership write and each had
+  grown its own list of what to refresh.
