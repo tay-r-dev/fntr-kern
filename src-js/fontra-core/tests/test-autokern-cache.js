@@ -4,6 +4,7 @@ import {
   markGlyphStale,
   markPairJunk,
   markPairOverride,
+  glyphNamesNotInCache,
   glyphNamesWithGeometryChange,
   medianDroppingOutliers,
   pairEnvelopesCanTouch,
@@ -368,5 +369,70 @@ describe("glyphNamesWithGeometryChange (issue 4)", () => {
       ],
     };
     expect(glyphNamesWithGeometryChange(change)).to.deep.equal(["a", "c"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New glyphs: pairsForRerun "marked-and-new" + glyphNamesNotInCache
+// ---------------------------------------------------------------------------
+
+describe("pairsForRerun marked-and-new", () => {
+  function cacheWith(entries) {
+    let cache = createCache();
+    for (const [left, right, value, flags] of entries) {
+      cache = setPairValue(cache, left, right, value);
+      if (flags?.stale) {
+        cache = markGlyphStale(cache, left);
+      }
+      if (flags?.junk) {
+        cache = markPairJunk(cache, left, right);
+      }
+    }
+    return cache;
+  }
+
+  it("takes the stale pairs and every candidate the cache has never held", () => {
+    const cache = cacheWith([
+      ["A", "B", -10, { stale: true }],
+      ["A", "C", -12],
+    ]);
+    const pairs = pairsForRerun(cache, "marked-and-new", [
+      { left: "A", right: "B" },
+      { left: "A", right: "C" },
+      { left: "A", right: "N" },
+      { left: "N", right: "A" },
+    ]);
+    expect(pairs).to.deep.equal([
+      { left: "A", right: "B" },
+      { left: "A", right: "N" },
+      { left: "N", right: "A" },
+    ]);
+  });
+
+  it("leaves a junk pair out, new or stale", () => {
+    const cache = cacheWith([["A", "B", -10, { junk: true }]]);
+    const pairs = pairsForRerun(cache, "marked-and-new", [{ left: "A", right: "B" }]);
+    expect(pairs).to.deep.equal([]);
+  });
+
+  it("is the stale set alone with no candidate list", () => {
+    const cache = cacheWith([["A", "B", -10, { stale: true }]]);
+    expect(pairsForRerun(cache, "marked-and-new")).to.deep.equal([
+      { left: "A", right: "B" },
+    ]);
+  });
+});
+
+describe("glyphNamesNotInCache", () => {
+  it("names the glyphs the cache has never measured, sorted", () => {
+    let cache = createCache();
+    cache = setPairValue(cache, "A", "B", -10);
+    expect(glyphNamesNotInCache(cache, ["B", "A", "Z", "N"])).to.deep.equal(["N", "Z"]);
+  });
+
+  it("answers nothing when every glyph is covered", () => {
+    let cache = createCache();
+    cache = setPairValue(cache, "A", "B", -10);
+    expect(glyphNamesNotInCache(cache, ["A", "B"])).to.deep.equal([]);
   });
 });

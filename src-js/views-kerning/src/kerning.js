@@ -88,6 +88,7 @@ import {
   markGlyphStale,
   markPairJunk,
   markPairOverride,
+  glyphNamesNotInCache,
   medianDroppingOutliers,
   pairKey,
 } from "@fontra/core/autokern-cache.js";
@@ -180,7 +181,7 @@ import {
   countHiddenPairs,
   countMedianContributors,
   countSavedPairExceptions,
-  diffStaleRerun,
+  diffRerunTargets,
   explicitPairExists,
   flattenPairAddresses,
   getStaleGlyphNames,
@@ -1085,6 +1086,31 @@ export class KerningViewController extends ViewController {
   // (results-model.js), the same set runStaleGlyphs below uses as its own
   // job scope, so the panel never claims a glyph is stale that the rerun
   // action itself would not cover, or vice versa.
+  // The scoped rerun's whole target set: the glyphs a stale pair names, plus
+  // the glyphs the cache has never measured at all.
+  //
+  // A glyph added to the font since the last run is not stale. Staleness is a
+  // statement about an entry, and a new glyph has none, so the stale walk can
+  // never reach it and the designer would have to rebuild the whole font to
+  // kern one added glyph. Both kinds want the same action, so they are one
+  // list and one button.
+  staleAndNewGlyphNames() {
+    if (!this.autokernCache) {
+      return { stale: [], added: [], all: [] };
+    }
+    const stale = getStaleGlyphNames(this.autokernCache);
+    // An empty cache means no run has happened yet, which is a reason to run
+    // the font, not a font of new glyphs. Reporting every glyph as new there
+    // would put the whole font behind a button labelled as a repair.
+    const added = this.autokernCache.size
+      ? glyphNamesNotInCache(
+          this.autokernCache,
+          Object.keys(this.fontController.glyphMap || {})
+        )
+      : [];
+    return { stale, added, all: [...new Set([...stale, ...added])].sort() };
+  }
+
   renderStaleSection() {
     const emptyEl = document.querySelector("#kerning-stale-empty");
     const summaryEl = document.querySelector("#kerning-stale-summary");
@@ -1094,16 +1120,23 @@ export class KerningViewController extends ViewController {
     if (!emptyEl || !summaryEl || !countEl || !namesEl || !rerunButton) {
       return;
     }
-    const staleGlyphNames = this.autokernCache
-      ? getStaleGlyphNames(this.autokernCache)
-      : [];
-    const hasStale = staleGlyphNames.length > 0;
+    const { stale, added, all } = this.staleAndNewGlyphNames();
+    const hasStale = all.length > 0;
     emptyEl.hidden = hasStale;
     summaryEl.hidden = !hasStale;
-    countEl.textContent = `${staleGlyphNames.length} glyph${
-      staleGlyphNames.length === 1 ? "" : "s"
-    } need${staleGlyphNames.length === 1 ? "s" : ""} recalculation:`;
-    namesEl.textContent = truncateGlyphList(staleGlyphNames);
+    // The two counts are stated separately, because they are different
+    // facts: one glyph was redrawn, the other has never been measured.
+    const parts = [];
+    if (stale.length) {
+      parts.push(`${stale.length} stale`);
+    }
+    if (added.length) {
+      parts.push(`${added.length} new`);
+    }
+    countEl.textContent = `${parts.join(", ")} glyph${
+      all.length === 1 ? "" : "s"
+    } need${all.length === 1 ? "s" : ""} recalculation:`;
+    namesEl.textContent = truncateGlyphList(all);
     // F02: "disable duplicate runs" -- this._staleRerunInFlight is set by
     // runStaleGlyphs below for the duration of one run.
     rerunButton.disabled = !hasStale || !!this._staleRerunInFlight;
@@ -1166,9 +1199,7 @@ export class KerningViewController extends ViewController {
     // Scope: active source, unfiltered by any table control -- the exact
     // same set the Stale glyphs panel above already shows (Task 17); not
     // recomputed a second way.
-    const staleCount = this.autokernCache
-      ? getStaleGlyphNames(this.autokernCache).length
-      : 0;
+    const staleCount = this.staleAndNewGlyphNames().all.length;
     staleEl.textContent = `${staleCount} glyph${staleCount === 1 ? "" : "s"}`;
 
     // Scope: all sources combined, unfiltered by any table control -- the
@@ -1220,7 +1251,7 @@ export class KerningViewController extends ViewController {
     if (this._staleRerunInFlight) {
       return;
     }
-    const staleGlyphNames = getStaleGlyphNames(this.autokernCache);
+    const { added, all: staleGlyphNames } = this.staleAndNewGlyphNames();
     if (!staleGlyphNames.length) {
       return;
     }
@@ -1243,7 +1274,7 @@ export class KerningViewController extends ViewController {
       );
       if (missingControlGlyphs.length) {
         await message(
-          "Can't re-run stale glyphs",
+          "Can't re-run stale and new glyphs",
           `The font is missing the control glyph(s) calibration needs: ${missingControlGlyphs.join(
             ", "
           )}. Add ${missingControlGlyphs.length > 1 ? "them" : "it"} to the font first.`
@@ -1255,7 +1286,20 @@ export class KerningViewController extends ViewController {
       // glyphs calibration always needs -- see this method's own top
       // comment. Deliberately NOT restricted to whatever glyph the designer
       // just edited.
-      const glyphsToRasterize = new Set([...CONTROL_GLYPH_NAMES, ...staleGlyphNames]);
+      //
+      // A NEW glyph pairs against the whole font, and the worker skips any
+      // pair whose raster it was not given -- silently. So when the scope
+      // holds a new glyph, every glyph is rasterized. That costs a whole
+      // font's rasters and still measures only the pairs that changed or
+      // appeared, which is the expensive half.
+      const candidatePool = added.length
+        ? Object.keys(this.fontController.glyphMap || {})
+        : staleGlyphNames;
+      const glyphsToRasterize = new Set([
+        ...CONTROL_GLYPH_NAMES,
+        ...staleGlyphNames,
+        ...candidatePool,
+      ]);
       const rasters = {};
       const envelopes = {};
       for (const glyphName of glyphsToRasterize) {
@@ -1292,13 +1336,13 @@ export class KerningViewController extends ViewController {
         rasters,
         envelopes,
         controlGlyphNames: CONTROL_GLYPH_NAMES,
-        glyphNames: staleGlyphNames,
-        mode: "marked",
+        glyphNames: candidatePool,
+        mode: "marked-and-new",
         existingCache: [...this.autokernCache.entries()],
       };
 
       await this.runAutokernWorker(job, {
-        title: "Re-running stale glyphs",
+        title: "Re-running stale and new glyphs",
         description: `Scope: ${truncateGlyphList(staleGlyphNames)}`,
       });
 
@@ -1309,15 +1353,19 @@ export class KerningViewController extends ViewController {
       // (runAutokernWorker's own "done" handler leaves this.autokernCache
       // untouched in every one of those non-success cases, per §10.5/gap 3
       // below) -- see diffStaleRerun's own comment.
-      const { completedGlyphs, remainingGlyphs } = diffStaleRerun(
+      // The target set is recomputed and diffed against what was asked for.
+      // A glyph still in it is still owed work, whichever of the two reasons
+      // put it there -- staleAndNewGlyphNames is the one definition of the
+      // scope, shared by the panel, the button and this readout.
+      const { completedGlyphs, remainingGlyphs } = diffRerunTargets(
         staleGlyphNames,
-        this.autokernCache
+        this.staleAndNewGlyphNames().all
       );
       if (progressEl) {
         progressEl.textContent = remainingGlyphs.length
           ? `Recomputed ${completedGlyphs.length} of ${staleGlyphNames.length} glyphs. ` +
             `Still stale: ${truncateGlyphList(remainingGlyphs)}.`
-          : `All ${completedGlyphs.length} stale glyphs recomputed.`;
+          : `All ${completedGlyphs.length} glyphs recomputed.`;
       }
     } finally {
       this._staleRerunInFlight = false;
@@ -4734,8 +4782,15 @@ export class KerningViewController extends ViewController {
 
   // The one way a glyph tile states its two class memberships, used by this
   // panel's strip and by the font-mode grid alike: a coloured bar down the
-  // tile's left edge for its side-1 class and down its right edge for its
-  // side-2 class.
+  // edge each class actually describes.
+  //
+  // The bar goes on the side being kerned, which is the opposite side from
+  // the class's own name. A side-1 class is a statement about the glyph's
+  // RIGHT profile, because side 1 is the left member of a pair and the kern
+  // sits to its right -- so its bar is the right edge. A side-2 class is
+  // about the LEFT profile, so its bar is the left edge. Naming the property
+  // after the class rather than the edge is what keeps the two from being
+  // swapped back by whoever reads this next.
   //
   // This replaces a two-stop gradient painted on a wrapper BEHIND the tile,
   // which was correct arithmetic and unreadable: with the tile's own
@@ -4754,8 +4809,8 @@ export class KerningViewController extends ViewController {
         #glyph-cell-container { position: relative; }
         #glyph-cell-container::after {
           content: ""; position: absolute; inset: 0; pointer-events: none;
-          border-left: 3px solid var(--kerning-class-left-color, transparent);
-          border-right: 3px solid var(--kerning-class-right-color, transparent);
+          border-left: 3px solid var(--kerning-class-side2-color, transparent);
+          border-right: 3px solid var(--kerning-class-side1-color, transparent);
           border-radius: inherit;
         }
       `);
@@ -4766,8 +4821,8 @@ export class KerningViewController extends ViewController {
     const side2Name = this.kerningController.rightPairGroupMapping[cell.glyphName];
     const side1Color = side1Name ? this.getClassColor("side1", side1Name) : null;
     const side2Color = side2Name ? this.getClassColor("side2", side2Name) : null;
-    cell.style.setProperty("--kerning-class-left-color", side1Color || "transparent");
-    cell.style.setProperty("--kerning-class-right-color", side2Color || "transparent");
+    cell.style.setProperty("--kerning-class-side1-color", side1Color || "transparent");
+    cell.style.setProperty("--kerning-class-side2-color", side2Color || "transparent");
 
     const tooltipParts = [];
     if (side1Name) {

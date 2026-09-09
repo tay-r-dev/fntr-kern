@@ -288,11 +288,20 @@ export function markGlyphStale(cache, glyphName) {
   return result;
 }
 
-// Which pairs should be (re)measured, in one of two modes (spec §4: "The
-// rerun has two modes, everything or marked only"). Both modes exclude
-// junk pairs (spec §4.2: "a junk pair is never measured again").
+// Which pairs should be (re)measured, in one of three modes (spec §4: "The
+// rerun has two modes, everything or marked only", plus the scoped mode
+// below). Every mode excludes junk pairs (spec §4.2: "a junk pair is never
+// measured again").
 //
 // mode "marked": every entry with `stale: true` (and not junk).
+//
+// mode "marked-and-new": those, plus every pair from `candidatePairsList`
+// the cache has never held an entry for. A glyph added to the font since the
+// last run is not stale -- staleness is a statement about an entry, and a new
+// glyph has none -- so "marked" alone can never reach it, and the designer
+// would have to rebuild the whole font to kern one added glyph. This is the
+// scoped rerun's mode: it covers what changed and what appeared, and nothing
+// that is already measured and still true.
 //
 // mode "everything": every non-junk entry already in the cache, PLUS --
 // only if the caller supplies `candidatePairsList` -- any pair from that
@@ -313,6 +322,28 @@ export function pairsForRerun(cache, mode, candidatePairsList = null) {
       if (entry.junk) continue;
       if (entry.stale) {
         result.push({ left: entry.left, right: entry.right });
+      }
+    }
+    return result;
+  }
+
+  if (mode === "marked-and-new") {
+    const result = [];
+    const seen = new Set();
+    for (const entry of cache.values()) {
+      if (entry.junk) continue;
+      if (entry.stale) {
+        seen.add(pairKey(entry.left, entry.right));
+        result.push({ left: entry.left, right: entry.right });
+      }
+    }
+    if (candidatePairsList) {
+      for (const { left, right } of candidatePairsList) {
+        const key = pairKey(left, right);
+        // Already queued as stale, or already measured and still true.
+        if (seen.has(key) || cache.has(key)) continue;
+        seen.add(key);
+        result.push({ left, right });
       }
     }
     return result;
@@ -340,6 +371,20 @@ export function pairsForRerun(cache, mode, candidatePairsList = null) {
   }
 
   throw new Error(`pairsForRerun: unknown mode "${mode}"`);
+}
+
+// Which of `glyphNames` the cache has never measured on either side. A glyph
+// added to the font since the last run appears here; a glyph every one of
+// whose pairs the prefilter rejected does too, which is the honest answer --
+// the cache genuinely holds nothing about it, and a rerun that covers it
+// costs one prefilter pass and measures nothing.
+export function glyphNamesNotInCache(cache, glyphNames) {
+  const seen = new Set();
+  for (const entry of cache.values()) {
+    seen.add(entry.left);
+    seen.add(entry.right);
+  }
+  return glyphNames.filter((name) => !seen.has(name)).sort();
 }
 
 // ---------------------------------------------------------------------------

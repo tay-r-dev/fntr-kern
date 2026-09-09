@@ -102,26 +102,39 @@ export function rowVisibleInPotential(row) {
 export function glyphMatchesCategory(glyphName, category, glyphMap) {
   // Name metadata is a fallback for callers without a font. In the view,
   // Unicode assignment comes exclusively from this font's glyph map.
-  const codePoints = glyphMap ? glyphMap[glyphName] || []
+  const codePoints = glyphMap
+    ? glyphMap[glyphName] || []
     : [getCodePointFromGlyphName(glyphName)].filter((cp) => cp != null);
   if (category === "non-unicode") return !codePoints.length;
   if (glyphMap) {
     const expressions = {
-      uppercase: /\p{Lu}/u, lowercase: /\p{Ll}/u,
-      punctuation: /\p{P}/u, symbols: /\p{S}/u,
-      marks: /\p{M}/u, numbers: /\p{N}/u,
+      uppercase: /\p{Lu}/u,
+      lowercase: /\p{Ll}/u,
+      punctuation: /\p{P}/u,
+      symbols: /\p{S}/u,
+      marks: /\p{M}/u,
+      numbers: /\p{N}/u,
     };
-    return codePoints.some((cp) => expressions[category]?.test(String.fromCodePoint(cp)));
+    return codePoints.some((cp) =>
+      expressions[category]?.test(String.fromCodePoint(cp))
+    );
   }
   const info = getGlyphInfoFromGlyphName(glyphName);
   switch (category) {
-    case "uppercase": return info?.case === "upper" || info?.case === "smallCaps";
-    case "lowercase": return info?.case === "lower";
-    case "punctuation": return info?.category === "Punctuation";
-    case "symbols": return info?.category === "Symbol";
-    case "marks": return info?.category === "Mark";
-    case "numbers": return info?.category === "Number";
-    default: return false;
+    case "uppercase":
+      return info?.case === "upper" || info?.case === "smallCaps";
+    case "lowercase":
+      return info?.case === "lower";
+    case "punctuation":
+      return info?.category === "Punctuation";
+    case "symbols":
+      return info?.category === "Symbol";
+    case "marks":
+      return info?.category === "Mark";
+    case "numbers":
+      return info?.category === "Number";
+    default:
+      return false;
   }
 }
 
@@ -135,7 +148,8 @@ export function glyphMatchesCategory(glyphName, category, glyphMap) {
 // anything else meaning "all"); Side = All checks either side, mirroring
 // F14's own "Class-to-unique includes both orientations" resolution.
 export function pairMatchesCategory(leftNames, rightNames, side, category) {
-  const matchesAny = (names) => names.some((name) => glyphMatchesCategory(name, category));
+  const matchesAny = (names) =>
+    names.some((name) => glyphMatchesCategory(name, category));
   if (side === "left") {
     return matchesAny(leftNames);
   }
@@ -286,19 +300,24 @@ export function getStaleGlyphNames(cache) {
 }
 
 // Task 17, ledger §10.6/§10.7 gap 2: "completedGlyphs/remainingGlyphs must be
-// derived on the main thread by diffing `stale` flags before/after -- the
-// worker itself reports no such breakdown." Works uniformly whether the run
-// finished, was cancelled, errored, or was rejected for belonging to a
-// stale/mismatched source (ledger §10.5/gap 3): in every one of those cases
-// `afterCache` is either the freshly-applied result or the untouched prior
-// cache, and a target glyph that still has any stale pair on it is simply
-// still in `getStaleGlyphNames(afterCache)` -- no separate "did it succeed"
-// branch is needed here.
-export function diffStaleRerun(targetGlyphNames, afterCache) {
-  const stillStale = new Set(getStaleGlyphNames(afterCache));
+// derived on the main thread ... the worker itself reports no such
+// breakdown." Works uniformly whether the run finished, was cancelled,
+// errored, or was rejected for belonging to a stale/mismatched source
+// (ledger §10.5/gap 3): in every one of those cases the caller recomputes
+// its own target set afterwards, and a target still in it is simply still
+// owed -- no separate "did it succeed" branch is needed here.
+//
+// `stillOwedNames` is that recomputed set, not a cache. It used to be a
+// cache, and this function read staleness out of it, which made the answer
+// wrong the moment the rerun's scope grew to cover NEW glyphs as well: a new
+// glyph is never stale, so a cancelled run would have reported every one of
+// them finished. Taking the set instead leaves the caller's own definition
+// of "still owed" as the single one.
+export function diffRerunTargets(targetGlyphNames, stillOwedNames) {
+  const stillOwed = new Set(stillOwedNames);
   return {
-    completedGlyphs: targetGlyphNames.filter((name) => !stillStale.has(name)),
-    remainingGlyphs: targetGlyphNames.filter((name) => stillStale.has(name)),
+    completedGlyphs: targetGlyphNames.filter((name) => !stillOwed.has(name)),
+    remainingGlyphs: targetGlyphNames.filter((name) => stillOwed.has(name)),
   };
 }
 

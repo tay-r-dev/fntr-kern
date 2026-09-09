@@ -8,7 +8,7 @@ import {
 import {
   aggregateStale,
   countMedianContributors,
-  diffStaleRerun,
+  diffRerunTargets,
   explicitPairExists,
   getStaleGlyphNames,
   isStaleAsyncResult,
@@ -52,9 +52,7 @@ describe("results-model", () => {
     const controllerWithZero = { getPairValues: () => [0, null] };
     const controllerWithNothing = { getPairValues: () => undefined };
     expect(explicitPairExists(controllerWithZero, "Adieresis", "W")).to.equal(true);
-    expect(explicitPairExists(controllerWithNothing, "Adieresis", "W")).to.equal(
-      false
-    );
+    expect(explicitPairExists(controllerWithNothing, "Adieresis", "W")).to.equal(false);
   });
 
   it("passesNumericFilters: column visibility never enters this predicate", () => {
@@ -69,24 +67,27 @@ describe("results-model", () => {
       passesNumericFilters({ current: -80, proposed: -84, delta: -4 }, f)
     ).to.equal(false);
     expect(
-      passesNumericFilters({ current: -80, proposed: 0, delta: 80 }, {
-        ...f,
-        maxDelta: 20,
-      })
+      passesNumericFilters(
+        { current: -80, proposed: 0, delta: 80 },
+        {
+          ...f,
+          maxDelta: 20,
+        }
+      )
     ).to.equal(false);
   });
 
   it("passesNumericFilters: exact hideZeroCurrentSuggestions predicate", () => {
     const f = { minDelta: 0, maxDelta: null, hideZeroCurrentSuggestions: true };
-    expect(
-      passesNumericFilters({ current: 0, proposed: 10, delta: 10 }, f)
-    ).to.equal(false);
-    expect(
-      passesNumericFilters({ current: 0, proposed: 0, delta: 0 }, f)
-    ).to.equal(true);
-    expect(
-      passesNumericFilters({ current: -5, proposed: 10, delta: 15 }, f)
-    ).to.equal(true);
+    expect(passesNumericFilters({ current: 0, proposed: 10, delta: 10 }, f)).to.equal(
+      false
+    );
+    expect(passesNumericFilters({ current: 0, proposed: 0, delta: 0 }, f)).to.equal(
+      true
+    );
+    expect(passesNumericFilters({ current: -5, proposed: 10, delta: 15 }, f)).to.equal(
+      true
+    );
   });
 
   it("passesNumericFilters: F18 inclusive bounds -- min and max are both eligible at the boundary", () => {
@@ -103,9 +104,9 @@ describe("results-model", () => {
     expect(passesNumericFilters({ current: 0, proposed: 21, delta: 21 }, f)).to.equal(
       false
     );
-    expect(
-      passesNumericFilters({ current: 0, proposed: 4.9, delta: 4.9 }, f)
-    ).to.equal(false);
+    expect(passesNumericFilters({ current: 0, proposed: 4.9, delta: 4.9 }, f)).to.equal(
+      false
+    );
   });
 
   it("passesNumericFilters: an unavailable delta always passes the numeric bounds", () => {
@@ -133,7 +134,7 @@ describe("results-model", () => {
   });
 
   // Task 17, ledger §10.6/§10.7 gap 2.
-  describe("getStaleGlyphNames / diffStaleRerun", () => {
+  describe("getStaleGlyphNames / diffRerunTargets", () => {
     function threeGlyphCache() {
       let cache = createCache();
       cache = setPairValue(cache, "l", "l", 999);
@@ -167,38 +168,38 @@ describe("results-model", () => {
       expect(getStaleGlyphNames(threeGlyphCache())).to.deep.equal([]);
     });
 
-    it("diffStaleRerun: a fully-recomputed target set has no remaining stale glyphs", () => {
+    it("diffRerunTargets: a fully-recomputed target set has no remaining stale glyphs", () => {
       const before = markGlyphStale(threeGlyphCache(), "n");
       const target = getStaleGlyphNames(before); // ["l", "n", "o"]
       let after = setPairValue(before, "l", "n", 1);
       after = setPairValue(after, "n", "l", 1);
       after = setPairValue(after, "n", "o", 1);
       after = setPairValue(after, "o", "n", 1);
-      expect(diffStaleRerun(target, after)).to.deep.equal({
+      expect(diffRerunTargets(target, getStaleGlyphNames(after))).to.deep.equal({
         completedGlyphs: ["l", "n", "o"],
         remainingGlyphs: [],
       });
     });
 
-    it("diffStaleRerun: a partner glyph with no raster is left stale -- reported as remaining, not silently dropped", () => {
+    it("diffRerunTargets: a partner glyph with no raster is left stale -- reported as remaining, not silently dropped", () => {
       const before = markGlyphStale(threeGlyphCache(), "n");
       const target = getStaleGlyphNames(before);
       // Only "n" x "l" got remeasured (e.g. only n's own raster was
       // supplied); "l" x "n" and "n" x "o" are still stale.
       const after = setPairValue(before, "n", "l", 1);
-      expect(diffStaleRerun(target, after)).to.deep.equal({
+      expect(diffRerunTargets(target, getStaleGlyphNames(after))).to.deep.equal({
         completedGlyphs: [],
         remainingGlyphs: ["l", "n", "o"],
       });
     });
 
-    it("diffStaleRerun: a cancelled/rejected run whose cache is untouched reports every target still remaining", () => {
+    it("diffRerunTargets: a cancelled/rejected run whose cache is untouched reports every target still remaining", () => {
       const before = markGlyphStale(threeGlyphCache(), "n");
       const target = getStaleGlyphNames(before);
       // Cache never changed (cancel, error, or a source-mismatch rejection
       // per ledger §10.5/gap 3) -- F02's own requirement: "a failed or
       // cancelled run must not label unprocessed results fresh."
-      expect(diffStaleRerun(target, before)).to.deep.equal({
+      expect(diffRerunTargets(target, getStaleGlyphNames(before))).to.deep.equal({
         completedGlyphs: [],
         remainingGlyphs: ["l", "n", "o"],
       });
