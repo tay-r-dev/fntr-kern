@@ -1562,17 +1562,31 @@ export class KerningViewController extends ViewController {
     }
     this.sceneModel?.updateScene();
     this.renderPairTable?.();
-    await this.writePreviewExclusionsToProject();
+    const changes = await this.writePreviewExclusionsToProject();
+    if (changes?.hasChange) {
+      this.autokernUndoStack?.pushUndoRecord({
+        change: changes.change,
+        rollbackChange: changes.rollbackChange,
+        info: {
+          label: excluded
+            ? "kerning view: leave pair out of the preview"
+            : "kerning view: show pair in the preview",
+          kind: "pairValues",
+        },
+      });
+    }
   }
 
   // The whole list each time, the same way the junk list is written, so the
   // project's copy cannot drift from the set in hand.
+  // Returns what performEdit recorded, so the caller can put it on the undo
+  // stack. Undo replays the customData change; the Set is read back from it.
   async writePreviewExclusionsToProject() {
     const excluded = [...this._previewExcludedPairs].map((key) => {
       const [source, left, right] = JSON.parse(key);
       return { source, left, right };
     });
-    await this.fontController.performEdit(
+    return await this.fontController.performEdit(
       "kerning view: exclude pair from preview",
       "customData",
       (root) => {
@@ -7454,13 +7468,19 @@ export class KerningViewController extends ViewController {
   // recently than that tool's own last edit -- in that one case, Ctrl-Z
   // undoes the tool's (older) edit first. Switching to pointer/hand tool
   // before undoing avoids it.
+  // The dispatch asks whether the tool HAS anything to undo, not merely
+  // whether it knows how. Asking only whether the method exists made a metrics
+  // tool win with an empty stack, and a metrics tool is the normal state of
+  // this view -- so applying a row, creating an exception or removing one was
+  // pushed onto this view's stack and then never reached by Ctrl-Z. A tool
+  // with a record still wins, as before.
   callDelegateMethod(methodName, ...args) {
     const tool = this.tools[this.selectedToolIdentifier];
-    if (tool?.[methodName]) {
+    const isRedo = args[0];
+    if (tool?.[methodName] && tool.canUndoRedo?.(isRedo)) {
       return tool[methodName](...args);
-    } else {
-      return this[methodName](...args);
     }
+    return this[methodName](...args);
   }
 
   getUndoRedoLabel(isRedo) {
@@ -7543,6 +7563,11 @@ export class KerningViewController extends ViewController {
     // TODO handle error
     this.fontController.notifyEditListeners("editFinal", this);
 
+    // A replayed record may have been a customData change, and the preview
+    // exclusions are held as a Set beside it. Read back rather than patched,
+    // so undo and redo cannot leave the two disagreeing.
+    this.loadPreviewExclusions();
+    this.sceneModel?.updateScene();
     this.renderPairTable();
   }
 

@@ -33,6 +33,7 @@ const Controller = vm.runInNewContext(`${classSource}\nKerningViewController;`, 
   ...inputTokens,
   retainVisible,
   rowId: (source, left, right) => JSON.stringify([source, left, right]),
+  AUTOKERN_PREVIEW_EXCLUDED_CUSTOM_DATA_KEY: "fontra.autokernPreviewExcluded",
   pairKey: (left, right) => `${left}/${right}`,
   layoutPairPreview,
   normalizePairsPerRow,
@@ -355,4 +356,71 @@ test("manual kerning starts from the preview and the ribbon shows the remaining 
   assert.equal(view.getSuggestionPreviewValue("r", "o", { value: -35 }), -35);
   view.suggestionPreviewSettings.model.enabled = false;
   assert.equal(tool.getEditContext().values[0], 0);
+});
+
+test("undo reaches this view's own stack when the active tool has nothing to undo", () => {
+  const view = Object.create(Controller.prototype);
+  const called = [];
+  Object.assign(view, {
+    selectedToolIdentifier: "kerning-tool",
+    tools: {
+      "kerning-tool": {
+        canUndoRedo: (isRedo) => toolHasRecord,
+        doUndoRedo: (isRedo) => called.push(["tool", isRedo]),
+      },
+    },
+    doUndoRedo: (isRedo) => called.push(["view", isRedo]),
+  });
+  let toolHasRecord = false;
+  // A metrics tool is the normal state of this view. With an empty stack of
+  // its own it used to win anyway, so a pair-table edit was never reached.
+  view.callDelegateMethod("doUndoRedo", false);
+  toolHasRecord = true;
+  view.callDelegateMethod("doUndoRedo", false);
+  assert.deepEqual(called, [
+    ["view", false],
+    ["tool", false],
+  ]);
+});
+
+test("leaving a pair out of the preview is one undo step", async () => {
+  const view = Object.create(Controller.prototype);
+  const pushed = [];
+  let customData = {};
+  Object.assign(view, {
+    _autokernSourceIdentifier: "s1",
+    _previewExcludedPairs: new Set(),
+    fontController: {
+      get customData() {
+        return customData;
+      },
+      async performEdit(label, key, mutate) {
+        const before = JSON.parse(JSON.stringify(customData));
+        mutate({ customData });
+        return { hasChange: true, change: { customData }, rollbackChange: before };
+      },
+    },
+    autokernUndoStack: { pushUndoRecord: (record) => pushed.push(record) },
+  });
+  await view.setPairExcludedFromPreview("r", "o", true);
+  assert.equal(view.isPairExcludedFromPreview("r", "o"), true);
+  // Another source is a separate statement about the same pair.
+  assert.equal(view.isPairExcludedFromPreview("r", "o", "s2"), false);
+  // Compared as text: the controller is evaluated in its own realm, so its
+  // objects are never reference-equal to this file's.
+  assert.equal(
+    JSON.stringify(customData["fontra.autokernPreviewExcluded"]),
+    JSON.stringify([{ source: "s1", left: "r", right: "o" }])
+  );
+  assert.equal(pushed.length, 1);
+  assert.equal(pushed[0].info.kind, "pairValues");
+
+  await view.setPairExcludedFromPreview("r", "o", false);
+  assert.equal(view.isPairExcludedFromPreview("r", "o"), false);
+  assert.equal(customData["fontra.autokernPreviewExcluded"], undefined);
+  assert.equal(pushed.length, 2);
+
+  // Setting it to what it already is writes nothing and pushes nothing.
+  await view.setPairExcludedFromPreview("r", "o", false);
+  assert.equal(pushed.length, 2);
 });
