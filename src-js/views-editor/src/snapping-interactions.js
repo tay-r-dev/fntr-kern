@@ -121,7 +121,7 @@ function movedSkeletonPointKeys(
 // generate. It moves too, which is why it is weightless by default rather than
 // simply absent - the designer can give it a weight and snap a point to the
 // outline it is making.
-function partitionMovedPointIndices(sceneController, movedPointIndices) {
+function partitionMovedPointIndices(sceneController, movedPointIndices, sceneOptions) {
   const excluded = new Set(movedPointIndices);
   const ownGenerated = new Set();
   const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
@@ -281,7 +281,8 @@ export function buildSnapScene(
   }
   const { excluded, ownGenerated } = partitionMovedPointIndices(
     sceneController,
-    excludePointIndices
+    excludePointIndices,
+    sceneOptions
   );
 
   const metrics = [];
@@ -365,7 +366,11 @@ export function buildSnapScene(
   // Rib ends come from the model, never recomputed here.
   const skeletonData = getSkeletonData(glyph);
   const skeletonOutline = skeletonData ? { skeletonData, path: glyph?.path } : null;
-  const movedSkeletonPoints = movedSkeletonPointKeys(sceneController, excluded);
+  const movedSkeletonPoints = movedSkeletonPointKeys(
+    sceneController,
+    excluded,
+    sceneOptions
+  );
   for (const contour of skeletonData?.contours || []) {
     // The contour the drag came from is the one whose own points the designer is
     // aligning to - the neighbour a stem should stay level with is on it. Any
