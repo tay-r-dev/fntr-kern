@@ -2171,3 +2171,25 @@ written where the work happened rather than where the question is answered.**
   The strip IS the membership view, so it was the one thing that had to be
   rebuilt. Three call sites re-render after a membership write and each had
   grown its own list of what to refresh.
+
+**A tile's two class colours were one fact written three ways.** The class
+panel's strip painted a two-stop gradient on a wrapper behind the tile and
+made the tile's own background transparent to let it through; the font-mode
+grid painted the same two bars twice over, once as a pseudo-element inside
+the component and once as an inset box-shadow on the host box from outside
+it, under two separate pairs of custom-property names.
+
+- **The gradient was correct arithmetic and unreadable.** Two halves meeting
+  at 50 per cent with no edge between them read as one block of colour, so a
+  left class and a right class looked marked on the same side. Reported that
+  way, and three readings of the gradient found nothing wrong with it,
+  because nothing was. **A readout can be right and still not be read.**
+- **The fix is the convention that was already in the tree**, an edge bar per
+  side, now in one method both tiles call. Which meant deleting two copies
+  rather than adding a third -- rail R-B, and the drift it exists to stop was
+  already live: the grid's two copies could have disagreed about which edge
+  means which side and nothing would have caught it.
+- **A colour change refreshed the class list and the font grid and not the
+  strip.** The third such omission in this panel: every membership or colour
+  write has its own hand-written list of what to re-render, and each list was
+  missing a different entry.
