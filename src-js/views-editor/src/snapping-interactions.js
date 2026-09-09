@@ -88,8 +88,19 @@ function* iterPathSegments(path) {
 // The skeleton points the drag moves: the ones selected outright, plus the ones
 // the moved path points were generated from. Always a provenance lookup, never a
 // geometric match (R-D).
-function movedSkeletonPointKeys(sceneController, movedPointIndices) {
-  const moved = new Set(parseSelection(sceneController.selection).skeletonPoint || []);
+function movedSkeletonPointKeys(
+  sceneController,
+  movedPointIndices,
+  { keepSelectedSkeletonPoints = false } = {}
+) {
+  // Selection means "the drag moves this" for every tool but the pen. The pen
+  // keeps its anchor selected while it draws, and that anchor is the point the
+  // designer most wants to align the next one to, so a pen session keeps it.
+  const moved = new Set(
+    keepSelectedSkeletonPoints
+      ? []
+      : parseSelection(sceneController.selection).skeletonPoint || []
+  );
   const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
   const path = positionedGlyph?.glyph?.path;
   const skeletonData = getSkeletonData(positionedGlyph?.glyph);
@@ -120,7 +131,11 @@ function partitionMovedPointIndices(sceneController, movedPointIndices) {
     return { excluded, ownGenerated };
   }
 
-  const movedSkeletonPoints = movedSkeletonPointKeys(sceneController, excluded);
+  const movedSkeletonPoints = movedSkeletonPointKeys(
+    sceneController,
+    excluded,
+    sceneOptions
+  );
   if (!movedSkeletonPoints.size) {
     return { excluded, ownGenerated };
   }
@@ -254,7 +269,11 @@ function makeOnScreenTest(sceneController, positionedGlyph) {
     point.x >= xMin && point.x <= xMax && point.y >= yMin && point.y <= yMax;
 }
 
-export function buildSnapScene(sceneController, excludePointIndices) {
+export function buildSnapScene(
+  sceneController,
+  excludePointIndices,
+  sceneOptions = {}
+) {
   const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
   const glyph = positionedGlyph?.glyph;
   if (!glyph) {
@@ -466,10 +485,18 @@ export function forceRefreshSnapping(sceneController) {
 }
 
 export class SnappingSession {
-  constructor(sceneController, { excludePointIndices = [] } = {}) {
+  constructor(
+    sceneController,
+    { excludePointIndices = [], keepSelectedSkeletonPoints = false } = {}
+  ) {
     this.sceneController = sceneController;
     this.excludePointIndices = excludePointIndices;
-    this.scene = buildSnapScene(sceneController, excludePointIndices);
+    this.sceneOptions = { keepSelectedSkeletonPoints };
+    this.scene = buildSnapScene(
+      sceneController,
+      excludePointIndices,
+      this.sceneOptions
+    );
     this.held = null;
     // Carried between frames so the resolver can tell a guide passed through from
     // one the designer is moving toward. See the overrule rule in snapping.js.
@@ -529,7 +556,11 @@ export class SnappingSession {
   // A drag freezes its scene, because the moved geometry must not chase itself.
   // The pen adds geometry as it goes, so it re-reads before every hover.
   refresh() {
-    this.scene = buildSnapScene(this.sceneController, this.excludePointIndices);
+    this.scene = buildSnapScene(
+      this.sceneController,
+      this.excludePointIndices,
+      this.sceneOptions
+    );
     this._epoch = this.sceneController.sceneModel.snapSceneEpoch || 0;
   }
 

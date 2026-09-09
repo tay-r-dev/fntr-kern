@@ -198,6 +198,7 @@ export class SkeletonPenTool extends BaseTool {
     if (!this._snapping || this._snappingGlyph !== glyphName) {
       this._snapping = new SnappingSession(this.sceneController, {
         excludePointIndices: [],
+        keepSelectedSkeletonPoints: true,
       });
       this._snappingGlyph = glyphName;
     }
