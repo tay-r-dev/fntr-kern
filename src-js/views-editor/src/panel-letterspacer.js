@@ -5,6 +5,12 @@ import {
 } from "@fontra/core/fontra-internal-data.js";
 import { FONTRA_INTERNAL_SECTIONS } from "@fontra/core/fontra-internal-schema.js";
 import { getGlyphInfoFromGlyphName } from "@fontra/core/glyph-data.js";
+import {
+  getMyGlyphSets,
+  GlyphSetsController,
+  readProjectGlyphSets,
+  THIS_FONTS_GLYPHSET,
+} from "@fontra/core/glyphsets-controller.js";
 import * as html from "@fontra/core/html-utils.js";
 import {
   calculateSidebearing,
@@ -16,6 +22,7 @@ import {
   setDepth,
 } from "@fontra/core/letterspacer-engine.js";
 import { translate } from "@fontra/core/localization.js";
+import { ObservableController } from "@fontra/core/observable-object.js";
 import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
 import { Form } from "@fontra/web-components/ui-form.js";
 import Panel from "./panel.js";
@@ -176,6 +183,20 @@ function setGlyphLetterspacerReference(glyph, value) {
   setFontraInternalSection(glyph, FONTRA_INTERNAL_SECTIONS.LETTERSPACER, section);
 }
 
+// The subsets the bulk apply offers, in the order they are shown. Each one is
+// the glyph category the automatic reference rules already sort a glyph into,
+// so a subset a designer checks is the same group the spacing engine treats
+// alike.
+const BULK_SUBSETS = [
+  { key: "uppercase", label: "Uppercase" },
+  { key: "lowercase", label: "Lowercase" },
+  { key: "smallcaps", label: "Smallcaps" },
+  { key: "numbers", label: "Numbers" },
+  { key: "punctuation", label: "Punctuation" },
+  { key: "symbols", label: "Symbols" },
+  { key: "marks", label: "Marks" },
+];
+
 export default class LetterspacerPanel extends Panel {
   identifier = "letterspacer";
   iconPath = "/tabler-icons/spacing-horizontal.svg";
@@ -232,6 +253,15 @@ export default class LetterspacerPanel extends Panel {
     this.reverseWarningTooltip = null;
     this.debugLogging = true;
     this.algorithmEnabled = true;
+
+    // Bulk apply: which glyphset to walk and which subsets of it to space.
+    // Session state, not persisted -- it is a one-shot action, not a setting
+    // the spacing of a glyph depends on.
+    this.bulkGlyphsetId = "";
+    this.bulkSubsets = Object.fromEntries(
+      BULK_SUBSETS.map((subset) => [subset.key, true])
+    );
+    this.bulkStatus = "";
   }
 
   getContentElement() {
@@ -383,12 +413,50 @@ export default class LetterspacerPanel extends Panel {
             class: "calculated-values",
           },
 
+          { type: "divider" },
+
+          {
+            type: "header",
+            label: translate("sidebar.letterspacer.bulk.title"),
+          },
+
+          {
+            type: "select",
+            key: "bulkGlyphset",
+            label: translate("sidebar.letterspacer.bulk.glyphset"),
+            value: this.bulkGlyphsetId,
+            options: this.getBulkGlyphsetOptions(),
+          },
+
+          ...BULK_SUBSETS.map((subset) => ({
+            type: "checkbox",
+            key: `bulkSubset.${subset.key}`,
+            label: subset.label,
+            value: !!this.bulkSubsets[subset.key],
+          })),
+
+          {
+            type: "header",
+            label: this.bulkStatus,
+            class: "bulk-status",
+          },
+
           { type: "spacer" }
         );
       }
 
       this.infoForm.setFieldDescriptions(formContents);
       this.infoForm.onFieldChange = async (fieldItem, value) => {
+        // Bulk apply is a one-shot action, not a spacing parameter: its two
+        // controls are held on the panel and never written to the font.
+        if (fieldItem.key === "bulkGlyphset") {
+          this.bulkGlyphsetId = value || "";
+          return;
+        }
+        if (fieldItem.key.startsWith("bulkSubset.")) {
+          this.bulkSubsets[fieldItem.key.slice("bulkSubset.".length)] = !!value;
+          return;
+        }
         if (this._suppressPersist) {
           this.params[fieldItem.key] = value;
           return;
@@ -440,6 +508,20 @@ export default class LetterspacerPanel extends Panel {
         buttonContainer.appendChild(applyButton);
 
         this.infoForm.contentElement.appendChild(buttonContainer);
+
+        // The bulk action sits below the section, under its own controls. It
+        // does not need a glyph on the canvas: it spaces the glyphset it is
+        // pointed at, so it stays enabled where Calculate and Apply cannot.
+        const bulkButtonContainer = html.div({ class: "button-container" }, [
+          html.button(
+            {
+              onclick: () => this.applySpacingToGlyphSet(),
+              class: "apply-button",
+            },
+            [translate("sidebar.letterspacer.bulk.apply")]
+          ),
+        ]);
+        this.infoForm.contentElement.appendChild(bulkButtonContainer);
       }
     } finally {
       this._suppressPersist = false;
@@ -513,7 +595,6 @@ export default class LetterspacerPanel extends Panel {
     // Store calculated values from the edit operation
     let calculatedLSB = null;
     let calculatedRSB = null;
-    let warnedNoRefZone = false;
 
     await this.sceneController.editGlyphAndRecordChanges(
       (glyph) => {
@@ -522,8 +603,8 @@ export default class LetterspacerPanel extends Panel {
         );
 
         for (const [layerName, layerGlyph] of Object.entries(layerGlyphs)) {
-          const path = layerGlyph.path;
-          const bounds = path.getBounds?.() || path.getControlBounds?.();
+          const bounds =
+            layerGlyph.path.getBounds?.() || layerGlyph.path.getControlBounds?.();
           if (!bounds) continue;
 
           const refBounds = this.getReferenceBoundsForLayer(
@@ -535,62 +616,15 @@ export default class LetterspacerPanel extends Panel {
             glyphName
           );
 
-          // Calculate fresh values for this layer
-          const result = engine.computeSpacing(
-            path,
-            bounds,
-            refBounds.minY,
-            refBounds.maxY,
+          const applied = this.applySpacingToLayerGlyph(
+            layerGlyph,
+            engine,
+            refBounds,
             factor
           );
-
-          if (result.noRefIntersections) {
-            if (!warnedNoRefZone) {
-              warnedNoRefZone = true;
-            }
-            continue;
-          }
-
-          const { lsb, rsb } = result;
-
-          if (lsb === null || rsb === null) continue;
-
-          // Store calculated values (rounded to avoid fractional sidebearings)
-          const roundedLSB = Math.round(lsb);
-          const roundedRSB = Math.round(rsb);
-          calculatedLSB = roundedLSB;
-          calculatedRSB = roundedRSB;
-
-          const currentLSB = bounds.xMin;
-
-          if (this.params.applyLSB) {
-            // Round the SHIFT, not just the target: a fractional delta would
-            // smear decimals onto every point (and thus onto the RSB)
-            const deltaLSB = Math.round(roundedLSB - currentLSB);
-            this.shiftPath(layerGlyph.path, deltaLSB);
-            // Move the skeleton by the same delta through the one write path
-            // (WS-16). editSkeleton regenerates the generated contours from the
-            // translated skeleton; because it sets absolute positions, this does
-            // not double-shift the contours shiftPath already moved.
-            if (deltaLSB && getSkeletonData(layerGlyph)) {
-              editSkeleton(layerGlyph, (skeletonData) => {
-                const moved = translateSkeletonData(skeletonData, deltaLSB, 0);
-                skeletonData.contours = moved.contours;
-                skeletonData.nextId = moved.nextId;
-              });
-            }
-          }
-
-          if (this.params.applyRSB || this.params.applyLSB) {
-            const newBounds =
-              layerGlyph.path.getBounds?.() || layerGlyph.path.getControlBounds?.();
-            if (this.params.applyRSB) {
-              layerGlyph.xAdvance = Math.round(newBounds.xMax + roundedRSB);
-            } else {
-              layerGlyph.xAdvance = Math.round(
-                newBounds.xMax + (layerGlyph.xAdvance - bounds.xMax)
-              );
-            }
+          if (applied) {
+            calculatedLSB = applied.lsb;
+            calculatedRSB = applied.rsb;
           }
         }
 
@@ -635,6 +669,253 @@ export default class LetterspacerPanel extends Panel {
 
     await this.refreshDesignspacePanel();
     await this.update();
+  }
+
+  // The glyphsets the project has already added, plus the font's own glyphs as
+  // the default. Same primitives the kerning view's glyphset filter uses, and
+  // like it this panel does not offer an "add glyphset" UI of its own.
+  getBulkGlyphsetOptions() {
+    if (!this.bulkGlyphsetsController) {
+      this.bulkGlyphsetSettingsController = new ObservableController({
+        projectGlyphSets: readProjectGlyphSets(this.fontController),
+        myGlyphSets: getMyGlyphSets(),
+        projectGlyphSetSelection: [],
+        myGlyphSetSelection: [],
+      });
+      this.bulkGlyphsetsController = new GlyphSetsController(
+        this.fontController,
+        this.bulkGlyphsetSettingsController
+      );
+    }
+    const settings = this.bulkGlyphsetSettingsController.model;
+    const options = [
+      { value: "", label: translate("sidebar.letterspacer.bulk.this-font") },
+    ];
+    for (const info of Object.values({
+      ...settings.projectGlyphSets,
+      ...settings.myGlyphSets,
+    })) {
+      // THIS_FONTS_GLYPHSET ("") already is the first option above.
+      if (info.url === THIS_FONTS_GLYPHSET) {
+        continue;
+      }
+      options.push({ value: info.url, label: info.name });
+    }
+    return options;
+  }
+
+  // Which glyph names the bulk apply will touch: the selected glyphset, kept to
+  // the glyphs this font actually has, then kept to the checked subsets.
+  async getBulkGlyphNames() {
+    let glyphNames;
+    if (this.bulkGlyphsetId) {
+      this.getBulkGlyphsetOptions();
+      const entries =
+        (await this.bulkGlyphsetsController.loadGlyphSet(this.bulkGlyphsetId)) || [];
+      // ponytail: membership by the glyphset's own literal glyph name, the same
+      // simplification the kerning view's glyphset filter makes.
+      glyphNames = entries
+        .map((entry) => entry.glyphName)
+        .filter((glyphName) => glyphName in this.fontController.glyphMap);
+    } else {
+      glyphNames = Object.keys(this.fontController.glyphMap);
+    }
+    return glyphNames.filter((glyphName) => this.glyphIsInCheckedSubset(glyphName));
+  }
+
+  glyphIsInCheckedSubset(glyphName) {
+    const subset = this.getBulkSubsetForGlyph(glyphName);
+    return !!subset && !!this.bulkSubsets[subset];
+  }
+
+  // One glyph, one subset. Case comes from the same reading of the name the
+  // automatic reference does, so a glyph is bulk-spaced under the same subset
+  // whose reference glyph it would be measured against.
+  getBulkSubsetForGlyph(glyphName) {
+    let glyphInfo = getGlyphInfoFromGlyphName(glyphName);
+    if (!glyphInfo && glyphName.includes(".")) {
+      glyphInfo = getGlyphInfoFromGlyphName(glyphName.split(".")[0]);
+    }
+    glyphInfo = glyphInfo || {};
+    const subCategory = this.getHtSubCategory(glyphName, glyphInfo);
+    switch (glyphInfo.category) {
+      case "Letter":
+        if (subCategory === "Smallcaps") return "smallcaps";
+        if (subCategory === "Uppercase") return "uppercase";
+        if (subCategory === "Lowercase") return "lowercase";
+        return null;
+      case "Number":
+        return "numbers";
+      case "Punctuation":
+        return "punctuation";
+      case "Symbol":
+        return "symbols";
+      case "Mark":
+        return "marks";
+      default:
+        return null;
+    }
+  }
+
+  // Bulk apply: space every glyph of the selected glyphset that falls in a
+  // checked subset, at the source the editor is on. One font-level edit, so the
+  // whole run is one undo step -- the same shape the metrics tool uses to write
+  // sidebearings on glyphs that are not the selected one.
+  async applySpacingToGlyphSet() {
+    if (!this.algorithmEnabled || this.fontController.readOnly) {
+      return;
+    }
+    this.bulkStatus = translate("sidebar.letterspacer.bulk.working");
+    this.updateBulkStatus();
+
+    const glyphNames = await this.getBulkGlyphNames();
+    const fontMetrics = await this.getFontMetrics();
+    const sourceLocation = this.sceneController.sceneSettings.fontLocationSourceMapped;
+    const engine = new LetterspacerEngine(this.params, fontMetrics);
+
+    const font = { glyphs: {} };
+    const targets = [];
+    for (const glyphName of glyphNames) {
+      const varGlyphController = await this.fontController.getGlyph(glyphName);
+      if (!varGlyphController) {
+        continue;
+      }
+      const sourceIndex = varGlyphController.getSourceIndex(sourceLocation);
+      const layerName = varGlyphController.sources[sourceIndex]?.layerName;
+      // A glyph with no master at this location is left alone, exactly as the
+      // single-glyph Apply refuses to run without one.
+      if (!layerName || !varGlyphController.glyph.layers[layerName]) {
+        continue;
+      }
+      // The reference is read per glyph: its own stored reference if it has one,
+      // else the automatic one for its category. The panel's Reference field
+      // belongs to the selected glyph and does not speak for the whole set.
+      const stored = (
+        getLetterspacerSection(varGlyphController.glyph)?.[
+          LETTERSPACER_GLYPH_FIELDS.referenceGlyphName
+        ] || ""
+      ).trim();
+      const { referenceGlyph, factor } = stored
+        ? { referenceGlyph: stored, factor: 1 }
+        : this.getAutoReferenceSettings(glyphName);
+      const referenceGlyphController = referenceGlyph
+        ? await this.fontController.getGlyph(referenceGlyph)
+        : null;
+      font.glyphs[glyphName] = varGlyphController.glyph;
+      targets.push({
+        glyphName,
+        layerName,
+        referenceGlyph,
+        referenceGlyphController,
+        factor,
+      });
+    }
+
+    let spacedCount = 0;
+    const changes = recordChanges(font, (font) => {
+      for (const target of targets) {
+        const layerGlyph = font.glyphs[target.glyphName].layers[target.layerName].glyph;
+        const refBounds = this.getReferenceBoundsForLayer(
+          target.referenceGlyph,
+          target.referenceGlyphController,
+          target.layerName,
+          layerGlyph,
+          fontMetrics,
+          target.glyphName
+        );
+        if (
+          this.applySpacingToLayerGlyph(layerGlyph, engine, refBounds, target.factor)
+        ) {
+          spacedCount++;
+        }
+      }
+    });
+
+    if (changes.hasChange) {
+      await this.fontController.editFinal(
+        changes.change,
+        changes.rollbackChange,
+        "letterspacer: apply to glyph set",
+        true
+      );
+      for (const target of targets) {
+        await this.fontController.glyphChanged(target.glyphName, { senderID: this });
+      }
+    }
+
+    this.bulkStatus = `${spacedCount} / ${glyphNames.length} spaced`;
+    this.updateBulkStatus();
+    await this.update();
+  }
+
+  updateBulkStatus() {
+    const label = this.infoForm.contentElement.querySelector(".bulk-status");
+    if (label) {
+      label.textContent = this.bulkStatus;
+    }
+  }
+
+  // One layer, one write: compute this layer's spacing and put it on the layer.
+  // Both the single-glyph Apply and the bulk Apply go through here, so a change
+  // to how spacing lands on a glyph is a change in one place.
+  applySpacingToLayerGlyph(layerGlyph, engine, refBounds, factor) {
+    const path = layerGlyph.path;
+    const bounds = path.getBounds?.() || path.getControlBounds?.();
+    if (!bounds) {
+      return null;
+    }
+
+    const result = engine.computeSpacing(
+      path,
+      bounds,
+      refBounds.minY,
+      refBounds.maxY,
+      factor
+    );
+    if (result.noRefIntersections) {
+      return null;
+    }
+
+    const { lsb, rsb } = result;
+    if (lsb === null || rsb === null) {
+      return null;
+    }
+
+    const roundedLSB = Math.round(lsb);
+    const roundedRSB = Math.round(rsb);
+    const currentLSB = bounds.xMin;
+
+    if (this.params.applyLSB) {
+      // Round the SHIFT, not just the target: a fractional delta would
+      // smear decimals onto every point (and thus onto the RSB)
+      const deltaLSB = Math.round(roundedLSB - currentLSB);
+      this.shiftPath(layerGlyph.path, deltaLSB);
+      // Move the skeleton by the same delta through the one write path
+      // (WS-16). editSkeleton regenerates the generated contours from the
+      // translated skeleton; because it sets absolute positions, this does
+      // not double-shift the contours shiftPath already moved.
+      if (deltaLSB && getSkeletonData(layerGlyph)) {
+        editSkeleton(layerGlyph, (skeletonData) => {
+          const moved = translateSkeletonData(skeletonData, deltaLSB, 0);
+          skeletonData.contours = moved.contours;
+          skeletonData.nextId = moved.nextId;
+        });
+      }
+    }
+
+    if (this.params.applyRSB || this.params.applyLSB) {
+      const newBounds =
+        layerGlyph.path.getBounds?.() || layerGlyph.path.getControlBounds?.();
+      if (this.params.applyRSB) {
+        layerGlyph.xAdvance = Math.round(newBounds.xMax + roundedRSB);
+      } else {
+        layerGlyph.xAdvance = Math.round(
+          newBounds.xMax + (layerGlyph.xAdvance - bounds.xMax)
+        );
+      }
+    }
+
+    return { lsb: roundedLSB, rsb: roundedRSB };
   }
 
   async loadPersistedParams() {
