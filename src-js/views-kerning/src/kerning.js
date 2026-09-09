@@ -2323,6 +2323,12 @@ export class KerningViewController extends ViewController {
     this.canvasController.requestUpdate();
   }
 
+  // Whole units. The kerning tool adds an integer step to whatever base
+  // value it is handed, so a value substituted here is the only way this
+  // view could put a fraction into a drag -- which is why the rounding
+  // belongs here and not in the shared tool. The engine and the cache read
+  // path already round, so this is the seam restating its own contract
+  // rather than a second place the rule is decided.
   getSuggestionPreviewValue(left, right, entry, source = this.autokernSource) {
     const key = rowId(source, left, right);
     if (this._manualPreviewPairs?.has(key)) {
@@ -2336,7 +2342,7 @@ export class KerningViewController extends ViewController {
       this._manualPreviewPairs.delete(key);
     }
     return entry && !entry.stale && Number.isFinite(entry.value)
-      ? entry.value
+      ? Math.round(entry.value)
       : undefined;
   }
 

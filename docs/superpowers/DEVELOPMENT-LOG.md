@@ -2128,10 +2128,16 @@ written where the work happened rather than where the question is answered.**
 - **Rounding was owed at the seam, not at each reader.** Fractions reached the
   font because `kernPair` handed back the raw product of a sub-pixel search
   and a strength multiplier, and each downstream reader was left to decide.
-  The seam is where the kern becomes font units, and it is one line. The
-  kerning tool's own arithmetic was already integral -- its step is 1, 5, 10
-  or 50 -- so the fraction always arrived in the base value it was adding to.
-  A tool that quantizes its delta and not its result quantizes nothing.
+  The seam is where the kern becomes font units, and it is one line.
+- **The first fix rounded inside `edit-tools-metrics.js`, and the designer
+  refused it.** The tool's own arithmetic is already integral -- its step is
+  1, 5, 10 or 50, added to a stored kern -- so the editor never produced a
+  fraction and nothing there was broken. The fraction arrives only in the
+  base value THIS view substitutes, through
+  `installManualKerningPreviewBehavior`, so this view's own seam is where it
+  is refused. **A fault reachable through a shared file is not a fault in
+  it**; the rounding sits in `getSuggestionPreviewValue` and the shared tool
+  is untouched.
 - **`KerningViewController.medianOf` was called and never declared**, on the
   fold-group fallback branch. The branch is unreachable through the UI, which
   is why nothing threw, and the comment beside it says so -- it documented the

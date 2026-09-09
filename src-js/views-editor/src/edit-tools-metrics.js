@@ -1099,12 +1099,7 @@ export class KerningTool extends MetricsBaseTool {
           // possible modifier changed event
           continue;
         }
-        // Whole units only. The step is already an integer (getStepValue),
-        // but the base value need not be: the kerning view hands this tool
-        // an autokern suggestion to adjust from, and a stored value can
-        // arrive fractional from an older file or another tool. Rounding
-        // here means a drag can never write a fraction into the font.
-        yield { values: values.map((v) => Math.round(v + deltaX)), event };
+        yield { values: values.map((v) => v + deltaX), event };
       }
     }
 
@@ -1136,8 +1131,7 @@ export class KerningTool extends MetricsBaseTool {
 
     this.updateScrollAdjustBehavior();
 
-    // Whole units only -- same reason as the drag above.
-    const newValues = values.map((v) => Math.round(v + deltaX));
+    const newValues = values.map((v) => v + deltaX);
     const undoLabel = "edit kerning";
     const changes = await editContext.edit(newValues, undoLabel, event);
     this.pushUndoItem(changes, undoLabel);
