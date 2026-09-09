@@ -50,17 +50,17 @@
               title="One glyph: all its pairs. Multiple glyphs: pairs between them. Ctrl-click replaces; Ctrl+Shift-click toggles a glyph. Shift-click in preview narrows to adjacent pairs."
             />
 
-            <span id="kerning-pairtable-glyph-error"
-              class="kerning-pairtable-input-error" role="status"></span>
-            <button id="kerning-preview-pairs-filter" type="button" hidden
-              title="Clear the preview-pair filter"></button>
-
-            <label for="kerning-pairtable-excluded">Excluded glyphs</label>
-            <input
-              type="text"
-              id="kerning-pairtable-excluded"
-              placeholder="glyph names, comma or space separated"
-            />
+            <span
+              id="kerning-pairtable-glyph-error"
+              class="kerning-pairtable-input-error"
+              role="status"
+            ></span>
+            <button
+              id="kerning-preview-pairs-filter"
+              type="button"
+              hidden
+              title="Clear the preview-pair filter"
+            ></button>
 
             <div id="kerning-pairtable-filters">
               <select id="kerning-pairtable-filter-side" title="Side">
@@ -110,6 +110,10 @@
                     checked
                   />
                   Delta</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-show-apply" checked />
+                  Apply</label
                 >
               </fieldset>
               <!-- Task 5, spec F13: exact predicate `Current == 0 &&
@@ -383,9 +387,16 @@
                        position. The Default view provides the lock in that
                        position for eligible exposed members and saved
                        exceptions" -- that action itself is Task 10's build;
-                       this column carries today's existing shadow/override
-                       note and the class-summary row's own "Apply class"
-                       action, the closest built equivalents. -->
+                       this column carries the per-pair lock only. The
+                       class-summary row's own write action moved to the
+                       Apply column beside it. -->
+                  <!-- A class-summary row's own write action, as a check
+                       icon in its own toggleable column (Columns > Apply)
+                       rather than a text button inside the Exception cell,
+                       so it reads as one of the row's icon actions beside
+                       the lock and the eye. An ordinary pair row leaves this
+                       cell empty -- a pair has no class rule to apply. -->
+                  <th class="kerning-pairtable-apply-col">Apply</th>
                   <th>Exception</th>
                   <!-- F32's Hide action -- Task 11 replaces today's Mark
                        junk button with the eye control; this column is
@@ -396,8 +407,14 @@
               <tbody id="kerning-pairtable-body"></tbody>
             </table>
             <div class="kerning-pairtable-load-controls">
-              <span id="kerning-pairtable-load-status" role="status" aria-live="polite"></span>
-              <button id="kerning-pairtable-load-more" type="button" hidden>Load next 100</button>
+              <span
+                id="kerning-pairtable-load-status"
+                role="status"
+                aria-live="polite"
+              ></span>
+              <button id="kerning-pairtable-load-more" type="button" hidden>
+                Load next 100
+              </button>
             </div>
           </div>
         </div>

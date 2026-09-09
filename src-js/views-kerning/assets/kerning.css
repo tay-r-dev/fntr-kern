@@ -348,7 +348,7 @@
 
 /* The "Show class" dialog's target-glyph field/preview (kerning.js's
    openShowClassDialog) -- same input-box-sizing convention as the
-   excluded-glyph field (#kerning-pairtable-excluded). */
+   Glyph field (#kerning-pairtable-glyph). */
 .autokern-show-class-dialog {
   display: flex;
   flex-direction: column;
@@ -466,8 +466,7 @@
   gap: 0.35em;
 }
 
-#kerning-pairtable-glyph,
-#kerning-pairtable-excluded {
+#kerning-pairtable-glyph {
   width: 100%;
   box-sizing: border-box;
 }
@@ -623,6 +622,34 @@
 
 tr:hover .kerning-pairtable-exception-create,
 tr:focus-within .kerning-pairtable-exception-create {
+  opacity: 1;
+}
+
+/* The class-summary row's Apply action. Same sizing as the Exception
+   column's lock and the Hide column's eye, so the three row actions read as
+   one family. Its reveal rule is stricter than theirs on purpose: the
+   designer asked for it to stay invisible until the row is click-selected,
+   and to stay transparent until the row is hovered, so an accidental click
+   on a row nobody chose cannot write a class rule. */
+.kerning-pairtable-apply-indicator {
+  width: 1.1em;
+  height: 1.1em;
+  display: inline-flex;
+}
+
+.kerning-pairtable-apply-class {
+  opacity: 0;
+  pointer-events: none;
+}
+
+tr.kerning-pairtable-row-highlighted .kerning-pairtable-apply-class,
+tr:focus-within .kerning-pairtable-apply-class {
+  opacity: 0.35;
+  pointer-events: auto;
+}
+
+tr.kerning-pairtable-row-highlighted:hover .kerning-pairtable-apply-class,
+tr:focus-within .kerning-pairtable-apply-class:focus {
   opacity: 1;
 }
 

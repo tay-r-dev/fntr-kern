@@ -41,10 +41,7 @@
 // from what's already stored (kerningController.leftPairGroupMapping /
 // rightPairGroupMapping, i.e. groupsSide1/groupsSide2 -- NOT §5.3
 // derivation), every filter named in §7.3 (side, grouping, sign, state,
-// junk, plus the existing threshold control), an excluded-glyph field
-// (stored only, not wired into a rerun -- runAutokern above has no
-// excluded-glyph parameter to wire into -- CORRECTION, a later fix: it now
-// is, via this.autokernExcludedGlyphNames -- see runAutokern's own comment),
+// junk, plus the existing threshold control),
 // and the five actions (apply
 // selected, apply all with a second-press confirm, reset to current, reset
 // to zero, mark junk). Deliberately NOT built here: §5.2's fold (every row
@@ -68,7 +65,7 @@
 // BaseInfoPanel already solves this exact problem (a non-per-glyph,
 // font-root-key edit that still needs to be locally undoable) by owning its
 // own UndoStack instance instead of using fontController's, and this view
-// now does the same. Junk marks and the excluded-glyph list
+// now does the same. Junk marks
 // (writeJunkMarksToProject, also a fontController.performEdit under
 // "customData") are deliberately left OUT of this undo stack: spec section
 // 4.2 frames them as the designer's judgement/settings, not a kerning
@@ -224,7 +221,7 @@ const CONTROL_GLYPH_NAMES = ["l", "n", "o"];
 //   the whole src-js tree for indexedDB/IDBDatabase; nothing), so OPFS,
 //   already imported above, is reused rather than inventing a second
 //   browser-storage mechanism.
-// - Junk marks and the excluded-glyph list are the designer's judgement,
+// - Junk marks are the designer's judgement,
 //   small, and must survive a change of machine (spec §4.1) -- they go
 //   through the font backend as ordinary per-font customData, the exact
 //   mechanism glyphsets-controller.js's PROJECT_GLYPH_SETS_CUSTOM_DATA_KEY
@@ -238,7 +235,6 @@ const CONTROL_GLYPH_NAMES = ["l", "n", "o"];
 //   fontController.initialize() before the view is constructed).
 const AUTOKERN_CACHE_OPFS_DIR = ["kerning-autokern-cache"];
 const AUTOKERN_JUNK_PAIRS_CUSTOM_DATA_KEY = "fontra.autokernJunkPairs";
-const AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY = "fontra.autokernExcludedGlyphs";
 // Design doc §3: "Stored as project data... Key shape: one entry per (side,
 // class name) pair... fontra.autokernClassColors: { side1: { <className>:
 // <color> }, side2: { ... } }, written through fontController.performEdit the
@@ -1031,10 +1027,8 @@ export class KerningViewController extends ViewController {
   // WORKSTREAM 12 adds persistence (§4.1's "the cache persists between
   // sessions"): this.autokernCache is written to browser-side storage
   // (OPFS, see the file-top comment) on every successful run and read back
-  // on load, before the designer clicks Run. Junk marks and the
-  // excluded-glyph list persist separately, through the font backend as
-  // project customData -- see togglePairJunk and the excluded-glyph input's
-  // "change" listener in initPairTableSection.
+  // on load, before the designer clicks Run. Junk marks persist separately,
+  // through the font backend as project customData -- see togglePairJunk.
   //
   // What this method still does NOT build, deliberately:
   //   - the pair table UI (§7.3) that reads this.autokernCache.
@@ -1471,29 +1465,7 @@ export class KerningViewController extends ViewController {
     // whatever raster it is given).
     const bias = params.reach;
 
-    // Spec §4.2: the excluded-glyph field's own already-parsed list
-    // (initPairTableSection, on `this.autokernExcludedGlyphNames` -- parsed
-    // by parseExcludedGlyphNames, kept in sync with the field on load and on
-    // every "change"). Read here, not re-parsed: one source of truth for
-    // what "excluded" means. Falls back to an empty array if the pair-table
-    // section hasn't initialized yet (initRunSection and
-    // initPairTableSection both run from start(), but nothing enforces their
-    // order against each other).
-    //
-    // Control glyphs (CONTROL_GLYPH_NAMES) are deliberately NOT filtered out
-    // of the candidate pool here even if a designer names one in the
-    // excluded-glyph field: calibration (below) structurally requires their
-    // rasters, and excluding "l"/"n"/"o" from being KERNED against other
-    // glyphs is still honored -- see glyphsToRasterize below, which unions
-    // CONTROL_GLYPH_NAMES back in only for rasterization, not for
-    // `glyphNames` (the candidate pool the worker turns into pairs), so a
-    // designer who excludes a control glyph still gets calibration but no
-    // pairs involving it, which is the sensible reading of "excluded from a
-    // run" for a glyph the run structurally cannot omit entirely.
-    const excludedGlyphNames = this.autokernExcludedGlyphNames || [];
-    const glyphNames = Object.keys(this.fontController.glyphMap || {}).filter(
-      (name) => !excludedGlyphNames.includes(name)
-    );
+    const glyphNames = Object.keys(this.fontController.glyphMap || {});
 
     // WORKSTREAM 14: §7.5's source selector now sets this.autokernSource
     // (see the getter above); the job's `source` field, and the OPFS cache
@@ -1734,7 +1706,6 @@ export class KerningViewController extends ViewController {
 
     this.autokernFiltersController = new ObservableController({
       glyphName: "",
-      excludedGlyphs: "",
       side: "both",
       // Task 5, spec F16: the sign filter is removed -- Current/Proposed/
       // Delta keep their signs, magnitude filtering lives in
@@ -1760,6 +1731,8 @@ export class KerningViewController extends ViewController {
       // visible").
       showCurrent: false,
       showProposed: true,
+      // The class-summary Apply column (Columns > Apply).
+      showApply: true,
       // Backlog item 15: hides/shows the Delta column across the whole
       // table.
       showSuggestion: true,
@@ -1870,61 +1843,6 @@ export class KerningViewController extends ViewController {
       }
     });
 
-    const excludedInput = document.querySelector("#kerning-pairtable-excluded");
-    // WORKSTREAM 12, spec §4.1/§4.2: the excluded-glyph list is the
-    // designer's judgement, not derived data, so it must survive a change
-    // of machine -- the project's own customData (read here from
-    // this.fontController.customData, already populated before this view's
-    // constructor runs, see the file-top comment) is authoritative over
-    // whatever localStorage happened to sync onto THIS machine via
-    // `filters.excludedGlyphs` above.
-    const storedExcludedGlyphs =
-      this.fontController.customData?.[AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY];
-    const initialExcludedGlyphs =
-      storedExcludedGlyphs !== undefined
-        ? storedExcludedGlyphs
-        : filters.excludedGlyphs;
-    excludedInput.value = initialExcludedGlyphs;
-    if (initialExcludedGlyphs !== filters.excludedGlyphs) {
-      this.autokernFiltersController.setItem("excludedGlyphs", initialExcludedGlyphs);
-    }
-    // The single source of truth for a RUN's excluded-glyph list
-    // (runAutokern reads this property, not the raw text field): parsed
-    // once here at load and again on every "change" below, via
-    // parseExcludedGlyphNames (this method's own comment explains why that
-    // parser, not a second one). Kept as a plain instance property, not a
-    // key on this.autokernFiltersController, because that controller is
-    // localStorage-synchronized (synchronizeWithLocalStorage above) and the
-    // raw text it already stores (`excludedGlyphs`) is enough to
-    // reconstruct this on reload -- a second, redundant persisted copy of
-    // the same data would just be one more place for the two to disagree.
-    this.autokernExcludedGlyphNames =
-      this.parseExcludedGlyphNames(initialExcludedGlyphs);
-    excludedInput.addEventListener("change", async () => {
-      // Stored on the controller (as before), reparsed into
-      // this.autokernExcludedGlyphNames (the property runAutokern actually
-      // reads -- see the comment above), AND, since workstream 12, written
-      // through to the project (see the file-top comment for the exact
-      // mechanism).
-      this.autokernFiltersController.setItem("excludedGlyphs", excludedInput.value);
-      this.autokernExcludedGlyphNames = this.parseExcludedGlyphNames(
-        excludedInput.value
-      );
-      await this.fontController.performEdit(
-        "kerning view: edit excluded glyphs",
-        "customData",
-        (root) => {
-          if (excludedInput.value) {
-            root.customData[AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY] =
-              excludedInput.value;
-          } else {
-            delete root.customData[AUTOKERN_EXCLUDED_GLYPHS_CUSTOM_DATA_KEY];
-          }
-        },
-        this
-      );
-    });
-
     // Task 17, spec F01: "Remove the current/applied/stale filter from the
     // results controls" -- the state dropdown itself is gone from
     // kerning.html; only the "side" binding remains here.
@@ -1970,6 +1888,13 @@ export class KerningViewController extends ViewController {
     proposedCheckbox.checked = filters.showProposed;
     proposedCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem("showProposed", proposedCheckbox.checked);
+    });
+
+    // The Apply column, same pattern as the three above.
+    const applyCheckbox = document.querySelector("#kerning-pairtable-show-apply");
+    applyCheckbox.checked = filters.showApply;
+    applyCheckbox.addEventListener("change", () => {
+      this.autokernFiltersController.setItem("showApply", applyCheckbox.checked);
     });
 
     // Task 5, spec F13: the exact `Current == 0 && Proposed != 0` predicate,
@@ -2456,7 +2381,8 @@ export class KerningViewController extends ViewController {
     }
   }
 
-  // Parses the excluded-glyph field the same way the phrase field is parsed
+  // Parses a comma/space separated glyph-name list the same way the phrase
+  // field is parsed
   // (spec §4.2: "parsed the same way as the phrase field, so a glyph with no
   // character can be named directly") -- reusing characterLinesFromString
   // (character-lines.js) rather than a bespoke splitter, by turning each
@@ -2999,7 +2925,7 @@ export class KerningViewController extends ViewController {
     if (this._unicodeTypesSet.size === 0 || this._relationshipsSet.size === 0) {
       const emptyRow = document.createElement("tr");
       const emptyCell = document.createElement("td");
-      emptyCell.colSpan = 7;
+      emptyCell.colSpan = 8;
       emptyCell.className = "kerning-pairtable-nothing-selected";
       emptyCell.textContent =
         this._unicodeTypesSet.size === 0
@@ -3050,6 +2976,10 @@ export class KerningViewController extends ViewController {
     // set their own inline display at creation time, same as currentCell).
     for (const el of document.querySelectorAll(".kerning-pairtable-suggestion-col")) {
       el.style.display = filters.showSuggestion ? "" : "none";
+    }
+
+    for (const el of document.querySelectorAll(".kerning-pairtable-apply-col")) {
+      el.style.display = filters.showApply ? "" : "none";
     }
 
     // Backlog item 11: keeps the header label/arrow in sync with the
@@ -3197,12 +3127,29 @@ export class KerningViewController extends ViewController {
     // (a class-rule item's own current/delta stand-ins, set above).
     this.sortPairRows(visibleItems, filters);
 
+    // A write can move a row out of the filtered set under the designer:
+    // applying a class rule drops its delta to zero, and a kerning drag
+    // through zero deletes the literal rule so an exception row becomes a
+    // plain class member. Either way retainVisible below drops that row's
+    // highlight, updatePairPreview then finds no pairs, and pair mode falls
+    // back to phrase -- the designer is thrown out of the view they were
+    // working in. Capture the highlighted pairs against the PREVIOUS render's
+    // items (this._pairTableItems is still the old list here) so the preview
+    // can keep drawing them when the prune, rather than the designer, is what
+    // emptied the highlight.
+    const highlightCountBeforePrune = this.resultSelection.highlighted.size;
+    const pairsBeforePrune = highlightCountBeforePrune
+      ? this.expandHighlightedRowsToPairs()
+      : [];
+
     this._pairTableItems = visibleItems;
     // Selection belongs to the filtered result set, not the DOM page.
     this.resultSelection = retainVisible(
       this.resultSelection,
       new Set(visibleItems.map((item) => item.sortId))
     );
+    const highlightLostToPrune =
+      highlightCountBeforePrune > 0 && this.resultSelection.highlighted.size === 0;
     for (const item of visibleItems) {
       if (item.renderKind !== "class-rule") continue;
       this._classSummaryMembersByRowId.set(item.sortId, {
@@ -3216,7 +3163,9 @@ export class KerningViewController extends ViewController {
     // start at 100; valid highlighted/ticked rows retain their identities.
     this.appendPairTableRows(previousLoaded);
     this.refreshResetArmState();
-    this.updatePairPreview();
+    this.updatePairPreview(
+      highlightLostToPrune ? { fallbackPairs: pairsBeforePrune } : {}
+    );
   }
 
   getPairTableLoadLimit(queryKey) {
@@ -3316,14 +3265,6 @@ export class KerningViewController extends ViewController {
       if (pairs.length) this._previewPairSelections.set(key, pairs);
     }
     this.renderPairTable();
-  }
-
-  classAddressLabel(address, members) {
-    if (!address.startsWith("@")) return address;
-    const focused = members.filter(
-      (name) => this._glyphFilter.left.has(name) || this._glyphFilter.right.has(name)
-    );
-    return focused.length ? `${address}(${focused.join(", ")})` : address;
   }
 
   // Summarize each class/class or class/unique address with measured coverage.
@@ -3544,7 +3485,7 @@ export class KerningViewController extends ViewController {
     leftCell.appendChild(checkbox);
     const leftLabel = document.createElement("span");
     leftLabel.className = "kerning-pairtable-class-name";
-    leftLabel.textContent = this.classAddressLabel(left, stats.leftMembers);
+    leftLabel.textContent = left;
     // F21 recommended detail: "disclose contributing-pair count and
     // excluded-result count in row details" -- no 8th column exists for
     // this (F32 fixes the header set at seven), so it is a tooltip. Task 17
@@ -3600,33 +3541,50 @@ export class KerningViewController extends ViewController {
     const rightCell = document.createElement("td");
     const rightLabel = document.createElement("span");
     rightLabel.className = "kerning-pairtable-class-name";
-    rightLabel.textContent = this.classAddressLabel(right, stats.rightMembers);
+    rightLabel.textContent = right;
     rightCell.appendChild(rightLabel);
     tr.appendChild(rightCell);
 
-    // F32's override-action column: this row's own primary write action
-    // (writes the class rule at the median -- applyFoldedParentRow,
-    // unchanged). Task 10 owns building the per-pair lock this column
-    // holds for member/exception rows; a class-summary row has no single
-    // concrete pair to lock (F12: "A class-summary row must not create an
-    // arbitrary representative-glyph exception").
-    const exceptionCell = document.createElement("td");
-    const applyButton = document.createElement("button");
-    applyButton.type = "button";
-    applyButton.textContent = "Apply class";
+    // This row's own primary write action (writes the class rule at the
+    // median -- applyFoldedParentRow, unchanged), now a check icon in its
+    // own toggleable column rather than a text button in the Exception
+    // cell. Same icon-button idiom as the lock and the eye, so the three
+    // row actions read as one family.
+    const applyCell = document.createElement("td");
+    applyCell.className = "kerning-pairtable-apply-col";
+    applyCell.style.display = this.autokernFiltersController.model.showApply
+      ? ""
+      : "none";
+    const applyButton = document.createElement("icon-button");
+    applyButton.className =
+      "kerning-pairtable-apply-indicator kerning-pairtable-apply-class";
+    applyButton.src = "/tabler-icons/check.svg";
+    applyButton.setAttribute("aria-label", `Apply the class rule ${left} × ${right}`);
     // Task 17, spec F23: the aggregate's own median is unreliable when any
     // contributor is stale (aggregateStale) -- disable its one write action
     // the same way a stale pair row's tick is excluded from Apply selected.
     if (stats.stale) {
       applyButton.disabled = true;
-      applyButton.title =
-        "This class suggestion is out of date -- re-run stale glyphs first.";
+      applyButton.setAttribute(
+        "data-tooltip",
+        "This class suggestion is out of date -- re-run stale glyphs first."
+      );
+    } else {
+      applyButton.setAttribute(
+        "data-tooltip",
+        `Apply ${median.toFixed(1)} to the class rule ${left} × ${right}.`
+      );
+      applyButton.onclick = () => this.applyFoldedParentRow(group, median);
     }
-    applyButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      this.applyFoldedParentRow(group, median);
-    });
-    exceptionCell.appendChild(applyButton);
+    applyCell.appendChild(applyButton);
+    tr.appendChild(applyCell);
+
+    // F32's override-action column. Task 10 owns building the per-pair lock
+    // this column holds for member/exception rows; a class-summary row has
+    // no single concrete pair to lock (F12: "A class-summary row must not
+    // create an arbitrary representative-glyph exception"), so it stays
+    // empty here.
+    const exceptionCell = document.createElement("td");
     tr.appendChild(exceptionCell);
 
     // F32's hide-action column. Task 11, ledger §8.5 (APPROVED): hiding a
@@ -4124,9 +4082,9 @@ export class KerningViewController extends ViewController {
 
   // A small, custom two-field dialog (name + members) -- modal-dialog.js's
   // own askString helper only offers one field, not enough here. Members are
-  // parsed with the SAME parser the excluded-glyph field already uses
-  // (parseExcludedGlyphNames, above), for the same reason spec §4.2 gives
-  // that field: comma/space separated, "/glyphname" syntax for a glyph with
+  // parsed with the shared glyph-name-list parser
+  // (parseExcludedGlyphNames, above), for the same reason spec §4.2 gives:
+  // comma/space separated, "/glyphname" syntax for a glyph with
   // no character.
   async promptClassNameAndMembers(headline) {
     const dialog = await dialogSetup(headline, null, [
@@ -4859,7 +4817,7 @@ export class KerningViewController extends ViewController {
   }
 
   // Design doc §1.2: "opens a dialog to pick one or more target glyphs --
-  // typing plus preview swatches, same input style as the excluded-glyph
+  // typing plus preview swatches, same input style as the Glyph
   // field -- then previews the selected glyph's class(es) against every
   // chosen target in the scene, one row per member."
   async openShowClassDialog(sourceGlyphName) {
@@ -5313,6 +5271,15 @@ export class KerningViewController extends ViewController {
     // (this control OR a confirmed Apply-selected override) creates a
     // literal rule, explicitPairExists is true and this cell shows the same
     // Remove-exception control regardless of which path wrote it.
+    // A pair row has no class rule to apply, so its Apply cell is empty --
+    // it exists only to keep the column count and the column toggle honest.
+    const applyCell = document.createElement("td");
+    applyCell.className = "kerning-pairtable-apply-col";
+    applyCell.style.display = this.autokernFiltersController.model.showApply
+      ? ""
+      : "none";
+    tr.appendChild(applyCell);
+
     const exceptionCell = document.createElement("td");
     const tab = this.activeResultsTab || "default";
     const hasApplicableClass =
@@ -5503,7 +5470,7 @@ export class KerningViewController extends ViewController {
   // writePairValues now resolves through its own stashed median rather
   // than a literal autokernCache lookup -- see writePairValues' own
   // comment. applyFoldedParentRow (the class-summary row's own dedicated
-  // "Apply class" button) remains a separate, still-working control; this
+  // Apply check icon) remains a separate, still-working control; this
   // tick/Reset path is an additional way to reach the same class address,
   // not a replacement for it.
   async resetSelectedPairRows() {
@@ -6738,7 +6705,11 @@ export class KerningViewController extends ViewController {
   // Pair chip's disabled attribute, the scene text via setPreviewPairs) --
   // this is the one non-pure seam that calls the pure input-tokens.js
   // pipeline with real font data.
-  updatePairPreview({ switchToPairMode = false } = {}) {
+  // `fallbackPairs` is renderPairTable's own "the filter, not the designer,
+  // emptied the highlight" set -- see the comment beside highlightLostToPrune
+  // there. It is consulted last, so it never overrules a live highlight or the
+  // Glyph field.
+  updatePairPreview({ switchToPairMode = false, fallbackPairs = null } = {}) {
     if (!this._glyphInputElement) return;
     const filter =
       this._glyphFilter ||
@@ -6762,6 +6733,9 @@ export class KerningViewController extends ViewController {
           filter.right
         ));
       }
+    }
+    if (!previewPairs.length && fallbackPairs?.length) {
+      previewPairs = fallbackPairs;
     }
     this._glyphFilterError.textContent =
       filter.error ||
