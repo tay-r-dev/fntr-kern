@@ -444,6 +444,7 @@ export class KerningViewController extends ViewController {
     // Keep this view stationary while kerning changes; editor tools elsewhere
     // retain their normal handle-pinning behavior.
     this.tools["kerning-tool"].getScrollAdjustBehavior = () => null;
+    this.installManualKerningPreviewBehavior();
     this.setSelectedTool("pointer-tool");
 
     // Font-level (not per-glyph) undo for pair-table writes and derive-accept
@@ -2190,6 +2191,77 @@ export class KerningViewController extends ViewController {
     });
   }
 
+  installManualKerningPreviewBehavior() {
+    this._manualPreviewPairs = new Map();
+    const tool = this.tools["kerning-tool"];
+    const getEditContext = tool.getEditContext.bind(tool);
+    tool.getEditContext = (...args) => {
+      const result = getEditContext(...args);
+      if (!result.editContext) return result;
+      const pairs = tool.selectedHandles.map((handle) => {
+        const { leftGlyph, rightGlyph } = tool.getGlyphNamesFromSelector(handle.selector);
+        return [leftGlyph, rightGlyph];
+      });
+      const source = tool.getSourceIdentifier() || this.autokernSource;
+      if (this.suggestionPreviewSettings?.model.enabled &&
+          (this._chipMode === "phrase" || this._chipMode === "pair")) {
+        result.values = result.values.map((stored, index) => {
+          const [left, right] = pairs[index];
+          return this.getSuggestionPreviewValue(left, right,
+            this.autokernCache?.get(pairKey(left, right)), source) ?? stored;
+        });
+      }
+      const beginEdit = () => this.beginManualKerningPreviewEdit(pairs, source);
+      const context = result.editContext;
+      const editContinuous = context.editContinuous.bind(context);
+      context.editContinuous = (values, label) => {
+        // Initial rule creation can rebuild the scene before the first value.
+        this.sceneController.autoViewBox = false;
+        this.sceneController.scrollAdjustBehavior = null;
+        // Selecting a handle does not change the font or preview. Switch the
+        // ribbon to the live saved value only once an edit value is yielded.
+        const manualValues = async function* () {
+          for await (const value of values) {
+            beginEdit();
+            yield value;
+          }
+        };
+        return editContinuous(manualValues(), label);
+      };
+      const deleteValues = context.delete.bind(context);
+      context.delete = (...deleteArgs) => {
+        beginEdit();
+        return deleteValues(...deleteArgs);
+      };
+      return result;
+    };
+  }
+
+  beginManualKerningPreviewEdit(pairs, source) {
+    // Auto-fit is separate from the tool's handle-pinning scroll adjustment.
+    // Keep the current viewport and let explicit zoom/pan remain in control.
+    this.sceneController.autoViewBox = false;
+    this.sceneController.scrollAdjustBehavior = null;
+    for (const [left, right] of pairs) {
+      this._manualPreviewPairs.set(rowId(source, left, right),
+        this.autokernCache?.get(pairKey(left, right)));
+    }
+    this.canvasController.requestUpdate();
+  }
+
+  getSuggestionPreviewValue(left, right, entry, source = this.autokernSource) {
+    const key = rowId(source, left, right);
+    if (this._manualPreviewPairs?.has(key)) {
+      if (this._manualPreviewPairs.get(key) === entry) {
+        // Follow incremental edits, subsequent nudges, and undo/redo. The
+        // overlay stays visible, displaying the manually adjusted value.
+        return this.kerningController.getGlyphPairValueForSource(left, right, source) ?? 0;
+      }
+      this._manualPreviewPairs.delete(key);
+    }
+    return entry && !entry.stale && Number.isFinite(entry.value) ? entry.value : undefined;
+  }
+
   installPairPreviewLayout() {
     const buildScene = this.sceneModel.buildScene.bind(this.sceneModel);
     this.sceneModel.buildScene = async (...args) => {
@@ -2796,8 +2868,8 @@ export class KerningViewController extends ViewController {
       tab, this.activeSourceIdentifier(), previewPairs,
       this._tableGlyphsetMembers ? [...this._tableGlyphsetMembers] : null,
     ]);
-    const previousLoaded = this._pairTableQueryKey === queryKey
-      ? this._pairTableLoadedCount || 100 : 100;
+    const previousLoaded = this.getPairTableLoadLimit(queryKey);
+    this._pairTableLoadLimit = previousLoaded;
     this._pairTableQueryKey = queryKey;
     this._pairTableItems = [];
     this._pairTableLoadedCount = 0;
@@ -3027,7 +3099,13 @@ export class KerningViewController extends ViewController {
     this.updatePairPreview();
   }
 
+  getPairTableLoadLimit(queryKey) {
+    return this._pairTableQueryKey === queryKey
+      ? Math.max(100, this._pairTableLoadLimit || 100) : 100;
+  }
+
   loadNextPairTableBatch() {
+    this._pairTableLoadLimit = (this._pairTableLoadLimit || 100) + 100;
     this.appendPairTableRows(100);
   }
 
@@ -6523,8 +6601,8 @@ export class KerningViewController extends ViewController {
           // recorded rather than recomputed in the draw function.
           const entry = this._chipMode === "pair" || this._chipMode === "phrase"
             ? cache.get(pairKey(glyphs[i - 1].glyphName, glyph.glyphName)) : null;
-          const entryValue = entry && !entry.stale && Number.isFinite(entry.value)
-            ? entry.value : undefined;
+          const entryValue = this.getSuggestionPreviewValue(
+            glyphs[i - 1].glyphName, glyph.glyphName, entry);
           this._previewPairValue.set(glyph, entryValue);
           // Scene positions already include the saved kern. Replace it
           // with the proposal rather than adding the proposal a second time.

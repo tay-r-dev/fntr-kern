@@ -19,6 +19,8 @@ const Controller = vm.runInNewContext(`${classSource}\nKerningViewController;`, 
   ViewController: class {},
   ...inputTokens,
   retainVisible,
+  rowId: (source, left, right) => JSON.stringify([source, left, right]),
+  pairKey: (left, right) => `${left}/${right}`,
   layoutPairPreview, normalizePairsPerRow,
   requestAnimationFrame: (callback) => { frames.push(callback); return frames.length; },
   document: {
@@ -161,4 +163,79 @@ test("pair columns are configurable and kerning edits do not move other cells", 
   assert.deepEqual(after.positionedLines[3].origin, { x: 0, y: -1100 });
   for (const bad of [0, -1, 1.5, "", "bad", 101]) assert.equal(normalizePairsPerRow(bad), 6);
   assert.equal(normalizePairsPerRow("8"), 8);
+});
+
+
+test("a growing result set fills the requested batch instead of retaining one row", () => {
+  const view = Object.create(Controller.prototype);
+  Object.assign(view, { _pairTableQueryKey: "same", _pairTableLoadedCount: 1,
+    _pairTableLoadLimit: 100, _pairTableItems: Array.from({ length: 4 }, (_, id) => ({
+      renderKind: "pair", row: { id },
+    })), buildPairRowElement: (row) => row, syncSelectAllCheckboxes() {} });
+  const limit = view.getPairTableLoadLimit("same");
+  assert.equal(limit, 100);
+  tbody.children = [];
+  view._pairTableLoadedCount = 0;
+  view.appendPairTableRows(limit);
+  assert.equal(tbody.children.length, 4);
+  view._pairTableLoadLimit = 300;
+  assert.equal(view.getPairTableLoadLimit("same"), 300);
+  assert.equal(view.getPairTableLoadLimit("different"), 100);
+});
+
+test("manual kerning starts from the preview and the ribbon follows live values", async () => {
+  const view = Object.create(Controller.prototype);
+  let saved = 0;
+  const proposal = { value: -40 };
+  const unrelated = { value: -80 };
+  const live = [];
+  const tool = {
+    selectedHandles: [{ selector: {} }],
+    getGlyphNamesFromSelector: () => ({ leftGlyph: "r", rightGlyph: "o" }),
+    getSourceIdentifier: () => "s1",
+    getEditContext: () => ({ values: [saved], editContext: {
+      async editContinuous(values) {
+        assert.equal(view.sceneController.autoViewBox, false);
+        for await (const step of values) {
+          saved = step.values[0];
+          live.push(view.getSuggestionPreviewValue("r", "o", proposal));
+        }
+      },
+      edit(values) { return this.editContinuous([{ values }]); },
+      delete() { saved = 0; },
+    } }),
+  };
+  Object.assign(view, { tools: { "kerning-tool": tool }, _chipMode: "phrase",
+    suggestionPreviewSettings: { model: { enabled: true } }, _autokernSourceIdentifier: "s1",
+    autokernCache: new Map([["r/o", proposal], ["o/r", unrelated]]),
+    kerningController: { getGlyphPairValueForSource: () => saved },
+    sceneController: { autoViewBox: true }, canvasController: { requestUpdate() {} },
+  });
+  view.installManualKerningPreviewBehavior();
+  const first = tool.getEditContext();
+  assert.equal(first.values[0], -40);
+  assert.equal(saved, 0); // Selecting a handle does not write the proposal.
+  await first.editContext.editContinuous([
+    { values: [first.values[0] + 10] }, { values: [first.values[0] + 20] },
+  ]);
+  assert.deepEqual(live, [-30, -20]);
+  assert.equal(view.getSuggestionPreviewValue("o", "r", unrelated), -80);
+  assert.equal(view.getSuggestionPreviewValue("r", "o", proposal, "s2"), -40);
+  const second = tool.getEditContext();
+  assert.equal(second.values[0], -20);
+  await second.editContext.edit([second.values[0] + 10]);
+  assert.equal(saved, -10);
+  assert.equal(view.getSuggestionPreviewValue("r", "o", proposal), -10);
+  // With an already shaped saved value, preview must not add kerning twice.
+  const glyphs = [{ glyphName: "r", x: 0, kernValue: 0 },
+    { glyphName: "o", x: 590, kernValue: saved }];
+  view._previewOriginalX = new WeakMap(); view._previewPairValue = new WeakMap();
+  view._applySuggestionPreviewRepositioning({ positionedLines: [{ glyphs }] });
+  assert.equal(glyphs[1].x, 590);
+  assert.equal(view._previewPairValue.get(glyphs[1]), -10);
+  saved = 0; // Undo follows the font value instead of a frozen manual number.
+  assert.equal(view.getSuggestionPreviewValue("r", "o", proposal), 0);
+  assert.equal(view.getSuggestionPreviewValue("r", "o", { value: -35 }), -35);
+  view.suggestionPreviewSettings.model.enabled = false;
+  assert.equal(tool.getEditContext().values[0], 0);
 });

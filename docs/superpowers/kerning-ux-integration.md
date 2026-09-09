@@ -29,6 +29,29 @@ This section supersedes the historical two-input and `%member%!` decisions below
   positioning replaces saved kerning; it does not add the proposal on top of it.
 - Font tiles show separate left/right class-color edges and hide editor-status bars.
 
+## Manual adjustments from suggestion preview
+
+When suggestion preview is enabled, the kerning tool starts an adjustment from the
+value currently displayed for each selected pair. Saved 0, suggested -40, and a +10
+adjustment therefore writes -30. The pair's ribbon remains visible and follows the
+actual live value through subsequent adjustments and undo/redo. Other pairs retain
+their suggestions. This preview state is scoped to the concrete pair and source;
+a replacement suggestion entry restores calculated preview for that pair. The
+cached proposal and table Proposed column are not rewritten by this display state.
+Selecting a handle alone writes nothing. With suggestion preview off, editing starts
+from the stored value as before. Existing class/exception edit targeting is unchanged.
+
+Automatic fit-to-content is disabled before the edit context starts writing, including
+initial rule creation, so phrase edits cannot unexpectedly change zoom.
+
+Pagination now retains the requested capacity (100, 200, etc.), independently of how
+many rows matched previously. If a filter showed one row and an edit creates four
+matches, all four appear immediately within the first 100-row batch.
+
+Targeted checks cover the suggested-value baseline, live ribbon values, repeated
+nudges, unaffected pairs/sources, no double kerning during drawing, and filling a
+previously under-full table batch. Browser verification remains outstanding.
+
 ## Live edits and visual settings
 
 Kerning changes now listen at the whole kerning root (including newly created
