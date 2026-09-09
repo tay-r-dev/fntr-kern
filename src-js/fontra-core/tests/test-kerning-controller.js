@@ -323,4 +323,33 @@ describe("KerningController Tests", () => {
     const changes = controller.deleteSource("c");
     expect(editedKerning).to.deep.equal(expectedKerning);
   });
+
+  // A font that has never been kerned has no table for the kern tag at all.
+  // Joining a glyph to a class is the first thing a designer does in the
+  // kerning view, and it has to work on that font -- otherwise a class can
+  // only be made on a font that already has kerning, which is the one case
+  // where the designer least needs one.
+  it("editGroupSide1/editGroupSide2 create the kerning table when the font has none", async () => {
+    const emptyKerning = {};
+    const editedFontController = {
+      ...testFontController,
+      performEdit: async (editLabel, rootKey, editFunc) => {
+        editFunc({ [rootKey]: emptyKerning });
+      },
+    };
+
+    const controller = new KerningController(
+      "kern",
+      emptyKerning,
+      editedFontController
+    );
+
+    await controller.editGroupSide1("A", "A_left");
+    await controller.editGroupSide2("A", "A_right");
+
+    expect(emptyKerning.kern.groupsSide1).to.deep.equal({ A_left: ["A"] });
+    expect(emptyKerning.kern.groupsSide2).to.deep.equal({ A_right: ["A"] });
+    expect(emptyKerning.kern.values).to.deep.equal({});
+    expect(emptyKerning.kern.sourceIdentifiers).to.deep.equal([]);
+  });
 });

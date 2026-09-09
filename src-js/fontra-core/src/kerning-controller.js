@@ -283,6 +283,12 @@ export class KerningController {
       `edit kerning ${groupsProperty}`,
       "kerning",
       (root) => {
+        // A font that has never been kerned has no table for this tag, and
+        // joining a glyph to a class is often the first kerning edit made.
+        // The value-edit path (getEditContext) already calls this; the group
+        // path did not, so the assert below fired on an undefined table and
+        // a class could only be created on a font that already had kerning.
+        ensureKerningData(root.kerning, this.kernTag);
         const kerningTable = root.kerning[this.kernTag];
         const groups = kerningTable[groupsProperty];
         assert(groups);

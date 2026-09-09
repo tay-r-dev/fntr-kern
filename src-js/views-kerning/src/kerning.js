@@ -2221,7 +2221,16 @@ export class KerningViewController extends ViewController {
     // Include new/replaced kerning tables as well as leaf value edits.
     // Coalesce until the next frame, after edits and controller caches settle.
     this._kerningValuesChangeMatchPattern = { kerning: null };
-    this._kerningValuesChangeListener = () => this.schedulePairTableRefresh();
+    // A kerning write reaches the scene through the scene model, which
+    // throws away its cached kerning instance on this same change and does
+    // NOT rebuild the scene itself (scene-model.js's own `{ kerning: null }`
+    // listener is `_resetKerningInstance` and nothing more). So the drawn
+    // spacing only caught up when something else happened to rebuild the
+    // scene. Writing one member of a class changes the value every other
+    // member resolves through, so every visible pair has to reflow, not
+    // just the one that was written.
+    this._kerningValuesChangeListener = () =>
+      this.schedulePairTableRefresh({ rebuildScene: true });
     this.fontController.addChangeListener(
       this._kerningValuesChangeMatchPattern,
       this._kerningValuesChangeListener,
@@ -2229,9 +2238,12 @@ export class KerningViewController extends ViewController {
       true
     );
     // The scene rebuild is also the completion signal for local tool edits.
+    // This one must NOT ask for another rebuild: a rebuild is what sets
+    // positionedLines, so it would re-enter itself every frame.
+    this._positionedLinesChangeListener = () => this.schedulePairTableRefresh();
     this.sceneSettingsController.addKeyListener(
       "positionedLines",
-      this._kerningValuesChangeListener
+      this._positionedLinesChangeListener
     );
     // "On view disposal, release the subscription." This app has no
     // internal view-teardown lifecycle to hook (grepped the whole tree:
@@ -2245,11 +2257,24 @@ export class KerningViewController extends ViewController {
     this.renderPairTable();
   }
 
-  schedulePairTableRefresh() {
+  schedulePairTableRefresh({ rebuildScene = false } = {}) {
+    if (rebuildScene) {
+      this._pairTableRefreshWantsScene = true;
+    }
     if (this._pairTableRefreshFrame != null) return;
     this._pairTableRefreshFrame = requestAnimationFrame(() => {
       this._pairTableRefreshFrame = null;
+      const wantsScene = this._pairTableRefreshWantsScene;
+      this._pairTableRefreshWantsScene = false;
       this.renderPairTable();
+      if (wantsScene) {
+        // Rebuilds positionedLines against the kerning instance the scene
+        // model has just discarded, so every pair on screen redraws at its
+        // new spacing -- in pair mode as well as phrase mode. Pair mode
+        // never got this for free: its scene text is set from
+        // setPreviewPairs, and re-setting the same text is a no-op.
+        this.sceneModel.updateScene();
+      }
     });
   }
 
@@ -2378,7 +2403,7 @@ export class KerningViewController extends ViewController {
     );
     this.sceneSettingsController.removeKeyListener(
       "positionedLines",
-      this._kerningValuesChangeListener
+      this._positionedLinesChangeListener
     );
     if (this._pairTableRefreshFrame != null) {
       cancelAnimationFrame(this._pairTableRefreshFrame);
@@ -3345,14 +3370,27 @@ export class KerningViewController extends ViewController {
           this.autokernSource
         ) ?? 0;
       group.current = current;
+      // Spec section 7.3, on the state filter: "Applying a row drops its
+      // delta to nothing, so it falls under the threshold and leaves the
+      // table. With no way to show applied rows every apply reads as the row
+      // vanishing." That filter was removed, and this is the row it was
+      // protecting -- a pair row is already exempt (pairRowVisible passes
+      // minDelta: 0), a class rule was not, so applying a class rule was the
+      // one action whose only visible effect was its own row disappearing.
+      // A rule applied in this session stays on screen whatever its delta;
+      // the scope filters above still apply to it.
+      const appliedThisSession = this.autokernAppliedPairs.has(
+        pairKey(group.left, group.right)
+      );
       group.summaryVisible =
         matching.length > 0 &&
         this._relationshipsSet.has(relationship) &&
-        passesNumericFilters(valuesForDisplay(current, stats.median, stats.stale), {
-          minDelta: threshold,
-          maxDelta: this.autokernParamsController.model.maxThreshold,
-          hideZeroCurrentSuggestions: filters.hideZeroCurrentSuggestions,
-        });
+        (appliedThisSession ||
+          passesNumericFilters(valuesForDisplay(current, stats.median, stats.stale), {
+            minDelta: threshold,
+            maxDelta: this.autokernParamsController.model.maxThreshold,
+            hideZeroCurrentSuggestions: filters.hideZeroCurrentSuggestions,
+          }));
       // Member exceptions have their own filters; hiding a summary must
       // never hide a saved exception or an explicitly exposed member.
       if (group.summaryVisible || group.rows.length) {
