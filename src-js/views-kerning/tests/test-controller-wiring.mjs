@@ -12,7 +12,7 @@ const source = readFileSync(process.env.KERNING_CONTROLLER_SOURCE ||
 const classSource = source.slice(source.indexOf("export class KerningViewController"),
   source.indexOf("const GLYPH_LIST_TRUNCATE_AT")).replace("export class", "class")
   .replaceAll("import.meta.url", JSON.stringify(import.meta.url));
-const tbody = { textContent: "" };
+const tbody = { textContent: "", children: [], appendChild(row) { this.children.push(row); } };
 const Controller = vm.runInNewContext(`${classSource}\nKerningViewController;`, {
   ViewController: class {},
   ...inputTokens,
@@ -63,4 +63,45 @@ test("Shift-click rerenders through the restored table renderer and toggles he/e
   assert.equal(view._previewPairsChip.hidden, true);
   assert.equal(view.pairMatchesInputScope("e", "h"), true);
   assert.equal(previews, 2);
+});
+
+
+test("progressive table load creates 100 rows per request, preserving existing rows", () => {
+  tbody.children = [];
+  const view = Object.create(Controller.prototype);
+  let built = 0;
+  Object.assign(view, {
+    _pairTableItems: Array.from({ length: 235 }, (_, id) => ({
+      renderKind: id % 2 ? "pair" : "class-rule", row: { id }, group: { id },
+    })),
+    _pairTableLoadedCount: 0,
+    _pairTableLoadMore: {}, _pairTableLoadStatus: {},
+    buildPairRowElement: (row) => { built++; return { id: row.id }; },
+    buildClassSummaryRowElement: (group) => { built++; return { id: group.id }; },
+    syncSelectAllCheckboxes() {},
+  });
+  view.loadNextPairTableBatch();
+  assert.equal(built, 100);
+  assert.equal(tbody.children.length, 100);
+  assert.equal(view._pairTableLoadStatus.textContent, "Showing 100 of 235 rows");
+  const first = tbody.children[0];
+  view.loadNextPairTableBatch();
+  assert.equal(built, 200);
+  assert.equal(tbody.children[0], first);
+  view.loadNextPairTableBatch();
+  assert.equal(built, 235);
+  assert.equal(view._pairTableLoadMore.hidden, true);
+  view.loadNextPairTableBatch();
+  assert.equal(built, 235);
+  assert.equal(new Set(tbody.children.map((row) => row.id)).size, 235);
+});
+
+test("highlighted individual rows cannot produce more than 100 canvas pairs", () => {
+  const view = Object.create(Controller.prototype);
+  view._pairTableItems = Array.from({ length: 1000 }, (_, i) => ({
+    sortId: String(i), renderKind: "pair", left: "h", right: String(i),
+  }));
+  view.resultSelection = { highlighted: new Set(view._pairTableItems.map((r) => r.sortId)) };
+  assert.equal(view.expandHighlightedRowsToPairs().length, 100);
+  assert.ok(view._classSummaryTruncationCount);
 });

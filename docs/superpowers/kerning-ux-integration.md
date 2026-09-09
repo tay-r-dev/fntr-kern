@@ -29,6 +29,23 @@ This section supersedes the historical two-input and `%member%!` decisions below
   positioning replaces saved kerning; it does not add the proposal on top of it.
 - Font tiles show separate left/right class-color edges and hide editor-status bars.
 
+## Progressive table loading
+
+The table initially renders 100 rows. Load next 100 appends another batch without
+rebuilding earlier rows. The footer reports loaded/total counts; filtering and
+sorting still operate on the full result set. Filter, sort, tab, and source changes
+reset the loaded prefix to 100; value-only refreshes keep the loaded prefix.
+Highlight/tick state is retained for matching rows independently of their DOM page.
+Select all targets loaded rows. Class write metadata remains available for matching
+selected rows that move beyond the first page after a filter change.
+
+Class summaries use a single grouping pass over the cache rather than rescanning
+the whole cache for every class address. This preserves full aggregate contributors.
+The canvas is capped at 100 highlighted pairs total (50 per class summary).
+
+Targeted checks cover 100/200/235-row loading, preserving existing row elements,
+exhaustion without duplicates, and the canvas cap. No browser verification was run.
+
 ## Startup regression correction
 
 The initial PR accidentally deleted the controller block from `isLeftClassed`

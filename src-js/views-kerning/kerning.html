@@ -350,7 +350,7 @@
                     <input
                       type="checkbox"
                       class="kerning-pairtable-select-all"
-                      title="Select all visible rows"
+                      title="Select all loaded rows"
                     />
                     <span class="kerning-pairtable-sort-label"></span>
                   </th>
@@ -395,6 +395,10 @@
               </thead>
               <tbody id="kerning-pairtable-body"></tbody>
             </table>
+            <div class="kerning-pairtable-load-controls">
+              <span id="kerning-pairtable-load-status" role="status" aria-live="polite"></span>
+              <button id="kerning-pairtable-load-more" type="button" hidden>Load next 100</button>
+            </div>
           </div>
         </div>
       </div>

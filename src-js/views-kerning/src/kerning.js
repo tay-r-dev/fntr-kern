@@ -1767,6 +1767,9 @@ export class KerningViewController extends ViewController {
 
     const glyphInput = document.querySelector("#kerning-pairtable-glyph");
     glyphInput.value = filters.glyphName;
+    this._pairTableLoadMore = document.querySelector("#kerning-pairtable-load-more");
+    this._pairTableLoadStatus = document.querySelector("#kerning-pairtable-load-status");
+    this._pairTableLoadMore.addEventListener("click", () => this.loadNextPairTableBatch());
     this._glyphInputElement = glyphInput;
     this._previewPairSelections = new Map();
     this._glyphFilterError = document.querySelector("#kerning-pairtable-glyph-error");
@@ -2759,6 +2762,17 @@ export class KerningViewController extends ViewController {
     this._unicodeTypesSet = new Set(filters.unicodeTypes);
     this._relationshipsSet = new Set(filters.relationships);
 
+    const queryKey = JSON.stringify([
+      filters, threshold, groupThreshold, this.autokernParamsController.model.maxThreshold,
+      tab, this.activeSourceIdentifier(), previewPairs,
+      this._tableGlyphsetMembers ? [...this._tableGlyphsetMembers] : null,
+    ]);
+    const previousLoaded = this._pairTableQueryKey === queryKey
+      ? this._pairTableLoadedCount || 100 : 100;
+    this._pairTableQueryKey = queryKey;
+    this._pairTableItems = [];
+    this._pairTableLoadedCount = 0;
+    this.updatePairTableLoadStatus();
     tbody.textContent = "";
     // Ledger §8.4: zero checked categories or zero checked relationships is
     // its own "nothing selected" empty state, distinct from "all" -- render
@@ -2965,40 +2979,53 @@ export class KerningViewController extends ViewController {
     // (a class-rule item's own current/delta stand-ins, set above).
     this.sortPairRows(visibleItems, filters);
 
+    this._pairTableItems = visibleItems;
+    // Selection belongs to the filtered result set, not the DOM page.
+    this.resultSelection = retainVisible(this.resultSelection,
+      new Set(visibleItems.map((item) => item.sortId)));
     for (const item of visibleItems) {
-      if (item.renderKind === "class-rule") {
-        tbody.appendChild(
-          this.buildClassSummaryRowElement(item.group, item.stats, item.median)
-        );
-      } else {
-        tbody.appendChild(this.buildPairRowElement(item.row));
-      }
+      if (item.renderKind !== "class-rule") continue;
+      this._classSummaryMembersByRowId.set(item.sortId, {
+        leftMembers: item.stats.leftMembers, rightMembers: item.stats.rightMembers,
+      });
+      this._classSummaryMedianByRowId.set(item.sortId, item.median);
+      this._classSummaryStaleByRowId.set(item.sortId, !!item.stats.stale);
     }
-
-    // Backlog item 13: the tbody was just rebuilt from scratch above, so
-    // the select-all checkbox needs to reflect the freshly rendered (Task
-    // 3: each row's own checkbox is now initialized from
-    // this.resultSelection.ticked in buildPairRowElement, not always
-    // unchecked) row set.
-    this.syncSelectAllCheckboxes();
-
-    // Task 3 (spec F25): every row was just rebuilt, so this is exactly the
-    // full set of rows now actually displayed -- prune highlight/tick state
-    // for any row ID that didn't render this time (filtered out, tab
-    // switched, cache reloaded, etc).
-    const visibleRowIds = new Set(
-      [...document.querySelectorAll(".kerning-pairtable-table tr[data-row-id]")].map(
-        (tr) => tr.dataset.rowId
-      )
-    );
-    this.resultSelection = retainVisible(this.resultSelection, visibleRowIds);
-    // Task 4, spec F20: a filter/render change that dropped a ticked row
-    // must disarm Reset (it would otherwise silently commit against a
-    // smaller set than the one shown when it was armed).
+    // A value-only refresh keeps the loaded prefix. New filters/sort/source
+    // start at 100; valid highlighted/ticked rows retain their identities.
+    this.appendPairTableRows(previousLoaded);
     this.refreshResetArmState();
-    // Task 7, spec F25: "Update preview and action counts accordingly"
-    // when a highlighted row leaves the displayed set.
     this.updatePairPreview();
+  }
+
+  loadNextPairTableBatch() {
+    this.appendPairTableRows(100);
+  }
+
+  appendPairTableRows(count) {
+    const tbody = document.querySelector("#kerning-pairtable-body");
+    if (!tbody || !this._pairTableItems) return;
+    const end = Math.min(this._pairTableLoadedCount + count, this._pairTableItems.length);
+    for (; this._pairTableLoadedCount < end; this._pairTableLoadedCount++) {
+      const item = this._pairTableItems[this._pairTableLoadedCount];
+      tbody.appendChild(item.renderKind === "class-rule"
+        ? this.buildClassSummaryRowElement(item.group, item.stats, item.median)
+        : this.buildPairRowElement(item.row));
+    }
+    this.syncSelectAllCheckboxes();
+    this.updatePairTableLoadStatus();
+  }
+
+  updatePairTableLoadStatus() {
+    const total = this._pairTableItems?.length || 0;
+    const loaded = this._pairTableLoadedCount || 0;
+    if (this._pairTableLoadStatus) {
+      this._pairTableLoadStatus.textContent = `Showing ${loaded} of ${total} rows`;
+    }
+    if (this._pairTableLoadMore) {
+      this._pairTableLoadMore.hidden = loaded >= total;
+      this._pairTableLoadMore.textContent = `Load next ${Math.min(100, total - loaded)}`;
+    }
   }
 
   previewFilterPairs() {
@@ -3061,8 +3088,9 @@ export class KerningViewController extends ViewController {
       const right = rightClassName ? "@" + rightClassName : entry.right;
       const key = pairKey(left, right);
       if (!groups.has(key)) groups.set(key, {
-        left, right, leftClassName, rightClassName, rows: [],
+        left, right, leftClassName, rightClassName, rows: [], entries: [],
       });
+      groups.get(key).entries.push(entry);
     }
     const results = [];
     for (const group of groups.values()) {
@@ -3117,15 +3145,7 @@ export class KerningViewController extends ViewController {
       ? kernData.groupsSide1[group.leftClassName] || [] : [group.left];
     const rightMembers = group.rightClassName
       ? kernData.groupsSide2[group.rightClassName] || [] : [group.right];
-    const leftSet = new Set(leftMembers);
-    const rightSet = new Set(rightMembers);
-
-    const entries = [];
-    for (const entry of this.autokernCache.values()) {
-      if (leftSet.has(entry.left) && rightSet.has(entry.right)) {
-        entries.push(entry);
-      }
-    }
+    const entries = group.entries;
 
     // Backlog item 8 part 6: the aggregate median drops member pairs whose
     // own divergence from the class cell is at least the group threshold (the
@@ -6221,7 +6241,7 @@ export class KerningViewController extends ViewController {
     }
     this._glyphFilterError.textContent = filter.error ||
       (truncated || this._classSummaryTruncationCount
-        ? "Preview capped at 50 pairs per selection. The table is not capped." : "");
+        ? "Preview capped at 100 pairs total, up to 50 per class. Load table rows below." : "");
     if (previewPairs.length) {
       this.setPreviewPairs(previewPairs);
       if (switchToPairMode) {
@@ -6265,12 +6285,11 @@ export class KerningViewController extends ViewController {
   expandHighlightedRowsToPairs() {
     const pairs = [];
     let truncatedCount = 0;
-    for (const tr of document.querySelectorAll(
-      ".kerning-pairtable-table tr[data-row-id]"
-    )) {
-      if (!this.resultSelection.highlighted.has(tr.dataset.rowId)) {
-        continue;
-      }
+    for (const item of this._pairTableItems || []) {
+      if (!this.resultSelection.highlighted.has(item.sortId)) continue;
+      if (pairs.length >= 100) { truncatedCount++; break; }
+      const tr = { dataset: { rowId: item.sortId, kind: item.renderKind,
+        left: item.left, right: item.right } };
       if (tr.dataset.kind === "class-rule") {
         const members = this._classSummaryMembersByRowId?.get(tr.dataset.rowId);
         if (!members) {
@@ -6284,7 +6303,9 @@ export class KerningViewController extends ViewController {
         outer: for (const left of members.leftMembers) {
           for (const right of members.rightMembers) {
             if (!this.pairMatchesInputScope(left, right)) continue;
-            if (expanded.length === 50) { truncated = true; break outer; }
+            if (expanded.length === Math.min(50, 100 - pairs.length)) {
+              truncated = true; break outer;
+            }
             expanded.push([left, right]);
           }
         }
