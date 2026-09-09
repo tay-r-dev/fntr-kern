@@ -2353,6 +2353,19 @@ class LineSetter {
     this.fallbackCharacterMap = fallbackCharacterMap;
   }
 
+  // The name a code point with no glyph of its own would take. One answer, read
+  // both before shaping and after it, so the stand-in and the glyph the designer
+  // creates from it cannot end up with two different names.
+  glyphNameForCodePoint(codePoint) {
+    return (
+      this.fallbackCharacterMap[codePoint] ??
+      disambiguateGlyphName(
+        getSuggestedGlyphName(codePoint),
+        this.fontController.glyphMap
+      )
+    );
+  }
+
   async setLine(
     origin,
     characterLine,
@@ -2367,11 +2380,24 @@ class LineSetter {
 
     let { x, y } = origin;
 
-    const codePoints = characterLine.map((characterInfo) =>
-      characterInfo.character
-        ? characterInfo.character.codePointAt(0)
-        : this.shaper.getGlyphNameCodePoint(characterInfo.glyphName)
-    );
+    // A character the font has no glyph for is handed to the shaper by NAME,
+    // not by code point. Given the code point the shaper stands in for the
+    // missing glyph the way a text engine must: it decomposes the character and
+    // draws the parts it does have, so an unbuilt accented letter arrives as its
+    // base and its mark, two real glyphs, with the mark positioned on the base.
+    // That reads as a glyph that exists and is drawn, and there is no cell to
+    // double-click to make the real one. Named instead, the character is one
+    // undefined glyph, empty until it is created and built.
+    const codePoints = characterLine.map((characterInfo) => {
+      if (!characterInfo.character) {
+        return this.shaper.getGlyphNameCodePoint(characterInfo.glyphName);
+      }
+      const codePoint = characterInfo.character.codePointAt(0);
+      if (fontController.characterMap[codePoint]) {
+        return codePoint;
+      }
+      return this.shaper.getGlyphNameCodePoint(this.glyphNameForCodePoint(codePoint));
+    });
 
     if (!shaperOptions.direction) {
       const direction = guessDirectionFromCodePoints(codePoints);
@@ -2402,15 +2428,17 @@ class LineSetter {
     }
 
     for (const [glyphIndex, glyphInfo] of enumerate(shapedGlyphs)) {
-      const fallbackCodePoint = codePoints[glyphInfo.cluster];
+      // The character's own code point, not the name reference that may have
+      // been put in its place above. The new-glyph dialog reads it to give the
+      // glyph its Unicode, so a named stand-in must not lose it here.
+      const characterInfo = characterLine[glyphInfo.cluster];
+      const fallbackCodePoint = characterInfo?.character
+        ? characterInfo.character.codePointAt(0)
+        : codePoints[glyphInfo.cluster];
       const glyphName =
         glyphInfo.codepoint != 0 || fallbackCodePoint >= MAX_UNICODE
           ? glyphInfo.glyphname
-          : (fallbackCharacterMap[fallbackCodePoint] ??
-            disambiguateGlyphName(
-              getSuggestedGlyphName(fallbackCodePoint),
-              fontController.glyphMap
-            ));
+          : this.glyphNameForCodePoint(fallbackCodePoint);
 
       const isSelectedGlyph = glyphIndex == selectedGlyphIndex;
 
