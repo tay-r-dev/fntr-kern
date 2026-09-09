@@ -29,6 +29,17 @@ This section supersedes the historical two-input and `%member%!` decisions below
   positioning replaces saved kerning; it does not add the proposal on top of it.
 - Font tiles show separate left/right class-color edges and hide editor-status bars.
 
+## Startup regression correction
+
+The initial PR accidentally deleted the controller block from `isLeftClassed`
+through `classAddressLabel` during comment cleanup. Restored all 14 methods,
+including `renderPairTable`, `handlePreviewPairModifierClick`, and their helpers.
+
+A targeted regression check evaluates the actual controller class and exercises
+Shift-click through its real table renderer with an empty cache. Both checks fail
+on the original PR and pass after restoration. The check is included in the kerning
+workspace test command. No full build, test suite, or browser verification was run.
+
 ## Local verification handoff
 
 Automated tests, build, and browser verification were deliberately **not run**, at the

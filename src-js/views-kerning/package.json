@@ -1,7 +1,7 @@
 {
   "name": "@fontra/views-kerning",
   "scripts": {
-    "test": "mocha tests --extension js --reporter spec"
+    "test": "mocha tests --extension js --reporter spec && node --test tests/test-controller-wiring.mjs"
   },
   "exports": {
     "./start.js": "./src/start.js",
