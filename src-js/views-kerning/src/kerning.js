@@ -2925,7 +2925,7 @@ export class KerningViewController extends ViewController {
     if (this._unicodeTypesSet.size === 0 || this._relationshipsSet.size === 0) {
       const emptyRow = document.createElement("tr");
       const emptyCell = document.createElement("td");
-      emptyCell.colSpan = 8;
+      emptyCell.colSpan = 7;
       emptyCell.className = "kerning-pairtable-nothing-selected";
       emptyCell.textContent =
         this._unicodeTypesSet.size === 0
@@ -3578,14 +3578,6 @@ export class KerningViewController extends ViewController {
     }
     applyCell.appendChild(applyButton);
     tr.appendChild(applyCell);
-
-    // F32's override-action column. Task 10 owns building the per-pair lock
-    // this column holds for member/exception rows; a class-summary row has
-    // no single concrete pair to lock (F12: "A class-summary row must not
-    // create an arbitrary representative-glyph exception"), so it stays
-    // empty here.
-    const exceptionCell = document.createElement("td");
-    tr.appendChild(exceptionCell);
 
     // F32's hide-action column. Task 11, ledger §8.5 (APPROVED): hiding a
     // class-summary row hides only this displayed aggregate row -- it never
@@ -5262,25 +5254,25 @@ export class KerningViewController extends ViewController {
     rightCell.appendChild(rightLabel);
     tr.appendChild(rightCell);
 
-    // F32's override-action column. Task 10, spec F12/F29/F19: the real
+    // One action column. Task 10, spec F12/F29/F19: the real
     // lock/Remove-exception control, plus the Potential tab's own
-    // accept-candidate action in the same position. Ground truth is
+    // accept-candidate action in the same place. Ground truth is
     // row.explicitPairExists (Task 2's literal-address read), never the
     // cache's historical `row.override` badge (F12: "Do not infer exception
     // state solely from ... a historical cache badge") -- once any write
     // (this control OR a confirmed Apply-selected override) creates a
     // literal rule, explicitPairExists is true and this cell shows the same
     // Remove-exception control regardless of which path wrote it.
-    // A pair row has no class rule to apply, so its Apply cell is empty --
-    // it exists only to keep the column count and the column toggle honest.
+    //
+    // The separate Exception column is gone. A row carries at most one of
+    // these actions at a time, and a class-summary row's Apply check never
+    // coincides with a pair row's lock, so the two columns held one control
+    // between them and left the other empty on every row.
     const applyCell = document.createElement("td");
     applyCell.className = "kerning-pairtable-apply-col";
     applyCell.style.display = this.autokernFiltersController.model.showApply
       ? ""
       : "none";
-    tr.appendChild(applyCell);
-
-    const exceptionCell = document.createElement("td");
     const tab = this.activeResultsTab || "default";
     const hasApplicableClass =
       this.isLeftClassed(row.left) || this.isRightClassed(row.right);
@@ -5289,15 +5281,21 @@ export class KerningViewController extends ViewController {
       // F19: "An apply-exception action must identify the exact pair and
       // proposed value it will save" -- row.suggestion (the candidate's own
       // proposed value), never row.current.
-      const acceptButton = document.createElement("button");
-      acceptButton.type = "button";
-      acceptButton.className = "kerning-pairtable-accept-exception";
-      acceptButton.textContent = "Apply exception";
-      acceptButton.title = `Save ${row.left} × ${row.right} = ${row.suggestion} as a pair exception`;
-      acceptButton.addEventListener("click", () =>
-        this.createPairException(row.left, row.right, row.suggestion)
+      const acceptButton = document.createElement("icon-button");
+      acceptButton.className =
+        "kerning-pairtable-apply-indicator kerning-pairtable-apply-class";
+      acceptButton.src = "/tabler-icons/check.svg";
+      acceptButton.setAttribute(
+        "aria-label",
+        `Save ${row.left} × ${row.right} = ${row.suggestion} as a pair exception`
       );
-      exceptionCell.appendChild(acceptButton);
+      acceptButton.setAttribute(
+        "data-tooltip",
+        `Save ${row.left} × ${row.right} = ${row.suggestion} as a pair exception.`
+      );
+      acceptButton.onclick = () =>
+        this.createPairException(row.left, row.right, row.suggestion);
+      applyCell.appendChild(acceptButton);
     } else if (hasApplicableClass) {
       // F12: the lock only ever appears "for an individual pair with
       // applicable class kerning" -- a fully unique pair (neither side
@@ -5305,7 +5303,8 @@ export class KerningViewController extends ViewController {
       // for it, same as before.
       if (row.explicitPairExists) {
         // F12: "A saved exception's indicator remains visible" (not muted,
-        // unlike the create-lock below).
+        // unlike the create-lock below). Drawn red, the same cue the row's
+        // own left bar already carries for a pair exception.
         const removeButton = document.createElement("icon-button");
         removeButton.className =
           "kerning-pairtable-exception-indicator kerning-pairtable-exception-saved";
@@ -5320,7 +5319,7 @@ export class KerningViewController extends ViewController {
             `(${this.inheritedFallbackValue(row.left, row.right)}).`
         );
         removeButton.onclick = () => this.removePairException(row.left, row.right);
-        exceptionCell.appendChild(removeButton);
+        applyCell.appendChild(removeButton);
       } else {
         // F12: "An inherited pair's lock is muted until hover or focus" --
         // kerning.css's own .kerning-pairtable-exception-create rule holds
@@ -5339,10 +5338,10 @@ export class KerningViewController extends ViewController {
         );
         lockButton.onclick = () =>
           this.createPairException(row.left, row.right, row.current);
-        exceptionCell.appendChild(lockButton);
+        applyCell.appendChild(lockButton);
       }
     }
-    tr.appendChild(exceptionCell);
+    tr.appendChild(applyCell);
 
     // F32's hide-action column. Task 11, spec F10/F17: the eye control.
     // Reveal-on-hover/focus uses the exact same row-hover convention Task

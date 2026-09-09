@@ -625,6 +625,14 @@ tr:focus-within .kerning-pairtable-exception-create {
   opacity: 1;
 }
 
+/* A saved exception is a state, not only an action, so its closed lock is
+   always visible and carries the same red the row's own left bar does
+   (tr[data-kind="pair-exception"] below). The icon inherits currentColor,
+   so coloring the host is enough. */
+.kerning-pairtable-exception-saved {
+  color: var(--fontra-red-color, #c00);
+}
+
 /* The class-summary row's Apply action. Same sizing as the Exception
    column's lock and the Hide column's eye, so the three row actions read as
    one family. Its reveal rule is stricter than theirs on purpose: the

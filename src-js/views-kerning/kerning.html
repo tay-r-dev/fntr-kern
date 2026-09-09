@@ -382,22 +382,17 @@
                   >
                     <span class="kerning-pairtable-sort-label"></span>
                   </th>
-                  <!-- F32: "The Potential exceptions tab exposes its
-                       create/apply-exception action in the override-action
-                       position. The Default view provides the lock in that
-                       position for eligible exposed members and saved
-                       exceptions" -- that action itself is Task 10's build;
-                       this column carries the per-pair lock only. The
-                       class-summary row's own write action moved to the
-                       Apply column beside it. -->
-                  <!-- A class-summary row's own write action, as a check
-                       icon in its own toggleable column (Columns > Apply)
-                       rather than a text button inside the Exception cell,
-                       so it reads as one of the row's icon actions beside
-                       the lock and the eye. An ordinary pair row leaves this
-                       cell empty -- a pair has no class rule to apply. -->
+                  <!-- The row's one write action, as an icon in its own
+                       toggleable column (Columns > Apply). A class-summary
+                       row shows a check that writes the class rule. A pair
+                       row shows an open lock that saves an exception, or a
+                       red closed lock that removes the exception it already
+                       has. On the Potential exceptions tab a candidate pair
+                       shows a check that saves its proposed value. F32's
+                       separate Exception column is gone: each of these is
+                       the same action in the same place, and no row ever
+                       carries two of them. -->
                   <th class="kerning-pairtable-apply-col">Apply</th>
-                  <th>Exception</th>
                   <!-- F32's Hide action -- Task 11 replaces today's Mark
                        junk button with the eye control; this column is
                        where it already lives. -->
