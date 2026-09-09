@@ -24,7 +24,13 @@ module.exports = (_env, argv) => {
           js: {
             // JS output filename, relative to `output.path` Webpack option
             filename: "js/[name].[contenthash:8].js",
-            chunkFilename: "[name].chunk.js",
+            // Content-hashed like the entry filename above. Without a hash
+            // an async chunk keeps one name for ever, so a browser serves
+            // the cached copy of it while every hashed chunk around it is
+            // fresh -- and the autokern worker, which IS such a chunk, then
+            // runs last week's code against this week's job and rejects a
+            // mode it has never heard of.
+            chunkFilename: "js/[name].[contenthash:8].chunk.js",
           },
           css: {
             // CSS output filename, relative to `output.path` Webpack option
