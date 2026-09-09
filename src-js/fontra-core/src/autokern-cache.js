@@ -288,6 +288,131 @@ export function markGlyphStale(cache, glyphName) {
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// Metrics-only recalculation
+// ---------------------------------------------------------------------------
+//
+// A kern is a distance between two inks. A run measures it by rasterizing
+// both shapes and searching for the kern that makes the perceived gap match
+// the calibrated band. Nothing about that search depends on where a glyph's
+// origin sits -- only on the shapes themselves and on how far apart the
+// placement puts them.
+//
+// So when a glyph keeps its shape and only its spacing moves, the answer
+// does not have to be measured again. It moves by exactly as much as the
+// placement moved, which is addition:
+//
+//   gap(k) = (advance(left) + k + xMin(right)) - xMax(left)
+//
+// The gap the run settled on is a property of the two shapes, so it is the
+// same before and after. Solving for the new kern:
+//
+//   k' = k - (dAdvance(left) - dxMax(left) + dxMin(right))
+//
+// Read it as the two sidebearings the pair actually touches: left's right
+// sidebearing (advance - xMax) and right's left sidebearing (xMin). Widen
+// either by 10 units and the pair needs 10 less kern. Left's OWN left
+// sidebearing cancels out, which is correct -- moving a glyph's ink and its
+// advance together changes nothing between it and the glyph after it.
+//
+// glyph metrics record: { advance, xMin, xMax, yMin, yMax, numCoordinates },
+// all in font units. The caller measures these; this module only compares
+// them.
+
+// Did this glyph keep its shape? Ink width, ink height, vertical position
+// and the number of coordinates in the path all stay the same under a pure
+// spacing change, and a real edit almost always moves one of them.
+//
+// ponytail: a fingerprint, not a proof. An edit that keeps every one of
+// those four numbers (dragging one point exactly along a line that leaves
+// the bounding box, say) reads as metrics-only here and its cached value
+// would be adjusted rather than remeasured. The whole-font re-run stays the
+// ground truth; upgrade this to a checksum of the coordinates themselves if
+// a real font shows a false match.
+export function glyphShapeUnchanged(before, after) {
+  if (!before || !after) {
+    return false;
+  }
+  return (
+    before.numCoordinates === after.numCoordinates &&
+    near(before.xMax - before.xMin, after.xMax - after.xMin) &&
+    near(before.yMin, after.yMin) &&
+    near(before.yMax, after.yMax)
+  );
+}
+
+function near(a, b) {
+  return Math.abs(a - b) < 0.001;
+}
+
+// The one arithmetic step, in font units. See the derivation above.
+export function pairValueAfterMetricsChange(
+  value,
+  leftBefore,
+  leftAfter,
+  rightBefore,
+  rightAfter
+) {
+  const leftRightSidebearing =
+    leftAfter.advance - leftAfter.xMax - (leftBefore.advance - leftBefore.xMax);
+  const rightLeftSidebearing = rightAfter.xMin - rightBefore.xMin;
+  return Math.round(value - (leftRightSidebearing + rightLeftSidebearing));
+}
+
+// Recalculates every cache entry whose two glyphs both kept their shape, and
+// clears its stale flag: a value corrected by arithmetic is as true as a
+// measured one. `before` and `after` are plain objects of glyph metrics
+// records keyed by glyph name -- `before` is what the run measured against,
+// `after` is the font as it stands now.
+//
+// Returns { cache, recalculated, remaining }: a NEW cache, how many entries
+// it corrected, and the sorted names of the glyphs it could not answer for,
+// which are the glyphs that still need a real re-run.
+export function recalculateMetricsOnly(cache, before, after) {
+  const verdicts = new Map();
+  const shapeKept = (glyphName) => {
+    if (!verdicts.has(glyphName)) {
+      verdicts.set(
+        glyphName,
+        glyphShapeUnchanged(before?.[glyphName], after?.[glyphName])
+      );
+    }
+    return verdicts.get(glyphName);
+  };
+
+  const result = new Map(cache);
+  let recalculated = 0;
+  const remaining = new Set();
+  for (const [key, entry] of cache) {
+    const keptLeft = shapeKept(entry.left);
+    const keptRight = shapeKept(entry.right);
+    if (!keptLeft) {
+      remaining.add(entry.left);
+    }
+    if (!keptRight) {
+      remaining.add(entry.right);
+    }
+    // A junk pair is never measured and never recalculated -- the designer
+    // has excluded it, and a number nobody reads is not worth correcting.
+    if (!keptLeft || !keptRight || entry.junk) {
+      continue;
+    }
+    const value = pairValueAfterMetricsChange(
+      entry.value,
+      before[entry.left],
+      after[entry.left],
+      before[entry.right],
+      after[entry.right]
+    );
+    if (value === entry.value && !entry.stale) {
+      continue;
+    }
+    result.set(key, { ...entry, value, stale: false });
+    recalculated++;
+  }
+  return { cache: result, recalculated, remaining: [...remaining].sort() };
+}
+
 // Which pairs should be (re)measured, in one of three modes (spec §4: "The
 // rerun has two modes, everything or marked only", plus the scoped mode
 // below). Every mode excludes junk pairs (spec §4.2: "a junk pair is never

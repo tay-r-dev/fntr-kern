@@ -643,6 +643,12 @@
             <button id="kerning-stale-rerun-button" type="button" disabled>
               Re-run stale and new glyphs
             </button>
+            <!-- The cheap half of the button above: a glyph whose shape did
+                 not change, only its spacing, needs arithmetic rather than a
+                 measured run (kerning.js's recalculateMetricsOnlyGlyphs). -->
+            <button id="kerning-stale-recalc-button" type="button" disabled>
+              Recalculate spacing changes
+            </button>
             <p id="kerning-stale-progress"></p>
           </div>
 

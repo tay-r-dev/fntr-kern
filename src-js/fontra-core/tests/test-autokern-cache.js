@@ -10,6 +10,8 @@ import {
   pairEnvelopesCanTouch,
   pairKey,
   pairsForRerun,
+  pairValueAfterMetricsChange,
+  recalculateMetricsOnly,
   setPairValue,
 } from "@fontra/core/autokern-cache.js";
 import { expect } from "chai";
@@ -434,5 +436,70 @@ describe("glyphNamesNotInCache", () => {
     let cache = createCache();
     cache = setPairValue(cache, "A", "B", -10);
     expect(glyphNamesNotInCache(cache, ["A", "B"])).to.deep.equal([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Metrics-only recalculation
+// ---------------------------------------------------------------------------
+
+const metrics = (advance, xMin, xMax, extra = {}) => ({
+  advance,
+  xMin,
+  xMax,
+  yMin: 0,
+  yMax: 700,
+  numCoordinates: 24,
+  ...extra,
+});
+
+describe("metrics-only recalculation", () => {
+  it("a wider right sidebearing on the left glyph takes the same amount off the kern", () => {
+    const before = metrics(500, 40, 460);
+    const after = metrics(510, 40, 460); // RSB 40 -> 50
+    const right = metrics(500, 40, 460);
+    expect(pairValueAfterMetricsChange(-30, before, after, right, right)).to.equal(-40);
+  });
+
+  it("a wider left sidebearing on the right glyph takes the same amount off the kern", () => {
+    const left = metrics(500, 40, 460);
+    const before = metrics(500, 40, 460);
+    const after = metrics(515, 55, 475); // ink moved right by 15, advance follows
+    expect(pairValueAfterMetricsChange(-30, left, left, before, after)).to.equal(-45);
+  });
+
+  it("the left glyph's own left sidebearing does not touch the pair", () => {
+    const before = metrics(500, 40, 460);
+    const after = metrics(520, 60, 480); // shifted right, advance follows: RSB unchanged
+    const right = metrics(500, 40, 460);
+    expect(pairValueAfterMetricsChange(-30, before, after, right, right)).to.equal(-30);
+  });
+
+  it("recalculates the pairs it can answer for, clears their stale flag, and names the rest", () => {
+    let cache = createCache();
+    cache = setPairValue(cache, "A", "V", -40);
+    cache = setPairValue(cache, "T", "o", -50);
+    cache = markGlyphStale(cache, "A");
+    const before = { A: metrics(500, 40, 460), V: metrics(500, 40, 460), T: metrics(500, 40, 460), o: metrics(500, 40, 460) }; // prettier-ignore
+    const after = {
+      ...before,
+      A: metrics(510, 40, 460), // spacing only: 10 more RSB
+      o: metrics(500, 40, 460, { numCoordinates: 30 }), // redrawn
+    };
+    const result = recalculateMetricsOnly(cache, before, after);
+    expect(result.recalculated).to.equal(1);
+    expect(result.cache.get(pairKey("A", "V")).value).to.equal(-50);
+    expect(result.cache.get(pairKey("A", "V")).stale).to.equal(false);
+    // "o" was redrawn, so T x o keeps its measured number and o is named.
+    expect(result.cache.get(pairKey("T", "o")).value).to.equal(-50);
+    expect(result.remaining).to.deep.equal(["o"]);
+  });
+
+  it("answers for nothing when there are no stored metrics to compare against", () => {
+    let cache = createCache();
+    cache = setPairValue(cache, "A", "V", -40);
+    const result = recalculateMetricsOnly(cache, {}, { A: metrics(500, 40, 460) });
+    expect(result.recalculated).to.equal(0);
+    expect(result.remaining).to.deep.equal(["A", "V"]);
   });
 });

@@ -91,6 +91,7 @@ import {
   glyphNamesNotInCache,
   medianDroppingOutliers,
   pairKey,
+  recalculateMetricsOnly,
 } from "@fontra/core/autokern-cache.js";
 // Design doc §0: kern-row clustering (deriveKernRowClusters) is removed from
 // this view's derive UI/call site -- composite inheritance is now the only
@@ -315,12 +316,22 @@ async function readAutokernCacheFromOPFS(projectIdentifier, source) {
     ]);
     const stored = JSON.parse(await file.text());
     if (Array.isArray(stored)) {
-      return { entries: stored, calibration: null, coveredGlyphNames: null };
+      return {
+        entries: stored,
+        calibration: null,
+        coveredGlyphNames: null,
+        glyphMetrics: null,
+      };
     }
     return {
       entries: stored?.entries || [],
       calibration: stored?.calibration || null,
       coveredGlyphNames: stored?.coveredGlyphNames || null,
+      // The metrics every number in this file was measured against, so a
+      // later spacing change can be answered by arithmetic instead of a
+      // whole run. A file written before this existed has none, and then
+      // recalculation has nothing to compare against and says so.
+      glyphMetrics: stored?.glyphMetrics || null,
     };
   } catch (e) {
     return null;
@@ -338,7 +349,8 @@ async function writeAutokernCacheToOPFS(
   source,
   cache,
   calibration,
-  coveredGlyphNames
+  coveredGlyphNames,
+  glyphMetrics
 ) {
   const opfs = await getAutokernOPFS();
   await opfs.createDirectory(AUTOKERN_CACHE_OPFS_DIR);
@@ -346,12 +358,29 @@ async function writeAutokernCacheToOPFS(
     entries: [...cache.values()],
     calibration: calibration || null,
     coveredGlyphNames: coveredGlyphNames ? [...coveredGlyphNames].sort() : null,
+    glyphMetrics: glyphMetrics || null,
   };
   const blob = new Blob([JSON.stringify(stored)], { type: "application/json" });
   await opfs.writeFile(
     [...AUTOKERN_CACHE_OPFS_DIR, autokernCacheFileName(projectIdentifier, source)],
     blob
   );
+}
+
+// One glyph's metrics, in font units, as a run measured them. `advance` and
+// `xMin`/`xMax` are what a kern is arithmetic on; `yMin`/`yMax` and the
+// coordinate count are the fingerprint that says whether the shape itself
+// stayed put (autokern-cache.js's glyphShapeUnchanged).
+function glyphMetricsRecord(glyphInstance) {
+  const bounds = glyphInstance.controlBounds;
+  return {
+    advance: glyphInstance.xAdvance,
+    xMin: bounds ? bounds.xMin : 0,
+    xMax: bounds ? bounds.xMax : 0,
+    yMin: bounds ? bounds.yMin : 0,
+    yMax: bounds ? bounds.yMax : 0,
+    numCoordinates: glyphInstance.path?.coordinates?.length || 0,
+  };
 }
 
 export class KerningViewController extends ViewController {
@@ -1075,6 +1104,9 @@ export class KerningViewController extends ViewController {
     this.autokernCalibration = null;
     // Which glyphs the last run considered -- see writeAutokernCacheToOPFS.
     this.autokernCoveredGlyphNames = new Set();
+    // Per-glyph metrics as of the last run, keyed by glyph name -- what
+    // recalculateMetricsOnly compares the font against.
+    this.autokernGlyphMetrics = {};
     // Task 12: loadAutokernCacheFromStorage's own stale-read guard.
     this.autokernCacheLoadRevision = 0;
     this.renderCalibration();
@@ -1111,7 +1143,63 @@ export class KerningViewController extends ViewController {
         message("Re-run stale glyphs failed", error.message || String(error));
       })
     );
+    const recalcButton = document.querySelector("#kerning-stale-recalc-button");
+    recalcButton?.addEventListener("click", () =>
+      this.recalculateMetricsOnlyGlyphs().catch((error) => {
+        console.error(error);
+        message("Recalculate failed", error.message || String(error));
+      })
+    );
     this.renderStaleSection();
+  }
+
+  // A spacing change does not need a run. The shapes are the same, so every
+  // cached number for them is off by exactly how far the spacing moved, and
+  // that is addition (autokern-cache.js's recalculateMetricsOnly holds the
+  // derivation). This is the cheap half of the Re-run button: it corrects
+  // every pair it can answer for and then says which glyphs really do need
+  // to be measured again.
+  async recalculateMetricsOnlyGlyphs() {
+    if (this._staleRerunInFlight || !this.autokernCache?.size) {
+      return;
+    }
+    const current = {};
+    for (const glyphName of Object.keys(this.autokernGlyphMetrics || {})) {
+      const glyphInstance = await this.fontController.getGlyphInstance(glyphName, {});
+      if (glyphInstance) {
+        current[glyphName] = glyphMetricsRecord(glyphInstance);
+      }
+    }
+    const { cache, recalculated, remaining } = recalculateMetricsOnly(
+      this.autokernCache,
+      this.autokernGlyphMetrics,
+      current
+    );
+    this.autokernCache = cache;
+    // The glyphs the arithmetic answered for are now measured against their
+    // new spacing, so their records move with the values. A glyph it could
+    // not answer for keeps the record of the run that measured it, so a
+    // later re-run still knows what its numbers were measured against.
+    const remainingSet = new Set(remaining);
+    for (const [glyphName, metrics] of Object.entries(current)) {
+      if (!remainingSet.has(glyphName)) {
+        this.autokernGlyphMetrics[glyphName] = metrics;
+      }
+    }
+    // A glyph whose shape moved is one the arithmetic cannot answer for, and
+    // this walk is the only place that finds out. Marking it puts it in front
+    // of the Re-run button rather than leaving a wrong number unflagged.
+    for (const glyphName of remaining) {
+      this.autokernCache = markGlyphStale(this.autokernCache, glyphName);
+    }
+    await this.writeAutokernCacheToStorage();
+    this.renderPairTable();
+    const progressEl = document.querySelector("#kerning-stale-progress");
+    if (progressEl) {
+      progressEl.textContent = remaining.length
+        ? `Recalculated ${recalculated} pairs. Needs a re-run: ${truncateGlyphList(remaining)}.`
+        : `Recalculated ${recalculated} pairs. Nothing needs a re-run.`;
+    }
   }
 
   // F01: "affected glyphs, their count, a rerun action... an explicit empty
@@ -1181,6 +1269,21 @@ export class KerningViewController extends ViewController {
     // F02: "disable duplicate runs" -- this._staleRerunInFlight is set by
     // runStaleGlyphs below for the duration of one run.
     rerunButton.disabled = !hasStale || !!this._staleRerunInFlight;
+    // Recalculation needs a cache and the metrics that cache was measured
+    // against. Without those records there is nothing to compare, so it
+    // cannot answer anything and says so by staying disabled.
+    const recalcButton = document.querySelector("#kerning-stale-recalc-button");
+    if (recalcButton) {
+      // Not gated on staleness. A spacing change does not always reach this
+      // view as a change it can see -- the editor is its own page with its own
+      // font controller, so an edit made there may arrive only as saved data
+      // -- and then no row is marked and the one action that could fix them
+      // would be disabled. It reads the font itself and reports what it found.
+      recalcButton.disabled =
+        !this.autokernCache?.size ||
+        !!this._staleRerunInFlight ||
+        !Object.keys(this.autokernGlyphMetrics || {}).length;
+    }
   }
 
   // Task 18, spec F03, ledger §8.6: wires the three metrics that have an
@@ -1344,6 +1447,7 @@ export class KerningViewController extends ViewController {
       ]);
       const rasters = {};
       const envelopes = {};
+      const glyphMetrics = {};
       for (const glyphName of glyphsToRasterize) {
         const glyphInstance = await this.fontController.getGlyphInstance(glyphName, {});
         if (!glyphInstance) {
@@ -1363,6 +1467,7 @@ export class KerningViewController extends ViewController {
           xMax: bounds ? scale * bounds.xMax : 0,
           advance: scale * glyphInstance.xAdvance,
         };
+        glyphMetrics[glyphName] = glyphMetricsRecord(glyphInstance);
       }
       if (CONTROL_GLYPH_NAMES.some((name) => !rasters[name])) {
         throw new Error(
@@ -1395,6 +1500,10 @@ export class KerningViewController extends ViewController {
         for (const name of candidatePool) {
           this.autokernCoveredGlyphNames.add(name);
         }
+        // A scoped run remeasured only its own glyphs, so it updates their
+        // metrics and leaves every other glyph's record as the run that
+        // measured it left it.
+        this.autokernGlyphMetrics = { ...this.autokernGlyphMetrics, ...glyphMetrics };
         await this.writeAutokernCacheToStorage();
       }
 
@@ -1496,6 +1605,7 @@ export class KerningViewController extends ViewController {
     // calibration had in fact produced.
     this.autokernCalibration = stored?.calibration || null;
     this.autokernCoveredGlyphNames = new Set(stored?.coveredGlyphNames || []);
+    this.autokernGlyphMetrics = stored?.glyphMetrics || {};
     this.renderCalibration();
     this.renderPairTable();
   }
@@ -1510,7 +1620,8 @@ export class KerningViewController extends ViewController {
       this.autokernSource,
       this.autokernCache,
       this.autokernCalibration,
-      this.autokernCoveredGlyphNames
+      this.autokernCoveredGlyphNames,
+      this.autokernGlyphMetrics
     );
   }
 
@@ -1674,6 +1785,7 @@ export class KerningViewController extends ViewController {
     const glyphsToRasterize = new Set([...CONTROL_GLYPH_NAMES, ...glyphNames]);
     const rasters = {};
     const envelopes = {};
+    const glyphMetrics = {};
     for (const glyphName of glyphsToRasterize) {
       const glyphInstance = await this.fontController.getGlyphInstance(glyphName, {});
       if (!glyphInstance) {
@@ -1698,6 +1810,7 @@ export class KerningViewController extends ViewController {
         xMax: bounds ? scale * bounds.xMax : 0,
         advance: scale * glyphInstance.xAdvance,
       };
+      glyphMetrics[glyphName] = glyphMetricsRecord(glyphInstance);
     }
 
     if (CONTROL_GLYPH_NAMES.some((name) => !rasters[name])) {
@@ -1732,6 +1845,7 @@ export class KerningViewController extends ViewController {
     // font since the last run leaves the record with it.
     if (outcome === "done") {
       this.autokernCoveredGlyphNames = new Set(glyphNames);
+      this.autokernGlyphMetrics = glyphMetrics;
       await this.writeAutokernCacheToStorage();
       this.renderStaleSection();
     }
