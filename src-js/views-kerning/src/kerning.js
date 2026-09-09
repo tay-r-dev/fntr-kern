@@ -4672,30 +4672,9 @@ export class KerningViewController extends ViewController {
     }
   }
 
-  // One glyph tile, colored per Part 5 fix 3. Lookup mirrors
-  // openShowClassDialog's own side1Name/side2Name reads
-  // (leftPairGroupMapping/rightPairGroupMapping); the color for each comes
-  // from getClassColor (design doc §3), already built by the class-color
-  // work. DOM/styling approach: GlyphCell (glyph-cell.js) exposes its
-  // resting background only through the CSS custom property
-  // `--cell-background-color` (its shadow-DOM `#glyph-cell-container` sets
-  // `--this-background-color: var(--cell-background-color)`, which every
-  // other state -- hover/active/selected -- overrides on top of, so
-  // overriding just this one custom property on the host element changes
-  // only the resting/idle look, never fighting hover/selection) -- a real,
-  // already-existing hook, not a new one added to glyph-cell.js. That alone
-  // only allows ONE flat color, not a split, so an outer wrapper `<div>`
-  // (`.autokern-glyph-swatch-split`) supplies the actual two-color
-  // background as a hard-stop linear-gradient behind the cell, and the
-  // cell's own `--cell-background-color` is set to `transparent` (only when
-  // at least one side has a color -- see below) so the wrapper's gradient
-  // shows through instead of being hidden underneath the cell's normal
-  // opaque background.
-  //
-  // No color on either side (or neither side classed) renders EXACTLY as
-  // before: no wrapper is created at all, and the cell's own
-  // --cell-background-color is left untouched -- the uncolored case is not
-  // regressed.
+  // One glyph tile: the glyph, plus its two class memberships as coloured
+  // edge bars (applyClassColorEdges below). A glyph in no coloured class
+  // draws no bar and looks exactly like a plain tile.
   buildSplitColorGlyphSwatch(glyphName, codePoints, selectable = false) {
     const cell = new GlyphCell(
       this.fontController,
@@ -4707,8 +4686,7 @@ export class KerningViewController extends ViewController {
 
     // A tile here states class membership. The development-status bar is the
     // editor's readout about how finished a drawing is, which says nothing
-    // about classes and reads as a second colour cue competing with the
-    // split class colours behind it. Turned off through glyph-cell.js's own
+    // about classes. Turned off through glyph-cell.js's own
     // --glyph-cell-status-display hook; the component is otherwise untouched.
     cell.style.setProperty("--glyph-cell-status-display", "none");
     if (selectable) {
@@ -4717,24 +4695,55 @@ export class KerningViewController extends ViewController {
         this.handleSwatchClick(event, glyphName)
       );
     }
+    this.applyClassColorEdges(cell);
+    return cell;
+  }
 
-    const side1Name = this.kerningController.leftPairGroupMapping[glyphName];
-    const side2Name = this.kerningController.rightPairGroupMapping[glyphName];
-    const side1Color = side1Name ? this.getClassColor("side1", side1Name) : undefined;
-    const side2Color = side2Name ? this.getClassColor("side2", side2Name) : undefined;
-
-    if (!side1Color && !side2Color) {
-      return cell;
+  // The one way a glyph tile states its two class memberships, used by this
+  // panel's strip and by the font-mode grid alike: a coloured bar down the
+  // tile's left edge for its side-1 class and down its right edge for its
+  // side-2 class.
+  //
+  // This replaces a two-stop gradient painted on a wrapper BEHIND the tile,
+  // which was correct arithmetic and unreadable: with the tile's own
+  // background made transparent to let it through, the two halves met with
+  // no edge between them and the pair read as one block of colour, so a
+  // left class and a right class looked marked on the same side. An edge bar
+  // is unambiguous about which side it names, it survives the tile's own
+  // hover and selected backgrounds instead of being replaced by them, and it
+  // needs no wrapper element.
+  applyClassColorEdges(cell) {
+    if (!cell._kerningClassColorDecorated) {
+      cell._kerningClassColorDecorated = true;
+      // Instance-local style, so it survives the cell's own rerenders. The
+      // bars are drawn inside the component, above its opaque background.
+      cell.appendStyle(`
+        #glyph-cell-container { position: relative; }
+        #glyph-cell-container::after {
+          content: ""; position: absolute; inset: 0; pointer-events: none;
+          border-left: 3px solid var(--kerning-class-left-color, transparent);
+          border-right: 3px solid var(--kerning-class-right-color, transparent);
+          border-radius: inherit;
+        }
+      `);
+      cell.requestUpdate();
     }
 
-    const wrapper = document.createElement("div");
-    wrapper.className = "autokern-glyph-swatch-split";
-    wrapper.style.background = `linear-gradient(to right, ${
-      side1Color || "transparent"
-    } 50%, ${side2Color || "transparent"} 50%)`;
-    cell.style.setProperty("--cell-background-color", "transparent");
-    wrapper.appendChild(cell);
-    return wrapper;
+    const side1Name = this.kerningController.leftPairGroupMapping[cell.glyphName];
+    const side2Name = this.kerningController.rightPairGroupMapping[cell.glyphName];
+    const side1Color = side1Name ? this.getClassColor("side1", side1Name) : null;
+    const side2Color = side2Name ? this.getClassColor("side2", side2Name) : null;
+    cell.style.setProperty("--kerning-class-left-color", side1Color || "transparent");
+    cell.style.setProperty("--kerning-class-right-color", side2Color || "transparent");
+
+    const tooltipParts = [];
+    if (side1Name) {
+      tooltipParts.push(`Left class: ${side1Name}`);
+    }
+    if (side2Name) {
+      tooltipParts.push(`Right class: ${side2Name}`);
+    }
+    cell.title = tooltipParts.join(" / ");
   }
 
   // ---- Class color (design doc §3) ----
@@ -4765,6 +4774,11 @@ export class KerningViewController extends ViewController {
       this
     );
     this.renderClassList();
+    // The strip's tiles carry the class colours on their own two halves, so
+    // a colour change is a change to what they draw. It used to be left out
+    // here, and the tiles went on showing the old colour until something
+    // else happened to rebuild them.
+    this.renderClassSwatchStrip();
     this.refreshFontModeClassColors();
   }
 
@@ -6391,44 +6405,13 @@ export class KerningViewController extends ViewController {
 
   // Style only this view's cell instances; keep class edges through rerenders.
   decorateFontModeGlyphCell(cell) {
-    if (!cell._kerningFontModeDecorated) {
-      cell._kerningFontModeDecorated = true;
-      // Instance-local style persists through cell rerenders. Put the
-      // edges inside the component, above its opaque tile background.
-      cell.appendStyle(`
-        .glyph-status-color { display: none; }
-        #glyph-cell-container { position: relative; }
-        #glyph-cell-container::after {
-          content: ""; position: absolute; inset: 0; pointer-events: none;
-          border-left: 3px solid var(--kerning-font-tile-left-color, transparent);
-          border-right: 3px solid var(--kerning-font-tile-right-color, transparent);
-          border-radius: inherit;
-        }
-      `);
-      cell.requestUpdate();
-    }
-
-    const side1Name = this.kerningController.leftPairGroupMapping[cell.glyphName];
-    const side2Name = this.kerningController.rightPairGroupMapping[cell.glyphName];
-    const side1Color = side1Name ? this.getClassColor("side1", side1Name) : null;
-    const side2Color = side2Name ? this.getClassColor("side2", side2Name) : null;
-    cell.style.setProperty(
-      "--kerning-font-tile-left-color",
-      side1Color || "transparent"
-    );
-    cell.style.setProperty(
-      "--kerning-font-tile-right-color",
-      side2Color || "transparent"
-    );
-
-    const tooltipParts = [];
-    if (side1Name) {
-      tooltipParts.push(`Left class: ${side1Name}`);
-    }
-    if (side2Name) {
-      tooltipParts.push(`Right class: ${side2Name}`);
-    }
-    cell.title = tooltipParts.join(" / ");
+    // One copy of the edge-bar rule, shared with the class panel's own strip
+    // (applyClassColorEdges, class-panel block above). This used to hold a
+    // second copy under its own two custom-property names, which is exactly
+    // the drift rail R-B exists to stop: the two tile decorations could have
+    // disagreed about which edge means which side.
+    cell.style.setProperty("--glyph-cell-status-display", "none");
+    this.applyClassColorEdges(cell);
   }
 
   refreshFontModeClassColors() {
