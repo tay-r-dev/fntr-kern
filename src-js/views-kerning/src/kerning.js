@@ -168,9 +168,10 @@ import {
 } from "@fontra/views-editor/visualization-layers.js";
 import { SelectTool } from "./edit-tools-select.js";
 import {
-  appendGlyphToken,
   crossProductPairs,
-  pairsFromInputs,
+  adjacentPairsForGlyph,
+  pairMatchesGlyphFilter,
+  resolveGlyphFilter,
   parseTokenList,
   replaceGlyphToken,
 } from "./input-tokens.js";
@@ -188,7 +189,6 @@ import {
   hiddenFromCacheEntry,
   isStaleAsyncResult,
   pairMatchesGlyphset,
-  pairMatchesUnicodeTypes,
   passesNumericFilters,
   rowId,
   rowMatchesRelationships,
@@ -369,6 +369,7 @@ export class KerningViewController extends ViewController {
       [
         ...visualizationLayerDefinitions,
         this.buildAutokernSuggestionVisualizationLayerDefinition(),
+        this.buildCurrentKerningNumbersLayerDefinition(),
       ],
       this.isThemeDark
     );
@@ -1766,40 +1767,27 @@ export class KerningViewController extends ViewController {
 
     const glyphInput = document.querySelector("#kerning-pairtable-glyph");
     glyphInput.value = filters.glyphName;
-    glyphInput.addEventListener("input", () => {
-      this.autokernFiltersController.setItem("glyphName", glyphInput.value.trim());
-      this.updatePairPreview();
-    });
     this._glyphInputElement = glyphInput;
-
-    // Task 6, spec F07: "Ordinary clicks on preview glyphs do not change the
-    // Glyph input." The pre-existing "left-pane selection override" listener
-    // that used to live here (sceneSettings.selectedGlyphName -> glyphInput.
-    // value on every single-glyph selection, including a plain click) did
-    // exactly what F07 now forbids, so it is removed rather than modified --
-    // there is no reduced form of "every selection change edits the input"
-    // that is still correct. Its replacement is deliberate-only: Ctrl+Click
-    // and Shift+Ctrl+Click on a preview glyph, wired in edit-tools-select.js
-    // to this.handleGlyphInputModifierClick below.
-
-    // Task 7, spec F06/F22: replaces the old exception input. Holds a
-    // comma-separated list of single glyph-tokens -- the "other side" of
-    // the pair, relative to whatever is in Glyph (ledger §8.1).
-    const pairInput = document.querySelector("#kerning-pairtable-pair");
-    const pairInputError = document.querySelector("#kerning-pairtable-pair-error");
-    pairInput.addEventListener("input", () => {
-      this.updatePairPreview();
-      this.updateNonUnicodeNote();
-      // Task 19 audit fix: the Pair input isn't part of the persisted
-      // filter model, but getExposedMemberNames() (Task 8) already reads
-      // ITS value too, for table row visibility (rowVisibleInDefault) --
-      // not merely preview, contrary to this listener's original comment.
-      // Without this call, typing "%glyphname%!" into Pair (spec F19/F22's
-      // own recommended exposure workflow, scenario 11.2 step 1) silently
-      // exposed nothing until an unrelated event happened to re-render.
+    this._previewPairSelections = new Map();
+    this._glyphFilterError = document.querySelector("#kerning-pairtable-glyph-error");
+    this._previewPairsChip = document.querySelector("#kerning-preview-pairs-filter");
+    this._previewPairsChip.addEventListener("click", () => {
+      this._previewPairSelections.clear();
       this.renderPairTable();
     });
-    this._pairInputElements = { glyphInput, pairInput, pairInputError };
+    glyphInput.addEventListener("input", () => {
+      this._previewPairSelections.clear();
+      this.autokernFiltersController.setItem("glyphName", glyphInput.value.trim());
+      this.renderPairTable();
+    });
+    // Occurrence indexes only make sense for the text in which they were selected.
+    this.sceneSettingsController.addKeyListener("text", (event) => {
+      if (event.newValue === this._selectedPairText) return;
+      if (this._previewPairSelections.size) {
+        this._previewPairSelections.clear();
+        this.renderPairTable();
+      }
+    });
 
     const excludedInput = document.querySelector("#kerning-pairtable-excluded");
     // WORKSTREAM 12, spec §4.1/§4.2: the excluded-glyph list is the
@@ -2375,19 +2363,11 @@ export class KerningViewController extends ViewController {
       entry.left,
       entry.right
     );
-    // Task 8's kind taxonomy (plan Task 2 text: "class-rule, unique-pair,
-    // member-pair, or pair-exception"). A "member-pair"/"pair-exception"
-    // distinction only exists for a pair that is actually part of a
-    // class×class product (BOTH sides classed) -- that is the only case
-    // with a real class-summary row for it to be exposed FROM (spec §2.1
-    // invariant 5). A pair with only one classed side (this.bucketForPair's
-    // "unique-class"/"class-unique") has no class-summary aggregate built
-    // for it anywhere in this codebase, so it stays "unique-pair" and is
-    // never exposure-gated, unchanged from its pre-Task-8 always-visible
-    // behavior -- not this task's job to invent a second aggregate kind.
-    const bothSidesClassed =
-      this.isLeftClassed(entry.left) && this.isRightClassed(entry.right);
-    const kind = !bothSidesClassed
+    // Any inherited class member is summarized by its class rule, including
+    // class-to-unique combinations. Explicit pair rules remain separate.
+    const hasClass =
+      this.isLeftClassed(entry.left) || this.isRightClassed(entry.right);
+    const kind = !hasClass
       ? "unique-pair"
       : hasExplicitPair
         ? "pair-exception"
@@ -2442,10 +2422,7 @@ export class KerningViewController extends ViewController {
     if (!this.isRowAboveThreshold(row, threshold)) {
       return false;
     }
-    if (filters.side === "left" && row.left !== glyphName) {
-      return false;
-    }
-    if (filters.side === "right" && row.right !== glyphName) {
+    if (!this.pairMatchesInputScope(row.left, row.right)) {
       return false;
     }
     // Task 5, spec F18 (numeric interval) and F13 (exact zero-current
@@ -2480,7 +2457,7 @@ export class KerningViewController extends ViewController {
     // glyph names here; a class-summary row's own mixed-membership category
     // check is classClassRowVisible's job, below).
     if (
-      !pairMatchesUnicodeTypes([row.left], [row.right], filters.side, this._unicodeTypesSet)
+      !this.pairMatchesTypes(row.left, row.right)
     ) {
       return false;
     }
@@ -2593,644 +2570,50 @@ export class KerningViewController extends ViewController {
     );
   }
 
-  // Layout overhaul, design doc §1.1/§0: whether ONE side alone resolves
-  // through a class -- the per-side half of isEntryClassed above, needed
-  // because the four-bucket model (unique×unique / unique×class /
-  // class×unique / class×class) cares about each side independently, not
-  // just "both sides classed or not" (isEntryClassed, kept unchanged and
-  // still used by the status strip's classed-vs-flat coverage count).
-  isLeftClassed(glyphName) {
-    return !!this.kerningController.leftPairGroupMapping[glyphName];
-  }
-
-  isRightClassed(glyphName) {
-    return !!this.kerningController.rightPairGroupMapping[glyphName];
-  }
-
-  // The cascade's own four addresses (spec §5.1), named the way design doc
-  // §1.1 names them: "unique-unique", "unique-class", "class-unique",
-  // "class-class". A bucket name is a statement about which cascade address
-  // is the MOST SPECIFIC one available for this exact pair -- not about
-  // which address currently holds a value.
-  bucketForPair(left, right) {
-    return `${this.isLeftClassed(left) ? "class" : "unique"}-${
-      this.isRightClassed(right) ? "class" : "unique"
-    }`;
-  }
-
-  // §1.1 "No override in v1": writing THIS pair as a literal [glyph,glyph]
-  // flat cell (which every action on a per-entry row does --
-  // writePairValues) always outranks any class-based address that would
-  // otherwise answer for it (spec §5.1's cascade, most-specific-wins). That
-  // is only a real hazard -- something the write would silently SHADOW --
-  // if a class-based address for this exact pair already has kerning data.
-  // A pair with no class on either side (unique×unique) has no class-based
-  // address at all, so it can never shadow anything.
-  //
-  // Task 2 fix (kerning-ux-integration.md §5.1, "a confirmed, in-code-
-  // acknowledged limitation"): this used to treat "the resolved cascade
-  // value is nonzero" as evidence a class cell currently answers, which
-  // cannot distinguish an explicit stored pair zero (not shadowing --
-  // writing here would just update that existing literal rule) from
-  // "nothing stored at this literal address, cascade fell through to 0"
-  // (which IS shadowing -- the class cell answers with 0, and a flat write
-  // would silently outrank it). Reading getPairValues at the literal
-  // address (the same primitive Task 2's explicitPairExists uses) settles
-  // it directly instead of inferring it from a number: a class-based
-  // address can currently answer for this pair if, and only if, no literal
-  // rule already exists for it.
-  wouldShadowClassCell(left, right) {
-    if (!this.isLeftClassed(left) && !this.isRightClassed(right)) {
-      return false;
-    }
-    return this.kerningController.getPairValues(left, right) === undefined;
-  }
-
-  // Names the class-based address that answers today, for the shadow note
-  // (§1.1: "a note pointing at the class cell that already answers for
-  // it"). Mirrors getPairsToTry's own specificity order (spec §5.1) without
-  // calling it directly (that method is private to kerning-controller.js's
-  // own module scope in spirit, even though not underscore-prefixed --
-  // leftPairGroupMapping/rightPairGroupMapping are the same public maps
-  // every other read in this file already uses).
-  describeShadowedClassCell(left, right) {
-    const leftClass = this.kerningController.leftPairGroupMapping[left];
-    const rightClass = this.kerningController.rightPairGroupMapping[right];
-    if (leftClass && rightClass) {
-      return `@${leftClass} × @${rightClass}`;
-    }
-    return leftClass ? `@${leftClass} × ${right}` : `${left} × @${rightClass}`;
-  }
-
-  // Backlog item 8 part 2: a shadowing pair's divergence FROM THE GROUP --
-  // its suggested value minus whatever the class cascade currently resolves
-  // that pair to at the active source (the same value wouldShadowClassCell
-  // reads). Numerically this equals a normal row's `delta` (pairRowData.
-  // current reads the same cascade value), but it is named and computed in
-  // its own terms here so the "Potential overrides" section (part 3) and
-  // the outlier-dropped class×class median (part 6) share one definition.
-  // Orthogonal to isRowAboveThreshold, which compares against the pair's
-  // own STORED value. Task 12 fix: reads this.autokernSource, not the
-  // font's default source.
-  overrideDivergence(left, right, suggestedValue) {
-    const groupResolved =
-      this.kerningController.getGlyphPairValueForSource(
-        left,
-        right,
-        this.autokernSource
-      ) ?? 0;
-    return suggestedValue - groupResolved;
-  }
-
-  // Backlog item 8 part 2: a row is an "override candidate" when applying its
-  // suggestion as a literal glyph×glyph value would shadow a class cell that
-  // currently answers for the pair (wouldShadowClassCell) AND that value
-  // diverges from the class cell by at least the group threshold (part 1).
-  // Shared by renderPairTable's "Potential overrides" section (part 3) and,
-  // via overrideDivergence, the class×class median filter (part 6).
-  isOverrideCandidate(left, right, suggestedValue) {
-    if (!this.wouldShadowClassCell(left, right)) {
-      return false;
-    }
-    const groupThreshold = this.autokernParamsController.model.groupThreshold;
-    return (
-      Math.abs(this.overrideDivergence(left, right, suggestedValue)) >= groupThreshold
-    );
-  }
-
-  // Rebuilds all four bucket <tbody> elements from this.autokernCache.
-  // Called on every filter change, every threshold change, and once a run
-  // finishes. Guards on missing state (this.autokernCache is set
-  // synchronously by initRunSection, but
-  // this.kerningController/this.autokernFiltersController are set
-  // asynchronously by initPairTableSection, and the threshold listener in
-  // initParametersSection can fire before that promise settles) by simply
-  // doing nothing until every piece exists.
-  //
-  // Layout overhaul, design doc §1.1: the old three glyph-anchored sections
-  // (side-1-class-vs-every-side-2-class / every-side-1-class-vs-side-2-class
-  // / flat) are replaced by the four buckets the cascade itself defines
-  // (spec §5.1): unique×unique, unique×class, class×unique, class×class.
-  // The first three stay anchored to the typed/selected glyph (`glyphName`)
-  // exactly like the old table was -- each is a per-cache-entry row, sorted
-  // into its bucket by bucketForPair. class×class is different, per §0/§1.1:
-  // "a class×class row exists once its two classes have any measured
-  // coverage between their members, independent of any glyph being typed at
-  // all" -- buildClassClassGroups below enumerates every side-1-class ×
-  // side-2-class pair with cache coverage, font-wide, not merely the ones
-  // touching glyphName (glyphName, when set, narrows this to classes that
-  // glyphName is actually a member of -- a documented scoping choice, not a
-  // requirement of the design doc, made so the bucket stays navigable
-  // instead of listing the whole font's classes at all times).
-  // Task 8, spec F11/F19/F32: rebuilds the ONE row list from
-  // this.autokernCache, for whichever tab (this.activeResultsTab) is
-  // active. Replaces the pre-Task-8 four-bucket-table model entirely --
-  // there is exactly one <tbody> now, and a class-summary row renders
-  // through the same builder/selection mechanism (selectRow/tickRow) an
-  // ordinary pair row does, not a separate display element. Called on
-  // every filter change, every threshold change, a tab switch, and once a
-  // run finishes. Guards on missing state (this.autokernCache is set
-  // synchronously by initRunSection, but this.kerningController/
-  // this.autokernFiltersController are set asynchronously by
-  // initPairTableSection) by doing nothing until every piece exists.
-  renderPairTable() {
-    const tbody = document.querySelector("#kerning-pairtable-body");
-    if (
-      !this.autokernCache ||
-      !this.kerningController ||
-      !this.autokernFiltersController ||
-      !tbody
-    ) {
-      return;
-    }
-
-    // Spec §10: the on-canvas suggestion layer
-    // (buildAutokernSuggestionVisualizationLayerDefinition) reads
-    // this.autokernCache directly on every draw, but nothing else forces a
-    // repaint when only the CACHE changes and the chip stays on "pair" (a
-    // new run, a reload from OPFS, or an apply that doesn't change which
-    // pair is selected) -- every caller of renderPairTable is exactly the
-    // set of places the cache or an applied/junk mark can change, so this is
-    // the one place to force it rather than duplicating this call at each
-    // of those call sites.
-    this.canvasController.requestUpdate();
-
-    // WORKSTREAM 14, spec §7.5: called from every place renderPairTable
-    // already is (this method's own callers -- see this method's top
-    // comment), so the status strip's counts never go stale relative to
-    // what's on screen.
-    this.renderAutokernStatus();
-    // Task 17, spec F01: same reasoning -- every place that can change
-    // which glyphs are stale already calls renderPairTable.
-    this.renderStaleSection();
-
-    const filters = this.autokernFiltersController.model;
-    const threshold = this.autokernParamsController.model.threshold;
-    const groupThreshold = this.autokernParamsController.model.groupThreshold;
-    const glyphName = filters.glyphName;
-    const tab = this.activeResultsTab || "default";
-
-    // Task 9, spec F09/F14: converted once per render (plan's own bullet:
-    // "Normalize persisted arrays into Sets at the UI boundary"), read by
-    // pairRowVisible/classClassRowVisible below via `this`.
-    this._unicodeTypesSet = new Set(filters.unicodeTypes);
-    this._relationshipsSet = new Set(filters.relationships);
-
-    tbody.textContent = "";
-    // Ledger §8.4: zero checked categories or zero checked relationships is
-    // its own "nothing selected" empty state, distinct from "all" -- render
-    // it directly and stop, rather than letting every row predicate above
-    // reject everything and produce an ordinary-looking, unexplained empty
-    // table.
-    if (this._unicodeTypesSet.size === 0 || this._relationshipsSet.size === 0) {
-      const emptyRow = document.createElement("tr");
-      const emptyCell = document.createElement("td");
-      emptyCell.colSpan = 7;
-      emptyCell.className = "kerning-pairtable-nothing-selected";
-      emptyCell.textContent =
-        this._unicodeTypesSet.size === 0
-          ? "No results: no Unicode types selected. Check at least one type to show results."
-          : "No results: no Class relationships selected. Check at least one relationship to show results.";
-      emptyRow.appendChild(emptyCell);
-      tbody.appendChild(emptyRow);
-      this.syncSelectAllCheckboxes();
-      this.resultSelection = retainVisible(this.resultSelection, new Set());
-      this.refreshResetArmState();
-      this.updatePairPreview();
-      // Task 18: this filter state legitimately shows zero rows in either
-      // tab, so 0 is the correct "current filtered view" potential count
-      // here, not a placeholder -- the other three metrics don't depend on
-      // this filter state at all and are still computed normally.
-      this.renderAnalyticsSection(0);
-      return;
-    }
-    // Task 8: rebuilt fresh every render, keyed by a class-summary row's own
-    // stable ID -- expandHighlightedRowsToPairs (Task 7's own open decision,
-    // resolved by ledger §8.1) reads this to expand a highlighted
-    // class-summary row into its capped cross-product of concrete pairs.
-    this._classSummaryMembersByRowId = new Map();
-    // Task 8: same idea, for the row's own aggregate value -- writePairValues
-    // has no autokernCache entry for a class address ("@Left"×"@Right" is
-    // never a literal cache key), so a ticked class-summary row's Apply/
-    // Reset write reads its median from here instead (this is what makes a
-    // class-summary row's own tick actually do something on Apply, not just
-    // highlight -- see writePairValues' own comment).
-    this._classSummaryMedianByRowId = new Map();
-    // Task 17, spec F23: same idea, for the row's own aggregate staleness
-    // (aggregateStale, results-model.js) -- isPairStale/applySelectedPairRows
-    // read this to skip a stale class-summary row's tick the same way they
-    // skip a stale literal pair.
-    this._classSummaryStaleByRowId = new Map();
-
-    for (const el of document.querySelectorAll(".kerning-pairtable-current-col")) {
-      el.style.display = filters.showCurrent ? "" : "none";
-    }
-
-    // Task 5, spec F13: same header-toggle mechanism as showCurrent above.
-    for (const el of document.querySelectorAll(".kerning-pairtable-proposed-col")) {
-      el.style.display = filters.showProposed ? "" : "none";
-    }
-
-    // Backlog item 15: same header-toggle mechanism as showCurrent above --
-    // this only affects the <th> (tbody cells are cleared/rebuilt below and
-    // set their own inline display at creation time, same as currentCell).
-    for (const el of document.querySelectorAll(".kerning-pairtable-suggestion-col")) {
-      el.style.display = filters.showSuggestion ? "" : "none";
-    }
-
-    // Backlog item 11: keeps the header label/arrow in sync with the
-    // current sort column/direction on every render, not only on click.
-    this.updateSortHeaders();
-
-    // Task 8, spec F22: exposure state -- glyph names named directly via
-    // "%name%!" in either input, plus the broad "Show individual class
-    // members" checkbox. Only gates "member-pair" rows (results-model.js's
-    // rowVisibleInDefault); every other kind is always in Default.
-    const exposedNames = this.getExposedMemberNames();
-    const showIndividualMembers = filters.showIndividualMembers;
-    // Task 9, plan's own bullet, ledger §8.2: the Non-Unicode filter governs
-    // the table only -- a /glyphname or %glyphname%! request for a
-    // non-Unicode glyph still won't appear in the table while the box is
-    // unchecked, but that must be explained, not a silent, unremarked gap.
-    this.updateNonUnicodeNote();
-
-    // Every row this render could possibly show, as one flat list, each
-    // tagged with enough to sort/filter/render it uniformly regardless of
-    // kind -- this IS "replace buckets with one row list" (F11): a
-    // class-summary row and a literal pair row differ only in which
-    // builder renders them, never in which table/section they belong to.
-    const displayItems = [];
-
-    // class-summary rows (§0/§1.1: independent of any typed glyph -- a
-    // class×class row exists once its two classes have any measured
-    // coverage between their members, font-wide). Always the class-pair
-    // aggregate now -- Task 8 removes the old "Fold classes" escape hatch;
-    // "Show individual class members" (below) is its declarative
-    // replacement, and it ADDS member rows rather than replacing the
-    // summary (invariant 6).
-    const classGroups = this.buildClassClassGroups(
-      glyphName,
-      filters,
-      threshold,
-      groupThreshold
-    );
-    const sourceIdentifier = this.activeSourceIdentifier();
-    for (const { group, stats, median } of classGroups) {
-      const left = "@" + group.leftClassName;
-      const right = "@" + group.rightClassName;
-      displayItems.push({
-        renderKind: "class-rule",
-        group,
-        stats,
-        median,
-        left,
-        right,
-        current: 0,
-        delta: median,
-        isCandidate: false,
-        sortId: rowId(sourceIdentifier, left, right),
-        // Task 11, ledger §8.5: this row's OWN hidden state only -- never
-        // derived from or applied to group.rows below.
-        hidden: this.hiddenClassRuleIds.has(rowId(sourceIdentifier, left, right)),
-      });
-      // group.rows are this class pair's own real cache entries (both
-      // sides classed), already pairRowVisible-filtered by
-      // buildClassClassGroups -- these become "member-pair"/"pair-exception"
-      // rows, gated by exposure in Default and by candidacy in Potential.
-      // Flattened onto the item (left/right/current/delta) so sortPairRows
-      // below can sort every item -- class-rule or pair -- uniformly.
-      for (const row of group.rows) {
-        displayItems.push({
-          renderKind: "pair",
-          row,
-          left: row.left,
-          right: row.right,
-          current: row.current,
-          delta: row.delta,
-          isCandidate: row.isCandidate,
-          sortId: rowId(sourceIdentifier, row.left, row.right),
-        });
-      }
-    }
-
-    // unique-pair rows (bucketForPair anything other than "class-class"):
-    // glyph-anchored, same scoping this table has always used for these
-    // (Task 8 does not change WHEN they appear, only how they render --
-    // see this method's own commit message for that scoping decision).
-    if (glyphName) {
-      for (const entry of this.autokernCache.values()) {
-        if (entry.left !== glyphName && entry.right !== glyphName) {
-          continue;
-        }
-        if (this.bucketForPair(entry.left, entry.right) === "class-class") {
-          continue; // handled by the class-summary groups above
-        }
-        const row = this.pairRowData(
-          entry,
-          this.bucketForPair(entry.left, entry.right) !== "unique-unique"
-        );
-        if (!this.pairRowVisible(row, filters, threshold, glyphName)) {
-          continue;
-        }
-        displayItems.push({
-          renderKind: "pair",
-          row,
-          left: row.left,
-          right: row.right,
-          current: row.current,
-          delta: row.delta,
-          isCandidate: row.isCandidate,
-          sortId: rowId(sourceIdentifier, row.left, row.right),
-        });
-      }
-    }
-
-    // Task 18, spec F03: "current filtered view" scope for the Potential
-    // exceptions metric -- read from the flat list above BEFORE the
-    // Default/Potential tab split just below, so the count reflects what
-    // the Potential tab would show right now regardless of which tab is
-    // actually active (not the item-count check itself, which is only
-    // for the "renderKind" pair items; a class-rule item's own
-    // isCandidate is already always false, see its own literal above).
-    this.renderAnalyticsSection(
-      displayItems.filter((item) => item.renderKind === "pair" && item.isCandidate)
-        .length
-    );
-
-    // Task 8, spec F19: which of the two tabs is active decides which items
-    // from the SAME list above are kept -- not a second computation. A
-    // class-rule row is Default-only (never itself a candidate); a pair
-    // row is gated by exposure in Default and by its own isCandidate flag
-    // in Potential (results-model.js's rowVisibleInDefault/
-    // rowVisibleInPotential).
-    const visibleItems = displayItems.filter((item) => {
-      if (item.renderKind === "class-rule") {
-        // Task 11, spec F10, ledger §8.5: this row's own hidden state,
-        // never its members' (each "pair" item below carries its own
-        // row.hidden, gated independently through pairRowVisible).
-        return (
-          tab === "default" && rowVisibleForHiddenState(item.hidden, filters.showHidden)
-        );
-      }
-      return tab === "potential"
-        ? rowVisibleInPotential(item.row)
-        : rowVisibleInDefault(item.row, exposedNames, showIndividualMembers);
-    });
-
-    // Backlog item 11's column sort, now applied to the WHOLE flat list
-    // (Task 8's own bullet: "apply it uniformly to normalized numeric
-    // fields... use a stable row-ID tie-breaker"). sortPairRows only reads
-    // .left/.right/.current/.delta, which every item above carries
-    // (a class-rule item's own current/delta stand-ins, set above).
-    this.sortPairRows(visibleItems, filters);
-
-    for (const item of visibleItems) {
-      if (item.renderKind === "class-rule") {
-        tbody.appendChild(
-          this.buildClassSummaryRowElement(item.group, item.stats, item.median)
-        );
-      } else {
-        tbody.appendChild(this.buildPairRowElement(item.row));
-      }
-    }
-
-    // Backlog item 13: the tbody was just rebuilt from scratch above, so
-    // the select-all checkbox needs to reflect the freshly rendered (Task
-    // 3: each row's own checkbox is now initialized from
-    // this.resultSelection.ticked in buildPairRowElement, not always
-    // unchecked) row set.
-    this.syncSelectAllCheckboxes();
-
-    // Task 3 (spec F25): every row was just rebuilt, so this is exactly the
-    // full set of rows now actually displayed -- prune highlight/tick state
-    // for any row ID that didn't render this time (filtered out, tab
-    // switched, cache reloaded, etc).
-    const visibleRowIds = new Set(
-      [...document.querySelectorAll(".kerning-pairtable-table tr[data-row-id]")].map(
-        (tr) => tr.dataset.rowId
-      )
-    );
-    this.resultSelection = retainVisible(this.resultSelection, visibleRowIds);
-    // Task 4, spec F20: a filter/render change that dropped a ticked row
-    // must disarm Reset (it would otherwise silently commit against a
-    // smaller set than the one shown when it was armed).
-    this.refreshResetArmState();
-    // Task 7, spec F25: "Update preview and action counts accordingly"
-    // when a highlighted row leaves the displayed set.
-    this.updatePairPreview();
-  }
-
-  // Task 8, spec F22: the exact glyph names named via "%name%!" in either
-  // input -- reuses input-tokens.js's own parseTokenList/parseToken (Task
-  // 6/7) rather than a second parser. A "member" token's `name` is already
-  // the literal glyph name (parseToken slices it straight out of the
-  // "%...%!" text), so no font-data resolution is needed here.
-  getExposedMemberNames() {
-    const names = new Set();
-    const elements = this._pairInputElements;
-    if (!elements) {
-      return names;
-    }
-    for (const text of [elements.glyphInput.value, elements.pairInput.value]) {
-      let tokens;
-      try {
-        tokens = parseTokenList(text);
-      } catch {
-        continue; // an invalid token is reported inline by updatePairPreview
-      }
-      for (const token of tokens) {
-        if (token.kind === "member") {
-          names.add(token.name);
-        }
-      }
-    }
-    return names;
-  }
-
-  // Task 9, plan's own bullet, ledger §8.2: same token source as
-  // getExposedMemberNames above, but for BOTH "glyph" (/name) and "member"
-  // (%name%!) tokens -- ledger §8.2's exact wording: "A non-Unicode glyph
-  // named explicitly (/glyphname or %glyphname%!)". Only reports a note
-  // when the Non-Unicode box is actually unchecked (otherwise nothing is
-  // being excluded, no note needed).
-  updateNonUnicodeNote() {
-    const note = document.querySelector("#kerning-pairtable-nonunicode-note");
-    if (!note) {
-      return;
-    }
-    const filters = this.autokernFiltersController?.model;
-    const elements = this._pairInputElements;
-    if (!filters || !elements || filters.unicodeTypes.includes("non-unicode")) {
-      note.textContent = "";
-      return;
-    }
-    const named = new Set();
-    for (const text of [elements.glyphInput.value, elements.pairInput.value]) {
-      let tokens;
-      try {
-        tokens = parseTokenList(text);
-      } catch {
-        continue;
-      }
-      for (const token of tokens) {
-        if (
-          (token.kind === "glyph" || token.kind === "member") &&
-          glyphMatchesCategory(token.name, "non-unicode")
-        ) {
-          named.add(token.name);
-        }
-      }
-    }
-    note.textContent = named.size
-      ? `${[...named].join(", ")} ${named.size === 1 ? "is" : "are"} excluded from the table ` +
-        `by the unchecked Non-Unicode glyphs filter (still available in preview).`
-      : "";
-  }
-
-  // Median (not mean, spec §5.2: "the median is the reducer... a mean can
-  // [get dragged]") of the folded rows' suggestion values -- these are the
-  // cache's own `entry.value` (via row.suggestion, pairRowData above), the
-  // same source applySelectedPairRows writes from for a flat row.
-  static medianOf(values) {
-    const sorted = [...values].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  }
-
-  // Layout overhaul, design doc §1.1/§0: every side-1-class × side-2-class
-  // pair that has ANY measured coverage between their members, font-wide --
-  // "a class×class row exists once its two classes have any measured
-  // coverage between their members, independent of any glyph being typed at
-  // all". When glyphName is set, narrowed to class pairs where glyphName is
-  // actually a member of one of the two classes (a scoping choice for
-  // navigability, not a requirement of the design doc -- see this method's
-  // own caller comment in renderPairTable).
-  //
-  // Returns Array<{ group: {leftClassName, rightClassName, rows}, stats
-  // (computeFoldGroupStats' return, unmodified), median }>, already filtered
-  // by classClassRowVisible (threshold, Task 9's Unicode types/relationship/
-  // glyphset) and already carrying each group's own filtered, visible child
-  // rows for expand-to-browse (the same
-  // per-row filters -- side/sign/state/junk/threshold -- that any other
-  // bucket's rows go through, via pairRowVisible).
+  // Summarize each class/class or class/unique address with measured coverage.
+  // Aggregate statistics use full membership; filters only control display.
   buildClassClassGroups(glyphName, filters, threshold, groupThreshold) {
-    const kernData = this.kerningController.kernData;
-    const side1Names = Object.keys(kernData.groupsSide1 || {});
-    const side2Names = Object.keys(kernData.groupsSide2 || {});
-    // §1.1: the side filter ("glyph on left"/"glyph on right") presumes an
-    // anchor glyph; with none typed, a class×class row has no single glyph
-    // to test it against, so it is bypassed rather than hiding every row.
-    const effectiveFilters = glyphName ? filters : { ...filters, side: "both" };
-
+    const groups = new Map();
+    for (const entry of this.autokernCache.values()) {
+      const leftClassName = this.kerningController.leftPairGroupMapping[entry.left];
+      const rightClassName = this.kerningController.rightPairGroupMapping[entry.right];
+      if (!leftClassName && !rightClassName) continue;
+      const left = leftClassName ? "@" + leftClassName : entry.left;
+      const right = rightClassName ? "@" + rightClassName : entry.right;
+      const key = pairKey(left, right);
+      if (!groups.has(key)) groups.set(key, {
+        left, right, leftClassName, rightClassName, rows: [],
+      });
+    }
     const results = [];
-    for (const leftClassName of side1Names) {
-      const leftMembers = kernData.groupsSide1[leftClassName] || [];
-      const leftHasGlyph = !!glyphName && leftMembers.includes(glyphName);
-      for (const rightClassName of side2Names) {
-        const rightMembers = kernData.groupsSide2[rightClassName] || [];
-        if (glyphName && !leftHasGlyph && !rightMembers.includes(glyphName)) {
-          continue;
-        }
-        const leftSet = new Set(leftMembers);
-        const rightSet = new Set(rightMembers);
-        let hasCoverage = false;
-        for (const entry of this.autokernCache.values()) {
-          if (leftSet.has(entry.left) && rightSet.has(entry.right)) {
-            hasCoverage = true;
-            break;
-          }
-        }
-        if (!hasCoverage) {
-          continue;
-        }
-
-        const group = { leftClassName, rightClassName, rows: [] };
-        const stats = this.computeFoldGroupStats(group, groupThreshold);
-        // §1.1: "its 'current' is whatever's stored at that class cell
-        // (usually nothing, so effectively zero)" -- taken literally: the
-        // aggregate row's own delta is its median against zero, the same
-        // "usually nothing" reading the design doc gives it (a real stored
-        // class-cell value, if any, is still visible on request via
-        // kerningController.getPairFunction, deliberately not read here to
-        // keep this exactly what the design doc describes).
-        const median = stats.median;
-        // Task 17 (ledger §11.4/§11.5 gap 2): computeFoldGroupStats' own
-        // NaN guard can produce `null` here (unreachable today -- the
-        // hasCoverage check just above already guarantees real coverage --
-        // but defensive, not a claim this path is reachable).
-        if (median == null) {
-          continue;
-        }
-        if (
-          !this.classClassRowVisible(
-            median,
-            threshold,
-            effectiveFilters,
-            leftMembers,
-            rightMembers
-          )
-        ) {
-          continue;
-        }
-
-        group.rows = stats.entries
-          .map((entry) => this.pairRowData(entry, true))
-          .filter((row) =>
-            this.pairRowVisible(row, effectiveFilters, threshold, glyphName || row.left)
-          );
-        // Backlog item 11: these child rows are real per-pair entries (they
-        // DO have a current/state, unlike the fold parent itself), so the
-        // same column sort applies to them for consistency when expanded.
-        this.sortPairRows(group.rows, filters);
-
-        results.push({ group, stats, median });
+    for (const group of groups.values()) {
+      const stats = this.computeFoldGroupStats(group, groupThreshold);
+      if (stats.median == null) continue;
+      group.rows = stats.entries.map((entry) => this.pairRowData(entry, true))
+        .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
+      const matching = stats.entries.filter((entry) =>
+        this.pairMatchesInputScope(entry.left, entry.right) &&
+        this.pairMatchesTypes(entry.left, entry.right) &&
+        pairMatchesGlyphset([entry.left], [entry.right], this._tableGlyphsetMembers));
+      const relationship = group.leftClassName && group.rightClassName
+        ? "class-class" : "class-unique";
+      const current = this.kerningController.getPairValueForSource(
+        group.left, group.right, this.autokernSource) ?? 0;
+      group.current = current;
+      group.summaryVisible = matching.length > 0 &&
+        this._relationshipsSet.has(relationship) &&
+        passesNumericFilters(valuesForDisplay(current, stats.median, stats.stale), {
+          minDelta: threshold,
+          maxDelta: this.autokernParamsController.model.maxThreshold,
+          hideZeroCurrentSuggestions: filters.hideZeroCurrentSuggestions,
+        });
+      // Member exceptions have their own filters; hiding a summary must
+      // never hide a saved exception or an explicitly exposed member.
+      if (group.summaryVisible || group.rows.length) {
+        results.push({ group, stats, median: stats.median });
       }
     }
     return results;
-  }
-
-  // §1.1's sign/threshold filters, applied to a class×class row's own
-  // aggregate delta (median, current treated as zero -- see
-  // buildClassClassGroups' own comment). Junk and state (pending/applied/
-  // stale) are per-PAIR concepts (spec §4.2/§7.3) with no single value for
-  // an aggregate row spanning many pairs, so neither filters an aggregate
-  // row out here -- a documented limitation, not an oversight: those two
-  // filters still apply normally to the row's own child rows (via
-  // pairRowVisible, in buildClassClassGroups above), which is where a junk
-  // mark or an applied state actually lives.
-  classClassRowVisible(median, threshold, filters, leftMembers, rightMembers) {
-    if (Math.abs(median) < threshold) {
-      return false;
-    }
-    // Task 5, spec F18: same inclusive upper bound as pairRowVisible. F16
-    // removed the sign filter entirely -- magnitude only.
-    const maxThreshold = this.autokernParamsController.model.maxThreshold;
-    if (maxThreshold != null && Math.abs(median) > maxThreshold) {
-      return false;
-    }
-
-    // Task 9, spec F09, ledger §8.3: "mixed-category class summary matches
-    // a checked category if ANY member belongs to it" -- the exact same
-    // predicate pairRowVisible uses, given the class's full membership
-    // list instead of one glyph name.
-    if (!pairMatchesUnicodeTypes(leftMembers, rightMembers, filters.side, this._unicodeTypesSet)) {
-      return false;
-    }
-    // Task 9, spec F14: a class-summary row is always both-sides-classed by
-    // construction (that's what makes it a class-summary row at all) with
-    // no "explicit rule" concept of its own (its own saved value, if any,
-    // is deliberately not read here -- see this method's own top comment) --
-    // it is always exactly "Class-to-class".
-    if (!this._relationshipsSet.has("class-class")) {
-      return false;
-    }
-    // Task 9, spec F14, ledger §8.4: "any single member of the class" --
-    // the same union-any rule as a flat pair row's own two glyphs.
-    if (!pairMatchesGlyphset(leftMembers, rightMembers, this._tableGlyphsetMembers)) {
-      return false;
-    }
-
-    return true;
   }
 
   // Spec §5.2/§10 Direction A (unmodified by the layout overhaul): computes
@@ -3251,8 +2634,10 @@ export class KerningViewController extends ViewController {
   // claim that side is somehow more relevant.
   computeFoldGroupStats(group, groupThreshold) {
     const kernData = this.kerningController.kernData;
-    const leftMembers = kernData.groupsSide1[group.leftClassName] || [];
-    const rightMembers = kernData.groupsSide2[group.rightClassName] || [];
+    const leftMembers = group.leftClassName
+      ? kernData.groupsSide1[group.leftClassName] || [] : [group.left];
+    const rightMembers = group.rightClassName
+      ? kernData.groupsSide2[group.rightClassName] || [] : [group.right];
     const leftSet = new Set(leftMembers);
     const rightSet = new Set(rightMembers);
 
@@ -3323,8 +2708,8 @@ export class KerningViewController extends ViewController {
   buildClassSummaryRowElement(group, stats, median) {
     const tr = document.createElement("tr");
     tr.className = "kerning-pairtable-summary-row";
-    const left = "@" + group.leftClassName;
-    const right = "@" + group.rightClassName;
+    const left = group.left;
+    const right = group.right;
     tr.dataset.left = left;
     tr.dataset.right = right;
     tr.dataset.kind = "class-rule";
@@ -3377,7 +2762,7 @@ export class KerningViewController extends ViewController {
     leftCell.appendChild(checkbox);
     const leftLabel = document.createElement("span");
     leftLabel.className = "kerning-pairtable-class-name";
-    leftLabel.textContent = `${left} (${truncateGlyphList(stats.leftMembers)})`;
+    leftLabel.textContent = this.classAddressLabel(left, stats.leftMembers);
     // F21 recommended detail: "disclose contributing-pair count and
     // excluded-result count in row details" -- no 8th column exists for
     // this (F32 fixes the header set at seven), so it is a tooltip. Task 17
@@ -3390,15 +2775,13 @@ export class KerningViewController extends ViewController {
     leftCell.appendChild(leftLabel);
     tr.appendChild(leftCell);
 
-    // A class-summary row has no single stored Current (§1.1: its own
-    // "current" is whatever's stored at the class cell, usually nothing --
-    // read on request via kerningController.getPairFunction, deliberately
-    // not shown here to keep this exactly what the design doc describes).
+    // Display the stored value at this class address in the active source.
     const currentCell = document.createElement("td");
     currentCell.className = "kerning-pairtable-current-col";
     currentCell.style.display = this.autokernFiltersController.model.showCurrent
       ? ""
       : "none";
+    currentCell.textContent = String(group.current);
     tr.appendChild(currentCell);
 
     // Proposed IS the aggregate suggestion for this class rule. Task 17,
@@ -3423,7 +2806,8 @@ export class KerningViewController extends ViewController {
     if (stats.stale) {
       deltaCell.appendChild(buildStaleMarker());
     } else {
-      deltaCell.textContent = median > 0 ? `+${median.toFixed(1)}` : median.toFixed(1);
+      const delta = median - group.current;
+      deltaCell.textContent = delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1);
     }
     deltaCell.style.display = this.autokernFiltersController.model.showSuggestion
       ? ""
@@ -3433,7 +2817,7 @@ export class KerningViewController extends ViewController {
     const rightCell = document.createElement("td");
     const rightLabel = document.createElement("span");
     rightLabel.className = "kerning-pairtable-class-name";
-    rightLabel.textContent = `${right} (${truncateGlyphList(stats.rightMembers)})`;
+    rightLabel.textContent = this.classAddressLabel(right, stats.rightMembers);
     rightCell.appendChild(rightLabel);
     tr.appendChild(rightCell);
 
@@ -3527,24 +2911,8 @@ export class KerningViewController extends ViewController {
   // cell, not a flat shadow of it (spec §5.1's whole argument against a flat
   // write).
   async applyFoldedParentRow(group, median) {
-    // Task 12 fix (ledger §5.4): write to the source the status strip has
-    // selected, not always the font's default source.
-    const sourceIdentifier = this.autokernSource;
-    if (!sourceIdentifier) {
-      console.error("kerning view: cannot apply, no source is selected");
-      return;
-    }
-    const leftName = "@" + group.leftClassName;
-    const rightName = "@" + group.rightClassName;
-    const editContext = this.kerningController.getEditContext([
-      { leftName, rightName, sourceIdentifier },
-    ]);
-    await editContext.edit([Math.round(median)], "kerning view: fold parent apply");
-
-    for (const row of group.rows) {
-      this.autokernAppliedPairs.add(pairKey(row.left, row.right));
-    }
-    this.renderPairTable();
+    await this.writePairValues([{ left: group.left, right: group.right }],
+      () => Math.round(median), true);
   }
 
   // ---------------------------------------------------------------------
@@ -4422,6 +3790,7 @@ export class KerningViewController extends ViewController {
       this
     );
     this.renderClassList();
+    this.refreshFontModeClassColors();
   }
 
   // ---- "Show class" context menu (design doc §1.2, item F) ----
@@ -5073,7 +4442,7 @@ export class KerningViewController extends ViewController {
   // deliberately unfiltered), but Apply skips any pair whose own suggestion
   // is unreliable rather than writing it.
   isPairStale(left, right) {
-    if (left.startsWith("@") && right.startsWith("@")) {
+    if (left.startsWith("@") || right.startsWith("@")) {
       const id = rowId(this.activeSourceIdentifier(), left, right);
       return !!this._classSummaryStaleByRowId?.get(id);
     }
@@ -5199,7 +4568,7 @@ export class KerningViewController extends ViewController {
       // itself; nothing else reads that Set by class-address shape, so
       // this is harmless bookkeeping, not a claim that a class rule is a
       // "pair."
-      if (left.startsWith("@") && right.startsWith("@")) {
+      if (left.startsWith("@") || right.startsWith("@")) {
         const id = rowId(sourceIdentifier, left, right);
         const median = this._classSummaryMedianByRowId?.get(id);
         if (median === undefined) {
@@ -5884,6 +5253,9 @@ export class KerningViewController extends ViewController {
       }
       const glyphName = glyphCell.glyphName;
       const view = this.fontModeGlyphCellView;
+      if (event.ctrlKey || event.metaKey) {
+        this.handleGlyphInputModifierClick(glyphName, event.shiftKey);
+      }
       if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) {
         view.glyphSelection = view.glyphSelection.has(glyphName)
           ? difference(view.glyphSelection, [glyphName])
@@ -5908,18 +5280,8 @@ export class KerningViewController extends ViewController {
       .querySelector("#kerning-font-grid-container")
       .appendChild(this.fontModeGlyphCellView);
 
-    // Task 14, spec F30/F31: GlyphCell (glyph-cell.js's shared web
-    // component, used identically by font-overview.js) has no public API to
-    // add a class-color edge indicator or to suppress its editor-status
-    // bar, and both live inside its own shadow DOM, unreachable from
-    // outside CSS. Patching glyph-cell.js itself, or GlyphCellView's
-    // private cell-construction method, would also change font-overview
-    // .js's own tiles. Instead, a MutationObserver -- a native platform
-    // primitive, not a new dependency -- watches only THIS view's own font-
-    // mode grid for newly inserted <glyph-cell> elements and decorates each
-    // one directly (decorateFontModeGlyphCell, below); font-overview.js's
-    // grid is a wholly separate GlyphCellView instance this code never
-    // touches, prototype or otherwise.
+    // GlyphCellView's accordion owns a shadow tree. Observe that tree;
+    // an observer on the outer view cannot see its cells being inserted.
     this._fontModeCellObserver = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
@@ -5935,10 +5297,14 @@ export class KerningViewController extends ViewController {
         }
       }
     });
-    this._fontModeCellObserver.observe(this.fontModeGlyphCellView, {
+    this._fontModeCellObserver.observe(this.fontModeGlyphCellView.accordion.shadowRoot, {
       childList: true,
       subtree: true,
     });
+
+    this.refreshFontModeClassColors();
+    this.fontController.addChangeListener({ kerning: null, customData: null },
+      () => this.refreshFontModeClassColors(), false);
 
     this.fontModeGlyphOrganizer = new GlyphOrganizer();
 
@@ -6039,42 +5405,24 @@ export class KerningViewController extends ViewController {
     this.updateFontModeAddToClassButton();
   }
 
-  // Task 14, spec F30/F31, called once per <glyph-cell> the MutationObserver
-  // above discovers in this view's own font-mode grid.
-  //
-  // F30: side1/side2 class-color edge indicators, reusing the exact color
-  // source the class swatch strip already reads (getClassColor,
-  // leftPairGroupMapping/rightPairGroupMapping -- see
-  // buildSplitColorGlyphSwatch above; no second color scheme invented
-  // here). The two CSS custom properties this sets are read by the
-  // box-shadow rule in kerning.css (`#kerning-font-grid-container
-  // glyph-cell`), which paints on the cell's own light-DOM host box, the
-  // only part of this shared component reachable without touching its
-  // shadow DOM. `title` supplies the recommended class-name tooltip; it
-  // resolves through shadow boundaries by the browser's normal hit-testing,
-  // no special wiring needed.
-  //
-  // F31: shadows this ONE cell instance's own `_glyphStatusColor` field
-  // (read directly by glyph-cell.js's render()) with an accessor that
-  // always reports "no color" and ignores every future write -- so a
-  // redraw (glyph edited, location changed, scrolled into view again) stays
-  // suppressed too, not just the first paint. This does not touch
-  // GlyphCell's prototype, so font-overview.js's own tiles (built from a
-  // wholly separate set of GlyphCell instances) are unaffected. Selection
-  // highlighting and hover/active states are a separate mechanism entirely
-  // (the "selected"/"dragging" classes on glyph-cell.js's own
-  // #glyph-cell-container, inside its shadow DOM) and are not touched here.
+  // Style only this view's cell instances; keep class edges through rerenders.
   decorateFontModeGlyphCell(cell) {
-    if (cell._kerningFontModeDecorated) {
-      return;
+    if (!cell._kerningFontModeDecorated) {
+      cell._kerningFontModeDecorated = true;
+      // Instance-local style persists through cell rerenders. Put the
+      // edges inside the component, above its opaque tile background.
+      cell.appendStyle(`
+        .glyph-status-color { display: none; }
+        #glyph-cell-container { position: relative; }
+        #glyph-cell-container::after {
+          content: ""; position: absolute; inset: 0; pointer-events: none;
+          border-left: 3px solid var(--kerning-font-tile-left-color, transparent);
+          border-right: 3px solid var(--kerning-font-tile-right-color, transparent);
+          border-radius: inherit;
+        }
+      `);
+      cell.requestUpdate();
     }
-    cell._kerningFontModeDecorated = true;
-
-    Object.defineProperty(cell, "_glyphStatusColor", {
-      configurable: true,
-      get: () => "var(--cell-background-color)",
-      set: () => {},
-    });
 
     const side1Name = this.kerningController.leftPairGroupMapping[cell.glyphName];
     const side2Name = this.kerningController.rightPairGroupMapping[cell.glyphName];
@@ -6096,9 +5444,12 @@ export class KerningViewController extends ViewController {
     if (side2Name) {
       tooltipParts.push(`Right class: ${side2Name}`);
     }
-    if (tooltipParts.length) {
-      cell.title = tooltipParts.join(" / ");
-    }
+    cell.title = tooltipParts.join(" / ");
+  }
+
+  refreshFontModeClassColors() {
+    this.fontModeGlyphCellView?.accordion.shadowRoot.querySelectorAll("glyph-cell")
+      .forEach((cell) => this.decorateFontModeGlyphCell(cell));
   }
 
   // Design doc §2: "A button on the class panel... Disabled unless both a
@@ -6376,37 +5727,22 @@ export class KerningViewController extends ViewController {
   // this is the one non-pure seam that calls the pure input-tokens.js
   // pipeline with real font data.
   updatePairPreview({ switchToPairMode = false } = {}) {
-    const elements = this._pairInputElements;
-    if (!elements) {
-      // initPairTableSection hasn't wired the inputs yet -- nothing to do.
-      return;
-    }
-    const selectedPairs = this.expandHighlightedRowsToPairs();
-    let previewPairs = selectedPairs;
-    let matchResult = null;
-    if (!previewPairs.length) {
-      matchResult = pairsFromInputs(
-        elements.glyphInput.value,
-        elements.pairInput.value,
-        this.pairInputResolver()
-      );
-      if (matchResult.explicit) {
-        previewPairs = matchResult.pairs;
+    if (!this._glyphInputElement) return;
+    const filter = this._glyphFilter || resolveGlyphFilter(
+      this._glyphInputElement.value, this.pairInputResolver());
+    let previewPairs = this.expandHighlightedRowsToPairs();
+    let truncated = false;
+    if (!previewPairs.length && !filter.error) {
+      const selected = this.previewFilterPairs();
+      if (selected.length) previewPairs = selected.filter(([l, r]) =>
+        pairMatchesGlyphFilter(l, r, filter, this.autokernFiltersController.model.side));
+      else if (filter.count > 1) {
+        ({ pairs: previewPairs, truncated } = crossProductPairs(filter.left, filter.right));
       }
     }
-    if (elements.pairInputError) {
-      // Ledger §8.1: a highlighted class-summary row's cross-product
-      // remainder is "disclosed as a count, not silently dropped" --
-      // shares the same error/status span an input-parse error uses; the
-      // two never fire together (a truncation only happens when highlighted
-      // rows already supplied pairs, in which case matchResult is null).
-      const truncationCount = this._classSummaryTruncationCount || 0;
-      elements.pairInputError.textContent =
-        matchResult?.error ||
-        (truncationCount
-          ? `Preview capped at 50 pairs per highlighted class summary (${truncationCount} summar${truncationCount === 1 ? "y" : "ies"} truncated).`
-          : "");
-    }
+    this._glyphFilterError.textContent = filter.error ||
+      (truncated || this._classSummaryTruncationCount
+        ? "Preview capped at 50 pairs per selection. The table is not capped." : "");
     if (previewPairs.length) {
       this.setPreviewPairs(previewPairs);
       if (switchToPairMode) {
@@ -6464,11 +5800,15 @@ export class KerningViewController extends ViewController {
         // Ledger §8.1: capped at 50 pairs per highlighted class-summary
         // row (matching truncateGlyphList's own per-row display cap), not
         // a shared budget across the whole highlighted selection.
-        const { pairs: expanded, truncated } = crossProductPairs(
-          members.leftMembers,
-          members.rightMembers,
-          50
-        );
+        const expanded = [];
+        let truncated = false;
+        outer: for (const left of members.leftMembers) {
+          for (const right of members.rightMembers) {
+            if (!this.pairMatchesInputScope(left, right)) continue;
+            if (expanded.length === 50) { truncated = true; break outer; }
+            expanded.push([left, right]);
+          }
+        }
         pairs.push(...expanded);
         if (truncated) {
           truncatedCount++;
@@ -6481,11 +5821,7 @@ export class KerningViewController extends ViewController {
     return pairs;
   }
 
-  // Duck-typed resolver input-tokens.js's pure resolveTokenToGlyphNames/
-  // pairsFromInputs consume (kerning-ux-integration.md §8.1: a `@ClassName`
-  // token's side is "left" for the Glyph input, "right" for the Pair
-  // input -- kernData.groupsSide1/groupsSide2 are exactly that pair of
-  // maps, already loaded onto this.kerningController by initPairTableSection).
+  // The single filter resolves class names independently on each kerning side.
   pairInputResolver() {
     return {
       characterMap: this.fontController.characterMap,
@@ -6502,20 +5838,7 @@ export class KerningViewController extends ViewController {
     };
   }
 
-  // Task 7's `setPreviewPairs(pairs)` interface (plan text): each pair is
-  // `[leftGlyphName, rightGlyphName]`. Spec: "never concatenate them in a
-  // way that introduces unintended cross-pair kerning" -- one pair per
-  // line (characterLinesFromString/character-lines.js already treats each
-  // "\n"-separated line as its own independent run, the same mechanism the
-  // phrase field's multi-line text already relies on), not one long run of
-  // every glyph back to back. this._selectedPairLeft/Right keep pointing at
-  // the FIRST pair only: the on-canvas suggestion overlay
-  // (buildAutokernSuggestionVisualizationLayerDefinition /
-  // _applySuggestionPreviewRepositioning, both outside this dispatch's file
-  // map) reads exactly those two fields and only ever draws its band/HUD
-  // for positionedLines[0] -- extending that overlay to every previewed
-  // pair is a leftover for whichever task next touches that visualization
-  // layer, not silently done here.
+  // Independent lines prevent accidental kerning between separate preview pairs.
   setPreviewPairs(pairs) {
     if (!pairs.length) {
       return;
@@ -6532,98 +5855,55 @@ export class KerningViewController extends ViewController {
     }
   }
 
-  // Task 6, spec F07: called by edit-tools-select.js's SelectTool on a
-  // Ctrl+Click (`additive` false, replaces the Glyph input) or a
-  // Shift+Ctrl+Click (`additive` true, appends -- appendGlyphToken's own
-  // comma-separated, duplicate-ignoring behavior). Only ever touches the
-  // Glyph input; the Pair input is never written by a pointer click (spec
-  // gives pointer shortcuts no defined role there).
+  // Ctrl-click replaces; Ctrl+Shift-click toggles one plain glyph name.
   handleGlyphInputModifierClick(glyphName, additive) {
     const glyphInput = this._glyphInputElement;
     if (!glyphInput) {
       return;
     }
+    this._previewPairSelections.clear();
+    let names = [];
+    try {
+      names = parseTokenList(glyphInput.value).map((token) => {
+        if (token.kind === "class") return "@" + token.name;
+        return resolveGlyphFilter(token.name, this.pairInputResolver()).left.values().next().value || token.name;
+      });
+    } catch { /* A deliberate click replaces invalid typed input. */ }
     glyphInput.value = additive
-      ? appendGlyphToken(glyphInput.value, glyphName)
+      ? (names.includes(glyphName) ? names.filter((name) => name !== glyphName)
+        : [...names, glyphName]).join(", ")
       : replaceGlyphToken(glyphName);
     this.autokernFiltersController.setItem("glyphName", glyphInput.value.trim());
-    this.updatePairPreview();
+    this.renderPairTable();
   }
 
-  // Spec §10 ("No on-canvas display of a suggestion"), closing it: draws the
-  // pair-mode-selected pair's measured suggestion (this.autokernCache) as a
-  // distance line + numeric label, matching the visual language
-  // edit-tools-metrics.js's KerningTool already uses for a STORED kern.
-  //
-  // What "the visual language" actually is, traced from
-  // edit-tools-metrics.js before choosing this: KerningTool itself draws NO
-  // canvas line -- its numeric label (KerningHandle, a DOM custom element
-  // positioned via canvasController.canvasPoint) is DOM, not canvas, and only
-  // exists per-handle while the kerning tool is the active tool and a pair is
-  // hovered/selected. The one thing that IS drawn on canvas for a stored kern
-  // regardless of hover/selection, whenever the kerning tool is active, is
-  // the registered visualization layer "fontra.kerning-indicators-tool"
-  // (zIndex 190): a translucent fillRect spanning the kern gap, colored by
-  // sign. That fillRect (not a DOM handle, which this view has no
-  // infrastructure for and which would need building from scratch) is the
-  // part of "how the editor draws a stored kern" that is actually a
-  // visualization layer, so it -- not the DOM handle -- is what this layer
-  // mirrors: a filled band over the same gap, at zIndex 195 (just above the
-  // stored-kern band, so it never disappears underneath it), plus a
-  // stroked boundary line (strokeLine, imported from
-  // visualization-layer-definitions.js, the same helper
-  // fontra.baseline/fontra.sidebearings-tool use for their own lines) at the
-  // suggestion's edge, plus a canvas text label reading "suggest: <value>" --
-  // the "suggest:" prefix and a dashed, differently-colored boundary line are
-  // the distinguishing treatment from the kerning tool's own stored-kern
-  // band, chosen because both CAN be visible at once (the kerning-indicators
-  // layer is gated on KerningTool being the active tool, not on pair mode --
-  // it draws for every glyph in the string, in every tool... no: re-checked,
-  // kerningVisualizationSelector(true)'s selectionFunc returns [] unless
-  // theKerningTool.isActive is true, i.e. it IS tool-gated, not scene-gated;
-  // but it draws for every glyph pair in the whole string whenever the
-  // kerning tool happens to be active, including while pair mode is also
-  // showing a two-glyph pair -- so the two layers CAN legitimately overlap on
-  // exactly the pair this layer draws, and must read as two different facts,
-  // not one blurred shape).
-  //
-  // Gating: BOTH chip modes draw. Pair mode draws one band, over the
-  // selected pair's own gap, with the pinned "suggest: N" HUD; phrase mode
-  // draws a band per adjacent pair with its number above its own gap.
-  // Neither reads this._chipMode to decide WHICH pairs have a suggestion --
-  // _applySuggestionPreviewRepositioning does that once per frame and
-  // records the answer per positioned glyph in this._previewPairValue, so
-  // the shift and the overlay cannot disagree. Pair mode's own "only the
-  // selected pair" rule lives there, and its object-identity check against
-  // model.positionedLines[0].glyphs is exact rather than name-matching, so a
-  // pair like o/o is not ambiguous.
-  //
-  // No cache entry (spec §10: "before a run, or an excluded/filtered pair --
-  // draws nothing, not a placeholder/zero"): a recorded `undefined` is the
-  // no-op return, and it is deliberately distinct from a cached value of 0.
-  //
-  // On zIndex: this layer is appended to a COPY of the shared definitions
-  // array, and only registerVisualizationLayerDefinition inserts by zIndex,
-  // so the 195 below is documentation rather than an instruction -- the
-  // layer actually draws last, over the glyph fill. That is fine now that
-  // the re-spacing has moved out of here (the constructor's scene-view
-  // callback owns it): the band is translucent, and the label wants to be on
-  // top anyway. It was NOT fine while the re-spacing lived here.
-  //
-  // Live updates: this method builds the layer definition ONCE, in the
-  // constructor -- draw itself is a closure that reads its state fresh on
-  // every call, so nothing about live update
-  // lives here. It lives in what actually repaints the canvas afterward: (1)
-  // switching pairs -- selectPairForScene -> setChipMode("pair") ->
-  // sceneSettingsController.setItem("text", ...), the same scene-text change
-  // that already repaints the left pane's glyphs today; (2) a new run or a
-  // reload from storage -- runAutokernWorker's "done" handler and
-  // loadAutokernCacheFromStorage both call renderPairTable(), which now also
-  // calls this.canvasController.requestUpdate() (see renderPairTable's own
-  // comment) specifically because nothing else forced a repaint when only
-  // this.autokernCache changed and the chip stayed on "pair"; (3) applying a
-  // row -- writePairValues also ends with renderPairTable(), the same call,
-  // so an apply's repaint is the identical mechanism as (2), not a third one.
+  // View-local number layers: proposals above each ribbon, current kerns
+  // below each ribbon while the kerning tool is active.
+  buildCurrentKerningNumbersLayerDefinition() {
+    return {
+      identifier: "forkra.kerning.current-values",
+      name: "Current kerning values",
+      selectionFunc: glyphSelector("all"),
+      userSwitchable: false,
+      defaultOn: true,
+      zIndex: 196,
+      screenParameters: { fontSize: 11 },
+      colors: { textColor: "#333333" },
+      colorsDarkMode: { textColor: "#EEEEEE" },
+      draw: (context, glyph, parameters, model) => {
+        if (this.sceneController.selectedTool?.identifier !== "kerning-tool") return;
+        if (!model.positionedLines.some((line) => line.glyphs.indexOf(glyph) > 0)) return;
+        const value = glyph.kernValue ?? 0;
+        context.fillStyle = parameters.textColor;
+        context.font = `${parameters.fontSize}px fontra-ui-regular, sans-serif`;
+        context.textAlign = "center";
+        context.scale(1, -1);
+        context.fillText(`${round(value, 1)}`, -value / 2,
+          -(model.descender ?? 0) + 1.5 * parameters.fontSize);
+      },
+    };
+  }
+
   buildAutokernSuggestionVisualizationLayerDefinition() {
     return {
       identifier: "forkra.kerning.autokern-suggestion",
@@ -6648,22 +5928,12 @@ export class KerningViewController extends ViewController {
         textColor: "#C77DFF",
       },
       draw: (context, positionedGlyph, parameters, model, controller) => {
-        // The re-spacing itself is NOT done here -- it runs once per frame
-        // from the scene-view draw callback (see the constructor), which is
-        // what puts it ahead of the glyph fill instead of one frame behind
-        // it. This layer only draws, and it draws in BOTH chip modes: the
-        // old `if (this._chipMode !== "pair") return;` guard sat above every
-        // band/label line, so phrase mode got the silent shift and no
-        // visible overlay at all, which is not what was asked for.
+        // Positions and pair values were updated before any layer drew.
         const settings = this.suggestionPreviewSettings.model;
         if (!settings.enabled) {
           return;
         }
-        // Set by that same once-per-frame pass, for the pair ENDING at this
-        // glyph. undefined means no cache entry (no run yet, an excluded or
-        // filtered pair, or -- in pair mode -- any glyph that is not the
-        // selected pair's right-hand member), so this is also what keeps
-        // pair mode drawing exactly one band, as before.
+        // Every real adjacent pair has its own label, in both preview modes.
         const suggestionValue = this._previewPairValue.get(positionedGlyph);
         if (suggestionValue === undefined) {
           return;
@@ -6689,95 +5959,21 @@ export class KerningViewController extends ViewController {
           return;
         }
 
-        // Phrase mode draws a number per pair, so it cannot use the pinned
-        // HUD below -- every pair would stack on the same spot. It stays in
-        // glyph space, just above the ascender over its own gap, using the
-        // scale(1, -1)-then-negate-y convention every other text-drawing
-        // layer in visualization-layer-definitions.js uses. parameters.
-        // fontSize is already multiplied by the layer scale factor, so it
-        // holds a constant size on screen.
-        if (this._chipMode !== "pair") {
-          context.globalAlpha = settings.opacity;
-          context.fillStyle = parameters.textColor;
-          context.textAlign = "center";
-          context.font = `${parameters.fontSize}px fontra-ui-regular, sans-serif`;
-          context.scale(1, -1);
-          context.fillText(
-            `${round(suggestionValue, 1)}`,
-            -suggestionValue / 2,
-            -ascender - 0.5 * parameters.fontSize
-          );
-          context.globalAlpha = 1;
-          return;
-        }
-
-        // Designer follow-up (2026-09-06, backlog item 7's HUD variant):
-        // pinned to a fixed spot at the top of the viewport instead of
-        // tracked to the glyph's screen position, so it needs no
-        // edge-clamping -- only the box/reference lines above stay in
-        // glyph space and move with the glyph. Reset to the canvas's own
-        // CSS-pixel coordinate space (undoing draw()'s glyph-space
-        // scale/translate and this layer's own per-glyph translate,
-        // src-js/views-editor/src/visualization-layers.js:90) so the text
-        // draws at a fixed canvas position every time regardless of scroll,
-        // zoom, or which glyph is selected. The outer drawVisualizationLayers
-        // call already wraps this whole draw() in its own context.save()/
-        // restore() (withSavedState), so this transform never leaks into
-        // the next layer or glyph.
-        context.setTransform(
-          controller.devicePixelRatio,
-          0,
-          0,
-          controller.devicePixelRatio,
-          0,
-          0
-        );
         context.globalAlpha = settings.opacity;
         context.fillStyle = parameters.textColor;
         context.textAlign = "center";
         context.font = `${parameters.fontSize}px fontra-ui-regular, sans-serif`;
-        context.fillText(
-          `suggest: ${round(suggestionValue, 1)}`,
-          controller.canvasWidth / 2,
-          20
-        );
+        context.scale(1, -1);
+        context.fillText(`${round(suggestionValue, 1)}`, -suggestionValue / 2,
+          -ascender - 0.5 * parameters.fontSize);
         context.globalAlpha = 1;
       },
     };
   }
 
-  // Backlog item 10: re-space glyphs on screen by their cached suggestion
-  // delta, display-only -- never through fontController.performEdit or the
-  // pair-table write path, and never touching this.autokernCache itself
-  // (read-only lookup, same cache/gating the "suggest: N" label already
-  // uses). Two chip modes:
-  //   - "pair": only the selected pair's right-hand glyph shifts, by exactly
-  //     the same this.autokernCache entry.value the label already shows for
-  //     that pair.
-  //   - "phrase": every adjacent glyph pair in every positioned line shifts
-  //     simultaneously, each by its own cache entry (0 if no cached
-  //     suggestion exists for that specific pair), threaded cumulatively
-  //     along the line the same way a real applied kern would accumulate
-  //     (shaper.js: "previousGlyph.xAdvance += kernValue" -- a positive
-  //     suggestion pushes everything after it right; confirmed against that
-  //     exact convention before picking the sign used here, which is the
-  //     same sign pair mode already used).
-  // "font" mode has no relevant positionedLines (grid, not scene text) --
-  // the loop below simply no-ops on an empty/irrelevant array.
-  //
-  // Idempotent by construction: every call recomputes every glyph's x from
-  // its own captured original (this._previewOriginalX), never from the
-  // possibly-already-shifted current value, so toggling
-  // suggestionPreviewSettings.enabled off (without a scene rebuild) snaps
-  // positions back immediately on the next repaint, and repeated repaints of
-  // an unchanged frame never compound the shift.
-  //
-  // Called once per frame from the scene-view draw callback (constructor),
-  // BEFORE any visualization layer draws -- see that call site's comment for
-  // why calling it from inside the suggestion layer's own draw was one frame
-  // too late. It also records each pair's suggestion in
-  // this._previewPairValue for that layer to draw from, so the shift and the
-  // overlay always describe the same pairs.
+  // Reposition both phrase and pair previews before drawing. Always start
+  // from the shaped position, replacing saved kerning with the proposal.
+  // Toggling preview off restores original positions without accumulation.
   _applySuggestionPreviewRepositioning(model) {
     const settings = this.suggestionPreviewSettings?.model;
     const cache = this.autokernCache;
@@ -6796,25 +5992,14 @@ export class KerningViewController extends ViewController {
           // treats that as zero; the band/label draw treats it as "draw
           // nothing" (spec §10). Keeping the two apart is why this is
           // recorded rather than recomputed in the draw function.
-          let entryValue;
-          if (this._chipMode === "pair") {
-            if (
-              line === model.positionedLines[0] &&
-              i === 1 &&
-              glyphs[0].glyphName === this._selectedPairLeft &&
-              glyph.glyphName === this._selectedPairRight
-            ) {
-              entryValue = cache.get(
-                pairKey(this._selectedPairLeft, glyph.glyphName)
-              )?.value;
-            }
-          } else if (this._chipMode === "phrase") {
-            entryValue = cache.get(
-              pairKey(glyphs[i - 1].glyphName, glyph.glyphName)
-            )?.value;
-          }
+          const entry = this._chipMode === "pair" || this._chipMode === "phrase"
+            ? cache.get(pairKey(glyphs[i - 1].glyphName, glyph.glyphName)) : null;
+          const entryValue = entry && !entry.stale && Number.isFinite(entry.value)
+            ? entry.value : undefined;
           this._previewPairValue.set(glyph, entryValue);
-          cumulative += entryValue ?? 0;
+          // Scene positions already include the saved kern. Replace it
+          // with the proposal rather than adding the proposal a second time.
+          if (entryValue !== undefined) cumulative += entryValue - (glyph.kernValue || 0);
         } else {
           this._previewPairValue.set(glyph, undefined);
         }
