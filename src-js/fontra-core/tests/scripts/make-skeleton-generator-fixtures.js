@@ -1,11 +1,11 @@
-import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath, pathToFileURL } from "url";
+import { fileURLToPath } from "url";
 
-// Four levels up from tests/scripts/ reaches the repo root; the donor checkout
-// lives at <repo>/skeleton.
-import { generateContoursFromSkeleton as generateDonorContours } from "../../../../skeleton/src-js/fontra-core/src/skeleton-contour-generator.js";
+// Fixtures record this generator's own output. Until 2026-07-26 this script ran
+// the pre-port generator out of a gitignored checkout, which meant it could not
+// be run outside one developer's machine.
+import { generateContoursFromSkeleton } from "../../src/skeleton-generator.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,45 +17,62 @@ const outputPath = path.join(
   "fixtures.json"
 );
 
-// Round caps were reworked (split-outline geometry) on test/cap-rounding-rewamp,
-// AFTER the pinned donor commit — so round-cap fixtures pin THAT branch's output
-// instead of the pinned donor's (`capReference: true` per fixture). The reference
-// generator is extracted from git at regen time (no vendored blob); if the ref
-// ever disappears, the committed fixtures.json still works — only regeneration
-// would need a new reference.
-const CAP_REFERENCE_COMMIT = "7719b68f4f92e9389f5c10faf6f09630779fe91d"; // test/cap-rounding-rewamp tip
-const capReferenceDir = path.join(__dirname, "..", ".cap-reference-tmp");
-
-async function loadCapReferenceGenerator() {
-  fs.rmSync(capReferenceDir, { recursive: true, force: true });
-  fs.mkdirSync(capReferenceDir, { recursive: true });
-  const repoRoot = path.join(__dirname, "..", "..", "..", "..");
-  const tarPath = path.join(capReferenceDir, "capref.tar");
-  execSync(
-    `git archive ${CAP_REFERENCE_COMMIT} src-js/fontra-core/src -o "${tarPath}"`,
-    { cwd: repoRoot }
-  );
-  // Relative paths: Windows tar can misread "C:\..." as a remote host.
-  execSync(`tar -xf capref.tar`, { cwd: capReferenceDir });
-  const generatorPath = path.join(
-    capReferenceDir,
-    "src-js",
-    "fontra-core",
-    "src",
-    "skeleton-contour-generator.js"
-  );
-  const module = await import(pathToFileURL(generatorPath).href);
-  return module.generateContoursFromSkeleton;
-}
-
 const CAP_CORNER_POINT_FIELDS = [
   "capStyle",
   "capRadiusRatio",
   "capTension",
+  "capBallEasing",
+  "capBallEaseCurvature",
   "capAngle",
   "capDistance",
-  "roundnessStrength",
-  "cornerAsymmetry",
+  {
+    name: "serif-slab",
+    canonical: serifStem({
+      wingLength: 80,
+      tipThickness: 90,
+      wingSlope: 0,
+      tipCutAngle: 0,
+      reach: 20,
+      tension: 0.15,
+      concavity: -0.05,
+    }),
+  },
+  {
+    name: "serif-didone",
+    canonical: serifStem({
+      wingLength: 90,
+      tipThickness: 18,
+      wingSlope: 0,
+      tipCutAngle: 0,
+      reach: 70,
+      tension: 0.7,
+      concavity: 0.8,
+    }),
+  },
+  {
+    name: "serif-one-sided",
+    canonical: serifStem(
+      {
+        wingLength: 90,
+        tipThickness: 18,
+        wingSlope: 0,
+        tipCutAngle: 0,
+        reach: 70,
+        tension: 0.7,
+        concavity: 0.8,
+      },
+      {
+        wingLength: 0,
+        tipThickness: 0,
+        wingSlope: 0,
+        tipCutAngle: 0,
+        reach: 40,
+        tension: 0.6,
+        concavity: 0.5,
+      }
+    ),
+  },
+  { name: "serif-horizontal-axis-curve-terminal", canonical: serifCurveTerminal() },
 ];
 
 const fixtures = [
@@ -142,6 +159,95 @@ const fixtures = [
     },
   },
   {
+    // Two cubic segments meeting at a smooth on-curve point. No other fixture
+    // has one, which is why a smooth-junction handle defect went unrecorded:
+    // the generated handles either side of point 5 must stay exactly colinear.
+    name: "open-smooth-cubic-junction",
+    canonical: {
+      version: 1,
+      nextId: 9,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 60,
+          singleSided: null,
+          points: [
+            point(2, 0, 0),
+            offCurve(3, 20, 40),
+            offCurve(4, 50, 40),
+            point(5, 60, 60, { smooth: true }),
+            offCurve(6, 70, 80),
+            offCurve(7, 100, 100),
+            point(8, 120, 60),
+          ],
+        },
+      ],
+      generated: [],
+    },
+  },
+  {
+    // Two cubic segments joined by a straight in the middle, between two smooth
+    // points (5 and 6) that each carry only ONE handle, on the far side. Neither
+    // has an independent direction — the straight defines both — so their ribs
+    // are locked parallel and share an offset. Widths deliberately differ (30 vs
+    // 18) so the coupling is exercised rather than coincidentally satisfied.
+    name: "mutually-controlled-straight",
+    canonical: {
+      version: 1,
+      nextId: 10,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 40,
+          singleSided: null,
+          points: [
+            point(2, 0, 0),
+            offCurve(3, 10, 50),
+            offCurve(4, 20, 40),
+            point(5, 60, 60, { smooth: true, width: { left: 30, right: 30 } }),
+            point(6, 140, 100, { smooth: true, width: { left: 18, right: 18 } }),
+            offCurve(7, 180, 120),
+            offCurve(8, 190, 60),
+            point(9, 200, 0),
+          ],
+        },
+      ],
+      generated: [],
+    },
+  },
+  {
+    // Only ONE end of the straight is a one-handle smooth point (5); point 6 is
+    // an ordinary corner into the following cubic and owns its own direction.
+    // One such point is still enough to tie the whole projected straight, so
+    // both ribs sit at the mean of 30 and 18 here too.
+    name: "one-ended-controlled-straight",
+    canonical: {
+      version: 1,
+      nextId: 10,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 40,
+          singleSided: null,
+          points: [
+            point(2, 0, 0),
+            offCurve(3, 10, 50),
+            offCurve(4, 20, 40),
+            point(5, 60, 60, { smooth: true, width: { left: 30, right: 30 } }),
+            point(6, 140, 100, { width: { left: 18, right: 18 } }),
+            offCurve(7, 200, 160),
+            offCurve(8, 240, 60),
+            point(9, 200, 0),
+          ],
+        },
+      ],
+      generated: [],
+    },
+  },
+  {
     name: "single-sided-left",
     canonical: {
       version: 1,
@@ -187,6 +293,40 @@ const fixtures = [
     },
   },
   {
+    // Nudges on the endpoints of a CUBIC segment, which asymmetric-editable-nudge
+    // (a line) cannot cover: the nudge has to translate each generated on-curve
+    // point together with its handle, rather than being fed to the offset
+    // construction as an endpoint constraint.
+    name: "nudged-cubic-endpoints",
+    canonical: {
+      version: 1,
+      nextId: 6,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 40,
+          singleSided: null,
+          points: [
+            point(2, 0, 0, {
+              width: { left: 20, right: 20 },
+              editable: { left: true, right: true },
+              nudge: { left: 17, right: -9 },
+            }),
+            offCurve(3, 40, 60),
+            offCurve(4, 120, 60),
+            point(5, 160, 0, {
+              width: { left: 20, right: 20 },
+              editable: { left: true, right: true },
+              nudge: { left: -11, right: 6 },
+            }),
+          ],
+        },
+      ],
+      generated: [],
+    },
+  },
+  {
     name: "detached-handle-offsets",
     canonical: {
       version: 1,
@@ -222,21 +362,20 @@ const fixtures = [
   },
 ];
 
-const generateCapReferenceContours = fixtures.some((fixture) => fixture.capReference)
-  ? await loadCapReferenceGenerator()
-  : null;
-
 for (const fixture of fixtures) {
   fixture.donorInput = canonicalToDonor(fixture.canonical);
-  const generate = fixture.capReference
-    ? generateCapReferenceContours
-    : generateDonorContours;
-  fixture.expectedContours = generate(fixture.donorInput);
+  fixture.expectedContours = generateContoursFromSkeleton(fixture.canonical);
 }
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-fs.writeFileSync(outputPath, `${JSON.stringify(fixtures, null, 2)}\n`);
-fs.rmSync(capReferenceDir, { recursive: true, force: true });
+const newline =
+  fs.existsSync(outputPath) && fs.readFileSync(outputPath, "utf-8").includes("\r\n")
+    ? "\r\n"
+    : "\n";
+fs.writeFileSync(
+  outputPath,
+  `${JSON.stringify(fixtures, null, 2).replaceAll("\n", newline)}${newline}`
+);
 
 function point(id, x, y, extra = {}) {
   return {
@@ -253,6 +392,73 @@ function point(id, x, y, extra = {}) {
   };
 }
 
+function serifStem(left, right = left) {
+  return {
+    version: 1,
+    nextId: 4,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 100,
+        capStyle: "serif",
+        points: [
+          point(2, 0, 0, {
+            serif: {
+              left,
+              right,
+              axisMode: "perpendicular",
+              axisAngle: 0,
+              undersideCup: 0,
+            },
+          }),
+          point(3, 0, 400),
+        ],
+      },
+    ],
+    generated: [],
+  };
+}
+
+function serifCurveTerminal() {
+  const half = {
+    wingLength: 80,
+    tipThickness: 24,
+    wingSlope: 0,
+    tipCutAngle: 0,
+    reach: 30,
+    tension: 0.7,
+    concavity: 0.8,
+  };
+  return {
+    version: 1,
+    nextId: 6,
+    contours: [
+      {
+        id: 1,
+        closed: false,
+        defaultWidth: 100,
+        capStyle: "serif",
+        points: [
+          point(2, 0, 0, {
+            serif: {
+              left: half,
+              right: half,
+              axisMode: "horizontal",
+              axisAngle: 0,
+              undersideCup: 0,
+            },
+          }),
+          offCurve(3, 10, 20),
+          offCurve(4, 30, 40),
+          point(5, 60, 60),
+        ],
+      },
+    ],
+    generated: [],
+  };
+}
+
 function offCurve(id, x, y) {
   return { id, x, y, type: "cubic", smooth: false };
 }
@@ -266,8 +472,6 @@ function canonicalToDonor(skeletonData) {
       singleSidedDirection: contour.singleSided || "left",
       capStyle: contour.capStyle || "butt",
       reversed: contour.reversed === true,
-      cornerTrimRatio: contour.cornerTrimRatio,
-      cornerRadiusBoost: contour.cornerRadiusBoost,
       points: contour.points.map(canonicalPointToDonor),
     })),
   };
@@ -290,6 +494,7 @@ function canonicalPointToDonor(point) {
   donorPoint.rightNudge = point.nudge?.right ?? 0;
   donorPoint.leftEditable = point.editable?.left === true;
   donorPoint.rightEditable = point.editable?.right === true;
+  donorPoint.corner = point.corner ?? null;
   for (const field of CAP_CORNER_POINT_FIELDS) {
     if (point[field] !== null && point[field] !== undefined) {
       donorPoint[field] = point[field];

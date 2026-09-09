@@ -1,10 +1,18 @@
 import {
   addVectors,
   distance,
+  dotVector,
+  interpolateVectors,
   intersect,
   normalizeVector,
   subVectors,
+  vectorLength,
 } from "./vector.js";
+
+// The 2D cross product, which is positive when B turns left off A.
+function cross(vectorA, vectorB) {
+  return vectorA.x * vectorB.y - vectorA.y * vectorB.x;
+}
 
 // Grid Snap Utility Function
 export function snapToGrid(point) {
@@ -265,42 +273,85 @@ export function calculateEqualizedControlPoints(segmentPoints) {
 }
 
 export function balanceSegment(segmentPoints) {
+  const [p1, p2, p3, p4] = segmentPoints;
+  const unchanged = [p1, p2, p3, p4];
+
   const tunniPoint = calculateTunniPoint(segmentPoints);
   if (!tunniPoint) {
-    const [p1, p2, p3, p4] = segmentPoints;
-    return [p1, p2, p3, p4]; // Can't balance if lines are parallel
+    return unchanged; // parallel handle lines: they never cross
   }
 
-  const [p1, p2, p3, p4] = segmentPoints;
-
-  // Calculate distances
-  const sDistance = distance(p1, tunniPoint);
-  const eDistance = distance(p4, tunniPoint);
-
-  // If either distance is zero, we can't balance
-  if (sDistance <= 0 || eDistance <= 0) {
-    return [p1, p2, p3, p4];
+  // An S-shaped segment has its two handles on opposite sides of the chord.
+  // There is no common tension that describes it, so balancing fights the
+  // drawing instead of tidying it. Curve EQ refuses the same case.
+  const chord = subVectors(p4, p1);
+  const sideOfStart = cross(chord, subVectors(p2, p1));
+  const sideOfEnd = cross(chord, subVectors(p3, p1));
+  if (sideOfStart * sideOfEnd < 0) {
+    return unchanged;
   }
 
-  // Calculate percentages
-  const xPercent = distance(p1, p2) / sDistance;
-  const yPercent = distance(p3, p4) / eDistance;
+  // Balanced means both handles at one fraction of the way to the Tunni
+  // point, and that fraction is the only free number left. It is chosen so the
+  // balanced curve stays as close to the drawn one as a balanced curve can get
+  // -- least squares over the whole segment, not at one sample.
+  //
+  // Every point of the curve is a straight line in the fraction, so the answer
+  // is one projection: exact, continuous, and nothing to search. Writing the
+  // two tangent rays as `u` and `v` and integrating the two Bernstein weights
+  // over the segment, it comes out as the two tensions averaged by how much of
+  // the curve each ray actually shapes:
+  //
+  //     (4|u|^2 + 3 u.v) t1  +  (4|v|^2 + 3 u.v) t2
+  //     --------------------------------------------
+  //              4|u|^2 + 6 u.v + 4|v|^2
+  //
+  // Where the two rays reach equally far this is the plain mean of the two
+  // tensions, which is what the code did before and what both donors do. It
+  // parts from that mean only where one end reaches much further than the
+  // other, which is exactly where the plain mean moves the drawing most.
+  const rayStart = subVectors(tunniPoint, p1);
+  const rayEnd = subVectors(tunniPoint, p4);
+  const reachStart = vectorLength(rayStart);
+  const reachEnd = vectorLength(rayEnd);
+  if (!reachStart || !reachEnd) {
+    return unchanged;
+  }
 
-  // Calculate average percentage
-  const avgPercent = (xPercent + yPercent) / 2;
+  const tensionStart = distance(p1, p2) / reachStart;
+  const tensionEnd = distance(p4, p3) / reachEnd;
 
-  // Calculate new control points
-  const newP2 = {
-    x: p1.x + avgPercent * (tunniPoint.x - p1.x),
-    y: p1.y + avgPercent * (tunniPoint.y - p1.y),
-  };
+  const startSquared = reachStart * reachStart;
+  const endSquared = reachEnd * reachEnd;
+  const between = dotVector(rayStart, rayEnd);
+  // Positive for every pair of rays: 4a + 4b is always more than 6*sqrt(a*b).
+  const weightTotal = 4 * startSquared + 6 * between + 4 * endSquared;
+  if (!weightTotal) {
+    return unchanged;
+  }
 
-  const newP3 = {
-    x: p4.x + avgPercent * (tunniPoint.x - p4.x),
-    y: p4.y + avgPercent * (tunniPoint.y - p4.y),
-  };
+  const balanced =
+    ((4 * startSquared + 3 * between) * tensionStart +
+      (4 * endSquared + 3 * between) * tensionEnd) /
+    weightTotal;
 
-  return [p1, newP2, newP3, p4];
+  // A balance lands between the two tensions it is balancing. The least-squares
+  // answer can step outside that span where one ray is much the longer and the
+  // two point sharply apart, and a fraction outside the span is not a balance.
+  const ratio = Math.min(
+    Math.max(balanced, Math.min(tensionStart, tensionEnd)),
+    Math.max(tensionStart, tensionEnd)
+  );
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    return unchanged;
+  }
+
+  return [
+    p1,
+    interpolateVectors(p1, tunniPoint, ratio),
+    interpolateVectors(p4, tunniPoint, ratio),
+    p4,
+  ];
 }
 
 /**
@@ -433,4 +484,341 @@ export function calculateOnCurvePointsFromTunni(
     return [snapToGrid(newP1), p2, p3, snapToGrid(newP4)];
   }
   return [newP1, p2, p3, newP4];
+}
+
+//
+// Tension algebra: a segment's tension is the harmonic mean of its handles'.
+//
+// With T the tangent intersection, b = |P1T| and d = |P4T| the two reaches and
+// a, c the two handle lengths, the canonical tension above, tau = 2ac/(ad+bc),
+// rewrites as 2*t1*t2/(t1+t2) for t1 = a/b and t2 = c/d — the harmonic mean,
+// exactly. Verified against calculateSegmentTension to floating point.
+//
+// That identity splits a segment's two handle lengths into two quantities that
+// do not interact: the MAGNITUDE, which is what the curvature gizmo sets and
+// pins, and the SPLIT, which is what equalization moves. Because they are
+// orthogonal, the generator can apply one after the other with no precedence
+// rule between them.
+//
+// Everything below works in RECIPROCAL tension, where both operations are
+// linear: the harmonic mean is 2/(r1+r2), so holding the mean fixed is holding
+// r1+r2 fixed, and equalizing is sliding both reciprocals toward their average
+// along that constraint. The mean therefore cannot drift by construction rather
+// than by correction afterwards.
+//
+
+const TENSION_EPSILON = 1e-10;
+
+// `handleTensions` used to live here: lengths over reaches, returning null where
+// a reach was not ahead of its own on-curve point, so that its one caller could
+// skip the whole shaping stage rather than substitute a guess. The offset
+// construction now gives every end a reach that is finite and positive by
+// definition (`feasibleBox` in offset-cubic.js), so there is no "no answer" case
+// left to spell, and the caller that skipped is gone with it.
+
+export function harmonicMeanTension(tensions) {
+  const sum = tensions.start + tensions.end;
+  return sum > TENSION_EPSILON ? (2 * tensions.start * tensions.end) / sum : 0;
+}
+
+// Move the two tensions `amount` of the way toward equal — 0 leaves them alone,
+// 1 makes them equal — holding their harmonic mean exactly fixed.
+export function equalizeTensions(tensions, amount) {
+  const r1 = 1 / tensions.start;
+  const r2 = 1 / tensions.end;
+  const mid = (r1 + r2) / 2;
+  return {
+    start: 1 / (r1 + amount * (mid - r1)),
+    end: 1 / (r2 + amount * (mid - r2)),
+  };
+}
+
+// Shift both tensions by one shared increment, optionally saturating each end
+// independently. Once one handle reaches its ceiling the other remains
+// responsive until it reaches the same ceiling.
+export function shiftTensions(tensions, increment, maxTension = Infinity) {
+  return {
+    start: Math.min(tensions.start + increment, Math.max(tensions.start, maxTension)),
+    end: Math.min(tensions.end + increment, Math.max(tensions.end, maxTension)),
+  };
+}
+
+// The shared increment that puts the harmonic mean at `target`.
+//
+// No closed form — the mean is a ratio of quadratics in the increment — but it
+// is monotone in it and easily bracketed. With a finite ceiling, the upper
+// bracket saturates both ends and the target is limited to that ceiling. Fixed
+// trip count, no convergence test, the same continuity contract the rest of the
+// generation path lives under.
+const TENSION_SHIFT_STEPS = 40;
+
+export function shiftTensionsToMean(tensions, target, maxTension = Infinity) {
+  if (!Number.isFinite(target) || target < 0) {
+    return tensions;
+  }
+  // Zero is the bottom of the shared shift, not "no mean stated": it puts the
+  // shorter handle exactly on its point and leaves the longer one holding the
+  // difference. The mean says nothing below that — it reads zero for every
+  // length the survivor could have — so that is where the shift ends and a
+  // per-handle displacement takes the survivor the rest of the way down.
+  if (target <= TENSION_EPSILON) {
+    return shiftTensions(tensions, -Math.min(tensions.start, tensions.end), maxTension);
+  }
+  const saturated = shiftTensions(tensions, Infinity, maxTension);
+  target = Math.min(target, harmonicMeanTension(saturated));
+  let low = -Math.min(tensions.start, tensions.end);
+  let high = Number.isFinite(maxTension)
+    ? Math.max(saturated.start - tensions.start, saturated.end - tensions.end)
+    : target + Math.max(tensions.start, tensions.end);
+  for (let step = 0; step < TENSION_SHIFT_STEPS; step++) {
+    const middle = (low + high) / 2;
+    if (harmonicMeanTension(shiftTensions(tensions, middle, maxTension)) < target) {
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+  return shiftTensions(tensions, (low + high) / 2, maxTension);
+}
+
+//
+// The curvature gizmo: "make this curve fuller or flatter".
+//
+// Do not confuse it with calculateControlHandlePoint above. That one anchors on
+// the midpoint of the two HANDLES and is dragged along a fixed 45-degree vector.
+// This one anchors on the CURVE and is dragged along the ray toward the true
+// Tunni point, which is the direction the curve actually swells in. What the two
+// share — moving both tensions by the same amount — lives in
+// calculateControlPointsFromCurvatureDelta and is the part worth reusing.
+//
+
+const CURVATURE_EPSILON = 1e-10;
+
+// A handle sitting exactly on its point draws no line. The two handle lines then
+// have no crossing, and the curvature gizmo is built entirely on that crossing:
+// it aims at it, and it measures each handle as a fraction of the distance to
+// it. So a segment the gizmo had flattened into a straight bevel had no axis, no
+// scale and no drag — in EITHER direction. The bevel was not a floor the drag
+// rested on. It was a hole it fell into, and only the reset came back out.
+//
+// The direction is not lost, only unmeasurable. Every generated handle publishes
+// the axis it was constructed along, for the separate reason that colinearity
+// may rotate a drawn handle afterwards. Where a drawn handle has no length, that
+// published axis IS its line, and every number downstream is the arithmetic it
+// always was. One collapsed handle is enough to need this: a half-bevel was
+// just as stuck as a full one.
+//
+// Lengths are untouched, so a collapsed handle still reads a tension of zero.
+function handleDirections(segmentPoints, handleAxes) {
+  const [p1, p2, p3, p4] = segmentPoints;
+  const drawn = [subVectors(p2, p1), subVectors(p3, p4)];
+  // normalizeVector hands a zero vector straight back rather than refusing, so
+  // the length is tested here.
+  const asDirection = (vector) =>
+    vector && Math.hypot(vector.x, vector.y) > CURVATURE_EPSILON
+      ? normalizeVector(vector)
+      : null;
+  return drawn.map(
+    (vector, index) => asDirection(vector) ?? asDirection(handleAxes?.[index])
+  );
+}
+
+// The crossing of the two handle lines, with a collapsed handle's line taken
+// from its published axis.
+function tangentIntersection(segmentPoints, handleAxes) {
+  const directions = handleDirections(segmentPoints, handleAxes);
+  if (!directions[0] || !directions[1]) {
+    return null;
+  }
+  const [start, , , end] = segmentPoints;
+  return intersect(
+    start,
+    addVectors(start, directions[0]),
+    end,
+    addVectors(end, directions[1])
+  );
+}
+
+// Where the gizmo sits: the curve at t = 0.5. Writing the Bernstein weights out
+// rather than reaching for a general evaluator, because half is the only
+// parameter this control ever needs.
+export function calculateCurvatureGizmoPoint(segmentPoints) {
+  const [p1, p2, p3, p4] = segmentPoints;
+  return {
+    x: (p1.x + 3 * p2.x + 3 * p3.x + p4.x) / 8,
+    y: (p1.y + 3 * p2.y + 3 * p3.y + p4.y) / 8,
+  };
+}
+
+// Null when the two handle lines are parallel: there is no Tunni point to aim
+// at, so the control has no axis and must not be offered.
+export function calculateCurvatureGizmoAxis(segmentPoints, handleAxes) {
+  const tunniPoint = tangentIntersection(segmentPoints, handleAxes);
+  if (!tunniPoint) {
+    return null;
+  }
+  const toTunni = subVectors(tunniPoint, calculateCurvatureGizmoPoint(segmentPoints));
+  const reach = Math.hypot(toTunni.x, toTunni.y);
+  if (!(reach > CURVATURE_EPSILON)) {
+    return null;
+  }
+  return { x: toTunni.x / reach, y: toTunni.y / reach };
+}
+
+//
+// Drag the curvature gizmo by `delta`. Returns the two new control points, or
+// null where the control does not exist.
+//
+// Only the component along the axis counts — this is a one-degree-of-freedom
+// control, and movement across the axis is discarded rather than interpreted.
+//
+// Both tensions change by the SAME amount, so their difference survives the
+// drag through most of the range. That matters: a generated segment's two
+// tensions differ when the skeleton is asymmetric, and that asymmetry is
+// faithful — equalizing it measurably degrades the fit.
+//
+// Both tensions share the increment until one reaches 1. That end then
+// saturates independently while the trailing handle continues to 1. This keeps
+// the whole available range reachable without either handle crossing its
+// tangent intersection.
+//
+// The ceiling never forces a REDUCTION. Construction reaches and handles are
+// independent of an emitted on-curve nudge, so grabbing is a no-op and the
+// ceiling only limits where a positive drag can go.
+//
+// `allowCollapse` opens the same behaviour at the floor: the shared shift ends
+// when the shorter handle lands on its point, and past that the survivor keeps
+// coming down alone until both sit on their points. It is off by default
+// because a caller storing only the shared mean cannot describe that tail —
+// the mean reads zero throughout it.
+//
+// What the curvature drag measures in: each handle's direction, the unit its
+// tension is a fraction of, its current tension, and the reach behind that unit.
+//
+// Exported because a caller has to be able to INVERT the drag — to ask what
+// distance along the axis maps one segment onto another. The drag from a base
+// out of a bevel needs exactly that, and re-deriving these four numbers beside
+// this function is how two readers start disagreeing about where the gizmo is
+// (R-B).
+export function calculateCurvatureDragScale(segmentPoints, handleAxes = null) {
+  const tunniPoint = tangentIntersection(segmentPoints, handleAxes);
+  const directions = handleDirections(segmentPoints, handleAxes);
+  if (!tunniPoint || !directions[0] || !directions[1]) {
+    return null;
+  }
+  const [startPoint, controlPoint1, controlPoint2, endPoint] = segmentPoints;
+  // Reach must be measured ALONG the handle axis, not as a plain distance. When
+  // the handles splay outward the tangent rays still meet, but behind both ends
+  // — the distance to that meeting point is large and positive while the reach
+  // is negative. Taking the distance there invents a tension out of nothing,
+  // and the ceiling built from it can pin the control before it has moved.
+  // offset-cubic draws the same line: a reach that is not ahead is no limit.
+  const reaches = [
+    signedReach(startPoint, directions[0], tunniPoint),
+    signedReach(endPoint, directions[1], tunniPoint),
+  ];
+  const lengths = [
+    distance(startPoint, controlPoint1),
+    distance(endPoint, controlPoint2),
+  ];
+  // Where there is no reach ahead, fall back to the handle's own length as the
+  // unit, so the control keeps a sensible scale instead of dropping out.
+  const units = reaches.map((reach, index) =>
+    reach > CURVATURE_EPSILON ? reach : lengths[index]
+  );
+  if (units.some((unit) => !(unit > CURVATURE_EPSILON))) {
+    return null;
+  }
+  return {
+    directions,
+    reaches,
+    units,
+    lengths,
+    tensions: units.map((unit, index) => lengths[index] / unit),
+  };
+}
+
+export function calculateControlPointsFromCurvatureDelta(
+  delta,
+  segmentPoints,
+  {
+    maxTension = 1,
+    axisSegmentPoints = segmentPoints,
+    allowCollapse = false,
+    handleAxes = null,
+    axisHandleAxes = handleAxes,
+  } = {}
+) {
+  const axis = calculateCurvatureGizmoAxis(axisSegmentPoints, axisHandleAxes);
+  const scale = calculateCurvatureDragScale(segmentPoints, handleAxes);
+  if (!axis || !scale) {
+    return null;
+  }
+  const { directions, units, tensions } = scale;
+  const [startPoint, , , endPoint] = segmentPoints;
+  const [startReach, endReach] = scale.reaches;
+  const [startUnit, endUnit] = units;
+  const [startTension, endTension] = tensions;
+
+  // Half the summed reach converts a distance dragged in glyph units into a
+  // tension increment: with the two ends alike, each handle tracks the pointer
+  // one for one.
+  let increment = (2 * dotVector(delta, axis)) / (startUnit + endUnit);
+
+  increment = Math.max(
+    increment,
+    -(allowCollapse
+      ? Math.max(startTension, endTension)
+      : Math.min(startTension, endTension))
+  );
+
+  const place = (from, direction, unit, tension, reach) => {
+    const movedTension = Math.max(
+      reach > CURVATURE_EPSILON
+        ? Math.min(tension + increment, Math.max(tension, maxTension))
+        : tension + increment,
+      0
+    );
+    const length = movedTension * unit;
+    return { x: from.x + direction.x * length, y: from.y + direction.y * length };
+  };
+  return [
+    place(startPoint, directions[0], startUnit, startTension, startReach),
+    place(endPoint, directions[1], endUnit, endTension, endReach),
+  ];
+}
+
+// Whether the tangent intersection lies AHEAD of both endpoints.
+//
+// Tension is a fraction of the reach to that intersection, so it only means
+// anything while the intersection is ahead. Where it sits behind an endpoint
+// there is no ceiling for a handle to be a fraction of, and the ratio is
+// negative. calculateSegmentTension builds its answer from plain distances,
+// so it drops that sign and returns a plausible-looking number instead —
+// which is how a segment with nothing overshooting reported a tension of
+// 1.38. Callers that present or bound a tension must ask this first.
+export function hasForwardTangentIntersection(segmentPoints) {
+  if (segmentPoints?.length !== 4 || segmentPoints.some((point) => !point)) {
+    return false;
+  }
+  const [startPoint, controlPoint1, controlPoint2, endPoint] = segmentPoints;
+  const tunniPoint = calculateTunniPoint(segmentPoints);
+  if (!tunniPoint) {
+    return false;
+  }
+  const directions = handleDirections(segmentPoints);
+  if (!directions[0] || !directions[1]) {
+    return false;
+  }
+  return (
+    signedReach(startPoint, directions[0], tunniPoint) > CURVATURE_EPSILON &&
+    signedReach(endPoint, directions[1], tunniPoint) > CURVATURE_EPSILON
+  );
+}
+
+// How far the tangent intersection lies ALONG the handle's own axis. Negative
+// when it sits behind the on-curve point, which is the case a plain distance
+// cannot tell apart.
+function signedReach(onCurvePoint, direction, tunniPoint) {
+  return dotVector(subVectors(tunniPoint, onCurvePoint), direction);
 }

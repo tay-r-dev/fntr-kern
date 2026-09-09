@@ -619,10 +619,17 @@ export class VarPackedPath {
     }
   }
 
-  *iterHandles() {
+  // `skipContours`, when given, suppresses whole contours. Callers that want to
+  // hide a contour's handles pass it rather than re-walking the point types
+  // themselves, which is the only other way to know which pair belongs where.
+  *iterHandles(skipContours = null) {
     let startPoint = 0;
-    for (const contour of this.contourInfo) {
+    for (const [contourIndex, contour] of enumerate(this.contourInfo)) {
       const endPoint = contour.endPoint;
+      if (skipContours?.has(contourIndex)) {
+        startPoint = endPoint + 1;
+        continue;
+      }
       let prevIndex = contour.isClosed ? endPoint : startPoint;
       for (
         let nextIndex = startPoint + (contour.isClosed ? 0 : 1);
@@ -669,10 +676,11 @@ export class VarPackedPath {
   copy() {
     // Handle case where this.coordinates might be a Proxy object that doesn't properly
     // forward the copy() method call to the underlying VarArray object
-    const coordinatesCopy = typeof this.coordinates.copy === 'function'
-      ? this.coordinates.copy()
-      : this.coordinates.slice();
-      
+    const coordinatesCopy =
+      typeof this.coordinates.copy === "function"
+        ? this.coordinates.copy()
+        : this.coordinates.slice();
+
     return new VarPackedPath(
       coordinatesCopy,
       this.pointTypes.slice(),

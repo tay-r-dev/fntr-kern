@@ -427,7 +427,14 @@ export class RangeSlider extends html.UnlitElement {
               this.value = value;
               const callbackEvent = { value, source: "number" };
               if (this.sawMouseDown) {
+                // Typing a value and then pressing the slider commits the typed
+                // value on blur, before the press is reported. That commit is a
+                // whole edit in one event, so it has to open AND close: a
+                // dragBegin without a matching dragEnd leaves the listener's
+                // value stream open forever, and an edit that never finishes
+                // blocks every edit after it.
                 callbackEvent.dragBegin = true;
+                callbackEvent.dragEnd = true;
               }
               this.sawMouseDown = false;
               this.onChangeCallback(callbackEvent);

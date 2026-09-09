@@ -1226,6 +1226,35 @@ registerVisualizationLayerDefinition({
 });
 
 registerVisualizationLayerDefinition({
+  identifier: "fontra.base-expand.ghost",
+  name: "Base expansion ghost",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: false,
+  defaultOn: true,
+  zIndex: 440,
+  screenParameters: {
+    lineWidth: 1,
+  },
+  colors: {
+    strokeColor: "rgba(120, 120, 120, 0.55)",
+  },
+  colorsDarkMode: {
+    strokeColor: "rgba(190, 190, 190, 0.5)",
+  },
+  draw: (context, positionedGlyph, parameters, model) => {
+    const ghostPath = model.baseExpandGhostPath;
+    if (!ghostPath) {
+      return;
+    }
+    context.lineWidth = parameters.lineWidth;
+    context.strokeStyle = parameters.strokeColor;
+    const path2d = new Path2D();
+    ghostPath.drawToPath2d(path2d);
+    context.stroke(path2d);
+  },
+});
+
+registerVisualizationLayerDefinition({
   identifier: "fontra.component.nodes",
   name: "sidebar.user-settings.component.nodes",
   selectionFunc: glyphSelector("editing"),
@@ -1271,11 +1300,55 @@ registerVisualizationLayerDefinition({
     const glyph = positionedGlyph.glyph;
     context.strokeStyle = parameters.color;
     context.lineWidth = parameters.strokeWidth;
-    for (const [pt1, pt2] of glyph.path.iterHandles()) {
+    for (const [pt1, pt2] of glyph.path.iterHandles(
+      getGizmoHiddenContourIndices(positionedGlyph, model)
+    )) {
       strokeLine(context, pt1.x, pt1.y, pt2.x, pt2.y);
     }
   },
 });
+
+// While generated contours are edited through their gizmos, their handle lines
+// are not control surfaces. Null when gizmo mode is off, so direct handle
+// editing looks exactly as before.
+function getGizmoHiddenContourIndices(positionedGlyph, model) {
+  if (
+    model?.visualizationLayersSettings?.model["fontra.skeleton.generated-tunni"] !==
+    true
+  ) {
+    return null;
+  }
+  const indices = getGeneratedContourIndicesForTunni(positionedGlyph, model);
+  return indices?.size ? indices : null;
+}
+
+// On a suppressed contour the off-curve nodes are circles attached to nothing
+// once their handle lines are gone, so they are dropped; the on-curve nodes stay
+// because they say where the outline is.
+function* iterGizmoVisibleNodes(path, hiddenContourIndices) {
+  let pointIndex = 0;
+  for (const point of path.iterPoints()) {
+    if (!point.type || !hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
+      yield point;
+    }
+    pointIndex++;
+  }
+}
+
+// Same rule, over an explicit index list. An absent list means no points at all
+// — never every point, which is what an empty selection would otherwise paint.
+function* iterGizmoVisibleNodesByIndex(path, pointIndices, hiddenContourIndices) {
+  for (const pointIndex of pointIndices || []) {
+    const point = path.getPoint(pointIndex);
+    if (!point) {
+      continue;
+    }
+    if (point.type && hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
+      continue;
+    }
+    yield point;
+  }
+}
 
 registerVisualizationLayerDefinition({
   identifier: "fontra.nodes",
@@ -1292,7 +1365,10 @@ registerVisualizationLayerDefinition({
     const handleSize = parameters.handleSize;
 
     context.fillStyle = parameters.color;
-    for (const pt of glyph.path.iterPoints()) {
+    for (const pt of iterGizmoVisibleNodes(
+      glyph.path,
+      getGizmoHiddenContourIndices(positionedGlyph, model)
+    )) {
       fillNode(context, pt, cornerSize, smoothSize, handleSize);
     }
   },
@@ -1321,11 +1397,16 @@ registerVisualizationLayerDefinition({
 
     const { point: hoveredPointIndices } = parseSelection(model.hoverSelection);
     const { point: selectedPointIndices } = parseSelection(model.selection);
+    const hiddenContourIndices = getGizmoHiddenContourIndices(positionedGlyph, model);
 
     // Under layer
     const underlayOffset = parameters.underlayOffset;
     context.fillStyle = parameters.underColor;
-    for (const pt of iterPointsByIndex(glyph.path, selectedPointIndices)) {
+    for (const pt of iterGizmoVisibleNodesByIndex(
+      glyph.path,
+      selectedPointIndices,
+      hiddenContourIndices
+    )) {
       fillNode(
         context,
         pt,
@@ -1336,14 +1417,22 @@ registerVisualizationLayerDefinition({
     }
     // Selected nodes
     context.fillStyle = parameters.selectedColor;
-    for (const pt of iterPointsByIndex(glyph.path, selectedPointIndices)) {
+    for (const pt of iterGizmoVisibleNodesByIndex(
+      glyph.path,
+      selectedPointIndices,
+      hiddenContourIndices
+    )) {
       fillNode(context, pt, cornerSize, smoothSize, handleSize);
     }
     // Hovered nodes
     context.strokeStyle = parameters.hoveredColor;
     context.lineWidth = parameters.strokeWidth;
     const hoverStrokeOffset = parameters.hoverStrokeOffset;
-    for (const pt of iterPointsByIndex(glyph.path, hoveredPointIndices)) {
+    for (const pt of iterGizmoVisibleNodesByIndex(
+      glyph.path,
+      hoveredPointIndices,
+      hiddenContourIndices
+    )) {
       strokeNode(
         context,
         pt,
@@ -1473,16 +1562,27 @@ registerVisualizationLayerDefinition({
     insertHandlesRadius: 5,
     deleteOffCurveIndicatorLength: 7,
     canDragOffCurveIndicatorRadius: 9,
+    pointRingRadius: 6.5,
+    inertDashLength: 2.5,
     strokeWidth: 2,
   },
-  colors: { color: "#3080FF80" },
-  colorsDarkMode: { color: "#50A0FF80" },
+  colors: { color: "#3080FF80", inertColor: "rgba(80, 80, 80, 0.7)" },
+  colorsDarkMode: { color: "#50A0FF80", inertColor: "rgba(200, 200, 200, 0.7)" },
   draw: (context, positionedGlyph, parameters, model, controller) => {
     const targetPoint = model.pathConnectTargetPoint;
     const insertHandles = model.pathInsertHandles;
     const danglingOffCurve = model.pathDanglingOffCurve;
     const canDragOffCurve = model.pathCanDragOffCurve;
-    if (!targetPoint && !insertHandles && !danglingOffCurve && !canDragOffCurve) {
+    const inertPoint = model.pathInertPoint;
+    const resumePoint = model.pathResumePoint;
+    if (
+      !targetPoint &&
+      !insertHandles &&
+      !danglingOffCurve &&
+      !canDragOffCurve &&
+      !inertPoint &&
+      !resumePoint
+    ) {
       return;
     }
 
@@ -1518,6 +1618,26 @@ registerVisualizationLayerDefinition({
         canDragOffCurve,
         2 * parameters.canDragOffCurveIndicatorRadius
       );
+    }
+    // A point the pen sees but will not use: the middle of a contour, a closed
+    // contour, generated geometry, or any point while no contour is being
+    // drawn. A click there adds a point where it lands and leaves this one
+    // alone. Same dashed ring the skeleton pen uses for the same answer.
+    // An end of an open contour, with nothing being drawn: a click picks it up
+    // and drawing resumes from it. A plain ring, against the dashed one below.
+    if (resumePoint) {
+      context.save();
+      context.lineWidth = parameters.strokeWidth;
+      strokeRoundNode(context, resumePoint, 2 * parameters.pointRingRadius);
+      context.restore();
+    }
+    if (inertPoint) {
+      context.save();
+      context.strokeStyle = parameters.inertColor;
+      context.lineWidth = parameters.strokeWidth;
+      context.setLineDash([parameters.inertDashLength, parameters.inertDashLength]);
+      strokeRoundNode(context, inertPoint, 2 * parameters.pointRingRadius);
+      context.restore();
     }
   },
 });
@@ -1583,6 +1703,67 @@ registerVisualizationLayerDefinition({
 });
 
 registerVisualizationLayerDefinition({
+  identifier: "fontra.edit.background.layers.nodes-and-handles",
+  name: "sidebar.user-settings.glyph.background-nodes-and-handles",
+  userSwitchable: true,
+  defaultOn: false,
+  selectionFunc: glyphSelector("editing"),
+  zIndex: 490,
+  screenParameters: {
+    strokeWidth: 0.5,
+    cornerSize: 5.5,
+    smoothSize: 5.5,
+    handleSize: 4.5,
+  },
+  colors: { backgroundColor: "#DDDF", editColor: "#BBFF" },
+  colorsDarkMode: { backgroundColor: "#555F", editColor: "#559F" },
+
+  draw: (context, positionedGlyph, parameters, model, controller) => {
+    context.lineWidth = parameters.strokeWidth;
+
+    context.strokeStyle = parameters.backgroundColor;
+    context.fillStyle = parameters.backgroundColor;
+
+    drawBackgroundHandlesAndNodes(
+      context,
+      Object.values(model.backgroundLayerGlyphs || {}),
+      parameters.cornerSize,
+      parameters.smoothSize,
+      parameters.handleSize
+    );
+
+    context.strokeStyle = parameters.editColor;
+    context.fillStyle = parameters.editColor;
+
+    drawBackgroundHandlesAndNodes(
+      context,
+      Object.values(model.editingLayerGlyphs || {}),
+      parameters.cornerSize,
+      parameters.smoothSize,
+      parameters.handleSize
+    );
+  },
+});
+
+function drawBackgroundHandlesAndNodes(
+  context,
+  glyphs,
+  cornerSize,
+  smoothSize,
+  handleSize
+) {
+  for (const glyph of glyphs) {
+    for (const [pt1, pt2] of glyph.path.iterHandles()) {
+      strokeLine(context, pt1.x, pt1.y, pt2.x, pt2.y);
+    }
+
+    for (const pt of glyph.path.iterPoints()) {
+      fillNode(context, pt, cornerSize, smoothSize, handleSize);
+    }
+  }
+}
+
+registerVisualizationLayerDefinition({
   identifier: "fontra.edit.background.layers",
   name: "Background glyph layers",
   selectionFunc: glyphSelector("editing"),
@@ -1591,8 +1772,8 @@ registerVisualizationLayerDefinition({
     strokeWidth: 1,
     anchorRadius: 4,
   },
-  colors: { color: "#AAA8", colorAnchor: "#AAA7" },
-  colorsDarkMode: { color: "#8888", colorAnchor: "#8887" },
+  colors: { color: "#CCCF", colorAnchor: "#DDDF" },
+  colorsDarkMode: { color: "#666F", colorAnchor: "#555F" },
   draw: (context, positionedGlyph, parameters, model, controller) => {
     context.lineJoin = "round";
     context.lineWidth = parameters.strokeWidth;
@@ -1618,8 +1799,8 @@ registerVisualizationLayerDefinition({
     strokeWidth: 1,
     anchorRadius: 4,
   },
-  colors: { color: "#66FA", colorAnchor: "#66F5" },
-  colorsDarkMode: { color: "#88FA", colorAnchor: "#88F7" },
+  colors: { color: "#99FF", colorAnchor: "#AAFF" },
+  colorsDarkMode: { color: "#559F", colorAnchor: "#558F" },
   draw: (context, positionedGlyph, parameters, model, controller) => {
     const primaryEditingInstance = positionedGlyph.glyph;
     context.lineJoin = "round";
@@ -1715,7 +1896,6 @@ registerVisualizationLayerDefinition({
     illustrationPosition: "outsideOfCurve",
     baseSegmentBudget: 400,
     minSegmentsPerCurve: 5,
-    globalColorNormalization: false,
     adaptStepsToCurveLength: false,
   },
   draw: (context, positionedGlyph, parameters, model, controller) => {
@@ -1723,6 +1903,12 @@ registerVisualizationLayerDefinition({
     if (!path) return;
 
     const peakHeightGlyphUnits = model.sceneSettings?.speedPunkPeakHeightUpm ?? 24;
+    const referenceTurnDegrees =
+      model.sceneSettings?.speedPunkReferenceTurnDegrees ?? 90;
+    const colorFlatTurnDegrees =
+      model.sceneSettings?.speedPunkColorFlatTurnDegrees ?? 30;
+    const colorTightTurnDegrees =
+      model.sceneSettings?.speedPunkColorTightTurnDegrees ?? 120;
     const sharpness = Math.max(0.1, model.sceneSettings?.speedPunkSharpness ?? 1);
     const opacity = Math.max(
       0,
@@ -1731,9 +1917,11 @@ registerVisualizationLayerDefinition({
 
     const quads = computeSpeedPunkSamples(path, {
       peakHeightGlyphUnits,
+      referenceTurnDegrees,
+      colorFlatTurnDegrees,
+      colorTightTurnDegrees,
       sharpness,
       illustrationPosition: parameters.illustrationPosition,
-      useGlobalNormalization: parameters.globalColorNormalization,
       colorStops: parameters.colorStops,
       baseSegmentBudget: parameters.baseSegmentBudget,
       minSegmentsPerCurve: parameters.minSegmentsPerCurve,
@@ -2247,7 +2435,18 @@ registerVisualizationLayerDefinition({
     textColor: "white",
   },
   colorsDarkMode: { strokeColor: "#FF00FF", badgeColor: "#FF00FF", textColor: "white" },
-  draw: drawPointLabels,
+  // In gizmo mode the generated handles are not dragged directly, so their
+  // labels go the same way their handle lines and off-curve nodes already do.
+  // The centerline's own labels are a separate layer and are untouched.
+  draw: (context, positionedGlyph, parameters, model, controller) =>
+    drawPointLabels(
+      context,
+      positionedGlyph,
+      parameters,
+      model,
+      controller,
+      getGizmoHiddenContourIndices(positionedGlyph, model)
+    ),
 });
 
 registerVisualizationLayerDefinition({
@@ -2303,3 +2502,19 @@ registerVisualizationLayerDefinition({
   },
   draw: drawMeasureOverlay,
 });
+
+// TODO: we need drawing-tools.js
+export function fillPill(context, cx, cy, length, height) {
+  const radius = height / 2;
+  const offset = length / 2 - radius;
+  context.beginPath();
+  context.arc(cx - offset, cy, radius, 0.5 * Math.PI, -0.5 * Math.PI, false);
+  context.arc(cx + offset, cy, radius, -0.5 * Math.PI, 0.5 * Math.PI, false);
+  context.fill();
+}
+
+export function fillCircle(context, cx, cy, radius) {
+  context.beginPath();
+  context.arc(cx, cy, radius, 0, 2 * Math.PI, false);
+  context.fill();
+}

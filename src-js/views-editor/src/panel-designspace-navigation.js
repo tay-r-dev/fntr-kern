@@ -15,8 +15,21 @@ import {
 } from "@fontra/core/glyph-controller.js";
 import * as html from "@fontra/core/html-utils.js";
 import { htmlToElement } from "@fontra/core/html-utils.js";
+import {
+  getSkeletonData,
+  roundSkeletonCoordinates,
+  setSkeletonData,
+} from "@fontra/core/skeleton-model.js";
 import { translate } from "@fontra/core/localization.js";
 import { ObservableController, controllerKey } from "@fontra/core/observable-object.ts";
+import {
+  CULL_PARAMETERS,
+  KIND,
+  SNAP_PARAMETERS,
+  resetSnapParameters,
+  setSnapParameter,
+  subscribeSnapParameters,
+} from "@fontra/core/snapping.js";
 import {
   labeledCheckbox,
   labeledPopupSelect,
@@ -28,6 +41,7 @@ import {
   compare,
   enumerate,
   escapeHTMLCharacters,
+  deepCopyObject,
   filterObject,
   isObjectEmpty,
   modulo,
@@ -69,6 +83,13 @@ const FONTRA_STATUS_DEFINITIONS_KEY = "fontra.sourceStatusFieldDefinitions";
 const SPEEDPUNK_PEAK_HEIGHT_DEFAULT_UPM = 24;
 const SPEEDPUNK_PEAK_HEIGHT_MIN_UPM = 1;
 const SPEEDPUNK_PEAK_HEIGHT_MAX_UPM = 1000;
+const SPEEDPUNK_REFERENCE_TURN_DEFAULT_DEGREES = 90;
+const SPEEDPUNK_REFERENCE_TURN_MIN_DEGREES = 1;
+const SPEEDPUNK_REFERENCE_TURN_MAX_DEGREES = 360;
+const SPEEDPUNK_COLOR_FLAT_TURN_DEFAULT_DEGREES = 30;
+const SPEEDPUNK_COLOR_TIGHT_TURN_DEFAULT_DEGREES = 120;
+const SPEEDPUNK_COLOR_TURN_MIN_DEGREES = 1;
+const SPEEDPUNK_COLOR_TURN_MAX_DEGREES = 360;
 const SPEEDPUNK_SHARPNESS_DEFAULT = 1;
 const SPEEDPUNK_SHARPNESS_MIN = 0.1;
 const SPEEDPUNK_SHARPNESS_MAX = 4;
@@ -87,6 +108,199 @@ const LIST_HEADER_ANIMATION_STYLE = `
   transform: scale(1.2);
 }
 `;
+
+// The snapping numbers, as one table. Each row states its own range, so the panel
+// is generated rather than written out, and adding a parameter is one line here.
+// Labels are literal: this is a tuning aid, not shipped chrome.
+const SNAPPING_DEBUG_CONTROLS = [
+  { path: "reachPixels", label: "Reach (px)", min: 1, max: 60, step: 1 },
+  { path: "noSnapPull", label: "Release floor", min: 0, max: 1, step: 0.01 },
+  { path: "holdBonus", label: "Hold bonus", min: 1, max: 3, step: 0.05 },
+  {
+    path: "pointerWeight",
+    label: "Anchor vs multi-point (0 any point, 1 anchor only)",
+    min: 0,
+    max: 1,
+    step: 0.05,
+  },
+  {
+    path: "pointerFalloffReaches",
+    label: "Anchor preference range (reaches)",
+    min: 1,
+    max: 20,
+    step: 0.5,
+  },
+  {
+    path: "acquireSpeedPixels",
+    label: "Acquire below speed (px/s)",
+    min: 50,
+    max: 3000,
+    step: 25,
+  },
+  {
+    path: "escapeSpeedPixels",
+    label: "Break free above speed (px/s)",
+    min: 200,
+    max: 6000,
+    step: 50,
+  },
+  { path: "overruleMargin", label: "Overrule margin", min: 1, max: 4, step: 0.05 },
+  { path: "overruleFrames", label: "Overrule frames", min: 1, max: 20, step: 1 },
+  {
+    path: "collectionRadiusPixels",
+    label: "Collection radius (px)",
+    min: 50,
+    max: 2000,
+    step: 50,
+  },
+  { path: "perSideCount", label: "Sources per side", min: 1, max: 5, step: 1 },
+  { path: "maxCandidates", label: "Candidate cap", min: 20, max: 500, step: 10 },
+  // Switches. Held as 0 or 1 so that one table describes every parameter and the
+  // persistence, the reset and the external-change sync all keep working.
+  {
+    path: "diagonalsEnabled",
+    label: "Diagonals (shift+R)",
+    type: "toggle",
+  },
+  {
+    path: "offCurveSources",
+    label: "Off-curve points cast rays",
+    type: "toggle",
+  },
+  {
+    path: "curvatureEnabled",
+    label: "Curve projections (hold T)",
+    type: "toggle",
+  },
+  {
+    path: "curvatureExtend",
+    label: "Projection length (segments)",
+    min: 0.25,
+    max: 4,
+    step: 0.25,
+  },
+  {
+    path: "snapDuringFixedRib",
+    label: "Snap during a fixed-rib drag (D / S)",
+    type: "toggle",
+  },
+  // A kind is a direction, so the table below is a direction table. What a line
+  // came from does not enter it: a metric, a guide and a point's own ray all run
+  // one way and pull one amount.
+  {
+    path: "weights." + KIND.ORTHOGONAL,
+    label: "Weight: upright",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.DIAGONAL,
+    label: "Weight: diagonal",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.INTERSECTION,
+    label: "Weight: crossing",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.OFF_CURVE,
+    label: "Weight: off-curve point",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.CURVATURE,
+    label: "Weight: curve projection",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    // Zero by default: the outline the drag is generating moves with the drag,
+    // so it is offered and never wins until the designer asks for it.
+    path: "weights." + KIND.OWN_GENERATED,
+    label: "Weight: own generated outline",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "weights." + KIND.OTHER,
+    label: "Weight: alignment band",
+    min: 0,
+    max: 1.5,
+    step: 0.02,
+  },
+  {
+    path: "reaches." + KIND.ORTHOGONAL,
+    label: "Reach: upright",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.DIAGONAL,
+    label: "Reach: diagonal",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.INTERSECTION,
+    label: "Reach: crossing",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.OFF_CURVE,
+    label: "Reach: off-curve point",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.CURVATURE,
+    label: "Reach: curve projection",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.OWN_GENERATED,
+    label: "Reach: own generated outline",
+    min: 0.25,
+    max: 3,
+    step: 0.05,
+  },
+  {
+    path: "reaches." + KIND.OTHER,
+    label: "Reach: alignment band",
+    min: 0.25,
+    max: 4,
+    step: 0.05,
+  },
+];
+
+function readSnapParameter(path) {
+  if (path.startsWith("reaches.")) {
+    return SNAP_PARAMETERS.reaches[path.slice("reaches.".length)];
+  }
+  if (path.startsWith("weights.")) {
+    return SNAP_PARAMETERS.weights[path.slice("weights.".length)];
+  }
+  if (path in CULL_PARAMETERS) {
+    return CULL_PARAMETERS[path];
+  }
+  return SNAP_PARAMETERS[path];
+}
 
 export default class DesignspaceNavigationPanel extends Panel {
   identifier = "designspace-navigation";
@@ -350,6 +564,48 @@ export default class DesignspaceNavigationPanel extends Panel {
               step: 1,
             }),
             html.label(
+              {
+                for: "speedpunk-reference-turn-input",
+                style: "white-space: nowrap;",
+              },
+              [translate("sidebar.designspace-navigation.speedpunk.reference-turn")]
+            ),
+            html.input({
+              id: "speedpunk-reference-turn-input",
+              type: "number",
+              min: SPEEDPUNK_REFERENCE_TURN_MIN_DEGREES,
+              max: SPEEDPUNK_REFERENCE_TURN_MAX_DEGREES,
+              step: 1,
+            }),
+            html.label(
+              {
+                for: "speedpunk-color-flat-turn-input",
+                style: "white-space: nowrap;",
+              },
+              [translate("sidebar.designspace-navigation.speedpunk.color-flat-turn")]
+            ),
+            html.input({
+              id: "speedpunk-color-flat-turn-input",
+              type: "number",
+              min: SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
+              max: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
+              step: 1,
+            }),
+            html.label(
+              {
+                for: "speedpunk-color-tight-turn-input",
+                style: "white-space: nowrap;",
+              },
+              [translate("sidebar.designspace-navigation.speedpunk.color-tight-turn")]
+            ),
+            html.input({
+              id: "speedpunk-color-tight-turn-input",
+              type: "number",
+              min: SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
+              max: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
+              step: 1,
+            }),
+            html.label(
               { for: "speedpunk-sharpness-input", style: "white-space: nowrap;" },
               [translate("sidebar.designspace-navigation.speedpunk.sharpness")]
             ),
@@ -373,6 +629,71 @@ export default class DesignspaceNavigationPanel extends Panel {
             }),
           ]
         ),
+      },
+      {
+        id: "snapping-debug-accordion-item",
+        label: "Snapping (debug)",
+        open: false,
+        content: html.div({}, [
+          html.div(
+            {
+              style: `
+                display: grid;
+                grid-template-columns: auto 1fr auto;
+                gap: 0.35em 0.5em;
+                align-items: center;
+              `,
+            },
+            SNAPPING_DEBUG_CONTROLS.flatMap((control) => [
+              html.label({ style: "white-space: nowrap; font-size: 0.9em;" }, [
+                control.label,
+              ]),
+              control.type === "toggle"
+                ? html.input({
+                    id: `snapping-debug-${control.path.replace(".", "-")}`,
+                    type: "checkbox",
+                    style: "justify-self: start;",
+                  })
+                : html.input({
+                    id: `snapping-debug-${control.path.replace(".", "-")}`,
+                    type: "range",
+                    min: control.min,
+                    max: control.max,
+                    step: control.step,
+                  }),
+              html.span(
+                {
+                  id: `snapping-debug-${control.path.replace(".", "-")}-value`,
+                  style: "font-family: monospace; font-size: 0.85em; min-width: 3.5em;",
+                },
+                [""]
+              ),
+            ])
+          ),
+          html.div({ style: "padding-top: 0.6em;" }, [
+            html.button({ id: "snapping-debug-reset" }, ["Reset to defaults"]),
+          ]),
+          // Below the sliders, and at a fixed height. The readout changes line
+          // count from frame to frame, and above them that reflow moved every
+          // slider under the cursor.
+          html.div(
+            {
+              id: "snapping-debug-readout",
+              style: `
+                font-family: monospace;
+                font-size: 0.8em;
+                white-space: pre;
+                overflow: auto;
+                margin-top: 0.8em;
+                padding-top: 0.6em;
+                border-top: 1px solid rgba(128, 128, 128, 0.35);
+                height: 15em;
+                opacity: 0.8;
+              `,
+            },
+            ["no snap"]
+          ),
+        ]),
       },
     ];
 
@@ -427,6 +748,18 @@ export default class DesignspaceNavigationPanel extends Panel {
 
   get speedPunkPeakHeightInput() {
     return this.accordion.querySelector("#speedpunk-peak-height-input");
+  }
+
+  get speedPunkReferenceTurnInput() {
+    return this.accordion.querySelector("#speedpunk-reference-turn-input");
+  }
+
+  get speedPunkColorFlatTurnInput() {
+    return this.accordion.querySelector("#speedpunk-color-flat-turn-input");
+  }
+
+  get speedPunkColorTightTurnInput() {
+    return this.accordion.querySelector("#speedpunk-color-tight-turn-input");
   }
 
   get speedPunkSharpnessInput() {
@@ -631,6 +964,22 @@ export default class DesignspaceNavigationPanel extends Panel {
     );
   }
 
+  _normalizeSpeedPunkReferenceTurnDegrees(value) {
+    if (!Number.isFinite(value)) return SPEEDPUNK_REFERENCE_TURN_DEFAULT_DEGREES;
+    return Math.max(
+      SPEEDPUNK_REFERENCE_TURN_MIN_DEGREES,
+      Math.min(SPEEDPUNK_REFERENCE_TURN_MAX_DEGREES, Math.round(value))
+    );
+  }
+
+  _normalizeSpeedPunkColorTurnDegrees(value, fallback) {
+    if (!Number.isFinite(value)) return fallback;
+    return Math.max(
+      SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
+      Math.min(SPEEDPUNK_COLOR_TURN_MAX_DEGREES, Math.round(value))
+    );
+  }
+
   _normalizeSpeedPunkSharpness(value) {
     if (!Number.isFinite(value)) return SPEEDPUNK_SHARPNESS_DEFAULT;
     return Math.max(SPEEDPUNK_SHARPNESS_MIN, Math.min(SPEEDPUNK_SHARPNESS_MAX, value));
@@ -647,6 +996,17 @@ export default class DesignspaceNavigationPanel extends Panel {
       peakHeightUpm: this._normalizeSpeedPunkPeakHeightUpm(
         model.speedPunkPeakHeightUpm
       ),
+      referenceTurnDegrees: this._normalizeSpeedPunkReferenceTurnDegrees(
+        model.speedPunkReferenceTurnDegrees
+      ),
+      colorFlatTurnDegrees: this._normalizeSpeedPunkColorTurnDegrees(
+        model.speedPunkColorFlatTurnDegrees,
+        SPEEDPUNK_COLOR_FLAT_TURN_DEFAULT_DEGREES
+      ),
+      colorTightTurnDegrees: this._normalizeSpeedPunkColorTurnDegrees(
+        model.speedPunkColorTightTurnDegrees,
+        SPEEDPUNK_COLOR_TIGHT_TURN_DEFAULT_DEGREES
+      ),
       sharpness: this._normalizeSpeedPunkSharpness(model.speedPunkSharpness),
       opacity: this._normalizeSpeedPunkOpacity(model.speedPunkOpacity),
     };
@@ -656,6 +1016,9 @@ export default class DesignspaceNavigationPanel extends Panel {
     const settings = this._speedPunkSettings;
     const model = applicationSettingsController.model;
     model.speedPunkPeakHeightUpm = settings.peakHeightUpm;
+    model.speedPunkReferenceTurnDegrees = settings.referenceTurnDegrees;
+    model.speedPunkColorFlatTurnDegrees = settings.colorFlatTurnDegrees;
+    model.speedPunkColorTightTurnDegrees = settings.colorTightTurnDegrees;
     model.speedPunkSharpness = settings.sharpness;
     model.speedPunkOpacity = settings.opacity;
   }
@@ -665,6 +1028,9 @@ export default class DesignspaceNavigationPanel extends Panel {
       !!this.editorController.visualizationLayersSettings.model["fontra.curvature"];
     for (const input of [
       this.speedPunkPeakHeightInput,
+      this.speedPunkReferenceTurnInput,
+      this.speedPunkColorFlatTurnInput,
+      this.speedPunkColorTightTurnInput,
       this.speedPunkSharpnessInput,
       this.speedPunkOpacityInput,
     ]) {
@@ -679,6 +1045,15 @@ export default class DesignspaceNavigationPanel extends Panel {
     if (this.speedPunkPeakHeightInput) {
       this.speedPunkPeakHeightInput.value = String(settings.peakHeightUpm);
     }
+    if (this.speedPunkReferenceTurnInput) {
+      this.speedPunkReferenceTurnInput.value = String(settings.referenceTurnDegrees);
+    }
+    if (this.speedPunkColorFlatTurnInput) {
+      this.speedPunkColorFlatTurnInput.value = String(settings.colorFlatTurnDegrees);
+    }
+    if (this.speedPunkColorTightTurnInput) {
+      this.speedPunkColorTightTurnInput.value = String(settings.colorTightTurnDegrees);
+    }
     if (this.speedPunkSharpnessInput) {
       this.speedPunkSharpnessInput.value = String(settings.sharpness);
     }
@@ -690,6 +1065,21 @@ export default class DesignspaceNavigationPanel extends Panel {
       settings.peakHeightUpm,
       { senderID: this }
     );
+    this.sceneSettingsController.setItem(
+      "speedPunkReferenceTurnDegrees",
+      settings.referenceTurnDegrees,
+      { senderID: this }
+    );
+    this.sceneSettingsController.setItem(
+      "speedPunkColorFlatTurnDegrees",
+      settings.colorFlatTurnDegrees,
+      { senderID: this }
+    );
+    this.sceneSettingsController.setItem(
+      "speedPunkColorTightTurnDegrees",
+      settings.colorTightTurnDegrees,
+      { senderID: this }
+    );
     this.sceneSettingsController.setItem("speedPunkSharpness", settings.sharpness, {
       senderID: this,
     });
@@ -697,6 +1087,123 @@ export default class DesignspaceNavigationPanel extends Panel {
       senderID: this,
     });
     this._updateSpeedPunkControlsEnabled();
+  }
+
+  _setupSnappingDebugControls() {
+    const stored = applicationSettingsController.model.snapDebugParameters || {};
+    for (const [path, value] of Object.entries(stored)) {
+      if (Number.isFinite(value)) {
+        setSnapParameter(path, value);
+      }
+    }
+
+    const persist = () => {
+      const values = {};
+      for (const control of SNAPPING_DEBUG_CONTROLS) {
+        values[control.path] = readSnapParameter(control.path);
+      }
+      applicationSettingsController.model.snapDebugParameters = values;
+    };
+
+    const syncOne = (control) => {
+      const id = control.path.replace(".", "-");
+      const input = this.accordion.querySelector(`#snapping-debug-${id}`);
+      const readout = this.accordion.querySelector(`#snapping-debug-${id}-value`);
+      const value = readSnapParameter(control.path);
+      if (input) {
+        if (control.type === "toggle") {
+          input.checked = !!value;
+        } else {
+          input.value = String(value);
+        }
+      }
+      if (readout) {
+        if (control.type === "toggle") {
+          readout.textContent = value ? "on" : "off";
+          return;
+        }
+        // A per-kind reach is a multiple of the master reach, so the pixels it
+        // comes to are shown beside it. Otherwise the number means nothing on
+        // its own.
+        readout.textContent = control.path.startsWith("reaches.")
+          ? `${value} (${Math.round(value * SNAP_PARAMETERS.reachPixels)}px)`
+          : String(value);
+      }
+    };
+
+    for (const control of SNAPPING_DEBUG_CONTROLS) {
+      syncOne(control);
+      const id = control.path.replace(".", "-");
+      const input = this.accordion.querySelector(`#snapping-debug-${id}`);
+      if (!input) {
+        continue;
+      }
+      // "input", not "change": a scrub must answer while the thumb is moving.
+      input.addEventListener("input", () => {
+        setSnapParameter(
+          control.path,
+          control.type === "toggle" ? (input.checked ? 1 : 0) : Number(input.value)
+        );
+        // Every row, not just this one: moving the master reach changes the pixel
+        // figure shown beside every per-kind reach.
+        SNAPPING_DEBUG_CONTROLS.forEach(syncOne);
+        persist();
+        this.editorController.canvasController.requestUpdate();
+      });
+    }
+
+    const resetButton = this.accordion.querySelector("#snapping-debug-reset");
+    resetButton?.addEventListener("click", () => {
+      resetSnapParameters();
+      SNAPPING_DEBUG_CONTROLS.forEach(syncOne);
+      persist();
+      this.editorController.canvasController.requestUpdate();
+    });
+
+    // A switch has two writers - this panel and the key that holds or toggles it
+    // - so an outside write re-syncs the rows and is persisted like any other.
+    subscribeSnapParameters(() => {
+      SNAPPING_DEBUG_CONTROLS.forEach(syncOne);
+      persist();
+    });
+
+    this._startSnappingDebugReadout();
+  }
+
+  // The readout follows the live gesture, which no setting changes, so it polls
+  // one frame at a time and only while the panel is open to be read.
+  _startSnappingDebugReadout() {
+    const element = this.accordion.querySelector("#snapping-debug-readout");
+    const item = this.accordion.querySelector("#snapping-debug-accordion-item");
+    if (!element) {
+      return;
+    }
+    const tick = () => {
+      if (item?.offsetParent !== null) {
+        element.textContent = this._formatSnappingReadout();
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  _formatSnappingReadout() {
+    const readout = this.sceneController?.sceneModel?.snapDebugReadout;
+    if (!readout) {
+      return "no snap";
+    }
+    const lines = [
+      `candidates ${readout.candidateCount}`,
+      `freedom    ${readout.freedom}`,
+      `winner     ${readout.winningKind || "-"}`,
+      `pull       ${readout.winningPull.toFixed(3)}`,
+      "",
+    ];
+    const byKind = Object.entries(readout.byKind).sort((a, b) => b[1] - a[1]);
+    for (const [kind, pull] of byKind) {
+      lines.push(`${kind.padEnd(28)} ${pull.toFixed(3)}`);
+    }
+    return lines.join("\n");
   }
 
   _setupSpeedPunkControls() {
@@ -723,6 +1230,32 @@ export default class DesignspaceNavigationPanel extends Panel {
       (value) => this._normalizeSpeedPunkPeakHeightUpm(value),
       "peakHeightUpm",
       "speedPunkPeakHeightUpm"
+    );
+    bindNumberInput(
+      this.speedPunkReferenceTurnInput,
+      (value) => this._normalizeSpeedPunkReferenceTurnDegrees(value),
+      "referenceTurnDegrees",
+      "speedPunkReferenceTurnDegrees"
+    );
+    bindNumberInput(
+      this.speedPunkColorFlatTurnInput,
+      (value) =>
+        this._normalizeSpeedPunkColorTurnDegrees(
+          value,
+          SPEEDPUNK_COLOR_FLAT_TURN_DEFAULT_DEGREES
+        ),
+      "colorFlatTurnDegrees",
+      "speedPunkColorFlatTurnDegrees"
+    );
+    bindNumberInput(
+      this.speedPunkColorTightTurnInput,
+      (value) =>
+        this._normalizeSpeedPunkColorTurnDegrees(
+          value,
+          SPEEDPUNK_COLOR_TIGHT_TURN_DEFAULT_DEGREES
+        ),
+      "colorTightTurnDegrees",
+      "speedPunkColorTightTurnDegrees"
     );
     bindNumberInput(
       this.speedPunkSharpnessInput,
@@ -838,6 +1371,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._setupCoarseGridControls();
     this._setupCoarseGridDisplayToggle();
     this._setupSpeedPunkControls();
+    this._setupSnappingDebugControls();
 
     const columnDescriptions = this._setupSourceListColumnDescriptions();
 
@@ -1837,6 +2371,13 @@ export default class DesignspaceNavigationPanel extends Panel {
     // Round coordinates and component positions
     instance.path = instance.path.roundCoordinates();
     roundComponentOrigins(instance.components);
+    // The skeleton arrives from the variation model, so it is the one part of the
+    // instance no writer has rounded. Round it beside the path it drew.
+    const skeletonData = getSkeletonData(instance);
+    if (skeletonData) {
+      // getSkeletonData hands back a cached normalization, so round a copy of it.
+      setSkeletonData(instance, roundSkeletonCoordinates(deepCopyObject(skeletonData)));
+    }
 
     await this.sceneController.editGlyphAndRecordChanges((glyph) => {
       glyph.sources.push(

@@ -35,11 +35,15 @@ import {
 import { SceneView } from "@fontra/core/scene-view.js";
 import { isSuperset } from "@fontra/core/set-ops.js";
 import {
+  SKELETON_SOURCE_DEFAULT_KEYS,
   allocateSkeletonIds,
+  deleteSkeletonInsertions,
   deleteSkeletonPoints,
+  parseSkeletonInsertionSelectionItem,
   getSkeletonContour,
   getSkeletonData,
   getSkeletonPoint,
+  resolveEffectiveSourceSkeletonDefault,
 } from "@fontra/core/skeleton-model.js";
 import { themeController } from "@fontra/core/theme-settings.js";
 import { getDecomposedIdentity } from "@fontra/core/transform.js";
@@ -77,14 +81,22 @@ import { MenuItemDivider, showMenu } from "@fontra/web-components/menu-panel.js"
 import { dialog, dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import { parsePluginBasePath } from "@fontra/web-components/plugin-manager.js";
 import { CJKDesignFrame } from "./cjk-design-frame.js";
+import {
+  componentCountOf,
+  recordComponentDelete,
+  recordComponentInsert,
+  selectedComponentIndices,
+} from "./composition-editing.js";
 import { HandTool } from "./edit-tools-hand.js";
 import { KnifeTool } from "./edit-tools-knife.js";
+import { MarkerTool } from "./edit-tools-marker.js";
 import { MetricsTool } from "./edit-tools-metrics.js";
 import { PenTool } from "./edit-tools-pen.js";
 import { PointerTools } from "./edit-tools-pointer.js";
 import { PowerRulerTool } from "./edit-tools-power-ruler.js";
 import { ShapeTool } from "./edit-tools-shape.js";
-import { SkeletonPenTool } from "./edit-tools-skeleton.js";
+import { SkeletonPenTools } from "./edit-tools-skeleton.js";
+import { deleteMarkers } from "./marker-editing.js";
 import {
   SceneController,
   numQuadraticOffCurvePointsOptions,
@@ -98,13 +110,18 @@ import {
   makeSkeletonPointKey,
   parseSkeletonPointKey,
   resolveSkeletonAddressAcrossLayers,
+  resolveSkeletonInsertionAcrossLayers,
+  setSkeletonGenerationOptionsReader,
 } from "./skeleton-editing.js";
+import "./visualization-layer-composition.js";
 import {
   allGlyphsCleanVisualizationLayerDefinition,
   visualizationLayerDefinitions,
 } from "./visualization-layer-definitions.js";
 import "./visualization-layer-letterspacer.js";
+import "./visualization-layer-markers.js";
 import "./visualization-layer-skeleton.js";
+import "./visualization-layer-snapping.js";
 import { VisualizationContext, VisualizationLayers } from "./visualization-layers.js";
 
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
@@ -119,6 +136,7 @@ import CharactersGlyphsPanel from "./panel-characters-glyphs.js";
 import DesignspaceNavigationPanel from "./panel-designspace-navigation.js";
 import GlyphNotePanel from "./panel-glyph-note.js";
 import GlyphSearchPanel from "./panel-glyph-search.js";
+import MarkersPanel from "./panel-markers.js";
 import ReferenceFontPanel from "./panel-reference-font.js";
 import RelatedGlyphsPanel from "./panel-related-glyphs.js";
 import SelectionInfoPanel from "./panel-selection-info.js";
@@ -198,6 +216,28 @@ export class EditorController extends ViewController {
         }
       }
     );
+
+    // Read at regeneration time rather than cached, so switching master or
+    // toggling the option takes effect on the next edit without a refresh.
+    setSkeletonGenerationOptionsReader(() => {
+      const location =
+        this.sceneSettings?.fontLocationSourceMapped ||
+        this.sceneSettings?.fontLocationSource ||
+        {};
+      return {
+        serifUnitsMode: resolveEffectiveSourceSkeletonDefault(
+          this.fontController,
+          location,
+          SKELETON_SOURCE_DEFAULT_KEYS.SERIF_UNITS_MODE
+        ),
+        removeCollapsedPoints:
+          resolveEffectiveSourceSkeletonDefault(
+            this.fontController,
+            location,
+            SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED
+          ) === true,
+      };
+    });
 
     this.cjkDesignFrame = new CJKDesignFrame(this);
 
@@ -710,6 +750,31 @@ export class EditorController extends ViewController {
         titleKey: "shortcuts.realtime.fixed-rib-compress",
         defaultShortCuts: [{ baseKey: "s" }],
       });
+      registerActionInfo("action.realtime.independent-rib", {
+        topic,
+        titleKey: "shortcuts.realtime.independent-rib",
+        defaultShortCuts: [{ baseKey: "a" }],
+      });
+      registerActionInfo("action.realtime.insertion-point", {
+        topic,
+        titleKey: "shortcuts.realtime.insertion-point",
+        defaultShortCuts: [{ baseKey: "w" }],
+      });
+      registerActionInfo("action.realtime.snap-diagonals-only", {
+        topic,
+        titleKey: "shortcuts.realtime.snap-diagonals-only",
+        defaultShortCuts: [{ baseKey: "r" }],
+      });
+      registerActionInfo("action.realtime.snap-curvature-only", {
+        topic,
+        titleKey: "shortcuts.realtime.snap-curvature-only",
+        defaultShortCuts: [{ baseKey: "t" }],
+      });
+      registerActionInfo("action.realtime.tension-aware", {
+        topic,
+        titleKey: "shortcuts.realtime.tension-aware",
+        defaultShortCuts: [{ baseKey: "x" }],
+      });
     }
 
     {
@@ -1011,11 +1076,12 @@ export class EditorController extends ViewController {
     const editToolClasses = [
       PointerTools,
       PenTool,
-      SkeletonPenTool,
+      SkeletonPenTools,
       KnifeTool,
       ShapeTool,
       MetricsTool,
       PowerRulerTool,
+      MarkerTool,
       HandTool,
     ];
 
@@ -1177,6 +1243,7 @@ export class EditorController extends ViewController {
     this.addSidebarPanel(new SelectionInfoPanel(this), "right");
     this.addSidebarPanel(new TransformationPanel(this), "right");
     this.addSidebarPanel(new SkeletonParametersPanel(this), "right");
+    this.addSidebarPanel(new MarkersPanel(this), "right");
     this.addSidebarPanel(new GlyphNotePanel(this), "right");
     this.addSidebarPanel(new RelatedGlyphsPanel(this), "right");
     this.addSidebarPanel(new CharactersGlyphsPanel(this), "right");
@@ -1628,7 +1695,16 @@ export class EditorController extends ViewController {
     let copyResult;
     await this.sceneController.editGlyphAndRecordChanges(
       (glyph) => {
+        // The attachment list is positional, so a cut that removes components
+        // has to move the entries in the same change. Spec section 4.1.
+        const cutComponentIndices = selectedComponentIndices(
+          this.sceneController.selection
+        );
+        const componentCountBefore = componentCountOf(glyph);
         copyResult = this._prepareCopyOrCutLayers(glyph, true);
+        if (cutComponentIndices.length) {
+          recordComponentDelete(glyph, cutComponentIndices, componentCountBefore);
+        }
         this.sceneController.selection = new Set();
         return "Cut Selection"; // TODO: translation translate("action.edit-guideline");
       },
@@ -2325,6 +2401,15 @@ export class EditorController extends ViewController {
           selection.add(`guideline/${guidelineIndex}`);
         }
 
+        // Paste appends components at the end, so no existing entry moves.
+        // The list still has to grow with the component list. Spec section 4.1.
+        recordComponentInsert(
+          glyph,
+          firstLayerGlyph.components.length,
+          defaultPasteGlyph.components.length,
+          firstLayerGlyph.components.length
+        );
+
         const editLayerName = this.sceneController.sceneSettings.editLayerName;
         const selectionLayerName =
           editLayerName in editLayerGlyphs
@@ -2359,24 +2444,33 @@ export class EditorController extends ViewController {
             (skeletonDataByLayer && skeletonDataByLayer[layerName]) ||
             defaultSkeletonPaste;
           if (pasteSkeleton?.contours?.length) {
-            editSkeleton(layerGlyph, (working) => {
-              const { data, nextId } = allocateSkeletonIds(
-                { contours: structuredClone(pasteSkeleton.contours), generated: [] },
-                working.nextId
-              );
-              working.contours.push(...data.contours);
-              working.nextId = nextId;
-              if (layerName === selectionLayerName) {
-                // Selection ids are canonical in the edit layer (WS-9).
-                for (const contour of data.contours) {
-                  for (const point of contour.points || []) {
-                    if (!point.type) {
-                      selection.add(`skeletonPoint/${contour.id}/${point.id}`);
+            // createIfMissing: a glyph with no skeleton block yet has nothing
+            // for editSkeleton to clone, and without this it returns without
+            // mutating — so pasting a skeleton onto an empty glyph silently
+            // did nothing until some other skeleton geometry had created the
+            // block first.
+            editSkeleton(
+              layerGlyph,
+              (working) => {
+                const { data, nextId } = allocateSkeletonIds(
+                  { contours: structuredClone(pasteSkeleton.contours), generated: [] },
+                  working.nextId
+                );
+                working.contours.push(...data.contours);
+                working.nextId = nextId;
+                if (layerName === selectionLayerName) {
+                  // Selection ids are canonical in the edit layer (WS-9).
+                  for (const contour of data.contours) {
+                    for (const point of contour.points || []) {
+                      if (!point.type) {
+                        selection.add(`skeletonPoint/${contour.id}/${point.id}`);
+                      }
                     }
                   }
                 }
-              }
-            });
+              },
+              { createIfMissing: true }
+            );
           }
         }
         this.sceneController.selection = selection;
@@ -2448,107 +2542,175 @@ export class EditorController extends ViewController {
       guideline: guidelineSelection,
       backgroundImage: backgroundImageSelection,
       skeletonPoint: skeletonPointKeys,
+      skeletonInsertion: skeletonInsertionKeys,
       //fontGuideline: fontGuidelineSelection,
     } = parseSelection(this.sceneController.selection);
+    // Markers are deleted through their own write path, not through the path edit.
+    const doomedMarkers = [
+      ...(parseSelection(this.sceneController.selection).marker || []).map(String),
+      ...(parseSelection(this.sceneController.selection).markerEnd || []).map(
+        (key) => String(key).split("/")[0]
+      ),
+    ];
+    if (doomedMarkers.length) {
+      await deleteMarkers(this.sceneController, doomedMarkers);
+      this.sceneController.selection = new Set();
+      return;
+    }
     // TODO: Font Guidelines
     // if (fontGuidelineSelection) {
     //   for (const guidelineIndex of reversed(fontGuidelineSelection)) {
     //     XXX
     //   }
     // }
-    await this.sceneController.editLayersAndRecordChanges((layerGlyphs) => {
-      for (const layerGlyph of Object.values(layerGlyphs)) {
-        if (event.altKey) {
-          // Behave like "cut", but don't put anything on the clipboard
-          this._prepareCopyOrCut(layerGlyph, true, false);
-        } else {
-          if (pointSelection) {
-            // Deleting all points of a contour deletes the contour, which
-            // shifts skeleton-generated contour indices; dry-run on a marked
-            // scratch copy to learn where the generated contours land.
-            const remap = computeGeneratedContourRemap(layerGlyph, (scratchPath) =>
-              deleteSelectedPoints(scratchPath, pointSelection)
-            );
-            deleteSelectedPoints(layerGlyph.path, pointSelection);
-            applyGeneratedContourRemap(layerGlyph, remap);
-          }
-          if (componentSelection) {
-            for (const componentIndex of reversed(componentSelection)) {
-              layerGlyph.components.splice(componentIndex, 1);
-            }
-          }
-          if (anchorSelection) {
-            for (const anchorIndex of reversed(anchorSelection)) {
-              layerGlyph.anchors.splice(anchorIndex, 1);
-            }
-          }
-          if (guidelineSelection) {
-            for (const guidelineIndex of reversed(guidelineSelection)) {
-              const guideline = layerGlyph.guidelines[guidelineIndex];
-              if (guideline.locked) {
-                // don't delete locked guidelines
-                continue;
-              }
-              layerGlyph.guidelines.splice(guidelineIndex, 1);
-            }
-          }
-          if (backgroundImageSelection) {
-            // TODO: don't delete if bg images are locked
-            // (even though we shouldn't be able to select them)
-            layerGlyph.backgroundImage = undefined;
-          }
-        }
-      }
-      // Skeleton points delete through the one write path (WS-9 editSkeleton),
-      // which regenerates the generated contours. Selection ids are canonical in
-      // the edit layer; other layers resolve by structural ordinal (WS-9).
-      let survivorSelection = null;
-      if (skeletonPointKeys?.length && !event.altKey) {
-        const editLayerName = this.sceneController.sceneSettings.editLayerName;
-        const selectionLayerGlyph =
-          layerGlyphs[editLayerName] || Object.values(layerGlyphs)[0];
-        const referenceSkeletonData = getSkeletonData(selectionLayerGlyph);
-        // The surviving on-curve neighbor of each deleted point stays selected;
-        // compute candidates against the pre-deletion reference data.
-        const survivorCandidates = collectSkeletonDeleteSurvivors(
-          referenceSkeletonData,
-          skeletonPointKeys.map(parseSkeletonPointKey)
+    await this.sceneController.editGlyphAndRecordChanges(
+      (glyph) => {
+        const layerGlyphs = this.sceneController.getEditingLayerFromGlyphLayers(
+          glyph.layers
         );
+        // The attachment list is positional, so a delete that removes
+        // components has to move the entries in the same change. Alt-delete
+        // takes the cut path, which selects components three ways.
+        // Spec section 4.1.
+        const componentCountBefore = componentCountOf(glyph);
+        const deletedComponentIndices = event.altKey
+          ? selectedComponentIndices(this.sceneController.selection)
+          : componentSelection || [];
         for (const layerGlyph of Object.values(layerGlyphs)) {
-          if (!getSkeletonData(layerGlyph)) {
-            continue;
-          }
-          editSkeleton(layerGlyph, (working) => {
-            const toDelete = [];
-            for (const key of skeletonPointKeys) {
-              const { contourId, pointId } = parseSkeletonPointKey(key);
-              const address = resolveSkeletonAddressAcrossLayers(
-                referenceSkeletonData,
-                working,
-                contourId,
-                pointId
+          if (event.altKey) {
+            // Behave like "cut", but don't put anything on the clipboard
+            this._prepareCopyOrCut(layerGlyph, true, false);
+          } else {
+            if (pointSelection) {
+              // Deleting all points of a contour deletes the contour, which
+              // shifts skeleton-generated contour indices; dry-run on a marked
+              // scratch copy to learn where the generated contours land.
+              const remap = computeGeneratedContourRemap(layerGlyph, (scratchPath) =>
+                deleteSelectedPoints(scratchPath, pointSelection)
               );
-              if (address) {
-                toDelete.push([address.contour.id, address.point.id]);
+              deleteSelectedPoints(layerGlyph.path, pointSelection);
+              applyGeneratedContourRemap(layerGlyph, remap);
+            }
+            if (componentSelection) {
+              for (const componentIndex of reversed(componentSelection)) {
+                layerGlyph.components.splice(componentIndex, 1);
               }
             }
-            deleteSkeletonPoints(working, toDelete);
-          });
+            if (anchorSelection) {
+              for (const anchorIndex of reversed(anchorSelection)) {
+                layerGlyph.anchors.splice(anchorIndex, 1);
+              }
+            }
+            if (guidelineSelection) {
+              for (const guidelineIndex of reversed(guidelineSelection)) {
+                const guideline = layerGlyph.guidelines[guidelineIndex];
+                if (guideline.locked) {
+                  // don't delete locked guidelines
+                  continue;
+                }
+                layerGlyph.guidelines.splice(guidelineIndex, 1);
+              }
+            }
+            if (backgroundImageSelection) {
+              // TODO: don't delete if bg images are locked
+              // (even though we shouldn't be able to select them)
+              layerGlyph.backgroundImage = undefined;
+            }
+          }
         }
-        const postDeleteSkeletonData = getSkeletonData(selectionLayerGlyph);
-        survivorSelection = new Set(
-          survivorCandidates
-            .filter(([contourId, pointId]) =>
-              getSkeletonPoint(postDeleteSkeletonData, contourId, pointId)
-            )
-            .map(([contourId, pointId]) => `skeletonPoint/${contourId}/${pointId}`)
-        );
-      }
-      this.sceneController.selection = survivorSelection?.size
-        ? survivorSelection
-        : new Set();
-      return translate("action.delete-selection");
-    });
+        if (deletedComponentIndices.length) {
+          recordComponentDelete(glyph, deletedComponentIndices, componentCountBefore);
+        }
+        // Skeleton points delete through the one write path (WS-9 editSkeleton),
+        // which regenerates the generated contours. Selection ids are canonical in
+        // the edit layer; other layers resolve by structural ordinal (WS-9).
+        // An insertion point deletes with the same keystroke, in the same
+        // change, so a mixed selection is one undo step. It leaves no survivor
+        // to select: nothing on the centerline moves when one goes.
+        if (skeletonInsertionKeys?.length) {
+          // Resolved per layer by structural ordinal, the way a point is. An
+          // insertion id is minted off each layer's own counter, so matching it
+          // literally would delete the point in one master and leave it standing
+          // in another, and the glyph would stop interpolating with nothing said.
+          const insertionEditLayerName =
+            this.sceneController.sceneSettings.editLayerName;
+          const insertionReference = getSkeletonData(
+            layerGlyphs[insertionEditLayerName] || Object.values(layerGlyphs)[0]
+          );
+          const doomedAddresses = skeletonInsertionKeys.map(
+            parseSkeletonInsertionSelectionItem
+          );
+          for (const layerGlyph of Object.values(layerGlyphs)) {
+            if (!getSkeletonData(layerGlyph)) {
+              continue;
+            }
+            editSkeleton(layerGlyph, (working) => {
+              const doomed = new Set();
+              for (const address of doomedAddresses) {
+                const resolved = resolveSkeletonInsertionAcrossLayers(
+                  insertionReference,
+                  working,
+                  address.contourId,
+                  address.insertionId
+                );
+                if (resolved) {
+                  doomed.add(`${resolved.contour.id}/${resolved.insertion.id}`);
+                }
+              }
+              deleteSkeletonInsertions(working, doomed);
+            });
+          }
+        }
+        let survivorSelection = null;
+        if (skeletonPointKeys?.length && !event.altKey) {
+          const editLayerName = this.sceneController.sceneSettings.editLayerName;
+          const selectionLayerGlyph =
+            layerGlyphs[editLayerName] || Object.values(layerGlyphs)[0];
+          const referenceSkeletonData = getSkeletonData(selectionLayerGlyph);
+          // The surviving on-curve neighbor of each deleted point stays selected;
+          // compute candidates against the pre-deletion reference data.
+          const survivorCandidates = collectSkeletonDeleteSurvivors(
+            referenceSkeletonData,
+            skeletonPointKeys.map(parseSkeletonPointKey)
+          );
+          for (const layerGlyph of Object.values(layerGlyphs)) {
+            if (!getSkeletonData(layerGlyph)) {
+              continue;
+            }
+            editSkeleton(layerGlyph, (working) => {
+              const toDelete = [];
+              for (const key of skeletonPointKeys) {
+                const { contourId, pointId } = parseSkeletonPointKey(key);
+                const address = resolveSkeletonAddressAcrossLayers(
+                  referenceSkeletonData,
+                  working,
+                  contourId,
+                  pointId
+                );
+                if (address) {
+                  toDelete.push([address.contour.id, address.point.id]);
+                }
+              }
+              deleteSkeletonPoints(working, toDelete);
+            });
+          }
+          const postDeleteSkeletonData = getSkeletonData(selectionLayerGlyph);
+          survivorSelection = new Set(
+            survivorCandidates
+              .filter(([contourId, pointId]) =>
+                getSkeletonPoint(postDeleteSkeletonData, contourId, pointId)
+              )
+              .map(([contourId, pointId]) => `skeletonPoint/${contourId}/${pointId}`)
+          );
+        }
+        this.sceneController.selection = survivorSelection?.size
+          ? survivorSelection
+          : new Set();
+        return translate("action.delete-selection");
+      },
+      undefined,
+      true
+    );
   }
 
   async doAddComponent() {
@@ -2571,15 +2733,27 @@ export class EditorController extends ViewController {
       location: location,
     };
 
-    await this.sceneController.editLayersAndRecordChanges((layerGlyphs) => {
-      for (const layerGlyph of Object.values(layerGlyphs)) {
-        layerGlyph.components.push(copyComponent(newComponent));
-      }
-      const instance = this.sceneModel.getSelectedPositionedGlyph().glyph.instance;
-      const newComponentIndex = instance.components.length - 1;
-      this.sceneController.selection = new Set([`component/${newComponentIndex}`]);
-      return translate("action.add-component");
-    });
+    await this.sceneController.editGlyphAndRecordChanges(
+      (glyph) => {
+        const layerGlyphs = this.sceneController.getEditingLayerFromGlyphLayers(
+          glyph.layers
+        );
+        // A component appended at the end moves no existing entry, but the
+        // attachment list still has to grow with the component list.
+        // Spec section 4.1.
+        const componentCountBefore = componentCountOf(glyph);
+        for (const layerGlyph of Object.values(layerGlyphs)) {
+          layerGlyph.components.push(copyComponent(newComponent));
+        }
+        recordComponentInsert(glyph, componentCountBefore, 1, componentCountBefore);
+        const instance = this.sceneModel.getSelectedPositionedGlyph().glyph.instance;
+        const newComponentIndex = instance.components.length - 1;
+        this.sceneController.selection = new Set([`component/${newComponentIndex}`]);
+        return translate("action.add-component");
+      },
+      undefined,
+      true
+    );
   }
 
   async doAddAnchor() {
@@ -2627,13 +2801,11 @@ export class EditorController extends ViewController {
       if (!editedAnchorName.length) {
         warnings.push(`⚠️ ${translate("warning.name-must-not-be-empty")}`);
       }
-      if (
-        !(
-          nameController.model.anchorName ||
-          nameController.model.anchorX ||
-          nameController.model.anchorY
-        )
-      ) {
+      if (!(
+        nameController.model.anchorName ||
+        nameController.model.anchorX ||
+        nameController.model.anchorY
+      )) {
         warnings.push("");
       }
       for (const n of ["X", "Y"]) {
@@ -3553,6 +3725,12 @@ export class EditorController extends ViewController {
 
   contextMenuHandler(event) {
     event.preventDefault();
+
+    // The active tool gets the gesture first. The pens use it to end the
+    // contour they are drawing, and for them a menu would be the wrong answer.
+    if (this.tools[this.selectedToolIdentifier]?.handleContextMenu?.(event)) {
+      return;
+    }
 
     const { x, y } = event;
     this.contextMenuPosition = { x: x, y: y };

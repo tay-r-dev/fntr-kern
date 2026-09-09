@@ -8,6 +8,7 @@ import {
   guessDirectionFromCodePoints,
 } from "@fontra/core/glyph-data.js";
 import { loaderSpinner } from "@fontra/core/loader-spinner.js";
+import { markerGeometry } from "@fontra/core/marker-measure.js";
 import {
   centeredRect,
   insetRect,
@@ -23,24 +24,30 @@ import {
 import { difference, isEqualSet, union, updateSet } from "@fontra/core/set-ops.js";
 import { MAX_UNICODE } from "@fontra/core/shaper.js";
 import {
-  getGeneratedPathContourIndices,
+  buildGeneratedTunniSegments,
   findGeneratedPathAddress,
+  formatGeneratedCurvature,
+  generatedTunniHitTest,
+  getGeneratedPathContourIndices,
+  getGeneratedSegmentCurvature,
+  getSkeletonData,
+  getSkeletonInsertionPosition,
+  getSkeletonPointHalfWidth,
+  getSkeletonPointWidth,
+  getSkeletonRibAddress,
+  iterSkeletonRibTargets,
   parseEditableGeneratedHandleKey,
   parseEditableGeneratedPointKey,
   resolveEditableGeneratedTarget,
-  getSkeletonRibAddress,
-  iterSkeletonRibTargets,
-  getSkeletonData,
-  getSkeletonPointHalfWidth,
-  getSkeletonPointWidth,
-  isSkeletonSideLocked,
   skeletonTunniHitTest,
 } from "@fontra/core/skeleton-model.js";
 import { decomposedToTransform } from "@fontra/core/transform.js";
+import { calculateCurvatureGizmoPoint } from "@fontra/core/tunni-calculations.js";
 
 import {
   assert,
   consolidateCalls,
+  disambiguateGlyphName,
   enumerate,
   mapObjectKeys,
   objectsEqualSerialized,
@@ -51,10 +58,14 @@ import {
 } from "@fontra/core/utils.ts";
 import { normalizeLocation, unnormalizeLocation } from "@fontra/core/var-model.js";
 import * as vector from "@fontra/core/vector.js";
+import { BASE_EXPAND_BEHAVIOR_NAME } from "./base-expand-editing.js";
+import { getVisibleMarkers } from "./marker-editing.js";
 import {
   getSkeletonPointAddress,
+  makeSkeletonInsertionKey,
   makeSkeletonPointKey,
   parseSkeletonPointKey,
+  skeletonRibBehaviorIsTangentSlide,
 } from "./skeleton-editing.js";
 
 export class SceneModel {
@@ -83,6 +94,12 @@ export class SceneModel {
     this.measureHoverPoints = null;
     this.measureHoverHandle = null;
     this.measureHoverSkeletonRib = null;
+
+    // The snap candidates the current gesture holds, for the snapping layer to draw.
+    this.snapHeldCandidates = [];
+    this.snapIndicator = null;
+    this.snapSuggestion = null;
+    this.snapDebugReadout = null;
 
     this.sceneSettingsController.addKeyListener(
       [
@@ -777,6 +794,15 @@ export class SceneModel {
       return { selection: skeletonPointSelection };
     }
 
+    const skeletonInsertionSelection = this.skeletonInsertionAtPoint(
+      point,
+      size,
+      parsedCurrentSelection
+    );
+    if (skeletonInsertionSelection.size) {
+      return { selection: skeletonInsertionSelection };
+    }
+
     const skeletonRibSelection = this.skeletonRibSelectionAtPoint(
       point,
       size,
@@ -794,6 +820,17 @@ export class SceneModel {
     );
     if (editableGeneratedTarget) {
       return { selection: new Set([editableGeneratedTarget.selectionKey]) };
+    }
+
+    const markerTarget = this.markerAtPoint(point, size);
+    if (markerTarget) {
+      return {
+        selection: new Set([
+          markerTarget.endIndex === undefined
+            ? `marker/${markerTarget.markerId}`
+            : `markerEnd/${markerTarget.markerId}/${markerTarget.endIndex}`,
+        ]),
+      };
     }
 
     const pointSelection = this.pointSelectionAtPoint(
@@ -901,12 +938,76 @@ export class SceneModel {
     return indices.size ? indices : null;
   }
 
+  _getEditLayerGlyph(positionedGlyph) {
+    const editLayerName =
+      this.sceneSettings?.editLayerName || positionedGlyph.glyph?.layerName;
+    return (
+      (editLayerName &&
+        positionedGlyph.varGlyph?.glyph?.layers?.[editLayerName]?.glyph) ||
+      positionedGlyph.glyph
+    );
+  }
+
+  // Where each visible marker's grips are, in glyph space. The geometry comes from the
+  // one shared derivation, so the hit test and the drawing can never disagree about
+  // where a marker is.
+  markerGrips(positionedGlyph) {
+    const layerGlyph = this._getEditLayerGlyph(positionedGlyph);
+    const markers = getVisibleMarkers(layerGlyph);
+    if (!markers.length) {
+      return [];
+    }
+    const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
+    const grips = [];
+    for (const marker of markers) {
+      // Stale markers keep their grips: a broken marker has to be reachable, because
+      // dragging it to a new spot is how it is repaired.
+      const geometry = markerGeometry(positionedGlyph.glyph, marker, skeletonData);
+      for (const grip of geometry.grips) {
+        grips.push({ ...grip, markerId: marker.id });
+      }
+    }
+    return grips;
+  }
+
+  // Markers lose the click to skeleton and generated geometry: see _selectionAtPoint.
+  markerAtPoint(point, size, positionedGlyph) {
+    positionedGlyph ||= this.getSelectedPositionedGlyph();
+    if (!positionedGlyph) {
+      return undefined;
+    }
+    const x = point.x - positionedGlyph.x;
+    const y = point.y - positionedGlyph.y;
+    const selRect = centeredRect(x, y, size);
+    for (const grip of reversed(this.markerGrips(positionedGlyph))) {
+      if (pointInRect(grip.point.x, grip.point.y, selRect)) {
+        return { markerId: grip.markerId, endIndex: grip.endIndex };
+      }
+    }
+    return undefined;
+  }
+
   _getEditLayerSkeletonData(positionedGlyph) {
+    return getSkeletonData(this._getEditLayerGlyph(positionedGlyph));
+  }
+
+  // The layer the skeleton is being edited on. Its skeleton section and its
+  // path have to be read off the same glyph: the generator's provenance
+  // addresses points by index into the path it produced, and one layer's
+  // indices say nothing about another's.
+  _getEditLayerGlyph(positionedGlyph) {
     const editLayerName =
       this.sceneSettings?.editLayerName || positionedGlyph.glyph?.layerName;
     const layerGlyph =
       editLayerName && positionedGlyph.varGlyph?.glyph?.layers?.[editLayerName]?.glyph;
-    return getSkeletonData(layerGlyph || positionedGlyph.glyph);
+    return layerGlyph || positionedGlyph.glyph;
+  }
+
+  // Every rib gizmo, with the drawn outline handed over so the ends at a corner
+  // are the outline's own points (rail R-D).
+  *_iterSkeletonRibTargets(positionedGlyph) {
+    const layerGlyph = this._getEditLayerGlyph(positionedGlyph);
+    yield* iterSkeletonRibTargets(getSkeletonData(layerGlyph), layerGlyph?.path);
   }
 
   // Whether the given path contour index belongs to a skeleton-generated
@@ -975,6 +1076,55 @@ export class SceneModel {
     return new Set();
   }
 
+  // An insertion point sits on the centerline, where an ordinary skeleton point
+  // and the bare segment already compete for the click. It loses to the point,
+  // because dragging a point is the more consequential gesture and it is the one
+  // the designer aims at directly. It beats the segment, because otherwise it
+  // could never be grabbed at all.
+  skeletonInsertionAtPoint(point, size, parsedCurrentSelection) {
+    const positionedGlyph = this.getSelectedPositionedGlyph();
+    if (!positionedGlyph) {
+      return new Set();
+    }
+    const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
+    if (!skeletonData?.contours?.length) {
+      return new Set();
+    }
+
+    const glyphPoint = {
+      x: point.x - positionedGlyph.x,
+      y: point.y - positionedGlyph.y,
+    };
+    const isHit = (at) =>
+      at &&
+      Math.abs(at.x - glyphPoint.x) <= size &&
+      Math.abs(at.y - glyphPoint.y) <= size;
+
+    const currentKeys = new Set(
+      (parsedCurrentSelection?.skeletonInsertion || []).map((item) => `${item}`)
+    );
+    const contours = skeletonData.contours;
+    // Prefer one already selected, the way the point hit-test cycles among
+    // stacked points.
+    for (const preferSelected of currentKeys.size ? [true, false] : [false]) {
+      for (let ci = contours.length - 1; ci >= 0; ci--) {
+        const contour = contours[ci];
+        const insertions = contour.insertions || [];
+        for (let ii = insertions.length - 1; ii >= 0; ii--) {
+          const insertion = insertions[ii];
+          const key = `${contour.id}/${insertion.id}`;
+          if (preferSelected && !currentKeys.has(key)) {
+            continue;
+          }
+          if (isHit(getSkeletonInsertionPosition(contour, insertion))) {
+            return new Set([makeSkeletonInsertionKey(contour.id, insertion.id)]);
+          }
+        }
+      }
+    }
+    return new Set();
+  }
+
   editableGeneratedAtPoint(
     point,
     size,
@@ -982,6 +1132,17 @@ export class SceneModel {
     parsedCurrentSelection = undefined
   ) {
     if (!positionedGlyph) {
+      return null;
+    }
+    // D9: gizmo editing is the default, and dragging a generated handle
+    // directly is the opt-out. The two would otherwise compete for the same
+    // click - the gizmos sit on and around the very handles this targets - so
+    // exactly one of them is live at a time. Neither owns the data: both write
+    // the same nudge and handle-offset fields, so the switch loses no work.
+    if (
+      this.visualizationLayersSettings?.model["fontra.skeleton.generated-tunni"] ===
+      true
+    ) {
       return null;
     }
     const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
@@ -1034,6 +1195,14 @@ export class SceneModel {
     if (!positionedGlyph) {
       return [];
     }
+    const curvatureReadout = this._getGeneratedCurvatureDragReadout(positionedGlyph);
+    if (curvatureReadout) {
+      return [curvatureReadout];
+    }
+    const baseExpandReadout = this._getBaseExpandDragReadout(positionedGlyph);
+    if (baseExpandReadout) {
+      return [baseExpandReadout];
+    }
     const ribReadout = this._getRibDragReadout(positionedGlyph);
     if (ribReadout) {
       return [ribReadout];
@@ -1041,15 +1210,88 @@ export class SceneModel {
     return this._getTunniDragReadouts(positionedGlyph);
   }
 
+  // The curvature a generated-segment drag is arriving at, beside its gizmo.
+  // Suppressed while the label layer is on, which already says the same thing —
+  // the same rule the Tunni readouts follow against the native point labels.
+  _getGeneratedCurvatureDragReadout(positionedGlyph) {
+    const target = this.generatedCurvatureDragTarget;
+    if (!target) {
+      return null;
+    }
+    if (
+      this.visualizationLayersSettings?.model?.[
+        "fontra.skeleton.generated-curvature-labels"
+      ]
+    ) {
+      return null;
+    }
+    const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
+    const segment = buildGeneratedTunniSegments(
+      skeletonData,
+      positionedGlyph.glyph?.path
+    ).find(
+      (candidate) =>
+        candidate.pathContourIndex === target.pathContourIndex &&
+        candidate.segmentIndex === target.segmentIndex
+    );
+    if (!segment) {
+      return null;
+    }
+    const curvature = getGeneratedSegmentCurvature(skeletonData, segment);
+    const anchor = calculateCurvatureGizmoPoint(segment.points);
+    if (!curvature || !anchor) {
+      return null;
+    }
+    return {
+      x: anchor.x,
+      y: anchor.y,
+      kind: "skeleton",
+      label: formatGeneratedCurvature(curvature),
+    };
+  }
+
+  // How far the base expansion drag has travelled, beside the point under the
+  // cursor. Measured against the ghost rather than against the drag's own delta,
+  // so it reports what the geometry actually did - the same rule the other
+  // readouts follow (re-read from live geometry, not captured at mousedown).
+  _getBaseExpandDragReadout(positionedGlyph) {
+    if (this.skeletonDragBehaviorName !== BASE_EXPAND_BEHAVIOR_NAME) {
+      return null;
+    }
+    const ghostPath = this.baseExpandGhostPath;
+    const pointIndex = this.initialClickedPointIndex;
+    const path = positionedGlyph?.glyph?.path;
+    if (!ghostPath || !path || pointIndex === undefined) {
+      return null;
+    }
+    const before = ghostPath.getPoint(pointIndex);
+    const after = path.getPoint(pointIndex);
+    if (!before || !after) {
+      return null;
+    }
+    return {
+      x: after.x,
+      y: after.y,
+      kind: "skeleton",
+      label: Math.hypot(after.x - before.x, after.y - before.y).toFixed(1),
+    };
+  }
+
   _getRibDragReadout(positionedGlyph) {
     if (!this.initialClickedSkeletonRibKey) {
+      return null;
+    }
+    // The plaque reports a width. A Z-drag slides the rib end along its tangent
+    // and changes no width, so during one it would be quoting a number that
+    // nothing on screen is editing.
+    if (skeletonRibBehaviorIsTangentSlide(this.skeletonDragBehaviorName)) {
       return null;
     }
     const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
     if (!skeletonData) {
       return null;
     }
-    for (const target of iterSkeletonRibTargets(skeletonData)) {
+    for (const target of this._iterSkeletonRibTargets(positionedGlyph)) {
       if (
         target.selectionKey !== this.initialClickedSkeletonRibKey ||
         !target.position
@@ -1195,7 +1437,7 @@ d ${measure.distance.toFixed(1)}`,
     }
 
     if (this.initialClickedSkeletonRibKey) {
-      for (const target of iterSkeletonRibTargets(skeletonData)) {
+      for (const target of this._iterSkeletonRibTargets(positionedGlyph)) {
         if (
           target.selectionKey === this.initialClickedSkeletonRibKey &&
           target.position
@@ -1280,7 +1522,7 @@ d ${measure.distance.toFixed(1)}`,
       Math.abs(ribPoint.x - glyphPoint.x) <= size &&
       Math.abs(ribPoint.y - glyphPoint.y) <= size;
 
-    for (const target of iterSkeletonRibTargets(skeletonData)) {
+    for (const target of this._iterSkeletonRibTargets(positionedGlyph)) {
       if (target.position && isHit(target.position)) {
         return {
           selectionKey: target.selectionKey,
@@ -1318,6 +1560,34 @@ d ${measure.distance.toFixed(1)}`,
     return skeletonTunniHitTest(glyphPoint, size, skeletonData, options);
   }
 
+  // The gizmos on the GENERATED contours, as opposed to skeletonTunniAtPoint,
+  // which targets the skeleton itself.
+  generatedTunniAtPoint(
+    point,
+    size,
+    positionedGlyph = this.getSelectedPositionedGlyph(),
+    options = {}
+  ) {
+    if (!positionedGlyph?.glyph?.path) {
+      return null;
+    }
+    const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
+    if (!skeletonData?.generated?.length) {
+      return null;
+    }
+    const glyphPoint = {
+      x: point.x - positionedGlyph.x,
+      y: point.y - positionedGlyph.y,
+    };
+    return generatedTunniHitTest(
+      glyphPoint,
+      size,
+      skeletonData,
+      positionedGlyph.glyph.path,
+      options
+    );
+  }
+
   skeletonRibSelectionAtPoint(point, size, parsedCurrentSelection) {
     const positionedGlyph = this.getSelectedPositionedGlyph();
     if (!positionedGlyph) {
@@ -1340,7 +1610,7 @@ d ${measure.distance.toFixed(1)}`,
       (parsedCurrentSelection?.skeletonRib || []).map((item) => `skeletonRib/${item}`)
     );
     if (currentKeys.size) {
-      for (const target of iterSkeletonRibTargets(skeletonData)) {
+      for (const target of this._iterSkeletonRibTargets(positionedGlyph)) {
         if (
           currentKeys.has(target.selectionKey) &&
           target.position &&
@@ -1351,7 +1621,7 @@ d ${measure.distance.toFixed(1)}`,
       }
     }
 
-    for (const target of [...iterSkeletonRibTargets(skeletonData)].reverse()) {
+    for (const target of [...this._iterSkeletonRibTargets(positionedGlyph)].reverse()) {
       if (target.position && isHit(target.position)) {
         return new Set([target.selectionKey]);
       }
@@ -1756,7 +2026,7 @@ d ${measure.distance.toFixed(1)}`,
     // image) takes precedence and drops the rib selection. Alt-marquee
     // (handles only) never selects ribs.
     if (!selection.size && (!pointFilterFunc || pointFilterFunc({}))) {
-      for (const target of iterSkeletonRibTargets(skeletonData)) {
+      for (const target of this._iterSkeletonRibTargets(positionedGlyph)) {
         if (
           target.position &&
           pointInRect(target.position.x, target.position.y, selRect)
@@ -2083,6 +2353,19 @@ class LineSetter {
     this.fallbackCharacterMap = fallbackCharacterMap;
   }
 
+  // The name a code point with no glyph of its own would take. One answer, read
+  // both before shaping and after it, so the stand-in and the glyph the designer
+  // creates from it cannot end up with two different names.
+  glyphNameForCodePoint(codePoint) {
+    return (
+      this.fallbackCharacterMap[codePoint] ??
+      disambiguateGlyphName(
+        getSuggestedGlyphName(codePoint),
+        this.fontController.glyphMap
+      )
+    );
+  }
+
   async setLine(
     origin,
     characterLine,
@@ -2097,11 +2380,24 @@ class LineSetter {
 
     let { x, y } = origin;
 
-    const codePoints = characterLine.map((characterInfo) =>
-      characterInfo.character
-        ? characterInfo.character.codePointAt(0)
-        : this.shaper.getGlyphNameCodePoint(characterInfo.glyphName)
-    );
+    // A character the font has no glyph for is handed to the shaper by NAME,
+    // not by code point. Given the code point the shaper stands in for the
+    // missing glyph the way a text engine must: it decomposes the character and
+    // draws the parts it does have, so an unbuilt accented letter arrives as its
+    // base and its mark, two real glyphs, with the mark positioned on the base.
+    // That reads as a glyph that exists and is drawn, and there is no cell to
+    // double-click to make the real one. Named instead, the character is one
+    // undefined glyph, empty until it is created and built.
+    const codePoints = characterLine.map((characterInfo) => {
+      if (!characterInfo.character) {
+        return this.shaper.getGlyphNameCodePoint(characterInfo.glyphName);
+      }
+      const codePoint = characterInfo.character.codePointAt(0);
+      if (fontController.characterMap[codePoint]) {
+        return codePoint;
+      }
+      return this.shaper.getGlyphNameCodePoint(this.glyphNameForCodePoint(codePoint));
+    });
 
     if (!shaperOptions.direction) {
       const direction = guessDirectionFromCodePoints(codePoints);
@@ -2132,12 +2428,17 @@ class LineSetter {
     }
 
     for (const [glyphIndex, glyphInfo] of enumerate(shapedGlyphs)) {
-      const fallbackCodePoint = codePoints[glyphInfo.cluster];
+      // The character's own code point, not the name reference that may have
+      // been put in its place above. The new-glyph dialog reads it to give the
+      // glyph its Unicode, so a named stand-in must not lose it here.
+      const characterInfo = characterLine[glyphInfo.cluster];
+      const fallbackCodePoint = characterInfo?.character
+        ? characterInfo.character.codePointAt(0)
+        : codePoints[glyphInfo.cluster];
       const glyphName =
         glyphInfo.codepoint != 0 || fallbackCodePoint >= MAX_UNICODE
           ? glyphInfo.glyphname
-          : (fallbackCharacterMap[fallbackCodePoint] ??
-            getSuggestedGlyphName(fallbackCodePoint));
+          : this.glyphNameForCodePoint(fallbackCodePoint);
 
       const isSelectedGlyph = glyphIndex == selectedGlyphIndex;
 

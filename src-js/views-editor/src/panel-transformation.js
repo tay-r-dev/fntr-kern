@@ -8,6 +8,7 @@ import {
 } from "@fontra/core/changes.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import {
   filterPathByPointIndices,
   getSelectionByContour,
@@ -73,12 +74,6 @@ export default class TransformationPanel extends Panel {
   .origin-radio-buttons > input[type="radio"]:checked {
     background-color: var(--text-input-background-color-dark);
     border: 0.15em solid var(--text-input-background-color-dark);
-  }
-
-  .harmonize-slider-end {
-    font-size: 0.9em;
-    opacity: 0.7;
-    white-space: nowrap;
   }
 
   .harmonize-report {
@@ -392,6 +387,17 @@ export default class TransformationPanel extends Panel {
       onEnterKey: (event) => {
         buttonSkew.click();
       },
+    });
+
+    // A straight running exactly across the axis being scaled stands still by
+    // default: travel along it is travel the scale never asked for. On, both of
+    // its tension points travel, each to what its own curve asks for. A slanted
+    // straight travels either way. App-wide, not per segment.
+    formContents.push({
+      type: "checkbox",
+      key: "slideBothTensionPoints",
+      label: translate("sidebar.selection-transformation.slide-both-tension-points"),
+      value: applicationSettingsController.model.slideBothTensionPoints,
     });
 
     formContents.push({ type: "divider" });
@@ -761,7 +767,8 @@ export default class TransformationPanel extends Panel {
     // querySelectorAll position, so any checkbox added ahead of them would
     // rebind Distance/Tension/Angle to the wrong controls. Those toggles are
     // slated for deprecation, so this section works around the issue instead of
-    // fixing it -- see docs/superpowers/specs/2026-07-25-curve-harmonization-design.md §7.
+    // fixing it. The fix, if they outlive the deprecation: bind those listeners
+    // by id rather than by position.
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
@@ -769,39 +776,50 @@ export default class TransformationPanel extends Panel {
     });
 
     formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "auxiliaryElement",
-        auxiliaryElement: html.span(
-          {
-            class: "harmonize-slider-end",
-            title: translate("sidebar.selection-transformation.harmonize.tooltip"),
-          },
-          [translate("sidebar.selection-transformation.harmonize.point")]
-        ),
-      },
-      field2: {
-        type: "edit-number-slider",
-        key: "harmonizeHandleBias",
-        value: applicationSettingsController.model.harmonizeHandleBias,
-        minValue: 0,
-        defaultValue: 1,
-        maxValue: 1,
-        step: 0.05,
-      },
-      field3: {
-        type: "auxiliaryElement",
-        auxiliaryElement: html.span({ class: "harmonize-slider-end" }, [
-          translate("sidebar.selection-transformation.harmonize.handles"),
-        ]),
-      },
+      type: "checkbox",
+      key: "harmonizeG3",
+      label: translate("sidebar.selection-transformation.harmonize.g3"),
+      value: applicationSettingsController.model.harmonizeG3,
+    });
+
+    formContents.push({
+      type: "edit-number-slider",
+      key: "harmonizeMethod",
+      label: translate("sidebar.selection-transformation.harmonize.method"),
+      value: applicationSettingsController.model.harmonizeMethod,
+      minValue: 1,
+      maxValue: 3,
+      // The slider reads this back on a reset gesture, and it must be a number.
+      defaultValue: 2,
+      values: [1, 2, 3],
+      // G3 has one construction, so there is nothing for the slider to say.
+      disabled: !!applicationSettingsController.model.harmonizeG3,
     });
 
     formContents.push({
       type: "checkbox",
-      key: "harmonizeEqualizeTension",
-      label: translate("sidebar.selection-transformation.harmonize.equalize-tension"),
-      value: applicationSettingsController.model.harmonizeEqualizeTension,
+      key: "harmonizeEqualize",
+      label: translate("sidebar.selection-transformation.harmonize.equalize"),
+      value: applicationSettingsController.model.harmonizeEqualize,
+    });
+
+    // The name of the position, held as an element rather than a form value.
+    // Rebuilding the whole form to redraw one word replaces the slider under
+    // the pointer, and a slider replaced mid-gesture goes back to the value it
+    // was built with.
+    formContents.push({
+      type: "universal-row",
+      field1: {},
+      field2: {
+        type: "auxiliaryElement",
+        auxiliaryElement: (this.harmonizeMethodNameElement = html.span(
+          { class: "harmonize-report" },
+          // The form is being rebuilt, so the slider on screen is the previous
+          // one. The stored setting is what the new slider is about to show.
+          [harmonizeMethodName(applicationSettingsController.model.harmonizeMethod)]
+        )),
+      },
+      field3: {},
     });
 
     formContents.push({
@@ -836,6 +854,40 @@ export default class TransformationPanel extends Panel {
       field3: {},
     });
 
+    // Balancing is its own command. It wants the same handles harmonizing wants
+    // and neither can have them exactly, so one button for both walked the
+    // drawing flatter on every press. Two buttons, and the order is yours.
+    formContents.push({ type: "divider" });
+    formContents.push({
+      type: "header",
+      label: translate("sidebar.selection-transformation.balance"),
+    });
+
+    formContents.push({
+      type: "universal-row",
+      field1: {},
+      field2: {
+        type: "auxiliaryElement",
+        auxiliaryElement: html.button({ onclick: () => this.doBalance() }, [
+          translate("sidebar.selection-transformation.balance.apply"),
+        ]),
+      },
+      field3: {},
+    });
+
+    formContents.push({
+      type: "universal-row",
+      field1: {},
+      field2: {
+        type: "auxiliaryElement",
+        auxiliaryElement: (this.balanceReportElement = html.span(
+          { class: "harmonize-report", title: this.balanceReportDetail || "" },
+          [this.balanceReportText || ""]
+        )),
+      },
+      field3: {},
+    });
+
     this.infoForm.setFieldDescriptions(formContents);
 
     this.infoForm.onFieldChange = async (fieldItem, value, valueStream) => {
@@ -845,6 +897,10 @@ export default class TransformationPanel extends Panel {
       // behind whatever the slider shows.
       if (valueStream) {
         for await (const streamedValue of valueStream) {
+          // An abandoned drag has nothing to commit.
+          if (isScrubCancelled(streamedValue)) {
+            return;
+          }
           value = streamedValue;
         }
       }
@@ -863,12 +919,27 @@ export default class TransformationPanel extends Panel {
 
       if (
         [
-          "harmonizeHandleBias",
+          "harmonizeG3",
+          "harmonizeMethod",
+          "harmonizeEqualize",
           "harmonizeOtherSources",
-          "harmonizeEqualizeTension",
+          "slideBothTensionPoints",
         ].includes(fieldItem.key)
       ) {
-        applicationSettingsController.model[fieldItem.key] = value;
+        applicationSettingsController.model[fieldItem.key] =
+          fieldItem.key === "harmonizeMethod" ? Math.round(Number(value)) : value;
+        if (this.harmonizeMethodNameElement) {
+          this.harmonizeMethodNameElement.innerText = harmonizeMethodName(
+            this.harmonizeMethodOnScreen()
+          );
+        }
+        // G3 greys the slider out, which is a property of the field and only
+        // the rebuild can change it. The position is not: its name is written
+        // straight into the row above.
+        if (fieldItem.key === "harmonizeG3") {
+          this.update();
+          return;
+        }
       }
 
       if (fieldItem.key === "originXButton" || fieldItem.key === "originYButton") {
@@ -940,20 +1011,51 @@ export default class TransformationPanel extends Panel {
 
   async doHarmonize() {
     const settings = applicationSettingsController.model;
-    // Read the bias off the slider itself, not off the setting. The setting is
-    // for persistence; the slider is what the user is looking at, and the two
-    // can disagree if a change event is missed. What you see is what applies.
-    const shownBias = this.infoForm.getValue("harmonizeHandleBias");
     const options = {
-      handleBias: Number(shownBias ?? settings.harmonizeHandleBias),
+      useG3: !!settings.harmonizeG3,
+      // Read off the slider itself, not off the stored setting. The stored one
+      // is written from a value stream that a click can close early, and a
+      // command that does something other than what the panel shows is worse
+      // than one that does nothing.
+      method: this.harmonizeMethodOnScreen(),
+      equalizeHandles: !!settings.harmonizeEqualize,
       applyToOtherSources: settings.harmonizeOtherSources,
-      equalizeTension: settings.harmonizeEqualizeTension,
     };
     const reports = await this.sceneController.doHarmonize(options);
     this.setHarmonizeReport(
       formatHarmonizeReport(reports),
       detailHarmonizeReport(reports, options)
     );
+  }
+
+  // The position the slider is actually showing. Falls back to the stored
+  // setting where the form has not been built yet, which is how a keyboard
+  // shortcut reaches this before the panel is ever opened.
+  harmonizeMethodOnScreen() {
+    if (this.infoForm?.hasKey?.("harmonizeMethod")) {
+      const shown = Math.round(Number(this.infoForm.getValue("harmonizeMethod")));
+      if (shown >= 1 && shown <= 3) {
+        return shown;
+      }
+    }
+    return applicationSettingsController.model.harmonizeMethod;
+  }
+
+  async doBalance() {
+    const settings = applicationSettingsController.model;
+    const reports = await this.sceneController.doBalance({
+      applyToOtherSources: settings.harmonizeOtherSources,
+    });
+    this.setBalanceReport(formatBalanceReport(reports));
+  }
+
+  setBalanceReport(text, detail = "") {
+    this.balanceReportText = text;
+    this.balanceReportDetail = detail;
+    if (this.balanceReportElement) {
+      this.balanceReportElement.innerText = text;
+      this.balanceReportElement.title = detail;
+    }
   }
 
   setHarmonizeReport(text, detail = "") {
@@ -1387,7 +1489,14 @@ export default class TransformationPanel extends Panel {
           );
           applyChange(layerGlyph, editChange);
           editChanges.push(consolidateChanges(editChange, changePath));
-          rollbackChanges.push(consolidateChanges(rollbackChange, changePath));
+          // Each object is moved on top of the one before it, so its rollback
+          // restores the state the PREVIOUS object left behind, not the state
+          // this whole edit started from. Undoing them front to back therefore
+          // ends on the second-to-last object's result and keeps every earlier
+          // move. They have to come off in the reverse order they went on —
+          // which is what the change collector does for changes it records
+          // itself, and what this hand-assembled list has to do by hand.
+          rollbackChanges.unshift(consolidateChanges(rollbackChange, changePath));
         }
       }
 
@@ -1668,9 +1777,14 @@ function summarizeHarmonizeReport(report) {
 // Hover detail: the bias that actually ran, plus one line per candidate point.
 // The summary says what happened; this says which point and why.
 function detailHarmonizeReport(reports, options) {
+  // The head line names what was asked for. It used to name four tick boxes
+  // that no longer exist, so it read "move the on-curve: off" whatever the
+  // slider said.
+  const position = options.useG3 ? 2 : Math.round(Number(options.method));
   const lines = [
-    `bias ${Number(options.handleBias).toFixed(2)} (0 = node, 1 = handles)` +
-      `, equalize tension: ${options.equalizeTension ? "on" : "off"}` +
+    `${options.useG3 ? "G3" : "G2"}` +
+      `, position ${options.useG3 ? "-" : position}: ` +
+      translate(`sidebar.selection-transformation.harmonize.method.${position}`) +
       `, other sources: ${options.applyToOtherSources ? "on" : "off"}`,
   ];
   for (const [layerName, report] of reports) {
@@ -1679,9 +1793,14 @@ function detailHarmonizeReport(reports, options) {
       const reason = entry.reason ? ` / ${entry.reason}` : "";
       const sweeps = entry.iterations ? ` after ${entry.iterations}` : "";
       const reduced = entry.tensionReduced ? ", handle tension reduced" : "";
+      // Which construction did the work. Named every time, because the command
+      // chooses it: G3 falls back to G2 where it has no answer, and with
+      // equalization on the handle-length solve is a candidate too. A report
+      // that leaves it out is a report you have to guess at.
+      const by = entry.construction ? ` by ${entry.construction}` : "";
       lines.push(
         `  point ${entry.pointIndex} (contour ${entry.contourIndex}): ` +
-          `${entry.status}${reason}${sweeps}${reduced}`
+          `${entry.status}${by}${reason}${sweeps}${reduced}`
       );
     }
   }
@@ -1701,4 +1820,66 @@ function formatHarmonizeReport(reports) {
     .join(" · ");
 }
 
+// The balance report has its own two words — a segment is balanced or it is
+// skipped — and its own reasons, so it says what happened rather than borrowing
+// a vocabulary about joints.
+function summarizeBalanceReport(report) {
+  const byStatus = new Map();
+  for (const { status, reason } of report) {
+    if (!byStatus.has(status)) {
+      byStatus.set(status, { total: 0, reasons: new Map() });
+    }
+    const entry = byStatus.get(status);
+    entry.total += 1;
+    if (reason) {
+      entry.reasons.set(reason, (entry.reasons.get(reason) || 0) + 1);
+    }
+  }
+  const parts = [];
+  for (const status of ["balanced", "skipped"]) {
+    const entry = byStatus.get(status);
+    if (!entry) {
+      continue;
+    }
+    let part = translate(
+      `sidebar.selection-transformation.balance.status.${status}`,
+      entry.total
+    );
+    if (entry.reasons.size) {
+      const reasons = [...entry.reasons]
+        .sort((a, b) => b[1] - a[1])
+        .map(([reason, count]) =>
+          entry.reasons.size === 1 && count === entry.total
+            ? translate(`sidebar.selection-transformation.balance.reason.${reason}`)
+            : `${count} ${translate(
+                `sidebar.selection-transformation.balance.reason.${reason}`
+              )}`
+        );
+      part += ` (${reasons.join(", ")})`;
+    }
+    parts.push(part);
+  }
+  return parts.join(", ");
+}
+
+function formatBalanceReport(reports) {
+  const rows = [...reports];
+  if (!rows.length) {
+    return translate("sidebar.selection-transformation.balance.nothing-to-do");
+  }
+  if (rows.length === 1) {
+    return summarizeBalanceReport(rows[0][1]);
+  }
+  return rows
+    .map(([layerName, report]) => `${layerName}: ${summarizeBalanceReport(report)}`)
+    .join(" · ");
+}
+
 customElements.define("panel-transformation", TransformationPanel);
+
+// The name of the harmonize position the panel is set to. Under G3 there is one
+// construction and the slider is greyed out, so the row names that one.
+function harmonizeMethodName(method) {
+  const position = applicationSettingsController.model.harmonizeG3 ? 2 : method;
+  return translate(`sidebar.selection-transformation.harmonize.method.${position}`);
+}

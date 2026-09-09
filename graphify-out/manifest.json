@@ -1,0 +1,4226 @@
+{
+  "src-js/fontra-core/assets/data/glyphset-presets.json": {
+    "mtime": 1785137807.8506486,
+    "seen": 1787930937.4210382,
+    "ast_hash": "bf8ba1901712a31dbed9cc03940bc623",
+    "semantic_hash": "bf8ba1901712a31dbed9cc03940bc623"
+  },
+  "src-js/fontra-core/assets/data/language-mapping.json": {
+    "mtime": 1785137807.8506486,
+    "seen": 1787930937.4210424,
+    "ast_hash": "b9e3f7fcee9079b6942325fca2b11580",
+    "semantic_hash": "b9e3f7fcee9079b6942325fca2b11580"
+  },
+  "src-js/fontra-core/assets/lang/de.js": {
+    "mtime": 1787749853.9088633,
+    "seen": 1787930937.421044,
+    "ast_hash": "41769c7b6f743f49f8f477ea3a8cf400",
+    "semantic_hash": "41769c7b6f743f49f8f477ea3a8cf400"
+  },
+  "src-js/fontra-core/assets/lang/en.js": {
+    "mtime": 1787922736.431148,
+    "seen": 1787930937.4210455,
+    "ast_hash": "524c3cf262cb108325a98bd39850eea1",
+    "semantic_hash": "524c3cf262cb108325a98bd39850eea1"
+  },
+  "src-js/fontra-core/assets/lang/es-419.js": {
+    "mtime": 1787749853.9098845,
+    "seen": 1787930937.4210465,
+    "ast_hash": "65f0ae725bc921d66933f7d179cd41a3",
+    "semantic_hash": "65f0ae725bc921d66933f7d179cd41a3"
+  },
+  "src-js/fontra-core/assets/lang/es-ES.js": {
+    "mtime": 1787749853.9109035,
+    "seen": 1787930937.4210474,
+    "ast_hash": "127c99c1072dee41e7e89bf696bdda88",
+    "semantic_hash": "127c99c1072dee41e7e89bf696bdda88"
+  },
+  "src-js/fontra-core/assets/lang/fr.js": {
+    "mtime": 1787749853.9114153,
+    "seen": 1787930937.4210486,
+    "ast_hash": "cc5e02f7b7a9487d93b2b9d59b12a93e",
+    "semantic_hash": "cc5e02f7b7a9487d93b2b9d59b12a93e"
+  },
+  "src-js/fontra-core/assets/lang/it.js": {
+    "mtime": 1787749853.911927,
+    "seen": 1787930937.4210494,
+    "ast_hash": "e336a5679669578c9d4a2318ef7d9f65",
+    "semantic_hash": "e336a5679669578c9d4a2318ef7d9f65"
+  },
+  "src-js/fontra-core/assets/lang/ja.js": {
+    "mtime": 1787749853.9124386,
+    "seen": 1787930937.4210505,
+    "ast_hash": "fa876fd5e91a7db31aa897ef9fc8f8d4",
+    "semantic_hash": "fa876fd5e91a7db31aa897ef9fc8f8d4"
+  },
+  "src-js/fontra-core/assets/lang/nl.js": {
+    "mtime": 1787749853.9134603,
+    "seen": 1787930937.4210515,
+    "ast_hash": "d5f92543064aa7a76368aa9396dfd0d5",
+    "semantic_hash": "d5f92543064aa7a76368aa9396dfd0d5"
+  },
+  "src-js/fontra-core/assets/lang/pt-BR.js": {
+    "mtime": 1787749853.9139717,
+    "seen": 1787930937.4210525,
+    "ast_hash": "0066c0715c29a4312b26a53f71d1621b",
+    "semantic_hash": "0066c0715c29a4312b26a53f71d1621b"
+  },
+  "src-js/fontra-core/assets/lang/pt-PT.js": {
+    "mtime": 1787749853.9145126,
+    "seen": 1787930937.421054,
+    "ast_hash": "4bbb3ed6792285c4e1258532f43e3c2d",
+    "semantic_hash": "4bbb3ed6792285c4e1258532f43e3c2d"
+  },
+  "src-js/fontra-core/assets/lang/tl.js": {
+    "mtime": 1787749853.9150252,
+    "seen": 1787930937.4210546,
+    "ast_hash": "b24e278842c32abf832f524de05b1144",
+    "semantic_hash": "b24e278842c32abf832f524de05b1144"
+  },
+  "src-js/fontra-core/assets/lang/zh-CN.js": {
+    "mtime": 1787749853.9160645,
+    "seen": 1787930937.4210556,
+    "ast_hash": "eee8146183b45a498d210f31fea1cf15",
+    "semantic_hash": "eee8146183b45a498d210f31fea1cf15"
+  },
+  "src-js/fontra-core/assets/lang/zh-TW.js": {
+    "mtime": 1787749853.9165757,
+    "seen": 1787930937.4210563,
+    "ast_hash": "10770b7863ba8fea84003d285b1b3fd8",
+    "semantic_hash": "10770b7863ba8fea84003d285b1b3fd8"
+  },
+  "src-js/fontra-core/package.json": {
+    "mtime": 1787749853.917088,
+    "seen": 1787930937.4210572,
+    "ast_hash": "c7a06b3d38ea77a8c96723dd68864960",
+    "semantic_hash": "c7a06b3d38ea77a8c96723dd68864960"
+  },
+  "src-js/fontra-core/src/actions.js": {
+    "mtime": 1785137807.8796263,
+    "seen": 1787930937.421058,
+    "ast_hash": "1fc9a49842de072cd67f7fedbe6a80c2",
+    "semantic_hash": "1fc9a49842de072cd67f7fedbe6a80c2"
+  },
+  "src-js/fontra-core/src/application-settings.js": {
+    "mtime": 1787903452.9502182,
+    "seen": 1787930937.421059,
+    "ast_hash": "47803e7e704bfb55b6f490eafec89605",
+    "semantic_hash": "47803e7e704bfb55b6f490eafec89605"
+  },
+  "src-js/fontra-core/src/axis-ui.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210596,
+    "ast_hash": "8569da26c2f64adbba0064d10a235f04",
+    "semantic_hash": "8569da26c2f64adbba0064d10a235f04"
+  },
+  "src-js/fontra-core/src/backend-api.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.42106,
+    "ast_hash": "b74c13ce9f5221b1617f7c268aca7013",
+    "semantic_hash": "b74c13ce9f5221b1617f7c268aca7013"
+  },
+  "src-js/fontra-core/src/canvas-controller.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210608,
+    "ast_hash": "818bd265a9bf629010730233c13824e0",
+    "semantic_hash": "818bd265a9bf629010730233c13824e0"
+  },
+  "src-js/fontra-core/src/change-recorder.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210615,
+    "ast_hash": "574ea49bd8170bd700cd4b986fc3bfc4",
+    "semantic_hash": "574ea49bd8170bd700cd4b986fc3bfc4"
+  },
+  "src-js/fontra-core/src/changes.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.421063,
+    "ast_hash": "8de48c718ede4a68ce84d67e65076f99",
+    "semantic_hash": "8de48c718ede4a68ce84d67e65076f99"
+  },
+  "src-js/fontra-core/src/character-lines.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210637,
+    "ast_hash": "d56c0d492c7ae3bdaae3125cd4f03cd3",
+    "semantic_hash": "d56c0d492c7ae3bdaae3125cd4f03cd3"
+  },
+  "src-js/fontra-core/src/classes.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210641,
+    "ast_hash": "f60213ba32153bb1699a5a596b860f1b",
+    "semantic_hash": "f60213ba32153bb1699a5a596b860f1b"
+  },
+  "src-js/fontra-core/src/classes.json": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210649,
+    "ast_hash": "e89f34b0358acdbff77dff1f020636d6",
+    "semantic_hash": "e89f34b0358acdbff77dff1f020636d6"
+  },
+  "src-js/fontra-core/src/cmap.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.421066,
+    "ast_hash": "258de7cb910e72820b18102074a46d13",
+    "semantic_hash": "258de7cb910e72820b18102074a46d13"
+  },
+  "src-js/fontra-core/src/coarse-grid-presets.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210665,
+    "ast_hash": "7d411a6d8ddf102c084b6d9b08e261b4",
+    "semantic_hash": "7d411a6d8ddf102c084b6d9b08e261b4"
+  },
+  "src-js/fontra-core/src/composition-build.js": {
+    "mtime": 1787903452.9507303,
+    "seen": 1787930937.4210675,
+    "ast_hash": "9b8d6b542e6365392c4f4cdddc05cea6",
+    "semantic_hash": "9b8d6b542e6365392c4f4cdddc05cea6"
+  },
+  "src-js/fontra-core/src/composition.js": {
+    "mtime": 1787903452.9512417,
+    "seen": 1787930937.4210682,
+    "ast_hash": "3b9d4fbc038ff4cfb25a44372ee75bc6",
+    "semantic_hash": "3b9d4fbc038ff4cfb25a44372ee75bc6"
+  },
+  "src-js/fontra-core/src/convex-hull.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.421069,
+    "ast_hash": "3fb827aade6b735bfb5b7c91081090db",
+    "semantic_hash": "3fb827aade6b735bfb5b7c91081090db"
+  },
+  "src-js/fontra-core/src/corner-overlap.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210696,
+    "ast_hash": "0c5f12cd72ad8b883376db90c4146c22",
+    "semantic_hash": "0c5f12cd72ad8b883376db90c4146c22"
+  },
+  "src-js/fontra-core/src/cross-axis-mapper.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210703,
+    "ast_hash": "a8f62720320f6039dad4b32be8451948",
+    "semantic_hash": "a8f62720320f6039dad4b32be8451948"
+  },
+  "src-js/fontra-core/src/curvature.js": {
+    "mtime": 1787903452.9517546,
+    "seen": 1787930937.4210708,
+    "ast_hash": "30d95957b228be3e0984b28fb1b7c999",
+    "semantic_hash": "30d95957b228be3e0984b28fb1b7c999"
+  },
+  "src-js/fontra-core/src/discrete-variation-model.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210715,
+    "ast_hash": "34e7ce288969adade93371fde3743df7",
+    "semantic_hash": "34e7ce288969adade93371fde3743df7"
+  },
+  "src-js/fontra-core/src/distance-angle.js": {
+    "mtime": 1785319233.6160574,
+    "seen": 1787930937.4210725,
+    "ast_hash": "1ca05cac2dc137952d9bbfe57f1e749c",
+    "semantic_hash": "1ca05cac2dc137952d9bbfe57f1e749c"
+  },
+  "src-js/fontra-core/src/errors.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210732,
+    "ast_hash": "5ce288173b72f5b493d5abaea406560a",
+    "semantic_hash": "5ce288173b72f5b493d5abaea406560a"
+  },
+  "src-js/fontra-core/src/event-utils.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.421074,
+    "ast_hash": "99f0e09879191dff3f9ea6e1f08fabc4",
+    "semantic_hash": "99f0e09879191dff3f9ea6e1f08fabc4"
+  },
+  "src-js/fontra-core/src/fit-cubic.js": {
+    "mtime": 1785917223.8608968,
+    "seen": 1787930937.4210746,
+    "ast_hash": "e3b562b015c03f0f862854384d271e0e",
+    "semantic_hash": "e3b562b015c03f0f862854384d271e0e"
+  },
+  "src-js/fontra-core/src/font-controller.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.421075,
+    "ast_hash": "bbfeb6137037513f19d263f27f61fb25",
+    "semantic_hash": "bbfeb6137037513f19d263f27f61fb25"
+  },
+  "src-js/fontra-core/src/font-info-data.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210763,
+    "ast_hash": "c0d7aeced1970e05015414831ad7a286",
+    "semantic_hash": "c0d7aeced1970e05015414831ad7a286"
+  },
+  "src-js/fontra-core/src/font-sources-instancer.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210768,
+    "ast_hash": "ec523599a9c3cd82d5c0f81f5b70394f",
+    "semantic_hash": "ec523599a9c3cd82d5c0f81f5b70394f"
+  },
+  "src-js/fontra-core/src/fontra-backend.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210775,
+    "ast_hash": "4ebbbad740d5d70d2eb2824d7aeb3944",
+    "semantic_hash": "4ebbbad740d5d70d2eb2824d7aeb3944"
+  },
+  "src-js/fontra-core/src/fontra-internal-data.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210787,
+    "ast_hash": "238b72cccd2cbb4ca68278e135aff59c",
+    "semantic_hash": "238b72cccd2cbb4ca68278e135aff59c"
+  },
+  "src-js/fontra-core/src/fontra-internal-schema.js": {
+    "mtime": 1787911138.4493961,
+    "seen": 1787930937.4210796,
+    "ast_hash": "5ee1eba5b38c012eeb55636a976cb9b2",
+    "semantic_hash": "5ee1eba5b38c012eeb55636a976cb9b2"
+  },
+  "src-js/fontra-core/src/fontra-menus.js": {
+    "mtime": 1787903452.95277,
+    "seen": 1787930937.4210804,
+    "ast_hash": "70636ea5a778d2826741c0d642d3ec82",
+    "semantic_hash": "70636ea5a778d2826741c0d642d3ec82"
+  },
+  "src-js/fontra-core/src/formatters.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.421081,
+    "ast_hash": "d257674b0f685aabc2f1f322d48ca08c",
+    "semantic_hash": "d257674b0f685aabc2f1f322d48ca08c"
+  },
+  "src-js/fontra-core/src/glyph-controller.js": {
+    "mtime": 1787914145.3095715,
+    "seen": 1787930937.4210815,
+    "ast_hash": "1087786db98ea1d671e7f10d870ad6ef",
+    "semantic_hash": "1087786db98ea1d671e7f10d870ad6ef"
+  },
+  "src-js/fontra-core/src/glyph-data.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210823,
+    "ast_hash": "4d9c81d5948091f915540bcbfd1f4349",
+    "semantic_hash": "4d9c81d5948091f915540bcbfd1f4349"
+  },
+  "src-js/fontra-core/src/glyph-glif.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.421083,
+    "ast_hash": "3409581c3f0003a71a4917bca804c6bb",
+    "semantic_hash": "3409581c3f0003a71a4917bca804c6bb"
+  },
+  "src-js/fontra-core/src/glyph-organizer.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210837,
+    "ast_hash": "2e6b94f4e04121b3201394c7b21c24ec",
+    "semantic_hash": "2e6b94f4e04121b3201394c7b21c24ec"
+  },
+  "src-js/fontra-core/src/glyph-svg.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210844,
+    "ast_hash": "14643c538794aeb60facc4c62514d950",
+    "semantic_hash": "14643c538794aeb60facc4c62514d950"
+  },
+  "src-js/fontra-core/src/glyphsets-controller.js": {
+    "mtime": 1787749853.9181125,
+    "seen": 1787930937.4210851,
+    "ast_hash": "6dd0375168131f5b71bddd224640a8b0",
+    "semantic_hash": "6dd0375168131f5b71bddd224640a8b0"
+  },
+  "src-js/fontra-core/src/glyphsets-ui.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210858,
+    "ast_hash": "2e0ad95e84ffe0cdfc062b8e44f395fa",
+    "semantic_hash": "2e0ad95e84ffe0cdfc062b8e44f395fa"
+  },
+  "src-js/fontra-core/src/harmonization.js": {
+    "mtime": 1787749853.9191344,
+    "seen": 1787930937.4210868,
+    "ast_hash": "25630bd6d3766ce23372c1d27d885c1a",
+    "semantic_hash": "25630bd6d3766ce23372c1d27d885c1a"
+  },
+  "src-js/fontra-core/src/html-utils.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210875,
+    "ast_hash": "603cf019a29ee129eeb3d71a724006ed",
+    "semantic_hash": "603cf019a29ee129eeb3d71a724006ed"
+  },
+  "src-js/fontra-core/src/kerning-controller.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210882,
+    "ast_hash": "0e8f1185336b03c90e55369f9a88946f",
+    "semantic_hash": "0e8f1185336b03c90e55369f9a88946f"
+  },
+  "src-js/fontra-core/src/letterspacer-engine.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.421089,
+    "ast_hash": "a74d5d1329dddb5aee40be9f81de494a",
+    "semantic_hash": "a74d5d1329dddb5aee40be9f81de494a"
+  },
+  "src-js/fontra-core/src/loader-spinner.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.42109,
+    "ast_hash": "6128909d52e926c0ec45c392ae0a90d2",
+    "semantic_hash": "6128909d52e926c0ec45c392ae0a90d2"
+  },
+  "src-js/fontra-core/src/local-font-engine.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210904,
+    "ast_hash": "4aef6af8410f38883ff4848df121aca4",
+    "semantic_hash": "4aef6af8410f38883ff4848df121aca4"
+  },
+  "src-js/fontra-core/src/localization.js": {
+    "mtime": 1787749853.919644,
+    "seen": 1787930937.421091,
+    "ast_hash": "ce7f3736c8b08907667f8369554b70a8",
+    "semantic_hash": "ce7f3736c8b08907667f8369554b70a8"
+  },
+  "src-js/fontra-core/src/lru-cache.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210918,
+    "ast_hash": "4c45d02c24dedd14f31b52d760301dd7",
+    "semantic_hash": "4c45d02c24dedd14f31b52d760301dd7"
+  },
+  "src-js/fontra-core/src/marker-measure.js": {
+    "mtime": 1787916907.4466977,
+    "seen": 1787930937.4210925,
+    "ast_hash": "537c050cbe65651202fa7d4b17f2fde8",
+    "semantic_hash": "537c050cbe65651202fa7d4b17f2fde8"
+  },
+  "src-js/fontra-core/src/marker-model.js": {
+    "mtime": 1787928775.5902684,
+    "seen": 1787930937.4210932,
+    "ast_hash": "a6c576887bba68fa6b49f4174a1253a4",
+    "semantic_hash": "a6c576887bba68fa6b49f4174a1253a4"
+  },
+  "src-js/fontra-core/src/mouse-tracker.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210937,
+    "ast_hash": "c9ede1b4a4b503bee5955a3b13465f58",
+    "semantic_hash": "c9ede1b4a4b503bee5955a3b13465f58"
+  },
+  "src-js/fontra-core/src/multi-panel.js": {
+    "mtime": 1785137807.8956099,
+    "seen": 1787930937.4210944,
+    "ast_hash": "155f8dc2e8d9bde897fdba081f6c4125",
+    "semantic_hash": "155f8dc2e8d9bde897fdba081f6c4125"
+  },
+  "src-js/fontra-core/src/natural-handle-solver.js": {
+    "mtime": 1787749853.9201574,
+    "seen": 1787930937.4210951,
+    "ast_hash": "6326df24ee221c615743c3ec020b2ddd",
+    "semantic_hash": "6326df24ee221c615743c3ec020b2ddd"
+  },
+  "src-js/fontra-core/src/number-scrub.js": {
+    "mtime": 1785917223.8614094,
+    "seen": 1787930937.421096,
+    "ast_hash": "7b02b97d8001c86d94616ad1f37dc0f3",
+    "semantic_hash": "7b02b97d8001c86d94616ad1f37dc0f3"
+  },
+  "src-js/fontra-core/src/observable-object.ts": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4210968,
+    "ast_hash": "5f71c0e15d86aa5b519a54a5087e8a38",
+    "semantic_hash": "5f71c0e15d86aa5b519a54a5087e8a38"
+  },
+  "src-js/fontra-core/src/offset-contour.js": {
+    "mtime": 1787749853.9206693,
+    "seen": 1787930937.4210975,
+    "ast_hash": "f91ee8bc1dbf4905b56998319bb7e26a",
+    "semantic_hash": "f91ee8bc1dbf4905b56998319bb7e26a"
+  },
+  "src-js/fontra-core/src/offset-cubic.js": {
+    "mtime": 1787749853.9211807,
+    "seen": 1787930937.4210982,
+    "ast_hash": "93c4e904e577b14e4de0ad6dd74ba845",
+    "semantic_hash": "93c4e904e577b14e4de0ad6dd74ba845"
+  },
+  "src-js/fontra-core/src/opentype-tags.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4210987,
+    "ast_hash": "08bb713e6eae650fdd29515044dccd6d",
+    "semantic_hash": "08bb713e6eae650fdd29515044dccd6d"
+  },
+  "src-js/fontra-core/src/opfs-write-worker.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4210994,
+    "ast_hash": "5357c32b282f6dc4cd4020eb6bf4f2bd",
+    "semantic_hash": "5357c32b282f6dc4cd4020eb6bf4f2bd"
+  },
+  "src-js/fontra-core/src/opfs.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211004,
+    "ast_hash": "e4a64b9850b5ebaa2ff8a20db3309ead",
+    "semantic_hash": "e4a64b9850b5ebaa2ff8a20db3309ead"
+  },
+  "src-js/fontra-core/src/parse-glyphset.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211009,
+    "ast_hash": "4bef512a7ff4afdf3a20536b0c495710",
+    "semantic_hash": "4bef512a7ff4afdf3a20536b0c495710"
+  },
+  "src-js/fontra-core/src/path-functions.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211016,
+    "ast_hash": "7f4b19cca70c0b378a16ca621bd011b6",
+    "semantic_hash": "7f4b19cca70c0b378a16ca621bd011b6"
+  },
+  "src-js/fontra-core/src/path-hit-tester.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.421102,
+    "ast_hash": "a98814bd47986e6a869cbec90c675d44",
+    "semantic_hash": "a98814bd47986e6a869cbec90c675d44"
+  },
+  "src-js/fontra-core/src/queue-iterator.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211028,
+    "ast_hash": "724a7ace9e7fce316f6fa0ca8ca70cde",
+    "semantic_hash": "724a7ace9e7fce316f6fa0ca8ca70cde"
+  },
+  "src-js/fontra-core/src/rectangle.ts": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.421104,
+    "ast_hash": "cfa7778925cb42e56881ceb309dd37dc",
+    "semantic_hash": "cfa7778925cb42e56881ceb309dd37dc"
+  },
+  "src-js/fontra-core/src/remote.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211047,
+    "ast_hash": "d8be65394cbad5e773751c3101351dbd",
+    "semantic_hash": "d8be65394cbad5e773751c3101351dbd"
+  },
+  "src-js/fontra-core/src/representation-cache.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211054,
+    "ast_hash": "6940e93cff8245d360e0fcbf520c7c33",
+    "semantic_hash": "6940e93cff8245d360e0fcbf520c7c33"
+  },
+  "src-js/fontra-core/src/scene-view.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.421106,
+    "ast_hash": "0b91eb5328b59aac48e77e0838aeeb29",
+    "semantic_hash": "0b91eb5328b59aac48e77e0838aeeb29"
+  },
+  "src-js/fontra-core/src/serif-geometry.js": {
+    "mtime": 1787749853.9222026,
+    "seen": 1787930937.421107,
+    "ast_hash": "c5987b5fe8a6d327483d4089c9ca5742",
+    "semantic_hash": "c5987b5fe8a6d327483d4089c9ca5742"
+  },
+  "src-js/fontra-core/src/set-ops.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211078,
+    "ast_hash": "2ec395020ca019f72acdb6b243de797c",
+    "semantic_hash": "2ec395020ca019f72acdb6b243de797c"
+  },
+  "src-js/fontra-core/src/shaper-controller.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211082,
+    "ast_hash": "e793a700e7ee92d3ecdae4f1508a6abb",
+    "semantic_hash": "e793a700e7ee92d3ecdae4f1508a6abb"
+  },
+  "src-js/fontra-core/src/shaper.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.421109,
+    "ast_hash": "057c9c9735967c886137c5c60f8948d8",
+    "semantic_hash": "057c9c9735967c886137c5c60f8948d8"
+  },
+  "src-js/fontra-core/src/simple-compute.js": {
+    "mtime": 1787749853.9227145,
+    "seen": 1787930937.4211106,
+    "ast_hash": "e76f457e3f3edf3b13fac27ba1b41166",
+    "semantic_hash": "e76f457e3f3edf3b13fac27ba1b41166"
+  },
+  "src-js/fontra-core/src/skeleton-generator.js": {
+    "mtime": 1787749853.9242465,
+    "seen": 1787930937.4211113,
+    "ast_hash": "f2bfbdacf259559190046870121c5e7d",
+    "semantic_hash": "f2bfbdacf259559190046870121c5e7d"
+  },
+  "src-js/fontra-core/src/skeleton-model.js": {
+    "mtime": 1787749853.925295,
+    "seen": 1787930937.421112,
+    "ast_hash": "e30bbef9135c91e5e16c511c9c33a06b",
+    "semantic_hash": "e30bbef9135c91e5e16c511c9c33a06b"
+  },
+  "src-js/fontra-core/src/snapping.js": {
+    "mtime": 1787903452.9532835,
+    "seen": 1787930937.4211128,
+    "ast_hash": "db08d554303be65759889bf6491c722b",
+    "semantic_hash": "db08d554303be65759889bf6491c722b"
+  },
+  "src-js/fontra-core/src/svg-utils.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211135,
+    "ast_hash": "5012a3da2f0203ef883dc558b8b589e0",
+    "semantic_hash": "5012a3da2f0203ef883dc558b8b589e0"
+  },
+  "src-js/fontra-core/src/task-pool.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211144,
+    "ast_hash": "f33beb31ea642c14d9832800060b00cb",
+    "semantic_hash": "f33beb31ea642c14d9832800060b00cb"
+  },
+  "src-js/fontra-core/src/tension-aware-edit.js": {
+    "mtime": 1787749853.9258146,
+    "seen": 1787930937.421115,
+    "ast_hash": "2043e1a66132d68fbb165ac7ff2aef6a",
+    "semantic_hash": "2043e1a66132d68fbb165ac7ff2aef6a"
+  },
+  "src-js/fontra-core/src/theme-settings.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211159,
+    "ast_hash": "154172b6989db60ef16c769ad8db63c1",
+    "semantic_hash": "154172b6989db60ef16c769ad8db63c1"
+  },
+  "src-js/fontra-core/src/transform.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211166,
+    "ast_hash": "c9192c8d94c5cdd318e215e64060d6fe",
+    "semantic_hash": "c9192c8d94c5cdd318e215e64060d6fe"
+  },
+  "src-js/fontra-core/src/tunni-calculations.js": {
+    "mtime": 1787749853.9268444,
+    "seen": 1787930937.421117,
+    "ast_hash": "45396cc7a6a8b1bf1ed382349f0943fe",
+    "semantic_hash": "45396cc7a6a8b1bf1ed382349f0943fe"
+  },
+  "src-js/fontra-core/src/ui-utils.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211183,
+    "ast_hash": "fcfca33f0c8c6f93d206d8586deeda30",
+    "semantic_hash": "fcfca33f0c8c6f93d206d8586deeda30"
+  },
+  "src-js/fontra-core/src/unicode-scripts-blocks.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211187,
+    "ast_hash": "4dd2b628e6ba029e4cb87f0442141a48",
+    "semantic_hash": "4dd2b628e6ba029e4cb87f0442141a48"
+  },
+  "src-js/fontra-core/src/unicode-utils.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211197,
+    "ast_hash": "9e800b981a677f3c8cd4b4ed31298cf6",
+    "semantic_hash": "9e800b981a677f3c8cd4b4ed31298cf6"
+  },
+  "src-js/fontra-core/src/utils.ts": {
+    "mtime": 1787912036.9579606,
+    "seen": 1787930937.421121,
+    "ast_hash": "f837cbfaa78287256b6ceac2a1c90078",
+    "semantic_hash": "f837cbfaa78287256b6ceac2a1c90078"
+  },
+  "src-js/fontra-core/src/var-array.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211216,
+    "ast_hash": "f0c4c18c467ba22c2e5e2c328ebc7b52",
+    "semantic_hash": "f0c4c18c467ba22c2e5e2c328ebc7b52"
+  },
+  "src-js/fontra-core/src/var-funcs.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211223,
+    "ast_hash": "387dc2c2a9fe3d527cde3126c0012b0d",
+    "semantic_hash": "387dc2c2a9fe3d527cde3126c0012b0d"
+  },
+  "src-js/fontra-core/src/var-glyph.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.421123,
+    "ast_hash": "99ea453f7197facdd99a106cbb16bd29",
+    "semantic_hash": "99ea453f7197facdd99a106cbb16bd29"
+  },
+  "src-js/fontra-core/src/var-model.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211237,
+    "ast_hash": "63af489c837bbaa1b386e66d5fd83ae8",
+    "semantic_hash": "63af489c837bbaa1b386e66d5fd83ae8"
+  },
+  "src-js/fontra-core/src/var-path.js": {
+    "mtime": 1785162504.6877792,
+    "seen": 1787930937.421125,
+    "ast_hash": "8c0ba681c5ec06334bb8653a1094912f",
+    "semantic_hash": "8c0ba681c5ec06334bb8653a1094912f"
+  },
+  "src-js/fontra-core/src/vector.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.421126,
+    "ast_hash": "67e880f9ae776d227ac7d354abd841dd",
+    "semantic_hash": "67e880f9ae776d227ac7d354abd841dd"
+  },
+  "src-js/fontra-core/src/view-controller.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211266,
+    "ast_hash": "5d5fab73b28262be4459015c49afc2c4",
+    "semantic_hash": "5d5fab73b28262be4459015c49afc2c4"
+  },
+  "src-js/fontra-core/src/webpack-base.js": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211273,
+    "ast_hash": "892123a30f428173ba4b7b976cdec042",
+    "semantic_hash": "892123a30f428173ba4b7b976cdec042"
+  },
+  "src-js/fontra-core/tests/data/cond-subst/cond-subst.fontra/font-data.json": {
+    "mtime": 1785137807.9112625,
+    "seen": 1787930937.4211283,
+    "ast_hash": "97b5b8cd6666847e09c94cf4fe45380b",
+    "semantic_hash": "97b5b8cd6666847e09c94cf4fe45380b"
+  },
+  "src-js/fontra-core/tests/data/cond-subst/cond-subst.fontra/glyphs/cent.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211287,
+    "ast_hash": "f89ddb6e431d367710f4c005f7094c30",
+    "semantic_hash": "f89ddb6e431d367710f4c005f7094c30"
+  },
+  "src-js/fontra-core/tests/data/cond-subst/cond-subst.fontra/glyphs/cent.rvrn.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211297,
+    "ast_hash": "96d4b16e196a86d667b939af384da942",
+    "semantic_hash": "96d4b16e196a86d667b939af384da942"
+  },
+  "src-js/fontra-core/tests/data/cond-subst/cond-subst.fontra/glyphs/fi.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211304,
+    "ast_hash": "d1bdf26dd145ebb060849af1e9b494a5",
+    "semantic_hash": "d1bdf26dd145ebb060849af1e9b494a5"
+  },
+  "src-js/fontra-core/tests/data/cond-subst/cond-subst.fontra/glyphs/fi.rvrn.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211314,
+    "ast_hash": "a706012d7d738c221b10b84a7ab66df3",
+    "semantic_hash": "a706012d7d738c221b10b84a7ab66df3"
+  },
+  "src-js/fontra-core/tests/data/cond-subst/cond-subst.fontra/glyphs/oslash.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211318,
+    "ast_hash": "f7b235578fea1c689b2926a4e9a520be",
+    "semantic_hash": "f7b235578fea1c689b2926a4e9a520be"
+  },
+  "src-js/fontra-core/tests/data/cond-subst/cond-subst.fontra/glyphs/oslash.rvrn.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211326,
+    "ast_hash": "d5722714a7a7be9adf45d51e25ea3549",
+    "semantic_hash": "d5722714a7a7be9adf45d51e25ea3549"
+  },
+  "src-js/fontra-core/tests/data/cond-subst/cond-subst.fontra/glyphs/space.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211333,
+    "ast_hash": "37f0c171573d588f79bc76d7ff9adc1c",
+    "semantic_hash": "37f0c171573d588f79bc76d7ff9adc1c"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/font-data.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.421134,
+    "ast_hash": "638bfbdd95e55a28283a3f69872a0640",
+    "semantic_hash": "638bfbdd95e55a28283a3f69872a0640"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/%2Enotdef.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211352,
+    "ast_hash": "b169a851288d85c00ac6cfb23c538cd0",
+    "semantic_hash": "b169a851288d85c00ac6cfb23c538cd0"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/A.alt^1.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.421136,
+    "ast_hash": "171ce4ebd35094a9566c8acb5e22cf97",
+    "semantic_hash": "171ce4ebd35094a9566c8acb5e22cf97"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/A^1.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.421137,
+    "ast_hash": "4ff71a7c2889df65228c2e1be2f15150",
+    "semantic_hash": "4ff71a7c2889df65228c2e1be2f15150"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/B.alt^1.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211378,
+    "ast_hash": "7e48f76ad9ba60492c42890cbb470dce",
+    "semantic_hash": "7e48f76ad9ba60492c42890cbb470dce"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/B^1.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211388,
+    "ast_hash": "8d564f7f21edaed7c75178bbbff245c4",
+    "semantic_hash": "8d564f7f21edaed7c75178bbbff245c4"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/C.alt^1.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211395,
+    "ast_hash": "275c492c1e5fe96fd31cb6ad215de0ff",
+    "semantic_hash": "275c492c1e5fe96fd31cb6ad215de0ff"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/C^1.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211402,
+    "ast_hash": "9d21a2f3a0a54b597da6503f5f510ba9",
+    "semantic_hash": "9d21a2f3a0a54b597da6503f5f510ba9"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/H^1.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211407,
+    "ast_hash": "68cd3c99339416f62c1f4c22974a3257",
+    "semantic_hash": "68cd3c99339416f62c1f4c22974a3257"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/H_H^5.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211419,
+    "ast_hash": "400f3f21f9a76f22751e430eb9dd50fa",
+    "semantic_hash": "400f3f21f9a76f22751e430eb9dd50fa"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/alef-ar.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211426,
+    "ast_hash": "b5f0dc8393bafaf054ed794f1225325a",
+    "semantic_hash": "b5f0dc8393bafaf054ed794f1225325a"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/beh-ar.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211433,
+    "ast_hash": "77a67bc28d5ce2c317a1ff7c5f1dc8a6",
+    "semantic_hash": "77a67bc28d5ce2c317a1ff7c5f1dc8a6"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/dotaccentcomb.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211442,
+    "ast_hash": "35061eb666b7384a76beb2f18373dbdc",
+    "semantic_hash": "35061eb666b7384a76beb2f18373dbdc"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/dotbelowcomb.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211452,
+    "ast_hash": "9cad1b507f570bc314d9048860c5862e",
+    "semantic_hash": "9cad1b507f570bc314d9048860c5862e"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/macroncomb.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.421146,
+    "ast_hash": "e0eb955ea781c12a2f87d47a550486cc",
+    "semantic_hash": "e0eb955ea781c12a2f87d47a550486cc"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/space.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211466,
+    "ast_hash": "9486994503af3d2199b12299c8d0ae9d",
+    "semantic_hash": "9486994503af3d2199b12299c8d0ae9d"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/glyphs/teh-ar.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211473,
+    "ast_hash": "86ac8b599bb6e62637fe8e33205438ca",
+    "semantic_hash": "86ac8b599bb6e62637fe8e33205438ca"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/font-data.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211478,
+    "ast_hash": "f663db7651bcc2610d87fa552a80fe7a",
+    "semantic_hash": "f663db7651bcc2610d87fa552a80fe7a"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/%2Enotdef.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211488,
+    "ast_hash": "5bf2ef33dd98c3ad0bbf9af0da310eac",
+    "semantic_hash": "5bf2ef33dd98c3ad0bbf9af0da310eac"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.005.1.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211495,
+    "ast_hash": "4a00aa684b51779cf8baa2c8d11ebb19",
+    "semantic_hash": "4a00aa684b51779cf8baa2c8d11ebb19"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.005.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211504,
+    "ast_hash": "9f5278e597e7710f3e9205ec2d08d80d",
+    "semantic_hash": "9f5278e597e7710f3e9205ec2d08d80d"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.010.1.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.421151,
+    "ast_hash": "acfd422c1267ed94dc44c230549a4d0d",
+    "semantic_hash": "acfd422c1267ed94dc44c230549a4d0d"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.010.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.421152,
+    "ast_hash": "79261ec35f31d2002b4bd8c2ec0961d6",
+    "semantic_hash": "79261ec35f31d2002b4bd8c2ec0961d6"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.030.1.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211528,
+    "ast_hash": "18fd8ea3433d67ed544ff53b5f2be2f4",
+    "semantic_hash": "18fd8ea3433d67ed544ff53b5f2be2f4"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.030.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211533,
+    "ast_hash": "e161a4861e0ac9c2e6b21251fd660562",
+    "semantic_hash": "e161a4861e0ac9c2e6b21251fd660562"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.040.1.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.421154,
+    "ast_hash": "971879c7b7a0a43b8bb0eb4c65a5b241",
+    "semantic_hash": "971879c7b7a0a43b8bb0eb4c65a5b241"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.040.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211547,
+    "ast_hash": "e9b7eabdcb39cf50d3853d4ae5e1d663",
+    "semantic_hash": "e9b7eabdcb39cf50d3853d4ae5e1d663"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.050.1.json": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4211557,
+    "ast_hash": "7dd8aa22ebfc667f4ff6e91780dfe91d",
+    "semantic_hash": "7dd8aa22ebfc667f4ff6e91780dfe91d"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.050.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211564,
+    "ast_hash": "f17805d2e60b50b62dc0648aaf1354cc",
+    "semantic_hash": "f17805d2e60b50b62dc0648aaf1354cc"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.060.1.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211571,
+    "ast_hash": "5fedcc0232dcec7e205995157e84b075",
+    "semantic_hash": "5fedcc0232dcec7e205995157e84b075"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.060.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.421158,
+    "ast_hash": "2e4437cd9028fc5fce2e7c2cab75b45b",
+    "semantic_hash": "2e4437cd9028fc5fce2e7c2cab75b45b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.070.1.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211586,
+    "ast_hash": "dbb9a6f8718727dc03c78ba456ff1e2f",
+    "semantic_hash": "dbb9a6f8718727dc03c78ba456ff1e2f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.070.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211595,
+    "ast_hash": "ea8003a252b75879c16bbfd437780cf6",
+    "semantic_hash": "ea8003a252b75879c16bbfd437780cf6"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.080.1.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211602,
+    "ast_hash": "72983d0403c4b9c55acb7be2bb897ba1",
+    "semantic_hash": "72983d0403c4b9c55acb7be2bb897ba1"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.080.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.421161,
+    "ast_hash": "937a6b4a257ad13404ccae040ecb4191",
+    "semantic_hash": "937a6b4a257ad13404ccae040ecb4191"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.090.1.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211617,
+    "ast_hash": "3740069cef485271c70a5ee2c5851289",
+    "semantic_hash": "3740069cef485271c70a5ee2c5851289"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.090.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211626,
+    "ast_hash": "d603cc9934603e4453ea9fe008fc9993",
+    "semantic_hash": "d603cc9934603e4453ea9fe008fc9993"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.100.1.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211633,
+    "ast_hash": "e02a78424fed1e6ed8815062bf65d52a",
+    "semantic_hash": "e02a78424fed1e6ed8815062bf65d52a"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.100.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211638,
+    "ast_hash": "b7410bf412467549fb9aad77d2735376",
+    "semantic_hash": "b7410bf412467549fb9aad77d2735376"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.200.1.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211645,
+    "ast_hash": "dec9cef1823b7f46df76775d280e8673",
+    "semantic_hash": "dec9cef1823b7f46df76775d280e8673"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.200.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211652,
+    "ast_hash": "4814d73e08a756533ec9b1fb38ba85fe",
+    "semantic_hash": "4814d73e08a756533ec9b1fb38ba85fe"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.alef.1.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.421166,
+    "ast_hash": "72e1b38a94c8d42f41e00dfd59a7e0c1",
+    "semantic_hash": "72e1b38a94c8d42f41e00dfd59a7e0c1"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.alef.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211667,
+    "ast_hash": "6924cd6e6770f25ae61a8949bffd9a9b",
+    "semantic_hash": "6924cd6e6770f25ae61a8949bffd9a9b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.decoration0.1.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211676,
+    "ast_hash": "fb77bc59ec6742115efe668cb3b67fc1",
+    "semantic_hash": "fb77bc59ec6742115efe668cb3b67fc1"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.decoration0.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211683,
+    "ast_hash": "1df222a8cd299c44ea28a7d85acaf286",
+    "semantic_hash": "1df222a8cd299c44ea28a7d85acaf286"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.decoration1.1.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.421169,
+    "ast_hash": "b7b4fc858c9add4bdf3a3b4a7ae50dab",
+    "semantic_hash": "b7b4fc858c9add4bdf3a3b4a7ae50dab"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.decoration1.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211702,
+    "ast_hash": "c3387682462310928aacfe1e444d5a56",
+    "semantic_hash": "c3387682462310928aacfe1e444d5a56"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.noon.1.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211707,
+    "ast_hash": "9854c333e8d11df5db8a9de29dad0d3b",
+    "semantic_hash": "9854c333e8d11df5db8a9de29dad0d3b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.noon.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211717,
+    "ast_hash": "02c3253e1d33a3ee11875e76abe7e65c",
+    "semantic_hash": "02c3253e1d33a3ee11875e76abe7e65c"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.reh.1.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211724,
+    "ast_hash": "647fe51bbc9184510a6186f7bb7142f3",
+    "semantic_hash": "647fe51bbc9184510a6186f7bb7142f3"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.reh.json": {
+    "mtime": 1785137807.9427865,
+    "seen": 1787930937.4211733,
+    "ast_hash": "77454ab8e9e4533f56ce3680299bd535",
+    "semantic_hash": "77454ab8e9e4533f56ce3680299bd535"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.ring0.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.421174,
+    "ast_hash": "e39e93acd1f852d850908f3a81a81bab",
+    "semantic_hash": "e39e93acd1f852d850908f3a81a81bab"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.ring1.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211748,
+    "ast_hash": "f3d68127a8fd2eb32c576097916156c2",
+    "semantic_hash": "f3d68127a8fd2eb32c576097916156c2"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.sajdah.1.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211757,
+    "ast_hash": "e6cb2b17ec09f1098fd800de53a37554",
+    "semantic_hash": "e6cb2b17ec09f1098fd800de53a37554"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.sajdah.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211767,
+    "ast_hash": "66c624c1997f4622da0d66e5dbef9cd7",
+    "semantic_hash": "66c624c1997f4622da0d66e5dbef9cd7"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.waw.1.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.42118,
+    "ast_hash": "4849369eedb618b3cda758e0bc48d8c2",
+    "semantic_hash": "4849369eedb618b3cda758e0bc48d8c2"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_ayah.waw.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211805,
+    "ast_hash": "5fc6b3a05c3810481ede9b11303d91ae",
+    "semantic_hash": "5fc6b3a05c3810481ede9b11303d91ae"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.ain.dal.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211812,
+    "ast_hash": "87386fcfae776083cf7acec66acea98b",
+    "semantic_hash": "87386fcfae776083cf7acec66acea98b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.ain.init.beh.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211826,
+    "ast_hash": "c68aa569008845f1fc82b69184d7fada",
+    "semantic_hash": "c68aa569008845f1fc82b69184d7fada"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.ain.medi.beh.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211833,
+    "ast_hash": "86a8c86b358fc0361e0bc747fbdb0864",
+    "semantic_hash": "86a8c86b358fc0361e0bc747fbdb0864"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.ain.medi.reh.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.421184,
+    "ast_hash": "a96a5148950300b0ab4e5ff54ced3dfc",
+    "semantic_hash": "a96a5148950300b0ab4e5ff54ced3dfc"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.ain.meem.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211848,
+    "ast_hash": "52a0ff3b9c55aa658a1da235bdb35c21",
+    "semantic_hash": "52a0ff3b9c55aa658a1da235bdb35c21"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.ain.yeh.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211855,
+    "ast_hash": "c92613dbf2b420934c42c8bb04e62161",
+    "semantic_hash": "c92613dbf2b420934c42c8bb04e62161"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.feh.init.beh.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.421186,
+    "ast_hash": "5f2c0e85ab86d18d4700f5bd1006be26",
+    "semantic_hash": "5f2c0e85ab86d18d4700f5bd1006be26"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.feh.init.dal.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211872,
+    "ast_hash": "4aeb60e42adf18ab04be1475842fe9c9",
+    "semantic_hash": "4aeb60e42adf18ab04be1475842fe9c9"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.feh.medi.beh.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211879,
+    "ast_hash": "186430e2ad0ca5be7c604140d3a84d23",
+    "semantic_hash": "186430e2ad0ca5be7c604140d3a84d23"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.feh.medi.dal.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211886,
+    "ast_hash": "eacd137a228dadd92d73e611f07affd2",
+    "semantic_hash": "eacd137a228dadd92d73e611f07affd2"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.feh.medi.meem.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211895,
+    "ast_hash": "0f45a38d38ebcf05870e318a4f9bb1e2",
+    "semantic_hash": "0f45a38d38ebcf05870e318a4f9bb1e2"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.feh.medi.reh.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211905,
+    "ast_hash": "b48074010fa633fc7ceb2c885b747845",
+    "semantic_hash": "b48074010fa633fc7ceb2c885b747845"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.feh.medi.waw.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211912,
+    "ast_hash": "45b43dcab7be8c0a44f9295b49e60156",
+    "semantic_hash": "45b43dcab7be8c0a44f9295b49e60156"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.hah.beh.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.421192,
+    "ast_hash": "3ff38869ad10d8d341a87c9a4ab32225",
+    "semantic_hash": "3ff38869ad10d8d341a87c9a4ab32225"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.hah.dal.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211926,
+    "ast_hash": "95cbb5acdc080a6341cb0d850df8d05b",
+    "semantic_hash": "95cbb5acdc080a6341cb0d850df8d05b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.hah.noon.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211931,
+    "ast_hash": "fe7a642fc5c13f20aad52cdd3bd7e20d",
+    "semantic_hash": "fe7a642fc5c13f20aad52cdd3bd7e20d"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.hah.reh.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.421194,
+    "ast_hash": "f7315372632f434d6243e1ae4713c65a",
+    "semantic_hash": "f7315372632f434d6243e1ae4713c65a"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.seen.beh.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211948,
+    "ast_hash": "574ef68008d34431dbbeb98b5872a7a1",
+    "semantic_hash": "574ef68008d34431dbbeb98b5872a7a1"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_c.seen.meem.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211955,
+    "ast_hash": "09557372b7fed41a5a2d80f5e12180ea",
+    "semantic_hash": "09557372b7fed41a5a2d80f5e12180ea"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_dot.circle.json": {
+    "mtime": 1785137807.950704,
+    "seen": 1787930937.4211962,
+    "ast_hash": "2a52e6fb128a9ba2f39d4f56efdb4dc1",
+    "semantic_hash": "2a52e6fb128a9ba2f39d4f56efdb4dc1"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_dot.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421197,
+    "ast_hash": "db07a08352fc5fac84ae1c4027316345",
+    "semantic_hash": "db07a08352fc5fac84ae1c4027316345"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_p.dal.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421198,
+    "ast_hash": "f8fafe4d2e7765f3575a2720ac8f9b30",
+    "semantic_hash": "f8fafe4d2e7765f3575a2720ac8f9b30"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_p.lam.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4211986,
+    "ast_hash": "23fb50cee457b38bc71b56468a3f77dd",
+    "semantic_hash": "23fb50cee457b38bc71b56468a3f77dd"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/_p.sad.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4211993,
+    "ast_hash": "ba1041ac6ddc653787ee76987656f4a9",
+    "semantic_hash": "ba1041ac6ddc653787ee76987656f4a9"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ain-ar.fina.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4211998,
+    "ast_hash": "698a94d13b0162ff025a27aba26b8cde",
+    "semantic_hash": "698a94d13b0162ff025a27aba26b8cde"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ain-ar.init.hah.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421201,
+    "ast_hash": "8394721862647a25d35255f8b649572a",
+    "semantic_hash": "8394721862647a25d35255f8b649572a"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ain-ar.init.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212015,
+    "ast_hash": "4193bee35f05b7f8e82d97203b52c81d",
+    "semantic_hash": "4193bee35f05b7f8e82d97203b52c81d"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ain-ar.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212022,
+    "ast_hash": "854b8850141cd4a7b85a197fdbe14cb7",
+    "semantic_hash": "854b8850141cd4a7b85a197fdbe14cb7"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ain-ar.medi.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421203,
+    "ast_hash": "7b9cd52eba2c65aa9fe7c060e5964d65",
+    "semantic_hash": "7b9cd52eba2c65aa9fe7c060e5964d65"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ain-ar.medi.l1.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212036,
+    "ast_hash": "665d4bef5beadd115a04357d4ce3b7f5",
+    "semantic_hash": "665d4bef5beadd115a04357d4ce3b7f5"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ain-ar.medi.l2.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212065,
+    "ast_hash": "e95f67afd98e1c9121e6ef0ec8082aa0",
+    "semantic_hash": "e95f67afd98e1c9121e6ef0ec8082aa0"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alef-ar.fina.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212072,
+    "ast_hash": "bab05bbec79f4784272c81c02a583833",
+    "semantic_hash": "bab05bbec79f4784272c81c02a583833"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alef-ar.fina.kashida.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212084,
+    "ast_hash": "6856435188dda94cfe20dba729148042",
+    "semantic_hash": "6856435188dda94cfe20dba729148042"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alef-ar.fina.short.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421209,
+    "ast_hash": "79e4764122b099cc160d02d3f9ce2568",
+    "semantic_hash": "79e4764122b099cc160d02d3f9ce2568"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alef-ar.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212096,
+    "ast_hash": "8308cf32f5a1258d5f52c757d971644c",
+    "semantic_hash": "8308cf32f5a1258d5f52c757d971644c"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefHamzaabove-ar^G.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212105,
+    "ast_hash": "c2dc3b02e459b98e04950b120e259850",
+    "semantic_hash": "c2dc3b02e459b98e04950b120e259850"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefHamzabelow-ar^G.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212112,
+    "ast_hash": "09ba6fb04b3bbc50d584568945903667",
+    "semantic_hash": "09ba6fb04b3bbc50d584568945903667"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefMadda-ar^G.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421212,
+    "ast_hash": "847968718af551141b1251ea9fc200cd",
+    "semantic_hash": "847968718af551141b1251ea9fc200cd"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefMaksura-ar.fina.salt^G.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212132,
+    "ast_hash": "e89d210f608d101837fa6b4d9d040ba3",
+    "semantic_hash": "e89d210f608d101837fa6b4d9d040ba3"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefMaksura-ar.fina.tooth^G.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212139,
+    "ast_hash": "7a1a7df621876a766f6d317acca5f24b",
+    "semantic_hash": "7a1a7df621876a766f6d317acca5f24b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefMaksura-ar.fina.wide.salt^G.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212148,
+    "ast_hash": "c3308df114eed10b66f366e05a44b2c2",
+    "semantic_hash": "c3308df114eed10b66f366e05a44b2c2"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefMaksura-ar.fina.wide^G.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212153,
+    "ast_hash": "10c7cb41c5fe92168b23fa9ea45140bf",
+    "semantic_hash": "10c7cb41c5fe92168b23fa9ea45140bf"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefMaksura-ar.fina^G.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421216,
+    "ast_hash": "2cc41aae2830cba85cffba2740ac62d0",
+    "semantic_hash": "2cc41aae2830cba85cffba2740ac62d0"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefMaksura-ar.salt^G.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212167,
+    "ast_hash": "c74911a53e3b67748d1521bd7cd6db5c",
+    "semantic_hash": "c74911a53e3b67748d1521bd7cd6db5c"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefMaksura-ar^G.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212174,
+    "ast_hash": "228dec47b5d40d3494e5dd637388665d",
+    "semantic_hash": "228dec47b5d40d3494e5dd637388665d"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefWasla-ar^G.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212182,
+    "ast_hash": "2c88d8fc137c2f704112861d91a1bbec",
+    "semantic_hash": "2c88d8fc137c2f704112861d91a1bbec"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefabove-ar.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212189,
+    "ast_hash": "0f18989447bf63f28cf2d34d1584e448",
+    "semantic_hash": "0f18989447bf63f28cf2d34d1584e448"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/alefbelow-ar.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212196,
+    "ast_hash": "7223c14101e398c37ff6dbfc48c2b321",
+    "semantic_hash": "7223c14101e398c37ff6dbfc48c2b321"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.005.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212205,
+    "ast_hash": "0d7b95d79b768e8de58324e591266e60",
+    "semantic_hash": "0d7b95d79b768e8de58324e591266e60"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.010.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421221,
+    "ast_hash": "c13d8ba6a6b216a1b257d8b767a9e660",
+    "semantic_hash": "c13d8ba6a6b216a1b257d8b767a9e660"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.020.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421222,
+    "ast_hash": "2023e251944329d39664e207945ce8b3",
+    "semantic_hash": "2023e251944329d39664e207945ce8b3"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.030.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212227,
+    "ast_hash": "d3d0b2ef39c70ce7587c462107ae7ef9",
+    "semantic_hash": "d3d0b2ef39c70ce7587c462107ae7ef9"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.040.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212234,
+    "ast_hash": "e9fc43d6553dacc5674d41cbc92facdd",
+    "semantic_hash": "e9fc43d6553dacc5674d41cbc92facdd"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.050.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421224,
+    "ast_hash": "e0cf5f166e01b989a156f2fd3440710e",
+    "semantic_hash": "e0cf5f166e01b989a156f2fd3440710e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.060.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421225,
+    "ast_hash": "88e00f00a58ef6d96b1302881020766d",
+    "semantic_hash": "88e00f00a58ef6d96b1302881020766d"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.070.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212258,
+    "ast_hash": "a21227484b5f6cfd2cccea62683dda35",
+    "semantic_hash": "a21227484b5f6cfd2cccea62683dda35"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.080.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212265,
+    "ast_hash": "ce03603d89e8ce72219c733a17660ed4",
+    "semantic_hash": "ce03603d89e8ce72219c733a17660ed4"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.090.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421227,
+    "ast_hash": "432bc472f440b5ef4bad7bff13048db3",
+    "semantic_hash": "432bc472f440b5ef4bad7bff13048db3"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.100.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212282,
+    "ast_hash": "6f2076d0477a9cc41f77770174634b72",
+    "semantic_hash": "6f2076d0477a9cc41f77770174634b72"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.110.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212291,
+    "ast_hash": "b0007b475ac7ce6993a7c4e4cb5c0590",
+    "semantic_hash": "b0007b475ac7ce6993a7c4e4cb5c0590"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.120.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212298,
+    "ast_hash": "64cc0e6683beff8d9f57521087f05481",
+    "semantic_hash": "64cc0e6683beff8d9f57521087f05481"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.130.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421231,
+    "ast_hash": "53228f30472ac09ecd0af89702b67302",
+    "semantic_hash": "53228f30472ac09ecd0af89702b67302"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.140.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.421233,
+    "ast_hash": "e27a62b1b18c8ed44078029385d43f8e",
+    "semantic_hash": "e27a62b1b18c8ed44078029385d43f8e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.150.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212337,
+    "ast_hash": "44ba06b271c2b75bfa311da259a0dd70",
+    "semantic_hash": "44ba06b271c2b75bfa311da259a0dd70"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.160.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212346,
+    "ast_hash": "916d9a8bdeaa8a12581534663a7e9e05",
+    "semantic_hash": "916d9a8bdeaa8a12581534663a7e9e05"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.170.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212356,
+    "ast_hash": "89897302b26a958fdaa73a7654ec0fcc",
+    "semantic_hash": "89897302b26a958fdaa73a7654ec0fcc"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.180.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212365,
+    "ast_hash": "841e269954d8c791d31c1d6ac1846ebf",
+    "semantic_hash": "841e269954d8c791d31c1d6ac1846ebf"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.190.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212375,
+    "ast_hash": "e37223c955e5f3eae6930d6d9112f30f",
+    "semantic_hash": "e37223c955e5f3eae6930d6d9112f30f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.200.json": {
+    "mtime": 1785137807.958732,
+    "seen": 1787930937.4212382,
+    "ast_hash": "9fe289604348f35829d897fb70baf64e",
+    "semantic_hash": "9fe289604348f35829d897fb70baf64e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.210.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212394,
+    "ast_hash": "af532742a945c7f84dae79b37671e0f4",
+    "semantic_hash": "af532742a945c7f84dae79b37671e0f4"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.220.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.42124,
+    "ast_hash": "f6b567792937e716c2a4109fff75eb11",
+    "semantic_hash": "f6b567792937e716c2a4109fff75eb11"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.230.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421241,
+    "ast_hash": "e7e43c3a8aeb7f5f408127023d71670c",
+    "semantic_hash": "e7e43c3a8aeb7f5f408127023d71670c"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.240.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421242,
+    "ast_hash": "6d1127f1c1591d7ecea42a4e96fe0ec0",
+    "semantic_hash": "6d1127f1c1591d7ecea42a4e96fe0ec0"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.250.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421243,
+    "ast_hash": "d67a10d468e7e91b7593448fb3dadd1a",
+    "semantic_hash": "d67a10d468e7e91b7593448fb3dadd1a"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.260.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421244,
+    "ast_hash": "4b95cdf127c8f0e4df3383573c535525",
+    "semantic_hash": "4b95cdf127c8f0e4df3383573c535525"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.270.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421245,
+    "ast_hash": "57dafba6430dd243c2fa1153243df78a",
+    "semantic_hash": "57dafba6430dd243c2fa1153243df78a"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ayah.280.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212465,
+    "ast_hash": "96060f7753662e0bbf54d7cca9c27259",
+    "semantic_hash": "96060f7753662e0bbf54d7cca9c27259"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/beh-ar.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212472,
+    "ast_hash": "c2bd5ba46ca9326b6f738bedb1e313fb",
+    "semantic_hash": "c2bd5ba46ca9326b6f738bedb1e313fb"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar.fina^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212482,
+    "ast_hash": "4fb1f4c59e4c32af6cb546df3ea6b23f",
+    "semantic_hash": "4fb1f4c59e4c32af6cb546df3ea6b23f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar.init.hah^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421249,
+    "ast_hash": "008fd918a5766b03c4354d19e809ff4c",
+    "semantic_hash": "008fd918a5766b03c4354d19e809ff4c"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar.init.high^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212499,
+    "ast_hash": "2831a45ccc4fcf4b9cad89957997f8cd",
+    "semantic_hash": "2831a45ccc4fcf4b9cad89957997f8cd"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar.init.med^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212503,
+    "ast_hash": "4063c2771024d571f668f0f3e63018a3",
+    "semantic_hash": "4063c2771024d571f668f0f3e63018a3"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar.init^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421251,
+    "ast_hash": "b7b1b88f17c8e82529374c188a636858",
+    "semantic_hash": "b7b1b88f17c8e82529374c188a636858"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar.medi.high^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421252,
+    "ast_hash": "d8e1c40c032071f5debc89e151a75f31",
+    "semantic_hash": "d8e1c40c032071f5debc89e151a75f31"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar.medi.l1^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212532,
+    "ast_hash": "e78e64959282f89ce8db7cb5c6216bab",
+    "semantic_hash": "e78e64959282f89ce8db7cb5c6216bab"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar.medi.l2^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212537,
+    "ast_hash": "d7e52e267b79bc0b90aaebde4ece4e43",
+    "semantic_hash": "d7e52e267b79bc0b90aaebde4ece4e43"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar.medi.med^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212549,
+    "ast_hash": "f74dd289c6c6e298da648e8124b85b37",
+    "semantic_hash": "f74dd289c6c6e298da648e8124b85b37"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar.medi.round.kashida^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212558,
+    "ast_hash": "eb319819db752a5425cfaee8bc9d0099",
+    "semantic_hash": "eb319819db752a5425cfaee8bc9d0099"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar.medi.round^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212568,
+    "ast_hash": "a067f9af3eaa9051c97cb8a4f2870183",
+    "semantic_hash": "a067f9af3eaa9051c97cb8a4f2870183"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar.medi^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212577,
+    "ast_hash": "d68050c90339aa0ea84da599cc6effeb",
+    "semantic_hash": "d68050c90339aa0ea84da599cc6effeb"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/behDotless-ar^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212587,
+    "ast_hash": "ac7b3ef6aa99f1c3a29ddc81078a4d9b",
+    "semantic_hash": "ac7b3ef6aa99f1c3a29ddc81078a4d9b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/dad-ar.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.42126,
+    "ast_hash": "cb47fe35c2d8408666679b58c3030b52",
+    "semantic_hash": "cb47fe35c2d8408666679b58c3030b52"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/dal-ar.fina.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212608,
+    "ast_hash": "10ce8ca2bf18bc22530058f8842032d6",
+    "semantic_hash": "10ce8ca2bf18bc22530058f8842032d6"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/dal-ar.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212618,
+    "ast_hash": "4da42d2a440eaaed62895cacfc8eb228",
+    "semantic_hash": "4da42d2a440eaaed62895cacfc8eb228"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/damma-ar.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212642,
+    "ast_hash": "5fea35c72b817a4a318b1cfe800db93e",
+    "semantic_hash": "5fea35c72b817a4a318b1cfe800db93e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/dammatan-ar.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212654,
+    "ast_hash": "bdf366374f254e13f7a4c556eb7c039e",
+    "semantic_hash": "bdf366374f254e13f7a4c556eb7c039e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/dotabove-ar.beh.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212668,
+    "ast_hash": "2ed6a08fd98a2a7755382f002d6d2fa8",
+    "semantic_hash": "2ed6a08fd98a2a7755382f002d6d2fa8"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/dotabove-ar.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421268,
+    "ast_hash": "c1bd056ba864458d0b12bdc3b71dbb80",
+    "semantic_hash": "c1bd056ba864458d0b12bdc3b71dbb80"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/dotabove-ar.reh.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212687,
+    "ast_hash": "c49a7ade15b239ef57ecc40995c5bf92",
+    "semantic_hash": "c49a7ade15b239ef57ecc40995c5bf92"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/dotbelow-ar.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212701,
+    "ast_hash": "33c4c97cbe0ea96ba0ae7f962a82f2b5",
+    "semantic_hash": "33c4c97cbe0ea96ba0ae7f962a82f2b5"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/dottedCircle^02.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212708,
+    "ast_hash": "26d3ff404922f0200787a7c31376bb06",
+    "semantic_hash": "26d3ff404922f0200787a7c31376bb06"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/dummy.mark.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421272,
+    "ast_hash": "29ec766fc6a448d5c0aaebd02b94c0ff",
+    "semantic_hash": "29ec766fc6a448d5c0aaebd02b94c0ff"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/eight-ar.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421273,
+    "ast_hash": "1d5fa21fd6527353450f02af9b4a9f04",
+    "semantic_hash": "1d5fa21fd6527353450f02af9b4a9f04"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/eight.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212742,
+    "ast_hash": "d925afe95479c692d8fc35a0eab8fdbe",
+    "semantic_hash": "d925afe95479c692d8fc35a0eab8fdbe"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/endofayah-ar.05.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212754,
+    "ast_hash": "8936636c06bc319c4834f346afe15710",
+    "semantic_hash": "8936636c06bc319c4834f346afe15710"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/endofayah-ar.10.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212763,
+    "ast_hash": "180ba6a990b395daaf07820100474b69",
+    "semantic_hash": "180ba6a990b395daaf07820100474b69"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/endofayah-ar.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212773,
+    "ast_hash": "2ca6323c0f14b5142661ea9c993dfc05",
+    "semantic_hash": "2ca6323c0f14b5142661ea9c993dfc05"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fatha-ar.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212782,
+    "ast_hash": "20d865b3fd66ca218f843c1c68b222b8",
+    "semantic_hash": "20d865b3fd66ca218f843c1c68b222b8"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fathatan-ar.alt.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212792,
+    "ast_hash": "c1c0bc1c96e10e064029dcdc11f099a2",
+    "semantic_hash": "c1c0bc1c96e10e064029dcdc11f099a2"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fathatan-ar.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212801,
+    "ast_hash": "b010e5e276bbf728e8c6a254888b2bba",
+    "semantic_hash": "b010e5e276bbf728e8c6a254888b2bba"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/feh-ar.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212813,
+    "ast_hash": "672e5c9b0936937fddc81442dbb2c130",
+    "semantic_hash": "672e5c9b0936937fddc81442dbb2c130"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fehAfrican-ar^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212823,
+    "ast_hash": "b541244297d04a664188931d0651f31d",
+    "semantic_hash": "b541244297d04a664188931d0651f31d"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fehDotless-ar.fina^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212837,
+    "ast_hash": "f446dd682c35828d98d00159b2844812",
+    "semantic_hash": "f446dd682c35828d98d00159b2844812"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fehDotless-ar.init.hah^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421285,
+    "ast_hash": "2d74b0e0731d873cdf771bc9abdf83a0",
+    "semantic_hash": "2d74b0e0731d873cdf771bc9abdf83a0"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fehDotless-ar.init.yeh^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212859,
+    "ast_hash": "150fd965f8b0209f31adb5b7f1e8f4b2",
+    "semantic_hash": "150fd965f8b0209f31adb5b7f1e8f4b2"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fehDotless-ar.init^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.421287,
+    "ast_hash": "1d35d33bc5aa452b54e1215fa772a399",
+    "semantic_hash": "1d35d33bc5aa452b54e1215fa772a399"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fehDotless-ar.medi.l1^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212887,
+    "ast_hash": "9f692ad4d525d7b4c791747c70387f06",
+    "semantic_hash": "9f692ad4d525d7b4c791747c70387f06"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fehDotless-ar.medi.l2^8.json": {
+    "mtime": 1785137807.974383,
+    "seen": 1787930937.4212894,
+    "ast_hash": "83458bd493bceaf9fdd65e18bab131b1",
+    "semantic_hash": "83458bd493bceaf9fdd65e18bab131b1"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fehDotless-ar.medi^8.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4212904,
+    "ast_hash": "8a4057de01d011cfdb2a2705f51282c7",
+    "semantic_hash": "8a4057de01d011cfdb2a2705f51282c7"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fehDotless-ar^8.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4212914,
+    "ast_hash": "2d744ad12280e8b05d18e225468be3a6",
+    "semantic_hash": "2d744ad12280e8b05d18e225468be3a6"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/fehDotless_alef-ar^8.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.421292,
+    "ast_hash": "975e29418bed5f6144c198ff028a3067",
+    "semantic_hash": "975e29418bed5f6144c198ff028a3067"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/five-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4212928,
+    "ast_hash": "a795a77c377bca1c91556d373b626ab4",
+    "semantic_hash": "a795a77c377bca1c91556d373b626ab4"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/five.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4212935,
+    "ast_hash": "adfa6092cda09aa135a1c67272265e26",
+    "semantic_hash": "adfa6092cda09aa135a1c67272265e26"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/four-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.421295,
+    "ast_hash": "2c57c17a5c1e479e6ece33866e77645f",
+    "semantic_hash": "2c57c17a5c1e479e6ece33866e77645f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/four.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4212956,
+    "ast_hash": "49f5a1b027bb7405ee9ffd26c6eeed68",
+    "semantic_hash": "49f5a1b027bb7405ee9ffd26c6eeed68"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/gaf-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4212966,
+    "ast_hash": "e8c0c31f5dd280d4f55425e05567c684",
+    "semantic_hash": "e8c0c31f5dd280d4f55425e05567c684"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/gafsarkashabove-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.421298,
+    "ast_hash": "c4065079d6cf51ed2ffe9f488c8a1560",
+    "semantic_hash": "c4065079d6cf51ed2ffe9f488c8a1560"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/ghain-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4212992,
+    "ast_hash": "dabc042a0d391f5b4cde0b3c676587a5",
+    "semantic_hash": "dabc042a0d391f5b4cde0b3c676587a5"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hah-ar.fina.alt.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213,
+    "ast_hash": "3f188b70052a79cfa92c32dcdc9f1d53",
+    "semantic_hash": "3f188b70052a79cfa92c32dcdc9f1d53"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hah-ar.fina.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213006,
+    "ast_hash": "7a876b12323f7889fd9b752a77b25c90",
+    "semantic_hash": "7a876b12323f7889fd9b752a77b25c90"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hah-ar.init.hah.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213018,
+    "ast_hash": "7ce3a268e2068c1a93f5714c7b796d5b",
+    "semantic_hash": "7ce3a268e2068c1a93f5714c7b796d5b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hah-ar.init.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.421303,
+    "ast_hash": "c5046b58a26e699eac63818097de160d",
+    "semantic_hash": "c5046b58a26e699eac63818097de160d"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hah-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213037,
+    "ast_hash": "58722eafe4d4512dde36ea8891897e0e",
+    "semantic_hash": "58722eafe4d4512dde36ea8891897e0e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hah-ar.medi.alt.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213054,
+    "ast_hash": "2880681c6d2411c607d3bd0d6aeb8677",
+    "semantic_hash": "2880681c6d2411c607d3bd0d6aeb8677"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hah-ar.medi.hah.alt.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213066,
+    "ast_hash": "668792dba73e7982ccae2ec8ef4c9d0a",
+    "semantic_hash": "668792dba73e7982ccae2ec8ef4c9d0a"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hah-ar.medi.hah.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213073,
+    "ast_hash": "dc5d7670673380c735a754d4f9bd5e44",
+    "semantic_hash": "dc5d7670673380c735a754d4f9bd5e44"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hah-ar.medi.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213085,
+    "ast_hash": "64fb92efcd31b6d9aacc51b44840ecda",
+    "semantic_hash": "64fb92efcd31b6d9aacc51b44840ecda"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hah-ar.medi.l1.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213092,
+    "ast_hash": "3af5ff571fb5404a219cb759ffca9d98",
+    "semantic_hash": "3af5ff571fb5404a219cb759ffca9d98"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hah-ar.medi.l2.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213102,
+    "ast_hash": "c732cba9db2501dba26aea5761800cff",
+    "semantic_hash": "c732cba9db2501dba26aea5761800cff"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hairspace.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213114,
+    "ast_hash": "1074027f6d7affe03bbfdf4dcf440723",
+    "semantic_hash": "1074027f6d7affe03bbfdf4dcf440723"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hamza-ar.alt.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213126,
+    "ast_hash": "6dfb018541238043da8853270cdb9595",
+    "semantic_hash": "6dfb018541238043da8853270cdb9595"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hamza-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213133,
+    "ast_hash": "25c05a5fc56d6f797ec24cc781797849",
+    "semantic_hash": "25c05a5fc56d6f797ec24cc781797849"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hamza_damma-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213142,
+    "ast_hash": "43493975784b3bcd8e4cd379d6e2b37d",
+    "semantic_hash": "43493975784b3bcd8e4cd379d6e2b37d"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hamza_fatha-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213147,
+    "ast_hash": "490581290a145762f7ada7707cc79b92",
+    "semantic_hash": "490581290a145762f7ada7707cc79b92"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hamza_fathatan-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.421316,
+    "ast_hash": "c687eab107d9e5077119bce9e0463dbb",
+    "semantic_hash": "c687eab107d9e5077119bce9e0463dbb"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hamza_kasra-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213169,
+    "ast_hash": "61fa9cfb92c9c0c6ca596d5c4b9682e0",
+    "semantic_hash": "61fa9cfb92c9c0c6ca596d5c4b9682e0"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hamzaabove-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213178,
+    "ast_hash": "38c0d4938e04e9c3ba15521193489526",
+    "semantic_hash": "38c0d4938e04e9c3ba15521193489526"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/hamzabelow-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213188,
+    "ast_hash": "02204f17e83b892113f9d70c492cbec7",
+    "semantic_hash": "02204f17e83b892113f9d70c492cbec7"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/heh-ar.fina.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213197,
+    "ast_hash": "048422e46d27a1e1f771688cba3d0c87",
+    "semantic_hash": "048422e46d27a1e1f771688cba3d0c87"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/heh-ar.init.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213204,
+    "ast_hash": "54f0693059a2de16f64a985291f64649",
+    "semantic_hash": "54f0693059a2de16f64a985291f64649"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/heh-ar.init.round.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213214,
+    "ast_hash": "92a28f90aa28713df8595566889b33bc",
+    "semantic_hash": "92a28f90aa28713df8595566889b33bc"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/heh-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213223,
+    "ast_hash": "dd290656d22d621ffa737424363edeed",
+    "semantic_hash": "dd290656d22d621ffa737424363edeed"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/heh-ar.medi.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.421323,
+    "ast_hash": "9be08b2f7c6f55bfab027fadf8923b16",
+    "semantic_hash": "9be08b2f7c6f55bfab027fadf8923b16"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/heh-ar.medi.l1.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213238,
+    "ast_hash": "1297f2bbcd2b6bbdef50345ef364bd76",
+    "semantic_hash": "1297f2bbcd2b6bbdef50345ef364bd76"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/heh-ar.medi.l2.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213245,
+    "ast_hash": "2f1baae976b2dc7266f895d9abbaa97a",
+    "semantic_hash": "2f1baae976b2dc7266f895d9abbaa97a"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/heh-ar.medi.round.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213252,
+    "ast_hash": "690f6b3c8ab9035cdba9a5532e8f0a56",
+    "semantic_hash": "690f6b3c8ab9035cdba9a5532e8f0a56"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/jeem-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213262,
+    "ast_hash": "d9e246531061ced69bf4f32c108ec88f",
+    "semantic_hash": "d9e246531061ced69bf4f32c108ec88f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/jeh-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213269,
+    "ast_hash": "0d310eb1e81156736cf590b45b0cbc75",
+    "semantic_hash": "0d310eb1e81156736cf590b45b0cbc75"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kaf-ar.fina.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.421328,
+    "ast_hash": "63434fc12a91811d0b484b7db81550dd",
+    "semantic_hash": "63434fc12a91811d0b484b7db81550dd"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kaf-ar.init.alt.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213293,
+    "ast_hash": "15ce6c6609a558511b470cd9fb1286a2",
+    "semantic_hash": "15ce6c6609a558511b470cd9fb1286a2"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kaf-ar.init.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.42133,
+    "ast_hash": "b4e8e2fcfaffa59323373082ad40e6f7",
+    "semantic_hash": "b4e8e2fcfaffa59323373082ad40e6f7"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kaf-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213307,
+    "ast_hash": "194b7aaa2da0d0346075db32fe5864de",
+    "semantic_hash": "194b7aaa2da0d0346075db32fe5864de"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kaf-ar.medi.alt.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213316,
+    "ast_hash": "951afa82a5f0c53b93dcba77d6560aa0",
+    "semantic_hash": "951afa82a5f0c53b93dcba77d6560aa0"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kaf-ar.medi.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213326,
+    "ast_hash": "4900b6f3854a6427e50fafda855fceec",
+    "semantic_hash": "4900b6f3854a6427e50fafda855fceec"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kaf-ar.medi.l1.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213336,
+    "ast_hash": "2ef954f9fbde0bc50082741b0addd09f",
+    "semantic_hash": "2ef954f9fbde0bc50082741b0addd09f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kaf-ar.medi.l2.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213345,
+    "ast_hash": "4e34f7e9e7ab7d99fef2459bc1679126",
+    "semantic_hash": "4e34f7e9e7ab7d99fef2459bc1679126"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kashida-ar.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213352,
+    "ast_hash": "70bf78f765407b22f8b12db038f6e889",
+    "semantic_hash": "70bf78f765407b22f8b12db038f6e889"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kashida-ar.l1.json": {
+    "mtime": 1785137807.9901557,
+    "seen": 1787930937.4213362,
+    "ast_hash": "1d39e37a70a8a0ff883dcd95e9d5300b",
+    "semantic_hash": "1d39e37a70a8a0ff883dcd95e9d5300b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kashida-ar.l2.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421337,
+    "ast_hash": "0f2e6f94062e1184893f5d01869bb7ba",
+    "semantic_hash": "0f2e6f94062e1184893f5d01869bb7ba"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kasra-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213476,
+    "ast_hash": "203d57483a7af50b128f7ff4f1106dfa",
+    "semantic_hash": "203d57483a7af50b128f7ff4f1106dfa"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kasratan-ar.alt.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213486,
+    "ast_hash": "fb59208bc1623f6c3171fd4163e83f9f",
+    "semantic_hash": "fb59208bc1623f6c3171fd4163e83f9f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/kasratan-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213493,
+    "ast_hash": "a0c257f98c2f814eb81a55c856f1a23c",
+    "semantic_hash": "a0c257f98c2f814eb81a55c856f1a23c"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/keheh-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213505,
+    "ast_hash": "1dda6aba4563321e576854e138584707",
+    "semantic_hash": "1dda6aba4563321e576854e138584707"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/khah-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213512,
+    "ast_hash": "495f1c03f0e0c228f45d6282a43b55a0",
+    "semantic_hash": "495f1c03f0e0c228f45d6282a43b55a0"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.fina.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213521,
+    "ast_hash": "4ec8b1126b913a803f2c11ae2e339584",
+    "semantic_hash": "4ec8b1126b913a803f2c11ae2e339584"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.fina.short.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213529,
+    "ast_hash": "2961cc741019403f0ee8f50c1eadd67a",
+    "semantic_hash": "2961cc741019403f0ee8f50c1eadd67a"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.init.hah1.alt.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421354,
+    "ast_hash": "96892d8d68b349f88205c5d3043ecda1",
+    "semantic_hash": "96892d8d68b349f88205c5d3043ecda1"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.init.hah1.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213548,
+    "ast_hash": "a2fc198aeb15e2f15314d1f2ce6ea834",
+    "semantic_hash": "a2fc198aeb15e2f15314d1f2ce6ea834"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.init.hah2.alt.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213557,
+    "ast_hash": "047015b2682247a7c9d34624b04d535d",
+    "semantic_hash": "047015b2682247a7c9d34624b04d535d"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.init.hah2.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421357,
+    "ast_hash": "cf0f7bef42e31cd4e68f64c58b249316",
+    "semantic_hash": "cf0f7bef42e31cd4e68f64c58b249316"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.init.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421358,
+    "ast_hash": "3bca40c73deb7391b55d1ff37d4c96ed",
+    "semantic_hash": "3bca40c73deb7391b55d1ff37d4c96ed"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.init.short.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421359,
+    "ast_hash": "3966d2aa72fbc7a6e69f5247986c0be3",
+    "semantic_hash": "3966d2aa72fbc7a6e69f5247986c0be3"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213598,
+    "ast_hash": "491141e5b1e8634c4b8d08d09d813f80",
+    "semantic_hash": "491141e5b1e8634c4b8d08d09d813f80"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.medi.hah1.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213607,
+    "ast_hash": "7da3fc339cf60dab5921f9400ece8126",
+    "semantic_hash": "7da3fc339cf60dab5921f9400ece8126"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.medi.hah1.round.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213617,
+    "ast_hash": "f566abc6f806477c72e8723a6ce7138c",
+    "semantic_hash": "f566abc6f806477c72e8723a6ce7138c"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.medi.hah2.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213624,
+    "ast_hash": "04744b6ed31b0a3883599d64a9ed0bde",
+    "semantic_hash": "04744b6ed31b0a3883599d64a9ed0bde"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.medi.hah2.round.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421363,
+    "ast_hash": "dd086a553222e6f0f91b5d3a46542f42",
+    "semantic_hash": "dd086a553222e6f0f91b5d3a46542f42"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.medi.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213648,
+    "ast_hash": "4ad1ae4b3603742f6ac876561362ace3",
+    "semantic_hash": "4ad1ae4b3603742f6ac876561362ace3"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.medi.round.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421366,
+    "ast_hash": "75ff44dbd230145d54da93ee0fb5b00f",
+    "semantic_hash": "75ff44dbd230145d54da93ee0fb5b00f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.medi.round.kashida.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421367,
+    "ast_hash": "8ac84390d739f7bedbd8ba71ab8ccb5b",
+    "semantic_hash": "8ac84390d739f7bedbd8ba71ab8ccb5b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.medi.round.short.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213681,
+    "ast_hash": "9cfec57921ca2f626c7ac731efbdc013",
+    "semantic_hash": "9cfec57921ca2f626c7ac731efbdc013"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.medi.short.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421369,
+    "ast_hash": "f5f85e324ec0ccdfdfd9241fbb9e2153",
+    "semantic_hash": "f5f85e324ec0ccdfdfd9241fbb9e2153"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam-ar.short.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213698,
+    "ast_hash": "0ea089b206ed3b9f8ddb0c1beebf637f",
+    "semantic_hash": "0ea089b206ed3b9f8ddb0c1beebf637f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam_alef-ar.fina.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421371,
+    "ast_hash": "7a1e6e63655549749d51b294fc328006",
+    "semantic_hash": "7a1e6e63655549749d51b294fc328006"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam_alef-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213722,
+    "ast_hash": "64a38592c42e57b58dca80ec83bb2ac8",
+    "semantic_hash": "64a38592c42e57b58dca80ec83bb2ac8"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/lam_lam_heh-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213731,
+    "ast_hash": "8acff23184b9d420bc699524d40f382e",
+    "semantic_hash": "8acff23184b9d420bc699524d40f382e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/madda-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213748,
+    "ast_hash": "41747ec3004f67657656d0257838b3c7",
+    "semantic_hash": "41747ec3004f67657656d0257838b3c7"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/meem-ar.fina.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213755,
+    "ast_hash": "c46c5ef5672d61fdf33597ad64a076f1",
+    "semantic_hash": "c46c5ef5672d61fdf33597ad64a076f1"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/meem-ar.fina.round.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213765,
+    "ast_hash": "59496bee483e3e21eb75cf147cd6ee93",
+    "semantic_hash": "59496bee483e3e21eb75cf147cd6ee93"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/meem-ar.init.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213772,
+    "ast_hash": "4ec2bb8bc89a73d0d1727ac2da444b32",
+    "semantic_hash": "4ec2bb8bc89a73d0d1727ac2da444b32"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/meem-ar.init.round.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213784,
+    "ast_hash": "f38856d0ea6995480f032f58cd2ae1d3",
+    "semantic_hash": "f38856d0ea6995480f032f58cd2ae1d3"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/meem-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421379,
+    "ast_hash": "f6e2eb54c960922257e998e421d9e8fb",
+    "semantic_hash": "f6e2eb54c960922257e998e421d9e8fb"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/meem-ar.medi.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213803,
+    "ast_hash": "b739fcaccfd31f59dbaf10042742972e",
+    "semantic_hash": "b739fcaccfd31f59dbaf10042742972e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/meem-ar.medi.l1.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213817,
+    "ast_hash": "6dece3b9d3a94eb27c65176f8ee1c102",
+    "semantic_hash": "6dece3b9d3a94eb27c65176f8ee1c102"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/meem-ar.medi.l2.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213827,
+    "ast_hash": "b039680b9b7c2262174dee459e584c4c",
+    "semantic_hash": "b039680b9b7c2262174dee459e584c4c"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/meem-ar.medi.round.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213834,
+    "ast_hash": "fb7eb5571e53336b03c8762eaf7d3c91",
+    "semantic_hash": "fb7eb5571e53336b03c8762eaf7d3c91"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/meem-ar.medi.round2.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421384,
+    "ast_hash": "58e17a8ccef43ecf73f0116beea1fb93",
+    "semantic_hash": "58e17a8ccef43ecf73f0116beea1fb93"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/meem-ar.medi.round3.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421385,
+    "ast_hash": "dedd4fbc5337adbbb1df93fce4e1c024",
+    "semantic_hash": "dedd4fbc5337adbbb1df93fce4e1c024"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/nine-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421386,
+    "ast_hash": "ffbe27ad54e21628224b7d4826b5cfab",
+    "semantic_hash": "ffbe27ad54e21628224b7d4826b5cfab"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/nine.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213874,
+    "ast_hash": "7618d6d7ea3c376fbf5b6c07dd244b77",
+    "semantic_hash": "7618d6d7ea3c376fbf5b6c07dd244b77"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/noon-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213884,
+    "ast_hash": "194fe4648e84da80e7505aba3c26c920",
+    "semantic_hash": "194fe4648e84da80e7505aba3c26c920"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/noonAfrican-ar^G.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213898,
+    "ast_hash": "25350b8440ba5df3d380bc6345d6d169",
+    "semantic_hash": "25350b8440ba5df3d380bc6345d6d169"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/noonghunna-ar.fina.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213905,
+    "ast_hash": "a87a1b1f2712a88e68a57e1c32c4c105",
+    "semantic_hash": "a87a1b1f2712a88e68a57e1c32c4c105"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/noonghunna-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213917,
+    "ast_hash": "f9da8bc2b3f96aa5235125de15c7809c",
+    "semantic_hash": "f9da8bc2b3f96aa5235125de15c7809c"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/one-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.421393,
+    "ast_hash": "3448294d88380d13195dc454f2dc0a27",
+    "semantic_hash": "3448294d88380d13195dc454f2dc0a27"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/one.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213939,
+    "ast_hash": "c2c1b919e87f72129ce3c0a63c654769",
+    "semantic_hash": "c2c1b919e87f72129ce3c0a63c654769"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/peh-ar.json": {
+    "mtime": 1785137808.006261,
+    "seen": 1787930937.4213953,
+    "ast_hash": "4b672b55fabf1b5ef9160dd6df2ace99",
+    "semantic_hash": "4b672b55fabf1b5ef9160dd6df2ace99"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/period.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.421396,
+    "ast_hash": "68fd70251bcc9139ce168f55abec1d08",
+    "semantic_hash": "68fd70251bcc9139ce168f55abec1d08"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/qaf-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4213972,
+    "ast_hash": "af208dbc70c7750e85a322f7025142a1",
+    "semantic_hash": "af208dbc70c7750e85a322f7025142a1"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/qafAfrican-ar^8.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4213982,
+    "ast_hash": "d50f98786f14c4d0fb69f81411f2677f",
+    "semantic_hash": "d50f98786f14c4d0fb69f81411f2677f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/qafDotless-ar.fina^8.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4213994,
+    "ast_hash": "45e942285e9a1a55c927fcad740a7f66",
+    "semantic_hash": "45e942285e9a1a55c927fcad740a7f66"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/qafDotless-ar^8.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214003,
+    "ast_hash": "001dc596dfc5b6e8dbd99d3e3c8dcb12",
+    "semantic_hash": "001dc596dfc5b6e8dbd99d3e3c8dcb12"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/reh-ar.fina.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.421401,
+    "ast_hash": "649cb507df015d4dac80ddda958e344b",
+    "semantic_hash": "649cb507df015d4dac80ddda958e344b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/reh-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214017,
+    "ast_hash": "efc7f476673b48618f2ec0a94e924330",
+    "semantic_hash": "efc7f476673b48618f2ec0a94e924330"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/sad-ar.fina.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214027,
+    "ast_hash": "71251ae9b90d39ec7cab3eb1726feaed",
+    "semantic_hash": "71251ae9b90d39ec7cab3eb1726feaed"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/sad-ar.init.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214036,
+    "ast_hash": "0fe07cb8877f7dd65e716b93dc8a37a1",
+    "semantic_hash": "0fe07cb8877f7dd65e716b93dc8a37a1"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/sad-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214044,
+    "ast_hash": "690db3a861abd7b8dba2a0e21e34d338",
+    "semantic_hash": "690db3a861abd7b8dba2a0e21e34d338"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/sad-ar.medi.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.421405,
+    "ast_hash": "1d856e16060fff9d3ee40fb844b46fbc",
+    "semantic_hash": "1d856e16060fff9d3ee40fb844b46fbc"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/sad-ar.medi.l1.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214063,
+    "ast_hash": "f080d138184dd86d8d3a3675e7c9b224",
+    "semantic_hash": "f080d138184dd86d8d3a3675e7c9b224"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/sad-ar.medi.l2.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.421407,
+    "ast_hash": "a3adfe5e761c3e8ad168ed659b4524ef",
+    "semantic_hash": "a3adfe5e761c3e8ad168ed659b4524ef"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/sajdah-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.421408,
+    "ast_hash": "7d0c377eb13e7c3c0aea2dc225d338ac",
+    "semantic_hash": "7d0c377eb13e7c3c0aea2dc225d338ac"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/seen-ar.fina.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214091,
+    "ast_hash": "b0be05b7601ebb174d2115b2dada3446",
+    "semantic_hash": "b0be05b7601ebb174d2115b2dada3446"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/seen-ar.fina.low.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214098,
+    "ast_hash": "29770692a3f0d3630e05da240217598e",
+    "semantic_hash": "29770692a3f0d3630e05da240217598e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/seen-ar.init.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214108,
+    "ast_hash": "1e152d0d0a67d0dab8205165e46a18d0",
+    "semantic_hash": "1e152d0d0a67d0dab8205165e46a18d0"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/seen-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214115,
+    "ast_hash": "6a9c57d7f17f3f6eea1d3ebe2a67308c",
+    "semantic_hash": "6a9c57d7f17f3f6eea1d3ebe2a67308c"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/seen-ar.medi.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214127,
+    "ast_hash": "396019c380e97da9fbe0073c50e1b3ef",
+    "semantic_hash": "396019c380e97da9fbe0073c50e1b3ef"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/seen-ar.medi.l1.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214134,
+    "ast_hash": "134a2f42dd76309cbe4579e8e25578fc",
+    "semantic_hash": "134a2f42dd76309cbe4579e8e25578fc"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/seen-ar.medi.l2.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214141,
+    "ast_hash": "fe3ac56fa31e6a7ed434ac156b2cc8bb",
+    "semantic_hash": "fe3ac56fa31e6a7ed434ac156b2cc8bb"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/seen-ar.medi.low.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214149,
+    "ast_hash": "353a3c4e9154f340bb705c5caf685ffa",
+    "semantic_hash": "353a3c4e9154f340bb705c5caf685ffa"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/seen_alefMaksura-ar.fina^0G.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214163,
+    "ast_hash": "5e6b485c9c33110b4f193732f6a16a02",
+    "semantic_hash": "5e6b485c9c33110b4f193732f6a16a02"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/seen_alefMaksura-ar^0G.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214168,
+    "ast_hash": "89174a3f00c7b04f2f3e38543b35f97e",
+    "semantic_hash": "89174a3f00c7b04f2f3e38543b35f97e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/seven-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214175,
+    "ast_hash": "788b400d15f6e43bda31db45eb957482",
+    "semantic_hash": "788b400d15f6e43bda31db45eb957482"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/seven.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214187,
+    "ast_hash": "444bcb746d41e7d992b2dced8d7324f5",
+    "semantic_hash": "444bcb746d41e7d992b2dced8d7324f5"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/shadda-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214199,
+    "ast_hash": "60f7fe11b7f4bedbf18109f0941e9e3b",
+    "semantic_hash": "60f7fe11b7f4bedbf18109f0941e9e3b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/sheen-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214208,
+    "ast_hash": "f7d8f8ff1a53dadb85e36c42c2fbe64e",
+    "semantic_hash": "f7d8f8ff1a53dadb85e36c42c2fbe64e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/six-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214218,
+    "ast_hash": "f5c2a7241cf5070978462ee885944f56",
+    "semantic_hash": "f5c2a7241cf5070978462ee885944f56"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/six.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214232,
+    "ast_hash": "63cfd7b9e8ccdd65e8cfbb18f4aa1e08",
+    "semantic_hash": "63cfd7b9e8ccdd65e8cfbb18f4aa1e08"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/space.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214244,
+    "ast_hash": "7059eb52f4d9892055c62cb53fe101b6",
+    "semantic_hash": "7059eb52f4d9892055c62cb53fe101b6"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/space.mark.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.421425,
+    "ast_hash": "da18f72fadbfeabe1e95083dfa6b0571",
+    "semantic_hash": "da18f72fadbfeabe1e95083dfa6b0571"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/sukun-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.421426,
+    "ast_hash": "783104e08e000bfd19b0b5bf62212771",
+    "semantic_hash": "783104e08e000bfd19b0b5bf62212771"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/tah-ar.fina.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214272,
+    "ast_hash": "c5f1f3ec56ee61cc2be78dfce5436205",
+    "semantic_hash": "c5f1f3ec56ee61cc2be78dfce5436205"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/tah-ar.init.hah1.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214282,
+    "ast_hash": "07e9a9ffedc0aba2d3faae95606bf52f",
+    "semantic_hash": "07e9a9ffedc0aba2d3faae95606bf52f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/tah-ar.init.hah2.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.421429,
+    "ast_hash": "0d0cc86cae203a3e68eaa075b3e54383",
+    "semantic_hash": "0d0cc86cae203a3e68eaa075b3e54383"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/tah-ar.init.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.42143,
+    "ast_hash": "4c5d0243cbe83fa7a03601c5a9aab9c3",
+    "semantic_hash": "4c5d0243cbe83fa7a03601c5a9aab9c3"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/tah-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.421431,
+    "ast_hash": "d161937920b8f566a90d4eb52a59f92c",
+    "semantic_hash": "d161937920b8f566a90d4eb52a59f92c"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/tah-ar.medi.hah1.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214318,
+    "ast_hash": "7d375b73c7e3500475b3d5476807697f",
+    "semantic_hash": "7d375b73c7e3500475b3d5476807697f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/tah-ar.medi.hah2.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214327,
+    "ast_hash": "91a19e91d95681318225536f6ac756da",
+    "semantic_hash": "91a19e91d95681318225536f6ac756da"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/tah-ar.medi.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214342,
+    "ast_hash": "1a780e268dde89cfeb658b0d84bf055e",
+    "semantic_hash": "1a780e268dde89cfeb658b0d84bf055e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/tcheh-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214349,
+    "ast_hash": "3bb6f6ec73d645d28e9e3e2d1edb21e7",
+    "semantic_hash": "3bb6f6ec73d645d28e9e3e2d1edb21e7"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/teh-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214358,
+    "ast_hash": "6463e4ce1402ee21e1031ee785c29eac",
+    "semantic_hash": "6463e4ce1402ee21e1031ee785c29eac"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/tehMarbuta-ar^8.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214368,
+    "ast_hash": "101494ad6e51b788cc8a01ce7a3d6f3f",
+    "semantic_hash": "101494ad6e51b788cc8a01ce7a3d6f3f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/thal-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214375,
+    "ast_hash": "78150272c89c5f0113c43bfa576e237d",
+    "semantic_hash": "78150272c89c5f0113c43bfa576e237d"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/theh-ar.json": {
+    "mtime": 1785137808.0222073,
+    "seen": 1787930937.4214382,
+    "ast_hash": "a8dfe03e05036b383757ecf0ae1f3b2c",
+    "semantic_hash": "a8dfe03e05036b383757ecf0ae1f3b2c"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/thinspace.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.421439,
+    "ast_hash": "e9a4835a2478f088eeef992fe4ea426f",
+    "semantic_hash": "e9a4835a2478f088eeef992fe4ea426f"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/three-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214396,
+    "ast_hash": "a6666e2a6a0b5a834eede70050b085ca",
+    "semantic_hash": "a6666e2a6a0b5a834eede70050b085ca"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/three.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214406,
+    "ast_hash": "4a175c2badd2579c4031cebe97d6f6c5",
+    "semantic_hash": "4a175c2badd2579c4031cebe97d6f6c5"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/threedots-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214413,
+    "ast_hash": "e67c51aa2e9c30fe2df90f3f83f76577",
+    "semantic_hash": "e67c51aa2e9c30fe2df90f3f83f76577"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/threedotsdownbelow-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214423,
+    "ast_hash": "108c97941451a957a03a0c733e204244",
+    "semantic_hash": "108c97941451a957a03a0c733e204244"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/threedotshorizontalabove-ar.1.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214432,
+    "ast_hash": "1a3bb7b5c4489f5f393ee7d944e27945",
+    "semantic_hash": "1a3bb7b5c4489f5f393ee7d944e27945"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/threedotshorizontalabove-ar.2.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214442,
+    "ast_hash": "702e4c04b5315e469d72be240b9ac9c0",
+    "semantic_hash": "702e4c04b5315e469d72be240b9ac9c0"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/threedotshorizontalabove-ar.3.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.421445,
+    "ast_hash": "af51a032332d79800aedfe6705ab83fa",
+    "semantic_hash": "af51a032332d79800aedfe6705ab83fa"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/threedotshorizontalabove-ar.4.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214458,
+    "ast_hash": "acc2dd99cc913d73e7809e407ff7f8b0",
+    "semantic_hash": "acc2dd99cc913d73e7809e407ff7f8b0"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/threedotshorizontalabove-ar.5.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214468,
+    "ast_hash": "d35a6ae348008349ca82a0542b7803c4",
+    "semantic_hash": "d35a6ae348008349ca82a0542b7803c4"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/threedotshorizontalabove-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.421448,
+    "ast_hash": "73ddc9454d25422ee30e51ed2227f378",
+    "semantic_hash": "73ddc9454d25422ee30e51ed2227f378"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/threedotsupabove-ar.beh.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214492,
+    "ast_hash": "08da06f8a07e2cec5035eebd03841e82",
+    "semantic_hash": "08da06f8a07e2cec5035eebd03841e82"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/threedotsupabove-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214506,
+    "ast_hash": "1d517e9687e016a31b47a5925bcfdd2e",
+    "semantic_hash": "1d517e9687e016a31b47a5925bcfdd2e"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/threedotsupabove-ar.vert.beh.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214513,
+    "ast_hash": "3ebaff9970bbc7d121aa08ee83566dca",
+    "semantic_hash": "3ebaff9970bbc7d121aa08ee83566dca"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/threedotsupabove-ar.vert.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.421452,
+    "ast_hash": "2535dac8877c092b807d1aea8a3b62d2",
+    "semantic_hash": "2535dac8877c092b807d1aea8a3b62d2"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/two-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214532,
+    "ast_hash": "880cbcfce021e3083d1cd970e1789d27",
+    "semantic_hash": "880cbcfce021e3083d1cd970e1789d27"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/two.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214542,
+    "ast_hash": "8d41064f94f1632a11d04bada26bb9a6",
+    "semantic_hash": "8d41064f94f1632a11d04bada26bb9a6"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/twodotsverticalabove-ar.beh.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214554,
+    "ast_hash": "b99790cf1dc1a62752c2de01b0d4a285",
+    "semantic_hash": "b99790cf1dc1a62752c2de01b0d4a285"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/twodotsverticalabove-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214563,
+    "ast_hash": "f9bdd0da65e48174270afec3ec2d0b07",
+    "semantic_hash": "f9bdd0da65e48174270afec3ec2d0b07"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/twodotsverticalabove-ar.vert.beh.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214573,
+    "ast_hash": "ec1e55f14722f30019cc839f055290cc",
+    "semantic_hash": "ec1e55f14722f30019cc839f055290cc"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/twodotsverticalabove-ar.vert.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.421459,
+    "ast_hash": "8f7c492390052f802d81ab6465334912",
+    "semantic_hash": "8f7c492390052f802d81ab6465334912"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/twodotsverticalbelow-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214597,
+    "ast_hash": "4842f27eeaa630b3d0f03665509faa53",
+    "semantic_hash": "4842f27eeaa630b3d0f03665509faa53"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/veh-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.421461,
+    "ast_hash": "754a90622739ac926dbf51a6d051e675",
+    "semantic_hash": "754a90622739ac926dbf51a6d051e675"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/waw-ar.fina.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214618,
+    "ast_hash": "fb320a8cb3374c5bf16a221ba4aac53b",
+    "semantic_hash": "fb320a8cb3374c5bf16a221ba4aac53b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/waw-ar.fina.round.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214628,
+    "ast_hash": "2164c946ab51f972372606112766ae6a",
+    "semantic_hash": "2164c946ab51f972372606112766ae6a"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/waw-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214635,
+    "ast_hash": "f4ccb6aa7019a2e828dffaa245b20130",
+    "semantic_hash": "f4ccb6aa7019a2e828dffaa245b20130"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/wawHamzaabove-ar^8.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.421465,
+    "ast_hash": "68a4608e01e629e6c9ad1224848167d5",
+    "semantic_hash": "68a4608e01e629e6c9ad1224848167d5"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/yeh-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214659,
+    "ast_hash": "51e3d70f569876c6514ee3031e40a30b",
+    "semantic_hash": "51e3d70f569876c6514ee3031e40a30b"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/yehFarsi-ar^8.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214666,
+    "ast_hash": "b056c8c9e32167ece3e689f3070bdf25",
+    "semantic_hash": "b056c8c9e32167ece3e689f3070bdf25"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/yehHamzaabove-ar^8.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214675,
+    "ast_hash": "66cfc81268c7c77400aaa82d7b3a61b8",
+    "semantic_hash": "66cfc81268c7c77400aaa82d7b3a61b8"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/yehbarree-ar.fina.baseline.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214685,
+    "ast_hash": "bd01a1ab0316c34f01080808147e0184",
+    "semantic_hash": "bd01a1ab0316c34f01080808147e0184"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/yehbarree-ar.fina.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214694,
+    "ast_hash": "03e7298efccd2b8d86852a471da7b4a6",
+    "semantic_hash": "03e7298efccd2b8d86852a471da7b4a6"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/yehbarree-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214704,
+    "ast_hash": "65bc6b53c4468209c3265d05e4c31a8a",
+    "semantic_hash": "65bc6b53c4468209c3265d05e4c31a8a"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/zah-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214716,
+    "ast_hash": "1e97e58617f45e85ba5f0183db873967",
+    "semantic_hash": "1e97e58617f45e85ba5f0183db873967"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/zain-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214728,
+    "ast_hash": "8a63794f7cd9990268421dd412be3281",
+    "semantic_hash": "8a63794f7cd9990268421dd412be3281"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/zero-ar.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.4214735,
+    "ast_hash": "b32019e6db8ad9ba45d952d180c4bda4",
+    "semantic_hash": "b32019e6db8ad9ba45d952d180c4bda4"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/zero.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.421475,
+    "ast_hash": "52d693087ab6e3d38e1d926b80b4e208",
+    "semantic_hash": "52d693087ab6e3d38e1d926b80b4e208"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/glyphs/zerowidthspace.json": {
+    "mtime": 1785137808.037937,
+    "seen": 1787930937.421476,
+    "ast_hash": "777d8e726dbb0ef3b982646616f955da",
+    "semantic_hash": "777d8e726dbb0ef3b982646616f955da"
+  },
+  "src-js/fontra-core/tests/data/skeleton-generator/fixtures.json": {
+    "mtime": 1787749853.928906,
+    "seen": 1787930937.4214766,
+    "ast_hash": "edc0d7ad8058ad14fe34eb40aaba3daa",
+    "semantic_hash": "edc0d7ad8058ad14fe34eb40aaba3daa"
+  },
+  "src-js/fontra-core/tests/node-path.js": {
+    "mtime": 1785137808.050681,
+    "seen": 1787930937.4214776,
+    "ast_hash": "2889252eba552b80d6f534f3ebe1a755",
+    "semantic_hash": "2889252eba552b80d6f534f3ebe1a755"
+  },
+  "src-js/fontra-core/tests/scripts/make-skeleton-generator-fixtures.js": {
+    "mtime": 1787749853.9294279,
+    "seen": 1787930937.4214787,
+    "ast_hash": "de8f5c99948396f733947688774c409f",
+    "semantic_hash": "de8f5c99948396f733947688774c409f"
+  },
+  "src-js/fontra-core/tests/scripts/measure-gizmo-coherence.js": {
+    "mtime": 1785319233.6205733,
+    "seen": 1787930937.4214795,
+    "ast_hash": "fb2c204e8407b90caceb629099c1beaa",
+    "semantic_hash": "fb2c204e8407b90caceb629099c1beaa"
+  },
+  "src-js/fontra-core/tests/scripts/measure-skeleton-mirroring.js": {
+    "mtime": 1785319233.6205733,
+    "seen": 1787930937.421481,
+    "ast_hash": "0157361bb6a1cdc877d055fbc8be6920",
+    "semantic_hash": "0157361bb6a1cdc877d055fbc8be6920"
+  },
+  "src-js/fontra-core/tests/test-change-recorder.js": {
+    "mtime": 1785137808.050681,
+    "seen": 1787930937.4214816,
+    "ast_hash": "baaa7c74c366e7d629b8273eee0ab816",
+    "semantic_hash": "baaa7c74c366e7d629b8273eee0ab816"
+  },
+  "src-js/fontra-core/tests/test-changes.js": {
+    "mtime": 1785137808.050681,
+    "seen": 1787930937.4214828,
+    "ast_hash": "07991e675cc0fd66adfa3601d74be6ec",
+    "semantic_hash": "07991e675cc0fd66adfa3601d74be6ec"
+  },
+  "src-js/fontra-core/tests/test-character-lines.js": {
+    "mtime": 1785137808.053695,
+    "seen": 1787930937.4214835,
+    "ast_hash": "6e5ebbafc8770690d9c29adbc6a4465e",
+    "semantic_hash": "6e5ebbafc8770690d9c29adbc6a4465e"
+  },
+  "src-js/fontra-core/tests/test-classes.js": {
+    "mtime": 1785137808.053695,
+    "seen": 1787930937.4214842,
+    "ast_hash": "be097da7e934b821fe4c3d33e97d704d",
+    "semantic_hash": "be097da7e934b821fe4c3d33e97d704d"
+  },
+  "src-js/fontra-core/tests/test-cmap.js": {
+    "mtime": 1785137808.053695,
+    "seen": 1787930937.421485,
+    "ast_hash": "76e63f6b520aa6a821e15cb5c17e8eea",
+    "semantic_hash": "76e63f6b520aa6a821e15cb5c17e8eea"
+  },
+  "src-js/fontra-core/tests/test-coarse-grid-presets.js": {
+    "mtime": 1785137808.053695,
+    "seen": 1787930937.421486,
+    "ast_hash": "c7f59239e4b7728a868fcd9faf58be59",
+    "semantic_hash": "c7f59239e4b7728a868fcd9faf58be59"
+  },
+  "src-js/fontra-core/tests/test-composition.js": {
+    "mtime": 1787903452.9532835,
+    "seen": 1787930937.4214869,
+    "ast_hash": "c647e7288148a7ea3d5fb7ca3d8de5b5",
+    "semantic_hash": "c647e7288148a7ea3d5fb7ca3d8de5b5"
+  },
+  "src-js/fontra-core/tests/test-cross-axis-mapper.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4214876,
+    "ast_hash": "8fa4daba435ea315f4f07ef5e74eb634",
+    "semantic_hash": "8fa4daba435ea315f4f07ef5e74eb634"
+  },
+  "src-js/fontra-core/tests/test-curvature-sampling.js": {
+    "mtime": 1787903452.95431,
+    "seen": 1787930937.421489,
+    "ast_hash": "889fb2c6920c6de1bcb223ffaaa80eab",
+    "semantic_hash": "889fb2c6920c6de1bcb223ffaaa80eab"
+  },
+  "src-js/fontra-core/tests/test-discrete-variation-model.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4214897,
+    "ast_hash": "35a3c9af5eb240bce95b15c09571ebdd",
+    "semantic_hash": "35a3c9af5eb240bce95b15c09571ebdd"
+  },
+  "src-js/fontra-core/tests/test-distance-angle.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4214904,
+    "ast_hash": "fba9619c0ef2ed3288e43454d31717dd",
+    "semantic_hash": "fba9619c0ef2ed3288e43454d31717dd"
+  },
+  "src-js/fontra-core/tests/test-fit-cubic.js": {
+    "mtime": 1785141625.7595239,
+    "seen": 1787930937.4214911,
+    "ast_hash": "334619dab4cffcadc692a03c3cc189f4",
+    "semantic_hash": "334619dab4cffcadc692a03c3cc189f4"
+  },
+  "src-js/fontra-core/tests/test-font-controller.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4214926,
+    "ast_hash": "48bfe297b0d0a3c433ba2665d3baa32d",
+    "semantic_hash": "48bfe297b0d0a3c433ba2665d3baa32d"
+  },
+  "src-js/fontra-core/tests/test-font-sources-instancer.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4214933,
+    "ast_hash": "c2e4f43dc583827d58641bc2d50c3b16",
+    "semantic_hash": "c2e4f43dc583827d58641bc2d50c3b16"
+  },
+  "src-js/fontra-core/tests/test-fontra-internal-data.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.421494,
+    "ast_hash": "84304a325d186a5fb1544500dce022a0",
+    "semantic_hash": "84304a325d186a5fb1544500dce022a0"
+  },
+  "src-js/fontra-core/tests/test-formatters.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.421495,
+    "ast_hash": "b42f1eca8cacc922458ea03d9aacc744",
+    "semantic_hash": "b42f1eca8cacc922458ea03d9aacc744"
+  },
+  "src-js/fontra-core/tests/test-glyph-controller.js": {
+    "mtime": 1787914162.947947,
+    "seen": 1787930937.421496,
+    "ast_hash": "586900dec6365408d3c6fafc93d3f072",
+    "semantic_hash": "586900dec6365408d3c6fafc93d3f072"
+  },
+  "src-js/fontra-core/tests/test-glyph-data.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4214969,
+    "ast_hash": "279e64bc1d5c2d81239f335d151770fc",
+    "semantic_hash": "279e64bc1d5c2d81239f335d151770fc"
+  },
+  "src-js/fontra-core/tests/test-glyph-svg.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4214976,
+    "ast_hash": "abb9f65aed876e1b1f16f71ab5224710",
+    "semantic_hash": "abb9f65aed876e1b1f16f71ab5224710"
+  },
+  "src-js/fontra-core/tests/test-harmonization.js": {
+    "mtime": 1787749853.9309614,
+    "seen": 1787930937.4214985,
+    "ast_hash": "8a687b8e7e28f602e7faa0229a96688c",
+    "semantic_hash": "8a687b8e7e28f602e7faa0229a96688c"
+  },
+  "src-js/fontra-core/tests/test-kerning-controller.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4214995,
+    "ast_hash": "00506502c780a0d93f1409097134dbd8",
+    "semantic_hash": "00506502c780a0d93f1409097134dbd8"
+  },
+  "src-js/fontra-core/tests/test-letterspacer-engine.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4215002,
+    "ast_hash": "7cd24006e6927b854dd79a31f8dc11a6",
+    "semantic_hash": "7cd24006e6927b854dd79a31f8dc11a6"
+  },
+  "src-js/fontra-core/tests/test-lru-cache.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.421501,
+    "ast_hash": "e6dd9a6ab222695f2f0fca8e6b8e7f07",
+    "semantic_hash": "e6dd9a6ab222695f2f0fca8e6b8e7f07"
+  },
+  "src-js/fontra-core/tests/test-marker-anchor.js": {
+    "mtime": 1787911228.3579557,
+    "seen": 1787930937.4215016,
+    "ast_hash": "d9e6fe8e7e97ad47e71b6891f4ac194d",
+    "semantic_hash": "d9e6fe8e7e97ad47e71b6891f4ac194d"
+  },
+  "src-js/fontra-core/tests/test-marker-anchoring.js": {
+    "mtime": 1787928831.4623823,
+    "seen": 1787930937.4215024,
+    "ast_hash": "e6837b17e1b17305c33378cceb8a5ae9",
+    "semantic_hash": "e6837b17e1b17305c33378cceb8a5ae9"
+  },
+  "src-js/fontra-core/tests/test-marker-measure.js": {
+    "mtime": 1787928755.588295,
+    "seen": 1787930937.4215038,
+    "ast_hash": "95a03cc31219e72c42d447dca30d0415",
+    "semantic_hash": "95a03cc31219e72c42d447dca30d0415"
+  },
+  "src-js/fontra-core/tests/test-marker-model.js": {
+    "mtime": 1787916488.5800326,
+    "seen": 1787930937.4215045,
+    "ast_hash": "760721b195f00670efbddb4906a36011",
+    "semantic_hash": "760721b195f00670efbddb4906a36011"
+  },
+  "src-js/fontra-core/tests/test-natural-handle-solver.js": {
+    "mtime": 1787749853.931997,
+    "seen": 1787930937.4215052,
+    "ast_hash": "ddf9359ab50b00866e2ba48c8dc580df",
+    "semantic_hash": "ddf9359ab50b00866e2ba48c8dc580df"
+  },
+  "src-js/fontra-core/tests/test-number-scrub.js": {
+    "mtime": 1785917223.868337,
+    "seen": 1787930937.4215064,
+    "ast_hash": "9d2b29362e115edf77662f9c2eef30a9",
+    "semantic_hash": "9d2b29362e115edf77662f9c2eef30a9"
+  },
+  "src-js/fontra-core/tests/test-observable-object.ts": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.421507,
+    "ast_hash": "d70ab3be67feb9143c9cf37d2f9408ab",
+    "semantic_hash": "d70ab3be67feb9143c9cf37d2f9408ab"
+  },
+  "src-js/fontra-core/tests/test-offset-contour.js": {
+    "mtime": 1787749853.9325042,
+    "seen": 1787930937.4215076,
+    "ast_hash": "ca355c331652f470611c3021c8134d86",
+    "semantic_hash": "ca355c331652f470611c3021c8134d86"
+  },
+  "src-js/fontra-core/tests/test-offset-cubic.js": {
+    "mtime": 1787749853.933529,
+    "seen": 1787930937.4215086,
+    "ast_hash": "4a903e6d73601fd31ed43879f2527684",
+    "semantic_hash": "4a903e6d73601fd31ed43879f2527684"
+  },
+  "src-js/fontra-core/tests/test-path-changes.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4215093,
+    "ast_hash": "80be08d948323173ef2e2fff28ff25b2",
+    "semantic_hash": "80be08d948323173ef2e2fff28ff25b2"
+  },
+  "src-js/fontra-core/tests/test-path-functions.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4215102,
+    "ast_hash": "34349d0df879b48e101790f1da999dab",
+    "semantic_hash": "34349d0df879b48e101790f1da999dab"
+  },
+  "src-js/fontra-core/tests/test-path-hit-tester.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.421511,
+    "ast_hash": "a4a80182f1a9a588cb783f0fb6dc36c7",
+    "semantic_hash": "a4a80182f1a9a588cb783f0fb6dc36c7"
+  },
+  "src-js/fontra-core/tests/test-queue-iterator.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4215117,
+    "ast_hash": "332f2bc25441cbfdf5be34dd427512b4",
+    "semantic_hash": "332f2bc25441cbfdf5be34dd427512b4"
+  },
+  "src-js/fontra-core/tests/test-rectangle.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4215124,
+    "ast_hash": "09cf996c6a100e82d3601091e72c1ae8",
+    "semantic_hash": "09cf996c6a100e82d3601091e72c1ae8"
+  },
+  "src-js/fontra-core/tests/test-serif-geometry.js": {
+    "mtime": 1787749853.9345357,
+    "seen": 1787930937.4215133,
+    "ast_hash": "cd3dfd9d6076d526cdb1cbe0350a111b",
+    "semantic_hash": "cd3dfd9d6076d526cdb1cbe0350a111b"
+  },
+  "src-js/fontra-core/tests/test-shaper.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.421514,
+    "ast_hash": "1c0c61da174bc0c0c3e7ca3fe1928aea",
+    "semantic_hash": "1c0c61da174bc0c0c3e7ca3fe1928aea"
+  },
+  "src-js/fontra-core/tests/test-simple-compute.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4215147,
+    "ast_hash": "613e760c604cf27a60ee09ae66865906",
+    "semantic_hash": "613e760c604cf27a60ee09ae66865906"
+  },
+  "src-js/fontra-core/tests/test-skeleton-generator.js": {
+    "mtime": 1787749853.935627,
+    "seen": 1787930937.4215155,
+    "ast_hash": "3558cfa2c3af63d045b8e1c9810d2823",
+    "semantic_hash": "3558cfa2c3af63d045b8e1c9810d2823"
+  },
+  "src-js/fontra-core/tests/test-skeleton-interpolation.js": {
+    "mtime": 1785917223.868337,
+    "seen": 1787930937.4215162,
+    "ast_hash": "60749f06b87712a967c4788bfbdb5a09",
+    "semantic_hash": "60749f06b87712a967c4788bfbdb5a09"
+  },
+  "src-js/fontra-core/tests/test-skeleton-model.js": {
+    "mtime": 1787749853.9366639,
+    "seen": 1787930937.4215171,
+    "ast_hash": "90b33861ebc6a75e86da98d045094a85",
+    "semantic_hash": "90b33861ebc6a75e86da98d045094a85"
+  },
+  "src-js/fontra-core/tests/test-skeleton-modifiers.js": {
+    "mtime": 1785319233.6205733,
+    "seen": 1787930937.4215178,
+    "ast_hash": "4132f9be867329c9cebe63bde3e8cbbc",
+    "semantic_hash": "4132f9be867329c9cebe63bde3e8cbbc"
+  },
+  "src-js/fontra-core/tests/test-skeleton-ribs.js": {
+    "mtime": 1787749853.93769,
+    "seen": 1787930937.4215186,
+    "ast_hash": "b64ca0e0c0ef5590b9ef89cf068ad998",
+    "semantic_hash": "b64ca0e0c0ef5590b9ef89cf068ad998"
+  },
+  "src-js/fontra-core/tests/test-skeleton-source-defaults.js": {
+    "mtime": 1785917223.8726065,
+    "seen": 1787930937.4215193,
+    "ast_hash": "f9960f84ad5d0d24c767d99a473a3954",
+    "semantic_hash": "f9960f84ad5d0d24c767d99a473a3954"
+  },
+  "src-js/fontra-core/tests/test-skeleton-tunni.js": {
+    "mtime": 1787749853.938713,
+    "seen": 1787930937.4215202,
+    "ast_hash": "a0e26df8102bf0d5fafde45a1963b7f0",
+    "semantic_hash": "a0e26df8102bf0d5fafde45a1963b7f0"
+  },
+  "src-js/fontra-core/tests/test-snapping.js": {
+    "mtime": 1787903452.9548206,
+    "seen": 1787930937.421521,
+    "ast_hash": "6ad00586b3411e4e94f17c556e0e4141",
+    "semantic_hash": "6ad00586b3411e4e94f17c556e0e4141"
+  },
+  "src-js/fontra-core/tests/test-support.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4215217,
+    "ast_hash": "0bf19f3ed9317f02da40caeb3277e1da",
+    "semantic_hash": "0bf19f3ed9317f02da40caeb3277e1da"
+  },
+  "src-js/fontra-core/tests/test-tension-aware-edit.js": {
+    "mtime": 1787749853.9392242,
+    "seen": 1787930937.4215224,
+    "ast_hash": "df40bdf732ff19802ed1718cde87d719",
+    "semantic_hash": "df40bdf732ff19802ed1718cde87d719"
+  },
+  "src-js/fontra-core/tests/test-transform.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.421523,
+    "ast_hash": "dad4fdf80ef83b021bea7f4b210e0dbc",
+    "semantic_hash": "dad4fdf80ef83b021bea7f4b210e0dbc"
+  },
+  "src-js/fontra-core/tests/test-tunni-calculations.js": {
+    "mtime": 1787749853.9402413,
+    "seen": 1787930937.421524,
+    "ast_hash": "4b4b94d8a39c6b64b881b2383d23b44e",
+    "semantic_hash": "4b4b94d8a39c6b64b881b2383d23b44e"
+  },
+  "src-js/fontra-core/tests/test-unicode-scripts-blocks.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.421525,
+    "ast_hash": "93ec80a467edb0bb6ba78a91f9bc1eb5",
+    "semantic_hash": "93ec80a467edb0bb6ba78a91f9bc1eb5"
+  },
+  "src-js/fontra-core/tests/test-unicode-utils.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4215257,
+    "ast_hash": "1a3f5383c296f8455db642c7cb21d0f8",
+    "semantic_hash": "1a3f5383c296f8455db642c7cb21d0f8"
+  },
+  "src-js/fontra-core/tests/test-utils.js": {
+    "mtime": 1787749853.9412785,
+    "seen": 1787930937.4215264,
+    "ast_hash": "0789b58777c5c7085e39cff13ade639e",
+    "semantic_hash": "0789b58777c5c7085e39cff13ade639e"
+  },
+  "src-js/fontra-core/tests/test-var-array.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4215276,
+    "ast_hash": "43efedf69eb19e61db189115416579ec",
+    "semantic_hash": "43efedf69eb19e61db189115416579ec"
+  },
+  "src-js/fontra-core/tests/test-var-funcs.js": {
+    "mtime": 1785137808.0556986,
+    "seen": 1787930937.4215283,
+    "ast_hash": "1e5434a833f2b0ea8578a517e43ed195",
+    "semantic_hash": "1e5434a833f2b0ea8578a517e43ed195"
+  },
+  "src-js/fontra-core/tests/test-var-glyph.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215293,
+    "ast_hash": "a0e7d10b9636d425e1ee4802c65d0a63",
+    "semantic_hash": "a0e7d10b9636d425e1ee4802c65d0a63"
+  },
+  "src-js/fontra-core/tests/test-var-model.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.42153,
+    "ast_hash": "3835bc15deb9e9d1ed90657d729a610c",
+    "semantic_hash": "3835bc15deb9e9d1ed90657d729a610c"
+  },
+  "src-js/fontra-core/tests/test-var-path.js": {
+    "mtime": 1785162549.5209405,
+    "seen": 1787930937.421531,
+    "ast_hash": "506d73b4ab1e181ab9c79ece20301ca3",
+    "semantic_hash": "506d73b4ab1e181ab9c79ece20301ca3"
+  },
+  "src-js/fontra-core/webpack.config.cjs": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215317,
+    "ast_hash": "d69380b0f044b1c8b969104ca01ad6f2",
+    "semantic_hash": "d69380b0f044b1c8b969104ca01ad6f2"
+  },
+  "src-js/fontra-webcomponents/package.json": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215326,
+    "ast_hash": "6d3e3ff9ee19395f301eb5c4ac9beac4",
+    "semantic_hash": "6d3e3ff9ee19395f301eb5c4ac9beac4"
+  },
+  "src-js/fontra-webcomponents/src/add-remove-buttons.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215336,
+    "ast_hash": "a668f7116313df8b1f1813365da36dc0",
+    "semantic_hash": "a668f7116313df8b1f1813365da36dc0"
+  },
+  "src-js/fontra-webcomponents/src/custom-data-list.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215348,
+    "ast_hash": "7f4f256796cf061b331fc71cfc39e866",
+    "semantic_hash": "7f4f256796cf061b331fc71cfc39e866"
+  },
+  "src-js/fontra-webcomponents/src/designspace-location.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215353,
+    "ast_hash": "299292cad90a9ecb54d6d12807f7b4ee",
+    "semantic_hash": "299292cad90a9ecb54d6d12807f7b4ee"
+  },
+  "src-js/fontra-webcomponents/src/glyph-cell-view.js": {
+    "mtime": 1787903452.9553337,
+    "seen": 1787930937.421536,
+    "ast_hash": "29a2ea82aff5147bec89126da6103906",
+    "semantic_hash": "29a2ea82aff5147bec89126da6103906"
+  },
+  "src-js/fontra-webcomponents/src/glyph-cell.js": {
+    "mtime": 1787903452.9558592,
+    "seen": 1787930937.421537,
+    "ast_hash": "3b1125364aa32158152b3d2fe8a3478e",
+    "semantic_hash": "3b1125364aa32158152b3d2fe8a3478e"
+  },
+  "src-js/fontra-webcomponents/src/glyph-search-field.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215379,
+    "ast_hash": "d031c028ae67aa49a3174b3e27826307",
+    "semantic_hash": "d031c028ae67aa49a3174b3e27826307"
+  },
+  "src-js/fontra-webcomponents/src/glyph-search-list.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215384,
+    "ast_hash": "0f3617c6f8aa5288079cd14610ad0213",
+    "semantic_hash": "0f3617c6f8aa5288079cd14610ad0213"
+  },
+  "src-js/fontra-webcomponents/src/grouped-settings.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.421539,
+    "ast_hash": "c6048aef9c696a51b5389314b44f505e",
+    "semantic_hash": "c6048aef9c696a51b5389314b44f505e"
+  },
+  "src-js/fontra-webcomponents/src/icon-button.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215398,
+    "ast_hash": "58145b8eff8f5fd13414d9461f4b4742",
+    "semantic_hash": "58145b8eff8f5fd13414d9461f4b4742"
+  },
+  "src-js/fontra-webcomponents/src/inline-svg.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215405,
+    "ast_hash": "819d22f14e81a0d06e3477cc504a7831",
+    "semantic_hash": "819d22f14e81a0d06e3477cc504a7831"
+  },
+  "src-js/fontra-webcomponents/src/menu-bar.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215415,
+    "ast_hash": "2f0f4b01b89c1165a420a163b7845a4c",
+    "semantic_hash": "2f0f4b01b89c1165a420a163b7845a4c"
+  },
+  "src-js/fontra-webcomponents/src/menu-panel.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215422,
+    "ast_hash": "86e9a02386107166b9df6b6f24dd0c35",
+    "semantic_hash": "86e9a02386107166b9df6b6f24dd0c35"
+  },
+  "src-js/fontra-webcomponents/src/modal-dialog.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215431,
+    "ast_hash": "bc96c6d2bb0ad1ae8691b478bf3c8f37",
+    "semantic_hash": "bc96c6d2bb0ad1ae8691b478bf3c8f37"
+  },
+  "src-js/fontra-webcomponents/src/plugin-manager.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215438,
+    "ast_hash": "90001f0a3e913e566506e682443aa7f6",
+    "semantic_hash": "90001f0a3e913e566506e682443aa7f6"
+  },
+  "src-js/fontra-webcomponents/src/popup-menu.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215448,
+    "ast_hash": "93bff6d8abe3176fbfb9f30512e15c34",
+    "semantic_hash": "93bff6d8abe3176fbfb9f30512e15c34"
+  },
+  "src-js/fontra-webcomponents/src/range-slider.js": {
+    "mtime": 1785917223.8726065,
+    "seen": 1787930937.4215455,
+    "ast_hash": "4dd1b40eb1e60921ef8503afc7d44f9e",
+    "semantic_hash": "4dd1b40eb1e60921ef8503afc7d44f9e"
+  },
+  "src-js/fontra-webcomponents/src/rotary-control.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.421546,
+    "ast_hash": "d06ee32cf2335347fd6a56be57483dd3",
+    "semantic_hash": "d06ee32cf2335347fd6a56be57483dd3"
+  },
+  "src-js/fontra-webcomponents/src/simple-settings.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.421547,
+    "ast_hash": "24c58adcd234e76939f1309d99788715",
+    "semantic_hash": "24c58adcd234e76939f1309d99788715"
+  },
+  "src-js/fontra-webcomponents/src/theme-support.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215474,
+    "ast_hash": "677a0e96d1341d63870882f46f75c297",
+    "semantic_hash": "677a0e96d1341d63870882f46f75c297"
+  },
+  "src-js/fontra-webcomponents/src/ui-accordion.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215486,
+    "ast_hash": "53d6994da385e14ddcde6f86ba329626",
+    "semantic_hash": "53d6994da385e14ddcde6f86ba329626"
+  },
+  "src-js/fontra-webcomponents/src/ui-form.js": {
+    "mtime": 1787924177.6821866,
+    "seen": 1787930937.4215493,
+    "ast_hash": "839e9d3b8f891e9e1f91c106c8b68790",
+    "semantic_hash": "839e9d3b8f891e9e1f91c106c8b68790"
+  },
+  "src-js/fontra-webcomponents/src/ui-list.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215503,
+    "ast_hash": "e755ab9deacd461dbf75194291724b3e",
+    "semantic_hash": "e755ab9deacd461dbf75194291724b3e"
+  },
+  "src-js/projectmanager-filesystem/package.json": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.421551,
+    "ast_hash": "faf3df1283d0f79dec1139c33db026b1",
+    "semantic_hash": "faf3df1283d0f79dec1139c33db026b1"
+  },
+  "src-js/projectmanager-filesystem/src/landing.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.421552,
+    "ast_hash": "e03990602b861ddf02dd00d687bd4429",
+    "semantic_hash": "e03990602b861ddf02dd00d687bd4429"
+  },
+  "src-js/projectmanager-filesystem/src/start.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215527,
+    "ast_hash": "d2fe4bcc79669a4fdeaa099cee1e9c0a",
+    "semantic_hash": "d2fe4bcc79669a4fdeaa099cee1e9c0a"
+  },
+  "src-js/views-applicationsettings/package.json": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215534,
+    "ast_hash": "fe6d8b2b7589e08faec56fb87b26c0c6",
+    "semantic_hash": "fe6d8b2b7589e08faec56fb87b26c0c6"
+  },
+  "src-js/views-applicationsettings/src/applicationsettings.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.421554,
+    "ast_hash": "f6ab431aac3fa0df796690114f440616",
+    "semantic_hash": "f6ab431aac3fa0df796690114f440616"
+  },
+  "src-js/views-applicationsettings/src/panel-clipboard.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.421555,
+    "ast_hash": "9632adda6866884c27a23ccc21cd6c3f",
+    "semantic_hash": "9632adda6866884c27a23ccc21cd6c3f"
+  },
+  "src-js/views-applicationsettings/src/panel-display-language.js": {
+    "mtime": 1787749853.9417908,
+    "seen": 1787930937.4215558,
+    "ast_hash": "2568129a89d51e21b332dd893b0f9c77",
+    "semantic_hash": "2568129a89d51e21b332dd893b0f9c77"
+  },
+  "src-js/views-applicationsettings/src/panel-editor-behavior.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215565,
+    "ast_hash": "cfb8b341f5c424e9ae1d05afa52b5339",
+    "semantic_hash": "cfb8b341f5c424e9ae1d05afa52b5339"
+  },
+  "src-js/views-applicationsettings/src/panel-plugins-manager.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215574,
+    "ast_hash": "4520301c137609f0bc05e21ab960daae",
+    "semantic_hash": "4520301c137609f0bc05e21ab960daae"
+  },
+  "src-js/views-applicationsettings/src/panel-server-info.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215584,
+    "ast_hash": "41b3cca1133352bea4c25dc5b53b0736",
+    "semantic_hash": "41b3cca1133352bea4c25dc5b53b0736"
+  },
+  "src-js/views-applicationsettings/src/panel-shortcuts.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.421559,
+    "ast_hash": "f33a8db15f6efcf70851f177e6ac0c08",
+    "semantic_hash": "f33a8db15f6efcf70851f177e6ac0c08"
+  },
+  "src-js/views-applicationsettings/src/panel-theme-settings.js": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4215598,
+    "ast_hash": "90a484175941e089f41a3e2d31a8d472",
+    "semantic_hash": "90a484175941e089f41a3e2d31a8d472"
+  },
+  "src-js/views-applicationsettings/src/start.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215608,
+    "ast_hash": "66a9ff94131bad718d542e06763e5f0b",
+    "semantic_hash": "66a9ff94131bad718d542e06763e5f0b"
+  },
+  "src-js/views-editor/package.json": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215617,
+    "ast_hash": "541b512cc8cc1d1c089714a2a3163c99",
+    "semantic_hash": "541b512cc8cc1d1c089714a2a3163c99"
+  },
+  "src-js/views-editor/src/base-expand-editing.js": {
+    "mtime": 1787749853.9423022,
+    "seen": 1787930937.4215624,
+    "ast_hash": "a5a08b89a78cf3759b133616b1dc11aa",
+    "semantic_hash": "a5a08b89a78cf3759b133616b1dc11aa"
+  },
+  "src-js/views-editor/src/cjk-design-frame.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.421563,
+    "ast_hash": "f9feb8c2571110046d3f05174c6cfc1a",
+    "semantic_hash": "f9feb8c2571110046d3f05174c6cfc1a"
+  },
+  "src-js/views-editor/src/composition-editing.js": {
+    "mtime": 1787903452.9563704,
+    "seen": 1787930937.4215639,
+    "ast_hash": "c58ee053d1d8431cf20229573caa1939",
+    "semantic_hash": "c58ee053d1d8431cf20229573caa1939"
+  },
+  "src-js/views-editor/src/edit-behavior-support.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215646,
+    "ast_hash": "6db61e268a46f401cdf8925c32ee72ef",
+    "semantic_hash": "6db61e268a46f401cdf8925c32ee72ef"
+  },
+  "src-js/views-editor/src/edit-behavior.js": {
+    "mtime": 1787903452.957397,
+    "seen": 1787930937.4215655,
+    "ast_hash": "e7cf1df04359cfe79aa0857a57e6f529",
+    "semantic_hash": "e7cf1df04359cfe79aa0857a57e6f529"
+  },
+  "src-js/views-editor/src/edit-tools-base.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215662,
+    "ast_hash": "b84551b56a90fa466367dab5e8c2af9e",
+    "semantic_hash": "b84551b56a90fa466367dab5e8c2af9e"
+  },
+  "src-js/views-editor/src/edit-tools-hand.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215667,
+    "ast_hash": "fe122d645a844b8e327dd845ebc4c72f",
+    "semantic_hash": "fe122d645a844b8e327dd845ebc4c72f"
+  },
+  "src-js/views-editor/src/edit-tools-knife.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215674,
+    "ast_hash": "68831c65e71e18db5dd285f53c5ff859",
+    "semantic_hash": "68831c65e71e18db5dd285f53c5ff859"
+  },
+  "src-js/views-editor/src/edit-tools-marker.js": {
+    "mtime": 1787928805.9236054,
+    "seen": 1787930937.4215708,
+    "ast_hash": "16473f9741d1949339b45f9a427b878c",
+    "semantic_hash": "16473f9741d1949339b45f9a427b878c"
+  },
+  "src-js/views-editor/src/edit-tools-metrics.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215715,
+    "ast_hash": "49e332641eaa656c4b6f95498ebf217d",
+    "semantic_hash": "49e332641eaa656c4b6f95498ebf217d"
+  },
+  "src-js/views-editor/src/edit-tools-pen.js": {
+    "mtime": 1787903452.9584274,
+    "seen": 1787930937.4215724,
+    "ast_hash": "ace1626b7d0c3cba16a075aa67978a2d",
+    "semantic_hash": "ace1626b7d0c3cba16a075aa67978a2d"
+  },
+  "src-js/views-editor/src/edit-tools-pointer.js": {
+    "mtime": 1787912341.668496,
+    "seen": 1787930937.4215732,
+    "ast_hash": "0f9e73eceb1f9fd2663edf823cd7b77e",
+    "semantic_hash": "0f9e73eceb1f9fd2663edf823cd7b77e"
+  },
+  "src-js/views-editor/src/edit-tools-power-ruler.js": {
+    "mtime": 1787912266.0265024,
+    "seen": 1787930937.4215739,
+    "ast_hash": "38ef5c9c110f3c8f965a65e730f2439b",
+    "semantic_hash": "38ef5c9c110f3c8f965a65e730f2439b"
+  },
+  "src-js/views-editor/src/edit-tools-shape.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215746,
+    "ast_hash": "23fe1b40ffe4f7cdd98e79ebea953707",
+    "semantic_hash": "23fe1b40ffe4f7cdd98e79ebea953707"
+  },
+  "src-js/views-editor/src/edit-tools-skeleton.js": {
+    "mtime": 1787749853.944944,
+    "seen": 1787930937.4215753,
+    "ast_hash": "7f7660ef9e10ef8f550a6bd0d5140492",
+    "semantic_hash": "7f7660ef9e10ef8f550a6bd0d5140492"
+  },
+  "src-js/views-editor/src/editor.js": {
+    "mtime": 1787912607.622144,
+    "seen": 1787930937.4215763,
+    "ast_hash": "ecbaed9a46de8be8b8d48fdce3826389",
+    "semantic_hash": "ecbaed9a46de8be8b8d48fdce3826389"
+  },
+  "src-js/views-editor/src/marker-editing.js": {
+    "mtime": 1787928812.3222046,
+    "seen": 1787930937.421577,
+    "ast_hash": "7435f9a1da0b405a72017e073624304b",
+    "semantic_hash": "7435f9a1da0b405a72017e073624304b"
+  },
+  "src-js/views-editor/src/measure-interactions.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215777,
+    "ast_hash": "aed3170e19fb4d73ee75333df3914b45",
+    "semantic_hash": "aed3170e19fb4d73ee75333df3914b45"
+  },
+  "src-js/views-editor/src/panel-characters-glyphs.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215784,
+    "ast_hash": "5a48f7bd2c49f754b042abf7f2f5b075",
+    "semantic_hash": "5a48f7bd2c49f754b042abf7f2f5b075"
+  },
+  "src-js/views-editor/src/panel-designspace-navigation.js": {
+    "mtime": 1787903452.962538,
+    "seen": 1787930937.4215794,
+    "ast_hash": "60187f8059e9f3acda7b666b65145dd2",
+    "semantic_hash": "60187f8059e9f3acda7b666b65145dd2"
+  },
+  "src-js/views-editor/src/panel-glyph-note.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.42158,
+    "ast_hash": "f9a804d899348f40f88f744d64a53402",
+    "semantic_hash": "f9a804d899348f40f88f744d64a53402"
+  },
+  "src-js/views-editor/src/panel-glyph-search.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215808,
+    "ast_hash": "8ac9a2e8646ca199586d79d46eb5e794",
+    "semantic_hash": "8ac9a2e8646ca199586d79d46eb5e794"
+  },
+  "src-js/views-editor/src/panel-letterspacer.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215815,
+    "ast_hash": "1ce96a5497f3a1f97ed37722d8977f89",
+    "semantic_hash": "1ce96a5497f3a1f97ed37722d8977f89"
+  },
+  "src-js/views-editor/src/panel-markers.js": {
+    "mtime": 1787924177.572257,
+    "seen": 1787930937.4215822,
+    "ast_hash": "eb653754558807300ee20b4abd56ea60",
+    "semantic_hash": "eb653754558807300ee20b4abd56ea60"
+  },
+  "src-js/views-editor/src/panel-reference-font.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215832,
+    "ast_hash": "c538078466e8b54c661749e5912f6340",
+    "semantic_hash": "c538078466e8b54c661749e5912f6340"
+  },
+  "src-js/views-editor/src/panel-related-glyphs.js": {
+    "mtime": 1787903452.9635572,
+    "seen": 1787930937.421584,
+    "ast_hash": "ead2f4166c07d8d64bd3e37c42a7ca9d",
+    "semantic_hash": "ead2f4166c07d8d64bd3e37c42a7ca9d"
+  },
+  "src-js/views-editor/src/panel-selection-info.js": {
+    "mtime": 1787749853.947111,
+    "seen": 1787930937.4215846,
+    "ast_hash": "d0ede69b96bc79a8caead2b6f3ae1aa6",
+    "semantic_hash": "d0ede69b96bc79a8caead2b6f3ae1aa6"
+  },
+  "src-js/views-editor/src/panel-skeleton-defaults.js": {
+    "mtime": 1785917223.8773785,
+    "seen": 1787930937.4215853,
+    "ast_hash": "71e50222d52ef3de893aca0af7515393",
+    "semantic_hash": "71e50222d52ef3de893aca0af7515393"
+  },
+  "src-js/views-editor/src/panel-skeleton-parameters.js": {
+    "mtime": 1787749853.9476242,
+    "seen": 1787930937.4215863,
+    "ast_hash": "d64022ecfe3eff56c43af3b05b2aee51",
+    "semantic_hash": "d64022ecfe3eff56c43af3b05b2aee51"
+  },
+  "src-js/views-editor/src/panel-text-entry.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.421587,
+    "ast_hash": "c1fc7bd8394e1f9deb233b2c76137868",
+    "semantic_hash": "c1fc7bd8394e1f9deb233b2c76137868"
+  },
+  "src-js/views-editor/src/panel-transformation.js": {
+    "mtime": 1787749853.9476242,
+    "seen": 1787930937.4215877,
+    "ast_hash": "6cadd54209b45b459ea9d05089f93a09",
+    "semantic_hash": "6cadd54209b45b459ea9d05089f93a09"
+  },
+  "src-js/views-editor/src/panel.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215884,
+    "ast_hash": "aa0a9beba42005335b8aabb6a1752870",
+    "semantic_hash": "aa0a9beba42005335b8aabb6a1752870"
+  },
+  "src-js/views-editor/src/scene-controller.js": {
+    "mtime": 1787916594.9282808,
+    "seen": 1787930937.4215891,
+    "ast_hash": "be768fb7d7e072a4e0a8de399109cb39",
+    "semantic_hash": "be768fb7d7e072a4e0a8de399109cb39"
+  },
+  "src-js/views-editor/src/scene-model.js": {
+    "mtime": 1787913931.557949,
+    "seen": 1787930937.42159,
+    "ast_hash": "cb6bd1514f22bfd3cf64c564f3f9c48a",
+    "semantic_hash": "cb6bd1514f22bfd3cf64c564f3f9c48a"
+  },
+  "src-js/views-editor/src/sidebar.js": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4215908,
+    "ast_hash": "9a1e3a7684e8641b70faee8646fb6af3",
+    "semantic_hash": "9a1e3a7684e8641b70faee8646fb6af3"
+  },
+  "src-js/views-editor/src/skeleton-editing.js": {
+    "mtime": 1787749853.9506578,
+    "seen": 1787930937.4215915,
+    "ast_hash": "0136bc735c4e7e035314bf0edc4e3f82",
+    "semantic_hash": "0136bc735c4e7e035314bf0edc4e3f82"
+  },
+  "src-js/views-editor/src/skeleton-panel-edits.js": {
+    "mtime": 1787749853.9506578,
+    "seen": 1787930937.4215922,
+    "ast_hash": "9f3e702e656de88599dc4b9e347177ac",
+    "semantic_hash": "9f3e702e656de88599dc4b9e347177ac"
+  },
+  "src-js/views-editor/src/skeleton-panel-model.js": {
+    "mtime": 1787749853.9523852,
+    "seen": 1787930937.421593,
+    "ast_hash": "4d46627900007e15bdddcb0f91b133c4",
+    "semantic_hash": "4d46627900007e15bdddcb0f91b133c4"
+  },
+  "src-js/views-editor/src/snapping-interactions.js": {
+    "mtime": 1787903452.9656963,
+    "seen": 1787930937.4215937,
+    "ast_hash": "c325633e429608c69819a0ca58141b88",
+    "semantic_hash": "c325633e429608c69819a0ca58141b88"
+  },
+  "src-js/views-editor/src/start.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4215944,
+    "ast_hash": "178c6bbaf3a5a962835dde92f9a4f63b",
+    "semantic_hash": "178c6bbaf3a5a962835dde92f9a4f63b"
+  },
+  "src-js/views-editor/src/tension-aware-editing.js": {
+    "mtime": 1787749853.9528875,
+    "seen": 1787930937.421595,
+    "ast_hash": "99e217340a0087c373a9d220c17e340f",
+    "semantic_hash": "99e217340a0087c373a9d220c17e340f"
+  },
+  "src-js/views-editor/src/tunni-interactions.js": {
+    "mtime": 1787749853.9534042,
+    "seen": 1787930937.4215958,
+    "ast_hash": "f5b0a3d29bb23cb33aca6af6fc4e3579",
+    "semantic_hash": "f5b0a3d29bb23cb33aca6af6fc4e3579"
+  },
+  "src-js/views-editor/src/visualization-layer-composition.js": {
+    "mtime": 1787903452.9656963,
+    "seen": 1787930937.4215968,
+    "ast_hash": "bb97994e525635a74d7c9ebe580cc283",
+    "semantic_hash": "bb97994e525635a74d7c9ebe580cc283"
+  },
+  "src-js/views-editor/src/visualization-layer-definitions.js": {
+    "mtime": 1787912265.9861264,
+    "seen": 1787930937.4215975,
+    "ast_hash": "52da647883c570555f860d7ed0456add",
+    "semantic_hash": "52da647883c570555f860d7ed0456add"
+  },
+  "src-js/views-editor/src/visualization-layer-letterspacer.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4215982,
+    "ast_hash": "4a1079ada382f67741db3b4327ea2ff9",
+    "semantic_hash": "4a1079ada382f67741db3b4327ea2ff9"
+  },
+  "src-js/views-editor/src/visualization-layer-markers.js": {
+    "mtime": 1787919090.5397072,
+    "seen": 1787930937.421599,
+    "ast_hash": "d6814c78c2800d458837634961aabaa3",
+    "semantic_hash": "d6814c78c2800d458837634961aabaa3"
+  },
+  "src-js/views-editor/src/visualization-layer-skeleton.js": {
+    "mtime": 1787749853.9555225,
+    "seen": 1787930937.4215994,
+    "ast_hash": "6bd0dc3fb0cfff21d488bb0c4ce3219a",
+    "semantic_hash": "6bd0dc3fb0cfff21d488bb0c4ce3219a"
+  },
+  "src-js/views-editor/src/visualization-layer-snapping.js": {
+    "mtime": 1787903452.9667585,
+    "seen": 1787930937.4216006,
+    "ast_hash": "7f3b65afc5b5746c93a488c59b38d530",
+    "semantic_hash": "7f3b65afc5b5746c93a488c59b38d530"
+  },
+  "src-js/views-editor/src/visualization-layers.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216013,
+    "ast_hash": "74b9455ee568c9e3dcd2d1b70e488527",
+    "semantic_hash": "74b9455ee568c9e3dcd2d1b70e488527"
+  },
+  "src-js/views-fontinfo/package.json": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.421602,
+    "ast_hash": "2d9d3afd5cee3908e1b22188e653b128",
+    "semantic_hash": "2d9d3afd5cee3908e1b22188e653b128"
+  },
+  "src-js/views-fontinfo/src/fontinfo.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216027,
+    "ast_hash": "4735a5232390bd25574c65f5d8d6f565",
+    "semantic_hash": "4735a5232390bd25574c65f5d8d6f565"
+  },
+  "src-js/views-fontinfo/src/panel-axes.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216034,
+    "ast_hash": "423a5268c5d027a9025c9ed7284f5f4c",
+    "semantic_hash": "423a5268c5d027a9025c9ed7284f5f4c"
+  },
+  "src-js/views-fontinfo/src/panel-base.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216042,
+    "ast_hash": "3649f17002197e279de17ae97ef2c2a3",
+    "semantic_hash": "3649f17002197e279de17ae97ef2c2a3"
+  },
+  "src-js/views-fontinfo/src/panel-cross-axis-mapping.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216049,
+    "ast_hash": "b0aa380ed8785a6c7fd351a1d56ca23d",
+    "semantic_hash": "b0aa380ed8785a6c7fd351a1d56ca23d"
+  },
+  "src-js/views-fontinfo/src/panel-development-status-definitions.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216053,
+    "ast_hash": "34d713d5fefc4c9541ab15983fb90aa1",
+    "semantic_hash": "34d713d5fefc4c9541ab15983fb90aa1"
+  },
+  "src-js/views-fontinfo/src/panel-font-info.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.421606,
+    "ast_hash": "6ae5de0775f8dfce57f8bdbd929a67c2",
+    "semantic_hash": "6ae5de0775f8dfce57f8bdbd929a67c2"
+  },
+  "src-js/views-fontinfo/src/panel-opentype-feature-code.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.421607,
+    "ast_hash": "674d504dc2e523c34622740340b07d1e",
+    "semantic_hash": "674d504dc2e523c34622740340b07d1e"
+  },
+  "src-js/views-fontinfo/src/panel-sources.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216075,
+    "ast_hash": "67b9fa14dd41081482c9e0dd1c84923a",
+    "semantic_hash": "67b9fa14dd41081482c9e0dd1c84923a"
+  },
+  "src-js/views-fontinfo/src/start.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216082,
+    "ast_hash": "e55d785904d714a9c6c0e02fb2c56849",
+    "semantic_hash": "e55d785904d714a9c6c0e02fb2c56849"
+  },
+  "src-js/views-fontoverview/package.json": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.421609,
+    "ast_hash": "7fd98ee2fe4011c797013a51417c9e6b",
+    "semantic_hash": "7fd98ee2fe4011c797013a51417c9e6b"
+  },
+  "src-js/views-fontoverview/src/fontoverview.js": {
+    "mtime": 1787903452.967888,
+    "seen": 1787930937.4216094,
+    "ast_hash": "463cf1934713f2497ec1adab25d3861c",
+    "semantic_hash": "463cf1934713f2497ec1adab25d3861c"
+  },
+  "src-js/views-fontoverview/src/panel-navigation.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216104,
+    "ast_hash": "9ddeb46f19567d6e73b1d9e34f07763c",
+    "semantic_hash": "9ddeb46f19567d6e73b1d9e34f07763c"
+  },
+  "src-js/views-fontoverview/src/start.js": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.421611,
+    "ast_hash": "042c64035e8d87c5e27ff2a890817233",
+    "semantic_hash": "042c64035e8d87c5e27ff2a890817233"
+  },
+  "src/fontra/__init__.py": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216118,
+    "ast_hash": "80001495272d011df4209bb9e7833aed",
+    "semantic_hash": "80001495272d011df4209bb9e7833aed"
+  },
+  "src/fontra/__main__.py": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216123,
+    "ast_hash": "2fdf5e6e452f7c04e46435cd9866fe02",
+    "semantic_hash": "2fdf5e6e452f7c04e46435cd9866fe02"
+  },
+  "src/fontra/backends/__init__.py": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.421613,
+    "ast_hash": "5ca4d12aed221b1e351ad3740a81fcfd",
+    "semantic_hash": "5ca4d12aed221b1e351ad3740a81fcfd"
+  },
+  "src/fontra/backends/base.py": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.421614,
+    "ast_hash": "9d71bf423d38d16bd745ebbf392985c3",
+    "semantic_hash": "9d71bf423d38d16bd745ebbf392985c3"
+  },
+  "src/fontra/backends/copy.py": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216146,
+    "ast_hash": "4da10e50540220e4b923b9b585354651",
+    "semantic_hash": "4da10e50540220e4b923b9b585354651"
+  },
+  "src/fontra/backends/designspace.py": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216151,
+    "ast_hash": "1850702cd366481a6b33ec0df2dac4d7",
+    "semantic_hash": "1850702cd366481a6b33ec0df2dac4d7"
+  },
+  "src/fontra/backends/filenames.py": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216158,
+    "ast_hash": "762f1331fb99e39f80692cbba5f6c2cf",
+    "semantic_hash": "762f1331fb99e39f80692cbba5f6c2cf"
+  },
+  "src/fontra/backends/filewatcher.py": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216163,
+    "ast_hash": "d73cabc0989c1fef8108ff040bbf864e",
+    "semantic_hash": "d73cabc0989c1fef8108ff040bbf864e"
+  },
+  "src/fontra/backends/fontra.py": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216173,
+    "ast_hash": "75b73b1d0d3754b1800dbc8cd8e19845",
+    "semantic_hash": "75b73b1d0d3754b1800dbc8cd8e19845"
+  },
+  "src/fontra/backends/includedfeaturefiles.py": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.421618,
+    "ast_hash": "1256add978d815151c484d883558130f",
+    "semantic_hash": "1256add978d815151c484d883558130f"
+  },
+  "src/fontra/backends/null.py": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216187,
+    "ast_hash": "78bbec9eb780489aae3a91f2a4cc32bf",
+    "semantic_hash": "78bbec9eb780489aae3a91f2a4cc32bf"
+  },
+  "src/fontra/backends/opentype.py": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.4216192,
+    "ast_hash": "8fa47d99d375e5ec79dd18b3aaf92291",
+    "semantic_hash": "8fa47d99d375e5ec79dd18b3aaf92291"
+  },
+  "src/fontra/backends/populate.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.42162,
+    "ast_hash": "c49e565b66207899c1fb8709a478cba2",
+    "semantic_hash": "c49e565b66207899c1fb8709a478cba2"
+  },
+  "src/fontra/backends/ufo_utils.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216208,
+    "ast_hash": "8b1879d5b5dc89ca1446c1633704a5a9",
+    "semantic_hash": "8b1879d5b5dc89ca1446c1633704a5a9"
+  },
+  "src/fontra/backends/watchable.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216216,
+    "ast_hash": "74d23b4b052c8a0c662bab1a9d0cad35",
+    "semantic_hash": "74d23b4b052c8a0c662bab1a9d0cad35"
+  },
+  "src/fontra/backends/workflow.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.421622,
+    "ast_hash": "11103b4db569e6e5868765645205ef60",
+    "semantic_hash": "11103b4db569e6e5868765645205ef60"
+  },
+  "src/fontra/core/__init__.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216228,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "src/fontra/core/async_property.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216235,
+    "ast_hash": "82cff9f2dda28edd5f208696203748db",
+    "semantic_hash": "82cff9f2dda28edd5f208696203748db"
+  },
+  "src/fontra/core/changes.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216244,
+    "ast_hash": "cd134d43c4d85eb586da07c068ae400d",
+    "semantic_hash": "cd134d43c4d85eb586da07c068ae400d"
+  },
+  "src/fontra/core/classes.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216251,
+    "ast_hash": "cea25a71a2bd34450a6983dc36e089e8",
+    "semantic_hash": "cea25a71a2bd34450a6983dc36e089e8"
+  },
+  "src/fontra/core/clipboard.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216256,
+    "ast_hash": "0840309f550c874ab344f719bc0efbaa",
+    "semantic_hash": "0840309f550c874ab344f719bc0efbaa"
+  },
+  "src/fontra/core/crossaxismapper.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216263,
+    "ast_hash": "f0c156e3bd75d666e150ab040f8d50b4",
+    "semantic_hash": "f0c156e3bd75d666e150ab040f8d50b4"
+  },
+  "src/fontra/core/discretevariationmodel.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.421627,
+    "ast_hash": "228bbd4a69b5f929b0e69b969535f96f",
+    "semantic_hash": "228bbd4a69b5f929b0e69b969535f96f"
+  },
+  "src/fontra/core/fonthandler.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.421628,
+    "ast_hash": "3026de6d1f0fd627e354b9a61a4828dc",
+    "semantic_hash": "3026de6d1f0fd627e354b9a61a4828dc"
+  },
+  "src/fontra/core/glyphdependencies.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216285,
+    "ast_hash": "ad74b7494a10ae9c54ce517e9bd6a86f",
+    "semantic_hash": "ad74b7494a10ae9c54ce517e9bd6a86f"
+  },
+  "src/fontra/core/instancer.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216292,
+    "ast_hash": "79b5e2f7fb0bb9a338739bd062ce93a2",
+    "semantic_hash": "79b5e2f7fb0bb9a338739bd062ce93a2"
+  },
+  "src/fontra/core/kernutils.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.42163,
+    "ast_hash": "58e5dd1ed73ba1299a1484350698ee0b",
+    "semantic_hash": "58e5dd1ed73ba1299a1484350698ee0b"
+  },
+  "src/fontra/core/lrucache.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216306,
+    "ast_hash": "2f7b758af895a7e7d8c88aaf4d7990bf",
+    "semantic_hash": "2f7b758af895a7e7d8c88aaf4d7990bf"
+  },
+  "src/fontra/core/path.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216313,
+    "ast_hash": "19359448e04f5f873a259e5a07e29982",
+    "semantic_hash": "19359448e04f5f873a259e5a07e29982"
+  },
+  "src/fontra/core/pathops.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.421632,
+    "ast_hash": "31f84acd1b974fee1c1aa4a4816f226d",
+    "semantic_hash": "31f84acd1b974fee1c1aa4a4816f226d"
+  },
+  "src/fontra/core/protocols.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216325,
+    "ast_hash": "11a3c90a25f4599504e3e1f4480430c7",
+    "semantic_hash": "11a3c90a25f4599504e3e1f4480430c7"
+  },
+  "src/fontra/core/remote.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216332,
+    "ast_hash": "f114cfe106e872c8195bf7a1b5a95b24",
+    "semantic_hash": "f114cfe106e872c8195bf7a1b5a95b24"
+  },
+  "src/fontra/core/server.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.421634,
+    "ast_hash": "697ca2d0b1c86294b166a4011c4d1c95",
+    "semantic_hash": "697ca2d0b1c86294b166a4011c4d1c95"
+  },
+  "src/fontra/core/serverutils.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.421635,
+    "ast_hash": "867a8f04dd21e6e62afc3cb49e7c0b6e",
+    "semantic_hash": "867a8f04dd21e6e62afc3cb49e7c0b6e"
+  },
+  "src/fontra/core/subprocess.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216354,
+    "ast_hash": "a93e448fb950ccaa88749bb01ad0be38",
+    "semantic_hash": "a93e448fb950ccaa88749bb01ad0be38"
+  },
+  "src/fontra/core/threading.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.421636,
+    "ast_hash": "addbbd31f1ade7a571ee5c0ac9321296",
+    "semantic_hash": "addbbd31f1ade7a571ee5c0ac9321296"
+  },
+  "src/fontra/core/urlfragment.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216368,
+    "ast_hash": "aa1d7a1c4f81c6710d1c3dbd9cd89426",
+    "semantic_hash": "aa1d7a1c4f81c6710d1c3dbd9cd89426"
+  },
+  "src/fontra/core/varutils.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216373,
+    "ast_hash": "f3d973bc08d33325cedcbd31afcaa055",
+    "semantic_hash": "f3d973bc08d33325cedcbd31afcaa055"
+  },
+  "src/fontra/filesystem/__init__.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216383,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "src/fontra/filesystem/projectmanager.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.421639,
+    "ast_hash": "b4dc273fb1747ea85d3e76240e4fbd05",
+    "semantic_hash": "b4dc273fb1747ea85d3e76240e4fbd05"
+  },
+  "src/fontra/workflow/__init__.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216397,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "src/fontra/workflow/actions/__init__.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216402,
+    "ast_hash": "4976783c6bbf96e7aa32656e7e598909",
+    "semantic_hash": "4976783c6bbf96e7aa32656e7e598909"
+  },
+  "src/fontra/workflow/actions/axes.py": {
+    "mtime": 1787749853.956543,
+    "seen": 1787930937.4216409,
+    "ast_hash": "733fa0c9f3b50275ec3b4b8c4b0743c5",
+    "semantic_hash": "733fa0c9f3b50275ec3b4b8c4b0743c5"
+  },
+  "src/fontra/workflow/actions/base.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216514,
+    "ast_hash": "4710aba09cd6db25eef69208db1c5aff",
+    "semantic_hash": "4710aba09cd6db25eef69208db1c5aff"
+  },
+  "src/fontra/workflow/actions/features.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216523,
+    "ast_hash": "15131d1c6c1d674658f88aa5e5ccf3b4",
+    "semantic_hash": "15131d1c6c1d674658f88aa5e5ccf3b4"
+  },
+  "src/fontra/workflow/actions/glyph.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.421653,
+    "ast_hash": "34294789ac9b4f6667a84141d8c58565",
+    "semantic_hash": "34294789ac9b4f6667a84141d8c58565"
+  },
+  "src/fontra/workflow/actions/misc.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216535,
+    "ast_hash": "c3be15a8ac94ed0d896b9926a987a712",
+    "semantic_hash": "c3be15a8ac94ed0d896b9926a987a712"
+  },
+  "src/fontra/workflow/actions/subset.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216545,
+    "ast_hash": "6cde36129976f4e6a598ffe53e8ea8e6",
+    "semantic_hash": "6cde36129976f4e6a598ffe53e8ea8e6"
+  },
+  "src/fontra/workflow/command.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216552,
+    "ast_hash": "5306dfdeec6257e14e236202e5cbdf97",
+    "semantic_hash": "5306dfdeec6257e14e236202e5cbdf97"
+  },
+  "src/fontra/workflow/features.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.421656,
+    "ast_hash": "5540ffd5b8410ec8403d1e0fa9670fec",
+    "semantic_hash": "5540ffd5b8410ec8403d1e0fa9670fec"
+  },
+  "src/fontra/workflow/featurewriter.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216566,
+    "ast_hash": "8ce02f8262de76a90a742c96daa74744",
+    "semantic_hash": "8ce02f8262de76a90a742c96daa74744"
+  },
+  "src/fontra/workflow/merger.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216573,
+    "ast_hash": "5930afeb2e3ad9190d280918fbcac87e",
+    "semantic_hash": "5930afeb2e3ad9190d280918fbcac87e"
+  },
+  "src/fontra/workflow/workflow.py": {
+    "mtime": 1785137808.11718,
+    "seen": 1787930937.4216578,
+    "ast_hash": "a1010644b3ef09a6e8acc095bb31c1fa",
+    "semantic_hash": "a1010644b3ef09a6e8acc095bb31c1fa"
+  },
+  "src-js/fontra-core/assets/robots.txt": {
+    "mtime": 1785137807.8637958,
+    "seen": 1787930937.421659,
+    "ast_hash": "6c0c0b02c59a0e5b43917105fbeae507",
+    "semantic_hash": "6c0c0b02c59a0e5b43917105fbeae507"
+  },
+  "src-js/fontra-core/assets/tabler-icons/LICENSE.txt": {
+    "mtime": 1785137807.8637958,
+    "seen": 1787930937.4216597,
+    "ast_hash": "76e6aa6e977e81cb888a1f243be1ef5e",
+    "semantic_hash": "76e6aa6e977e81cb888a1f243be1ef5e"
+  },
+  "src-js/fontra-core/assets/tabler-icons/README.md": {
+    "mtime": 1785137807.8637958,
+    "seen": 1787930937.4216604,
+    "ast_hash": "addeea6c1424f7efd71b4b27be7962e4",
+    "semantic_hash": "addeea6c1424f7efd71b4b27be7962e4"
+  },
+  "src-js/fontra-core/tests/data/positioning-emulation/positioning-emulation.fontra/features.txt": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4216611,
+    "ast_hash": "4941bd2744c9d3ddf7f3c29175117a59",
+    "semantic_hash": "4941bd2744c9d3ddf7f3c29175117a59"
+  },
+  "src-js/fontra-core/tests/data/raqq/README.txt": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4216616,
+    "ast_hash": "5fd07b6cdcab4cbf987f2935ef87fadc",
+    "semantic_hash": "5fd07b6cdcab4cbf987f2935ef87fadc"
+  },
+  "src-js/fontra-core/tests/data/raqq/Raqq.fontra/features.txt": {
+    "mtime": 1785137807.9269693,
+    "seen": 1787930937.4216626,
+    "ast_hash": "d2338440955ca166e1e45b8fbf5bf2d8",
+    "semantic_hash": "d2338440955ca166e1e45b8fbf5bf2d8"
+  },
+  "src-js/projectmanager-filesystem/landing.html": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.421663,
+    "ast_hash": "bbc6f634b17a8e87469e8a71fe125bdd",
+    "semantic_hash": "bbc6f634b17a8e87469e8a71fe125bdd"
+  },
+  "src-js/views-applicationsettings/applicationsettings.html": {
+    "mtime": 1785137808.069466,
+    "seen": 1787930937.4216638,
+    "ast_hash": "b4136e3f244d519a60feb1ed30601cd2",
+    "semantic_hash": "b4136e3f244d519a60feb1ed30601cd2"
+  },
+  "src-js/views-editor/editor.html": {
+    "mtime": 1785137808.0855887,
+    "seen": 1787930937.4216645,
+    "ast_hash": "374d1883b297af37522735b748ba8807",
+    "semantic_hash": "374d1883b297af37522735b748ba8807"
+  },
+  "src-js/views-fontinfo/fontinfo.html": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.421665,
+    "ast_hash": "3d1a496d0061dc0749c369f0368d7981",
+    "semantic_hash": "3d1a496d0061dc0749c369f0368d7981"
+  },
+  "src-js/views-fontoverview/fontoverview.html": {
+    "mtime": 1785137808.1013322,
+    "seen": 1787930937.421666,
+    "ast_hash": "e0b5b120be361d366cf749896bc81e33",
+    "semantic_hash": "e0b5b120be361d366cf749896bc81e33"
+  }
+}

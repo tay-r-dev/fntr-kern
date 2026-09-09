@@ -1,105 +1,119 @@
 # forkra Feature Architecture Map
 
-**Date:** 2026-07-22
+**Date:** 2026-07-22. Skeleton sections re-verified 2026-07-28 on `fix/skeleton-expand-math`.
 **Verified against:** `refactor-simple/ws17-parity-bugs`, diffed against `upstream/main` (`f70e2017f`)
 **Scope:** every file forkra adds or changes on top of upstream Fontra, mapped to the feature that owns it.
 
-This is the **inventory and ownership map**. It answers "what did we build, where does it live,
-and what may I touch?" — so a fresh session or a delegated agent can start work without
-re-deriving the architecture.
+This is the **inventory and ownership map**. It names what we built, where each part lives, and
+what you may touch. A fresh session or a delegated agent can start work from it without deriving
+the architecture again.
 
-The skeleton was **re-integrated** from an older fork (the "donor") between
-2026-07 and now — the geometry math ported, all plumbing redesigned. That work is
-finished; the forward-looking integration roadmap that planned it has been retired
-and its durable content folded into **§9 (skeleton design rationale)** of this doc.
-So this file is now self-contained: what everything is, where it lives, and why the
-skeleton is shaped the way it is.
+We re-integrated the skeleton from an older fork (the "donor") between 2026-07 and now, porting the
+geometry math and redesigning all of the plumbing. That work is finished, and the roadmap that
+planned it is retired into **§9 (skeleton design rationale)**.
 
-One companion document remains:
+The per-feature design specs and implementation plans went the same way. The `specs/` and `plans/`
+folders are **dissolved** into this doc and the feature model, and no plan still holds a
+forward-looking statement. **If a statement is still true, it is in one of the docs below.** Three
+files remain under those folders: the serif generator's design and plan and the `serif-lab.html`
+mockup they were written against. The serif is shipped and its durable content is feature model §8,
+so retire them the same way once nothing references them.
 
-| Doc                         | Answers                                                                  |
-| --------------------------- | ------------------------------------------------------------------------ |
-| `SKELETON-FEATURE-MODEL.md` | The conceptual **mental model** of forkra's skeleton: what the feature is, how the generation pipeline works, what to preserve |
-| **this doc**                | Where everything **is**, who owns it, and (§9) why the skeleton is built this way |
+| Doc                  | Answers                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| `FEATURE-MODEL.md`   | The conceptual **mental model** of each feature: what it is, how it works, what to preserve |
+| `DEVELOPMENT-LOG.md` | One dossier per feature: the faults that came back, the measurements, the withdrawn ideas   |
+| `GLOSSARY.md`        | **What the words mean**: type-design terms, plus every term forkra invented or redefined    |
+| `BACKLOG.md`         | What is **wanted and not built**, one row each, with what it costs and where it lands       |
+| **this doc**         | Where everything **is**, who owns it, and (§9) why the skeleton is built this way           |
 
 ---
 
 ## 0. How to use this doc
 
-- **Starting a feature task?** Find it in §3. That section lists every file you should need,
-  plus the seams you must go through.
-- **About to edit a shared file** (`editor.js`, `scene-model.js`, `edit-tools-pointer.js`,
-  `visualization-layer-definitions.js`, `scene-controller.js`, `panel-transformation.js`)?
-  Read §4 first — several features share those files and the hunks are not interleaved by accident.
-- **Adding a new feature?** Read §2 (the rails) and §5 (infrastructure you extend rather than duplicate).
-- **Line counts** are `git diff --numstat` against upstream: `+added / −removed`.
-  For new files, added = file length.
+- **To start a feature task**, find the feature in §3. That section lists every file you need,
+  and every interface you must call through.
+- **Before you edit a shared file** (`editor.js`, `scene-model.js`, `edit-tools-pointer.js`,
+  `visualization-layer-definitions.js`, `scene-controller.js`, `panel-transformation.js`),
+  read §4. Several features share those files, and the hunks are not interleaved by accident.
+- **To add a new feature**, read §2 for the rails. Then read §5 for the infrastructure you must
+  extend instead of duplicate.
+- **Line counts** come from `git diff --numstat` against upstream, as `+added / −removed`.
+  For a new file, the added count is the file length.
 
-**Totals:** 71 files under `src-js` (+28,809 / −131), 1 backend file, 3 docs, 1 test fixture font.
+**Totals:** 71 files under `src-js` (+28,809 / −131), 1 backend file, 4 docs, 1 test fixture font.
 212 non-merge commits.
 
 ---
 
 ## 1. Feature inventory
 
-| #   | Feature                 | Status                                            | Origin                         | Owned files                                              | Entry point                                 |
-| --- | ----------------------- | ------------------------------------------------- | ------------------------------ | -------------------------------------------------------- | ------------------------------------------- |
-| F1  | **Coarse grid**         | shipped (WS-1)                                    | donor panel + forkra mechanics | 1 new core, 1 panel                                      | `fontra.coarse.grid` layer, `f`/`g` actions |
-| F2  | **Q-measure**           | shipped (WS-2)                                    | donor port                     | 1 new editor module                                      | hold **Q** / **Alt+Q**                      |
-| F3  | **SpeedPunk**           | shipped (WS-3)                                    | fork-original + donor panel    | `curvature.js`                                           | `fontra.curvature` layer                    |
-| F4  | **Tunni**               | shipped (WS-4)                                    | fork-original, refactored      | 1 core + 1 editor module                                 | `fontra.tunni.*` layers                     |
-| F5  | **Point labels**        | shipped (WS-4.5)                                  | fork-original, relocated       | inside `distance-angle.js`                               | `fontra.point.labels` layer                 |
-| F6  | **Letterspacer**        | shipped (WS-5)                                    | donor port                     | engine + panel + overlay                                 | Selection-info sidebar                      |
-| F7  | **Skeleton**            | shipped WS-6…WS-16; parity pass WS-17 in progress | re-integrated from donor       | 5 core + 9 editor + panel set                            | Skeleton Pen tool, right sidebar            |
-| F8  | **Carried fork extras** | shipped, pre-dating the program                   | fork-original                  | `corner-overlap.js`, quad handles, equalize, pen-connect | scattered — see §3.8                        |
+| #   | Feature                  | Status                          | Origin                         | Owned files                                              | Entry point                                 |
+| --- | ------------------------ | ------------------------------- | ------------------------------ | -------------------------------------------------------- | ------------------------------------------- |
+| F1  | **Coarse grid**          | shipped (WS-1)                  | donor panel + forkra mechanics | 1 new core, 1 panel                                      | `fontra.coarse.grid` layer, `f`/`g` actions |
+| F2  | **Q-measure**            | shipped (WS-2)                  | donor port                     | 1 new editor module                                      | hold **Q** / **Alt+Q**                      |
+| F3  | **SpeedPunk**            | shipped (WS-3)                  | fork-original + donor panel    | `curvature.js`                                           | `fontra.curvature` layer                    |
+| F4  | **Tunni**                | shipped (WS-4)                  | fork-original, refactored      | 1 core + 1 editor module                                 | `fontra.tunni.*` layers                     |
+| F5  | **Point labels**         | shipped (WS-4.5)                | fork-original, relocated       | inside `distance-angle.js`                               | `fontra.point.labels` layer                 |
+| F6  | **Letterspacer**         | shipped (WS-5)                  | donor port                     | engine + panel + overlay                                 | Selection-info sidebar                      |
+| F7  | **Skeleton**             | shipped WS-6…WS-17              | re-integrated from donor       | 5 core + 7 editor + panel set                            | Skeleton Pen tool, right sidebar            |
+| F8  | **Carried fork extras**  | shipped, pre-dating the program | fork-original                  | `corner-overlap.js`, quad handles, equalize, pen-connect | scattered — see §3.8                        |
+| F9  | **Base-curve expansion** | shipped                         | fork-original                  | 1 core + 1 editor module                                 | hold **D**/**S**, drag an outline on-curve  |
+| F11 | **Markers**              | shipped                         | fork-original                  | 2 core + 3 editor + panel + tool                         | Marker tool, `fontra.markers.*` layers      |
+| F12 | **Snapping**             | shipped                         | fork-original                  | 1 core + 1 editor + 1 layer                              | any drag, and the pen while it hovers       |
+| F13 | **Kerning view / autokern** | shipped                       | fork-original view, engine ported from halfkern (Google) | 4 core + a new `views-kerning` workspace (12 src files) | Font menu → Kerning, its own view/tab       |
 
-Feature sizes, owned code only (shared-file hunks excluded):
-
-```
-Skeleton      ████████████████████████████████████████  ~15,700 lines
-Letterspacer  █████                                      ~1,900
-Tunni         █████                                      ~1,850
-Measure+labels████                                       ~2,050  (F2 + F5 share distance-angle.js)
-SpeedPunk     █▌                                           ~460
-Corner overlap█                                            ~350
-Coarse grid   ▏                                             ~66
-```
+Feature sizes, owned code only, shared-file hunks excluded. The skeleton is an order of magnitude
+above everything else: skeleton ~16,300 lines, measure and labels ~2,050 (F2 and F5 share
+`distance-angle.js`), letterspacer ~1,900, Tunni ~1,850, kerning view ~11,600 (about 10,400 of it
+in `views-kerning`, which is its own workspace and carries no shared-file hunks in this count),
+snapping ~1,180, base expansion ~875 (shared with the skeleton's drag), SpeedPunk ~460, corner
+overlap ~350, coarse grid ~66.
 
 ---
 
 ## 2. The rails (constraints every feature obeys)
 
-These operationalize the skeleton design model (§9); a few predate the skeleton, from the
-WS-1…5 program. They are the reason the file layout looks the way it does — violating one is
-how you get a regression that tests can't catch.
+These rails put the skeleton design model (§9) into practice. A few of them predate the skeleton
+and come from the WS-1…5 program. They are the reason the file layout looks the way it does.
+Break one and you get a regression the tests cannot catch.
 
 **R-A — Layer placement is fixed.**
-Pure geometry/math → `fontra-core/src/` (mocha-tested). Hit-testing → `scene-model.js` as
-`*AtPoint` methods. Interaction → a dedicated `*-interactions.js` or `skeleton-*.js` module.
-Rendering → a `visualization-layer-*.js` file or a render-only draw in
-`visualization-layer-definitions.js`. `edit-tools-pointer.js` stays a **thin dispatcher**.
+Pure geometry and math go in `fontra-core/src/`, with mocha tests. Hit-testing goes in
+`scene-model.js` as `*AtPoint` methods. Interaction goes in a dedicated `*-interactions.js` or
+`skeleton-*.js` module. Rendering goes in a `visualization-layer-*.js` file, or in a render-only
+draw in `visualization-layer-definitions.js`. `edit-tools-pointer.js` stays a **thin dispatcher**.
 
 **R-B — One copy of every constant and geometry function.**
 If a symbol exists anywhere in forkra, import it. This rail exists because the donor had
 `projectRibPoint` twice and `DEFAULT_SKELETON_WIDTH` five times.
 
 **R-C — Skeleton: one write path.** Every skeleton mutation goes through `editSkeleton`
-(`views-editor/src/skeleton-editing.js:94`). No second call site of the generator on the
-editing side. No skeleton customData written outside it.
+(`views-editor/src/skeleton-editing.js:94`). On the editing side, nothing else calls the
+generator. Nothing writes skeleton customData outside `editSkeleton`.
 
-**R-D — Skeleton: provenance forward, never recovered.** The generator emits the
-skeleton-point → generated-point mapping. No geometric matching, no tolerance-based inverse
-projection anywhere.
+**R-D — Skeleton: provenance forward, never recovered.** The generator emits the map from
+skeleton point to generated point. Nothing in the tree recovers that map by geometric matching or
+by tolerance-based inverse projection.
 
-**R-E — No kind-branching in shared emit code.** `makeChangeForDelta` and below must not
-contain `if (skeleton…)`. Kind decisions happen at construction time, via **target entries**.
+**R-E — No kind-branching in shared emit code.** `makeChangeForDelta` and the code below it must
+not contain `if (skeleton…)`. **Target entries** decide the kind at construction time instead.
 
-**R-F — Cross-cutting modifiers are behavior names**, not bypass flags — see
-`skeleton-modifiers.js` (both copies, core + editor).
+**R-F — Cross-cutting modifiers are behavior names**, not bypass flags. `skeleton-model.js` holds
+the semantics. `skeleton-editing.js` maps an event or a key to a behavior name.
 
-**R-G — Test split.** Only `fontra-core` has a harness (mocha + chai, `npm test`).
-`views-editor` has none: those changes carry a manual test matrix in their plan.
-Every commit: `node --check` on touched editor files, `npx prettier --write`, `npm run bundle` green.
+> There is no `skeleton-modifiers.js`. An earlier draft of this doc claimed one file in core and
+> one in the editor. Neither has ever existed in the tree.
+
+**R-G — Test split.** `fontra-core` has a test harness (mocha + chai, `npm test`).
+`views-editor` has no harness, so a change to `views-editor` carries a manual test matrix in its
+plan. Every commit runs three commands: `node --check` on each touched editor file, then
+`npx prettier --write`, then `npm run bundle`. All three must pass.
+
+`views-kerning` is the one exception. It carries its own harness, run from its own directory:
+`mocha tests --extension js` for the JS suite, plus `node --test tests/test-controller-wiring.mjs`
+for the one file that needs the real ES module loader instead of mocha's. Both are wired as the one
+`npm test` script in `views-kerning/package.json`.
 
 ---
 
@@ -107,7 +121,7 @@ Every commit: `node --check` on touched editor files, `npx prettier --write`, `n
 
 ### F1 — Coarse grid
 
-Snap-to-grid with presets and a panel. Mechanics were already in forkra; WS-1 added the UI.
+Snap-to-grid with presets and a panel. forkra already had the mechanics. WS-1 added the UI.
 
 | File                                                  | +/−      | Role                                             |
 | ----------------------------------------------------- | -------- | ------------------------------------------------ |
@@ -119,12 +133,12 @@ Snap-to-grid with presets and a panel. Mechanics were already in forkra; WS-1 ad
 | `fontra-core/src/application-settings.js`             | +9       | app-level (localStorage) keys — **not** per-font |
 | `fontra-core/tests/test-coarse-grid-presets.js`       | +80      | tests                                            |
 
-Settings live in `applicationSettingsController` by decision D9: view preferences, never
-written to project files.
+Settings live in `applicationSettingsController` by decision D9. They are view preferences, and
+nothing writes them to a project file.
 
 ### F2 — Q-measure
 
-Hold **Q** for realtime measurement; **Alt+Q** for direct mode.
+Hold **Q** for realtime measurement. Hold **Alt+Q** for direct mode.
 
 | File                                                  | +/−                   | Role                                                                                         |
 | ----------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------- |
@@ -135,14 +149,14 @@ Hold **Q** for realtime measurement; **Alt+Q** for direct mode.
 | `views-editor/src/visualization-layer-definitions.js` | (shared)              | `fontra.measure.overlay`, registration-only                                                  |
 | `fontra-core/tests/test-distance-angle.js`            | +84                   | tests                                                                                        |
 
-Skeleton coverage: rib width, centerline segments, and skeleton handles all measure (4.12,
-fixed 2026-07-22 — via `scene-model.js` `skeletonSegmentAtPoint` / `skeletonHandleAtPoint`).
-Still owed from the same area: the z-order/hit-radius hygiene and drag-marker affordance on
-branches 5.1/5.2.
+Q-measure also measures the skeleton: rib width, centerline segments and skeleton handles. That
+is item 4.12, fixed 2026-07-22 through `skeletonSegmentAtPoint` and `skeletonHandleAtPoint` in
+`scene-model.js`. Two jobs in the same area are still open. Branch 5.1 owes the z-order and
+hit-radius cleanup. Branch 5.2 owes the drag-marker affordance.
 
 ### F3 — SpeedPunk
 
-Curvature combs with app-level parameters (peak height, sharpness, opacity).
+Curvature combs with app-level parameters: peak height, sharpness and opacity.
 
 | File                                                  | +/−      | Role                                                |
 | ----------------------------------------------------- | -------- | --------------------------------------------------- |
@@ -152,35 +166,41 @@ Curvature combs with app-level parameters (peak height, sharpness, opacity).
 | `fontra-core/src/application-settings.js`             | +9       | shared with F1                                      |
 | `fontra-core/tests/test-curvature-sampling.js`        | +112     | tests                                               |
 
-Peak height is UPM-relative — that normalization is what replaced the original hardcoded
-`* -180000` magic constants.
+Peak height is the drawn length of a fringe, in glyph units. **It was never UPM-relative**, whatever
+its old setting name said: nothing in the tree ever divided it by units-per-em. An earlier version of
+this row claimed it was.
+
+The three scale anchors are angles — a reference turn, and the colour ramp's two ends — so none of
+them carries a unit of length and none needs calibrating per font. See feature model §11.
 
 ### F4 — Tunni
 
-The keystone refactor: 1,346-line monolith → pure math + interaction + render-only draws.
+The keystone refactor. A 1,346-line monolith became pure math, plus interaction, plus render-only
+draws.
 
 | File                                                  | +/−      | Role                                                          |
 | ----------------------------------------------------- | -------- | ------------------------------------------------------------- |
-| `fontra-core/src/tunni-calculations.js`               | +436     | **NEW** — pure math only. Canonical `calculateSegmentTension` |
-| `views-editor/src/tunni-interactions.js`              | +1178    | **NEW** — hit-tests, drag handlers, equalize trigger          |
+| `fontra-core/src/tunni-calculations.js`               | +668     | **NEW** — pure math only. Canonical `calculateSegmentTension` |
+| `views-editor/src/tunni-interactions.js`              | +1621    | **NEW** — hit-tests, drag handlers, equalize trigger          |
 | `views-editor/src/edit-tools-pointer.js`              | (shared) | thin dispatch hooks only                                      |
 | `views-editor/src/visualization-layer-definitions.js` | (shared) | `fontra.tunni.handle`, `fontra.tunni.point`                   |
 | `views-editor/src/panel-transformation.js`            | (shared) | settings keys                                                 |
 | `fontra-core/tests/test-tunni-calculations.js`        | +82      | tests                                                         |
 
-**Naming is settled and load-bearing** (decisions D2/D3/D4 — hard rename, no aliases):
+**The naming is settled and load-bearing** (decisions D2, D3 and D4: a hard rename, with no
+aliases).
 
 | Geometry                                              | Canonical name                | Layer id              |
 | ----------------------------------------------------- | ----------------------------- | --------------------- |
 | Intersection of tangent rays = the _real_ Tunni point | `calculateTunniPoint`         | `fontra.tunni.point`  |
 | Midpoint between the two control handles              | `calculateControlHandlePoint` | `fontra.tunni.handle` |
 
-`calculateSegmentTension` is the **single** tension source (D5). `distance-angle.js` imports it;
-its old `calculateTension` and duplicate tunni-point geometry are deleted.
+`calculateSegmentTension` is the **single** tension source (D5). `distance-angle.js` imports it.
+Its old `calculateTension` and its duplicate tunni-point geometry are both deleted.
 
 ### F5 — Point labels
 
-Per-segment distance / tension / angle labels. Formerly "Tunni Labels" (D8).
+Per-segment distance, tension and angle labels. Formerly "Tunni Labels" (D8).
 
 | File                                                  | +/−              | Role                                         |
 | ----------------------------------------------------- | ---------------- | -------------------------------------------- |
@@ -188,8 +208,8 @@ Per-segment distance / tension / angle labels. Formerly "Tunni Labels" (D8).
 | `views-editor/src/visualization-layer-definitions.js` | (shared)         | `fontra.point.labels`, registration-only     |
 | `views-editor/src/panel-transformation.js`            | (shared)         | label toggles                                |
 
-Skeleton has its **own** label layer (`fontra.skeleton.point-labels`) — separated deliberately
-by registry item 4.1. Do not merge them.
+The skeleton has its **own** label layer, `fontra.skeleton.point-labels`. Registry item 4.1
+separated them on purpose. Do not merge them.
 
 ### F6 — Letterspacer
 
@@ -204,45 +224,49 @@ HTLetterspacer-style automatic sidebearings.
 | `fontra-core/assets/tabler-icons/spacing-horizontal.svg` | +7       | icon                                           |
 | `fontra-core/tests/test-letterspacer-engine.js`          | +93      | tests                                          |
 
-Persists through the `fontra.internal` customData section `letterspacer` at three entity levels:
-`area`/`depth`/`overshoot` per source, `enabled` per font, `referenceGlyphName` per glyph.
+It persists through the `fontra.internal` customData section `letterspacer`, at three entity
+levels: `area`, `depth` and `overshoot` per source, `enabled` per font, and `referenceGlyphName`
+per glyph.
 
-**The one skeleton coupling that was deliberately kept out at port time is now back in scope:**
-sidebearing changes should move skeleton data with them (the "letterspacer ↔ skeleton coupling").
-Verify before assuming it is wired — see §7 residue #2.
+**The port deliberately left out one coupling, and that coupling is wanted again.** A sidebearing
+change should move the skeleton data with it. Verify whether the code does this before you assume
+it. See §7 residue #2.
 
 ### F7 — Skeleton
 
-The largest feature by an order of magnitude: ~15,700 lines of owned code across 14 files.
-Stroke-based design — the designer draws centerlines with per-point widths, and the filled
-outline contours are generated live.
+The largest feature by an order of magnitude. It owns about 16,300 lines across 12 files. Below
+that, it also changed the tools that had to learn about generated contours.
+The design is stroke-based. The designer draws centerlines with per-point widths, and the
+generator builds the filled outline contours live.
 
 **Core (pure, mocha-tested):**
 
-| File                                          | +/−   | Role                                                                                                                                                                               |
-| --------------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fontra-core/src/skeleton-model.js`           | +1243 | Schema, stable-id allocation, accessors/mutators, rib projection, normals. **The single home for skeleton geometry constants.**                                                    |
-| `fontra-core/src/skeleton-generator.js`       | +5168 | Centerline → outline. Segments, offset curves, caps (butt/round/square/**drop**), corner rounding, single-sided, handle offsets, detached handles. Emits forward provenance (R-D). |
-| `fontra-core/src/skeleton-modifiers.js`       | +475  | D/S/X/Z semantics: `applyFixedRibDelta`, the equalize family                                                                                                                       |
-| `fontra-core/src/skeleton-source-defaults.js` | +241  | Per-source defaults, resolved by glyph case                                                                                                                                        |
-| `fontra-core/src/skeleton-tunni.js`           | +234  | Tunni math on skeleton segments                                                                                                                                                    |
+| File                                       | Lines | Role                                                                                                                                                                                                                                                 |
+| ------------------------------------------ | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/skeleton-model.js`        | 3744  | Schema, stable-id allocation, source defaults, accessors/mutators, rib projection, normals, D/S/X/Z semantics (`applyFixedRibDelta`, the equalize family), Tunni/gizmo geometry. **The single home for skeleton geometry constants.**                |
+| `fontra-core/src/skeleton-generator.js`    | 4730  | Centerline → outline. Owns segmentation, ribs, skeleton handle axes, collapsed sides, contour topology, provenance, nudges, grid emission, caps (butt/round/square/**drop**/**serif**), and corner rounding.                                         |
+| `fontra-core/src/serif-geometry.js`        | 268   | **NEW** — the serif terminal as pure frame geometry: `computeSerifFrame`, `buildHalfSerif`, `buildSerifTerminal`. Knows nothing about strokes, trimming or splicing; the generator owns all of that. See feature model §8.                           |
+| `fontra-core/src/natural-handle-solver.js` | 320   | Pure automatic cubic-side geometry: fixed source-parameter offset samples, normalized perpendicular-error quadratic, skeleton-tension reference, input-only cusp/taper pull, positive frame-influence scale, and exact box-constrained minimization. |
+| `fontra-core/src/offset-cubic.js`          | 118   | Stateless authored cubic-side orchestrator. Builds the shared handle domain, calls the natural solver, then applies attached grid adjustments, pinned harmonic-mean tension, and detached absolute handles in that order.                            |
 
 **Editor (no test harness — manual matrices):**
 
-| File                                               | +/−   | Role                                                                                                                       |
-| -------------------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------- |
-| `views-editor/src/skeleton-editing.js`             | +959  | **`editSkeleton` — the one write path (R-C).** Selection keys, target entries, contour-index bookkeeping, selection bounds |
-| `views-editor/src/skeleton-generated.js`           | +639  | Editable generated points/handles; provenance resolution; detach                                                           |
-| `views-editor/src/skeleton-ribs.js`                | +233  | Rib keys, addresses, width/nudge executors                                                                                 |
-| `views-editor/src/skeleton-modifiers.js`           | +42   | Thin: maps selection kinds → behavior names                                                                                |
-| `views-editor/src/edit-tools-skeleton.js`          | +855  | Skeleton Pen drawing tool                                                                                                  |
-| `views-editor/src/visualization-layer-skeleton.js` | +781  | 11 canvas layers                                                                                                           |
-| `views-editor/src/panel-skeleton-parameters.js`    | +1181 | Numeric editing panel (right sidebar)                                                                                      |
-| `views-editor/src/skeleton-panel-edits.js`         | +741  | Panel → `editSkeleton` write helpers, streaming edits                                                                      |
-| `views-editor/src/skeleton-panel-model.js`         | +460  | Panel read model: selection summaries, mixed/uniform state                                                                 |
-| `views-editor/src/panel-skeleton-defaults.js`      | +483  | Per-source defaults panel                                                                                                  |
+| File                                               | +/−   | Role                                                                                                                                                                                                                                                 |
+| -------------------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `views-editor/src/skeleton-editing.js`             | +1400 | **`editSkeleton` — the one write path (R-C).** Selection keys, target entries, contour-index bookkeeping, selection bounds; rib keys/addresses and their width/nudge executors; editable generated points and handles, provenance resolution, detach |
+| `views-editor/src/edit-tools-skeleton.js`          | +855  | Skeleton Pen drawing tool                                                                                                                                                                                                                            |
+| `views-editor/src/visualization-layer-skeleton.js` | +919  | 13 canvas layers                                                                                                                                                                                                                                     |
+| `views-editor/src/panel-skeleton-parameters.js`    | +1695 | Numeric editing panel (right sidebar). Rebuilds in place when only values changed (`formContentsLayoutSignature`), so a field keeps focus across an edit                                                                                             |
+| `views-editor/src/skeleton-panel-edits.js`         | +1012 | Panel → `editSkeleton` write helpers, streaming edits, relative scale helpers                                                                                                                                                                        |
+| `views-editor/src/skeleton-panel-model.js`         | +573  | Panel read model: selection summaries, mixed/uniform state                                                                                                                                                                                           |
+| `views-editor/src/panel-skeleton-defaults.js`      | +483  | Per-source defaults panel                                                                                                                                                                                                                            |
 
-**Selection kinds** — compound keys, all id-based (never path indices):
+> There is no `skeleton-ribs.js` and no `skeleton-generated.js`. An earlier draft of this doc
+> listed both as separate editor modules with line counts. Neither has ever existed in the tree,
+> and the contents it described live in `skeleton-editing.js`. This is the same class of error as
+> the `skeleton-modifiers.js` claim corrected in R-F. **Grep before you trust a filename here.**
+
+**Selection kinds** — compound keys, all id-based, never path indices:
 
 ```
 skeletonPoint/<contourId>/<pointId>                        on-curve AND handles (C1)
@@ -251,25 +275,39 @@ editableGeneratedPoint/<contourId>/<pointId>/<side>
 editableGeneratedHandle/<contourId>/<pointId>/<side>/<role>  role ∈ in|out
 ```
 
-`fontra-core/src/utils.ts` was changed (+14/−6) precisely so `parseSelection` keeps the raw
-remainder for these compound kinds instead of `parseInt`-ing them.
+`fontra-core/src/utils.ts` changed (+14/−6) for one reason. `parseSelection` must keep the raw
+remainder for these compound kinds instead of running `parseInt` on it.
 
-**Visualization layers (11):**
+**Visualization layers (13):**
 `width-shading`, `ribs`, `rib-points`, `centerline`, `handles`, `nodes`, `selected-nodes`,
-`tunni`, `insert-handles-preview`, `editable-markers`, `point-labels` — all under
-`fontra.skeleton.*` in `visualization-layer-skeleton.js`.
+`tunni`, `generated-tunni`, `generated-curvature-labels`, `insert-handles-preview`,
+`editable-markers`, `point-labels`. All of them sit under `fontra.skeleton.*` in
+`visualization-layer-skeleton.js`. The last two of the generated pair are the outline's own
+gizmos and their readout. They stay separate from `tunni`, which controls the skeleton.
 
 **Hit-testing** — all in `scene-model.js`, per R-A:
 `skeletonPointAtPoint`, `skeletonRibAtPoint`, `skeletonTunniAtPoint`, `editableGeneratedAtPoint`,
 `skeletonRibSelectionAtPoint`, `skeletonSegmentSelectionAtPoint`, plus `isGeneratedPathContour`.
+`generatedTunniHitTest` in `skeleton-model.js` hit-tests the generated-segment gizmos, because
+the drawing layer shares their placement math and there must be exactly one copy of it (R-B).
+`scene-model.js` also owns the curvature drag's readout.
 
-**Tests:** `test-skeleton-model.js` (873), `test-skeleton-generator.js` (609),
-`test-skeleton-modifiers.js` (485), `test-skeleton-ribs.js` (298), `test-skeleton-tunni.js` (273),
-`test-skeleton-source-defaults.js` (125), `test-skeleton-interpolation.js` (99).
-Golden-master fixtures: `tests/data/skeleton-generator/fixtures.json` (1165), regenerated by
-`tests/scripts/make-skeleton-generator-fixtures.js`.
+**The layer switch `fontra.skeleton.generated-tunni` is the gizmo mode's single source of truth.**
+The panel checkbox and the View menu both read and write that one setting, so they cannot drift.
+`editableGeneratedAtPoint` returns null while the switch is on. The two modes compete for the
+same clicks, because the gizmos sit on and around the very handles that direct manipulation
+targets.
 
-**Other tools had to learn about generated contours** — these are small but essential:
+**Tests:** `test-skeleton-generator.js` (1454), `test-skeleton-model.js` (1052),
+`test-skeleton-tunni.js` (879), `test-skeleton-modifiers.js` (861),
+`test-skeleton-ribs.js` (641), `test-natural-handle-solver.js` (695),
+`test-offset-cubic.js` (385), `test-serif-geometry.js` (377),
+`test-skeleton-source-defaults.js` (125), `test-skeleton-interpolation.js` (138).
+Golden-master fixtures live in `tests/data/skeleton-generator/fixtures.json` (2183).
+`tests/scripts/make-skeleton-generator-fixtures.js` regenerates them. It records **this**
+generator's own output, not any pre-port reference.
+
+**Other tools had to learn about generated contours.** These changes are small but essential.
 
 | File                  | +/−     | What it learned                                                                                                       |
 | --------------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -277,13 +315,14 @@ Golden-master fixtures: `tests/data/skeleton-generator/fixtures.json` (1165), re
 | `edit-tools-pen.js`   | +125/−2 | Never insert into generated contours; record index shifts via `recordSkeletonContourIndexShift`                       |
 | `edit-tools-shape.js` | +3      | Comment only — `appendPath` appends after the generated block, so no bookkeeping needed                               |
 
-That third row is the pattern to copy: when a tool restructures the contour list, it must
-either update the generated-contour mapping in the same change, or prove it doesn't need to.
+Copy the pattern in the `edit-tools-shape.js` row. When a tool restructures the contour list, it
+must do one of two things. It must update the generated-contour mapping in the same change, or it
+must prove that the mapping cannot move.
 
 ### F8 — Carried fork extras
 
-Features that pre-date the WS program and were kept through the refactor. They have no
-workstream and thin documentation — flagging them so they aren't mistaken for upstream code.
+These features predate the WS program, and the refactor kept them. They have no workstream and
+thin documentation. This section flags them so nobody mistakes them for upstream code.
 
 | Feature                  | Files                                                                                                                          | Notes                                                                        |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
@@ -293,38 +332,219 @@ workstream and thin documentation — flagging them so they aren't mistaken for 
 | **Pen connect**          | `edit-tools-pen.js:_getPathConnectTargetPoint`                                                                                 | Connect to an open contour's endpoint                                        |
 | **Distance / Manhattan** | `distance-angle.js`, two layers                                                                                                | Frozen — superseded by Q-measure, kept because `distance-angle.js` is shared |
 
+### F9 — Base-curve expansion
+
+The D/S expansion drag on contours with no skeleton behind them. The offset
+geometry is shared with the skeleton's fixed-rib drag, and lives in one copy.
+
+| File                                                  | +/−      | Role                                                                                                                          |
+| ----------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/offset-contour.js`                   | +675     | **NEW** — segment walk, per-point normal, coupling groups, the on-curve travel and handle rebuild, and the drag's offsets map |
+| `views-editor/src/base-expand-editing.js`             | +198     | **NEW** — behavior-name resolution and the path target entry                                                                  |
+| `fontra-core/src/skeleton-model.js`                   | +41/−411 | Keeps its exported names as wrappers over the shared module                                                                   |
+| `views-editor/src/edit-tools-pointer.js`              | (shared) | Dispatch, plus publishing and clearing the ghost                                                                              |
+| `views-editor/src/edit-behavior.js`                   | (shared) | The `base-expand` behavior type, with an empty match tree                                                                     |
+| `views-editor/src/scene-model.js`                     | (shared) | The offset-distance readout                                                                                                   |
+| `views-editor/src/visualization-layer-definitions.js` | (shared) | `fontra.base-expand.ghost`, render-only                                                                                       |
+| `fontra-core/tests/test-offset-contour.js`            | +392     | tests                                                                                                                         |
+
+**The shared module knows nothing about a skeleton.** It reads positions,
+handles and the smooth flag, which every contour has. Three things stay on the
+skeleton's side of it, because only a skeleton point carries them: the rib
+tied-flag opt-out, the serif terminals that also couple a straight, and the
+per-point rib-angle override. The generic collector takes the serif set as
+"these points couple a straight they end", so the concept does not leak into it.
+
+**The behavior's point rules move nothing.** The match tree is empty and the
+whole edit runs in the target entry, which is where the kind decision belongs
+(R-E). The entry records every frame against a fresh copy of the pre-drag path,
+so the rollback describes the gesture rather than its last frame.
+
+### F11 — Markers
+
+A measurement the designer places on a contour and keeps. Saved per layer, it
+rides the geometry while the drawing is edited and goes stale loudly when the
+point count under it changes.
+
+| File                                              | +/−      | Role                                                                                                        |
+| ------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/marker-model.js`                 | +190     | **NEW** — the stored section, non-reusing ids, the count signature, the stale rule, anchor resolution       |
+| `fontra-core/src/marker-measure.js`               | +230     | **NEW** — the winding walk (shared with the Power Ruler), ray and dimension measurement, on-screen geometry |
+| `views-editor/src/marker-editing.js`              | +390     | **NEW** — the ONLY write path, plus the drag and the reverse-contour break                                  |
+| `views-editor/src/visualization-layer-markers.js` | +215     | **NEW** — two layers, rays and dimensions                                                                   |
+| `views-editor/src/edit-tools-marker.js`           | +185     | **NEW** — the narrow tool, delegating to the pointer tool                                                   |
+| `views-editor/src/panel-markers.js`               | +225     | **NEW** — the right-sidebar list, targets and group visibility                                              |
+| `views-editor/src/scene-model.js`                 | (shared) | `markerAtPoint`, `markerGrips`, and the place in the cascade                                                |
+| `views-editor/src/edit-tools-pointer.js`          | (shared) | Drag hook and double-click delete. Dispatcher only (R-A)                                                    |
+| `views-editor/src/scene-controller.js`            | (shared) | Reverse contour breaks the markers on it                                                                    |
+| `views-editor/src/edit-tools-power-ruler.js`      | +2/−20   | Its winding walk moved out; it imports it now                                                               |
+| `fontra-core/tests/test-marker-model.js`          | +190     | tests                                                                                                       |
+| `fontra-core/tests/test-marker-anchor.js`         | +80      | tests                                                                                                       |
+| `fontra-core/tests/test-marker-measure.js`        | +255     | tests, including three sweeps                                                                               |
+
+Three claims matter here; feature model §13 holds the rest.
+
+**A marker stores an address and no geometry**, and nothing recovers an anchor
+by geometric matching — the one stored coordinate verifies an address and never
+searches for one (R-D). This is what separates markers from defect P1.
+
+**No tool that restructures a point list owes marker anchors any bookkeeping.**
+There is no exception, reverse contour included.
+
+**The grip loses to skeleton and generated geometry**, so a readout never sits
+in front of the geometry it describes. The marker tool is how that geometry is
+reached.
+
+---
+
+### F12 — Snapping
+
+A drag reports where it would like to be, and the resolver answers with the
+metrics, guides, points and segments near it. Reach and precedence are separate
+numbers per kind, so a kind can grab from further away without also winning.
+
+| File                                               | +/−      | Role                                                                                              |
+| -------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/snapping.js`                      | +587     | **NEW** — candidate kinds, reach and weight per kind, the resolver, the escape and overrule rules |
+| `views-editor/src/snapping-interactions.js`        | +398     | **NEW** — the scene the resolver reads, the session held across a drag, exclusion by provenance   |
+| `views-editor/src/visualization-layer-snapping.js` | +198     | **NEW** — the held rings, the near indicator and the guide lines                                  |
+| `views-editor/src/edit-tools-pen.js`               | (shared) | the pen's own session, refreshed on every hover because it adds geometry as it goes               |
+| `fontra-core/tests/test-snapping.js`               | +        | tests                                                                                             |
+
+Two rules worth knowing before touching it.
+
+**A drag freezes its scene.** The moved geometry must not chase itself, so
+`SnappingSession` builds the scene once. The pen is the exception: it calls
+`refresh()` before every hover, because the point it just placed is a source.
+
+**Exclusion is a provenance lookup, never a geometric match (R-D).**
+`excludedPointIndices` resolves a moved skeleton point's generated points
+through `resolveGeneratedPointProvenance`, not by comparing coordinates.
+
+The skeleton is not in the glyph path, so it needs its own pass to be a target
+at all: its on-curve points and both ends of every rib. Not its segments — a
+centerline is construction, and aligning to one says less than aligning to what
+it makes.
+
+---
+
+### F13 — Kerning view / autokern
+
+A spacing and kerning workspace, reached from the Font menu after Font Overview. It types a phrase
+and reads its spacing on the left, and runs an all-pairs kerning suggestion engine on the right. The
+suggestion engine is ported from **halfkern** (Google, Behdad Esfahbod); its Python, its native
+dependencies and its `scikit-fmm` distance-field solve are all replaced, none of its code is kept.
+Full behavior is spec `KERNING-VIEW.md`.
+
+**Core (pure, mocha-tested):**
+
+| File                                       | Lines | Role                                                                                                                        |
+| ------------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/autokern-engine.js`        | 464   | **NEW** — the distance transform, the Gaussian, the overlap, the calibration, the search. Takes typed arrays and numbers, no DOM. |
+| `fontra-core/src/autokern-cache.js`         | 418   | **NEW** — the flat pair cache: creation, per-pair write, junk mark, override mark, stale mark, rerun set, outlier-dropped median |
+| `fontra-core/src/autokern-classes.js`       | 272   | **NEW** — composite inheritance and kern-row clustering over a cache, for class derivation                                    |
+| `fontra-core/src/glyph-raster.js`           | 67    | **NEW** — path to coverage bitmap. Needs a canvas, so it stays small and thin                                                  |
+| `fontra-core/tests/test-autokern-engine.js` | 478   | tests                                                                                                                         |
+| `fontra-core/tests/test-autokern-cache.js`  | 438   | tests                                                                                                                         |
+| `fontra-core/tests/test-autokern-classes.js`| 345   | tests                                                                                                                         |
+
+**View — `views-kerning`, a new workspace, not part of `views-editor`:**
+
+| File                                        | Lines | Role                                                                                                    |
+| -------------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------- |
+| `views-kerning/src/kerning.js`              | 7535  | **NEW** — the view controller: run worker wiring, pair table, classing UI, calibration, status strip, font-level undo |
+| `views-kerning/kerning.html`                | 819   | **NEW** — view markup                                                                                    |
+| `views-kerning/assets/kerning.css`          | 1014  | **NEW** — view styles                                                                                    |
+| `views-kerning/src/results-model.js`        | 448   | **NEW** — pair-row visibility, filtering and fold-group model consumed by `kerning.js`                    |
+| `views-kerning/src/autokern-worker.js`      | 172   | **NEW** — the run worker, with progress and cancel                                                        |
+| `views-kerning/src/input-tokens.js`         | 152   | **NEW** — the Glyph/Pair field token grammar                                                              |
+| `views-kerning/src/edit-tools-select.js`    | 95    | **NEW** — the pointer tool, selection only                                                                |
+| `views-kerning/src/results-selection.js`    | 65    | **NEW** — table row selection state                                                                       |
+| `views-kerning/src/pair-preview-layout.js`  | 39    | **NEW** — positions the left-pane preview pairs                                                            |
+| `views-kerning/src/start.js`                | 9     | **NEW** — view bootstrap                                                                                  |
+| `views-kerning/package.json`                | 15    | **NEW** — workspace manifest: exports, `fontra.view`, the view's own test harness (rail R-G exception)   |
+| `views-kerning/assets/phrase-presets.txt`   | 9     | **NEW** — shipped preset phrases, parsed by `parsePhrasePresets` (`character-lines.js`)                    |
+
+`views-kerning/tests/` holds 15 files, 2413 lines total, run by the view's own harness (§2, R-G):
+`test-aggregate-proposals.js` (414), `test-results-model.js` (249), `test-pair-exceptions.js` (218),
+`test-stale-rerun.js` (212), `ux-filters.test.js` (204), `test-input-tokens.js` (113),
+`test-async-revision-guard.js` (111), `test-source-consistency.js` (106), `test-pairtable-writes.js`
+(107), `test-results-rows.js` (77), `test-results-selection.js` (67), `test-analytics.js` (84),
+`test-hidden-results.js` (52), `test-phrase-restoration.js` (52), plus
+`test-controller-wiring.mjs` (347), which needs the real ES module loader and runs under
+`node --test` rather than mocha.
+
+Five claims that matter here.
+
+**The scene is imported from `views-editor`, never copied.** `kerning.js` imports the scene
+controller, the scene model, the hand tool, the metrics tools and the visualization-layer
+definitions straight from `@fontra/views-editor/...`. Nothing else in the tree imports across
+views — every other view (`views-fontinfo`, `views-fontoverview`, `views-applicationsettings`)
+only ever imports its own `start.js`. That is the honest cost of this choice: the closure is
+18,714 lines of `views-editor`, and it does not strip further, because the scene model imports
+skeleton editing and base-expand editing for its hit tests. Copying it instead would put two
+implementations of where glyphs sit in a line in the tree, since kerning is applied exactly where
+the scene model builds `positionedLines`. `views-editor/package.json` widened its `exports` map for
+this (`scene-controller.js`, `scene-model.js`, `edit-tools-metrics.js` and others), and
+`edit-tools-metrics.js` exports `SidebearingTool` and `KerningTool`, which it did not before.
+
+**The cache is derived data, and it lives in browser-side storage (OPFS), keyed per font and per
+source.** A run measures one source; switching source shows a different cache. It is expensive to
+rebuild and it can always be recomputed, so nothing writes it into the project. The designer's own
+judgement does go into the project, as two `customData` keys: `fontra.autokernJunkPairs` (per-pair
+junk marks) and `fontra.autokernClassColors` (the class panel's colours). Both round-trip through
+`fontController.performEdit`, exactly like any other project data.
+
+**One backend/registration set makes the view reachable.** A workspace entry
+(`src-js/views-kerning`) in the root `package.json`, a `"fontra": { "view": "kerning" }` field in
+`views-kerning/package.json`, a `kerning = "fontra.client"` entry point in `pyproject.toml` beside
+the other four views, and a menu item in `getFontMenuItems` (`fontra-menus.js`), added after
+`font-overview.title`.
+
+**`webpack.config.cjs` gives async chunks a content hash**, not only the entry bundles. Without one
+an async chunk keeps one filename forever, so a browser goes on serving its cached copy of that
+chunk while every hashed file around it is fresh. The autokern worker is exactly such a chunk, and
+without the hash a stale worker runs last week's code against this week's job.
+
 ---
 
 ## 4. Shared-file reverse index
 
-Twelve files carry hunks from more than one feature. **Read this before editing them.**
+Twelve files carry hunks from more than one feature. **Read this before you edit them.**
 
-| File                                                  | +/−      | Feature split                                                                                                             |
-| ----------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `views-editor/src/scene-model.js`                     | +604/−9  | **Skeleton** (6 `*AtPoint` methods, generated-contour predicate) ≫ **Q-measure** (hover state) > Tunni                    |
-| `views-editor/src/edit-tools-pointer.js`              | +507/−19 | **Skeleton** (drag/marquee/transform dispatch) > **Tunni** (thin hooks) > measure, equalize. Must stay a dispatcher (R-A) |
-| `views-editor/src/panel-designspace-navigation.js`    | +503/−0  | **Coarse grid** ≈ **SpeedPunk**. Pure insertion — two accordions                                                          |
-| `views-editor/src/visualization-layer-definitions.js` | +415/−0  | **Tunni** > **Coarse grid** > SpeedPunk, measure, labels, quad handles. Registration + render-only                        |
-| `views-editor/src/scene-controller.js`                | +345/−11 | **Skeleton** ≫ **Coarse grid**. Also corner-overlap action, labels, speedpunk                                             |
-| `views-editor/src/editor.js`                          | +318/−18 | **Skeleton** (tool + panel + actions) ≫ measure actions, letterspacer                                                     |
-| `views-editor/src/panel-transformation.js`            | +259/−24 | **Skeleton** ≈ **point labels**                                                                                           |
-| `views-editor/src/edit-behavior.js`                   | +167/−15 | **Coarse grid** (snapping) > ribs, equalize. Kept close to upstream on purpose (R-E)                                      |
-| `views-editor/src/edit-tools-pen.js`                  | +125/−2  | **Quad handles** + **pen connect** + skeleton index bookkeeping                                                           |
-| `fontra-core/src/glyph-controller.js`                 | +67/−0   | **Skeleton** only — selection bounds parse skeleton keys                                                                  |
-| `fontra-webcomponents/src/range-slider.js`            | +53/−10  | **Skeleton panel** — `allowInputBeyondRange`, `displayValue`, `values`, `step`                                            |
-| `fontra-webcomponents/src/ui-form.js`                 | +56/−0   | **Skeleton panel** — passes those slider options through; adds checkbox with indeterminate                                |
-| `views-editor/src/panel-selection-info.js`            | +24/−1   | Hosts **letterspacer** + **skeleton-defaults** sub-panels                                                                 |
-| `fontra-core/assets/lang/en.js`                       | +107/−0  | skeleton-parameters 73, designspace-navigation 11, letterspacer 7, realtime shortcuts 5, skeleton tool 6                  |
+| File                                                  | +/−      | Feature split                                                                                                                      |
+| ----------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `views-editor/src/scene-model.js`                     | +604/−9  | **Skeleton** (6 `*AtPoint` methods, generated-contour predicate) ≫ **Q-measure** (hover state) > Tunni > base expansion            |
+| `views-editor/src/edit-tools-pointer.js`              | +507/−19 | **Skeleton** (drag/marquee/transform dispatch) > **Tunni** (thin hooks) > measure, equalize, base expansion. Dispatcher only (R-A) |
+| `views-editor/src/panel-designspace-navigation.js`    | +503/−0  | **Coarse grid** ≈ **SpeedPunk**. Pure insertion — two accordions                                                                   |
+| `views-editor/src/visualization-layer-definitions.js` | +415/−0  | **Tunni** > **Coarse grid** > SpeedPunk, measure, labels, quad handles, base-expansion ghost. Registration + render-only           |
+| `views-editor/src/scene-controller.js`                | +345/−11 | **Skeleton** ≫ **Coarse grid**. Also corner-overlap action, labels, speedpunk                                                      |
+| `views-editor/src/editor.js`                          | +318/−18 | **Skeleton** (tool + panel + actions) ≫ measure actions, letterspacer                                                              |
+| `views-editor/src/panel-transformation.js`            | +259/−24 | **Skeleton** ≈ **point labels**                                                                                                    |
+| `views-editor/src/edit-behavior.js`                   | +167/−15 | **Coarse grid** (snapping) > ribs, equalize, base expansion. Kept close to upstream on purpose (R-E)                               |
+| `views-editor/src/edit-tools-pen.js`                  | +125/−2  | **Quad handles** + **pen connect** + skeleton index bookkeeping                                                                    |
+| `fontra-core/src/glyph-controller.js`                 | +67/−0   | **Skeleton** only — selection bounds parse skeleton keys                                                                           |
+| `fontra-webcomponents/src/range-slider.js`            | +53/−10  | **Skeleton panel** — `allowInputBeyondRange`, `displayValue`, `values`, `step`                                                     |
+| `fontra-webcomponents/src/ui-form.js`                 | +56/−0   | **Skeleton panel** — passes those slider options through; adds checkbox with indeterminate                                         |
+| `views-editor/src/panel-selection-info.js`            | +24/−1   | Hosts **letterspacer** + **skeleton-defaults** sub-panels                                                                          |
+| `fontra-core/assets/lang/en.js`                       | +107/−0  | skeleton-parameters 73, designspace-navigation 11, letterspacer 7, realtime shortcuts 5, skeleton tool 6, markers 8, kerning view 3 |
 
 Small shared edits worth knowing about:
 
-| File                                | +/−     | Why                                                                   |
-| ----------------------------------- | ------- | --------------------------------------------------------------------- |
-| `fontra-core/src/utils.ts`          | +14/−6  | `parseSelection` must not `parseInt` compound skeleton keys           |
-| `fontra-core/src/var-glyph.js`      | +3      | `customData` survives glyph copy — skeleton persistence depends on it |
-| `fontra-core/src/var-path.js`       | +8/−2   | `copy()` tolerates a Proxy-wrapped `coordinates`                      |
-| `fontra-core/src/path-functions.js` | +45/−12 | quad handles + corner-overlap entry                                   |
-| `fontra-core/src/mouse-tracker.js`  | +2/−1   | —                                                                     |
+| File                                | +/−     | Why                                                                                                 |
+| ----------------------------------- | ------- | --------------------------------------------------------------------------------------------------- |
+| `fontra-core/src/utils.ts`          | +14/−6  | `parseSelection` keeps any non-integer remainder raw — compound skeleton keys and string marker ids |
+| `fontra-core/src/var-glyph.js`      | +3      | `customData` survives glyph copy — skeleton persistence depends on it                               |
+| `fontra-core/src/var-path.js`       | +8/−2   | `copy()` tolerates a Proxy-wrapped `coordinates`                                                    |
+| `fontra-core/src/path-functions.js` | +45/−12 | quad handles + corner-overlap entry                                                                 |
+| `fontra-core/src/mouse-tracker.js`  | +2/−1   | —                                                                                                   |
+| `fontra-core/src/kerning-controller.js` | +15/−0 | **Kerning view** — `ensureKerningData` before a class edit on an unkerned font; clear the pair-function cache on `delete()`, matching `editContinuous` |
+| `fontra-core/src/canvas-controller.js` | +47/−10 | **Kerning view** — a `canvasRect` getter using `getBoundingClientRect()`. The old `offsetLeft`/`offsetTop` reads were only correct with `views-editor`'s exact layout nesting; the kerning view's three-column grid adds a positioned ancestor that made them read 0 |
+| `fontra-core/src/character-lines.js` | +26/−0 | **Kerning view** — `parsePhrasePresets`, the presets-file parser (spec §7.1), alongside the unchanged `characterLinesFromString` |
+| `fontra-core/src/fontra-menus.js`   | +24/−2  | **Kerning view** — the Font menu item, after `font-overview.title`; exports `rerouteViewPath` for reuse. Also carries a small, unrelated composition-feature hunk not yet in this map |
+| `fontra-core/assets/tabler-icons/check.svg` | +1/−0 | **Kerning view** — apply/accept icon in the pair table and the derive proposals list |
+| `fontra-webcomponents/src/glyph-cell.js` | +60/−8 | **Kerning view** — a stale-tile opacity rule and a `--glyph-cell-status-display` toggle for the class panel's tiles; renames the shared `throttledUpdate` listener into two named listeners |
+| `views-editor/src/edit-tools-metrics.js` | +3/−3 | **Kerning view** — exports `SidebearingTool` and `KerningTool` so `views-kerning` can import them (§3 F13) |
 
 ---
 
@@ -332,53 +552,56 @@ Small shared edits worth knowing about:
 
 ### Persistence — `fontra.internal` customData
 
-One key, three sections (`fontra-core/src/fontra-internal-schema.js`):
+One key, four sections (`fontra-core/src/fontra-internal-schema.js`):
 
 ```js
 FONTRA_INTERNAL_KEY = "fontra.internal";
-FONTRA_INTERNAL_SECTIONS = { LETTERSPACER, SKELETON, SKELETON_DEFAULTS };
+FONTRA_INTERNAL_SECTIONS = { LETTERSPACER, SKELETON, SKELETON_DEFAULTS, MARKERS };
 ```
 
-Access **only** through `fontra-core/src/fontra-internal-data.js`
-(`getFontraInternalSection` / `setFontraInternalSection`), tested in `test-fontra-internal-data.js`.
-customData is freeform and round-tripped by every Fontra backend, so this lands permanently in
-users' project files (`.fontra` / `.designspace` / UFO lib).
+Access it **only** through `fontra-core/src/fontra-internal-data.js`, with
+`getFontraInternalSection` and `setFontraInternalSection`. `test-fontra-internal-data.js` covers
+them. customData is freeform, and every Fontra backend round-trips it, so this data lands
+permanently in the user's project files (`.fontra`, `.designspace`, UFO lib).
 
 ### The one backend change
 
-`src/fontra/core/classes.py` — **a single line**:
+`src/fontra/core/classes.py` gets **a single line**:
 
 ```python
 class StaticGlyph:
     customData: CustomData = field(default_factory=dict)
 ```
 
-Skeleton data is per-layer, and `StaticGlyph` had no `customData` upstream. Mirrored in
-`src-js/fontra-core/src/classes.json` (+4).
+Skeleton data is per-layer, and upstream `StaticGlyph` had no `customData`. The change is
+mirrored in `src-js/fontra-core/src/classes.json` (+4).
 
-> ⚠️ `classes.json` is **generated**. Regenerating it from an ambient Python environment
-> silently reverts this. See the memory note on the venv layout — the venv imports this repo's
-> `src`; ambient `python` may import a stale clone.
+> ⚠️ `classes.json` is **generated**. If you regenerate it from a Python environment outside the
+> venv, the regeneration silently deletes this field again. See the memory note on the venv
+> layout. The venv imports this repo's `src`. A `python` on the ambient path may import a stale
+> clone instead.
 
 ### App-level settings
 
-`fontra-core/src/application-settings.js` (+9) — SpeedPunk and coarse-grid view preferences via
-`applicationSettingsController` (localStorage). Deliberately **not** per-font (D9).
+`fontra-core/src/application-settings.js` (+9) holds the SpeedPunk and coarse-grid view
+preferences in `applicationSettingsController` (localStorage). They are deliberately **not**
+per-font (D9).
 
 ### Assets
 
-`assets/images/skeleton-pen.svg`, `assets/tabler-icons/bone.svg` (skeleton),
-`assets/tabler-icons/spacing-horizontal.svg` (letterspacer).
+`assets/images/skeleton-pen.svg` and `assets/tabler-icons/bone.svg` for the skeleton.
+`assets/tabler-icons/spacing-horizontal.svg` for the letterspacer.
 
 ### Test fixture font
 
-`test-py/data/fonts/SkeletonRendering.fontra/` — a glyph with skeleton data, for rendering checks.
+`test-py/data/fonts/SkeletonRendering.fontra/` holds a glyph with skeleton data, for rendering
+checks.
 
 ---
 
 ## 6. Test coverage map
 
-`cd src-js/fontra-core && npm test` — currently **1391 tests**.
+Run `cd src-js/fontra-core && npm test`. The suite currently holds **1690 tests**.
 
 | Feature                             | Automated                                                                                   | Manual only                                                 |
 | ----------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -389,17 +612,20 @@ Skeleton data is per-layer, and `StaticGlyph` had no `customData` upstream. Mirr
 | Letterspacer                        | engine + persistence round-trip                                                             | panel, apply, overlay                                       |
 | Skeleton                            | model, generator (+ golden masters), modifiers, ribs, tunni, source defaults, interpolation | **all interaction** — drag, marquee, transform, tool, panel |
 | Corner overlap / quad / pen-connect | none                                                                                        | all                                                         |
+| Kerning view / autokern             | `fontra-core`: engine, cache, class derivation. `views-kerning`: its own mocha + `node --test` suite (results model, fold groups, token grammar, undo, controller wiring) | the imported scene and tools (rail R-G exception, own harness), on-canvas overlay, class panel |
 
-The asymmetry is structural, not an oversight: `views-editor` has no harness by forkra
-convention. That is why every editor-side plan carries an explicit manual test matrix, and why
-"I ran the bundle" is not evidence that an interaction works.
+The gap in that right-hand column is structural, not an oversight. By forkra convention
+`views-editor` has no test harness. That is why every editor-side plan carries an explicit manual
+test matrix, and why "I ran the bundle" is not evidence that an interaction works. `views-kerning`
+is the one view with its own harness (§2, R-G), so its row above is automated on the JS logic it
+owns; the reused `views-editor` scene and tools stay manual, same as they are in the editor.
 
 ---
 
 ## 7. Known gaps and residue
 
-**Bug snapshot** (the standalone parity-bugs registry is no longer kept; this is what was open
-when the doc was last verified, 2026-07-22 — re-check against the code before relying on it):
+**Bug snapshot.** We no longer keep the standalone parity-bugs registry. This is what was open
+when the doc was last verified, on 2026-07-22. Re-check it against the code before you rely on it.
 
 | Item               | Summary                                                                              |
 | ------------------ | ------------------------------------------------------------------------------------ |
@@ -409,131 +635,200 @@ when the doc was last verified, 2026-07-22 — re-check against the code before 
 
 **Structural debt, not yet filed as bugs:**
 
-1. **Rib and editable-generated entries do not implement `makeChangeForTransformation`** — they
-   return `null`. A rib-only marquee selection draws a transform box that does nothing.
-2. **Letterspacer ↔ skeleton coupling** — verify whether sidebearing changes move skeleton
-   data before assuming it works. (This is the coupling the sidebearing-variables work must
-   route through — it is not yet in the base margin-set path.)
-3. **`skeleton-generator.js` is 5,168 lines.** Justified by the port, but it is the single
-   largest file in the fork — the one place defect **P6** (§9, monoliths) still bites.
+1. **Rib and editable-generated entries do not implement `makeChangeForTransformation`.** Both
+   return `null`. We verified this again on 2026-07-28. So a rib-only marquee selection draws a
+   transform box that does nothing. The skeleton **point** entry does implement the method, and
+   the mirror side-swap hooks into that implementation. Copy it.
+2. **Letterspacer-to-skeleton coupling.** Verify whether a sidebearing change moves the skeleton
+   data before you assume it works. The sidebearing-variables work must route through this
+   coupling. It is not yet in the base margin-set path.
+3. **`skeleton-generator.js` is 4,730 lines.** The port justifies it, but it is the single
+   largest file in the fork. It is the one place where defect **P6** (§9, monoliths) still bites.
+   We built the serif the other way as a deliberate counter-example. Its geometry is a separate
+   268-line core module, and only the trimming and splicing live in the generator.
+4. **A pin of exactly zero reads as "no pin"** in `shiftTensionsToMean`
+   (`tunni-calculations.js`). A pin of zero therefore falls back to the natural solve. The
+   smallest positive pin instead snaps the handles to nearly collapsed. Between those two values
+   the shape steps by tens of units, at the very bottom of the curvature gizmo's range. We
+   measured this on `_external/g.json` and reproduced it with the serif switched off. Every
+   curvature pin in the app shares this code, so we left the code alone instead of changing it as
+   a side effect of serif work. Reported 2026-08-02, undecided.
 
 ---
 
 ## 8. Delegation recipes
 
-Minimal reading sets for the most likely next tasks. Each assumes §2 (rails) has been read.
+Minimal reading sets for the most likely next tasks. Each one assumes you have read §2 (the
+rails).
 
 **"Add a skeleton parameter to the panel"**
-`skeleton-model.js` (accessor) → `skeleton-panel-model.js` (summarize across selection) →
-`skeleton-panel-edits.js` (write via `editSkeleton`) → `panel-skeleton-parameters.js` (widget) →
-`lang/en.js`. Never call the generator or write customData directly (R-C).
+`skeleton-model.js` (accessor) → `skeleton-panel-model.js` (summarize across the selection) →
+`skeleton-panel-edits.js` (write through `editSkeleton`) → `panel-skeleton-parameters.js`
+(widget) → `lang/en.js`. Never call the generator, and never write customData directly (R-C).
 
-**"Make feature X skeleton-aware"** (the Q-measure fix, 4.12, is the worked example)
-`scene-model.js` for the hit-test (reuse the private skeleton iterators — `iterSkeletonCurveSegments`
-etc. — don't duplicate them) → `skeleton-model.js` for geometry (rib positions, normals — do
-**not** recompute them) → the feature's own interaction module, which just consumes and tags.
-Provenance lookups go through `skeleton-generated.js`, never geometry matching (R-D).
+**"Make feature X skeleton-aware"** (the Q-measure fix, item 4.12, is the worked example)
+`scene-model.js` for the hit-test. Reuse the private skeleton iterators such as
+`iterSkeletonCurveSegments`, and do not duplicate them. Then `skeleton-model.js` for the geometry:
+rib positions and normals, which you must **not** recompute. Then the feature's own interaction
+module, which only consumes and tags. `skeleton-generator.js` emits provenance, and the helpers in
+`skeleton-model.js` resolve it. Never recover it by geometry matching (R-D).
 
 **"Fix a skeleton editing behavior"**
-`skeleton-editing.js` (target entries) → `skeleton-modifiers.js`, both copies → the relevant
-executor in `skeleton-ribs.js` / `skeleton-generated.js`. If the fix wants a branch inside
-`makeChangeForDelta`, it is the wrong fix (R-E).
+`views-editor/src/skeleton-editing.js` holds the target entries, the map from key to behavior
+name, and the behavior executors. `skeleton-model.js` holds the modifier semantics
+(`applyFixedRibDelta`, the equalize family). If the fix wants a branch inside `makeChangeForDelta`,
+it is the wrong fix (R-E).
 
 **"Change generated outline geometry"**
-`skeleton-generator.js` + `test-skeleton-generator.js`. TDD is available and expected here.
-Watch generated **point count stability** — it must stay constant across parameter values, or
-cross-master interpolation breaks.
+Use `skeleton-generator.js` with `test-skeleton-generator.js`. If the change touches cubic handle
+lengths, also use `natural-handle-solver.js` and `offset-cubic.js` with their matching tests. TDD
+is available here, and expected.
+
+The feature model holds the hard constraints. Every one of them must survive the change:
+
+- **Point-count stability.** The generated point count must not vary, or cross-master
+  interpolation breaks.
+- **Fixed sample identity.** The solve uses the same five source parameters every time. Add no
+  projection, no refit and no candidate search.
+- **One strictly convex objective.** Its positive pull may read only the input skeleton and the
+  input widths.
+- **The positive, non-crossing handle domain.** Keep the existing floor and ceiling.
+- **The authored-state order.** Natural answer, then attached adjustments, then the pinned
+  tension, then detached handles.
+- **A pinned curvature is permanent.** Generation may clamp the output, and may never rewrite the
+  stored number.
+
+Read the feature model's §9 before you start. It lists what we already tried here and rejected on
+measurement. That list includes two ideas we re-proposed and reverted twice, and three guards we
+deleted because the handle domain already enforces them.
+
+**Test a geometry change with a sweep, not an assertion.** Hold the geometry fixed, walk one
+input through its range in fine steps, and measure the worst single-step movement against the
+driver's own step. A per-configuration assertion has missed every fault in this module so far.
+Start the sweep away from degenerate configurations. A sweep that begins at zero-length handles
+reports its own seed as a 700-unit jump.
+
+**"Change the serif terminal"**
+Use `serif-geometry.js` and `test-serif-geometry.js` for anything about the terminal's own shape.
+Use `buildSerifCap` in `skeleton-generator.js` for how it is trimmed onto the stroke and spliced
+in. Keep that split. The geometry module never learns what a stroke is.
+
+Read feature model §8 first. Read the release rule in particular: **the terminal's on-curves are
+fixed in the serif's own frame, and the edge is brought to them, never the reverse.** A terminal
+built off the cut is the one mistake this feature has already made and reverted.
+
+**"Touch anything a terminal trims"**
+A trimmed terminal makes the emitted segment shorter than the segment the generator solved.
+Anything that measures the emitted one then measures the wrong curve.
+`splitTerminalSideForRoundCap` publishes the uncut segment on the inserted point's provenance, as
+`constructionSegment`. `generatedSegmentConstructionPoints` in `skeleton-model.js` is the one
+reader that resolves it. Go through that reader. Do not measure a generated segment's shape from
+`segment.points` directly.
 
 **"Add a visualization"**
-New draw in the feature's `visualization-layer-*.js`; register in
+Add a new draw in the feature's `visualization-layer-*.js`. Register it in
 `visualization-layer-definitions.js` with `draw: <importedFn>` only.
+
+**"Work on the kerning view"**
+Read spec `KERNING-VIEW.md` first, and its backlog `KERNING-VIEW-BACKLOG.md` for what changed since
+the spec was written and what is still open. Then §3 F13 above for the file map. The measurement
+math lives in `fontra-core/src/autokern-engine.js`, pure and mocha-tested — change it there, never
+in `views-kerning`. The cache shape lives in `autokern-cache.js`. Everything else — the run worker,
+the pair table, the classing UI, the calibration readout and the status strip — is
+`views-kerning/src/kerning.js`, which runs under the view's own harness (§2, R-G):
+`cd src-js/views-kerning && npm test`. Remember the scene is imported from `views-editor`, never
+copied (§3 F13) — a scene or tool fix belongs in `views-editor`, and `views-kerning` picks it up
+through the import, not through a second copy.
 
 ---
 
 ## 9. Skeleton design rationale
 
-The durable "why" behind the skeleton, folded in from the retired integration roadmap and
-reframed as it now stands. The skeleton was **re-integrated, not merged**: the donor's proven
-geometry math was ported; every piece of plumbing was redesigned around four concepts. This
-section explains the rails in §2 and — just as important — names what must never creep back.
+This section holds the durable "why" behind the skeleton. It comes from the retired integration
+roadmap, updated to what the code does today. We **re-integrated** the skeleton, we did not merge
+it. We ported the donor's proven geometry math, and we redesigned every piece of plumbing around
+four concepts. This section explains the rails in §2. It also names what must never come back.
 
 ### The four concepts (C1–C4)
 
 Everything in the skeleton is an instance of one of these.
 
 - **C1 — A skeleton is a path.** Skeleton geometry uses the same point representation as glyph
-  paths (x, y, on/off-curve type, smooth flag) plus per-point attributes (widths, nudges, flags,
-  handle offsets). So the existing point-editing machinery — behavior rules, executors,
-  hit-testing, selection — applies verbatim, parameterized only by *which* path is edited and
-  *where* the change is recorded. On-curve points and handles are **one** selection kind
-  (`skeletonPoint/contour/point`), never split. → rail R-A.
+  paths: x, y, on/off-curve type and smooth flag, plus per-point attributes for widths, nudges,
+  flags and handle offsets. So the existing point-editing machinery applies unchanged: behavior
+  rules, executors, hit-testing and selection. That machinery takes only two parameters, _which_
+  path it edits and _where_ it records the change. On-curve points and handles are **one**
+  selection kind (`skeletonPoint/contour/point`), never split. → rail R-A.
 - **C2 — One write path.** `editSkeleton` (`skeleton-editing.js`) is the only caller of the
-  generator on the editing side: apply `mutate()` to a working copy → regenerate → update
-  provenance → return one combined change (customData + path) with rollback. Undo, incremental
-  sync and multi-layer editing then come from the existing change system for free. → rail R-C.
-- **C3 — Provenance forward, never recovered.** The generator emits the mapping (generated point
-  → skeleton point / side / role) at generation time; stable ids make it survive edits. Every
-  "which skeleton point owns this generated point?" is a map lookup. No geometric matching, no
-  tolerance-based inverse projection anywhere. → rail R-D.
+  generator on the editing side. It applies `mutate()` to a working copy, regenerates, updates
+  provenance, and returns one combined change (customData plus path) with rollback. Undo,
+  incremental sync and multi-layer editing then come from the existing change system for free.
+  → rail R-C.
+- **C3 — Provenance forward, never recovered.** At generation time the generator emits the map
+  from a generated point to its skeleton point, side and role. Stable ids make the map survive
+  edits. Every question of the form "which skeleton point owns this generated point?" is a map
+  lookup. No part of the tree does geometric matching or tolerance-based inverse projection.
+  → rail R-D.
 - **C4 — Derived handles are gizmos with one contract.** Rib endpoints, editable generated
-  handles and Tunni points all share: `position(source)` for render/hit-test, `applyDrag(delta)
-  → source mutation` for editing. Tunni is written once against "a path + an edit sink"; the
-  skeleton sink is `editSkeleton`.
+  handles and Tunni points all share two operations: `position(source)` for render and hit-test,
+  and `applyDrag(delta) → source mutation` for editing. Tunni is written once against "a path plus
+  an edit sink". The skeleton sink is `editSkeleton`.
 
 ### The defects it answers (P1–P7)
 
-The donor's structural defects — what the design deliberately avoids, and what a change must not
-reintroduce:
+These are the donor's structural defects. They are what the design deliberately avoids, and what
+a change must not reintroduce.
 
-- **P1 — Derived data with no link to its source.** Donor matched generated contours back to
-  skeletons by geometry (inverse projection, a "recovery" routine). → answered by C3 + stable ids.
-- **P2 — Selection kinds multiplied beyond the concepts.** Five kinds for ~three semantics, two
-  existing only to reverse-map path-point indices. → C1/C3 dissolve the surplus.
-- **P3 — No single write path.** Mutations from drag, nudge, transform and a ~7,000-line panel,
-  each re-implementing regeneration/undo/bookkeeping until they drift. → C2.
-- **P4 — Duplicated geometry.** Donor had `projectRibPoint` twice, `DEFAULT_SKELETON_WIDTH` five
-  times; drift makes the outline and the edit targets disagree. → rail R-B (one copy of every
-  constant and geometry fn).
-- **P5 — Features bolted outside the behavior model.** X-equalize as a side channel regressed
-  five times; interpolation, expressed *inside* the rules, never did. → rail R-F (modifiers are
-  behavior names + executor variants, not bypass flags).
-- **P6 — Monolith files.** Donor pointer was 7,496 lines. The fork keeps the pointer thin, but
-  `skeleton-generator.js` (~5,200 lines) is the one place this weight still lives (§7 residue #3).
-- **P7 — In-place rearchitecting.** Four months of refactoring a live donor feature produced two
-  successive architectures and a long regression tail with no new capability — the reason this
-  was a clean re-integration, not a refactor.
+- **P1 — Derived data with no link to its source.** The donor matched generated contours back to
+  skeletons by geometry, through inverse projection and a "recovery" routine. → answered by C3
+  plus stable ids.
+- **P2 — More selection kinds than concepts.** Five kinds carried about three meanings. Two of
+  them existed only to reverse-map path-point indices. → C1 and C3 dissolve the surplus.
+- **P3 — No single write path.** Mutations came from drag, nudge, transform and a 7,000-line
+  panel. Each one re-implemented regeneration, undo and bookkeeping until they drifted. → C2.
+- **P4 — Duplicated geometry.** The donor had `projectRibPoint` twice and `DEFAULT_SKELETON_WIDTH`
+  five times. Drift then makes the outline and the edit targets disagree. → rail R-B: one copy of
+  every constant and geometry function.
+- **P5 — Features bolted outside the behavior model.** X-equalize as a side channel regressed five
+  times. Interpolation, expressed _inside_ the rules, never did. → rail R-F: modifiers are
+  behavior names and executor variants, not bypass flags.
+- **P6 — Monolith files.** The donor pointer was 7,496 lines. The fork keeps the pointer thin, but
+  `skeleton-generator.js` at about 4,700 lines is the one place this weight still lives (§7
+  residue #3).
+- **P7 — Rebuilding the architecture in place.** Four months of refactoring a live donor feature
+  produced two successive architectures and a long regression tail, with no new capability. That
+  is why we did a clean re-integration instead of a refactor.
 
 ### Schema — stable ids are the load-bearing choice
 
-`customData["fontra.internal"].skeleton`; the full field list lives in `skeleton-model.js`.
-Skeleton contours and points carry stable, **never-reused ids**. Selection, provenance and undo
-reference those ids, not array indices, so structural edits can't silently retarget them — this
-is what makes C3 cheap. Generated contours are tracked by `generatedContourIndices` plus a
-per-point provenance map keyed by skeleton id.
+The data lives at `customData["fontra.internal"].skeleton`. The full field list is in
+`skeleton-model.js`. Skeleton contours and points carry stable ids that are **never reused**.
+Selection, provenance and undo reference those ids instead of array indices, so a structural edit
+cannot silently retarget them. This is what makes C3 a simple lookup. `generatedContourIndices`
+tracks generated contours, together with a per-point provenance map keyed by skeleton id.
 
-The one seam outside `editSkeleton`: **path** contours have no id facility in Fontra, so a
-generated contour's *index* can still be invalidated when a non-skeleton contour is inserted or
-deleted. Every editor operation that restructures the contour list must update the mapping in the
-same change — the knife/pen bookkeeping in §3 F7 is that hook. The donor hit this exact bug
-twice; ids + one write path are the structural answer, but the enumeration is real work, not an
-afterthought.
+One case sits outside `editSkeleton`. **Path** contours have no ids in Fontra, so inserting or
+deleting a non-skeleton contour can still invalidate a generated contour's _index_. Every editor
+operation that restructures the contour list must update the mapping in the same change. The
+knife and pen bookkeeping in §3 F7 does exactly that. The donor hit this bug twice. Ids plus one
+write path are the structural answer, but finding every operation that restructures the list is
+real work, not an afterthought.
 
 ### History (for archaeology)
 
-Donor pinned at `fd76d3abe` (last pre-refactor commit, 2026-02-20) as the behavioral ground
-truth; three generator bug-fixes from its later refactor branch were cherry-picked as semantics.
-Built across WS-6…WS-16, with WS-17 the parity pass. The donor checkout still exists, read-only
-and gitignored, at **`_external/skeleton`** (pinned at `fd76d3abe`) — a behavioral reference for
-parity questions, reachable via `git -C _external/skeleton …`; never a source to port plumbing
-from. The porting rules that governed the integration are retired — this doc, verified against
-the code, is the reference now.
+The donor sits read-only and gitignored at **`_external/skeleton`**, pinned at `fd76d3abe`, the
+last pre-refactor commit, from 2026-02-20. Reach it with `git -C _external/skeleton …`. It is the
+behavioral ground truth for parity questions and never a source to port plumbing from. We
+cherry-picked three generator bug-fixes from its later refactor branch as semantics, and built the
+feature across WS-6…WS-16 with WS-17 as the parity pass. The porting rules that governed the
+integration are retired; this doc, verified against the code, is the reference now.
 
 ---
 
 ## Maintaining this doc
 
-Update it when a feature gains or loses a file, when a selection kind changes, or when a rail
-gets an exception. It is verified by construction — every path, count and export above came from
-`git diff upstream/main...HEAD` and greps against the tree on 2026-07-22, not from the older
-planning docs. Re-verify the same way rather than trusting this text: never trust a document
-over the code (§9's own rule, inherited from the retired roadmap).
+Update it when a feature gains or loses a file, when a selection kind changes, or when a rail gets
+an exception. It is verified by construction. Every path, count and export above came from
+`git diff upstream/main...HEAD` and from greps against the tree on 2026-07-22, not from the older
+planning docs. Re-verify the same way instead of trusting this text. Never trust a document over
+the code. That is §9's own rule, inherited from the retired roadmap.

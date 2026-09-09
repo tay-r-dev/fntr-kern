@@ -26,13 +26,6 @@ import {
   findPointMatch,
 } from "./edit-behavior-support.js";
 
-//// grid
-let magneticSnapEnabled = false;
-export function toggleMagneticSnap() {
-  magneticSnapEnabled = !magneticSnapEnabled;
-  console.log("Magnetic snap", magneticSnapEnabled ? "ON" : "OFF");
-}
-
 export class EditBehaviorFactory {
   constructor(
     instance,
@@ -124,27 +117,12 @@ class EditBehavior {
   ) {
     this.doFullTransform = doFullTransform;
     this.targetEntries = targetEntries;
-    //// grid
     this.roundFunc = (value, isArrowKey = false) => {
       const coarseUnit = window.coarseGridSpacing || 1;
-
-      // 1.  Ctrl / Cmd  ⇒ always coarse grid
       if (window.event?.ctrlKey || window.event?.metaKey) {
         return Math.round(value / coarseUnit) * coarseUnit;
       }
-
-      // 2.  Arrow keys  ⇒ ignore magnetic & coarse, use 1-unit steps
-      if (isArrowKey) {
-        return Math.round(value);
-      }
-
-      // 3.  Magnetic snap only when explicitly enabled
-      if (!magneticSnapEnabled || coarseUnit <= 1) {
-        return Math.round(value);
-      }
-
-      const coarse = Math.round(value / coarseUnit) * coarseUnit;
-      return Math.abs(value - coarse) <= coarseUnit * 0.35 ? coarse : Math.round(value);
+      return Math.round(value);
     };
     this.constrainDelta = behavior.constrainDelta || ((v) => v);
     const [pointEditFuncs, participatingPointIndices] = makePointEditFuncs(
@@ -1320,6 +1298,20 @@ const constrainRules = defaultRules.concat([
 
 ]);
 
+// A handle whose on-curve is smooth and carries only this one handle has no
+// direction of its own: the straight on the other side of that on-curve owns
+// the angle, and the handle may only slide along it. That is true of the drag
+// itself, not of any one modifier, so these rows are appended to EVERY rule
+// set. Without them the alternate sets had no match for this shape and fell
+// through to a plain free Move, which rotated the handle off the straight.
+// Appended last on purpose: later rules win at the leaf.
+// prettier-ignore
+const tangentHandleRules = [
+  //   prev3       prevPrev    prev        the point   next        nextNext    Constrain   Action
+  [    ANY|NIL,    SMO|SHA,    SMO|UNS,    OFF|SEL,    ANY|UNS|NIL,ANY|NIL,    false,      "ConstrainPrevAngle"],
+  [    ANY|NIL,    SMO|SHA,    SMO|UNS,    OFF|SEL,    SHA|OFF,    ANY|NIL,    false,      "ConstrainPrevAngle"],
+];
+
 // prettier-ignore
 const alternateRules = [
   //   prev3       prevPrev    prev        the point   next        nextNext    Constrain   Action
@@ -1358,15 +1350,21 @@ const alternateRules = [
   // Two unselected smooth points between two selected off-curves
   [    ANY|NIL,    OFF|SEL,    SMO|UNS,    SMO|UNS,    OFF|SEL,    ANY|NIL,    true,       "Move"],
 
-  // Two selected points locked by angle
-  [    ANY|NIL,    ANY,        SHA|SEL,    SMO|SEL,    OFF|UNS,    OFF|SHA|NIL,false,      "ConstrainMiddle"],
+  // Two selected points locked by angle. Both ends of the straight are held to
+  // the line, whichever way round the contour runs it and whether or not the
+  // far end is the contour's own first or last point (prevPrev may be NIL).
+  // The straight owns the angle of the handle on the smooth point's other
+  // side, and alt leaves that handle where it is, so the pair may only slide
+  // along it.
+  [    ANY|NIL,    ANY|NIL,    SHA|SEL,    SMO|SEL,    OFF|UNS,    OFF|SHA|NIL,false,      "ConstrainMiddle"],
+  [    ANY|NIL,    ANY|NIL,    OFF|UNS,    SMO|SEL,    SHA|SEL,    ANY|NIL,    false,      "ConstrainMiddle"],
   [    ANY|NIL,    ANY,        SMO|SEL,    SHA|SEL,    ANY|NIL,    ANY|NIL,    false,      "ConstrainPrevAngle"],
   [    ANY|NIL,    ANY,        SMO|SEL,    OFF|SEL,    ANY|NIL,    ANY|NIL,    false,      "ConstrainPrevAngle"],
 
   // Selected off-curve locked between two selected smooth points
   [    ANY|NIL,    ANY|NIL,    SMO|SEL,    OFF|SEL,    SMO|SEL,    ANY|NIL,    false,      "DontMove"],
 
-]
+].concat(tangentHandleRules);
 
 // prettier-ignore
 const alternateConstrainRules = alternateRules.concat([
@@ -1376,7 +1374,9 @@ const alternateConstrainRules = alternateRules.concat([
   // Two unselected smooth points between two off-curves, one of them selected
   [    ANY|UNS,    SMO|UNS,    SMO|UNS,    OFF|SEL,    ANY|NIL,    ANY|NIL,    false,      "ConstrainAroundPrevPrevPrev"],
 
-]);
+  // Re-applied after the rotate-around rules above, which would otherwise
+  // swing this handle off the straight that owns its angle.
+]).concat(tangentHandleRules);
 
 const behaviorTypes = {
   "default": {
@@ -1413,6 +1413,52 @@ const behaviorTypes = {
     actions: actionFactories,
   },
 
+  // The same two drags with A held. The modifier changes only how the width is
+  // written, which is entirely the target entry's business, so the base point
+  // behavior is the same one.
+  "fixed-rib-independent": {
+    matchTree: buildPointMatchTree(defaultRules),
+    actions: actionFactories,
+  },
+
+  "fixed-rib-compress-independent": {
+    matchTree: buildPointMatchTree(defaultRules),
+    actions: actionFactories,
+  },
+
+  // The ordinary match tree, plus a target entry that corrects handle lengths
+  // afterwards. X changes no angle, so every rule above stays as it is. There
+  // is no shift variant: X states an axis itself, and 0/45/90 has no diagonal
+  // left to offer under it.
+  "tension-aware": {
+    matchTree: buildPointMatchTree(defaultRules),
+    actions: actionFactories,
+  },
+
+  // The skeleton half of X. The entry writes the whole centerline through the
+  // skeleton write path, so the match tree matches no point (R-E, the same
+  // shape as base-expand).
+  "skeleton-tension-aware": {
+    matchTree: buildPointMatchTree([]),
+    actions: actionFactories,
+  },
+
+  // The entry is the only writer under an X scale, so the match tree matches no
+  // point (R-E, the same shape as base-expand).
+  "tension-aware-scale": {
+    matchTree: buildPointMatchTree([]),
+    actions: actionFactories,
+  },
+
+  // The base expansion drag moves nothing through the point rules: the whole
+  // edit is the offset construction, which runs in the target entry. An empty
+  // match tree matches no point, so no edit func is built and the path change
+  // comes entirely from the entry (R-E - the kind decision is at construction).
+  "base-expand": {
+    matchTree: buildPointMatchTree([]),
+    actions: actionFactories,
+  },
+
   "equalize": {
     matchTree: buildPointMatchTree(defaultRules),
     actions: actionFactories,
@@ -1428,6 +1474,11 @@ const behaviorTypes = {
   // entries); the base point behavior for any co-selected path points is the
   // default one.
   "rib-default": {
+    matchTree: buildPointMatchTree(defaultRules),
+    actions: actionFactories,
+  },
+
+  "rib-independent": {
     matchTree: buildPointMatchTree(defaultRules),
     actions: actionFactories,
   },

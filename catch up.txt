@@ -1,0 +1,16 @@
+Remaining, in order
+  - Put G1 in the score, so the search cannot buy curvature by
+    breaking the tangent — and hold each joint's tangent fixed
+    from the drawing as it arrived, instead of re-deriving it
+    from rounded output. Then rewrite my red test against the
+    grid's real allowance (2·atan(0.707/L) per handle), which
+    my first bound got wrong.
+  - Port Curvatura's harmonizehandles_contour — target
+    curvature per node (mean of the two sides, zero at an
+    inflection), then per segment solve both handle lengths to
+    hit its two ends via the quartic, least-energy root. Not in
+    our tree; it is the construction aimed at "make these
+    curves harmonious" rather than "fix this joint".
+  - Update DEVELOPMENT-LOG.md and FEATURE-MODEL.md §10 — the
+    G2-only score, the slide's new meaning, and the loop's
+    G1/accuracy trade, with the measurements.

@@ -4,15 +4,20 @@
 // through skeleton-panel-edits.js -> editSkeleton (Global Constraints).
 
 import {
+  SERIF_HALF_FIELDS,
+  getSkeletonContour,
   getSkeletonHandleOffset,
+  getSkeletonInsertion,
   getSkeletonPointHalfWidth,
   getSkeletonPointWidth,
   getSkeletonRibAddress,
+  getSkeletonRibSidesForPoint,
+  SKELETON_LOCK_KINDS,
+  isSkeletonSideLocked,
   parseEditableGeneratedHandleKey,
   parseEditableGeneratedPointKey,
+  parseSkeletonInsertionSelectionItem,
   parseSkeletonRibKey,
-  getSkeletonRibSidesForPoint,
-  isSkeletonSideLocked,
 } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 import { getSkeletonPointAddress, parseSkeletonPointKey } from "./skeleton-editing.js";
@@ -31,6 +36,7 @@ export function collectSkeletonPanelSelection({ selection, skeletonData }) {
     ribs: [],
     generatedPoints: [],
     generatedHandles: [],
+    insertions: [],
     contours: [],
   };
   if (!skeletonData) {
@@ -50,6 +56,27 @@ export function collectSkeletonPanelSelection({ selection, skeletonData }) {
     }
   };
 
+  // One insertion point, recorded once however it was reached: by its own key,
+  // or through one of the two rib keys it owns.
+  const seenInsertions = new Set();
+  const noteInsertion = (contour, insertion) => {
+    const key = `${contour.id}/${insertion.id}`;
+    if (seenInsertions.has(key)) {
+      return;
+    }
+    seenInsertions.add(key);
+    result.insertions.push({
+      contourId: contour.id,
+      insertionId: insertion.id,
+      contour,
+      insertion,
+    });
+    noteContour({
+      contour,
+      contourIndex: skeletonData.contours.indexOf(contour),
+    });
+  };
+
   for (const item of parsed.skeletonPoint || []) {
     const { contourId, pointId } = parseSkeletonPointKey(item);
     const address = resolvePointAddress(skeletonData, contourId, pointId);
@@ -67,6 +94,20 @@ export function collectSkeletonPanelSelection({ selection, skeletonData }) {
 
   for (const item of parsed.skeletonRib || []) {
     const { contourId, pointId, side } = parseSkeletonRibKey(`skeletonRib/${item}`);
+    // A rib key's middle field names a skeleton point or an insertion point. An
+    // insertion point's rib IS the insertion point as far as the panel is
+    // concerned: selecting the bar and selecting the ring have to answer with
+    // the same controls, or the two ends of one gesture disagree.
+    const insertionContour = getSkeletonContour(skeletonData, Number(contourId));
+    const insertion = getSkeletonInsertion(
+      skeletonData,
+      Number(contourId),
+      Number(pointId)
+    );
+    if (insertionContour && insertion) {
+      noteInsertion(insertionContour, insertion);
+      continue;
+    }
     const address = getSkeletonRibAddress(skeletonData, contourId, pointId, side);
     if (!address) continue;
     result.ribs.push({
@@ -79,6 +120,24 @@ export function collectSkeletonPanelSelection({ selection, skeletonData }) {
       pointIndex: address.pointIndex,
     });
     noteContour(address);
+  }
+
+  for (const item of parsed.skeletonInsertion || []) {
+    let parsedKey;
+    try {
+      parsedKey = parseSkeletonInsertionSelectionItem(item);
+    } catch {
+      continue;
+    }
+    const contour = getSkeletonContour(skeletonData, parsedKey.contourId);
+    const insertion = getSkeletonInsertion(
+      skeletonData,
+      parsedKey.contourId,
+      parsedKey.insertionId
+    );
+    if (contour && insertion) {
+      noteInsertion(contour, insertion);
+    }
   }
 
   for (const item of parsed.editableGeneratedPoint || []) {
@@ -257,7 +316,21 @@ export function summarizeSkeletonPointWidths(selectedPoints) {
   const linked = reduceValues(
     selectedPoints.map((entry) => entry.point?.width?.linked !== false)
   );
-  return { left, right, total, distribution, linked };
+  const tied = reduceValues(
+    selectedPoints.map((entry) => entry.point?.width?.tied !== false)
+  );
+  // A single-sided contour renders the SUM of the two half-widths on its visible
+  // side, so per-side numbers and the split between them describe nothing the
+  // designer can see. They are still stored, and still what the point returns to
+  // when the contour goes back to double-sided — the panel greys them rather than
+  // hiding them, so it is clear they are being kept rather than lost.
+  const singleSided =
+    selectedPoints.length > 0 &&
+    selectedPoints.every(
+      (entry) =>
+        entry.contour?.singleSided === "left" || entry.contour?.singleSided === "right"
+    );
+  return { left, right, total, distribution, linked, tied, singleSided };
 }
 
 // Distribution percent in [-100, 100]: negative favors the right side, positive
@@ -324,6 +397,35 @@ export function summarizeSkeletonCapStyleSelection(selectedPoints) {
   return { canEdit: true, mixed: reduced.mixed, value: reduced.value };
 }
 
+/**
+ * The rib angle lock over a selection.
+ *
+ * It is a property of a point's rib, not of a cap, so it is offered at every
+ * skeleton point. At a corner it replaces the line that splits the angle between
+ * the two arms, so both arms' edge ends land on the forced rib and the corner
+ * sits at a plain half-width along it.
+ */
+export function summarizeSkeletonRibAngleLockSelection(selectedPoints) {
+  if (!selectedPoints.length) {
+    return { canEdit: false, mixed: false, value: null, mode: {} };
+  }
+  const reduced = reduceValues(
+    selectedPoints.map((entry) => entry.point.ribAngleLock ?? null)
+  );
+  // What a forced rib holds on to. Offered only where at least one selected
+  // point has a lock, because with no lock there is nothing for it to decide.
+  const locked = selectedPoints.filter((entry) => entry.point.ribAngleLock);
+  const mode = reduceValues(
+    locked.map((entry) => entry.point.ribAngleLockMode ?? "stroke")
+  );
+  return {
+    canEdit: true,
+    mixed: reduced.mixed,
+    value: reduced.value,
+    mode: { canEdit: locked.length > 0, mixed: mode.mixed, value: mode.value },
+  };
+}
+
 export function summarizeSkeletonCapSelection(selectedPoints) {
   return {
     capStyle: reduceValues(selectedPoints.map((entry) => entry.point.capStyle ?? null)),
@@ -343,16 +445,60 @@ export function summarizeSkeletonCapSelection(selectedPoints) {
     capBallShape: reduceValues(
       selectedPoints.map((entry) => entry.point.capBallShape ?? null)
     ),
+    capBallEasing: reduceValues(
+      selectedPoints.map((entry) => entry.point.capBallEasing ?? null)
+    ),
     capBallSide: reduceValues(
       selectedPoints.map((entry) => entry.point.capBallSide ?? null)
     ),
   };
 }
 
-// Corner rounding is the angle-point engine (donor "Corner Rounding" section):
-// all four parameters live on the point, and are editable only when EVERY
-// selected point is a non-smooth on-curve that is not an open-contour
-// endpoint — the inverse of the cap gate.
+// Serif parameters for the selected points. Gated exactly like the cap style,
+// because a serif IS a cap style — it is only offered on open-contour endpoints.
+// Each serif field is stored on its endpoint.
+export function summarizeSkeletonSerifSelection(selectedPoints) {
+  const half = (side) => {
+    const summary = {};
+    for (const field of SERIF_HALF_FIELDS) {
+      summary[field] = reduceValues(
+        selectedPoints.map((entry) => entry.point.serif?.[side]?.[field] ?? null)
+      );
+    }
+    return summary;
+  };
+  const terminal = (field, fallback = null) =>
+    reduceValues(selectedPoints.map((entry) => entry.point.serif?.[field] ?? fallback));
+  return {
+    left: half("left"),
+    right: half("right"),
+    // Which sides carry a serif, and whether the two are shaped as one. A side
+    // left out of it generates nothing. It falls back through the old link flag
+    // so a file written before the tab row reads the same way it drew.
+    sides: reduceValues(
+      selectedPoints.map(
+        (entry) =>
+          entry.point.serif?.sides ??
+          (entry.point.serif?.linked === false ? "split" : "both")
+      )
+    ),
+    axisMode: terminal("axisMode", "perpendicular"),
+    axisAngle: terminal("axisAngle", 0),
+    // Zero is the plain perpendicular, so a terminal drawn before the tilt
+    // existed reads neutral and draws exactly what it drew.
+    axisTilt: terminal("axisTilt", 0),
+    undersideCup: terminal("undersideCup"),
+    undersideCupTension: terminal("undersideCupTension"),
+    // Neutral is the midpoint of the two tips, so a terminal drawn before the
+    // control existed reads zero and draws exactly what it drew.
+    undersideCupBalance: terminal("undersideCupBalance", 0),
+  };
+}
+
+// Corner rounding is the angle-point engine: two numbers per side of the
+// stroke, live on the point, and editable only when EVERY selected point is a
+// non-smooth on-curve that is not an open-contour endpoint — the inverse of the
+// cap gate.
 export function summarizeSkeletonCornerSelection(selectedPoints) {
   let canEdit = selectedPoints.length > 0;
   for (const entry of selectedPoints) {
@@ -372,20 +518,23 @@ export function summarizeSkeletonCornerSelection(selectedPoints) {
       }
     }
   }
+  const sideValue = (side, field) =>
+    reduceValues(
+      selectedPoints.map((entry) => entry.point.corner?.[side]?.[field] ?? null)
+    );
   return {
     canEdit,
-    cornerRoundness: reduceValues(
-      selectedPoints.map((entry) => entry.point.cornerRoundness ?? null)
+    linked: reduceValues(
+      selectedPoints.map((entry) => entry.point.corner?.linked !== false)
     ),
-    cornerAsymmetry: reduceValues(
-      selectedPoints.map((entry) => entry.point.cornerAsymmetry ?? null)
-    ),
-    cornerReach: reduceValues(
-      selectedPoints.map((entry) => entry.point.cornerReach ?? null)
-    ),
-    roundnessStrength: reduceValues(
-      selectedPoints.map((entry) => entry.point.roundnessStrength ?? null)
-    ),
+    left: {
+      distance: sideValue("left", "distance"),
+      curvature: sideValue("left", "curvature"),
+    },
+    right: {
+      distance: sideValue("right", "distance"),
+      curvature: sideValue("right", "curvature"),
+    },
   };
 }
 
@@ -438,8 +587,16 @@ export function singleGeneratedHandleTarget(panelSelection) {
 
 export function summarizeSkeletonRibSelection(selectedRibs) {
   return {
-    locked: reduceValues(
-      selectedRibs.map((entry) => isSkeletonSideLocked(entry.point, entry.side))
+    // One summary per lock kind: three independent controls need three answers.
+    locked: Object.fromEntries(
+      SKELETON_LOCK_KINDS.map((kind) => [
+        kind,
+        reduceValues(
+          selectedRibs.map((entry) =>
+            isSkeletonSideLocked(entry.point, entry.side, kind)
+          )
+        ),
+      ])
     ),
     detached: reduceValues(
       selectedRibs.map(
@@ -447,6 +604,32 @@ export function summarizeSkeletonRibSelection(selectedRibs) {
           getSkeletonHandleOffset(entry.point, entry.side, "in").detached === true ||
           getSkeletonHandleOffset(entry.point, entry.side, "out").detached === true
       )
+    ),
+  };
+}
+
+// The selected insertion points, as one answer per control.
+//
+// A ratio is stored, and the panel shows units. The conversion needs the
+// reference the outline draws, which the panel reads through
+// `insertionWidthReference`. A selection whose members disagree answers null,
+// the same mixed state every other summary here uses.
+export function summarizeSkeletonInsertionSelection(selectedInsertions) {
+  return {
+    ratioLeft: reduceValues(
+      selectedInsertions.map((entry) => entry.insertion.width.left)
+    ),
+    ratioRight: reduceValues(
+      selectedInsertions.map((entry) => entry.insertion.width.right)
+    ),
+    linked: reduceValues(
+      selectedInsertions.map((entry) => entry.insertion.width.linked !== false)
+    ),
+    easingLeft: reduceValues(
+      selectedInsertions.map((entry) => entry.insertion.easing.left)
+    ),
+    easingRight: reduceValues(
+      selectedInsertions.map((entry) => entry.insertion.easing.right)
     ),
   };
 }
@@ -499,12 +682,17 @@ export function makeSkeletonPanelStateSignature({
         // when a side is locked outside the panel. Handle offsets are
         // deliberately NOT tracked: they change every frame while a generated
         // handle is dragged, which would rebuild the panel per frame.
-        `p:${entry.contourId}/${entry.pointId}:${JSON.stringify(entry.point.width)}:${JSON.stringify(entry.point.nudge)}:${JSON.stringify(entry.point.locked)}:${entry.point.capStyle}:${entry.point.capRadiusRatio}:${entry.point.capTension}:${entry.point.capAngle}:${entry.point.capDistance}:${entry.point.capBallRatio}:${entry.point.capBallShape}:${entry.point.capBallSide}:${entry.point.roundnessStrength}:${entry.point.cornerAsymmetry}`
+        `p:${entry.contourId}/${entry.pointId}:${JSON.stringify(entry.point.width)}:${JSON.stringify(entry.point.nudge)}:${JSON.stringify(entry.point.locked)}:${entry.point.capStyle}:${entry.point.capRadiusRatio}:${entry.point.capTension}:${entry.point.capAngle}:${entry.point.capDistance}:${entry.point.capBallRatio}:${entry.point.capBallShape}:${entry.point.capBallEasing}:${entry.point.capBallSide}:${entry.point.corner?.linked}:${JSON.stringify(entry.point.serif)}`
+      );
+    }
+    for (const entry of panelSelection.insertions || []) {
+      parts.push(
+        `i:${entry.contourId}/${entry.insertionId}:${entry.insertion.t}:${JSON.stringify(entry.insertion.width)}:${JSON.stringify(entry.insertion.easing)}`
       );
     }
     for (const entry of panelSelection.contours) {
       parts.push(
-        `c:${entry.contourId}:${entry.contour.singleSided}:${entry.contour.defaultWidth}:${entry.contour.cornerTrimRatio}:${entry.contour.cornerRadiusBoost}`
+        `c:${entry.contourId}:${entry.contour.singleSided}:${entry.contour.defaultWidth}`
       );
     }
   }

@@ -25,7 +25,12 @@ import {
   getMyGlyphSets,
   readProjectGlyphSets,
 } from "@fontra/core/glyphsets-controller.js";
-import { expandToJoints, harmonizePathInPlace } from "@fontra/core/harmonization.js";
+import {
+  balancePathInPlace,
+  expandToJoints,
+  harmonizePathInPlace,
+} from "@fontra/core/harmonization.js";
+import * as html from "@fontra/core/html-utils.js";
 import { translate, translatePlural } from "@fontra/core/localization.js";
 import { MouseTracker } from "@fontra/core/mouse-tracker.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
@@ -51,10 +56,21 @@ import {
 } from "@fontra/core/set-ops.js";
 import { ShaperController } from "@fontra/core/shaper-controller.js";
 import {
+  SKELETON_CONVERSION_REFUSALS,
+  appendSkeletonContourFromPathContour,
+  skeletonConversionRefusal,
+} from "@fontra/core/skeleton-from-contour.js";
+import {
+  SKELETON_SOURCE_DEFAULT_KEYS,
   clearSkeletonData,
+  getDefaultSkeletonWidthKeyForGlyphName,
+  getSkeletonContour,
   getSkeletonData,
+  getSkeletonGlyphCase,
+  resolveEffectiveSourceSkeletonDefault,
   setSkeletonData,
 } from "@fontra/core/skeleton-model.js";
+import { SNAP_PARAMETERS, setSnapParameter } from "@fontra/core/snapping.js";
 import {
   arrowKeyDeltas,
   assert,
@@ -74,11 +90,18 @@ import { GlyphSource, Layer } from "@fontra/core/var-glyph.js";
 import { isLocationAtDefault } from "@fontra/core/var-model.js";
 import { VarPackedPath, packContour } from "@fontra/core/var-path.js";
 import * as vector from "@fontra/core/vector.js";
-import { dialog, message } from "@fontra/web-components/modal-dialog.js";
+import { dialog, dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
+import {
+  componentCountOf,
+  recordComponentDelete,
+  recordComponentInsert,
+} from "./composition-editing.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
+import { recordMarkerAnchorRefresh } from "./marker-editing.js";
 import { SceneModel } from "./scene-model.js";
 import {
   applyGeneratedContourRemap,
+  applySkeletonEditInPlace,
   computeGeneratedContourRemap,
   createEditableGeneratedHandleTargetEntries,
   createEditableGeneratedPointTargetEntries,
@@ -86,13 +109,29 @@ import {
   getSelectionTargetKinds,
   getSkeletonModifierBehaviorName,
   getSkeletonRibBehaviorName,
+  isFixedRibBehaviorName,
   makeSkeletonModifierOptions,
   makeSkeletonPointTargetEntry,
+  makeSkeletonTensionAwareTargetEntry,
   parseSkeletonPointKey,
   recordSkeletonContourIndexShift,
 } from "./skeleton-editing.js";
+import {
+  closePanelSkeletonContours,
+  balancePanelSkeletonPoints,
+  harmonizePanelSkeletonPoints,
+  joinPanelSkeletonContours,
+  splitPanelSkeletonContours,
+  togglePanelContourReversed,
+} from "./skeleton-panel-edits.js";
+import { skeletonContourEndpointIndices } from "./skeleton-panel-model.js";
+import { forceRefreshSnapping } from "./snapping-interactions.js";
+import {
+  SKELETON_TENSION_AWARE_BEHAVIOR_NAME,
+  createTensionAwareTargetEntries,
+  getTensionAwareBehaviorName,
+} from "./tension-aware-editing.js";
 //// grid
-import { toggleMagneticSnap } from "./edit-behavior.js";
 
 // Minimum pixels per em and maximum pixels per unit for zooming out and in.
 //
@@ -128,7 +167,11 @@ export class SceneController {
     this.setupSceneSettings();
     //// grid
     this.sceneSettingsController.setItem("coarseGridSpacing", 10);
+    this.sceneSettingsController.setItem("snappingEnabled", true);
     this.sceneSettingsController.setItem("speedPunkPeakHeightUpm", 24);
+    this.sceneSettingsController.setItem("speedPunkReferenceTurnDegrees", 90);
+    this.sceneSettingsController.setItem("speedPunkColorFlatTurnDegrees", 30);
+    this.sceneSettingsController.setItem("speedPunkColorTightTurnDegrees", 120);
     this.sceneSettingsController.setItem("speedPunkSharpness", 1);
     this.sceneSettingsController.setItem("speedPunkOpacity", 0.5);
     this.sceneSettings = this.sceneSettingsController.model;
@@ -682,21 +725,44 @@ export class SceneController {
     );
 
     registerAction(
+      "action.toggle-snapping",
+      {
+        titleKey: "action.toggle-snapping",
+        defaultShortCuts: [{ baseKey: "g", shiftKey: true }],
+      },
+      () => {
+        this.sceneSettingsController.setItem(
+          "snappingEnabled",
+          !this.sceneSettings.snappingEnabled
+        );
+        // Switching snapping off must take the guides off the canvas with it,
+        // and switching it back on must not resume against a scene read before
+        // the drawing changed. Both are the same forced refresh, so the toggle
+        // is also the way out of a snap the designer cannot account for.
+        forceRefreshSnapping(this);
+        this.canvasController.requestUpdate();
+      }
+    );
+
+    registerAction(
+      "action.toggle-snap-diagonals",
+      {
+        titleKey: "action.toggle-snap-diagonals",
+        defaultShortCuts: [{ baseKey: "r", shiftKey: true }],
+      },
+      () => {
+        setSnapParameter("diagonalsEnabled", SNAP_PARAMETERS.diagonalsEnabled ? 0 : 1);
+        this.canvasController.requestUpdate();
+      }
+    );
+
+    registerAction(
       "action.increase-coarse-grid",
       { titleKey: "action.increase-coarse-grid", defaultShortCuts: [{ baseKey: "g" }] },
       () => {
         const v = this.sceneSettings.coarseGridSpacing;
         if (v < 40) this.sceneSettingsController.setItem("coarseGridSpacing", v + 5);
       }
-    );
-
-    registerAction(
-      "action.toggle-magnetic-snap",
-      {
-        titleKey: "action.toggle-magnetic-snap",
-        defaultShortCuts: [{ baseKey: "g", shiftKey: true }],
-      },
-      () => toggleMagneticSnap()
     );
 
     registerAction(
@@ -707,7 +773,14 @@ export class SceneController {
         defaultShortCuts: [{ baseKey: "j", commandKey: true }],
       },
       () => {
-        if (this.contextMenuState.joinContourSelection?.length === 2) {
+        // One gesture, four answers. The skeleton comes first because a
+        // centerline selection is never also a path selection: a generated
+        // outline cannot be selected as an ordinary point.
+        if (this.contextMenuState.skeletonJoinSelection?.length === 2) {
+          this.doJoinSelectedSkeletonContours();
+        } else if (this.contextMenuState.skeletonCloseSelection?.length) {
+          this.doCloseSelectedSkeletonContours();
+        } else if (this.contextMenuState.joinContourSelection?.length === 2) {
           this.doJoinSelectedOpenContours();
         } else {
           this.doCloseSelectedOpenContours();
@@ -715,21 +788,27 @@ export class SceneController {
       },
       () =>
         this.contextMenuState.joinContourSelection?.length ||
-        this.contextMenuState.openContourSelection?.length
+        this.contextMenuState.openContourSelection?.length ||
+        this.contextMenuState.skeletonJoinSelection?.length ||
+        this.contextMenuState.skeletonCloseSelection?.length
     );
 
     registerAction(
       "action.break-contour",
       { topic },
       () => this.doBreakSelectedContours(),
-      () => this.contextMenuState.pointSelection?.length
+      () =>
+        this.contextMenuState.pointSelection?.length ||
+        this.contextMenuState.skeletonPointSelection?.length
     );
 
     registerAction(
       "action.reverse-contour",
       { topic },
       () => this.doReverseSelectedContours(),
-      () => this.contextMenuState.pointSelection?.length
+      () =>
+        this.contextMenuState.pointSelection?.length ||
+        this.contextMenuState.skeletonContourIds?.length
     );
 
     registerAction(
@@ -744,6 +823,13 @@ export class SceneController {
       { topic },
       () => this.doRealizeSkeletonContours(),
       () => this.contextMenuState.skeletonPointSelection?.length
+    );
+
+    registerAction(
+      "action.convert-contour-to-skeleton",
+      { topic },
+      () => this.doConvertContoursToSkeleton(),
+      () => this.contextMenuState.convertibleContours?.length
     );
 
     registerAction(
@@ -776,6 +862,7 @@ export class SceneController {
     );
 
     registerAction("action.harmonize", { topic }, () => this.doHarmonize());
+    registerAction("action.balance", { topic }, () => this.doBalance());
   }
 
   setAutoViewBox() {
@@ -981,17 +1068,21 @@ export class SceneController {
     const hasRibSelection = !!parsedSelection.skeletonRib?.length;
     const hasGeneratedPointSelection = !!parsedSelection.editableGeneratedPoint?.length;
     const hasRibLikeSelection = hasRibSelection || hasGeneratedPointSelection;
+    const isFixedRibBehavior = isFixedRibBehaviorName;
     const modifiers = {
       fixedRibMode: this.selectedTool?.fixedRibMode === true,
       fixedRibCompressMode: this.selectedTool?.fixedRibCompressMode === true,
       tangentRibMode: this.selectedTool?.tangentRibMode === true,
+      tensionAwareMode: this.selectedTool?.tensionAwareMode === true,
+      independentRibMode: this.selectedTool?.independentRibMode === true,
     };
+    const targetKinds = getSelectionTargetKinds(this.selection);
+    // An arrow key is a drag of one grid step, so X means here what it means
+    // under the pointer. It needs no axis lock: an arrow key names its axis.
+    const tensionAwareName = getTensionAwareBehaviorName(modifiers, targetKinds);
     const behaviorName =
-      getSkeletonModifierBehaviorName(
-        event,
-        modifiers,
-        getSelectionTargetKinds(this.selection)
-      ) ||
+      tensionAwareName ||
+      getSkeletonModifierBehaviorName(event, modifiers, targetKinds) ||
       (hasRibLikeSelection
         ? getSkeletonRibBehaviorName(event, modifiers)
         : event.altKey
@@ -1007,37 +1098,65 @@ export class SceneController {
         const modifierOptions = makeSkeletonModifierOptions(behaviorName, {
           referenceSkeletonData,
         });
-        const targetEntries = hasGeneratedHandleSelection
-          ? createEditableGeneratedHandleTargetEntries(
-              layerGlyph,
-              this.selection,
-              behaviorName,
-              modifierOptions
-            )
-          : hasRibLikeSelection
-            ? [
-                ...createSkeletonRibTargetEntries(
+        // An arrow key is a drag of one grid step, so it dispatches the way the
+        // drag does. A skeleton selection under X is corrected on its
+        // centerline, which only the skeleton entry can write; the ordinary
+        // entry reads outline points and builds nothing at all from a
+        // skeleton-only selection, which is why the nudge did nothing.
+        const skeletonTensionAwareEntry =
+          tensionAwareName === SKELETON_TENSION_AWARE_BEHAVIOR_NAME
+            ? makeSkeletonTensionAwareTargetEntry(
+                layerGlyph,
+                this.selection,
+                referenceSkeletonData
+              )
+            : null;
+        const targetEntries = skeletonTensionAwareEntry
+          ? [skeletonTensionAwareEntry]
+          : tensionAwareName
+            ? createTensionAwareTargetEntries(
+                layerGlyph,
+                this.selection,
+                tensionAwareName,
+                {
+                  isGeneratedContour: (contourIndex) =>
+                    this.sceneModel.isGeneratedPathContour(contourIndex),
+                  scalingEditBehavior: this.selectedTool.scalingEditBehavior,
+                }
+              )
+            : hasGeneratedHandleSelection
+              ? createEditableGeneratedHandleTargetEntries(
                   layerGlyph,
                   this.selection,
                   behaviorName,
                   modifierOptions
-                ),
-                ...createEditableGeneratedPointTargetEntries(
-                  layerGlyph,
-                  this.selection,
-                  behaviorName,
-                  modifierOptions
-                ),
-              ]
-            : [
-                makeSkeletonPointTargetEntry(
-                  layerGlyph,
-                  this.selection,
-                  behaviorName,
-                  referenceSkeletonData,
-                  modifierOptions
-                ),
-              ].filter((entry) => entry);
+                )
+              : // A rib under this modifier pair is an entry point into the
+                // skeleton drag, not the width edit it otherwise means.
+                hasRibLikeSelection && !isFixedRibBehavior(behaviorName)
+                ? [
+                    ...createSkeletonRibTargetEntries(
+                      layerGlyph,
+                      this.selection,
+                      behaviorName,
+                      modifierOptions
+                    ),
+                    ...createEditableGeneratedPointTargetEntries(
+                      layerGlyph,
+                      this.selection,
+                      behaviorName,
+                      modifierOptions
+                    ),
+                  ]
+                : [
+                    makeSkeletonPointTargetEntry(
+                      layerGlyph,
+                      this.selection,
+                      behaviorName,
+                      referenceSkeletonData,
+                      modifierOptions
+                    ),
+                  ].filter((entry) => entry);
         const behaviorFactory = new EditBehaviorFactory(
           layerGlyph,
           this.selection,
@@ -1144,10 +1263,61 @@ export class SceneController {
       point: pointSelection,
       component: componentSelection,
       skeletonPoint: skeletonPointSelection,
+      skeletonRib: skeletonRibSelection,
     } = parseSelection(relevantSelection);
     this.contextMenuState.pointSelection = pointSelection;
     this.contextMenuState.componentSelection = componentSelection;
     this.contextMenuState.skeletonPointSelection = skeletonPointSelection;
+    // Which skeleton contours the click is about. A rib belongs to its contour
+    // as much as a centerline point does, so both answer a contour command. The
+    // contour id is the first field of either key; the point key parser is no
+    // use here because it refuses a rib's third field.
+    this.contextMenuState.skeletonContourIds = [
+      ...new Set(
+        [...(skeletonPointSelection || []), ...(skeletonRibSelection || [])]
+          .map((item) => Number(`${item}`.split("/")[0]))
+          .filter((contourId) => Number.isInteger(contourId))
+      ),
+    ];
+
+    // Which drawn contours can become centerlines. A generated contour is the
+    // stroke a centerline already made, so it is never offered: converting one
+    // would build a stroke around an outline the app is about to rebuild.
+    this.contextMenuState.convertibleContours = [
+      ...new Set(
+        (pointSelection || []).map(
+          (pointIndex) =>
+            this.sceneModel
+              .getSelectedPositionedGlyph()
+              ?.glyph?.instance?.path?.getContourAndPointIndex(pointIndex)?.[0]
+        )
+      ),
+    ].filter(
+      (contourIndex) =>
+        Number.isInteger(contourIndex) &&
+        !this.sceneModel.isGeneratedPathContour(contourIndex)
+    );
+
+    // The skeleton's own answer to the same two questions the path answers
+    // below. A join wants two open ends on two contours; a close wants ends of
+    // one. Both are read off the selected centerline points alone: a rib says
+    // which contour, not which end.
+    const skeletonEnds = getSelectedSkeletonOpenEnds(
+      this.sceneModel._getEditLayerSkeletonData(
+        this.sceneModel.getSelectedPositionedGlyph()
+      ),
+      skeletonPointSelection
+    );
+    this.contextMenuState.skeletonJoinSelection =
+      skeletonEnds.length === 2 &&
+      skeletonEnds[0].contourId !== skeletonEnds[1].contourId
+        ? skeletonEnds
+        : [];
+    this.contextMenuState.skeletonCloseSelection =
+      skeletonEnds.length &&
+      skeletonEnds.every((end) => end.contourId === skeletonEnds[0].contourId)
+        ? [skeletonEnds[0]]
+        : [];
 
     const glyphController = this.sceneModel.getSelectedPositionedGlyph().glyph;
     this.contextMenuState.openContourSelection = glyphController.canEdit
@@ -1165,11 +1335,13 @@ export class SceneController {
     const contextMenuItems = [
       {
         title: () =>
-          this.contextMenuState.joinContourSelection?.length === 2
+          this.contextMenuState.joinContourSelection?.length === 2 ||
+          this.contextMenuState.skeletonJoinSelection?.length === 2
             ? translate("action.join-contours")
             : translatePlural(
                 "action.close-contour",
-                this.contextMenuState.openContourSelection?.length
+                this.contextMenuState.openContourSelection?.length ||
+                  this.contextMenuState.skeletonCloseSelection?.length
               ),
         actionIdentifier: "action.join-contours",
       },
@@ -1177,7 +1349,16 @@ export class SceneController {
       { actionIdentifier: "action.reverse-contour" },
       { actionIdentifier: "action.set-contour-start" },
       { actionIdentifier: "action.harmonize" },
+      { actionIdentifier: "action.balance" },
       { actionIdentifier: "action.realize-skeleton-contours" },
+      {
+        title: () =>
+          translatePlural(
+            "action.convert-contour-to-skeleton",
+            this.contextMenuState.convertibleContours?.length
+          ),
+        actionIdentifier: "action.convert-contour-to-skeleton",
+      },
       {
         title: translate("action.glyph.convert-curves"),
         getItems: () => [
@@ -1271,6 +1452,227 @@ export class SceneController {
         [...this.selection].filter((key) => !key.startsWith("skeletonPoint/"))
       );
       return translate("action.realize-skeleton-contours");
+    });
+  }
+
+  // The width choices the conversion dialog offers: the master's three base
+  // widths for the edited glyph's case, plus whatever named widths that master
+  // stores for the same case. This is the list the skeleton parameters panel
+  // already offers on a point, read the same way, so one glyph cannot be told
+  // two different sets of widths.
+  _skeletonWidthProfileOptions() {
+    const glyphName = this.getSelectedGlyphName();
+    const location =
+      this.sceneSettings?.fontLocationSourceMapped ||
+      this.sceneSettings?.fontLocationSource ||
+      {};
+    const read = (key) =>
+      resolveEffectiveSourceSkeletonDefault(this.fontController, location, key);
+    const isLower = getSkeletonGlyphCase(glyphName) === "lowercase";
+    const K = SKELETON_SOURCE_DEFAULT_KEYS;
+    const options = [
+      {
+        label: translate("sidebar.skeleton-parameters.default-base"),
+        value: read(isLower ? K.WIDTH_LOWERCASE_BASE : K.WIDTH_CAPITAL_BASE),
+      },
+      {
+        label: translate("sidebar.skeleton-parameters.default-horizontal"),
+        value: read(
+          isLower ? K.WIDTH_LOWERCASE_HORIZONTAL : K.WIDTH_CAPITAL_HORIZONTAL
+        ),
+      },
+      {
+        label: translate("sidebar.skeleton-parameters.default-contrast"),
+        value: read(isLower ? K.WIDTH_LOWERCASE_CONTRAST : K.WIDTH_CAPITAL_CONTRAST),
+      },
+    ];
+    const custom = read(
+      isLower ? K.CUSTOM_WIDTHS_LOWERCASE : K.CUSTOM_WIDTHS_UPPERCASE
+    );
+    if (Array.isArray(custom)) {
+      custom.forEach((item, index) => {
+        options.push({
+          label: item?.name || `${index + 1}`,
+          value: Number(item?.value),
+        });
+      });
+    }
+    return options.filter((option) => Number.isFinite(Number(option.value)));
+  }
+
+  // Asks for a stroke width and a side mode. Returns null when the designer
+  // cancels. The width box is the value that is used; picking a named width
+  // fills that box, so a typed number is never overruled by a select.
+  async _runConvertToSkeletonDialog(defaultWidth) {
+    const profiles = this._skeletonWidthProfileOptions();
+
+    const widthInput = html.input({
+      type: "number",
+      min: 0,
+      step: 1,
+      value: defaultWidth,
+      style: "width: 6em;",
+    });
+
+    const profileSelect = html.select(
+      {
+        onchange: (event) => {
+          const chosen = profiles[Number(event.target.value)];
+          if (chosen) {
+            widthInput.value = Number(chosen.value);
+          }
+        },
+      },
+      [
+        html.option({ value: "" }, [
+          translate("action.convert-contour-to-skeleton.width-profile.custom"),
+        ]),
+        ...profiles.map((profile, index) =>
+          html.option({ value: `${index}` }, [`${profile.label} (${profile.value})`])
+        ),
+      ]
+    );
+
+    const modeSelect = html.select({}, [
+      html.option({ value: "" }, [
+        translate("action.convert-contour-to-skeleton.mode.double"),
+      ]),
+      html.option({ value: "left" }, [
+        translate("action.convert-contour-to-skeleton.mode.left"),
+      ]),
+      html.option({ value: "right" }, [
+        translate("action.convert-contour-to-skeleton.mode.right"),
+      ]),
+    ]);
+
+    const content = html.div({ style: "display: grid; gap: 0.6em;" }, [
+      html.div({}, [
+        translate("action.convert-contour-to-skeleton.width-profile"),
+        " ",
+        profileSelect,
+      ]),
+      html.div({}, [
+        translate("action.convert-contour-to-skeleton.width"),
+        " ",
+        widthInput,
+      ]),
+      html.div({}, [
+        translate("action.convert-contour-to-skeleton.mode"),
+        " ",
+        modeSelect,
+      ]),
+    ]);
+
+    const dialogBox = await dialogSetup(
+      translate("action.convert-contour-to-skeleton.title"),
+      null,
+      [
+        { title: translate("dialog.cancel"), isCancelButton: true },
+        {
+          title: translate("dialog.okay"),
+          isDefaultButton: true,
+          resultValue: true,
+        },
+      ]
+    );
+    dialogBox.setContent(content);
+
+    if (!(await dialogBox.run())) {
+      return null;
+    }
+    const width = Number(widthInput.value);
+    if (!Number.isFinite(width) || width < 0) {
+      return null;
+    }
+    return { width, singleSided: modeSelect.value || null };
+  }
+
+  // Convert drawn contours into centerlines. The inverse of "Realize contours":
+  // there a skeleton is dropped and its outline kept, here an outline becomes a
+  // centerline and a new stroke is built around it.
+  //
+  // Every point keeps its position, its type and its smooth flag. Nothing is
+  // fitted and no shape is guessed at.
+  //
+  // The drawn contour is consumed. Deleting it moves every generated contour
+  // after it down one, which the skeleton has to be told in the same change, or
+  // its record of which path contours it built points at the wrong ones.
+  async doConvertContoursToSkeleton() {
+    const contourIndices = [...(this.contextMenuState.convertibleContours || [])].sort(
+      (a, b) => b - a
+    );
+    if (!contourIndices.length) {
+      return;
+    }
+
+    const path = this.sceneModel.getSelectedPositionedGlyph()?.glyph?.instance?.path;
+    if (!path) {
+      return;
+    }
+    for (const contourIndex of contourIndices) {
+      const refusal = skeletonConversionRefusal(path.getUnpackedContour(contourIndex));
+      if (refusal) {
+        await message(
+          translate("action.convert-contour-to-skeleton.title"),
+          translate(
+            refusal === SKELETON_CONVERSION_REFUSALS.QUADRATIC
+              ? "action.convert-contour-to-skeleton.refused.quadratic"
+              : "action.convert-contour-to-skeleton.refused.empty"
+          )
+        );
+        return;
+      }
+    }
+
+    const glyphName = this.getSelectedGlyphName();
+    const location =
+      this.sceneSettings?.fontLocationSourceMapped ||
+      this.sceneSettings?.fontLocationSource ||
+      {};
+    const masterWidth = Number(
+      resolveEffectiveSourceSkeletonDefault(
+        this.fontController,
+        location,
+        getDefaultSkeletonWidthKeyForGlyphName(glyphName)
+      )
+    );
+    const answer = await this._runConvertToSkeletonDialog(
+      Number.isFinite(masterWidth) && masterWidth > 0 ? masterWidth : 60
+    );
+    if (!answer) {
+      return;
+    }
+
+    await this.editLayersAndRecordChanges((layerGlyphs) => {
+      for (const layerGlyph of Object.values(layerGlyphs)) {
+        // Read every contour before deleting any of them, highest index first,
+        // so the indices stay valid while the reads happen.
+        const contours = contourIndices.map((contourIndex) =>
+          layerGlyph.path.getUnpackedContour(contourIndex)
+        );
+        for (const contourIndex of contourIndices) {
+          layerGlyph.path.deleteContour(contourIndex);
+          recordSkeletonContourIndexShift(layerGlyph, contourIndex, -1);
+        }
+        applySkeletonEditInPlace(
+          layerGlyph,
+          (working) => {
+            // Lowest index first, so the centerlines come out in the order the
+            // contours stood in.
+            for (const contour of [...contours].reverse()) {
+              appendSkeletonContourFromPathContour(working, contour, answer);
+            }
+          },
+          // The path was restructured, so the generated contours cannot be
+          // updated in their old slots.
+          { createIfMissing: true, replaceContours: true }
+        );
+      }
+      this.selection = new Set();
+      return translatePlural(
+        "action.convert-contour-to-skeleton",
+        contourIndices.length
+      );
     });
   }
 
@@ -1588,6 +1990,19 @@ export class SceneController {
       }
     };
     const initialSelection = this.selection;
+
+    // A marker remembers where its anchor stood, so that an edit which renumbers the
+    // points can be checked against it. That memory is only worth anything while it is
+    // current, and it was written only when the marker was placed or dragged. A marker
+    // that rides the outline -- points moved under it, which is most edits -- was left
+    // remembering where the outline used to be, and the next edit that changed a point
+    // count judged it against that and called it broken.
+    //
+    // So it is brought up to date HERE: before the edit runs, while the outline is still
+    // the one the memory describes. It is recorded first and travels in the same change,
+    // so it undoes with the edit it was taken for.
+    const markerChanges = doInstance ? null : recordMarkerAnchorRefresh(editSubject);
+
     // editContext.editBegin();
     let result;
     try {
@@ -1599,6 +2014,10 @@ export class SceneController {
     }
 
     let { changes, undoLabel, broadcast } = result || {};
+
+    if (markerChanges?.hasChange) {
+      changes = markerChanges.concat(changes);
+    }
 
     if (addSourceChanges) {
       changes = addSourceChanges.concat(changes);
@@ -1722,8 +2141,33 @@ export class SceneController {
     return undoInfo !== undefined;
   }
 
+  // One command for both kinds of contour. A selection can name skeleton
+  // contours, path contours, or both at once, and each kind is reversed the way
+  // that kind is reversed: a skeleton flips the flag its generator reads, a
+  // path contour has its points turned around. Returning after the skeleton, as
+  // this did, left the path contours in a mixed selection untouched.
   async doReverseSelectedContours() {
-    const { point: pointSelection } = parseSelection(this.selection);
+    const {
+      point: pointSelection,
+      skeletonPoint,
+      skeletonRib,
+    } = parseSelection(this.selection);
+    // Same derivation the context menu state uses: the contour id is the first
+    // field of either key, and a rib belongs to its contour as much as a
+    // centerline point does.
+    const skeletonContourIds = [
+      ...new Set(
+        [...(skeletonPoint || []), ...(skeletonRib || [])]
+          .map((item) => Number(`${item}`.split("/")[0]))
+          .filter((contourId) => Number.isInteger(contourId))
+      ),
+    ];
+    if (skeletonContourIds.length) {
+      await this.doReverseSelectedSkeletonContours(skeletonContourIds);
+    }
+    if (!pointSelection?.length) {
+      return;
+    }
     await this.editLayersAndRecordChanges((layerGlyphs) => {
       let selection;
       for (const layerGlyph of Object.values(layerGlyphs)) {
@@ -1744,10 +2188,28 @@ export class SceneController {
           layerGlyph.path.deleteContour(contourIndex);
           layerGlyph.path.insertContour(contourIndex, packedContour);
         }
+        // Reversing needs no marker bookkeeping. It leaves the outline exactly where it
+        // is, so an anchor's place is unchanged and the address is simply rewritten to
+        // wherever that place now lives. Under the old count rule this was the one
+        // structural change that had to be declared broken by hand.
       }
       this.selection = selection;
       return translate("action.reverse-contour");
     });
+  }
+
+  // Reverse, for a skeleton. It flips the flag the generator already reads, so
+  // the generated outline's winding turns over and the centerline stays exactly
+  // as it was drawn. Each selected contour flips its own state, the same way
+  // reversing a mixed selection of ordinary contours does.
+  async doReverseSelectedSkeletonContours(skeletonContourIds) {
+    // Markers need nothing here either: a reversal leaves both the centerline and the
+    // emitted outline where they are, and an anchor is a place, not an index.
+    await togglePanelContourReversed(
+      this,
+      skeletonContourIds.map((contourId) => ({ contourId })),
+      translate("action.reverse-contour")
+    );
   }
 
   async doSetStartPoint() {
@@ -1834,7 +2296,56 @@ export class SceneController {
     });
   }
 
+  // Join, for a skeleton. Two open centerline ends become one contour, and the
+  // generated outline follows on its own: the one write path regenerates it
+  // whenever the topology changes.
+  async doJoinSelectedSkeletonContours() {
+    const [firstEnd, secondEnd] = this.contextMenuState.skeletonJoinSelection;
+    await joinPanelSkeletonContours(
+      this,
+      firstEnd,
+      secondEnd,
+      translate("action.join-contours")
+    );
+    this.selection = new Set();
+  }
+
+  // Close, for a skeleton: the contour meets its own two ends. No point is added
+  // and none is moved, which is what the pen's click on the far end already does.
+  async doCloseSelectedSkeletonContours() {
+    await closePanelSkeletonContours(
+      this,
+      this.contextMenuState.skeletonCloseSelection,
+      translatePlural("action.close-contour", 1)
+    );
+    this.selection = new Set();
+  }
+
+  // Break, for a skeleton: cut the contour at the selected centerline point. A
+  // closed contour opens there, an open one becomes two. The generated outline
+  // follows on its own, because the one write path regenerates it and replaces
+  // the contours whenever the topology changes.
+  async doBreakSelectedSkeletonContours(skeletonPointSelection) {
+    const pointAddresses = skeletonPointSelection
+      .map((item) => parseSkeletonPointKey(`${item}`))
+      .filter((address) => address);
+    if (!pointAddresses.length) {
+      return;
+    }
+    await splitPanelSkeletonContours(
+      this,
+      pointAddresses,
+      translatePlural("action.break-contour", pointAddresses.length)
+    );
+    this.selection = new Set();
+  }
+
   async doBreakSelectedContours() {
+    const skeletonPointSelection = this.contextMenuState.skeletonPointSelection || [];
+    if (skeletonPointSelection.length) {
+      await this.doBreakSelectedSkeletonContours(skeletonPointSelection);
+      return;
+    }
     const { point: pointIndices } = parseSelection(this.selection);
     await this.editLayersAndRecordChanges((layerGlyphs) => {
       let numSplits;
@@ -1885,35 +2396,59 @@ export class SceneController {
       );
     }
 
-    await this.editLayersAndRecordChanges((layerGlyphs) => {
-      for (const [layerName, layerGlyph] of Object.entries(layerGlyphs)) {
-        const decomposeInfo = decomposed[layerName];
-        const path = layerGlyph.path;
-        const components = layerGlyph.components;
-        const anchors = layerGlyph.anchors;
+    await this.editGlyphAndRecordChanges(
+      (glyph) => {
+        const layerGlyphs = this.getEditingLayerFromGlyphLayers(glyph.layers);
+        // Decompose appends the decomposed components at the end and then
+        // removes the ones it decomposed, so the attachment list has to follow
+        // both moves in the same change. Spec section 4.1.
+        const componentCountBefore = componentCountOf(glyph);
+        const appendedCount = Object.values(decomposed)[0]?.components.length || 0;
+        for (const [layerName, layerGlyph] of Object.entries(layerGlyphs)) {
+          const decomposeInfo = decomposed[layerName];
+          const path = layerGlyph.path;
+          const components = layerGlyph.components;
+          const anchors = layerGlyph.anchors;
 
-        for (const contour of decomposeInfo.path.iterContours()) {
-          // Hm, rounding should be optional
-          // contour.coordinates = contour.coordinates.map(c => Math.round(c));
-          path.appendContour(contour);
-        }
-        components.push(...decomposeInfo.components);
-        for (const anchor of decomposeInfo.anchors) {
-          // preserve existing anchors
-          const exists = anchors.some((a) => a.name === anchor.name);
-          if (!exists) {
-            anchors.push(anchor);
+          for (const contour of decomposeInfo.path.iterContours()) {
+            // Hm, rounding should be optional
+            // contour.coordinates = contour.coordinates.map(c => Math.round(c));
+            path.appendContour(contour);
+          }
+          components.push(...decomposeInfo.components);
+          for (const anchor of decomposeInfo.anchors) {
+            // preserve existing anchors
+            const exists = anchors.some((a) => a.name === anchor.name);
+            if (!exists) {
+              anchors.push(anchor);
+            }
+          }
+
+          // Next, delete the components we decomposed
+          for (const componentIndex of reversed(componentSelection)) {
+            components.splice(componentIndex, 1);
           }
         }
-
-        // Next, delete the components we decomposed
-        for (const componentIndex of reversed(componentSelection)) {
-          components.splice(componentIndex, 1);
-        }
-      }
-      this.selection = new Set();
-      return translatePlural("action.decompose-component", componentSelection?.length);
-    });
+        recordComponentInsert(
+          glyph,
+          componentCountBefore,
+          appendedCount,
+          componentCountBefore
+        );
+        recordComponentDelete(
+          glyph,
+          componentSelection || [],
+          componentCountBefore + appendedCount
+        );
+        this.selection = new Set();
+        return translatePlural(
+          "action.decompose-component",
+          componentSelection?.length
+        );
+      },
+      undefined,
+      true
+    );
   }
 
   async doAddOverlap() {
@@ -1998,12 +2533,42 @@ export class SceneController {
   //
   async doHarmonize(options = {}) {
     const {
-      handleBias = applicationSettingsController.model.harmonizeHandleBias,
+      useG3 = applicationSettingsController.model.harmonizeG3,
+      method = applicationSettingsController.model.harmonizeMethod,
+      equalizeHandles = applicationSettingsController.model.harmonizeEqualize,
       applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
-      equalizeTension = applicationSettingsController.model.harmonizeEqualizeTension,
     } = options;
 
+    // One control names one construction. G3 has one, so the position is not
+    // read under it.
+    const continuity = useG3 ? "G3" : "G2";
+    const construction =
+      { 1: "nearest", 2: "canonical", 3: "canonical-slide" }[
+        Math.round(Number(method))
+      ] ?? "canonical";
+
     const reports = new Map();
+
+    // A skeleton selection answers this itself, the same way break and reverse
+    // do. The centerline is an ordinary path and harmonize applies to it
+    // unchanged, but it is written through the skeleton's own path so the
+    // outline is regenerated. Skeleton and ordinary points are never mixed into
+    // one pass: that would take two write paths and cost two undo steps.
+    const skeletonPointSelection = parseSelection(this.selection).skeletonPoint || [];
+    if (skeletonPointSelection.length) {
+      return await harmonizePanelSkeletonPoints(
+        this,
+        skeletonPointSelection
+          .map((item) => parseSkeletonPointKey(`${item}`))
+          .filter((address) => address),
+        {
+          continuity,
+          method: construction,
+          equalizeHandles,
+        },
+        translate("action.harmonize")
+      );
+    }
 
     const path = this.sceneModel.getSelectedPositionedGlyph()?.glyph?.path;
     if (!path) {
@@ -2060,19 +2625,142 @@ export class SceneController {
         // Recompute per layer rather than propagating one layer's correction:
         // the other sources have different handles, hence a different target.
         //
-        // In place, not `layerGlyph.path = newPath`: the recorder turns each
-        // setPointPosition into an `=xy` change, whereas a whole-path
-        // assignment smuggles a live VarPackedPath into the change payload and
-        // it does not survive the round trip.
-        const report = harmonizePathInPlace(layerGlyph.path, pointIndices, {
-          handleBias,
-          equalizeTension,
+        // The sweep runs on a copy and only the points that ended up somewhere
+        // else are written back. It moves a point several times on the way to
+        // an answer, and it rounds at the end, so a joint that was already
+        // harmonic could be written to three times and land exactly where it
+        // started. Every one of those writes is a recorded change, which put an
+        // undo step on the stack for a command that did nothing.
+        //
+        // Written point by point, not `layerGlyph.path = newPath`: the recorder
+        // turns each setPointPosition into an `=xy` change, whereas a
+        // whole-path assignment smuggles a live VarPackedPath into the change
+        // payload and it does not survive the round trip.
+        const path = layerGlyph.path;
+        const working = path.copy();
+        const report = harmonizePathInPlace(working, pointIndices, {
+          continuity,
+          method: construction,
+          equalizeHandles,
           roundCoordinates: true,
         });
+        for (let index = 0; index < path.numPoints; index++) {
+          const [x, y] = path.getPointPosition(index);
+          const [newX, newY] = working.getPointPosition(index);
+          if (newX !== x || newY !== y) {
+            path.setPointPosition(index, newX, newY);
+          }
+        }
         reports.set(layerName, [...report, ...refused]);
       }
 
       return translate("action.harmonize");
+    });
+
+    return reports;
+  }
+
+  //
+  // Balance the segments the current point selection touches.
+  //
+  // Its own command, not a step of harmonizing. Both want the same handles: a
+  // segment's end curvature is set by its last three control points, so the
+  // inner handle is what harmonizing moves to make two segments agree at a
+  // joint, and it is also half of what balancing sets. Neither can have them
+  // exactly, so the designer chooses the order and sees each effect on its own.
+  //
+  // Same shape as `doHarmonize` throughout: the same selection rule, the same
+  // skeleton route, the same per-source option, and a report per layer.
+  //
+  async doBalance(options = {}) {
+    const {
+      applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
+    } = options;
+
+    const reports = new Map();
+
+    const skeletonPointSelection = parseSelection(this.selection).skeletonPoint || [];
+    if (skeletonPointSelection.length) {
+      return await balancePanelSkeletonPoints(
+        this,
+        skeletonPointSelection
+          .map((item) => parseSkeletonPointKey(`${item}`))
+          .filter((address) => address),
+        translate("action.balance")
+      );
+    }
+
+    const path = this.sceneModel.getSelectedPositionedGlyph()?.glyph?.path;
+    if (!path) {
+      return reports;
+    }
+
+    // The selection as given. Balancing states one thing about a segment, and
+    // the segments a selection touches are the segments it means — there is no
+    // joint to expand to.
+    const { point: pointSelection } = parseSelection(this.selection);
+    const candidates = pointSelection?.length
+      ? pointSelection
+      : expandToJoints(path, undefined);
+
+    const refused = [];
+    const pointIndices = [];
+    for (const pointIndex of candidates) {
+      const contourIndex = path.getContourIndex(pointIndex);
+      if (this.sceneModel.isGeneratedPathContour(contourIndex)) {
+        // R-D: generated geometry is regenerated on every edit, so editing it
+        // directly would be thrown away.
+        refused.push({
+          pointIndex,
+          contourIndex,
+          status: "skipped",
+          reason: "generated-contour",
+        });
+      } else {
+        pointIndices.push(pointIndex);
+      }
+    }
+
+    if (!pointIndices.length) {
+      if (refused.length) {
+        reports.set(this.sceneSettings.editLayerName, refused);
+      }
+      return reports;
+    }
+
+    await this.editLayersAndRecordChanges((layerGlyphs) => {
+      const editLayerName = this.sceneSettings.editLayerName;
+      const targets = applyToOtherSources
+        ? Object.entries(layerGlyphs)
+        : [
+            [
+              editLayerName,
+              layerGlyphs[editLayerName] || Object.values(layerGlyphs)[0],
+            ],
+          ];
+
+      for (const [layerName, layerGlyph] of targets) {
+        if (!layerGlyph) {
+          continue;
+        }
+        // Per layer, and point by point on the way back, for the two reasons
+        // harmonize has: another source has different handles and so a
+        // different answer, and a whole-path assignment does not survive the
+        // change recorder.
+        const path = layerGlyph.path;
+        const working = path.copy();
+        const report = balancePathInPlace(working, pointIndices);
+        for (let index = 0; index < path.numPoints; index++) {
+          const [x, y] = path.getPointPosition(index);
+          const [newX, newY] = working.getPointPosition(index);
+          if (newX !== x || newY !== y) {
+            path.setPointPosition(index, newX, newY);
+          }
+        }
+        reports.set(layerName, [...report, ...refused]);
+      }
+
+      return translate("action.balance");
     });
 
     return reports;
@@ -2269,6 +2957,30 @@ function reversePointSelection(path, pointSelection) {
   }
   newSelection.sort((a, b) => (a > b) - (a < b));
   return new Set(newSelection);
+}
+
+// Which selected centerline points are the open END of their contour. An end is
+// what a join and a close both need, and a point in the middle of a stroke is
+// neither - so this returns the ends and says nothing about how many there are.
+function getSelectedSkeletonOpenEnds(skeletonData, skeletonPointSelection) {
+  const ends = [];
+  for (const key of skeletonPointSelection || []) {
+    const address = parseSkeletonPointKey(`${key}`);
+    if (!address) {
+      continue;
+    }
+    const contour = getSkeletonContour(skeletonData, address.contourId);
+    const endpoints = skeletonContourEndpointIndices(contour);
+    if (!endpoints) {
+      continue; // closed, or no on-curve point
+    }
+    const pointId = contour.points[endpoints.first].id;
+    const lastId = contour.points[endpoints.last].id;
+    if (address.pointId === pointId || address.pointId === lastId) {
+      ends.push({ contourId: contour.id, pointId: address.pointId });
+    }
+  }
+  return ends;
 }
 
 function getSelectedJoinContoursPointIndices(path, pointSelection) {

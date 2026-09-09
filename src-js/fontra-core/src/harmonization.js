@@ -23,7 +23,9 @@
 // two ways, which is what `handleBias` blends between.
 //
 
-import { balanceSegment, calculateTunniPoint } from "./tunni-calculations.js";
+import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
+import { cubicVelocityAt } from "./offset-contour.js";
+import { calculateTunniPoint, equalizeTensions } from "./tunni-calculations.js";
 import { POINT_TYPE_OFF_CURVE_CUBIC } from "./var-path.js";
 import {
   addVectors,
@@ -33,23 +35,44 @@ import {
   intersect,
   mulVectorScalar,
   normalizeVector,
-  roundVector,
   subVectors,
   vectorLength,
 } from "./vector.js";
 
 export const HARMONIZE_DEFAULTS = {
-  handleBias: 1.0, //     0 = move the node, 1 = move the handles
-  cuspSafetyMargin: 0.85, // never shrink a handle below 15% of its length
+  // "G2" matches curvature across the joint. "G3" also matches its rate of
+  // change, which is what removes the crease from the curvature comb.
+  continuity: "G2",
+  // Which construction runs. The designer names it, so one press draws one
+  // answer.
+  //
+  //   nearest          the smallest change to the four handle lengths that
+  //                    makes the two curvatures equal
+  //   canonical        the two inner handle lengths, moved to one particular
+  //                    ratio, with the joint held still
+  //   canonical-slide  the same, and the joint may slide along its tangent
+  //
+  // Until 2026-09-01 the press drew several of these at once and ranked them,
+  // and the rank on bending energy is what spent 85 units of movement on a
+  // joint that arrived 4.177% out. A tick box on the panel was therefore not a
+  // switch: it added an answer to a field which then decided whether to keep
+  // it. See the design document.
+  method: "canonical",
+  // Finish with one balance and one repair. Every construction here solves the
+  // joint and says nothing about how a segment's two handles compare, so it can
+  // leave a segment lopsided: right curvature, and a handle configuration a
+  // designer does not want. On by default, and off under G3, where the repair
+  // would throw the rate away.
+  equalizeHandles: true,
+  // Never shrink a handle below 15% of a nominal handle for its segment, which
+  // is measured from the segment's chord and not from the handle itself. See
+  // `cuspFloors`.
+  cuspSafetyMargin: 0.85,
   toleranceUnits: 0.01, // convergence threshold, in font units
   // Sweeps over the whole candidate set, not passes per point. An isolated
   // joint is solved in one; a ring of coupled joints (an 'o') takes ~8. The
   // math is a handful of square roots, so the budget is generous on purpose.
   maxIterations: 50,
-  // Tunni-equalize the two segments at each joint, before and after — the pass
-  // SuperTool's Harmonize command wraps around the same math. It is what moves
-  // the outer handles PP and NN. Costs exactness: see equalizeJointSegments.
-  equalizeTension: false,
   // Ceiling on how far a handle may reach toward its segment's Tunni point.
   // At 1 it lands exactly on it; past 1 the segment's two handle lines cross
   // each other and the curve doubles back.
@@ -64,6 +87,10 @@ export const HARMONIZE_DEFAULTS = {
 // operation actually moved is known at the end — which is what makes rounding
 // possible without disturbing geometry nobody asked to touch.
 function writePoint(path, touched, index, point) {
+  const [x, y] = path.getPointPosition(index);
+  if (x === point.x && y === point.y) {
+    return;
+  }
   path.setPointPosition(index, point.x, point.y);
   touched.add(index);
 }
@@ -85,6 +112,130 @@ function neighborIndex(path, contourIndex, contourPointIndex, offset) {
 
 function isCubicOffCurve(point) {
   return point?.type === POINT_TYPE_OFF_CURVE_CUBIC;
+}
+
+//
+// --- realigning a joint before anything is solved ---------------------------
+//
+// A smooth flag is a claim about the drawing: the joint and its two neighbours
+// lie on one line. Nudging, interpolating and changing the grid all break that
+// claim without clearing the flag. Every construction in this module solves
+// against the tangent at the joint, so a joint that arrives bent is being
+// corrected against a tangent that is not there -- and the score refuses to buy
+// a bend, so the bend it arrived with limits the answer for the whole press.
+//
+// The rule is mekkablue's Realign BCPs, carried unchanged.
+//
+const REALIGN_TOLERANCE = 1e-9;
+
+// A handle drawn dead horizontal or dead vertical off its joint marks an
+// extreme of the curve. It is the one part of the joint that is certainly
+// deliberate, so it is what the rest is squared up against.
+function runsAlongAnAxis(node, handle) {
+  const dx = handle.x - node.x;
+  const dy = handle.y - node.y;
+  return (dx === 0) !== (dy === 0);
+}
+
+// Put `handle` back on the line that runs from `opposite` through `node`, on
+// the far side of the node, keeping the length the designer gave it.
+function turnedOntoLine(node, opposite, handle) {
+  const away = subVectors(node, opposite);
+  const length = vectorLength(away);
+  if (!length) {
+    return null;
+  }
+  return addVectors(node, mulVectorScalar(away, distance(node, handle) / length));
+}
+
+// The foot of the perpendicular from `node` onto the line through the two
+// handles. This is the one repair that keeps both handles exactly as drawn.
+function footOnLine(node, from, to) {
+  const span = subVectors(to, from);
+  const spanLengthSquared = dotVector(span, span);
+  if (!spanLengthSquared) {
+    return null;
+  }
+  const along = dotVector(subVectors(node, from), span) / spanLengthSquared;
+  return addVectors(from, mulVectorScalar(span, along));
+}
+
+//
+// Square up the smooth joints in `candidates`. Writes into `path` and records
+// what it moved in `touched`.
+//
+// This reaches joints harmonization itself refuses: a curve running into a
+// straight has no five-point stencil, so nothing else here ever squares it up.
+//
+export function realignSmoothJointsInPlace(path, candidates, touched) {
+  for (const pointIndex of candidates) {
+    const point = path.getPoint(pointIndex);
+    if (!point || point.type || !point.smooth) {
+      continue;
+    }
+
+    const [contourIndex, contourPointIndex] = path.getContourAndPointIndex(pointIndex);
+    const previousIndex = neighborIndex(path, contourIndex, contourPointIndex, -1);
+    const nextIndex = neighborIndex(path, contourIndex, contourPointIndex, 1);
+    if (previousIndex === undefined || nextIndex === undefined) {
+      continue;
+    }
+
+    const node = { x: point.x, y: point.y };
+    const previous = path.getPoint(previousIndex);
+    const next = path.getPoint(nextIndex);
+    const previousIsHandle = isCubicOffCurve(previous);
+    const nextIsHandle = isCubicOffCurve(next);
+    if (!previousIsHandle && !nextIsHandle) {
+      continue; // a corner between two straights owns no tangent to repair
+    }
+
+    // Already on one line: leave it exactly alone rather than rewriting it
+    // with the same numbers and taking an undo step for nothing.
+    const bend = crossProduct(subVectors(node, previous), subVectors(next, node));
+    const scale = distance(previous, node) * distance(node, next);
+    if (scale && Math.abs(bend) / scale < REALIGN_TOLERANCE) {
+      continue;
+    }
+
+    if (previousIsHandle !== nextIsHandle) {
+      // A curve meeting a straight. The straight states the direction, so the
+      // handle is what turns.
+      const handleIndex = previousIsHandle ? previousIndex : nextIndex;
+      const opposite = previousIsHandle ? next : previous;
+      const turned = turnedOntoLine(node, opposite, path.getPoint(handleIndex));
+      if (turned) {
+        writePoint(path, touched, handleIndex, turned);
+      }
+      continue;
+    }
+
+    const anchorIndex = runsAlongAnAxis(node, next)
+      ? nextIndex
+      : runsAlongAnAxis(node, previous)
+        ? previousIndex
+        : undefined;
+
+    if (anchorIndex !== undefined) {
+      const turningIndex = anchorIndex === nextIndex ? previousIndex : nextIndex;
+      const turned = turnedOntoLine(
+        node,
+        path.getPoint(anchorIndex),
+        path.getPoint(turningIndex)
+      );
+      if (turned) {
+        writePoint(path, touched, turningIndex, turned);
+      }
+      continue;
+    }
+
+    // Neither handle is more deliberate than the other, so both stay where
+    // they are and the joint comes to them.
+    const foot = footOnLine(node, previous, next);
+    if (foot) {
+      writePoint(path, touched, pointIndex, foot);
+    }
+  }
 }
 
 //
@@ -183,6 +334,141 @@ export function measureG2Discontinuity(ctx) {
 }
 
 //
+// The derivative control points of a cubic at one of its ends. The first
+// derivative is the quadratic through 3(P1-P0), 3(P2-P1), 3(P3-P2). The second
+// is the linear through twice the differences of those. The third is constant.
+//
+function cubicDerivatives(points, atEnd) {
+  const [p0, p1, p2, p3] = points;
+  const d1 = mulVectorScalar(subVectors(p1, p0), 3);
+  const d2 = mulVectorScalar(subVectors(p2, p1), 3);
+  const d3 = mulVectorScalar(subVectors(p3, p2), 3);
+  return {
+    first: atEnd ? d3 : d1,
+    second: mulVectorScalar(atEnd ? subVectors(d3, d2) : subVectors(d2, d1), 2),
+    third: mulVectorScalar(addVectors(subVectors(d3, mulVectorScalar(d2, 2)), d1), 2),
+  };
+}
+
+// Signed curvature at one end of a cubic, in 1/units.
+function curvatureAt(points, atEnd) {
+  const { first, second } = cubicDerivatives(points, atEnd);
+  const speed = vectorLength(first);
+  return speed ? crossProduct(first, second) / speed ** 3 : Infinity;
+}
+
+// How fast that curvature changes, per unit of arc length. Two segments meeting
+// with the same curvature and the same rate join without a crease in the
+// curvature comb, which is G3.
+function curvatureRateAt(points, atEnd) {
+  const { first, second, third } = cubicDerivatives(points, atEnd);
+  const speed = vectorLength(first);
+  if (!speed) {
+    return Infinity;
+  }
+  return (
+    crossProduct(first, third) / speed ** 4 -
+    (3 * crossProduct(first, second) * dotVector(first, second)) / speed ** 6
+  );
+}
+
+//
+// The two measurements a joint is judged by. Both take the joint's two cubic
+// segments as [onCurve, handle, handle, onCurve], travelling in contour order.
+// Zero exactly when the joint is G2, respectively G3.
+//
+export function curvatureDiscontinuity(incoming, outgoing) {
+  return Math.abs(curvatureAt(incoming, true) - curvatureAt(outgoing, false));
+}
+
+export function curvatureRateDiscontinuity(incoming, outgoing) {
+  return Math.abs(curvatureRateAt(incoming, true) - curvatureRateAt(outgoing, false));
+}
+
+//
+// G3 by moving the two inner handles, with the joint and both outer handles
+// held still. After Linus Romer's construction
+// (_external/curvatura/curvatura-doc.pdf section 6.5), with one correction
+// noted below.
+//
+// In a frame with the joint at the origin and the tangent along one axis, the
+// joint is G3 when the two curvatures agree and their two rates agree. That is
+// two equations, and the two inner handle lengths are two unknowns, so the
+// answer is exact and unique. There is nothing to iterate and nothing to pick
+// between.
+//
+// Write the incoming handle at `-q * reach` and the outgoing one at `reach`.
+// Equal curvature fixes `q` as the square root of the two outer handles'
+// offsets from the tangent, and equal rate then gives `reach` outright.
+//
+// The correction: the donor matches the rate of curvature per unit of the
+// segment's own PARAMETER. The two segments run at different speeds through
+// the joint, so that leaves a rate mismatch equal to the ratio of the two --
+// 10% on the reported glyph. The curvature comb is drawn against arc length,
+// which is what a designer reads, so this matches the rate per unit of ARC.
+// The two answers differ by about 0.03 units of handle and the arc form is
+// exact.
+//
+// It needs the two outer handles on the same side of the tangent. Where they
+// disagree the joint is an inflection: this construction asks for the square
+// root of a negative product, and G2 cannot be reached there either.
+//
+// Returns the new positions of the two inner handles, or null.
+//
+export function calculateG3Targets(incoming, outgoing) {
+  const [A, PP, P, node] = incoming;
+  const [, N, NN, C] = outgoing;
+
+  // The tangent runs between the two inner handles and is anchored on the
+  // joint. A smooth joint keeps those three collinear. Where the drawing has
+  // drifted off that, this direction splits the difference, and the answer puts
+  // both handles back on one line.
+  const span = subVectors(N, P);
+  if (!vectorLength(span)) {
+    return null;
+  }
+  const axis = normalizeVector(span);
+
+  // Frame the stencil on that axis, taking the side the incoming outer handle
+  // is on as positive, so the construction always sees the sign it assumes.
+  const along = (point) => dotVector(subVectors(point, node), axis);
+  const sidedness = (point) => crossProduct(axis, subVectors(point, node));
+  const flip = sidedness(PP) < 0 ? -1 : 1;
+  const across = (point) => flip * sidedness(point);
+
+  const d = across(PP);
+  const l = across(NN);
+  if (!(d > 0) || !(l > 0)) {
+    return null; // an inflection, or an outer handle lying on the tangent
+  }
+
+  const b = across(A);
+  const c = along(PP);
+  const k = along(NN);
+  const n = across(C);
+
+  const ratio = Math.sqrt(d / l);
+  const ratioPow4 = (d / l) ** 2;
+  const denominator = -ratio * (9 * d + b) - ratioPow4 * (n + 9 * l);
+  if (!denominator) {
+    return null;
+  }
+  const reachOut = (6 * (c * d - k * l * ratioPow4)) / denominator;
+  const reachIn = -ratio * reachOut;
+
+  // The incoming handle sits behind the joint and the outgoing one ahead of it.
+  // An answer that puts either on the wrong side is not a handle.
+  if (!(reachIn < 0) || !(reachOut > 0)) {
+    return null;
+  }
+
+  return {
+    P: addVectors(node, mulVectorScalar(axis, reachIn)),
+    N: addVectors(node, mulVectorScalar(axis, reachOut)),
+  };
+}
+
+//
 // Map a point selection onto the on-curve points it implies: a selected handle
 // stands for the joint it belongs to. An empty (or absent) selection means
 // every on-curve point in the path.
@@ -255,6 +541,36 @@ function jointSegments(path, ctx) {
   );
 }
 
+//
+// The shortest a handle at this joint may ever get.
+//
+// The floor is a fraction of the chord between its segment's two on-curve
+// points, not of the handle itself. Two on-curve points do not move while
+// handles are being corrected, so this is the same number every time the
+// command runs. A floor taken from the handle was measured again from the
+// shortened handle on the next call and allowed another cut of the same size,
+// so running harmonize repeatedly walked a handle down to nothing.
+//
+// Half a chord is about the handle length of a well-formed quarter arc, so the
+// margin keeps the meaning it had: a fraction of a nominal handle.
+//
+function cuspFloors(path, ctx, segments, cuspSafetyMargin) {
+  const fraction = (1 - cuspSafetyMargin) / 2;
+  const floorFor = (nearSide, handleLength) => {
+    const segment = segments.find((candidate) => candidate.nearSide === nearSide);
+    if (!segment) {
+      // No segment on this side to take a chord from: fall back to the handle.
+      return (1 - cuspSafetyMargin) * handleLength;
+    }
+    const points = segmentPositions(path, segment.indices);
+    return fraction * distance(points[0], points[3]);
+  };
+  return {
+    P: floorFor("end", distance(ctx.node, ctx.P)),
+    N: floorFor("start", distance(ctx.node, ctx.N)),
+  };
+}
+
 function segmentPositions(path, indices) {
   return indices.map((index) => {
     const [x, y] = path.getPointPosition(index);
@@ -301,6 +617,651 @@ function tensionAfterStep(path, ctx, segments, fixup, handleBias) {
     worst = Math.max(worst, handleTension(points, nearSide));
   }
   return worst;
+}
+
+// How many places the repair slide samples before it refines, and how many
+// times it halves afterwards. Both are fixed: the slide is a search, and a
+// search that decides its own trip count cannot be continuous in its input.
+const G3_SLIDE_SAMPLES = 64;
+
+// Two slide positions this close in error are the same answer, and the tie goes
+// to whichever moves the joint less. Without a tolerance, floating-point dust
+// decides, and a joint already standing at the best place walks off it.
+const GRID_TIE_UNITS = 1e-9;
+
+//
+// The joint's two cubic segments, as point quadruples in contour order. Null
+// where an open contour runs out before one of them.
+//
+function jointStencil(path, ctx) {
+  const segments = jointSegments(path, ctx);
+  if (segments.length < 2) {
+    return null;
+  }
+  return {
+    incoming: segmentPositions(path, segments[0].indices),
+    outgoing: segmentPositions(path, segments[1].indices),
+  };
+}
+
+//
+// How far a joint sits from the condition the command is trying to establish.
+//
+// Two properties matter and neither is decoration. It is **relative**, because a
+// selection holds joints of every size and an absolute curvature difference lets
+// the tightest one own the whole score. And it measures the condition the caller
+// asked for: under G3 the rate of change of curvature is half of what is being
+// solved for, so a score that leaves it out judges a G3 answer by how well it
+// does at G2. That is not a near miss. Measured on the outer arch of `n`, all
+// four whole-unit placements bracketing the exact G3 answer score worse on
+// curvature alone than the drawing they came from, so all four were reverted and
+// G3 could never take over from a G2-harmonic joint.
+//
+// Curvature carries units of 1/length and its rate 1/length², so both are made
+// dimensionless by the joint's own size — the mean of its two segments' chords.
+// The two terms are then errors in the same unit and the total is their sum,
+// with no weight to choose.
+//
+// The scale is the joint's LENGTH and deliberately not its curvature. Dividing
+// by the curvature reads 2 at every inflection, whatever the drawing does,
+// because the two curvatures have opposite signs there and the ratio saturates.
+// A score with no gradient at an inflection cannot tell the G2 fallback's answer
+// from the drawing it started on, and reverts it.
+//
+function jointError(stencil, continuity) {
+  const { incoming, outgoing } = stencil;
+  const length =
+    (distance(incoming[0], incoming[3]) + distance(outgoing[0], outgoing[3])) / 2;
+  if (!length || !Number.isFinite(length)) {
+    return 0;
+  }
+
+  const curvatureIn = curvatureAt(incoming, true);
+  const curvatureOut = curvatureAt(outgoing, false);
+  let error = Math.abs(curvatureIn - curvatureOut) * length;
+
+  if (continuity === "G3") {
+    const rateIn = curvatureRateAt(incoming, true);
+    const rateOut = curvatureRateAt(outgoing, false);
+    error += Math.abs(rateIn - rateOut) * length ** 2;
+  }
+
+  // G1 is the rung the other two stand on, so it is scored alongside them
+  // rather than assumed. Every construction here moves points along the
+  // tangent and so preserves it exactly -- but the answer is then rounded to
+  // whole units, the next attempt re-reads the tangent from those rounded
+  // handles, and the joint walks. Over 2000 well-formed random joints 22.5% of
+  // them finished with a kink past what the grid can excuse, the worst of them
+  // 21 degrees against an allowance of 2.1. Left out of the score, a bent joint
+  // is simply invisible: the grid search will happily buy a smaller curvature
+  // step with a crease, and the best-state gate has no reason to refuse it.
+  error += jointKink(incoming[2], incoming[3], outgoing[1]);
+
+  // Infinity, and deliberately not zero.
+  //
+  // A joint whose handle has collapsed onto its on-curve point has no defined
+  // curvature, and reading that as zero error made it the best answer available
+  // -- so the grid search went looking for cusps, because they scored perfect.
+  // On one joint in 2000 it found one: it put the handle exactly on the node
+  // and every measurement in this file agreed that was an improvement.
+  //
+  // Infinity is the honest reading and it also ranks correctly: no state with
+  // one can beat a state without, and a drawing that arrives degenerate can
+  // still be improved, because a finite candidate beats an infinite incumbent.
+  return Number.isFinite(error) ? error : Infinity;
+}
+
+//
+// The angle in radians between the two handles meeting at a joint. Zero exactly
+// when the joint is G1.
+//
+// Radians are the right unit and not a weight chosen to taste: curvature times
+// length is the angle a segment turns through over that length, so |dk| * L is
+// already an angle, and |dr| * L^2 with it. All three terms are the same
+// quantity and the total is their sum.
+//
+// The most a whole-unit grid can bend a joint that is exactly straight. Each of
+// the three points can land half a unit off along each axis, so sqrt(2)/2 in
+// any direction; a handle has such a point at each end, so its direction can
+// swing by atan(sqrt(2) / its own length), and the two handles' swings add. A
+// bend inside this is the price of the document's coordinate space. A bend past
+// it was chosen, and this module does not get to choose it.
+function gridKinkAllowance(P, node, N) {
+  const reach = Math.SQRT2;
+  return (
+    Math.atan(reach / Math.max(distance(P, node), reach)) +
+    Math.atan(reach / Math.max(distance(node, N), reach))
+  );
+}
+
+// The joint's curvature discontinuity as a fraction of its own curvature --
+// which is exactly the step a designer sees in the curvature comb, the fringe
+// on one side against the fringe on the other.
+//
+// This normalisation saturates at 2 across an inflection, where the two
+// curvatures have opposite signs. That makes it useless as a gradient, which is
+// why the residual does not use it. As a threshold it is fine: an inflection
+// reads 200%, the drawing it arrived as reads 200% too, and the ceiling below
+// simply does not bind.
+function relativeCurvatureStep(path, ctx) {
+  const stencil = jointStencil(path, ctx);
+  if (!stencil) {
+    return 0;
+  }
+  const inside = curvatureAt(stencil.incoming, true);
+  const outside = curvatureAt(stencil.outgoing, false);
+  const scale = (Math.abs(inside) + Math.abs(outside)) / 2;
+  if (!scale || !Number.isFinite(scale)) {
+    return 0;
+  }
+  const step = Math.abs(inside - outside) / scale;
+  return Number.isFinite(step) ? step : Infinity;
+}
+
+function jointKink(P, node, N) {
+  const incoming = subVectors(node, P);
+  const outgoing = subVectors(N, node);
+
+  // A handle sitting on its own on-curve point has no direction, and atan2 of
+  // two zeros is zero -- so a collapsed handle read as PERFECTLY smooth and won
+  // this rank outright against any honest drawing with a kink in it. That is
+  // how a joint that arrived 10.5 degrees out ended up with its handle written
+  // exactly onto the node: the degenerate state was the only one scoring no
+  // crease at all.
+  if (!vectorLength(incoming) || !vectorLength(outgoing)) {
+    return Infinity;
+  }
+
+  const kink = Math.atan2(
+    Math.abs(crossProduct(incoming, outgoing)),
+    dotVector(incoming, outgoing)
+  );
+  return Number.isFinite(kink) ? kink : Infinity;
+}
+
+//
+// How far a drawing is from what the command is trying to reach, over the whole
+// candidate set.
+//
+// Two numbers, ranked, not one. A handle past the tension ceiling and a crease
+// at a smooth point are defects rather than trades, so any number of them
+// outranks any amount of curvature discontinuity: nothing may be bought with
+// one. Below that the residual is the sum of `jointError` over the joints.
+//
+// Both commands in this module score themselves with this, so "better" means
+// the same thing to the grid search, to the best-state gate, and across the two
+// of them.
+//
+function scoreJoints(path, candidates, continuity, limits, arrival) {
+  let broken = 0;
+  let crossed = 0;
+  let creased = 0;
+  let residual = 0;
+  for (const pointIndex of candidates) {
+    const ctx = getJointContext(path, pointIndex);
+    if (ctx.reason) {
+      // A joint that arrived readable and is not readable any more has been
+      // destroyed, and skipping it here scored that as flawless -- it simply
+      // stopped contributing. Every other rank agreed: a handle sitting on its
+      // own on-curve point has no curvature to be discontinuous and no
+      // direction to be bent. So the search could always improve its score by
+      // collapsing a handle, and on one joint in 2000 it did exactly that.
+      //
+      // A joint that was already unreadable when the command was handed the
+      // drawing is not this module's doing and is not counted.
+      if (arrival?.has(pointIndex)) {
+        broken += 1;
+      }
+      continue;
+    }
+
+    // Still readable, and still destroyed. A handle sitting on its own on-curve
+    // point survives `getJointContext`, and then every rank below reads it as
+    // flawless: no curvature to be discontinuous, no direction to be bent, and
+    // no length to be over the tension ceiling. So it beat a drawing that
+    // honestly reported a kink and a tight handle, and the search had a
+    // standing incentive to collapse one.
+    if (
+      !vectorLength(subVectors(ctx.node, ctx.P)) ||
+      !vectorLength(subVectors(ctx.node, ctx.N))
+    ) {
+      broken += 1;
+      continue;
+    }
+
+    // The seven-point stencil where the joint has both of its segments, which
+    // is what the rate needs. Where an open contour runs out before one of
+    // them there is no rate to measure and the five-point curvature stands.
+    const stencil = jointStencil(path, ctx);
+    if (stencil) {
+      // Under G3 `jointError` measures the rate of change of curvature as well,
+      // so a G3 caller is judged on what it asked for.
+      residual += jointError(stencil, continuity);
+    } else {
+      const discontinuity = measureG2Discontinuity(ctx);
+      residual += Number.isFinite(discontinuity) ? discontinuity : 0;
+    }
+    // A crease at a smooth point is a defect and not a trade. Curvature
+    // continuity across a joint that has no common tangent does not mean
+    // anything, so no amount of it may buy a bend past what the grid can
+    // excuse -- and the search will buy it, given the chance: on the worst of
+    // 2000 random joints the residual fell from 31.7 to 1.1 while the joint
+    // creased from 0.5 degrees to 13.1, one attempt at a time, and every step
+    // of that scored as an improvement.
+    if (jointKink(ctx.P, ctx.node, ctx.N) > gridKinkAllowance(ctx.P, ctx.node, ctx.N)) {
+      creased += 1;
+    }
+
+    for (const { nearSide, indices } of jointSegments(path, ctx)) {
+      const points = segmentPositions(path, indices);
+      if (handleTension(points, nearSide) > limits.maxHandleTension) {
+        crossed += 1;
+      }
+    }
+  }
+  return { broken, crossed, creased, residual, travel: 0 };
+}
+
+// Ranked, and deliberately not added up.
+//
+// These are different kinds of wrong and one number cannot hold them: when the
+// crease count and the tension count shared a counter, a state that brought an
+// over-tension handle back under the ceiling and cost a crease scored level with
+// the drawing that had neither fixed, and the tie fell to the residual -- so a
+// handle whose lines crossed was left crossed. Each rank is a defect the one
+// below it may not be traded for.
+//
+//   broken    a joint that arrived readable and can no longer be measured
+//   crossed   a handle past its segment's Tunni point: the curve doubles back
+//   creased   a smooth point that is not smooth, past what the grid can excuse
+//   residual  how far the joint is from the condition, once all three hold
+//   travel    how far the answer moved the drawing
+//
+// One control now names one construction, so nothing here compares one
+// construction against another. What is left are the two refusals, the distance
+// from the condition, and a tie-breaker for the whole-unit search: two positions
+// that leave the joint equally good are not equally welcome, and the one that
+// changed less of what the designer drew is the one to keep.
+//
+const SCORE_RANKS = ["broken", "crossed", "creased", "residual", "travel"];
+
+//
+// Two answers this close on a rank are the same answer on that rank, and the
+// next one down decides. Without it, floating-point dust in the twelfth digit
+// settles which of two indistinguishable answers is kept -- and on `j` point 3
+// it settled it differently each press, because the drawing it was measuring
+// had moved by a rounding step in between.
+//
+const RANK_TIE = 1e-9;
+
+function tied(a, b) {
+  return Math.abs(a - b) <= RANK_TIE * Math.max(1, Math.abs(a), Math.abs(b));
+}
+
+function isBetter(candidate, incumbent) {
+  for (const rank of SCORE_RANKS) {
+    if (!tied(candidate[rank], incumbent[rank])) {
+      return candidate[rank] < incumbent[rank];
+    }
+  }
+  return false;
+}
+
+//
+// Signed curvature at parameter `t` of a cubic. The end values agree with
+// `curvatureAt`; this one can be asked about the middle.
+//
+function curvatureAtParameter([p0, p1, p2, p3], t) {
+  const u = 1 - t;
+  const first = cubicVelocityAt([p0, p1, p2, p3], t);
+  const second = {
+    x: 6 * (u * (p2.x - 2 * p1.x + p0.x) + t * (p3.x - 2 * p2.x + p1.x)),
+    y: 6 * (u * (p2.y - 2 * p1.y + p0.y) + t * (p3.y - 2 * p2.y + p1.y)),
+  };
+  const speed = vectorLength(first);
+  return speed ? crossProduct(first, second) / speed ** 3 : 0;
+}
+
+// How many places the comb is read at when judging a segment's shape. Fixed,
+// like every other trip count here.
+const COMB_SAMPLES = 20;
+
+// A comb that slackens in the middle of a segment and tightens again at both
+// ends. It is the defect a designer names first and it is invisible to every
+// measurement above, all of which are taken AT the joint: a joint can be
+// exactly G3 and sit at the top of a spike with a hollow behind it.
+//
+// Measured on `n` node 13: every position on the tangent from -30 to +20 units
+// leaves the incoming segment notched, and the slide was stopping at +21
+// because it ranked candidates on how well whole units hold the condition at
+// the point. Five units further on the notch is gone.
+//
+function combHasNotch(points) {
+  let lowest = Infinity;
+  let lowestAt = 0;
+  const samples = [];
+  for (let i = 0; i <= COMB_SAMPLES; i++) {
+    const value = Math.abs(curvatureAtParameter(points, i / COMB_SAMPLES));
+    samples.push(value);
+    if (value < lowest) {
+      lowest = value;
+      lowestAt = i;
+    }
+  }
+  if (lowestAt < 2 || lowestAt > COMB_SAMPLES - 2) {
+    return false;
+  }
+  // Below BOTH ends, and by enough that a flat comb does not register as one.
+  return lowest < 0.99 * Math.min(samples[0], samples[COMB_SAMPLES]);
+}
+
+//
+// The bending energy of one cubic: the integral of squared curvature along it.
+//
+// This is the classical measure of a fair curve, and it is the only thing in
+// this module that reads the curve BETWEEN its on-curve points. Everything else
+// is taken at the joint, which is why a joint could be exactly G2 while the
+// segment behind it carried a lump six times its own curvature and every
+// measurement here reported success.
+//
+// Integrated against arc length, not parameter, for the same reason the G3
+// solve matches the arc-length rate: the parameter runs at different speeds
+// through different parts of a segment and the eye does not.
+//
+function bendingEnergyOf(points) {
+  let total = 0;
+  let previous = null;
+  for (let i = 0; i <= COMB_SAMPLES; i++) {
+    const t = i / COMB_SAMPLES;
+    const curvature = curvatureAtParameter(points, t);
+    const speed = vectorLength(cubicVelocityAt(points, t));
+    const value = curvature * curvature * speed;
+    if (previous !== null) {
+      total += (previous + value) / 2 / COMB_SAMPLES;
+    }
+    previous = value;
+  }
+  return Number.isFinite(total) ? total : Infinity;
+}
+
+//
+// How unfair the curve either side of a joint is, made dimensionless by the
+// joint's own size the same way the other terms are. Energy carries 1/length,
+// so one factor of length does it.
+//
+function jointUnfairness(stencil, length) {
+  if (!length || !Number.isFinite(length)) {
+    return 0;
+  }
+  return (
+    (bendingEnergyOf(stencil.incoming) + bendingEnergyOf(stencil.outgoing)) * length
+  );
+}
+
+//
+// One G3 attempt, with the joint at `nodePosition`. Returns the two inner
+// handle positions, or null where the construction has no answer or the answer
+// is outside the same two limits the G2 path obeys: the cusp floor on the
+// handle that shrinks, and the tangent intersection on the handle that grows.
+//
+function g3Attempt(stencil, nodePosition, limits) {
+  const [A, PP] = stencil.incoming;
+  const [, , NN, C] = stencil.outgoing;
+  const targets = calculateG3Targets(
+    [A, PP, stencil.incoming[2], nodePosition],
+    [nodePosition, stencil.outgoing[1], NN, C]
+  );
+  if (!targets) {
+    return null;
+  }
+  if (
+    distance(nodePosition, targets.P) < limits.floors.P ||
+    distance(nodePosition, targets.N) < limits.floors.N
+  ) {
+    return null;
+  }
+  const solvedIn = [A, PP, targets.P, nodePosition];
+  const solvedOut = [nodePosition, targets.N, NN, C];
+  if (
+    handleTension(solvedIn, "end") > limits.maxHandleTension ||
+    handleTension(solvedOut, "start") > limits.maxHandleTension
+  ) {
+    return null;
+  }
+  return targets;
+}
+
+//
+// Where the joint goes under G2 when it is allowed to move.
+//
+// There is a free parameter here and the module has never used it. The harmonic
+// ratio depends only on the two outer handles' offsets from the tangent, and
+// sliding the joint along that tangent changes neither -- so EVERY position on
+// it is exactly as G2 as every other. The construction has nothing to say about
+// which, the old score had nothing to say about which, and so the joint stayed
+// where it was and the command reported that there was nothing to do. On the
+// reported glyph a designer used exactly this freedom by hand, slid the joint
+// 22 units, and got a visibly better curve without changing how G2 the joint
+// was at all.
+//
+// What separates the positions is the shape of the curve either side, which
+// `scoreJoints` now measures. So this walks the tangent, builds the answer at
+// each whole unit, and asks the same question the caller will ask at the end.
+//
+// The construction at a given position: the harmonic target is a fixed point on
+// the tangent, so placing the joint at `here` and moving both handles by
+// `here - target` satisfies G2 there exactly. The two outer on-curve points do
+// not move, so each position gives a genuinely different pair of segments.
+//
+function g2BestSlide(path, ctx, state, options) {
+  const target = calculateHarmonicTarget(ctx);
+  if (!target) {
+    return null;
+  }
+  const axis = normalizeVector(subVectors(ctx.N, ctx.P));
+  if (!vectorLength(axis)) {
+    return null;
+  }
+  const segments = jointSegments(path, ctx);
+  if (segments.length < 2) {
+    return null;
+  }
+  const [A] = segmentPositions(path, segments[0].indices);
+  const C = segmentPositions(path, segments[1].indices)[3];
+
+  const along = (point) => dotVector(subVectors(point, ctx.node), axis);
+  const room = { "1": Math.max(0, along(C)), "-1": Math.max(0, -along(A)) };
+  const reach = Math.max(room[1], room["-1"]);
+  const step = Math.max(1, reach / G3_SLIDE_SAMPLES);
+  const place = options.roundCoordinates
+    ? (point) => ({ x: Math.round(point.x), y: Math.round(point.y) })
+    : (point) => point;
+
+  let best = null;
+  const consider = (slide) => {
+    const here = addVectors(ctx.node, mulVectorScalar(axis, slide));
+    const shift = subVectors(here, target.target);
+    const P = addVectors(ctx.P, shift);
+    const N = addVectors(ctx.N, shift);
+    if (distance(here, P) < state.floors.P || distance(here, N) < state.floors.N) {
+      return;
+    }
+    const node = place(here);
+    const stencil = {
+      incoming: [A, ctx.PP, place(P), node],
+      outgoing: [node, place(N), ctx.NN, C],
+    };
+    if (
+      handleTension(stencil.incoming, "end") > options.maxHandleTension ||
+      handleTension(stencil.outgoing, "start") > options.maxHandleTension
+    ) {
+      return;
+    }
+    const length =
+      (distance(stencil.incoming[0], stencil.incoming[3]) +
+        distance(stencil.outgoing[0], stencil.outgoing[3])) /
+      2;
+    const error = jointError(stencil, "G2") + jointUnfairness(stencil, length);
+    const travel = Math.abs(slide);
+    if (
+      !best ||
+      error < best.error - GRID_TIE_UNITS ||
+      (error < best.error + GRID_TIE_UNITS && travel < best.travel)
+    ) {
+      best = { error, travel, node: here, P, N };
+    }
+  };
+
+  consider(along(target.target));
+  for (let sample = 0; sample <= G3_SLIDE_SAMPLES; sample++) {
+    const slide = sample * step;
+    for (const direction of [1, -1]) {
+      if (slide <= room[direction]) {
+        consider(direction * slide);
+      }
+    }
+  }
+  return best;
+}
+
+//
+// The answer with the joint held where it is, in the shape the caller consumes.
+//
+function g3HeldSolve(stencil, limits) {
+  const targets = g3Attempt(stencil, stencil.incoming[3], limits);
+  return targets ? { node: null, targets } : null;
+}
+
+//
+// Where the joint goes when it is allowed to move.
+//
+// The G3 construction is exact at EVERY admissible position on the tangent, so
+// in exact arithmetic there is nothing to choose between them and the joint
+// would never have a reason to move. What separates them is the grid: the
+// command's answer lands on whole units, and how much of the exact answer
+// survives that depends on where the joint sits. Measured on the outer arch of
+// `n`, held at its drawn position the best whole-unit joint available is a 15.6%
+// rate step; two units along the tangent it is 1.2%, and five units 0.51%.
+//
+// So each candidate is judged as it will be EMITTED, on the grid, which is the
+// same rule the offset construction arrived at for its own candidates. The
+// bracket search in `snapToGrid` polishes the winner afterwards; this stage only
+// has to pick the position.
+//
+// Sampling is at whole units along the tangent, because that is the resolution
+// the answer is stored at, with a fixed cap so a long range cannot buy itself
+// more search. A search that picks its own trip count cannot be continuous in
+// its input.
+//
+function g3BestSlide(stencil, limits, continuity, snapToWholeUnits) {
+  const node = stencil.incoming[3];
+  const span = subVectors(stencil.outgoing[1], stencil.incoming[2]);
+  if (!vectorLength(span)) {
+    return null;
+  }
+  const axis = normalizeVector(span);
+  // The joint may travel as far as the on-curve point at the far end of either
+  // of its two segments, measured along the tangent. Past that it has left the
+  // segment it belongs to. The two directions have their own room.
+  const along = (point) => dotVector(subVectors(point, node), axis);
+  const room = {
+    "1": Math.max(0, along(stencil.outgoing[3])),
+    "-1": Math.max(0, -along(stencil.incoming[0])),
+  };
+  const reach = Math.max(room[1], room["-1"]);
+  const step = Math.max(1, reach / G3_SLIDE_SAMPLES);
+  const at = (slide) => addVectors(node, mulVectorScalar(axis, slide));
+
+  // As it will be emitted. Where the caller is not rounding, that is the exact
+  // answer, which is exactly G3 at every admissible position — so nothing
+  // separates them, the tie-break takes over and the joint stays where it is.
+  const place = snapToWholeUnits
+    ? (point) => ({ x: Math.round(point.x), y: Math.round(point.y) })
+    : (point) => point;
+  const [A, PP] = stencil.incoming;
+  const [, , NN, C] = stencil.outgoing;
+
+  // The same question the caller asks at the end, and not a smaller one. Judged
+  // on the joint alone, this search walked a node 221 units down its tangent on
+  // one of 2000 random joints -- taking the incoming chord from 238 units to 46
+  // -- because the joint it left there was fractionally more exact. The curve
+  // it left behind carried 450,000 times the bending energy it started with.
+  const errorAsEmitted = (nodePosition, targets) => {
+    const placed = place(nodePosition);
+    const stencil = {
+      incoming: [A, PP, place(targets.P), placed],
+      outgoing: [placed, place(targets.N), NN, C],
+    };
+    const length =
+      (distance(stencil.incoming[0], stencil.incoming[3]) +
+        distance(stencil.outgoing[0], stencil.outgoing[3])) /
+      2;
+    // Same split as `scoreJoints`: under G3 the rate leads and the curve breaks
+    // ties, so the two are returned separately rather than added.
+    const error = jointError(stencil, continuity);
+    const unfairness = jointUnfairness(stencil, length);
+    return continuity === "G3"
+      ? { error, unfairness }
+      : { error: error + unfairness, unfairness: 0 };
+  };
+
+  let best = null;
+  const consider = (slide) => {
+    const nodePosition = at(slide);
+    const targets = g3Attempt(stencil, nodePosition, limits);
+    if (!targets) {
+      return;
+    }
+    const { error, unfairness } = errorAsEmitted(nodePosition, targets);
+    const travel = Math.abs(slide);
+
+    // The shape of the comb across both segments, ranked ahead of how exactly
+    // the grid holds the condition at the joint. A notch is a defect the eye
+    // reads immediately; a fraction of a per cent at the point is not visible
+    // at all. Ranked and not added, for the same reason the score above ranks:
+    // they are different kinds of wrong.
+    const placed = place(nodePosition);
+    const notched =
+      (combHasNotch([A, PP, place(targets.P), placed]) ? 1 : 0) +
+      (combHasNotch([placed, place(targets.N), NN, C]) ? 1 : 0);
+
+    // Least notched, then least error, and where two positions are equally good
+    // the one that moves the joint least -- so a joint already standing at the
+    // best place stays.
+    const ranked = [notched, error, unfairness, travel];
+    const better =
+      !best ||
+      (() => {
+        for (let i = 0; i < ranked.length; i++) {
+          const tolerance = i === 3 ? 0 : GRID_TIE_UNITS;
+          if (ranked[i] < best.ranked[i] - tolerance) {
+            return true;
+          }
+          if (ranked[i] > best.ranked[i] + tolerance) {
+            return false;
+          }
+        }
+        return false;
+      })();
+    if (better) {
+      best = { ranked, travel, node: nodePosition, targets };
+    }
+  };
+
+  consider(0);
+  for (let sample = 1; sample <= G3_SLIDE_SAMPLES; sample++) {
+    const slide = sample * step;
+    for (const direction of [1, -1]) {
+      if (slide <= room[direction]) {
+        consider(direction * slide);
+      }
+    }
+  }
+
+  if (!best) {
+    return null;
+  }
+  return { node: best.travel ? best.node : null, targets: best.targets };
 }
 
 //
@@ -350,44 +1311,6 @@ function enforceHandleTension(path, ctx, maxHandleTension, touched) {
   return reduced;
 }
 
-//
-// Tunni-equalize the two segments meeting at a joint.
-//
-// This is the one thing that moves the *outer* handles, PP and NN, which belong
-// to the neighbouring segments. The G2 construction itself never does: PP and NN
-// are inputs to the curvature at the joint, not outputs.
-//
-// SuperTool's Harmonize menu command brackets its per-node harmonize with
-// `[self balance]` (SuperTool+Harmonize.m:61,75), so this is donor behaviour —
-// but note the donor's trailing balance changes handle lengths after the fact,
-// which perturbs the very curvature match harmonization just established. Off
-// by default for that reason; see HARMONIZE_DEFAULTS.equalizeTension.
-//
-function equalizeJointSegments(path, ctx, touched) {
-  for (const { indices } of jointSegments(path, ctx)) {
-    const points = segmentPositions(path, indices);
-
-    // The donor skips inflected segments, where equalizing would fight the
-    // shape rather than tidy it (SuperTool+TunniEditing.m:198-199).
-    const startTension = handleTension(points, "start");
-    const endTension = handleTension(points, "end");
-    if (!startTension && !endTension) {
-      continue;
-    }
-    if (startTension > 1 && endTension > 1) {
-      continue;
-    }
-    if (startTension < 0.01 && endTension < 0.01) {
-      continue;
-    }
-
-    const balanced = balanceSegment(points);
-    for (const i of [1, 2]) {
-      writePoint(path, touched, indices[i], balanced[i]);
-    }
-  }
-}
-
 function applyFixup(path, ctx, fixup, handleBias, touched) {
   if (handleBias < 1) {
     const delta = mulVectorScalar(fixup, -(1 - handleBias));
@@ -414,9 +1337,14 @@ function applyFixup(path, ctx, fixup, handleBias, touched) {
 //     {pointIndex, contourIndex, status, reason, iterations}
 //
 //     status  harmonized | partial | skipped
-//     reason  clamped | not-converged                     (partial)
+//     reason  clamped | tension-limited | not-converged   (partial)
 //             not-smooth | not-curve-joint | degenerate
 //             | already-harmonic                          (skipped)
+//
+// A joint's verdict is read at the end of the sweep and not during it. Every
+// joint on a closed contour shares a segment with the two beside it, so a joint
+// that has nothing left to correct can be moved off again by a neighbour on a
+// later pass. Nothing is finished until the whole set is quiet.
 //
 // Total: no geometric situation throws.
 //
@@ -441,13 +1369,245 @@ export function harmonizePath(path, pointIndices, options = {}) {
 // comes back out the other side is a plain object with plain arrays — which
 // then fails interpolation with `coordinates.addItemwise is not a function`.
 //
-export function harmonizePathInPlace(path, pointIndices, options = {}) {
+// How many times the sweep may be run and rounded before it gives up on
+// reaching a whole-unit answer that stays put. Each attempt starts from the
+// rounded geometry the previous one produced, and the loop stops as soon as a
+// state comes round a second time — which on almost every drawing is the second
+// attempt. The budget only matters where the grid and the handle limits push
+// the geometry round a long orbit: over 400 random rings it takes 11 of them
+// out of the 0.5 per cent that still move after one call at a budget of 12.
+const ROUNDING_SETTLE_ATTEMPTS = 40;
+
+// How many times the grid search sweeps the points it may move. Fixed, not
+// chosen: a search that decides its own trip count cannot be continuous in its
+// input. Three is one pass to place every point and two to let them answer each
+// other; the reported joint settles on the first.
+const GRID_SEARCH_PASSES = 3;
+
+//
+// Put the answer on the grid, choosing the whole-unit position rather than
+// taking the nearest one.
+//
+// The sweep settles on fractional coordinates and the document wants whole
+// units. Rounding each coordinate to its own nearest unit looks like the
+// obvious way to get there and is not, because harmonization does not state a
+// pair of positions — it states a RATIO between the two handles either side of
+// the joint. Curvature at a cubic's end goes as the outer handle's offset over
+// the square of the inner handle's length, so the whole correction lives in
+// that ratio, and rounding the two ends independently can put it back exactly
+// where it started.
+//
+// Measured on the arch joint of `n`: the exact answer is a move of 0.344 units,
+// which takes a 3.156% curvature mismatch to zero. Rounded to the nearest unit
+// the mismatch comes back at 3.537% — worse than the drawing, and the
+// best-state gate then reverts the lot, which is why the command wrote nothing
+// and still reported success. One unit away sits a whole-unit state at 0.430%.
+//
+// So: snap to the nearest position, then let each moved point try the
+// whole-unit positions bracketing its own exact answer, keeping whatever scores
+// best. The starting drawing is still a candidate through the caller's own
+// best-state gate, so a command that can only make things worse leaves the
+// drawing alone.
+//
+function snapToGrid(path, touched, jointResidual, isBetter) {
+  const exact = new Map();
+  for (const index of touched) {
+    const [x, y] = path.getPointPosition(index);
+    exact.set(index, { x, y });
+    path.setPointPosition(index, Math.round(x), Math.round(y));
+  }
+
+  const indices = [...touched].sort((a, b) => a - b);
+  let best = jointResidual();
+
+  for (let pass = 0; pass < GRID_SEARCH_PASSES; pass++) {
+    let improved = false;
+    for (const index of indices) {
+      const { x, y } = exact.get(index);
+      const [heldX, heldY] = path.getPointPosition(index);
+      let chosenX = heldX;
+      let chosenY = heldY;
+      for (const candidateX of [Math.floor(x), Math.ceil(x)]) {
+        for (const candidateY of [Math.floor(y), Math.ceil(y)]) {
+          if (candidateX === chosenX && candidateY === chosenY) {
+            continue;
+          }
+          path.setPointPosition(index, candidateX, candidateY);
+          const score = jointResidual();
+          if (isBetter(score, best)) {
+            best = score;
+            chosenX = candidateX;
+            chosenY = candidateY;
+            improved = true;
+          }
+        }
+      }
+      path.setPointPosition(index, chosenX, chosenY);
+    }
+    if (!improved) {
+      break;
+    }
+  }
+}
+
+//
+// The nearest answer, applied over a selection.
+//
+// The solver moves the two OUTER handles as well as the two inner ones, which
+// is what buys its accuracy: on point 3 of `_external/problem-glyphs/N^1.json`
+// the four-handle answer moves the drawing 11.1 units and the same solve
+// restricted to the two inner handles moves 36.2.
+//
+// An outer handle of one joint is an inner handle of the next joint along, so a
+// joint's answer changes its neighbours' inputs. That is what the sweep is for,
+// and it is the same reason the other construction sweeps.
+//
+export function harmonizeNearestInPlace(path, pointIndices, options = {}) {
+  const { toleranceUnits, maxIterations, maxHandleTension, roundCoordinates } = {
+    ...HARMONIZE_DEFAULTS,
+    ...options,
+  };
+
+  const candidates = pointIndices?.length
+    ? [...new Set(pointIndices)].sort((a, b) => a - b)
+    : expandToJoints(path, undefined);
+
+  const touched = new Set();
+  const states = new Map();
+  for (const pointIndex of candidates) {
+    states.set(pointIndex, {
+      pointIndex,
+      contourIndex: path.getContourIndex(pointIndex),
+      status: undefined,
+      reason: undefined,
+      construction: "nearest",
+      everMoved: false,
+    });
+  }
+
+  // What each joint arrived with, captured before anything moves, so the score
+  // can tell a joint this command broke from one that was already unreadable.
+  const arrival = new Map();
+  for (const pointIndex of candidates) {
+    const ctx = getJointContext(path, pointIndex);
+    if (!ctx.reason) {
+      arrival.set(pointIndex, relativeCurvatureStep(path, ctx));
+    }
+  }
+
+  // How far the drawing has moved from where the command found it. The grid
+  // search needs this to break a tie between two whole-unit positions that
+  // leave the joint equally good: the one that changed less of what the
+  // designer drew is the one to keep.
+  const startedAt = Array.from(path.coordinates);
+  const travelSoFar = () => {
+    let travel = 0;
+    for (let index = 0; index < path.numPoints; index++) {
+      const [x, y] = path.getPointPosition(index);
+      travel += Math.hypot(x - startedAt[index * 2], y - startedAt[index * 2 + 1]);
+    }
+    return travel;
+  };
+
+  const scoreLimits = { maxHandleTension };
+  const jointResidual = () => ({
+    ...scoreJoints(path, candidates, "G2", scoreLimits, arrival),
+    travel: travelSoFar(),
+  });
+
+  for (let pass = 0; pass < maxIterations; pass++) {
+    let anyMoved = false;
+
+    for (const pointIndex of candidates) {
+      const state = states.get(pointIndex);
+      const ctx = getJointContext(path, pointIndex);
+      if (ctx.reason) {
+        state.status = "skipped";
+        state.reason = ctx.reason;
+        continue;
+      }
+      const stencil = jointStencil(path, ctx);
+      if (!stencil) {
+        state.status = "skipped";
+        state.reason = "not-curve-joint";
+        continue;
+      }
+
+      const segments = jointSegments(path, ctx);
+      const [incoming, outgoing] = segments;
+      const seven = [
+        stencil.incoming[0],
+        stencil.incoming[1],
+        stencil.incoming[2],
+        stencil.incoming[3],
+        stencil.outgoing[1],
+        stencil.outgoing[2],
+        stencil.outgoing[3],
+      ];
+
+      const solved = solveNearestHandleScales(seven, { maxHandleTension });
+      state.status = solved.status === "solved" ? "harmonized" : solved.status;
+      state.reason = solved.reason;
+      if (solved.status === "skipped") {
+        continue;
+      }
+
+      // The four handle point indices, in the solver's own order:
+      // A -> PP, node -> P, node -> N, C -> NN.
+      const handleIndices = [
+        incoming.indices[1],
+        incoming.indices[2],
+        outgoing.indices[1],
+        outgoing.indices[2],
+      ];
+      const placed = applyHandleScales(seven, solved.scales);
+      const placedHandles = [placed[1], placed[2], placed[4], placed[5]];
+
+      for (let k = 0; k < 4; k++) {
+        const [x, y] = path.getPointPosition(handleIndices[k]);
+        const target = placedHandles[k];
+        if (Math.hypot(target.x - x, target.y - y) > toleranceUnits) {
+          anyMoved = true;
+          state.everMoved = true;
+        }
+        writePoint(path, touched, handleIndices[k], target);
+      }
+    }
+
+    if (!anyMoved) {
+      break;
+    }
+  }
+
+  if (roundCoordinates) {
+    snapToGrid(path, touched, jointResidual, isBetter);
+  }
+
+  // A joint whose handles all came back to where they started did nothing, and
+  // the verdict describes the drawing that was kept.
+  for (const state of states.values()) {
+    if (state.status === "harmonized" && !state.everMoved) {
+      state.status = "skipped";
+      state.reason = "below-grid";
+    }
+  }
+
+  return [...states.values()];
+}
+
+//
+// The joint construction: G3 where it has an answer, G2 where it does not.
+// Reached through `harmonizePathInPlace`, which runs it against the other
+// candidate and keeps whichever the score prefers.
+//
+function harmonizeByJointInPlace(path, pointIndices, options = {}) {
   const {
+    continuity,
+    slideOnCurve,
     handleBias: rawHandleBias,
     cuspSafetyMargin,
     toleranceUnits,
     maxIterations,
-    equalizeTension,
     maxHandleTension,
     roundCoordinates,
   } = {
@@ -464,217 +1624,829 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   const numericBias = rawHandleBias == null ? NaN : Number(rawHandleBias);
   const handleBias = Number.isFinite(numericBias)
     ? Math.min(1, Math.max(0, numericBias))
-    : HARMONIZE_DEFAULTS.handleBias;
+    : 1;
 
   const candidates = pointIndices?.length
     ? [...new Set(pointIndices)].sort((a, b) => a - b)
     : expandToJoints(path, undefined);
 
-  if (equalizeTension) {
-    // donor order: balance, harmonize, balance (SuperTool+Harmonize.m:61,75)
-    for (const pointIndex of candidates) {
-      const ctx = getJointContext(path, pointIndex);
-      if (!ctx.reason) {
-        equalizeJointSegments(path, ctx, touched);
-      }
+  // The whole thing may have to run more than once, and only because of the
+  // grid. The sweep settles on fractional coordinates. Rounding them to whole
+  // units is a nudge the sweep never saw, and from the rounded geometry there
+  // is a real correction to make again. Running it here is what the user used
+  // to do by pressing the button again.
+  //
+  // Rounding is still applied once per attempt and never inside the sweep: a
+  // residual that is rounded mid-sweep sits permanently above the convergence
+  // tolerance and nothing ever settles.
+  //
+  // Rounding can also put the geometry into a short cycle rather than onto a
+  // fixed point: attempt A rounds to B, and B rounds back to A. Every state the
+  // loop lands on is kept, the loop stops the moment one comes round again, and
+  // the best of them is what the command leaves behind. Picking the best of a
+  // cycle deterministically is what makes running the command twice a no-op.
+  //
+  const attempts = roundCoordinates ? ROUNDING_SETTLE_ATTEMPTS : 1;
+  const seen = new Set();
+  let states = [];
+  let best = null;
+  let bestStates = null;
+
+  // How far the drawing is from what the command is trying to reach. A handle
+  // over the tension ceiling is a defect and not a trade, so any number of them
+  // outranks any amount of curvature discontinuity.
+  // What each joint's curvature discontinuity was when the command was handed
+  // the drawing. Captured once, before anything moves, because it is a ceiling
+  // on the answer and not a running measurement.
+  const arrivalCurvature = new Map();
+  for (const pointIndex of candidates) {
+    const ctx = getJointContext(path, pointIndex);
+    if (!ctx.reason) {
+      arrivalCurvature.set(pointIndex, relativeCurvatureStep(path, ctx));
     }
   }
 
-  const states = candidates.map((pointIndex) => {
-    const state = {
-      pointIndex,
-      contourIndex: path.getContourIndex(pointIndex),
-      status: undefined,
-      reason: undefined,
-      iterations: 0,
-      floors: undefined,
-      segments: [],
-      tensionReduced: false,
-      done: false,
-    };
-
-    let ctx = getJointContext(path, pointIndex);
-    if (ctx.reason) {
-      return state;
+  // How far the drawing has moved from where the command found it. The grid
+  // search needs this to break a tie between two whole-unit positions that
+  // leave the joint equally good: the one that changed less of what the
+  // designer drew is the one to keep.
+  const startedAt = Array.from(path.coordinates);
+  const travelSoFar = () => {
+    let travel = 0;
+    for (let index = 0; index < path.numPoints; index++) {
+      const [x, y] = path.getPointPosition(index);
+      travel += Math.hypot(x - startedAt[index * 2], y - startedAt[index * 2 + 1]);
     }
+    return travel;
+  };
 
-    // An over-tension handle is a defect to correct, not a state to preserve:
-    // shorten it back to the ceiling first, so the sweep starts from a joint
-    // whose handle lines do not cross.
-    state.tensionReduced = enforceHandleTension(path, ctx, maxHandleTension, touched);
-    if (state.tensionReduced) {
-      ctx = getJointContext(path, pointIndex);
-    }
-
-    state.segments = jointSegments(path, ctx);
-    // Floors are captured up front, from the geometry the sweep starts with: a
-    // handle may never end up shorter than this, however many passes it takes.
-    state.floors = {
-      P: (1 - cuspSafetyMargin) * distance(ctx.node, ctx.P),
-      N: (1 - cuspSafetyMargin) * distance(ctx.node, ctx.N),
-    };
-    return state;
+  const scoreLimits = { maxHandleTension };
+  const jointResidual = () => ({
+    ...scoreJoints(path, candidates, continuity, scoreLimits, arrivalCurvature),
+    travel: travelSoFar(),
   });
 
-  function settle(state, status, reason) {
-    state.status = status;
-    state.reason = reason;
-    state.done = true;
-  }
+  // The drawing exactly as it arrived. The verdict at the end is read against
+  // this, so a joint can only be called harmonized if something actually moved.
+  const original = Array.from(path.coordinates);
 
-  for (let pass = 0; pass < maxIterations; pass++) {
-    let anyMoved = false;
+  best = { score: jointResidual(), coordinates: Array.from(path.coordinates) };
 
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    states = candidates.map((pointIndex) => {
+      const state = {
+        pointIndex,
+        contourIndex: path.getContourIndex(pointIndex),
+        status: undefined,
+        reason: undefined,
+        iterations: 0,
+        floors: undefined,
+        segments: [],
+        tensionReduced: false,
+        everMoved: false,
+        quiet: false,
+        tensionLimited: false,
+        clamped: false,
+        construction: "g2",
+        mode: continuity === "G3" ? "g3" : "g2",
+        done: false,
+      };
+
+      let ctx = getJointContext(path, pointIndex);
+      if (ctx.reason) {
+        return state;
+      }
+
+      // An over-tension handle is a defect to correct, not a state to preserve:
+      // shorten it back to the ceiling first, so the sweep starts from a joint
+      // whose handle lines do not cross.
+      state.tensionReduced = enforceHandleTension(path, ctx, maxHandleTension, touched);
+      if (state.tensionReduced) {
+        ctx = getJointContext(path, pointIndex);
+      }
+
+      state.segments = jointSegments(path, ctx);
+      // A handle may never end up shorter than this, however many passes it takes
+      // and however many times the command is run.
+      state.floors = cuspFloors(path, ctx, state.segments, cuspSafetyMargin);
+      return state;
+    });
+
+    function settle(state, status, reason) {
+      state.status = status;
+      state.reason = reason;
+      state.done = true;
+    }
+
+    for (let pass = 0; pass < maxIterations; pass++) {
+      let anyMoved = false;
+
+      for (const state of states) {
+        if (state.done) {
+          continue;
+        }
+
+        let ctx = getJointContext(path, state.pointIndex);
+        if (ctx.reason) {
+          settle(state, "skipped", ctx.reason);
+          continue;
+        }
+
+        // The ceiling is enforced on every pass, not only at setup. Each joint
+        // limits its own step, but the handle it shortens belongs to a segment
+        // the next joint along shares, so a neighbour's step can push it back
+        // over. Left until the next call, that one over-tension handle blocked
+        // this joint for the rest of the sweep and then released a large move as
+        // soon as the command was run again.
+        if (enforceHandleTension(path, ctx, maxHandleTension, touched)) {
+          state.tensionReduced = true;
+          state.quiet = false;
+          anyMoved = true;
+          ctx = getJointContext(path, state.pointIndex);
+          if (ctx.reason) {
+            settle(state, "skipped", ctx.reason);
+            continue;
+          }
+        }
+
+        if (state.mode === "g3") {
+          const stencil = jointStencil(path, ctx);
+          const limits = { floors: state.floors, maxHandleTension };
+          let outcome = null;
+          if (stencil) {
+            // The slide is opt-in, and when it is on it is the whole search:
+            // every admissible position on the tangent including the one the
+            // joint already holds. It is not a fallback for when holding the
+            // joint still fails, because holding it still almost never fails —
+            // so as a fallback the option did nothing on any healthy joint.
+            outcome = slideOnCurve
+              ? g3BestSlide(stencil, limits, continuity, roundCoordinates)
+              : g3HeldSolve(stencil, limits);
+          }
+          if (outcome) {
+            const movement = Math.max(
+              distance(outcome.targets.P, ctx.P),
+              distance(outcome.targets.N, ctx.N),
+              outcome.node ? distance(outcome.node, ctx.node) : 0
+            );
+            if (movement < toleranceUnits) {
+              state.quiet = true;
+              continue;
+            }
+            state.quiet = false;
+            if (outcome.node) {
+              writePoint(path, touched, state.pointIndex, outcome.node);
+            }
+            writePoint(path, touched, ctx.indices.P, outcome.targets.P);
+            writePoint(path, touched, ctx.indices.N, outcome.targets.N);
+            state.construction = "g3";
+            state.iterations += 1;
+            anyMoved = true;
+            continue;
+          }
+          // No admissible answer here. G2 is the rung below, and it starts from
+          // the geometry as it stands rather than from anything G3 attempted.
+          state.mode = "g2";
+        }
+
+        // Opt-in, and when it is on it is the whole search -- the same rule the
+        // G3 slide arrived at. Under G2 the bias has nothing left to decide,
+        // because the search chooses where the joint goes outright.
+        if (slideOnCurve) {
+          const slid = g2BestSlide(path, ctx, state, {
+            roundCoordinates,
+            maxHandleTension,
+          });
+          if (slid) {
+            const movement = Math.max(
+              distance(slid.node, ctx.node),
+              distance(slid.P, ctx.P),
+              distance(slid.N, ctx.N)
+            );
+            if (movement < toleranceUnits) {
+              state.quiet = true;
+              continue;
+            }
+            state.quiet = false;
+            writePoint(path, touched, state.pointIndex, slid.node);
+            writePoint(path, touched, ctx.indices.P, slid.P);
+            writePoint(path, touched, ctx.indices.N, slid.N);
+            state.iterations += 1;
+            anyMoved = true;
+            continue;
+          }
+        }
+
+        const solution = calculateHarmonicTarget(ctx);
+        if (!solution) {
+          settle(state, "skipped", "degenerate");
+          continue;
+        }
+
+        const fixupLength = vectorLength(solution.fixup);
+        if (fixupLength < toleranceUnits) {
+          state.quiet = true;
+          continue;
+        }
+        state.quiet = false;
+
+        // The node and the handles always end up `fixup` apart no matter how the
+        // bias splits the motion, so one handle grows and the other shrinks by
+        // exactly |fixup|. Scale the whole step back if that would take the
+        // shrinking one past its floor.
+        let scale = 1;
+        for (const name of ["P", "N"]) {
+          const length = distance(ctx.node, ctx[name]);
+          const shrunk = distance(ctx.node, addVectors(ctx[name], solution.fixup));
+          if (shrunk < state.floors[name]) {
+            scale = Math.min(scale, (length - state.floors[name]) / fixupLength);
+          }
+        }
+        const clamped = scale < 1;
+        scale = Math.max(scale, 0);
+
+        // Second limit, on the handle that *grows*: never let it reach past its
+        // segment's Tunni point, where the segment's two handle lines cross each
+        // other. The tension is monotone in the step size, so bisect for the
+        // largest admissible step rather than case-analysing the sign.
+        let tensionLimited = false;
+        if (
+          scale > 0 &&
+          tensionAfterStep(
+            path,
+            ctx,
+            state.segments,
+            mulVectorScalar(solution.fixup, scale),
+            handleBias
+          ) > maxHandleTension
+        ) {
+          let low = 0;
+          let high = scale;
+          for (let step = 0; step < 24; step++) {
+            const mid = (low + high) / 2;
+            const tension = tensionAfterStep(
+              path,
+              ctx,
+              state.segments,
+              mulVectorScalar(solution.fixup, mid),
+              handleBias
+            );
+            if (tension > maxHandleTension) {
+              high = mid;
+            } else {
+              low = mid;
+            }
+          }
+          scale = low;
+          tensionLimited = true;
+        }
+
+        if (scale > 0) {
+          applyFixup(
+            path,
+            ctx,
+            mulVectorScalar(solution.fixup, scale),
+            handleBias,
+            touched
+          );
+          state.iterations += 1;
+          anyMoved = true;
+        }
+        // A limit shortens this step. It does not finish the joint: the next
+        // pass measures the limit again from where the step landed, and there is
+        // usually more room there. Settling here took one scaled-back step and
+        // stopped, which is why running the command again used to keep helping.
+        state.tensionLimited = state.tensionLimited || tensionLimited;
+        state.clamped = state.clamped || clamped;
+      }
+
+      if (!anyMoved) {
+        break;
+      }
+    }
+
+    // The sweep is over. A joint that was quiet on the last pass is finished,
+    // whatever it ran into on the way, because quiet means its own correction is
+    // now under the tolerance.
     for (const state of states) {
       if (state.done) {
         continue;
       }
-
-      const ctx = getJointContext(path, state.pointIndex);
-      if (ctx.reason) {
-        settle(state, "skipped", ctx.reason);
-        continue;
-      }
-
-      const solution = calculateHarmonicTarget(ctx);
-      if (!solution) {
-        settle(state, "skipped", "degenerate");
-        continue;
-      }
-
-      const fixupLength = vectorLength(solution.fixup);
-      if (fixupLength < toleranceUnits) {
+      if (state.quiet) {
         if (state.iterations) {
           settle(state, "harmonized", undefined);
         } else {
           settle(state, "skipped", "already-harmonic");
         }
-        continue;
-      }
-
-      // The node and the handles always end up `fixup` apart no matter how the
-      // bias splits the motion, so one handle grows and the other shrinks by
-      // exactly |fixup|. Scale the whole step back if that would take the
-      // shrinking one past its floor.
-      let scale = 1;
-      for (const name of ["P", "N"]) {
-        const length = distance(ctx.node, ctx[name]);
-        const shrunk = distance(ctx.node, addVectors(ctx[name], solution.fixup));
-        if (shrunk < state.floors[name]) {
-          scale = Math.min(scale, (length - state.floors[name]) / fixupLength);
-        }
-      }
-      const clamped = scale < 1;
-      scale = Math.max(scale, 0);
-
-      // Second limit, on the handle that *grows*: never let it reach past its
-      // segment's Tunni point, where the segment's two handle lines cross each
-      // other. The tension is monotone in the step size, so bisect for the
-      // largest admissible step rather than case-analysing the sign.
-      let tensionLimited = false;
-      if (
-        scale > 0 &&
-        tensionAfterStep(
-          path,
-          ctx,
-          state.segments,
-          mulVectorScalar(solution.fixup, scale),
-          handleBias
-        ) > maxHandleTension
-      ) {
-        let low = 0;
-        let high = scale;
-        for (let step = 0; step < 24; step++) {
-          const mid = (low + high) / 2;
-          const tension = tensionAfterStep(
-            path,
-            ctx,
-            state.segments,
-            mulVectorScalar(solution.fixup, mid),
-            handleBias
-          );
-          if (tension > maxHandleTension) {
-            high = mid;
-          } else {
-            low = mid;
-          }
-        }
-        scale = low;
-        tensionLimited = true;
-      }
-
-      if (scale > 0) {
-        applyFixup(
-          path,
-          ctx,
-          mulVectorScalar(solution.fixup, scale),
-          handleBias,
-          touched
-        );
-        state.iterations += 1;
-        anyMoved = true;
-      }
-      if (tensionLimited) {
+      } else if (state.tensionLimited) {
         settle(state, "partial", "tension-limited");
-      } else if (clamped) {
+      } else if (state.clamped) {
         settle(state, "partial", "clamped");
+      } else {
+        settle(state, "partial", "not-converged");
       }
     }
 
-    if (!anyMoved) {
-      break;
+    if (roundCoordinates) {
+      // Once, at the end, and only on points this operation moved. Rounding
+      // during the sweep would put the residual permanently above the
+      // convergence tolerance, so nothing would ever settle.
+      snapToGrid(path, touched, jointResidual, isBetter);
     }
-  }
 
-  for (const state of states) {
-    if (!state.done) {
-      settle(state, "partial", "not-converged");
-    }
-  }
+    const coordinates = Array.from(path.coordinates);
 
-  if (equalizeTension) {
+    // Per joint, whether ANY attempt ever put it somewhere else -- which is
+    // what separates "the correction was smaller than the grid can hold" from
+    // "an answer was drawn and the drawing beat it". Recorded here, before the
+    // best-state gate below can put the drawing back.
     for (const state of states) {
-      if (state.status === "skipped") {
+      if (state.everMoved) {
         continue;
       }
       const ctx = getJointContext(path, state.pointIndex);
-      if (!ctx.reason) {
-        equalizeJointSegments(path, ctx, touched);
-        // balance averages the two tensions of a segment, and that average can
-        // itself land above the ceiling — so the invariant is re-established
-        // here rather than assumed to have survived
-        state.tensionReduced =
-          enforceHandleTension(
-            path,
-            getJointContext(path, state.pointIndex),
-            maxHandleTension,
-            touched
-          ) || state.tensionReduced;
-      }
+      const stencil = ctx.reason
+        ? [state.pointIndex]
+        : [state.pointIndex, ...Object.values(ctx.indices)];
+      state.everMoved = stencil.some(
+        (index) =>
+          original[index * 2] !== coordinates[index * 2] ||
+          original[index * 2 + 1] !== coordinates[index * 2 + 1]
+      );
+    }
+
+    const score = jointResidual();
+    if (isBetter(score, best.score)) {
+      best = { score, coordinates };
+      bestStates = states;
+    }
+    const key = coordinates.join(",");
+    if (seen.has(key)) {
+      break;
+    }
+    seen.add(key);
+  }
+
+  // Put the best state back if the loop wandered off it. The geometry the
+  // command was handed counts as one of the candidates, so a command that can
+  // only make things worse leaves the drawing alone — which is what makes
+  // running it a second time do nothing.
+  states = bestStates ?? states;
+  for (let index = 0; index < path.numPoints; index++) {
+    const [x, y] = path.getPointPosition(index);
+    const bestX = best.coordinates[index * 2];
+    const bestY = best.coordinates[index * 2 + 1];
+    if (bestX !== x || bestY !== y) {
+      path.setPointPosition(index, bestX, bestY);
+      touched.add(index);
     }
   }
 
-  if (roundCoordinates) {
-    // Once, at the end, and only on points this operation moved. Rounding
-    // during the sweep would put the residual permanently above the
-    // convergence tolerance, so nothing would ever settle.
-    for (const index of [...touched].sort((a, b) => a - b)) {
+  // A verdict describes the drawing that was kept, never one that was computed
+  // and then dropped. The sweep works in floats and the answer has to land on
+  // the grid, so a joint can converge exactly and still have nothing to write:
+  // its correction was smaller than the grid can hold, and the whole-unit
+  // position it already sits on is the best one available. That is a real
+  // outcome and the report has to say so, rather than claiming success on a
+  // drawing it did not change.
+  //
+  // `partial` is read here as well as `harmonized`. A clamped or unconverged
+  // answer can be reverted whole by the gate -- a handle at its cusp floor
+  // carries a spike the fairness term reads as the worse curve -- and it used
+  // to go on reporting `partial/clamped` about a drawing nothing had touched.
+  //
+  // Two ways to end up unchanged and they are not the same news. `below-grid`
+  // means the correction was real and smaller than a whole unit, so the
+  // position the joint already sits on is the best one available. `reverted`
+  // means an answer was drawn, on the grid, and the drawing scored better than
+  // it -- which is the one a designer needs to see, because it says the command
+  // looked and decided against, not that it had nothing to do.
+  //
+  for (const state of states) {
+    if (state.status !== "harmonized" && state.status !== "partial") {
+      continue;
+    }
+    const ctx = getJointContext(path, state.pointIndex);
+    const stencil = ctx.reason
+      ? [state.pointIndex]
+      : [state.pointIndex, ...Object.values(ctx.indices)];
+    const moved = stencil.some((index) => {
       const [x, y] = path.getPointPosition(index);
-      const rounded = roundVector({ x, y });
-      if (rounded.x !== x || rounded.y !== y) {
-        path.setPointPosition(index, rounded.x, rounded.y);
-      }
+      return original[index * 2] !== x || original[index * 2 + 1] !== y;
+    });
+    if (!moved) {
+      state.status = "skipped";
+      state.reason = state.everMoved ? "reverted" : "below-grid";
     }
   }
 
   return states.map(
-    ({ pointIndex, contourIndex, status, reason, iterations, tensionReduced }) => ({
+    ({
       pointIndex,
       contourIndex,
       status,
       reason,
       iterations,
       tensionReduced,
+      construction,
+    }) => ({
+      pointIndex,
+      contourIndex,
+      status,
+      reason,
+      iterations,
+      tensionReduced,
+      construction,
     })
   );
 }
+
+// Copy back only the points that ended up somewhere else. Per point, never a
+// whole path: the recorder turns each one into an `=xy` change, and a whole
+// path assignment does not survive the round trip.
+function writeBack(path, working) {
+  for (let index = 0; index < path.numPoints; index++) {
+    const [x, y] = path.getPointPosition(index);
+    const [newX, newY] = working.getPointPosition(index);
+    if (newX !== x || newY !== y) {
+      path.setPointPosition(index, newX, newY);
+    }
+  }
+}
+
+// A joint neither the construction nor the finishing pass can touch. These are
+// structural: the point is not a smooth joint, or one of its neighbours is not a
+// curve, or the contour is generated. No amount of solving, balancing or
+// repairing changes any of them.
+const STRUCTURAL_SKIPS = new Set([
+  "not-smooth",
+  "not-curve-joint",
+  "generated-contour",
+  "open-contour-end",
+]);
+
+//
+// Harmonize the given joints.
+//
+// One control names one construction, and one construction gives one answer.
+// There is nothing here to choose between, so there is no field and no ranking
+// left at this level. What each construction still does internally is sweep
+// until it settles and search the whole-unit positions around its own answer.
+//
+// Until 2026-09-01 this drew several answers and ranked them on nine terms. The
+// rank on bending energy is what spent 85 units of movement on a joint that
+// arrived 4.177 per cent out: once every answer cleared the joint bound the
+// ranks tied, and the flattest answer won. See the design document.
+//
+export function harmonizePathInPlace(path, pointIndices, options = {}) {
+  const { continuity, method, equalizeHandles, ...rest } = {
+    ...HARMONIZE_DEFAULTS,
+    ...options,
+  };
+
+  const candidates = pointIndices?.length
+    ? [...new Set(pointIndices)].sort((a, b) => a - b)
+    : expandToJoints(path, undefined);
+
+  // G3 has one construction. The nearest answer on two equations steps by up to
+  // 2687 units between two adjacent frames of a quarter-unit drag and reaches a
+  // tension of 11.34, and moving the on-curve under G3 moves the drawing 1013
+  // units on `_external/problem-glyphs/I^1.json` against 201 under G2. Both
+  // measured 2026-09-01.
+  const construction = continuity === "G3" ? "canonical" : method;
+
+  // The drawing exactly as the press was handed it. The verdict is read against
+  // this at the end, so a joint can only be called harmonized if something
+  // actually moved there.
+  const startedPress = Array.from(path.coordinates);
+
+  // The preparation pass. It squares up a joint whose handles have drifted off
+  // one line, and every construction here solves against the tangent at the
+  // joint. It always runs: it fires only on a bent joint, and over every smooth
+  // joint of `N^1.json` and `I^1.json` it moved 0 of 88 points.
+  realignSmoothJointsInPlace(path, candidates, new Set());
+
+  // Position 2 is three steps rather than one, so the whole of it runs on a copy
+  // and only what ended up somewhere else is written back. Each step moves the
+  // same handles again, and every one of those writes would be a recorded
+  // change -- which is how a command that settles on the drawing it started
+  // from takes an undo step for nothing.
+  //
+  // The finishing pass: one balance, then one repair.
+  //
+  // Every construction here solves the joint and says nothing about how a
+  // segment's two handles compare, so it can leave a segment lopsided. The
+  // curvature is right and the handle configuration is not one a designer wants
+  // to work with -- measured on `N^1.json` point 12.
+  //
+  // So the pass balances each segment the way the Balance command does, and then
+  // repairs the joint with the nearest answer. It is ONE balance and ONE repair,
+  // not a loop.
+  //
+  // ORDER IS THE WHOLE OF IT. Balancing LAST gives the joint up: measured on
+  // `N^1.json` point 12, eight presses took it 0%, 6.9%, 9.5%, 13.0%, 17.8% and
+  // on to 63%. The repair goes last, and it is safe there because it is the
+  // smallest change that answers the joint, so it disturbs the balance it was
+  // handed as little as the joint allows.
+  //
+  // It is off under G3. The repair matches curvature and nothing else, so
+  // running it after a G3 answer throws the rate away.
+  //
+  const finishes = equalizeHandles && continuity === "G2";
+
+  // The pass runs on a copy and only the points that ended up somewhere else are
+  // written back. Both steps write the same handles the construction already
+  // wrote, and every one of those writes would be a recorded change -- which is
+  // how a command that settles on the drawing it started from takes an undo step
+  // for nothing.
+  const working = finishes ? path.copy() : path;
+
+  const report =
+    construction === "nearest"
+      ? harmonizeNearestInPlace(working, candidates, { ...rest, continuity })
+      : harmonizeByJointInPlace(working, candidates, {
+          ...rest,
+          continuity,
+          slideOnCurve: construction === "canonical-slide",
+          // The handles are what move at both positions. Position 3 adds the
+          // slide; it does not take the handles away. The design's own table
+          // reads "the two inner handle lengths, and the joint".
+          handleBias: 1,
+        });
+
+  if (!finishes) {
+    return report;
+  }
+
+  // Everywhere the joint is a real one. Balancing works on segments rather than
+  // joints, so handed the whole candidate list it evens segments at points that
+  // are not joints at all -- which is how it reached past a skeleton selection.
+  //
+  // A joint that arrived harmonic is NOT excluded. Its curvature needing no work
+  // says nothing about how its two handles compare, and evening them is the
+  // whole of what this pass is for. Position 1 reports `already-harmonic` far
+  // more often than the other two, because it measures the joint relatively and
+  // squaring the joint up beforehand often settles it -- so gating on "the
+  // construction did something" turned the pass off almost everywhere at
+  // position 1.
+  const reached = report
+    .filter((state) => !STRUCTURAL_SKIPS.has(state.reason))
+    .map((state) => state.pointIndex);
+  if (!reached.length) {
+    writeBack(path, working);
+    return report;
+  }
+
+  balancePathInPlace(working, reached);
+  const repaired = harmonizeNearestInPlace(working, reached, {
+    ...rest,
+    continuity,
+  });
+
+  writeBack(path, working);
+
+  //
+  // One verdict per joint, describing the drawing that was kept. The joint
+  // construction names which of G3 and G2 did the work; the repair knows
+  // whether the joint ended matched. Neither alone is the answer.
+  //
+  const repairedByPoint = new Map(repaired.map((state) => [state.pointIndex, state]));
+  for (const state of report) {
+    if (state.status === "skipped" && STRUCTURAL_SKIPS.has(state.reason)) {
+      continue;
+    }
+
+    // A verdict describes the drawing that was kept, and the three steps can
+    // hand the drawing back exactly as they found it. Measured against where
+    // the press started, not against where any one step started: balancing can
+    // move a handle that the repair moves straight back.
+    const ctx = getJointContext(path, state.pointIndex);
+    const stencil = ctx.reason
+      ? [state.pointIndex]
+      : [state.pointIndex, ...Object.values(ctx.indices)];
+    const moved = stencil.some((index) => {
+      const [x, y] = path.getPointPosition(index);
+      return startedPress[index * 2] !== x || startedPress[index * 2 + 1] !== y;
+    });
+
+    const after = repairedByPoint.get(state.pointIndex);
+    if (after?.status === "partial") {
+      // The repair ran out of room, so the joint is not matched however well
+      // the construction did before it.
+      state.status = "partial";
+      state.reason = after.reason;
+    } else if (state.status === "partial") {
+      // The construction could not finish this joint, and the polish never ran
+      // there. Nothing below may talk it up.
+    } else if (moved) {
+      state.status = "harmonized";
+      state.reason = undefined;
+    } else if (state.status === "harmonized") {
+      // The construction reported an answer and the drawing came back unchanged.
+      state.status = "skipped";
+      state.reason = "below-grid";
+    }
+  }
+  return report;
+}
+
+//
+// Balance the segments a selection touches, and nothing else.
+//
+// Balancing puts a segment's two handles at one shared fraction of the way to
+// where their lines cross. It is a statement about ONE segment, and it says
+// nothing about the joints at either end of it.
+//
+// It is its own command because it cannot be a step of harmonizing. Both want
+// the same handles: a segment's end curvature is set by its last three control
+// points, so the inner handle is what harmonizing moves to make two segments
+// agree at a joint, and it is also half of what balancing sets. Whichever runs
+// last wins outright. Run inside one press they chase each other — measured on
+// `N^1` point 12, forty presses walked the tensions from 0.85 down to 0.815 and
+// the press was never a fixed point. Run balance last instead and the joint is
+// given up: the same point went 0%, 6.9%, 9.5%, 13.0%, 17.8% and on to 63%
+// across eight presses. Two exact answers to the same two numbers do not exist,
+// so the designer picks the order and sees each effect on its own.
+//
+// The call shape and the report shape follow the other commands, so the panel
+// treats all three alike. Each entry names the segment by the on-curve it
+// starts at.
+//
+export function balancePathInPlace(path, pointIndices) {
+  const report = [];
+  const seen = new Set();
+  const touched = new Set();
+  const candidates = pointIndices?.length
+    ? [...new Set(pointIndices)].sort((a, b) => a - b)
+    : expandToJoints(path, undefined);
+
+  for (const pointIndex of candidates) {
+    const point = path.getPoint(pointIndex);
+    if (!point || point.type) {
+      continue;
+    }
+    const [contourIndex, contourPointIndex] = path.getContourAndPointIndex(pointIndex);
+    // Both segments the selected on-curve is an end of. A segment shared by two
+    // selected points is balanced once: doing it twice is the same answer, and
+    // reporting it twice reads as two segments.
+    // The segment arriving at this on-curve, and the one leaving it.
+    for (const offset of [-3, 0]) {
+      const indices = [0, 1, 2, 3].map((step) =>
+        neighborIndex(path, contourIndex, contourPointIndex, offset + step)
+      );
+      if (indices.some((index) => index === undefined)) {
+        continue;
+      }
+      const start = indices[0];
+      if (seen.has(start)) {
+        continue;
+      }
+      seen.add(start);
+      const points = indices.map((index) => path.getPoint(index));
+      if (points[0].type || points[3].type || !points[1].type || !points[2].type) {
+        report.push({
+          segmentIndex: start,
+          contourIndex,
+          status: "skipped",
+          reason: "not-curve-segment",
+        });
+        continue;
+      }
+      const positions = segmentPositions(path, indices);
+      // Three shapes have no balance to state, and the donor skips the same
+      // three: both handles past their own crossing, both collapsed onto their
+      // own on-curve, and neither reaching at all.
+      const startTension = handleTension(positions, "start");
+      const endTension = handleTension(positions, "end");
+      if (
+        (!startTension && !endTension) ||
+        (startTension > 1 && endTension > 1) ||
+        (startTension < 0.01 && endTension < 0.01)
+      ) {
+        report.push({
+          segmentIndex: start,
+          contourIndex,
+          status: "skipped",
+          reason: "degenerate",
+        });
+        continue;
+      }
+      // Parallel handle lines never cross, so there is no reach for a tension to
+      // be a fraction of; an S has its two handles on opposite sides of its own
+      // chord, and no one tension describes it. Both are refused above and by
+      // the tension reader here, which returns nothing to balance.
+      //
+      // Balanced, rounded, and balanced again from where the rounding put it.
+      // A balanced pair rounded to whole units is no longer exactly balanced, so
+      // one pass leaves a little for the next press to find; three fixed passes
+      // reach the position the rounding is a fixed point of. Fixed, because a
+      // loop that picks its own trip count cannot be continuous in its input.
+      //
+      // The two tensions are brought together holding their HARMONIC MEAN
+      // fixed, because that mean is the segment's own tension — how full the
+      // curve is. So balancing changes the split and nothing else, which is
+      // exactly what the Tunni gizmo's equalize gesture does, and there is one
+      // copy of the rule.
+      //
+      // Choosing the fraction by least squares over the curve instead moves the
+      // drawing least in POSITION, and it was chosen for that. On a lopsided
+      // segment it inflates the curve badly: 21 per cent at 0.375 against
+      // 1.125, 64 per cent at 0.225 against 1.200, 136 per cent at 0.150
+      // against 1.350. A balance is not the place to decide how full a curve is.
+      let settled = positions;
+      for (let pass = 0; pass < 3; pass++) {
+        const tensions = {
+          start: handleTension(settled, "start"),
+          end: handleTension(settled, "end"),
+        };
+        const balanced = balanceSegmentPreservingTension(settled, tensions);
+        const rounded = [
+          settled[0],
+          { x: Math.round(balanced[1].x), y: Math.round(balanced[1].y) },
+          { x: Math.round(balanced[2].x), y: Math.round(balanced[2].y) },
+          settled[3],
+        ];
+        const still =
+          rounded[1].x === settled[1].x &&
+          rounded[1].y === settled[1].y &&
+          rounded[2].x === settled[2].x &&
+          rounded[2].y === settled[2].y;
+        settled = rounded;
+        if (still) {
+          break;
+        }
+      }
+      const placed = [settled[1], settled[2]];
+      const moved = [0, 1].filter(
+        (i) => placed[i].x !== positions[i + 1].x || placed[i].y !== positions[i + 1].y
+      );
+      if (!moved.length) {
+        // Nothing to write means the drawing is already as balanced as whole
+        // units can express it. It is not a refusal.
+        report.push({
+          segmentIndex: start,
+          contourIndex,
+          status: "skipped",
+          reason: "already-balanced",
+        });
+        continue;
+      }
+      for (const i of [0, 1]) {
+        writePoint(path, touched, indices[i + 1], placed[i]);
+      }
+      report.push({ segmentIndex: start, contourIndex, status: "balanced" });
+    }
+  }
+
+  return report;
+}
+
+// Both handles to the harmonic mean of the two tensions, along their own
+// directions. Length is tension times that end's own reach, so each handle keeps
+// its direction and only its length changes.
+function balanceSegmentPreservingTension(points, tensions) {
+  const tunniPoint = calculateTunniPoint(points);
+  if (!tunniPoint) {
+    return points;
+  }
+  const equal = equalizeTensions(tensions, 1);
+  const place = (anchor, tension) => {
+    const ray = subVectors(tunniPoint, anchor);
+    return { x: anchor.x + ray.x * tension, y: anchor.y + ray.y * tension };
+  };
+  return [
+    points[0],
+    place(points[0], equal.start),
+    place(points[3], equal.end),
+    points[3],
+  ];
+}
+
+export function balancePath(path, pointIndices) {
+  const working = path.copy();
+  const report = balancePathInPlace(working, pointIndices);
+  return { path: working, report };
+}
+
+function report({
+  pointIndex,
+  contourIndex,
+  status,
+  reason,
+  iterations,
+  tensionReduced,
+  construction,
+}) {
+  return {
+    pointIndex,
+    contourIndex,
+    status,
+    reason,
+    iterations,
+    tensionReduced,
+    construction,
+  };
+}
+
+// Exported for the test suite alone: the score and the order it ranks in.
+export { scoreJoints as scoreJointsForTest, isBetter as isBetterForTest };

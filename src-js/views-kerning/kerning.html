@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link href="/css/shared.css" rel="stylesheet" />
+    <link href="/css/core.css" rel="stylesheet" />
+    <link href="./assets/kerning.css" rel="stylesheet" />
+    <link href="/css/tooltip.css" rel="stylesheet" />
+    <title>Kerning</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "fontra/": "/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <modal-dialog></modal-dialog>
+    <div id="global-loader-spinner"></div>
+    <div class="top-bar-container"></div>
+    <!-- Layout overhaul (docs/superpowers/specs/2026-09-05-kerning-view-layout-overhaul-design.md
+         §1): three resizable columns, replacing the old two-pane
+         (scene | parameters+table) split. The drag-splitter mechanism
+         itself is NOT reimplemented here -- both outer columns reuse
+         views-editor's own Sidebar class (src-js/views-editor/src/sidebar.js,
+         exported cross-view via that package's exports map, rail R-A) for
+         its resize-gutter drag math and CSS-custom-property width storage.
+         Only the "left"/"right" identifiers are shared with the class's
+         existing convention; the actual width values are stored under
+         kerning-view-specific localStorage keys
+         (fontra-sidebar-width-<identifier>, see initColumnSplitters in
+         kerning.js) so they never collide with the editor's own sidebar
+         widths -- see kerning.js's initColumnSplitters for the identifiers
+         actually used. -->
+    <div class="main-container">
+      <!-- §1.1: the results table, left column. Moved here from the old
+           right-hand #kerning-panel-container; reworked into the four-bucket
+           model (unique×unique / unique×class / class×unique / class×class)
+           in kerning.js -- see renderPairTable's own comment. -->
+      <div class="kerning-column sidebar-container kerning-left">
+        <div class="sidebar-resize-gutter" data-grow-direction="right"></div>
+        <div id="kerning-pairtable-section">
+          <div id="kerning-pairtable-controls">
+            <label for="kerning-pairtable-glyph">Glyph</label>
+            <input
+              type="text"
+              id="kerning-pairtable-glyph"
+              placeholder="A, Adieresis, @ClassName, o!"
+              title="One glyph: all its pairs. Multiple glyphs: pairs between them. A trailing ! shows a class member's own rows beside its class rule. Ctrl-click replaces; Ctrl+Shift-click toggles a glyph. Shift-click in preview narrows to adjacent pairs."
+            />
+
+            <span
+              id="kerning-pairtable-glyph-error"
+              class="kerning-pairtable-input-error"
+              role="status"
+            ></span>
+            <button
+              id="kerning-preview-pairs-filter"
+              type="button"
+              hidden
+              title="Clear the preview-pair filter"
+            ></button>
+
+            <div id="kerning-pairtable-filters">
+              <select id="kerning-pairtable-filter-side" title="Side">
+                <option value="both">Left or right</option>
+                <option value="left">Glyph on left</option>
+                <option value="right">Glyph on right</option>
+              </select>
+              <!-- Task 5, spec F16: the sign filter (negative/positive) is
+                   removed -- signs stay visible on Current/Proposed/Delta,
+                   magnitude filtering is the Minimum/Maximum |Δ| pair
+                   below. -->
+              <!-- Task 17, spec F01: the current/applied/stale filter is
+                   removed entirely. Its replacement is the Stale glyphs
+                   section (#kerning-stale-section) below, and a stale row's
+                   own warning presentation (F23) always stays visible
+                   regardless of any other filter. -->
+              <!-- Task 11, spec F17: renamed from "Show junk." Hidden rows
+                   reappear here with the distinguishable hidden styling
+                   (kerning.css) plus their own restore (eye) action. -->
+              <label
+                ><input type="checkbox" id="kerning-pairtable-filter-hidden" /> Show
+                hidden</label
+              >
+              <!-- Task 5, spec F13: "Provide a Columns menu with independent
+                   visibility controls for Current, Proposed, and Delta."
+                   Hiding a column here changes display only -- it never
+                   changes which rows are shown (that's the numeric filters
+                   below) or which rows an action targets. -->
+              <fieldset id="kerning-pairtable-columns">
+                <legend>Columns</legend>
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-show-current" checked />
+                  Current</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-show-proposed"
+                    checked
+                  />
+                  Proposed</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-show-suggestion"
+                    checked
+                  />
+                  Delta</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-show-apply" checked />
+                  Apply</label
+                >
+              </fieldset>
+              <!-- Task 5, spec F13: exact predicate `Current == 0 &&
+                   Proposed != 0` -- a row whose stored value is zero but
+                   whose suggestion is not. Does not apply to a stale/
+                   unavailable suggestion (kerning.js's pairRowVisible), so
+                   that warning stays discoverable regardless of this
+                   filter. -->
+              <label
+                ><input type="checkbox" id="kerning-pairtable-hide-zero-current" /> Hide
+                zero-current suggestions
+                <span
+                  class="kerning-pairtable-filter-help"
+                  title="Hides rows where the stored Current value is 0 but the Proposed suggestion is not. A stored zero can still be a real, explicit rule."
+                  >?</span
+                ></label
+              >
+              <!-- Task 9, spec F09, ledger §8.3: Unicode types, one
+                   multi-select filter -- reuses the Columns fieldset's own
+                   "grouped checkboxes under a legend" idiom immediately
+                   above, rather than a bespoke dropdown widget, for the
+                   same OR-combined multi-select behavior. Non-Unicode
+                   glyphs is unchecked by default (F09); every other box is
+                   checked by default (kerning.js's own filter-model
+                   default), matching every other checkbox filter's
+                   non-restrictive default. Replaces the old Hide
+                   non-standalone/numbers/punctuation checkboxes (Backlog
+                   item 3) entirely. -->
+              <fieldset id="kerning-pairtable-unicode-types">
+                <legend>Unicode types</legend>
+                <label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-unicode-uppercase"
+                    checked
+                  />
+                  Uppercase</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-unicode-lowercase"
+                    checked
+                  />
+                  Lowercase</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-unicode-punctuation"
+                    checked
+                  />
+                  Punctuation</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-unicode-symbols"
+                    checked
+                  />
+                  Symbols</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-unicode-marks"
+                    checked
+                  />
+                  Combining diacritics</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-unicode-numbers"
+                    checked
+                  />
+                  Numbers</label
+                >
+                <label
+                  ><input type="checkbox" id="kerning-pairtable-unicode-non-unicode" />
+                  Non-Unicode glyphs</label
+                >
+                <!-- Task 9, plan's own bullet: "if the filter still excludes
+                     a named request, explain the empty result rather than
+                     silently showing nothing unexplained." Ledger §8.2: the
+                     Non-Unicode filter governs the results TABLE only (not
+                     the pair preview) -- a /glyphname or %glyphname%! token
+                     naming a non-Unicode glyph stays out of the table while
+                     this box is unchecked; this note says why, rather than
+                     leaving an unexplained gap. -->
+                <span
+                  id="kerning-pairtable-nonunicode-note"
+                  class="kerning-pairtable-filter-help"
+                ></span>
+              </fieldset>
+              <!-- Task 9, spec F14: Class relationship, the same
+                   OR-combined multi-select idiom as Unicode types above.
+                   All four checked by default -- new filter, no prior
+                   equivalent to preserve, so "everything" is the
+                   non-restrictive default. -->
+              <fieldset id="kerning-pairtable-relationships">
+                <legend>Class relationship</legend>
+                <label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-rel-class-class"
+                    checked
+                  />
+                  Class-to-class</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-rel-class-unique"
+                    checked
+                  />
+                  Class-to-unique</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-rel-unique-unique"
+                    checked
+                  />
+                  Unique-to-unique</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-rel-exceptions"
+                    checked
+                  />
+                  Class exceptions</label
+                >
+              </fieldset>
+              <!-- Task 9, spec F14: table Glyphset filter -- single-select,
+                   All by default (ledger §8.4). Options are populated in
+                   kerning.js from the project's already-added glyphsets
+                   (glyphsets-controller.js); this control does not offer an
+                   "add a glyphset" UI of its own. Distinct from the Font
+                   mode preview glyphset selector (F08/Task 13) -- neither
+                   changes the other. -->
+              <label
+                >Glyphset
+                <select id="kerning-pairtable-filter-glyphset" title="Table glyphset">
+                  <option value="">All</option>
+                </select></label
+              >
+              <!-- Task 8, spec F22: broad exposure of every grouped member's
+                   individual row at once, without typing "%name%!" for each
+                   one -- off by default. Named glyphs
+                   (getExposedMemberNames) expose individually regardless of
+                   this checkbox. -->
+              <label
+                ><input type="checkbox" id="kerning-pairtable-show-members" /> Show
+                individual class members</label
+              >
+              <!-- Backlog item 11: the old two-state sort toggle button is
+                   replaced by clicking a column header directly (one sort
+                   UI, not two) -- see kerning-pairtable-sortable th's above. -->
+            </div>
+
+            <!-- Task 4, spec F20: "Remove Reset to current, Apply all, and
+                 the manual-value input. Keep Apply selected and Reset
+                 selected." Reset selected writes an explicit 0 and needs a
+                 second press on an unchanged ticked set -- see
+                 resetSelectedPairRows/pressReset in kerning.js. -->
+            <div id="kerning-pairtable-actions">
+              <button id="kerning-pairtable-apply-selected" type="button">
+                Apply selected
+              </button>
+              <button id="kerning-pairtable-reset-zero" type="button">
+                Reset selected to zero
+              </button>
+              <!-- Task 3, spec F24: clears both the highlighted (preview)
+                   and ticked (action-target) selection layers. -->
+              <button id="kerning-pairtable-deselect" type="button">Deselect</button>
+            </div>
+
+            <!-- The Derive button, its tolerance field and the proposals
+                 list moved to the class panel (design doc §1.2) -- see
+                 #autokern-class-panel-slot below. Design doc §0: kern-row
+                 clustering (the only tactic that used a tolerance) is
+                 removed, so no tolerance control exists anywhere anymore. -->
+          </div>
+
+          <!-- Task 8, spec F19: Default / Potential exceptions tabs replace
+               the old four bucket sections (F11) -- one row list, one table,
+               kerning.js's renderPairTable decides ROW VISIBILITY from each
+               row's kind/exposure/tab, not which of several tables to
+               populate. See activeResultsTab / setResultsTab in kerning.js. -->
+          <div id="kerning-pairtable-tabs" role="tablist">
+            <button
+              type="button"
+              class="kerning-pairtable-tab"
+              data-tab="default"
+              role="tab"
+              aria-selected="true"
+            >
+              Default
+            </button>
+            <button
+              type="button"
+              class="kerning-pairtable-tab"
+              data-tab="potential"
+              role="tab"
+              aria-selected="false"
+            >
+              Potential exceptions
+            </button>
+          </div>
+
+          <!-- Task 8, spec F32: Glyph L (name) / Current / Proposed / Delta /
+               Glyph R (name) / Exception / Hide, in that order. The tick
+               lives inside the Glyph L cell (buildPairRowElement/
+               buildClassSummaryRowElement in kerning.js) so it does not add
+               an unrequested column. A class-summary row and an ordinary
+               pair row share this one table/thead -- a class-summary row is
+               not a separate display element (kerning.js's
+               buildClassSummaryRowElement wires the same selectRow/tickRow
+               mechanism buildPairRowElement uses). -->
+          <div class="kerning-pairtable-group">
+            <table class="kerning-pairtable-table">
+              <thead>
+                <tr>
+                  <!-- Backlog item 13's select-all is now one checkbox for
+                       the one table (no more per-bucket duplicates) --
+                       lives in the Glyph L header cell, same "tick belongs
+                       with the name column" placement F32 uses for a row's
+                       own tick. Sort label is its own span so
+                       updateSortHeaders (kerning.js) can rewrite just the
+                       label text without erasing the checkbox. -->
+                  <th
+                    class="kerning-pairtable-sortable"
+                    data-sort-column="glyph"
+                    data-sort-label="Glyph L"
+                  >
+                    <input
+                      type="checkbox"
+                      class="kerning-pairtable-select-all"
+                      title="Select all loaded rows"
+                    />
+                    <span class="kerning-pairtable-sort-label"></span>
+                  </th>
+                  <th
+                    class="kerning-pairtable-current-col kerning-pairtable-sortable"
+                    data-sort-column="current"
+                    data-sort-label="Current"
+                  >
+                    <span class="kerning-pairtable-sort-label"></span>
+                  </th>
+                  <!-- Task 5, spec F13: Proposed is its own column,
+                       independently hideable from Current and Delta. -->
+                  <th class="kerning-pairtable-proposed-col">Proposed</th>
+                  <th
+                    class="kerning-pairtable-suggestion-col kerning-pairtable-sortable"
+                    data-sort-column="delta"
+                    data-sort-label="Delta"
+                  >
+                    <span class="kerning-pairtable-sort-label"></span>
+                  </th>
+                  <th
+                    class="kerning-pairtable-sortable"
+                    data-sort-column="glyph"
+                    data-sort-label="Glyph R"
+                  >
+                    <span class="kerning-pairtable-sort-label"></span>
+                  </th>
+                  <!-- The row's one write action, as an icon in its own
+                       toggleable column (Columns > Apply). A class-summary
+                       row shows a check that writes the class rule. A pair
+                       row shows an open lock that saves an exception, or a
+                       red closed lock that removes the exception it already
+                       has. On the Potential exceptions tab a candidate pair
+                       shows a check that saves its proposed value. F32's
+                       separate Exception column is gone: each of these is
+                       the same action in the same place, and no row ever
+                       carries two of them. -->
+                  <th class="kerning-pairtable-apply-col">Apply</th>
+                  <!-- F32's Hide action -- Task 11 replaces today's Mark
+                       junk button with the eye control; this column is
+                       where it already lives. -->
+                  <th>Hide</th>
+                </tr>
+              </thead>
+              <tbody id="kerning-pairtable-body"></tbody>
+            </table>
+            <div class="kerning-pairtable-load-controls">
+              <span
+                id="kerning-pairtable-load-status"
+                role="status"
+                aria-live="polite"
+              ></span>
+              <button id="kerning-pairtable-load-more" type="button" hidden>
+                Load next 100
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- §1.2: the middle column. Top: the scene (moved from the old
+           #kerning-view-container's standalone position). Bottom: an empty
+           slot for the class panel, built by a different worker. Not built
+           here: the class panel's own contents (New class / Derive / class
+           list / glyph-swatch strip / Show class dialog). Task 13, spec F08
+           added a third, fixed-height row in between -- the preview toolbar
+           (.kerning-preview-toolbar, below #kerning-middle-top). -->
+      <div class="kerning-column kerning-middle">
+        <!-- Task 2 (part6): the drag-resizable divider between the two rows.
+             NOT a views-editor Sidebar instance -- see
+             initMiddleRowSplitter's own comment in kerning.js for why a
+             view-local handler, mirroring Sidebar's own mechanism (a CSS
+             custom property write on pointer-drag, the same
+             sidebar-resizing cursor-lock convention) without touching the
+             shared class, was judged lower-risk than generalizing Sidebar to
+             a vertical/row axis it has never needed before. A direct child
+             of .kerning-middle itself (NOT nested inside #kerning-middle-top,
+             which has overflow:hidden -- nesting it there was tried first
+             and live-tested as visually/hit-test broken: the gutter's own
+             -2px straddle of the row boundary put half of it outside
+             #kerning-middle-top's own box, where overflow:hidden clipped it,
+             so document.elementFromPoint at the gutter's own center returned
+             #kerning-middle-bottom, not the gutter, and no drag could ever
+             start). .kerning-middle itself has no overflow rule (only its
+             two row children do), so a gutter positioned directly against
+             ITS box is never clipped. -->
+        <div id="kerning-middle-resize-gutter"></div>
+        <div id="kerning-middle-top">
+          <div id="kerning-view-container">
+            <!-- id is "edit-canvas", not "kerning-canvas": edit-tools-metrics.js's
+                 SidebearingTool/KerningTool (workstream 17) hardcode
+                 document.querySelector("#edit-canvas") to forward events, the
+                 same id editor.html's own canvas uses. This view reuses those
+                 tools unmodified (spec §8: import across views, never copy),
+                 so it must match the DOM contract they expect rather than
+                 patch the shared tool code. -->
+            <canvas
+              id="edit-canvas"
+              class="focus-preferred"
+              tabindex="1"
+              lang="en"
+              style="position: absolute; width: 100%; height: 100%"
+            ></canvas>
+            <div id="metric-handle-container">
+              <!-- content will be filled in dynamically -->
+            </div>
+            <!-- Backlog #9: eye icon, preview pane's own upper-right corner,
+                 master on/off for the suggestion-preview overlay (initSuggestionPreviewSettingsSection
+                 fills this in with an <icon-button>, same construction as the
+                 class panel's own delete button). -->
+            <div
+              id="kerning-suggestion-preview-toggle-container"
+              style="position: absolute; top: 0; right: 0; z-index: 1"
+            ></div>
+            <div
+              id="kerning-tool-switcher"
+              style="position: absolute; top: 0; left: 0; z-index: 1"
+            >
+              <button data-tool="pointer-tool" title="Pointer">Pointer</button>
+              <button data-tool="sidebearing-tool" title="Sidebearing">
+                Sidebearing
+              </button>
+              <button data-tool="kerning-tool" title="Kerning">Kerning</button>
+              <button data-tool="hand-tool" title="Hand">Hand</button>
+            </div>
+            <!-- Design doc §2: font mode's glyph grid, reusing
+                 font-overview.js's own grid/selection machinery (GlyphCellView
+                 + GlyphOrganizer, rail R-A) -- see initFontModeSection in
+                 kerning.js for why composition (mounting these two pieces),
+                 not importing/subclassing FontOverviewController itself, is
+                 the reuse path. Hidden by default; setChipMode toggles
+                 kerning-font-grid-hidden alongside hiding the canvas. -->
+            <div
+              id="kerning-font-grid-container"
+              class="kerning-font-grid-hidden"
+            ></div>
+          </div>
+        </div>
+        <!-- Task 13, spec F08: "Place Phrase / Pair / Font controls in their
+             own section with an opaque background, outside the drawable
+             preview area." This used to be #kerning-chip-selector,
+             position:absolute INSIDE #kerning-view-container (the canvas's
+             own box) -- an overlay that could sit on top of drawn glyphs.
+             It is now its own grid row, a sibling of #kerning-middle-top and
+             #kerning-middle-bottom (see .kerning-preview-toolbar in
+             kerning.css for the row-height wiring), with a real opaque
+             background instead of floating transparently over the canvas.
+             The Font-mode Glyphset selector (same finding) lives in this
+             same row -- populated and wired in kerning.js's
+             initFontModeSection, disabled outside Font mode. This is a
+             SEPARATE control/state from #kerning-pairtable-filter-glyphset
+             (the table's own Glyphset filter, F14) -- distinct ids,
+             distinct controllers, neither one's kerning.js code touches the
+             other's state. -->
+        <div class="kerning-preview-toolbar">
+          <div id="kerning-chip-selector">
+            <button data-chip="phrase" type="button" title="Phrase">Phrase</button>
+            <button data-chip="pair" type="button" title="Pair" disabled>Pair</button>
+            <!-- Design doc §2: a third chip value, "font" -- a
+                 font-overview-style multi-select glyph grid, swapped in for
+                 the canvas by kerning.js's setChipMode (see
+                 initFontModeSection/showFontModeGrid). Unlike "pair", this
+                 one starts enabled -- font mode needs no prior selection to
+                 be useful. -->
+            <button data-chip="font" type="button" title="Font">Font</button>
+          </div>
+          <label for="kerning-font-preview-glyphset-select">Glyphset</label>
+          <select
+            id="kerning-font-preview-glyphset-select"
+            title="Font mode glyphset"
+            disabled
+          >
+            <option value="" selected>All</option>
+          </select>
+        </div>
+        <div id="kerning-middle-bottom">
+          <!-- Class panel, §1.2 bottom row. The static structure below is
+               THIS worker's own delimited addition. Task 13, spec F28: the
+               font-mode "Add selection to selected class" button is appended
+               at runtime (initFontModeAddToClassActions in kerning.js)
+               directly INTO #autokern-class-new-controls below, the same row
+               as Left/Right/Both/Derive -- it used to be its own sibling
+               block here, which was the confirmed cause of this pane needing
+               a vertical scrollbar (that block's height was unaccounted for
+               by the fixed-height grid row above). -->
+          <div id="autokern-class-panel-slot">
+            <div id="autokern-class-panel">
+              <!-- §1.2 "New class" control: 1st / 2nd / both, each opening a
+                   name+members dialog (kerning.js's createNewClassViaDialog). -->
+              <div id="autokern-class-new-controls">
+                <span>New class:</span>
+                <button
+                  id="autokern-class-new-side1"
+                  type="button"
+                  title="Kerning side 1 (left member of a pair)"
+                >
+                  Left
+                </button>
+                <button
+                  id="autokern-class-new-side2"
+                  type="button"
+                  title="Kerning side 2 (right member of a pair)"
+                >
+                  Right
+                </button>
+                <!-- Backlog item 12: "Left"/"Right" name which side of a kern
+                     PAIR a class's members sit on (side1 = left glyph of the
+                     pair, side2 = right glyph), not e.g. reading direction --
+                     a "?" affordance states that convention explicitly,
+                     reusing tooltip.css's data-tooltip attribute convention
+                     (see the per-row class-list badge's own title attribute,
+                     kerning.js's buildClassListRowElement, for the same
+                     wording via the browser's native tooltip instead). -->
+                <span
+                  class="autokern-help-tooltip"
+                  data-tooltip="Left = this class's members appear as the LEFT glyph of a kerning pair. Right = the RIGHT glyph."
+                  data-tooltipposition="bottom"
+                  >?</span
+                >
+                <button id="autokern-class-new-both" type="button">Both</button>
+                <!-- §1.2 "Derive" control, relocated here from the pair-table
+                     section (design doc §0: no tolerance field anymore --
+                     composite inheritance needs none, and kern-row
+                     clustering, the only tactic that used one, is removed).
+                     Same element id as before kerning.js's existing
+                     deriveClasses() wiring (initPairTableSection) still
+                     finds it by that id -- only its DOM location moved. -->
+                <button id="kerning-derive-button" type="button">Derive classes</button>
+              </div>
+              <!-- Same id/rendering as before (renderDeriveProposals) --
+                   only relocated. -->
+              <div id="kerning-derive-proposals"></div>
+
+              <!-- Class list and its selected class's contents sit side by
+                   side, not stacked -- the list is a nav column, the strip
+                   is what it's navigating to, same as e.g. a mail app's
+                   folder-list-beside-message-list convention. -->
+              <div id="autokern-class-panel-body">
+                <!-- §1.2 "Class list": one flat list, every class from both
+                     groupsSide1 and groupsSide2 (kerning.js's renderClassList). -->
+                <div id="autokern-class-list"></div>
+
+                <!-- §1.2 "Glyph-swatch strip": the selected class's members,
+                     as glyph-cell tiles (kerning.js's renderClassSwatchStrip). -->
+                <div id="autokern-class-swatch-strip"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- §1.3: the right column -- status strip on top (always visible),
+           then parameters, then calibration (collapsed by default). The
+           phrase field (spec §7.1) is not named in the design doc's §1.3
+           enumeration; kept here, directly below the status strip and above
+           parameters, since nothing in the design doc relocates or removes
+           it -- see the workstream report for this inference. -->
+      <div class="kerning-column sidebar-container kerning-right">
+        <div class="sidebar-resize-gutter" data-grow-direction="left"></div>
+        <div id="kerning-panel-container">
+          <div id="kerning-status-section">
+            <div id="kerning-status-source-row">
+              <label for="kerning-status-source-select">Source</label>
+              <select id="kerning-status-source-select"></select>
+            </div>
+            <div id="kerning-status-counts">
+              <span id="kerning-status-cached"></span>
+              <span id="kerning-status-threshold"></span>
+              <span id="kerning-status-junk"></span>
+              <span id="kerning-status-coverage"></span>
+            </div>
+          </div>
+
+          <!-- Task 17, spec F01/F02: replaces the removed current/applied/
+               stale results filter. "Affected glyphs, their count, a rerun
+               action, and an explicit empty state" (F01), "Re-run stale
+               glyphs" with progress and the scope being processed (F02).
+               kerning.js's initStaleSection/renderStaleSection/
+               runStaleGlyphs own this markup. -->
+          <div id="kerning-stale-section">
+            <h3>Stale and new glyphs</h3>
+            <p id="kerning-stale-empty">No glyphs need recalculation.</p>
+            <p id="kerning-stale-summary" hidden>
+              <span id="kerning-stale-count"></span>
+              <span id="kerning-stale-names"></span>
+            </p>
+            <button id="kerning-stale-rerun-button" type="button" disabled>
+              Re-run stale and new glyphs
+            </button>
+            <p id="kerning-stale-progress"></p>
+          </div>
+
+          <!-- Task 18, spec F03, ledger §8.6: four metrics, each with its
+               own scope disclosed via data-tooltip (hover/focus, tooltip.css)
+               rather than left implicit. "Stale glyphs" and "Potential
+               exceptions" and "Hidden results" are clickable (they have an
+               existing, single-control target to jump to); "Saved pair
+               exceptions" has none (see kerning.js's initAnalyticsSection
+               comment) and is deliberately plain text, not a button. -->
+          <div id="kerning-analytics-section">
+            <h3>Analytics</h3>
+            <dl id="kerning-analytics-list">
+              <div class="kerning-analytics-row">
+                <dt>
+                  <button
+                    id="kerning-analytics-stale"
+                    type="button"
+                    class="kerning-analytics-metric-button"
+                    data-tooltip="Scope: active source, every glyph currently stale — ignores the table's own filters. Activates the Stale glyphs panel above."
+                  >
+                    Stale glyphs
+                  </button>
+                </dt>
+                <dd id="kerning-analytics-stale-count">0 glyphs</dd>
+              </div>
+              <div class="kerning-analytics-row">
+                <dt
+                  class="kerning-analytics-metric-label"
+                  data-tooltip="Scope: all sources combined, every saved glyph-to-glyph exception in the font — ignores the table's own filters. No dedicated view to jump to yet."
+                >
+                  Saved pair exceptions
+                </dt>
+                <dd id="kerning-analytics-exceptions-count">0 pairs</dd>
+              </div>
+              <div class="kerning-analytics-row">
+                <dt>
+                  <button
+                    id="kerning-analytics-potential"
+                    type="button"
+                    class="kerning-analytics-metric-button"
+                    data-tooltip="Scope: current filtered view — pairs outside class tolerance, under today's filters. Activates the Potential exceptions tab."
+                  >
+                    Potential exceptions
+                  </button>
+                </dt>
+                <dd id="kerning-analytics-potential-count">0 pairs</dd>
+              </div>
+              <div class="kerning-analytics-row">
+                <dt>
+                  <button
+                    id="kerning-analytics-hidden"
+                    type="button"
+                    class="kerning-analytics-metric-button"
+                    data-tooltip="Scope: active source, every hidden pair and hidden class row — ignores the table's own filters. Turns on Show hidden."
+                  >
+                    Hidden results
+                  </button>
+                </dt>
+                <dd id="kerning-analytics-hidden-count">0 rows</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div id="kerning-phrase-section">
+            <select id="kerning-preset-select">
+              <option value="" selected disabled>Presets…</option>
+            </select>
+            <!-- Backlog item 1: load an additional presets file at runtime.
+                 Hidden file input, same pattern as panel-reference-font.js's
+                 own file-input-plus-click-proxy convention (an <input
+                 type="file"> never appended/visible, triggered by a plain
+                 button's click handler). Parsed results are APPENDED to
+                 this.phrasePresets, not a replacement -- see
+                 initPhraseSection's own comment in kerning.js for why. -->
+            <button id="kerning-preset-add-button" type="button">Add…</button>
+            <input type="file" id="kerning-preset-file-input" accept=".txt" hidden />
+            <textarea
+              id="kerning-phrase-input"
+              placeholder="Type a phrase"
+              rows="3"
+            ></textarea>
+          </div>
+
+          <div id="kerning-parameters-section">
+            <div id="kerning-parameters-always-visible">
+              <!-- Task 5, spec F18: "Retain the lower threshold for absolute
+                   Delta and add an upper threshold." This control only ever
+                   fed the pair table's display filter (renderPairTable's
+                   `threshold`/isRowAboveThreshold), never the run itself --
+                   relabeled to say so plainly. Blank maximum means no
+                   maximum. -->
+              <span class="kerning-param-field">
+                <label for="kerning-param-threshold">Minimum |Δ|</label>
+                <input type="number" id="kerning-param-threshold" min="0" step="1" />
+              </span>
+              <span class="kerning-param-field">
+                <label for="kerning-param-max-threshold">Maximum |Δ|</label>
+                <input
+                  type="number"
+                  id="kerning-param-max-threshold"
+                  min="0"
+                  step="1"
+                />
+              </span>
+              <!-- Backlog item 8 part 1: a second, display-only threshold --
+                   divergence of a shadowing pair's suggestion from the value
+                   its class cell resolves to. Feeds only the pair-table
+                   render path (the "Potential overrides" section and the
+                   class×class median), never the run or the cache. Wired into
+                   autokernParamsController the same way Threshold is
+                   (initParametersSection in kerning.js). -->
+              <!-- Task 17, spec F18: "Recommended labels: ... Class
+                   tolerance." Renamed from "Group threshold" -- this is the
+                   ONLY UI-facing occurrence of that copy anywhere in this
+                   view (grepped); the id/`groupThreshold` model key are
+                   left unchanged (internal naming, not designer-facing). -->
+              <span class="kerning-param-field">
+                <label for="kerning-param-group-threshold">Class tolerance</label>
+                <input
+                  type="number"
+                  id="kerning-param-group-threshold"
+                  min="0"
+                  step="1"
+                />
+              </span>
+              <button id="kerning-run-button">Run</button>
+            </div>
+            <details id="kerning-parameters-collapsible">
+              <summary>Parameters</summary>
+              <label for="kerning-param-reach">Envelope reach</label>
+              <input type="number" id="kerning-param-reach" min="1" step="1" />
+
+              <label for="kerning-param-envelope">Envelope type</label>
+              <select id="kerning-param-envelope">
+                <option value="distanceField">Distance field</option>
+                <option value="gaussian">Gaussian</option>
+              </select>
+
+              <label for="kerning-param-reduce">Reduction</label>
+              <select id="kerning-param-reduce">
+                <option value="sum">Sum of squares</option>
+                <option value="max">Maximum</option>
+              </select>
+
+              <label for="kerning-param-strength">Strength</label>
+              <input type="number" id="kerning-param-strength" min="0" step="0.05" />
+            </details>
+          </div>
+
+          <!-- Backlog items 9+10 (combined, see kerning.js's
+               initSuggestionPreviewSettingsSection): a settings-driven
+               visibility/opacity control for the on-canvas suggestion
+               overlay and its live glyph re-spacing preview. Built entirely
+               in JS below, mounted into this slot -- same convention
+               views-editor's own grid-layer settings accordion uses
+               (panel-designspace-navigation.js's "coarse-grid-accordion-item",
+               an Accordion item with a master display-toggle checkbox plus
+               dependent settings). -->
+          <div id="kerning-suggestion-preview-section"></div>
+
+          <div id="kerning-calibration-section">
+            <details id="kerning-calibration-collapsible">
+              <summary>Calibration</summary>
+              <div id="kerning-calibration-body"></div>
+            </details>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+  <script src="@fontra/views-kerning/start.js" type="module"></script>
+</html>

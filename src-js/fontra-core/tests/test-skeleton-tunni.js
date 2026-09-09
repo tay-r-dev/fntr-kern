@@ -1,15 +1,44 @@
 import {
   areSkeletonTensionsEqualized,
+  buildGeneratedTunniSegments,
   buildSkeletonTunniSegments,
+  calculateGeneratedCurvatureEdits,
+  calculateGeneratedOnCurveEdits,
+  calculateGeneratedOnCurveGizmoPoint,
   calculateSkeletonControlPointsFromTunniDelta,
   calculateSkeletonEqualizedControlPoints,
   calculateSkeletonOnCurveFromTunni,
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
+  generatedSegmentHandleAxes,
+  generatedTunniHitTest,
+  getGeneratedPathContourIndices,
+  getGeneratedSegmentCurvature,
+  getSkeletonData,
+  getSkeletonPointNudge,
+  makeSkeletonContour,
+  makeSkeletonPoint,
+  normalizeSkeletonData,
+  resolveEditableGeneratedTarget,
   segmentToTunniPoints,
+  setSkeletonData,
+  setSkeletonPointSideNudge,
   skeletonTunniHitTest,
 } from "@fontra/core/skeleton-model.js";
+import {
+  calculateControlPointsFromCurvatureDelta,
+  calculateCurvatureGizmoAxis,
+  calculateCurvatureGizmoPoint,
+  calculateSegmentTension,
+  calculateTunniPoint,
+} from "@fontra/core/tunni-calculations.js";
+import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
+import { editSkeleton } from "../../views-editor/src/skeleton-editing.js";
+
+before(() => {
+  globalThis.window = { coarseGridSpacing: 1, event: null };
+});
 
 describe("skeleton Tunni segment helpers", () => {
   it("builds stable cubic segments for open contours without wrapping", () => {
@@ -271,3 +300,914 @@ function roundPoints(points) {
     y: Math.round(point.y),
   }));
 }
+
+// Turning a curvature-gizmo drag on a GENERATED segment into skeleton writes.
+// The addresses come from provenance, never from geometry (rail R-D).
+describe("generated curvature gizmo edits", () => {
+  const segmentPoints = [
+    { x: 0, y: 0 },
+    { x: 20, y: 80 },
+    { x: 160, y: 60 },
+    { x: 200, y: 0 },
+  ];
+  const provenance = [
+    { skeletonPointId: 2, side: "left", role: "onCurve" },
+    { skeletonPointId: 2, side: "left", role: "out" },
+    { skeletonPointId: 5, side: "left", role: "in" },
+    { skeletonPointId: 5, side: "left", role: "onCurve" },
+  ];
+  const axis = () => calculateCurvatureGizmoAxis(segmentPoints);
+  const drag = (amount, overrides = {}) =>
+    calculateGeneratedCurvatureEdits({
+      segmentPoints,
+      provenance,
+      delta: { x: axis().x * amount, y: axis().y * amount },
+      ...overrides,
+    });
+
+  it("addresses the skeleton segment's start point, from provenance", () => {
+    expect(drag(10)).to.include({
+      segmentPointIndex: 0,
+      skeletonPointId: 2,
+      side: "left",
+    });
+  });
+
+  it("reports the segment tension the drag arrives at", () => {
+    const moved = calculateControlPointsFromCurvatureDelta(
+      { x: axis().x * 10, y: axis().y * 10 },
+      segmentPoints
+    );
+    expect(drag(10).tension).to.be.closeTo(
+      calculateSegmentTension(moved[0], segmentPoints[0], moved[1], segmentPoints[3]),
+      1e-9
+    );
+  });
+
+  it("reports the segment's current tension for a drag that goes nowhere", () => {
+    expect(drag(0).tension).to.be.closeTo(
+      calculateSegmentTension(
+        segmentPoints[1],
+        segmentPoints[0],
+        segmentPoints[2],
+        segmentPoints[3]
+      ),
+      1e-9
+    );
+  });
+
+  it("stores construction-space tension when rendered ends carry nudges", () => {
+    const constructionPoints = segmentPoints;
+    const nudgedProvenance = provenance.map((entry, index) =>
+      index === 0
+        ? { ...entry, nudge: { x: 12, y: -4 } }
+        : index === 3
+          ? { ...entry, nudge: { x: -7, y: 5 } }
+          : entry
+    );
+    const renderedPoints = constructionPoints.map((point, index) => ({
+      x: point.x + (nudgedProvenance[index].nudge?.x ?? 0),
+      y: point.y + (nudgedProvenance[index].nudge?.y ?? 0),
+    }));
+    const edit = calculateGeneratedCurvatureEdits({
+      segmentPoints: renderedPoints,
+      provenance: nudgedProvenance,
+      delta: { x: 0, y: 0 },
+    });
+    expect(edit.tension).to.be.closeTo(
+      calculateSegmentTension(
+        constructionPoints[1],
+        constructionPoints[0],
+        constructionPoints[2],
+        constructionPoints[3]
+      ),
+      1e-9
+    );
+  });
+
+  // The handles carry their own emission displacement, separate from the
+  // on-curve's and usually a different amount. Recovering construction space by
+  // subtracting only the on-curve's leaves the handle where emission put it, so
+  // the pair describes no curve the generator ever solved.
+  it("stores construction-space tension when the handles carry their own nudge", () => {
+    const constructionPoints = segmentPoints;
+    const nudgedProvenance = provenance.map((entry, index) =>
+      index === 1
+        ? { ...entry, handleNudge: { x: 9, y: -3 } }
+        : index === 2
+          ? { ...entry, handleNudge: { x: -11, y: 6 } }
+          : entry
+    );
+    const renderedPoints = constructionPoints.map((point, index) => ({
+      x: point.x + (nudgedProvenance[index].handleNudge?.x ?? 0),
+      y: point.y + (nudgedProvenance[index].handleNudge?.y ?? 0),
+    }));
+    const edit = calculateGeneratedCurvatureEdits({
+      segmentPoints: renderedPoints,
+      provenance: nudgedProvenance,
+      delta: { x: 0, y: 0 },
+    });
+    expect(edit.tension).to.be.closeTo(
+      calculateSegmentTension(
+        constructionPoints[1],
+        constructionPoints[0],
+        constructionPoints[2],
+        constructionPoints[3]
+      ),
+      1e-9
+    );
+  });
+
+  it("pins a fuller curve for a drag toward the Tunni point", () => {
+    expect(drag(10).tension).to.be.above(drag(0).tension);
+  });
+
+  // A segment the gizmo flattened into a straight bevel. Its handles draw no
+  // lines, so without the published axes there is no crossing, no scale and no
+  // drag in either direction — which is the state the reset used to be the only
+  // way out of.
+  describe("a beveled segment", () => {
+    const unit = (from, to) => {
+      const length = Math.hypot(to.x - from.x, to.y - from.y);
+      return { x: (to.x - from.x) / length, y: (to.y - from.y) / length };
+    };
+    const beveled = [
+      segmentPoints[0],
+      { ...segmentPoints[0] },
+      { ...segmentPoints[3] },
+      segmentPoints[3],
+    ];
+    const beveledProvenance = [
+      provenance[0],
+      { ...provenance[1], constructionAxis: unit(segmentPoints[0], segmentPoints[1]) },
+      { ...provenance[2], constructionAxis: unit(segmentPoints[3], segmentPoints[2]) },
+      provenance[3],
+    ];
+    const bevelAxis = () =>
+      calculateCurvatureGizmoAxis(
+        beveled,
+        generatedSegmentHandleAxes(beveledProvenance)
+      );
+    const bevelDrag = (amount) =>
+      calculateGeneratedCurvatureEdits({
+        segmentPoints: beveled,
+        provenance: beveledProvenance,
+        delta: { x: bevelAxis().x * amount, y: bevelAxis().y * amount },
+      });
+
+    it("has no axis of its own", () => {
+      expect(calculateCurvatureGizmoAxis(beveled)).to.equal(null);
+    });
+
+    it("takes its axis from the published construction axes", () => {
+      expect(bevelAxis()).to.not.equal(null);
+    });
+
+    it("reads a tension of zero where it stands", () => {
+      expect(bevelDrag(0).tension).to.equal(0);
+    });
+
+    it("answers a drag away from the bevel", () => {
+      expect(bevelDrag(10).tension).to.be.above(0);
+      expect(bevelDrag(40).tension).to.be.above(bevelDrag(10).tension);
+    });
+
+    it("stays at zero for a drag deeper into it", () => {
+      expect(bevelDrag(-40).tension).to.equal(0);
+    });
+
+    it("releases the collapse it stored once the pin can describe the segment", () => {
+      expect(bevelDrag(10).releaseCollapse).to.equal(true);
+      expect(bevelDrag(-40).releaseCollapse).to.equal(false);
+    });
+
+    it("is just as stuck with only one handle down", () => {
+      const half = [
+        segmentPoints[0],
+        { ...segmentPoints[0] },
+        ...segmentPoints.slice(2),
+      ];
+      expect(calculateCurvatureGizmoAxis(half)).to.equal(null);
+      expect(
+        calculateCurvatureGizmoAxis(half, generatedSegmentHandleAxes(beveledProvenance))
+      ).to.not.equal(null);
+    });
+  });
+
+  it("declines the drag when the segment has no Tunni point", () => {
+    expect(
+      calculateGeneratedCurvatureEdits({
+        segmentPoints: [
+          { x: 0, y: 0 },
+          { x: 50, y: 0 },
+          { x: 150, y: 0 },
+          { x: 200, y: 0 },
+        ],
+        provenance,
+        delta: { x: 5, y: 5 },
+      })
+    ).to.equal(null);
+  });
+
+  it("declines rather than guessing when a handle has no provenance", () => {
+    expect(
+      calculateGeneratedCurvatureEdits({
+        segmentPoints,
+        provenance: [provenance[0], null, provenance[2], provenance[3]],
+        delta: { x: 5, y: 5 },
+      })
+    ).to.equal(null);
+  });
+
+  it("works on a contour that runs backwards, where the roles swap", () => {
+    // The right-side generated contour is emitted in reverse, so its segments
+    // carry "in" first and "out" second. That is an orientation, not a defect,
+    // and the control must not refuse it.
+    const reversed = [
+      { skeletonPointId: 2, side: "right", role: "onCurve" },
+      { skeletonPointId: 2, side: "right", role: "in" },
+      { skeletonPointId: 5, side: "right", role: "out" },
+      { skeletonPointId: 5, side: "right", role: "onCurve" },
+    ];
+    const edit = calculateGeneratedCurvatureEdits({
+      segmentPoints,
+      provenance: reversed,
+      delta: { x: axis().x * 10, y: axis().y * 10 },
+    });
+    // Index 3, not 0: on the reversed side the skeleton segment's start is the
+    // segment's LAST point. Both sides of one skeleton segment must land on the
+    // same skeleton point, or the two sides pin independently and drift.
+    expect(edit).to.include({
+      segmentPointIndex: 3,
+      skeletonPointId: 5,
+      side: "right",
+    });
+    expect(edit.tension).to.be.above(0);
+  });
+
+  it("declines when a handle's provenance is not a handle role", () => {
+    expect(
+      calculateGeneratedCurvatureEdits({
+        segmentPoints,
+        provenance: [
+          provenance[0],
+          { skeletonPointId: 2, side: "left", role: "onCurve" },
+          provenance[2],
+          provenance[3],
+        ],
+        delta: { x: 5, y: 5 },
+      })
+    ).to.equal(null);
+  });
+
+  it("carries the tension ceiling through", () => {
+    expect(drag(5000).tension).to.be.at.most(1 + 1e-9);
+  });
+});
+
+// Enumerating the generated contours' cubic segments, and hit-testing the two
+// gizmos on them. This is the join the visualization layer and the pointer tool
+// both need, so it lives in one place rather than twice.
+describe("generated Tunni segments", () => {
+  function makeGlyph() {
+    const layer = {
+      path: new VarPackedPath(),
+      components: [],
+      anchors: [],
+      guidelines: [],
+      customData: {},
+    };
+    setSkeletonData(
+      layer,
+      normalizeSkeletonData({
+        contours: [
+          makeSkeletonContour({
+            id: 80,
+            defaultWidth: 80,
+            points: [
+              makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+              makeSkeletonPoint({ id: 2, x: 30, y: 40, type: "cubic" }),
+              makeSkeletonPoint({ id: 3, x: 70, y: 40, type: "cubic" }),
+              makeSkeletonPoint({ id: 4, x: 100, y: 0, smooth: true }),
+              makeSkeletonPoint({ id: 5, x: 130, y: -40, type: "cubic" }),
+              makeSkeletonPoint({ id: 6, x: 170, y: -40, type: "cubic" }),
+              makeSkeletonPoint({ id: 7, x: 200, y: 0 }),
+            ],
+          }),
+        ],
+      })
+    );
+    editSkeleton(layer, () => {});
+    return layer;
+  }
+
+  it("finds the cubic segments of the generated contours", () => {
+    const layer = makeGlyph();
+    const segments = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path);
+    expect(segments.length).to.be.above(0);
+    for (const segment of segments) {
+      expect(segment.points).to.have.length(4);
+      expect(segment.pointIndices).to.have.length(4);
+      expect(segment.provenance).to.have.length(4);
+    }
+  });
+
+  it("reports segment tension from the canonical control-point order", () => {
+    const curvature = getGeneratedSegmentCurvature(
+      {},
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 40, y: 80 },
+          { x: 160, y: 80 },
+          { x: 200, y: 0 },
+        ],
+      }
+    );
+
+    expect(curvature.tension).to.be.closeTo(0.4, 1e-9);
+  });
+
+  it("carries each point's own provenance, in segment order", () => {
+    const layer = makeGlyph();
+    const segments = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path);
+    const roles = segments.map((segment) =>
+      segment.provenance.map((entry) => entry?.role)
+    );
+    expect(
+      roles.some((r) => r[0] === "onCurve" && r[1] === "out" && r[2] === "in")
+    ).to.equal(true);
+    for (const segment of segments) {
+      const sides = new Set(segment.provenance.map((entry) => entry?.side));
+      expect(sides.size).to.equal(1);
+    }
+  });
+
+  it("skips contours that are not generated", () => {
+    const layer = makeGlyph();
+    const skeletonData = getSkeletonData(layer);
+    const generatedIndices = getGeneratedPathContourIndices(skeletonData);
+    for (const segment of buildGeneratedTunniSegments(skeletonData, layer.path)) {
+      expect(generatedIndices.has(segment.pathContourIndex)).to.equal(true);
+    }
+  });
+
+  it("hits the curvature gizmo where the curve's centre is", () => {
+    const layer = makeGlyph();
+    const skeletonData = getSkeletonData(layer);
+    const [segment] = buildGeneratedTunniSegments(skeletonData, layer.path);
+    const anchor = calculateCurvatureGizmoPoint(segment.points);
+    const hit = generatedTunniHitTest(anchor, 4, skeletonData, layer.path, {
+      includeOnCurve: false,
+    });
+    expect(hit?.type).to.equal("generated-curvature");
+    expect(hit.gizmoPoint.x).to.be.closeTo(anchor.x, 1e-9);
+    expect(hit.gizmoPoint.y).to.be.closeTo(anchor.y, 1e-9);
+  });
+
+  it("hits the on-curve gizmo at its outside placement", () => {
+    const layer = makeGlyph();
+    const skeletonData = getSkeletonData(layer);
+    const [segment] = buildGeneratedTunniSegments(skeletonData, layer.path);
+    const gizmoPoint = calculateGeneratedOnCurveGizmoPoint(segment, 24);
+    const hit = generatedTunniHitTest(gizmoPoint, 4, skeletonData, layer.path, {
+      onCurveOffset: 24,
+    });
+    expect(hit?.type).to.equal("generated-on-curve");
+  });
+
+  it("places the on-curve gizmo away from the curve by its supplied offset", () => {
+    const layer = makeGlyph();
+    const skeletonData = getSkeletonData(layer);
+    const [segment] = buildGeneratedTunniSegments(skeletonData, layer.path);
+    const midpoint = calculateCurvatureGizmoPoint(segment.points);
+    const hit = generatedTunniHitTest(midpoint, 100, skeletonData, layer.path, {
+      includeCurvature: false,
+      onCurveOffset: 24,
+    });
+    expect(hit?.type).to.equal("generated-on-curve");
+    expect(
+      Math.hypot(hit.gizmoPoint.x - midpoint.x, hit.gizmoPoint.y - midpoint.y)
+    ).to.be.closeTo(24, 1e-9);
+  });
+
+  it("misses when nothing is near", () => {
+    const layer = makeGlyph();
+    expect(
+      generatedTunniHitTest(
+        { x: -5000, y: -5000 },
+        4,
+        getSkeletonData(layer),
+        layer.path
+      )
+    ).to.equal(null);
+  });
+});
+
+describe("generated on-curve gizmo eligibility", () => {
+  it("does not expose a control when both far skeleton segments are curves", () => {
+    const path = new VarPackedPath();
+    path.moveTo(0, 0);
+    path.cubicCurveTo(20, 80, 80, 80, 100, 0);
+    path.cubicCurveTo(120, -80, 180, -80, 200, 0);
+    path.cubicCurveTo(220, 80, 280, 80, 300, 0);
+
+    const ids = [1, 2, 3, 4];
+    const skeletonData = {
+      contours: [
+        {
+          id: 71,
+          closed: false,
+          points: [
+            { id: ids[0], x: 0, y: 0 },
+            { id: 11, x: 20, y: 80, type: "cubic" },
+            { id: 12, x: 80, y: 80, type: "cubic" },
+            { id: ids[1], x: 100, y: 0 },
+            { id: 13, x: 120, y: -80, type: "cubic" },
+            { id: 14, x: 180, y: -80, type: "cubic" },
+            { id: ids[2], x: 200, y: 0 },
+            { id: 15, x: 220, y: 80, type: "cubic" },
+            { id: 16, x: 280, y: 80, type: "cubic" },
+            { id: ids[3], x: 300, y: 0 },
+          ],
+        },
+      ],
+      generated: [
+        {
+          skeletonContourId: 71,
+          pathContourIndex: 0,
+          pointMap: [
+            {
+              skeletonContourId: 71,
+              skeletonPointId: 1,
+              side: "left",
+              role: "onCurve",
+            },
+            { skeletonContourId: 71, skeletonPointId: 1, side: "left", role: "out" },
+            { skeletonContourId: 71, skeletonPointId: 2, side: "left", role: "in" },
+            {
+              skeletonContourId: 71,
+              skeletonPointId: 2,
+              side: "left",
+              role: "onCurve",
+            },
+            { skeletonContourId: 71, skeletonPointId: 2, side: "left", role: "out" },
+            { skeletonContourId: 71, skeletonPointId: 3, side: "left", role: "in" },
+            {
+              skeletonContourId: 71,
+              skeletonPointId: 3,
+              side: "left",
+              role: "onCurve",
+            },
+            { skeletonContourId: 71, skeletonPointId: 3, side: "left", role: "out" },
+            { skeletonContourId: 71, skeletonPointId: 4, side: "left", role: "in" },
+            {
+              skeletonContourId: 71,
+              skeletonPointId: 4,
+              side: "left",
+              role: "onCurve",
+            },
+          ],
+        },
+      ],
+    };
+    const segment = buildGeneratedTunniSegments(skeletonData, path)[1];
+    const truePoint = calculateTunniPoint(segment.points);
+
+    expect(generatedTunniHitTest(truePoint, 0.1, skeletonData, path)).to.equal(null);
+  });
+});
+
+// The on-curve gizmo's writes: two nudges, tangent-constrained (D12).
+//
+// The drag reads in ABSOLUTE coordinates, never in the gizmo's own frame: up or
+// right spreads the two on-curve points apart along their generated curves,
+// down or left brings them together. Handle lengths are untouched - the nudge
+// carries each handle with its point - so the curve keeps its shape and only
+// its extent changes.
+describe("generated on-curve gizmo edits", () => {
+  const segmentPoints = [
+    { x: 0, y: 0 },
+    { x: 20, y: 80 },
+    { x: 160, y: 60 },
+    { x: 200, y: 0 },
+  ];
+  // Left side: the segment runs with the skeleton, so its first handle is "out".
+  const provenance = [
+    { skeletonPointId: 2, side: "left", role: "onCurve" },
+    { skeletonPointId: 2, side: "left", role: "out" },
+    { skeletonPointId: 5, side: "left", role: "in" },
+    { skeletonPointId: 5, side: "left", role: "onCurve" },
+  ];
+  // Right side: the generated contour runs backwards, so the roles swap.
+  const reversedProvenance = [
+    { skeletonPointId: 2, side: "right", role: "onCurve" },
+    { skeletonPointId: 2, side: "right", role: "in" },
+    { skeletonPointId: 5, side: "right", role: "out" },
+    { skeletonPointId: 5, side: "right", role: "onCurve" },
+  ];
+  const drag = (delta, prov = provenance, points = segmentPoints) =>
+    calculateGeneratedOnCurveEdits({ segmentPoints: points, provenance: prov, delta });
+  // Positive means "this end moved away from the other one", whichever way the
+  // stored nudge axis happens to point.
+  const spread = (edits, prov = provenance) => {
+    const orientation = prov[1].role === "out" ? 1 : -1;
+    return [-edits[0].nudgeDelta * orientation, edits[1].nudgeDelta * orientation];
+  };
+
+  it("addresses both rib ends by their own provenance", () => {
+    const edits = drag({ x: 0, y: 20 });
+    expect(edits).to.have.length(2);
+    expect(edits[0]).to.include({ skeletonPointId: 2, side: "left", role: "onCurve" });
+    expect(edits[1]).to.include({ skeletonPointId: 5, side: "left", role: "onCurve" });
+  });
+
+  it("reports a scalar nudge, never a free displacement", () => {
+    for (const edit of drag({ x: 7, y: 13 })) {
+      expect(edit.nudgeDelta).to.be.a("number");
+      expect(Number.isFinite(edit.nudgeDelta)).to.equal(true);
+      expect(edit).to.not.have.property("displacement");
+      expect(edit).to.not.have.property("handleCompensation");
+    }
+  });
+
+  it("spreads the points apart when the cursor goes right", () => {
+    const [start, end] = spread(drag({ x: 20, y: 0 }));
+    expect(start).to.be.above(0);
+    expect(end).to.be.above(0);
+  });
+
+  it("spreads them apart when the cursor goes up", () => {
+    const [start, end] = spread(drag({ x: 0, y: 20 }));
+    expect(start).to.be.above(0);
+    expect(end).to.be.above(0);
+  });
+
+  it("draws them together when the cursor goes left or down", () => {
+    for (const delta of [
+      { x: -20, y: 0 },
+      { x: 0, y: -20 },
+    ]) {
+      const [start, end] = spread(drag(delta));
+      expect(start).to.be.below(0);
+      expect(end).to.be.below(0);
+    }
+  });
+
+  it("adds up and right rather than letting them cancel", () => {
+    const right = spread(drag({ x: 20, y: 0 }))[0];
+    const both = spread(drag({ x: 20, y: 20 }))[0];
+    expect(both).to.be.above(right);
+  });
+
+  it("reads the drag in absolute coordinates, not the segment's frame", () => {
+    // Same absolute drag, segment rotated 90 degrees: the response must not
+    // change, or the control would mean something different per segment.
+    const rotated = segmentPoints.map((p) => ({ x: -p.y, y: p.x }));
+    const flat = spread(drag({ x: 15, y: 15 }));
+    const turned = spread(drag({ x: 15, y: 15 }, provenance, rotated));
+    expect(turned[0]).to.be.closeTo(flat[0], 1e-9);
+    expect(turned[1]).to.be.closeTo(flat[1], 1e-9);
+  });
+
+  it("spreads the same way on a contour that runs backwards", () => {
+    const forward = spread(drag({ x: 20, y: 20 }));
+    const backward = spread(
+      drag({ x: 20, y: 20 }, reversedProvenance),
+      reversedProvenance
+    );
+    expect(backward[0]).to.be.closeTo(forward[0], 1e-9);
+    expect(backward[1]).to.be.closeTo(forward[1], 1e-9);
+  });
+
+  it("stays put for a drag that goes nowhere", () => {
+    for (const edit of drag({ x: 0, y: 0 })) {
+      expect(edit.nudgeDelta).to.be.closeTo(0, 1e-9);
+    }
+  });
+
+  it("moves only the eligible end when the other end holds", () => {
+    const edits = calculateGeneratedOnCurveEdits({
+      segmentPoints,
+      provenance,
+      delta: { x: 20, y: 20 },
+      movable: [false, true],
+    });
+    expect(edits[0].nudgeDelta).to.equal(0);
+    expect(spread(edits)[1]).to.be.above(0);
+  });
+
+  it("declines the drag when neither end is eligible", () => {
+    expect(
+      calculateGeneratedOnCurveEdits({
+        segmentPoints,
+        provenance,
+        delta: { x: 20, y: 20 },
+        movable: [false, false],
+      })
+    ).to.equal(null);
+  });
+
+  it("declines rather than guessing when a rib end has no provenance", () => {
+    expect(
+      calculateGeneratedOnCurveEdits({
+        segmentPoints,
+        provenance: [null, provenance[1], provenance[2], provenance[3]],
+        delta: { x: 5, y: 5 },
+      })
+    ).to.equal(null);
+  });
+});
+
+// A bulb's terminal carries exactly one curvature gizmo. Without easing it sits
+// on the stroke edge above the incision; with easing it sits on the neck, which
+// is cap geometry with no skeleton segment behind it and therefore stores its
+// number in a cap field instead of in `segmentCurvature`.
+describe("the curvature gizmo at a bulb terminal", () => {
+  function makeBulbGlyph(capFields) {
+    const layer = {
+      path: new VarPackedPath(),
+      components: [],
+      anchors: [],
+      guidelines: [],
+      customData: {},
+    };
+    setSkeletonData(
+      layer,
+      normalizeSkeletonData({
+        contours: [
+          makeSkeletonContour({
+            id: 80,
+            defaultWidth: 80,
+            // Curved, so the inner edge's terminal segment is a cubic. A gizmo
+            // only exists on a cubic, and on a straight stroke that segment is a
+            // line — there would be nothing to address either way.
+            points: [
+              makeSkeletonPoint({ id: 1, x: 60, y: 250 }),
+              makeSkeletonPoint({ id: 2, x: 160, y: 110, type: "cubic" }),
+              makeSkeletonPoint({ id: 3, x: 300, y: 60, type: "cubic" }),
+              makeSkeletonPoint({
+                id: 4,
+                x: 430,
+                y: 90,
+                capStyle: "drop",
+                ...capFields,
+              }),
+            ],
+          }),
+        ],
+      })
+    );
+    editSkeleton(layer, () => {});
+    return layer;
+  }
+
+  function neckSegments(capFields) {
+    const layer = makeBulbGlyph(capFields);
+    const segments = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path);
+    return segments.filter((segment) =>
+      segment.provenance.some((entry) => entry?.capCurvatureField)
+    );
+  }
+
+  it("gives the neck a segment of its own once easing is on", () => {
+    const necks = neckSegments({ capBallEasing: 0.5 });
+    expect(necks).to.have.length(1);
+    for (const entry of necks[0].provenance) {
+      expect(entry.skeletonPointId).to.equal(4);
+    }
+    expect(necks[0].provenance[1].capCurvatureField).to.equal("capBallEaseCurvature");
+    expect(necks[0].provenance[2].capCurvatureField).to.equal("capBallEaseCurvature");
+  });
+
+  it("offers the neck no on-curve gizmo", () => {
+    expect(neckSegments({ capBallEasing: 0.5 })[0].onCurveMovable).to.deep.equal([
+      false,
+      false,
+    ]);
+  });
+
+  it("makes no neck point directly editable", () => {
+    const layer = makeBulbGlyph({ capBallEasing: 0.5 });
+    const skeletonData = getSkeletonData(layer);
+    const neck = buildGeneratedTunniSegments(skeletonData, layer.path).find((segment) =>
+      segment.provenance.some((entry) => entry?.capCurvatureField)
+    );
+    for (let index = 0; index < 3; index++) {
+      const target = resolveEditableGeneratedTarget(
+        skeletonData,
+        layer.path,
+        neck.parentPointIndices[index]
+      );
+      expect(target, `neck point ${index}`).to.equal(null);
+    }
+  });
+
+  it("gives the neck no segment when easing is off", () => {
+    expect(neckSegments({ capBallEasing: 0 })).to.have.length(0);
+  });
+
+  it("addresses a neck drag to the cap field, not to a side's pin", () => {
+    const neck = neckSegments({ capBallEasing: 0.5 })[0];
+    const edit = calculateGeneratedCurvatureEdits({
+      segmentPoints: neck.points,
+      provenance: neck.provenance,
+      delta: { x: 4, y: 4 },
+    });
+    expect(edit.capCurvatureField).to.equal("capBallEaseCurvature");
+    expect(edit.skeletonPointId).to.equal(4);
+    expect(edit.collapse).to.deep.equal([]);
+    expect(edit.tension).to.be.a("number");
+  });
+
+  it("reports the neck's curvature as pinned once the cap field is set", () => {
+    const layer = makeBulbGlyph({ capBallEasing: 0.5, capBallEaseCurvature: 0.4 });
+    const skeletonData = getSkeletonData(layer);
+    const neck = buildGeneratedTunniSegments(skeletonData, layer.path).find((segment) =>
+      segment.provenance.some((entry) => entry?.capCurvatureField)
+    );
+    expect(getGeneratedSegmentCurvature(skeletonData, neck).pinned).to.equal(true);
+  });
+
+  // The trim rewrites this segment's two handles from a bezier split. Without
+  // the original handles' addresses the gizmo cannot find the segment at all,
+  // which is why the edge above a bulb's incision used to have no gizmo.
+  // The outer edge is trimmed too, and its own split has always published these.
+  // What matters is the inner side, where the incision is.
+  function trimmedSides(capFields) {
+    const layer = makeBulbGlyph(capFields);
+    return buildGeneratedTunniSegments(getSkeletonData(layer), layer.path)
+      .filter((segment) =>
+        segment.provenance.some((entry) => entry?.constructionSegment)
+      )
+      .map((segment) => segment.side);
+  }
+
+  it("keeps the edge above the incision addressable when easing is off", () => {
+    const layer = makeBulbGlyph({ capBallEasing: 0 });
+    const skeletonData = getSkeletonData(layer);
+    const trimmed = buildGeneratedTunniSegments(skeletonData, layer.path).filter(
+      (segment) => segment.provenance.some((entry) => entry?.constructionSegment)
+    );
+    // One per side: the outer edge under the ball, and the inner edge above the
+    // incision, which had no gizmo at all before.
+    expect(new Set(trimmed.map((segment) => segment.side)).size).to.equal(2);
+    for (const segment of trimmed) {
+      // Each measures its own untrimmed curve, which is the one its pin governs.
+      const carrier = segment.provenance.find((entry) => entry.constructionSegment);
+      expect(carrier.constructionSegment).to.have.length(4);
+    }
+  });
+
+  it("leaves the edge above the incision without a second gizmo once eased", () => {
+    const crisp = trimmedSides({ capBallEasing: 0 });
+    const eased = trimmedSides({ capBallEasing: 0.5 });
+    // The inner one moves onto the neck, so only the outer edge's is left.
+    expect(eased).to.have.length(crisp.length - 1);
+    expect(eased.every((side) => !side || crisp.includes(side))).to.equal(true);
+  });
+
+  // A cut segment's two pieces are a different curve from the one the generator
+  // solved, and the second piece's pin would be addressed to an insertion, which
+  // has nowhere to keep one. So neither piece is offered a gizmo.
+  function makeInsertionGlyph(insertions, points) {
+    const layer = {
+      path: new VarPackedPath(),
+      components: [],
+      anchors: [],
+      guidelines: [],
+      customData: {},
+    };
+    setSkeletonData(
+      layer,
+      normalizeSkeletonData({
+        contours: [
+          makeSkeletonContour({
+            id: 90,
+            defaultWidth: 60,
+            points,
+            insertions,
+          }),
+        ],
+      })
+    );
+    editSkeleton(layer, () => {});
+    return layer;
+  }
+
+  const curvedPoints = [
+    makeSkeletonPoint({ id: 1, x: 60, y: 250 }),
+    makeSkeletonPoint({ id: 2, x: 160, y: 110, type: "cubic" }),
+    makeSkeletonPoint({ id: 3, x: 300, y: 60, type: "cubic" }),
+    makeSkeletonPoint({ id: 4, x: 430, y: 90 }),
+  ];
+
+  const straightPoints = [
+    makeSkeletonPoint({ id: 1, x: 60, y: 100 }),
+    makeSkeletonPoint({ id: 4, x: 430, y: 100 }),
+  ];
+
+  it("offers no gizmo on either piece of a cut curve", () => {
+    const uncut = makeInsertionGlyph([], curvedPoints);
+    const cut = makeInsertionGlyph([{ id: 13, pointId: 1, t: 0.4 }], curvedPoints);
+    const gizmos = (layer) =>
+      buildGeneratedTunniSegments(getSkeletonData(layer), layer.path);
+    // The uncut stroke's first skeleton segment carries one gizmo per side. Both
+    // go, and no piece takes their place.
+    expect(gizmos(cut)).to.have.length(gizmos(uncut).length - 2);
+    for (const segment of gizmos(cut)) {
+      expect(segment.provenance.some((entry) => entry?.insertion)).to.equal(false);
+    }
+  });
+
+  it("offers no gizmo on a cut straight", () => {
+    const cut = makeInsertionGlyph([{ id: 13, pointId: 1, t: 0.5 }], straightPoints);
+    const segments = buildGeneratedTunniSegments(getSkeletonData(cut), cut.path);
+    // A cut straight emits four cubic segments whose outer handles carry no
+    // role. Every one of them declined the drag while still being drawn.
+    expect(segments).to.have.length(0);
+  });
+});
+
+// End-to-end: an on-curve drag must slide the rib ends along the outline and
+// leave the handles where they are. Dragging the point and its handles together
+// slides the whole curve bodily, which is not what the control is for.
+describe("generated on-curve gizmo, through the generator", () => {
+  const points = [
+    makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+    makeSkeletonPoint({ id: 2, x: 30, y: 40, type: "cubic" }),
+    makeSkeletonPoint({ id: 3, x: 70, y: 40, type: "cubic" }),
+    makeSkeletonPoint({ id: 4, x: 100, y: 0, smooth: true }),
+    makeSkeletonPoint({ id: 5, x: 130, y: -40, type: "cubic" }),
+    makeSkeletonPoint({ id: 6, x: 170, y: -40, type: "cubic" }),
+    makeSkeletonPoint({ id: 7, x: 200, y: 0 }),
+  ];
+
+  function makeGlyph() {
+    const layer = {
+      path: new VarPackedPath(),
+      components: [],
+      anchors: [],
+      guidelines: [],
+      customData: {},
+    };
+    setSkeletonData(
+      layer,
+      normalizeSkeletonData({
+        contours: [makeSkeletonContour({ id: 80, defaultWidth: 80, points })],
+      })
+    );
+    editSkeleton(layer, () => {});
+    return layer;
+  }
+
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  function dragFirstSegment(delta) {
+    const layer = makeGlyph();
+    const before = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path)[0];
+    const snapshot = before.points.map((p) => ({ x: p.x, y: p.y }));
+    const edits = calculateGeneratedOnCurveEdits({
+      segmentPoints: before.points,
+      provenance: before.provenance,
+      delta,
+    });
+    editSkeleton(layer, (working) => {
+      const contour = working.contours[0];
+      for (const edit of edits) {
+        const point = contour.points.find((p) => p.id === edit.skeletonPointId);
+        setSkeletonPointSideNudge(
+          point,
+          edit.side,
+          getSkeletonPointNudge(point, edit.side, contour.defaultWidth) +
+            edit.nudgeDelta,
+          { round: (v) => v }
+        );
+      }
+    });
+    const after = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path).find(
+      (s) =>
+        s.pathContourIndex === before.pathContourIndex &&
+        s.segmentIndex === before.segmentIndex
+    );
+    return { snapshot, after: after.points };
+  }
+
+  it("moves the rib ends", () => {
+    const { snapshot, after } = dragFirstSegment({ x: 20, y: 20 });
+    expect(dist(snapshot[0], after[0])).to.be.above(5);
+    expect(dist(snapshot[3], after[3])).to.be.above(5);
+  });
+
+  it("leaves the handles where they were", () => {
+    const { snapshot, after } = dragFirstSegment({ x: 20, y: 20 });
+    expect({ x: after[1].x, y: after[1].y }).to.deep.equal(snapshot[1]);
+    expect({ x: after[2].x, y: after[2].y }).to.deep.equal(snapshot[2]);
+  });
+
+  it("holds the handles still in the other direction too", () => {
+    const { snapshot, after } = dragFirstSegment({ x: -20, y: -20 });
+    expect({ x: after[1].x, y: after[1].y }).to.deep.equal(snapshot[1]);
+    expect({ x: after[2].x, y: after[2].y }).to.deep.equal(snapshot[2]);
+  });
+});

@@ -1,16 +1,34 @@
-import { drawCubicHandleLabelPair } from "@fontra/core/distance-angle.js";
 import {
+  drawCubicHandleLabelPair,
+  drawPointStyleLabel,
+} from "@fontra/core/distance-angle.js";
+import {
+  buildGeneratedTunniSegments,
   buildSkeletonTunniSegments,
+  calculateGeneratedOnCurveGizmoPoint,
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
+  formatGeneratedCurvature,
+  generatedSegmentHandleAxes,
+  getGeneratedSegmentCurvature,
   getSkeletonData,
   getSkeletonHandleOffset,
-  getSkeletonRibPosition,
+  getSkeletonInsertionPosition,
+  getSkeletonInsertionRibPosition,
+  getSkeletonRibEndpoints,
+  isSkeletonSideLocked,
+  isSkeletonSideLockedAtAll,
   makeEditableGeneratedHandleKey,
   makeEditableGeneratedPointKey,
+  SKELETON_INSERTION_KEY_KIND,
+  makeSkeletonInsertionKey,
+  skeletonInsertionKeyFromSelectionItem,
   makeSkeletonRibKey,
-  isSkeletonSideLocked,
 } from "@fontra/core/skeleton-model.js";
+import {
+  calculateCurvatureGizmoAxis,
+  calculateCurvatureGizmoPoint,
+} from "@fontra/core/tunni-calculations.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 
 import {
@@ -20,12 +38,20 @@ import {
   strokeLine,
 } from "./visualization-layer-definitions.js";
 
-function getSkeletonDataFromGlyph(positionedGlyph, model) {
+// The layer the skeleton is being edited on. Its skeleton section and its path
+// have to come off the same glyph: the generator addresses its own points by
+// index into the path it produced, and one layer's indices say nothing about
+// another's.
+function getSkeletonLayerGlyph(positionedGlyph, model) {
   const editLayerName =
     model.sceneSettings?.editLayerName || positionedGlyph.glyph?.layerName;
   const layerGlyph =
     editLayerName && positionedGlyph.varGlyph?.glyph?.layers?.[editLayerName]?.glyph;
-  return getSkeletonData(layerGlyph || positionedGlyph.glyph);
+  return layerGlyph || positionedGlyph.glyph;
+}
+
+function getSkeletonDataFromGlyph(positionedGlyph, model) {
+  return getSkeletonData(getSkeletonLayerGlyph(positionedGlyph, model));
 }
 
 function getOnCurvePointIndices(contour) {
@@ -87,27 +113,86 @@ function skeletonContourToPath2d(contour) {
   return path;
 }
 
-function getRibPoints(contour, pointIndex) {
+// Which of the three locks are on, drawn so that they can be told apart. Each
+// mark lies along the freedom it removes: the width lock across the rib, the
+// slide lock along it, and the handle lock as an arc, because what it holds is
+// a curvature rather than a direction. A rib end with no lock gets no marks,
+// and its endpoint keeps the plain pink treatment.
+function drawSideLockMarks(context, parameters, sourcePoint, ribEnd, side) {
+  // The rib direction is the direction width moves the end; the slide runs
+  // across it. A collapsed side has no length, so it states no directions and
+  // only the arc can be drawn.
+  const dx = ribEnd.x - sourcePoint.x;
+  const dy = ribEnd.y - sourcePoint.y;
+  const length = Math.hypot(dx, dy);
+  const along = length > 1e-9 ? { x: dx / length, y: dy / length } : null;
+  const across = along ? { x: -along.y, y: along.x } : null;
+  const gap = parameters.lockMarkGap;
+  const half = parameters.lockMarkLength / 2;
+
+  const tick = (direction, offset) => {
+    if (!direction) {
+      return;
+    }
+    const cx = ribEnd.x + offset.x * gap;
+    const cy = ribEnd.y + offset.y * gap;
+    strokeLine(
+      context,
+      cx - direction.x * half,
+      cy - direction.y * half,
+      cx + direction.x * half,
+      cy + direction.y * half
+    );
+  };
+
+  if (isSkeletonSideLocked(sourcePoint, side, "width") && along) {
+    tick(along, across);
+  }
+  if (isSkeletonSideLocked(sourcePoint, side, "slide") && across) {
+    tick(across, { x: -across.x, y: -across.y });
+  }
+  if (isSkeletonSideLocked(sourcePoint, side, "handles")) {
+    context.beginPath();
+    context.arc(
+      ribEnd.x,
+      ribEnd.y,
+      parameters.lockArcRadius,
+      0.15 * Math.PI,
+      0.85 * Math.PI
+    );
+    context.stroke();
+  }
+}
+
+function getRibPoints(contour, pointIndex, outline) {
   const point = contour.points[pointIndex];
   const activeSingleSide =
     contour.singleSided === "left" || contour.singleSided === "right"
       ? contour.singleSided
       : null;
+  const { left, right } = getSkeletonRibEndpoints(contour, point, outline);
   return {
     center: point,
-    left:
-      activeSingleSide === "right"
-        ? point
-        : getSkeletonRibPosition(contour, point, "left"),
+    left,
     unlockedLeft:
-      activeSingleSide === "right" ? false : !isSkeletonSideLocked(point, "left"),
-    right:
-      activeSingleSide === "left"
-        ? point
-        : getSkeletonRibPosition(contour, point, "right"),
+      activeSingleSide === "right" ? false : !isSkeletonSideLockedAtAll(point, "left"),
+    right,
     unlockedRight:
-      activeSingleSide === "left" ? false : !isSkeletonSideLocked(point, "right"),
+      activeSingleSide === "left" ? false : !isSkeletonSideLockedAtAll(point, "right"),
   };
+}
+
+// An insertion point's two rib ends, both read off the drawn outline through the
+// one reader. Null where the outline has not been generated yet, in which case
+// nothing is drawn: an insertion point states a ratio of a width the skeleton
+// never states between two ribs, so there is nothing to reconstruct it from.
+function getInsertionRibPoints(contour, insertion, outline) {
+  const left = getSkeletonInsertionRibPosition(outline, contour, insertion, "left");
+  const right = getSkeletonInsertionRibPosition(outline, contour, insertion, "right");
+  if (!left || !right) {
+    return null;
+  }
+  return { center: getSkeletonInsertionPosition(contour, insertion), left, right };
 }
 
 function getSkeletonRibSelectionSets(model) {
@@ -122,6 +207,19 @@ function getSkeletonRibSelectionSets(model) {
         (item) => `skeletonRib/${item}`
       )
     ),
+  };
+}
+
+function getSkeletonInsertionSelectionSets(model) {
+  const keys = (selection) =>
+    new Set(
+      (parseSelection(selection)[SKELETON_INSERTION_KEY_KIND] || []).map(
+        skeletonInsertionKeyFromSelectionItem
+      )
+    );
+  return {
+    selected: keys(model.selection),
+    hovered: keys(model.hoverSelection),
   };
 }
 
@@ -186,13 +284,17 @@ function fillSquareNode(context, point, size) {
 }
 
 function forEachSkeletonContour(positionedGlyph, model, callback) {
-  const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
+  const layerGlyph = getSkeletonLayerGlyph(positionedGlyph, model);
+  const skeletonData = getSkeletonData(layerGlyph);
   if (!skeletonData?.contours?.length) {
     return;
   }
+  // Handed to the rib readers, so a rib end at a corner is the outline's own
+  // point rather than a reconstruction of it, and cannot stand off it.
+  const outline = layerGlyph?.path ? { skeletonData, path: layerGlyph.path } : null;
   for (const contour of skeletonData.contours) {
     if (contour.points?.length) {
-      callback(contour);
+      callback(contour, outline);
     }
   }
 }
@@ -227,10 +329,13 @@ function forEachEditableGeneratedTarget(positionedGlyph, model, callback) {
       // Adjustable is the default since side locks landed, so marking every
       // adjustable target would mark nearly the whole outline. Mark the
       // exceptional state instead: generated targets whose side is LOCKED.
+      // Each target answers to its own lock: the on-curve to the slide lock,
+      // the two handles to the handle lock.
+      const lockKind = provenance.role === "onCurve" ? "slide" : "handles";
       if (
         !contour ||
         sourcePoint?.type ||
-        !isSkeletonSideLocked(sourcePoint, provenance.side)
+        !isSkeletonSideLocked(sourcePoint, provenance.side, lockKind)
       ) {
         continue;
       }
@@ -271,16 +376,17 @@ registerVisualizationLayerDefinition({
   },
   draw: (context, positionedGlyph, parameters, model) => {
     context.fillStyle = parameters.fillColor;
-    forEachSkeletonContour(positionedGlyph, model, (contour) => {
+    forEachSkeletonContour(positionedGlyph, model, (contour, outline) => {
       const onCurveIndices = getOnCurvePointIndices(contour);
       const segmentCount = contour.closed
         ? onCurveIndices.length
         : onCurveIndices.length - 1;
       for (let i = 0; i < segmentCount; i++) {
-        const a = getRibPoints(contour, onCurveIndices[i]);
+        const a = getRibPoints(contour, onCurveIndices[i], outline);
         const b = getRibPoints(
           contour,
-          onCurveIndices[(i + 1) % onCurveIndices.length]
+          onCurveIndices[(i + 1) % onCurveIndices.length],
+          outline
         );
         context.beginPath();
         context.moveTo(a.left.x, a.left.y);
@@ -313,10 +419,16 @@ registerVisualizationLayerDefinition({
   draw: (context, positionedGlyph, parameters, model) => {
     context.lineWidth = parameters.lineWidth;
     context.strokeStyle = parameters.strokeColor;
-    forEachSkeletonContour(positionedGlyph, model, (contour) => {
+    forEachSkeletonContour(positionedGlyph, model, (contour, outline) => {
       for (const pointIndex of getOnCurvePointIndices(contour)) {
-        const rib = getRibPoints(contour, pointIndex);
+        const rib = getRibPoints(contour, pointIndex, outline);
         strokeLine(context, rib.left.x, rib.left.y, rib.right.x, rib.right.y);
+      }
+      for (const insertion of contour.insertions || []) {
+        const rib = getInsertionRibPoints(contour, insertion, outline);
+        if (rib) {
+          strokeLine(context, rib.left.x, rib.left.y, rib.right.x, rib.right.y);
+        }
       }
     });
   },
@@ -341,6 +453,9 @@ registerVisualizationLayerDefinition({
     endpointSize: 10,
     lockedEndpointSize: 12,
     strokeWidth: 2,
+    lockMarkLength: 7,
+    lockMarkGap: 4,
+    lockArcRadius: 8,
   },
   colors: {
     endpointColor: "rgba(220, 60, 120, 0.7)",
@@ -360,11 +475,12 @@ registerVisualizationLayerDefinition({
   },
   draw: (context, positionedGlyph, parameters, model) => {
     const ribSelection = getSkeletonRibSelectionSets(model);
+    const insertionSelection = getSkeletonInsertionSelectionSets(model);
     context.lineWidth = parameters.strokeWidth;
-    forEachSkeletonContour(positionedGlyph, model, (contour) => {
+    forEachSkeletonContour(positionedGlyph, model, (contour, outline) => {
       for (const pointIndex of getOnCurvePointIndices(contour)) {
         const point = contour.points[pointIndex];
-        const rib = getRibPoints(contour, pointIndex);
+        const rib = getRibPoints(contour, pointIndex, outline);
         for (const side of ["left", "right"]) {
           if (contour.singleSided && contour.singleSided !== side) {
             continue;
@@ -389,6 +505,70 @@ registerVisualizationLayerDefinition({
           context.fillStyle = color;
           const size = locked ? parameters.lockedEndpointSize : parameters.endpointSize;
           drawDiamondNode(context, rib[side], size, selected);
+          if (locked) {
+            drawSideLockMarks(context, parameters, point, rib[side], side);
+          }
+        }
+      }
+      // An insertion point's ribs draw on this same layer, because they are
+      // ribs and a designer reading the drawing should see them as ribs. The
+      // centerline marker is a hollow ring rather than a filled diamond, which
+      // is the one difference that says an insertion point does not bend the
+      // centerline it stands on.
+      for (const insertion of contour.insertions || []) {
+        const rib = getInsertionRibPoints(contour, insertion, outline);
+        if (!rib) {
+          continue;
+        }
+        for (const side of ["left", "right"]) {
+          if (contour.singleSided && contour.singleSided !== side) {
+            continue;
+          }
+          const key = makeSkeletonRibKey(contour.id, insertion.id, side);
+          const color = ribSelection.selected.has(key)
+            ? parameters.endpointSelectedColor
+            : ribSelection.hovered.has(key)
+              ? parameters.endpointHoverColor
+              : parameters.endpointColor;
+          context.strokeStyle = color;
+          context.fillStyle = color;
+          drawDiamondNode(
+            context,
+            rib[side],
+            parameters.endpointSize,
+            ribSelection.selected.has(key)
+          );
+        }
+        if (rib.center) {
+          const key = makeSkeletonInsertionKey(contour.id, insertion.id);
+          const selected = insertionSelection.selected.has(key);
+          const hovered = insertionSelection.hovered.has(key);
+          const color = selected
+            ? parameters.endpointSelectedColor
+            : hovered
+              ? parameters.endpointHoverColor
+              : parameters.endpointColor;
+          context.strokeStyle = color;
+          context.fillStyle = color;
+          // Selected fills the ring and adds an outer circle, the way a
+          // selected rib end is filled. Hollow is the resting state, and it is
+          // what says the point does not bend the line it stands on.
+          const radius = parameters.endpointSize / 2;
+          context.beginPath();
+          context.arc(rib.center.x, rib.center.y, radius, 0, 2 * Math.PI);
+          context.stroke();
+          if (selected) {
+            context.fill();
+            context.beginPath();
+            context.arc(
+              rib.center.x,
+              rib.center.y,
+              radius + parameters.strokeWidth * 2,
+              0,
+              2 * Math.PI
+            );
+            context.stroke();
+          }
         }
       }
     });
@@ -638,6 +818,137 @@ registerVisualizationLayerDefinition({
   },
 });
 
+// The two gizmos on a GENERATED segment (D8). Deliberately a separate layer
+// from fontra.skeleton.tunni: that one controls the skeleton, this one controls
+// the outline the skeleton produced, and a designer switches between the two
+// questions independently.
+registerVisualizationLayerDefinition({
+  identifier: "fontra.skeleton.generated-tunni",
+  name: "Generated contour gizmos",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: true,
+  zIndex: 548,
+  screenParameters: {
+    lineDash: [3, 3],
+    curvatureSize: 7,
+    strokeWidth: 1,
+    onCurveSize: 8,
+    curvatureAxisLength: 18,
+  },
+  colors: {
+    axisColor: "rgba(0, 160, 120, 0.5)",
+    curvatureColor: "rgba(0, 175, 130, 0.95)",
+    onCurveColor: "rgba(210, 90, 190, 0.95)",
+  },
+  colorsDarkMode: {
+    axisColor: "rgba(80, 220, 180, 0.6)",
+    curvatureColor: "rgba(96, 232, 190, 1)",
+    onCurveColor: "rgba(240, 140, 220, 1)",
+  },
+  draw: (context, positionedGlyph, parameters, model) => {
+    const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
+    const segments = buildGeneratedTunniSegments(
+      skeletonData,
+      positionedGlyph.glyph.path
+    );
+    if (!segments.length) {
+      return;
+    }
+    context.save();
+    context.lineWidth = parameters.strokeWidth;
+    context.strokeStyle = parameters.axisColor;
+    context.setLineDash(parameters.lineDash);
+    // The axis first, so both nodes sit on top of it. Drawing the axis at all
+    // is what makes the curvature control legible: it is the direction the
+    // curve swells in, and without it the node looks free to go anywhere.
+    for (const segment of segments) {
+      if (segment.handlesLocked) {
+        continue;
+      }
+      const anchor = calculateCurvatureGizmoPoint(segment.points);
+      const axis = calculateCurvatureGizmoAxis(
+        segment.points,
+        generatedSegmentHandleAxes(segment.provenance)
+      );
+      if (anchor && axis) {
+        strokeLine(
+          context,
+          anchor.x,
+          anchor.y,
+          anchor.x + axis.x * parameters.curvatureAxisLength,
+          anchor.y + axis.y * parameters.curvatureAxisLength
+        );
+      }
+    }
+    context.setLineDash([]);
+    for (const segment of segments) {
+      const gizmoPoint = segment.onCurveMovable?.some(Boolean)
+        ? calculateGeneratedOnCurveGizmoPoint(segment)
+        : null;
+      if (gizmoPoint) {
+        context.fillStyle = parameters.onCurveColor;
+        drawDiamondNode(context, gizmoPoint, parameters.onCurveSize, true);
+      }
+      // A handle-locked side has no curvature gizmo: the control is gone, not
+      // merely inert.
+      const anchor = segment.handlesLocked
+        ? null
+        : calculateCurvatureGizmoPoint(segment.points);
+      if (anchor) {
+        context.fillStyle = parameters.curvatureColor;
+        fillRoundNode(context, anchor, parameters.curvatureSize);
+      }
+    }
+    context.restore();
+  },
+});
+
+// The number the curvature gizmo owns, beside the gizmo. Its own layer because it
+// answers a different question from the control itself — "what is this segment at"
+// rather than "let me change it" — and a designer wants the second without the
+// first once the numbers stop being news. While a curvature drag is running the
+// drag readout shows the same value regardless of this switch.
+registerVisualizationLayerDefinition({
+  identifier: "fontra.skeleton.generated-curvature-labels",
+  name: "Generated curvature labels",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: false,
+  zIndex: 549,
+  screenParameters: { labelOffset: 13, labelInset: 5 },
+  colors: { color: "rgba(0, 120, 90, 1)", pinnedColor: "rgba(190, 60, 20, 1)" },
+  colorsDarkMode: {
+    color: "rgba(96, 232, 190, 1)",
+    pinnedColor: "rgba(255, 150, 90, 1)",
+  },
+  draw: (context, positionedGlyph, parameters, model) => {
+    const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
+    for (const segment of buildGeneratedTunniSegments(
+      skeletonData,
+      positionedGlyph.glyph.path
+    )) {
+      const curvature = getGeneratedSegmentCurvature(skeletonData, segment);
+      const anchor = calculateCurvatureGizmoPoint(segment.points);
+      if (!curvature || !anchor) {
+        continue;
+      }
+      // Straight above the gizmo, clear of the node. Placing it along the axis
+      // instead put it where the gizmo and its stub already are, and an offset
+      // that follows the axis moves the number around as the segment turns —
+      // a label the eye has to hunt for is worse than one that occasionally
+      // crosses the stub.
+      drawPointStyleLabel(
+        context,
+        anchor.x + parameters.labelInset,
+        anchor.y + parameters.labelOffset,
+        formatGeneratedCurvature(curvature),
+        curvature.pinned ? parameters.pinnedColor : parameters.color
+      );
+    }
+  },
+});
+
 registerVisualizationLayerDefinition({
   identifier: "fontra.skeleton.insert-handles-preview",
   name: "Skeleton insert handles preview",
@@ -660,6 +971,58 @@ registerVisualizationLayerDefinition({
     context.fillStyle = parameters.fillColor;
     for (const point of preview.points) {
       fillRoundNode(context, point, parameters.nodeSize);
+    }
+  },
+});
+
+// What the skeleton pen has under the pointer, and what a click would do with
+// it. Four marks, because the pen has four answers: a ring with a filled centre
+// closes the contour, a plain ring resumes drawing from that end, a dashed ring
+// says the point can only be selected - the pen cannot draw on from the middle
+// of a contour - and a small ring on the centerline says W will put an
+// insertion point there.
+registerVisualizationLayerDefinition({
+  identifier: "fontra.skeleton.pen-hover",
+  name: "Skeleton pen hover",
+  selectionFunc: glyphSelector("editing"),
+  zIndex: 566,
+  screenParameters: {
+    ringSize: 13,
+    dotSize: 5,
+    strokeWidth: 1.5,
+    dashLength: 2.5,
+  },
+  colors: {
+    activeColor: "#2279d2",
+    inertColor: "rgba(80, 80, 80, 0.7)",
+  },
+  colorsDarkMode: {
+    activeColor: "#5fb2ff",
+    inertColor: "rgba(200, 200, 200, 0.7)",
+  },
+  draw: (context, positionedGlyph, parameters, model) => {
+    const target = model.skeletonPenHoverTarget;
+    if (!target) {
+      return;
+    }
+    const isInert = target.kind === "select";
+    context.save();
+    context.lineWidth = parameters.strokeWidth;
+    context.strokeStyle = isInert ? parameters.inertColor : parameters.activeColor;
+    if (isInert) {
+      context.setLineDash([parameters.dashLength, parameters.dashLength]);
+    }
+    // The insertion mark is the ring the point itself is drawn with, so what
+    // the hover promises and what lands are the same shape.
+    const ringSize =
+      target.kind === "insertion" ? parameters.dotSize * 2 : parameters.ringSize;
+    context.beginPath();
+    context.arc(target.x, target.y, ringSize / 2, 0, 2 * Math.PI, false);
+    context.stroke();
+    context.restore();
+    if (target.kind === "close") {
+      context.fillStyle = parameters.activeColor;
+      fillRoundNode(context, target, parameters.dotSize);
     }
   },
 });
@@ -783,5 +1146,57 @@ registerVisualizationLayerDefinition({
         }
       }
     }
+  },
+});
+
+// The skeleton is not in the glyph path, so "fontra.point.index" cannot see it.
+// This layer counts the skeleton's own points, in its own run: one sequence
+// across every skeleton contour, on-curves and handles alike, starting at 0.
+// The numbers are deliberately unrelated to the path point indices.
+registerVisualizationLayerDefinition({
+  identifier: "fontra.skeleton.point-index",
+  name: "sidebar.user-settings.glyph.skeleton.point.index",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: false,
+  zIndex: 600,
+  screenParameters: { fontSize: 10 },
+  colors: { boxColor: "#FFFB", color: "#000" },
+  colorsDarkMode: { boxColor: "#1118", color: "#FFF" },
+  draw: (context, positionedGlyph, parameters, model) => {
+    const { selected } = getSkeletonPointSelectionSets(model);
+    if (!selected.size) {
+      return;
+    }
+
+    const fontSize = parameters.fontSize;
+    const margin = 0.2 * fontSize;
+    const boxHeight = (1.68 * fontSize) / 2;
+    const bottomY = -0.75 * fontSize * 2;
+
+    context.font = `${fontSize}px fontra-ui-regular, sans-serif`;
+    context.textAlign = "center";
+    context.scale(1, -1);
+
+    let pointIndex = 0;
+    forEachSkeletonContour(positionedGlyph, model, (contour) => {
+      for (const point of contour.points) {
+        const index = pointIndex++;
+        if (!selected.has(`${contour.id}/${point.id}`)) {
+          continue;
+        }
+        const label = `${index}`;
+        const width = context.measureText(label).width + 2 * margin;
+        context.fillStyle = parameters.boxColor;
+        context.fillRect(
+          point.x - width / 2,
+          -point.y - bottomY + margin,
+          width,
+          -boxHeight - 2 * margin
+        );
+        context.fillStyle = parameters.color;
+        context.fillText(label, point.x, -point.y - bottomY);
+      }
+    });
   },
 });

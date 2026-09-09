@@ -143,33 +143,53 @@ function interpolateColor(color1, color2, t) {
 }
 
 /**
- * Map absolute curvature -> color using per-segment min/max normalization.
- * NEW SIGNATURE:
- *   curvatureToColor(curvatureAbs, minAbs, maxAbs, colorStops)
+ * Map normalized curvature -> colour, against a ramp between two named turns.
  *
- * - curvatureAbs: non-negative absolute curvature value
- * - minAbs, maxAbs: per-segment min/max absolute curvature (the visualization must pass these)
- * - colorStops: array of hex strings
+ * The argument is a turn: curvature times the local length (see
+ * `computeSpeedPunkSamples`), so it is an angle in radians and carries no unit
+ * of length. Scale a drawing and it does not move. A circle reads the same turn
+ * at every radius, which is what the whole readout exists to say.
+ *
+ * `flatTurn` takes the first stop and `tightTurn` the last, and the ramp runs
+ * geometrically between them, so equal ratios of turn are equal steps of colour
+ * and the middle stop of a three-stop ramp lands on their geometric mean. Past
+ * either end the colour pins.
+ *
+ * **A ramp in radius was what this replaced, and the reason is in the units.**
+ * A radius is a length, so a ramp stated in radii is a statement about size. It
+ * has to be recalibrated for every font drawn at a different weight, and inside
+ * one font it cannot serve a capital and a combining mark at once — a tilde
+ * pinned to the last stop over 89 per cent of its outline while a capital read
+ * correctly. A turn has no size in it, so there is nothing left to calibrate.
+ *
+ * Nothing here is read off the drawing. One turn is one colour in every glyph of
+ * every font.
  */
 export function curvatureToColor(
-  curvatureAbs,
-  minAbs,
-  maxAbs,
+  normalizedCurvature,
+  flatTurn,
+  tightTurn,
   colorStops = ["#8b939c", "#f29400", "#e3004f"]
 ) {
-  // safe defaults
   if (!Array.isArray(colorStops) || colorStops.length === 0) {
     return "rgba(0,0,0,1)";
   }
-
-  // degenerate: all identical -> return middle or last stop
-  if (maxAbs <= minAbs) {
-    const mid = Math.floor((colorStops.length - 1) / 2);
-    return interpolateColor(colorStops[mid], colorStops[mid], 0);
+  if (colorStops.length === 1) {
+    return interpolateColor(colorStops[0], colorStops[0], 0);
   }
 
-  // normalize to [0,1]
-  let t = (curvatureAbs - minAbs) / (maxAbs - minAbs);
+  const flat = Math.max(1e-9, flatTurn);
+  const tight = Math.max(1e-9, tightTurn);
+  // A straight line turns through nothing, so it lands on the flat end.
+  const turn = Math.max(0, normalizedCurvature);
+
+  let t = 0;
+  if (tight > flat) {
+    t = turn > 0 ? Math.log(turn / flat) / Math.log(tight / flat) : 0;
+  } else {
+    // A ramp with no width: everything at or past it takes the last stop.
+    t = turn >= flat ? 1 : 0;
+  }
   t = Math.max(0, Math.min(1, t));
 
   const segments = colorStops.length - 1;
@@ -194,6 +214,21 @@ export function calculateSegmentBudget(
   );
 
   return stepsPerSegment;
+}
+
+// The true arc length of a segment, by the midpoint rule on its own speed.
+// `estimateCurveLength` below is the control-polygon estimate, which the step
+// budget uses; this one is the length the normalizer is stated in, so it has to
+// be the arc a designer sees rather than a proxy for it.
+export function segmentArcLength(kind, pts, steps = 32) {
+  let length = 0;
+  for (let i = 0; i < steps; i++) {
+    const t = (i + 0.5) / steps;
+    const { r1 } =
+      kind === "cubic" ? solveCubicBezier(...pts, t) : solveQuadraticBezier(...pts, t);
+    length += Math.hypot(r1[0], r1[1]) / steps;
+  }
+  return length;
 }
 
 export function estimateCurveLength(p1, p2, p3, p4 = null) {
@@ -284,11 +319,56 @@ function _segmentKind(t1, t2, t3) {
   return { isCubic, isQuadratic };
 }
 
+const DEGREE = Math.PI / 180;
+
+/**
+ * The fringe height rule above the anchor.
+ *
+ * The height is the turn times a gain, and the gain has no limit in it, so a
+ * short arc bending hard draws a fringe longer than its own radius of
+ * curvature. Those fringes converge on the centre of curvature, pass through
+ * it, and fan out the other side: the comb crosses itself and stops being
+ * readable exactly where the drawing is most in question.
+ *
+ * A hard clip would answer that and cost the reading: every turn past the
+ * ceiling would draw the same fringe, so "tight" and "very tight" would look
+ * alike. This bends instead. Below the anchor nothing is touched at all, so a
+ * quarter circle still draws exactly the peak height at every radius, which is
+ * the whole calibration. Above it the remaining room is spent on an exponential
+ * approach: strictly rising, so a tighter turn always draws longer, and never
+ * arriving, so the ceiling is a limit rather than a stop.
+ *
+ * @param {number} ratio - Height in peak heights, before the ceiling
+ * @param {number} ceiling - The limit, also in peak heights
+ * @returns {number} The height to draw, in peak heights
+ */
+export function softCeilingRatio(ratio, ceiling) {
+  // No room between the anchor and the ceiling is no ceiling, and neither is
+  // unbounded room. Saying both here keeps the anchor exact rather than
+  // dividing by the gap, and answers an infinite ceiling with the plain rule
+  // instead of an infinity times a zero.
+  if (!(ceiling > 1) || !Number.isFinite(ceiling) || ratio <= 1) {
+    return ratio;
+  }
+  const room = ceiling - 1;
+  return 1 + room * (1 - Math.exp(-(ratio - 1) / room));
+}
+
 export function computeSpeedPunkSamples(path, params = {}) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;
+  // The anchor the height scale is stated in: a stretch of outline that turns
+  // through this angle draws a fringe of exactly the peak height. A circle
+  // drawn as four cubic quadrants turns through 90 degrees per segment, at
+  // every radius, so the default anchor is one a designer can name and check.
+  const referenceTurn = Math.max(1e-9, (params.referenceTurnDegrees ?? 90) * DEGREE);
+  // The colour ramp's own two ends, independent of the height anchor above.
+  const colorFlatTurn = Math.max(1e-9, (params.colorFlatTurnDegrees ?? 30) * DEGREE);
+  const colorTightTurn = Math.max(1e-9, (params.colorTightTurnDegrees ?? 120) * DEGREE);
   const sharpness = Math.max(0.1, params.sharpness ?? 1);
+  // In peak heights. Two, so the anchor keeps the whole of its own range and
+  // everything past it shares one more.
+  const heightCeilingRatio = params.heightCeilingRatio ?? 2;
   const illustrationPosition = params.illustrationPosition ?? "outsideOfCurve";
-  const useGlobalNormalization = params.useGlobalNormalization ?? false;
   const colorStops = params.colorStops ?? ["#8b939c", "#f29400", "#e3004f"];
   const baseSegmentBudget = params.baseSegmentBudget ?? 400;
   const minSegmentsPerCurve = params.minSegmentsPerCurve ?? 5;
@@ -322,35 +402,46 @@ export function computeSpeedPunkSamples(path, params = {}) {
     averageCurveLength = curveCount > 0 ? totalLength / curveCount : 0;
   }
 
-  let globalMinAbs = Infinity;
-  let globalMaxAbs = -Infinity;
-  if (useGlobalNormalization) {
-    forEachCurveSegment(path, (kind, pts) => {
-      const steps = adaptToCurveLength
-        ? adjustStepsForCurve(
-            stepsPerSegment,
-            estimateCurveLength(...pts),
-            averageCurveLength
-          )
-        : stepsPerSegment;
-      const samples =
-        kind === "cubic"
-          ? calculateCurvatureForSegment(...pts, steps)
-          : calculateCurvatureForQuadraticSegment(...pts, steps);
-      for (const sample of samples) {
-        const absK = Math.abs(sample.curvature);
-        globalMinAbs = Math.min(globalMinAbs, absK);
-        globalMaxAbs = Math.max(globalMaxAbs, absK);
+  // The normalizer. Curvature carries one over length, so it cannot be read
+  // without a size. Multiplying by a length taken from the shape removes the
+  // size again: scale a drawing and the curvature halves while the length
+  // doubles, so the product does not move. The product is the angle the outline
+  // turns through over that length.
+  //
+  // **The length has to be continuous along the outline.** A per-segment length
+  // steps at every joint, so two segments meeting at one curvature would draw
+  // two fringe heights — the false step measured at 27 per cent on `d` and
+  // rejected once already. Each on-curve therefore takes the mean of the curve
+  // segments meeting there, and the length runs linearly between a segment's two
+  // ends. That is the rule harmonize already scores a joint by.
+  //
+  // The cost is stated rather than hidden: a segment's fringe now moves when an
+  // immediate neighbour is redrawn, because the two share the value at the joint
+  // between them. Agreeing at the joint and reading nothing but itself are
+  // exclusive, and reading a joint is what the comb is for. Nothing beyond the
+  // two adjacent segments is touched.
+  const segments = collectCurveSegments(path);
+  const lengthsAtPoint = new Map();
+  for (const segment of segments) {
+    segment.arcLength = segmentArcLength(segment.kind, segment.points);
+    for (const index of [segment.startPointIndex, segment.endPointIndex]) {
+      if (!lengthsAtPoint.has(index)) {
+        lengthsAtPoint.set(index, []);
       }
-    });
-    if (globalMinAbs === Infinity) {
-      globalMinAbs = 0;
-      globalMaxAbs = 1;
+      lengthsAtPoint.get(index).push(segment.arcLength);
     }
   }
+  const meanLengthAt = (index) => {
+    const lengths = lengthsAtPoint.get(index);
+    return lengths.reduce((a, b) => a + b, 0) / lengths.length;
+  };
 
   const quads = [];
-  forEachCurveSegment(path, (kind, pts) => {
+  for (const segment of segments) {
+    const kind = segment.kind;
+    const pts = segment.points;
+    const startLength = meanLengthAt(segment.startPointIndex);
+    const endLength = meanLengthAt(segment.endPointIndex);
     const steps = adaptToCurveLength
       ? adjustStepsForCurve(
           stepsPerSegment,
@@ -363,23 +454,20 @@ export function computeSpeedPunkSamples(path, params = {}) {
         ? calculateCurvatureForSegment(...pts, steps)
         : calculateCurvatureForQuadraticSegment(...pts, steps);
 
-    const absVals = samples.map((s) => Math.abs(s.curvature));
-    const minAbsSegment = Math.min(...absVals);
-    const maxAbsSegment = Math.max(...absVals);
-    const segmentPeakAbsCurvature = maxAbsSegment > 1e-12 ? maxAbsSegment : 1;
-    const minAbs = useGlobalNormalization ? globalMinAbs : minAbsSegment;
-    const maxAbs = useGlobalNormalization ? globalMaxAbs : maxAbsSegment;
-
     const onCurve = [];
     const offCurve = [];
     for (let s = 0; s < samples.length; s++) {
+      const absK = Math.abs(samples[s].curvature);
       const t = samples[s].t;
       const { r, r1 } =
         kind === "cubic"
           ? solveCubicBezier(...pts, t)
           : solveQuadraticBezier(...pts, t);
       const [x, y] = r;
-      onCurve.push({ x, y, k: samples[s].curvature });
+      // The turn: curvature times the local length, so it carries no unit of
+      // length and does not move when the drawing is scaled.
+      const turn = absK * (startLength + (endLength - startLength) * t);
+      onCurve.push({ x, y, turn });
 
       let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];
       let ny = illustrationPosition === "outsideOfCurve" ? r1[0] : -r1[0];
@@ -387,13 +475,15 @@ export function computeSpeedPunkSamples(path, params = {}) {
       nx /= mag;
       ny /= mag;
 
-      const rawNormalizedHeight =
-        Math.abs(samples[s].curvature) / segmentPeakAbsCurvature;
-      const normalizedHeight = Math.pow(
-        Math.max(0, Math.min(1, rawNormalizedHeight)),
-        sharpness
+      // The fringe is the peak height where the outline turns through the
+      // reference turn, and proportional from there. No floor; the ceiling is
+      // soft and only bends what is already past the anchor. Sharpness is an
+      // exponent about that anchor, which the anchor survives.
+      const heightRatio = softCeilingRatio(
+        Math.pow(turn / referenceTurn, sharpness),
+        heightCeilingRatio
       );
-      const h = -normalizedHeight * peakHeightGlyphUnits;
+      const h = -heightRatio * peakHeightGlyphUnits;
       offCurve.push({ x: x + nx * h, y: y + ny * h });
     }
 
@@ -407,22 +497,36 @@ export function computeSpeedPunkSamples(path, params = {}) {
           [offCurve[s + 1].x, offCurve[s + 1].y],
           [offCurve[s].x, offCurve[s].y],
         ],
-        color: curvatureToColor(Math.abs(a.k), minAbs, maxAbs, colorStops),
+        color: curvatureToColor(a.turn, colorFlatTurn, colorTightTurn, colorStops),
       });
     }
-  });
+  }
 
   return quads;
 }
 
+// The one segment walk. Every curve segment, once, in contour order.
+//
+// It used to group segments into runs of smoothly joined curves, for a comb
+// whose two scales were relative and needed a scope. There is no run scope now.
+// What a segment does need is its two end points' absolute indices, so the
+// normalizer can find the segments that share them. That is a neighbour lookup
+// through the path's own point identity, not a search by position.
+function collectCurveSegments(path) {
+  const segments = [];
+  forEachCurveSegment(path, (kind, points, startPointIndex, endPointIndex) => {
+    segments.push({ kind, points, startPointIndex, endPointIndex });
+  });
+  return segments;
+}
+
 function forEachCurveSegment(path, cb) {
-  for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
+  for (let contourIndex = 0; contourIndex < (path?.numContours ?? 0); contourIndex++) {
     const contour = path.getContour(contourIndex);
-    const startPoint = path.getAbsolutePointIndex(contourIndex, 0);
     const numPoints = contour.pointTypes.length;
 
     for (let i = 0; i < numPoints; i++) {
-      const pointIndex = startPoint + i;
+      const pointIndex = path.getAbsolutePointIndex(contourIndex, i);
       if (!_isOnCurve(path.pointTypes[pointIndex])) {
         continue;
       }
@@ -434,27 +538,21 @@ function forEachCurveSegment(path, cb) {
         path.pointTypes[next2],
         path.pointTypes[next3]
       );
-      if (isCubic) {
-        const p1 = path.getPoint(pointIndex);
-        const p2 = path.getPoint(next1);
-        const p3 = path.getPoint(next2);
-        const p4 = path.getPoint(next3);
-        cb("cubic", [
-          [p1.x, p1.y],
-          [p2.x, p2.y],
-          [p3.x, p3.y],
-          [p4.x, p4.y],
-        ]);
-      } else if (isQuadratic) {
-        const p1 = path.getPoint(pointIndex);
-        const p2 = path.getPoint(next1);
-        const p3 = path.getPoint(next2);
-        cb("quadratic", [
-          [p1.x, p1.y],
-          [p2.x, p2.y],
-          [p3.x, p3.y],
-        ]);
+      if (!isCubic && !isQuadratic) {
+        continue;
       }
+      const pointIndices = isCubic
+        ? [pointIndex, next1, next2, next3]
+        : [pointIndex, next1, next2];
+      cb(
+        isCubic ? "cubic" : "quadratic",
+        pointIndices.map((index) => {
+          const point = path.getPoint(index);
+          return [point.x, point.y];
+        }),
+        pointIndex,
+        isCubic ? next3 : next2
+      );
     }
   }
 }

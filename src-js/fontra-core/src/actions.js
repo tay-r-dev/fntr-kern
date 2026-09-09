@@ -304,6 +304,35 @@ function loadActionsByBaseKey() {
 
 const modifierProperties = ["metaKey", "ctrlKey", "shiftKey", "altKey"];
 
+// fork: a held key is not an action the dispatcher can fire - it has a down and
+// an up, and the tool holding it decides what that means. So a tool matches the
+// event against the shortcut itself. One copy, here, beside the table it reads
+// (rail R-B): three tools were carrying their own before this.
+export function eventMatchesActionShortCut(actionIdentifier, event) {
+  const shortCuts = getShortCuts(actionIdentifier);
+  if (!shortCuts?.length) {
+    return false;
+  }
+  const baseKey = getBaseKeyFromKeyEvent(event);
+  return shortCuts.some(
+    (shortCut) =>
+      shortCut?.baseKey &&
+      shortCut.baseKey === baseKey &&
+      matchEventModifiers(shortCut, event)
+  );
+}
+
+// The key up, where the modifiers have usually changed on the way: releasing a
+// key held with shift says nothing about shift. Only the base key is asked.
+export function eventMatchesActionBaseKey(actionIdentifier, event) {
+  const shortCuts = getShortCuts(actionIdentifier);
+  if (!shortCuts?.length) {
+    return false;
+  }
+  const baseKey = getBaseKeyFromKeyEvent(event);
+  return shortCuts.some((shortCut) => shortCut?.baseKey === baseKey);
+}
+
 function matchEventModifiers(shortCut, event) {
   const expectedModifiers = { ...shortCut };
   if (shortCut.commandKey) {

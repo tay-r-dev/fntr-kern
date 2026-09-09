@@ -30,6 +30,11 @@ export class GlyphCellView extends HTMLElement {
     this.glyphSelectionKey = options?.glyphSelectionKey || "glyphSelection";
     this.closedGlyphSectionsKey =
       options?.closedGlyphSectionsKey || "closedGlyphSections";
+    // Cells whose section asks for it keep the drawing they have when their
+    // glyph is edited, and report themselves stale instead. It is per section,
+    // because a section listing the open glyph's own parts is telling the truth
+    // when it redraws, while one listing the glyphs built on top of it is not.
+    this._staleCells = new Set();
 
     this._magnification = 1;
     this.classList.add("focus-preferred");
@@ -208,6 +213,9 @@ export class GlyphCellView extends HTMLElement {
   }
 
   setGlyphSections(glyphSections, resetGlyphSelection = false) {
+    // The cells these referred to are being replaced.
+    this._staleCells.clear();
+    this.onStaleChanged?.();
     this._resetSelectionHelpers();
     if (resetGlyphSelection) {
       this.glyphSelection = new Set();
@@ -302,6 +310,32 @@ export class GlyphCellView extends HTMLElement {
     return itemHasGlyphs;
   }
 
+  get hasStaleCells() {
+    return this._staleCells.size > 0;
+  }
+
+  refreshStaleCells() {
+    const stale = [...this._staleCells];
+    this._staleCells.clear();
+    for (const cell of stale) {
+      cell.refreshNow();
+    }
+    this.onStaleChanged?.();
+  }
+
+  // Turn deferring off and every waiting cell catches up at once; turn it on
+  // and cells start holding still from the next edit. Sections that never asked
+  // to defer are untouched either way.
+  setDeferUpdates(deferUpdates) {
+    this.forEachGlyphCell((glyphCell) => {
+      const sectionDefers = !!this.glyphSections[glyphCell._sectionIndex]?.deferUpdates;
+      glyphCell.deferUpdates = deferUpdates && sectionDefers;
+    });
+    if (!deferUpdates) {
+      this.refreshStaleCells();
+    }
+  }
+
   _addCellsIfNeeded(item) {
     if (!item.glyphsToAdd.length) {
       return;
@@ -318,6 +352,11 @@ export class GlyphCellView extends HTMLElement {
         this.settingsController,
         this.locationKey
       );
+      glyphCell.deferUpdates = !!item.section.deferUpdates;
+      glyphCell.onStaleChanged = (cell) => {
+        this._staleCells.add(cell);
+        this.onStaleChanged?.();
+      };
       glyphCell._sectionIndex = item.sectionIndex;
       glyphCell._cellIndex = item.nextCellIndex++;
 

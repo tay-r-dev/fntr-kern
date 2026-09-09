@@ -54,6 +54,13 @@ export function makeConfig(options) {
     output: {
       path: destination,
       filename: options.production ? "[name].[contenthash].js" : "[name].js",
+      // Stated rather than left to webpack's automatic mode, which reads the
+      // directory of whatever script is asking. A worker running from `js/`
+      // then resolved a chunk name that already carries `js/` against `js/`
+      // itself and asked for `js/js/...`, which is a network error with no
+      // other symptom. Rooted, one chunk name means one URL from anywhere.
+      // A subdirectory install overrides this below.
+      publicPath: "/",
       clean: true,
     },
     devtool: options.production ? false : "eval-source-map",

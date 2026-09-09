@@ -3,8 +3,23 @@ import {
   getSuggestedGlyphName,
 } from "@fontra/core/glyph-data.js";
 import * as html from "@fontra/core/html-utils.js";
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
+import { readDecomposition } from "@fontra/core/composition-build.js";
 import { translate } from "@fontra/core/localization.js";
 import { unicodeMadeOf, unicodeUsedBy } from "@fontra/core/unicode-utils.js";
+import {
+  attachComponent,
+  buildGlyph,
+  buildGlyphs,
+  computeMarkCloud,
+  markCandidatesForBase,
+  detachComponent,
+  overrideComponent,
+  readCompositionState,
+  targetsForMark,
+  undoBuildGlyphs,
+  updateComponent,
+} from "./composition-editing.js";
 import Panel from "./panel.js";
 
 import { getCharFromCodePoint, throttleCalls } from "@fontra/core/utils.ts";
@@ -30,9 +45,52 @@ export default class RelatedGlyphPanel extends Panel {
       flex-direction: column;
     }
 
+    .related-glyphs-preview-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+      padding-bottom: 0.4em;
+    }
+
+    .related-glyphs-refresh {
+      border-radius: 1em;
+      cursor: pointer;
+    }
+
+    .related-glyphs-refresh.stale {
+      font-weight: bold;
+    }
+
     .no-related-glyphs {
       color: #999;
       padding-top: 1em;
+    }
+
+    .composition-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4em;
+      padding-top: 0.5em;
+    }
+
+    .composition-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.4em;
+    }
+
+    .composition-row-name {
+      font-weight: bold;
+    }
+
+    .composition-row-state {
+      color: #999;
+    }
+
+    .composition-row-state.out-of-date,
+    .composition-row-state.broken {
+      color: #d08b00;
     }
   `;
 
@@ -44,13 +102,25 @@ export default class RelatedGlyphPanel extends Panel {
     this.setupGlyphRelationshipsElement();
 
     this.sceneController.sceneSettingsController.addKeyListener(
-      ["selectedGlyphName"],
+      ["selectedGlyphName", "editLayerName"],
       (event) => this.throttledUpdate()
     );
 
-    this.fontController.addChangeListener({ glyphMap: null }, (event) =>
-      this.throttledUpdate()
+    // An edit inside the open glyph moves an anchor or a component, and either
+    // of those changes what the composition rows report. The listener follows
+    // the open glyph, so it is re-registered whenever the selection moves.
+    this._compositionGlyphListener = () => this.throttledUpdate();
+    this._compositionListenerGlyphName = null;
+    this.sceneController.sceneSettingsController.addKeyListener(
+      ["selectedGlyphName"],
+      (event) => this.followGlyphForComposition(event.newValue)
     );
+
+    this.fontController.addChangeListener({ glyphMap: null }, (event) => {
+      // The font gained or lost a glyph, so the related list itself can differ.
+      this._sectionsGlyphName = null;
+      this.throttledUpdate();
+    });
   }
 
   getContentElement() {
@@ -59,6 +129,13 @@ export default class RelatedGlyphPanel extends Panel {
       this.editorController.sceneSettingsController,
       { glyphSelectionKey: "relatedGlyphsGlyphSelection" }
     );
+
+    // The tiles hold the drawing they were given. An edit to a glyph one of
+    // them shows dims that tile instead of redrawing it, and the button over
+    // the preview solves them all again. This is the same bargain the
+    // attachment rows make: the editor reports what moved and never answers
+    // for the designer.
+    this.glyphCellView.onStaleChanged = () => this.updateRefreshButton();
 
     this.glyphCellView.onOpenSelectedGlyphs = (event) => this.openSelectedGlyphs(event);
 
@@ -80,6 +157,10 @@ export default class RelatedGlyphPanel extends Panel {
         class: "panel",
       },
       [
+        html.div({ class: "panel-section" }, [
+          html.div({ id: "composition-header" }, [translate("composition.title")]),
+          html.div({ id: "composition-rows", class: "composition-rows" }, []),
+        ]),
         html.div(
           {
             class: "panel-section panel-section--flex related-glyphs-section",
@@ -88,6 +169,38 @@ export default class RelatedGlyphPanel extends Panel {
             html.div({ id: "related-glyphs-header" }, [
               translate("sidebar.related-glyphs.related-glyphs"),
             ]),
+            html.div({ class: "related-glyphs-preview-controls" }, [
+              html.button(
+                {
+                  id: "related-glyphs-refresh",
+                  class: "related-glyphs-refresh",
+                  title: translate("sidebar.related-glyphs.refresh"),
+                  onclick: () => {
+                    // Rebuild the lists too: a glyph may have gained or lost a
+                    // component while the tiles were holding still.
+                    this._sectionsGlyphName = null;
+                    this.glyphCellView.refreshStaleCells();
+                    this.update();
+                  },
+                },
+                ["↻ ", translate("sidebar.related-glyphs.refresh")]
+              ),
+              html.input({
+                type: "checkbox",
+                id: "related-glyphs-live",
+                checked:
+                  !!applicationSettingsController.model.relatedGlyphsLivePreviews,
+                onchange: (event) => {
+                  applicationSettingsController.model.relatedGlyphsLivePreviews =
+                    event.target.checked;
+                  this.glyphCellView.setDeferUpdates(!event.target.checked);
+                  this.updateRefreshButton();
+                },
+              }),
+              html.label({ for: "related-glyphs-live" }, [
+                translate("sidebar.related-glyphs.live-previews"),
+              ]),
+            ]),
             this.glyphCellView,
           ]
         ),
@@ -95,14 +208,309 @@ export default class RelatedGlyphPanel extends Panel {
     );
   }
 
+  // The button is always there, because "redraw the previews" is something the
+  // designer may want at any moment. It only advertises itself when something
+  // is actually waiting.
+  updateRefreshButton() {
+    this.refreshButtonElement?.classList.toggle(
+      "stale",
+      !!this.glyphCellView.hasStaleCells
+    );
+  }
+
   setupGlyphRelationshipsElement() {
     this.relatedGlyphsHeaderElement = this.contentElement.querySelector(
       "#related-glyphs-header"
     );
+    this.compositionHeaderElement =
+      this.contentElement.querySelector("#composition-header");
+    this.compositionRowsElement =
+      this.contentElement.querySelector("#composition-rows");
+    this.refreshButtonElement = this.contentElement.querySelector(
+      "#related-glyphs-refresh"
+    );
+  }
+
+  followGlyphForComposition(glyphName) {
+    if (this._compositionListenerGlyphName === glyphName) {
+      return;
+    }
+    if (this._compositionListenerGlyphName) {
+      this.fontController.removeGlyphChangeListener(
+        this._compositionListenerGlyphName,
+        this._compositionGlyphListener
+      );
+    }
+    this._compositionListenerGlyphName = glyphName || null;
+    if (glyphName) {
+      this.fontController.addGlyphChangeListener(
+        glyphName,
+        this._compositionGlyphListener
+      );
+    }
+  }
+
+  // The panel computes nothing. It asks the write-path module for the state and
+  // calls that module for every action. Spec section 9.
+  async updateComposition() {
+    this.compositionRowsElement.innerHTML = "";
+    this.compositionHeaderElement.innerHTML = `<b>${translate(
+      "composition.title"
+    )}</b>`;
+
+    const glyphName = this.sceneController.sceneSettings.selectedGlyphName;
+    if (glyphName) {
+      // Build is offered only where the character is made of something. On an
+      // unaccented letter or on a mark there is nothing to build from, and a
+      // button that only ever refuses is worse than no button.
+      const decomposition = readDecomposition(
+        this.fontController,
+        glyphName,
+        this.sceneController.sceneSettings.combinedGlyphMap,
+        this.sceneController.sceneSettings.combinedCharacterMap
+      );
+      const canBuild = decomposition.status === "ok";
+      const markTargets = targetsForMark(this.sceneController, glyphName);
+      this.compositionRowsElement.appendChild(
+        html.div({ class: "composition-row" }, [
+          html.button(
+            {
+              disabled: !canBuild,
+              onclick: async () => {
+                const result = await buildGlyph(this.sceneController, glyphName);
+                if (result.status === "refused") {
+                  this.compositionReport = translate(
+                    "composition.refused",
+                    translate(`composition.refusal.${result.reason}`)
+                  );
+                } else {
+                  this.compositionReport = null;
+                }
+                this.throttledUpdate();
+              },
+            },
+            [translate("composition.button.build")]
+          ),
+          html.button(
+            {
+              disabled: !markTargets.length,
+              onclick: async () => {
+                const report = await buildGlyphs(this.sceneController, markTargets);
+                this.compositionReport = translate(
+                  "composition.report",
+                  report.built.length,
+                  report.skipped.length,
+                  report.refused.length
+                );
+                // Ctrl+Z cannot take a batch back: its records are on the built
+                // glyphs' own stacks, and this glyph's stack is empty. So the
+                // batch keeps what it needs to undo itself, and offers it here.
+                this.compositionBatch = report.record.length
+                  ? { markGlyphName: glyphName, record: report.record }
+                  : null;
+                this.throttledUpdate();
+              },
+            },
+            [translate("composition.button.compose-all")]
+          ),
+        ])
+      );
+
+      if (this.compositionBatch?.markGlyphName === glyphName) {
+        this.compositionRowsElement.appendChild(
+          html.div({ class: "composition-row" }, [
+            html.button(
+              {
+                onclick: async () => {
+                  await undoBuildGlyphs(
+                    this.sceneController,
+                    this.compositionBatch.record
+                  );
+                  this.compositionBatch = null;
+                  this.compositionReport = null;
+                  this.throttledUpdate();
+                },
+              },
+              [
+                translate(
+                  "composition.button.undo-compose-all",
+                  this.compositionBatch.record.length
+                ),
+              ]
+            ),
+          ])
+        );
+      }
+    }
+    if (this.compositionReport) {
+      this.compositionRowsElement.appendChild(
+        html.div({ class: "composition-row-state broken" }, [this.compositionReport])
+      );
+    }
+
+    await this.updateMarkCloud(glyphName);
+
+    const { rows } = await readCompositionState(this.sceneController);
+    if (!rows.length) {
+      this.compositionRowsElement.appendChild(
+        html.div({ class: "no-related-glyphs" }, [
+          translate("composition.no-components"),
+        ])
+      );
+      return;
+    }
+
+    for (const row of rows) {
+      const parts = [
+        html.span({ class: "composition-row-name" }, [row.componentName]),
+        html.span({ class: "composition-row-state" }, [
+          translate(`composition.state.${row.state}`),
+        ]),
+      ];
+      if (row.anchorName) {
+        parts.push(html.span({}, [row.anchorName]));
+      }
+      if (row.refusal) {
+        parts.push(
+          html.span({ class: "composition-row-state broken" }, [
+            translate(`composition.refusal.${row.refusal}`),
+          ])
+        );
+      }
+      for (const [labelKey, action] of this.compositionButtonsFor(row)) {
+        parts.push(
+          html.button(
+            {
+              onclick: async () => {
+                await action(this.sceneController, row.componentIndex);
+                this.throttledUpdate();
+              },
+            },
+            [translate(labelKey)]
+          )
+        );
+      }
+      this.compositionRowsElement.appendChild(
+        html.div({ class: "composition-row" }, parts)
+      );
+    }
+  }
+
+  // The cloud controls appear only where the open glyph carries a plain anchor,
+  // which is the base-glyph case. On a mark they are absent. The switch and the
+  // ticks are view preferences, so they live in localStorage per decision D9.
+  async updateMarkCloud(glyphName) {
+    const model = this.sceneController.sceneModel;
+    model.compositionMarkCloud = [];
+    if (!glyphName) {
+      return;
+    }
+    const candidates = markCandidatesForBase(this.sceneController, glyphName);
+    if (!candidates.length) {
+      return;
+    }
+
+    const settings = applicationSettingsController.model;
+    const sets = settings.compositionMarkCloudSets || {};
+    const enabled = new Set(sets[glyphName] ?? candidates);
+
+    const onSwitch = html.input({
+      type: "checkbox",
+      checked: !!settings.compositionMarkCloudOn,
+      onchange: (event) => {
+        settings.compositionMarkCloudOn = event.target.checked;
+        this.throttledUpdate();
+      },
+    });
+    this.compositionRowsElement.appendChild(
+      html.div({ class: "composition-row" }, [
+        onSwitch,
+        html.span({}, [translate("composition.mark-cloud")]),
+      ])
+    );
+
+    for (const markName of candidates) {
+      this.compositionRowsElement.appendChild(
+        html.div({ class: "composition-row" }, [
+          html.input({
+            type: "checkbox",
+            checked: enabled.has(markName),
+            onchange: (event) => {
+              const next = new Set(enabled);
+              if (event.target.checked) {
+                next.add(markName);
+              } else {
+                next.delete(markName);
+              }
+              settings.compositionMarkCloudSets = {
+                ...sets,
+                [glyphName]: [...next],
+              };
+              this.throttledUpdate();
+            },
+          }),
+          html.span({}, [markName]),
+        ])
+      );
+    }
+
+    if (!settings.compositionMarkCloudOn) {
+      return;
+    }
+    const placed = await computeMarkCloud(
+      this.sceneController,
+      glyphName,
+      candidates.filter((name) => enabled.has(name))
+    );
+    model.compositionMarkCloud = placed;
+    this.editorController.canvasController.requestUpdate();
+
+    // A mark carrying more than one underscore anchor name is drawn once per
+    // name, and it is flagged here. Spec section 8.
+    const drawnPerMark = {};
+    for (const mark of placed) {
+      drawnPerMark[mark.glyphName] = (drawnPerMark[mark.glyphName] || 0) + 1;
+    }
+    for (const [markName, count] of Object.entries(drawnPerMark)) {
+      if (count > 1) {
+        this.compositionRowsElement.appendChild(
+          html.div({ class: "composition-row-state broken" }, [
+            `${markName}: ${translate("composition.multi-anchor-mark")}`,
+          ])
+        );
+      }
+    }
+  }
+
+  // The state decides what the designer can do about it. Spec section 6.
+  compositionButtonsFor(row) {
+    switch (row.state) {
+      case "unattached":
+        return row.anchorName ? [["composition.button.attach", attachComponent]] : [];
+      case "inSync":
+        return [["composition.button.detach", detachComponent]];
+      case "outOfDate":
+        return [
+          ["composition.button.update", updateComponent],
+          ["composition.button.override", overrideComponent],
+          ["composition.button.detach", detachComponent],
+        ];
+      case "detached":
+        return [
+          ["composition.button.update", updateComponent],
+          ["composition.button.detach", detachComponent],
+        ];
+      case "broken":
+        return [["composition.button.detach", detachComponent]];
+      default:
+        return [];
+    }
   }
 
   async update() {
     const glyphName = this.sceneController.sceneSettings.selectedGlyphName;
+    this.followGlyphForComposition(glyphName);
+    await this.updateComposition();
     const character = glyphName
       ? getCharFromCodePoint(
           this.fontController.codePointForGlyph(glyphName) ||
@@ -135,6 +543,11 @@ export default class RelatedGlyphPanel extends Panel {
         {
           labelKey: "sidebar.related-glyphs.glyphs-using-this-glyph-as-a-component",
           getRelatedGlyphsFunc: getUsedByGlyphs,
+          // These two list the glyphs built on top of the open one. Editing the
+          // open glyph moves them on screen, but nothing has re-solved where
+          // their components sit, so a live redraw shows a state the font has
+          // not settled on. They hold their drawing and report it stale.
+          deferUpdates: true,
         },
         {
           labelKey: "sidebar.related-glyphs.character-decomposition",
@@ -143,15 +556,30 @@ export default class RelatedGlyphPanel extends Panel {
         {
           labelKey: "sidebar.related-glyphs.character-decompose-with-character",
           getRelatedGlyphsFunc: getUnicodeUsedBy,
+          deferUpdates: true,
         },
       ];
 
-      const sections = sectionDefinitions.map(({ labelKey, getRelatedGlyphsFunc }) => ({
-        label: translate(labelKey),
-        glyphs: getRelatedGlyphsFunc(this.fontController, glyphName, codePoint),
-      }));
-      this.glyphCellView.setGlyphSections(sections, true);
+      // Rebuilding the sections replaces every cell, which would throw away
+      // what the tiles are holding and quietly redraw them all. So the list is
+      // rebuilt only when it can actually have changed: a different glyph is
+      // open, or the font gained or lost glyphs. An edit inside a glyph leaves
+      // the tiles alone, and they report themselves stale instead.
+      if (this._sectionsGlyphName !== glyphName) {
+        this._sectionsGlyphName = glyphName;
+        const sections = sectionDefinitions.map(
+          ({ labelKey, getRelatedGlyphsFunc, deferUpdates }) => ({
+            label: translate(labelKey),
+            glyphs: getRelatedGlyphsFunc(this.fontController, glyphName, codePoint),
+            deferUpdates:
+              deferUpdates &&
+              !applicationSettingsController.model.relatedGlyphsLivePreviews,
+          })
+        );
+        this.glyphCellView.setGlyphSections(sections, true);
+      }
     } else {
+      this._sectionsGlyphName = null;
       this.glyphCellView.setGlyphSections([], true);
 
       this.relatedGlyphsHeaderElement.appendChild(

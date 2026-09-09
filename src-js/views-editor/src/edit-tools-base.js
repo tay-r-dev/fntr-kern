@@ -1,3 +1,5 @@
+import { handleSnapModeKeyDown } from "./snapping-interactions.js";
+
 export class BaseTool {
   constructor(editor) {
     this.editor = editor;
@@ -23,11 +25,20 @@ export class BaseTool {
   }
 
   handleKeyDown(event) {
-    //
+    // The snap mode keys are every tool's, not the pointer tool's. A tool that
+    // overrides this must call it, or those keys go dead under that tool.
+    return handleSnapModeKeyDown(this, event);
   }
 
   getContextMenuItems() {
     return [];
+  }
+
+  // A right-click on the canvas. Return true to say the tool consumed the
+  // gesture, in which case no context menu opens. The default is to decline,
+  // so a tool that says nothing keeps the menu it has always had.
+  handleContextMenu(event) {
+    return false;
   }
 }
 

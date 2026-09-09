@@ -1,0 +1,864 @@
+import { Bezier } from "bezier-js";
+import { offsetCubicSide } from "./offset-cubic.js";
+import {
+  normalizeVector,
+  rotateVector90CW,
+  subVectors,
+  vectorLength,
+} from "./vector.js";
+
+// Contour geometry that reads no skeleton field: the segment walk, the per-point
+// normal, and the rule that decides which on-curves must travel together. The
+// skeleton layers its own concerns on top of these — the rib tied-flag opt-out,
+// the serif terminals, and the per-point rib-angle override — and shares the
+// construction itself, so there is one copy of it (rail R-B).
+
+export function buildContourSegments(points, closed) {
+  const segments = [];
+  const onCurveIndices = [];
+  for (let i = 0; i < points.length; i++) {
+    if (!points[i].type) {
+      onCurveIndices.push(i);
+    }
+  }
+  if (onCurveIndices.length < 2) {
+    return segments;
+  }
+  for (let i = 0; i < onCurveIndices.length - 1; i++) {
+    segments.push(makeSegment(points, onCurveIndices[i], onCurveIndices[i + 1]));
+  }
+  if (closed) {
+    const lastIdx = onCurveIndices[onCurveIndices.length - 1];
+    const firstIdx = onCurveIndices[0];
+    segments.push(makeWrappingSegment(points, lastIdx, firstIdx));
+  }
+  return segments;
+}
+
+/**
+ * Is this on-curve point a smooth point whose only handle sits on `curveSegment`,
+ * with a straight segment on the other side?
+ *
+ * Such a point cannot take its direction from its own handle: smoothness means
+ * the handle has to be colinear with the straight segment, so the straight sets
+ * the direction and the handle follows. Shared by contour generation and by rib
+ * rendering/hit-testing, which must agree.
+ * @param {Object} point - The shared on-curve point
+ * @param {Object} straightSegment - The segment with no control points
+ * @param {Object} curveSegment - The segment carrying the point's one handle
+ * @returns {boolean}
+ */
+export function isStraightControlledSmoothPoint(point, straightSegment, curveSegment) {
+  return (
+    point?.smooth === true &&
+    straightSegment?.controlPoints.length === 0 &&
+    curveSegment?.controlPoints.length > 0
+  );
+}
+
+/**
+ * Which of a segment's two ends the segment couples to a shared offset.
+ *
+ * A straight carrying a straight-controlled smooth point couples both ends: the
+ * whole projected straight has to move as a unit or the handle at that point
+ * rotates with the width.
+ *
+ * A `cutSegments` entry breaks that run. A tie is a run along the straight, from
+ * the controlled point to whatever stops it, and today only the far end stops
+ * it. An insertion point stops it too, so the run from the controlled end to
+ * the cut is held and the far end is released. Where BOTH ends are controlled
+ * nothing is released, because both runs still have to come out straight.
+ *
+ * @param {Object} segment - The segment
+ * @param {Object} prevSegment - Segment before it, or null
+ * @param {Object} nextSegment - Segment after it, or null
+ * @param {Function} isCoupled - Reads a point's opt-out flag
+ * @param {Set} forcedCouplingPoints - Points that couple a straight they end
+ * @param {Set} cutSegments - Segments an insertion point stops a run on
+ * @returns {Array} the coupled end points, possibly empty
+ */
+function coupledEnds(
+  segment,
+  prevSegment,
+  nextSegment,
+  isCoupled,
+  forcedCouplingPoints,
+  cutSegments
+) {
+  const startPoint = segment?.startPoint;
+  const endPoint = segment?.endPoint;
+  if (!startPoint || !endPoint || startPoint === endPoint) {
+    return [];
+  }
+  if (!isCoupled(startPoint) || !isCoupled(endPoint)) {
+    return [];
+  }
+  const isStraight = segment.controlPoints.length === 0;
+  const forced =
+    isStraight &&
+    (forcedCouplingPoints.has(startPoint) || forcedCouplingPoints.has(endPoint));
+  const startControlled = isStraightControlledSmoothPoint(
+    startPoint,
+    segment,
+    prevSegment
+  );
+  const endControlled = isStraightControlledSmoothPoint(endPoint, segment, nextSegment);
+  if (!forced && !startControlled && !endControlled) {
+    return [];
+  }
+  if (!cutSegments.has(segment)) {
+    return [startPoint, endPoint];
+  }
+  // Cut. Each end is held only where it is the one that needs the run straight.
+  const held = [];
+  if (startControlled || (forced && forcedCouplingPoints.has(startPoint))) {
+    held.push(startPoint);
+  }
+  if (endControlled || (forced && forcedCouplingPoints.has(endPoint))) {
+    held.push(endPoint);
+  }
+  // One held end alone has nothing to share an offset with: the run it holds
+  // ends at the insertion point, which carries no stored width of its own.
+  return held.length > 1 ? held : [];
+}
+
+/**
+ * On-curve points whose offsets must be shared, keyed by point. Each value is the
+ * whole group, the key point included; points that are free are absent.
+ *
+ * The rule is per straight segment (above); segments that share an end point
+ * merge, because that shared point has one position and cannot sit at two
+ * offsets at once. This is the single definition of the coupling — the generator
+ * resolves widths through it, rendering and hit-testing read it back through
+ * getTiedRibGroup, and the base-curve drag expands its selection through it.
+ * @param {Array} segments - The contour's segments, in order
+ * @param {boolean} isClosed - Whether the contour is closed
+ * @param {Function} isCoupled - Reads a point's opt-out flag; defaults to always coupled
+ * @param {Set} forcedCouplingPoints - Points that couple a straight they end
+ * @param {Set} cutSegments - Segments an insertion point stops a run on
+ * @returns {Map} point -> array of points
+ */
+export function collectCoupledPointGroups(
+  segments,
+  isClosed,
+  isCoupled = () => true,
+  forcedCouplingPoints = new Set(),
+  cutSegments = new Set()
+) {
+  const groupByPoint = new Map();
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    const prevSegment =
+      isClosed || i > 0 ? segments[(i - 1 + segments.length) % segments.length] : null;
+    const nextSegment =
+      isClosed || i < segments.length - 1 ? segments[(i + 1) % segments.length] : null;
+    const ends = coupledEnds(
+      segment,
+      prevSegment,
+      nextSegment,
+      isCoupled,
+      forcedCouplingPoints,
+      cutSegments
+    );
+    if (ends.length < 2) {
+      continue;
+    }
+    const group = [];
+    for (const point of [
+      ...(groupByPoint.get(ends[0]) || [ends[0]]),
+      ...(groupByPoint.get(ends[1]) || [ends[1]]),
+    ]) {
+      if (!group.includes(point)) {
+        group.push(point);
+      }
+    }
+    for (const point of group) {
+      groupByPoint.set(point, group);
+    }
+  }
+  return groupByPoint;
+}
+
+/**
+ * The normal for a point whose direction comes from a straight segment:
+ * perpendicular to that segment, with no miter averaging against the handle.
+ * @param {Object} straightSegment - The straight segment setting the direction
+ * @returns {Object} Normal {x, y}
+ */
+export function straightSegmentNormal(straightSegment) {
+  return rotateVector90CW(
+    normalizeVector(subVectors(straightSegment.endPoint, straightSegment.startPoint))
+  );
+}
+
+/**
+ * The outward-ish normal at an on-curve point of any contour: the CW rotation of
+ * the miter bisector of its two segment directions. A smooth point carrying a
+ * single handle has no direction of its own — the straight on its other side
+ * sets one — so its normal is perpendicular to that straight instead.
+ * @param {Array} points - The contour's points
+ * @param {boolean} closed - Whether the contour is closed
+ * @param {number} pointIndex - Index of the on-curve point
+ * @returns {Object} Normal {x, y}
+ */
+export function calculateContourNormalAtPoint(points, closed, pointIndex) {
+  if (!points || points.length < 2) {
+    return { x: 0, y: 1 };
+  }
+  const point = points[pointIndex];
+  if (!point || point.type) {
+    return { x: 0, y: 1 };
+  }
+
+  const segments = buildContourSegments(points, closed);
+  let incomingSegment = null;
+  let outgoingSegment = null;
+  for (const segment of segments) {
+    if (segment.endPoint === point) {
+      incomingSegment = segment;
+    }
+    if (segment.startPoint === point) {
+      outgoingSegment = segment;
+    }
+  }
+
+  const dir1 = incomingSegment ? segmentEndDirection(incomingSegment) : null;
+  const dir2 = outgoingSegment ? segmentStartDirection(outgoingSegment) : null;
+
+  if (!dir1 && dir2) {
+    return rotateVector90CW(dir2);
+  }
+  if (dir1 && !dir2) {
+    return rotateVector90CW(dir1);
+  }
+  if (!dir1 && !dir2) {
+    return { x: 0, y: 1 };
+  }
+
+  if (isStraightControlledSmoothPoint(point, incomingSegment, outgoingSegment)) {
+    return straightSegmentNormal(incomingSegment);
+  }
+  if (isStraightControlledSmoothPoint(point, outgoingSegment, incomingSegment)) {
+    return straightSegmentNormal(outgoingSegment);
+  }
+
+  const dot = dir1.x * dir2.x + dir1.y * dir2.y;
+  const cross = dir1.x * dir2.y - dir1.y * dir2.x;
+  const halfAngle = Math.atan2(cross, dot) / 2;
+  const cosH = Math.cos(halfAngle);
+  const sinH = Math.sin(halfAngle);
+  const bisector = normalizeVector({
+    x: dir1.x * cosH - dir1.y * sinH,
+    y: dir1.x * sinH + dir1.y * cosH,
+  });
+  return rotateVector90CW(bisector);
+}
+
+// What moves is the segments, each along its own normal by its own offset. Where
+// a corner point ends up is secondary: it is where its two moved segments cross.
+// Everything below computes that crossing.
+//
+// A segment whose far end stays put has an offset of zero. It does not move, so
+// the crossing is on the segment exactly where it already is, and the point
+// travels square to the segment that did move. This is the rectangle case: drag
+// one edge and the two side segments stay where they are, so the edge sinks by
+// the full distance and keeps its own length, and the sides stretch to reach it.
+//
+// Where both segments move, the crossing sits out along the line that splits the
+// corner point, further from the point than the offset distance, because that
+// line points square to neither segment. That distance is the miter length, and
+// it is the answer rather than the rule: the code computes it as the offset
+// divided by the cosine of half the turn, which is the same number the crossing
+// gives, measured to grid rounding at 90, 63 and 11 degree turns.
+//
+// The bound is what a cusp needs. Two segments doubling back move to parallel
+// positions and never cross, so there is no crossing to take and the distance
+// runs to infinity. Past this much the corner point is held and its two segments
+// fall short of the offset, rather than the point leaving the glyph. It is the
+// standard miter limit, and the only limit in this drag.
+//
+// The generated outline's corner reaches by the same construction and stops at
+// the same number, in half-widths there rather than in offsets. One copy, so a
+// turn the outline holds cannot be one the rib bar or an expansion drag still
+// reaches through (rail R-B).
+export const MITER_TRAVEL_LIMIT = 4;
+
+/**
+ * The line that splits a corner, and how far along it the two carried-on edges
+ * of one side meet, as a multiple of that side's own offset.
+ *
+ * One over the cosine of half the turn, and Infinity where the two arms run
+ * exactly back along each other and there is nothing to meet. `dir1` is the
+ * arriving direction and `dir2` the leaving one, both unit.
+ */
+export function cornerMiter(dir1, dir2) {
+  const dot = dir1.x * dir2.x + dir1.y * dir2.y;
+  const cross = dir1.x * dir2.y - dir1.y * dir2.x;
+  const halfAngle = Math.atan2(cross, dot) / 2;
+  const cosH = Math.cos(halfAngle);
+  const sinH = Math.sin(halfAngle);
+  const bisector = {
+    x: dir1.x * cosH - dir1.y * sinH,
+    y: dir1.x * sinH + dir1.y * cosH,
+  };
+  const cosHalfTurn = Math.abs(cosH);
+  return {
+    normal: { x: bisector.y, y: -bisector.x },
+    scale: cosHalfTurn > 0 ? 1 / cosHalfTurn : Infinity,
+  };
+}
+
+/**
+ * Whether a corner's meeting place is out of bounds: past the limit, or absent
+ * because the two arms are parallel.
+ */
+export function cornerMiterIsHeld(scale) {
+  return !Number.isFinite(scale) || scale > MITER_TRAVEL_LIMIT;
+}
+
+// The segments either side of an on-curve point, as indices into `segments`.
+function adjacentSegments(points, closed, pointIndex) {
+  const onCurveIndices = [];
+  for (let i = 0; i < points.length; i++) {
+    if (!points[i].type) onCurveIndices.push(i);
+  }
+  const position = onCurveIndices.indexOf(pointIndex);
+  const count = onCurveIndices.length;
+  if (position < 0 || count < 2) {
+    return null;
+  }
+  const segments = buildContourSegments(points, closed);
+  const incoming = closed
+    ? segments[(position - 1 + count) % count]
+    : position > 0
+      ? segments[position - 1]
+      : null;
+  const outgoing = closed
+    ? segments[position]
+    : position < count - 1
+      ? segments[position]
+      : null;
+  const endsOf = (segment) =>
+    segment
+      ? [points.indexOf(segment.startPoint), points.indexOf(segment.endPoint)]
+      : null;
+  return {
+    incoming,
+    outgoing,
+    incomingEnds: endsOf(incoming),
+    outgoingEnds: endsOf(outgoing),
+  };
+}
+
+/**
+ * The direction an on-curve travels, and how far along it, for one offset.
+ * @param {Array} points - The contour's points
+ * @param {boolean} closed - Whether the contour is closed
+ * @param {number} pointIndex - Index of the on-curve point
+ * @param {Object} fallbackNormal - The point's own normal, used where no
+ *   adjacent segment is being offset
+ * @param {Function} isTravelling - Whether the point at an index is travelling
+ * @returns {Object} `{normal, factor}`
+ */
+export function resolveOffsetTravel(
+  points,
+  closed,
+  pointIndex,
+  fallbackNormal,
+  isTravelling
+) {
+  const adjacent = adjacentSegments(points, closed, pointIndex);
+  if (!adjacent) {
+    return { normal: fallbackNormal, factor: 1 };
+  }
+  const isOffset = (ends) =>
+    !!ends && ends.every((end) => end >= 0 && isTravelling(end));
+  const incomingOffset = isOffset(adjacent.incomingEnds);
+  const outgoingOffset = isOffset(adjacent.outgoingEnds);
+
+  if (incomingOffset && outgoingOffset) {
+    const dir1 = segmentEndDirection(adjacent.incoming);
+    const dir2 = segmentStartDirection(adjacent.outgoing);
+    if (!dir1 || !dir2) {
+      return { normal: fallbackNormal, factor: 1 };
+    }
+    const dot = dir1.x * dir2.x + dir1.y * dir2.y;
+    const cross = dir1.x * dir2.y - dir1.y * dir2.x;
+    const cosHalfTurn = Math.abs(Math.cos(Math.atan2(cross, dot) / 2));
+    return {
+      normal: fallbackNormal,
+      factor:
+        cosHalfTurn > 1 / MITER_TRAVEL_LIMIT ? 1 / cosHalfTurn : MITER_TRAVEL_LIMIT,
+    };
+  }
+  if (incomingOffset) {
+    return {
+      normal: rotateVector90CW(segmentEndDirection(adjacent.incoming)),
+      factor: 1,
+    };
+  }
+  if (outgoingOffset) {
+    return {
+      normal: rotateVector90CW(segmentStartDirection(adjacent.outgoing)),
+      factor: 1,
+    };
+  }
+  return { normal: fallbackNormal, factor: 1 };
+}
+
+/**
+ * Where a corner's rib bar points and how far it reaches, or null where the
+ * point is not a corner.
+ *
+ * A corner's outline points stand where the two offset edges of a side meet,
+ * which is out along the line that splits the corner at one half-width over the
+ * cosine of half the turn. The bar lies on that line and reaches that far, so
+ * its two ends land on the two points the outline actually draws. `scale` is
+ * that reach as a multiple of the half-width, which is what a drag of the end
+ * divides by to get back to the width it is stating.
+ *
+ * The one exception is a corner the outline itself does not take: two arms
+ * folded back on each other never meet, and a turn past the miter limit meets
+ * further out than the letter is tall. Both hold each arm at its own edge end,
+ * so the bar holds too, square to the arriving arm at a plain half-width. The
+ * two have to agree at every turn, or the bar stops describing the outline.
+ *
+ * On a curved arm the drawn inner edges cross a little inside this place,
+ * because both curves bend toward each other over the reach and the generator
+ * finds their real crossing. The bar states the meeting of the two directions,
+ * which is exact on a straight arm and the same construction everywhere.
+ *
+ * A smooth point is not a corner: the centerline does not change direction
+ * there. Nor is a smooth point whose direction comes from a straight on one
+ * side. Both keep the answer calculateContourNormalAtPoint gives them.
+ *
+ * @param {Array} points - The contour's points
+ * @param {boolean} closed - Whether the contour is closed
+ * @param {number} pointIndex - Index of the on-curve point
+ * @returns {Object|null} `{normal, scale}`, or null
+ */
+export function cornerRibPlacement(points, closed, pointIndex) {
+  const point = points?.[pointIndex];
+  if (!point || point.type || point.smooth) {
+    return null;
+  }
+  const adjacent = adjacentSegments(points, closed, pointIndex);
+  if (!adjacent?.incoming || !adjacent?.outgoing) {
+    return null;
+  }
+  if (
+    isStraightControlledSmoothPoint(point, adjacent.incoming, adjacent.outgoing) ||
+    isStraightControlledSmoothPoint(point, adjacent.outgoing, adjacent.incoming)
+  ) {
+    return null;
+  }
+  const dir1 = segmentEndDirection(adjacent.incoming);
+  const dir2 = segmentStartDirection(adjacent.outgoing);
+  if (!dir1) {
+    return null;
+  }
+  const held = { normal: rotateVector90CW(dir1), scale: 1 };
+  if (!dir2) {
+    return held;
+  }
+  const join = cornerMiter(dir1, dir2);
+  return cornerMiterIsHeld(join.scale) ? held : join;
+}
+
+/**
+ * A cubic's point at a parameter, by de Casteljau's weights.
+ *
+ * The one copy. The generator's corner search and the skeleton's insertion
+ * points both evaluate cubics, and an evaluator that disagreed with itself
+ * would put a rib somewhere the outline does not go.
+ * @param {Array} points - The four control points, start first
+ * @param {number} t - The source parameter
+ * @returns {Object} the point
+ */
+export function cubicPointAt(points, t) {
+  const u = 1 - t;
+  const a = u * u * u;
+  const b = 3 * u * u * t;
+  const c = 3 * u * t * t;
+  const d = t * t * t;
+  return {
+    x: a * points[0].x + b * points[1].x + c * points[2].x + d * points[3].x,
+    y: a * points[0].y + b * points[1].y + c * points[2].y + d * points[3].y,
+  };
+}
+
+/**
+ * A cubic's velocity at a parameter: the derivative, unnormalized.
+ *
+ * The one copy, beside `cubicPointAt` and for the same reason. Four places
+ * carried this formula — the curvature reading and the bending energy in
+ * harmonization, the tangent step in snapping, and the skeleton's own segment
+ * tangent, which insertion points ask for the direction a rib stands square to.
+ * A derivative that disagreed with itself would put a rib somewhere the outline
+ * does not go.
+ *
+ * Unnormalized, because two of the four readers need the speed and not only the
+ * direction, and a caller that wants a unit vector normalizes what it is given.
+ * Zero-length where both handles collapse onto their on-curves, which every
+ * caller answers for itself: there is no direction there to stand in for.
+ * @param {Array} points - The four control points, start first
+ * @param {number} t - The source parameter
+ * @returns {Object} the velocity
+ */
+export function cubicVelocityAt([p0, p1, p2, p3], t) {
+  const u = 1 - t;
+  return {
+    x: 3 * (u * u * (p1.x - p0.x) + 2 * u * t * (p2.x - p1.x) + t * t * (p3.x - p2.x)),
+    y: 3 * (u * u * (p1.y - p0.y) + 2 * u * t * (p2.y - p1.y) + t * t * (p3.y - p2.y)),
+  };
+}
+
+/**
+ * A cubic cut in two at a parameter, by de Casteljau.
+ *
+ * The one copy in glyph coordinates. The exact split is what lets a cut promise
+ * to draw the curve it cut, so the generator's corner search and the skeleton's
+ * insertion points take it from here rather than each writing it out.
+ *
+ * `serif-geometry.js` keeps its own, deliberately: it works in the serif's own
+ * frame on points named `u` and `v`, and reaching into that frame from here
+ * would teach this module a coordinate system it has no other business with.
+ * @param {Array} points - The four control points, start first
+ * @param {number} t - The source parameter
+ * @returns {Object} {first, second}, four points each, sharing the cut point
+ */
+export function splitCubicAt([p0, p1, p2, p3], t) {
+  const lerp = (a, b) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  const a = lerp(p0, p1);
+  const b = lerp(p1, p2);
+  const c = lerp(p2, p3);
+  const d = lerp(a, b);
+  const e = lerp(b, c);
+  const at = lerp(d, e);
+  return { first: [p0, a, d, at], second: [at, e, c, p3] };
+}
+
+function makeSegment(points, startIdx, endIdx) {
+  return {
+    startPoint: points[startIdx],
+    endPoint: points[endIdx],
+    controlPoints: points.slice(startIdx + 1, endIdx).filter((point) => point.type),
+  };
+}
+
+function makeWrappingSegment(points, lastIdx, firstIdx) {
+  return {
+    startPoint: points[lastIdx],
+    endPoint: points[firstIdx],
+    controlPoints: [
+      ...points.slice(lastIdx + 1).filter((point) => point.type),
+      ...points.slice(0, firstIdx).filter((point) => point.type),
+    ],
+  };
+}
+
+function segmentStartDirection(segment) {
+  if (!segment.controlPoints.length) {
+    return normalizeVector(subVectors(segment.endPoint, segment.startPoint));
+  }
+  const bezier = createBezierFromSegment(segment);
+  const deriv = bezier.derivative(0);
+  return normalizeVector({ x: deriv.x, y: deriv.y });
+}
+
+function segmentEndDirection(segment) {
+  if (!segment.controlPoints.length) {
+    return normalizeVector(subVectors(segment.endPoint, segment.startPoint));
+  }
+  const bezier = createBezierFromSegment(segment);
+  const deriv = bezier.derivative(1);
+  return normalizeVector({ x: deriv.x, y: deriv.y });
+}
+
+function createBezierFromSegment(segment) {
+  return new Bezier(segment.startPoint, ...segment.controlPoints, segment.endPoint);
+}
+
+/**
+ * Move each listed on-curve along its own normal and rebuild the handles of every
+ * segment that has an end moving, so each affected segment stays an offset of
+ * itself — a constant-distance one where both ends move, a tapered one where one
+ * does. Handle directions are preserved and their lengths scale by 1 + d·kappa,
+ * the generator's own construction.
+ * @param {Array} points - Original points, read-only
+ * @param {boolean} closed - Whether the contour is closed
+ * @param {Map} offsetsByIndex - Point index -> signed distance along its normal
+ * @param {Array} workingPoints - Points to mutate, same length as `points`
+ * @param {Object} options - `round`, `normalAt` to override the normal, and
+ *   `rebuildHandles` to move the on-curves and leave the handles alone
+ * @returns {boolean} Whether anything moved
+ */
+export function offsetContourAlongNormals(
+  points,
+  closed,
+  offsetsByIndex,
+  workingPoints,
+  {
+    round = Math.round,
+    normalAt = null,
+    rebuildHandles = true,
+    offsetCorners = false,
+  } = {}
+) {
+  const pointDeltas = new Map();
+  const pointOffsets = new Map();
+  let changed = false;
+  for (const [pointIndex, offset] of offsetsByIndex) {
+    const original = points[pointIndex];
+    const working = workingPoints?.[pointIndex];
+    if (!original || !working || original.type) continue;
+    const normal = normalAt
+      ? normalAt(pointIndex)
+      : calculateContourNormalAtPoint(points, closed, pointIndex);
+    // The travel and the offset distance are two numbers at a corner. The
+    // handle rebuild wants the offset distance, because that is what the
+    // segment is moving by; the point wants the miter length, because that is
+    // what puts its two edges there.
+    const travel = offsetCorners
+      ? resolveOffsetTravel(points, closed, pointIndex, normal, (index) =>
+          offsetsByIndex.has(index)
+        )
+      : { normal, factor: 1 };
+    const distance = offset * travel.factor;
+    const delta = { x: travel.normal.x * distance, y: travel.normal.y * distance };
+    pointDeltas.set(pointIndex, delta);
+    pointOffsets.set(pointIndex, offset);
+    working.x = round(original.x + delta.x);
+    working.y = round(original.y + delta.y);
+    changed = true;
+  }
+  if (rebuildHandles && pointDeltas.size) {
+    offsetSegmentHandles(
+      points,
+      closed,
+      workingPoints,
+      pointDeltas,
+      pointOffsets,
+      round
+    );
+  }
+  return changed;
+}
+
+// Every moved on-curve travels the same distance along its own normal, so an
+// affected segment is a constant-distance offset of itself — or a tapered one
+// where only one of its ends moved. Both are what the outline generator already
+// constructs, so the drag runs the same construction: handle directions are
+// preserved and their lengths scale by 1 + d·kappa.
+//
+// Displacing the handles by an interpolation of the two endpoint deltas instead
+// shears the segment, because it can never lengthen a handle. On a quarter arc of
+// radius 100 pushed out 20 units the middle of the curve came up 6 units short of
+// its ends, which is the curvature loss the whole tool is supposed to avoid.
+function offsetSegmentHandles(
+  points,
+  closed,
+  workingPoints,
+  pointDeltas,
+  pointOffsets,
+  round
+) {
+  const onCurveIndices = points
+    .map((point, index) => (point?.type ? null : index))
+    .filter((index) => index !== null);
+  const segmentCount = closed ? onCurveIndices.length : onCurveIndices.length - 1;
+  for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
+    const startIndex = onCurveIndices[segmentIndex];
+    const endIndex = onCurveIndices[(segmentIndex + 1) % onCurveIndices.length];
+    const startMoved = pointDeltas.has(startIndex);
+    const endMoved = pointDeltas.has(endIndex);
+    if (!startMoved && !endMoved) continue;
+    const controlIndices = getControlPointIndicesBetween(
+      points,
+      startIndex,
+      endIndex,
+      closed
+    );
+    if (!controlIndices.length) continue;
+    if (
+      controlIndices.length !== 2 ||
+      !rebuildSegmentHandles(
+        points,
+        workingPoints,
+        startIndex,
+        endIndex,
+        controlIndices,
+        startMoved ? pointOffsets.get(startIndex) || 0 : 0,
+        endMoved ? pointOffsets.get(endIndex) || 0 : 0,
+        round
+      )
+    ) {
+      // A segment with a single handle has no second length to receive, and a
+      // degenerate one has no direction to keep. Carry those along with the
+      // endpoints instead, which at least holds their relative position.
+      carrySegmentHandles(
+        points,
+        workingPoints,
+        controlIndices,
+        pointDeltas.get(startIndex),
+        pointDeltas.get(endIndex),
+        round
+      );
+    }
+  }
+}
+
+function rebuildSegmentHandles(
+  points,
+  workingPoints,
+  startIndex,
+  endIndex,
+  controlIndices,
+  d0,
+  d3,
+  round
+) {
+  const p0 = points[startIndex];
+  const p3 = points[endIndex];
+  const p1 = points[controlIndices[0]];
+  const p2 = points[controlIndices[1]];
+  const q0 = workingPoints?.[startIndex];
+  const q3 = workingPoints?.[endIndex];
+  const handle1 = workingPoints?.[controlIndices[0]];
+  const handle2 = workingPoints?.[controlIndices[1]];
+  if (!p0 || !p1 || !p2 || !p3 || !q0 || !q3 || !handle1 || !handle2) return false;
+  const u0 = normalizeVector(subVectors(p1, p0));
+  const u1 = normalizeVector(subVectors(p2, p3));
+  if (!vectorLength(u0) || !vectorLength(u1)) return false;
+  const { startLength, endLength } = offsetCubicSide({
+    p0,
+    p1,
+    p2,
+    p3,
+    d0,
+    d3,
+    q0,
+    q3,
+    u0,
+    u1,
+  });
+  handle1.x = round(q0.x + u0.x * startLength);
+  handle1.y = round(q0.y + u0.y * startLength);
+  handle2.x = round(q3.x + u1.x * endLength);
+  handle2.y = round(q3.y + u1.y * endLength);
+  return true;
+}
+
+function carrySegmentHandles(
+  points,
+  workingPoints,
+  controlIndices,
+  startDelta,
+  endDelta,
+  round
+) {
+  for (let i = 0; i < controlIndices.length; i++) {
+    const controlIndex = controlIndices[i];
+    const originalPoint = points[controlIndex];
+    const workingPoint = workingPoints?.[controlIndex];
+    if (!originalPoint || !workingPoint) continue;
+    const t = controlIndices.length === 1 ? 0.5 : i / (controlIndices.length - 1);
+    workingPoint.x = round(
+      originalPoint.x + interpolateDelta(startDelta?.x || 0, endDelta?.x || 0, t)
+    );
+    workingPoint.y = round(
+      originalPoint.y + interpolateDelta(startDelta?.y || 0, endDelta?.y || 0, t)
+    );
+  }
+}
+
+function getControlPointIndicesBetween(points, startIndex, endIndex, closed) {
+  const indices = [];
+  let index = startIndex + 1;
+  while (index !== endIndex) {
+    if (index >= points.length) {
+      if (!closed) break;
+      index = 0;
+      if (index === endIndex) break;
+    }
+    if (points[index]?.type) indices.push(index);
+    index++;
+  }
+  return indices;
+}
+
+const interpolateDelta = (a, b, t) => a + (b - a) * t;
+
+/**
+ * Grow a set of on-curve indices to include every point coupled to one of them.
+ * A segment carrying a tension point — a smooth on-curve with a single handle —
+ * has no direction of its own, so moving one of its ends alone would rotate it
+ * rather than offset it. Groups sharing a point merge, so the coupling chains.
+ * @param {Array} points - The contour's points
+ * @param {boolean} closed - Whether the contour is closed
+ * @param {Set} pointIndices - Selected on-curve indices
+ * @returns {Set} The expanded index set
+ */
+export function expandIndicesToCoupledGroups(points, closed, pointIndices) {
+  const groupByPoint = collectCoupledPointGroups(
+    buildContourSegments(points, closed),
+    closed
+  );
+  const expanded = new Set(pointIndices);
+  if (!groupByPoint.size) return expanded;
+  for (const pointIndex of pointIndices) {
+    for (const member of groupByPoint.get(points[pointIndex]) || []) {
+      const memberIndex = points.indexOf(member);
+      if (memberIndex >= 0) expanded.add(memberIndex);
+    }
+  }
+  return expanded;
+}
+
+/**
+ * The signed distance each affected on-curve travels for one frame of a base
+ * expansion drag: the cursor's travel projected onto the clicked point's normal,
+ * given to every point in the expanded selection.
+ *
+ * There is no floor. A base curve has no width to run out of, so an inward drag
+ * follows the cursor as far as it is pushed and cusps where the offset distance
+ * passes the local radius — ordinary outline geometry, and undoable.
+ * @param {Array} points - The contour's points
+ * @param {boolean} closed - Whether the contour is closed
+ * @param {Set} selectedIndices - Selected on-curve indices in this contour
+ * @param {number} clickedIndex - Index of the point under the cursor, or -1
+ * @param {Object} delta - Cursor travel {x, y} since mousedown
+ * @returns {Map} Point index -> signed distance
+ */
+export function computeContourExpandOffsets(
+  points,
+  closed,
+  selectedIndices,
+  clickedIndex,
+  delta
+) {
+  const offsets = new Map();
+  const clicked = points?.[clickedIndex];
+  if (!clicked || clicked.type || !selectedIndices?.size) return offsets;
+  const travelling = expandIndicesToCoupledGroups(points, closed, selectedIndices);
+  // The axis is the direction the clicked point will actually travel in, which
+  // at a corner is decided by which of its segments are being offset. Projecting
+  // on the corner's own miter instead makes the shape lag the cursor by the
+  // cosine of half the corner, so how far a drag reaches would depend on the
+  // angle of the point it was started from.
+  const { normal } = resolveOffsetTravel(
+    points,
+    closed,
+    clickedIndex,
+    calculateContourNormalAtPoint(points, closed, clickedIndex),
+    (index) => travelling.has(index)
+  );
+  if (!(Math.hypot(normal.x, normal.y) > 1e-6)) return offsets;
+  const projected = delta.x * normal.x + delta.y * normal.y;
+  for (const pointIndex of travelling) {
+    if (points[pointIndex] && !points[pointIndex].type) {
+      offsets.set(pointIndex, projected);
+    }
+  }
+  return offsets;
+}

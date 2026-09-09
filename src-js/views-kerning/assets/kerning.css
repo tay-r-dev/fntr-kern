@@ -1,0 +1,1042 @@
+/* Minimal layout for the kerning view (workstream 5 fix: .main-container had
+   no height anywhere -- core.css only sets html/body to 100%, and every
+   other view supplies its own .main-container rule (see fontoverview.css,
+   editor.css). Without one, a percentage-height child of this auto-height
+   div resolves to 0, so the canvas rendered at 0x0 -- a blank screen. */
+/* Layout overhaul (docs/superpowers/specs/2026-09-05-kerning-view-layout-
+   overhaul-design.md §1): three resizable columns -- left (results table),
+   middle (scene + class-panel slot), right (parameters/status) -- replacing
+   the old fixed 1fr/1fr two-pane split. The outer two columns' widths are
+   driven by the SAME CSS-custom-property mechanism views-editor's own
+   Sidebar class already uses for its sidebars
+   (src-js/views-editor/src/sidebar.js: `--sidebar-content-width-<identifier>`,
+   written by that class's pointer-drag handler) -- reused via kerning.js's
+   initColumnSplitters, not reimplemented (rail R-A). The identifiers here
+   are "kerning-left"/"kerning-right" (not the editor's own "left"/"right"),
+   so this view's column widths persist under their own localStorage keys
+   and never collide with the editor's actual sidebar widths. */
+:root {
+  --sidebar-content-width-kerning-left: 420px;
+  --sidebar-content-width-kerning-right: 320px;
+  --resize-cursor: col-resize;
+  /* Task 2 (part6): the middle column's bottom row (class panel) height,
+     drag-adjustable the same way the two outer columns' widths are -- see
+     initMiddleRowSplitter in kerning.js. Follows the same one-fixed/one-
+     flexible convention the three-column grid already uses (left/right
+     columns fixed via a CSS custom property, middle column 1fr): here the
+     bottom row is the fixed one (a custom property), the top row (the scene)
+     is the flexible one, `minmax(200px, 1fr)` below, so it keeps whatever
+     space dragging the bottom row's height doesn't claim. */
+  --kerning-middle-bottom-height: 140px;
+  /* Task 13, spec F08: the preview toolbar's own row (Phrase/Pair/Font chip
+     selector + Font-mode Glyphset selector) is grid-template-rows' middle
+     `auto` track below, not this property -- it's non-resizable and its
+     content (a small flex row, wrapping if the column gets narrow, spec
+     F28's "use responsive layout rather than clipping" logic applied here
+     too) should be free to grow if it ever wraps to two lines, rather than
+     clipping or overflowing a hardcoded height. This property exists only
+     so #kerning-middle-resize-gutter (below) can position itself relative
+     to the toolbar's ACTUAL rendered height -- kerning.js's
+     initMiddleRowSplitter measures the live element and keeps this synced
+     on load and on window resize, the same "measure once, write a custom
+     property, let CSS calc() consume it" convention
+     --kerning-middle-bottom-height itself already uses for the drag. */
+  --kerning-preview-toolbar-height: 2.4em;
+}
+
+:root.sidebar-resizing {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: var(--resize-cursor);
+}
+
+/* Task 2 (part6): row-resize cursor lock while dragging the middle column's
+   own row divider -- same mechanism as :root.sidebar-resizing above (a
+   document-root class toggled for the drag's duration so the cursor doesn't
+   flicker between the gutter and whatever's under the pointer mid-drag), a
+   separate class because the cursor itself differs (row-resize, not
+   col-resize) and Sidebar's own class already hardcodes col-resize via
+   --resize-cursor. */
+:root.kerning-row-resizing {
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: row-resize;
+}
+
+.main-container {
+  width: 100vw;
+  height: calc(100vh - var(--top-bar-height));
+  display: grid;
+  grid-template-columns:
+    var(--sidebar-content-width-kerning-left)
+    1fr
+    var(--sidebar-content-width-kerning-right);
+}
+
+.kerning-column {
+  position: relative;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.kerning-column.animating {
+  transition: 120ms;
+}
+
+/* Sidebar's own resize-gutter styling (sidebar-container/sidebar-resize-
+   gutter class names, reused verbatim so Sidebar's querySelectors -- which
+   look for exactly these class names -- find this view's markup). */
+.sidebar-resize-gutter {
+  height: 100%;
+  width: 4px;
+  cursor: var(--resize-cursor);
+  position: absolute;
+  z-index: 2;
+}
+
+.kerning-left .sidebar-resize-gutter {
+  right: -2px;
+}
+
+.kerning-right .sidebar-resize-gutter {
+  left: -2px;
+}
+
+/* §1.1: the results table, now the left column. */
+#kerning-pairtable-section {
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 1em;
+  border-right: 1px solid var(--horizontal-rule-color, #ccc);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75em;
+}
+
+/* §1.2: the middle column, two rows -- the scene on top, the class-panel
+   slot (populated by a different worker) below it.
+   Task 2 (part6): drag-resizable between the two rows now -- see
+   initMiddleRowSplitter in kerning.js and #kerning-middle-resize-gutter
+   below. The top row keeps its own min (200px) via minmax; the bottom row's
+   height is the CSS custom property the drag writes to, itself clamped
+   between 140px and (total height - 200px) in JS so the top row's own min
+   can never be violated by a drag (see the clamp in initMiddleRowSplitter). */
+.kerning-middle {
+  display: grid;
+  grid-template-rows: minmax(200px, 1fr) auto var(--kerning-middle-bottom-height);
+}
+
+#kerning-middle-top {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Task 13, spec F08: "Place Phrase / Pair / Font controls in their own
+   section with an opaque background, outside the drawable preview area."
+   Its own grid row (see .kerning-middle above), not an overlay on the
+   canvas -- opaque background so it visually reads as chrome, the same way
+   #kerning-middle-bottom's own border-top already separates it from the
+   scene above it. */
+.kerning-preview-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  padding: 0.3em 0.5em;
+  box-sizing: border-box;
+  /* --background-color is core.css's own always-defined theme token (both
+     light/dark, root.css:64) -- unlike the --editor-background-color-*
+     variants used elsewhere in this file (kerning-view-only tokens that
+     rely entirely on their literal rgba fallback, since nothing in this
+     tree ever sets them), this one is real and theme-aware, giving this
+     row genuine opacity in both themes rather than a guessed gray. */
+  background-color: var(--background-color);
+  border-top: 1px solid var(--horizontal-rule-color, #ccc);
+  border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
+}
+
+#kerning-chip-selector {
+  display: flex;
+  gap: 0.25em;
+}
+
+/* Task 2 (part6): the row divider itself. A direct child of .kerning-middle
+   (position:relative via .kerning-column), NOT nested inside
+   #kerning-middle-top -- that was tried first and live-tested broken:
+   #kerning-middle-top's own `overflow: hidden` clipped the gutter, since its
+   -2px straddle of the row boundary put half of it outside
+   #kerning-middle-top's own box (see kerning.html's own comment on this same
+   element for the exact live symptom). Positioned directly off
+   .kerning-middle's own box instead, anchored from the bottom by the same
+   custom property that sizes the bottom row
+   (--kerning-middle-bottom-height), minus half its own height, so it always
+   sits exactly astride the row boundary regardless of what that height
+   currently is. */
+#kerning-middle-resize-gutter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* Task 13, spec F08: the preview toolbar row (.kerning-preview-toolbar)
+     now sits between the scene and the class panel, so the boundary this
+     gutter straddles moved down by that row's own (possibly wrapped, hence
+     variable) height too -- not just --kerning-middle-bottom-height any
+     more. --kerning-preview-toolbar-height is kept in sync with the real
+     element by initMiddleRowSplitter in kerning.js. */
+  bottom: calc(
+    var(--kerning-middle-bottom-height) + var(--kerning-preview-toolbar-height) - 2px
+  );
+  height: 4px;
+  cursor: row-resize;
+  z-index: 3;
+}
+
+#kerning-middle-bottom {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--horizontal-rule-color, #ccc);
+}
+
+#autokern-class-panel-slot {
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* ---- Class panel (design doc §1.2) ---- */
+#autokern-class-panel {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0.5em 1em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+
+#autokern-class-new-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+}
+
+/* Backlog item 12: the "?" affordance next to the Left/Right New-class
+   buttons -- tooltip.css's [data-tooltip] already handles the hover
+   popup itself, this only makes the "?" read as a small clickable-looking
+   badge rather than plain text. */
+.autokern-help-tooltip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1em;
+  height: 1.1em;
+  border-radius: 50%;
+  border: 1px solid var(--horizontal-rule-color, #ccc);
+  font-size: 0.8em;
+  cursor: help;
+  opacity: 0.8;
+}
+
+/* Class list beside its contents, not stacked above them -- the list is a
+   nav column, the strip beside it is what's selected in that column. */
+#autokern-class-panel-body {
+  display: flex;
+  flex-direction: row;
+  gap: 0.75em;
+  flex: 1;
+  min-height: 0;
+}
+
+#autokern-class-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  flex: 0 0 40%;
+  overflow-y: auto;
+}
+
+.autokern-class-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.15em 0.3em;
+  cursor: pointer;
+  border-radius: 0.2em;
+}
+
+.autokern-class-list-row:hover {
+  background-color: var(--editor-background-color-dimmed, rgba(128, 128, 128, 0.15));
+}
+
+.autokern-class-list-row-selected {
+  background-color: var(--editor-background-color-selected, rgba(128, 128, 128, 0.3));
+}
+
+.autokern-class-badge {
+  font-size: 0.75em;
+  font-weight: bold;
+  opacity: 0.7;
+  min-width: 2em;
+}
+
+.autokern-class-color-swatch {
+  width: 1em;
+  height: 1em;
+  padding: 0;
+  border: 1px solid var(--horizontal-rule-color, #ccc);
+  border-radius: 0.2em;
+  cursor: pointer;
+}
+
+.autokern-class-name {
+  font-weight: bold;
+}
+
+.autokern-class-members {
+  opacity: 0.8;
+  font-size: 0.9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Part 5 fix 1: the per-row delete-class control, same small-square sizing
+   convention as .autokern-class-color-swatch above (icon-button.js itself
+   scales its icon to 100% of its host's box). */
+.autokern-class-delete-button {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
+.autokern-class-delete-button:hover {
+  opacity: 1;
+}
+
+/* Backlog #9: eye icon, preview pane's own upper-right corner (icon-button
+   created in initSuggestionPreviewToggle, kerning.js). Sized/padded for
+   visibility over the canvas rather than 1em like the class-panel delete
+   button, which sits in a text row instead. */
+#kerning-suggestion-preview-toggle {
+  width: 1.4em;
+  height: 1.4em;
+  margin: 0.4em;
+  padding: 0.3em;
+  border-radius: 0.3em;
+  background-color: var(--editor-background-color-translucent, rgba(0, 0, 0, 0.1));
+  opacity: 0.7;
+}
+
+#kerning-suggestion-preview-toggle:hover {
+  opacity: 1;
+}
+
+#autokern-class-swatch-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 0.15em;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--horizontal-rule-color, #ccc);
+  padding-left: 0.75em;
+}
+
+/* The "Show class" dialog's target-glyph field/preview (kerning.js's
+   openShowClassDialog) -- same input-box-sizing convention as the
+   Glyph field (#kerning-pairtable-glyph). */
+.autokern-show-class-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  min-width: 20em;
+}
+
+.autokern-show-class-dialog input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.autokern-show-class-dialog-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15em;
+  min-height: 3em;
+}
+
+#kerning-view-container {
+  position: relative;
+  height: 100%;
+}
+
+/* Backlog item 16: matches #kerning-pairtable-section's own border-right on
+   the left column -- a plain 1px rule on the box that already has the
+   column's padding, delimiting the right panel from the scene column beside
+   it the same way the left column is already delimited from the scene. */
+#kerning-panel-container {
+  position: relative;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 1em;
+  border-left: 1px solid var(--horizontal-rule-color, #ccc);
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+}
+
+#kerning-phrase-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+
+#kerning-phrase-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 3em;
+  resize: vertical;
+}
+
+#kerning-preset-select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Workstream 9 (spec §7.2): "Threshold and Run are always visible. The rest
+   may collapse." kerning-parameters-always-visible is a plain row, never
+   hidden; kerning-parameters-collapsible is a <details> holding the rest
+   (envelope reach, envelope type, reduction, strength). */
+#kerning-parameters-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+
+/* Always-visible params row (spec F28: "responsive layout rather than
+   clipping"). The right column is user-narrow (default 320px), so the three
+   |Δ| / tolerance fields plus Run never fit one line -- previously the row
+   didn't wrap and Run was pushed past the column edge at every width. Each
+   label+input is now a non-breaking .kerning-param-field unit, the row
+   wraps between units, and Run drops to its own full-width line. */
+#kerning-parameters-always-visible {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35em 0.5em;
+}
+
+.kerning-param-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+
+#kerning-param-threshold,
+#kerning-param-max-threshold,
+#kerning-param-group-threshold {
+  width: 5em;
+}
+
+#kerning-run-button {
+  flex: 0 0 100%;
+}
+
+#kerning-parameters-collapsible {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+
+#kerning-parameters-collapsible summary {
+  cursor: pointer;
+  margin-bottom: 0.35em;
+}
+
+/* Workstream 11 (spec §7.3): the pair table controls. (#kerning-pairtable-
+   section itself is styled above, in the layout-overhaul block, since it is
+   now the whole left column.) */
+#kerning-pairtable-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+
+#kerning-pairtable-glyph {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#kerning-pairtable-filters,
+#kerning-pairtable-actions,
+#kerning-pairtable-class-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+}
+
+/* Task 8: a class-summary row is the same kind of row as a pair row (F32) --
+   bold weight is its only visual distinction, not a separate structure. */
+.kerning-pairtable-summary-row {
+  font-weight: bold;
+}
+
+/* Task 8, spec F19: Default / Potential exceptions tabs, replacing the old
+   four bucket sections (F11). */
+#kerning-pairtable-tabs {
+  display: flex;
+  gap: 0.25em;
+  margin: 0.5em 0;
+}
+
+.kerning-pairtable-tab {
+  cursor: pointer;
+}
+
+.kerning-pairtable-tab.kerning-pairtable-tab-active {
+  font-weight: bold;
+  text-decoration: underline;
+}
+
+#kerning-derive-proposals {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+
+.kerning-derive-proposal {
+  border: 1px solid var(--horizontal-rule-color, #ccc);
+  padding: 0.35em 0.5em;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.kerning-derive-proposal-label {
+  font-style: italic;
+}
+
+.kerning-pairtable-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.kerning-pairtable-table th,
+.kerning-pairtable-table td {
+  text-align: left;
+  padding: 0.15em 0.4em;
+  border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
+}
+
+/* Workstream 16 (spec §6): a row click selects that pair for the left
+   pane's chip selector (kerning.js's buildPairRowElement/selectPairForScene). */
+.kerning-pairtable-table tbody tr {
+  cursor: pointer;
+}
+
+/* Backlog item 11: click a header to sort by it -- replaces the old
+   #kerning-pairtable-sort-toggle button. Label text and the asc/desc arrow
+   are both written by kerning.js's updateSortHeaders (data-sort-label holds
+   the base text since the <th> itself carries no static text anymore). */
+.kerning-pairtable-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.kerning-pairtable-sortable.kerning-pairtable-sort-active {
+  font-weight: bold;
+}
+
+/* Workstream 13 (spec §7.4): the calibration readout. Collapsed by default,
+   same <details>/<summary> pattern as #kerning-parameters-collapsible. A
+   readout only -- no controls live here. */
+#kerning-calibration-section {
+}
+
+#kerning-calibration-collapsible summary {
+  cursor: pointer;
+  margin-bottom: 0.35em;
+}
+
+#kerning-calibration-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  font-size: 0.9em;
+}
+
+/* Workstream 14 (spec §7.5), repositioned by the layout overhaul (design doc
+   §1.3): "the status strip... moves to the TOP of this column, always
+   visible." Unlike the sections below it, this one is a plain div, never a
+   <details>. Border moved from top to bottom since it now leads the column
+   instead of trailing it. */
+#kerning-status-section {
+  padding-bottom: 0.75em;
+  border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+
+#kerning-status-source-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+#kerning-status-source-select {
+  flex: 1;
+}
+
+#kerning-status-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75em;
+  font-size: 0.9em;
+}
+
+/* Task 10, spec F12: the pair-exception lock/Remove-exception control in the
+   Exception column (buildPairRowElement). Replaces the old
+   .kerning-pairtable-shadow-note/-override-note text notes -- see that
+   method's own comment for why ground truth moved from the cache's
+   `override` flag to explicitPairExists. */
+.kerning-pairtable-exception-indicator {
+  width: 1.1em;
+  height: 1.1em;
+  display: inline-flex;
+}
+
+/* F12: "An inherited pair's lock is muted until hover or focus." Revealed by
+   the row's own hover/focus, not the button's, so keyboard users tabbing
+   into the row's checkbox also see it -- not just the lock itself. */
+.kerning-pairtable-exception-create {
+  opacity: 0.35;
+}
+
+tr:hover .kerning-pairtable-exception-create,
+tr:focus-within .kerning-pairtable-exception-create {
+  opacity: 1;
+}
+
+/* A saved exception is a state, not only an action, so its closed lock is
+   always visible and carries the same red the row's own left bar does
+   (tr[data-kind="pair-exception"] below). The icon inherits currentColor,
+   so coloring the host is enough. */
+.kerning-pairtable-exception-saved {
+  color: var(--fontra-red-color, #c00);
+}
+
+/* Backlog item 14: the Current cell's in-place editor. It reads as plain
+   text until the row is hovered or the box is focused, so a table of numbers
+   does not turn into a wall of input boxes -- the same "an action shows
+   itself when you reach for it" rule the lock and the eye already follow.
+   Right-aligned because it holds a number the eye compares down the column. */
+.kerning-pairtable-current-input {
+  width: 4.5em;
+  padding: 0 0.15em;
+  border: 1px solid transparent;
+  border-radius: 0.15em;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+
+.kerning-pairtable-current-input::-webkit-outer-spin-button,
+.kerning-pairtable-current-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+tr:hover .kerning-pairtable-current-input {
+  border-color: var(--horizontal-rule-color, #ccc);
+}
+
+.kerning-pairtable-current-input:focus {
+  border-color: var(--foreground-color);
+  outline: none;
+}
+
+/* The class-summary row's Apply action. Same sizing as the Exception
+   column's lock and the Hide column's eye, so the three row actions read as
+   one family. Its reveal rule is stricter than theirs on purpose: the
+   designer asked for it to stay invisible until the row is click-selected,
+   and to stay transparent until the row is hovered, so an accidental click
+   on a row nobody chose cannot write a class rule. */
+.kerning-pairtable-apply-indicator {
+  width: 1.1em;
+  height: 1.1em;
+  display: inline-flex;
+}
+
+.kerning-pairtable-apply-class {
+  opacity: 0;
+  pointer-events: none;
+}
+
+tr.kerning-pairtable-row-highlighted .kerning-pairtable-apply-class,
+tr:focus-within .kerning-pairtable-apply-class {
+  opacity: 0.35;
+  pointer-events: auto;
+}
+
+tr.kerning-pairtable-row-highlighted:hover .kerning-pairtable-apply-class,
+tr:focus-within .kerning-pairtable-apply-class:focus {
+  opacity: 1;
+}
+
+/* Task 11, spec F10: the eye/eye-closed hide-action control in the Hide
+   column (buildPairRowElement/buildClassSummaryRowElement). Same sizing as
+   the Exception column's own indicator, and the SAME row-hover/focus reveal
+   convention as .kerning-pairtable-exception-create above -- not a second
+   one -- so a row's two hover-only action columns behave identically. */
+.kerning-pairtable-hide-indicator {
+  width: 1.1em;
+  height: 1.1em;
+  display: inline-flex;
+}
+
+.kerning-pairtable-hide-action {
+  opacity: 0.35;
+}
+
+tr:hover .kerning-pairtable-hide-action,
+tr:focus-within .kerning-pairtable-hide-action {
+  opacity: 1;
+}
+
+/* The mark ahead of a proposed value: is this pair drawn on the canvas while
+   the suggestion preview is on. Same reveal-on-hover convention as the lock
+   and the eye, with one exception -- a pair that is OUT keeps its mark visible,
+   because a control whose whole job is to say "not shown" cannot itself be
+   hidden until hovered. */
+.kerning-pairtable-preview-toggle {
+  width: 1.1em;
+  height: 1.1em;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 0.35em;
+  opacity: 0;
+}
+
+tr:hover .kerning-pairtable-preview-toggle,
+tr:focus-within .kerning-pairtable-preview-toggle {
+  opacity: 0.35;
+}
+
+tr:hover .kerning-pairtable-preview-toggle:hover,
+.kerning-pairtable-preview-toggle:focus {
+  opacity: 1;
+}
+
+.kerning-pairtable-preview-excluded {
+  opacity: 1;
+}
+
+/* Task 11, spec F17: "hidden rows reappear... with a distinguishable hidden
+   state" when Show hidden is on. Dims and strikes through the row's own
+   name text without hiding the row's other cells (Current/Proposed/Delta
+   stay legible, so the designer can still judge whether it's worth
+   restoring) -- deliberately not opacity on the whole `tr`, which would
+   also wash out the highlight/tick states F04 requires to stay
+   discernible on every row type (F15's own acceptance line). */
+.kerning-pairtable-row-hidden .kerning-pairtable-glyph-name,
+.kerning-pairtable-row-hidden .kerning-pairtable-class-name {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+/* Task 11, spec F15: "consistent color coding for classes, uniques, and
+   exceptions... reinforced with names, icons, or labels" (the row's own
+   `title` attribute, set in buildPairRowElement/buildClassSummaryRowElement,
+   carries the textual half). A left border-accent, keyed off the SAME
+   `data-kind` attribute Task 8 already sets for row identity, is the color
+   half -- a border, not a background-color, so it never competes with
+   .kerning-pairtable-row-highlighted's own background (F04/F15: highlight
+   and tick must stay visually distinguishable on every row kind) and is
+   deliberately separate from the per-class membership swatch colors built
+   for Font mode/preview tiles elsewhere in this view (F30, a different DOM
+   region entirely -- neither overwrites the other). "member-pair" (a
+   grouped member with no saved rule of its own) reads as the SAME class
+   accent as its own class-summary row -- results-model.js's own
+   rowRelationship groups it there too, not as a fourth category. */
+tr[data-kind="class-rule"],
+tr[data-kind="member-pair"] {
+  /* Plain #888, not var(--metrics-handle-color): that custom property is
+     defined in editor.css, which this view never links (see backlog item 6's
+     own note on why -- kerning.css carries copies of the handful of rules it
+     actually needs instead). Referencing an unset variable here would still
+     "work" via its fallback, silently, which is worse than just stating the
+     color directly. */
+  border-left: 3px solid #888;
+}
+
+tr[data-kind="unique-pair"] {
+  border-left: 3px solid transparent;
+}
+
+tr[data-kind="pair-exception"] {
+  border-left: 3px solid var(--fontra-red-color, #c00);
+}
+
+/* Task 5, spec F13: the Columns menu sits inline with the other filter
+   controls rather than breaking onto its own block by default (fieldset's
+   native display). */
+#kerning-pairtable-columns {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.1em 0.5em;
+}
+
+.kerning-pairtable-filter-help {
+  cursor: help;
+  opacity: 0.7;
+}
+
+/* Task 17, spec F23: "!" in place of an unreliable Proposed/Delta number.
+   Same hover-explanation idiom as .kerning-pairtable-filter-help above
+   (cursor: help), plus a warning color and bold weight so it reads as an
+   alert rather than plain text, and is focusable (buildPairRowElement/
+   buildClassSummaryRowElement give it tabindex="0") so the same
+   explanation is reachable by keyboard, not only by hover. */
+.kerning-pairtable-stale-marker {
+  cursor: help;
+  font-weight: bold;
+  color: var(--fontra-red-color, #c00);
+}
+
+/* Task 3, spec F04: highlight (preview selection) is visually distinct
+   from a ticked (action-target) checkbox -- the two layers are
+   independent, so their styling must not collapse into one look. */
+.kerning-pairtable-row-highlighted {
+  background-color: color-mix(in srgb, var(--foreground-color) 12%, transparent);
+}
+
+/* Design doc §2: font mode's glyph grid fills the same area the canvas
+   occupies (#kerning-view-container is position:relative, height:100%,
+   see above) -- the tool switcher and chip selector stay on top (z-index 1
+   inline on those two elements already) as overlays, unchanged in either
+   mode. */
+#kerning-font-grid-container {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 1em;
+  box-sizing: border-box;
+}
+
+#kerning-font-grid-container.kerning-font-grid-hidden {
+  display: none;
+}
+
+/* fontoverview.css's own glyph-cell-view host rule (grid, no gap) -- the
+   custom element styles its OWN accordion/cell contents internally
+   (glyph-cell-view.js's getContentElement/appendStyle), this is only the
+   host element's own box. */
+#kerning-font-grid-container glyph-cell-view {
+  position: relative;
+  display: grid;
+  gap: 0;
+}
+
+/* The side1/side2 class-colour edge bars on a glyph tile are drawn by
+   kerning.js's applyClassColorEdges, inside the component, for the class
+   panel's strip and the font-mode grid alike. A second copy used to live
+   here as an inset box-shadow on the host box, painting the same two bars
+   from outside the shadow DOM under their own pair of custom-property
+   names -- two mechanisms stating one fact, either of which could have been
+   changed without the other. Removed; nothing replaces it here. */
+
+/* Task 13, spec F28: the font-mode "Add selection to selected class" button
+   now lives inside #autokern-class-new-controls (kerning.html), the same
+   flex-wrap row as Left/Right/Both/Derive -- it no longer gets its own
+   bordered block (that block was the confirmed cause of the middle-bottom
+   pane needing a vertical scrollbar; see initFontModeAddToClassActions in
+   kerning.js). No rule needed here any more. */
+
+/* Backlog item 6: this view reuses views-editor's SidebearingTool/KerningTool
+   (edit-tools-metrics.js) unmodified, but kerning.html never linked
+   editor.css, so the DOM handles those tools create (<sidebearing-handle>,
+   <kerning-handle>) had no positioning CSS -- their inline style.left/
+   style.top had nothing to position against (default position: static).
+   Copied verbatim from src-js/views-editor/assets/editor.css:498-598 rather
+   than shared, since no view-pair CSS-sharing convention exists in this tree
+   (unlike JS, which is shared via the exports map per spec §8) -- see
+   KERNING-VIEW-BACKLOG.md item 6. */
+:root {
+  --metrics-handle-color: rgb(153 153 153);
+  --positive-metrics-handle-color: rgb(23 89 241);
+  --negative-metrics-handle-color: rgb(241 23 89);
+}
+
+sidebearing-handle {
+  font-size: 0.8em;
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+sidebearing-handle > .advance,
+sidebearing-handle > .left-sidebearing,
+sidebearing-handle > .right-sidebearing {
+  --sb-bg-color: var(--metrics-handle-color);
+  position: absolute;
+  box-sizing: border-box;
+  padding: 0.1em 0.6em 0.1em 0.6em;
+  border-radius: 0.66em;
+  transform: translate(-50%, 100%);
+  background-color: rgb(from var(--sb-bg-color) r g b / 63%);
+  color: white;
+  pointer-events: auto;
+}
+
+sidebearing-handle > .positive {
+  --sb-bg-color: var(--positive-metrics-handle-color);
+}
+
+sidebearing-handle > .negative {
+  --sb-bg-color: var(--negative-metrics-handle-color);
+}
+
+sidebearing-handle > .selected {
+  background-color: var(--sb-bg-color);
+}
+
+sidebearing-handle > .hovered {
+  box-shadow: 0 0 0.7em var(--sb-bg-color);
+}
+
+sidebearing-handle > .advance {
+  left: 50%;
+  pointer-events: none;
+}
+
+sidebearing-handle > .left-sidebearing {
+  transform: translate(0%, 100%);
+  left: 0%;
+  cursor: w-resize;
+  border-radius: 0.1em 0.66em 0.66em 0.1em;
+}
+
+sidebearing-handle > .right-sidebearing {
+  transform: translate(-100%, 100%);
+  left: 100%;
+  cursor: e-resize;
+  border-radius: 0.66em 0.1em 0.1em 0.66em;
+}
+
+kerning-handle {
+  --kern-bg-color: var(--metrics-handle-color);
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0em 0.5em;
+  justify-items: center;
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  font-size: 0.8em;
+  padding: 0.2em 0.8em 0.2em 0.8em;
+  border-radius: 0.66em;
+  color: white;
+  background-color: rgb(from var(--kern-bg-color) r g b / 63%);
+  cursor: ew-resize;
+  user-select: none;
+  transform: translate(-50%, 50%);
+}
+
+kerning-handle > .value {
+  grid-column-start: span 2;
+}
+
+kerning-handle > .group {
+  font-weight: bold;
+}
+
+kerning-handle.selected {
+  background-color: var(--kern-bg-color);
+}
+
+kerning-handle.positive {
+  --kern-bg-color: var(--positive-metrics-handle-color);
+}
+
+kerning-handle.negative {
+  --kern-bg-color: var(--negative-metrics-handle-color);
+}
+
+/* Task 7, spec F22 recommended detail: inline error for an unresolvable
+   Glyph/Pair input token, instead of silently producing a misleading
+   match. */
+.kerning-pairtable-input-error {
+  color: var(--negative-metrics-handle-color, #c00);
+  font-size: 0.9em;
+}
+
+/* Task 18, spec F03: the Analytics panel, same border/gap idiom as the
+   Stale glyphs section right above it. */
+#kerning-analytics-section {
+  padding-bottom: 0.75em;
+  border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
+}
+
+#kerning-analytics-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+}
+
+.kerning-analytics-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5em;
+}
+
+.kerning-analytics-row dt {
+  min-width: 0;
+}
+
+.kerning-analytics-row dd {
+  margin: 0;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+/* A metric with a navigation target reads as a real (if understated)
+   button; "Saved pair exceptions" (kerning.js's own initAnalyticsSection
+   comment on why it has none) uses .kerning-analytics-metric-label instead,
+   plain text with the same hover/focus scope tooltip. */
+.kerning-analytics-metric-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline dotted;
+  cursor: pointer;
+  color: inherit;
+}
+
+.kerning-analytics-metric-label {
+  cursor: help;
+}
+
+.kerning-pairtable-load-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75em;
+  padding: 0.75em;
+}
+#kerning-pairtable-load-more[hidden] {
+  display: none;
+}

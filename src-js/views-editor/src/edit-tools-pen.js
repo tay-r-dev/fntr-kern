@@ -14,6 +14,8 @@ import { constrainHorVerDiag } from "./edit-behavior.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
 import { recordSkeletonContourIndexShift } from "./skeleton-editing.js";
 
+import { SnappingSession } from "./snapping-interactions.js";
+
 export class PenTool {
   identifier = "pen-tool";
   subTools = [PenToolCubic, PenToolQuad];
@@ -29,23 +31,69 @@ export class PenToolCubic extends BaseTool {
       return;
     }
     this.setCursor();
-    const { insertHandles, targetPoint, danglingOffCurve, canDragOffCurve } =
-      this._getPathConnectTargetPoint(event);
+    // Read first, because the answer decides whether the snap runs at all.
+    const {
+      insertHandles,
+      targetPoint,
+      danglingOffCurve,
+      canDragOffCurve,
+      inertPoint,
+      resumePoint,
+    } = this._getPathConnectTargetPoint(event);
+    // The preview must show the result before the click, so the hover resolves
+    // through the same session the click will use. The scene is re-read first:
+    // the pen adds geometry as it goes, and a point just placed is a source.
+    const snapSession = this._snapSession();
+    snapSession.refresh();
+    // Alt over a segment inserts two handles at its thirds. The cursor names the
+    // segment and nothing else - where the handles land is the segment's own
+    // arithmetic - so a magnet has nothing to move, and the guides it draws
+    // would be describing a placement that is not happening.
+    snapSession.suppressed = !!insertHandles;
+    this.sceneModel.penSnappedPoint = snapSession.resolve(
+      this.sceneController.selectedGlyphPoint(event)
+    );
+    // The hover redraw below fires only when the connect target changes, so the
+    // snap draw needs its own. Without it the guide appears only where some other
+    // hover state happens to change, which reads as snapping over geometry alone.
+    const snapState = JSON.stringify([
+      this.sceneModel.snapHeldCandidates?.map((c) => [
+        c.kind,
+        c.x,
+        c.y,
+        c.dx,
+        c.dy,
+        // A curve projection has none of the above: its four points are what
+        // tells one from another.
+        c.points,
+      ]),
+      this.sceneModel.snapIndicator,
+    ]);
+    if (snapState !== this._lastSnapState) {
+      this._lastSnapState = snapState;
+      this.canvasController.requestUpdate();
+    }
     const prevInsertHandles = this.sceneModel.pathInsertHandles;
     const prevTargetPoint = this.sceneModel.pathConnectTargetPoint;
     const prevDanglingOffCurve = this.sceneModel.pathDanglingOffCurve;
     const prevCanDragOffCurve = this.sceneModel.pathCanDragOffCurve;
+    const prevInertPoint = this.sceneModel.pathInertPoint;
+    const prevResumePoint = this.sceneModel.pathResumePoint;
 
     if (
       !handlesEqual(insertHandles, prevInsertHandles) ||
       !pointsEqual(targetPoint, prevTargetPoint) ||
       !pointsEqual(danglingOffCurve, prevDanglingOffCurve) ||
-      !pointsEqual(canDragOffCurve, prevCanDragOffCurve)
+      !pointsEqual(canDragOffCurve, prevCanDragOffCurve) ||
+      !pointsEqual(inertPoint, prevInertPoint) ||
+      !pointsEqual(resumePoint, prevResumePoint)
     ) {
       this.sceneModel.pathInsertHandles = insertHandles;
       this.sceneModel.pathConnectTargetPoint = targetPoint;
       this.sceneModel.pathDanglingOffCurve = danglingOffCurve;
       this.sceneModel.pathCanDragOffCurve = canDragOffCurve;
+      this.sceneModel.pathInertPoint = inertPoint;
+      this.sceneModel.pathResumePoint = resumePoint;
       this.canvasController.requestUpdate();
     }
   }
@@ -60,11 +108,42 @@ export class PenToolCubic extends BaseTool {
     this.canvasController.requestUpdate();
   }
 
+  // The pen appends to whichever contour endpoint is selected, so dropping the
+  // selection is what ends the contour: the next click starts a new one. This
+  // touches no glyph data, so there is nothing to undo. A pen never opens the
+  // canvas context menu, drawing or not, so the gesture is always consumed.
+  handleContextMenu(event) {
+    this.sceneController.selection = new Set();
+    this._resetHover();
+    this.canvasController.requestUpdate();
+    return true;
+  }
+
+  // One session for the length of the hover, rebuilt when the glyph changes.
+  // Nothing is excluded: the point being placed is not in the path yet, and the
+  // previous point of the chain is the most useful source there (spec section 6).
+  _snapSession() {
+    const glyphName = this.sceneModel.selectedGlyph?.glyphName;
+    if (!this._snapping || this._snappingGlyph !== glyphName) {
+      this._snapping = new SnappingSession(this.sceneController, {
+        excludePointIndices: [],
+      });
+      this._snappingGlyph = glyphName;
+    }
+    return this._snapping;
+  }
+
   _resetHover() {
+    this._snapping?.end();
+    this._snapping = null;
+    this._lastSnapState = undefined;
+    delete this.sceneModel.penSnappedPoint;
     delete this.sceneModel.pathInsertHandles;
     delete this.sceneModel.pathConnectTargetPoint;
     delete this.sceneModel.pathDanglingOffCurve;
     delete this.sceneModel.pathCanDragOffCurve;
+    delete this.sceneModel.pathInertPoint;
+    delete this.sceneModel.pathResumePoint;
   }
 
   setCursor() {
@@ -106,7 +185,7 @@ export class PenToolCubic extends BaseTool {
         hit = {};
       }
       if (event.altKey && hit.segment?.points?.length === 2) {
-        return this.getInsertHandlesFromPathHit(hit);
+        return this.getInsertHandlesFromPathHit(hit, event);
       } else {
         const targetPoint = { ...hit };
         if ("x" in targetPoint) {
@@ -120,7 +199,16 @@ export class PenToolCubic extends BaseTool {
     }
 
     if (hoveredPointIndex === undefined || appendInfo.createContour) {
-      return {};
+      if (hoveredPointIndex === undefined) {
+        return {};
+      }
+      // Nothing is being drawn. An end of an open contour is picked up by a
+      // click, and drawing resumes from it; anything else is inert, because a
+      // click adds a point where it lands and leaves that one alone.
+      const point = path.getPoint(hoveredPointIndex);
+      return this._canResumeFrom(path, hoveredPointIndex)
+        ? { resumePoint: point }
+        : { inertPoint: point };
     }
 
     const [contourIndex, contourPointIndex] =
@@ -142,14 +230,36 @@ export class PenToolCubic extends BaseTool {
 
     if (
       contourInfo.isClosed ||
-      (contourPointIndex != 0 && hoveredPointIndex != contourInfo.endPoint)
+      (contourPointIndex != 0 && hoveredPointIndex != contourInfo.endPoint) ||
+      // Skeleton-generated contours are derived geometry: the pen never joins to
+      // one, the same way it never inserts into one above.
+      this.sceneModel.isGeneratedPathContour(contourIndex)
     ) {
-      return {};
+      // Only an end of an open contour can be connected to. Anything else is
+      // inert: a click adds a point where it lands and leaves this one alone.
+      return { inertPoint: path.getPoint(hoveredPointIndex) };
     }
     return { targetPoint: path.getPoint(hoveredPointIndex) };
   }
 
-  getInsertHandlesFromPathHit(hit) {
+  // A click here picks the point up rather than starting a new contour. Only while
+  // nothing is picked up already: once something is selected the pen is drawing, and a
+  // click while drawing has to put a point down. Otherwise the click silently drops the
+  // contour being drawn and starts aiming somewhere else.
+  //
+  // Not on generated geometry either: the pen never edits a skeleton's outline.
+  _canResumeFrom(path, pointIndex) {
+    if (this.sceneController.selection.size) {
+      return false;
+    }
+    if (!isResumablePointIndex(path, pointIndex)) {
+      return false;
+    }
+    const [contourIndex] = path.getContourAndPointIndex(pointIndex);
+    return !this.sceneModel.isGeneratedPathContour(contourIndex);
+  }
+
+  getInsertHandlesFromPathHit(hit, event) {
     const pt1 = hit.segment.points[0];
     const pt2 = hit.segment.points[1];
     const handle1 = vector.roundVector(vector.interpolateVectors(pt1, pt2, 1 / 3));
@@ -167,10 +277,36 @@ export class PenToolCubic extends BaseTool {
       await this._handleInsertPoint();
     } else if (this.sceneModel.pathInsertHandles) {
       await this.handleInsertHandles();
+    } else if (this._handleResumeFromPoint(initialEvent)) {
+      eventStream.done();
     } else {
       this._resetHover();
       await this._handleAddPoints(eventStream, initialEvent);
     }
+  }
+
+  // Clicking an end of an open contour while nothing is being drawn selects it,
+  // so the next click extends that contour. Without this the click started a
+  // new contour on top of the point instead. Selection only: no glyph data
+  // changes, so there is nothing to undo. Returns whether it took the click.
+  _handleResumeFromPoint(event) {
+    const glyphController = this.sceneModel.getSelectedPositionedGlyph()?.glyph;
+    if (!glyphController?.canEdit) {
+      return false;
+    }
+    const path = glyphController.instance.path;
+    if (!getAppendInfo(path, this.sceneController.selection).createContour) {
+      // Already drawing: the connect and insert paths above own this click.
+      return false;
+    }
+    const hoveredPointIndex = getHoveredPointIndex(this.sceneController, event);
+    if (!this._canResumeFrom(path, hoveredPointIndex)) {
+      return false;
+    }
+    this.sceneController.selection = new Set([`point/${hoveredPointIndex}`]);
+    this._resetHover();
+    this.canvasController.requestUpdate();
+    return true;
   }
 
   async _handleInsertPoint() {
@@ -223,7 +359,8 @@ export class PenToolCubic extends BaseTool {
             this.sceneController,
             initialEvent,
             layerGlyph.path,
-            this.curveType
+            this.curveType,
+            this._snapSession()
           ),
         };
       });
@@ -285,102 +422,21 @@ export class PenToolQuad extends PenToolCubic {
     return "quad";
   }
 
-  ////quad handles
-  _getPathConnectTargetPoint(event) {
-    // Requirements:
-    // - we must have an edited glyph at an editable location
-    // - we must be in append/prepend mode for an existing contour
-    // - the hovered point must be eligible to connect to:
-    //   - must be a start or end point of an open contour
-    //   - must not be the currently selected point
-
-    const hoveredPointIndex = getHoveredPointIndex(this.sceneController, event);
-
-    const glyphController = this.sceneModel.getSelectedPositionedGlyph().glyph;
-    if (!glyphController.canEdit) {
-      return {};
+  // The only thing the quadratic pen does differently on hover: Alt inserts one
+  // handle at the midpoint, and Alt-Shift inserts the cubic pair. Everything
+  // else about the connect target is the same, so it stays in one place above.
+  getInsertHandlesFromPathHit(hit, event) {
+    const pt1 = hit.segment.points[0];
+    const pt2 = hit.segment.points[1];
+    if (event.shiftKey) {
+      const handle1 = vector.roundVector(vector.interpolateVectors(pt1, pt2, 1 / 3));
+      const handle2 = vector.roundVector(vector.interpolateVectors(pt1, pt2, 2 / 3));
+      return {
+        insertHandles: { points: [handle1, handle2], hit: hit, shiftKey: true },
+      };
     }
-    const path = glyphController.instance.path;
-
-    const appendInfo = getAppendInfo(path, this.sceneController.selection);
-    if (hoveredPointIndex === undefined && appendInfo.createContour) {
-      const point = this.sceneController.localPoint(event);
-      // The following max() call makes sure that the margin is never
-      // less than half a font unit. This works around a visualization
-      // artifact caused by bezier-js: Bezier.project() returns t values
-      // with a max precision of 0.001.
-      const size = Math.max(1, this.sceneController.mouseClickMargin);
-      let hit = this.sceneModel.pathHitAtPoint(point, size);
-      if (this.sceneModel.isGeneratedPathContour(hit.contourIndex)) {
-        // Skeleton-generated contours are derived geometry: the pen must not
-        // insert points or handles into them. Treat the hover as empty canvas.
-        hit = {};
-      }
-      if (event.altKey && hit.segment?.points?.length === 2) {
-        const pt1 = hit.segment.points[0];
-        const pt2 = hit.segment.points[1];
-        if (event.altKey && event.shiftKey) {
-          // For quadratic curves with alt+shift, create two handles like cubic
-          const handle1 = vector.roundVector(
-            vector.interpolateVectors(pt1, pt2, 1 / 3)
-          );
-          const handle2 = vector.roundVector(
-            vector.interpolateVectors(pt1, pt2, 2 / 3)
-          );
-          return {
-            insertHandles: {
-              points: [handle1, handle2],
-              hit: hit,
-              shiftKey: event.shiftKey,
-            },
-          };
-        } else {
-          // For quadratic curves with alt, create one handle at the midpoint
-          const handle = vector.roundVector(vector.interpolateVectors(pt1, pt2, 0.5));
-          return {
-            insertHandles: { points: [handle], hit: hit, shiftKey: event.shiftKey },
-          };
-        }
-      } else {
-        const targetPoint = { ...hit };
-        if ("x" in targetPoint) {
-          // Don't use vector.roundVector, as there are more properties besides
-          // x and y, and we want to preserve them
-          targetPoint.x = Math.round(targetPoint.x);
-          targetPoint.y = Math.round(targetPoint.y);
-        }
-        return { targetPoint: targetPoint };
-      }
-    }
-
-    if (hoveredPointIndex === undefined || appendInfo.createContour) {
-      return {};
-    }
-
-    const [contourIndex, contourPointIndex] =
-      path.getContourAndPointIndex(hoveredPointIndex);
-    const contourInfo = path.contourInfo[contourIndex];
-
-    if (
-      appendInfo.contourIndex == contourIndex &&
-      appendInfo.contourPointIndex == contourPointIndex
-    ) {
-      // We're hovering over the source point
-      const point = path.getPoint(hoveredPointIndex);
-      if (!appendInfo.isOnCurve) {
-        return { danglingOffCurve: point };
-      } else {
-        return { canDragOffCurve: point };
-      }
-    }
-
-    if (
-      contourInfo.isClosed ||
-      (contourPointIndex != 0 && hoveredPointIndex != contourInfo.endPoint)
-    ) {
-      return {};
-    }
-    return { targetPoint: path.getPoint(hoveredPointIndex) };
+    const handle = vector.roundVector(vector.interpolateVectors(pt1, pt2, 0.5));
+    return { insertHandles: { points: [handle], hit: hit, shiftKey: false } };
   }
 }
 
@@ -389,7 +445,13 @@ const AppendModes = {
   PREPEND: "prepend",
 };
 
-function getPenToolBehavior(sceneController, initialEvent, path, curveType) {
+function getPenToolBehavior(
+  sceneController,
+  initialEvent,
+  path,
+  curveType,
+  snapSession
+) {
   const appendInfo = getAppendInfo(path, sceneController.selection);
 
   let behaviorFuncs;
@@ -468,7 +530,13 @@ function getPenToolBehavior(sceneController, initialEvent, path, curveType) {
     }
   }
 
-  const getPointFromEvent = (event) => sceneController.selectedGlyphPoint(event);
+  // The one place the pen turns an event into a position, so the click and the
+  // preview cannot disagree. One point is placed, so this is resolve, not
+  // resolveSet: there is no set to choose from.
+  const getPointFromEvent = (event) =>
+    snapSession
+      ? snapSession.resolve(sceneController.selectedGlyphPoint(event))
+      : sceneController.selectedGlyphPoint(event);
 
   return new PenToolBehavior(getPointFromEvent, appendInfo, behaviorFuncs, curveType);
 }
@@ -542,7 +610,7 @@ function insertAnchorPoint(context, path, point, shiftKey) {
       context.contourIndex,
       context.contourPointIndex
     );
-    point = shiftConstrain(referencePoint, point);
+    point = shiftConstrainPoint(referencePoint, point);
   }
 
   point = vector.roundVector(point);
@@ -764,6 +832,20 @@ function getPointSelectionAbs(pointIndex) {
   return new Set([`point/${pointIndex}`]);
 }
 
+// The ends of an open contour are the points the pen can draw on from: they are
+// exactly what getAppendInfo below accepts as a selection, so both read this.
+function isResumablePointIndex(path, pointIndex) {
+  if (pointIndex === undefined || pointIndex >= path.numPoints) {
+    return false;
+  }
+  const [contourIndex, contourPointIndex] = path.getContourAndPointIndex(pointIndex);
+  if (path.contourInfo[contourIndex].isClosed) {
+    return false;
+  }
+  const numPointsContour = path.getNumPointsOfContour(contourIndex);
+  return contourPointIndex === 0 || contourPointIndex === numPointsContour - 1;
+}
+
 function getAppendInfo(path, selection) {
   if (selection.size === 1) {
     const { point: pointSelection } = parseSelection(selection);
@@ -808,7 +890,7 @@ function emptyContour() {
 
 function getHandle(handleOut, anchorPoint, shiftKey) {
   if (shiftKey) {
-    handleOut = shiftConstrain(anchorPoint, handleOut);
+    handleOut = shiftConstrainPoint(anchorPoint, handleOut);
   }
   return vector.roundVector(handleOut);
 }
@@ -820,7 +902,10 @@ function oppositeHandle(anchorPoint, handlePoint) {
   );
 }
 
-function shiftConstrain(anchorPoint, handlePoint) {
+// Hold a point on a whole angle from the one it extends. Exported because the
+// Skeleton Pen holds shift the same way, and one copy of the rule is what keeps
+// the two pens feeling like one tool.
+export function shiftConstrainPoint(anchorPoint, handlePoint) {
   const delta = constrainHorVerDiag(vector.subVectors(handlePoint, anchorPoint));
   return vector.addVectors(anchorPoint, delta);
 }

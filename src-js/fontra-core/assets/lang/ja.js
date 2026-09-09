@@ -371,7 +371,7 @@ export const strings = {
   "sidebar.designspace-navigation.source-properties.undo": "ソースのプロパティを編集",
   "sidebar.designspace-navigation.source.activate": "%0を有効にする",
   "sidebar.designspace-navigation.source.deactivate": "%0を無効にする",
-  "sidebar.designspace-navigation.undo.and-layer": "とレイヤー",
+  "sidebar.designspace-navigation.undo.and-layer": " とレイヤー",
   "sidebar.designspace-navigation.undo.delete-source": "ソース%0を削除する",
   "sidebar.designspace-navigation.warning.delete-associated-layer":
     "同様にレイヤー%0も削除",
@@ -501,6 +501,8 @@ export const strings = {
   "sidebar.user-settings.glyph": "グリフエディターの表示設定",
   "sidebar.user-settings.glyph.anchornames": "アンカー名を表示",
   "sidebar.user-settings.glyph.background-image": "背景画像を表示",
+  "sidebar.user-settings.glyph.background-nodes-and-handles":
+    "Nodes and handles for background layers",
   "sidebar.user-settings.glyph.baseline": "ベースラインを表示",
   "sidebar.user-settings.glyph.cjkframe": "CJKデザインフレームを表示",
   "sidebar.user-settings.glyph.component": "コンポーネント名とシェイプの順番を表示",

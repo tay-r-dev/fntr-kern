@@ -24,11 +24,12 @@ const cellObserver = new IntersectionObserver(
     entries.forEach((entry) => {
       const cell = entry.target;
       if (entry.intersectionRatio > 0) {
-        cell.locationController.addKeyListener(cell.locationKey, cell.throttledUpdate);
-        cell.fontController.addGlyphChangeListener(
-          cell.glyphName,
-          cell.throttledUpdate
+        cell.locationController.addKeyListener(
+          cell.locationKey,
+          cell.onLocationChanged
         );
+        cell.fontController.addGlyphChangeListener(cell.glyphName, cell.onGlyphChanged);
+        cell._allowRedraw = true;
         cell.throttledUpdate();
         cell.visible = true;
       } else {
@@ -38,11 +39,11 @@ const cellObserver = new IntersectionObserver(
         }
         cell.locationController.removeKeyListener(
           cell.locationKey,
-          cell.throttledUpdate
+          cell.onLocationChanged
         );
         cell.fontController.removeGlyphChangeListener(
           cell.glyphName,
-          cell.throttledUpdate
+          cell.onGlyphChanged
         );
         cell.visible = false;
       }
@@ -60,6 +61,11 @@ export class GlyphCell extends UnlitElement {
   :host {
     display: inline-block;
     --glyph-cell-scale-factor: calc(var(--glyph-cell-scale-factor-override, 1));
+  }
+
+  /* The glyph moved and this drawing did not follow it. */
+  :host(.stale) {
+    opacity: 0.4;
   }
 
   #glyph-cell-container {
@@ -122,6 +128,11 @@ export class GlyphCell extends UnlitElement {
   }
 
   .glyph-status-color {
+    /* The development-status bar. A host that shows glyph tiles for a reason
+       other than editing them -- the kerning view's class panel, where a tile
+       states class membership and nothing else -- turns it off by setting
+       --glyph-cell-status-display: none on the cell. Default unchanged. */
+    display: var(--glyph-cell-status-display, block);
     height: 0.3rem;
     justify-self: stretch;
   }
@@ -149,6 +160,35 @@ export class GlyphCell extends UnlitElement {
     this._placeholderString = glyphString;
     this._placeholderDirection = direction || "auto";
     this._selected = false;
+
+    // A cell follows its glyph by default. A view that sets `deferUpdates`
+    // keeps the drawing it has and reports that the glyph moved under it, so
+    // the designer decides when to look again. Coming into view and a location
+    // change still redraw at once: neither is an edit.
+    this.deferUpdates = false;
+    this.stale = false;
+    this._hasDrawn = false;
+    this._allowRedraw = false;
+    this.onGlyphChanged = () => this.throttledUpdate();
+    // A location change is not an edit, so it redraws whatever the cell was
+    // told about deferring.
+    this.onLocationChanged = () => this.refreshNow();
+  }
+
+  markStale() {
+    if (this.stale) {
+      return;
+    }
+    this.stale = true;
+    this.classList.add("stale");
+    this.onStaleChanged?.(this);
+  }
+
+  refreshNow() {
+    this._allowRedraw = true;
+    this.stale = false;
+    this.classList.remove("stale");
+    this.throttledUpdate();
   }
 
   connectedCallback() {
@@ -159,11 +199,23 @@ export class GlyphCell extends UnlitElement {
   disconnectedCallback() {
     super.disconnectedCallback?.();
     cellObserver.unobserve(this);
-    this.locationController.removeKeyListener(this.locationKey, this.throttledUpdate);
-    this.fontController.removeGlyphChangeListener(this.glyphName, this.throttledUpdate);
+    this.locationController.removeKeyListener(this.locationKey, this.onLocationChanged);
+    this.fontController.removeGlyphChangeListener(this.glyphName, this.onGlyphChanged);
   }
 
   async _updateGlyph() {
+    // The guard sits here, at the drawing, rather than on any one of the things
+    // that ask for a redraw. A cell is asked to redraw from several directions
+    // — its glyph changed, its location changed, it came into view — and a
+    // deferring cell has to hold still for all of them but the ones it was told
+    // to honour. The first draw always happens: a blank tile is not a preview.
+    if (this.deferUpdates && this._hasDrawn && !this._allowRedraw) {
+      this.markStale();
+      return;
+    }
+    this._allowRedraw = false;
+    this._hasDrawn = true;
+
     this.width = this.height;
 
     const location = this.locationController.model[this.locationKey];

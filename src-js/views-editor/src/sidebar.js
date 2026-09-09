@@ -144,13 +144,23 @@ export class Sidebar {
     let width;
     const onPointerMove = (event) => {
       if (sidebarResizing) {
-        let cssProperty;
+        // The CSS custom property this drag writes to is always this
+        // instance's own `--sidebar-content-width-${identifier}` -- reused
+        // by views-kerning's three-column layout (kerning.js/kerning.css),
+        // which needs identifiers other than the literal "left"/"right" this
+        // file originally shipped with, to avoid colliding with the editor's
+        // own sidebar width/visibility localStorage keys (getStoredWidth/
+        // attach above already key those by `this.identifier`; this was the
+        // one remaining place still hardcoding the two editor-only
+        // identifiers instead of reading it generically). Behavior-preserving
+        // for the editor's own "left"/"right" sidebars: growDirection still
+        // only changes the SIGN of the drag delta, not which property is
+        // written.
+        let cssProperty = `--sidebar-content-width-${this.identifier}`;
         if (growDirection === "left") {
           width = initialWidth + (initialPointerCoordinateX - event.clientX);
-          cssProperty = "--sidebar-content-width-right";
         } else {
           width = initialWidth + (event.clientX - initialPointerCoordinateX);
-          cssProperty = "--sidebar-content-width-left";
         }
         width = clamp(width, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
         document.documentElement.style.setProperty(cssProperty, `${width}px`);

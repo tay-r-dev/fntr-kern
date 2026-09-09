@@ -107,6 +107,32 @@ function characterLineFromSingleLineString(
   return characterInfo;
 }
 
+// Parses a presets FILE's own format (KERNING-VIEW.md spec §7.1), NOT a
+// phrase string -- that is characterLinesFromString above, unchanged. Blocks
+// are separated by one or more blank lines. Within a block, the first line
+// starting with "#" is a comment naming the entry (the "#" and one leading
+// space, if present, are stripped); every remaining line is one line of the
+// preset's phrase text, joined back together with "\n" so a preset can itself
+// be multiple lines. Pure function: string in, array of {name, text} out.
+export function parsePhrasePresets(string) {
+  const presets = [];
+  const blocks = string.split(/\r?\n\s*\r?\n/).map((block) => block.trim());
+  for (const block of blocks) {
+    if (!block) {
+      continue;
+    }
+    const lines = block.split(/\r?\n/);
+    const nameLine = lines[0];
+    if (!nameLine.startsWith("#")) {
+      continue;
+    }
+    const name = nameLine.slice(1).replace(/^ /, "");
+    const text = lines.slice(1).join("\n");
+    presets.push({ name, text });
+  }
+  return presets;
+}
+
 export function stringFromCharacterLines(characterLines) {
   const textLines = [];
   for (const characterLine of characterLines) {

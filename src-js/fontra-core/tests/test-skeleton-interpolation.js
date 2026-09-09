@@ -10,7 +10,32 @@ import { expect } from "chai";
 
 // A structurally fixed skeleton: same contour/point ids and types, parameterized
 // only by coordinates and half-widths (the things that vary across sources).
-function makeSkeleton({ x0, y0, x1, y1, width }) {
+function makeSkeleton({
+  x0,
+  y0,
+  x1,
+  y1,
+  width,
+  width0 = width,
+  width1 = width,
+  controls = null,
+}) {
+  const onCurve = (id, x, y, pointWidth) => ({
+    id,
+    x,
+    y,
+    type: null,
+    smooth: false,
+    width: { left: pointWidth, right: pointWidth, linked: true },
+  });
+  const points = controls
+    ? [
+        onCurve(2, x0, y0, width0),
+        { id: 3, ...controls[0], type: "cubic", smooth: false },
+        { id: 4, ...controls[1], type: "cubic", smooth: false },
+        onCurve(5, x1, y1, width1),
+      ]
+    : [onCurve(2, x0, y0, width0), onCurve(3, x1, y1, width1)];
   return {
     version: SKELETON_SCHEMA_VERSION,
     nextId: 10,
@@ -20,28 +45,29 @@ function makeSkeleton({ x0, y0, x1, y1, width }) {
         closed: false,
         singleSided: null,
         defaultWidth: 80,
-        points: [
-          {
-            id: 2,
-            x: x0,
-            y: y0,
-            type: null,
-            smooth: false,
-            width: { left: width, right: width, linked: true },
-          },
-          {
-            id: 3,
-            x: x1,
-            y: y1,
-            type: null,
-            smooth: false,
-            width: { left: width, right: width, linked: true },
-          },
-        ],
+        points,
       },
     ],
     generated: [],
   };
+}
+
+function makeCubicSkeleton({ width0, width1, handleScale }) {
+  return makeSkeleton({
+    x0: 0,
+    y0: 0,
+    x1: 180,
+    y1: 20,
+    width0,
+    width1,
+    controls: [
+      { x: 60 * handleScale, y: 90 * handleScale },
+      {
+        x: 180 - 55 * handleScale,
+        y: 20 + 75 * handleScale,
+      },
+    ],
+  });
 }
 
 function contourSignature(contours) {
@@ -73,6 +99,19 @@ describe("skeleton generated-contour interpolation compatibility", () => {
     expect(contourSignature(thin.contours)).to.deep.equal(
       contourSignature(bold.contours)
     );
+  });
+
+  it("keeps cubic point topology across coordinate, width, and taper variants", () => {
+    const variants = [
+      makeCubicSkeleton({ width0: 20, width1: 20, handleScale: 0.5 }),
+      makeCubicSkeleton({ width0: 20, width1: 90, handleScale: 1 }),
+      makeCubicSkeleton({ width0: 90, width1: 20, handleScale: 1.5 }),
+    ].map((skeleton) => generateFromSkeleton(skeleton));
+    for (const variant of variants.slice(1)) {
+      expect(contourSignature(variant.contours)).to.deep.equal(
+        contourSignature(variants[0].contours)
+      );
+    }
   });
 
   it("documents that a structural difference (extra point) is incompatible", () => {

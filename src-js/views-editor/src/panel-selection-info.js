@@ -2,6 +2,7 @@ import { applicationSettingsController } from "@fontra/core/application-settings
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import { rectFromPoints, rectSize, unionRect } from "@fontra/core/rectangle.ts";
 import { compute, nameCapture } from "@fontra/core/simple-compute.js";
 import { getDecomposedIdentity } from "@fontra/core/transform.js";
@@ -49,6 +50,7 @@ export default class SelectionInfoPanel extends Panel {
         "fontLocationSourceMapped",
         "glyphLocation",
         "editLayerName",
+        "combinedCharacterMap",
       ],
       (event) => this.throttledUpdate()
     );
@@ -190,6 +192,9 @@ export default class SelectionInfoPanel extends Panel {
     const kerningController = await this.fontController.getKerningController("kern");
 
     const formContents = [];
+    // Whether this rebuild puts the two hosted panels' elements back in the
+    // form. They are in the DOM only while it does.
+    let hostedPanelsInForm = false;
     if (glyphName) {
       formContents.push({
         type: "header",
@@ -309,6 +314,7 @@ export default class SelectionInfoPanel extends Panel {
           type: "single-icon",
           element: this.skeletonDefaultsHost,
         });
+        hostedPanelsInForm = true;
         formContents.push({
           type: "edit-text-double",
           key: '["kern-l-r"]',
@@ -549,6 +555,18 @@ export default class SelectionInfoPanel extends Panel {
       }
     }
 
+    // The two hosted panels draw nothing while their host is out of the DOM,
+    // and this rebuild is what puts it back. Their own toggle runs once, when
+    // this panel is switched on, which on a fresh load is before this form has
+    // ever been built — so they came up blank and stayed blank until the panel
+    // was switched off and on again.
+    //
+    // Only on the rebuild that re-attaches the host, not on every one: this
+    // form is rebuilt on every selection change, and redrawing both panels there
+    // would replace a control the user is still holding.
+    const hostsWereDetached =
+      hostedPanelsInForm && !this.skeletonDefaultsHost.offsetParent;
+
     if (!formContents.length) {
       this.infoForm.setFieldDescriptions([
         { type: "text", value: translate("selection.none") },
@@ -558,6 +576,11 @@ export default class SelectionInfoPanel extends Panel {
       if (glyphController) {
         await this._setupSelectionInfoHandlers(glyphName);
       }
+    }
+
+    if (hostsWereDetached) {
+      await this.letterspacerPanel?.update();
+      await this.skeletonDefaultsPanel?.update();
     }
   }
 
@@ -867,6 +890,11 @@ export default class SelectionInfoPanel extends Panel {
       if (valueStream) {
         // Continuous changes (eg. slider drag)
         for await (const value of valueStream) {
+          // An abandoned drag has nothing to commit; the rollback below the loop
+          // is what puts the glyph back.
+          if (isScrubCancelled(value)) {
+            return;
+          }
           for (const { layerGlyph, layerGlyphController, orgValue } of layerInfo) {
             if (orgValue !== undefined) {
               setFieldValue(layerGlyph, layerGlyphController, fieldItem, orgValue); // Ensure getting the correct undo change

@@ -4,6 +4,7 @@ import {
   fitCubic,
   generateBezier,
   newtonRhapsonRootFind,
+  solveHandleLengths,
 } from "@fontra/core/fit-cubic.js";
 import { expect } from "chai";
 
@@ -185,6 +186,77 @@ describe("generateBezier", () => {
     expect(b2).deep.equal({ x: 134.85620891904577, y: 162.85620891904577 });
     expect(b3).deep.equal({ x: 235.09934508233675, y: 266.7019647529898 });
     expect(b4).deep.equal({ x: 318, y: 18 });
+  });
+});
+
+describe("solveHandleLengths", () => {
+  const points = [
+    { x: -28, y: 138 },
+    { x: 72, y: 188 },
+    { x: 118, y: 190 },
+    { x: 192, y: 160 },
+    { x: 262, y: 134 },
+    { x: 296, y: 86 },
+    { x: 318, y: 18 },
+  ];
+  const parameters = [
+    0.0, 0.25257093967929206, 0.3565860188512732, 0.5369718939837534,
+    0.7056620562778243, 0.8385441379333622, 1.0,
+  ];
+  const leftTangent = { x: 0.7071067811865475, y: 0.7071067811865475 };
+  const rightTangent = { x: -0.31622776601683794, y: 0.9486832980505138 };
+
+  it("returns the alphas generateBezier places its control points at", () => {
+    const { alphaL, alphaR } = solveHandleLengths(
+      points,
+      parameters,
+      leftTangent,
+      rightTangent
+    );
+    const [b1, b2, b3, b4] = generateBezier(
+      points,
+      parameters,
+      leftTangent,
+      rightTangent
+    ).points;
+
+    expect(b2.x).to.be.closeTo(b1.x + leftTangent.x * alphaL, 1e-9);
+    expect(b2.y).to.be.closeTo(b1.y + leftTangent.y * alphaL, 1e-9);
+    expect(b3.x).to.be.closeTo(b4.x + rightTangent.x * alphaR, 1e-9);
+    expect(b3.y).to.be.closeTo(b4.y + rightTangent.y * alphaR, 1e-9);
+  });
+
+  it("returns zeros when the normal equations are singular", () => {
+    const { alphaL, alphaR } = solveHandleLengths(
+      [
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+      ],
+      [0, 0.5, 1],
+      { x: 1, y: 0 },
+      { x: -1, y: 0 }
+    );
+    expect(alphaL).to.equal(0);
+    expect(alphaR).to.equal(0);
+  });
+
+  it("keeps generateBezier's chord/3 fallback for singular solves", () => {
+    const [start, firstHandle, secondHandle, end] = generateBezier(
+      [
+        { x: 0, y: 0 },
+        { x: 45, y: 0 },
+        { x: 90, y: 0 },
+      ],
+      [0, 0.5, 1],
+      { x: 1, y: 0 },
+      { x: -1, y: 0 }
+    ).points;
+
+    expect(firstHandle).deep.equal({ x: 30, y: 0 });
+    expect(secondHandle).deep.equal({ x: 60, y: 0 });
+    expect(start).deep.equal({ x: 0, y: 0 });
+    expect(end).deep.equal({ x: 90, y: 0 });
   });
 });
 

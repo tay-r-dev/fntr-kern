@@ -1,0 +1,705 @@
+import {
+  eventMatchesActionBaseKey,
+  eventMatchesActionShortCut,
+} from "@fontra/core/actions.js";
+import {
+  getSkeletonData,
+  getSkeletonPointAddress,
+  getSkeletonRibEndpoints,
+  resolveGeneratedPointProvenance,
+} from "@fontra/core/skeleton-model.js";
+import {
+  KIND,
+  SNAP_PARAMETERS,
+  candidatePull,
+  collectCandidates,
+  makeLineCandidate,
+  resolveSnap,
+  resolveSnapForPoints,
+  roundSnapped,
+} from "@fontra/core/snapping.js";
+import { parseSelection } from "@fontra/core/utils.js";
+import { constrainHorVerDiag } from "./edit-behavior.js";
+
+function segmentAngle(from, to) {
+  return (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
+}
+
+// Every segment of the path, as the plain records `collectCandidates` consumes.
+// A straight segment states its own direction. A curve states the tangent at
+// each of its two ends, anchored on the on-curve point.
+function* iterPathSegments(path) {
+  for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
+    for (const segment of path.iterContourSegmentPointIndices(contourIndex)) {
+      const pointIndices = segment.pointIndices;
+      if (segment.type === "quadBlob" || pointIndices.length < 2) {
+        continue;
+      }
+      const points = pointIndices.map((i) => path.getPoint(i));
+      if (points.some((point) => !point)) {
+        continue;
+      }
+      if (segment.type === "line") {
+        yield {
+          pointIndices,
+          candidate: {
+            type: "line",
+            x: points[0].x,
+            y: points[0].y,
+            angle: segmentAngle(points[0], points[1]),
+          },
+        };
+        continue;
+      }
+      const last = points.length - 1;
+      if (points.length === 4) {
+        // The whole cubic, kept as its four points. What continues a curve is
+        // the curve, so a projection cannot be built out of an angle.
+        yield {
+          pointIndices,
+          curve: { points: points.map((p) => ({ x: p.x, y: p.y })) },
+        };
+      }
+      yield {
+        pointIndices,
+        candidate: {
+          type: "tangent",
+          x: points[0].x,
+          y: points[0].y,
+          angle: segmentAngle(points[0], points[1]),
+        },
+      };
+      yield {
+        pointIndices,
+        candidate: {
+          type: "tangent",
+          x: points[last].x,
+          y: points[last].y,
+          angle: segmentAngle(points[last], points[last - 1]),
+        },
+      };
+    }
+  }
+}
+
+// Spec section 6. The moved geometry contributes nothing, and neither does the
+// generated geometry that follows it. Which generated points those are is a
+// provenance lookup, never a geometric match (R-D).
+// The skeleton points the drag moves: the ones selected outright, plus the ones
+// the moved path points were generated from. Always a provenance lookup, never a
+// geometric match (R-D).
+function movedSkeletonPointKeys(
+  sceneController,
+  movedPointIndices,
+  { keepSelectedSkeletonPoints = false } = {}
+) {
+  // Selection means "the drag moves this" for every tool but the pen. The pen
+  // keeps its anchor selected while it draws, and that anchor is the point the
+  // designer most wants to align the next one to, so a pen session keeps it.
+  const moved = new Set(
+    keepSelectedSkeletonPoints
+      ? []
+      : parseSelection(sceneController.selection).skeletonPoint || []
+  );
+  const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
+  const path = positionedGlyph?.glyph?.path;
+  const skeletonData = getSkeletonData(positionedGlyph?.glyph);
+  if (!path || !skeletonData) {
+    return moved;
+  }
+  for (const pointIndex of movedPointIndices) {
+    const provenance = resolveGeneratedPointProvenance(skeletonData, path, pointIndex);
+    if (provenance) {
+      moved.add(`${provenance.contourId}/${provenance.pointId}`);
+    }
+  }
+  return moved;
+}
+
+// `excluded` is the geometry the drag moves and so cannot snap to: the moved
+// points themselves. `ownGenerated` is the outline those moved skeleton points
+// generate. It moves too, which is why it is weightless by default rather than
+// simply absent - the designer can give it a weight and snap a point to the
+// outline it is making.
+function partitionMovedPointIndices(sceneController, movedPointIndices, sceneOptions) {
+  const excluded = new Set(movedPointIndices);
+  const ownGenerated = new Set();
+  const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
+  const path = positionedGlyph?.glyph?.path;
+  const skeletonData = getSkeletonData(positionedGlyph?.glyph);
+  if (!path || !skeletonData) {
+    return { excluded, ownGenerated };
+  }
+
+  const movedSkeletonPoints = movedSkeletonPointKeys(
+    sceneController,
+    excluded,
+    sceneOptions
+  );
+  if (!movedSkeletonPoints.size) {
+    return { excluded, ownGenerated };
+  }
+
+  for (let pointIndex = 0; pointIndex < path.numPoints; pointIndex++) {
+    if (excluded.has(pointIndex)) {
+      continue;
+    }
+    const provenance = resolveGeneratedPointProvenance(skeletonData, path, pointIndex);
+    if (
+      provenance &&
+      movedSkeletonPoints.has(`${provenance.contourId}/${provenance.pointId}`)
+    ) {
+      ownGenerated.add(pointIndex);
+    }
+  }
+  return { excluded, ownGenerated };
+}
+
+// The cubic centerline segments of one skeleton contour, as their four points.
+// Straights are not curves and have nothing to project; a segment of any other
+// shape is left alone rather than approximated.
+function* iterSkeletonCurves(contour) {
+  const points = contour.points || [];
+  const onCurveIndices = [];
+  for (let i = 0; i < points.length; i++) {
+    if (!points[i].type) {
+      onCurveIndices.push(i);
+    }
+  }
+  const pairs = [];
+  for (let i = 0; i < onCurveIndices.length - 1; i++) {
+    pairs.push([onCurveIndices[i], onCurveIndices[i + 1]]);
+  }
+  if (contour.closed && onCurveIndices.length > 1) {
+    pairs.push([onCurveIndices.at(-1), points.length + onCurveIndices[0]]);
+  }
+  for (const [startIndex, endIndex] of pairs) {
+    const span = [];
+    for (let i = startIndex; i <= endIndex; i++) {
+      span.push(points[i % points.length]);
+    }
+    if (span.length !== 4) {
+      continue;
+    }
+    yield {
+      points: span.map((point) => ({ x: point.x, y: point.y })),
+      pointIds: span.map((point) => point.id),
+    };
+  }
+}
+
+function isOrthogonalAngle({ x, y }) {
+  return Math.abs(x) < 1e-9 || Math.abs(y) < 1e-9;
+}
+
+// Shift constrains the drag to a horizontal, a vertical or a diagonal. That axis
+// enters the resolver as a line through the anchor, so the gesture starts at one
+// degree of freedom and the snap only chooses where along it the point sits.
+export function constraintLineForDelta(delta, anchor) {
+  if (!anchor) {
+    return null;
+  }
+  const constrained = constrainHorVerDiag(delta);
+  if (!constrained.x && !constrained.y) {
+    return null;
+  }
+  return makeLineCandidate({
+    x: anchor.x,
+    y: anchor.y,
+    angle: (Math.atan2(constrained.y, constrained.x) * 180) / Math.PI,
+    // Its kind is the direction it runs, like every other line. It is never
+    // weighed against anything - a constraint is held, not chosen - so the kind
+    // matters only where the resolver crosses it with a candidate.
+    kind: isOrthogonalAngle(constrained) ? KIND.ORTHOGONAL : KIND.DIAGONAL,
+    source: { x: anchor.x, y: anchor.y },
+  });
+}
+
+// The path points the current selection moves. This is what the session excludes.
+export function selectedPointIndices(sceneController) {
+  return parseSelection(sceneController.selection).point || [];
+}
+
+// The points the drag asks the resolver about, at their positions before the drag.
+// On-curves only: a handle states a direction, so aligning it to a metric means
+// nothing, and a handle generates no rays of its own either. Where the selection
+// holds no on-curve, which is a handle drag, that one handle is asked instead.
+export function draggedSnapPositions(sceneController, layerGlyph) {
+  const path = layerGlyph?.path;
+  const positions = [];
+  if (path) {
+    const selected = selectedPointIndices(sceneController);
+    const onCurves = selected.filter((i) => !path.getPoint(i)?.type);
+    for (const i of onCurves.length ? onCurves : selected) {
+      const point = path.getPoint(i);
+      if (point) {
+        positions.push({ x: point.x, y: point.y });
+      }
+    }
+  }
+
+  const skeletonData = getSkeletonData(layerGlyph);
+  for (const key of parseSelection(sceneController.selection).skeletonPoint || []) {
+    const [contourId, pointId] = key.split("/").map(Number);
+    const address = getSkeletonPointAddress(skeletonData, contourId, pointId);
+    if (address?.point) {
+      positions.push({ x: address.point.x, y: address.point.y });
+    }
+  }
+  return positions;
+}
+
+// A source the designer cannot see is a source they cannot account for. A point
+// off the left edge emits a horizontal ray that crosses the whole canvas, and
+// being pulled by geometry that is not on screen reads as the canvas moving on
+// its own. The test is taken in glyph space, because that is what the scene
+// records. Metrics and guides are exempt: they are lines the designer placed,
+// stated as infinite, and one of them crossing the view is the whole of what it
+// is for.
+function makeOnScreenTest(sceneController, positionedGlyph) {
+  const viewBox = sceneController.canvasController?.getViewBox?.();
+  if (!viewBox) {
+    return () => true;
+  }
+  const xMin = viewBox.xMin - positionedGlyph.x;
+  const xMax = viewBox.xMax - positionedGlyph.x;
+  const yMin = viewBox.yMin - positionedGlyph.y;
+  const yMax = viewBox.yMax - positionedGlyph.y;
+  return (point) =>
+    point.x >= xMin && point.x <= xMax && point.y >= yMin && point.y <= yMax;
+}
+
+export function buildSnapScene(
+  sceneController,
+  excludePointIndices,
+  sceneOptions = {}
+) {
+  const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
+  const glyph = positionedGlyph?.glyph;
+  if (!glyph) {
+    return { metrics: [], guides: [], points: [], segments: [], curves: [] };
+  }
+  const { excluded, ownGenerated } = partitionMovedPointIndices(
+    sceneController,
+    excludePointIndices,
+    sceneOptions
+  );
+
+  const metrics = [];
+  const lineMetrics =
+    sceneController.sceneModel.fontSourceInstance?.lineMetricsHorizontalLayout || {};
+  for (const [name, metric] of Object.entries(lineMetrics)) {
+    metrics.push({ name, value: metric.value, kind: "metric" });
+    if (metric.zone) {
+      metrics.push({
+        name: `${name}Zone`,
+        value: metric.value + metric.zone,
+        kind: "band",
+      });
+    }
+  }
+
+  const guides = [
+    ...(glyph.guidelines || []),
+    ...(sceneController.sceneModel.fontSourceInstance?.guidelines || []),
+  ].map((guideline) => ({
+    x: guideline.x,
+    y: guideline.y,
+    angle: guideline.angle || 0,
+  }));
+
+  const onScreen = makeOnScreenTest(sceneController, positionedGlyph);
+
+  const points = [];
+  const segments = [];
+  const curves = [];
+  const path = glyph.path;
+  for (let i = 0; i < path.numPoints; i++) {
+    if (excluded.has(i)) {
+      continue;
+    }
+    const point = path.getPoint(i);
+    if (!onScreen(point)) {
+      continue;
+    }
+    // An off-curve is offered under its own kind, and the switch in the resolver
+    // decides whether it is collected at all. Marking it here rather than
+    // dropping it is what lets the switch answer on the next frame, without the
+    // frozen scene having to be rebuilt.
+    points.push({
+      x: point.x,
+      y: point.y,
+      offCurve: !!point.type,
+      kind: ownGenerated.has(i) ? KIND.OWN_GENERATED : undefined,
+    });
+  }
+  for (const segment of iterPathSegments(path)) {
+    if (segment.curve) {
+      continue; // taken below, under its own rule
+    }
+    if (segment.pointIndices.some((i) => excluded.has(i) || ownGenerated.has(i))) {
+      // A segment of the moved outline is not offered at all. Only its points
+      // are, and only weightlessly.
+      continue;
+    }
+    if (!onScreen(segment.candidate)) {
+      continue;
+    }
+    segments.push(segment.candidate);
+  }
+  // A projection is offered for every cubic, INCLUDING the ones the drag moves.
+  // The exclusion above exists so that moved geometry cannot chase itself, and a
+  // projection cannot: the scene is a snapshot taken at mouse-down, so the curve
+  // being continued is the curve as it stood. Excluding them would take away the
+  // one case the projection is for - a terminal is elongated by dragging the very
+  // point the curve arriving at it ends on.
+  for (const segment of iterPathSegments(path)) {
+    if (segment.curve && segment.curve.points.some(onScreen)) {
+      curves.push(segment.curve);
+    }
+  }
+
+  // The skeleton is not in the glyph path, so the loops above never reach it: it
+  // entered snapping as a mover and was never a target. Its on-curve points and
+  // both ends of every rib are targets now. Not its segments - a centerline is
+  // construction, and aligning to one says less than aligning to what it makes.
+  // Rib ends come from the model, never recomputed here.
+  const skeletonData = getSkeletonData(glyph);
+  const skeletonOutline = skeletonData ? { skeletonData, path: glyph?.path } : null;
+  const movedSkeletonPoints = movedSkeletonPointKeys(
+    sceneController,
+    excluded,
+    sceneOptions
+  );
+  for (const contour of skeletonData?.contours || []) {
+    // The contour the drag came from is the one whose own points the designer is
+    // aligning to - the neighbour a stem should stay level with is on it. Any
+    // nearer point elsewhere in the glyph would win the per-side cull and hide
+    // them, so this contour's sources are exempt from that contest.
+    const isDraggedContour = (contour.points || []).some((point) =>
+      movedSkeletonPoints.has(`${contour.id}/${point.id}`)
+    );
+    for (const point of contour.points || []) {
+      if (movedSkeletonPoints.has(`${contour.id}/${point.id}`)) {
+        continue;
+      }
+      const source = {
+        x: point.x,
+        y: point.y,
+        offCurve: !!point.type,
+        alwaysKeep: isDraggedContour,
+      };
+      if (onScreen(source)) {
+        points.push(source);
+      }
+      if (point.type) {
+        continue; // a handle has no rib
+      }
+      const ribEnds = getSkeletonRibEndpoints(contour, point, skeletonOutline);
+      for (const end of [ribEnds.left, ribEnds.right]) {
+        // A collapsed side returns the centerline point itself, which is
+        // already in the list.
+        if (end && end !== point && onScreen(end)) {
+          points.push({ x: end.x, y: end.y, alwaysKeep: isDraggedContour });
+        }
+      }
+    }
+    // A centerline is construction, so it is not offered as a line to align to.
+    // Its curve is a different question: continuing the stroke you are drawing
+    // is the thing the projection exists for - elongating a terminal is exactly
+    // that - and the centerline is the curve being continued. A curve holding a
+    // moved point is left out, because it would chase the drag.
+    for (const curve of iterSkeletonCurves(contour)) {
+      if (curve.pointIds.some((id) => movedSkeletonPoints.has(`${contour.id}/${id}`))) {
+        continue;
+      }
+      if (!curve.points.some(onScreen)) {
+        continue;
+      }
+      curves.push({ points: curve.points });
+    }
+  }
+
+  return { metrics, guides, points, segments, curves };
+}
+
+// The keys that narrow the snap to one kind while they are held. They live here
+// rather than in the pointer tool's own modifier table, because the tools that
+// want them most are the pens: a terminal is elongated with a pen in hand, and
+// the pointer tool's table is not something a pen can reach.
+const SNAP_MODE_KEYS = [
+  { action: "action.realtime.snap-diagonals-only", property: "snapDiagonalOnly" },
+  { action: "action.realtime.snap-curvature-only", property: "snapCurvatureOnly" },
+];
+
+// Every tool calls this from its own key handler, through BaseTool. Returns true
+// where the key was one of these, so the caller can stop.
+export function handleSnapModeKeyDown(tool, event) {
+  const mode = SNAP_MODE_KEYS.find(({ action }) =>
+    eventMatchesActionShortCut(action, event)
+  );
+  if (!mode) {
+    return false;
+  }
+  const sceneModel = tool.sceneController.sceneModel;
+  if (sceneModel[mode.property]) {
+    return true; // already down; a repeat is not a second press
+  }
+  sceneModel[mode.property] = true;
+  // The up is listened for on the window, not the canvas: a key released after
+  // the pointer has left the canvas would otherwise stay down forever. Blur says
+  // the same thing about a window that loses focus mid-hold.
+  const release = (releaseEvent) => {
+    if (eventMatchesActionBaseKey(mode.action, releaseEvent)) {
+      endSnapModeKey(tool, mode.property);
+    }
+  };
+  const blur = () => endSnapModeKey(tool, mode.property);
+  snapModeReleases.set(mode.property, { release, blur });
+  window.addEventListener("keyup", release);
+  window.addEventListener("blur", blur);
+  tool.canvasController.requestUpdate();
+  return true;
+}
+
+const snapModeReleases = new Map();
+
+function endSnapModeKey(tool, property) {
+  const handlers = snapModeReleases.get(property);
+  if (handlers) {
+    window.removeEventListener("keyup", handlers.release);
+    window.removeEventListener("blur", handlers.blur);
+    snapModeReleases.delete(property);
+  }
+  tool.sceneController.sceneModel[property] = false;
+  tool.canvasController.requestUpdate();
+}
+
+// Shift+G. Everything the snap drew comes off the canvas, every session's frozen
+// scene is stale from here, and the state that survives a frame - the hold, the
+// overrule run, the escape - is dropped with it. One gesture for "forget what you
+// think you know", because a snap the designer cannot account for is what asks
+// for it.
+export function forceRefreshSnapping(sceneController) {
+  const sceneModel = sceneController.sceneModel;
+  sceneModel.snapSceneEpoch = (sceneModel.snapSceneEpoch || 0) + 1;
+  sceneModel.snapHeldCandidates = [];
+  sceneModel.snapSuggestion = null;
+  sceneModel.snapIndicator = null;
+  sceneModel.snapDebugReadout = null;
+}
+
+export class SnappingSession {
+  constructor(
+    sceneController,
+    { excludePointIndices = [], keepSelectedSkeletonPoints = false } = {}
+  ) {
+    this.sceneController = sceneController;
+    this.excludePointIndices = excludePointIndices;
+    this.sceneOptions = { keepSelectedSkeletonPoints };
+    this.scene = buildSnapScene(
+      sceneController,
+      excludePointIndices,
+      this.sceneOptions
+    );
+    this.held = null;
+    // Carried between frames so the resolver can tell a guide passed through from
+    // one the designer is moving toward. See the overrule rule in snapping.js.
+    this.overrule = null;
+    this.escape = null;
+    // Set per frame by the tool. A gesture that states its own geometry - a
+    // fixed-rib drag, a tangent-only rib move, an equalize, a tension-aware
+    // edit - has nothing to gain from a magnet moving the point somewhere else.
+    this.suppressed = false;
+    this._lastCursor = null;
+    this._lastTime = 0;
+    this._epoch = sceneController.sceneModel.snapSceneEpoch || 0;
+  }
+
+  // A drag freezes its scene, which is right until the designer says the scene
+  // is wrong. The force refresh raises an epoch; a session behind it re-reads on
+  // its next frame, mid-gesture and all. Compared rather than pushed, because a
+  // session the tool holds is not reachable from the action that asks.
+  _refreshIfStale() {
+    const epoch = this.sceneController.sceneModel.snapSceneEpoch || 0;
+    if (epoch !== this._epoch) {
+      this._epoch = epoch;
+      this.refresh();
+    }
+  }
+
+  // The kind a held key is asking for, alone. Curvature wins where both keys are
+  // down: it is the narrower request, and it is the one that answers away from
+  // the drawn shape. With no key held this is undefined and each switchable kind
+  // answers to its own switch, inside the resolver, so a switch moved mid-drag
+  // takes on the next frame.
+  get _only() {
+    const sceneModel = this.sceneController.sceneModel;
+    if (sceneModel.snapCurvatureOnly) {
+      return "curvature";
+    }
+    return sceneModel.snapDiagonalOnly ? "diagonal" : undefined;
+  }
+
+  // Pointer speed in screen pixels per second. The resolver takes it in pixels so
+  // that the thresholds mean the same thing at every zoom level, exactly as reach
+  // does. A first frame reports nothing, so it counts as settled.
+  _speed(cursor) {
+    const now = Date.now();
+    const previous = this._lastCursor;
+    const elapsed = now - this._lastTime;
+    this._lastCursor = { x: cursor.x, y: cursor.y };
+    this._lastTime = now;
+    if (!previous || elapsed <= 0) {
+      return 0;
+    }
+    const pixelUnit = this.sceneController.onePixelUnit || 1;
+    const moved = Math.hypot(cursor.x - previous.x, cursor.y - previous.y) / pixelUnit;
+    return (moved * 1000) / elapsed;
+  }
+
+  // A drag freezes its scene, because the moved geometry must not chase itself.
+  // The pen adds geometry as it goes, so it re-reads before every hover.
+  refresh() {
+    this.scene = buildSnapScene(
+      this.sceneController,
+      this.excludePointIndices,
+      this.sceneOptions
+    );
+    this._epoch = this.sceneController.sceneModel.snapSceneEpoch || 0;
+  }
+
+  get enabled() {
+    return (
+      !this.suppressed && (this.sceneController.sceneSettings.snappingEnabled ?? true)
+    );
+  }
+
+  // A suppressed frame must also take the last frame's ring and guide lines off
+  // the canvas. Leaving them up says the snap is still in force while the drag
+  // has stopped listening to it.
+  _clearPublished() {
+    const sceneModel = this.sceneController.sceneModel;
+    sceneModel.snapHeldCandidates = [];
+    sceneModel.snapSuggestion = null;
+    sceneModel.snapIndicator = null;
+    sceneModel.snapDebugReadout = null;
+    this.held = null;
+    this.overrule = null;
+    this.escape = null;
+  }
+
+  // What the indicator draws and what the tuning panel reads. Published on every
+  // resolve, so a frame that snapped nothing still clears the last frame's ring.
+  _publish(candidates, cursor, result, position) {
+    const sceneModel = this.sceneController.sceneModel;
+    sceneModel.snapHeldCandidates = result.held;
+    sceneModel.snapSuggestion = result.suggestion || null;
+    sceneModel.snapIndicator = result.held.length
+      ? { x: position.x, y: position.y, snapped: true, strength: 1 }
+      : result.near
+        ? {
+            x: result.near.position.x,
+            y: result.near.position.y,
+            snapped: false,
+            strength: Math.min(1, result.near.pull / SNAP_PARAMETERS.noSnapPull),
+          }
+        : null;
+
+    const byKind = {};
+    for (const candidate of candidates) {
+      const pull = candidatePull(candidate, cursor, {
+        pixelUnit: this.sceneController.onePixelUnit,
+        held: null,
+      });
+      if (pull > (byKind[candidate.kind] || 0)) {
+        byKind[candidate.kind] = pull;
+      }
+    }
+    sceneModel.snapDebugReadout = {
+      candidateCount: candidates.length,
+      winningPull: result.pull,
+      winningKind: result.held[0]?.kind || null,
+      freedom: result.freedom,
+      byKind,
+    };
+  }
+
+  resolve(point, { constraint } = {}) {
+    if (!this.enabled) {
+      this._clearPublished();
+      return point;
+    }
+    this._refreshIfStale();
+    const pixelUnit = this.sceneController.onePixelUnit;
+    const candidates = collectCandidates(this.scene, point, {
+      pixelUnit,
+      only: this._only,
+    });
+    const result = resolveSnap(candidates, point, {
+      pixelUnit,
+      held: this.held?.candidate || null,
+      overrule: this.overrule,
+      escape: this.escape,
+      speed: this._speed(point),
+      constraint,
+    });
+    this.overrule = result.overrule || null;
+    this.escape = result.escape || null;
+    this.held = result.held.length
+      ? { pointIndex: 0, candidate: result.held[0] }
+      : null;
+    const rounded = roundSnapped(result, (value) => Math.round(value));
+    this._publish(candidates, point, result, rounded);
+    return rounded;
+  }
+
+  resolveSet(points, cursor, { constraint } = {}) {
+    if (!this.enabled || !points.length) {
+      this._clearPublished();
+      return { x: 0, y: 0 };
+    }
+    this._refreshIfStale();
+    const pixelUnit = this.sceneController.onePixelUnit;
+    // The candidate set is built against the cursor once per frame, and every point is
+    // then resolved against that one set.
+    const candidates = collectCandidates(this.scene, cursor, {
+      pixelUnit,
+      only: this._only,
+    });
+    const best = resolveSnapForPoints(candidates, points, cursor, {
+      pixelUnit,
+      held: this.held,
+      overrule: this.overrule,
+      escape: this.escape,
+      speed: this._speed(cursor),
+      constraint,
+    });
+    this.overrule = best.overrule || null;
+    this.escape = best.escape || null;
+    if (best.pointIndex < 0) {
+      this.held = null;
+      this._publish(candidates, cursor, best, cursor);
+      return { x: 0, y: 0 };
+    }
+    // The hold is the pair. A candidate held by one point earns no bonus on another.
+    this.held = { pointIndex: best.pointIndex, candidate: best.held[0] };
+    const winner = points[best.pointIndex];
+    const rounded = roundSnapped(
+      { position: best.position, held: best.held, freedom: best.freedom },
+      (value) => Math.round(value)
+    );
+    this._publish(candidates, cursor, best, rounded);
+    return { x: rounded.x - winner.x, y: rounded.y - winner.y };
+  }
+
+  end() {
+    this.held = null;
+    this.overrule = null;
+    this.escape = null;
+    this._lastCursor = null;
+    this.sceneController.sceneModel.snapSuggestion = null;
+    this.sceneController.sceneModel.snapHeldCandidates = [];
+    this.sceneController.sceneModel.snapIndicator = null;
+  }
+}

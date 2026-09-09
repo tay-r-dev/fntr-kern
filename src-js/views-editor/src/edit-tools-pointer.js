@@ -1,4 +1,7 @@
-import { getBaseKeyFromKeyEvent, getShortCuts } from "@fontra/core/actions.js";
+import {
+  eventMatchesActionBaseKey,
+  eventMatchesActionShortCut,
+} from "@fontra/core/actions.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import {
   ChangeCollector,
@@ -21,12 +24,13 @@ import {
   union,
 } from "@fontra/core/set-ops.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
+import { SNAP_PARAMETERS } from "@fontra/core/snapping.js";
 import { Transform } from "@fontra/core/transform.js";
 import {
   assert,
   boolInt,
-  commandKeyProperty,
   enumerate,
+  isMac,
   modulo,
   parseSelection,
   range,
@@ -34,29 +38,53 @@ import {
 import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import * as vector from "@fontra/core/vector.js";
+import {
+  BASE_EXPAND_BEHAVIOR_NAME,
+  createBaseExpandTargetEntries,
+  getBaseExpandBehaviorName,
+} from "./base-expand-editing.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
 import { handlesEqual } from "./edit-tools-pen.js";
+import { deleteMarkers, handleMarkerDrag } from "./marker-editing.js";
 import { MeasureInteraction } from "./measure-interactions.js";
 import { getPinPoint } from "./panel-transformation.js";
 import { equalGlyphSelection } from "./scene-controller.js";
 import {
+  createEditableGeneratedHandleTargetEntries,
+  createEditableGeneratedPointTargetEntries,
+  createSkeletonInsertionRibTargetEntries,
+  createSkeletonInsertionTargetEntries,
   createSkeletonRibTargetEntries,
   getSelectionTargetKinds,
   getSkeletonModifierBehaviorName,
+  getSkeletonRibBehaviorName,
+  hasSkeletonInsertionSelection,
   hasSkeletonPointSelection,
+  isFixedRibBehaviorName,
   makeSkeletonModifierOptions,
   makeSkeletonPointKey,
   makeSkeletonPointTargetEntry,
+  makeSkeletonTensionAwareTargetEntry,
+  makeSkeletonTensionAwareTransformEntry,
   parseSkeletonPointKey,
+  toggleEditableGeneratedHandleDetached,
   toggleSkeletonSmooth,
 } from "./skeleton-editing.js";
 import {
-  createEditableGeneratedHandleTargetEntries,
-  createEditableGeneratedPointTargetEntries,
-  toggleEditableGeneratedHandleDetached,
-} from "./skeleton-editing.js";
-import { getSkeletonRibBehaviorName } from "./skeleton-editing.js";
+  SnappingSession,
+  constraintLineForDelta,
+  draggedSnapPositions,
+  selectedPointIndices,
+} from "./snapping-interactions.js";
+import {
+  SKELETON_TENSION_AWARE_BEHAVIOR_NAME,
+  TENSION_AWARE_BEHAVIOR_NAME,
+  TENSION_AWARE_SCALE_BEHAVIOR_NAME,
+  createTensionAwareTargetEntries,
+  createTensionAwareTransformEntries,
+  getTensionAwareBehaviorName,
+} from "./tension-aware-editing.js";
 import {
   glyphSelector,
   registerVisualizationLayerDefinition,
@@ -66,6 +94,8 @@ import {
 // Import Tunni functions for integration with pointer tool
 import {
   equalizeSkeletonTunniTensions,
+  handleGeneratedTunniCommand,
+  handleGeneratedTunniDrag,
   handleSkeletonTunniDrag,
   handleTrueTunniPointMouseDown,
   handleTunniDrag,
@@ -79,6 +109,8 @@ const rotationHandleSizeFactor = 1.2;
 const REALTIME_RIB_TANGENT_ACTION = "action.realtime.rib-tangent";
 const REALTIME_FIXED_RIB_ACTION = "action.realtime.fixed-rib";
 const REALTIME_FIXED_RIB_COMPRESS_ACTION = "action.realtime.fixed-rib-compress";
+const REALTIME_TENSION_AWARE_ACTION = "action.realtime.tension-aware";
+const REALTIME_INDEPENDENT_RIB_ACTION = "action.realtime.independent-rib";
 
 const REALTIME_MODIFIER_ACTIONS = [
   {
@@ -93,37 +125,15 @@ const REALTIME_MODIFIER_ACTIONS = [
     action: REALTIME_FIXED_RIB_COMPRESS_ACTION,
     modeProperty: "fixedRibCompressMode",
   },
+  {
+    action: REALTIME_TENSION_AWARE_ACTION,
+    modeProperty: "tensionAwareMode",
+  },
+  {
+    action: REALTIME_INDEPENDENT_RIB_ACTION,
+    modeProperty: "independentRibMode",
+  },
 ];
-
-function matchEventModifiers(shortCut, event) {
-  const expectedModifiers = { ...shortCut };
-  if (shortCut.commandKey) {
-    expectedModifiers[commandKeyProperty] = true;
-  }
-  return ["metaKey", "ctrlKey", "shiftKey", "altKey"].every(
-    (modifierProp) => !!expectedModifiers[modifierProp] === !!event[modifierProp]
-  );
-}
-
-function eventMatchesActionShortCut(actionIdentifier, event) {
-  const shortCuts = getShortCuts(actionIdentifier);
-  if (!shortCuts?.length) return false;
-  const baseKey = getBaseKeyFromKeyEvent(event);
-  for (const shortCut of shortCuts) {
-    if (!shortCut?.baseKey) continue;
-    if (shortCut.baseKey !== baseKey) continue;
-    if (!matchEventModifiers(shortCut, event)) continue;
-    return true;
-  }
-  return false;
-}
-
-function eventMatchesActionBaseKey(actionIdentifier, event) {
-  const shortCuts = getShortCuts(actionIdentifier);
-  if (!shortCuts?.length) return false;
-  const baseKey = getBaseKeyFromKeyEvent(event);
-  return shortCuts.some((shortCut) => shortCut?.baseKey === baseKey);
-}
 
 export class PointerTools {
   identifier = "pointer-tools";
@@ -140,6 +150,8 @@ export class PointerTool extends BaseTool {
     this.tangentRibMode = false;
     this.fixedRibMode = false;
     this.fixedRibCompressMode = false;
+    this.tensionAwareMode = false;
+    this.independentRibMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
     this._boundRealtimeModifierWindowBlur = null;
   }
@@ -283,6 +295,8 @@ export class PointerTool extends BaseTool {
     const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
     const isSkeletonTunniLayerActive =
       this.editor.visualizationLayersSettings.model["fontra.skeleton.tunni"];
+    const isGeneratedTunniLayerActive =
+      this.editor.visualizationLayersSettings.model["fontra.skeleton.generated-tunni"];
 
     if (initialEvent.ctrlKey && initialEvent.shiftKey && positionedGlyph) {
       const tunniHit = this.sceneModel.skeletonTunniAtPoint(
@@ -326,6 +340,63 @@ export class PointerTool extends BaseTool {
           }
           return;
         }
+      }
+    }
+
+    // The generated contours' own gizmos. Checked after the skeleton's Tunni
+    // gizmos so a skeleton control is never stolen by an outline control lying
+    // underneath it, and before path selection so a click on a gizmo does not
+    // fall through to selecting the outline point behind it.
+    if (isGeneratedTunniLayerActive && positionedGlyph) {
+      const gizmoHit = this.sceneModel.generatedTunniAtPoint(
+        point,
+        size,
+        positionedGlyph
+      );
+      if (gizmoHit) {
+        if (initialEvent.detail >= 2) {
+          await handleGeneratedTunniCommand({
+            sceneController,
+            gizmoHit,
+            command: "reset",
+          });
+          return;
+        }
+        // Equalizing the two handles is a click on the curvature gizmo, so the
+        // modifiers must not cost the drag: once the pointer moves this falls
+        // through to the ordinary curvature drag. The on-curve gizmo has no
+        // modified gesture at all.
+        if (
+          initialEvent.ctrlKey &&
+          initialEvent.shiftKey &&
+          gizmoHit.type === "generated-curvature" &&
+          !(await shouldInitiateDrag(eventStream, initialEvent))
+        ) {
+          await handleGeneratedTunniCommand({
+            sceneController,
+            gizmoHit,
+            command: "equalize",
+          });
+          return;
+        }
+        // The readout layer re-reads the segment from live geometry each frame,
+        // so it shows the curvature the drag is arriving at even when the label
+        // layer is switched off.
+        this.sceneModel.generatedCurvatureDragTarget =
+          gizmoHit.type === "generated-curvature"
+            ? makeGeneratedCurvatureDragTarget(gizmoHit)
+            : null;
+        try {
+          await handleGeneratedTunniDrag({
+            sceneController,
+            eventStream,
+            initialEvent,
+            gizmoHit,
+          });
+        } finally {
+          this.sceneModel.generatedCurvatureDragTarget = null;
+        }
+        return;
       }
     }
 
@@ -431,6 +502,26 @@ export class PointerTool extends BaseTool {
       return;
     }
 
+    // A drag that starts on a marker grip is a marker drag. The work lives in
+    // marker-editing.js; this file stays a dispatcher.
+    const clickedMarker = parseSelection(selection).marker || [];
+    const clickedMarkerEnd = parseSelection(selection).markerEnd || [];
+    if (clickedMarker.length || clickedMarkerEnd.length) {
+      if (await shouldInitiateDrag(eventStream, initialEvent)) {
+        const [markerId, endIndex] = clickedMarkerEnd.length
+          ? String(clickedMarkerEnd[0]).split("/")
+          : [String(clickedMarker[0]), undefined];
+        await handleMarkerDrag({
+          sceneController,
+          eventStream,
+          initialEvent,
+          markerId,
+          endIndex: endIndex === undefined ? undefined : parseInt(endIndex, 10),
+        });
+      }
+      return;
+    }
+
     if (!this.sceneSettings.selectedGlyph?.isEditing) {
       this.sceneSettings.selectedGlyph = this.sceneModel.glyphAtPoint(point);
       eventStream.done();
@@ -498,6 +589,8 @@ export class PointerTool extends BaseTool {
       delete this.sceneController.sceneModel.initialClickedSkeletonPointKey;
       delete this.sceneController.sceneModel.initialClickedSkeletonRibKey;
       delete this.sceneController.sceneModel.initialClickedGeneratedKey;
+      delete this.sceneController.sceneModel.skeletonDragBehaviorName;
+      delete this.sceneController.sceneModel.baseExpandGhostPath;
       return result;
     }
   }
@@ -517,6 +610,15 @@ export class PointerTool extends BaseTool {
     } else {
       const instance = this.sceneModel.getSelectedPositionedGlyph().glyph.instance;
       const clickedSelection = parseSelection(selection || []);
+      // Double-click deletes a marker, as the ordinary gesture.
+      const doomedMarkers = [
+        ...(clickedSelection.marker || []).map(String),
+        ...(clickedSelection.markerEnd || []).map((key) => String(key).split("/")[0]),
+      ];
+      if (doomedMarkers.length) {
+        await deleteMarkers(sceneController, doomedMarkers);
+        return;
+      }
       if (clickedSelection.editableGeneratedHandle?.length) {
         await this.handleEditableGeneratedHandlesDoubleClick(selection);
         return;
@@ -679,15 +781,38 @@ export class PointerTool extends BaseTool {
         fixedRibMode: this.fixedRibMode,
         fixedRibCompressMode: this.fixedRibCompressMode,
         tangentRibMode: this.tangentRibMode,
+        tensionAwareMode: this.tensionAwareMode,
+        independentRibMode: this.independentRibMode,
       });
       const getSelectionBehaviorName = (event) =>
+        getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds) ||
         getSkeletonModifierBehaviorName(event, getRealtimeModifiers(), targetKinds) ||
+        getBaseExpandBehaviorName(
+          getRealtimeModifiers(),
+          targetKinds,
+          sceneController.selection
+        ) ||
         (hasRibLikeSelection(sceneController.selection)
           ? getSkeletonRibBehaviorName(event, getRealtimeModifiers())
           : hasEditableGeneratedHandleSelection(sceneController.selection)
             ? getGeneratedHandleBehaviorName(event, getRealtimeModifiers())
             : getBehaviorName(event));
       let behaviorName = getSelectionBehaviorName(initialEvent);
+      // Published for the drag readouts, which have no route to the realtime
+      // modifier state of their own. Updated wherever the behavior is, so a Z
+      // pressed or released mid-drag is reflected on the next frame.
+      sceneController.sceneModel.skeletonDragBehaviorName = behaviorName;
+
+      // A base curve has no centerline to read the offset against, so the shape
+      // as it stood at mousedown is drawn underneath for the length of the drag.
+      // Captured from the edit layer only - the ghost is a reading aid, not
+      // geometry, and there is one cursor.
+      const publishGhost = (name) => {
+        sceneController.sceneModel.baseExpandGhostPath =
+          name === BASE_EXPAND_BEHAVIOR_NAME
+            ? layerInfo[0]?.layerGlyph?.path?.copy()
+            : undefined;
+      };
 
       // Read the edit layer's skeleton data once; every layer's skeleton target
       // entry resolves selection ids against this single reference by structural
@@ -700,6 +825,37 @@ export class PointerTool extends BaseTool {
         editingLayers[editLayerName] || Object.values(editingLayers)[0]
       );
       const makeSkeletonTargetEntries = (layerGlyph, name) => {
+        if (name === TENSION_AWARE_BEHAVIOR_NAME) {
+          return createTensionAwareTargetEntries(
+            layerGlyph,
+            sceneController.selection,
+            name,
+            {
+              isGeneratedContour: (contourIndex) =>
+                this.sceneModel.isGeneratedPathContour(contourIndex),
+              scalingEditBehavior: this.scalingEditBehavior,
+            }
+          );
+        }
+        if (name === SKELETON_TENSION_AWARE_BEHAVIOR_NAME) {
+          const entry = makeSkeletonTensionAwareTargetEntry(
+            layerGlyph,
+            sceneController.selection,
+            referenceSkeletonData
+          );
+          return entry ? [entry] : [];
+        }
+        if (name === BASE_EXPAND_BEHAVIOR_NAME) {
+          return createBaseExpandTargetEntries(
+            layerGlyph,
+            sceneController.selection,
+            sceneController.sceneModel.initialClickedPointIndex,
+            {
+              isGeneratedContour: (contourIndex) =>
+                this.sceneModel.isGeneratedPathContour(contourIndex),
+            }
+          );
+        }
         const modifierOptions = makeSkeletonModifierOptions(name, {
           referenceSkeletonData,
           clickedSkeletonPointKey:
@@ -719,7 +875,34 @@ export class PointerTool extends BaseTool {
             modifierOptions
           );
         }
-        if (hasRibLikeSelection(sceneController.selection)) {
+        // An insertion point slides along its segment and writes one number.
+        // Checked before the rib branch, because a selection can hold both and
+        // the two write different fields.
+        if (hasSkeletonInsertionSelection(sceneController.selection)) {
+          return createSkeletonInsertionTargetEntries(
+            layerGlyph,
+            sceneController.selection
+          );
+        }
+        // An insertion point's rib writes a ratio, not a half-width, so it has
+        // its own entry point. Checked before the ordinary rib branch, which
+        // would find no skeleton point behind the id and build nothing.
+        const insertionRibEntries = createSkeletonInsertionRibTargetEntries(
+          layerGlyph,
+          sceneController.selection,
+          name
+        );
+        if (insertionRibEntries.length) {
+          return insertionRibEntries;
+        }
+        // Checked before the rib branch. A rib is the second entry point into
+        // the skeleton drag, so under this modifier pair the selection has to
+        // route to the skeleton point rather than to the width edit that a rib
+        // selection otherwise means.
+        if (
+          hasRibLikeSelection(sceneController.selection) &&
+          !isFixedRibBehaviorName(name)
+        ) {
           const targetEntries = [];
           targetEntries.push(
             ...createSkeletonRibTargetEntries(
@@ -778,6 +961,18 @@ export class PointerTool extends BaseTool {
       assert(layerInfo.length >= 1, "no layer to edit");
 
       layerInfo[0].isPrimaryLayer = true;
+      publishGhost(behaviorName);
+
+      // Snapping resolves positions, and the drag applies a delta, so the session
+      // is asked where every dragged point would land and the delta is corrected
+      // once, before the change is made.
+      const snapStartPositions = draggedSnapPositions(
+        sceneController,
+        layerInfo[0].layerGlyph
+      );
+      const snapSession = new SnappingSession(sceneController, {
+        excludePointIndices: selectedPointIndices(sceneController),
+      });
 
       this.sceneController.scrollAdjustBehavior = "pin-glyph-origin";
       let editChange;
@@ -787,6 +982,7 @@ export class PointerTool extends BaseTool {
         if (behaviorName !== newEditBehaviorName) {
           // Behavior changed, undo current changes
           behaviorName = newEditBehaviorName;
+          sceneController.sceneModel.skeletonDragBehaviorName = behaviorName;
           const rollbackChanges = [];
           for (const layer of layerInfo) {
             applyChange(layer.layerGlyph, layer.editBehavior.rollbackChange);
@@ -809,12 +1005,43 @@ export class PointerTool extends BaseTool {
             );
             layer.editBehavior = layer.behaviorFactory.getBehavior(behaviorName);
           }
+          publishGhost(behaviorName);
           await sendIncrementalChange(consolidateChanges(rollbackChanges));
         }
         const currentPoint = sceneController.selectedGlyphPoint(event);
-        const delta = {
+        const rawDelta = {
           x: currentPoint.x - initialPoint.x,
           y: currentPoint.y - initialPoint.y,
+        };
+        // Shift states an axis, so it enters the resolver as a held line rather
+        // than as a projection afterwards. A magnet cannot overrule it: it only
+        // decides where along the axis the point sits.
+        const constraint = event.shiftKey
+          ? constraintLineForDelta(rawDelta, snapStartPositions[0])
+          : null;
+        // A modified drag states its own geometry, and a magnet pulling the
+        // point somewhere else is fighting it. Alt equalizes, X holds the drawn
+        // shape, Z slides along a tangent, and D and S pin one edge of the
+        // stroke while the other follows the cursor. Read every frame, so a key
+        // pressed or released mid-drag takes on the next one - the same rule the
+        // behavior name already follows. D and S carry a switch, because a
+        // designer may want a width to land on a metric.
+        snapSession.suppressed =
+          event.altKey ||
+          this.tensionAwareMode ||
+          this.tangentRibMode ||
+          ((this.fixedRibMode || this.fixedRibCompressMode) &&
+            !SNAP_PARAMETERS.snapDuringFixedRib);
+        const wouldBe = snapStartPositions.map((point) => ({
+          x: point.x + rawDelta.x,
+          y: point.y + rawDelta.y,
+        }));
+        const correction = snapSession.resolveSet(wouldBe, currentPoint, {
+          constraint,
+        });
+        const delta = {
+          x: rawDelta.x + correction.x,
+          y: rawDelta.y + correction.y,
         };
 
         const deepEditChanges = [];
@@ -831,6 +1058,9 @@ export class PointerTool extends BaseTool {
 
         await sendIncrementalChange(editChange, true); // true: "may drop"
       }
+      // No snap state survives the gesture (spec section 5).
+      snapSession.end();
+
       let changes = ChangeCollector.fromChanges(
         editChange,
         consolidateChanges(
@@ -943,19 +1173,59 @@ export class PointerTool extends BaseTool {
         editingLayers[editLayerName] || Object.values(editingLayers)[0]
       );
 
+      // A corner handle scales both axes at once, so the mode bypasses and the
+      // ordinary scale applies.
+      const tensionAwareAxis = !this.tensionAwareMode
+        ? null
+        : clickedHandle.includes("middle")
+          ? "x"
+          : clickedHandle.includes("center")
+            ? "y"
+            : null;
+
       const layerInfo = Object.entries(editingLayers).map(([layerName, layerGlyph]) => {
-        const skeletonEntry = makeSkeletonPointTargetEntry(
-          layerGlyph,
-          sceneController.selection,
-          "default",
-          referenceSkeletonData,
-          makeSkeletonModifierOptions("default", { referenceSkeletonData })
-        );
+        // Under X on one axis the skeleton is corrected on its centerline, so
+        // it takes the tension-aware entry instead of the plain one. The plain
+        // entry scales the centerline and lets the tension go, which is what a
+        // skeleton selection used to get from the box.
+        const skeletonTensionAwareEntry = tensionAwareAxis
+          ? makeSkeletonTensionAwareTransformEntry(
+              layerGlyph,
+              sceneController.selection,
+              tensionAwareAxis,
+              referenceSkeletonData
+            )
+          : null;
+        const skeletonEntry =
+          skeletonTensionAwareEntry ||
+          makeSkeletonPointTargetEntry(
+            layerGlyph,
+            sceneController.selection,
+            "default",
+            referenceSkeletonData,
+            makeSkeletonModifierOptions("default", { referenceSkeletonData })
+          );
+        const tensionAwareEntries = tensionAwareAxis
+          ? createTensionAwareTransformEntries(
+              layerGlyph,
+              sceneController.selection,
+              tensionAwareAxis,
+              {
+                isGeneratedContour: (contourIndex) =>
+                  this.sceneModel.isGeneratedPathContour(contourIndex),
+              }
+            )
+          : [];
         const behaviorFactory = new EditBehaviorFactory(
           layerGlyph,
           sceneController.selection,
           this.scalingEditBehavior,
-          { targetEntries: skeletonEntry ? [skeletonEntry] : [] }
+          {
+            targetEntries: [
+              ...(skeletonEntry ? [skeletonEntry] : []),
+              ...tensionAwareEntries,
+            ],
+          }
         );
         const layerBounds = (
           staticGlyphControllers[layerName] || glyphController
@@ -968,7 +1238,9 @@ export class PointerTool extends BaseTool {
           layerName,
           changePath: ["layers", layerName, "glyph"],
           layerGlyph: layerGlyph,
-          editBehavior: behaviorFactory.getTransformBehavior("default"),
+          editBehavior: behaviorFactory.getTransformBehavior(
+            tensionAwareEntries.length ? TENSION_AWARE_SCALE_BEHAVIOR_NAME : "default"
+          ),
           regularPinPoint: getPinPoint(layerBounds, origin.x, origin.y),
           altPinPoint: getPinPoint(layerBounds, undefined, undefined),
           regularPinPointSelectedLayer: regularPinPointSelectedLayer,
@@ -1136,6 +1408,12 @@ export class PointerTool extends BaseTool {
       return;
     }
     if (this._handleRealtimeModifierKeyDown(event)) {
+      event.preventDefault();
+      return;
+    }
+    // The snap mode keys belong to every tool, so they come from the base class
+    // rather than from the table above.
+    if (super.handleKeyDown(event)) {
       event.preventDefault();
       return;
     }
@@ -1346,6 +1624,19 @@ function makeSkeletonTunniDragTarget(tunniHit) {
   return { kind: "skeleton", contourId, startPointId, endPointId };
 }
 
+// Address the dragged generated segment by its place in the path, so the readout
+// can rebuild it from live geometry rather than the snapshot taken at mousedown.
+function makeGeneratedCurvatureDragTarget(gizmoHit) {
+  const segment = gizmoHit?.segment;
+  if (!Number.isInteger(segment?.pathContourIndex)) {
+    return null;
+  }
+  return {
+    pathContourIndex: segment.pathContourIndex,
+    segmentIndex: segment.segmentIndex,
+  };
+}
+
 function hasRibLikeSelection(selection) {
   return (
     hasSkeletonRibSelection(selection) || hasEditableGeneratedPointSelection(selection)
@@ -1366,12 +1657,22 @@ function toggleSegmentSelection(currentSelection, segmentSelection) {
     : union(currentSelection, segmentSelection);
 }
 
+// Adding to a selection is the command key's job, and on this fork that means
+// the Mac's command key only. Upstream spells the command key as control on
+// Windows, but control is already the coarse-grid modifier during a drag, and
+// control with shift is the equalize gesture. Shift on its own still builds a
+// selection up on either platform, so nothing is lost by leaving control to the
+// grid.
+function extendsSelection(event) {
+  return isMac ? event.metaKey : false;
+}
+
 function getSelectModeFunction(event) {
   return event.shiftKey
-    ? event[commandKeyProperty]
+    ? extendsSelection(event)
       ? difference
       : symmetricDifference
-    : event[commandKeyProperty]
+    : extendsSelection(event)
       ? union
       : replace;
 }
