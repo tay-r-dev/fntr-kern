@@ -713,6 +713,34 @@ tr:focus-within .kerning-pairtable-hide-action {
   opacity: 1;
 }
 
+/* The mark ahead of a proposed value: is this pair drawn on the canvas while
+   the suggestion preview is on. Same reveal-on-hover convention as the lock
+   and the eye, with one exception -- a pair that is OUT keeps its mark visible,
+   because a control whose whole job is to say "not shown" cannot itself be
+   hidden until hovered. */
+.kerning-pairtable-preview-toggle {
+  width: 1.1em;
+  height: 1.1em;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 0.35em;
+  opacity: 0;
+}
+
+tr:hover .kerning-pairtable-preview-toggle,
+tr:focus-within .kerning-pairtable-preview-toggle {
+  opacity: 0.35;
+}
+
+tr:hover .kerning-pairtable-preview-toggle:hover,
+.kerning-pairtable-preview-toggle:focus {
+  opacity: 1;
+}
+
+.kerning-pairtable-preview-excluded {
+  opacity: 1;
+}
+
 /* Task 11, spec F17: "hidden rows reappear... with a distinguishable hidden
    state" when Show hidden is on. Dims and strikes through the row's own
    name text without hiding the row's other cells (Current/Proposed/Delta

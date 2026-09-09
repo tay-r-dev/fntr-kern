@@ -299,6 +299,9 @@ test("manual kerning starts from the preview and the ribbon shows the remaining 
       ["o/r", unrelated],
     ]),
     kerningController: { getGlyphPairValueForSource: () => saved },
+    // Excluding a pair from the preview is written to the project, the same
+    // way a junk mark is.
+    fontController: { customData: {}, async performEdit(name, key, mutate) {} },
     sceneController: { autoViewBox: true },
     canvasController: { requestUpdate() {} },
   });
@@ -341,6 +344,14 @@ test("manual kerning starts from the preview and the ribbon shows the remaining 
   assert.equal(view._previewPairValue.get(glyphs[1]), 0);
   saved = 0; // Undo follows the font value instead of a frozen manual number.
   assert.equal(view.getSuggestionPreviewValue("r", "o", proposal), 0);
+  // A fresh measurement used to win the preview back. It no longer does: the
+  // manual edit above put this pair out of the preview, and only the table's
+  // own mark puts it back. Another pair, and the same pair in another source,
+  // are untouched.
+  assert.equal(view.getSuggestionPreviewValue("r", "o", { value: -35 }), undefined);
+  assert.equal(view.getSuggestionPreviewValue("o", "r", unrelated), -80);
+  assert.equal(view.getSuggestionPreviewValue("r", "o", { value: -35 }, "s2"), -35);
+  await view.setPairExcludedFromPreview("r", "o", false, "s1");
   assert.equal(view.getSuggestionPreviewValue("r", "o", { value: -35 }), -35);
   view.suggestionPreviewSettings.model.enabled = false;
   assert.equal(tool.getEditContext().values[0], 0);

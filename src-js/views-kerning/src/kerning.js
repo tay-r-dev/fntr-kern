@@ -237,6 +237,11 @@ const CONTROL_GLYPH_NAMES = ["l", "n", "o"];
 //   fontController.initialize() before the view is constructed).
 const AUTOKERN_CACHE_OPFS_DIR = ["kerning-autokern-cache"];
 const AUTOKERN_JUNK_PAIRS_CUSTOM_DATA_KEY = "fontra.autokernJunkPairs";
+// Pairs the designer has taken out of the proposed preview. Beside the junk
+// list rather than in the cache, because it says nothing about the measurement:
+// the proposal stands, it is simply not drawn or applied on the canvas for this
+// pair. The designer's own judgement, so it goes to the project.
+const AUTOKERN_PREVIEW_EXCLUDED_CUSTOM_DATA_KEY = "fontra.autokernPreviewExcluded";
 // Design doc §3: "Stored as project data... Key shape: one entry per (side,
 // class name) pair... fontra.autokernClassColors: { side1: { <className>:
 // <color> }, side2: { ... } }, written through fontController.performEdit the
@@ -1485,6 +1490,7 @@ export class KerningViewController extends ViewController {
         )
       : new Map();
     this.autokernCache = this.applyStoredJunkMarksToCache(this.autokernCache);
+    this.loadPreviewExclusions();
     // Spec 7.4's readout is a statement about the run that produced this
     // cache, so it is restored with it. Without this the panel read "Not yet
     // calibrated" after every reload, beside a table full of numbers that
@@ -1516,6 +1522,70 @@ export class KerningViewController extends ViewController {
   // never seen still gets an entry (markPairJunk's own documented behavior:
   // "if the pair has no existing entry, one is created... with value: 0"),
   // so the mark is never silently dropped for a pair not yet measured here.
+  // The excluded set, read from the project. Held as a Set of pairKey so the
+  // preview can ask about one pair without walking a list.
+  loadPreviewExclusions() {
+    const stored =
+      this.fontController.customData?.[AUTOKERN_PREVIEW_EXCLUDED_CUSTOM_DATA_KEY] || [];
+    // Keyed by source as well as by pair, because a kerning value is a
+    // statement about one source. Answering the proposal in one weight says
+    // nothing about the same pair in another.
+    this._previewExcludedPairs = new Set(
+      stored.map(({ source, left, right }) => rowId(source, left, right))
+    );
+  }
+
+  isPairExcludedFromPreview(left, right, source = this.autokernSource) {
+    return !!this._previewExcludedPairs?.has(rowId(source, left, right));
+  }
+
+  // One pair in or out. Adding is silent about whether the pair was already
+  // out, so the automatic exclusion an edit makes can call this without first
+  // asking, and a designer's click cannot double-write.
+  async setPairExcludedFromPreview(
+    left,
+    right,
+    excluded,
+    source = this.autokernSource
+  ) {
+    if (!this._previewExcludedPairs) {
+      this._previewExcludedPairs = new Set();
+    }
+    const key = rowId(source, left, right);
+    if (this._previewExcludedPairs.has(key) === excluded) {
+      return;
+    }
+    if (excluded) {
+      this._previewExcludedPairs.add(key);
+    } else {
+      this._previewExcludedPairs.delete(key);
+    }
+    this.sceneModel?.updateScene();
+    this.renderPairTable?.();
+    await this.writePreviewExclusionsToProject();
+  }
+
+  // The whole list each time, the same way the junk list is written, so the
+  // project's copy cannot drift from the set in hand.
+  async writePreviewExclusionsToProject() {
+    const excluded = [...this._previewExcludedPairs].map((key) => {
+      const [source, left, right] = JSON.parse(key);
+      return { source, left, right };
+    });
+    await this.fontController.performEdit(
+      "kerning view: exclude pair from preview",
+      "customData",
+      (root) => {
+        if (excluded.length) {
+          root.customData[AUTOKERN_PREVIEW_EXCLUDED_CUSTOM_DATA_KEY] = excluded;
+        } else {
+          delete root.customData[AUTOKERN_PREVIEW_EXCLUDED_CUSTOM_DATA_KEY];
+        }
+      },
+      this
+    );
+  }
+
   applyStoredJunkMarksToCache(cache) {
     const junkPairs =
       this.fontController.customData?.[AUTOKERN_JUNK_PAIRS_CUSTOM_DATA_KEY] || [];
@@ -2379,6 +2449,13 @@ export class KerningViewController extends ViewController {
         rowId(source, left, right),
         this.autokernCache?.get(pairKey(left, right))
       );
+      // Kerning a pair by hand while the preview is on is a decision about
+      // that pair: the designer has answered the proposal, so the proposal
+      // stops being drawn over the answer. It stays out until the designer
+      // puts it back from the table.
+      if (this.suggestionPreviewSettings?.model.enabled) {
+        this.setPairExcludedFromPreview(left, right, true, source);
+      }
     }
     this.canvasController.requestUpdate();
   }
@@ -2400,6 +2477,14 @@ export class KerningViewController extends ViewController {
         );
       }
       this._manualPreviewPairs.delete(key);
+    }
+    // Excluded: the proposal is not drawn and not applied, so the pair sits at
+    // its saved kerning. Undefined is already what the rest of the preview
+    // reads as "nothing to show here", so an exclusion needs no second path.
+    // Asked after the manual block above, because a drag in progress states
+    // the spacing itself and the ribbon measures against it.
+    if (this.isPairExcludedFromPreview(left, right, source)) {
+      return undefined;
     }
     return entry && !entry.stale && Number.isFinite(entry.value)
       ? Math.round(entry.value)
@@ -3556,6 +3641,38 @@ export class KerningViewController extends ViewController {
   // handler already ignores anything inside an input, so highlighting a row
   // and editing its value do not fight. kerning.css keeps it looking like
   // text until it is hovered or focused.
+  // The mark to the left of a proposed value: is this pair drawn on the canvas
+  // when the preview is on. Follows the row-hover convention the lock and the
+  // eye already use, except when the pair is out, which stays visible -- a
+  // control that says "not shown" has to be readable without hovering.
+  buildPreviewExclusionToggle(left, right) {
+    const excluded = this.isPairExcludedFromPreview(left, right);
+    const button = document.createElement("icon-button");
+    button.className = excluded
+      ? "kerning-pairtable-preview-toggle kerning-pairtable-preview-excluded"
+      : "kerning-pairtable-preview-toggle";
+    button.src = excluded
+      ? "/tabler-icons/circle-dotted.svg"
+      : "/tabler-icons/circle-dot.svg";
+    button.setAttribute(
+      "aria-label",
+      excluded
+        ? `Show ${left} × ${right} in the suggestion preview`
+        : `Leave ${left} × ${right} out of the suggestion preview`
+    );
+    button.setAttribute(
+      "data-tooltip",
+      excluded
+        ? "Left out of the suggestion preview. Its saved kerning is unchanged."
+        : "Leave this pair out of the suggestion preview."
+    );
+    button.onclick = (event) => {
+      event.stopPropagation();
+      this.setPairExcludedFromPreview(left, right, !excluded);
+    };
+    return button;
+  }
+
   buildCurrentValueEditor(current, left, right) {
     const input = document.createElement("input");
     input.type = "number";
@@ -5389,13 +5506,16 @@ export class KerningViewController extends ViewController {
     const display = valuesForDisplay(row.current, row.suggestion, row.stale);
     const proposedCell = document.createElement("td");
     proposedCell.className = "kerning-pairtable-proposed-col";
+    proposedCell.appendChild(this.buildPreviewExclusionToggle(row.left, row.right));
     if (display.stale) {
       proposedCell.appendChild(buildStaleMarker());
     } else {
-      proposedCell.textContent =
+      const proposedText = document.createElement("span");
+      proposedText.textContent =
         display.proposed > 0
           ? `+${display.proposed.toFixed(1)}`
           : display.proposed.toFixed(1);
+      proposedCell.appendChild(proposedText);
     }
     proposedCell.style.display = this.autokernFiltersController.model.showProposed
       ? ""
