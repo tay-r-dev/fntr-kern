@@ -183,7 +183,7 @@ test("a growing result set fills the requested batch instead of retaining one ro
   assert.equal(view.getPairTableLoadLimit("different"), 100);
 });
 
-test("manual kerning starts from the preview and the ribbon follows live values", async () => {
+test("manual kerning starts from the preview and the ribbon shows the remaining suggestion", async () => {
   const view = Object.create(Controller.prototype);
   let saved = 0;
   const proposal = { value: -40 };
@@ -232,7 +232,18 @@ test("manual kerning starts from the preview and the ribbon follows live values"
   view._previewOriginalX = new WeakMap(); view._previewPairValue = new WeakMap();
   view._applySuggestionPreviewRepositioning({ positionedLines: [{ glyphs }] });
   assert.equal(glyphs[1].x, 590);
-  assert.equal(view._previewPairValue.get(glyphs[1]), -10);
+  assert.equal(view._previewPairValue.get(glyphs[1]), -30);
+  // Positive proposal with negative manual kerning: 12 - (-4) = 16.
+  proposal.value = 12;
+  saved = -4;
+  glyphs[1].kernValue = saved;
+  view._applySuggestionPreviewRepositioning({ positionedLines: [{ glyphs }] });
+  assert.equal(view._previewPairValue.get(glyphs[1]), 16);
+  assert.equal(glyphs[1].x, 590);
+  saved = 12;
+  glyphs[1].kernValue = saved;
+  view._applySuggestionPreviewRepositioning({ positionedLines: [{ glyphs }] });
+  assert.equal(view._previewPairValue.get(glyphs[1]), 0);
   saved = 0; // Undo follows the font value instead of a frozen manual number.
   assert.equal(view.getSuggestionPreviewValue("r", "o", proposal), 0);
   assert.equal(view.getSuggestionPreviewValue("r", "o", { value: -35 }), -35);

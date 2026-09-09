@@ -2219,7 +2219,7 @@ export class KerningViewController extends ViewController {
         this.sceneController.autoViewBox = false;
         this.sceneController.scrollAdjustBehavior = null;
         // Selecting a handle does not change the font or preview. Switch the
-        // ribbon to the live saved value only once an edit value is yielded.
+        // spacing to the live saved value only once an edit value is yielded.
         const manualValues = async function* () {
           for await (const value of values) {
             beginEdit();
@@ -2254,7 +2254,7 @@ export class KerningViewController extends ViewController {
     if (this._manualPreviewPairs?.has(key)) {
       if (this._manualPreviewPairs.get(key) === entry) {
         // Follow incremental edits, subsequent nudges, and undo/redo. The
-        // overlay stays visible, displaying the manually adjusted value.
+        // spacing follows the manually adjusted value.
         return this.kerningController.getGlyphPairValueForSource(left, right, source) ?? 0;
       }
       this._manualPreviewPairs.delete(key);
@@ -6603,7 +6603,11 @@ export class KerningViewController extends ViewController {
             ? cache.get(pairKey(glyphs[i - 1].glyphName, glyph.glyphName)) : null;
           const entryValue = this.getSuggestionPreviewValue(
             glyphs[i - 1].glyphName, glyph.glyphName, entry);
-          this._previewPairValue.set(glyph, entryValue);
+          // The ribbon measures the remaining adjustment to the cached
+          // proposal, independently of the spacing used for manual preview.
+          const suggestionDelta = entry && !entry.stale && Number.isFinite(entry.value)
+            ? entry.value - (glyph.kernValue || 0) : undefined;
+          this._previewPairValue.set(glyph, suggestionDelta);
           // Scene positions already include the saved kern. Replace it
           // with the proposal rather than adding the proposal a second time.
           if (entryValue !== undefined) cumulative += entryValue - (glyph.kernValue || 0);
