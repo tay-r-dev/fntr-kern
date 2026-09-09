@@ -428,18 +428,33 @@
   gap: 0.5em;
 }
 
+/* Always-visible params row (spec F28: "responsive layout rather than
+   clipping"). The right column is user-narrow (default 320px), so the three
+   |Δ| / tolerance fields plus Run never fit one line -- previously the row
+   didn't wrap and Run was pushed past the column edge at every width. Each
+   label+input is now a non-breaking .kerning-param-field unit, the row
+   wraps between units, and Run drops to its own full-width line. */
 #kerning-parameters-always-visible {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5em;
+  gap: 0.35em 0.5em;
 }
 
-#kerning-param-threshold {
+.kerning-param-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+
+#kerning-param-threshold,
+#kerning-param-max-threshold,
+#kerning-param-group-threshold {
   width: 5em;
 }
 
 #kerning-run-button {
-  margin-left: auto;
+  flex: 0 0 100%;
 }
 
 #kerning-parameters-collapsible {

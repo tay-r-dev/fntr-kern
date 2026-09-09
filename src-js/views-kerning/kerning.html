@@ -61,7 +61,10 @@
               id="kerning-pairtable-pair"
               placeholder="V, /W, @ClassName, %member%!"
             />
-            <span id="kerning-pairtable-pair-error" class="kerning-pairtable-input-error"></span>
+            <span
+              id="kerning-pairtable-pair-error"
+              class="kerning-pairtable-input-error"
+            ></span>
 
             <label for="kerning-pairtable-excluded">Excluded glyphs</label>
             <input
@@ -100,13 +103,24 @@
               <fieldset id="kerning-pairtable-columns">
                 <legend>Columns</legend>
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-show-current" /> Current</label
+                  ><input type="checkbox" id="kerning-pairtable-show-current" />
+                  Current</label
                 >
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-show-proposed" checked /> Proposed</label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-show-proposed"
+                    checked
+                  />
+                  Proposed</label
                 >
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-show-suggestion" checked /> Delta</label
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-show-suggestion"
+                    checked
+                  />
+                  Delta</label
                 >
               </fieldset>
               <!-- Task 5, spec F13: exact predicate `Current == 0 &&
@@ -116,10 +130,8 @@
                    that warning stays discoverable regardless of this
                    filter. -->
               <label
-                ><input
-                  type="checkbox"
-                  id="kerning-pairtable-hide-zero-current"
-                /> Hide zero-current suggestions
+                ><input type="checkbox" id="kerning-pairtable-hide-zero-current" /> Hide
+                zero-current suggestions
                 <span
                   class="kerning-pairtable-filter-help"
                   title="Hides rows where the stored Current value is 0 but the Proposed suggestion is not. A stored zero can still be a real, explicit rule."
@@ -140,27 +152,51 @@
               <fieldset id="kerning-pairtable-unicode-types">
                 <legend>Unicode types</legend>
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-unicode-uppercase" checked />
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-unicode-uppercase"
+                    checked
+                  />
                   Uppercase</label
                 >
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-unicode-lowercase" checked />
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-unicode-lowercase"
+                    checked
+                  />
                   Lowercase</label
                 >
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-unicode-punctuation" checked />
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-unicode-punctuation"
+                    checked
+                  />
                   Punctuation</label
                 >
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-unicode-symbols" checked />
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-unicode-symbols"
+                    checked
+                  />
                   Symbols</label
                 >
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-unicode-marks" checked />
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-unicode-marks"
+                    checked
+                  />
                   Combining diacritics</label
                 >
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-unicode-numbers" checked />
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-unicode-numbers"
+                    checked
+                  />
                   Numbers</label
                 >
                 <label
@@ -188,19 +224,35 @@
               <fieldset id="kerning-pairtable-relationships">
                 <legend>Class relationship</legend>
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-rel-class-class" checked />
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-rel-class-class"
+                    checked
+                  />
                   Class-to-class</label
                 >
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-rel-class-unique" checked />
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-rel-class-unique"
+                    checked
+                  />
                   Class-to-unique</label
                 >
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-rel-unique-unique" checked />
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-rel-unique-unique"
+                    checked
+                  />
                   Unique-to-unique</label
                 >
                 <label
-                  ><input type="checkbox" id="kerning-pairtable-rel-exceptions" checked />
+                  ><input
+                    type="checkbox"
+                    id="kerning-pairtable-rel-exceptions"
+                    checked
+                  />
                   Class exceptions</label
                 >
               </fieldset>
@@ -301,16 +353,42 @@
                        own tick. Sort label is its own span so
                        updateSortHeaders (kerning.js) can rewrite just the
                        label text without erasing the checkbox. -->
-                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Glyph L">
-                    <input type="checkbox" class="kerning-pairtable-select-all" title="Select all visible rows" />
+                  <th
+                    class="kerning-pairtable-sortable"
+                    data-sort-column="glyph"
+                    data-sort-label="Glyph L"
+                  >
+                    <input
+                      type="checkbox"
+                      class="kerning-pairtable-select-all"
+                      title="Select all visible rows"
+                    />
                     <span class="kerning-pairtable-sort-label"></span>
                   </th>
-                  <th class="kerning-pairtable-current-col kerning-pairtable-sortable" data-sort-column="current" data-sort-label="Current"><span class="kerning-pairtable-sort-label"></span></th>
+                  <th
+                    class="kerning-pairtable-current-col kerning-pairtable-sortable"
+                    data-sort-column="current"
+                    data-sort-label="Current"
+                  >
+                    <span class="kerning-pairtable-sort-label"></span>
+                  </th>
                   <!-- Task 5, spec F13: Proposed is its own column,
                        independently hideable from Current and Delta. -->
                   <th class="kerning-pairtable-proposed-col">Proposed</th>
-                  <th class="kerning-pairtable-suggestion-col kerning-pairtable-sortable" data-sort-column="delta" data-sort-label="Delta"><span class="kerning-pairtable-sort-label"></span></th>
-                  <th class="kerning-pairtable-sortable" data-sort-column="glyph" data-sort-label="Glyph R"><span class="kerning-pairtable-sort-label"></span></th>
+                  <th
+                    class="kerning-pairtable-suggestion-col kerning-pairtable-sortable"
+                    data-sort-column="delta"
+                    data-sort-label="Delta"
+                  >
+                    <span class="kerning-pairtable-sort-label"></span>
+                  </th>
+                  <th
+                    class="kerning-pairtable-sortable"
+                    data-sort-column="glyph"
+                    data-sort-label="Glyph R"
+                  >
+                    <span class="kerning-pairtable-sort-label"></span>
+                  </th>
                   <!-- F32: "The Potential exceptions tab exposes its
                        create/apply-exception action in the override-action
                        position. The Default view provides the lock in that
@@ -391,7 +469,9 @@
               style="position: absolute; top: 0; left: 0; z-index: 1"
             >
               <button data-tool="pointer-tool" title="Pointer">Pointer</button>
-              <button data-tool="sidebearing-tool" title="Sidebearing">Sidebearing</button>
+              <button data-tool="sidebearing-tool" title="Sidebearing">
+                Sidebearing
+              </button>
               <button data-tool="kerning-tool" title="Kerning">Kerning</button>
               <button data-tool="hand-tool" title="Hand">Hand</button>
             </div>
@@ -402,7 +482,10 @@
                  not importing/subclassing FontOverviewController itself, is
                  the reuse path. Hidden by default; setChipMode toggles
                  kerning-font-grid-hidden alongside hiding the canvas. -->
-            <div id="kerning-font-grid-container" class="kerning-font-grid-hidden"></div>
+            <div
+              id="kerning-font-grid-container"
+              class="kerning-font-grid-hidden"
+            ></div>
           </div>
         </div>
         <!-- Task 13, spec F08: "Place Phrase / Pair / Font controls in their
@@ -632,12 +715,7 @@
                  this.phrasePresets, not a replacement -- see
                  initPhraseSection's own comment in kerning.js for why. -->
             <button id="kerning-preset-add-button" type="button">Add…</button>
-            <input
-              type="file"
-              id="kerning-preset-file-input"
-              accept=".txt"
-              hidden
-            />
+            <input type="file" id="kerning-preset-file-input" accept=".txt" hidden />
             <textarea
               id="kerning-phrase-input"
               placeholder="Type a phrase"
@@ -653,10 +731,19 @@
                    `threshold`/isRowAboveThreshold), never the run itself --
                    relabeled to say so plainly. Blank maximum means no
                    maximum. -->
-              <label for="kerning-param-threshold">Minimum |Δ|</label>
-              <input type="number" id="kerning-param-threshold" min="0" step="1" />
-              <label for="kerning-param-max-threshold">Maximum |Δ|</label>
-              <input type="number" id="kerning-param-max-threshold" min="0" step="1" />
+              <span class="kerning-param-field">
+                <label for="kerning-param-threshold">Minimum |Δ|</label>
+                <input type="number" id="kerning-param-threshold" min="0" step="1" />
+              </span>
+              <span class="kerning-param-field">
+                <label for="kerning-param-max-threshold">Maximum |Δ|</label>
+                <input
+                  type="number"
+                  id="kerning-param-max-threshold"
+                  min="0"
+                  step="1"
+                />
+              </span>
               <!-- Backlog item 8 part 1: a second, display-only threshold --
                    divergence of a shadowing pair's suggestion from the value
                    its class cell resolves to. Feeds only the pair-table
@@ -669,13 +756,15 @@
                    ONLY UI-facing occurrence of that copy anywhere in this
                    view (grepped); the id/`groupThreshold` model key are
                    left unchanged (internal naming, not designer-facing). -->
-              <label for="kerning-param-group-threshold">Class tolerance</label>
-              <input
-                type="number"
-                id="kerning-param-group-threshold"
-                min="0"
-                step="1"
-              />
+              <span class="kerning-param-field">
+                <label for="kerning-param-group-threshold">Class tolerance</label>
+                <input
+                  type="number"
+                  id="kerning-param-group-threshold"
+                  min="0"
+                  step="1"
+                />
+              </span>
               <button id="kerning-run-button">Run</button>
             </div>
             <details id="kerning-parameters-collapsible">
