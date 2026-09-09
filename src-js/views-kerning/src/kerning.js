@@ -1729,7 +1729,9 @@ export class KerningViewController extends ViewController {
       // defaults hidden (unchanged pre-existing behavior); Proposed and
       // Delta default visible (Task 5's own migration default: "all
       // visible").
-      showCurrent: false,
+      // Backlog item 14: Current is the table's editable cell now, so it
+      // starts visible -- a hidden column cannot be typed into.
+      showCurrent: true,
       showProposed: true,
       // The class-summary Apply column (Columns > Apply).
       showApply: true,
@@ -3428,6 +3430,49 @@ export class KerningViewController extends ViewController {
   // FULL membership (truncated the same way a derive proposal's member
   // list truncates, truncateGlyphList), matching spec §5.2's own
   // illustration ("T Tcaron Tbar   -48   o ó ö").
+  // Backlog item 14: the Current cell is the table's one in-place write
+  // surface. It writes through writePairValues, the same function Apply
+  // selected and Reset selected use, so a typed value takes the identical
+  // route -- shadow confirmation, undo record, applied mark and re-render
+  // included. `left`/`right` are the row's own addresses, so a class-summary
+  // row's editor writes that class rule and a pair row's writes that pair.
+  //
+  // A plain number input rather than a click-to-edit cell: it is one element
+  // with native keyboard, stepping and validation, and the row's own click
+  // handler already ignores anything inside an input, so highlighting a row
+  // and editing its value do not fight. kerning.css keeps it looking like
+  // text until it is hovered or focused.
+  buildCurrentValueEditor(current, left, right) {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.step = "1";
+    input.className = "kerning-pairtable-current-input";
+    input.value = String(current);
+    input.title = `Stored value for ${left} × ${right}. Type a value to write it.`;
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        input.blur();
+      } else if (event.key === "Escape") {
+        // Native number inputs do not revert on Escape, and a half-typed
+        // value left in the box would be written by the blur that follows.
+        input.value = String(current);
+        input.blur();
+      }
+    });
+    input.addEventListener("change", async () => {
+      const value = Math.round(Number(input.value));
+      if (!Number.isFinite(value) || input.value.trim() === "") {
+        input.value = String(current);
+        return;
+      }
+      if (value === current) {
+        return;
+      }
+      await this.writePairValues([{ left, right }], () => value, true, true);
+    });
+    return input;
+  }
+
   buildClassSummaryRowElement(group, stats, median) {
     const tr = document.createElement("tr");
     tr.className = "kerning-pairtable-summary-row";
@@ -3504,7 +3549,7 @@ export class KerningViewController extends ViewController {
     currentCell.style.display = this.autokernFiltersController.model.showCurrent
       ? ""
       : "none";
-    currentCell.textContent = String(group.current);
+    currentCell.appendChild(this.buildCurrentValueEditor(group.current, left, right));
     tr.appendChild(currentCell);
 
     // Proposed IS the aggregate suggestion for this class rule. Task 17,
@@ -5204,7 +5249,9 @@ export class KerningViewController extends ViewController {
 
     const currentCell = document.createElement("td");
     currentCell.className = "kerning-pairtable-current-col";
-    currentCell.textContent = row.current;
+    currentCell.appendChild(
+      this.buildCurrentValueEditor(row.current, row.left, row.right)
+    );
     currentCell.style.display = this.autokernFiltersController.model.showCurrent
       ? ""
       : "none";
