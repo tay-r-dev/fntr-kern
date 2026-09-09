@@ -135,6 +135,25 @@ describe("corner overlap", () => {
     expect(after.getPoint(4).smooth).to.not.equal(true);
   });
 
+  it("leaves a smooth point alone", () => {
+    const path = new VarPackedPath();
+    path.appendUnpackedContour({
+      isClosed: true,
+      points: [
+        { x: 186, y: 526, smooth: true }, // 0: smooth, both sides curve on
+        { x: 153, y: 526, type: "cubic" },
+        { x: 129, y: 510, type: "cubic" },
+        { x: 114, y: 478 },
+        { x: 113, y: 478 },
+        { x: 220, y: 500, type: "cubic" },
+        { x: 210, y: 526, type: "cubic" },
+      ],
+    });
+    const after = addOverlap(path, [0]);
+    expect(after.numPoints).to.equal(path.numPoints);
+    expect(after.getPoint(0)).to.deep.equal(path.getPoint(0));
+  });
+
   it("leaves an unselected corner alone", () => {
     const before = cornerPath();
     const after = addOverlap(before, []);

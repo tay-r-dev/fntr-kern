@@ -173,11 +173,15 @@ function overlapContour(unpacked, selectedIndices) {
     return null;
   }
   // A corner is only a corner where two segments meet, so an end of an open
-  // contour is left alone: there is no second side to cross.
+  // contour is left alone: there is no second side to cross. A smooth point is
+  // left alone too: its two sides run on into each other, so there is no corner
+  // to open, and running them past each other would put a crossing where the
+  // designer drew a join.
   const corners = new Set(
     [...selectedIndices].filter(
       (index) =>
         !points[index]?.type &&
+        !points[index].smooth &&
         segments.some((segment) => segment.startIndex === index) &&
         segments.some((segment) => segment.endIndex === index)
     )
