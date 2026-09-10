@@ -683,3 +683,29 @@ test("only marked pairs lists the exceptions to the mode, whichever mode is on",
   filters.onlyMarked = false;
   assert.equal(view.pairRowVisible(row("T", "y"), filters, 0), true);
 });
+
+test("a mark on a class rule answers for every pair the rule covers", async () => {
+  const view = Object.create(Controller.prototype);
+  Object.assign(view, {
+    _autokernSourceIdentifier: "s1",
+    suggestionPreviewSettings: { model: { skipAll: false, enabled: true } },
+    _previewExcludedPairs: new Set(),
+    _previewIncludedPairs: new Set(),
+    kerningController: {
+      leftPairGroupMapping: { T: "T_uc" },
+      rightPairGroupMapping: { o: "o_lc", e: "o_lc" },
+    },
+    fontController: { customData: {}, async performEdit() {} },
+    sceneModel: { updateScene() {} },
+    renderPairTable() {},
+  });
+
+  // The class row's own circle, pressed once.
+  await view.setPairExcludedFromPreview("@T_uc", "@o_lc", true);
+  // Every pair under the rule reads it.
+  assert.equal(view.isPairExcludedFromPreview("T", "o"), true);
+  assert.equal(view.isPairExcludedFromPreview("T", "e"), true);
+  // A pair outside the rule does not.
+  assert.equal(view.isPairExcludedFromPreview("A", "o"), false);
+  assert.equal(view.isPairExcludedFromPreview("T", "y"), false);
+});

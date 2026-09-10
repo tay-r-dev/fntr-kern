@@ -24,12 +24,14 @@ export function rowId(sourceId, leftName, rightName) {
 }
 
 // Spec F23: "the table does not display an obsolete suggestion as though
-// it were current and reliable." A stale row's Proposed/Delta are
-// unavailable (null); `current` always passes through unchanged --
-// staleness is a property of the suggestion, not of what's actually
-// stored.
+// it were current and reliable." The number itself is shown either way --
+// an out-of-date number still tells the designer roughly where the pair
+// sits, and hiding it behind a mark told them nothing at all. `stale` is
+// what the row draws in red, so the number reads as "this, but do not trust
+// it". `current` always passes through unchanged: staleness is a property
+// of the suggestion, not of what is actually stored.
 export function valuesForDisplay(current, proposed, stale) {
-  const available = !stale && Number.isFinite(proposed);
+  const available = Number.isFinite(proposed);
   return {
     current,
     proposed: available ? proposed : null,
@@ -426,15 +428,22 @@ export function countHiddenClassRules(hiddenClassRuleIds, sourceIdentifier) {
 }
 
 export function passesNumericFilters(row, filters) {
-  if (
-    filters.hideZeroCurrentSuggestions &&
-    row.current === 0 &&
-    Number.isFinite(row.proposed) &&
-    row.proposed !== 0
-  ) {
+  // "Hide zero current" means what it says: every row whose stored value is
+  // zero goes. It used to keep a zero-current row whose proposal was also
+  // zero, which is the emptiest row in the table, so the filter appeared to
+  // do nothing on exactly the rows it was reached for.
+  if (filters.hideZeroCurrentSuggestions && row.current === 0) {
     return false;
   }
-  if (!Number.isFinite(row.delta)) {
+  // A row with a stored value is a decision somebody made, so the delta
+  // bounds do not hide it. Those bounds are for finding pairs that want
+  // attention, and a small delta on a kerned pair means it is already right.
+  if (row.current !== 0) {
+    return true;
+  }
+  // A stale row's number is shown but not trusted, and its warning has to
+  // stay reachable whatever the bounds are.
+  if (row.stale || !Number.isFinite(row.delta)) {
     return true;
   }
   const magnitude = Math.abs(row.delta);

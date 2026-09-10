@@ -1692,11 +1692,33 @@ export class KerningViewController extends ViewController {
     return this._previewExcludedPairs;
   }
 
+  // The class-rule address a pair answers to: each side's class name, or the
+  // glyph's own name where that side is not classed. The same address
+  // buildClassClassGroups builds its summary rows with, so a mark made on a
+  // class row is the mark this finds for every pair under it.
+  classAddressForPair(left, right) {
+    const leftClass = this.kerningController?.leftPairGroupMapping?.[left];
+    const rightClass = this.kerningController?.rightPairGroupMapping?.[right];
+    return [leftClass ? "@" + leftClass : left, rightClass ? "@" + rightClass : right];
+  }
+
   // Is this pair marked in the mode that is on? A marked row is the one that
   // differs from what the mode does by default, so it is the row whose mark
   // stays visible without hovering.
+  //
+  // A pair with no mark of its own inherits the mark on its class rule, which
+  // is what makes the circle on a class row mean anything: one press answers
+  // for every pair that rule covers.
   isPairMarkedForPreview(left, right, source = this.autokernSource) {
-    return this.previewMarkSet().has(rowId(source, left, right));
+    const marks = this.previewMarkSet();
+    if (marks.has(rowId(source, left, right))) {
+      return true;
+    }
+    const [classLeft, classRight] = this.classAddressForPair(left, right);
+    return (
+      (classLeft !== left || classRight !== right) &&
+      marks.has(rowId(source, classLeft, classRight))
+    );
   }
 
   // Is this pair left out of the suggestion preview? Ordinary mode: only a
@@ -2510,6 +2532,28 @@ export class KerningViewController extends ViewController {
         this.setResultsTab(tabButton.dataset.tab)
       );
     }
+
+    // A row is a control, not a paragraph: dragging across rows selects rows
+    // (kerning.css turns text selection off for the table). A glyph or class
+    // name is still worth copying out, so a double-click on one makes that
+    // name selectable and selects it -- a double-click starts no drag, so the
+    // two gestures never compete.
+    document
+      .querySelector("#kerning-pairtable-body")
+      ?.addEventListener?.("dblclick", (event) => {
+        const name = event.target?.closest?.(
+          ".kerning-pairtable-glyph-name, .kerning-pairtable-class-name"
+        );
+        if (!name) {
+          return;
+        }
+        name.setAttribute("data-selectable-name", "");
+        const range = document.createRange();
+        range.selectNodeContents(name);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      });
 
     // The one select-all tick, in the table header (kerning.html). Rows
     // carry no tick of their own any more, so this one writes the selection
@@ -3532,11 +3576,12 @@ export class KerningViewController extends ViewController {
         // Task 11, spec F10, ledger §8.5: this row's own hidden state,
         // never its members' (each "pair" item below carries its own
         // row.hidden, gated independently through pairRowVisible).
-        // A class rule is not a pair and carries no mark of its own, so it
-        // is not part of a list of marked pairs.
+        // A class rule carries a mark of its own now, so it belongs in a
+        // list of marked rows when it holds one.
         return (
           tab === "default" &&
-          !filters.onlyMarked &&
+          (!filters.onlyMarked ||
+            this.isPairMarkedForPreview(item.group.left, item.group.right)) &&
           item.group.summaryVisible &&
           rowVisibleForHiddenState(item.hidden, filters.showHidden)
         );
@@ -3976,6 +4021,26 @@ export class KerningViewController extends ViewController {
     return button;
   }
 
+  // Write an explicit zero at this pair, from the row itself. Same reveal and
+  // same batching as the row's other icons: on a selected row it resets every
+  // selected row. Deliberately not double-press armed the way the batch Reset
+  // button is -- that guard exists because the button acts on a set the
+  // designer cannot see all of, and this icon acts on the row under the
+  // cursor.
+  buildResetValueButton(row) {
+    const button = document.createElement("icon-button");
+    button.className =
+      "kerning-pairtable-reset-indicator kerning-pairtable-reset-value";
+    button.src = "/tabler-icons/rotate.svg";
+    button.setAttribute("aria-label", `Reset ${row.left} × ${row.right} to 0`);
+    button.setAttribute("data-tooltip", "Reset this pair to 0.");
+    button.onclick = (event) => {
+      event.stopPropagation();
+      this.writePairValues(this.rowActionTargets(row), () => 0, false);
+    };
+    return button;
+  }
+
   buildCurrentValueEditor(current, left, right) {
     const input = document.createElement("input");
     input.type = "number";
@@ -4078,16 +4143,14 @@ export class KerningViewController extends ViewController {
     // Proposed IS the aggregate suggestion for this class rule. Task 17,
     // spec F23/F21 (ledger §10.4's own open question, resolved here as a
     // judgment call -- see computeFoldGroupStats' own comment): the
-    // aggregate is unreliable when ANY contributing pair is stale, shown
-    // the same "!" way an ordinary stale row is.
+    // aggregate is unreliable when ANY contributing pair is stale, drawn in
+    // red the same way an ordinary stale row's number is.
     const proposedCell = document.createElement("td");
     proposedCell.className = "kerning-pairtable-proposed-col";
-    if (stats.stale) {
-      proposedCell.appendChild(buildStaleMarker());
-    } else {
-      proposedCell.textContent =
-        median > 0 ? `+${median.toFixed(1)}` : median.toFixed(1);
-    }
+    // The same mark a pair row carries, made once for the whole rule: every
+    // pair the rule covers reads it (isPairMarkedForPreview).
+    proposedCell.appendChild(this.buildPreviewExclusionToggle({ left, right }));
+    proposedCell.appendChild(buildValueSpan(median, stats.stale));
     proposedCell.style.display = this.autokernFiltersController.model.showProposed
       ? ""
       : "none";
@@ -4095,12 +4158,7 @@ export class KerningViewController extends ViewController {
 
     const deltaCell = document.createElement("td");
     deltaCell.className = "kerning-pairtable-suggestion-col";
-    if (stats.stale) {
-      deltaCell.appendChild(buildStaleMarker());
-    } else {
-      const delta = median - group.current;
-      deltaCell.textContent = delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1);
-    }
+    deltaCell.appendChild(buildValueSpan(median - group.current, stats.stale));
     deltaCell.style.display = this.autokernFiltersController.model.showSuggestion
       ? ""
       : "none";
@@ -5749,6 +5807,7 @@ export class KerningViewController extends ViewController {
     currentCell.appendChild(
       this.buildCurrentValueEditor(row.current, row.left, row.right)
     );
+    currentCell.appendChild(this.buildResetValueButton(row));
     currentCell.style.display = this.autokernFiltersController.model.showCurrent
       ? ""
       : "none";
@@ -5757,25 +5816,14 @@ export class KerningViewController extends ViewController {
     // Task 5, spec F13/F32: Proposed is its own column (the raw
     // suggestion, row.suggestion), independent of Delta (suggestion minus
     // current) below.
-    // Task 17, spec F23: valuesForDisplay (results-model.js, Task 2/5 --
-    // already existed but was never actually wired into this cell's own
-    // text before this task) hides Proposed/Delta when the row is stale;
-    // both cells show buildStaleMarker's "!" instead, with the accessible
-    // explanation on hover and keyboard focus.
+    // Task 17, spec F23: an unreliable suggestion is drawn in red rather
+    // than replaced by a mark (buildValueSpan), with the explanation on
+    // hover and keyboard focus.
     const display = valuesForDisplay(row.current, row.suggestion, row.stale);
     const proposedCell = document.createElement("td");
     proposedCell.className = "kerning-pairtable-proposed-col";
     proposedCell.appendChild(this.buildPreviewExclusionToggle(row));
-    if (display.stale) {
-      proposedCell.appendChild(buildStaleMarker());
-    } else {
-      const proposedText = document.createElement("span");
-      proposedText.textContent =
-        display.proposed > 0
-          ? `+${display.proposed.toFixed(1)}`
-          : display.proposed.toFixed(1);
-      proposedCell.appendChild(proposedText);
-    }
+    proposedCell.appendChild(buildValueSpan(display.proposed, display.stale));
     proposedCell.style.display = this.autokernFiltersController.model.showProposed
       ? ""
       : "none";
@@ -5783,12 +5831,7 @@ export class KerningViewController extends ViewController {
 
     const deltaCell = document.createElement("td");
     deltaCell.className = "kerning-pairtable-suggestion-col";
-    if (display.stale) {
-      deltaCell.appendChild(buildStaleMarker());
-    } else {
-      deltaCell.textContent =
-        display.delta > 0 ? `+${display.delta.toFixed(1)}` : display.delta.toFixed(1);
-    }
+    deltaCell.appendChild(buildValueSpan(display.delta, display.stale));
     deltaCell.style.display = this.autokernFiltersController.model.showSuggestion
       ? ""
       : "none";
@@ -7930,13 +7973,21 @@ function truncateGlyphList(members) {
 // buildClassSummaryRowElement (the aggregate row's own Proposed/Delta),
 // so the marker/explanation/tabindex convention is defined exactly once.
 const STALE_EXPLANATION = "Suggestion out of date — re-run required";
-function buildStaleMarker() {
+// A number in a Proposed or Delta cell. An unreliable one -- the shape it was
+// measured against has changed -- is drawn in red rather than replaced by a
+// mark: the value still says roughly where the pair sits, and a bare "!" said
+// nothing at all. The explanation stays on hover and on keyboard focus.
+function buildValueSpan(value, unreliable) {
   const span = document.createElement("span");
-  span.className = "kerning-pairtable-stale-marker";
-  span.textContent = "!";
-  span.title = STALE_EXPLANATION;
-  span.setAttribute("aria-label", STALE_EXPLANATION);
-  span.tabIndex = 0;
+  const text =
+    value == null ? "–" : value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1);
+  span.textContent = text;
+  if (unreliable) {
+    span.className = "kerning-pairtable-value-unreliable";
+    span.title = STALE_EXPLANATION;
+    span.setAttribute("aria-label", `${text}. ${STALE_EXPLANATION}`);
+    span.tabIndex = 0;
+  }
   return span;
 }
 

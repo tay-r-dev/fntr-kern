@@ -55,21 +55,6 @@
               class="kerning-pairtable-input-error"
               role="status"
             ></span>
-            <!-- The shift-click pair selection, and the one way to end it
-                 besides Escape. The label is not a button any more: the
-                 selection stays until the cross is pressed, so a stray click
-                 on it cannot throw the selection away. -->
-            <span id="kerning-preview-pairs-filter" hidden>
-              <span id="kerning-preview-pairs-filter-label"></span>
-              <button
-                id="kerning-preview-pairs-filter-close"
-                type="button"
-                title="Clear the preview-pair selection (Escape)"
-                aria-label="Clear the preview-pair selection"
-              >
-                ×
-              </button>
-            </span>
 
             <div id="kerning-pairtable-filters">
               <select id="kerning-pairtable-filter-side" title="Side">
@@ -485,6 +470,21 @@
               id="kerning-suggestion-preview-toggle-container"
               style="position: absolute; top: 0; right: 0; z-index: 1"
             ></div>
+            <!-- The shift-click pair selection, on the pane it was made on,
+                 bottom left. The label is not a button: the selection stays
+                 until the cross is pressed or Escape, so a stray click on the
+                 words cannot throw it away. -->
+            <span id="kerning-preview-pairs-filter" hidden>
+              <span id="kerning-preview-pairs-filter-label"></span>
+              <button
+                id="kerning-preview-pairs-filter-close"
+                type="button"
+                title="Clear the preview-pair selection (Escape)"
+                aria-label="Clear the preview-pair selection"
+              >
+                ×
+              </button>
+            </span>
             <div
               id="kerning-tool-switcher"
               style="position: absolute; top: 0; left: 0; z-index: 1"

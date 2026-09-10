@@ -24,11 +24,13 @@ describe("results-model", () => {
     expect(rowId("s1", "A", "V")).to.equal(rowId("s1", "A", "V"));
   });
 
-  it("valuesForDisplay hides proposed/delta when stale, keeps current", () => {
+  it("valuesForDisplay keeps the numbers when stale and says so", () => {
+    // The number is shown either way -- the row draws it in red instead of
+    // replacing it with a mark, so an out-of-date value still reads.
     expect(valuesForDisplay(-80, -30, true)).to.deep.equal({
       current: -80,
-      proposed: null,
-      delta: null,
+      proposed: -30,
+      delta: 50,
       stale: true,
     });
     expect(valuesForDisplay(-80, -30, false)).to.deep.equal({
@@ -55,35 +57,33 @@ describe("results-model", () => {
     expect(explicitPairExists(controllerWithNothing, "Adieresis", "W")).to.equal(false);
   });
 
-  it("passesNumericFilters: column visibility never enters this predicate", () => {
+  it("passesNumericFilters: the delta bounds leave a row with a stored value alone", () => {
     const f = { minDelta: 5, maxDelta: 20, hideZeroCurrentSuggestions: false };
     expect(
       passesNumericFilters({ current: -80, proposed: -60, delta: 20 }, f)
     ).to.equal(true);
-    expect(
-      passesNumericFilters({ current: -80, proposed: -100, delta: -20 }, f)
-    ).to.equal(true);
+    // Under the bounds, but the pair is already kerned, so the bounds do not
+    // speak for it: they are for finding pairs that want attention.
     expect(
       passesNumericFilters({ current: -80, proposed: -84, delta: -4 }, f)
-    ).to.equal(false);
-    expect(
-      passesNumericFilters(
-        { current: -80, proposed: 0, delta: 80 },
-        {
-          ...f,
-          maxDelta: 20,
-        }
-      )
-    ).to.equal(false);
+    ).to.equal(true);
+    expect(passesNumericFilters({ current: -80, proposed: 0, delta: 80 }, f)).to.equal(
+      true
+    );
+    // An unkerned pair is what the bounds are about.
+    expect(passesNumericFilters({ current: 0, proposed: -4, delta: -4 }, f)).to.equal(
+      false
+    );
   });
 
-  it("passesNumericFilters: exact hideZeroCurrentSuggestions predicate", () => {
+  it("passesNumericFilters: hide zero current hides every zero-current row", () => {
     const f = { minDelta: 0, maxDelta: null, hideZeroCurrentSuggestions: true };
     expect(passesNumericFilters({ current: 0, proposed: 10, delta: 10 }, f)).to.equal(
       false
     );
+    // This used to survive the filter, which is the emptiest row in the table.
     expect(passesNumericFilters({ current: 0, proposed: 0, delta: 0 }, f)).to.equal(
-      true
+      false
     );
     expect(passesNumericFilters({ current: -5, proposed: 10, delta: 15 }, f)).to.equal(
       true
@@ -109,10 +109,13 @@ describe("results-model", () => {
     );
   });
 
-  it("passesNumericFilters: an unavailable delta always passes the numeric bounds", () => {
+  it("passesNumericFilters: an unavailable or stale delta always passes the bounds", () => {
     const f = { minDelta: 50, maxDelta: 60, hideZeroCurrentSuggestions: false };
     expect(
-      passesNumericFilters({ current: -80, proposed: null, delta: null }, f)
+      passesNumericFilters({ current: 0, proposed: null, delta: null }, f)
+    ).to.equal(true);
+    expect(
+      passesNumericFilters({ current: 0, proposed: 1, delta: 1, stale: true }, f)
     ).to.equal(true);
   });
 
