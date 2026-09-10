@@ -633,7 +633,7 @@ test("a pair left out of the preview draws no band and no number", () => {
   assert.equal(glyph.x, 550);
 });
 
-test("only skipped suggestions lists the marked pairs, in either mode", () => {
+test("only marked pairs lists the exceptions to the mode, whichever mode is on", () => {
   const view = Object.create(Controller.prototype);
   const settings = { skipAll: false };
   Object.assign(view, {
@@ -650,7 +650,7 @@ test("only skipped suggestions lists the marked pairs, in either mode", () => {
     _relationshipsSet: new Set(["unique-unique"]),
     _tableGlyphsetMembers: null,
   });
-  const filters = { showHidden: true, onlySkipped: true };
+  const filters = { showHidden: true, onlyMarked: true };
   const row = (left, right) => ({
     left,
     right,
@@ -659,17 +659,19 @@ test("only skipped suggestions lists the marked pairs, in either mode", () => {
     kind: "unique-pair",
   });
 
-  // Ordinary mode: the marked pair is the one that is skipped.
+  // Ordinary mode: the marked pair is the one taken out of the preview.
   assert.equal(view.pairRowVisible(row("r", "o"), filters, 0), true);
   assert.equal(view.pairRowVisible(row("A", "V"), filters, 0), false);
+  assert.equal(view.pairRowVisible(row("T", "y"), filters, 0), false);
 
-  // Skip-all mode: everything is skipped except the pair marked in.
+  // Skip-all mode: the marked pair is the one put into the preview, so the
+  // list inverts rather than growing to the whole font.
   settings.skipAll = true;
-  assert.equal(view.pairRowVisible(row("A", "V"), filters, 0), false);
-  assert.equal(view.pairRowVisible(row("r", "o"), filters, 0), true);
-  assert.equal(view.pairRowVisible(row("T", "y"), filters, 0), true);
+  assert.equal(view.pairRowVisible(row("A", "V"), filters, 0), true);
+  assert.equal(view.pairRowVisible(row("r", "o"), filters, 0), false);
+  assert.equal(view.pairRowVisible(row("T", "y"), filters, 0), false);
 
   // Off, the filter says nothing about any row.
-  filters.onlySkipped = false;
-  assert.equal(view.pairRowVisible(row("A", "V"), filters, 0), true);
+  filters.onlyMarked = false;
+  assert.equal(view.pairRowVisible(row("T", "y"), filters, 0), true);
 });

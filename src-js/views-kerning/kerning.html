@@ -84,12 +84,13 @@
                 ><input type="checkbox" id="kerning-pairtable-filter-hidden" /> Show
                 hidden</label
               >
-              <!-- The marks as a list: only the pairs the suggestion preview
-                   leaves alone, whichever way round the global skip mode has
-                   them (kerning.js's pairRowVisible). -->
+              <!-- The marks as a list. A mark is the exception to whatever
+                   the global skip mode does, so this shows the pairs taken
+                   out of the preview in ordinary mode and the pairs put into
+                   it under skip-all (kerning.js's pairRowVisible). -->
               <label
-                ><input type="checkbox" id="kerning-pairtable-filter-only-skipped" />
-                Only skipped suggestions</label
+                ><input type="checkbox" id="kerning-pairtable-filter-only-marked" />
+                Only marked pairs</label
               >
               <!-- Task 5, spec F13: "Provide a Columns menu with independent
                    visibility controls for Current, Proposed, and Delta."

@@ -2102,9 +2102,11 @@ export class KerningViewController extends ViewController {
       // migration, the same way Task 8/9 already left old persisted keys
       // (bucket/status/sortColumn "state") unread rather than migrated.
       showHidden: false,
-      // Show only the rows that are out of the suggestion preview -- whatever
-      // the global mode means by that. A way to see the marks as a list.
-      onlySkipped: false,
+      // Show only the rows carrying a preview mark. A mark is always the
+      // exception to what the mode does by default, so this lists the pairs
+      // taken out in ordinary mode and the pairs put in under skip-all --
+      // the short list either way, never the whole font minus a few.
+      onlyMarked: false,
       // Task 5, spec F13: "Provide a Columns menu with independent
       // visibility controls for Current, Proposed, and Delta." Current
       // defaults hidden (unchanged pre-existing behavior); Proposed and
@@ -2247,15 +2249,12 @@ export class KerningViewController extends ViewController {
       this.autokernFiltersController.setItem("showHidden", showHiddenCheckbox.checked);
     });
 
-    const onlySkippedCheckbox = document.querySelector(
-      "#kerning-pairtable-filter-only-skipped"
+    const onlyMarkedCheckbox = document.querySelector(
+      "#kerning-pairtable-filter-only-marked"
     );
-    onlySkippedCheckbox.checked = filters.onlySkipped;
-    onlySkippedCheckbox.addEventListener("change", () => {
-      this.autokernFiltersController.setItem(
-        "onlySkipped",
-        onlySkippedCheckbox.checked
-      );
+    onlyMarkedCheckbox.checked = filters.onlyMarked;
+    onlyMarkedCheckbox.addEventListener("change", () => {
+      this.autokernFiltersController.setItem("onlyMarked", onlyMarkedCheckbox.checked);
     });
 
     const currentCheckbox = document.querySelector("#kerning-pairtable-show-current");
@@ -2963,10 +2962,10 @@ export class KerningViewController extends ViewController {
     if (!rowVisibleForHiddenState(row.hidden, filters.showHidden)) {
       return false;
     }
-    // Only the pairs the preview skips. Reads the same question the canvas
-    // asks, so what the table lists under this filter is exactly what the
-    // preview leaves alone -- in either mode.
-    if (filters.onlySkipped && !this.isPairExcludedFromPreview(row.left, row.right)) {
+    // Only the pairs carrying a mark. The mark is the exception to the mode,
+    // so this lists what was taken out of the preview in ordinary mode and
+    // what was put into it under skip-all.
+    if (filters.onlyMarked && !this.isPairMarkedForPreview(row.left, row.right)) {
       return false;
     }
     if (!this.isRowAboveThreshold(row, threshold)) {
@@ -3525,12 +3524,11 @@ export class KerningViewController extends ViewController {
         // Task 11, spec F10, ledger §8.5: this row's own hidden state,
         // never its members' (each "pair" item below carries its own
         // row.hidden, gated independently through pairRowVisible).
-        // A class rule is not a pair, so it has no mark of its own to skip
-        // with -- under "Only skipped suggestions" the table is a list of
-        // marked pairs, and a class summary is not one of them.
+        // A class rule is not a pair and carries no mark of its own, so it
+        // is not part of a list of marked pairs.
         return (
           tab === "default" &&
-          !filters.onlySkipped &&
+          !filters.onlyMarked &&
           item.group.summaryVisible &&
           rowVisibleForHiddenState(item.hidden, filters.showHidden)
         );
