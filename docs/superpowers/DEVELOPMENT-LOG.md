@@ -2095,11 +2095,28 @@ the adornment is the staleness test, so there is no watcher. A letterspacer
 replacement deletes the key rather than leaving it stale, which is what keeps
 the marker readable: stale always means the referenced glyph moved.
 
+**Three faults the first session in the editor found, and none of them was
+reachable by reading.**
+
+- **An icon-button is inline, so width and height do nothing.** Three of them
+  drew at their artwork's own size, one per full-width row. Every other icon row
+  in this app wraps its buttons in a flex box, which blockifies them; ours did
+  not, and the pattern was two files away.
+- **The panel does not rebuild for its own change**, which is right for a plain
+  number and wrong for a keyed field: the field's value is an expression and its
+  adornment is a live resolve, so both fell back to whatever the write left
+  behind until something else rebuilt the row. The row asks for the rebuild now
+  when it holds a key or is about to lose one.
+- **Arrow keys and a scrub never reach the expression evaluator.** They moved a
+  keyed margin and left the link claiming to own the number. The clear was
+  hanging off the evaluator rather than off the write, so it only fired for one
+  of the three ways a number gets in. **A rule written where the typing happens
+  misses every other way the same thing is said** -- the same shape as the
+  kerning view's rounding, which was owed at the seam and not at each reader.
+
 **Owed:** the manual matrices for tasks 2 to 10 of the plan, and spec section 7
-cases 1 to 19 against the running editor. Two known gaps, neither fixed here:
-arrow-keying a keyed field changes the margin without clearing the key, so the
-field then reads stale; and where Apply skips both sides of a glyph the panel
-reports nothing, which spec case 18 asks for.
+cases 1 to 19 against the running editor. One known gap left: where Apply skips
+both sides of a glyph the panel reports nothing, which spec case 18 asks for.
 
 ---
 
