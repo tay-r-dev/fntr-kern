@@ -56,7 +56,7 @@
 // ledger's Task 16 section for the exact line ranges to re-diff this
 // against if kerning.js changes computeFoldGroupStats, overrideDivergence,
 // isOverrideCandidate, wouldShadowClassCell, isLeftClassed, isRightClassed,
-// or the static medianOf.
+// or medianOfValues.
 //
 // Task 17 update (2026-09-09): computeFoldGroupStats' own copy below is
 // re-diffed against kerning.js's post-Task-17 version (NaN->null guard,
@@ -68,6 +68,7 @@ import { FontSourcesInstancer } from "@fontra/core/font-sources-instancer.js";
 import {
   createCache,
   medianDroppingOutliers,
+  medianOfValues,
   pairKey,
   setPairValue,
 } from "@fontra/core/autokern-cache.js";
@@ -124,13 +125,6 @@ class AggregateProbe {
     );
   }
 
-  // kerning.js:2752-2756 (static on the real class; kept as a static here too)
-  static medianOf(values) {
-    const sorted = [...values].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  }
-
   // kerning.js's post-Task-17 computeFoldGroupStats (re-diffed 2026-09-09).
   // `stale`/includedCount/excludedCount/null-guard added; spread (classSpread)
   // stays irrelevant to this task's contract questions, omitted from the probe.
@@ -148,13 +142,16 @@ class AggregateProbe {
       }
     }
 
+    // Re-diffed 2026-09-10: an outlier is measured against the members' own
+    // middle, not against the value stored at the class address.
+    const centre = medianOfValues(entries.map((entry) => entry.value));
     const samples = entries.map((entry) => ({
       value: entry.value,
-      divergence: this.overrideDivergence(entry.left, entry.right, entry.value),
+      divergence: entry.value - centre,
     }));
     const rawMedian = entries.length
       ? medianDroppingOutliers(samples, groupThreshold)
-      : AggregateProbe.medianOf(group.rows.map((row) => row.suggestion));
+      : medianOfValues(group.rows.map((row) => row.suggestion));
     const median = Number.isNaN(rawMedian) ? null : rawMedian;
     const { includedCount, excludedCount } = entries.length
       ? countMedianContributors(samples, groupThreshold)
@@ -313,30 +310,35 @@ describe("Task 16: aggregate class-median and candidate-detection contract, real
     expect(entryFor("Aacute", "V")).to.equal(undefined); // missing, absent
   });
 
-  it("computeFoldGroupStats: outlier-dropped median, groupThreshold=10 -- A x W (divergence -70) is dropped, the rest (all |divergence|<10) are averaged", () => {
+  it("computeFoldGroupStats: outlier-dropped median, groupThreshold=10 -- the member far from the others is dropped", () => {
     const probe = freshProbe(10);
     const stats = probe.computeFoldGroupStats(
       { leftClassName: "A", rightClassName: "V", rows: [] },
       10
     );
-    // Inliers: A x V (-82), Adieresis x V (-79), Adieresis x W (-83),
-    // Aacute x W (-28). Sorted: -83, -82, -79, -28. Even count -> average
-    // of the two middle values: (-82 + -79) / 2 = -80.5, then ROUNDED --
-    // this number is what "apply" writes to the font, and the kerning tool
-    // only ever writes whole units (issue 1). Math.round takes a .5 toward
-    // positive infinity, so -80.5 lands on -80.
-    expect(stats.median).to.equal(-80);
+    // Divergence is measured from the members' own middle (-82), not from
+    // whatever is stored at the class address. All 5 values: -82, -150, -79,
+    // -83, -28, so the divergences are 0, -68, 3, -1, 54. Inliers at a
+    // tolerance of 10: -82, -79, -83. Sorted: -83, -82, -79 -> -82.
+    //
+    // This is the number "apply" writes, and applying it does not move it:
+    // the members have not changed, so their middle has not either.
+    expect(stats.median).to.equal(-82);
   });
 
-  it("computeFoldGroupStats: when EVERY contributor is an outlier (groupThreshold below every real divergence), medianDroppingOutliers falls back to the unfiltered median of all 5 present entries", () => {
+  it("computeFoldGroupStats: a tolerance under every divergence keeps only the middle member itself", () => {
     const probe = freshProbe(10);
     const stats = probe.computeFoldGroupStats(
       { leftClassName: "A", rightClassName: "V", rows: [] },
-      0.5 // smaller than every fixture divergence (min |divergence| is 1)
+      0.5
     );
-    // All 5 present values: -82, -150, -79, -83, -28. Sorted:
-    // -150, -83, -82, -79, -28. Odd count -> middle value -82.
+    // Measured from the members' own middle, one member's divergence is
+    // exactly 0 -- itself. So it is the only inlier and the median is its
+    // own value, rather than the all-outliers fallback the old
+    // divergence-from-stored-value reading produced here.
     expect(stats.median).to.equal(-82);
+    expect(stats.includedCount).to.equal(1);
+    expect(stats.excludedCount).to.equal(4);
   });
 
   it("computeFoldGroupStats: zero cache coverage falls back to medianOf(group.rows), and Task 17's own guard turns the resulting NaN into null", () => {
@@ -367,18 +369,21 @@ describe("Task 16: aggregate class-median and candidate-detection contract, real
       { leftClassName: "A", rightClassName: "V", rows: [] },
       10
     );
-    // Same fixture as the outlier-dropped median test above: 4 inliers
-    // (A x V, Adieresis x V, Adieresis x W, Aacute x W), 1 outlier (A x W).
-    expect(stats.includedCount).to.equal(4);
-    expect(stats.excludedCount).to.equal(1);
+    // Same fixture as the outlier-dropped median test above: 3 inliers
+    // (A x V, Adieresis x V, Adieresis x W), 2 outliers (A x W, Aacute x W).
+    expect(stats.includedCount).to.equal(3);
+    expect(stats.excludedCount).to.equal(2);
   });
 
-  it("computeFoldGroupStats: when every contributor is an outlier, includedCount falls back to every sample (the same fallback the median itself takes)", () => {
+  it("computeFoldGroupStats: with no member inside the tolerance, every sample counts (the median's own fallback)", () => {
     const probe = freshProbe(10);
+    // Nothing is inside a tolerance of 0, not even the middle member: the
+    // test is strict. So the median falls back to all 5 values.
     const stats = probe.computeFoldGroupStats(
       { leftClassName: "A", rightClassName: "V", rows: [] },
-      0.5
+      0
     );
+    expect(stats.median).to.equal(-82);
     expect(stats.includedCount).to.equal(5);
     expect(stats.excludedCount).to.equal(0);
   });

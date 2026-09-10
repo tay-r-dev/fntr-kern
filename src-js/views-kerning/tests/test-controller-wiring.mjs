@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { aggregateStale, countMedianContributors } from "../src/results-model.js";
+import { medianDroppingOutliers, medianOfValues } from "@fontra/core/autokern-cache.js";
+import { classSpread } from "@fontra/core/autokern-classes.js";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
@@ -41,6 +44,11 @@ const Controller = vm.runInNewContext(`${classSource}\nKerningViewController;`, 
   ViewController: class {},
   ...inputTokens,
   retainVisible,
+  aggregateStale,
+  classSpread,
+  countMedianContributors,
+  medianDroppingOutliers,
+  medianOfValues,
   explicitPairExists,
   hiddenFromCacheEntry,
   selectRange,
@@ -812,4 +820,45 @@ test("a member inside the class tolerance is answered by the class", () => {
   assert.equal(row.suggestion, 12);
   assert.equal(row.delta, -17);
   assert.equal(row.isCandidate, true);
+});
+
+test("applying a class rule settles: the median does not move when it is written", () => {
+  const view = Object.create(Controller.prototype);
+  let stored = 0;
+  Object.assign(view, {
+    _autokernSourceIdentifier: "s1",
+    autokernParamsController: { model: { groupThreshold: 10 } },
+    kerningController: {
+      kernData: { groupsSide1: { a_R: ["a", "acircumflex"] }, groupsSide2: {} },
+      getGlyphPairValueForSource: () => stored,
+      getPairValueForSource: () => stored,
+      getPairValues: () => undefined,
+      leftPairGroupMapping: { a: "a_R", acircumflex: "a_R" },
+      rightPairGroupMapping: {},
+    },
+    autokernCache: new Map(),
+  });
+  const group = {
+    left: "@a_R",
+    right: "x",
+    leftClassName: "a_R",
+    rightClassName: null,
+    entries: [
+      { left: "a", right: "x", value: -10 },
+      { left: "acircumflex", right: "x", value: -10 },
+      { left: "adieresis", right: "x", value: -40 },
+    ],
+    rows: [],
+  };
+
+  // Nothing stored yet: the rule proposes the members' own middle.
+  const first = view.computeFoldGroupStats(group, 10);
+  assert.equal(first.median, -10);
+
+  // Apply it, and ask again. The members have not changed, so their middle
+  // has not either -- the rule now matches what is stored and the row has no
+  // leftover delta. Measured against the stored value, the outlier set moved
+  // when this number was written and the median came back different.
+  stored = -10;
+  assert.equal(view.computeFoldGroupStats(group, 10).median, -10);
 });

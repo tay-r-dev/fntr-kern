@@ -193,12 +193,30 @@ export function markPairOverride(cache, left, right, override = true) {
   return result;
 }
 
+// The plain median of a list of values, in whole units. Whole, because every
+// number that reaches "apply" is written to the font and the kerning tool
+// writes whole units only.
+export function medianOfValues(values) {
+  if (!values.length) {
+    return NaN;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return Math.round(
+    sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+  );
+}
+
 // KERNING-VIEW-BACKLOG.md item 8 part 6: median of a class-pair's member
 // values with override-candidate outliers dropped, so the aggregate a
 // class×class row shows isn't dragged by the very pairs a designer is likely
 // to override out. `samples` is Array<{ value, divergence }> -- `divergence`
-// is the member pair's own suggestion minus the value its class cascade
-// currently resolves to (computed by the caller, which owns the font lookup).
+// is the member pair's own suggestion minus the middle of the members' own
+// values (computed by the caller). Measured against the value stored at the
+// class address instead, this median moves whenever it is applied: writing it
+// changes the number the divergences are taken from, which changes which
+// members count, which changes the median. Then the row keeps a leftover
+// delta no number of applies can settle.
 // A sample whose |divergence| >= groupThreshold is an outlier (the same
 // magnitude test the view uses for "override candidate", part 2) and is left
 // out of the median. If EVERY sample is an outlier, fall back to the

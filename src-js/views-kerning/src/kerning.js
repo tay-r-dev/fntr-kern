@@ -90,6 +90,7 @@ import {
   markPairOverride,
   glyphNamesNotInCache,
   medianDroppingOutliers,
+  medianOfValues,
   pairKey,
   recalculateMetricsOnly,
 } from "@fontra/core/autokern-cache.js";
@@ -3893,13 +3894,20 @@ export class KerningViewController extends ViewController {
     // unfiltered median if EVERY member is an outlier. `classClassRowVisible`
     // and the expanded child rows (group.rows) are unaffected -- only this
     // aggregate changes.
+    // An outlier is a member that sits far from the OTHER MEMBERS, not one
+    // that sits far from whatever is currently stored at the class address.
+    // Measured against the stored value, this median chased its own tail:
+    // applying it changed the value the divergences were taken from, a
+    // different set of members then counted, and the median moved -- so the
+    // class row kept showing a leftover delta after every apply.
+    const centre = medianOfValues(entries.map((entry) => entry.value));
     const samples = entries.map((entry) => ({
       value: entry.value,
-      divergence: this.overrideDivergence(entry.left, entry.right, entry.value),
+      divergence: entry.value - centre,
     }));
     const rawMedian = entries.length
       ? medianDroppingOutliers(samples, groupThreshold)
-      : KerningViewController.medianOf(group.rows.map((row) => row.suggestion));
+      : medianOfValues(group.rows.map((row) => row.suggestion));
     // (medianOf is defined below in the class-panel block -- it was called
     // here and never declared, so this fallback branch threw instead of
     // falling back. Unreachable through the UI today, per the note below,
@@ -4608,21 +4616,6 @@ export class KerningViewController extends ViewController {
     this.renderClassSwatchStrip();
     this.refreshFontModeClassColors?.();
     this.renderPairTable();
-  }
-
-  // The plain median, whole units. `medianDroppingOutliers` is the ordinary
-  // reducer (it drops override-candidate outliers); this is only the
-  // no-cache-coverage fallback above. Rounded for the same reason that one
-  // is: this number reaches "apply", and the kerning tool writes whole units.
-  static medianOf(values) {
-    if (!values.length) {
-      return NaN;
-    }
-    const sorted = [...values].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return Math.round(
-      sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
-    );
   }
 
   // ---------------------------------------------------------------------
