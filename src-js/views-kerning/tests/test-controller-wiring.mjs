@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import * as inputTokens from "../src/input-tokens.js";
-import { retainVisible } from "../src/results-selection.js";
+import { retainVisible, selectRange, selectRow } from "../src/results-selection.js";
 import { layoutPairPreview, normalizePairsPerRow } from "../src/pair-preview-layout.js";
 import {
   passesNumericFilters,
@@ -39,6 +39,8 @@ const Controller = vm.runInNewContext(`${classSource}\nKerningViewController;`, 
   ViewController: class {},
   ...inputTokens,
   retainVisible,
+  selectRange,
+  selectRow,
   passesNumericFilters,
   pairMatchesGlyphset,
   rowMatchesRelationships,
@@ -708,4 +710,34 @@ test("a mark on a class rule answers for every pair the rule covers", async () =
   // A pair outside the rule does not.
   assert.equal(view.isPairExcludedFromPreview("A", "o"), false);
   assert.equal(view.isPairExcludedFromPreview("T", "y"), false);
+});
+
+test("shift chains rows, ctrl picks them out, a plain click resets the anchor", () => {
+  const view = Object.create(Controller.prototype);
+  const order = ["r1", "r2", "r3", "r4"];
+  Object.assign(view, {
+    resultSelection: { selected: new Set() },
+    loadedPairTableRowIds: () => order,
+    applyResultSelectionToDom() {},
+    syncSelectAllCheckboxes() {},
+    refreshResetArmState() {},
+    updatePairPreview() {},
+  });
+  const selected = () => [...view.resultSelection.selected].join(",");
+
+  view.selectRowFromClick("r2", {});
+  assert.equal(selected(), "r2");
+  view.selectRowFromClick("r4", { shiftKey: true });
+  assert.equal(selected(), "r2,r3,r4");
+  // Ctrl takes one back out of the chain without touching the rest.
+  view.selectRowFromClick("r3", { ctrlKey: true });
+  assert.equal(selected(), "r2,r4");
+  // Ctrl also moves the anchor, so the next chain runs from there.
+  view.selectRowFromClick("r1", { metaKey: true });
+  assert.equal(selected(), "r2,r4,r1");
+  view.selectRowFromClick("r2", { shiftKey: true });
+  assert.equal(selected(), "r1,r2");
+  // A plain click starts again.
+  view.selectRowFromClick("r3", {});
+  assert.equal(selected(), "r3");
 });

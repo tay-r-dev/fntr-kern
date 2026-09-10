@@ -3,11 +3,12 @@ import {
   deselectAll,
   pressReset,
   retainVisible,
+  selectRange,
   selectRow,
 } from "../src/results-selection.js";
 
 describe("results-selection", () => {
-  it("ordinary click selects alone; shift-click toggles individually, never a range", () => {
+  it("ordinary click selects alone; ctrl-click toggles individually", () => {
     let s = { selected: new Set() };
     s = selectRow(s, "a", false);
     expect([...s.selected]).to.deep.equal(["a"]);
@@ -19,6 +20,22 @@ describe("results-selection", () => {
     // plain click replaces the whole selection
     s = selectRow(s, "b", false);
     expect([...s.selected]).to.deep.equal(["b"]);
+  });
+
+  it("shift-click chains the run from the anchor, in draw order", () => {
+    const order = ["a", "b", "c", "d"];
+    let s = selectRow({ selected: new Set() }, "b", false);
+    s = selectRange(s, "b", "d", order);
+    expect([...s.selected]).to.deep.equal(["b", "c", "d"]);
+    // A second chain from the same anchor can shrink the run it just grew.
+    s = selectRange(s, "b", "c", order);
+    expect([...s.selected]).to.deep.equal(["b", "c"]);
+    // Backwards from the anchor is the same run.
+    s = selectRange(s, "c", "a", order);
+    expect([...s.selected]).to.deep.equal(["a", "b", "c"]);
+    // An anchor that is no longer on screen leaves the selection alone.
+    s = selectRange(s, "z", "a", order);
+    expect([...s.selected]).to.deep.equal(["a", "b", "c"]);
   });
 
   it("retainVisible drops selection for rows no longer displayed", () => {

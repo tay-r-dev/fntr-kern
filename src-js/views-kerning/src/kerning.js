@@ -203,6 +203,7 @@ import {
   deselectAll,
   pressReset,
   retainVisible,
+  selectRange,
   selectRow,
 } from "./results-selection.js";
 
@@ -2870,6 +2871,32 @@ export class KerningViewController extends ViewController {
     return this.autokernSource;
   }
 
+  // One click, one rule, for a pair row and a class-rule row alike. Shift
+  // chains: the run from the anchor to this row, in the order the table
+  // draws. Ctrl or Cmd picks one out without disturbing the rest. A plain
+  // click selects this row alone and becomes the anchor for the next chain.
+  selectRowFromClick(id, event) {
+    if (event.shiftKey && this._selectionAnchorId) {
+      this.resultSelection = selectRange(
+        this.resultSelection,
+        this._selectionAnchorId,
+        id,
+        this.loadedPairTableRowIds()
+      );
+    } else {
+      this.resultSelection = selectRow(
+        this.resultSelection,
+        id,
+        event.ctrlKey || event.metaKey
+      );
+      this._selectionAnchorId = id;
+    }
+    this.applyResultSelectionToDom();
+    this.syncSelectAllCheckboxes();
+    this.refreshResetArmState();
+    this.updatePairPreview();
+  }
+
   // Every row currently in the table, by row ID. renderPairTable rebuilds
   // the one tbody from scratch, so what is in the DOM is what is loaded.
   loadedPairTableRowIds() {
@@ -4108,11 +4135,7 @@ export class KerningViewController extends ViewController {
       if (event.target.closest("input, button")) {
         return;
       }
-      this.resultSelection = selectRow(this.resultSelection, id, event.shiftKey);
-      this.applyResultSelectionToDom();
-      this.syncSelectAllCheckboxes();
-      this.refreshResetArmState();
-      this.updatePairPreview();
+      this.selectRowFromClick(id, event);
     });
 
     const leftCell = document.createElement("td");
@@ -5760,32 +5783,19 @@ export class KerningViewController extends ViewController {
       this.resultSelection.selected.has(id)
     );
 
-    // WORKSTREAM 16, spec §6: "Clicking a row in the table selects that pair
-    // and flips the chip to `pair`." Ignores clicks on the row's own
-    // checkbox/junk-mark button (event.target.closest guard) so selecting
-    // for apply/reset and marking junk are unaffected -- only a click on the
-    // row itself (its plain cells) selects the pair for the scene.
+    // A click on the row's plain cells selects it (selectRowFromClick holds
+    // the one rule for shift, ctrl and plain). A click on one of the row's
+    // own controls is that control's, not a selection change, which is what
+    // the closest() guard below keeps apart.
     //
-    // Task 3 (spec F04 table): ordinary click highlights this row alone;
-    // Shift-click adds/removes it from the highlighted set, never a range.
-    // Highlight is the preview-selection layer -- separate from the tick
-    // (action-target) layer below. Task 7: updatePairPreview reads the
-    // highlighted set itself (every currently highlighted row's pair,
-    // together -- spec F04: "Highlighted rows populate pair-mode preview
-    // together"), so both an ordinary click and a Shift-click feed pair
-    // preview now; only an ordinary click also flips the chip to `pair`
-    // (WORKSTREAM 16, spec §6), matching the pre-existing single-pair
-    // click behavior instead of forcing every Shift-click to jump the
-    // designer out of whatever mode they're in.
+    // Every selected row feeds the pair preview together (spec F04:
+    // "Highlighted rows populate pair-mode preview together"). None of them
+    // switches the preview mode -- that is the chips' job.
     tr.addEventListener("click", (event) => {
       if (event.target.closest("input, button")) {
         return;
       }
-      this.resultSelection = selectRow(this.resultSelection, id, event.shiftKey);
-      this.applyResultSelectionToDom();
-      this.syncSelectAllCheckboxes();
-      this.refreshResetArmState();
-      this.updatePairPreview();
+      this.selectRowFromClick(id, event);
     });
 
     // Glyph L (name) / Current / Proposed / Delta / Glyph R (name) /

@@ -11,9 +11,8 @@
 // independently. Click and shift-click say enough, so what is selected is
 // what an action acts on, and a row carries no checkbox at all.
 
-// Ordinary click: select this row alone. Shift-click (`additive`): toggle
-// this row in/out of the selection, never a range (spec F04 table, row 2:
-// "never select an intervening range").
+// Ordinary click: select this row alone. With `additive` (Ctrl or Cmd):
+// toggle this row in and out of the selection, leaving the rest alone.
 export function selectRow(state, id, additive) {
   const selected = additive ? new Set(state.selected) : new Set();
   if (additive && selected.has(id)) {
@@ -22,6 +21,20 @@ export function selectRow(state, id, additive) {
     selected.add(id);
   }
   return { selected };
+}
+
+// Shift-click: the run from the anchor to here, over the order the rows are
+// drawn in. Replaces the selection rather than adding to it, which is what
+// makes a second shift-click able to shrink the run it just grew. An anchor
+// or a target that is not on screen leaves the selection as it was.
+export function selectRange(state, anchorId, id, orderedIds) {
+  const from = orderedIds.indexOf(anchorId);
+  const to = orderedIds.indexOf(id);
+  if (from < 0 || to < 0) {
+    return { selected: new Set(state.selected) };
+  }
+  const [low, high] = from <= to ? [from, to] : [to, from];
+  return { selected: new Set(orderedIds.slice(low, high + 1)) };
 }
 
 // F25: a row that leaves the displayed result set loses its selection.
