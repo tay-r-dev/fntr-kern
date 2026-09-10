@@ -639,13 +639,12 @@ when the doc was last verified, on 2026-07-22. Re-check it against the code befo
    return `null`. We verified this again on 2026-07-28. So a rib-only marquee selection draws a
    transform box that does nothing. The skeleton **point** entry does implement the method, and
    the mirror side-swap hooks into that implementation. Copy it.
-2. **Letterspacer-to-skeleton coupling, and the gap beside it.** Letterspacer's Apply _does_ move
-   the skeleton with the sidebearing (`applySpacingToLayerGlyph` in `panel-letterspacer.js`). The
-   selection-info margin path does **not**, and the metrics-keys Update and Update-all passes
-   inherit that gap: keying a left margin on a skeleton glyph and pressing Update shifts the
-   outline and leaves the skeleton behind. Deliberately out of scope of the metrics-keys spec
-   (§9); the fix belongs in the shared margin setters, `setLeftMarginOnLayer` in
-   `panel-selection-info.js`, which is now the only place that math lives.
+2. **Letterspacer-to-skeleton coupling — closed.** Both writers move the skeleton with the
+   sidebearing now. Letterspacer's Apply always did (`applySpacingToLayerGlyph` in
+   `panel-letterspacer.js`); the selection-info margin path did not, so typing a left margin on a
+   skeleton glyph shifted the outline and left the centerline behind, and the metrics-keys Update
+   and Update-all passes inherited it. `setLeftMarginOnLayer` in `panel-selection-info.js` is the
+   one place that math lives and it carries the skeleton through `editSkeleton` (rail R-C).
 3. **`skeleton-generator.js` is 4,730 lines.** The port justifies it, but it is the single
    largest file in the fork. It is the one place where defect **P6** (§9, monoliths) still bites.
    We built the serif the other way as a deliberate counter-example. Its geometry is a separate

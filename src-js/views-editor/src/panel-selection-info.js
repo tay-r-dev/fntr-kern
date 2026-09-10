@@ -16,6 +16,7 @@ import {
 } from "@fontra/core/metrics-keys.js";
 import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import { rectFromPoints, rectSize, unionRect } from "@fontra/core/rectangle.ts";
+import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
 import { compute, nameCapture } from "@fontra/core/simple-compute.js";
 import { getDecomposedIdentity } from "@fontra/core/transform.js";
 import {
@@ -36,6 +37,7 @@ import { dialog } from "@fontra/web-components/modal-dialog.js";
 import { Form } from "@fontra/web-components/ui-form.js";
 import LetterspacerPanel from "./panel-letterspacer.js";
 import SkeletonDefaultsPanel from "./panel-skeleton-defaults.js";
+import { editSkeleton } from "./skeleton-editing.js";
 import Panel from "./panel.js";
 
 export default class SelectionInfoPanel extends Panel {
@@ -1605,7 +1607,30 @@ export function setLeftMarginOnLayer(layerGlyph, layerGlyphController, value) {
     compo.transformation.translateX += translationX;
   }
   layerGlyph.xAdvance += translationX;
+  translateSkeletonWithPath(layerGlyph, translationX);
   return true;
+}
+
+// Setting the left margin moves the outline, and on a skeleton glyph the
+// outline is derived: leave the skeleton where it was and the next edit
+// regenerates the contours back at the old place, so the glyph springs back and
+// the centerline no longer lies inside its own stroke. The skeleton travels
+// with it, through the one write path (rail R-C).
+//
+// This is not a second shift of the same points. editSkeleton regenerates the
+// generated contours from the translated skeleton and writes absolute
+// positions, so it replaces the coordinates the loop above already moved rather
+// than adding to them. The letterspacer's Apply has always done this; the
+// margin field never did, and Update and Update-all inherited the gap.
+function translateSkeletonWithPath(layerGlyph, translationX) {
+  if (!translationX || !getSkeletonData(layerGlyph)) {
+    return;
+  }
+  editSkeleton(layerGlyph, (skeletonData) => {
+    const moved = translateSkeletonData(skeletonData, translationX, 0);
+    skeletonData.contours = moved.contours;
+    skeletonData.nextId = moved.nextId;
+  });
 }
 
 // The single right-margin setter. Returns whether it wrote.

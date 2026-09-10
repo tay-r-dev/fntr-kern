@@ -2130,6 +2130,21 @@ Update and the font-wide sweep reach further still: they write every source,
 including ones nobody has opened. **A guard on what the designer can see does
 not cover what the write can reach.**
 
+**Setting a left margin left the skeleton behind, and had done since before
+this feature.** The margin field translates the outline; on a skeleton glyph the
+outline is derived, so the centerline stayed where it was and the next edit
+regenerated the contours back at the old place -- the glyph springs back, and in
+between the centerline is not inside its own stroke. Letterspacer's Apply had
+carried the skeleton all along; the field never did, and Update and Update-all
+inherited it. The plan filed this as out of scope and the designer asked for it,
+which is the right call: **two writers of one number that disagree about what
+travels with it is not a gap, it is a fault waiting for whoever uses both.**
+
+Translating the skeleton after the coordinate loop is not a second shift of the
+same points. Regeneration writes absolute positions, so it replaces the
+generated coordinates the loop moved rather than adding to them -- the property
+letterspacer's own comment records.
+
 **Owed:** the manual matrices for tasks 2 to 10 of the plan, and spec section 7
 cases 1 to 19 against the running editor. One known gap left: where Apply skips
 both sides of a glyph the panel reports nothing, which spec case 18 asks for.
