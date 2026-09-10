@@ -387,6 +387,33 @@ export default class SelectionInfoPanel extends Panel {
               },
             }),
           });
+          const isOverridden = metricsKeyDisplay[side].level === "source";
+          formContents.push({
+            type: "single-icon",
+            element: html.createDomElement("icon-button", {
+              "src": isOverridden
+                ? "/tabler-icons/link.svg"
+                : "/tabler-icons/link-plus.svg",
+              "style": `width: 1.1em; height: 1.1em; opacity: ${
+                isOverridden ? "1" : "0.6"
+              };`,
+              "disabled": glyphLocked || this.fontController.readOnly,
+              "data-tooltip": translate(
+                isOverridden
+                  ? "sidebar.selection-info.metrics-key.reset-to-shared.tooltip"
+                  : "sidebar.selection-info.metrics-key.override.tooltip"
+              ),
+              "data-tooltipposition": "left",
+              "onclick": async () => {
+                await this._toggleMetricsSourceOverride(
+                  glyphName,
+                  varGlyphController,
+                  side
+                );
+                await this.update();
+              },
+            }),
+          });
         }
         formContents.push({ type: "single-icon", element: this.letterspacerHost });
         formContents.push({
@@ -1054,6 +1081,39 @@ export default class SelectionInfoPanel extends Panel {
       glyphName,
       varGlyphController
     );
+  }
+
+  // Detaches this source's side from the shared key, or reattaches it. The new
+  // override is seeded from the shared expression so the value does not jump.
+  async _toggleMetricsSourceOverride(glyphName, varGlyphController, side) {
+    if (this.fontController.readOnly) {
+      return;
+    }
+    const layerName = this.sceneController.sceneSettings.editLayerName;
+    const layerGlyph = varGlyphController.glyph.layers[layerName]?.glyph;
+    if (!layerGlyph) {
+      return;
+    }
+    const isOverridden = getSidebearingKey(layerGlyph, side) !== undefined;
+    const sharedExpression = getSidebearingKey(varGlyphController.glyph, side);
+
+    if (!isOverridden && sharedExpression === undefined) {
+      // Nothing to detach from.
+      return;
+    }
+
+    await this.sceneController.editNamedGlyphAndRecordChanges(glyphName, (glyph) => {
+      const targetLayerGlyph = glyph.layers[layerName]?.glyph;
+      if (!targetLayerGlyph) {
+        return "metrics key source override";
+      }
+      if (isOverridden) {
+        deleteSidebearingKey(targetLayerGlyph, side);
+        return "reset metrics key to shared";
+      }
+      setSidebearingKey(targetLayerGlyph, side, sharedExpression);
+      return "override metrics key for source";
+    });
   }
 
   // Drops the key at the level that governs this source, leaving the applied
