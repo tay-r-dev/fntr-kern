@@ -258,6 +258,7 @@ export default class LetterspacerPanel extends Panel {
     // Apply writes margins by its own route, so a metrics-keyed side has two
     // writers. Default is to leave a keyed side alone (spec section 4.10).
     this.mayReplaceMetricsKeys = false;
+    this.metricsKeyHeldMessage = "";
 
     // Track current and calculated spacing values
     this.currentLSB = 0;
@@ -346,6 +347,7 @@ export default class LetterspacerPanel extends Panel {
     try {
       await this.loadAlgorithmEnabled();
       await this.loadMayReplaceMetricsKeys();
+      await this.updateMetricsKeyHeldMessage();
       if (this.algorithmEnabled) {
         await this.loadPersistedParams();
       }
@@ -440,6 +442,16 @@ export default class LetterspacerPanel extends Panel {
             label: `Calculated: LSB=${this.formatValue(this.calculatedLSB)}, RSB=${this.formatValue(this.calculatedRSB)}`,
             class: "calculated-values",
           },
+
+          ...(this.metricsKeyHeldMessage
+            ? [
+                {
+                  type: "header",
+                  label: this.metricsKeyHeldMessage,
+                  class: "metrics-key-held",
+                },
+              ]
+            : []),
 
           { type: "divider" },
 
@@ -926,6 +938,44 @@ export default class LetterspacerPanel extends Panel {
     const label = this.infoForm.contentElement.querySelector(".bulk-status");
     if (label) {
       label.textContent = this.bulkStatus;
+    }
+  }
+
+  // Apply skipping a keyed side is the default and it is silent, which reads as
+  // Apply being broken. The panel says which side is held and why, standing
+  // beside the switch that changes the policy.
+  async updateMetricsKeyHeldMessage() {
+    this.metricsKeyHeldMessage = "";
+    if (this.mayReplaceMetricsKeys) {
+      return;
+    }
+    const varGlyph =
+      await this.sceneController.sceneModel.getSelectedVariableGlyphController();
+    if (!varGlyph) {
+      return;
+    }
+    const layerName = this.sceneController.sceneSettings.editLayerName;
+    const layerGlyph = varGlyph.glyph.layers[layerName]?.glyph;
+    const held = {
+      left:
+        !!this.params.applyLSB &&
+        !!getEffectiveMetricsKey(varGlyph.glyph, layerGlyph, "left"),
+      right:
+        !!this.params.applyRSB &&
+        !!getEffectiveMetricsKey(varGlyph.glyph, layerGlyph, "right"),
+    };
+    if (held.left && held.right) {
+      this.metricsKeyHeldMessage = translate(
+        "sidebar.letterspacer.metrics-key-held.both"
+      );
+    } else if (held.left) {
+      this.metricsKeyHeldMessage = translate(
+        "sidebar.letterspacer.metrics-key-held.left"
+      );
+    } else if (held.right) {
+      this.metricsKeyHeldMessage = translate(
+        "sidebar.letterspacer.metrics-key-held.right"
+      );
     }
   }
 

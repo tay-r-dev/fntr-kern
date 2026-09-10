@@ -545,6 +545,12 @@ export const strings = {
   "sidebar.letterspacer.apply-lsb": "Apply LSB",
   "sidebar.letterspacer.apply-rsb": "Apply RSB",
   "sidebar.letterspacer.may-replace-metrics-keys": "Replace metrics keys",
+  "sidebar.letterspacer.metrics-key-held.both":
+    "Apply skips both sidebearings: metrics keys hold them.",
+  "sidebar.letterspacer.metrics-key-held.left":
+    "Apply skips the left sidebearing: a metrics key holds it.",
+  "sidebar.letterspacer.metrics-key-held.right":
+    "Apply skips the right sidebearing: a metrics key holds it.",
   "sidebar.letterspacer.reference": "Reference",
   "sidebar.letterspacer.bulk.title": "Bulk apply",
   "sidebar.letterspacer.bulk.glyphset": "Glyph set",

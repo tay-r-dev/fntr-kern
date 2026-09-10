@@ -1706,20 +1706,36 @@ export async function resolveMetricsExpression(
     }
   }
 
+  // The main layer is the glyph's own editing layer, and it is not guaranteed to
+  // be one of the layers just resolved: a variant layer carries no source
+  // location, and during startup there is no editing layer at all. Resolving
+  // against nothing throws "Undefined name", so fall back to any layer that did
+  // resolve, and report rather than throw where none did.
+  const mainVariables =
+    layerVariables[mainLayerName] || Object.values(layerVariables)[0];
+  if (!mainVariables) {
+    return { error: `cannot resolve at this location: ${expression}` };
+  }
+
+  let mainValue;
+  try {
+    mainValue = ensureFiniteNumber(compute(expression, undefined, mainVariables));
+  } catch (e) {
+    return { error: e.message };
+  }
+
   return {
     getValue: (layerName) => {
       try {
         return ensureFiniteNumber(
-          compute(expression, undefined, layerVariables[layerName])
+          compute(expression, undefined, layerVariables[layerName] || mainVariables)
         );
       } catch (e) {
         console.error(e);
       }
       return 0;
     },
-    value: ensureFiniteNumber(
-      compute(expression, undefined, layerVariables[mainLayerName])
-    ),
+    value: mainValue,
   };
 }
 
