@@ -2,6 +2,13 @@ import { applicationSettingsController } from "@fontra/core/application-settings
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import {
+  deleteSidebearingKey,
+  getSidebearingKey,
+  parseMetricsKey,
+  setSidebearingKey,
+  SIDE_METRIC_PROPERTY,
+} from "@fontra/core/metrics-keys.js";
 import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import { rectFromPoints, rectSize, unionRect } from "@fontra/core/rectangle.ts";
 import { compute, nameCapture } from "@fontra/core/simple-compute.js";
@@ -34,6 +41,7 @@ export default class SelectionInfoPanel extends Panel {
     super(editorController);
     this.throttledUpdate = throttleCalls((senderID) => this.update(senderID), 100);
     this.sceneController = this.editorController.sceneController;
+    this._pendingMetricsKeyEdit = null;
     this.letterspacerPanel = new LetterspacerPanel(this.editorController);
     if (this.letterspacerHost) {
       this.letterspacerHost.appendChild(this.letterspacerPanel);
@@ -261,12 +269,10 @@ export default class SelectionInfoPanel extends Panel {
             value: glyphController.leftMargin,
             numDigits: 1,
             disabled: glyphController.leftMargin == undefined,
-            evaluateExpression: async (expression) =>
-              await this._evaluateMetricsExpression(
-                expression,
-                varGlyphController,
-                "leftMargin"
-              ),
+            evaluateExpression: async (input) =>
+              await this._evaluateSidebearingInput(input, varGlyphController, "left"),
+            recordExtraChanges: (glyph, layerInfo) =>
+              this._recordPendingMetricsKey(glyph, layerInfo, "left"),
             getValue: (layerGlyph, layerGlyphController, fieldItem) => {
               return layerGlyphController.leftMargin;
             },
@@ -278,12 +284,10 @@ export default class SelectionInfoPanel extends Panel {
             key: '["rightMargin"]',
             value: glyphController.rightMargin,
             numDigits: 1,
-            evaluateExpression: async (expression) =>
-              await this._evaluateMetricsExpression(
-                expression,
-                varGlyphController,
-                "rightMargin"
-              ),
+            evaluateExpression: async (input) =>
+              await this._evaluateSidebearingInput(input, varGlyphController, "right"),
+            recordExtraChanges: (glyph, layerInfo) =>
+              this._recordPendingMetricsKey(glyph, layerInfo, "right"),
             disabled: glyphController.rightMargin == undefined,
             getValue: (layerGlyph, layerGlyphController, fieldItem) => {
               return layerGlyphController.rightMargin;
@@ -949,6 +953,84 @@ export default class SelectionInfoPanel extends Panel {
     );
   }
 
+  // Field entry point for a sidebearing. Decides whether the input creates a
+  // persistent link (leading "=") or is a one-shot value, records the intent,
+  // and returns the resolved value for the normal apply path.
+  async _evaluateSidebearingInput(input, varGlyphController, side) {
+    const metricProperty = SIDE_METRIC_PROPERTY[side];
+    const parsed = parseMetricsKey(input);
+
+    if (parsed.error) {
+      this._pendingMetricsKeyEdit = null;
+      return { error: parsed.error };
+    }
+
+    if (!parsed.isKey) {
+      // A plain number or a bare one-shot reference breaks any existing link
+      // at the level this field is bound to (spec section 4.4).
+      this._pendingMetricsKeyEdit = { side, action: "clear" };
+      return await this._evaluateMetricsExpression(
+        input,
+        varGlyphController,
+        metricProperty
+      );
+    }
+
+    const result = await this._evaluateMetricsExpression(
+      parsed.expression,
+      varGlyphController,
+      metricProperty
+    );
+    if (result?.error) {
+      this._pendingMetricsKeyEdit = null;
+      return result;
+    }
+
+    this._pendingMetricsKeyEdit = {
+      side,
+      action: "set",
+      expression: parsed.expression,
+    };
+    return result;
+  }
+
+  // Runs inside applyNewValue's recordChanges callback, so the key and the
+  // margin land in one undo step. Writes at the level the field is bound to:
+  // a source override if this side already has one, otherwise the shared key.
+  _recordPendingMetricsKey(glyph, layerInfo, side) {
+    const pending = this._pendingMetricsKeyEdit;
+    this._pendingMetricsKeyEdit = null;
+    if (!pending || pending.side !== side) {
+      return;
+    }
+
+    const overriddenLayerNames = layerInfo
+      .map(({ layerName }) => layerName)
+      .filter(
+        (layerName) =>
+          getSidebearingKey(glyph.layers[layerName]?.glyph, side) !== undefined
+      );
+
+    if (pending.action === "clear") {
+      if (overriddenLayerNames.length) {
+        for (const layerName of overriddenLayerNames) {
+          deleteSidebearingKey(glyph.layers[layerName].glyph, side);
+        }
+      } else {
+        deleteSidebearingKey(glyph, side);
+      }
+      return;
+    }
+
+    if (overriddenLayerNames.length) {
+      for (const layerName of overriddenLayerNames) {
+        setSidebearingKey(glyph.layers[layerName].glyph, side, pending.expression);
+      }
+    } else {
+      setSidebearingKey(glyph, side, pending.expression);
+    }
+  }
+
   _getEditingLocations(varGlyphController) {
     const layerNames = new Set(this.sceneController.editingLayerNames);
     const locations = {};
@@ -1091,6 +1173,9 @@ function applyNewValue(glyph, layerInfo, value, fieldItem, absolute) {
         );
       }
     }
+    // Optional per-field hook: lets a field record extra changes (eg. a metrics
+    // key) inside the same undo step as the value it just applied.
+    fieldItem.recordExtraChanges?.(glyph, layerInfo, value);
   });
 }
 
