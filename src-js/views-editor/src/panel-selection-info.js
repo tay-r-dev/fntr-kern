@@ -47,6 +47,8 @@ export default class SelectionInfoPanel extends Panel {
     this.throttledUpdate = throttleCalls((senderID) => this.update(senderID), 100);
     this.sceneController = this.editorController.sceneController;
     this._pendingMetricsKeyEdit = null;
+    this._metricsUnlinkConfirm = null;
+    this._metricsUnlinkConfirmGlyph = null;
     this.letterspacerPanel = new LetterspacerPanel(this.editorController);
     if (this.letterspacerHost) {
       this.letterspacerHost.appendChild(this.letterspacerPanel);
@@ -168,6 +170,11 @@ export default class SelectionInfoPanel extends Panel {
     await this.fontController.ensureInitialized;
 
     const glyphName = this.sceneController.sceneSettings.selectedGlyphName;
+    if (this._metricsUnlinkConfirmGlyph !== glyphName) {
+      // Never leave a button armed across a glyph switch.
+      this._metricsUnlinkConfirm = null;
+      this._metricsUnlinkConfirmGlyph = glyphName;
+    }
     const glyphController = await this.sceneController.sceneModel.getGlyphInstance(
       glyphName,
       this.sceneController.sceneSettings.editLayerName
@@ -346,6 +353,36 @@ export default class SelectionInfoPanel extends Panel {
               "data-tooltipposition": "left",
               "onclick": async () => {
                 await this._updateMetricsForGlyph(glyphName, varGlyphController);
+                await this.update();
+              },
+            }),
+          });
+        }
+        for (const side of ["left", "right"]) {
+          if (!metricsKeyDisplay[side]) {
+            continue;
+          }
+          const isConfirming = this._metricsUnlinkConfirm === side;
+          formContents.push({
+            type: "single-icon",
+            element: html.createDomElement("icon-button", {
+              "src": isConfirming ? "/tabler-icons/x.svg" : "/tabler-icons/unlink.svg",
+              "style": "width: 1.1em; height: 1.1em;",
+              "disabled": glyphLocked || this.fontController.readOnly,
+              "data-tooltip": translate(
+                isConfirming
+                  ? "sidebar.selection-info.metrics-key.unlink.confirm"
+                  : "sidebar.selection-info.metrics-key.unlink.tooltip"
+              ),
+              "data-tooltipposition": "left",
+              "onclick": async () => {
+                if (this._metricsUnlinkConfirm !== side) {
+                  this._metricsUnlinkConfirm = side;
+                  await this.update();
+                  return;
+                }
+                this._metricsUnlinkConfirm = null;
+                await this._unlinkMetricsKey(glyphName, varGlyphController, side);
                 await this.update();
               },
             }),
@@ -1017,6 +1054,33 @@ export default class SelectionInfoPanel extends Panel {
       glyphName,
       varGlyphController
     );
+  }
+
+  // Drops the key at the level that governs this source, leaving the applied
+  // margin in place. A source override is removed in preference to the shared
+  // key, matching "reset to shared" (spec sections 4.4 and 4.9).
+  async _unlinkMetricsKey(glyphName, varGlyphController, side) {
+    if (this.fontController.readOnly) {
+      return;
+    }
+    const layerName = this.sceneController.sceneSettings.editLayerName;
+    const effective = getEffectiveMetricsKey(
+      varGlyphController.glyph,
+      varGlyphController.glyph.layers[layerName]?.glyph,
+      side
+    );
+    if (!effective) {
+      return;
+    }
+
+    await this.sceneController.editNamedGlyphAndRecordChanges(glyphName, (glyph) => {
+      if (effective.level === "source") {
+        deleteSidebearingKey(glyph.layers[layerName]?.glyph, side);
+      } else {
+        deleteSidebearingKey(glyph, side);
+      }
+      return "unlink metrics key";
+    });
   }
 
   async _updateMetricsForGlyph(glyphName, varGlyphController) {
