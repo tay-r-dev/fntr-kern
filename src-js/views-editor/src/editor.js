@@ -139,7 +139,11 @@ import GlyphSearchPanel from "./panel-glyph-search.js";
 import MarkersPanel from "./panel-markers.js";
 import ReferenceFontPanel from "./panel-reference-font.js";
 import RelatedGlyphsPanel from "./panel-related-glyphs.js";
-import SelectionInfoPanel from "./panel-selection-info.js";
+import SelectionInfoPanel, {
+  glyphHasAnyMetricsKey,
+  MARGIN_SETTERS,
+  resolveMetricsKeysForGlyph,
+} from "./panel-selection-info.js";
 import SkeletonParametersPanel from "./panel-skeleton-parameters.js";
 import TextEntryPanel from "./panel-text-entry.js";
 import TransformationPanel from "./panel-transformation.js";
@@ -645,6 +649,13 @@ export class EditorController extends ViewController {
         () => this.addBackgroundImageFromFileSystem(),
         () => this.canPlaceBackgroundImage()
       );
+
+      registerAction(
+        "action.glyph.update-all-metrics",
+        { topic },
+        () => this.doUpdateAllMetrics(),
+        () => !this.fontController.readOnly
+      );
     }
 
     {
@@ -871,6 +882,8 @@ export class EditorController extends ViewController {
       { actionIdentifier: "action.glyph.add-source" },
       { actionIdentifier: "action.glyph.delete-source" },
       { actionIdentifier: "action.glyph.edit-glyph-axes" },
+      MenuItemDivider,
+      { actionIdentifier: "action.glyph.update-all-metrics" },
       MenuItemDivider,
       ...this.glyphEditContextMenuItems,
     ];
@@ -3408,6 +3421,121 @@ export class EditorController extends ViewController {
       // TODO: Font Guidelines selection
     }
     this.sceneController.selection = newSelection;
+  }
+
+  // Font-wide, explicit and confirmed: rewrites every keyed sidebearing in the
+  // font. Chains (a<-b, b<-c) settle one link per pass, so the sweep runs to a
+  // fixpoint bounded by the glyph count (spec section 4.3).
+  //
+  // It composes one change over many glyphs, the same way the letterspacer's
+  // bulk apply does, and like it pushes no undo record: the undo stacks are
+  // per glyph and `pushUndoRecord` refuses a change that names more than one.
+  async doUpdateAllMetrics() {
+    if (this.fontController.readOnly) {
+      return;
+    }
+
+    const confirmed = await dialog(
+      translate("dialog.update-all-metrics.title"),
+      translate("dialog.update-all-metrics.content"),
+      [
+        { title: translate("dialog.cancel"), isCancelButton: true },
+        { title: translate("dialog.okay"), isDefaultButton: true, resultValue: "ok" },
+      ]
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const glyphNames = Object.keys(this.fontController.glyphMap || {});
+    const maxPasses = Math.max(1, glyphNames.length);
+    const font = { glyphs: {} };
+    const keyedGlyphs = [];
+
+    for (const glyphName of glyphNames) {
+      const varGlyph = await this.fontController.getGlyph(glyphName);
+      if (!varGlyph || varGlyph.glyph.customData["fontra.glyph.locked"]) {
+        continue;
+      }
+      if (!glyphHasAnyMetricsKey(varGlyph.glyph)) {
+        continue;
+      }
+      font.glyphs[glyphName] = varGlyph.glyph;
+      keyedGlyphs.push({ glyphName, varGlyph });
+    }
+
+    if (!keyedGlyphs.length) {
+      return;
+    }
+
+    // Resolution is async and recordChanges runs synchronously, so every pass
+    // is resolved in full before anything is written. A pass is also committed
+    // before the next one resolves: the margins a key reads come from cached
+    // glyph controllers, and only glyphChanged clears them, so a pass reading
+    // an uncommitted one would measure the drawing as it stood before it.
+    let wroteAnything = false;
+    for (let pass = 0; pass < maxPasses; pass++) {
+      const passWork = [];
+      for (const { glyphName, varGlyph } of keyedGlyphs) {
+        const pending = await resolveMetricsKeysForGlyph(
+          this.fontController,
+          glyphName,
+          varGlyph
+        );
+        if (!pending.length) {
+          continue;
+        }
+        const layerControllers = {};
+        for (const { layerName } of pending) {
+          if (layerControllers[layerName]) {
+            continue;
+          }
+          layerControllers[layerName] =
+            await this.fontController.getLayerGlyphController(
+              glyphName,
+              layerName,
+              varGlyph.getSourceIndexForLayerName(layerName)
+            );
+        }
+        passWork.push({ glyphName, pending, layerControllers });
+      }
+      if (!passWork.length) {
+        break;
+      }
+
+      const passChanges = recordChanges(font, (font) => {
+        for (const { glyphName, pending, layerControllers } of passWork) {
+          for (const { layerName, side, value } of pending) {
+            const layerGlyph = font.glyphs[glyphName].layers[layerName]?.glyph;
+            if (!layerGlyph) {
+              continue;
+            }
+            MARGIN_SETTERS[side](layerGlyph, layerControllers[layerName], value);
+          }
+        }
+      });
+
+      // Fixpoint: a pass that moves nothing means every chain has settled.
+      // A cycle stops here too, since its second pass reproduces the first.
+      if (!passChanges.hasChange) {
+        break;
+      }
+
+      await this.fontController.editFinal(
+        passChanges.change,
+        passChanges.rollbackChange,
+        translate("action.glyph.update-all-metrics"),
+        true
+      );
+      for (const { glyphName } of passWork) {
+        await this.fontController.glyphChanged(glyphName, { senderID: this });
+      }
+      wroteAnything = true;
+    }
+
+    if (wroteAnything) {
+      this.canvasController?.requestUpdate();
+    }
   }
 
   async doConvertCurveType(numQuadraticOffCurvePoints) {
