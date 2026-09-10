@@ -1650,11 +1650,22 @@ export async function resolveMetricsExpression(
     }
     for (const [layerName, location] of Object.entries(locations)) {
       const getGlyphFunc = fontController.getGlyph.bind(fontController);
+      // A layer name belongs to the glyph being edited. The glyph it points at
+      // need not carry one by that name, and asked for a layer it does not have
+      // it answers null rather than falling back. Name the layer only where it
+      // exists; otherwise ask for the location and let it interpolate.
+      const referencedLayerName =
+        layerName in (referencedGlyph.layers || {}) ? layerName : undefined;
       const instanceController = await referencedGlyph.instantiateController(
         location,
-        layerName,
+        referencedLayerName,
         getGlyphFunc
       );
+      if (!instanceController) {
+        return {
+          error: `cannot resolve ${referencedGlyphName} at this location`,
+        };
+      }
       if (!layerVariables[layerName]) {
         layerVariables[layerName] = {};
       }
