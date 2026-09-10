@@ -271,18 +271,7 @@ export default class SelectionInfoPanel extends Panel {
               return layerGlyphController.leftMargin;
             },
             setValue: (layerGlyph, layerGlyphController, fieldItem, value) => {
-              const translationX = maybeClampValue(
-                value - layerGlyphController.leftMargin,
-                -layerGlyph.xAdvance,
-                undefined
-              );
-              for (const i of range(0, layerGlyph.path.coordinates.length, 2)) {
-                layerGlyph.path.coordinates[i] += translationX;
-              }
-              for (const compo of layerGlyph.components) {
-                compo.transformation.translateX += translationX;
-              }
-              layerGlyph.xAdvance += translationX;
+              setLeftMarginOnLayer(layerGlyph, layerGlyphController, value);
             },
           },
           fieldY: {
@@ -300,12 +289,7 @@ export default class SelectionInfoPanel extends Panel {
               return layerGlyphController.rightMargin;
             },
             setValue: (layerGlyph, layerGlyphController, fieldItem, value) => {
-              const translationX = maybeClampValue(
-                value - layerGlyphController.rightMargin,
-                -layerGlyph.xAdvance,
-                undefined
-              );
-              layerGlyph.xAdvance += translationX;
+              setRightMarginOnLayer(layerGlyph, layerGlyphController, value);
             },
           },
         });
@@ -955,73 +939,14 @@ export default class SelectionInfoPanel extends Panel {
   }
 
   async _evaluateMetricsExpression(expression, varGlyphController, metricProperty) {
-    const sidebearingOpposites = {
-      leftMargin: "rightMargin",
-      rightMargin: "leftMargin",
-    };
-
-    let value = Number(expression);
-    if (!isNaN(value)) {
-      return value;
-    }
-
-    const { names, namespace } = nameCapture(
-      this.fontController.glyphMap,
-      (nameObject, name) =>
-        nameObject[name] ||
-        (sidebearingOpposites[metricProperty] &&
-          name.endsWith("!") &&
-          nameObject[name.slice(0, -1)])
-          ? 1
-          : undefined
-    );
-
-    try {
-      const dummyResult = compute(expression, undefined, namespace);
-    } catch (e) {
-      return { error: e.message };
-    }
-
     const { mainLayerName, locations } = this._getEditingLocations(varGlyphController);
-
-    const layerVariables = {};
-    for (const name of names) {
-      const referencedGlyphName = name.endsWith("!") ? name.slice(0, -1) : name;
-      const referencedGlyph = await this.fontController.getGlyph(referencedGlyphName);
-      for (const [layerName, location] of Object.entries(locations)) {
-        const getGlyphFunc = this.fontController.getGlyph.bind(this.fontController);
-        const instanceController = await referencedGlyph.instantiateController(
-          location,
-          layerName,
-          getGlyphFunc
-        );
-        if (!layerVariables[layerName]) {
-          layerVariables[layerName] = {};
-        }
-        layerVariables[layerName][referencedGlyphName] =
-          instanceController[metricProperty];
-        if (name.endsWith("!") && sidebearingOpposites[metricProperty]) {
-          layerVariables[layerName][referencedGlyphName + "!"] =
-            instanceController[sidebearingOpposites[metricProperty]];
-        }
-      }
-    }
-
-    return {
-      getValue: (layerName) => {
-        try {
-          return ensureFiniteNumber(
-            compute(expression, undefined, layerVariables[layerName])
-          );
-        } catch (e) {
-          console.error(e);
-        }
-        return 0;
-      },
-      value: ensureFiniteNumber(
-        compute(expression, undefined, layerVariables[mainLayerName])
-      ),
-    };
+    return await resolveMetricsExpression(
+      this.fontController,
+      expression,
+      metricProperty,
+      locations,
+      mainLayerName
+    );
   }
 
   _getEditingLocations(varGlyphController) {
@@ -1177,6 +1102,120 @@ function maybeClampValue(value, min, max) {
     value = Math.min(value, max);
   }
   return value;
+}
+
+// The single left-margin setter. Setting the left margin translates the whole
+// outline, so it must run before any right-margin write in the same pass.
+export function setLeftMarginOnLayer(layerGlyph, layerGlyphController, value) {
+  const translationX = maybeClampValue(
+    value - layerGlyphController.leftMargin,
+    -layerGlyph.xAdvance,
+    undefined
+  );
+  for (const i of range(0, layerGlyph.path.coordinates.length, 2)) {
+    layerGlyph.path.coordinates[i] += translationX;
+  }
+  for (const compo of layerGlyph.components) {
+    compo.transformation.translateX += translationX;
+  }
+  layerGlyph.xAdvance += translationX;
+}
+
+// The single right-margin setter.
+export function setRightMarginOnLayer(layerGlyph, layerGlyphController, value) {
+  const translationX = maybeClampValue(
+    value - layerGlyphController.rightMargin,
+    -layerGlyph.xAdvance,
+    undefined
+  );
+  layerGlyph.xAdvance += translationX;
+}
+
+export const MARGIN_SETTERS = Object.freeze({
+  left: setLeftMarginOnLayer,
+  right: setRightMarginOnLayer,
+});
+
+// One implementation of the nameCapture -> compute -> instantiateController
+// chain. Callers supply the locations to resolve at, so this serves both the
+// editing-layer case (typing in the field) and the arbitrary-source case
+// (Update / Update all), which must resolve sources that are not open.
+export async function resolveMetricsExpression(
+  fontController,
+  expression,
+  metricProperty,
+  locations,
+  mainLayerName
+) {
+  const sidebearingOpposites = {
+    leftMargin: "rightMargin",
+    rightMargin: "leftMargin",
+  };
+
+  const numericValue = Number(expression);
+  if (!isNaN(numericValue)) {
+    return numericValue;
+  }
+
+  const { names, namespace } = nameCapture(
+    fontController.glyphMap,
+    (nameObject, name) =>
+      nameObject[name] ||
+      (sidebearingOpposites[metricProperty] &&
+        name.endsWith("!") &&
+        nameObject[name.slice(0, -1)])
+        ? 1
+        : undefined
+  );
+
+  try {
+    compute(expression, undefined, namespace);
+  } catch (e) {
+    return { error: e.message };
+  }
+
+  const layerVariables = {};
+  for (const name of names) {
+    const referencedGlyphName = name.endsWith("!") ? name.slice(0, -1) : name;
+    const referencedGlyph = await fontController.getGlyph(referencedGlyphName);
+    if (!referencedGlyph) {
+      // Referenced glyph is missing (spec section 7 case 1): report rather than throw.
+      return { error: `unknown glyph: ${referencedGlyphName}` };
+    }
+    for (const [layerName, location] of Object.entries(locations)) {
+      const getGlyphFunc = fontController.getGlyph.bind(fontController);
+      const instanceController = await referencedGlyph.instantiateController(
+        location,
+        layerName,
+        getGlyphFunc
+      );
+      if (!layerVariables[layerName]) {
+        layerVariables[layerName] = {};
+      }
+      layerVariables[layerName][referencedGlyphName] =
+        instanceController[metricProperty];
+      if (name.endsWith("!") && sidebearingOpposites[metricProperty]) {
+        layerVariables[layerName][referencedGlyphName + "!"] =
+          instanceController[sidebearingOpposites[metricProperty]];
+      }
+    }
+  }
+
+  return {
+    getValue: (layerName) => {
+      try {
+        return ensureFiniteNumber(
+          compute(expression, undefined, layerVariables[layerName])
+        );
+      } catch (e) {
+        console.error(e);
+      }
+      return 0;
+    },
+    value: ensureFiniteNumber(
+      compute(expression, undefined, layerVariables[mainLayerName])
+    ),
+  };
 }
 
 function makeCodePointsString(codePoints) {
