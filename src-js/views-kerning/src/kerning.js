@@ -7544,8 +7544,19 @@ export class KerningViewController extends ViewController {
           );
           // The ribbon measures the remaining adjustment to the cached
           // proposal, independently of the spacing used for manual preview.
+          //
+          // A pair left out of the preview draws nothing: no band, no number.
+          // The whole point of leaving it out is that its proposal is not on
+          // screen, and re-spacing alone was not the whole of it. A pair the
+          // designer is dragging right now is the exception -- the drag marks
+          // it out of the preview, and the ribbon is what it measures against.
+          const inPreview =
+            !this.isPairExcludedFromPreview(glyphs[i - 1].glyphName, glyph.glyphName) ||
+            !!this._manualPreviewPairs?.has(
+              rowId(this.autokernSource, glyphs[i - 1].glyphName, glyph.glyphName)
+            );
           const suggestionDelta =
-            entry && !entry.stale && Number.isFinite(entry.value)
+            inPreview && entry && !entry.stale && Number.isFinite(entry.value)
               ? entry.value - (glyph.kernValue || 0)
               : undefined;
           this._previewPairValue.set(glyph, suggestionDelta);

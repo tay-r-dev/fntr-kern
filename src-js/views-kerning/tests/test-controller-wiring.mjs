@@ -561,3 +561,49 @@ test("skip-all mode inverts what a mark means and each mode keeps its own marks"
   assert.equal(view.isPairExcludedFromPreview("r", "o"), true);
   assert.equal(view.isPairExcludedFromPreview("A", "V"), false);
 });
+
+test("a pair left out of the preview draws no band and no number", () => {
+  const view = Object.create(Controller.prototype);
+  const key = "r/o"; // the harness's own pairKey
+  const id = JSON.stringify(["s1", "r", "o"]);
+  Object.assign(view, {
+    _chipMode: "phrase",
+    _autokernSourceIdentifier: "s1",
+    suggestionPreviewSettings: { model: { enabled: true, skipAll: false } },
+    autokernCache: new Map([[key, { left: "r", right: "o", value: -40 }]]),
+    _previewExcludedPairs: new Set(),
+    _previewIncludedPairs: new Set(),
+    _manualPreviewPairs: new Map(),
+    _previewOriginalX: new WeakMap(),
+    _previewPairValue: new WeakMap(),
+  });
+  const line = () => [
+    { glyphName: "r", x: 0, kernValue: 0 },
+    { glyphName: "o", x: 590, kernValue: 0 },
+  ];
+  const reposition = () => {
+    const glyphs = line();
+    view._applySuggestionPreviewRepositioning({ positionedLines: [{ glyphs }] });
+    return glyphs[1];
+  };
+
+  // In the preview: re-spaced, and the ribbon carries the proposal.
+  let glyph = reposition();
+  assert.equal(view._previewPairValue.get(glyph), -40);
+  assert.equal(glyph.x, 550);
+
+  // Left out: no ribbon and no re-spacing.
+  view._previewExcludedPairs.add(id);
+  glyph = reposition();
+  assert.equal(view._previewPairValue.get(glyph), undefined);
+  assert.equal(glyph.x, 590);
+
+  // Skip-all mode: out until this pair's own mark puts it in.
+  view.suggestionPreviewSettings.model.skipAll = true;
+  glyph = reposition();
+  assert.equal(view._previewPairValue.get(glyph), undefined);
+  view._previewIncludedPairs.add(id);
+  glyph = reposition();
+  assert.equal(view._previewPairValue.get(glyph), -40);
+  assert.equal(glyph.x, 550);
+});
