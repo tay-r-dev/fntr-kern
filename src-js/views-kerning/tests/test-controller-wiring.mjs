@@ -346,6 +346,12 @@ test("manual kerning starts from the preview and the ribbon shows the remaining 
   view._previewPairValue = new WeakMap();
   view._applySuggestionPreviewRepositioning({ positionedLines: [{ glyphs }] });
   assert.equal(glyphs[1].x, 590);
+  // The drags above are finished, and kerning by hand put this pair out of
+  // the preview, so nothing is drawn over the designer's own answer.
+  assert.equal(view._previewPairValue.get(glyphs[1]), undefined);
+  // While a drag is live the ribbon measures what is left of the proposal.
+  view._liveManualPreviewPairs.add(JSON.stringify(["s1", "r", "o"]));
+  view._applySuggestionPreviewRepositioning({ positionedLines: [{ glyphs }] });
   assert.equal(view._previewPairValue.get(glyphs[1]), -30);
   // Positive proposal with negative manual kerning: 12 - (-4) = 16.
   proposal.value = 12;
@@ -358,6 +364,7 @@ test("manual kerning starts from the preview and the ribbon shows the remaining 
   glyphs[1].kernValue = saved;
   view._applySuggestionPreviewRepositioning({ positionedLines: [{ glyphs }] });
   assert.equal(view._previewPairValue.get(glyphs[1]), 0);
+  view._liveManualPreviewPairs.clear();
   saved = 0; // Undo follows the font value instead of a frozen manual number.
   assert.equal(view.getSuggestionPreviewValue("r", "o", proposal), 0);
   // A fresh measurement used to win the preview back. It no longer does: the
@@ -367,8 +374,14 @@ test("manual kerning starts from the preview and the ribbon shows the remaining 
   assert.equal(view.getSuggestionPreviewValue("r", "o", { value: -35 }), undefined);
   assert.equal(view.getSuggestionPreviewValue("o", "r", unrelated), -80);
   assert.equal(view.getSuggestionPreviewValue("r", "o", { value: -35 }, "s2"), -35);
+  // Put back into the preview, the pair moves to the proposal again: the
+  // manual state ends with the mark that ended it.
   await view.setPairExcludedFromPreview("r", "o", false, "s1");
   assert.equal(view.getSuggestionPreviewValue("r", "o", { value: -35 }), -35);
+  glyphs[1].kernValue = 0;
+  view._applySuggestionPreviewRepositioning({ positionedLines: [{ glyphs }] });
+  assert.equal(glyphs[1].x, 602);
+  assert.equal(view._previewPairValue.get(glyphs[1]), 12);
   view.suggestionPreviewSettings.model.enabled = false;
   assert.equal(tool.getEditContext().values[0], 0);
 });

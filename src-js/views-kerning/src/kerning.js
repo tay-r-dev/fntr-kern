@@ -1728,6 +1728,12 @@ export class KerningViewController extends ViewController {
     } else {
       marks.delete(key);
     }
+    if (!excluded) {
+      // Back in the preview means the proposal answers for this pair again.
+      // Without this the manual state kept the spacing on the value the
+      // designer typed, so a pair put back simply did not move.
+      this._manualPreviewPairs?.delete(key);
+    }
     this.sceneModel?.updateScene();
     this.renderPairTable?.();
     const changes = await this.writePreviewExclusionsToProject();
@@ -2566,6 +2572,11 @@ export class KerningViewController extends ViewController {
 
   installManualKerningPreviewBehavior() {
     this._manualPreviewPairs = new Map();
+    // The pairs a drag is moving RIGHT NOW. Membership of _manualPreviewPairs
+    // outlives the drag -- that map is what keeps the spacing on the manual
+    // value afterwards -- so it cannot be what decides whether the ribbon
+    // draws, or a pair kept its proposal number for ever after being kerned.
+    this._liveManualPreviewPairs = new Set();
     const tool = this.tools["kerning-tool"];
     const getEditContext = tool.getEditContext.bind(tool);
     tool.getEditContext = (...args) => {
@@ -2595,6 +2606,12 @@ export class KerningViewController extends ViewController {
         });
       }
       const beginEdit = () => this.beginManualKerningPreviewEdit(pairs, source);
+      const endEdit = () => {
+        for (const [left, right] of pairs) {
+          this._liveManualPreviewPairs.delete(rowId(source, left, right));
+        }
+        this.canvasController.requestUpdate();
+      };
       const context = result.editContext;
       const editContinuous = context.editContinuous.bind(context);
       context.editContinuous = (values, label) => {
@@ -2609,12 +2626,12 @@ export class KerningViewController extends ViewController {
             yield value;
           }
         };
-        return editContinuous(manualValues(), label);
+        return Promise.resolve(editContinuous(manualValues(), label)).finally(endEdit);
       };
       const deleteValues = context.delete.bind(context);
       context.delete = (...deleteArgs) => {
         beginEdit();
-        return deleteValues(...deleteArgs);
+        return Promise.resolve(deleteValues(...deleteArgs)).finally(endEdit);
       };
       return result;
     };
@@ -2630,6 +2647,7 @@ export class KerningViewController extends ViewController {
         rowId(source, left, right),
         this.autokernCache?.get(pairKey(left, right))
       );
+      this._liveManualPreviewPairs?.add(rowId(source, left, right));
       // Kerning a pair by hand while the preview is on is a decision about
       // that pair: the designer has answered the proposal, so the proposal
       // stops being drawn over the answer. It stays out until the designer
@@ -7552,7 +7570,7 @@ export class KerningViewController extends ViewController {
           // it out of the preview, and the ribbon is what it measures against.
           const inPreview =
             !this.isPairExcludedFromPreview(glyphs[i - 1].glyphName, glyph.glyphName) ||
-            !!this._manualPreviewPairs?.has(
+            !!this._liveManualPreviewPairs?.has(
               rowId(this.autokernSource, glyphs[i - 1].glyphName, glyph.glyphName)
             );
           const suggestionDelta =
