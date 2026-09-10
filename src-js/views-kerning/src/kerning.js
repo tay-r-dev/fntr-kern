@@ -3047,24 +3047,19 @@ export class KerningViewController extends ViewController {
     if (filters.onlyMarked && !this.isPairMarkedForPreview(row.left, row.right)) {
       return false;
     }
-    if (!this.isRowAboveThreshold(row, threshold)) {
-      return false;
-    }
     if (!this.pairMatchesInputScope(row.left, row.right)) {
       return false;
     }
-    // Task 5, spec F18 (numeric interval) and F13 (exact zero-current
-    // predicate): `threshold` above is the existing lower |Δ| bound;
-    // maxThreshold and hideZeroCurrentSuggestions are independent
-    // conditions layered on top via the shared predicate, so this and
-    // results-model.js's own test agree on one definition. A stale/
-    // unavailable suggestion (valuesForDisplay -> delta: null) always
-    // passes here, per Task 5's decision note -- its warning must stay
-    // visible regardless of these bounds.
+    // Every numeric filter through one predicate (results-model.js's
+    // passesNumericFilters): the lower |delta| bound, the upper one, and the
+    // zero-current rule. The lower bound used to be applied separately, one
+    // check earlier, and so missed that predicate's own rule that a pair with
+    // a stored value is exempt -- which is why applying a row made it vanish:
+    // an applied row's delta is zero by definition.
     const display = valuesForDisplay(row.current, row.suggestion, row.stale);
     if (
       !passesNumericFilters(display, {
-        minDelta: 0,
+        minDelta: threshold,
         maxDelta: this.autokernParamsController.model.maxThreshold,
         hideZeroCurrentSuggestions: filters.hideZeroCurrentSuggestions,
       })

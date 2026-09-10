@@ -651,7 +651,6 @@ test("only marked pairs lists the exceptions to the mode, whichever mode is on",
     suggestionPreviewSettings: { model: settings },
     _previewExcludedPairs: new Set([JSON.stringify(["s1", "r", "o"])]),
     _previewIncludedPairs: new Set([JSON.stringify(["s1", "A", "V"])]),
-    isRowAboveThreshold: () => true,
     pairMatchesInputScope: () => true,
     pairMatchesTypes: () => true,
     isLeftClassed: () => false,
@@ -740,4 +739,36 @@ test("shift chains rows, ctrl picks them out, a plain click resets the anchor", 
   // A plain click starts again.
   view.selectRowFromClick("r3", {});
   assert.equal(selected(), "r3");
+});
+
+test("the delta threshold leaves an applied row on screen", () => {
+  const view = Object.create(Controller.prototype);
+  Object.assign(view, {
+    _autokernSourceIdentifier: "s1",
+    suggestionPreviewSettings: { model: { skipAll: false } },
+    _previewExcludedPairs: new Set(),
+    _previewIncludedPairs: new Set(),
+    pairMatchesInputScope: () => true,
+    pairMatchesTypes: () => true,
+    isLeftClassed: () => false,
+    isRightClassed: () => false,
+    autokernParamsController: { model: { maxThreshold: null } },
+    _relationshipsSet: new Set(["unique-unique"]),
+    _tableGlyphsetMembers: null,
+  });
+  const filters = { showHidden: true, onlyMarked: false };
+  const row = (current, suggestion) => ({
+    left: "r",
+    right: "o",
+    current,
+    suggestion,
+    kind: "unique-pair",
+  });
+
+  // Applying a row makes its delta zero. With a threshold of 20 it used to
+  // disappear at the moment it was applied, which read as the write failing.
+  assert.equal(view.pairRowVisible(row(-40, -40), filters, 20), true);
+  // An unkerned pair below the threshold is what the threshold is for.
+  assert.equal(view.pairRowVisible(row(0, -4), filters, 20), false);
+  assert.equal(view.pairRowVisible(row(0, -40), filters, 20), true);
 });
