@@ -3002,12 +3002,9 @@ export class KerningViewController extends ViewController {
     // after its class was applied, and offered to write a pair exception the
     // designer never asked for.
     const isCandidate = this.isOverrideCandidate(entry.left, entry.right, entry.value);
-    const answeredByClass = this.pairAnsweredByClass(
-      entry.left,
-      entry.right,
-      entry.value
-    );
-    const suggestion = answeredByClass ? current : entry.value;
+    const answeredByClass = this.pairAnsweredByClass(entry.left, entry.right);
+    const suggestion =
+      this.effectiveSuggestion(entry.left, entry.right, entry) ?? entry.value;
     return {
       left: entry.left,
       right: entry.right,
@@ -3278,35 +3275,78 @@ export class KerningViewController extends ViewController {
     return leftClass ? `@${leftClass} × ${right}` : `${left} × @${rightClass}`;
   }
 
-  // Is this pair answered by its class rule? True for a class member with no
-  // pair of its own whose measurement sits inside the class tolerance. The
-  // table and the canvas both ask this, so they cannot disagree about what a
-  // member's proposal is.
-  pairAnsweredByClass(left, right, suggestedValue) {
+  // Is this pair answered by its class rule? True for any class member that
+  // has no pair of its own. Being an override candidate does not change this:
+  // a candidate is a member the designer may want to except LATER, and until
+  // they do, the rule is still the value the pair gets. The table and the
+  // canvas both ask this, so they cannot disagree about a member's proposal.
+  pairAnsweredByClass(left, right) {
     if (left.startsWith("@") || right.startsWith("@")) {
       return false;
     }
     if (!this.isLeftClassed(left) && !this.isRightClassed(right)) {
       return false;
     }
-    if (explicitPairExists(this.kerningController, left, right)) {
-      return false;
-    }
-    return !this.isOverrideCandidate(left, right, suggestedValue);
+    return !explicitPairExists(this.kerningController, left, right);
   }
 
-  // The one proposal for a pair, in whole units: the class rule's value where
-  // the rule answers for it, its own measurement otherwise. The canvas used
-  // to read the raw measurement while the table read this, so the same pair
-  // showed two different numbers.
+  // What the class rule for this pair PROPOSES: the median of its members'
+  // measurements, outliers dropped -- the same number the class-rule row
+  // shows and the same number applying that row writes. Not the value stored
+  // at the class address: the preview's job is to show what the suggestions
+  // would do, and a class member's suggestion is its rule's.
+  classProposalForPair(left, right) {
+    if (!this._classProposalCache) {
+      this._classProposalCache = new Map();
+    }
+    const [classLeft, classRight] = this.classAddressForPair(left, right);
+    const key = pairKey(classLeft, classRight);
+    if (this._classProposalCache.has(key)) {
+      return this._classProposalCache.get(key);
+    }
+    const kernData = this.kerningController.kernData;
+    const leftMembers = classLeft.startsWith("@")
+      ? kernData.groupsSide1?.[classLeft.slice(1)] || []
+      : [classLeft];
+    const rightMembers = classRight.startsWith("@")
+      ? kernData.groupsSide2?.[classRight.slice(1)] || []
+      : [classRight];
+    const leftSet = new Set(leftMembers);
+    const rightSet = new Set(rightMembers);
+    const values = [];
+    for (const entry of this.autokernCache?.values() || []) {
+      if (
+        !entry.stale &&
+        Number.isFinite(entry.value) &&
+        leftSet.has(entry.left) &&
+        rightSet.has(entry.right)
+      ) {
+        values.push(entry.value);
+      }
+    }
+    const centre = medianOfValues(values);
+    const proposal = values.length
+      ? medianDroppingOutliers(
+          values.map((value) => ({ value, divergence: value - centre })),
+          this.autokernParamsController.model.groupThreshold
+        )
+      : undefined;
+    this._classProposalCache.set(key, proposal);
+    return proposal;
+  }
+
+  // The one proposal for a pair, in whole units: its class rule's proposal
+  // where a rule answers for it, its own measurement otherwise. The canvas
+  // used to read the raw measurement here, so a member previewed a number
+  // its own row never showed -- and kept a negative one after the rule was
+  // applied.
   effectiveSuggestion(left, right, entry, source = this.autokernSource) {
     if (!entry || entry.stale || !Number.isFinite(entry.value)) {
       return undefined;
     }
-    if (this.pairAnsweredByClass(left, right, entry.value)) {
-      return Math.round(
-        this.kerningController.getGlyphPairValueForSource(left, right, source) ?? 0
-      );
+    if (this.pairAnsweredByClass(left, right)) {
+      const proposal = this.classProposalForPair(left, right);
+      return proposal === undefined ? undefined : Math.round(proposal);
     }
     return Math.round(entry.value);
   }
@@ -3412,6 +3452,10 @@ export class KerningViewController extends ViewController {
     // Task 17, spec F01: same reasoning -- every place that can change
     // which glyphs are stale already calls renderPairTable.
     this.renderStaleSection();
+    // Derived from the cache and the class membership, both of which a render
+    // is downstream of. Rebuilt per render rather than invalidated in a dozen
+    // places.
+    this._classProposalCache = new Map();
 
     const filters = this.autokernFiltersController.model;
     const threshold = this.autokernParamsController.model.threshold;

@@ -796,41 +796,50 @@ test("the delta threshold leaves an applied row on screen", () => {
   assert.equal(view.pairRowVisible(row(0, -40), filters, 20), true);
 });
 
-test("a member inside the class tolerance is answered by the class", () => {
+test("a class member reads its rule's proposal, candidate or not", () => {
   const view = Object.create(Controller.prototype);
-  let resolved = 29;
+  const entries = [
+    { left: "a", right: "z", value: 24 },
+    { left: "acircumflex", right: "z", value: 29 },
+    { left: "adieresis", right: "z", value: 12 },
+  ];
   Object.assign(view, {
     _autokernSourceIdentifier: "s1",
     autokernParamsController: { model: { groupThreshold: 10 } },
+    autokernCache: new Map(entries.map((e) => [`${e.left}/${e.right}`, e])),
     kerningController: {
-      getGlyphPairValueForSource: () => resolved,
+      kernData: {
+        groupsSide1: { a_R: ["a", "acircumflex", "adieresis"] },
+        groupsSide2: {},
+      },
+      getGlyphPairValueForSource: () => 29,
       getPairValues: () => undefined,
-      leftPairGroupMapping: { a: "a_R" },
+      leftPairGroupMapping: { a: "a_R", acircumflex: "a_R", adieresis: "a_R" },
       rightPairGroupMapping: {},
     },
-    isLeftClassed: (name) => name === "a",
+    isLeftClassed: (name) => name in { a: 1, acircumflex: 1, adieresis: 1 },
     isRightClassed: () => false,
     wouldShadowClassCell: () => true,
   });
 
-  // 24 against a class value of 29 is inside the tolerance of 10: the rule
-  // answers, so the row proposes the rule's own value and has no delta.
-  let row = view.pairRowData({ left: "a", right: "z", value: 24 }, true);
-  assert.equal(row.answeredByClass, true);
-  assert.equal(row.suggestion, 29);
-  assert.equal(row.delta, 0);
-  assert.equal(row.ownSuggestion, 24);
-  assert.equal(row.isCandidate, false);
-  // And there is nothing to apply on it.
-  assert.equal(view.buildApplyProposalButton(row).disabled, true);
+  // The rule's proposal: the members' middle is 24, so 12 is the outlier at a
+  // tolerance of 10 and the median of the rest is 26 (24 and 29 averaged, and
+  // 26.5 rounds to 27).
+  assert.equal(view.classProposalForPair("a", "z"), 27);
 
-  // 12 diverges by 17, so this member keeps its own number and reads as a
-  // potential override.
-  row = view.pairRowData({ left: "a", right: "z", value: 12 }, true);
-  assert.equal(row.answeredByClass, false);
-  assert.equal(row.suggestion, 12);
-  assert.equal(row.delta, -17);
-  assert.equal(row.isCandidate, true);
+  // Every member reads that, including the outlier -- until it has a pair of
+  // its own, the rule is what it gets.
+  for (const entry of entries) {
+    const row = view.pairRowData(entry, true);
+    assert.equal(row.answeredByClass, true);
+    assert.equal(row.suggestion, 27);
+    assert.equal(row.ownSuggestion, entry.value);
+    assert.equal(view.buildApplyProposalButton(row).disabled, true);
+  }
+
+  // The outlier is still flagged as a potential override.
+  assert.equal(view.pairRowData(entries[2], true).isCandidate, true);
+  assert.equal(view.pairRowData(entries[1], true).isCandidate, false);
 });
 
 test("applying a class rule settles: the median does not move when it is written", () => {
@@ -876,22 +885,30 @@ test("applying a class rule settles: the median does not move when it is written
 
 test("the canvas and the table propose the same number for a class member", () => {
   const view = Object.create(Controller.prototype);
-  const key = "a/x"; // the harness's own pairKey
-  const stored = -10;
+  const entry = { left: "a", right: "x", value: 12 };
+  let stored = 0;
   Object.assign(view, {
     _chipMode: "phrase",
     _autokernSourceIdentifier: "s1",
     suggestionPreviewSettings: { model: { enabled: true, skipAll: false } },
     autokernParamsController: { model: { groupThreshold: 10 } },
-    autokernCache: new Map([[key, { left: "a", right: "x", value: -8 }]]),
+    autokernCache: new Map([
+      ["a/x", entry],
+      ["acircumflex/x", { left: "acircumflex", right: "x", value: 22 }],
+      ["adieresis/x", { left: "adieresis", right: "x", value: 22 }],
+    ]),
     kerningController: {
+      kernData: {
+        groupsSide1: { a_R: ["a", "acircumflex", "adieresis"] },
+        groupsSide2: {},
+      },
       getGlyphPairValueForSource: () => stored,
       getPairValueForSource: () => stored,
       getPairValues: () => undefined,
-      leftPairGroupMapping: { a: "a_R" },
+      leftPairGroupMapping: { a: "a_R", acircumflex: "a_R", adieresis: "a_R" },
       rightPairGroupMapping: {},
     },
-    isLeftClassed: (name) => name === "a",
+    isLeftClassed: (name) => name in { a: 1, acircumflex: 1, adieresis: 1 },
     isRightClassed: () => false,
     wouldShadowClassCell: () => true,
     _previewExcludedPairs: new Set(),
@@ -901,18 +918,25 @@ test("the canvas and the table propose the same number for a class member", () =
     _previewPairValue: new WeakMap(),
   });
 
-  // The member's own measurement is -8, two units off the class value, so
-  // the class answers for it: -10, in the table and on the canvas alike.
-  const row = view.pairRowData({ left: "a", right: "x", value: -8 }, true);
-  assert.equal(row.suggestion, -10);
-  assert.equal(view.getSuggestionPreviewValue("a", "x", { value: -8 }), -10);
+  // The rule proposes 22. The member's own 12 is the outlier, and the canvas
+  // used to preview that 12 -- a number its row never showed.
+  assert.equal(view.pairRowData(entry, true).suggestion, 22);
+  assert.equal(view.getSuggestionPreviewValue("a", "x", entry), 22);
 
-  // And the ribbon has nothing left to ask for: the pair already sits there.
-  const glyphs = [
-    { glyphName: "a", x: 0, kernValue: 0 },
-    { glyphName: "x", x: 500, kernValue: stored },
-  ];
-  view._applySuggestionPreviewRepositioning({ positionedLines: [{ glyphs }] });
-  assert.equal(view._previewPairValue.get(glyphs[1]), 0);
-  assert.equal(glyphs[1].x, 500);
+  const reposition = () => {
+    const glyphs = [
+      { glyphName: "a", x: 0, kernValue: stored },
+      { glyphName: "x", x: 500, kernValue: stored },
+    ];
+    view._applySuggestionPreviewRepositioning({ positionedLines: [{ glyphs }] });
+    return glyphs[1];
+  };
+
+  // Before applying: the ribbon asks for the whole 22.
+  assert.equal(view._previewPairValue.get(reposition()), 22);
+  // After applying the rule, there is nothing left to ask for -- it used to
+  // turn negative here, showing the member's own value minus what was written.
+  stored = 22;
+  view._classProposalCache = new Map();
+  assert.equal(view._previewPairValue.get(reposition()), 0);
 });
