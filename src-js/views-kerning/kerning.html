@@ -84,6 +84,13 @@
                 ><input type="checkbox" id="kerning-pairtable-filter-hidden" /> Show
                 hidden</label
               >
+              <!-- The marks as a list: only the pairs the suggestion preview
+                   leaves alone, whichever way round the global skip mode has
+                   them (kerning.js's pairRowVisible). -->
+              <label
+                ><input type="checkbox" id="kerning-pairtable-filter-only-skipped" />
+                Only skipped suggestions</label
+              >
               <!-- Task 5, spec F13: "Provide a Columns menu with independent
                    visibility controls for Current, Proposed, and Delta."
                    Hiding a column here changes display only -- it never

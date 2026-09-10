@@ -5,6 +5,13 @@ import vm from "node:vm";
 import * as inputTokens from "../src/input-tokens.js";
 import { retainVisible } from "../src/results-selection.js";
 import { layoutPairPreview, normalizePairsPerRow } from "../src/pair-preview-layout.js";
+import {
+  passesNumericFilters,
+  pairMatchesGlyphset,
+  rowMatchesRelationships,
+  rowVisibleForHiddenState,
+  valuesForDisplay,
+} from "../src/results-model.js";
 
 // Evaluate the actual controller class without importing browser-only modules.
 // No copied method implementations: deleting a method from kerning.js must fail.
@@ -32,6 +39,11 @@ const Controller = vm.runInNewContext(`${classSource}\nKerningViewController;`, 
   ViewController: class {},
   ...inputTokens,
   retainVisible,
+  passesNumericFilters,
+  pairMatchesGlyphset,
+  rowMatchesRelationships,
+  rowVisibleForHiddenState,
+  valuesForDisplay,
   rowId: (source, left, right) => JSON.stringify([source, left, right]),
   AUTOKERN_PREVIEW_EXCLUDED_CUSTOM_DATA_KEY: "fontra.autokernPreviewExcluded",
   pairKey: (left, right) => `${left}/${right}`,
@@ -619,4 +631,45 @@ test("a pair left out of the preview draws no band and no number", () => {
   glyph = reposition();
   assert.equal(view._previewPairValue.get(glyph), -40);
   assert.equal(glyph.x, 550);
+});
+
+test("only skipped suggestions lists the marked pairs, in either mode", () => {
+  const view = Object.create(Controller.prototype);
+  const settings = { skipAll: false };
+  Object.assign(view, {
+    _autokernSourceIdentifier: "s1",
+    suggestionPreviewSettings: { model: settings },
+    _previewExcludedPairs: new Set([JSON.stringify(["s1", "r", "o"])]),
+    _previewIncludedPairs: new Set([JSON.stringify(["s1", "A", "V"])]),
+    isRowAboveThreshold: () => true,
+    pairMatchesInputScope: () => true,
+    pairMatchesTypes: () => true,
+    isLeftClassed: () => false,
+    isRightClassed: () => false,
+    autokernParamsController: { model: { maxThreshold: null } },
+    _relationshipsSet: new Set(["unique-unique"]),
+    _tableGlyphsetMembers: null,
+  });
+  const filters = { showHidden: true, onlySkipped: true };
+  const row = (left, right) => ({
+    left,
+    right,
+    current: 0,
+    suggestion: -10,
+    kind: "unique-pair",
+  });
+
+  // Ordinary mode: the marked pair is the one that is skipped.
+  assert.equal(view.pairRowVisible(row("r", "o"), filters, 0), true);
+  assert.equal(view.pairRowVisible(row("A", "V"), filters, 0), false);
+
+  // Skip-all mode: everything is skipped except the pair marked in.
+  settings.skipAll = true;
+  assert.equal(view.pairRowVisible(row("A", "V"), filters, 0), false);
+  assert.equal(view.pairRowVisible(row("r", "o"), filters, 0), true);
+  assert.equal(view.pairRowVisible(row("T", "y"), filters, 0), true);
+
+  // Off, the filter says nothing about any row.
+  filters.onlySkipped = false;
+  assert.equal(view.pairRowVisible(row("A", "V"), filters, 0), true);
 });

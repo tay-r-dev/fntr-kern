@@ -2102,6 +2102,9 @@ export class KerningViewController extends ViewController {
       // migration, the same way Task 8/9 already left old persisted keys
       // (bucket/status/sortColumn "state") unread rather than migrated.
       showHidden: false,
+      // Show only the rows that are out of the suggestion preview -- whatever
+      // the global mode means by that. A way to see the marks as a list.
+      onlySkipped: false,
       // Task 5, spec F13: "Provide a Columns menu with independent
       // visibility controls for Current, Proposed, and Delta." Current
       // defaults hidden (unchanged pre-existing behavior); Proposed and
@@ -2242,6 +2245,17 @@ export class KerningViewController extends ViewController {
     showHiddenCheckbox.checked = filters.showHidden;
     showHiddenCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem("showHidden", showHiddenCheckbox.checked);
+    });
+
+    const onlySkippedCheckbox = document.querySelector(
+      "#kerning-pairtable-filter-only-skipped"
+    );
+    onlySkippedCheckbox.checked = filters.onlySkipped;
+    onlySkippedCheckbox.addEventListener("change", () => {
+      this.autokernFiltersController.setItem(
+        "onlySkipped",
+        onlySkippedCheckbox.checked
+      );
     });
 
     const currentCheckbox = document.querySelector("#kerning-pairtable-show-current");
@@ -2949,6 +2963,12 @@ export class KerningViewController extends ViewController {
     if (!rowVisibleForHiddenState(row.hidden, filters.showHidden)) {
       return false;
     }
+    // Only the pairs the preview skips. Reads the same question the canvas
+    // asks, so what the table lists under this filter is exactly what the
+    // preview leaves alone -- in either mode.
+    if (filters.onlySkipped && !this.isPairExcludedFromPreview(row.left, row.right)) {
+      return false;
+    }
     if (!this.isRowAboveThreshold(row, threshold)) {
       return false;
     }
@@ -3505,8 +3525,12 @@ export class KerningViewController extends ViewController {
         // Task 11, spec F10, ledger §8.5: this row's own hidden state,
         // never its members' (each "pair" item below carries its own
         // row.hidden, gated independently through pairRowVisible).
+        // A class rule is not a pair, so it has no mark of its own to skip
+        // with -- under "Only skipped suggestions" the table is a list of
+        // marked pairs, and a class summary is not one of them.
         return (
           tab === "default" &&
+          !filters.onlySkipped &&
           item.group.summaryVisible &&
           rowVisibleForHiddenState(item.hidden, filters.showHidden)
         );
