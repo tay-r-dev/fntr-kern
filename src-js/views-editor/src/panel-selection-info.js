@@ -333,6 +333,24 @@ export default class SelectionInfoPanel extends Panel {
             },
           },
         });
+        if (this._glyphHasMetricsKeys(varGlyphController)) {
+          formContents.push({
+            type: "single-icon",
+            element: html.createDomElement("icon-button", {
+              "src": "/tabler-icons/refresh.svg",
+              "style": "width: 1.3em; height: 1.3em;",
+              "disabled": glyphLocked || this.fontController.readOnly,
+              "data-tooltip": translate(
+                "sidebar.selection-info.metrics-key.update.tooltip"
+              ),
+              "data-tooltipposition": "left",
+              "onclick": async () => {
+                await this._updateMetricsForGlyph(glyphName, varGlyphController);
+                await this.update();
+              },
+            }),
+          });
+        }
         formContents.push({ type: "single-icon", element: this.letterspacerHost });
         formContents.push({
           type: "single-icon",
@@ -989,6 +1007,54 @@ export default class SelectionInfoPanel extends Panel {
     );
   }
 
+  _glyphHasMetricsKeys(varGlyphController) {
+    return glyphHasAnyMetricsKey(varGlyphController?.glyph);
+  }
+
+  async _resolveMetricsKeysForGlyph(glyphName, varGlyphController) {
+    return await resolveMetricsKeysForGlyph(
+      this.fontController,
+      glyphName,
+      varGlyphController
+    );
+  }
+
+  async _updateMetricsForGlyph(glyphName, varGlyphController) {
+    if (this.fontController.readOnly) {
+      return;
+    }
+    const pending = await this._resolveMetricsKeysForGlyph(
+      glyphName,
+      varGlyphController
+    );
+    if (!pending.length) {
+      return;
+    }
+
+    const layerControllers = {};
+    for (const { layerName } of pending) {
+      if (layerControllers[layerName]) {
+        continue;
+      }
+      layerControllers[layerName] = await this.fontController.getLayerGlyphController(
+        glyphName,
+        layerName,
+        varGlyphController.getSourceIndexForLayerName(layerName)
+      );
+    }
+
+    await this.sceneController.editNamedGlyphAndRecordChanges(glyphName, (glyph) => {
+      for (const { layerName, side, value } of pending) {
+        const layerGlyph = glyph.layers[layerName]?.glyph;
+        if (!layerGlyph) {
+          continue;
+        }
+        MARGIN_SETTERS[side](layerGlyph, layerControllers[layerName], value);
+      }
+      return "update sidebearings";
+    });
+  }
+
   // Resolves the current source's effective key for one side, for display only.
   // The live resolve doubles as the staleness test (spec section 4.8) -- no watcher.
   async _getMetricsKeyDisplay(varGlyphController, glyphController, side) {
@@ -1261,6 +1327,74 @@ function maybeClampValue(value, min, max) {
     value = Math.min(value, max);
   }
   return value;
+}
+
+// Resolves every source's effective key for one glyph. Returns a flat, ordered
+// list of margins to apply: left entries first, so the path translation happens
+// before any right-margin write (spec section 5).
+export async function resolveMetricsKeysForGlyph(
+  fontController,
+  glyphName,
+  varGlyphController
+) {
+  const glyph = varGlyphController.glyph;
+  const pending = { left: [], right: [] };
+
+  for (const source of varGlyphController.sources) {
+    if (source.inactive) {
+      continue;
+    }
+    const layerName = source.layerName;
+    const layerGlyph = glyph.layers[layerName]?.glyph;
+    if (!layerGlyph) {
+      continue;
+    }
+    const location = varGlyphController.getSourceLocation(source);
+
+    for (const side of ["left", "right"]) {
+      const effective = getEffectiveMetricsKey(glyph, layerGlyph, side);
+      if (!effective) {
+        continue;
+      }
+      if (isSelfReferenceSameSide(effective.expression, glyphName)) {
+        // Identity: it would write back the value it just read (spec 7 case 3).
+        continue;
+      }
+      const result = await resolveMetricsExpression(
+        fontController,
+        effective.expression,
+        SIDE_METRIC_PROPERTY[side],
+        { [layerName]: location },
+        layerName
+      );
+      if (result?.error) {
+        // Missing or unresolvable reference: skip this side, leave the real
+        // margin untouched (spec section 7 cases 1 and 2).
+        console.warn(
+          `metrics key for ${glyphName}/${layerName}/${side}: ${result.error}`
+        );
+        continue;
+      }
+      const value = typeof result === "number" ? result : result?.value;
+      if (!Number.isFinite(value)) {
+        continue;
+      }
+      pending[side].push({ layerName, side, value });
+    }
+  }
+
+  return [...pending.left, ...pending.right];
+}
+
+// True when the glyph has any key at all -- shared or on any source.
+export function glyphHasAnyMetricsKey(glyph) {
+  if (!glyph) {
+    return false;
+  }
+  if (hasAnySidebearingKey(glyph)) {
+    return true;
+  }
+  return Object.values(glyph.layers).some((layer) => hasAnySidebearingKey(layer.glyph));
 }
 
 // The adornment beside a keyed field: the resolved number, or a marker when the
