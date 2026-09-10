@@ -5,6 +5,7 @@ export const FONTRA_INTERNAL_SECTIONS = Object.freeze({
   COMPOSITION: "composition",
   LETTERSPACER: "letterspacer",
   MARKERS: "markers",
+  SIDEBEARING_KEYS: "sidebearingKeys",
   SKELETON: "skeleton",
   SKELETON_DEFAULTS: "skeletonDefaults",
 });
