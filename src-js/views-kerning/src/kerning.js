@@ -2994,12 +2994,28 @@ export class KerningViewController extends ViewController {
       : hasExplicitPair
         ? "pair-exception"
         : "member-pair";
+    // A member inside the class tolerance is answered BY the class: the rule
+    // is the value for it, so it carries no separate proposal and nothing to
+    // apply. Its own measurement is still what decides whether it is inside
+    // -- a member that diverges by the tolerance or more keeps its own number
+    // and reads as a potential override, which is the whole point of having
+    // the tolerance. Without this a member showed a residual delta for ever
+    // after its class was applied, and offered to write a pair exception the
+    // designer never asked for.
+    const isCandidate = this.isOverrideCandidate(entry.left, entry.right, entry.value);
+    const answeredByClass = kind === "member-pair" && !isCandidate;
+    const suggestion = answeredByClass ? current : entry.value;
     return {
       left: entry.left,
       right: entry.right,
-      suggestion: entry.value,
+      suggestion,
       current,
-      delta: entry.value - current,
+      delta: suggestion - current,
+      // The class rule answers for this pair, so its own measurement is not
+      // shown as a proposal. Kept on the row for anything that wants to say
+      // so (and for the run, which never reads this shape).
+      answeredByClass,
+      ownSuggestion: entry.value,
       // Task 11, spec F10/F17: the cache/project storage field stays named
       // `junk` (results-model.js's hiddenFromCacheEntry is the one mapping
       // seam) -- the normalized row exposes it as `hidden`, the term the
@@ -3018,7 +3034,7 @@ export class KerningViewController extends ViewController {
       // does not compute a new candidate rule, per plan Task 8's own
       // interface ("consumes a candidate list supplied by the autokern
       // adapter; it does not calculate candidates").
-      isCandidate: this.isOverrideCandidate(entry.left, entry.right, entry.value),
+      isCandidate,
     };
   }
 
@@ -3972,6 +3988,15 @@ export class KerningViewController extends ViewController {
       "aria-label",
       `Save ${row.left} × ${row.right} = ${row.suggestion} at this pair`
     );
+    if (row.answeredByClass) {
+      button.disabled = true;
+      button.setAttribute(
+        "data-tooltip",
+        "The class rule answers for this pair. Apply it on the class row, or " +
+          "raise the class tolerance to treat this pair as an override."
+      );
+      return button;
+    }
     if (row.stale || !Number.isFinite(row.suggestion)) {
       button.disabled = true;
       button.setAttribute(

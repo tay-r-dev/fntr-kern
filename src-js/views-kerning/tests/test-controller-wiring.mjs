@@ -6,6 +6,8 @@ import * as inputTokens from "../src/input-tokens.js";
 import { retainVisible, selectRange, selectRow } from "../src/results-selection.js";
 import { layoutPairPreview, normalizePairsPerRow } from "../src/pair-preview-layout.js";
 import {
+  explicitPairExists,
+  hiddenFromCacheEntry,
   passesNumericFilters,
   pairMatchesGlyphset,
   rowMatchesRelationships,
@@ -39,6 +41,8 @@ const Controller = vm.runInNewContext(`${classSource}\nKerningViewController;`, 
   ViewController: class {},
   ...inputTokens,
   retainVisible,
+  explicitPairExists,
+  hiddenFromCacheEntry,
   selectRange,
   selectRow,
   passesNumericFilters,
@@ -771,4 +775,41 @@ test("the delta threshold leaves an applied row on screen", () => {
   // An unkerned pair below the threshold is what the threshold is for.
   assert.equal(view.pairRowVisible(row(0, -4), filters, 20), false);
   assert.equal(view.pairRowVisible(row(0, -40), filters, 20), true);
+});
+
+test("a member inside the class tolerance is answered by the class", () => {
+  const view = Object.create(Controller.prototype);
+  let resolved = 29;
+  Object.assign(view, {
+    _autokernSourceIdentifier: "s1",
+    autokernParamsController: { model: { groupThreshold: 10 } },
+    kerningController: {
+      getGlyphPairValueForSource: () => resolved,
+      getPairValues: () => undefined,
+      leftPairGroupMapping: { a: "a_R" },
+      rightPairGroupMapping: {},
+    },
+    isLeftClassed: (name) => name === "a",
+    isRightClassed: () => false,
+    wouldShadowClassCell: () => true,
+  });
+
+  // 24 against a class value of 29 is inside the tolerance of 10: the rule
+  // answers, so the row proposes the rule's own value and has no delta.
+  let row = view.pairRowData({ left: "a", right: "z", value: 24 }, true);
+  assert.equal(row.answeredByClass, true);
+  assert.equal(row.suggestion, 29);
+  assert.equal(row.delta, 0);
+  assert.equal(row.ownSuggestion, 24);
+  assert.equal(row.isCandidate, false);
+  // And there is nothing to apply on it.
+  assert.equal(view.buildApplyProposalButton(row).disabled, true);
+
+  // 12 diverges by 17, so this member keeps its own number and reads as a
+  // potential override.
+  row = view.pairRowData({ left: "a", right: "z", value: 12 }, true);
+  assert.equal(row.answeredByClass, false);
+  assert.equal(row.suggestion, 12);
+  assert.equal(row.delta, -17);
+  assert.equal(row.isCandidate, true);
 });
