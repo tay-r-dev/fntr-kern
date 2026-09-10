@@ -69,6 +69,7 @@ export const strings = {
   "action.glyph.convert-curves-to-quadratic-5": "To Quadratic (5 off-curve points)",
   "action.glyph.delete-source": "Delete source...",
   "action.glyph.edit-glyph-axes": "Edit glyph axes...",
+  "action.glyph.update-all-metrics": "Update All Metrics",
   "action.harmonize": "Harmonize Curves",
   "action.balance": "Balance Segments",
   "action.join-contours": "Join Contours",
@@ -239,6 +240,9 @@ export const strings = {
   "dialog.paste-whole-glyph.title": "You are about to paste an entire glyph",
   "dialog.replace": "Replace",
   "dialog.save": "Save",
+  "dialog.update-all-metrics.content":
+    "This rewrites sidebearings in every glyph that has a metrics key.",
+  "dialog.update-all-metrics.title": "Update all metrics keys?",
   "dialog.yes": "Yes",
   "edit-tools-knife.undo.slice-glyph": "slice glyph",
   "edit-tools-pen.undo.add-points": "add point(s)",
@@ -540,6 +544,7 @@ export const strings = {
   "sidebar.letterspacer.overshoot": "Overshoot",
   "sidebar.letterspacer.apply-lsb": "Apply LSB",
   "sidebar.letterspacer.apply-rsb": "Apply RSB",
+  "sidebar.letterspacer.may-replace-metrics-keys": "Replace metrics keys",
   "sidebar.letterspacer.reference": "Reference",
   "sidebar.letterspacer.bulk.title": "Bulk apply",
   "sidebar.letterspacer.bulk.glyphset": "Glyph set",
@@ -715,6 +720,16 @@ export const strings = {
   "sidebar.skeleton-parameters.undo.reset-ribs": "reset skeleton ribs",
   "sidebar.skeleton-parameters.undo.reset-handles": "reset handle offsets",
   "sidebar.skeleton-parameters.undo.reset-this-handle": "reset generated handle",
+  "sidebar.selection-info.metrics-key.override.tooltip": "Override for this source",
+  "sidebar.selection-info.metrics-key.reset-to-shared.tooltip": "Reset to shared",
+  "sidebar.selection-info.metrics-key.stale.tooltip":
+    "Referenced glyph changed — press Update",
+  "sidebar.selection-info.metrics-key.unlink.confirm":
+    "Click again to remove the metrics key",
+  "sidebar.selection-info.metrics-key.unlink.tooltip":
+    "Remove the metrics key, keep the number",
+  "sidebar.selection-info.metrics-key.update.tooltip":
+    "Re-resolve metrics keys for every source",
   "sidebar.selection-info.multi-source": "Multi-source value changes are absolute",
   "sidebar.selection-info.sidebearings": "Sidebearings",
   "sidebar.selection-info.title": "Glyph info",

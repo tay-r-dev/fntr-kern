@@ -4,7 +4,12 @@ import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import {
   deleteSidebearingKey,
+  formatMetricsKeyDisplay,
+  getEffectiveMetricsKey,
   getSidebearingKey,
+  hasAnySidebearingKey,
+  isMetricsValueStale,
+  isSelfReferenceSameSide,
   parseMetricsKey,
   setSidebearingKey,
   SIDE_METRIC_PROPERTY,
@@ -178,6 +183,19 @@ export default class SelectionInfoPanel extends Panel {
       await this.sceneController.sceneModel.getSelectedVariableGlyphController();
     const glyphLocked = !!varGlyphController?.glyph.customData["fontra.glyph.locked"];
 
+    const metricsKeyDisplay = {
+      left: await this._getMetricsKeyDisplay(
+        varGlyphController,
+        glyphController,
+        "left"
+      ),
+      right: await this._getMetricsKeyDisplay(
+        varGlyphController,
+        glyphController,
+        "right"
+      ),
+    };
+
     if (
       positionedGlyph?.isUndefined &&
       positionedGlyph.character &&
@@ -265,34 +283,52 @@ export default class SelectionInfoPanel extends Panel {
           key: '["sidebearings"]',
           label: translate("sidebar.selection-info.sidebearings"),
           fieldX: {
-            key: '["leftMargin"]',
-            value: glyphController.leftMargin,
-            numDigits: 1,
-            disabled: glyphController.leftMargin == undefined,
-            evaluateExpression: async (input) =>
+            "key": '["leftMargin"]',
+            "value": metricsKeyDisplay.left
+              ? formatMetricsKeyDisplay(metricsKeyDisplay.left.expression)
+              : glyphController.leftMargin,
+            "displayValue": metricsKeyDisplay.left
+              ? formatResolvedMetricsValue(metricsKeyDisplay.left)
+              : undefined,
+            "stale": !!metricsKeyDisplay.left?.stale,
+            "data-tooltip": metricsKeyDisplay.left?.stale
+              ? translate("sidebar.selection-info.metrics-key.stale.tooltip")
+              : undefined,
+            "numDigits": 1,
+            "disabled": glyphController.leftMargin == undefined,
+            "evaluateExpression": async (input) =>
               await this._evaluateSidebearingInput(input, varGlyphController, "left"),
-            recordExtraChanges: (glyph, layerInfo) =>
+            "recordExtraChanges": (glyph, layerInfo) =>
               this._recordPendingMetricsKey(glyph, layerInfo, "left"),
-            getValue: (layerGlyph, layerGlyphController, fieldItem) => {
+            "getValue": (layerGlyph, layerGlyphController, fieldItem) => {
               return layerGlyphController.leftMargin;
             },
-            setValue: (layerGlyph, layerGlyphController, fieldItem, value) => {
+            "setValue": (layerGlyph, layerGlyphController, fieldItem, value) => {
               setLeftMarginOnLayer(layerGlyph, layerGlyphController, value);
             },
           },
           fieldY: {
-            key: '["rightMargin"]',
-            value: glyphController.rightMargin,
-            numDigits: 1,
-            evaluateExpression: async (input) =>
+            "key": '["rightMargin"]',
+            "value": metricsKeyDisplay.right
+              ? formatMetricsKeyDisplay(metricsKeyDisplay.right.expression)
+              : glyphController.rightMargin,
+            "displayValue": metricsKeyDisplay.right
+              ? formatResolvedMetricsValue(metricsKeyDisplay.right)
+              : undefined,
+            "stale": !!metricsKeyDisplay.right?.stale,
+            "data-tooltip": metricsKeyDisplay.right?.stale
+              ? translate("sidebar.selection-info.metrics-key.stale.tooltip")
+              : undefined,
+            "numDigits": 1,
+            "evaluateExpression": async (input) =>
               await this._evaluateSidebearingInput(input, varGlyphController, "right"),
-            recordExtraChanges: (glyph, layerInfo) =>
+            "recordExtraChanges": (glyph, layerInfo) =>
               this._recordPendingMetricsKey(glyph, layerInfo, "right"),
-            disabled: glyphController.rightMargin == undefined,
-            getValue: (layerGlyph, layerGlyphController, fieldItem) => {
+            "disabled": glyphController.rightMargin == undefined,
+            "getValue": (layerGlyph, layerGlyphController, fieldItem) => {
               return layerGlyphController.rightMargin;
             },
-            setValue: (layerGlyph, layerGlyphController, fieldItem, value) => {
+            "setValue": (layerGlyph, layerGlyphController, fieldItem, value) => {
               setRightMarginOnLayer(layerGlyph, layerGlyphController, value);
             },
           },
@@ -953,6 +989,44 @@ export default class SelectionInfoPanel extends Panel {
     );
   }
 
+  // Resolves the current source's effective key for one side, for display only.
+  // The live resolve doubles as the staleness test (spec section 4.8) -- no watcher.
+  async _getMetricsKeyDisplay(varGlyphController, glyphController, side) {
+    if (!varGlyphController || !glyphController) {
+      return null;
+    }
+    const layerName = this.sceneController.sceneSettings.editLayerName;
+    const layerGlyph = varGlyphController.glyph.layers[layerName]?.glyph;
+    const effective = getEffectiveMetricsKey(
+      varGlyphController.glyph,
+      layerGlyph,
+      side
+    );
+    if (!effective) {
+      return null;
+    }
+
+    const metricProperty = SIDE_METRIC_PROPERTY[side];
+    const { mainLayerName, locations } = this._getEditingLocations(varGlyphController);
+    const result = await resolveMetricsExpression(
+      this.fontController,
+      effective.expression,
+      metricProperty,
+      locations,
+      mainLayerName
+    );
+
+    if (result?.error) {
+      return { ...effective, resolvedValue: undefined, error: result.error };
+    }
+    const resolvedValue = typeof result === "number" ? result : result?.value;
+    return {
+      ...effective,
+      resolvedValue,
+      stale: isMetricsValueStale(glyphController[metricProperty], resolvedValue),
+    };
+  }
+
   // Field entry point for a sidebearing. Decides whether the input creates a
   // persistent link (leading "=") or is a one-shot value, records the intent,
   // and returns the resolved value for the normal apply path.
@@ -1187,6 +1261,15 @@ function maybeClampValue(value, min, max) {
     value = Math.min(value, max);
   }
   return value;
+}
+
+// The adornment beside a keyed field: the resolved number, or a marker when the
+// reference could not be resolved (spec section 7 cases 1 and 2).
+function formatResolvedMetricsValue(keyDisplay) {
+  if (keyDisplay.error || keyDisplay.resolvedValue == undefined) {
+    return "?";
+  }
+  return String(round(keyDisplay.resolvedValue, 1));
 }
 
 // The single left-margin setter. Setting the left margin translates the whole
