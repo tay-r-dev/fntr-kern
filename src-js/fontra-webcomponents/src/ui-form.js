@@ -121,6 +121,19 @@ export class Form extends SimpleElement {
       width: 4em;
     }
 
+    /* Read-only companion to an editable expression: the resolved number sits
+       beside the field rather than inside its value. */
+    .ui-form-value .field-adornment {
+      opacity: 0.6;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ui-form-value input.field-stale {
+      outline: 1.5px solid var(--fontra-color-warning, #e0a030);
+      outline-offset: -1.5px;
+    }
+
     .ui-form-value.edit-number,
     .ui-form-value.edit-number-x-y,
     .ui-form-value.edit-text-double,
@@ -623,10 +636,20 @@ export class Form extends SimpleElement {
       this._lastValidFieldValues[fieldItem.key] = value;
       this._fieldChanging(fieldItem, valueObject || value, undefined);
     };
+    if (fieldItem.stale) {
+      inputElement.classList.add("field-stale");
+    }
+
     this._fieldGetters[fieldItem.key] = () => inputElement.value;
     this._fieldSetters[fieldItem.key] = (value) =>
       (inputElement.value = maybeRoundToString(value, fieldItem.numDigits));
     valueElement.appendChild(inputElement);
+
+    if (fieldItem.displayValue !== undefined) {
+      valueElement.appendChild(
+        html.span({ class: "field-adornment" }, [fieldItem.displayValue])
+      );
+    }
   }
 
   _addEditAngle(valueElement, fieldItem) {
@@ -957,7 +980,14 @@ function maybeRound(value, digits) {
 }
 
 function maybeRoundToString(value, digits) {
-  return value == undefined ? "" : digits == undefined ? value : round(value, digits);
+  if (value == undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    // Expression fields may hold a metrics key such as "=n" -- never round it.
+    return value;
+  }
+  return digits == undefined ? value : round(value, digits);
 }
 
 function getInitialValueWithFallback(fieldItem) {
