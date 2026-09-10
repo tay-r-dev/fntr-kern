@@ -4161,6 +4161,10 @@ export class KerningViewController extends ViewController {
       ? ""
       : "none";
     currentCell.appendChild(this.buildCurrentValueEditor(group.current, left, right));
+    // The same reset a pair row carries. On this row it writes zero at the
+    // class address, which is what the batch Reset already does for a
+    // selected class-rule row (writePairValues resolves the address).
+    currentCell.appendChild(this.buildResetValueButton({ left, right }));
     tr.appendChild(currentCell);
 
     // Proposed IS the aggregate suggestion for this class rule. Task 17,
