@@ -245,6 +245,11 @@ export class Form extends SimpleElement {
         label += ":";
       } */ // Conflicts with colons within localization values
       labelElement.append(label);
+      if (fieldItem["data-tooltip"]) {
+        // The label column is narrow and ellipsises, so the tooltip has to be
+        // reachable from the text that was cut, not only from the input.
+        labelElement.setAttribute("title", fieldItem["data-tooltip"]);
+      }
       this.contentElement.appendChild(labelElement);
       if (fieldItem.type === "header") {
         if (fieldItem.auxiliaryElement) {

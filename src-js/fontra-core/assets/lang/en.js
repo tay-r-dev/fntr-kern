@@ -544,7 +544,9 @@ export const strings = {
   "sidebar.letterspacer.overshoot": "Overshoot",
   "sidebar.letterspacer.apply-lsb": "Apply LSB",
   "sidebar.letterspacer.apply-rsb": "Apply RSB",
-  "sidebar.letterspacer.may-replace-metrics-keys": "Replace metrics keys",
+  "sidebar.letterspacer.may-replace-metrics-keys": "Replace keys",
+  "sidebar.letterspacer.may-replace-metrics-keys.tooltip":
+    "Apply may overwrite a sidebearing that has a metrics key, and delete the key",
   "sidebar.letterspacer.metrics-key-held.both":
     "Apply skips both sidebearings: metrics keys hold them.",
   "sidebar.letterspacer.metrics-key-held.left":

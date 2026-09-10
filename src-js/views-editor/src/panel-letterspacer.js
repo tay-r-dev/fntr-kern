@@ -410,13 +410,16 @@ export default class LetterspacerPanel extends Panel {
           },
 
           {
-            type: "edit-number",
-            key: "mayReplaceMetricsKeys",
-            label: translate("sidebar.letterspacer.may-replace-metrics-keys"),
-            value: this.mayReplaceMetricsKeys ? 1 : 0,
-            minValue: 0,
-            maxValue: 1,
-            integer: true,
+            "type": "edit-number",
+            "key": "mayReplaceMetricsKeys",
+            "label": translate("sidebar.letterspacer.may-replace-metrics-keys"),
+            "data-tooltip": translate(
+              "sidebar.letterspacer.may-replace-metrics-keys.tooltip"
+            ),
+            "value": this.mayReplaceMetricsKeys ? 1 : 0,
+            "minValue": 0,
+            "maxValue": 1,
+            "integer": true,
           },
 
           { type: "divider" },
