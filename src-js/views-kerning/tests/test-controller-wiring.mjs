@@ -937,6 +937,6 @@ test("the canvas and the table propose the same number for a class member", () =
   // After applying the rule, there is nothing left to ask for -- it used to
   // turn negative here, showing the member's own value minus what was written.
   stored = 22;
-  view._classProposalCache = new Map();
+  view._classProposals = null;
   assert.equal(view._previewPairValue.get(reposition()), 0);
 });

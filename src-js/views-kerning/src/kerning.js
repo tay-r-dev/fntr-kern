@@ -3296,43 +3296,47 @@ export class KerningViewController extends ViewController {
   // at the class address: the preview's job is to show what the suggestions
   // would do, and a class member's suggestion is its rule's.
   classProposalForPair(left, right) {
-    if (!this._classProposalCache) {
-      this._classProposalCache = new Map();
-    }
     const [classLeft, classRight] = this.classAddressForPair(left, right);
-    const key = pairKey(classLeft, classRight);
-    if (this._classProposalCache.has(key)) {
-      return this._classProposalCache.get(key);
+    return this.classProposals().get(pairKey(classLeft, classRight));
+  }
+
+  // Every class address's proposal, in ONE pass over the cache. Asking per
+  // address walked the whole cache each time, so a table of class rows cost
+  // one full scan per row -- which is what made a filtered search crawl.
+  classProposals() {
+    if (this._classProposals) {
+      return this._classProposals;
     }
-    const kernData = this.kerningController.kernData;
-    const leftMembers = classLeft.startsWith("@")
-      ? kernData.groupsSide1?.[classLeft.slice(1)] || []
-      : [classLeft];
-    const rightMembers = classRight.startsWith("@")
-      ? kernData.groupsSide2?.[classRight.slice(1)] || []
-      : [classRight];
-    const leftSet = new Set(leftMembers);
-    const rightSet = new Set(rightMembers);
-    const values = [];
+    const groupThreshold = this.autokernParamsController.model.groupThreshold;
+    const valuesByAddress = new Map();
     for (const entry of this.autokernCache?.values() || []) {
-      if (
-        !entry.stale &&
-        Number.isFinite(entry.value) &&
-        leftSet.has(entry.left) &&
-        rightSet.has(entry.right)
-      ) {
+      // Stale members count, because the class-rule row's own median counts
+      // them: one number for a class address, whoever asks. The row marks the
+      // aggregate unreliable in red instead of leaving those members out.
+      if (!Number.isFinite(entry.value)) {
+        continue;
+      }
+      const [classLeft, classRight] = this.classAddressForPair(entry.left, entry.right);
+      const key = pairKey(classLeft, classRight);
+      const values = valuesByAddress.get(key);
+      if (values) {
         values.push(entry.value);
+      } else {
+        valuesByAddress.set(key, [entry.value]);
       }
     }
-    const centre = medianOfValues(values);
-    const proposal = values.length
-      ? medianDroppingOutliers(
+    this._classProposals = new Map();
+    for (const [key, values] of valuesByAddress) {
+      const centre = medianOfValues(values);
+      this._classProposals.set(
+        key,
+        medianDroppingOutliers(
           values.map((value) => ({ value, divergence: value - centre })),
-          this.autokernParamsController.model.groupThreshold
+          groupThreshold
         )
-      : undefined;
-    this._classProposalCache.set(key, proposal);
-    return proposal;
+      );
+    }
+    return this._classProposals;
   }
 
   // The one proposal for a pair, in whole units: its class rule's proposal
@@ -3453,9 +3457,9 @@ export class KerningViewController extends ViewController {
     // which glyphs are stale already calls renderPairTable.
     this.renderStaleSection();
     // Derived from the cache and the class membership, both of which a render
-    // is downstream of. Rebuilt per render rather than invalidated in a dozen
-    // places.
-    this._classProposalCache = new Map();
+    // is downstream of. Rebuilt once per render rather than invalidated in a
+    // dozen places.
+    this._classProposals = null;
 
     const filters = this.autokernFiltersController.model;
     const threshold = this.autokernParamsController.model.threshold;
@@ -6171,7 +6175,16 @@ export class KerningViewController extends ViewController {
     const applicableRows = this.getSelectedPairTableRows().filter(
       ({ left, right }) => !this.isPairStale(left, right)
     );
-    await this.writePairValues(applicableRows, (entry) => entry.value, true, true);
+    // The number the row shows, not the raw cache entry: a class member is
+    // answered by its rule, so writing its own measurement here would save a
+    // pair exception the row never offered.
+    await this.writePairValues(
+      applicableRows,
+      (entry, left, right) =>
+        this.effectiveSuggestion(left, right, entry) ?? entry.value,
+      true,
+      true
+    );
   }
 
   // Task 4, spec F20: "Remove Reset to current, Apply all, and the
