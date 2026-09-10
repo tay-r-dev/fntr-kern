@@ -1436,3 +1436,52 @@ describe("serif wall that turns back", () => {
     expect(wall.parameterAtDepth(1e9)).to.equal(peak);
   });
 });
+
+describe("a wall that leans away from the wing", () => {
+  const params = {
+    wingLength: 20,
+    tipThickness: 20,
+    wingSlope: 20,
+    tipCutAngle: 0,
+    reach: 0,
+    tension: 0,
+    concavity: 0,
+    easeDistance: 0,
+    easeCurvature: 0,
+  };
+  // The foot is flat and the stem leans, so on this side the wall runs AWAY
+  // from the wing as it climbs. `lean` is how far it runs out per unit of
+  // depth: at 1 it recedes exactly as fast as the wing's top surface climbs
+  // inward, and the two are parallel.
+  const leaningWall = (lean) =>
+    makeSerifWall([
+      { u: 40, v: 0 },
+      { u: 40 - lean * 372, v: 372 },
+    ]);
+  const cornerAt = (lean) =>
+    buildHalfSerif({ side: 1, wall: leaningWall(lean), params }).corner;
+
+  it("keeps the corner above the tip on a stem the wing cannot reach", () => {
+    // Measured on the P of skeletron-test: the wing's top surface, extended as
+    // a ray, does meet this wall — 346 units up the stem, because the two are
+    // within seven degrees of parallel. The wing is 20 units long and stops at
+    // the wall's own foot, so it never gets there. The corner is the depth the
+    // slope states.
+    const corner = cornerAt(0.8844);
+    expect(corner.v).to.be.closeTo(params.tipThickness + params.wingSlope, 0.05);
+  });
+
+  it("moves the corner continuously as the stem leans", () => {
+    let previous = cornerAt(0.5);
+    let worst = 0;
+    for (let lean = 0.502; lean <= 1.2; lean += 0.002) {
+      const current = cornerAt(lean);
+      worst = Math.max(
+        worst,
+        Math.hypot(current.u - previous.u, current.v - previous.v)
+      );
+      previous = current;
+    }
+    expect(worst).to.be.lessThan(1);
+  });
+});

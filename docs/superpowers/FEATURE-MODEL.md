@@ -898,9 +898,11 @@ stroke opposite ways.
 
 The tilt moves the terminal by rotation alone until one of the construction's own searches meets
 the wall tangentially, and there the shape steps — at the wing-swallowed snap, which is deliberate,
-then where the tip's own line stops crossing the wall (backlog S3) and where the corner ray runs
-parallel to it (backlog S4). None of the three belongs to the tilt; each is reachable through an
-absolute axis at the same effective angle. **Where they land is set by the wall, not by an angle**:
+and where the tip's own line stops crossing the wall (backlog S3). The third of them, where the
+corner ray ran parallel to the wall, is gone: the surface is searched as a segment now, and a
+segment that cannot reach the wall hands the corner to the stated depth instead of to a meeting
+hundreds of units away. Neither of the two that remain belongs to the tilt; each is reachable
+through an absolute axis at the same effective angle. **Where they land is set by the wall, not by an angle**:
 on a gently curved stem they sit past 38°, and on the strongly curved stroke of a `braceright` the
 corner ray runs parallel at 28°, which is inside the range the panel offers. The panel offers ±40
 and the writer clamps nothing, because the shape does not stop there.
@@ -1025,8 +1027,18 @@ consequences follow, and we found both the hard way.
 **The terminal meets the stem where the stem actually is, and the wall it meets is the wall as
 solved from the centerline and the widths.**
 
-The wing's top surface is extended inward from the top of the tip until it meets that wall. Where
-it meets is the wing's inner corner. The junction and the release sit at their own depths further
+The wing's top surface runs inward from the top of the tip until it meets that wall. Where it meets
+is the wing's inner corner.
+
+**The surface is a segment, not a ray.** It runs the wing's own length and ends directly above the
+wall's foot, at the depth the tip thickness and the wing slope state between them. Where the wall
+stands further out than that — a stem leaning away from the wing, so that the wall recedes about as
+fast as the surface climbs — the surface never reaches it, and the corner is that stated depth
+instead. The two answers are the same point where the surface's end touches the wall, so the
+terminal does not step between them. Searched as a ray, a wall seven degrees off parallel was met
+346 units up the stem, and whether so distant a meeting fell inside the length the wall may be
+consumed for turned on the fourth digit of the lean: 415 units of release travel in one frame of a
+horizontal drag. The junction and the release sit at their own depths further
 up the same wall. The wall is cut at the release, and the surviving piece is emitted unchanged.
 Nothing is dragged onto a target and no handle is turned.
 

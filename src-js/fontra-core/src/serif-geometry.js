@@ -537,6 +537,27 @@ export function buildHalfSerif({ side, wall, params }) {
   // and false of every curved one. On a straight wall the two answers are the
   // same point, so nothing already drawn moves.
   const cornerRay = { u: -side * wingLength, v: wingSlope };
+  // The surface is a SEGMENT, not a ray: it runs the wing's own length inward
+  // and ends directly above the wall's foot, so a crossing past that end is not
+  // on the surface at all. On a stem leaning away from the wing the extended ray
+  // still meets the wall, hundreds of units up — within seven degrees of
+  // parallel on the P of skeletron-test, where it met at depth 346 against a
+  // wing that climbs 20. Whether so distant a meeting lands inside the length
+  // the wall may be consumed for is a knife edge, so the corner stepped 415
+  // units between two frames of a horizontal drag. Past the surface's own end
+  // the wall stands further out than the wing reaches, and the corner is the
+  // depth the slope states. The two answers agree exactly where the surface's
+  // end touches the wall, so nothing steps between them.
+  const surfaceLength = lengthUV(cornerRay);
+  const meetWingSurface = () => {
+    const hit = wall.meetRay(tipTop, cornerRay);
+    if (hit === null) {
+      return null;
+    }
+    return lengthUV(subUV(wall.pointAt(hit), tipTop)) <= surfaceLength + 1e-9
+      ? hit
+      : null;
+  };
   // The tip has reached the wall on its own, so there is no wing left for a
   // slope to climb: the stem has swallowed it. The corner is the crossing the
   // tip stopped at, and the wing slope is not emitted at all. Climbing a surface
@@ -546,8 +567,7 @@ export function buildHalfSerif({ side, wall, params }) {
   const cornerParameter = tipReachesWall
     ? wallCrossesTip
     : wingLength > 0
-      ? (wall.meetRay(tipTop, cornerRay) ??
-        wall.parameterAtDepth(tipThickness + wingSlope))
+      ? (meetWingSurface() ?? wall.parameterAtDepth(tipThickness + wingSlope))
       : wall.parameterAtDepth(tipThickness + wingSlope);
   const corner = wall.pointAt(cornerParameter);
 

@@ -843,6 +843,37 @@ two read the same way; tilt with a rib angle lock on; tilt with one half
 collapsed; tilt to the ends of the range and back; mirror a tilted terminal;
 switch a tilted terminal to absolute and back.
 
+### The wing's top surface was searched as a ray
+
+Reported on the `P` of `skeletron-test.fontra`: drag the serifed terminal
+horizontally and its left release rides up the stem, then snaps back to the
+terminal and stays there. Measured over x = 200 to 600: one step of 415 units
+between x = 394.25 and x = 394.5, and the glyph as saved sits on the wrong side
+of it, its release 346 units up a wall the terminal should have let go of at 40.
+
+The foot is locked horizontal and the stem leans 48 degrees, so on the left the
+wall runs AWAY from the wing as it climbs, at 0.884 units of `u` per unit of
+depth against the wing's own 1.0 — seven degrees off parallel. The wing's top
+surface, extended as a ray, does meet that wall, at depth 346. The wing is 20
+units long and ends above the wall's own foot, so it never gets there.
+
+- **The jump is not the near-parallel meeting; it is the two answers either side
+  of it.** Whether so distant a crossing falls inside the 95 per cent of its own
+  length the wall may be consumed for is decided in the fourth digit of the lean,
+  and past it the corner falls through to the depth answer — a different
+  construction, 306 units away.
+- **The surface is a segment, so search it as one.** Its far end stands directly
+  above the wall's foot at depth `tipThickness + wingSlope`, which is exactly
+  what the fallback returns, so the two answers are the same point where the
+  segment's end touches the wall and nothing steps between them. Worst step over
+  the whole sweep after: 2.77 units, which is the grid.
+- **Nothing already drawn moves.** A straight stem crosses at the segment's own
+  end, and a wall leaning toward the wing crosses before it. Suite 2,584 to
+  2,586, no fixture moved — the corpus carries no serif on a leaning stem, so
+  that is the gap and not the result.
+- This is one of the three steps recorded under the tilt as belonging to the
+  construction rather than to the tilt. The other two are open.
+
 ### Gaps, and what is left alone
 
 - **The golden fixtures moved for none of the geometry changes above.** They
