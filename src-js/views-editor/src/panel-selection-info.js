@@ -47,6 +47,7 @@ export default class SelectionInfoPanel extends Panel {
     this.throttledUpdate = throttleCalls((senderID) => this.update(senderID), 100);
     this.sceneController = this.editorController.sceneController;
     this._pendingMetricsKeyEdit = null;
+    this._metricsRowHasKeys = false;
     this._metricsUnlinkConfirm = null;
     this._metricsUnlinkConfirmGlyph = null;
     this.letterspacerPanel = new LetterspacerPanel(this.editorController);
@@ -202,6 +203,9 @@ export default class SelectionInfoPanel extends Panel {
         "right"
       ),
     };
+    // What the row is showing right now. A margin edit that clears the last key
+    // has to rebuild too, or the adornment of the key it just removed stays.
+    this._metricsRowHasKeys = !!(metricsKeyDisplay.left || metricsKeyDisplay.right);
 
     if (
       positionedGlyph?.isUndefined &&
@@ -340,12 +344,16 @@ export default class SelectionInfoPanel extends Panel {
             },
           },
         });
+        // Every icon row in this app wraps its buttons in a flex box. An
+        // icon-button is inline by default, and an inline box ignores width and
+        // height, so a bare one in the form's full-width div draws at whatever
+        // size its artwork happens to be.
+        const metricsKeyControls = [];
         if (this._glyphHasMetricsKeys(varGlyphController)) {
-          formContents.push({
-            type: "single-icon",
-            element: html.createDomElement("icon-button", {
+          metricsKeyControls.push(
+            html.createDomElement("icon-button", {
               "src": "/tabler-icons/refresh.svg",
-              "style": "width: 1.3em; height: 1.3em;",
+              "style": "width: 1.3em; height: 1.3em; flex: 0 0 auto;",
               "disabled": glyphLocked || this.fontController.readOnly,
               "data-tooltip": translate(
                 "sidebar.selection-info.metrics-key.update.tooltip"
@@ -355,19 +363,20 @@ export default class SelectionInfoPanel extends Panel {
                 await this._updateMetricsForGlyph(glyphName, varGlyphController);
                 await this.update();
               },
-            }),
-          });
+            })
+          );
         }
         for (const side of ["left", "right"]) {
           if (!metricsKeyDisplay[side]) {
             continue;
           }
           const isConfirming = this._metricsUnlinkConfirm === side;
-          formContents.push({
-            type: "single-icon",
-            element: html.createDomElement("icon-button", {
+          const isOverridden = metricsKeyDisplay[side].level === "source";
+          metricsKeyControls.push(
+            html.span({ style: "opacity: 0.5;" }, [side === "left" ? "L" : "R"]),
+            html.createDomElement("icon-button", {
               "src": isConfirming ? "/tabler-icons/x.svg" : "/tabler-icons/unlink.svg",
-              "style": "width: 1.1em; height: 1.1em;",
+              "style": "width: 1.1em; height: 1.1em; flex: 0 0 auto;",
               "disabled": glyphLocked || this.fontController.readOnly,
               "data-tooltip": translate(
                 isConfirming
@@ -386,15 +395,11 @@ export default class SelectionInfoPanel extends Panel {
                 await this.update();
               },
             }),
-          });
-          const isOverridden = metricsKeyDisplay[side].level === "source";
-          formContents.push({
-            type: "single-icon",
-            element: html.createDomElement("icon-button", {
+            html.createDomElement("icon-button", {
               "src": isOverridden
                 ? "/tabler-icons/link.svg"
                 : "/tabler-icons/link-plus.svg",
-              "style": `width: 1.1em; height: 1.1em; opacity: ${
+              "style": `width: 1.1em; height: 1.1em; flex: 0 0 auto; opacity: ${
                 isOverridden ? "1" : "0.6"
               };`,
               "disabled": glyphLocked || this.fontController.readOnly,
@@ -412,7 +417,20 @@ export default class SelectionInfoPanel extends Panel {
                 );
                 await this.update();
               },
-            }),
+            })
+          );
+        }
+        if (metricsKeyControls.length) {
+          formContents.push({
+            type: "single-icon",
+            element: html.div(
+              {
+                style:
+                  "display: flex; gap: 0.4rem; align-items: center;" +
+                  " justify-content: flex-end; font-size: 0.9em;",
+              },
+              metricsKeyControls
+            ),
           });
         }
         formContents.push({ type: "single-icon", element: this.letterspacerHost });
@@ -1040,7 +1058,18 @@ export default class SelectionInfoPanel extends Panel {
     }, senderInfo);
 
     if (["xAdvance", "leftMargin", "rightMargin"].includes(changePath[0])) {
-      this._updateGlyphMetrics(glyphName, changePath[0]);
+      // A keyed field's value is its expression and its adornment is a live
+      // resolve, so neither survives a write that only pokes the other number
+      // into place. The margin edit comes back through update() as this panel's
+      // own change, which is the one case update() deliberately does not
+      // rebuild for, so the rebuild has to be asked for here.
+      const varGlyph =
+        await this.sceneController.sceneModel.getSelectedVariableGlyphController();
+      if (this._metricsRowHasKeys || this._glyphHasMetricsKeys(varGlyph)) {
+        await this.update();
+      } else {
+        this._updateGlyphMetrics(glyphName, changePath[0]);
+      }
     }
   }
 
@@ -1261,10 +1290,21 @@ export default class SelectionInfoPanel extends Panel {
   // Runs inside applyNewValue's recordChanges callback, so the key and the
   // margin land in one undo step. Writes at the level the field is bound to:
   // a source override if this side already has one, otherwise the shared key.
-  _recordPendingMetricsKey(glyph, layerInfo, side) {
+  _recordPendingMetricsKey(glyph, layerInfo, side, value) {
     const pending = this._pendingMetricsKeyEdit;
     this._pendingMetricsKeyEdit = null;
-    if (!pending || pending.side !== side) {
+
+    // The field is not the only way a number reaches this side: arrow keys and
+    // a scrub write one without ever going through the expression evaluator.
+    // Setting a number by hand is the same statement however it was typed, so
+    // it breaks the link (spec section 4.4).
+    const edit =
+      pending?.side === side
+        ? pending
+        : typeof value === "number"
+          ? { side, action: "clear" }
+          : null;
+    if (!edit) {
       return;
     }
 
@@ -1275,7 +1315,7 @@ export default class SelectionInfoPanel extends Panel {
           getSidebearingKey(glyph.layers[layerName]?.glyph, side) !== undefined
       );
 
-    if (pending.action === "clear") {
+    if (edit.action === "clear") {
       if (overriddenLayerNames.length) {
         for (const layerName of overriddenLayerNames) {
           deleteSidebearingKey(glyph.layers[layerName].glyph, side);
@@ -1288,10 +1328,10 @@ export default class SelectionInfoPanel extends Panel {
 
     if (overriddenLayerNames.length) {
       for (const layerName of overriddenLayerNames) {
-        setSidebearingKey(glyph.layers[layerName].glyph, side, pending.expression);
+        setSidebearingKey(glyph.layers[layerName].glyph, side, edit.expression);
       }
     } else {
-      setSidebearingKey(glyph, side, pending.expression);
+      setSidebearingKey(glyph, side, edit.expression);
     }
   }
 
