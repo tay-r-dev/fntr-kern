@@ -22,6 +22,10 @@ import {
   setDepth,
 } from "@fontra/core/letterspacer-engine.js";
 import { translate } from "@fontra/core/localization.js";
+import {
+  deleteSidebearingKey,
+  getEffectiveMetricsKey,
+} from "@fontra/core/metrics-keys.js";
 import { ObservableController } from "@fontra/core/observable-object.js";
 import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
 import { Form } from "@fontra/web-components/ui-form.js";
@@ -40,6 +44,7 @@ const LETTERSPACER_SOURCE_FIELDS = Object.freeze({
 
 const LETTERSPACER_FONT_FIELDS = Object.freeze({
   enabled: "enabled",
+  mayReplaceMetricsKeys: "mayReplaceMetricsKeys",
 });
 
 const LETTERSPACER_GLYPH_FIELDS = Object.freeze({
@@ -175,6 +180,14 @@ function setFontLetterspacerEnabled(entity, enabled) {
   setFontraInternalSection(entity, FONTRA_INTERNAL_SECTIONS.LETTERSPACER, section);
 }
 
+function setFontMayReplaceMetricsKeys(entity, value) {
+  const section = {
+    ...(getLetterspacerSection(entity) || {}),
+    [LETTERSPACER_FONT_FIELDS.mayReplaceMetricsKeys]: !!value,
+  };
+  setFontraInternalSection(entity, FONTRA_INTERNAL_SECTIONS.LETTERSPACER, section);
+}
+
 function setGlyphLetterspacerReference(glyph, value) {
   const section = {
     ...(getLetterspacerSection(glyph) || {}),
@@ -241,6 +254,10 @@ export default class LetterspacerPanel extends Panel {
       applyRSB: 1,
       referenceGlyph: "",
     };
+
+    // Apply writes margins by its own route, so a metrics-keyed side has two
+    // writers. Default is to leave a keyed side alone (spec section 4.10).
+    this.mayReplaceMetricsKeys = false;
 
     // Track current and calculated spacing values
     this.currentLSB = 0;
@@ -328,6 +345,7 @@ export default class LetterspacerPanel extends Panel {
     this._suppressPersist = true;
     try {
       await this.loadAlgorithmEnabled();
+      await this.loadMayReplaceMetricsKeys();
       if (this.algorithmEnabled) {
         await this.loadPersistedParams();
       }
@@ -384,6 +402,16 @@ export default class LetterspacerPanel extends Panel {
             key: "applyRSB",
             label: translate("sidebar.letterspacer.apply-rsb"),
             value: this.params.applyRSB ? 1 : 0,
+            minValue: 0,
+            maxValue: 1,
+            integer: true,
+          },
+
+          {
+            type: "edit-number",
+            key: "mayReplaceMetricsKeys",
+            label: translate("sidebar.letterspacer.may-replace-metrics-keys"),
+            value: this.mayReplaceMetricsKeys ? 1 : 0,
             minValue: 0,
             maxValue: 1,
             integer: true,
@@ -455,6 +483,15 @@ export default class LetterspacerPanel extends Panel {
         }
         if (fieldItem.key.startsWith("bulkSubset.")) {
           this.bulkSubsets[fieldItem.key.slice("bulkSubset.".length)] = !!value;
+          return;
+        }
+        if (fieldItem.key === "mayReplaceMetricsKeys") {
+          // A policy for the whole project, not a spacing parameter, so it is
+          // held at font level rather than beside the per-source numbers.
+          this.mayReplaceMetricsKeys = !!value;
+          if (!this._suppressPersist) {
+            await this.persistMayReplaceMetricsKeys(value);
+          }
           return;
         }
         if (this._suppressPersist) {
@@ -601,6 +638,7 @@ export default class LetterspacerPanel extends Panel {
         const layerGlyphs = this.sceneController.getEditingLayerFromGlyphLayers(
           glyph.layers
         );
+        const replacedShared = { left: false, right: false };
 
         for (const [layerName, layerGlyph] of Object.entries(layerGlyphs)) {
           const bounds =
@@ -616,15 +654,31 @@ export default class LetterspacerPanel extends Panel {
             glyphName
           );
 
+          const { keyed, skip } = this.metricsKeySkipSides(glyph, layerGlyph);
           const applied = this.applySpacingToLayerGlyph(
             layerGlyph,
             engine,
             refBounds,
-            factor
+            factor,
+            skip
           );
           if (applied) {
             calculatedLSB = applied.lsb;
             calculatedRSB = applied.rsb;
+            this.replaceMetricsKeysOnLayer(
+              glyph,
+              layerGlyph,
+              applied,
+              keyed,
+              replacedShared
+            );
+          }
+        }
+
+        // Shared keys are glyph-level: remove them once, not per layer.
+        for (const side of ["left", "right"]) {
+          if (replacedShared[side]) {
+            deleteSidebearingKey(glyph, side);
           }
         }
 
@@ -823,10 +877,30 @@ export default class LetterspacerPanel extends Panel {
           fontMetrics,
           target.glyphName
         );
-        if (
-          this.applySpacingToLayerGlyph(layerGlyph, engine, refBounds, target.factor)
-        ) {
+        const varGlyph = font.glyphs[target.glyphName];
+        const { keyed, skip } = this.metricsKeySkipSides(varGlyph, layerGlyph);
+        const applied = this.applySpacingToLayerGlyph(
+          layerGlyph,
+          engine,
+          refBounds,
+          target.factor,
+          skip
+        );
+        if (applied) {
           spacedCount++;
+          const replacedShared = { left: false, right: false };
+          this.replaceMetricsKeysOnLayer(
+            varGlyph,
+            layerGlyph,
+            applied,
+            keyed,
+            replacedShared
+          );
+          for (const side of ["left", "right"]) {
+            if (replacedShared[side]) {
+              deleteSidebearingKey(varGlyph, side);
+            }
+          }
         }
       }
     });
@@ -855,10 +929,50 @@ export default class LetterspacerPanel extends Panel {
     }
   }
 
+  // Which sides Apply must leave alone on this layer. A keyed side has two
+  // writers, and by default the key wins (spec section 4.10). Where the flag
+  // allows replacement nothing is skipped and the key is deleted afterwards.
+  metricsKeySkipSides(glyph, layerGlyph) {
+    const keyed = {
+      left: !!getEffectiveMetricsKey(glyph, layerGlyph, "left"),
+      right: !!getEffectiveMetricsKey(glyph, layerGlyph, "right"),
+    };
+    if (this.mayReplaceMetricsKeys) {
+      return { keyed, skip: { left: false, right: false } };
+    }
+    return { keyed, skip: { left: keyed.left, right: keyed.right } };
+  }
+
+  // Deletes the keys Apply has just written over, at the level that governs the
+  // source. A source override goes with its own layer; a shared key is glyph
+  // level and is dropped once, by the caller, after every layer is done.
+  replaceMetricsKeysOnLayer(glyph, layerGlyph, wrote, keyed, replacedShared) {
+    if (!this.mayReplaceMetricsKeys) {
+      return;
+    }
+    for (const side of ["left", "right"]) {
+      if (!wrote[side === "left" ? "wroteLeft" : "wroteRight"] || !keyed[side]) {
+        continue;
+      }
+      const effective = getEffectiveMetricsKey(glyph, layerGlyph, side);
+      if (effective?.level === "source") {
+        deleteSidebearingKey(layerGlyph, side);
+      } else if (effective) {
+        replacedShared[side] = true;
+      }
+    }
+  }
+
   // One layer, one write: compute this layer's spacing and put it on the layer.
   // Both the single-glyph Apply and the bulk Apply go through here, so a change
   // to how spacing lands on a glyph is a change in one place.
-  applySpacingToLayerGlyph(layerGlyph, engine, refBounds, factor) {
+  applySpacingToLayerGlyph(
+    layerGlyph,
+    engine,
+    refBounds,
+    factor,
+    skipSides = { left: false, right: false }
+  ) {
     const path = layerGlyph.path;
     const bounds = path.getBounds?.() || path.getControlBounds?.();
     if (!bounds) {
@@ -885,7 +999,10 @@ export default class LetterspacerPanel extends Panel {
     const roundedRSB = Math.round(rsb);
     const currentLSB = bounds.xMin;
 
-    if (this.params.applyLSB) {
+    const writeLSB = !!this.params.applyLSB && !skipSides.left;
+    const writeRSB = !!this.params.applyRSB && !skipSides.right;
+
+    if (writeLSB) {
       // Round the SHIFT, not just the target: a fractional delta would
       // smear decimals onto every point (and thus onto the RSB)
       const deltaLSB = Math.round(roundedLSB - currentLSB);
@@ -903,19 +1020,25 @@ export default class LetterspacerPanel extends Panel {
       }
     }
 
-    if (this.params.applyRSB || this.params.applyLSB) {
+    if (writeRSB || writeLSB) {
       const newBounds =
         layerGlyph.path.getBounds?.() || layerGlyph.path.getControlBounds?.();
-      if (this.params.applyRSB) {
+      if (writeRSB) {
         layerGlyph.xAdvance = Math.round(newBounds.xMax + roundedRSB);
       } else {
+        // Preserve the right margin the glyph had before the path moved.
         layerGlyph.xAdvance = Math.round(
           newBounds.xMax + (layerGlyph.xAdvance - bounds.xMax)
         );
       }
     }
 
-    return { lsb: roundedLSB, rsb: roundedRSB };
+    return {
+      lsb: roundedLSB,
+      rsb: roundedRSB,
+      wroteLeft: writeLSB,
+      wroteRight: writeRSB,
+    };
   }
 
   async loadPersistedParams() {
@@ -977,6 +1100,32 @@ export default class LetterspacerPanel extends Panel {
         changes.change,
         changes.rollbackChange,
         "edit letterspacer enabled",
+        this
+      );
+    }
+  }
+
+  async loadMayReplaceMetricsKeys() {
+    const value = getLetterspacerSection(this.fontController)?.[
+      LETTERSPACER_FONT_FIELDS.mayReplaceMetricsKeys
+    ];
+    this.mayReplaceMetricsKeys = !!value;
+  }
+
+  async persistMayReplaceMetricsKeys(value) {
+    if (this.fontController.readOnly) {
+      return;
+    }
+    const nextValue = !!value;
+    const root = { customData: this.fontController.customData || {} };
+    const changes = recordChanges(root, (root) => {
+      setFontMayReplaceMetricsKeys(root, nextValue);
+    });
+    if (changes.hasChange) {
+      await this.fontController.postChange(
+        changes.change,
+        changes.rollbackChange,
+        "edit letterspacer metrics-key policy",
         this
       );
     }
