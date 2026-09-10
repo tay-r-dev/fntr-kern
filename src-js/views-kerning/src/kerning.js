@@ -2752,9 +2752,7 @@ export class KerningViewController extends ViewController {
     if (this.isPairExcludedFromPreview(left, right, source)) {
       return undefined;
     }
-    return entry && !entry.stale && Number.isFinite(entry.value)
-      ? Math.round(entry.value)
-      : undefined;
+    return this.effectiveSuggestion(left, right, entry, source);
   }
 
   installPairPreviewLayout() {
@@ -3004,7 +3002,11 @@ export class KerningViewController extends ViewController {
     // after its class was applied, and offered to write a pair exception the
     // designer never asked for.
     const isCandidate = this.isOverrideCandidate(entry.left, entry.right, entry.value);
-    const answeredByClass = kind === "member-pair" && !isCandidate;
+    const answeredByClass = this.pairAnsweredByClass(
+      entry.left,
+      entry.right,
+      entry.value
+    );
     const suggestion = answeredByClass ? current : entry.value;
     return {
       left: entry.left,
@@ -3274,6 +3276,39 @@ export class KerningViewController extends ViewController {
       return `@${leftClass} × @${rightClass}`;
     }
     return leftClass ? `@${leftClass} × ${right}` : `${left} × @${rightClass}`;
+  }
+
+  // Is this pair answered by its class rule? True for a class member with no
+  // pair of its own whose measurement sits inside the class tolerance. The
+  // table and the canvas both ask this, so they cannot disagree about what a
+  // member's proposal is.
+  pairAnsweredByClass(left, right, suggestedValue) {
+    if (left.startsWith("@") || right.startsWith("@")) {
+      return false;
+    }
+    if (!this.isLeftClassed(left) && !this.isRightClassed(right)) {
+      return false;
+    }
+    if (explicitPairExists(this.kerningController, left, right)) {
+      return false;
+    }
+    return !this.isOverrideCandidate(left, right, suggestedValue);
+  }
+
+  // The one proposal for a pair, in whole units: the class rule's value where
+  // the rule answers for it, its own measurement otherwise. The canvas used
+  // to read the raw measurement while the table read this, so the same pair
+  // showed two different numbers.
+  effectiveSuggestion(left, right, entry, source = this.autokernSource) {
+    if (!entry || entry.stale || !Number.isFinite(entry.value)) {
+      return undefined;
+    }
+    if (this.pairAnsweredByClass(left, right, entry.value)) {
+      return Math.round(
+        this.kerningController.getGlyphPairValueForSource(left, right, source) ?? 0
+      );
+    }
+    return Math.round(entry.value);
   }
 
   // Backlog item 8 part 2: a shadowing pair's divergence FROM THE GROUP --
@@ -7682,9 +7717,14 @@ export class KerningViewController extends ViewController {
             !!this._liveManualPreviewPairs?.has(
               rowId(this.autokernSource, glyphs[i - 1].glyphName, glyph.glyphName)
             );
+          const proposal = this.effectiveSuggestion(
+            glyphs[i - 1].glyphName,
+            glyph.glyphName,
+            entry
+          );
           const suggestionDelta =
-            inPreview && entry && !entry.stale && Number.isFinite(entry.value)
-              ? entry.value - (glyph.kernValue || 0)
+            inPreview && proposal !== undefined
+              ? proposal - (glyph.kernValue || 0)
               : undefined;
           this._previewPairValue.set(glyph, suggestionDelta);
           // Scene positions already include the saved kern. Replace it

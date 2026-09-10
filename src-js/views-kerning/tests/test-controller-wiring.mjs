@@ -348,7 +348,12 @@ test("manual kerning starts from the preview and the ribbon shows the remaining 
       ["r/o", proposal],
       ["o/r", unrelated],
     ]),
-    kerningController: { getGlyphPairValueForSource: () => saved },
+    kerningController: {
+      getGlyphPairValueForSource: () => saved,
+      getPairValues: () => undefined,
+      leftPairGroupMapping: {},
+      rightPairGroupMapping: {},
+    },
     // Excluding a pair from the preview is written to the project, the same
     // way a junk mark is.
     fontController: { customData: {}, async performEdit(name, key, mutate) {} },
@@ -618,6 +623,12 @@ test("a pair left out of the preview draws no band and no number", () => {
     _autokernSourceIdentifier: "s1",
     suggestionPreviewSettings: { model: { enabled: true, skipAll: false } },
     autokernCache: new Map([[key, { left: "r", right: "o", value: -40 }]]),
+    kerningController: {
+      getGlyphPairValueForSource: () => 0,
+      getPairValues: () => undefined,
+      leftPairGroupMapping: {},
+      rightPairGroupMapping: {},
+    },
     _previewExcludedPairs: new Set(),
     _previewIncludedPairs: new Set(),
     _manualPreviewPairs: new Map(),
@@ -861,4 +872,47 @@ test("applying a class rule settles: the median does not move when it is written
   // when this number was written and the median came back different.
   stored = -10;
   assert.equal(view.computeFoldGroupStats(group, 10).median, -10);
+});
+
+test("the canvas and the table propose the same number for a class member", () => {
+  const view = Object.create(Controller.prototype);
+  const key = "a/x"; // the harness's own pairKey
+  const stored = -10;
+  Object.assign(view, {
+    _chipMode: "phrase",
+    _autokernSourceIdentifier: "s1",
+    suggestionPreviewSettings: { model: { enabled: true, skipAll: false } },
+    autokernParamsController: { model: { groupThreshold: 10 } },
+    autokernCache: new Map([[key, { left: "a", right: "x", value: -8 }]]),
+    kerningController: {
+      getGlyphPairValueForSource: () => stored,
+      getPairValueForSource: () => stored,
+      getPairValues: () => undefined,
+      leftPairGroupMapping: { a: "a_R" },
+      rightPairGroupMapping: {},
+    },
+    isLeftClassed: (name) => name === "a",
+    isRightClassed: () => false,
+    wouldShadowClassCell: () => true,
+    _previewExcludedPairs: new Set(),
+    _previewIncludedPairs: new Set(),
+    _manualPreviewPairs: new Map(),
+    _previewOriginalX: new WeakMap(),
+    _previewPairValue: new WeakMap(),
+  });
+
+  // The member's own measurement is -8, two units off the class value, so
+  // the class answers for it: -10, in the table and on the canvas alike.
+  const row = view.pairRowData({ left: "a", right: "x", value: -8 }, true);
+  assert.equal(row.suggestion, -10);
+  assert.equal(view.getSuggestionPreviewValue("a", "x", { value: -8 }), -10);
+
+  // And the ribbon has nothing left to ask for: the pair already sits there.
+  const glyphs = [
+    { glyphName: "a", x: 0, kernValue: 0 },
+    { glyphName: "x", x: 500, kernValue: stored },
+  ];
+  view._applySuggestionPreviewRepositioning({ positionedLines: [{ glyphs }] });
+  assert.equal(view._previewPairValue.get(glyphs[1]), 0);
+  assert.equal(glyphs[1].x, 500);
 });
