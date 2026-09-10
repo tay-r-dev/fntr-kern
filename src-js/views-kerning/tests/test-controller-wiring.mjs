@@ -102,6 +102,7 @@ test("Shift-click rerenders through the restored table renderer and toggles he/e
     _chipMode: "phrase",
     _previewPairSelections: new Map(),
     _previewPairsChip: {},
+    _previewPairsChipLabel: {},
     autokernCache: new Map(),
     kerningController: {
       kernData: {},
@@ -145,6 +146,13 @@ test("Shift-click rerenders through the restored table renderer and toggles he/e
   assert.equal(view._previewPairsChip.hidden, true);
   assert.equal(view.pairMatchesInputScope("e", "h"), true);
   assert.equal(previews, 2);
+  // The selection ends only when the designer ends it: the chip's cross or
+  // Escape, both of which call this one method. Nothing else clears it, so
+  // leaving pair mode -- which sets the scene text -- keeps it.
+  view.handlePreviewPairModifierClick(hit);
+  assert.equal(view._previewPairSelections.size, 1);
+  view.clearPreviewPairSelection();
+  assert.equal(view._previewPairSelections.size, 0);
 });
 
 test("progressive table load creates 100 rows per request, preserving existing rows", () => {

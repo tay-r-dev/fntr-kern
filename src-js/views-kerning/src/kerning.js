@@ -2210,22 +2210,30 @@ export class KerningViewController extends ViewController {
     this._previewPairSelections = new Map();
     this._glyphFilterError = document.querySelector("#kerning-pairtable-glyph-error");
     this._previewPairsChip = document.querySelector("#kerning-preview-pairs-filter");
-    this._previewPairsChip.addEventListener("click", () => {
-      this._previewPairSelections.clear();
-      this.renderPairTable();
+    this._previewPairsChipLabel = document.querySelector(
+      "#kerning-preview-pairs-filter-label"
+    );
+    // The selection ends when the designer says so: the cross on the chip, or
+    // Escape. It used to end on its own -- switching out of pair mode set the
+    // scene text, and that alone threw the selection away, so coming back
+    // from a pair meant shift-clicking the whole run again.
+    document
+      .querySelector("#kerning-preview-pairs-filter-close")
+      .addEventListener("click", () => this.clearPreviewPairSelection());
+    window.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || !this._previewPairSelections.size) {
+        return;
+      }
+      // Not while typing: Escape in a field belongs to the field.
+      const tagName = event.target?.tagName?.toLowerCase();
+      if (tagName === "input" || tagName === "textarea" || tagName === "select") {
+        return;
+      }
+      this.clearPreviewPairSelection();
     });
     glyphInput.addEventListener("input", () => {
-      this._previewPairSelections.clear();
       this.autokernFiltersController.setItem("glyphName", glyphInput.value.trim());
       this.renderPairTable();
-    });
-    // Occurrence indexes only make sense for the text in which they were selected.
-    this.sceneSettingsController.addKeyListener("text", (event) => {
-      if (event.newValue === this._selectedPairText) return;
-      if (this._previewPairSelections.size) {
-        this._previewPairSelections.clear();
-        this.renderPairTable();
-      }
     });
 
     // Task 17, spec F01: "Remove the current/applied/stale filter from the
@@ -3294,8 +3302,8 @@ export class KerningViewController extends ViewController {
     this._glyphFilter = resolveGlyphFilter(glyphName, this.pairInputResolver());
     const previewPairs = this.previewFilterPairs();
     this._previewPairsChip.hidden = !previewPairs.length;
-    this._previewPairsChip.textContent = previewPairs.length
-      ? `Preview pairs: ${previewPairs.map(([l, r]) => `${l}–${r}`).join(", ")} ×`
+    this._previewPairsChipLabel.textContent = previewPairs.length
+      ? `Preview pairs: ${previewPairs.map(([l, r]) => `${l}–${r}`).join(", ")}`
       : "";
     const tab = this.activeResultsTab || "default";
 
@@ -3626,6 +3634,15 @@ export class KerningViewController extends ViewController {
       this._pairTableLoadMore.hidden = loaded >= total;
       this._pairTableLoadMore.textContent = `Load next ${Math.min(100, total - loaded)}`;
     }
+  }
+
+  clearPreviewPairSelection() {
+    if (!this._previewPairSelections?.size) {
+      return;
+    }
+    this._previewPairSelections.clear();
+    this.renderPairTable();
+    this.updatePairPreview();
   }
 
   previewFilterPairs() {
