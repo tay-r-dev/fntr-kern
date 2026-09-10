@@ -903,6 +903,10 @@ export class KerningViewController extends ViewController {
       showNumbers: true,
       showBand: true,
       pairsPerRow: 6,
+      // Which way round the per-pair mark reads. Off: every pair previews
+      // its proposal and a mark takes one out. On: no pair previews and a
+      // mark puts one in. The same stored mark, read against the mode.
+      skipAll: false,
     });
     this.suggestionPreviewSettings.synchronizeWithLocalStorage(
       "fontra-kerning-suggestion-preview."
@@ -948,6 +952,17 @@ export class KerningViewController extends ViewController {
       this.suggestionPreviewSettings.setItem("showNumbers", numbersToggle.checked);
     });
 
+    const skipAllToggle = html.input({
+      type: "checkbox",
+      id: "kerning-suggestion-preview-skip-all",
+    });
+    skipAllToggle.checked = settings.skipAll;
+    skipAllToggle.addEventListener("change", () => {
+      this.suggestionPreviewSettings.setItem("skipAll", skipAllToggle.checked);
+      this.sceneModel?.updateScene();
+      this.renderPairTable?.();
+    });
+
     const bandToggle = html.input({
       type: "checkbox",
       id: "kerning-suggestion-preview-band",
@@ -976,6 +991,10 @@ export class KerningViewController extends ViewController {
         numbersToggle,
         html.label({ for: "kerning-suggestion-preview-band" }, ["Show highlight band"]),
         bandToggle,
+        html.label({ for: "kerning-suggestion-preview-skip-all" }, [
+          "Skip all suggestions",
+        ]),
+        skipAllToggle,
       ]
     );
 
@@ -1634,19 +1653,57 @@ export class KerningViewController extends ViewController {
   // so the mark is never silently dropped for a pair not yet measured here.
   // The excluded set, read from the project. Held as a Set of pairKey so the
   // preview can ask about one pair without walking a list.
+  // Two sets, one per mode, both stored. Ordinary mode marks pairs that are
+  // OUT of the preview; skip-all mode marks pairs that are IN it. They are
+  // kept apart on purpose: a mode switch changes which set answers, never
+  // what either set holds, so marks made in one mode are still there when
+  // the designer comes back to it.
   loadPreviewExclusions() {
     const stored =
       this.fontController.customData?.[AUTOKERN_PREVIEW_EXCLUDED_CUSTOM_DATA_KEY] || [];
     // Keyed by source as well as by pair, because a kerning value is a
     // statement about one source. Answering the proposal in one weight says
     // nothing about the same pair in another.
+    // An entry with no `mode` is an ordinary-mode mark: that is all the list
+    // held before skip-all mode existed.
     this._previewExcludedPairs = new Set(
-      stored.map(({ source, left, right }) => rowId(source, left, right))
+      stored
+        .filter(({ mode }) => mode !== "skip")
+        .map(({ source, left, right }) => rowId(source, left, right))
+    );
+    this._previewIncludedPairs = new Set(
+      stored
+        .filter(({ mode }) => mode === "skip")
+        .map(({ source, left, right }) => rowId(source, left, right))
     );
   }
 
+  // The set the current mode reads and writes.
+  previewMarkSet() {
+    if (this.suggestionPreviewSettings?.model.skipAll) {
+      if (!this._previewIncludedPairs) {
+        this._previewIncludedPairs = new Set();
+      }
+      return this._previewIncludedPairs;
+    }
+    if (!this._previewExcludedPairs) {
+      this._previewExcludedPairs = new Set();
+    }
+    return this._previewExcludedPairs;
+  }
+
+  // Is this pair marked in the mode that is on? A marked row is the one that
+  // differs from what the mode does by default, so it is the row whose mark
+  // stays visible without hovering.
+  isPairMarkedForPreview(left, right, source = this.autokernSource) {
+    return this.previewMarkSet().has(rowId(source, left, right));
+  }
+
+  // Is this pair left out of the suggestion preview? Ordinary mode: only a
+  // marked pair is out. Skip-all mode: every pair is out except a marked one.
   isPairExcludedFromPreview(left, right, source = this.autokernSource) {
-    return !!this._previewExcludedPairs?.has(rowId(source, left, right));
+    const marked = this.isPairMarkedForPreview(left, right, source);
+    return this.suggestionPreviewSettings?.model.skipAll ? !marked : marked;
   }
 
   // One pair in or out. Adding is silent about whether the pair was already
@@ -1658,17 +1715,18 @@ export class KerningViewController extends ViewController {
     excluded,
     source = this.autokernSource
   ) {
-    if (!this._previewExcludedPairs) {
-      this._previewExcludedPairs = new Set();
-    }
+    const marks = this.previewMarkSet();
     const key = rowId(source, left, right);
-    if (this._previewExcludedPairs.has(key) === excluded) {
+    // In skip-all mode the mark says "show this one", so asking to leave a
+    // pair out means removing its mark, not adding one.
+    const marked = this.suggestionPreviewSettings?.model.skipAll ? !excluded : excluded;
+    if (marks.has(key) === marked) {
       return;
     }
-    if (excluded) {
-      this._previewExcludedPairs.add(key);
+    if (marked) {
+      marks.add(key);
     } else {
-      this._previewExcludedPairs.delete(key);
+      marks.delete(key);
     }
     this.sceneModel?.updateScene();
     this.renderPairTable?.();
@@ -1692,10 +1750,19 @@ export class KerningViewController extends ViewController {
   // Returns what performEdit recorded, so the caller can put it on the undo
   // stack. Undo replays the customData change; the Set is read back from it.
   async writePreviewExclusionsToProject() {
-    const excluded = [...this._previewExcludedPairs].map((key) => {
-      const [source, left, right] = JSON.parse(key);
-      return { source, left, right };
-    });
+    // Both modes' marks in one list. An ordinary-mode mark carries no `mode`
+    // field, which is exactly what the list held before skip-all mode
+    // existed, so an older project reads back unchanged.
+    const excluded = [
+      ...[...(this._previewExcludedPairs || [])].map((key) => {
+        const [source, left, right] = JSON.parse(key);
+        return { source, left, right };
+      }),
+      ...[...(this._previewIncludedPairs || [])].map((key) => {
+        const [source, left, right] = JSON.parse(key);
+        return { source, left, right, mode: "skip" };
+      }),
+    ];
     return await this.fontController.performEdit(
       "kerning view: exclude pair from preview",
       "customData",
@@ -3813,13 +3880,22 @@ export class KerningViewController extends ViewController {
   buildPreviewExclusionToggle(row) {
     const { left, right } = row;
     const excluded = this.isPairExcludedFromPreview(left, right);
+    // A marked row is the one that differs from what the mode does by
+    // default, so its mark is the one that has to be readable without
+    // hovering -- in either mode.
+    const marked = this.isPairMarkedForPreview(left, right);
+    const skipAll = !!this.suggestionPreviewSettings?.model.skipAll;
     const button = document.createElement("icon-button");
-    button.className = excluded
+    button.className = marked
       ? "kerning-pairtable-preview-toggle kerning-pairtable-preview-excluded"
       : "kerning-pairtable-preview-toggle";
-    button.src = excluded
-      ? "/tabler-icons/circle-dotted.svg"
-      : "/tabler-icons/circle-dot.svg";
+    // Skip-all mode has no dashed circle: leaving a pair out is what the mode
+    // already does, so only the filled circle appears, and it means "this one
+    // is shown". Ordinary mode keeps the dashed circle for a pair taken out.
+    button.src =
+      excluded && !skipAll
+        ? "/tabler-icons/circle-dotted.svg"
+        : "/tabler-icons/circle-dot.svg";
     button.setAttribute(
       "aria-label",
       excluded
@@ -3830,7 +3906,9 @@ export class KerningViewController extends ViewController {
       "data-tooltip",
       excluded
         ? "Left out of the suggestion preview. Its saved kerning is unchanged."
-        : "Leave this pair out of the suggestion preview."
+        : skipAll
+          ? "Shown in the suggestion preview, while every unmarked pair is skipped."
+          : "Leave this pair out of the suggestion preview."
     );
     button.onclick = async (event) => {
       event.stopPropagation();

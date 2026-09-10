@@ -513,3 +513,51 @@ test("a row's icon acts on every selected row, and alone when the row is not sel
   view.resultSelection = { selected: new Set([idOf(rowAV)]) };
   assert.equal(rights(rowAV), JSON.stringify(["V"]));
 });
+
+test("skip-all mode inverts what a mark means and each mode keeps its own marks", async () => {
+  const view = Object.create(Controller.prototype);
+  let customData = {};
+  const settings = { skipAll: false };
+  Object.assign(view, {
+    _autokernSourceIdentifier: "s1",
+    _previewExcludedPairs: new Set(),
+    _previewIncludedPairs: new Set(),
+    suggestionPreviewSettings: { model: settings },
+    fontController: {
+      get customData() {
+        return customData;
+      },
+      async performEdit(label, key, mutate) {
+        mutate({ customData });
+        return { hasChange: false };
+      },
+    },
+  });
+
+  // Ordinary mode: everything previews, a mark takes one pair out.
+  await view.setPairExcludedFromPreview("r", "o", true);
+  assert.equal(view.isPairExcludedFromPreview("r", "o"), true);
+  assert.equal(view.isPairExcludedFromPreview("A", "V"), false);
+
+  // Skip-all mode: nothing previews, and the ordinary mark does not carry
+  // over as an inclusion.
+  settings.skipAll = true;
+  assert.equal(view.isPairExcludedFromPreview("A", "V"), true);
+  assert.equal(view.isPairExcludedFromPreview("r", "o"), true);
+  await view.setPairExcludedFromPreview("A", "V", false);
+  assert.equal(view.isPairExcludedFromPreview("A", "V"), false);
+  assert.equal(view.isPairMarkedForPreview("A", "V"), true);
+  // Both modes' marks are stored, the skip-mode one labeled as such.
+  assert.equal(
+    JSON.stringify(customData["fontra.autokernPreviewExcluded"]),
+    JSON.stringify([
+      { source: "s1", left: "r", right: "o" },
+      { source: "s1", left: "A", right: "V", mode: "skip" },
+    ])
+  );
+
+  // Back to ordinary mode: the original mark is still the one that answers.
+  settings.skipAll = false;
+  assert.equal(view.isPairExcludedFromPreview("r", "o"), true);
+  assert.equal(view.isPairExcludedFromPreview("A", "V"), false);
+});
