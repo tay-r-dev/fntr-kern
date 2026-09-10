@@ -2054,6 +2054,55 @@ names and the old rule turned them into NaN.
 
 ---
 
+## Sidebearing metrics keys (map F6/F14)
+
+**State: built, one manual matrix owed.** A sidebearing typed with a leading `=`
+is a link that survives the keystroke: the expression is stored in
+`fontra.internal` at two levels, glyph-wide and per layer, and replayed through
+one resolver on demand. Refresh is manual throughout -- there is no push and no
+reverse index.
+
+**The plan was written four weeks before it ran, and three of its assumptions
+had gone stale.** All three were found by reading the tree rather than by a
+failure, which is the only way a stale plan is ever caught.
+
+- Letterspacer had grown `applySpacingToLayerGlyph` and a bulk apply, so the
+  guard the plan wrote against two inline branches went into the one extracted
+  writer instead, and both callers pick it up. Rail R-B paying for itself again.
+- `link.svg` and `unlink.svg` do not exist in the vendored tabler set. The plan
+  named them as if it had checked.
+- Registering an action does not put it in the Glyph menu. `getGlyphMenuItems`
+  is an explicit list, and the plan's step 4 would have shipped an action
+  reachable only by a shortcut nobody had bound.
+
+**A font-wide change cannot take one undo step, and the spec said it could.**
+`pushUndoRecord` throws where a change names more than one glyph -- the undo
+stacks are keyed per glyph -- so the spec's "atomic, single undo step" for
+Update-all is not a capability this codebase has. The letterspacer's bulk apply
+had already met this and answered it by pushing no undo record at all, and
+Update-all follows it. **The spec's evidence for the claim was that the
+mechanism existed; what existed was the change composition, not the undo.**
+
+**The fixpoint has to commit each pass before the next one resolves.** A key
+reads its reference's margin off a cached glyph controller, and only
+`glyphChanged` clears that cache. A sweep that composed every pass into one
+recorded change would resolve pass two against the drawing as it stood before
+pass one, so `a<-b<-c` would report itself settled after one link had moved.
+Each pass is written and notified in turn.
+
+**Staleness comes free and stays single-cause.** The live resolve done to draw
+the adornment is the staleness test, so there is no watcher. A letterspacer
+replacement deletes the key rather than leaving it stale, which is what keeps
+the marker readable: stale always means the referenced glyph moved.
+
+**Owed:** the manual matrices for tasks 2 to 10 of the plan, and spec section 7
+cases 1 to 19 against the running editor. Two known gaps, neither fixed here:
+arrow-keying a keyed field changes the margin without clearing the key, so the
+field then reads stale; and where Apply skips both sides of a glyph the panel
+reports nothing, which spec case 18 asks for.
+
+---
+
 ## The documents themselves
 
 Five design specs and implementation plans, 3,783 lines, all describing shipped
