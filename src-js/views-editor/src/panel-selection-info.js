@@ -1570,9 +1570,29 @@ function formatResolvedMetricsValue(keyDisplay) {
   return String(round(keyDisplay.resolvedValue, 1));
 }
 
+// A margin is measured from the outline to the advance, so a layer carrying
+// neither has no margin to set. Writing one anyway subtracts an undefined from
+// the value and lands NaN in the advance width, which takes that master out of
+// interpolation with it. An empty master beside a drawn one is an ordinary
+// thing to have, and the displayed layer having a margin says nothing about the
+// others in the edit.
+function layerHasMargin(layerGlyph, layerGlyphController, metricProperty) {
+  return (
+    Number.isFinite(layerGlyph?.xAdvance) &&
+    Number.isFinite(layerGlyphController?.[metricProperty])
+  );
+}
+
 // The single left-margin setter. Setting the left margin translates the whole
 // outline, so it must run before any right-margin write in the same pass.
+// Returns whether it wrote.
 export function setLeftMarginOnLayer(layerGlyph, layerGlyphController, value) {
+  if (
+    !Number.isFinite(value) ||
+    !layerHasMargin(layerGlyph, layerGlyphController, "leftMargin")
+  ) {
+    return false;
+  }
   const translationX = maybeClampValue(
     value - layerGlyphController.leftMargin,
     -layerGlyph.xAdvance,
@@ -1585,16 +1605,24 @@ export function setLeftMarginOnLayer(layerGlyph, layerGlyphController, value) {
     compo.transformation.translateX += translationX;
   }
   layerGlyph.xAdvance += translationX;
+  return true;
 }
 
-// The single right-margin setter.
+// The single right-margin setter. Returns whether it wrote.
 export function setRightMarginOnLayer(layerGlyph, layerGlyphController, value) {
+  if (
+    !Number.isFinite(value) ||
+    !layerHasMargin(layerGlyph, layerGlyphController, "rightMargin")
+  ) {
+    return false;
+  }
   const translationX = maybeClampValue(
     value - layerGlyphController.rightMargin,
     -layerGlyph.xAdvance,
     undefined
   );
   layerGlyph.xAdvance += translationX;
+  return true;
 }
 
 export const MARGIN_SETTERS = Object.freeze({

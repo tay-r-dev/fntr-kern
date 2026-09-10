@@ -2114,6 +2114,22 @@ reachable by reading.**
   misses every other way the same thing is said** -- the same shape as the
   kerning view's rounding, which was owed at the seam and not at each reader.
 
+**A margin was written to a layer that has none, and the NaN read as an
+interpolation fault.** Reported on the `o` of `skeletron-test.fontra`, which
+carries two layers with no contours and no advance width at all. A margin is the
+distance from the outline to the advance, so subtracting an undefined one from
+the requested value gives NaN, and `xAdvance += NaN` puts NaN in the advance --
+which is what took the master out of interpolation, and what unlinking could not
+put back, the number being in the data by then. The two setters refuse a layer
+with no advance and no margin now.
+
+**The field being disabled was not the guard it looked like.** It is disabled
+from the DISPLAYED layer's margin, and an edit reaches every editing layer and
+every source, so one empty master beside a drawn one is enough. The per-glyph
+Update and the font-wide sweep reach further still: they write every source,
+including ones nobody has opened. **A guard on what the designer can see does
+not cover what the write can reach.**
+
 **Owed:** the manual matrices for tasks 2 to 10 of the plan, and spec section 7
 cases 1 to 19 against the running editor. One known gap left: where Apply skips
 both sides of a glyph the panel reports nothing, which spec case 18 asks for.
