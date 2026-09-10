@@ -2145,6 +2145,22 @@ same points. Regeneration writes absolute positions, so it replaces the
 generated coordinates the loop moved rather than adding to them -- the property
 letterspacer's own comment records.
 
+**The number beside a keyed field was the wrong number.** It showed the live
+resolve, so the moment the referenced glyph moved the field read as though it
+had already followed: the mark said out of date, the number said up to date, and
+the Update button said press me. The field shows what the glyph HAS, and only
+while the two differ does the value it would take appear after it, in the mark's
+own colour. **A readout that is right about the future is wrong about the
+present**, and the stale mark exists to say those two are not the same.
+
+**A formatter re-ran and silently dropped a fix.** Prettier requotes an object's
+keys once a hyphenated one joins them, so a later edit matching the unquoted
+form found nothing -- and the two edits that carried the value into the
+arrow-key clear were done without an assertion and reported success. The
+arrow-key fix was not in the tree for two commits after it was announced. Every
+edit here asserts its pattern matched exactly once; the two that did not are the
+only two that went missing.
+
 **Owed:** the manual matrices for tasks 2 to 10 of the plan, and spec section 7
 cases 1 to 19 against the running editor. One known gap left: where Apply skips
 both sides of a glyph the panel reports nothing, which spec case 18 asks for.

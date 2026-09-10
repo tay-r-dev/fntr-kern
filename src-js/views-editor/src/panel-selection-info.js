@@ -303,6 +303,9 @@ export default class SelectionInfoPanel extends Panel {
             "displayValue": metricsKeyDisplay.left
               ? formatResolvedMetricsValue(metricsKeyDisplay.left)
               : undefined,
+            "displayValuePending": metricsKeyDisplay.left
+              ? formatPendingMetricsValue(metricsKeyDisplay.left)
+              : undefined,
             "stale": !!metricsKeyDisplay.left?.stale,
             "data-tooltip": metricsKeyDisplay.left?.stale
               ? translate("sidebar.selection-info.metrics-key.stale.tooltip")
@@ -311,8 +314,8 @@ export default class SelectionInfoPanel extends Panel {
             "disabled": glyphController.leftMargin == undefined,
             "evaluateExpression": async (input) =>
               await this._evaluateSidebearingInput(input, varGlyphController, "left"),
-            "recordExtraChanges": (glyph, layerInfo) =>
-              this._recordPendingMetricsKey(glyph, layerInfo, "left"),
+            "recordExtraChanges": (glyph, layerInfo, value) =>
+              this._recordPendingMetricsKey(glyph, layerInfo, "left", value),
             "getValue": (layerGlyph, layerGlyphController, fieldItem) => {
               return layerGlyphController.leftMargin;
             },
@@ -328,6 +331,9 @@ export default class SelectionInfoPanel extends Panel {
             "displayValue": metricsKeyDisplay.right
               ? formatResolvedMetricsValue(metricsKeyDisplay.right)
               : undefined,
+            "displayValuePending": metricsKeyDisplay.right
+              ? formatPendingMetricsValue(metricsKeyDisplay.right)
+              : undefined,
             "stale": !!metricsKeyDisplay.right?.stale,
             "data-tooltip": metricsKeyDisplay.right?.stale
               ? translate("sidebar.selection-info.metrics-key.stale.tooltip")
@@ -335,8 +341,8 @@ export default class SelectionInfoPanel extends Panel {
             "numDigits": 1,
             "evaluateExpression": async (input) =>
               await this._evaluateSidebearingInput(input, varGlyphController, "right"),
-            "recordExtraChanges": (glyph, layerInfo) =>
-              this._recordPendingMetricsKey(glyph, layerInfo, "right"),
+            "recordExtraChanges": (glyph, layerInfo, value) =>
+              this._recordPendingMetricsKey(glyph, layerInfo, "right", value),
             "disabled": glyphController.rightMargin == undefined,
             "getValue": (layerGlyph, layerGlyphController, fieldItem) => {
               return layerGlyphController.rightMargin;
@@ -1241,10 +1247,12 @@ export default class SelectionInfoPanel extends Panel {
       return { ...effective, resolvedValue: undefined, error: result.error };
     }
     const resolvedValue = typeof result === "number" ? result : result?.value;
+    const appliedValue = glyphController[metricProperty];
     return {
       ...effective,
       resolvedValue,
-      stale: isMetricsValueStale(glyphController[metricProperty], resolvedValue),
+      appliedValue,
+      stale: isMetricsValueStale(appliedValue, resolvedValue),
     };
   }
 
@@ -1563,13 +1571,28 @@ export function glyphHasAnyMetricsKey(glyph) {
   return Object.values(glyph.layers).some((layer) => hasAnySidebearingKey(layer.glyph));
 }
 
-// The adornment beside a keyed field: the resolved number, or a marker when the
-// reference could not be resolved (spec section 7 cases 1 and 2).
+// The number beside a keyed field is what the glyph HAS, not what the link says
+// it should have. Showing the live resolve there made a stale field read as
+// already updated, so the mark, the number and the Update button disagreed.
 function formatResolvedMetricsValue(keyDisplay) {
-  if (keyDisplay.error || keyDisplay.resolvedValue == undefined) {
+  if (keyDisplay.error) {
     return "?";
   }
-  return String(round(keyDisplay.resolvedValue, 1));
+  const applied = keyDisplay.stale ? keyDisplay.appliedValue : keyDisplay.resolvedValue;
+  if (applied == undefined) {
+    return "?";
+  }
+  return String(round(applied, 1));
+}
+
+// What it would become, shown only while the two differ. That difference is the
+// whole of what the stale mark is saying, so it is worth a number and not just
+// a colour.
+function formatPendingMetricsValue(keyDisplay) {
+  if (!keyDisplay.stale || keyDisplay.resolvedValue == undefined) {
+    return undefined;
+  }
+  return `→ ${round(keyDisplay.resolvedValue, 1)}`;
 }
 
 // A margin is measured from the outline to the advance, so a layer carrying

@@ -129,6 +129,15 @@ export class Form extends SimpleElement {
       font-variant-numeric: tabular-nums;
     }
 
+    /* The value a stale field would take. It sits after the applied number, so
+       the row reads: what the link says, what the glyph has, what it would
+       become. */
+    .ui-form-value .field-adornment-pending {
+      color: var(--fontra-color-warning, #e0a030);
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
     .ui-form-value input.field-stale {
       outline: 1.5px solid var(--fontra-color-warning, #e0a030);
       outline-offset: -1.5px;
@@ -648,6 +657,11 @@ export class Form extends SimpleElement {
     if (fieldItem.displayValue !== undefined) {
       valueElement.appendChild(
         html.span({ class: "field-adornment" }, [fieldItem.displayValue])
+      );
+    }
+    if (fieldItem.displayValuePending !== undefined) {
+      valueElement.appendChild(
+        html.span({ class: "field-adornment-pending" }, [fieldItem.displayValuePending])
       );
     }
   }
