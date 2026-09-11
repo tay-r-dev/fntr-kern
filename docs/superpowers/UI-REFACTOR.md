@@ -268,3 +268,60 @@ Three things this must not break.
 
 **The table also gains a vertical resize grip** at its bottom edge, so the designer sets how much
 of the column the table takes. The middle column already has such a gutter to copy.
+
+---
+
+## 4. Metrics panel
+
+**Image:** `metrics.jpg`. **Feature:** core Fontra, F6 Letterspacer, F14 metrics keys.
+**Files:** `views-editor/src/panel-selection-info.js` is the panel.
+`views-editor/src/panel-letterspacer.js` is the block inside it.
+**Nature of the change:** a rename, a new heading with one new button, and three controls that
+change shape. Nothing about spacing math moves.
+
+The image shows the panel with nothing selected. The panel also grows coordinate rows for a
+selection, and it hosts the Skeleton defaults block. Neither changes.
+
+### 4.1 What is already built
+
+Glyph name, Unicode, Advance width, Sidebearings and Dimensions are all here and stay as they are.
+So is the kern group pair of fields. So is the whole Letterspacer block, bulk apply included: the
+glyphset select, the subset checkboxes, the Apply bulk button with its status line, and the
+Calculate and Apply buttons.
+
+### 4.2 The rename
+
+The panel is **Metrics**. It reads **Glyph info** today, from `sidebar.selection-info.title`.
+Change the string. The identifiers do not change.
+
+### 4.3 Kerning becomes a heading
+
+The kern group left and right fields sit loose in the form today, with no heading above them. They
+gain one, and a **Go to kerning view** button beside them.
+
+The button opens the kerning view and writes the current glyph into that view's glyph field, so the
+designer arrives at the pairs for the glyph they were drawing. The Font menu already reaches the
+view with nothing carried across.
+
+### 4.4 Three controls change shape
+
+**The Letterspacer enable becomes a header toggle.** It is a checkbox today. The setting is the same
+one, stored per font. This is the header toggle from §2.4.
+
+**Area, Depth and Overshoot become compact scrub fields, three across.** They are sliders today.
+Same control the SpeedPunk group asks for, in `UI-NOMENCLATURE.md` §14.
+
+**Reverse becomes an icon inside the Area field.** It is a button labeled Reverse today, sitting
+beside the three sliders. It becomes a pair of round arrows at the left end of the Area field,
+because Area is the number it solves for.
+
+Its behavior does not change, and the part worth keeping is the guard. The first press arms a
+warning and shows it as a tooltip. Only the second press reverses. An icon must keep both presses.
+
+### 4.5 Calculated becomes a table
+
+One line of text today: `Calculated: LSB=…, RSB=…`. It becomes a small table, a column for left
+and a column for right, with the current row above the calculated row. Calculate and Apply move to
+the right of it, from their container under the section.
+
+Layout only. Both buttons keep what they do and when they are greyed out.
