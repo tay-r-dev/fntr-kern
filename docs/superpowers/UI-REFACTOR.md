@@ -61,14 +61,18 @@ itself. A changed parameter takes effect on the next Run, exactly as it does tod
 
 ### 1.3 The alignment control
 
-New. Three buttons in a row, left, center and right, with exactly one on. It sits under the phrase
+Three icon buttons in a row, left, center and right, with exactly one on. It sits under the phrase
 box. It sets how the typed phrase sits in the preview.
 
-The setting already exists. `kerning.js` writes `sceneSettings.align` as `"left"` and no control
-reads or changes it. This adds the control and nothing else.
+New to this panel only. The Text Entry panel in the editor has the same row, and the three icons
+ship already. The setting exists here too: `kerning.js` writes `sceneSettings.align` as `"left"`
+and no control reads or changes it. This adds the control and nothing else.
 
-The element is a **segmented control**, which the app does not have yet. See `UI-NOMENCLATURE.md`
-§14.
+`<icon-button>` has no on state, which is why Text Entry hand-built its row out of bare icons.
+Give the shared component that state and use it here. See `UI-NOMENCLATURE.md` §14.
+
+The row is not a component. The panel owns the setting, so it sets the on state on three buttons
+from one listener. Six lines. A group element would cost more than it saves.
 
 ### 1.4 What does not change
 
