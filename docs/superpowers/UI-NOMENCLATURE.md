@@ -433,6 +433,7 @@ A row leaves this section once the component carries the behavior.
 | --- | --- | --- | --- |
 | `<icon-button>` | **On.** It has an icon, a disabled state and a click. It cannot mark itself as the active choice, so a row of them cannot show which one is picked. Two places hand-built such a row out of bare `<inline-svg>` for this reason: the text alignment row in `panel-text-entry.js`, and the tool strip. | UI refactor §1.3, autokern alignment | to build |
 | **Toggle** | Nothing in the tree is one. Every boolean in core, in the shared components and in the editor is a plain checkbox. The refactor needs a pill that slides, in two placements. See below. | UI refactor §2.4, the Visual group | to build |
+| **Multi-select dropdown** | Nothing in the tree is one. A `<select>` picks one option. A fieldset of checkboxes picks several and costs a block of the panel, always open. This is a button that opens a list of checkboxes and closes again. Four sit on one row in the pair table. | UI refactor §3.3, pair table filters | to build |
 | `<ui-form>` | **A compact scrub field.** A field row is full width today: label on the left, box on the right, and the label is what you drag. The refactor needs the name inside the box, a visible scrub affordance, and two fields per row. | UI refactor §2.5, the SpeedPunk group | to build |
 
 **Scope of that change.** Add the on state and use it for the new row. Every one of the fourteen

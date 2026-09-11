@@ -176,3 +176,95 @@ What is new is the shape. A field row today is full width, with the label on the
 on the right, and the label is what you drag. The image wants the name inside the box, a visible
 scrub affordance, and two fields per row. That is a field type in `ui-form`, not a second scrub.
 See `UI-NOMENCLATURE.md` §14.
+
+---
+
+## 3. Pair table
+
+**Image:** `kerning results.jpg`. **Feature:** F13, kerning view.
+**Files:** `views-kerning/kerning.html`, the `#kerning-pairtable-section` column.
+`views-kerning/src/kerning.js` renders the table. `views-kerning/src/results-model.js` owns row
+visibility.
+**Nature of the change:** the control block is regrouped, and the table becomes a windowed list.
+
+### 3.1 What the image keeps
+
+The column order is today's, unchanged: Glyph L, Current, Proposed, Delta, Glyph R, Apply, Hide.
+Sorting works already, and the small triangle is the indicator the header draws. The row-count line
+is the load-status element. The select-all tick stays in the Glyph L header cell, where it adds no
+column of its own.
+
+### 3.2 The new order
+
+| Band | Holds |
+| --- | --- |
+| Title row | **Kerning**, and the two tabs at the right end |
+| Glyph | The label and the glyph field, unchanged |
+| Switches | Only marked, zero-current, group members, show hidden |
+| Rule | A plain horizontal rule |
+| Dropdowns | Side, Glyphset, Class relationship, Unicode types |
+| Table | The table, with a vertical resize grip |
+| Count | Showing N of N rows |
+| Actions | Apply selected, Reset selected to zero, Deselect |
+
+Three moves.
+
+1. **The tabs rise to the title row**, right-aligned, drawn as a pill with the active half filled.
+   They stay a **tab swap**: one is active, never both. They are two buttons in a tablist today, so
+   this is placement and styling only.
+2. **The action buttons fall below the table.** They act on what the table shows, so they belong
+   after it. They sit above it today.
+3. **Only marked becomes a labeled toggle.** The other three stay checkboxes, because they belong
+   to a set. See `UI-NOMENCLATURE.md` §14.1.
+
+**Show hidden keeps its place on that switch row.** It is not drawn in the image. It cannot be
+dropped: the autokern panel's Hidden results counter turns it on by name, and a hidden row is
+reachable in no other way.
+
+**Zero-current is a shorter label over the same mechanics.** It still shows or hides rows whose
+current value is zero. The wiring does not change.
+
+### 3.3 The four dropdowns
+
+Side, Glyphset, Class relationship and Unicode types share one row. Each is a button that opens a
+list of checkboxes.
+
+| Dropdown | Today |
+| --- | --- |
+| Side | A plain select: left or right, glyph on left, glyph on right |
+| Glyphset | A plain select |
+| Class relationship | A fieldset of four checkboxes, always open |
+| Unicode types | A fieldset of seven checkboxes and a note, always open |
+
+The two fieldsets cost a block of the panel each and are set once and then left. A dropdown gives
+the row back. Four instances on one row is why this is a shared component and not four local
+builds. See `UI-NOMENCLATURE.md` §14.
+
+### 3.4 The column toggles move to the header
+
+The Columns fieldset goes. Current, Proposed, Delta and Apply become entries in a context menu on
+the table header, opened with the right mouse button. Same four settings, same effect on display
+only. They never change which rows show and never change what an action targets.
+
+### 3.5 The table becomes a windowed list
+
+This is the one change in behavior, and the largest piece of work in this chapter.
+
+**Today the table only grows.** It renders 100 rows, and a Load next 100 button raises the limit by
+100 and appends. The limit never falls. Nothing is ever removed. On a large font the document ends
+up holding every row the filters admit.
+
+**The target holds a window.** It loads 25 rows at a time as the designer scrolls, drops the 25
+furthest behind, and keeps at most 100 rows in the document. Scrolling back loads the dropped rows
+again. The Load next 100 button goes with the old model.
+
+Three things this must not break.
+
+- **A ticked row keeps its tick while it is out of the window.** Selection is held by row identity
+  today, not by element, and it has to stay that way.
+- **The count line still counts every row the filters admit**, not the rows in the window.
+- **Select-all still means every row the filters admit.** Its label says loaded rows today. That
+  wording has to change with the model.
+
+**The table also gains a vertical resize grip** at its bottom edge, so the designer sets how much
+of the column the table takes. The middle column already has such a gutter to copy.
