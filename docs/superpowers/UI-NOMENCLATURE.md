@@ -414,3 +414,20 @@ object. A readout says a number and takes no input. Do not use one word for anot
 4. **Bar.** A rib draws as a bar. The menu bar is a bar. Nothing else may be called one.
 5. **Toggle and switch.** Both are in the tree for the same thing. **Checkbox** is the element.
    Reserve **switch** for a setting a layer reads, such as the gizmo-mode switch.
+
+---
+
+## 14. Elements the refactor adds
+
+The UX refactor needs elements the tree does not have. Each one is listed here the first time a
+chapter of `UI-REFACTOR.md` asks for it, so the second chapter reuses it instead of building a
+second one. This is rail R-B applied to the interface.
+
+A row leaves this section and joins §13.2 once the element exists in the tree.
+
+| Term | What the designer sees and does | First asked for by | State |
+| --- | --- | --- | --- |
+| **Segmented control** | A row of buttons where exactly one is on. It names a choice among three or four, where a select would hide the options. The alignment control is the first. | UI refactor §1.3, autokern panel | to build |
+
+**Not a checkbox row and not a select.** A checkbox row lets several be on at once. A select hides
+every option but the chosen one. A segmented control shows all of them and keeps one on.
