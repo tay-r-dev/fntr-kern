@@ -432,6 +432,8 @@ A row leaves this section once the component carries the behavior.
 | Component | What it cannot say today | Asked for by | State |
 | --- | --- | --- | --- |
 | `<icon-button>` | **On.** It has an icon, a disabled state and a click. It cannot mark itself as the active choice, so a row of them cannot show which one is picked. Two places hand-built such a row out of bare `<inline-svg>` for this reason: the text alignment row in `panel-text-entry.js`, and the tool strip. | UI refactor §1.3, autokern alignment | to build |
+| **Toggle** | Nothing in the tree is one. Every boolean in core, in the shared components and in the editor is a plain checkbox. The refactor needs a pill that slides, in two placements. See below. | UI refactor §2.4, the Visual group | to build |
+| `<ui-form>` | **A compact scrub field.** A field row is full width today: label on the left, box on the right, and the label is what you drag. The refactor needs the name inside the box, a visible scrub affordance, and two fields per row. | UI refactor §2.5, the SpeedPunk group | to build |
 
 **Scope of that change.** Add the on state and use it for the new row. Every one of the fourteen
 existing uses defaults to off and does not change. Do not convert the two hand-built rows. Text
@@ -440,3 +442,25 @@ Entry is upstream and works, and the tool strip is core Fontra with its own look
 **Read before editing `icon-button.js`.** It declares a setter for its click handler and no getter,
 so reading the handler back gives `undefined`. That broke a kerning-view hotkey once, recorded in
 `DEVELOPMENT-LOG.md` under the kerning view.
+
+### 14.1 The toggle, and what separates it from a checkbox
+
+Three controls say a boolean. They differ in what they govern, not in what they store.
+
+| Control | Where it sits | What it governs |
+| --- | --- | --- |
+| **Header toggle** | The right end of an accordion header | A visualization. Off also freezes every control inside that accordion. |
+| **Labeled toggle** | Its own row, label beside it | One option, standing alone. Nothing freezes. |
+| **Checkbox** | A row, often several across | One of a set. |
+
+A checkbox and a labeled toggle do the same thing to the data. They say different things to the
+designer. A checkbox belongs to a set and a toggle stands alone, so both exist and neither
+replaces the other.
+
+**The freeze is the new behavior.** No control in the tree greys a whole accordion today. The
+accordion already takes an auxiliary header element, so the placement costs nothing. The freeze
+does not.
+
+**This does not change §13.3 rule 5.** There, **switch** names a setting a layer reads, such as
+the gizmo-mode switch. **Toggle** names the element. A header toggle is the element that writes a
+switch. Keep the two words apart.
