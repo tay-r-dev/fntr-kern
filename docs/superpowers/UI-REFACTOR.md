@@ -135,6 +135,12 @@ resolver: a weight and a reach per candidate kind, and the acquire and break-fre
 rows are the only ones a designer sets. Leave the debug accordion where it is and show these two
 here.
 
+**Three things in Visual are not defined.** The Tunni labels do not map cleanly onto the layers:
+Basic curvature, Basic on-curve and Skeleton curvature read as Tunni point, Tunni handles and
+Skeleton Tunni, and Skeleton on-curve has no layer that is not already the gizmo-mode switch. Show
+generated geometry and Speedpunk on skeleton have no setting behind them. All three need the
+designer before they are built.
+
 **Visual does not replace the View menu.** It is a second way to reach the same switches. Both read
 and write `visualizationLayersSettings`, which is the single source of truth. This is the pattern
 the gizmo-mode switch already uses, where a panel checkbox and the View menu share one setting. Do
@@ -309,7 +315,10 @@ view with nothing carried across.
 **The Letterspacer enable becomes a header toggle.** It is a checkbox today. The setting is the same
 one, stored per font. This is the header toggle from §2.4.
 
-**Area, Depth and Overshoot become compact scrub fields, three across.** They are sliders today.
+**Area, Depth and Overshoot become compact scrub fields, three across.** They are number rows today.
+
+**Apply left, Apply right and May replace metrics keys become checkboxes**, labeled Left, Right and
+Override variables, on one row with Reference. They are number fields holding 0 or 1 today.
 Same control the SpeedPunk group asks for, in `UI-NOMENCLATURE.md` §14.
 
 **Reverse becomes an icon inside the Area field.** It is a button labeled Reverse today, sitting
@@ -364,9 +373,13 @@ Square, Rounded, Drop and Serif are all drawn, and Corner rounding under them. A
 **The origin control gets smaller and gains a direct-point button.** The nine-position grid stays.
 The new button beside it sets the origin to a point the designer picks.
 
-> **Defect, found while reading the image.** The origin is read by Flip and by nothing else. Move,
-> Rotate, Skew, Scale and Dimensions all ignore it. This predates the refactor. Fix it with this
-> work or file it, but do not ship a smaller, better origin control that still steers one command.
+> **Reported defect, not confirmed in the code.** The designer reports that the origin steers Flip
+> and nothing else. The code routes Move, Scale, Rotate, Skew, Dimensions and both Flips through one
+> transform entry that pins every transform at the origin, so the fault is not visible by reading.
+> Reproduce it in the editor before changing anything.
+
+**Preserve aspect ratio has no setting today** and no stated effect. It needs the designer before it
+is built.
 
 **Smart scale is the tension-aware scale**, the behavior held on X (F10). Two labeled toggles:
 preserve aspect ratio, and slide adjacent tension points. The second is `slideBothTensionPoints`
@@ -396,8 +409,19 @@ Projection, Link, Reset.
 Add writes the current values as a new preset. Update writes them over the selected one. Every
 terminal section carries the same three.
 
-**Projection's overflow is a multi-select dropdown**, not a menu of one-shot commands. Two entries,
-each a check: keep shape, and preserve changes. This is the component from §3.3.
+**Force angle moves to Generation**, under the widths, for every point. It is the rib angle lock:
+Free, Vertical, Horizontal, with the lock mode behind its overflow. It applies at ends and at
+corners, as the lock always has. Commit 06ce4ab21 opened it to every point because the field and
+the generator were always per point.
+
+**Projection is the contour's sides.** D, L and R are both, left and right, today's Sides select.
+Its overflow is a multi-select dropdown with two checks, keep shape and preserve changes. They are
+today's Keep form and Keep edits settings, and preserve changes stays disabled while keep shape is
+off. This is the component from §3.3.
+
+**Lock, Link and Reset are today's checkboxes and buttons.** Lock holds the three lock kinds:
+handles, slide and width. Link holds Linked and Tied ribs. Reset holds reset rib, reset handles and
+reset this handle. **Detached is not drawn** and stays reachable until the designer places it.
 
 ### 5.6 Terminal
 
@@ -421,11 +445,11 @@ both: a distance of zero is the flat cut. Fold Flat into Square and drop the sep
 A group heading now carries the word each label used to repeat, which is where the shorter names
 come from. **Tension keeps its name** in the Bracket group.
 
-**Force angle is a segmented control with an overflow.** Free, Vertical and Horizontal are the
-three on the control. Serif axis has five modes, so absolute angle and tilt sit behind the
-overflow.
+**Serif Force angle is a segmented control with an overflow.** It is the serif axis. Free, Vertical
+and Horizontal are on the control, and absolute angle and tilt sit behind the overflow.
 
-**Square's overflow is the rib angle lock mode.** Two entries: keep the footprint, or keep the stem
+**The rib angle lock mode is the overflow on Generation's Force angle**, see §5.5, not Square's.
+It was drawn under Square in the image. Two entries: keep the footprint, or keep the stem
 width. That is `ribAngleLockMode`, whose two values are `rib` and `stroke`. The feature model
 §3.2 states the trade, and the development log measured it: a locked rib cannot hold both the
 stated width and a clean interpolation, so the point says which it keeps.
