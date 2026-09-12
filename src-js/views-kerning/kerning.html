@@ -306,22 +306,10 @@
                    UI, not two) -- see kerning-pairtable-sortable th's above. -->
             </div>
 
-            <!-- Task 4, spec F20: "Remove Reset to current, Apply all, and
-                 the manual-value input. Keep Apply selected and Reset
-                 selected." Reset selected writes an explicit 0 and needs a
-                 second press on an unchanged ticked set -- see
-                 resetSelectedPairRows/pressReset in kerning.js. -->
-            <div id="kerning-pairtable-actions">
-              <button id="kerning-pairtable-apply-selected" type="button">
-                Apply selected
-              </button>
-              <button id="kerning-pairtable-reset-zero" type="button">
-                Reset selected to zero
-              </button>
-              <!-- Task 3, spec F24: clears both the highlighted (preview)
-                   and ticked (action-target) selection layers. -->
-              <button id="kerning-pairtable-deselect" type="button">Deselect</button>
-            </div>
+            <!-- Ticket 13 (UI-REFACTOR.md §3.2): Apply selected, Reset
+                 selected to zero and Deselect moved below the table, under
+                 the count line -- see #kerning-pairtable-actions below,
+                 after .kerning-pairtable-group. -->
 
             <!-- The Derive button, its tolerance field and the proposals
                  list moved to the class panel (design doc §1.2) -- see
@@ -365,6 +353,22 @@
                 Load next 100
               </button>
             </div>
+          </div>
+
+          <!-- Ticket 13 (UI-REFACTOR.md §3.2): "Apply selected, Reset
+               selected to zero and Deselect sit under the count line." Same
+               ids, same behavior (resetSelectedPairRows/pressReset in
+               kerning.js) -- moved here from above the tabs/table. -->
+          <div id="kerning-pairtable-actions">
+            <button id="kerning-pairtable-apply-selected" type="button">
+              Apply selected
+            </button>
+            <button id="kerning-pairtable-reset-zero" type="button">
+              Reset selected to zero
+            </button>
+            <!-- Task 3, spec F24: clears both the highlighted (preview) and
+                 ticked (action-target) selection layers. -->
+            <button id="kerning-pairtable-deselect" type="button">Deselect</button>
           </div>
         </div>
       </div>
