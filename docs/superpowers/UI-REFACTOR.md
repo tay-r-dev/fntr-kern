@@ -280,7 +280,8 @@ of the column the table takes. The middle column already has such a gutter to co
 change shape. Nothing about spacing math moves.
 
 The image shows the panel with nothing selected. The panel also grows coordinate rows for a
-selection, and it hosts the Skeleton defaults block. Neither changes.
+selection, which do not change. It also hosts the Skeleton defaults block today, which leaves for
+the Skeleton settings tab, per §6.1.
 
 ### 4.1 What is already built
 
@@ -447,3 +448,128 @@ value and writes both from the left.
 The linked state exists in the data. The per-row chain does not: the panel has one linked flag per
 block today, shown as a checkbox. The chain is a new control and this panel uses about twenty of
 them, so it is shared. See `UI-NOMENCLATURE.md` §14.
+
+---
+
+## 6. Skeleton settings
+
+**Image:** `skeleton settings.jpg`. **Feature:** F7 Skeleton.
+**Files:** `views-editor/src/panel-skeleton-defaults.js`, and the collapsed-points switch in
+`panel-skeleton-parameters.js`.
+**Nature of the change:** a new tab, and the source defaults stop being fixed fields and become two
+preset tables.
+
+### 6.1 Placement
+
+**Skeleton settings takes the Skeleton tab's place** in the right sidebar. The point controls that
+tab holds today move into the Selection panel, per §5. The Source defaults block leaves Glyph info
+and comes here.
+
+### 6.2 Settings
+
+**Delete collapsing points** becomes a labeled toggle. It is the checkbox Drop points that draw
+nothing today. It keeps its warning: taking it forfeits interpolation for serifed glyphs in that
+master.
+
+### 6.3 Width presets
+
+One table for every master and every case.
+
+| Column | Holds |
+| --- | --- |
+| Name | The preset name, with its master and case beside it in grey |
+| Width | One number |
+| Side | Left, right or both |
+| Action | Trash |
+
+**New preset** and **Preset from selection** sit under the table. Preset from selection takes the
+width and the side of the selected rib.
+
+**What this replaces.** Today each master stores base, horizontal and contrast widths and a
+distribution, once for lowercase and once for capitals, plus a list of custom widths per case. The
+block shows only the current glyph's case.
+
+- Base, horizontal and contrast stop being fixed fields. They become three presets with those
+  names.
+- Custom widths become presets in the same table.
+- **Distribution is dropped.**
+
+**A width preset carries its side.** Applied, it writes that side only, or both. The image draws no
+Side column. Add one.
+
+### 6.4 Terminal presets
+
+**Serif presets become terminal presets**, and cover all four terminal kinds of §5.6.
+
+| Column | Holds |
+| --- | --- |
+| Type | Square, Rounded, Drop or Serif |
+| Name | The preset name, with its master and case beside it in grey |
+| Action | Pencil and trash |
+
+**The pencil opens a dialog** holding every parameter of that preset. A terminal has too many
+numbers to fit a row. The dialog uses the same controls the Terminal section of §5.6 uses.
+
+**New preset** and **Preset from selection** sit under the table. Preset from selection takes the
+selected terminal's kind and parameters. It is today's Create from selection, widened from serifs
+to all four kinds.
+
+A serif preset is one wing plus the underside cup and carries no axis, per feature model §8. The
+other three kinds need the same rule written down before they are built: a preset shapes a
+terminal and never places it.
+
+### 6.5 Filters
+
+Each table carries three controls in its header: **Current**, a **Master** dropdown and a **Case**
+dropdown. The terminal table adds a **Type** dropdown.
+
+**Current** sets the Master and Case filters to the master and case of the glyph being edited, in
+one click. Master and Case then narrow the table from there.
+
+---
+
+## 7. Markers panel
+
+**Image:** `markers.jpg`. **Feature:** F11 Markers.
+**Files:** `views-editor/src/panel-markers.js`.
+**Nature of the change:** form rows become tables, and the glyph-wide commands become per-section.
+The model does not change.
+
+### 7.1 Rays and Dimensions become tables
+
+The image heads the first table **Heading**. It is **Rays**.
+
+| Column | Holds | Today |
+| --- | --- | --- |
+| ID | The marker label | The first part of the row |
+| Nodes | The two ends it spans, as `1 → 4` | The place after the label |
+| Value | The measurement | The measurement |
+| Goal | The target, with the delta beside it | An editable target, and the delta beside the measurement |
+| Group | A group dropdown | A group select |
+| Action | Eye and trash | A dot and a cross |
+
+**Dimensions keep Goal.** The image draws their table without it. Both kinds carry a target today,
+and both keep it.
+
+**Everything editable stays editable.** The Goal cell takes a typed number, as the target field does
+today. The Group cell is a dropdown.
+
+**A stale marker** still reads as broken in the Value cell, and carries no delta.
+
+Both tables carry a vertical resize grip.
+
+### 7.2 The section commands
+
+Show all, Hide all and Erase all sit under the lists today and act on every marker in the glyph.
+They become an **eye and a trash in each section header**, and act on that section only.
+
+**The trash keeps its guard.** Erase all takes two presses today. The first press only changes what
+the button says, and the arming lapses after a few seconds. An icon has no text to change, so the
+first press arms a tooltip instead, the way Reverse does in §4.4. The lapse stays.
+
+### 7.3 Groups
+
+A row per group: the name, the member count, an eye and a trash. **New group** sits under them.
+
+The visibility checkbox becomes the eye. The cross becomes the trash. Deleting a group still leaves
+its markers in place and ungrouped.
