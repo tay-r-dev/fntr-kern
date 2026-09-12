@@ -1000,15 +1000,28 @@ export class KerningViewController extends ViewController {
       ]
     );
 
+    // Ticket 08: open by default, and remembers open/closed across reloads --
+    // same plain localStorage-boolean idiom as initAnalyticsSection's own
+    // <details> persistence, since Accordion itself has no persistence of
+    // its own (unlike ObservableController's synchronizeWithLocalStorage,
+    // which is for model values, not accordion open state).
+    const visualSettingsOpenStorageKey = "fontra-kerning-visual-settings-open";
+    const storedVisualSettingsOpen = localStorage.getItem(visualSettingsOpenStorageKey);
+    const visualSettingsItem = {
+      id: "kerning-suggestion-preview-accordion-item",
+      label: "Visual settings",
+      open:
+        storedVisualSettingsOpen === null ? true : storedVisualSettingsOpen === "true",
+      content,
+    };
+
     const accordion = new Accordion();
-    accordion.items = [
-      {
-        id: "kerning-suggestion-preview-accordion-item",
-        label: "Visual settings",
-        open: false,
-        content,
-      },
-    ];
+    accordion.items = [visualSettingsItem];
+    accordion.onItemOpenClose = (item, open) => {
+      if (item === visualSettingsItem) {
+        localStorage.setItem(visualSettingsOpenStorageKey, String(open));
+      }
+    };
     document
       .querySelector("#kerning-suggestion-preview-section")
       .appendChild(accordion);
@@ -1318,6 +1331,20 @@ export class KerningViewController extends ViewController {
   // per this task's own "render it as text rather than a dead-looking
   // button," and kerning.html gives it no button element to wire here.
   initAnalyticsSection() {
+    // Ticket 08: open by default, remembers open/closed across reloads.
+    // Native <details>/toggle -- no observable needed for one boolean.
+    const analyticsSection = document.querySelector("#kerning-analytics-section");
+    if (analyticsSection) {
+      const storageKey = "fontra-kerning-analytics-open";
+      const stored = localStorage.getItem(storageKey);
+      if (stored !== null) {
+        analyticsSection.open = stored === "true";
+      }
+      analyticsSection.addEventListener("toggle", () => {
+        localStorage.setItem(storageKey, String(analyticsSection.open));
+      });
+    }
+
     document
       .querySelector("#kerning-analytics-stale")
       ?.addEventListener("click", () => {

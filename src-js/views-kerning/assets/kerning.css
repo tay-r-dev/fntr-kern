@@ -389,6 +389,10 @@
   gap: 1em;
 }
 
+#kerning-panel-title {
+  margin: 0;
+}
+
 #kerning-phrase-section {
   display: flex;
   flex-direction: column;
@@ -983,10 +987,18 @@ kerning-handle.negative {
 }
 
 /* Task 18, spec F03: the Analytics panel, same border/gap idiom as the
-   Stale glyphs section right above it. */
+   Stale glyphs section right above it. Ticket 08: a native <details>, so it
+   opens/closes and remembers state -- same summary styling as the other
+   <details> in this column. */
 #kerning-analytics-section {
   padding-bottom: 0.75em;
   border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
+}
+
+#kerning-analytics-section summary {
+  cursor: pointer;
+  margin-bottom: 0.35em;
+  font-weight: bold;
 }
 
 #kerning-analytics-list {

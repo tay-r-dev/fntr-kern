@@ -623,14 +623,17 @@
       </div>
 
       <!-- §1.3: the right column -- status strip on top (always visible),
-           then parameters, then calibration (collapsed by default). The
-           phrase field (spec §7.1) is not named in the design doc's §1.3
-           enumeration; kept here, directly below the status strip and above
-           parameters, since nothing in the design doc relocates or removes
-           it -- see the workstream report for this inference. -->
+           then thresholds/Run, stale/new glyphs, presets/phrase, Visual
+           settings, Analytics (with calibration inside it). The phrase
+           field (spec §7.1) is not named in the design doc's §1.3
+           enumeration; kept here, directly below Stale and new glyphs and
+           above Visual settings, since nothing in the design doc relocates
+           or removes it -- see the workstream report for this inference. -->
       <div class="kerning-column sidebar-container kerning-right">
         <div class="sidebar-resize-gutter" data-grow-direction="left"></div>
         <div id="kerning-panel-container">
+          <h2 id="kerning-panel-title">Autokern</h2>
+
           <div id="kerning-status-section">
             <div id="kerning-status-source-row">
               <label for="kerning-status-source-select">Source</label>
@@ -642,112 +645,6 @@
               <span id="kerning-status-junk"></span>
               <span id="kerning-status-coverage"></span>
             </div>
-          </div>
-
-          <!-- Task 17, spec F01/F02: replaces the removed current/applied/
-               stale results filter. "Affected glyphs, their count, a rerun
-               action, and an explicit empty state" (F01), "Re-run stale
-               glyphs" with progress and the scope being processed (F02).
-               kerning.js's initStaleSection/renderStaleSection/
-               runStaleGlyphs own this markup. -->
-          <div id="kerning-stale-section">
-            <h3>Stale and new glyphs</h3>
-            <p id="kerning-stale-empty">No glyphs need recalculation.</p>
-            <p id="kerning-stale-summary" hidden>
-              <span id="kerning-stale-count"></span>
-              <span id="kerning-stale-names"></span>
-            </p>
-            <button id="kerning-stale-rerun-button" type="button" disabled>
-              Re-run stale and new glyphs
-            </button>
-            <!-- The cheap half of the button above: a glyph whose shape did
-                 not change, only its spacing, needs arithmetic rather than a
-                 measured run (kerning.js's recalculateMetricsOnlyGlyphs). -->
-            <button id="kerning-stale-recalc-button" type="button" disabled>
-              Recalculate spacing changes
-            </button>
-            <p id="kerning-stale-progress"></p>
-          </div>
-
-          <!-- Task 18, spec F03, ledger §8.6: four metrics, each with its
-               own scope disclosed via data-tooltip (hover/focus, tooltip.css)
-               rather than left implicit. "Stale glyphs" and "Potential
-               exceptions" and "Hidden results" are clickable (they have an
-               existing, single-control target to jump to); "Saved pair
-               exceptions" has none (see kerning.js's initAnalyticsSection
-               comment) and is deliberately plain text, not a button. -->
-          <div id="kerning-analytics-section">
-            <h3>Analytics</h3>
-            <dl id="kerning-analytics-list">
-              <div class="kerning-analytics-row">
-                <dt>
-                  <button
-                    id="kerning-analytics-stale"
-                    type="button"
-                    class="kerning-analytics-metric-button"
-                    data-tooltip="Scope: active source, every glyph currently stale — ignores the table's own filters. Activates the Stale glyphs panel above."
-                  >
-                    Stale glyphs
-                  </button>
-                </dt>
-                <dd id="kerning-analytics-stale-count">0 glyphs</dd>
-              </div>
-              <div class="kerning-analytics-row">
-                <dt
-                  class="kerning-analytics-metric-label"
-                  data-tooltip="Scope: all sources combined, every saved glyph-to-glyph exception in the font — ignores the table's own filters. No dedicated view to jump to yet."
-                >
-                  Saved pair exceptions
-                </dt>
-                <dd id="kerning-analytics-exceptions-count">0 pairs</dd>
-              </div>
-              <div class="kerning-analytics-row">
-                <dt>
-                  <button
-                    id="kerning-analytics-potential"
-                    type="button"
-                    class="kerning-analytics-metric-button"
-                    data-tooltip="Scope: current filtered view — pairs outside class tolerance, under today's filters. Activates the Potential exceptions tab."
-                  >
-                    Potential exceptions
-                  </button>
-                </dt>
-                <dd id="kerning-analytics-potential-count">0 pairs</dd>
-              </div>
-              <div class="kerning-analytics-row">
-                <dt>
-                  <button
-                    id="kerning-analytics-hidden"
-                    type="button"
-                    class="kerning-analytics-metric-button"
-                    data-tooltip="Scope: active source, every hidden pair and hidden class row — ignores the table's own filters. Turns on Show hidden."
-                  >
-                    Hidden results
-                  </button>
-                </dt>
-                <dd id="kerning-analytics-hidden-count">0 rows</dd>
-              </div>
-            </dl>
-          </div>
-
-          <div id="kerning-phrase-section">
-            <select id="kerning-preset-select">
-              <option value="" selected disabled>Presets…</option>
-            </select>
-            <!-- Backlog item 1: load an additional presets file at runtime.
-                 Hidden file input, same pattern as panel-reference-font.js's
-                 own file-input-plus-click-proxy convention (an <input
-                 type="file"> never appended/visible, triggered by a plain
-                 button's click handler). Parsed results are APPENDED to
-                 this.phrasePresets, not a replacement -- see
-                 initPhraseSection's own comment in kerning.js for why. -->
-            <button id="kerning-preset-add-button" type="button">Add…</button>
-            <input type="file" id="kerning-preset-file-input" accept=".txt" hidden />
-            <textarea
-              id="kerning-phrase-input"
-              placeholder="Type a phrase"
-              rows="3"
-            ></textarea>
           </div>
 
           <div id="kerning-parameters-section">
@@ -816,6 +713,51 @@
             </details>
           </div>
 
+          <!-- Task 17, spec F01/F02: replaces the removed current/applied/
+               stale results filter. "Affected glyphs, their count, a rerun
+               action, and an explicit empty state" (F01), "Re-run stale
+               glyphs" with progress and the scope being processed (F02).
+               kerning.js's initStaleSection/renderStaleSection/
+               runStaleGlyphs own this markup. -->
+          <div id="kerning-stale-section">
+            <h3>Stale and new glyphs</h3>
+            <p id="kerning-stale-empty">No glyphs need recalculation.</p>
+            <p id="kerning-stale-summary" hidden>
+              <span id="kerning-stale-count"></span>
+              <span id="kerning-stale-names"></span>
+            </p>
+            <button id="kerning-stale-rerun-button" type="button" disabled>
+              Re-run stale and new glyphs
+            </button>
+            <!-- The cheap half of the button above: a glyph whose shape did
+                 not change, only its spacing, needs arithmetic rather than a
+                 measured run (kerning.js's recalculateMetricsOnlyGlyphs). -->
+            <button id="kerning-stale-recalc-button" type="button" disabled>
+              Recalculate spacing changes
+            </button>
+            <p id="kerning-stale-progress"></p>
+          </div>
+
+          <div id="kerning-phrase-section">
+            <select id="kerning-preset-select">
+              <option value="" selected disabled>Presets…</option>
+            </select>
+            <!-- Backlog item 1: load an additional presets file at runtime.
+                 Hidden file input, same pattern as panel-reference-font.js's
+                 own file-input-plus-click-proxy convention (an <input
+                 type="file"> never appended/visible, triggered by a plain
+                 button's click handler). Parsed results are APPENDED to
+                 this.phrasePresets, not a replacement -- see
+                 initPhraseSection's own comment in kerning.js for why. -->
+            <button id="kerning-preset-add-button" type="button">Add…</button>
+            <input type="file" id="kerning-preset-file-input" accept=".txt" hidden />
+            <textarea
+              id="kerning-phrase-input"
+              placeholder="Type a phrase"
+              rows="3"
+            ></textarea>
+          </div>
+
           <!-- Backlog items 9+10 (combined, see kerning.js's
                initSuggestionPreviewSettingsSection): a settings-driven
                visibility/opacity control for the on-canvas suggestion
@@ -824,8 +766,72 @@
                views-editor's own grid-layer settings accordion uses
                (panel-designspace-navigation.js's "coarse-grid-accordion-item",
                an Accordion item with a master display-toggle checkbox plus
-               dependent settings). -->
+               dependent settings). Its open/closed state is persisted --
+               see initSuggestionPreviewSettingsSection's own comment. -->
           <div id="kerning-suggestion-preview-section"></div>
+
+          <!-- Task 18, spec F03, ledger §8.6: four metrics, each with its
+               own scope disclosed via data-tooltip (hover/focus, tooltip.css)
+               rather than left implicit. "Stale glyphs" and "Potential
+               exceptions" and "Hidden results" are clickable (they have an
+               existing, single-control target to jump to); "Saved pair
+               exceptions" has none (see kerning.js's initAnalyticsSection
+               comment) and is deliberately plain text, not a button.
+               Ticket 08: a native <details>, open by default, persisted --
+               see kerning.js's initAnalyticsSection. -->
+          <details id="kerning-analytics-section" open>
+            <summary>Analytics</summary>
+            <dl id="kerning-analytics-list">
+              <div class="kerning-analytics-row">
+                <dt>
+                  <button
+                    id="kerning-analytics-stale"
+                    type="button"
+                    class="kerning-analytics-metric-button"
+                    data-tooltip="Scope: active source, every glyph currently stale — ignores the table's own filters. Activates the Stale glyphs panel above."
+                  >
+                    Stale glyphs
+                  </button>
+                </dt>
+                <dd id="kerning-analytics-stale-count">0 glyphs</dd>
+              </div>
+              <div class="kerning-analytics-row">
+                <dt
+                  class="kerning-analytics-metric-label"
+                  data-tooltip="Scope: all sources combined, every saved glyph-to-glyph exception in the font — ignores the table's own filters. No dedicated view to jump to yet."
+                >
+                  Saved pair exceptions
+                </dt>
+                <dd id="kerning-analytics-exceptions-count">0 pairs</dd>
+              </div>
+              <div class="kerning-analytics-row">
+                <dt>
+                  <button
+                    id="kerning-analytics-potential"
+                    type="button"
+                    class="kerning-analytics-metric-button"
+                    data-tooltip="Scope: current filtered view — pairs outside class tolerance, under today's filters. Activates the Potential exceptions tab."
+                  >
+                    Potential exceptions
+                  </button>
+                </dt>
+                <dd id="kerning-analytics-potential-count">0 pairs</dd>
+              </div>
+              <div class="kerning-analytics-row">
+                <dt>
+                  <button
+                    id="kerning-analytics-hidden"
+                    type="button"
+                    class="kerning-analytics-metric-button"
+                    data-tooltip="Scope: active source, every hidden pair and hidden class row — ignores the table's own filters. Turns on Show hidden."
+                  >
+                    Hidden results
+                  </button>
+                </dt>
+                <dd id="kerning-analytics-hidden-count">0 rows</dd>
+              </div>
+            </dl>
+          </details>
 
           <div id="kerning-calibration-section">
             <details id="kerning-calibration-collapsible">
