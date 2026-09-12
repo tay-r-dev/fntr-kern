@@ -325,3 +325,125 @@ and a column for right, with the current row above the calculated row. Calculate
 the right of it, from their container under the section.
 
 Layout only. Both buttons keep what they do and when they are greyed out.
+
+---
+
+## 5. Selection panel
+
+**Image:** `transform.jpg`. **Feature:** core Fontra, F4 Tunni, F7 Skeleton, F10 tension-aware
+scale.
+**Files:** `views-editor/src/panel-transformation.js` and
+`views-editor/src/panel-skeleton-parameters.js` become one panel.
+`views-editor/src/skeleton-panel-model.js` and `skeleton-panel-edits.js` are unchanged.
+**Nature of the change:** two panels merge, several controls change shape, and one command is
+deleted.
+
+### 5.1 Two panels become one
+
+The panel is **Selection**. It holds two title-level blocks.
+
+| Block | Sections |
+| --- | --- |
+| **Selection** | Transform, Flip, Align, Distribute, Bools, Smart scale, Harmonize |
+| **Skeleton** | Generation, Terminal, Corner rounding |
+
+The Skeleton block carries a Gizmo and Handles pair at its top right. That is the gizmo-mode
+switch, which the layer setting already owns as its single source of truth.
+
+**Point labels leaves this panel.** It becomes Measurements in the left sidebar, per §2.3. Nothing
+is left behind.
+
+### 5.2 The image draws every terminal at once. A point never does.
+
+Square, Rounded, Drop and Serif are all drawn, and Corner rounding under them. A real point shows
+**one** of the four terminal kinds, or Corner rounding. Never both, and never two terminals.
+
+### 5.3 Transform
+
+**The origin control gets smaller and gains a direct-point button.** The nine-position grid stays.
+The new button beside it sets the origin to a point the designer picks.
+
+> **Defect, found while reading the image.** The origin is read by Flip and by nothing else. Move,
+> Rotate, Skew, Scale and Dimensions all ignore it. This predates the refactor. Fix it with this
+> work or file it, but do not ship a smaller, better origin control that still steers one command.
+
+**Smart scale is the tension-aware scale**, the behavior held on X (F10). Two labeled toggles:
+preserve aspect ratio, and slide adjacent tension points. The second is `slideBothTensionPoints`
+and already has a control. The development log's F10 section is the reference for what these do.
+
+### 5.4 Harmonize
+
+**The method becomes a text segmented control**: preserve, recompute, move on-curve. It is a
+three-position slider today. One press still draws one answer, so this is the shape the control
+should always have had.
+
+G3 becomes a labeled toggle. Equalize handles and Other sources stay checkboxes. **Calculate** sits
+at the right of the section header.
+
+**Balance is deleted.** It is a separate command today, beside Harmonize, with its own action and
+context-menu entry. Remove the panel entry, the action and the menu item. The development log
+records why the two could never be one press. That reasoning stands and is now moot.
+
+The small external-link icon beside the Harmonize heading is not specified. Ignore it.
+
+### 5.5 Generation
+
+Total and Distribution on one row, left and right widths on the next. Then four icon groups: Lock,
+Projection, Link, Reset.
+
+**The section header carries a preset control.** A dropdown, an add button and an update button.
+Add writes the current values as a new preset. Update writes them over the selected one. Every
+terminal section carries the same three.
+
+**Projection's overflow is a multi-select dropdown**, not a menu of one-shot commands. Two entries,
+each a check: keep shape, and preserve changes. This is the component from §3.3.
+
+### 5.6 Terminal
+
+**A text segmented control picks the kind**, and there are four, not five.
+
+**Flat and Square merge.** The cap styles are Flat, Square, Round, Drop and Serif today. Flat is
+the butt cut and Square is the same cut pushed past the end, so one control with a distance covers
+both: a distance of zero is the flat cut. Fold Flat into Square and drop the separate kind.
+
+| Section | Fields | Called today |
+| --- | --- | --- |
+| Square | Project angle, Distance | Cap angle, Cap distance |
+| Rounded | Radius, Roundness | Cap radius ratio, Cap tension |
+| Drop | Size, Shape, Ease | Ball size, Ball shape, Easing |
+| Serif, Wing | Width, Height, Slope, Tip cut | Wing length, Tip thickness, Wing slope, Tip cut |
+| Serif, Bracket | Reach, Tension, Concavity | Reach, Tension, Concavity |
+| Serif, Easing | Distance, Curvature | Ease distance, Ease curvature |
+| Serif, Cup | Cup, Cup balance, Cup tension | Underside cup, Cup balance, Cup tension |
+| Serif, Angle | Force angle, Tilt | Serif axis, Axis tilt |
+
+A group heading now carries the word each label used to repeat, which is where the shorter names
+come from. **Tension keeps its name** in the Bracket group.
+
+**Force angle is a segmented control with an overflow.** Free, Vertical and Horizontal are the
+three on the control. Serif axis has five modes, so absolute angle and tilt sit behind the
+overflow.
+
+**Square's overflow is the rib angle lock mode.** Two entries: keep the footprint, or keep the stem
+width. That is `ribAngleLockMode`, whose two values are `rib` and `stroke`. The feature model
+§3.2 states the trade, and the development log measured it: a locked rib cannot hold both the
+stated width and a clean interpolation, so the point says which it keeps.
+
+**The serif carries two preset controls**, one per half, with a chain between them.
+
+### 5.7 Corner rounding
+
+Distance and Curvature, each a left and right pair with a chain. Both exist.
+
+**Distribution is not specified and is not built.** The image draws a slider at 60. Corner rounding
+is a distance and a curvature per side and a linked flag, and nothing else. **This needs
+brainstorming before anyone builds it.** Do not guess it from the picture.
+
+### 5.8 The chain
+
+Every skeleton row is a left value, a chain, and a right value. A closed chain greys the right
+value and writes both from the left.
+
+The linked state exists in the data. The per-row chain does not: the panel has one linked flag per
+block today, shown as a checkbox. The chain is a new control and this panel uses about twenty of
+them, so it is shared. See `UI-NOMENCLATURE.md` §14.
