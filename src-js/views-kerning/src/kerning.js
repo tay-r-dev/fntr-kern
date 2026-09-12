@@ -141,6 +141,7 @@ import { SceneView } from "@fontra/core/scene-view.js";
 import { difference, union } from "@fontra/core/set-ops.js";
 import { themeController } from "@fontra/core/theme-settings.js";
 import { ViewController } from "@fontra/core/view-controller.js";
+import { DataTable } from "@fontra/web-components/data-table.js"; // ticket 04: the shared table
 import { GlyphCell } from "@fontra/web-components/glyph-cell.js";
 import { GlyphCellView } from "@fontra/web-components/glyph-cell-view.js";
 import { IconButton } from "@fontra/web-components/icon-button.js"; // for <icon-button>, the delete-class control
@@ -2632,33 +2633,85 @@ export class KerningViewController extends ViewController {
       );
     });
 
+    // Ticket 04: the shared <data-table> component builds the head (sort
+    // headers + the select-all tick) and delegates row clicks; this view
+    // supplies the column descriptions and the domain logic behind each
+    // callback. Mounted once, here, alongside every other one-time binding
+    // in this method.
+    this._pairTable = html.createDomElement("data-table");
+    this._pairTable.tableClassName = "kerning-pairtable-table";
+    this._pairTable.tbodyId = "kerning-pairtable-body";
+    this._pairTable.sortableClassName = "kerning-pairtable-sortable";
+    this._pairTable.sortActiveClassName = "kerning-pairtable-sort-active";
+    this._pairTable.sortLabelClassName = "kerning-pairtable-sort-label";
+    this._pairTable.selectAllClassName = "kerning-pairtable-select-all";
+    this._pairTable.selectAllTitle = "Select all loaded rows";
+    this._pairTable.columns = [
+      { label: "Glyph L", sortKey: "glyph", sortable: true, selectAll: true },
+      {
+        label: "Current",
+        sortKey: "current",
+        sortable: true,
+        headerClassName: "kerning-pairtable-current-col",
+      },
+      // Task 5, spec F13: Proposed is its own column, independently
+      // hideable from Current and Delta.
+      { label: "Proposed", headerClassName: "kerning-pairtable-proposed-col" },
+      {
+        label: "Delta",
+        sortKey: "delta",
+        sortable: true,
+        headerClassName: "kerning-pairtable-suggestion-col",
+      },
+      { label: "Glyph R", sortKey: "glyph", sortable: true },
+      // The row's one write action, as an icon in its own toggleable column
+      // (Columns > Apply). See kerning.html's old comment (now here) for
+      // what each row kind shows there.
+      { label: "Apply", headerClassName: "kerning-pairtable-apply-col" },
+      // F32's Hide action -- the eye control lives in this column.
+      { label: "Hide" },
+    ];
     // Backlog item 11: click a column header to sort by it, click again to
     // flip direction -- one sort UI (headers), not two (the old toggle
-    // button is gone). Global across all four bucket tables, same scope the
-    // old toggle button had; clicking any one bucket's header updates the
-    // shared filters model, and updateSortHeaders (called from every
-    // renderPairTable) keeps every bucket's headers in sync with it.
-    for (const th of document.querySelectorAll(".kerning-pairtable-sortable")) {
-      th.addEventListener("click", () => {
-        const column = th.dataset.sortColumn;
-        const current = this.autokernFiltersController.model;
-        if (current.sortColumn === column) {
-          this.autokernFiltersController.setItem(
-            "sortDirection",
-            current.sortDirection === "desc" ? "asc" : "desc"
-          );
-        } else {
-          this.autokernFiltersController.setItem("sortColumn", column);
-          // Delta's default direction matches the old toggle's own default
-          // ("worst delta first" = descending by magnitude); every other
-          // column defaults to ascending on first click.
-          this.autokernFiltersController.setItem(
-            "sortDirection",
-            column === "delta" ? "desc" : "asc"
-          );
-        }
-      });
-    }
+    // button is gone). Clicking any header updates the shared filters
+    // model, and updateSortHeaders (called from every renderPairTable) keeps
+    // the table's headers in sync with it.
+    this._pairTable.onSort = (column) => {
+      const current = this.autokernFiltersController.model;
+      if (current.sortColumn === column) {
+        this.autokernFiltersController.setItem(
+          "sortDirection",
+          current.sortDirection === "desc" ? "asc" : "desc"
+        );
+      } else {
+        this.autokernFiltersController.setItem("sortColumn", column);
+        // Delta's default direction matches the old toggle's own default
+        // ("worst delta first" = descending by magnitude); every other
+        // column defaults to ascending on first click.
+        this.autokernFiltersController.setItem(
+          "sortDirection",
+          column === "delta" ? "desc" : "asc"
+        );
+      }
+    };
+    // The one select-all tick, in the table header. Rows carry no tick of
+    // their own: every loaded row in, or the selection cleared.
+    this._pairTable.onSelectAllChange = (checked) => {
+      const ids = this.loadedPairTableRowIds();
+      this.resultSelection = checked ? { selected: new Set(ids) } : deselectAll();
+      this.applyResultSelectionToDom();
+      this.syncSelectAllCheckboxes();
+      this.refreshResetArmState();
+      this.updatePairPreview();
+    };
+    // A click on the row's plain cells selects it (selectRowFromClick holds
+    // the one rule for shift, ctrl and plain). A click on one of the row's
+    // own controls is that control's, not a selection change -- the
+    // component's own closest("input, button") guard keeps those apart.
+    this._pairTable.onRowClick = (id, event) => this.selectRowFromClick(id, event);
+    document
+      .querySelector("#kerning-pairtable-table-mount")
+      .appendChild(this._pairTable);
 
     this.autokernFiltersController.addListener(() => this.renderPairTable());
 
@@ -2732,25 +2785,9 @@ export class KerningViewController extends ViewController {
         selection.addRange(range);
       });
 
-    // The one select-all tick, in the table header (kerning.html). Rows
-    // carry no tick of their own any more, so this one writes the selection
-    // itself: every loaded row in, or the selection cleared. Wired once
-    // here; renderPairTable only refreshes its checked/indeterminate state.
-    for (const selectAll of document.querySelectorAll(
-      ".kerning-pairtable-select-all"
-    )) {
-      selectAll.addEventListener("change", () => {
-        selectAll.indeterminate = false;
-        const ids = this.loadedPairTableRowIds();
-        this.resultSelection = selectAll.checked
-          ? { selected: new Set(ids) }
-          : deselectAll();
-        this.applyResultSelectionToDom();
-        this.syncSelectAllCheckboxes();
-        this.refreshResetArmState();
-        this.updatePairPreview();
-      });
-    }
+    // Ticket 04: the select-all tick's own wiring moved to
+    // this._pairTable.onSelectAllChange above, alongside the rest of the
+    // shared table's setup.
 
     // Include new/replaced kerning tables as well as leaf value edits.
     // Coalesce until the next frame, after edits and controller caches settle.
@@ -3086,12 +3123,10 @@ export class KerningViewController extends ViewController {
     const selectedCount = ids.filter((id) =>
       this.resultSelection.selected.has(id)
     ).length;
-    for (const selectAll of document.querySelectorAll(
-      ".kerning-pairtable-select-all"
-    )) {
-      selectAll.checked = ids.length > 0 && selectedCount === ids.length;
-      selectAll.indeterminate = selectedCount > 0 && selectedCount < ids.length;
-    }
+    this._pairTable?.setSelectAllState({
+      checked: ids.length > 0 && selectedCount === ids.length,
+      indeterminate: selectedCount > 0 && selectedCount < ids.length,
+    });
   }
 
   // Task 3: re-applies this.resultSelection onto whatever rows are
@@ -3355,13 +3390,7 @@ export class KerningViewController extends ViewController {
   // falls back to the th itself for any header that has no such span.
   updateSortHeaders() {
     const { sortColumn, sortDirection } = this.autokernFiltersController.model;
-    for (const th of document.querySelectorAll(".kerning-pairtable-sortable")) {
-      const isActive = th.dataset.sortColumn === sortColumn;
-      th.classList.toggle("kerning-pairtable-sort-active", isActive);
-      const arrow = isActive ? (sortDirection === "desc" ? " ▼" : " ▲") : "";
-      const label = th.querySelector(".kerning-pairtable-sort-label") || th;
-      label.textContent = th.dataset.sortLabel + arrow;
-    }
+    this._pairTable?.setSortState(sortColumn, sortDirection);
   }
 
   // WORKSTREAM 14: whether one cache entry counts as "classed" -- both
@@ -4417,12 +4446,9 @@ export class KerningViewController extends ViewController {
     // own comment for the full reasoning.
     this._classSummaryStaleByRowId.set(id, !!stats.stale);
 
-    tr.addEventListener("click", (event) => {
-      if (event.target.closest("input, button")) {
-        return;
-      }
-      this.selectRowFromClick(id, event);
-    });
+    // Ticket 04: the shared table delegates the click itself (its own
+    // closest("input, button") guard, same rule as before) and calls
+    // selectRowFromClick via onRowClick, reading this row's own data-row-id.
 
     const leftCell = document.createElement("td");
     const leftLabel = document.createElement("span");
@@ -6058,20 +6084,13 @@ export class KerningViewController extends ViewController {
       this.resultSelection.selected.has(id)
     );
 
-    // A click on the row's plain cells selects it (selectRowFromClick holds
-    // the one rule for shift, ctrl and plain). A click on one of the row's
-    // own controls is that control's, not a selection change, which is what
-    // the closest() guard below keeps apart.
+    // Ticket 04: the shared table delegates the click itself (its own
+    // closest("input, button") guard, same rule as before) and calls
+    // selectRowFromClick via onRowClick, reading this row's own data-row-id.
     //
     // Every selected row feeds the pair preview together (spec F04:
     // "Highlighted rows populate pair-mode preview together"). None of them
     // switches the preview mode -- that is the chips' job.
-    tr.addEventListener("click", (event) => {
-      if (event.target.closest("input, button")) {
-        return;
-      }
-      this.selectRowFromClick(id, event);
-    });
 
     // Glyph L (name) / Current / Proposed / Delta / Glyph R (name) /
     // Apply / Hide, in that order. No tick: selection is the row itself

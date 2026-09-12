@@ -338,70 +338,15 @@
                buildClassSummaryRowElement wires the same selectRow/tickRow
                mechanism buildPairRowElement uses). -->
           <div class="kerning-pairtable-group">
-            <table class="kerning-pairtable-table">
-              <thead>
-                <tr>
-                  <!-- The one select-all tick. Rows carry no tick of their
-                       own: click and shift-click are the selection, and this
-                       header tick selects or clears every loaded row at once.
-                       Sort label is its own span so updateSortHeaders
-                       (kerning.js) can rewrite just the label text without
-                       erasing the checkbox. -->
-                  <th
-                    class="kerning-pairtable-sortable"
-                    data-sort-column="glyph"
-                    data-sort-label="Glyph L"
-                  >
-                    <input
-                      type="checkbox"
-                      class="kerning-pairtable-select-all"
-                      title="Select all loaded rows"
-                    />
-                    <span class="kerning-pairtable-sort-label"></span>
-                  </th>
-                  <th
-                    class="kerning-pairtable-current-col kerning-pairtable-sortable"
-                    data-sort-column="current"
-                    data-sort-label="Current"
-                  >
-                    <span class="kerning-pairtable-sort-label"></span>
-                  </th>
-                  <!-- Task 5, spec F13: Proposed is its own column,
-                       independently hideable from Current and Delta. -->
-                  <th class="kerning-pairtable-proposed-col">Proposed</th>
-                  <th
-                    class="kerning-pairtable-suggestion-col kerning-pairtable-sortable"
-                    data-sort-column="delta"
-                    data-sort-label="Delta"
-                  >
-                    <span class="kerning-pairtable-sort-label"></span>
-                  </th>
-                  <th
-                    class="kerning-pairtable-sortable"
-                    data-sort-column="glyph"
-                    data-sort-label="Glyph R"
-                  >
-                    <span class="kerning-pairtable-sort-label"></span>
-                  </th>
-                  <!-- The row's one write action, as an icon in its own
-                       toggleable column (Columns > Apply). A class-summary
-                       row shows a check that writes the class rule. A pair
-                       row shows an open lock that saves an exception, or a
-                       red closed lock that removes the exception it already
-                       has. On the Potential exceptions tab a candidate pair
-                       shows a check that saves its proposed value. F32's
-                       separate Exception column is gone: each of these is
-                       the same action in the same place, and no row ever
-                       carries two of them. -->
-                  <th class="kerning-pairtable-apply-col">Apply</th>
-                  <!-- F32's Hide action -- Task 11 replaces today's Mark
-                       junk button with the eye control; this column is
-                       where it already lives. -->
-                  <th>Hide</th>
-                </tr>
-              </thead>
-              <tbody id="kerning-pairtable-body"></tbody>
-            </table>
+            <!-- Ticket 04 (UI-REFACTOR.md §3, UI-NOMENCLATURE.md §14): the
+                 table itself (head + tbody) is built by the shared
+                 <data-table> component (fontra-webcomponents/src/data-table.js),
+                 mounted here by initPairTableSection in kerning.js. Column
+                 descriptions, the sort click/select-all wiring, and per-row
+                 click delegation all live in that component now; only cell
+                 rendering (buildPairRowElement/buildClassSummaryRowElement)
+                 stays here. -->
+            <div id="kerning-pairtable-table-mount"></div>
             <div class="kerning-pairtable-load-controls">
               <span
                 id="kerning-pairtable-load-status"
