@@ -2,7 +2,7 @@
 
 **Status:** ready-for-agent
 
-**Blocked by:** 57 (Terminal: Serif Wing and Bracket groups with chains), 07 (Terminal presets cover all four kinds), 49 (Skeleton block: Generation preset header)
+**Blocked by:** 57 (Terminal: Serif Wing and Bracket groups with chains), 07 (Terminal presets cover the four kinds with fields), 49 (Skeleton block: Generation preset header)
 
 ## Today
 

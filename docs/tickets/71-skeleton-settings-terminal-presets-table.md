@@ -2,7 +2,7 @@
 
 **Status:** ready-for-agent
 
-**Blocked by:** 67 (Skeleton settings tab), 04 (Lift the pair table into a shared table component), 07 (Terminal presets cover all four kinds)
+**Blocked by:** 67 (Skeleton settings tab), 04 (Lift the pair table into a shared table component), 07 (Terminal presets cover the four kinds with fields)
 
 ## Today
 

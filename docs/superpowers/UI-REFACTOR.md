@@ -366,7 +366,7 @@ is left behind.
 ### 5.2 The image draws every terminal at once. A point never does.
 
 Square, Rounded, Drop and Serif are all drawn, and Corner rounding under them. A real point shows
-**one** of the four terminal kinds, or Corner rounding. Never both, and never two terminals.
+**one** of the five terminal kinds, or Corner rounding. Never both, and never two terminals.
 
 ### 5.3 Transform
 
@@ -425,11 +425,11 @@ reset this handle. **Detached is not drawn** and stays reachable until the desig
 
 ### 5.6 Terminal
 
-**A text segmented control picks the kind**, and there are four, not five.
+**A text segmented control picks the kind**, five across: Flat, Square, Rounded, Ball, Serif.
 
-**Flat and Square merge.** The cap styles are Flat, Square, Round, Drop and Serif today. Flat is
-the butt cut and Square is the same cut pushed past the end, so one control with a distance covers
-both: a distance of zero is the flat cut. Fold Flat into Square and drop the separate kind.
+**Flat and Square stay separate kinds.** A Square cap adds a point on a side only once its distance
+or angle leaves zero, so folding Flat into it would put every former flat end one nudge away from a
+point-count change. Flat has no fields and no section.
 
 | Section | Fields | Called today |
 | --- | --- | --- |
@@ -523,7 +523,7 @@ Side column. Add one.
 
 ### 6.4 Terminal presets
 
-**Serif presets become terminal presets**, and cover all four terminal kinds of §5.6.
+**Serif presets become terminal presets**, and cover the four terminal kinds of §5.6 that have fields. Flat has none, so it has no presets.
 
 | Column | Holds |
 | --- | --- |
@@ -536,7 +536,7 @@ numbers to fit a row. The dialog uses the same controls the Terminal section of 
 
 **New preset** and **Preset from selection** sit under the table. Preset from selection takes the
 selected terminal's kind and parameters. It is today's Create from selection, widened from serifs
-to all four kinds.
+to the four kinds that have fields.
 
 A serif preset is one wing plus the underside cup and carries no axis, per feature model §8. The
 other three kinds need the same rule written down before they are built: a preset shapes a

@@ -11,7 +11,7 @@ Create from selection stores the selected serif.
 ## Target
 
 1. New preset adds a row.
-2. Preset from selection takes the selected terminal's kind and shape, for all four kinds.
+2. Preset from selection takes the selected terminal's kind and shape, for the four kinds with fields. Flat has none.
 
 ## Done when
 

@@ -2,7 +2,7 @@
 
 **Status:** ready-for-agent
 
-**Blocked by:** 51 (Terminal: Square section), 54 (Terminal: Rounded section), 55 (Terminal: Drop section), 07 (Terminal presets cover all four kinds), 49 (Skeleton block: Generation preset header)
+**Blocked by:** 51 (Terminal: Square section), 54 (Terminal: Rounded section), 55 (Terminal: Drop section), 07 (Terminal presets cover the four kinds with fields), 49 (Skeleton block: Generation preset header)
 
 ## Today
 

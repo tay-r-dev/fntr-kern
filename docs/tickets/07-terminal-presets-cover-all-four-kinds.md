@@ -1,8 +1,8 @@
-# 07: Terminal presets cover all four kinds
+# 07: Terminal presets cover the four kinds with fields
 
 **Status:** ready-for-agent
 
-**Blocked by:** 01 (Merge the Flat terminal kind into Square)
+**Blocked by:** None (can start immediately)
 
 ## Today
 
@@ -10,7 +10,7 @@ Each master's source defaults hold `customSerifs`, a list of serif presets, one 
 
 ## Target
 
-1. A terminal preset is a type (square, round, drop or serif), a name, a case and that type's shape fields.
+1. A terminal preset is a type (square, round, drop or serif; flat has no fields and no presets), a name, a case and that type's shape fields.
 2. Existing serif presets and the five built-ins read as type serif, unchanged.
 3. Square, round and drop presets store their own shape fields and apply to a point of that kind.
 4. Applying a preset of one type to a point of another type changes the point's kind to the preset's.

@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live as markdown files under `.scratch/<feature>/` in this repo. See `docs/agents/issue-tracker.md`.
+Issues live as markdown files under `docs/tickets/` in this repo. See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 
