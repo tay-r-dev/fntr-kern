@@ -41,6 +41,34 @@
       <div class="kerning-column sidebar-container kerning-left">
         <div class="sidebar-resize-gutter" data-grow-direction="right"></div>
         <div id="kerning-pairtable-section">
+          <!-- Ticket 12 (UI-REFACTOR.md §3.2): the title row -- Kerning, with
+               the Default / Potential exceptions tabs at its right end,
+               drawn as one pill with the active half filled. Placement and
+               styling only: the tablist roles and setResultsTab (kerning.js)
+               are unchanged, only moved up from below the filters. -->
+          <div id="kerning-pairtable-title-row">
+            <h2 id="kerning-pairtable-title">Kerning</h2>
+            <div id="kerning-pairtable-tabs" role="tablist">
+              <button
+                type="button"
+                class="kerning-pairtable-tab"
+                data-tab="default"
+                role="tab"
+                aria-selected="true"
+              >
+                Default
+              </button>
+              <button
+                type="button"
+                class="kerning-pairtable-tab"
+                data-tab="potential"
+                role="tab"
+                aria-selected="false"
+              >
+                Potential exceptions
+              </button>
+            </div>
+          </div>
           <div id="kerning-pairtable-controls">
             <label for="kerning-pairtable-glyph">Glyph</label>
             <input
@@ -302,31 +330,11 @@
                  removed, so no tolerance control exists anywhere anymore. -->
           </div>
 
-          <!-- Task 8, spec F19: Default / Potential exceptions tabs replace
-               the old four bucket sections (F11) -- one row list, one table,
+          <!-- Task 8, spec F19: Default / Potential exceptions tabs -- moved
+               to the title row above by ticket 12. One row list, one table,
                kerning.js's renderPairTable decides ROW VISIBILITY from each
                row's kind/exposure/tab, not which of several tables to
                populate. See activeResultsTab / setResultsTab in kerning.js. -->
-          <div id="kerning-pairtable-tabs" role="tablist">
-            <button
-              type="button"
-              class="kerning-pairtable-tab"
-              data-tab="default"
-              role="tab"
-              aria-selected="true"
-            >
-              Default
-            </button>
-            <button
-              type="button"
-              class="kerning-pairtable-tab"
-              data-tab="potential"
-              role="tab"
-              aria-selected="false"
-            >
-              Potential exceptions
-            </button>
-          </div>
 
           <!-- Task 8, spec F32: Glyph L (name) / Current / Proposed / Delta /
                Glyph R (name) / Exception / Hide, in that order. The tick

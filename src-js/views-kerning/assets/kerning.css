@@ -501,21 +501,42 @@
   font-weight: bold;
 }
 
+/* Ticket 12 (UI-REFACTOR.md §3.2): the title row -- Kerning, with the tabs
+   pill at the right end. */
+#kerning-pairtable-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5em;
+}
+
+#kerning-pairtable-title {
+  margin: 0;
+}
+
 /* Task 8, spec F19: Default / Potential exceptions tabs, replacing the old
-   four bucket sections (F11). */
+   four bucket sections (F11). Ticket 12: drawn as one pill, the active half
+   filled, rather than the plain underline this used when the tabs sat above
+   the table. */
 #kerning-pairtable-tabs {
   display: flex;
-  gap: 0.25em;
-  margin: 0.5em 0;
+  gap: 0;
+  border: 1px solid var(--horizontal-rule-color, #ccc);
+  border-radius: 1em;
+  overflow: hidden;
 }
 
 .kerning-pairtable-tab {
   cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 0.25em 0.75em;
+  margin: 0;
 }
 
 .kerning-pairtable-tab.kerning-pairtable-tab-active {
+  background: var(--ui-element-selected-background-color, #ccc);
   font-weight: bold;
-  text-decoration: underline;
 }
 
 #kerning-derive-proposals {
