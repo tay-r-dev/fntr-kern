@@ -558,17 +558,9 @@
   font-weight: bold;
 }
 
-/* Workstream 13 (spec §7.4): the calibration readout. Collapsed by default,
-   same <details>/<summary> pattern as #kerning-parameters-collapsible. A
-   readout only -- no controls live here. */
-#kerning-calibration-section {
-}
-
-#kerning-calibration-collapsible summary {
-  cursor: pointer;
-  margin-bottom: 0.35em;
-}
-
+/* Workstream 13 (spec §7.4): the calibration readout. Ticket 09: lives
+   inside #kerning-analytics-section now, last block under the four rows,
+   with no disclosure of its own -- a readout only, no controls live here. */
 #kerning-calibration-body {
   display: flex;
   flex-direction: column;
