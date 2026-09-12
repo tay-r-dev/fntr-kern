@@ -42,6 +42,10 @@
      property, let CSS calc() consume it" convention
      --kerning-middle-bottom-height itself already uses for the drag. */
   --kerning-preview-toolbar-height: 2.4em;
+  /* Ticket 22: the pair table's own drag-adjustable height, same one-
+     fixed-property convention as --kerning-middle-bottom-height above --
+     see initPairTableResizeGrip in kerning.js. */
+  --kerning-pairtable-table-height: 320px;
 }
 
 :root.sidebar-resizing {
@@ -557,6 +561,26 @@
 
 .kerning-derive-proposal-label {
   font-style: italic;
+}
+
+/* Ticket 22 (UI-REFACTOR.md §3.5): the table's own scroll region, height
+   drag-adjustable via initPairTableResizeGrip in kerning.js -- ticket 20's
+   windowed-loading scroll listener attaches here, not to the whole
+   #kerning-pairtable-section any more. */
+#kerning-pairtable-table-scroll {
+  height: var(--kerning-pairtable-table-height);
+  overflow-y: auto;
+}
+
+/* The grip itself, same row-resize idiom as #kerning-middle-resize-gutter
+   (:root.kerning-row-resizing, reused rather than a second cursor-lock
+   class). */
+#kerning-pairtable-resize-grip {
+  height: 4px;
+  margin-top: -2px;
+  cursor: row-resize;
+  position: relative;
+  z-index: 1;
 }
 
 .kerning-pairtable-table {

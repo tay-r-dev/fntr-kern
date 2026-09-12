@@ -324,7 +324,14 @@
                  click delegation all live in that component now; only cell
                  rendering (buildPairRowElement/buildClassSummaryRowElement)
                  stays here. -->
-            <div id="kerning-pairtable-table-mount"></div>
+            <!-- Ticket 22 (UI-REFACTOR.md §3.5): the table's own scroll
+                 region, height drag-adjustable via the grip below
+                 (initPairTableResizeGrip in kerning.js, reusing the middle
+                 column gutter's drag code). -->
+            <div id="kerning-pairtable-table-scroll">
+              <div id="kerning-pairtable-table-mount"></div>
+            </div>
+            <div id="kerning-pairtable-resize-grip"></div>
             <!-- Ticket 20 (UI-REFACTOR.md §3.5): the table is a windowed
                  list -- Load next 100 is gone, and this line now counts
                  every row the filters admit (updatePairTableLoadStatus in

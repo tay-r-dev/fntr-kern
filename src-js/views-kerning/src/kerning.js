@@ -2726,6 +2726,7 @@ export class KerningViewController extends ViewController {
       .querySelector("#kerning-pairtable-table-mount")
       .appendChild(this._pairTable);
     this.initPairTableScrolling();
+    this.initPairTableResizeGrip();
 
     this.autokernFiltersController.addListener(() => this.renderPairTable());
 
@@ -4077,13 +4078,12 @@ export class KerningViewController extends ViewController {
     }
   }
 
-  // Ticket 20: scrolling within 200px of either edge slides the window by
-  // 25 rows. The section is the pair table's scrolling ancestor today
-  // (kerning.css's own #kerning-pairtable-section overflow-y: auto);
-  // ticket 22 gives the table its own scroll region and moves this
-  // listener there.
+  // Ticket 20/22: scrolling within 200px of either edge slides the window
+  // by 25 rows. The table's own scroll region (#kerning-pairtable-table-
+  // scroll, ticket 22) is the scrolling ancestor -- before ticket 22 gave
+  // the table its own resizable box, this listened on the whole section.
   initPairTableScrolling() {
-    const scroller = document.querySelector("#kerning-pairtable-section");
+    const scroller = document.querySelector("#kerning-pairtable-table-scroll");
     this._pairTableScroller = scroller;
     scroller?.addEventListener("scroll", () => {
       if (!this._pairTableItems?.length) {
@@ -6973,6 +6973,55 @@ export class KerningViewController extends ViewController {
       applyBottomHeight(clampBottomHeight(parseInt(storedHeight)));
     }
 
+    // Ticket 22 reuses this pointer-drag mechanism for the pair table's own
+    // resize grip (initPairTableResizeGrip, below) via initVerticalDragGutter
+    // (rail R-B: one copy of the drag dance).
+    this.initVerticalDragGutter({
+      gutter,
+      // The gutter sits at the TOP edge of the bottom row (kerning.css:
+      // `bottom: -2px` inside #kerning-middle-top) -- dragging it UP (a
+      // smaller clientY) grows the bottom row, dragging it DOWN shrinks it,
+      // which is why computeHeight subtracts the delta, not adds it (the
+      // mirror image of Sidebar's own "growDirection" sign flip, here fixed
+      // rather than configurable since there is only one gutter and one
+      // direction it can mean).
+      measureInitialHeight: () => {
+        middleColumn.classList.remove("animating");
+        return document.querySelector("#kerning-middle-bottom").getBoundingClientRect()
+          .height;
+      },
+      computeHeight: (initialHeight, deltaY) =>
+        clampBottomHeight(initialHeight - deltaY),
+      applyHeight: applyBottomHeight,
+      onDragEnd: () => {
+        middleColumn.classList.add("animating");
+        // Trigger the canvas's own resize handling explicitly: the
+        // ResizeObserver in canvas-controller.js already observes
+        // #kerning-view-container's own box (see canvas-controller.js's
+        // constructor), so a row-height drag that changes the scene row's
+        // actual pixel size is picked up the same way a column-splitter drag
+        // already is -- nothing extra needed here for that. This call is
+        // only to be certain the canvas repaints promptly at drag-end even
+        // if the ResizeObserver's own callback (already async by spec)
+        // hasn't fired yet on this exact frame.
+        this.canvasController?.requestUpdate();
+      },
+    });
+  }
+
+  // Ticket 22: the pointer-drag mechanics initMiddleRowSplitter built above,
+  // factored out so the pair table's resize grip reuses the exact dance
+  // (pointerdown arms a pointermove/pointerup pair, a Y delta becomes a new
+  // height through the caller's own clamp) instead of a second copy. Same
+  // cursor-lock class convention both drags use
+  // (:root.kerning-row-resizing, kerning.css).
+  initVerticalDragGutter({
+    gutter,
+    measureInitialHeight,
+    computeHeight,
+    applyHeight,
+    onDragEnd,
+  }) {
     let dragging = false;
     let initialHeight;
     let initialPointerCoordinateY;
@@ -6982,46 +7031,63 @@ export class KerningViewController extends ViewController {
       if (!dragging) {
         return;
       }
-      // The gutter sits at the TOP edge of the bottom row (kerning.css:
-      // `bottom: -2px` inside #kerning-middle-top) -- dragging it UP (a
-      // smaller clientY) grows the bottom row, dragging it DOWN shrinks it,
-      // which is why this is a subtraction of the delta, not an addition
-      // (the mirror image of Sidebar's own "growDirection" sign flip, here
-      // fixed rather than configurable since there is only one gutter and
-      // one direction it can mean).
-      height = clampBottomHeight(
-        initialHeight - (event.clientY - initialPointerCoordinateY)
-      );
-      applyBottomHeight(height);
+      height = computeHeight(initialHeight, event.clientY - initialPointerCoordinateY);
+      applyHeight(height, false);
     };
     const onPointerUp = () => {
-      applyBottomHeight(height, true);
-      middleColumn.classList.add("animating");
+      applyHeight(height, true);
       dragging = false;
       initialHeight = undefined;
       initialPointerCoordinateY = undefined;
       document.documentElement.classList.remove("kerning-row-resizing");
       document.removeEventListener("pointermove", onPointerMove);
-      // Trigger the canvas's own resize handling explicitly: the
-      // ResizeObserver in canvas-controller.js already observes
-      // #kerning-view-container's own box (see canvas-controller.js's
-      // constructor), so a row-height drag that changes the scene row's
-      // actual pixel size is picked up the same way a column-splitter drag
-      // already is -- nothing extra needed here for that. This call is only
-      // to be certain the canvas repaints promptly at drag-end even if the
-      // ResizeObserver's own callback (already async by spec) hasn't fired
-      // yet on this exact frame.
-      this.canvasController?.requestUpdate();
+      onDragEnd?.();
     };
     gutter.addEventListener("pointerdown", (event) => {
       dragging = true;
-      const bottomElement = document.querySelector("#kerning-middle-bottom");
-      initialHeight = bottomElement.getBoundingClientRect().height;
+      initialHeight = measureInitialHeight();
       initialPointerCoordinateY = event.clientY;
-      middleColumn.classList.remove("animating");
       document.documentElement.classList.add("kerning-row-resizing");
       document.addEventListener("pointermove", onPointerMove);
       document.addEventListener("pointerup", onPointerUp, { once: true });
+    });
+  }
+
+  // Ticket 22 (UI-REFACTOR.md §3.5): a grip at the table's bottom edge sets
+  // its height by drag, persisted the same way the middle row's height is.
+  initPairTableResizeGrip() {
+    const MIN_TABLE_HEIGHT = 120;
+    const grip = document.querySelector("#kerning-pairtable-resize-grip");
+    const scroller = document.querySelector("#kerning-pairtable-table-scroll");
+    if (!grip || !scroller) {
+      return;
+    }
+    const clampHeight = (height) => Math.max(MIN_TABLE_HEIGHT, height);
+    const applyHeight = (height, saveLocalStorage = false) => {
+      if (height === undefined) {
+        return;
+      }
+      if (saveLocalStorage) {
+        localStorage.setItem("fontra-kerning-pairtable-table-height", height);
+      }
+      document.documentElement.style.setProperty(
+        "--kerning-pairtable-table-height",
+        `${height}px`
+      );
+    };
+    const storedHeight = localStorage.getItem("fontra-kerning-pairtable-table-height");
+    if (storedHeight) {
+      applyHeight(clampHeight(parseInt(storedHeight)));
+    }
+    this.initVerticalDragGutter({
+      gutter: grip,
+      // The grip sits at the scroller's own bottom edge -- dragging it DOWN
+      // (a larger clientY) grows the table, the ordinary "drag the bottom
+      // edge down to make the box taller" sense, unlike the middle row
+      // gutter above (which sits at its row's TOP edge).
+      measureInitialHeight: () => scroller.getBoundingClientRect().height,
+      computeHeight: (initialHeight, deltaY) => clampHeight(initialHeight + deltaY),
+      applyHeight,
     });
   }
 
