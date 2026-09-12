@@ -143,38 +143,11 @@
                    section (#kerning-stale-section) below, and a stale row's
                    own warning presentation (F23) always stays visible
                    regardless of any other filter. -->
-              <!-- Task 5, spec F13: "Provide a Columns menu with independent
-                   visibility controls for Current, Proposed, and Delta."
-                   Hiding a column here changes display only -- it never
-                   changes which rows are shown (that's the numeric filters
-                   below) or which rows an action targets. -->
-              <fieldset id="kerning-pairtable-columns">
-                <legend>Columns</legend>
-                <label
-                  ><input type="checkbox" id="kerning-pairtable-show-current" checked />
-                  Current</label
-                >
-                <label
-                  ><input
-                    type="checkbox"
-                    id="kerning-pairtable-show-proposed"
-                    checked
-                  />
-                  Proposed</label
-                >
-                <label
-                  ><input
-                    type="checkbox"
-                    id="kerning-pairtable-show-suggestion"
-                    checked
-                  />
-                  Delta</label
-                >
-                <label
-                  ><input type="checkbox" id="kerning-pairtable-show-apply" checked />
-                  Apply</label
-                >
-              </fieldset>
+              <!-- Ticket 19 (UI-REFACTOR.md §3.4): the Columns fieldset is
+                   gone -- Current, Proposed, Delta and Apply are now checked
+                   entries in a context menu opened by right-clicking the
+                   table header (initPairTableSection in kerning.js). Same
+                   four filter keys, same display-only effect. -->
               <!-- Ticket 14: Hide zero-current (as "Zero-current") moved to
                    #kerning-pairtable-switches above. -->
               <!-- Task 9, spec F09, ledger §8.3: Unicode types, one

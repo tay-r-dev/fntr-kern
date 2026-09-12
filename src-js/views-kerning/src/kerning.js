@@ -2470,38 +2470,44 @@ export class KerningViewController extends ViewController {
       this.autokernFiltersController.setItem("onlyMarked", onlyMarkedCheckbox.checked);
     });
 
-    const currentCheckbox = document.querySelector("#kerning-pairtable-show-current");
-    currentCheckbox.checked = filters.showCurrent;
-    currentCheckbox.addEventListener("change", () => {
-      this.autokernFiltersController.setItem("showCurrent", currentCheckbox.checked);
-    });
-
-    // Backlog item 15: mirrors the showCurrent checkbox immediately above.
-    const suggestionCheckbox = document.querySelector(
-      "#kerning-pairtable-show-suggestion"
-    );
-    suggestionCheckbox.checked = filters.showSuggestion;
-    suggestionCheckbox.addEventListener("change", () => {
-      this.autokernFiltersController.setItem(
-        "showSuggestion",
-        suggestionCheckbox.checked
-      );
-    });
-
-    // Task 5, spec F13: Proposed column visibility, same pattern as
-    // showCurrent/showSuggestion above.
-    const proposedCheckbox = document.querySelector("#kerning-pairtable-show-proposed");
-    proposedCheckbox.checked = filters.showProposed;
-    proposedCheckbox.addEventListener("change", () => {
-      this.autokernFiltersController.setItem("showProposed", proposedCheckbox.checked);
-    });
-
-    // The Apply column, same pattern as the three above.
-    const applyCheckbox = document.querySelector("#kerning-pairtable-show-apply");
-    applyCheckbox.checked = filters.showApply;
-    applyCheckbox.addEventListener("change", () => {
-      this.autokernFiltersController.setItem("showApply", applyCheckbox.checked);
-    });
+    // Ticket 19 (UI-REFACTOR.md §3.4): the Columns fieldset is gone --
+    // Current, Proposed, Delta and Apply are now checked entries in a
+    // context menu on the table header, opened with the right mouse
+    // button. Same four filter keys, same display-only effect (never which
+    // rows show, never what an action targets).
+    this._pairTable.table
+      .querySelector("thead")
+      .addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        const model = this.autokernFiltersController.model;
+        const toggle = (key) =>
+          this.autokernFiltersController.setItem(key, !model[key]);
+        showMenu(
+          [
+            {
+              title: "Current",
+              checked: model.showCurrent,
+              callback: () => toggle("showCurrent"),
+            },
+            {
+              title: "Proposed",
+              checked: model.showProposed,
+              callback: () => toggle("showProposed"),
+            },
+            {
+              title: "Delta",
+              checked: model.showSuggestion,
+              callback: () => toggle("showSuggestion"),
+            },
+            {
+              title: "Apply",
+              checked: model.showApply,
+              callback: () => toggle("showApply"),
+            },
+          ],
+          event
+        );
+      });
 
     // Task 5, spec F13: the exact `Current == 0 && Proposed != 0` predicate,
     // independent of column visibility above.

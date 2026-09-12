@@ -815,15 +815,9 @@ tr[data-kind="pair-exception"] {
   border-left: 3px solid var(--fontra-red-color, #c00);
 }
 
-/* Task 5, spec F13: the Columns menu sits inline with the other filter
-   controls rather than breaking onto its own block by default (fieldset's
-   native display). */
-#kerning-pairtable-columns {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5em;
-  padding: 0.1em 0.5em;
-}
+/* Ticket 19: the Columns fieldset (and its own rule here) is gone -- Current,
+   Proposed, Delta and Apply are a right-click context menu on the table
+   header now. */
 
 .kerning-pairtable-filter-help {
   cursor: help;
