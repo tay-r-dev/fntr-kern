@@ -488,7 +488,8 @@
 
 #kerning-pairtable-filters,
 #kerning-pairtable-actions,
-#kerning-pairtable-class-controls {
+#kerning-pairtable-class-controls,
+#kerning-pairtable-switches {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

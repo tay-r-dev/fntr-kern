@@ -145,6 +145,7 @@ import { DataTable } from "@fontra/web-components/data-table.js"; // ticket 04: 
 import { GlyphCell } from "@fontra/web-components/glyph-cell.js";
 import { GlyphCellView } from "@fontra/web-components/glyph-cell-view.js";
 import { IconButton } from "@fontra/web-components/icon-button.js"; // for <icon-button>, the delete-class control
+import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 14's Only marked switch
 import { MenuItemDivider, showMenu } from "@fontra/web-components/menu-panel.js";
 import { dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 // Backlog items 9+10 (combined): the exact settings-accordion mechanism
@@ -2460,6 +2461,10 @@ export class KerningViewController extends ViewController {
     const onlyMarkedCheckbox = document.querySelector(
       "#kerning-pairtable-filter-only-marked"
     );
+    // Ticket 14: a <labeled-toggle> now, not a plain checkbox -- its label
+    // text is a JS property, not a markup attribute (labeled-toggle.js's own
+    // note on why), so it is set here rather than in kerning.html.
+    onlyMarkedCheckbox.label = "Only marked";
     onlyMarkedCheckbox.checked = filters.onlyMarked;
     onlyMarkedCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem("onlyMarked", onlyMarkedCheckbox.checked);

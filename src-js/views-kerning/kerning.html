@@ -84,6 +84,50 @@
               role="status"
             ></span>
 
+            <!-- Ticket 14 (UI-REFACTOR.md §3.2, UI-NOMENCLATURE.md §14.1):
+                 one row, in order: Only marked as a labeled toggle
+                 (fontra-webcomponents/src/labeled-toggle.js), then
+                 zero-current, group members and show hidden as checkboxes.
+                 Same ids/behavior as before -- initPairTableSection in
+                 kerning.js binds these exactly as it bound the four
+                 scattered controls this replaces. -->
+            <div id="kerning-pairtable-switches">
+              <!-- The marks as a list. A mark is the exception to whatever
+                   the global skip mode does, so this shows the pairs taken
+                   out of the preview in ordinary mode and the pairs put into
+                   it under skip-all (kerning.js's pairRowVisible). Its own
+                   label text is set in JS (initPairTableSection) -- see
+                   labeled-toggle.js's own note on why. -->
+              <labeled-toggle
+                id="kerning-pairtable-filter-only-marked"
+              ></labeled-toggle>
+              <!-- Task 5, spec F13: the exact `Current == 0 && Proposed !=
+                   0` predicate, independent of column visibility. Shorter
+                   label, same mechanics. -->
+              <label
+                ><input type="checkbox" id="kerning-pairtable-hide-zero-current" />
+                Zero-current
+                <span
+                  class="kerning-pairtable-filter-help"
+                  title="Hides rows where the stored Current value is 0 but the Proposed suggestion is not. A stored zero can still be a real, explicit rule."
+                  >?</span
+                ></label
+              >
+              <!-- Task 8, spec F22: broad exposure of every grouped member's
+                   individual row at once. Shorter label, same mechanics. -->
+              <label
+                ><input type="checkbox" id="kerning-pairtable-show-members" /> Group
+                members</label
+              >
+              <!-- Task 11, spec F17: renamed from "Show junk." Hidden rows
+                   reappear here with the distinguishable hidden styling
+                   (kerning.css) plus their own restore (eye) action. -->
+              <label
+                ><input type="checkbox" id="kerning-pairtable-filter-hidden" /> Show
+                hidden</label
+              >
+            </div>
+
             <div id="kerning-pairtable-filters">
               <select id="kerning-pairtable-filter-side" title="Side">
                 <option value="both">Left or right</option>
@@ -99,21 +143,6 @@
                    section (#kerning-stale-section) below, and a stale row's
                    own warning presentation (F23) always stays visible
                    regardless of any other filter. -->
-              <!-- Task 11, spec F17: renamed from "Show junk." Hidden rows
-                   reappear here with the distinguishable hidden styling
-                   (kerning.css) plus their own restore (eye) action. -->
-              <label
-                ><input type="checkbox" id="kerning-pairtable-filter-hidden" /> Show
-                hidden</label
-              >
-              <!-- The marks as a list. A mark is the exception to whatever
-                   the global skip mode does, so this shows the pairs taken
-                   out of the preview in ordinary mode and the pairs put into
-                   it under skip-all (kerning.js's pairRowVisible). -->
-              <label
-                ><input type="checkbox" id="kerning-pairtable-filter-only-marked" />
-                Only marked pairs</label
-              >
               <!-- Task 5, spec F13: "Provide a Columns menu with independent
                    visibility controls for Current, Proposed, and Delta."
                    Hiding a column here changes display only -- it never
@@ -146,21 +175,8 @@
                   Apply</label
                 >
               </fieldset>
-              <!-- Task 5, spec F13: exact predicate `Current == 0 &&
-                   Proposed != 0` -- a row whose stored value is zero but
-                   whose suggestion is not. Does not apply to a stale/
-                   unavailable suggestion (kerning.js's pairRowVisible), so
-                   that warning stays discoverable regardless of this
-                   filter. -->
-              <label
-                ><input type="checkbox" id="kerning-pairtable-hide-zero-current" /> Hide
-                zero-current suggestions
-                <span
-                  class="kerning-pairtable-filter-help"
-                  title="Hides rows where the stored Current value is 0 but the Proposed suggestion is not. A stored zero can still be a real, explicit rule."
-                  >?</span
-                ></label
-              >
+              <!-- Ticket 14: Hide zero-current (as "Zero-current") moved to
+                   #kerning-pairtable-switches above. -->
               <!-- Task 9, spec F09, ledger §8.3: Unicode types, one
                    multi-select filter -- reuses the Columns fieldset's own
                    "grouped checkboxes under a legend" idiom immediately
@@ -292,15 +308,8 @@
                   <option value="">All</option>
                 </select></label
               >
-              <!-- Task 8, spec F22: broad exposure of every grouped member's
-                   individual row at once, without typing "%name%!" for each
-                   one -- off by default. Named glyphs
-                   (getExposedMemberNames) expose individually regardless of
-                   this checkbox. -->
-              <label
-                ><input type="checkbox" id="kerning-pairtable-show-members" /> Show
-                individual class members</label
-              >
+              <!-- Ticket 14: Show members (as "Group members") moved to
+                   #kerning-pairtable-switches above. -->
               <!-- Backlog item 11: the old two-state sort toggle button is
                    replaced by clicking a column header directly (one sort
                    UI, not two) -- see kerning-pairtable-sortable th's above. -->
