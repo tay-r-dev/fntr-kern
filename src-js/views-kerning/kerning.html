@@ -747,27 +747,17 @@
 
             <!-- Ticket 11, spec §1.3/UI-NOMENCLATURE §14: three icon buttons
                  set the preview's scene alignment, exactly one on. Not a
-                 component -- kerning.js's initAlignmentRow wires all three
-                 with one listener. Icons match the editor's own Text Entry
-                 alignment row (panel-text-entry.js), which is left
-                 untouched. -->
-            <div id="kerning-align-row">
-              <icon-button
-                id="kerning-align-left"
-                src="/images/alignleft.svg"
-                data-tooltip="Align left"
-              ></icon-button>
-              <icon-button
-                id="kerning-align-center"
-                src="/images/aligncenter.svg"
-                data-tooltip="Align center"
-              ></icon-button>
-              <icon-button
-                id="kerning-align-right"
-                src="/images/alignright.svg"
-                data-tooltip="Align right"
-              ></icon-button>
-            </div>
+                 component -- kerning.js's initAlignmentRow builds and wires
+                 all three with one listener. Icons match the editor's own
+                 Text Entry alignment row (panel-text-entry.js), which is
+                 left untouched. Built in JS, not declared here: every other
+                 <icon-button> in this tree is created with
+                 document.createElement/html.createDomElement and has `src`
+                 set as a property, never an HTML attribute -- UnlitElement's
+                 static properties are plain JS properties, never read from
+                 attributes, so a static `src="..."` attribute here left
+                 `this.src` undefined at first render. -->
+            <div id="kerning-align-row"></div>
           </div>
 
           <!-- Backlog items 9+10 (combined, see kerning.js's

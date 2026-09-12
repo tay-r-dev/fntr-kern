@@ -780,12 +780,36 @@ export class KerningViewController extends ViewController {
   // each button's click and once here to reflect start()'s restored value.
   // Icons/ids only borrow the editor's Text Entry alignment row's own
   // /images/align*.svg files (panel-text-entry.js is left untouched).
+  //
+  // Built here with html.createDomElement, not declared in kerning.html:
+  // every other <icon-button> in this tree is built the same way and has
+  // `src` set as a property (e.g. this file's initSuggestionPreviewToggle,
+  // buildApplyProposalButton) -- UnlitElement's static properties are plain
+  // JS properties, never read from attributes, so a static `src="..."`
+  // attribute in markup leaves `this.src` undefined at first render and
+  // inline-svg fetches "undefined".
   initAlignmentRow() {
     const buttons = {
-      left: document.querySelector("#kerning-align-left"),
-      center: document.querySelector("#kerning-align-center"),
-      right: document.querySelector("#kerning-align-right"),
+      left: html.createDomElement("icon-button", {
+        "id": "kerning-align-left",
+        "src": "/images/alignleft.svg",
+        "data-tooltip": "Align left",
+      }),
+      center: html.createDomElement("icon-button", {
+        "id": "kerning-align-center",
+        "src": "/images/aligncenter.svg",
+        "data-tooltip": "Align center",
+      }),
+      right: html.createDomElement("icon-button", {
+        "id": "kerning-align-right",
+        "src": "/images/alignright.svg",
+        "data-tooltip": "Align right",
+      }),
     };
+    const row = document.querySelector("#kerning-align-row");
+    for (const button of Object.values(buttons)) {
+      row.appendChild(button);
+    }
     const applyAlign = (align) => {
       this.sceneSettings.align = align;
       for (const [key, button] of Object.entries(buttons)) {
