@@ -10,11 +10,7 @@ import {
   FONTRA_INTERNAL_SECTIONS,
 } from "./fontra-internal-schema.js";
 import { getGlyphInfoFromGlyphName } from "./glyph-data.js";
-import {
-  balancePathInPlace,
-  expandToJoints,
-  harmonizePathInPlace,
-} from "./harmonization.js";
+import { expandToJoints, harmonizePathInPlace } from "./harmonization.js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
 import {
   buildContourSegments,
@@ -1471,17 +1467,6 @@ export function harmonizeSkeletonPoints(skeletonData, pointKeys = null, options 
       roundCoordinates: true,
       ...options,
     })
-  );
-}
-
-// Balancing reaches the centerline the same way harmonizing does, and for the
-// same reason: a centerline is an ordinary path carrying ordinary smooth flags,
-// and what it makes is regenerated from it afterwards. It takes the selection
-// as given rather than expanding it to joints — balancing is a statement about
-// a segment, and the segments a selection touches are the segments it means.
-export function balanceSkeletonPoints(skeletonData, pointKeys = null) {
-  return runSkeletonCenterlinePass(skeletonData, pointKeys, (path, selected) =>
-    balancePathInPlace(path, selected)
   );
 }
 

@@ -854,40 +854,6 @@ export default class TransformationPanel extends Panel {
       field3: {},
     });
 
-    // Balancing is its own command. It wants the same handles harmonizing wants
-    // and neither can have them exactly, so one button for both walked the
-    // drawing flatter on every press. Two buttons, and the order is yours.
-    formContents.push({ type: "divider" });
-    formContents.push({
-      type: "header",
-      label: translate("sidebar.selection-transformation.balance"),
-    });
-
-    formContents.push({
-      type: "universal-row",
-      field1: {},
-      field2: {
-        type: "auxiliaryElement",
-        auxiliaryElement: html.button({ onclick: () => this.doBalance() }, [
-          translate("sidebar.selection-transformation.balance.apply"),
-        ]),
-      },
-      field3: {},
-    });
-
-    formContents.push({
-      type: "universal-row",
-      field1: {},
-      field2: {
-        type: "auxiliaryElement",
-        auxiliaryElement: (this.balanceReportElement = html.span(
-          { class: "harmonize-report", title: this.balanceReportDetail || "" },
-          [this.balanceReportText || ""]
-        )),
-      },
-      field3: {},
-    });
-
     this.infoForm.setFieldDescriptions(formContents);
 
     this.infoForm.onFieldChange = async (fieldItem, value, valueStream) => {
@@ -1039,23 +1005,6 @@ export default class TransformationPanel extends Panel {
       }
     }
     return applicationSettingsController.model.harmonizeMethod;
-  }
-
-  async doBalance() {
-    const settings = applicationSettingsController.model;
-    const reports = await this.sceneController.doBalance({
-      applyToOtherSources: settings.harmonizeOtherSources,
-    });
-    this.setBalanceReport(formatBalanceReport(reports));
-  }
-
-  setBalanceReport(text, detail = "") {
-    this.balanceReportText = text;
-    this.balanceReportDetail = detail;
-    if (this.balanceReportElement) {
-      this.balanceReportElement.innerText = text;
-      this.balanceReportElement.title = detail;
-    }
   }
 
   setHarmonizeReport(text, detail = "") {
@@ -1817,61 +1766,6 @@ function formatHarmonizeReport(reports) {
   }
   return rows
     .map(([layerName, report]) => `${layerName}: ${summarizeHarmonizeReport(report)}`)
-    .join(" · ");
-}
-
-// The balance report has its own two words — a segment is balanced or it is
-// skipped — and its own reasons, so it says what happened rather than borrowing
-// a vocabulary about joints.
-function summarizeBalanceReport(report) {
-  const byStatus = new Map();
-  for (const { status, reason } of report) {
-    if (!byStatus.has(status)) {
-      byStatus.set(status, { total: 0, reasons: new Map() });
-    }
-    const entry = byStatus.get(status);
-    entry.total += 1;
-    if (reason) {
-      entry.reasons.set(reason, (entry.reasons.get(reason) || 0) + 1);
-    }
-  }
-  const parts = [];
-  for (const status of ["balanced", "skipped"]) {
-    const entry = byStatus.get(status);
-    if (!entry) {
-      continue;
-    }
-    let part = translate(
-      `sidebar.selection-transformation.balance.status.${status}`,
-      entry.total
-    );
-    if (entry.reasons.size) {
-      const reasons = [...entry.reasons]
-        .sort((a, b) => b[1] - a[1])
-        .map(([reason, count]) =>
-          entry.reasons.size === 1 && count === entry.total
-            ? translate(`sidebar.selection-transformation.balance.reason.${reason}`)
-            : `${count} ${translate(
-                `sidebar.selection-transformation.balance.reason.${reason}`
-              )}`
-        );
-      part += ` (${reasons.join(", ")})`;
-    }
-    parts.push(part);
-  }
-  return parts.join(", ");
-}
-
-function formatBalanceReport(reports) {
-  const rows = [...reports];
-  if (!rows.length) {
-    return translate("sidebar.selection-transformation.balance.nothing-to-do");
-  }
-  if (rows.length === 1) {
-    return summarizeBalanceReport(rows[0][1]);
-  }
-  return rows
-    .map(([layerName, report]) => `${layerName}: ${summarizeBalanceReport(report)}`)
     .join(" · ");
 }
 

@@ -71,7 +71,6 @@ export const strings = {
   "action.glyph.edit-glyph-axes": "Edit glyph axes...",
   "action.glyph.update-all-metrics": "Update All Metrics",
   "action.harmonize": "Harmonize Curves",
-  "action.balance": "Balance Segments",
   "action.join-contours": "Join Contours",
   "action.lock-background-images": "Lock Background Images",
   "action.lock-guideline": "Lock Guideline",
@@ -757,25 +756,6 @@ export const strings = {
   "sidebar.selection-transformation.flip": "Flip",
   "sidebar.selection-transformation.flip.horizontally": "Flip Horizontally",
   "sidebar.selection-transformation.flip.vertically": "Flip Vertically",
-  "sidebar.selection-transformation.balance": "Balance",
-  "sidebar.selection-transformation.balance.tooltip":
-    "Bring each curve’s two handles to one shared tension, holding the curve’s own fullness exactly where it is — the same rule the Tunni gizmo’s equalize gesture uses. It says nothing about the joints between curves, so it will move a joint that harmonizing has just fixed: balance first, or accept that it has the last word.",
-  "sidebar.selection-transformation.balance.apply": "Balance",
-  "sidebar.selection-transformation.balance.nothing-to-do": "Nothing to balance",
-  "sidebar.selection-transformation.balance.status.balanced": [
-    "%0 balanced",
-    "%0 balanced",
-  ],
-  "sidebar.selection-transformation.balance.status.skipped": [
-    "%0 skipped",
-    "%0 skipped",
-  ],
-  "sidebar.selection-transformation.balance.reason.already-balanced":
-    "already balanced",
-  "sidebar.selection-transformation.balance.reason.degenerate": "nothing to balance",
-  "sidebar.selection-transformation.balance.reason.not-curve-segment": "not a curve",
-  "sidebar.selection-transformation.balance.reason.generated-contour":
-    "a generated contour",
   "sidebar.selection-transformation.harmonize": "Harmonize",
   "sidebar.selection-transformation.harmonize.apply": "Harmonize",
   "sidebar.selection-transformation.harmonize.g3": "G3 continuity",
