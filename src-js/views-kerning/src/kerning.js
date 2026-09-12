@@ -2469,45 +2469,6 @@ export class KerningViewController extends ViewController {
       this.autokernFiltersController.setItem("onlyMarked", onlyMarkedCheckbox.checked);
     });
 
-    // Ticket 19 (UI-REFACTOR.md §3.4): the Columns fieldset is gone --
-    // Current, Proposed, Delta and Apply are now checked entries in a
-    // context menu on the table header, opened with the right mouse
-    // button. Same four filter keys, same display-only effect (never which
-    // rows show, never what an action targets).
-    this._pairTable.table
-      .querySelector("thead")
-      .addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        const model = this.autokernFiltersController.model;
-        const toggle = (key) =>
-          this.autokernFiltersController.setItem(key, !model[key]);
-        showMenu(
-          [
-            {
-              title: "Current",
-              checked: model.showCurrent,
-              callback: () => toggle("showCurrent"),
-            },
-            {
-              title: "Proposed",
-              checked: model.showProposed,
-              callback: () => toggle("showProposed"),
-            },
-            {
-              title: "Delta",
-              checked: model.showSuggestion,
-              callback: () => toggle("showSuggestion"),
-            },
-            {
-              title: "Apply",
-              checked: model.showApply,
-              callback: () => toggle("showApply"),
-            },
-          ],
-          event
-        );
-      });
-
     // Task 5, spec F13: the exact `Current == 0 && Proposed != 0` predicate,
     // independent of column visibility above.
     const hideZeroCurrentCheckbox = document.querySelector(
@@ -2727,6 +2688,47 @@ export class KerningViewController extends ViewController {
       .appendChild(this._pairTable);
     this.initPairTableScrolling();
     this.initPairTableResizeGrip();
+
+    // Ticket 19 (UI-REFACTOR.md §3.4): the Columns fieldset is gone --
+    // Current, Proposed, Delta and Apply are now checked entries in a
+    // context menu on the table header, opened with the right mouse
+    // button. Same four filter keys, same display-only effect (never which
+    // rows show, never what an action targets). Wired here, after
+    // this._pairTable is created and mounted (it exposes the actual
+    // <table> only once built).
+    this._pairTable.table
+      .querySelector("thead")
+      .addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        const model = this.autokernFiltersController.model;
+        const toggle = (key) =>
+          this.autokernFiltersController.setItem(key, !model[key]);
+        showMenu(
+          [
+            {
+              title: "Current",
+              checked: model.showCurrent,
+              callback: () => toggle("showCurrent"),
+            },
+            {
+              title: "Proposed",
+              checked: model.showProposed,
+              callback: () => toggle("showProposed"),
+            },
+            {
+              title: "Delta",
+              checked: model.showSuggestion,
+              callback: () => toggle("showSuggestion"),
+            },
+            {
+              title: "Apply",
+              checked: model.showApply,
+              callback: () => toggle("showApply"),
+            },
+          ],
+          event
+        );
+      });
 
     this.autokernFiltersController.addListener(() => this.renderPairTable());
 
