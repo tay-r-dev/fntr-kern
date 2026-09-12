@@ -2655,7 +2655,9 @@ export class KerningViewController extends ViewController {
     this._pairTable.sortActiveClassName = "kerning-pairtable-sort-active";
     this._pairTable.sortLabelClassName = "kerning-pairtable-sort-label";
     this._pairTable.selectAllClassName = "kerning-pairtable-select-all";
-    this._pairTable.selectAllTitle = "Select all loaded rows";
+    // Ticket 21: the tick covers every row the filters admit now, not just
+    // what happens to be in the window.
+    this._pairTable.selectAllTitle = "Select every row the filters admit";
     this._pairTable.columns = [
       { label: "Glyph L", sortKey: "glyph", sortable: true, selectAll: true },
       {
@@ -2705,9 +2707,10 @@ export class KerningViewController extends ViewController {
       }
     };
     // The one select-all tick, in the table header. Rows carry no tick of
-    // their own: every loaded row in, or the selection cleared.
+    // their own: ticket 21, every row the filters admit in (window or not),
+    // or the selection cleared.
     this._pairTable.onSelectAllChange = (checked) => {
-      const ids = this.loadedPairTableRowIds();
+      const ids = this.admittedPairTableRowIds();
       this.resultSelection = checked ? { selected: new Set(ids) } : deselectAll();
       this.applyResultSelectionToDom();
       this.syncSelectAllCheckboxes();
@@ -3119,18 +3122,26 @@ export class KerningViewController extends ViewController {
     this.updatePairPreview();
   }
 
-  // Every row currently in the table, by row ID. renderPairTable rebuilds
-  // the one tbody from scratch, so what is in the DOM is what is loaded.
+  // Every row currently in the table (the window), by row ID -- used for
+  // shift-click ranging, which only makes sense between rows the designer
+  // can actually see and click between.
   loadedPairTableRowIds() {
     return [
       ...document.querySelectorAll(".kerning-pairtable-table tr[data-row-id]"),
     ].map((tr) => tr.dataset.rowId);
   }
 
-  // The header tick states what the selection covers: every loaded row,
-  // some of them, or none.
+  // Ticket 21 (UI-REFACTOR.md §3.5): every row the filters admit, in and out
+  // of the window -- what select-all and the header tick now cover, as
+  // opposed to loadedPairTableRowIds' window-only set above.
+  admittedPairTableRowIds() {
+    return (this._pairTableItems || []).map((item) => item.sortId);
+  }
+
+  // The header tick states what the selection covers: every admitted row,
+  // some of them, or none -- not only the rows currently in the window.
   syncSelectAllCheckboxes() {
-    const ids = this.loadedPairTableRowIds();
+    const ids = this.admittedPairTableRowIds();
     const selectedCount = ids.filter((id) =>
       this.resultSelection.selected.has(id)
     ).length;

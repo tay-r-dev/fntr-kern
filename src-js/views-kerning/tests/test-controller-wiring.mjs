@@ -244,6 +244,37 @@ test("ticket 20: the window start clamps to the item list, never running past it
   assert.equal(view.clampPairTableWindowStart(-5), 0);
 });
 
+test("ticket 21: select-all covers every admitted row, in and out of the window", () => {
+  tbody.children = [];
+  const view = Object.create(Controller.prototype);
+  Object.assign(view, {
+    _pairTableItems: Array.from({ length: 300 }, (_, i) => ({ sortId: String(i) })),
+    _pairTableWindowStart: 0,
+    resultSelection: { selected: new Set() },
+  });
+  const ids = view.admittedPairTableRowIds();
+  assert.equal(ids.length, 300);
+
+  view.resultSelection = { selected: new Set(ids) };
+  assert.equal(view.resultSelection.selected.size, 300);
+
+  // Rendering the window still only puts 100 rows in the document.
+  Object.assign(view, {
+    _pairTableLoadStatus: {},
+    buildPairRowElement: (row) => ({ id: row.id }),
+    buildClassSummaryRowElement: (group) => ({ id: group.id }),
+    syncSelectAllCheckboxes() {},
+  });
+  view._pairTableItems = view._pairTableItems.map((item, i) => ({
+    ...item,
+    renderKind: "pair",
+    row: { id: i },
+  }));
+  view.renderPairTableWindow();
+  assert.equal(tbody.children.length, 100);
+  assert.equal(view.resultSelection.selected.size, 300);
+});
+
 test("highlighted individual rows cannot produce more than 100 canvas pairs", () => {
   const view = Object.create(Controller.prototype);
   view._pairTableItems = Array.from({ length: 1000 }, (_, i) => ({
