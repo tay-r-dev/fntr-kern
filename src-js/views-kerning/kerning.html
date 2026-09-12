@@ -689,28 +689,16 @@
                   step="1"
                 />
               </span>
-              <button id="kerning-run-button">Run</button>
+              <!-- Ticket 10: the four fields that used to live in the
+                   "Parameters" <details> below (envelope reach, envelope
+                   type, reduction, strength) now live in a modal-dialog,
+                   opened by this button -- see kerning.js's
+                   openAutokernParamsDialog. -->
+              <div id="kerning-run-row">
+                <button id="kerning-run-button">Run</button>
+                <button id="kerning-parameters-button" type="button">Parameters</button>
+              </div>
             </div>
-            <details id="kerning-parameters-collapsible">
-              <summary>Parameters</summary>
-              <label for="kerning-param-reach">Envelope reach</label>
-              <input type="number" id="kerning-param-reach" min="1" step="1" />
-
-              <label for="kerning-param-envelope">Envelope type</label>
-              <select id="kerning-param-envelope">
-                <option value="distanceField">Distance field</option>
-                <option value="gaussian">Gaussian</option>
-              </select>
-
-              <label for="kerning-param-reduce">Reduction</label>
-              <select id="kerning-param-reduce">
-                <option value="sum">Sum of squares</option>
-                <option value="max">Maximum</option>
-              </select>
-
-              <label for="kerning-param-strength">Strength</label>
-              <input type="number" id="kerning-param-strength" min="0" step="0.05" />
-            </details>
           </div>
 
           <!-- Task 17, spec F01/F02: replaces the removed current/applied/

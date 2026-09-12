@@ -791,10 +791,6 @@ export class KerningViewController extends ViewController {
     const bindings = [
       ["#kerning-param-threshold", "threshold", Number],
       ["#kerning-param-group-threshold", "groupThreshold", Number],
-      ["#kerning-param-reach", "reach", Number],
-      ["#kerning-param-envelope", "envelope", String],
-      ["#kerning-param-reduce", "reduce", String],
-      ["#kerning-param-strength", "strength", Number],
     ];
     for (const [selector, key, convert] of bindings) {
       const element = document.querySelector(selector);
@@ -803,6 +799,16 @@ export class KerningViewController extends ViewController {
         this.autokernParamsController.setItem(key, convert(element.value));
       });
     }
+
+    // Ticket 10: reach/envelope/reduce/strength moved out of the always-
+    // visible row into a dialog, opened by the Parameters button beside Run.
+    // Built once here, not attached to the page until the dialog opens --
+    // same controller keys, same "change" -> setItem persistence as the
+    // bindings loop above.
+    this._autokernParamsDialogContent = this._buildAutokernParamsDialogFields();
+    document
+      .querySelector("#kerning-parameters-button")
+      .addEventListener("click", () => this.openAutokernParamsDialog());
 
     // Task 5, spec F18: "use inclusive bounds; a blank maximum means no
     // maximum. Reject a minimum greater than the maximum with an inline
@@ -854,6 +860,77 @@ export class KerningViewController extends ViewController {
     this.autokernParamsController.addKeyListener("groupThreshold", () => {
       this.renderPairTable();
     });
+  }
+
+  // Ticket 10: the fields that used to sit in the "Parameters" <details>
+  // (envelope reach, envelope type, reduction, strength) -- same labels,
+  // ids and controller keys as before, built with document.createElement
+  // instead of static markup because they now live in a dialog rather than
+  // always-present HTML. Built once and reused across opens (the dialog's
+  // setContent reparents this same container each time), so a "change"
+  // listener attached here persists for the life of the view, same as the
+  // always-visible bindings above.
+  _buildAutokernParamsDialogFields() {
+    const params = this.autokernParamsController.model;
+    const container = html.div({ id: "kerning-parameters-dialog-fields" }, []);
+
+    const bindings = [
+      ["kerning-param-reach", "reach", Number],
+      ["kerning-param-envelope", "envelope", String],
+      ["kerning-param-reduce", "reduce", String],
+      ["kerning-param-strength", "strength", Number],
+    ];
+    const elementFor = {
+      "kerning-param-reach": () =>
+        html.input({ type: "number", id: "kerning-param-reach", min: "1", step: "1" }),
+      "kerning-param-envelope": () =>
+        html.select({ id: "kerning-param-envelope" }, [
+          html.option({ value: "distanceField" }, ["Distance field"]),
+          html.option({ value: "gaussian" }, ["Gaussian"]),
+        ]),
+      "kerning-param-reduce": () =>
+        html.select({ id: "kerning-param-reduce" }, [
+          html.option({ value: "sum" }, ["Sum of squares"]),
+          html.option({ value: "max" }, ["Maximum"]),
+        ]),
+      "kerning-param-strength": () =>
+        html.input({
+          type: "number",
+          id: "kerning-param-strength",
+          min: "0",
+          step: "0.05",
+        }),
+    };
+    const labelFor = {
+      "kerning-param-reach": "Envelope reach",
+      "kerning-param-envelope": "Envelope type",
+      "kerning-param-reduce": "Reduction",
+      "kerning-param-strength": "Strength",
+    };
+
+    for (const [id, key, convert] of bindings) {
+      const element = elementFor[id]();
+      element.value = params[key];
+      element.addEventListener("change", () => {
+        this.autokernParamsController.setItem(key, convert(element.value));
+      });
+      container.appendChild(html.label({ for: id }, [labelFor[id]]));
+      container.appendChild(element);
+    }
+
+    return container;
+  }
+
+  // Ticket 10: "A changed value persists as soon as it changes, as today.
+  // Closing the dialog applies nothing further" -- the fields' own "change"
+  // listeners (built above) already write to autokernParamsController
+  // immediately, so the dialog's one button only needs to close it.
+  async openAutokernParamsDialog() {
+    const dialog = await dialogSetup("Parameters", null, [
+      { title: translate("dialog.okay"), isDefaultButton: true, resultValue: true },
+    ]);
+    dialog.setContent(this._autokernParamsDialogContent);
+    await dialog.run();
   }
 
   // Backlog items 9+10, closed together as one settings-driven mechanism

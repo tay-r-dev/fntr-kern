@@ -446,19 +446,19 @@
   width: 5em;
 }
 
-#kerning-run-button {
+/* Ticket 10: Run and the Parameters button share one row, right of Run. */
+#kerning-run-row {
   flex: 0 0 100%;
+  display: flex;
+  gap: 0.5em;
 }
 
-#kerning-parameters-collapsible {
+/* Ticket 10: the dialog content built by openAutokernParamsDialog --
+   same field layout as the always-visible row above. */
+#kerning-parameters-dialog-fields {
   display: flex;
   flex-direction: column;
   gap: 0.35em;
-}
-
-#kerning-parameters-collapsible summary {
-  cursor: pointer;
-  margin-bottom: 0.35em;
 }
 
 /* Workstream 11 (spec §7.3): the pair table controls. (#kerning-pairtable-
