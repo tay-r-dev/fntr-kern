@@ -744,6 +744,30 @@
               placeholder="Type a phrase"
               rows="3"
             ></textarea>
+
+            <!-- Ticket 11, spec §1.3/UI-NOMENCLATURE §14: three icon buttons
+                 set the preview's scene alignment, exactly one on. Not a
+                 component -- kerning.js's initAlignmentRow wires all three
+                 with one listener. Icons match the editor's own Text Entry
+                 alignment row (panel-text-entry.js), which is left
+                 untouched. -->
+            <div id="kerning-align-row">
+              <icon-button
+                id="kerning-align-left"
+                src="/images/alignleft.svg"
+                data-tooltip="Align left"
+              ></icon-button>
+              <icon-button
+                id="kerning-align-center"
+                src="/images/aligncenter.svg"
+                data-tooltip="Align center"
+              ></icon-button>
+              <icon-button
+                id="kerning-align-right"
+                src="/images/alignright.svg"
+                data-tooltip="Align right"
+              ></icon-button>
+            </div>
           </div>
 
           <!-- Backlog items 9+10 (combined, see kerning.js's

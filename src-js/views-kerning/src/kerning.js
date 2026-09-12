@@ -293,6 +293,10 @@ export function kerningPhraseStorageKey(projectIdentifier) {
   return `fontra-kerning-phrase.${encodeURIComponent(projectIdentifier || "")}`;
 }
 
+// Ticket 11: the alignment row's chosen value, global (not per-project --
+// the ticket does not ask for that, unlike the phrase text above).
+const KERNING_ALIGN_STORAGE_KEY = "fontra-kerning-preview-align";
+
 // Returns a plain array of cache entries, or null if nothing is stored yet
 // (never-run font, first session on this machine, or an unreadable/corrupt
 // file) -- the caller's job in that case is to "start with an empty cache
@@ -570,8 +574,18 @@ export class KerningViewController extends ViewController {
   async start() {
     await super.start();
     // Font-shaped, so it waits for the font controller -- see the note where
-    // the scene controller is built.
-    this.sceneSettings.align = "left";
+    // the scene controller is built. Ticket 11: restores the designer's last
+    // choice from the alignment row (initAlignmentRow, wired from
+    // initPhraseSection below) instead of always "left".
+    let storedAlign = null;
+    try {
+      storedAlign = localStorage.getItem(KERNING_ALIGN_STORAGE_KEY);
+    } catch (error) {
+      storedAlign = null;
+    }
+    this.sceneSettings.align = ["left", "center", "right"].includes(storedAlign)
+      ? storedAlign
+      : "left";
 
     // Spec §4.1/§7.5: "the source is chosen in the status strip".
     // this.autokernSource (getter below) reads this field, and
@@ -656,6 +670,8 @@ export class KerningViewController extends ViewController {
     const phraseInput = document.querySelector("#kerning-phrase-input");
     const presetSelect = document.querySelector("#kerning-preset-select");
     this.phraseInputElement = phraseInput;
+
+    this.initAlignmentRow();
 
     // WORKSTREAM 16, spec §6: "switching back to `phrase` restores what was
     // typed, which is not destroyed." The chip selector (initChipSection)
@@ -755,6 +771,37 @@ export class KerningViewController extends ViewController {
       option.textContent = preset.name;
       presetSelect.appendChild(option);
     }
+  }
+
+  // Ticket 11, spec §1.3/UI-NOMENCLATURE §14: three icon buttons under the
+  // phrase box set this.sceneSettings.align, exactly one on at a time,
+  // persisted across reloads. Not a component -- applyAlign is the one
+  // listener that sets the on state on all three buttons, called both from
+  // each button's click and once here to reflect start()'s restored value.
+  // Icons/ids only borrow the editor's Text Entry alignment row's own
+  // /images/align*.svg files (panel-text-entry.js is left untouched).
+  initAlignmentRow() {
+    const buttons = {
+      left: document.querySelector("#kerning-align-left"),
+      center: document.querySelector("#kerning-align-center"),
+      right: document.querySelector("#kerning-align-right"),
+    };
+    const applyAlign = (align) => {
+      this.sceneSettings.align = align;
+      for (const [key, button] of Object.entries(buttons)) {
+        button.on = key === align;
+      }
+      try {
+        localStorage.setItem(KERNING_ALIGN_STORAGE_KEY, align);
+      } catch (error) {
+        // Storage can legitimately fail (quota, private browsing) -- losing
+        // persistence here is not worth surfacing an error over.
+      }
+    };
+    for (const [key, button] of Object.entries(buttons)) {
+      button.onclick = () => applyAlign(key);
+    }
+    applyAlign(this.sceneSettings.align);
   }
 
   // Workstream 9, spec §7.2. `defaultOn` engine values here are placeholders

@@ -411,6 +411,17 @@
   box-sizing: border-box;
 }
 
+/* Ticket 11: the alignment row, under the phrase box. */
+#kerning-align-row {
+  display: flex;
+  gap: 0.35em;
+}
+
+#kerning-align-row icon-button {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
 /* Workstream 9 (spec §7.2): "Threshold and Run are always visible. The rest
    may collapse." kerning-parameters-always-visible is a plain row, never
    hidden; kerning-parameters-collapsible is a <details> holding the rest
