@@ -2400,12 +2400,11 @@ export class KerningViewController extends ViewController {
 
     const glyphInput = document.querySelector("#kerning-pairtable-glyph");
     glyphInput.value = filters.glyphName;
-    this._pairTableLoadMore = document.querySelector("#kerning-pairtable-load-more");
+    // Ticket 20: the Load next 100 button is gone -- the table is a
+    // windowed list now, scrolled into (initPairTableScrolling, wired
+    // below once the shared table is mounted).
     this._pairTableLoadStatus = document.querySelector(
       "#kerning-pairtable-load-status"
-    );
-    this._pairTableLoadMore.addEventListener("click", () =>
-      this.loadNextPairTableBatch()
     );
     this._glyphInputElement = glyphInput;
     this._previewPairSelections = new Map();
@@ -2723,6 +2722,7 @@ export class KerningViewController extends ViewController {
     document
       .querySelector("#kerning-pairtable-table-mount")
       .appendChild(this._pairTable);
+    this.initPairTableScrolling();
 
     this.autokernFiltersController.addListener(() => this.renderPairTable());
 
@@ -3704,11 +3704,15 @@ export class KerningViewController extends ViewController {
       previewPairs,
       this._tableGlyphsetMembers ? [...this._tableGlyphsetMembers] : null,
     ]);
-    const previousLoaded = this.getPairTableLoadLimit(queryKey);
-    this._pairTableLoadLimit = previousLoaded;
+    // Ticket 20 (UI-REFACTOR.md §3.5): a value-only refresh (same query)
+    // keeps the window where the designer left it; a new filter/sort/source
+    // starts back at the top. The window itself is rebuilt from
+    // this._pairTableItems below (renderPairTableWindow), never patched.
+    if (this._pairTableQueryKey !== queryKey) {
+      this._pairTableWindowStart = 0;
+    }
     this._pairTableQueryKey = queryKey;
     this._pairTableItems = [];
-    this._pairTableLoadedCount = 0;
     this.updatePairTableLoadStatus();
     tbody.textContent = "";
     // Ledger §8.4: zero checked categories or zero checked relationships is
@@ -3967,35 +3971,41 @@ export class KerningViewController extends ViewController {
       this._classSummaryMedianByRowId.set(item.sortId, item.median);
       this._classSummaryStaleByRowId.set(item.sortId, !!item.stats.stale);
     }
-    // A value-only refresh keeps the loaded prefix. New filters/sort/source
-    // start at 100; valid highlighted/ticked rows retain their identities.
-    this.appendPairTableRows(previousLoaded);
+    // Ticket 20: rebuilds the window fresh from this._pairTableItems --
+    // a value-only refresh keeps the same window position (clamped to the
+    // new item count); a new query already reset it to 0 above.
+    this._pairTableWindowStart = this.clampPairTableWindowStart(
+      this._pairTableWindowStart || 0
+    );
+    this.renderPairTableWindow();
     this.refreshResetArmState();
     this.updatePairPreview(
       highlightLostToPrune ? { fallbackPairs: pairsBeforePrune } : {}
     );
   }
 
-  getPairTableLoadLimit(queryKey) {
-    return this._pairTableQueryKey === queryKey
-      ? Math.max(100, this._pairTableLoadLimit || 100)
-      : 100;
+  // Ticket 20: keeps the window's start index inside the item list, so a
+  // shorter result (a tighter filter, a smaller font) never leaves the
+  // window pointing past the end.
+  clampPairTableWindowStart(start) {
+    const total = this._pairTableItems?.length || 0;
+    const maxStart = Math.max(0, total - 100);
+    return Math.max(0, Math.min(start, maxStart));
   }
 
-  loadNextPairTableBatch() {
-    this._pairTableLoadLimit = (this._pairTableLoadLimit || 100) + 100;
-    this.appendPairTableRows(100);
-  }
-
-  appendPairTableRows(count) {
+  // Ticket 20: the only place that touches the tbody's children. Always a
+  // full rebuild of the current window from this._pairTableItems -- never a
+  // patch -- so the window and the item list can never drift apart.
+  renderPairTableWindow() {
     const tbody = document.querySelector("#kerning-pairtable-body");
-    if (!tbody || !this._pairTableItems) return;
-    const end = Math.min(
-      this._pairTableLoadedCount + count,
-      this._pairTableItems.length
-    );
-    for (; this._pairTableLoadedCount < end; this._pairTableLoadedCount++) {
-      const item = this._pairTableItems[this._pairTableLoadedCount];
+    if (!tbody || !this._pairTableItems) {
+      return;
+    }
+    tbody.textContent = "";
+    const start = this._pairTableWindowStart || 0;
+    const end = Math.min(start + 100, this._pairTableItems.length);
+    for (let i = start; i < end; i++) {
+      const item = this._pairTableItems[i];
       tbody.appendChild(
         item.renderKind === "class-rule"
           ? this.buildClassSummaryRowElement(item.group, item.stats, item.median)
@@ -4006,16 +4016,79 @@ export class KerningViewController extends ViewController {
     this.updatePairTableLoadStatus();
   }
 
+  // Ticket 20/21: the count line covers every row the filters admit, not
+  // the window -- "N of N" says so plainly, matching UI-REFACTOR.md §3.2's
+  // own wireframe text.
   updatePairTableLoadStatus() {
     const total = this._pairTableItems?.length || 0;
-    const loaded = this._pairTableLoadedCount || 0;
     if (this._pairTableLoadStatus) {
-      this._pairTableLoadStatus.textContent = `Showing ${loaded} of ${total} rows`;
+      this._pairTableLoadStatus.textContent = `Showing ${total} of ${total} rows`;
     }
-    if (this._pairTableLoadMore) {
-      this._pairTableLoadMore.hidden = loaded >= total;
-      this._pairTableLoadMore.textContent = `Load next ${Math.min(100, total - loaded)}`;
+  }
+
+  // Ticket 20: slides the window by `delta` rows (positive toward the
+  // bottom, negative toward the top), then restores the scroll position on
+  // whichever row was at the scroller's visible top edge before the
+  // rebuild -- a full rebuild (rail: rebuild from the item list, never
+  // patch) would otherwise reset the scroll to the top of the new window.
+  shiftPairTableWindow(delta) {
+    const newStart = this.clampPairTableWindowStart(
+      (this._pairTableWindowStart || 0) + delta
+    );
+    if (newStart === (this._pairTableWindowStart || 0)) {
+      return;
     }
+    const scroller = this._pairTableScroller;
+    const tbody = document.querySelector("#kerning-pairtable-body");
+    let anchorId, anchorOffset;
+    if (scroller?.getBoundingClientRect && tbody?.querySelectorAll) {
+      const containerTop = scroller.getBoundingClientRect().top;
+      for (const tr of tbody.querySelectorAll("tr[data-row-id]")) {
+        const rect = tr.getBoundingClientRect();
+        if (rect.bottom > containerTop) {
+          anchorId = tr.dataset.rowId;
+          anchorOffset = rect.top - containerTop;
+          break;
+        }
+      }
+    }
+    this._pairTableWindowStart = newStart;
+    this.renderPairTableWindow();
+    if (scroller?.getBoundingClientRect && anchorId != null) {
+      const newRow = [...tbody.querySelectorAll("tr[data-row-id]")].find(
+        (tr) => tr.dataset.rowId === anchorId
+      );
+      if (newRow) {
+        const containerTop = scroller.getBoundingClientRect().top;
+        const newOffset = newRow.getBoundingClientRect().top - containerTop;
+        scroller.scrollTop += newOffset - anchorOffset;
+      }
+    }
+  }
+
+  // Ticket 20: scrolling within 200px of either edge slides the window by
+  // 25 rows. The section is the pair table's scrolling ancestor today
+  // (kerning.css's own #kerning-pairtable-section overflow-y: auto);
+  // ticket 22 gives the table its own scroll region and moves this
+  // listener there.
+  initPairTableScrolling() {
+    const scroller = document.querySelector("#kerning-pairtable-section");
+    this._pairTableScroller = scroller;
+    scroller?.addEventListener("scroll", () => {
+      if (!this._pairTableItems?.length) {
+        return;
+      }
+      const start = this._pairTableWindowStart || 0;
+      const end = Math.min(start + 100, this._pairTableItems.length);
+      const nearBottom =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 200;
+      const nearTop = scroller.scrollTop < 200;
+      if (nearBottom && end < this._pairTableItems.length) {
+        this.shiftPairTableWindow(25);
+      } else if (nearTop && start > 0) {
+        this.shiftPairTableWindow(-25);
+      }
+    });
   }
 
   clearPreviewPairSelection() {

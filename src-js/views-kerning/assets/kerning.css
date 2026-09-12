@@ -1069,9 +1069,6 @@ kerning-handle.negative {
   gap: 0.75em;
   padding: 0.75em;
 }
-#kerning-pairtable-load-more[hidden] {
-  display: none;
-}
 
 /* The shift-click pair selection chip. The label is plain text and only the
    cross is pressable, so the selection cannot be lost by a stray click on

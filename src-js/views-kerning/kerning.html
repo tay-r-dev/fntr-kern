@@ -325,15 +325,16 @@
                  rendering (buildPairRowElement/buildClassSummaryRowElement)
                  stays here. -->
             <div id="kerning-pairtable-table-mount"></div>
+            <!-- Ticket 20 (UI-REFACTOR.md §3.5): the table is a windowed
+                 list -- Load next 100 is gone, and this line now counts
+                 every row the filters admit (updatePairTableLoadStatus in
+                 kerning.js), not the window. -->
             <div class="kerning-pairtable-load-controls">
               <span
                 id="kerning-pairtable-load-status"
                 role="status"
                 aria-live="polite"
               ></span>
-              <button id="kerning-pairtable-load-more" type="button" hidden>
-                Load next 100
-              </button>
             </div>
           </div>
 

@@ -33,8 +33,21 @@ const classSource = source
   .replace("export class", "class")
   .replaceAll("import.meta.url", JSON.stringify(import.meta.url));
 const tbody = {
-  textContent: "",
+  _textContent: "",
   children: [],
+  // Ticket 20: renderPairTableWindow sets textContent = "" to clear the
+  // body before every rebuild, the same way the real DOM does (assigning
+  // textContent removes every child node) -- mirror that here so this fake
+  // tbody behaves the way the real one does.
+  get textContent() {
+    return this._textContent;
+  },
+  set textContent(value) {
+    this._textContent = value;
+    if (value === "") {
+      this.children = [];
+    }
+  },
   appendChild(row) {
     this.children.push(row);
   },
@@ -169,7 +182,7 @@ test("Shift-click rerenders through the restored table renderer and toggles he/e
   assert.equal(view._previewPairSelections.size, 0);
 });
 
-test("progressive table load creates 100 rows per request, preserving existing rows", () => {
+test("ticket 20: the window renders at most 100 rows and rebuilds fresh from the item list on every shift", () => {
   tbody.children = [];
   const view = Object.create(Controller.prototype);
   let built = 0;
@@ -179,8 +192,7 @@ test("progressive table load creates 100 rows per request, preserving existing r
       row: { id },
       group: { id },
     })),
-    _pairTableLoadedCount: 0,
-    _pairTableLoadMore: {},
+    _pairTableWindowStart: 0,
     _pairTableLoadStatus: {},
     buildPairRowElement: (row) => {
       built++;
@@ -192,20 +204,44 @@ test("progressive table load creates 100 rows per request, preserving existing r
     },
     syncSelectAllCheckboxes() {},
   });
-  view.loadNextPairTableBatch();
+
+  view.renderPairTableWindow();
   assert.equal(built, 100);
   assert.equal(tbody.children.length, 100);
-  assert.equal(view._pairTableLoadStatus.textContent, "Showing 100 of 235 rows");
-  const first = tbody.children[0];
-  view.loadNextPairTableBatch();
-  assert.equal(built, 200);
-  assert.equal(tbody.children[0], first);
-  view.loadNextPairTableBatch();
-  assert.equal(built, 235);
-  assert.equal(view._pairTableLoadMore.hidden, true);
-  view.loadNextPairTableBatch();
-  assert.equal(built, 235);
-  assert.equal(new Set(tbody.children.map((row) => row.id)).size, 235);
+  assert.equal(tbody.children[0].id, 0);
+  assert.equal(tbody.children[99].id, 99);
+  // Ticket 21: the count line covers every admitted row, not the window.
+  assert.equal(view._pairTableLoadStatus.textContent, "Showing 235 of 235 rows");
+
+  built = 0;
+  view.shiftPairTableWindow(25);
+  assert.equal(view._pairTableWindowStart, 25);
+  assert.equal(tbody.children.length, 100);
+  assert.equal(tbody.children[0].id, 25);
+  assert.equal(tbody.children[99].id, 124);
+  // A full rebuild, never a patch: every one of the 100 rows was built again,
+  // even the 75 that were already on screen.
+  assert.equal(built, 100);
+
+  // A huge forward shift clamps so the window never runs past the end.
+  view.shiftPairTableWindow(1000);
+  assert.equal(view._pairTableWindowStart, 135);
+  assert.equal(tbody.children[99].id, 234);
+
+  // And a huge backward shift clamps at the top.
+  view.shiftPairTableWindow(-1000);
+  assert.equal(view._pairTableWindowStart, 0);
+  assert.equal(tbody.children[0].id, 0);
+});
+
+test("ticket 20: the window start clamps to the item list, never running past it", () => {
+  const view = Object.create(Controller.prototype);
+  view._pairTableItems = Array.from({ length: 4 }, (_, id) => ({ id }));
+  assert.equal(view.clampPairTableWindowStart(0), 0);
+  assert.equal(view.clampPairTableWindowStart(50), 0);
+  view._pairTableItems = Array.from({ length: 150 }, (_, id) => ({ id }));
+  assert.equal(view.clampPairTableWindowStart(200), 50);
+  assert.equal(view.clampPairTableWindowStart(-5), 0);
 });
 
 test("highlighted individual rows cannot produce more than 100 canvas pairs", () => {
@@ -286,12 +322,12 @@ test("pair columns are configurable and kerning edits do not move other cells", 
   assert.equal(normalizePairsPerRow("8"), 8);
 });
 
-test("a growing result set fills the requested batch instead of retaining one row", () => {
+test("ticket 20: a result set smaller than one window renders every row", () => {
+  tbody.children = [];
   const view = Object.create(Controller.prototype);
   Object.assign(view, {
-    _pairTableQueryKey: "same",
-    _pairTableLoadedCount: 1,
-    _pairTableLoadLimit: 100,
+    _pairTableWindowStart: 0,
+    _pairTableLoadStatus: {},
     _pairTableItems: Array.from({ length: 4 }, (_, id) => ({
       renderKind: "pair",
       row: { id },
@@ -299,15 +335,9 @@ test("a growing result set fills the requested batch instead of retaining one ro
     buildPairRowElement: (row) => row,
     syncSelectAllCheckboxes() {},
   });
-  const limit = view.getPairTableLoadLimit("same");
-  assert.equal(limit, 100);
-  tbody.children = [];
-  view._pairTableLoadedCount = 0;
-  view.appendPairTableRows(limit);
+  view.renderPairTableWindow();
   assert.equal(tbody.children.length, 4);
-  view._pairTableLoadLimit = 300;
-  assert.equal(view.getPairTableLoadLimit("same"), 300);
-  assert.equal(view.getPairTableLoadLimit("different"), 100);
+  assert.equal(view._pairTableLoadStatus.textContent, "Showing 4 of 4 rows");
 });
 
 test("manual kerning starts from the preview and the ribbon shows the remaining suggestion", async () => {
