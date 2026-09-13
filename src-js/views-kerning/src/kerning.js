@@ -2400,6 +2400,16 @@ export class KerningViewController extends ViewController {
 
     const glyphInput = document.querySelector("#kerning-pairtable-glyph");
     glyphInput.value = filters.glyphName;
+    // Ticket 33: the editor's "Go to kerning view" button carries the glyph
+    // it was pressed on in the URL. Read after super.start() (this method
+    // runs from start(), never the constructor -- see start()'s own comment
+    // above on why a font-data read there crashed this view twice), and
+    // override whatever filter was stored from a previous visit.
+    const urlGlyphName = new URL(window.location).searchParams.get("glyphName");
+    if (urlGlyphName) {
+      glyphInput.value = urlGlyphName;
+      this.autokernFiltersController.setItem("glyphName", urlGlyphName);
+    }
     // Ticket 20: the Load next 100 button is gone -- the table is a
     // windowed list now, scrolled into (initPairTableScrolling, wired
     // below once the shared table is mounted).

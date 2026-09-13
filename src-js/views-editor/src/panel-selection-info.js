@@ -16,6 +16,7 @@ import {
 } from "@fontra/core/metrics-keys.js";
 import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import { rectFromPoints, rectSize, unionRect } from "@fontra/core/rectangle.ts";
+import { rerouteViewPath } from "@fontra/core/fontra-menus.js";
 import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
 import { compute, nameCapture } from "@fontra/core/simple-compute.js";
 import { getDecomposedIdentity } from "@fontra/core/transform.js";
@@ -448,9 +449,21 @@ export default class SelectionInfoPanel extends Panel {
         });
         hostedPanelsInForm = true;
         formContents.push({
+          type: "header",
+          label: translate("sidebar.selection-info.kerning-heading"),
+        });
+        formContents.push({
           type: "edit-text-double",
           key: '["kern-l-r"]',
           label: translate("sidebar.selection-info.kern-group-l-r"),
+          auxiliaryElement: html.button(
+            {
+              style:
+                "margin-left: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;",
+              onclick: (event) => this._goToKerningView(glyphName),
+            },
+            [translate("sidebar.selection-info.go-to-kerning-view")]
+          ),
           field1: {
             key: '["kernLeft"]',
             value: kerningController.rightPairGroupMapping[glyphName] || "",
@@ -745,6 +758,19 @@ export default class SelectionInfoPanel extends Panel {
     );
     const buttonRect = button.getBoundingClientRect();
     showMenu(menuItems, { x: buttonRect.right, y: buttonRect.bottom });
+  }
+
+  // Opens the kerning view with the current glyph carried across, reusing
+  // the Font menu's own path reroute (rail R-B).
+  _goToKerningView(glyphName) {
+    const url = new URL(window.location);
+    url.hash = "";
+    url.searchParams.set("glyphName", glyphName);
+    url.pathname = rerouteViewPath(url.pathname, "kerning");
+    window.open(
+      url.toString(),
+      `fontra.kerning.${this.editorController.projectIdentifier}`
+    );
   }
 
   async _toggleGlyphLock(varGlyph) {
