@@ -8,7 +8,7 @@ import {
   roundScrubValue,
   scrubIncrement,
 } from "@fontra/core/number-scrub.js";
-import "./icon-button.js"; // for <icon-button>, ticket 38's apply icon
+import { QueueIterator } from "@fontra/core/queue-iterator.js";
 import { InlineSVG } from "./inline-svg.js";
 import { themeColorCSS } from "./theme-support.js";
 
@@ -67,7 +67,7 @@ export class CompactScrubField extends UnlitElement {
       flex: 0 0 auto;
       width: 1.1em;
       height: 1.1em;
-      cursor: pointer;
+      opacity: 0.75;
     }
 
     .scrub-icon {
@@ -109,12 +109,13 @@ export class CompactScrubField extends UnlitElement {
     this._editing = false;
     this._icon = undefined;
     this._iconTooltip = "";
+    this._dragValueStream = null;
   }
 
-  // Ticket 38: the transform row's own apply icon, drawn inside the field
-  // rather than as a separate label element. Clicking it, or pressing Enter
-  // while editing the value, dispatches "apply" -- the row applies the
-  // transform on either, same as its plain icon-button did before.
+  // Ticket 38: the transform row's own icon, drawn inside the field rather
+  // than as a separate label element. Decorative only -- it identifies the
+  // row, nothing more. A row applies on a scrub (live, "scrubstart" below)
+  // or on Enter while editing the value ("apply"); the icon carries neither.
   get icon() {
     return this._icon;
   }
@@ -228,6 +229,13 @@ export class CompactScrubField extends UnlitElement {
         detail: { value, cancelled: isScrubCancelled(cancelMarker) },
       })
     );
+    // A drag in progress also gets this frame down its stream (see
+    // "scrubstart" in _onPointerDown) -- "change" alone cannot tell a caller
+    // which frames belong to the same gesture, which a caller wanting one
+    // undo step for the whole drag needs to know.
+    if (this._dragValueStream) {
+      this._dragValueStream.put(isScrubCancelled(cancelMarker) ? cancelMarker : value);
+    }
   }
 
   render() {
@@ -240,16 +248,16 @@ export class CompactScrubField extends UnlitElement {
       [this._displayValue()]
     );
 
+    // Decorative only: a plain inline-svg, not an icon-button -- no click
+    // handler and no pointer cursor of its own, so it reads as part of the
+    // field's own name rather than a second control. Dragging over it
+    // scrubs the field like any other part of the box.
     this._iconElement = this._icon
-      ? html.createDomElement("icon-button", {
-          "src": this._icon,
+      ? html.createDomElement("inline-svg", {
           "class": "apply-icon",
+          "src": this._icon,
           "data-tooltip": this._iconTooltip || "",
           "data-tooltipposition": "top",
-          "onclick": (event) => {
-            event.stopPropagation();
-            this.dispatchEvent(new CustomEvent("apply"));
-          },
         })
       : undefined;
 
@@ -337,10 +345,6 @@ export class CompactScrubField extends UnlitElement {
       // Let the click-to-edit handler take it instead.
       return;
     }
-    if (this._iconElement?.contains(event.target)) {
-      // Let the icon's own click (apply) handler take it instead.
-      return;
-    }
     this._box.setPointerCapture(event.pointerId);
     event.preventDefault();
 
@@ -357,6 +361,17 @@ export class CompactScrubField extends UnlitElement {
         }
         dragging = true;
         lastX = moveEvent.clientX;
+        // One stream per gesture, opened the moment it is confirmed to be a
+        // drag rather than a click. A caller that wants the whole drag as one
+        // undo step (a live preview it commits once) reads this instead of
+        // "change", which fires once per frame with no way to tell a drag's
+        // last frame from its next one.
+        this._dragValueStream = new QueueIterator(5, true);
+        this.dispatchEvent(
+          new CustomEvent("scrubstart", {
+            detail: { valueStream: this._dragValueStream, startValue },
+          })
+        );
       }
       travel += scrubIncrement(moveEvent.clientX - lastX, {
         step: this._step,
@@ -380,7 +395,17 @@ export class CompactScrubField extends UnlitElement {
       this._box.releasePointerCapture?.(event.pointerId);
     };
 
-    const onUp = () => detach();
+    const endStream = () => {
+      if (this._dragValueStream) {
+        this._dragValueStream.done();
+        this._dragValueStream = null;
+      }
+    };
+
+    const onUp = () => {
+      detach();
+      endStream();
+    };
 
     // Right-click abandons the drag: the value goes back to where the press
     // found it, using the same SCRUB_CANCELLED sentinel ui-form.js's scrub
@@ -397,6 +422,7 @@ export class CompactScrubField extends UnlitElement {
           SCRUB_CANCELLED
         );
       }
+      endStream();
     };
 
     const onContextMenu = (menuEvent) => menuEvent.preventDefault();

@@ -214,18 +214,19 @@ export default class TransformationPanel {
     }
   }
 
-  // Ticket 38: Move/Scale/Skew/Dimensions each become one universal-row: a
-  // plain text label on the left (the row's own name, e.g. "Move"), then two
-  // compact-scrub fields, each carrying the row's icon. A scrub edits
-  // transformParameters ONLY -- these transforms are relative and compound,
-  // so applying on every frame would both turn one drag into a whole chain
-  // of undo steps and stack the transform on itself each frame (Rotate
-  // spinning instead of setting an angle is the same bug from the other
-  // side). The transform runs once, on the row's icon click or on Enter (the
-  // "apply" event), same as the plain icon-button did before this ticket.
-  // 0.1 is the rounding grid, not just the raw drag value, so a drag lands
-  // on a clean number instead of a long, jittery decimal (roundScrubValue's
-  // own step handling).
+  // Ticket 38 (+ live-preview follow-up): Move/Scale/Skew/Dimensions each
+  // become one universal-row: a plain text label on the left (the row's own
+  // name, e.g. "Move"), then two compact-scrub fields, each carrying the
+  // row's icon -- decorative only, per compact-scrub-field.js. A drag
+  // applies live, through transformSelectionStream: the field's own
+  // "scrubstart" opens one streaming edit for the whole gesture, so it ends
+  // as a single undo step and never compounds (every frame recomputes the
+  // transform from the pre-drag state and the drag's current TOTAL value,
+  // never a frame-to-frame delta). A typed value still applies once on Enter
+  // (the "apply" event), through the plain one-shot transformSelection via
+  // onApply. 0.1 is the rounding grid, not just the raw drag value, so a
+  // drag lands on a clean number instead of a long, jittery decimal
+  // (roundScrubValue's own step handling).
   _buildScrubXYRow({
     label,
     icon,
@@ -236,6 +237,9 @@ export default class TransformationPanel {
     onChangeX,
     onChangeY,
     onApply,
+    makeTransformationForX,
+    makeTransformationForY,
+    undoLabel,
   }) {
     const fieldX = html.createDomElement("compact-scrub-field", {
       label: "X",
@@ -255,6 +259,20 @@ export default class TransformationPanel {
     fieldY.addEventListener("change", (event) => onChangeY(event.detail.value));
     fieldX.addEventListener("apply", () => onApply());
     fieldY.addEventListener("apply", () => onApply());
+    fieldX.addEventListener("scrubstart", (event) =>
+      this.transformSelectionStream(
+        event.detail.valueStream,
+        makeTransformationForX,
+        undoLabel
+      )
+    );
+    fieldY.addEventListener("scrubstart", (event) =>
+      this.transformSelectionStream(
+        event.detail.valueStream,
+        makeTransformationForY,
+        undoLabel
+      )
+    );
     return {
       fieldX,
       fieldY,
@@ -349,6 +367,11 @@ export default class TransformationPanel {
             ),
           "move"
         ),
+      makeTransformationForX: (x) => () =>
+        new Transform().translate(x, this.transformParameters.moveY),
+      makeTransformationForY: (y) => () =>
+        new Transform().translate(this.transformParameters.moveX, y),
+      undoLabel: "move",
     });
     formContents.push(moveRow);
 
@@ -371,6 +394,14 @@ export default class TransformationPanel {
             ),
           "scale"
         ),
+      makeTransformationForX: (x) => () =>
+        new Transform().scale(
+          x / 100,
+          (this.transformParameters.scaleY ? this.transformParameters.scaleY : x) / 100
+        ),
+      makeTransformationForY: (y) => () =>
+        new Transform().scale(this.transformParameters.scaleX / 100, y / 100),
+      undoLabel: "scale",
     });
     formContents.push(scaleRow);
 
@@ -392,6 +423,13 @@ export default class TransformationPanel {
       (event) => (this.transformParameters.rotation = event.detail.value)
     );
     rotateField.addEventListener("apply", applyRotate);
+    rotateField.addEventListener("scrubstart", (event) =>
+      this.transformSelectionStream(
+        event.detail.valueStream,
+        (rotation) => () => new Transform().rotate((rotation * Math.PI) / 180),
+        "rotate"
+      )
+    );
     formContents.push({
       type: "universal-row",
       field1: {
@@ -419,6 +457,17 @@ export default class TransformationPanel {
             ),
           "skew"
         ),
+      makeTransformationForX: (x) => () =>
+        new Transform().skew(
+          (x * Math.PI) / 180,
+          (this.transformParameters.skewY * Math.PI) / 180
+        ),
+      makeTransformationForY: (y) => () =>
+        new Transform().skew(
+          (this.transformParameters.skewX * Math.PI) / 180,
+          (y * Math.PI) / 180
+        ),
+      undoLabel: "skew",
     });
     formContents.push(skewRow);
 
@@ -474,6 +523,26 @@ export default class TransformationPanel {
       onChangeX: (value) => (this.transformParameters.dimensionWidth = value),
       onChangeY: (value) => (this.transformParameters.dimensionHeight = value),
       onApply: applyDimensions,
+      // Each axis scales independently against ITS OWN target: the axis
+      // being dragged uses the drag's current total, the other reads
+      // whatever it was last set to (or 1, unset). Bounds come from the
+      // per-layer selectionBounds transformSelectionStream already computes
+      // from the pre-drag state, not a live re-fetch.
+      makeTransformationForX: (width) => (selectionBounds) => {
+        const { width: curWidth, height: curHeight } = rectSize(selectionBounds);
+        const scaleX = curWidth ? width / curWidth : 1;
+        const targetHeight = this.transformParameters.dimensionHeight;
+        const scaleY = targetHeight != null && curHeight ? targetHeight / curHeight : 1;
+        return new Transform().scale(scaleX, scaleY);
+      },
+      makeTransformationForY: (height) => (selectionBounds) => {
+        const { width: curWidth, height: curHeight } = rectSize(selectionBounds);
+        const scaleY = curHeight ? height / curHeight : 1;
+        const targetWidth = this.transformParameters.dimensionWidth;
+        const scaleX = targetWidth != null && curWidth ? targetWidth / curWidth : 1;
+        return new Transform().scale(scaleX, scaleY);
+      },
+      undoLabel: "set dimensions",
     });
     this.dimensionWidthField = dimensionWidthField;
     this.dimensionHeightField = dimensionHeightField;
@@ -1069,6 +1138,179 @@ export default class TransformationPanel {
         undoLabel: undoLabel,
         broadcast: true,
       };
+    });
+  }
+
+  // Live-preview version of transformSelection: opens ONE editGlyph edit for
+  // the whole drag (a scrub's "scrubstart" valueStream) instead of one call
+  // per frame, so the gesture ends as a single undo step. Copied from
+  // skeleton-panel-edits.js's streamOntoSkeleton -- same shape, same
+  // reasoning ("A rollback is a statement about the whole gesture, so every
+  // frame records against a fresh copy of the pre-drag state, never the live
+  // glyph"): every frame first plays editBehavior.rollbackChange, which is a
+  // fixed, absolute-value restore captured once when the behavior was built
+  // (edit-behavior.js's makeRollbackChange bakes in the ORIGINAL point
+  // coordinates), so it is safe to replay before every frame regardless of
+  // what an earlier frame left behind -- there is no per-frame delta to
+  // compound. `makeTransformationForLayer(value)` gets the stream's current
+  // value (the drag's running total, not a delta) and must return a
+  // `(selectionBounds) => Transform`, the same shape transformSelection's own
+  // `transformationForLayer` takes.
+  async transformSelectionStream(valueStream, makeTransformationForLayer, undoLabel) {
+    let {
+      point: pointIndices,
+      component: componentIndices,
+      anchor: anchorIndices,
+      backgroundImage: backgroundImageIndices,
+      skeletonPoint: skeletonPointKeys,
+    } = parseSelection(this.sceneController.selection);
+
+    pointIndices = pointIndices || [];
+    componentIndices = componentIndices || [];
+    anchorIndices = anchorIndices || [];
+    backgroundImageIndices = backgroundImageIndices || [];
+    skeletonPointKeys = skeletonPointKeys || [];
+    if (
+      !pointIndices.length &&
+      !componentIndices.length &&
+      !anchorIndices.length &&
+      !backgroundImageIndices.length &&
+      !skeletonPointKeys.length
+    ) {
+      // Drain the stream so a caller awaiting it settles even with nothing
+      // selected to move.
+      for await (const _ of valueStream) {
+      }
+      return;
+    }
+
+    const glyphController =
+      await this.sceneController.sceneModel.getSelectedStaticGlyphController();
+    const staticGlyphControllers =
+      await this.sceneController.getStaticGlyphControllers();
+
+    await this.sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
+      const editingLayers = this.sceneController.getEditingLayerFromGlyphLayers(
+        glyph.layers
+      );
+      const editLayerName = this.sceneController.sceneSettings.editLayerName;
+      const referenceSkeletonData = getSkeletonData(
+        editingLayers[editLayerName] || Object.values(editingLayers)[0]
+      );
+      // Built once, from the pre-drag glyph: editBehavior's captured
+      // reference points (and its rollbackChange) never change, whatever
+      // value a later frame asks it to transform toward.
+      const layerInfo = Object.entries(editingLayers).map(([layerName, layerGlyph]) => {
+        const skeletonEntry = makeSkeletonPointTargetEntry(
+          layerGlyph,
+          this.sceneController.selection,
+          "default",
+          referenceSkeletonData
+        );
+        const behaviorFactory = new EditBehaviorFactory(
+          layerGlyph,
+          this.sceneController.selection,
+          this.sceneController.selectedTool.scalingEditBehavior,
+          { targetEntries: skeletonEntry ? [skeletonEntry] : [] }
+        );
+        return {
+          layerName,
+          changePath: ["layers", layerName, "glyph"],
+          layerGlyph: layerGlyph,
+          selectionBounds: unionRect(
+            ...[
+              (staticGlyphControllers[layerName] || glyphController).getSelectionBounds(
+                this.sceneController.selection,
+                this.fontController.getBackgroundImageBoundsFunc
+              ),
+              getSkeletonSelectionBounds(layerGlyph, this.sceneController.selection),
+            ].filter((bounds) => bounds)
+          ),
+          editBehavior: behaviorFactory.getTransformBehavior("default"),
+        };
+      });
+
+      const applyValue = (value) => {
+        const editChanges = [];
+        const rollbackChanges = [];
+        for (const {
+          changePath,
+          editBehavior,
+          selectionBounds,
+          layerGlyph,
+        } of layerInfo) {
+          // Back to the pre-drag state first -- idempotent, so it does not
+          // matter whether the previous frame ran or was skipped.
+          applyChange(layerGlyph, editBehavior.rollbackChange);
+
+          const pinPoint = getPinPoint(
+            selectionBounds,
+            this.transformParameters.originX,
+            this.transformParameters.originY
+          );
+          const pinnedTransformation = new Transform()
+            .translate(pinPoint.x, pinPoint.y)
+            .transform(makeTransformationForLayer(value)(selectionBounds))
+            .translate(-pinPoint.x, -pinPoint.y);
+
+          const editChange =
+            editBehavior.makeChangeForTransformation(pinnedTransformation);
+          applyChange(layerGlyph, editChange);
+          editChanges.push(consolidateChanges(editChange, changePath));
+          rollbackChanges.push(
+            consolidateChanges(editBehavior.rollbackChange, changePath)
+          );
+        }
+        return ChangeCollector.fromChanges(
+          consolidateChanges(editChanges),
+          consolidateChanges(rollbackChanges)
+        );
+      };
+
+      const THROTTLE_MS = 32;
+      let lastValue = null;
+      let lastApplied = null;
+      let lastCollector = null;
+      let lastTime = 0;
+      let cancelled = false;
+      for await (const value of valueStream) {
+        if (isScrubCancelled(value)) {
+          cancelled = true;
+          break;
+        }
+        lastValue = value;
+        const now = Date.now();
+        if (now - lastTime < THROTTLE_MS) {
+          continue;
+        }
+        lastTime = now;
+        lastCollector = applyValue(value);
+        lastApplied = value;
+        await sendIncrementalChange(lastCollector.change, true);
+      }
+
+      // Abandoned: put the shape back where the drag found it and record
+      // nothing, so it is not an undo step -- the same ending a drag that
+      // never crossed the dead zone already had.
+      if (cancelled) {
+        if (lastCollector) {
+          for (const { editBehavior, layerGlyph } of layerInfo) {
+            applyChange(layerGlyph, editBehavior.rollbackChange);
+          }
+          await sendIncrementalChange(lastCollector.rollbackChange);
+        }
+        return;
+      }
+      if (lastValue === null) {
+        return;
+      }
+      // Throttling may have skipped the last frame the drag actually sent;
+      // make sure the committed value is the one the field is showing.
+      if (lastApplied !== lastValue || !lastCollector) {
+        lastCollector = applyValue(lastValue);
+      }
+      await sendIncrementalChange(lastCollector.change);
+      return { changes: lastCollector, undoLabel, broadcast: true };
     });
   }
 
