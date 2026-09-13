@@ -2774,5 +2774,3 @@ export default class SkeletonParametersPanel {
     return translate(`sidebar.skeleton-parameters.undo.${key}`);
   }
 }
-
-customElements.define("panel-skeleton-parameters", SkeletonParametersPanel);

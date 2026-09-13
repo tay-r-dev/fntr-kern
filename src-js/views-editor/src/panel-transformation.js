@@ -1573,8 +1573,6 @@ function formatHarmonizeReport(reports) {
     .join(" · ");
 }
 
-customElements.define("panel-transformation", TransformationPanel);
-
 // The name of the harmonize position the panel is set to. Under G3 there is one
 // construction and the slider is greyed out, so the row names that one.
 function harmonizeMethodName(method) {

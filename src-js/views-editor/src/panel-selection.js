@@ -34,3 +34,5 @@ export default class SelectionPanel extends Panel {
     await this.skeletonPart.toggle(on, focus);
   }
 }
+
+customElements.define("panel-selection", SelectionPanel);
