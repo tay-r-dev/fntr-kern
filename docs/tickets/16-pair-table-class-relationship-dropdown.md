@@ -1,6 +1,6 @@
 # 16: Pair table: Class relationship dropdown
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 15 (Pair table: Unicode types dropdown)
 

@@ -1474,13 +1474,13 @@ export class KerningViewController extends ViewController {
   // Task 18, spec F03, ledger §8.6: wires the three metrics that have an
   // existing, already-safe single control to jump to. "Saved pair
   // exceptions" has no such target -- the closest, the Class relationship
-  // checkbox group, is an array-valued multi-select whose own checkboxes
-  // are synced from the filter model only once at init (initPairTableSection's
-  // bindCheckboxGroup); flipping the filter model from here without also
-  // updating those checkboxes would desync the UI from what they show, a
-  // real bug, not a cheap navigation win -- so that metric stays plain text
-  // per this task's own "render it as text rather than a dead-looking
-  // button," and kerning.html gives it no button element to wire here.
+  // dropdown (ticket 16), is an array-valued multi-select whose own items
+  // are synced from the filter model only once at init
+  // (initPairTableSection); flipping the filter model from here without also
+  // updating those items would desync the UI from what it shows, a real
+  // bug, not a cheap navigation win -- so that metric stays plain text per
+  // this task's own "render it as text rather than a dead-looking button,"
+  // and kerning.html gives it no button element to wire here.
   initAnalyticsSection() {
     // Ticket 08: open by default, remembers open/closed across reloads.
     // Native <details>/toggle -- no observable needed for one boolean.
@@ -2493,25 +2493,6 @@ export class KerningViewController extends ViewController {
       );
     });
 
-    // Task 9, spec F09/F14: binds one checkbox group to one array-valued
-    // filter key -- checking/unchecking one box adds/removes its value from
-    // the persisted array (OR-combined by results-model.js's predicates at
-    // render time, never re-derived here).
-    const bindCheckboxGroup = (bindings, key) => {
-      for (const [selector, value] of bindings) {
-        const checkbox = document.querySelector(selector);
-        checkbox.checked = filters[key].includes(value);
-        checkbox.addEventListener("change", () => {
-          const current = new Set(this.autokernFiltersController.model[key]);
-          if (checkbox.checked) {
-            current.add(value);
-          } else {
-            current.delete(value);
-          }
-          this.autokernFiltersController.setItem(key, [...current]);
-        });
-      }
-    };
     // Ticket 15 (UI-REFACTOR.md §3.3, UI-NOMENCLATURE.md §14): Unicode types
     // moves from an always-open fieldset into the shared multi-select
     // dropdown. Same filter key, same OR-combined semantics -- only the
@@ -2540,15 +2521,29 @@ export class KerningViewController extends ViewController {
       .querySelector("#kerning-pairtable-filter-unicode-slot")
       .replaceWith(this._unicodeTypesDropdown);
 
-    bindCheckboxGroup(
-      [
-        ["#kerning-pairtable-rel-class-class", "class-class"],
-        ["#kerning-pairtable-rel-class-unique", "class-unique"],
-        ["#kerning-pairtable-rel-unique-unique", "unique-unique"],
-        ["#kerning-pairtable-rel-exceptions", "exceptions"],
-      ],
-      "relationships"
-    );
+    // Ticket 16 (UI-REFACTOR.md §3.3): Class relationship moves from an
+    // always-open fieldset into the same shared dropdown. Same filter key,
+    // same OR-combined semantics.
+    const relationshipLabels = [
+      ["class-class", "Class-to-class"],
+      ["class-unique", "Class-to-unique"],
+      ["unique-unique", "Unique-to-unique"],
+      ["exceptions", "Class exceptions"],
+    ];
+    const relationshipsDropdown = html.createDomElement("multi-select-dropdown", {
+      label: "Class relationship",
+      items: relationshipLabels.map(([value, label]) => ({
+        value,
+        label,
+        checked: filters.relationships.includes(value),
+      })),
+    });
+    relationshipsDropdown.addEventListener("change", (event) => {
+      this.autokernFiltersController.setItem("relationships", event.detail.checked);
+    });
+    document
+      .querySelector("#kerning-pairtable-filter-relationships-slot")
+      .replaceWith(relationshipsDropdown);
 
     // Task 9, spec F14: the table Glyphset filter. Reuses the existing
     // glyphsets-controller.js primitives (readProjectGlyphSets/

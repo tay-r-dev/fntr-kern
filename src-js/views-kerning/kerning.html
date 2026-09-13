@@ -175,41 +175,11 @@
                    All four checked by default -- new filter, no prior
                    equivalent to preserve, so "everything" is the
                    non-restrictive default. -->
-              <fieldset id="kerning-pairtable-relationships">
-                <legend>Class relationship</legend>
-                <label
-                  ><input
-                    type="checkbox"
-                    id="kerning-pairtable-rel-class-class"
-                    checked
-                  />
-                  Class-to-class</label
-                >
-                <label
-                  ><input
-                    type="checkbox"
-                    id="kerning-pairtable-rel-class-unique"
-                    checked
-                  />
-                  Class-to-unique</label
-                >
-                <label
-                  ><input
-                    type="checkbox"
-                    id="kerning-pairtable-rel-unique-unique"
-                    checked
-                  />
-                  Unique-to-unique</label
-                >
-                <label
-                  ><input
-                    type="checkbox"
-                    id="kerning-pairtable-rel-exceptions"
-                    checked
-                  />
-                  Class exceptions</label
-                >
-              </fieldset>
+              <!-- Ticket 16 (UI-REFACTOR.md §3.3): the always-open Class
+                   relationship fieldset is gone -- a <multi-select-dropdown>
+                   is mounted here in initPairTableSection, same four
+                   buckets, same filter key. -->
+              <div id="kerning-pairtable-filter-relationships-slot"></div>
               <!-- Task 9, spec F14: table Glyphset filter -- single-select,
                    All by default (ledger §8.4). Options are populated in
                    kerning.js from the project's already-added glyphsets
