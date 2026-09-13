@@ -38,6 +38,13 @@ import {
   makeSkeletonPointTargetEntry,
 } from "./skeleton-editing.js";
 
+// Marks an edit as this panel's own, the same way skeleton-panel-edits.js's
+// SKELETON_PANEL_SENDER does: our own commits reach the glyph-change
+// listener below too (font-controller.js's glyphChanged fires on every
+// edit, ours included), and only an edit that did NOT come from here --
+// undo, redo, a canvas edit -- should reset Move/Scale/Rotate/Skew.
+const TRANSFORM_PANEL_SENDER = { senderID: "panel-transformation" };
+
 // Composed into panel-selection.js's Selection panel, not registered as its
 // own sidebar panel (see ticket 05: merge into one "Selection" tab).
 export default class TransformationPanel {
@@ -153,14 +160,6 @@ export default class TransformationPanel {
       dimensionHeight: null,
     };
 
-    // True while one of Move/Scale/Rotate/Skew's own fields is streaming a
-    // drag (see transformSelectionStream's "scrubstart" handlers below).
-    // Both listeners just below would otherwise reset these fields to their
-    // neutral defaults mid-drag -- our own live-preview edits fire the same
-    // glyph-change notification undo/redo does -- fighting the hand doing
-    // the scrubbing.
-    this._streamingFieldEdit = false;
-
     this.registerActions();
 
     this.sceneController.sceneSettingsController.addKeyListener(
@@ -178,29 +177,32 @@ export default class TransformationPanel {
         this.updateDimensions();
         // Move/Scale/Rotate/Skew are "by" amounts for the NEXT transform, not
         // a property of the selection -- a leftover number from an earlier
-        // selection has nothing to do with this one.
-        if (!this._streamingFieldEdit) {
-          this._resetRelativeTransformFields();
-        }
+        // selection has nothing to do with this one. But only the selection
+        // dropping (or moving to a different one) resets them: repeatedly
+        // applying the SAME field's value to the SAME selection is the
+        // normal, expected way to use it, so a plain apply must not touch
+        // this -- see the glyph-change listener below, which is guarded
+        // against exactly that.
+        this._resetRelativeTransformFields();
       }
     );
     this.sceneController.addCurrentGlyphChangeListener((event) => {
       this.updateDimensions();
-      // Undo/redo (and any other edit reaching this glyph) lands here too
-      // (font-controller.js's applyChange/glyphChanged): the amount just
-      // applied, or just undone, is spent either way, so the field goes back
-      // to neutral rather than keep showing a number that no longer
-      // describes what a further scrub would do from here.
-      if (!this._streamingFieldEdit) {
+      // font-controller.js's glyphChanged fires on every edit reaching this
+      // glyph, including our OWN commits from a scrub or an Enter-apply --
+      // those must leave the field showing what was just used, so a second
+      // drag continues from it. Only an edit that did NOT come from this
+      // panel -- undo, redo, a canvas edit -- resets: the amount just
+      // undone (or overtaken by an unrelated edit) no longer describes what
+      // a further scrub would do from here.
+      if (event?.senderID !== TRANSFORM_PANEL_SENDER) {
         this._resetRelativeTransformFields();
       }
     });
   }
 
   // Move/Scale/Rotate/Skew hold "by" amounts for the NEXT transform, not a
-  // stored property, so nothing keeps them at the number they were last
-  // used with once that transform has happened (applied, undone, or the
-  // selection moved on). Dimensions is excluded: it already always shows the
+  // stored property. Dimensions is excluded: it already always shows the
   // SELECTION's actual size via updateDimensions, not a "by" amount.
   _resetRelativeTransformFields() {
     this.transformParameters.moveX = 0;
@@ -298,12 +300,6 @@ export default class TransformationPanel {
     makeTransformationForX,
     makeTransformationForY,
     undoLabel,
-    // [defaultX, defaultY] to revert to once a drag or Enter actually
-    // applies -- these fields hold a "by" amount for the NEXT transform, not
-    // a stored property, so nothing should keep showing the number just
-    // spent. Omit for a row (Dimensions) whose fields already always show
-    // the selection's own current size instead of a pending amount.
-    resetDefaults,
   }) {
     const fieldX = html.createDomElement("compact-scrub-field", {
       label: "X",
@@ -319,52 +315,29 @@ export default class TransformationPanel {
       iconTooltip: tooltip,
       step,
     });
-    const resetRow = () => {
-      if (!resetDefaults) {
-        return;
-      }
-      const [defaultX, defaultY] = resetDefaults;
-      onChangeX(defaultX);
-      fieldX.value = defaultX;
-      onChangeY(defaultY);
-      fieldY.value = defaultY;
-    };
+    // The value stays exactly where the drag or the typed edit left it --
+    // applying the same amount again to the same selection is the normal,
+    // repeated way to use these fields. Only a changed selection resets them
+    // (the constructor's own selection-change listener), never a plain
+    // apply.
     fieldX.addEventListener("change", (event) => onChangeX(event.detail.value));
     fieldY.addEventListener("change", (event) => onChangeY(event.detail.value));
-    fieldX.addEventListener("apply", async () => {
-      if (await onApply()) {
-        resetRow();
-      }
-    });
-    fieldY.addEventListener("apply", async () => {
-      if (await onApply()) {
-        resetRow();
-      }
-    });
-    fieldX.addEventListener("scrubstart", async (event) => {
-      this._streamingFieldEdit = true;
-      const committed = await this.transformSelectionStream(
+    fieldX.addEventListener("apply", () => onApply());
+    fieldY.addEventListener("apply", () => onApply());
+    fieldX.addEventListener("scrubstart", (event) =>
+      this.transformSelectionStream(
         event.detail.valueStream,
         makeTransformationForX,
         undoLabel
-      );
-      this._streamingFieldEdit = false;
-      if (committed) {
-        resetRow();
-      }
-    });
-    fieldY.addEventListener("scrubstart", async (event) => {
-      this._streamingFieldEdit = true;
-      const committed = await this.transformSelectionStream(
+      )
+    );
+    fieldY.addEventListener("scrubstart", (event) =>
+      this.transformSelectionStream(
         event.detail.valueStream,
         makeTransformationForY,
         undoLabel
-      );
-      this._streamingFieldEdit = false;
-      if (committed) {
-        resetRow();
-      }
-    });
+      )
+    );
     return {
       fieldX,
       fieldY,
@@ -468,7 +441,6 @@ export default class TransformationPanel {
       makeTransformationForY: (y) => () =>
         new Transform().translate(this.transformParameters.moveX, y),
       undoLabel: "move",
-      resetDefaults: [0, 0],
     });
     this.moveXField = moveXField;
     this.moveYField = moveYField;
@@ -505,7 +477,6 @@ export default class TransformationPanel {
       makeTransformationForY: (y) => () =>
         new Transform().scale(this.transformParameters.scaleX / 100, y / 100),
       undoLabel: "scale",
-      resetDefaults: [100, undefined],
     });
     this.scaleXField = scaleXField;
     this.scaleYField = scaleYField;
@@ -524,34 +495,18 @@ export default class TransformationPanel {
           new Transform().rotate((this.transformParameters.rotation * Math.PI) / 180),
         "rotate"
       );
-    // Rotate is a "by" amount for the next transform, not a stored property
-    // (same reasoning as Move/Scale/Skew's resetDefaults): once a rotation
-    // actually happens, the field goes back to 0.
-    const resetRotate = () => {
-      this.transformParameters.rotation = 0;
-      rotateField.value = 0;
-    };
     rotateField.addEventListener(
       "change",
       (event) => (this.transformParameters.rotation = event.detail.value)
     );
-    rotateField.addEventListener("apply", async () => {
-      if (await applyRotate()) {
-        resetRotate();
-      }
-    });
-    rotateField.addEventListener("scrubstart", async (event) => {
-      this._streamingFieldEdit = true;
-      const committed = await this.transformSelectionStream(
+    rotateField.addEventListener("apply", applyRotate);
+    rotateField.addEventListener("scrubstart", (event) =>
+      this.transformSelectionStream(
         event.detail.valueStream,
         (rotation) => () => new Transform().rotate((rotation * Math.PI) / 180),
         "rotate"
-      );
-      this._streamingFieldEdit = false;
-      if (committed) {
-        resetRotate();
-      }
-    });
+      )
+    );
     this.rotateField = rotateField;
     formContents.push({
       type: "universal-row",
@@ -595,7 +550,6 @@ export default class TransformationPanel {
           (y * Math.PI) / 180
         ),
       undoLabel: "skew",
-      resetDefaults: [0, 0],
     });
     this.skewXField = skewXField;
     this.skewYField = skewYField;
@@ -1268,7 +1222,7 @@ export default class TransformationPanel {
         undoLabel: undoLabel,
         broadcast: true,
       };
-    });
+    }, TRANSFORM_PANEL_SENDER);
     return true;
   }
 
@@ -1451,7 +1405,7 @@ export default class TransformationPanel {
       await sendIncrementalChange(lastCollector.change);
       committed = true;
       return { changes: lastCollector, undoLabel, broadcast: true };
-    });
+    }, TRANSFORM_PANEL_SENDER);
     return committed;
   }
 
@@ -1651,7 +1605,7 @@ export default class TransformationPanel {
         undoLabel: moveDescriptor.undoLabel,
         broadcast: true,
       };
-    });
+    }, TRANSFORM_PANEL_SENDER);
   }
 
   async toggle(on, focus) {
