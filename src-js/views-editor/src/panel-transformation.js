@@ -79,6 +79,37 @@ export default class TransformationPanel {
     font-size: 0.9em;
     opacity: 0.7;
   }
+
+  /* Ticket 40: Flip+Align share one row, Distribute+Bools share the next,
+     each row carrying two small group labels instead of a header of its
+     own. */
+  .selection-row-group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5em 1em;
+  }
+
+  .selection-row-group-label {
+    font-size: 0.85em;
+    opacity: 0.7;
+    white-space: nowrap;
+  }
+
+  .selection-row-group-icons {
+    display: flex;
+    align-items: center;
+    gap: 0.35em;
+  }
+
+  .selection-row-group-icons icon-button {
+    width: 1.5em;
+    height: 1.5em;
+  }
+
+  .selection-row-group-icons input[type="number"] {
+    width: 3.5em;
+  }
 `;
 
   constructor(editorController, contentElement) {
@@ -435,18 +466,16 @@ export default class TransformationPanel {
 
     formContents.push({ type: "divider" });
 
-    formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "text",
-        key: "LabelFlip",
-        value: translate("sidebar.selection-transformation.flip"),
-      },
-      field2: {
-        type: "auxiliaryElement",
-        key: "FlipVertically",
-        auxiliaryElement: html.createDomElement("icon-button", {
-          "class": "ui-form-icon",
+    // Ticket 40: Flip and Align used to be a row plus a header-and-two-rows
+    // section of their own; now they share one row under two small labels.
+    const labelKeyPathOperations = "sidebar.selection-transformation.path-operations";
+
+    const flipAlignRow = html.div({ class: "selection-row-group" }, [
+      html.span({ class: "selection-row-group-label" }, [
+        translate("sidebar.selection-transformation.flip"),
+      ]),
+      html.div({ class: "selection-row-group-icons" }, [
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/flip-vertical.svg",
           "data-tooltip": translate("sidebar.selection-transformation.flip.vertically"),
           "data-tooltipposition": "top",
@@ -456,218 +485,142 @@ export default class TransformationPanel {
               "flip vertically"
             ),
         }),
-      },
-      field3: {
-        type: "auxiliaryElement",
-        key: "FlipHorizontally",
-        auxiliaryElement: html.createDomElement("icon-button", {
-          "class": "ui-form-icon",
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/flip-horizontal.svg",
           "data-tooltip": translate(
             "sidebar.selection-transformation.flip.horizontally"
           ),
-          "data-tooltipposition": "top-right",
+          "data-tooltipposition": "top",
           "onclick": (event) =>
             this.transformSelection(
               () => new Transform().scale(1, -1),
               "flip horizontally"
             ),
         }),
-      },
-    });
-
-    formContents.push({ type: "spacer" });
-    formContents.push({
-      type: "header",
-      label: translate("sidebar.selection-transformation.align"),
-    });
-
-    formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "auxiliaryElement",
-        key: "AlignLeft",
-        auxiliaryElement: html.createDomElement("icon-button", {
+      ]),
+      html.span({ class: "selection-row-group-label" }, [
+        translate("sidebar.selection-transformation.align"),
+      ]),
+      html.div({ class: "selection-row-group-icons" }, [
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/vertical-align-left.svg",
           "onclick": (event) => this.moveObjects(alignLeft),
-          "class": "ui-form-icon ui-form-icon-button",
           "data-tooltip": translate("sidebar.selection-transformation.align.left"),
-          "data-tooltipposition": "bottom-left",
+          "data-tooltipposition": "top",
         }),
-      },
-      field2: {
-        type: "auxiliaryElement",
-        key: "AlignCenter",
-        auxiliaryElement: html.createDomElement("icon-button", {
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/vertical-align-center.svg",
           "onclick": (event) => this.moveObjects(alignCenter),
           "data-tooltip": translate("sidebar.selection-transformation.align.center"),
-          "data-tooltipposition": "bottom",
-          "class": "ui-form-icon",
+          "data-tooltipposition": "top",
         }),
-      },
-      field3: {
-        type: "auxiliaryElement",
-        key: "AlignRight",
-        auxiliaryElement: html.createDomElement("icon-button", {
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/vertical-align-right.svg",
           "onclick": (event) => this.moveObjects(alignRight),
           "data-tooltip": translate("sidebar.selection-transformation.align.right"),
-          "data-tooltipposition": "bottom-right",
-          "class": "ui-form-icon",
+          "data-tooltipposition": "top",
         }),
-      },
-    });
-
-    formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "auxiliaryElement",
-        key: "AlignTop",
-        auxiliaryElement: html.createDomElement("icon-button", {
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/horizontal-align-top.svg",
           "onclick": (event) => this.moveObjects(alignTop),
-          "class": "ui-form-icon ui-form-icon-button",
           "data-tooltip": translate("sidebar.selection-transformation.align.top"),
-          "data-tooltipposition": "bottom-left",
+          "data-tooltipposition": "top",
         }),
-      },
-      field2: {
-        type: "auxiliaryElement",
-        key: "AlignMiddle",
-        auxiliaryElement: html.createDomElement("icon-button", {
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/horizontal-align-center.svg",
           "onclick": (event) => this.moveObjects(alignMiddle),
           "data-tooltip": translate("sidebar.selection-transformation.align.middle"),
-          "data-tooltipposition": "bottom",
-          "class": "ui-form-icon",
+          "data-tooltipposition": "top",
         }),
-      },
-      field3: {
-        type: "auxiliaryElement",
-        key: "AlignMiddle",
-        auxiliaryElement: html.createDomElement("icon-button", {
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/horizontal-align-bottom.svg",
           "onclick": (event) => this.moveObjects(alignBottom),
           "data-tooltip": translate("sidebar.selection-transformation.align.bottom"),
-          "data-tooltipposition": "bottom-right",
-          "class": "ui-form-icon",
+          "data-tooltipposition": "top",
         }),
+      ]),
+    ]);
+    formContents.push({ type: "single-icon", element: flipAlignRow });
+
+    formContents.push({ type: "spacer" });
+
+    // Ticket 40: Distribute (with its spacing number) and Bools (the path
+    // operations) share the next row, same way.
+    const distributionSpacingInput = html.input({
+      "type": "number",
+      "value":
+        this.transformParameters.customDistributionSpacing == null
+          ? ""
+          : String(this.transformParameters.customDistributionSpacing),
+      "data-tooltip": translate(
+        "sidebar.selection-transformation.distribute.distance-in-units"
+      ),
+      "data-tooltipposition": "top",
+      "oninput": (event) => {
+        const raw = event.target.value;
+        this.transformParameters.customDistributionSpacing =
+          raw === "" ? null : Number(raw);
       },
     });
 
-    formContents.push({ type: "spacer" });
-    formContents.push({
-      type: "header",
-      label: translate("sidebar.selection-transformation.distribute"),
-    });
-
-    formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "auxiliaryElement",
-        key: "distributeHorizontally",
-        auxiliaryElement: html.createDomElement("icon-button", {
+    const distributeBoolsRow = html.div({ class: "selection-row-group" }, [
+      html.span({ class: "selection-row-group-label" }, [
+        translate("sidebar.selection-transformation.distribute"),
+      ]),
+      html.div({ class: "selection-row-group-icons" }, [
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/layout-distribute-vertical.svg",
           "onclick": (event) => this.moveObjects(distributeHorizontally),
           "data-tooltip": translate(
             "sidebar.selection-transformation.distribute.horizontally"
           ),
-          "data-tooltipposition": "top-left",
-          "class": "ui-form-icon ui-form-icon-button",
+          "data-tooltipposition": "top",
         }),
-      },
-      field2: {
-        type: "auxiliaryElement",
-        key: "distributeVertically",
-        auxiliaryElement: html.createDomElement("icon-button", {
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/layout-distribute-horizontal.svg",
           "onclick": (event) => this.moveObjects(distributeVertically),
           "data-tooltip": translate(
             "sidebar.selection-transformation.distribute.vertically"
           ),
           "data-tooltipposition": "top",
-          "class": "ui-form-icon",
         }),
-      },
-      field3: {
-        "type": "edit-number",
-        "key": "customDistributionSpacing",
-        "value": this.transformParameters.customDistributionSpacing,
-        "allowEmptyField": true,
-        "data-tooltip": translate(
-          "sidebar.selection-transformation.distribute.distance-in-units"
-        ),
-        "data-tooltipposition": "top-right",
-      },
-    });
-
-    formContents.push({ type: "spacer" });
-
-    const labelKeyPathOperations = "sidebar.selection-transformation.path-operations";
-
-    formContents.push({
-      type: "header",
-      label: translate(labelKeyPathOperations),
-    });
-
-    formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "auxiliaryElement",
-        key: "removeOverlaps",
-        auxiliaryElement: html.createDomElement("icon-button", {
+        distributionSpacingInput,
+      ]),
+      html.span({ class: "selection-row-group-label" }, [
+        translate(labelKeyPathOperations),
+      ]),
+      html.div({ class: "selection-row-group-icons" }, [
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/layers-union.svg",
           "onclick": (event) =>
             this.doPathOperations(this.pathOperations.unionPath, "union"),
           "data-tooltip": translate(`${labelKeyPathOperations}.union`),
-          "data-tooltipposition": "top-left",
-          "class": "ui-form-icon ui-form-icon-button",
+          "data-tooltipposition": "top",
         }),
-      },
-      field2: {
-        type: "auxiliaryElement",
-        key: "subtractContours",
-        auxiliaryElement: html.createDomElement("icon-button", {
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/layers-subtract.svg",
           "onclick": (event) =>
             this.doPathOperations(this.pathOperations.subtractPath, "subtract"),
           "data-tooltip": translate(`${labelKeyPathOperations}.subtract`),
           "data-tooltipposition": "top",
-          "class": "ui-form-icon",
         }),
-      },
-      field3: {
-        type: "auxiliaryElement",
-        key: "intersectContours",
-        auxiliaryElement: html.createDomElement("icon-button", {
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/layers-intersect-2.svg",
           "onclick": (event) =>
             this.doPathOperations(this.pathOperations.intersectPath, "intersect"),
           "data-tooltip": translate(`${labelKeyPathOperations}.intersect`),
-          "data-tooltipposition": "top-right",
-          "class": "ui-form-icon",
+          "data-tooltipposition": "top",
         }),
-      },
-    });
-
-    formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "auxiliaryElement",
-        key: "excludeContours",
-        auxiliaryElement: html.createDomElement("icon-button", {
+        html.createDomElement("icon-button", {
           "src": "/tabler-icons/layers-difference.svg",
           "onclick": (event) =>
             this.doPathOperations(this.pathOperations.excludePath, "exclude"),
           "data-tooltip": translate(`${labelKeyPathOperations}.exclude`),
-          "data-tooltipposition": "top-left",
-          "class": "ui-form-icon ui-form-icon-button",
+          "data-tooltipposition": "top",
         }),
-      },
-      field2: {},
-      field3: {},
-    });
+      ]),
+    ]);
+    formContents.push({ type: "single-icon", element: distributeBoolsRow });
 
     // Point labels checkboxes moved to the Measurements accordion in the
     // Designspace panel's Visual group (ticket 28); the Harmonize section
