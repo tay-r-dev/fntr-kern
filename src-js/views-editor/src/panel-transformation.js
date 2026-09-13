@@ -1253,7 +1253,7 @@ export default class TransformationPanel {
         changes: changes,
         undoLabel: undoLabel,
         broadcast: true,
-        ...this._transformUndoInfo(),
+        undoInfo: this._transformUndoInfo(),
       };
     });
     return true;
@@ -1441,7 +1441,7 @@ export default class TransformationPanel {
         changes: lastCollector,
         undoLabel,
         broadcast: true,
-        ...this._transformUndoInfo(),
+        undoInfo: this._transformUndoInfo(),
       };
     });
     return committed;
