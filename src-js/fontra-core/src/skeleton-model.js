@@ -261,6 +261,7 @@ export const SKELETON_SOURCE_DEFAULT_KEYS = Object.freeze({
   CAP_DISTANCE: "capDistance",
   CUSTOM_CAP_SQUARE: "customCapSquare",
   CUSTOM_CAP_ROUNDED: "customCapRounded",
+  CUSTOM_CAP_DROP: "customCapDrop",
   SERIF_UNITS_MODE: "serifUnitsMode",
   SERIF_REMOVE_COLLAPSED: "serifRemoveCollapsedPoints",
   CUSTOM_SERIFS: "customSerifs",
@@ -274,6 +275,7 @@ export const SKELETON_SOURCE_DEFAULT_FALLBACKS = Object.freeze({
   [SKELETON_SOURCE_DEFAULT_KEYS.CAP_DISTANCE]: 0,
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_SQUARE]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED]: [],
+  [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_DROP]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_UNITS_MODE]: "absolute",
   [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED]: false,
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: [],
@@ -356,6 +358,7 @@ const SKELETON_SOURCE_DEFAULT_KEY_PATHS = new Map([
   [SKELETON_SOURCE_DEFAULT_KEYS.CAP_DISTANCE, ["capDefaults", "square", "distance"]],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_SQUARE, ["capProfiles", "square"]],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED, ["capProfiles", "round"]],
+  [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_DROP, ["capProfiles", "drop"]],
   [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_UNITS_MODE, ["serifDefaults", "unitsMode"]],
   [
     SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED,
@@ -397,6 +400,7 @@ export function normalizeSkeletonSourceDefaults(rawDefaults) {
   const capProfiles = ensureSkeletonDefaultsObject(defaults, "capProfiles");
   ensureSkeletonDefaultsArray(capProfiles, "square");
   ensureSkeletonDefaultsArray(capProfiles, "round");
+  ensureSkeletonDefaultsArray(capProfiles, "drop");
   // Both of these are properties of how the font is being worked on, not of any
   // one letter, which is why they sit at source level rather than per terminal.
   // Removing collapsed points forfeits cross-master interpolation for serifed
@@ -2989,6 +2993,97 @@ export function applySerifPreset(preset, { scope = "both" } = {}) {
 
 export function makeSerifPreset(name = "Serif") {
   return { name, ...normalizeSerifPreset(DEFAULT_SERIF_PRESET) };
+}
+
+// Terminal presets, covering every cap kind that has fields to save (§6.4).
+// Flat has none and gets no presets. One row per kind here is what keeps the
+// functions below table-driven instead of a kind switch repeated in each one
+// (rail R-E's spirit, extended from emit code to presets): a new kind with
+// fields adds a row, not a branch.
+//
+// A preset SHAPES a terminal and never PLACES it, the same rule the serif
+// preset already followed (FEATURE-MODEL.md §8): fields that orient the
+// terminal rather than draw it are left out of every row, not just the serif
+// one. `capBallSide` (which side the drop bulb sits on) is the same kind of
+// placement field as a serif's axis, so it is left out of the drop row too.
+const TERMINAL_PRESET_TYPES = Object.freeze({
+  serif: {
+    fields: SERIF_PRESET_FIELDS,
+    key: SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS,
+  },
+  square: {
+    fields: Object.freeze(["capAngle", "capDistance"]),
+    key: SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_SQUARE,
+  },
+  round: {
+    fields: Object.freeze(["capRadiusRatio", "capTension"]),
+    key: SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED,
+  },
+  drop: {
+    fields: Object.freeze([
+      "capBallRatio",
+      "capBallShape",
+      "capBallEasing",
+      "capBallEaseCurvature",
+    ]),
+    key: SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_DROP,
+  },
+});
+
+export const VALID_TERMINAL_PRESET_TYPES = new Set(Object.keys(TERMINAL_PRESET_TYPES));
+
+// The source-defaults key that stores one type's preset list. Lets a caller
+// go from "which type is this table showing" to "which key do I read/write"
+// without its own copy of the type-to-key mapping.
+export function getTerminalPresetSourceKey(type) {
+  return TERMINAL_PRESET_TYPES[type]?.key ?? null;
+}
+
+// A terminal preset carries the type's own shape fields, a name and a case.
+// Serif is normalized through the existing serif-specific reader, unchanged,
+// so old customSerifs entries (which carry no case) keep reading exactly as
+// they did; the other three kinds are net-new lists and always get a case.
+export function normalizeTerminalPreset(type, preset) {
+  const spec = TERMINAL_PRESET_TYPES[type];
+  if (!spec) {
+    return null;
+  }
+  const name = typeof preset?.name === "string" ? preset.name : "";
+  const glyphCase = VALID_WIDTH_PRESET_CASES.has(preset?.case)
+    ? preset.case
+    : "uppercase";
+  if (type === "serif") {
+    return { type, name, case: glyphCase, ...normalizeSerifPreset(preset) };
+  }
+  const shape = {};
+  for (const field of spec.fields) {
+    const value = Number(preset?.[field]);
+    shape[field] = Number.isFinite(value) ? value : 0;
+  }
+  return { type, name, case: glyphCase, ...shape };
+}
+
+// Applies a terminal preset to a point, always through the same writers a
+// hand-edited value uses (setSkeletonCapParameters / setSkeletonSerifParameters),
+// so a preset is one more caller of the single write path, not a second one.
+// Writing `capStyle` unconditionally is what changes the point's kind to the
+// preset's when it was something else.
+export function applyTerminalPreset(point, type, preset) {
+  const spec = TERMINAL_PRESET_TYPES[type];
+  if (!spec) {
+    return;
+  }
+  if (type === "serif") {
+    setSkeletonCapParameters(point, { capStyle: "serif" });
+    setSkeletonSerifParameters(point, applySerifPreset(preset));
+    return;
+  }
+  const values = { capStyle: type };
+  for (const field of spec.fields) {
+    const value = Number(preset?.[field]);
+    values[field] = Number.isFinite(value) ? value : 0;
+  }
+  setSkeletonCapParameters(point, values);
 }
 
 export function setSkeletonCornerParameters(point, values, { round = null } = {}) {

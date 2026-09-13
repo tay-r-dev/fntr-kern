@@ -1,13 +1,18 @@
 import { FONTRA_INTERNAL_KEY } from "@fontra/core/fontra-internal-schema.js";
 import {
+  DEFAULT_SERIF_PRESET,
   DEFAULT_SKELETON_WIDTH,
+  SERIF_PRESETS,
   SKELETON_SOURCE_DEFAULT_FALLBACKS,
   SKELETON_SOURCE_DEFAULT_KEYS,
   applySkeletonWidthPreset,
+  applyTerminalPreset,
   getSkeletonBaseWidthForCase,
   getSkeletonGlyphCase,
   getSourceSkeletonDefaultsValue,
+  getTerminalPresetSourceKey,
   normalizeSkeletonSourceDefaults,
+  normalizeTerminalPreset,
   setSourceSkeletonDefaultsValues,
 } from "@fontra/core/skeleton-model.js";
 import { expect } from "chai";
@@ -248,5 +253,126 @@ describe("skeleton source defaults for serifs", () => {
       serifDefaults: { removeCollapsedPoints: 1 },
     });
     expect(normalized.serifDefaults.removeCollapsedPoints).to.equal(true);
+  });
+});
+
+describe("terminal presets", () => {
+  it("routes each of the other three types to its own source-defaults key", () => {
+    expect(getTerminalPresetSourceKey("square")).to.equal(
+      SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_SQUARE
+    );
+    expect(getTerminalPresetSourceKey("round")).to.equal(
+      SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED
+    );
+    expect(getTerminalPresetSourceKey("drop")).to.equal(
+      SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_DROP
+    );
+    expect(getTerminalPresetSourceKey("serif")).to.equal(
+      SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS
+    );
+    expect(getTerminalPresetSourceKey("flat")).to.equal(null);
+  });
+
+  it("reads an existing serif preset as type serif, unchanged", () => {
+    const normalized = normalizeTerminalPreset("serif", DEFAULT_SERIF_PRESET);
+    expect(normalized.type).to.equal("serif");
+    for (const field of Object.keys(DEFAULT_SERIF_PRESET)) {
+      if (field === "name") continue;
+      expect(normalized[field]).to.equal(DEFAULT_SERIF_PRESET[field]);
+    }
+  });
+
+  it("stores and applies a square preset", () => {
+    const point = { capStyle: "round" };
+    applyTerminalPreset(
+      point,
+      "square",
+      normalizeTerminalPreset("square", { name: "Cut", capAngle: 12, capDistance: 8 })
+    );
+    expect(point.capStyle).to.equal("square");
+    expect(point.capAngle).to.equal(12);
+    expect(point.capDistance).to.equal(8);
+  });
+
+  it("stores and applies a round preset", () => {
+    const point = { capStyle: "flat" };
+    applyTerminalPreset(
+      point,
+      "round",
+      normalizeTerminalPreset("round", {
+        name: "Soft",
+        capRadiusRatio: 0.3,
+        capTension: 0.6,
+      })
+    );
+    expect(point.capStyle).to.equal("round");
+    expect(point.capRadiusRatio).to.equal(0.3);
+    expect(point.capTension).to.equal(0.6);
+  });
+
+  it("stores and applies a drop preset", () => {
+    const point = { capStyle: "square" };
+    applyTerminalPreset(
+      point,
+      "drop",
+      normalizeTerminalPreset("drop", {
+        name: "Ball",
+        capBallRatio: 1.5,
+        capBallShape: 0.4,
+        capBallEasing: 0.2,
+        capBallEaseCurvature: 0.7,
+      })
+    );
+    expect(point.capStyle).to.equal("drop");
+    expect(point.capBallRatio).to.equal(1.5);
+    expect(point.capBallShape).to.equal(0.4);
+    expect(point.capBallEasing).to.equal(0.2);
+    expect(point.capBallEaseCurvature).to.equal(0.7);
+  });
+
+  it("changes a point's kind to the preset's type when it was something else", () => {
+    const point = { capStyle: "round", capRadiusRatio: 0.5, capTension: 0.5 };
+    applyTerminalPreset(
+      point,
+      "serif",
+      normalizeTerminalPreset("serif", SERIF_PRESETS[0])
+    );
+    expect(point.capStyle).to.equal("serif");
+  });
+
+  it("never writes a rib angle lock or lock mode from a square preset", () => {
+    const point = {
+      capStyle: "flat",
+      ribAngleLock: "vertical",
+      ribAngleLockMode: "rib",
+    };
+    applyTerminalPreset(
+      point,
+      "square",
+      normalizeTerminalPreset("square", { name: "Cut", capAngle: 5, capDistance: 5 })
+    );
+    expect(point.ribAngleLock).to.equal("vertical");
+    expect(point.ribAngleLockMode).to.equal("rib");
+  });
+
+  it("round-trips a drop preset list through source defaults", () => {
+    const source = {};
+    const presets = [
+      normalizeTerminalPreset("drop", {
+        name: "Ball",
+        capBallRatio: 1.4,
+        case: "lowercase",
+      }),
+    ];
+    setSourceSkeletonDefaultsValues(source, {
+      [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_DROP]: presets,
+    });
+    expect(
+      getSourceSkeletonDefaultsValue(
+        source,
+        SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_DROP,
+        []
+      )
+    ).to.deep.equal(presets);
   });
 });

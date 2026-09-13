@@ -965,6 +965,13 @@ than shape it. A
 preset captured on an upright stem foot would otherwise force a slanted terminal back to
 perpendicular, and one preset has to stay correct on every terminal in the font.
 
+**The same rule holds for every terminal kind that has fields to save, not only serif.** Square,
+round and drop each carry a preset table of their own (§6.4), and each one leaves out the fields
+that orient the terminal instead of drawing it: a square preset carries no rib angle lock and no
+lock mode, and a drop preset carries no `capBallSide`. **A preset shapes a terminal and never
+places it** — that is the general rule the serif one above is a special case of. Flat has no fields,
+so it has no preset table at all.
+
 Five built-ins ship with the feature: **Egyptian, Clarendon, Didone, Old style, Wedge**. A master
 holds its own list beside them, in the source defaults, per master because absolute lengths do not
 survive a trip between masters.

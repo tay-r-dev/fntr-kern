@@ -1,6 +1,6 @@
 # 07: Terminal presets cover the four kinds with fields
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** None (can start immediately)
 
