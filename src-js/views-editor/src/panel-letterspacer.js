@@ -28,6 +28,7 @@ import {
 } from "@fontra/core/metrics-keys.js";
 import { ObservableController } from "@fontra/core/observable-object.js";
 import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
+import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, the header Enabled toggle
 import { Form } from "@fontra/web-components/ui-form.js";
 import Panel from "./panel.js";
 import { editSkeleton } from "./skeleton-editing.js";
@@ -287,23 +288,18 @@ export default class LetterspacerPanel extends Panel {
   }
 
   buildHeaderControls() {
-    const toggleInput = html.input({
-      type: "checkbox",
+    // Ticket 34, spec §4.4: the shared header toggle (labeled-toggle.js),
+    // bound to the same per-font enabled flag the checkbox used to write.
+    const toggle = html.createDomElement("labeled-toggle", {
+      label: "Enabled",
       checked: this.algorithmEnabled,
-      onchange: (event) => this.setAlgorithmEnabled(event.target.checked),
+      title: "Enable letterspacer",
     });
-    const toggleLabel = html.label(
-      {
-        style:
-          "display: flex; align-items: center; gap: 0.35rem; font-weight: normal; font-size: 0.85rem;",
-        title: "Enable letterspacer",
-      },
-      [toggleInput, html.span({ style: "font-weight: normal;" }, ["Enabled"])]
-    );
+    toggle.addEventListener("change", () => this.setAlgorithmEnabled(toggle.checked));
 
     const controls = html.div(
       { style: "display: flex; align-items: center; gap: 0.5rem;" },
-      [toggleLabel]
+      [toggle]
     );
 
     if (this.algorithmEnabled) {
