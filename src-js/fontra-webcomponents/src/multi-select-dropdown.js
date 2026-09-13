@@ -47,6 +47,12 @@ export class MultiSelectDropdown extends UnlitElement {
     button:hover {
       background-color: var(--multi-select-dropdown-hover-color);
     }
+
+    .triangle {
+      margin-left: 0.4em;
+      font-size: 0.7em;
+      vertical-align: middle;
+    }
   `;
 
   constructor() {
@@ -64,8 +70,8 @@ export class MultiSelectDropdown extends UnlitElement {
 
   set label(value) {
     this._label = value || "";
-    if (this._button) {
-      this._button.textContent = this._label;
+    if (this._labelSpan) {
+      this._labelSpan.textContent = this._label;
     }
   }
 
@@ -94,19 +100,35 @@ export class MultiSelectDropdown extends UnlitElement {
   }
 
   render() {
+    this._labelSpan = html.span({}, [this._label]);
     this._button = html.createDomElement(
       "button",
       {
         type: "button",
-        onclick: (event) => this.toggleMenu(event),
+        // A press on the button toggles, and it has to be mousedown: the
+        // menu closes itself on any window mousedown (menu-panel.js's own
+        // listener), so by the time a click event arrived the menu was
+        // already gone and the button only ever reopened it. Stopping
+        // propagation here keeps that window listener off our own press.
+        onmousedown: (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.toggleMenu();
+        },
+        // mousedown skips the keyboard, so Enter and Space come back here.
+        onkeydown: (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            this.toggleMenu();
+          }
+        },
       },
-      [this._label]
+      [this._labelSpan, html.span({ class: "triangle" }, ["▾"])]
     );
     return this._button;
   }
 
-  toggleMenu(event) {
-    event.stopPropagation();
+  toggleMenu() {
     if (this._menu) {
       this._menu.dismiss();
       this._menu = null;
