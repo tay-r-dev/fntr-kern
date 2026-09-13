@@ -450,6 +450,97 @@ export default class LetterspacerPanel extends Panel {
     }
   }
 
+  // Ticket 37, spec §4.5: the Current/Calculated L/R table, with Calculate
+  // and Apply stacked to its right. Both buttons keep the disabled state
+  // (hasCurrentMaster) and the click handlers they already had.
+  _buildCalculatedSection() {
+    const cellStyle = "padding: 0.1em 0.6em; text-align: right;";
+    const cell = () => html.createDomElement("td", { style: cellStyle }, [""]);
+    this._currentLCell = cell();
+    this._currentRCell = cell();
+    this._calculatedLCell = cell();
+    this._calculatedRCell = cell();
+
+    const th = (text) => html.createDomElement("th", { style: cellStyle }, [text]);
+    const rowHeader = (text) =>
+      html.createDomElement(
+        "th",
+        {
+          style: `${cellStyle} text-align: left; font-weight: normal;`,
+        },
+        [text]
+      );
+
+    const table = html.createDomElement(
+      "table",
+      { style: "border-collapse: collapse;" },
+      [
+        html.createDomElement("thead", {}, [
+          html.createDomElement("tr", {}, [th(""), th("L"), th("R")]),
+        ]),
+        html.createDomElement("tbody", {}, [
+          html.createDomElement("tr", {}, [
+            rowHeader("Current"),
+            this._currentLCell,
+            this._currentRCell,
+          ]),
+          html.createDomElement("tr", {}, [
+            rowHeader("Calculated"),
+            this._calculatedLCell,
+            this._calculatedRCell,
+          ]),
+        ]),
+      ]
+    );
+
+    const buttonStack = html.div(
+      {
+        class: "button-container",
+        style: "display: flex; flex-direction: column; gap: 0.25em;",
+      },
+      [
+        html.button(
+          {
+            onclick: () => this.calculateSpacing(),
+            class: "calculate-button",
+            disabled: !this.hasCurrentMaster,
+          },
+          ["Calculate"]
+        ),
+        html.button(
+          {
+            onclick: () => this.applySpacing(),
+            class: "apply-button",
+            disabled: !this.hasCurrentMaster,
+          },
+          ["Apply"]
+        ),
+      ]
+    );
+
+    this._updateCalculatedValueCells();
+
+    return html.div({ style: "display: flex; align-items: flex-start; gap: 0.75em;" }, [
+      table,
+      buttonStack,
+    ]);
+  }
+
+  _updateCalculatedValueCells() {
+    if (this._currentLCell) {
+      this._currentLCell.textContent = this.formatValue(this.currentLSB);
+    }
+    if (this._currentRCell) {
+      this._currentRCell.textContent = this.formatValue(this.currentRSB);
+    }
+    if (this._calculatedLCell) {
+      this._calculatedLCell.textContent = this.formatValue(this.calculatedLSB);
+    }
+    if (this._calculatedRCell) {
+      this._calculatedRCell.textContent = this.formatValue(this.calculatedRSB);
+    }
+  }
+
   async setAlgorithmEnabled(enabled) {
     const nextValue = !!enabled;
     if (this.algorithmEnabled === nextValue) {
@@ -507,17 +598,13 @@ export default class LetterspacerPanel extends Panel {
 
           { type: "divider" },
 
-          // Display current and calculated spacing values
+          // Ticket 37, spec §4.5: a small L/R table (Current above
+          // Calculated), with Calculate and Apply stacked to its right,
+          // replacing the two header lines and the button container that
+          // used to sit under the section.
           {
-            type: "header",
-            label: `Current: LSB=${this.formatValue(this.currentLSB)}, RSB=${this.formatValue(this.currentRSB)}`,
-            class: "current-values",
-          },
-
-          {
-            type: "header",
-            label: `Calculated: LSB=${this.formatValue(this.calculatedLSB)}, RSB=${this.formatValue(this.calculatedRSB)}`,
-            class: "calculated-values",
+            type: "single-icon",
+            element: this._buildCalculatedSection(),
           },
 
           ...(this.metricsKeyHeldMessage
@@ -577,32 +664,6 @@ export default class LetterspacerPanel extends Panel {
       };
 
       if (this.algorithmEnabled) {
-        // Calculate and Apply buttons at the bottom
-        const buttonContainer = html.div({ class: "button-container" }, []);
-
-        const calculateButton = html.button(
-          {
-            onclick: () => this.calculateSpacing(),
-            class: "calculate-button",
-            disabled: !this.hasCurrentMaster,
-          },
-          ["Calculate"]
-        );
-
-        const applyButton = html.button(
-          {
-            onclick: () => this.applySpacing(),
-            class: "apply-button",
-            disabled: !this.hasCurrentMaster,
-          },
-          ["Apply"]
-        );
-
-        buttonContainer.appendChild(calculateButton);
-        buttonContainer.appendChild(applyButton);
-
-        this.infoForm.contentElement.appendChild(buttonContainer);
-
         // The bulk action sits below the section, under its own controls. It
         // does not need a glyph on the canvas: it spaces the glyphset it is
         // pointed at, so it stays enabled where Calculate and Apply cannot.
@@ -627,17 +688,8 @@ export default class LetterspacerPanel extends Panel {
   }
 
   updateValueDisplay() {
-    // Update the value display elements without rebuilding the form
-    const currentLabel = this.infoForm.contentElement.querySelector(".current-values");
-    const calculatedLabel =
-      this.infoForm.contentElement.querySelector(".calculated-values");
-
-    if (currentLabel) {
-      currentLabel.textContent = `Current: LSB=${this.formatValue(this.currentLSB)}, RSB=${this.formatValue(this.currentRSB)}`;
-    }
-    if (calculatedLabel) {
-      calculatedLabel.textContent = `Calculated: LSB=${this.formatValue(this.calculatedLSB)}, RSB=${this.formatValue(this.calculatedRSB)}`;
-    }
+    // Update the calculated-table cells in place, without rebuilding the form.
+    this._updateCalculatedValueCells();
   }
 
   clearVisualizationData() {
