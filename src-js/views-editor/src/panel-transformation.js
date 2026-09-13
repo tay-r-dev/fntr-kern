@@ -214,13 +214,18 @@ export default class TransformationPanel {
     }
   }
 
-  // Ticket 38 (revised per designer feedback): Move/Scale/Skew/Dimensions
-  // each become one universal-row: a plain text label on the left (the row's
-  // own name, e.g. "Move"), then two compact-scrub fields, each carrying the
-  // row's icon. A scrub applies the transform on every increment, live --
-  // there is no separate apply step -- and 0.1 is the rounding grid, not
-  // just the raw drag value, so a drag lands on a clean number instead of a
-  // long, jittery decimal (roundScrubValue's own step handling).
+  // Ticket 38: Move/Scale/Skew/Dimensions each become one universal-row: a
+  // plain text label on the left (the row's own name, e.g. "Move"), then two
+  // compact-scrub fields, each carrying the row's icon. A scrub edits
+  // transformParameters ONLY -- these transforms are relative and compound,
+  // so applying on every frame would both turn one drag into a whole chain
+  // of undo steps and stack the transform on itself each frame (Rotate
+  // spinning instead of setting an angle is the same bug from the other
+  // side). The transform runs once, on the row's icon click or on Enter (the
+  // "apply" event), same as the plain icon-button did before this ticket.
+  // 0.1 is the rounding grid, not just the raw drag value, so a drag lands
+  // on a clean number instead of a long, jittery decimal (roundScrubValue's
+  // own step handling).
   _buildScrubXYRow({
     label,
     icon,
@@ -246,12 +251,10 @@ export default class TransformationPanel {
       iconTooltip: tooltip,
       step,
     });
-    const apply = (onChange) => (event) => {
-      onChange(event.detail.value);
-      onApply();
-    };
-    fieldX.addEventListener("change", apply(onChangeX));
-    fieldY.addEventListener("change", apply(onChangeY));
+    fieldX.addEventListener("change", (event) => onChangeX(event.detail.value));
+    fieldY.addEventListener("change", (event) => onChangeY(event.detail.value));
+    fieldX.addEventListener("apply", () => onApply());
+    fieldY.addEventListener("apply", () => onApply());
     return {
       fieldX,
       fieldY,
@@ -384,10 +387,11 @@ export default class TransformationPanel {
           new Transform().rotate((this.transformParameters.rotation * Math.PI) / 180),
         "rotate"
       );
-    rotateField.addEventListener("change", (event) => {
-      this.transformParameters.rotation = event.detail.value;
-      applyRotate();
-    });
+    rotateField.addEventListener(
+      "change",
+      (event) => (this.transformParameters.rotation = event.detail.value)
+    );
+    rotateField.addEventListener("apply", applyRotate);
     formContents.push({
       type: "universal-row",
       field1: {
