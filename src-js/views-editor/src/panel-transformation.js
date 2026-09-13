@@ -27,6 +27,7 @@ import {
 import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 38
+import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 43's G3
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 42
 import { Form } from "@fontra/web-components/ui-form.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
@@ -627,16 +628,35 @@ export default class TransformationPanel {
     // Designspace panel's Visual group (ticket 28); the Harmonize section
     // below no longer has a position-bound sibling ahead of it.
     formContents.push({ type: "divider" });
+
+    // Ticket 43: Run keeps its label, moved to the right end of the header.
     formContents.push({
       type: "header",
       label: translate("sidebar.selection-transformation.harmonize"),
+      auxiliaryElement: html.button({ onclick: () => this.doHarmonize() }, [
+        translate("sidebar.selection-transformation.harmonize.apply"),
+      ]),
     });
 
-    formContents.push({
-      type: "checkbox",
-      key: "harmonizeG3",
+    // Ticket 43: G3 becomes a labeled toggle. Built as a raw auxiliaryElement
+    // row -- like the segmented control above -- rather than through the
+    // Form's checkbox field type, since a plain checked/change pair is all it
+    // needs and this way it can trigger the same rebuild the checkbox's
+    // special case in onFieldChange used to (greying the segmented control
+    // is a rebuild-only change).
+    this.harmonizeG3Toggle = html.createDomElement("labeled-toggle", {
       label: translate("sidebar.selection-transformation.harmonize.g3"),
-      value: applicationSettingsController.model.harmonizeG3,
+      checked: !!applicationSettingsController.model.harmonizeG3,
+    });
+    this.harmonizeG3Toggle.addEventListener("change", () => {
+      applicationSettingsController.model.harmonizeG3 = this.harmonizeG3Toggle.checked;
+      this.update();
+    });
+    formContents.push({
+      type: "universal-row",
+      field1: { type: "auxiliaryElement", auxiliaryElement: this.harmonizeG3Toggle },
+      field2: {},
+      field3: {},
     });
 
     // Ticket 42: a segmented control -- preserve, recompute, move on-curve --
@@ -691,18 +711,6 @@ export default class TransformationPanel {
       field1: {},
       field2: {
         type: "auxiliaryElement",
-        auxiliaryElement: html.button({ onclick: () => this.doHarmonize() }, [
-          translate("sidebar.selection-transformation.harmonize.apply"),
-        ]),
-      },
-      field3: {},
-    });
-
-    formContents.push({
-      type: "universal-row",
-      field1: {},
-      field2: {
-        type: "auxiliaryElement",
         auxiliaryElement: (this.harmonizeReportElement = html.span(
           { class: "harmonize-report", title: this.harmonizeReportDetail || "" },
           [this.harmonizeReportText || ""]
@@ -732,19 +740,12 @@ export default class TransformationPanel {
 
       if (
         [
-          "harmonizeG3",
           "harmonizeEqualize",
           "harmonizeOtherSources",
           "slideBothTensionPoints",
         ].includes(fieldItem.key)
       ) {
         applicationSettingsController.model[fieldItem.key] = value;
-        // G3 greys the segmented control out, which is a property of the
-        // control and only the rebuild can change it.
-        if (fieldItem.key === "harmonizeG3") {
-          this.update();
-          return;
-        }
       }
 
       if (fieldItem.key === "originXButton" || fieldItem.key === "originYButton") {

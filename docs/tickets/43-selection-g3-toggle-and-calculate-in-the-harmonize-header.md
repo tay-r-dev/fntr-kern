@@ -1,4 +1,4 @@
-# 43: Selection: G3 toggle and Calculate in the Harmonize header
+# 43: Selection: G3 toggle and Run in the Harmonize header
 
 **Status:** ready-for-agent
 
@@ -11,7 +11,7 @@ Inside the merged Selection panel, the transform part holds: a nine-radio origin
 ## Target
 
 1. G3 is a labeled toggle. Equalize handles and Other sources stay checkboxes.
-2. The run button reads Calculate and sits at the right of the Harmonize header.
+2. The run button keeps its Run label and sits at the right of the Harmonize header.
 
 ## Done when
 

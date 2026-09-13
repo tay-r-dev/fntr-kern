@@ -391,7 +391,7 @@ and already has a control. The development log's F10 section is the reference fo
 three-position slider today. One press still draws one answer, so this is the shape the control
 should always have had.
 
-G3 becomes a labeled toggle. Equalize handles and Other sources stay checkboxes. **Calculate** sits
+G3 becomes a labeled toggle. Equalize handles and Other sources stay checkboxes. **Run** keeps its label and sits
 at the right of the section header.
 
 **Balance is deleted.** It is a separate command today, beside Harmonize, with its own action and
