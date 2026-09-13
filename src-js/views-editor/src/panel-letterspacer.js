@@ -28,6 +28,7 @@ import {
 } from "@fontra/core/metrics-keys.js";
 import { ObservableController } from "@fontra/core/observable-object.js";
 import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
+import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 35's Area/Depth/Overshoot row
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, the header Enabled toggle
 import { Form } from "@fontra/web-components/ui-form.js";
 import Panel from "./panel.js";
@@ -319,6 +320,138 @@ export default class LetterspacerPanel extends Panel {
     return controls;
   }
 
+  // Ticket 35, spec §4.4: Area, Depth and Overshoot as three compact scrub
+  // fields on one row, in place of three separate edit-number form rows.
+  _buildAreaDepthOvershootRow() {
+    const makeField = (key, label) => {
+      const field = html.createDomElement("compact-scrub-field", {
+        label,
+        value: this.params[key],
+      });
+      field.style.flex = "1 1 0";
+      field.addEventListener("change", (event) =>
+        this._onSpacingParamChange(key, event.detail.value)
+      );
+      return field;
+    };
+    return html.div({ style: "display: flex; gap: 0.5em;" }, [
+      makeField("area", translate("sidebar.letterspacer.area")),
+      makeField("depth", translate("sidebar.letterspacer.depth")),
+      makeField("overshoot", translate("sidebar.letterspacer.overshoot")),
+    ]);
+  }
+
+  async _onSpacingParamChange(key, value) {
+    if (this._suppressPersist) {
+      this.params[key] = value;
+      return;
+    }
+    if (!this.algorithmEnabled) {
+      return;
+    }
+    this.params[key] = value;
+    await this.persistParam(key, value);
+    this.calculatedLSB = null;
+    this.calculatedRSB = null;
+    this.clearVisualizationData();
+    // Update value display without rebuilding the form
+    this.updateValueDisplay();
+  }
+
+  // Ticket 35, spec §4.4: Apply left, Apply right and May replace metrics
+  // keys become Left, Right and Override variables checkboxes, sharing one
+  // row with Reference.
+  _buildApplyRow() {
+    const referenceInput = html.input({
+      type: "text",
+      value: this.params.referenceGlyph,
+      style: "width: 6em;",
+      onchange: (event) => this._onReferenceGlyphChange(event.target.value),
+    });
+    const referenceLabel = html.label(
+      { style: "display: flex; align-items: center; gap: 0.35em;" },
+      [html.span({}, [translate("sidebar.letterspacer.reference")]), referenceInput]
+    );
+
+    const makeCheckbox = (checked, labelKey, onchange, tooltip) => {
+      const input = html.input({
+        type: "checkbox",
+        checked,
+        onchange: (event) => onchange(event.target.checked),
+      });
+      return html.label(
+        {
+          style: "display: flex; align-items: center; gap: 0.25em;",
+          title: tooltip,
+        },
+        [input, html.span({}, [translate(labelKey)])]
+      );
+    };
+
+    return html.div(
+      { style: "display: flex; align-items: center; gap: 1em; flex-wrap: wrap;" },
+      [
+        referenceLabel,
+        makeCheckbox(
+          !!this.params.applyLSB,
+          "sidebar.letterspacer.apply-lsb",
+          (checked) => this._onApplySideChange("applyLSB", checked)
+        ),
+        makeCheckbox(
+          !!this.params.applyRSB,
+          "sidebar.letterspacer.apply-rsb",
+          (checked) => this._onApplySideChange("applyRSB", checked)
+        ),
+        makeCheckbox(
+          this.mayReplaceMetricsKeys,
+          "sidebar.letterspacer.may-replace-metrics-keys",
+          (checked) => this._onMayReplaceMetricsKeysChange(checked),
+          translate("sidebar.letterspacer.may-replace-metrics-keys.tooltip")
+        ),
+      ]
+    );
+  }
+
+  _onReferenceGlyphChange(value) {
+    if (this._suppressPersist) {
+      this.params.referenceGlyph = value;
+      return;
+    }
+    if (!this.algorithmEnabled) {
+      return;
+    }
+    this.params.referenceGlyph = value;
+    this.persistParam("referenceGlyph", value);
+    this.calculatedLSB = null;
+    this.calculatedRSB = null;
+    this.clearVisualizationData();
+    // Update value display without rebuilding the form
+    this.updateValueDisplay();
+  }
+
+  // Session state only, same as the 0/1 number fields these replace --
+  // persistParam has never had a branch for these two keys (see its own
+  // code: only "referenceGlyph", "area", "depth" and "overshoot" persist).
+  _onApplySideChange(key, checked) {
+    if (this._suppressPersist) {
+      this.params[key] = checked;
+      return;
+    }
+    if (!this.algorithmEnabled) {
+      return;
+    }
+    this.params[key] = checked;
+  }
+
+  async _onMayReplaceMetricsKeysChange(checked) {
+    // A policy for the whole project, not a spacing parameter, so it is held
+    // at font level rather than beside the per-source numbers.
+    this.mayReplaceMetricsKeys = checked;
+    if (!this._suppressPersist) {
+      await this.persistMayReplaceMetricsKeys(checked);
+    }
+  }
+
   async setAlgorithmEnabled(enabled) {
     const nextValue = !!enabled;
     if (this.algorithmEnabled === nextValue) {
@@ -363,68 +496,15 @@ export default class LetterspacerPanel extends Panel {
       if (this.algorithmEnabled) {
         formContents.push(
           {
-            type: "edit-number",
-            key: "area",
-            label: translate("sidebar.letterspacer.area"),
-            value: this.params.area,
-          },
-
-          {
-            type: "edit-number",
-            key: "depth",
-            label: translate("sidebar.letterspacer.depth"),
-            value: this.params.depth,
-          },
-
-          {
-            type: "edit-number",
-            key: "overshoot",
-            label: translate("sidebar.letterspacer.overshoot"),
-            value: this.params.overshoot,
+            type: "single-icon",
+            element: this._buildAreaDepthOvershootRow(),
           },
 
           { type: "divider" },
 
           {
-            type: "edit-number",
-            key: "applyLSB",
-            label: translate("sidebar.letterspacer.apply-lsb"),
-            value: this.params.applyLSB ? 1 : 0,
-            minValue: 0,
-            maxValue: 1,
-            integer: true,
-          },
-
-          {
-            type: "edit-number",
-            key: "applyRSB",
-            label: translate("sidebar.letterspacer.apply-rsb"),
-            value: this.params.applyRSB ? 1 : 0,
-            minValue: 0,
-            maxValue: 1,
-            integer: true,
-          },
-
-          {
-            "type": "edit-number",
-            "key": "mayReplaceMetricsKeys",
-            "label": translate("sidebar.letterspacer.may-replace-metrics-keys"),
-            "data-tooltip": translate(
-              "sidebar.letterspacer.may-replace-metrics-keys.tooltip"
-            ),
-            "value": this.mayReplaceMetricsKeys ? 1 : 0,
-            "minValue": 0,
-            "maxValue": 1,
-            "integer": true,
-          },
-
-          { type: "divider" },
-
-          {
-            type: "edit-text",
-            key: "referenceGlyph",
-            label: translate("sidebar.letterspacer.reference"),
-            value: this.params.referenceGlyph,
+            type: "single-icon",
+            element: this._buildApplyRow(),
           },
 
           { type: "divider" },
@@ -496,38 +576,6 @@ export default class LetterspacerPanel extends Panel {
           this.bulkSubsets[fieldItem.key.slice("bulkSubset.".length)] = !!value;
           return;
         }
-        if (fieldItem.key === "mayReplaceMetricsKeys") {
-          // A policy for the whole project, not a spacing parameter, so it is
-          // held at font level rather than beside the per-source numbers.
-          this.mayReplaceMetricsKeys = !!value;
-          if (!this._suppressPersist) {
-            await this.persistMayReplaceMetricsKeys(value);
-          }
-          return;
-        }
-        if (this._suppressPersist) {
-          this.params[fieldItem.key] = value;
-          return;
-        }
-        if (!this.algorithmEnabled) {
-          return;
-        }
-        this.params[fieldItem.key] = value;
-        await this.persistParam(fieldItem.key, value);
-
-        if (
-          fieldItem.key === "area" ||
-          fieldItem.key === "depth" ||
-          fieldItem.key === "overshoot" ||
-          fieldItem.key === "referenceGlyph"
-        ) {
-          this.calculatedLSB = null;
-          this.calculatedRSB = null;
-          this.clearVisualizationData();
-        }
-
-        // Update value display without rebuilding the form
-        this.updateValueDisplay();
       };
 
       if (this.algorithmEnabled) {

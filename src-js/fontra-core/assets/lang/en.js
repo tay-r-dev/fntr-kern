@@ -543,9 +543,9 @@ export const strings = {
   "sidebar.letterspacer.area": "Area",
   "sidebar.letterspacer.depth": "Depth",
   "sidebar.letterspacer.overshoot": "Overshoot",
-  "sidebar.letterspacer.apply-lsb": "Apply LSB",
-  "sidebar.letterspacer.apply-rsb": "Apply RSB",
-  "sidebar.letterspacer.may-replace-metrics-keys": "Replace keys",
+  "sidebar.letterspacer.apply-lsb": "Left",
+  "sidebar.letterspacer.apply-rsb": "Right",
+  "sidebar.letterspacer.may-replace-metrics-keys": "Override variables",
   "sidebar.letterspacer.may-replace-metrics-keys.tooltip":
     "Apply may overwrite a sidebearing that has a metrics key, and delete the key",
   "sidebar.letterspacer.metrics-key-held.both":
