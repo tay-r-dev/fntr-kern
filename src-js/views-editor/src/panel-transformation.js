@@ -27,6 +27,7 @@ import {
 import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 38
+import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 42
 import { Form } from "@fontra/web-components/ui-form.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import {
@@ -638,18 +639,37 @@ export default class TransformationPanel {
       value: applicationSettingsController.model.harmonizeG3,
     });
 
-    formContents.push({
-      type: "edit-number-slider",
-      key: "harmonizeMethod",
-      label: translate("sidebar.selection-transformation.harmonize.method"),
-      value: applicationSettingsController.model.harmonizeMethod,
-      minValue: 1,
-      maxValue: 3,
-      // The slider reads this back on a reset gesture, and it must be a number.
-      defaultValue: 2,
-      values: [1, 2, 3],
-      // G3 has one construction, so there is nothing for the slider to say.
+    // Ticket 42: a segmented control -- preserve, recompute, move on-curve --
+    // in place of the three-position slider. One press draws one answer, so
+    // there is no mid-gesture state to preserve and no separate name-element
+    // row is needed; the lit segment already says which position is active.
+    this.harmonizeMethodControl = html.createDomElement("segmented-control", {
+      options: [1, 2, 3].map((method) => ({
+        value: method,
+        label: translate(
+          `sidebar.selection-transformation.harmonize.method.${method}.short`
+        ),
+      })),
+      value: applicationSettingsController.model.harmonizeG3
+        ? 2
+        : applicationSettingsController.model.harmonizeMethod,
+      // G3 has one construction, so there is nothing for the control to say.
       disabled: !!applicationSettingsController.model.harmonizeG3,
+    });
+    this.harmonizeMethodControl.addEventListener("change", (event) => {
+      applicationSettingsController.model.harmonizeMethod = event.detail.value;
+    });
+    formContents.push({
+      type: "universal-row",
+      field1: {
+        type: "text",
+        value: translate("sidebar.selection-transformation.harmonize.method"),
+      },
+      field2: {
+        type: "auxiliaryElement",
+        auxiliaryElement: this.harmonizeMethodControl,
+      },
+      field3: {},
     });
 
     formContents.push({
@@ -657,25 +677,6 @@ export default class TransformationPanel {
       key: "harmonizeEqualize",
       label: translate("sidebar.selection-transformation.harmonize.equalize"),
       value: applicationSettingsController.model.harmonizeEqualize,
-    });
-
-    // The name of the position, held as an element rather than a form value.
-    // Rebuilding the whole form to redraw one word replaces the slider under
-    // the pointer, and a slider replaced mid-gesture goes back to the value it
-    // was built with.
-    formContents.push({
-      type: "universal-row",
-      field1: {},
-      field2: {
-        type: "auxiliaryElement",
-        auxiliaryElement: (this.harmonizeMethodNameElement = html.span(
-          { class: "harmonize-report" },
-          // The form is being rebuilt, so the slider on screen is the previous
-          // one. The stored setting is what the new slider is about to show.
-          [harmonizeMethodName(applicationSettingsController.model.harmonizeMethod)]
-        )),
-      },
-      field3: {},
     });
 
     formContents.push({
@@ -732,22 +733,14 @@ export default class TransformationPanel {
       if (
         [
           "harmonizeG3",
-          "harmonizeMethod",
           "harmonizeEqualize",
           "harmonizeOtherSources",
           "slideBothTensionPoints",
         ].includes(fieldItem.key)
       ) {
-        applicationSettingsController.model[fieldItem.key] =
-          fieldItem.key === "harmonizeMethod" ? Math.round(Number(value)) : value;
-        if (this.harmonizeMethodNameElement) {
-          this.harmonizeMethodNameElement.innerText = harmonizeMethodName(
-            this.harmonizeMethodOnScreen()
-          );
-        }
-        // G3 greys the slider out, which is a property of the field and only
-        // the rebuild can change it. The position is not: its name is written
-        // straight into the row above.
+        applicationSettingsController.model[fieldItem.key] = value;
+        // G3 greys the segmented control out, which is a property of the
+        // control and only the rebuild can change it.
         if (fieldItem.key === "harmonizeG3") {
           this.update();
           return;
@@ -788,15 +781,13 @@ export default class TransformationPanel {
     );
   }
 
-  // The position the slider is actually showing. Falls back to the stored
-  // setting where the form has not been built yet, which is how a keyboard
-  // shortcut reaches this before the panel is ever opened.
+  // The position the segmented control is actually showing. Falls back to
+  // the stored setting where the panel has not been built yet, which is how
+  // a keyboard shortcut reaches this before the panel is ever opened.
   harmonizeMethodOnScreen() {
-    if (this.infoForm?.hasKey?.("harmonizeMethod")) {
-      const shown = Math.round(Number(this.infoForm.getValue("harmonizeMethod")));
-      if (shown >= 1 && shown <= 3) {
-        return shown;
-      }
+    const shown = this.harmonizeMethodControl?.value;
+    if (shown >= 1 && shown <= 3) {
+      return shown;
     }
     return applicationSettingsController.model.harmonizeMethod;
   }
@@ -1571,11 +1562,4 @@ function formatHarmonizeReport(reports) {
   return rows
     .map(([layerName, report]) => `${layerName}: ${summarizeHarmonizeReport(report)}`)
     .join(" · ");
-}
-
-// The name of the harmonize position the panel is set to. Under G3 there is one
-// construction and the slider is greyed out, so the row names that one.
-function harmonizeMethodName(method) {
-  const position = applicationSettingsController.model.harmonizeG3 ? 2 : method;
-  return translate(`sidebar.selection-transformation.harmonize.method.${position}`);
 }

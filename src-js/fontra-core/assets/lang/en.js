@@ -778,6 +778,9 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.method.1": "Preserve curvature",
   "sidebar.selection-transformation.harmonize.method.2": "Recompute curvature",
   "sidebar.selection-transformation.harmonize.method.3": "Recompute, move the on-curve",
+  "sidebar.selection-transformation.harmonize.method.1.short": "Preserve",
+  "sidebar.selection-transformation.harmonize.method.2.short": "Recompute",
+  "sidebar.selection-transformation.harmonize.method.3.short": "Move on-curve",
   "sidebar.selection-transformation.harmonize.other-sources": "Other sources",
   "sidebar.selection-transformation.harmonize.reason.already-harmonic":
     "already harmonic",
