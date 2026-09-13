@@ -38,13 +38,6 @@ import {
   makeSkeletonPointTargetEntry,
 } from "./skeleton-editing.js";
 
-// Marks an edit as this panel's own, the same way skeleton-panel-edits.js's
-// SKELETON_PANEL_SENDER does: our own commits reach the glyph-change
-// listener below too (font-controller.js's glyphChanged fires on every
-// edit, ours included), and only an edit that did NOT come from here --
-// undo, redo, a canvas edit -- should reset Move/Scale/Rotate/Skew.
-const TRANSFORM_PANEL_SENDER = { senderID: "panel-transformation" };
-
 // Composed into panel-selection.js's Selection panel, not registered as its
 // own sidebar panel (see ticket 05: merge into one "Selection" tab).
 export default class TransformationPanel {
@@ -159,6 +152,9 @@ export default class TransformationPanel {
       dimensionWidth: null,
       dimensionHeight: null,
     };
+    // What these fields held at the last apply. It is the "before" half of the
+    // next apply's undo record, so undo steps back through the values used.
+    this._committedTransformValues = null;
 
     this.registerActions();
 
@@ -188,51 +184,87 @@ export default class TransformationPanel {
     );
     this.sceneController.addCurrentGlyphChangeListener((event) => {
       this.updateDimensions();
-      // font-controller.js's glyphChanged fires on every edit reaching this
-      // glyph, including our OWN commits from a scrub or an Enter-apply --
-      // those must leave the field showing what was just used, so a second
-      // drag continues from it. Only an edit that did NOT come from this
-      // panel -- undo, redo, a canvas edit -- resets: the amount just
-      // undone (or overtaken by an unrelated edit) no longer describes what
-      // a further scrub would do from here.
-      if (event?.senderID !== TRANSFORM_PANEL_SENDER) {
-        this._resetRelativeTransformFields();
-      }
     });
+    // Each apply stores what these fields held before it and after it, in its
+    // own undo record (scene-controller.js passes an edit's undoInfo through).
+    // Undo and redo hand that record back here, so stepping back through a run
+    // of transforms walks the fields back through the same values -- the way
+    // undo already restores the selection and the grid-snap flag.
+    this.sceneController.sceneSettingsController.addKeyListener(
+      "lastUndoRedoInfo",
+      (event) => {
+        const info = event.newValue;
+        // A redo record is the reversed undo record, so the pair of stored
+        // value sets is read from the other end. The keys themselves are not
+        // swapped: only the selection is, and that is upstream's business.
+        const values = (info?.isRedo ? info?.redoPanelValues : info?.undoPanelValues)
+          ?.transform;
+        if (values) {
+          this._setRelativeTransformValues(values);
+        }
+      }
+    );
+  }
+
+  // The seven numbers Move/Scale/Rotate/Skew hold. One place, so the reset, the
+  // undo record and the restore below cannot drift apart.
+  // Each one: the neutral value it resets to, and the field that shows it.
+  static RELATIVE_TRANSFORM_FIELDS = {
+    moveX: { neutral: 0, field: "moveXField" },
+    moveY: { neutral: 0, field: "moveYField" },
+    rotation: { neutral: 0, field: "rotateField" },
+    scaleX: { neutral: 100, field: "scaleXField" },
+    scaleY: { neutral: undefined, field: "scaleYField" },
+    skewX: { neutral: 0, field: "skewXField" },
+    skewY: { neutral: 0, field: "skewYField" },
+  };
+
+  // What the fields hold right now, for the undo record.
+  _relativeTransformValues() {
+    const values = {};
+    for (const name of Object.keys(TransformationPanel.RELATIVE_TRANSFORM_FIELDS)) {
+      values[name] = this.transformParameters[name];
+    }
+    return values;
+  }
+
+  // Put a set of values back, into both the model and the fields on screen.
+  _setRelativeTransformValues(values) {
+    for (const [name, { field }] of Object.entries(
+      TransformationPanel.RELATIVE_TRANSFORM_FIELDS
+    )) {
+      const value = values[name];
+      this.transformParameters[name] = value;
+      if (this[field]) {
+        this[field].value = value;
+      }
+    }
+  }
+
+  // The panel state one apply stores in its own undo record: the values in use
+  // before it, and the ones it applied. Undo restores the first, redo the
+  // second; the undo path says which way it went.
+  _transformUndoInfo() {
+    const after = this._relativeTransformValues();
+    const before = this._committedTransformValues || after;
+    this._committedTransformValues = after;
+    return {
+      undoPanelValues: { transform: before },
+      redoPanelValues: { transform: after },
+    };
   }
 
   // Move/Scale/Rotate/Skew hold "by" amounts for the NEXT transform, not a
   // stored property. Dimensions is excluded: it already always shows the
   // SELECTION's actual size via updateDimensions, not a "by" amount.
   _resetRelativeTransformFields() {
-    this.transformParameters.moveX = 0;
-    this.transformParameters.moveY = 0;
-    this.transformParameters.rotation = 0;
-    this.transformParameters.scaleX = 100;
-    this.transformParameters.scaleY = undefined;
-    this.transformParameters.skewX = 0;
-    this.transformParameters.skewY = 0;
-    if (this.moveXField) {
-      this.moveXField.value = 0;
+    const neutral = {};
+    for (const [name, { neutral: value }] of Object.entries(
+      TransformationPanel.RELATIVE_TRANSFORM_FIELDS
+    )) {
+      neutral[name] = value;
     }
-    if (this.moveYField) {
-      this.moveYField.value = 0;
-    }
-    if (this.rotateField) {
-      this.rotateField.value = 0;
-    }
-    if (this.scaleXField) {
-      this.scaleXField.value = 100;
-    }
-    if (this.scaleYField) {
-      this.scaleYField.value = undefined;
-    }
-    if (this.skewXField) {
-      this.skewXField.value = 0;
-    }
-    if (this.skewYField) {
-      this.skewYField.value = 0;
-    }
+    this._setRelativeTransformValues(neutral);
   }
 
   registerActions() {
@@ -1221,8 +1253,9 @@ export default class TransformationPanel {
         changes: changes,
         undoLabel: undoLabel,
         broadcast: true,
+        ...this._transformUndoInfo(),
       };
-    }, TRANSFORM_PANEL_SENDER);
+    });
     return true;
   }
 
@@ -1404,8 +1437,13 @@ export default class TransformationPanel {
       }
       await sendIncrementalChange(lastCollector.change);
       committed = true;
-      return { changes: lastCollector, undoLabel, broadcast: true };
-    }, TRANSFORM_PANEL_SENDER);
+      return {
+        changes: lastCollector,
+        undoLabel,
+        broadcast: true,
+        ...this._transformUndoInfo(),
+      };
+    });
     return committed;
   }
 
@@ -1605,7 +1643,7 @@ export default class TransformationPanel {
         undoLabel: moveDescriptor.undoLabel,
         broadcast: true,
       };
-    }, TRANSFORM_PANEL_SENDER);
+    });
   }
 
   async toggle(on, focus) {

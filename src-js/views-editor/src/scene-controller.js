@@ -205,6 +205,9 @@ export class SceneController {
       ...getSceneSettingsDefaults(),
       // fork: extra scene setting for coarse-grid snapping
       gridSnapEnabled: true, // Default to enabled
+      // fork: the undo record just applied, so a panel can restore the state it
+      // stored with that edit. Set by doUndoRedo, read through a key listener.
+      lastUndoRedoInfo: null,
     });
     this.sceneSettings = this.sceneSettingsController.model;
 
@@ -2003,7 +2006,11 @@ export class SceneController {
       throw error;
     }
 
-    let { changes, undoLabel, broadcast } = result || {};
+    let { changes, undoLabel, broadcast, undoInfo: editUndoInfo } = result || {};
+    // An edit may carry its own state into the undo record: anything a panel
+    // has to restore alongside the geometry, the way the selection and the
+    // grid-snap flag already are. Undo and redo hand it back through
+    // sceneSettings.lastUndoRedoInfo below.
 
     if (markerChanges?.hasChange) {
       changes = markerChanges.concat(changes);
@@ -2015,6 +2022,7 @@ export class SceneController {
 
     if (changes && changes.hasChange) {
       const undoInfo = {
+        ...editUndoInfo,
         label: undoLabel,
         undoSelection: initialSelection,
         redoSelection: this.selection,
@@ -2125,6 +2133,7 @@ export class SceneController {
           this.sceneSettings.gridSnapEnabled = undoInfo.gridSnapEnabled;
         }
       }
+      this.sceneSettings.lastUndoRedoInfo = { ...undoInfo, isRedo };
       await this.sceneModel.updateScene();
       this.canvasController.requestUpdate();
     }
