@@ -153,6 +153,14 @@ export default class TransformationPanel {
       dimensionHeight: null,
     };
 
+    // True while one of Move/Scale/Rotate/Skew's own fields is streaming a
+    // drag (see transformSelectionStream's "scrubstart" handlers below).
+    // Both listeners just below would otherwise reset these fields to their
+    // neutral defaults mid-drag -- our own live-preview edits fire the same
+    // glyph-change notification undo/redo does -- fighting the hand doing
+    // the scrubbing.
+    this._streamingFieldEdit = false;
+
     this.registerActions();
 
     this.sceneController.sceneSettingsController.addKeyListener(
@@ -168,11 +176,61 @@ export default class TransformationPanel {
         // the moment the selection moves
         this.setHarmonizeReport("");
         this.updateDimensions();
+        // Move/Scale/Rotate/Skew are "by" amounts for the NEXT transform, not
+        // a property of the selection -- a leftover number from an earlier
+        // selection has nothing to do with this one.
+        if (!this._streamingFieldEdit) {
+          this._resetRelativeTransformFields();
+        }
       }
     );
     this.sceneController.addCurrentGlyphChangeListener((event) => {
       this.updateDimensions();
+      // Undo/redo (and any other edit reaching this glyph) lands here too
+      // (font-controller.js's applyChange/glyphChanged): the amount just
+      // applied, or just undone, is spent either way, so the field goes back
+      // to neutral rather than keep showing a number that no longer
+      // describes what a further scrub would do from here.
+      if (!this._streamingFieldEdit) {
+        this._resetRelativeTransformFields();
+      }
     });
+  }
+
+  // Move/Scale/Rotate/Skew hold "by" amounts for the NEXT transform, not a
+  // stored property, so nothing keeps them at the number they were last
+  // used with once that transform has happened (applied, undone, or the
+  // selection moved on). Dimensions is excluded: it already always shows the
+  // SELECTION's actual size via updateDimensions, not a "by" amount.
+  _resetRelativeTransformFields() {
+    this.transformParameters.moveX = 0;
+    this.transformParameters.moveY = 0;
+    this.transformParameters.rotation = 0;
+    this.transformParameters.scaleX = 100;
+    this.transformParameters.scaleY = undefined;
+    this.transformParameters.skewX = 0;
+    this.transformParameters.skewY = 0;
+    if (this.moveXField) {
+      this.moveXField.value = 0;
+    }
+    if (this.moveYField) {
+      this.moveYField.value = 0;
+    }
+    if (this.rotateField) {
+      this.rotateField.value = 0;
+    }
+    if (this.scaleXField) {
+      this.scaleXField.value = 100;
+    }
+    if (this.scaleYField) {
+      this.scaleYField.value = undefined;
+    }
+    if (this.skewXField) {
+      this.skewXField.value = 0;
+    }
+    if (this.skewYField) {
+      this.skewYField.value = 0;
+    }
   }
 
   registerActions() {
@@ -240,6 +298,12 @@ export default class TransformationPanel {
     makeTransformationForX,
     makeTransformationForY,
     undoLabel,
+    // [defaultX, defaultY] to revert to once a drag or Enter actually
+    // applies -- these fields hold a "by" amount for the NEXT transform, not
+    // a stored property, so nothing should keep showing the number just
+    // spent. Omit for a row (Dimensions) whose fields already always show
+    // the selection's own current size instead of a pending amount.
+    resetDefaults,
   }) {
     const fieldX = html.createDomElement("compact-scrub-field", {
       label: "X",
@@ -255,24 +319,52 @@ export default class TransformationPanel {
       iconTooltip: tooltip,
       step,
     });
+    const resetRow = () => {
+      if (!resetDefaults) {
+        return;
+      }
+      const [defaultX, defaultY] = resetDefaults;
+      onChangeX(defaultX);
+      fieldX.value = defaultX;
+      onChangeY(defaultY);
+      fieldY.value = defaultY;
+    };
     fieldX.addEventListener("change", (event) => onChangeX(event.detail.value));
     fieldY.addEventListener("change", (event) => onChangeY(event.detail.value));
-    fieldX.addEventListener("apply", () => onApply());
-    fieldY.addEventListener("apply", () => onApply());
-    fieldX.addEventListener("scrubstart", (event) =>
-      this.transformSelectionStream(
+    fieldX.addEventListener("apply", async () => {
+      if (await onApply()) {
+        resetRow();
+      }
+    });
+    fieldY.addEventListener("apply", async () => {
+      if (await onApply()) {
+        resetRow();
+      }
+    });
+    fieldX.addEventListener("scrubstart", async (event) => {
+      this._streamingFieldEdit = true;
+      const committed = await this.transformSelectionStream(
         event.detail.valueStream,
         makeTransformationForX,
         undoLabel
-      )
-    );
-    fieldY.addEventListener("scrubstart", (event) =>
-      this.transformSelectionStream(
+      );
+      this._streamingFieldEdit = false;
+      if (committed) {
+        resetRow();
+      }
+    });
+    fieldY.addEventListener("scrubstart", async (event) => {
+      this._streamingFieldEdit = true;
+      const committed = await this.transformSelectionStream(
         event.detail.valueStream,
         makeTransformationForY,
         undoLabel
-      )
-    );
+      );
+      this._streamingFieldEdit = false;
+      if (committed) {
+        resetRow();
+      }
+    });
     return {
       fieldX,
       fieldY,
@@ -350,7 +442,11 @@ export default class TransformationPanel {
 
     formContents.push({ type: "divider" });
 
-    const { row: moveRow } = this._buildScrubXYRow({
+    const {
+      row: moveRow,
+      fieldX: moveXField,
+      fieldY: moveYField,
+    } = this._buildScrubXYRow({
       label: translate("sidebar.selection-transformation.move"),
       icon: "/tabler-icons/arrow-move-right.svg",
       tooltip: translate("sidebar.selection-transformation.move"),
@@ -372,10 +468,17 @@ export default class TransformationPanel {
       makeTransformationForY: (y) => () =>
         new Transform().translate(this.transformParameters.moveX, y),
       undoLabel: "move",
+      resetDefaults: [0, 0],
     });
+    this.moveXField = moveXField;
+    this.moveYField = moveYField;
     formContents.push(moveRow);
 
-    const { row: scaleRow } = this._buildScrubXYRow({
+    const {
+      row: scaleRow,
+      fieldX: scaleXField,
+      fieldY: scaleYField,
+    } = this._buildScrubXYRow({
       label: translate("sidebar.selection-transformation.scale"),
       icon: "/tabler-icons/resize.svg",
       tooltip: translate("sidebar.selection-transformation.scale"),
@@ -402,7 +505,10 @@ export default class TransformationPanel {
       makeTransformationForY: (y) => () =>
         new Transform().scale(this.transformParameters.scaleX / 100, y / 100),
       undoLabel: "scale",
+      resetDefaults: [100, undefined],
     });
+    this.scaleXField = scaleXField;
+    this.scaleYField = scaleYField;
     formContents.push(scaleRow);
 
     const rotateField = html.createDomElement("compact-scrub-field", {
@@ -418,18 +524,35 @@ export default class TransformationPanel {
           new Transform().rotate((this.transformParameters.rotation * Math.PI) / 180),
         "rotate"
       );
+    // Rotate is a "by" amount for the next transform, not a stored property
+    // (same reasoning as Move/Scale/Skew's resetDefaults): once a rotation
+    // actually happens, the field goes back to 0.
+    const resetRotate = () => {
+      this.transformParameters.rotation = 0;
+      rotateField.value = 0;
+    };
     rotateField.addEventListener(
       "change",
       (event) => (this.transformParameters.rotation = event.detail.value)
     );
-    rotateField.addEventListener("apply", applyRotate);
-    rotateField.addEventListener("scrubstart", (event) =>
-      this.transformSelectionStream(
+    rotateField.addEventListener("apply", async () => {
+      if (await applyRotate()) {
+        resetRotate();
+      }
+    });
+    rotateField.addEventListener("scrubstart", async (event) => {
+      this._streamingFieldEdit = true;
+      const committed = await this.transformSelectionStream(
         event.detail.valueStream,
         (rotation) => () => new Transform().rotate((rotation * Math.PI) / 180),
         "rotate"
-      )
-    );
+      );
+      this._streamingFieldEdit = false;
+      if (committed) {
+        resetRotate();
+      }
+    });
+    this.rotateField = rotateField;
     formContents.push({
       type: "universal-row",
       field1: {
@@ -440,7 +563,11 @@ export default class TransformationPanel {
       field3: {},
     });
 
-    const { row: skewRow } = this._buildScrubXYRow({
+    const {
+      row: skewRow,
+      fieldX: skewXField,
+      fieldY: skewYField,
+    } = this._buildScrubXYRow({
       label: translate("sidebar.selection-transformation.skew"),
       icon: "/images/skew.svg",
       tooltip: translate("sidebar.selection-transformation.skew"),
@@ -468,7 +595,10 @@ export default class TransformationPanel {
           (y * Math.PI) / 180
         ),
       undoLabel: "skew",
+      resetDefaults: [0, 0],
     });
+    this.skewXField = skewXField;
+    this.skewYField = skewYField;
     formContents.push(skewRow);
 
     // A straight running exactly across the axis being scaled stands still by
@@ -1053,7 +1183,7 @@ export default class TransformationPanel {
       !backgroundImageIndices.length &&
       !skeletonPointKeys.length
     ) {
-      return;
+      return false;
     }
 
     const glyphController =
@@ -1139,6 +1269,7 @@ export default class TransformationPanel {
         broadcast: true,
       };
     });
+    return true;
   }
 
   // Live-preview version of transformSelection: opens ONE editGlyph edit for
@@ -1181,13 +1312,21 @@ export default class TransformationPanel {
       // selected to move.
       for await (const _ of valueStream) {
       }
-      return;
+      return false;
     }
 
     const glyphController =
       await this.sceneController.sceneModel.getSelectedStaticGlyphController();
     const staticGlyphControllers =
       await this.sceneController.getStaticGlyphControllers();
+
+    // Set from inside the editGlyph callback, on the one path that actually
+    // commits a change -- a caller uses this to tell "the drag applied
+    // something" from "it was cancelled, or never moved," so it only resets
+    // a row's fields back to their neutral, next-drag-starts-here defaults
+    // after a real apply, never after an abandoned gesture (which already
+    // put the field itself back to its pre-drag number).
+    let committed = false;
 
     await this.sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
       const editingLayers = this.sceneController.getEditingLayerFromGlyphLayers(
@@ -1310,8 +1449,10 @@ export default class TransformationPanel {
         lastCollector = applyValue(lastValue);
       }
       await sendIncrementalChange(lastCollector.change);
+      committed = true;
       return { changes: lastCollector, undoLabel, broadcast: true };
     });
+    return committed;
   }
 
   _changeOrigin(keyX, keyY) {
