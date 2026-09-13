@@ -353,7 +353,10 @@ export default class DesignspaceNavigationPanel extends Panel {
 
       .designspace-visual-heading {
         font-weight: bold;
-        margin: 0.5em 0;
+        /* The flex column's own 0.5em gap already spaces this from its
+           neighbours; a margin here on top of that gap was doubling the
+           distance from the Designspace group above it. */
+        margin: 0;
       }
 
       /* Two ui-accordion elements now share this column (Designspace group,
