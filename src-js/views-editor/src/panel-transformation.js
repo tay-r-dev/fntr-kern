@@ -26,6 +26,7 @@ import {
 } from "@fontra/core/utils.ts";
 import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
+import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 38
 import { Form } from "@fontra/web-components/ui-form.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import {
@@ -180,6 +181,53 @@ export default class TransformationPanel {
     }
   }
 
+  // Ticket 38: Move/Scale/Skew/Dimensions each become one universal-row of
+  // two compact-scrub fields, the row's own icon-button folded into the X
+  // field instead of sitting beside both as a separate label. Built as a
+  // plain auxiliaryElement row -- like Flip/Align below -- rather than
+  // through the Form's edit-number-x-y field type, so scrubbing only ever
+  // edits transformParameters (never applies mid-drag) and "apply" (the
+  // icon, or Enter in either field) is the one place that calls the
+  // transform, same as the plain icon-button's onclick did before.
+  _buildScrubXYRow({
+    icon,
+    tooltip,
+    valueX,
+    valueY,
+    step,
+    onChangeX,
+    onChangeY,
+    onApply,
+  }) {
+    const stepProps = step != null ? { step } : {};
+    const fieldX = html.createDomElement("compact-scrub-field", {
+      label: "X",
+      value: valueX,
+      icon,
+      iconTooltip: tooltip,
+      ...stepProps,
+    });
+    const fieldY = html.createDomElement("compact-scrub-field", {
+      label: "Y",
+      value: valueY,
+      ...stepProps,
+    });
+    fieldX.addEventListener("change", (event) => onChangeX(event.detail.value));
+    fieldY.addEventListener("change", (event) => onChangeY(event.detail.value));
+    fieldX.addEventListener("apply", () => onApply());
+    fieldY.addEventListener("apply", () => onApply());
+    return {
+      fieldX,
+      fieldY,
+      row: {
+        type: "universal-row",
+        field1: { type: "auxiliaryElement", auxiliaryElement: fieldX },
+        field2: { type: "auxiliaryElement", auxiliaryElement: fieldY },
+        field3: {},
+      },
+    };
+  }
+
   async update(senderInfo) {
     if (!this.infoForm.contentElement.offsetParent) {
       // If the info form is not visible, do nothing
@@ -245,9 +293,14 @@ export default class TransformationPanel {
 
     formContents.push({ type: "divider" });
 
-    const buttonMove = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/arrow-move-right.svg",
-      "onclick": (event) =>
+    const { row: moveRow } = this._buildScrubXYRow({
+      icon: "/tabler-icons/arrow-move-right.svg",
+      tooltip: translate("sidebar.selection-transformation.move"),
+      valueX: this.transformParameters.moveX,
+      valueY: this.transformParameters.moveY,
+      onChangeX: (value) => (this.transformParameters.moveX = value),
+      onChangeY: (value) => (this.transformParameters.moveY = value),
+      onApply: () =>
         this.transformSelection(
           () =>
             new Transform().translate(
@@ -256,30 +309,17 @@ export default class TransformationPanel {
             ),
           "move"
         ),
-      "class": "ui-form-icon ui-form-icon-button",
-      "data-tooltip": translate("sidebar.selection-transformation.move"),
-      "data-tooltipposition": "top",
     });
+    formContents.push(moveRow);
 
-    formContents.push({
-      type: "edit-number-x-y",
-      label: buttonMove,
-      fieldX: {
-        key: "moveX",
-        value: this.transformParameters.moveX,
-      },
-      fieldY: {
-        key: "moveY",
-        value: this.transformParameters.moveY,
-      },
-      onEnterKey: (event) => {
-        buttonMove.click();
-      },
-    });
-
-    const buttonScale = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/resize.svg",
-      "onclick": (event) =>
+    const { row: scaleRow } = this._buildScrubXYRow({
+      icon: "/tabler-icons/resize.svg",
+      tooltip: translate("sidebar.selection-transformation.scale"),
+      valueX: this.transformParameters.scaleX,
+      valueY: this.transformParameters.scaleY,
+      onChangeX: (value) => (this.transformParameters.scaleX = value),
+      onChangeY: (value) => (this.transformParameters.scaleY = value),
+      onApply: () =>
         this.transformSelection(
           () =>
             new Transform().scale(
@@ -290,55 +330,41 @@ export default class TransformationPanel {
             ),
           "scale"
         ),
-      "class": "ui-form-icon ui-form-icon-button",
-      "data-tooltip": translate("sidebar.selection-transformation.scale"),
-      "data-tooltipposition": "top",
     });
+    formContents.push(scaleRow);
 
-    formContents.push({
-      type: "edit-number-x-y",
-      label: buttonScale,
-      fieldX: {
-        key: "scaleX",
-        id: "selection-transformation-scaleX",
-        value: this.transformParameters.scaleX,
-      },
-      fieldY: {
-        key: "scaleY",
-        id: "selection-transformation-scaleY",
-        value: this.transformParameters.scaleY,
-      },
-      onEnterKey: (event) => {
-        buttonScale.click();
-      },
-    });
-
-    const buttonRotate = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/rotate.svg",
-      "onclick": (event) =>
-        this.transformSelection(
-          () =>
-            new Transform().rotate((this.transformParameters.rotation * Math.PI) / 180),
-          "rotate"
-        ),
-      "class": "ui-form-icon ui-form-icon-button",
-      "data-tooltip": translate("sidebar.selection-transformation.rotate"),
-      "data-tooltipposition": "top",
-    });
-
-    formContents.push({
-      type: "edit-number",
-      key: "rotation",
-      label: buttonRotate,
+    const rotateField = html.createDomElement("compact-scrub-field", {
+      label: translate("sidebar.selection-transformation.rotate"),
       value: this.transformParameters.rotation,
-      onEnterKey: (event) => {
-        buttonRotate.click();
-      },
+      icon: "/tabler-icons/rotate.svg",
+      iconTooltip: translate("sidebar.selection-transformation.rotate"),
+    });
+    const applyRotate = () =>
+      this.transformSelection(
+        () =>
+          new Transform().rotate((this.transformParameters.rotation * Math.PI) / 180),
+        "rotate"
+      );
+    rotateField.addEventListener(
+      "change",
+      (event) => (this.transformParameters.rotation = event.detail.value)
+    );
+    rotateField.addEventListener("apply", applyRotate);
+    formContents.push({
+      type: "universal-row",
+      field1: { type: "auxiliaryElement", auxiliaryElement: rotateField },
+      field2: {},
+      field3: {},
     });
 
-    const buttonSkew = html.createDomElement("icon-button", {
-      "src": "/images/skew.svg",
-      "onclick": (event) =>
+    const { row: skewRow } = this._buildScrubXYRow({
+      icon: "/images/skew.svg",
+      tooltip: translate("sidebar.selection-transformation.skew"),
+      valueX: this.transformParameters.skewX,
+      valueY: this.transformParameters.skewY,
+      onChangeX: (value) => (this.transformParameters.skewX = value),
+      onChangeY: (value) => (this.transformParameters.skewY = value),
+      onApply: () =>
         this.transformSelection(
           () =>
             new Transform().skew(
@@ -347,29 +373,8 @@ export default class TransformationPanel {
             ),
           "skew"
         ),
-      "class": "ui-form-icon ui-form-icon-button",
-      "data-tooltip": translate("sidebar.selection-transformation.skew"),
-      "data-tooltipposition": "top",
     });
-
-    formContents.push({
-      type: "edit-number-x-y",
-      key: '["selectionTransformationSkew"]',
-      label: buttonSkew,
-      fieldX: {
-        key: "skewX",
-        id: "selection-transformation-skewX",
-        value: this.transformParameters.skewX,
-      },
-      fieldY: {
-        key: "skewY",
-        id: "selection-transformation-skewY",
-        value: this.transformParameters.skewY,
-      },
-      onEnterKey: (event) => {
-        buttonSkew.click();
-      },
-    });
+    formContents.push(skewRow);
 
     // A straight running exactly across the axis being scaled stands still by
     // default: travel along it is travel the scale never asked for. On, both of
@@ -384,59 +389,49 @@ export default class TransformationPanel {
 
     formContents.push({ type: "divider" });
 
-    const buttonDimensions = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/dimensions.svg",
-      "onclick": async (event) => {
-        const glyph =
-          await this.sceneController.sceneModel.getSelectedStaticGlyphController();
-        const bounds = glyph?.getSelectionBounds(
-          this.sceneController.selection,
-          this.fontController.getBackgroundImageBoundsFunc
-        );
-        if (!bounds) {
-          return;
-        }
-        const { width, height } = rectSize(bounds);
-        const doScaleX = this.transformParameters.dimensionWidth != width;
-        const doScaleY = this.transformParameters.dimensionHeight != height;
+    const applyDimensions = async () => {
+      const glyph =
+        await this.sceneController.sceneModel.getSelectedStaticGlyphController();
+      const bounds = glyph?.getSelectionBounds(
+        this.sceneController.selection,
+        this.fontController.getBackgroundImageBoundsFunc
+      );
+      if (!bounds) {
+        return;
+      }
+      const { width, height } = rectSize(bounds);
+      const doScaleX = this.transformParameters.dimensionWidth != width;
+      const doScaleY = this.transformParameters.dimensionHeight != height;
 
-        if (doScaleX || doScaleY) {
-          this.transformSelection((selectionBounds) => {
-            const { width, height } = rectSize(selectionBounds);
-            const newWidth = this.transformParameters.dimensionWidth || width;
-            const newHeight = this.transformParameters.dimensionHeight || height;
-            const scaleX = doScaleX ? newWidth / width : 1;
-            const scaleY = doScaleY ? newHeight / height : 1;
+      if (doScaleX || doScaleY) {
+        this.transformSelection((selectionBounds) => {
+          const { width, height } = rectSize(selectionBounds);
+          const newWidth = this.transformParameters.dimensionWidth || width;
+          const newHeight = this.transformParameters.dimensionHeight || height;
+          const scaleX = doScaleX ? newWidth / width : 1;
+          const scaleY = doScaleY ? newHeight / height : 1;
 
-            return new Transform().scale(scaleX, scaleY);
-          }, "set dimensions");
-        }
-      },
-      "class": "ui-form-icon ui-form-icon-button",
-      "data-tooltip": translate("sidebar.selection-info.dimensions"),
-      "data-tooltipposition": "top",
+          return new Transform().scale(scaleX, scaleY);
+        }, "set dimensions");
+      }
+    };
+    const {
+      row: dimensionsRow,
+      fieldX: dimensionWidthField,
+      fieldY: dimensionHeightField,
+    } = this._buildScrubXYRow({
+      icon: "/tabler-icons/dimensions.svg",
+      tooltip: translate("sidebar.selection-info.dimensions"),
+      valueX: this.transformParameters.dimensionWidth,
+      valueY: this.transformParameters.dimensionHeight,
+      step: 0.1,
+      onChangeX: (value) => (this.transformParameters.dimensionWidth = value),
+      onChangeY: (value) => (this.transformParameters.dimensionHeight = value),
+      onApply: applyDimensions,
     });
-
-    formContents.push({
-      type: "edit-number-x-y",
-      key: '["selectionTransformationDimensions"]',
-      label: buttonDimensions,
-      fieldX: {
-        key: "dimensionWidth",
-        id: "selection-transformation-dimension-width",
-        numDigits: 1,
-        value: null,
-      },
-      fieldY: {
-        key: "dimensionHeight",
-        id: "selection-transformation-dimension-height",
-        numDigits: 1,
-        value: null,
-      },
-      onEnterKey: (event) => {
-        buttonDimensions.click();
-      },
-    });
+    this.dimensionWidthField = dimensionWidthField;
+    this.dimensionHeightField = dimensionHeightField;
+    formContents.push(dimensionsRow);
 
     formContents.push({ type: "divider" });
 
@@ -878,9 +873,19 @@ export default class TransformationPanel {
           )
         : null;
 
-    const { width, height } = bounds ? rectSize(bounds) : { width: null, height: null };
-    this.infoForm.setValue("dimensionWidth", width);
-    this.infoForm.setValue("dimensionHeight", height);
+    const { width: rawWidth, height: rawHeight } = bounds
+      ? rectSize(bounds)
+      : { width: null, height: null };
+    // One decimal place, same precision the field showed before it became a
+    // compact-scrub-field (numDigits: 1).
+    const width = rawWidth == null ? null : Math.round(rawWidth * 10) / 10;
+    const height = rawHeight == null ? null : Math.round(rawHeight * 10) / 10;
+    if (this.dimensionWidthField) {
+      this.dimensionWidthField.value = width;
+    }
+    if (this.dimensionHeightField) {
+      this.dimensionHeightField.value = height;
+    }
     this.transformParameters.dimensionWidth = width;
     this.transformParameters.dimensionHeight = height;
   }

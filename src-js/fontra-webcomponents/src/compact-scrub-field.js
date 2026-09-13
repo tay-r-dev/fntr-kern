@@ -8,6 +8,7 @@ import {
   roundScrubValue,
   scrubIncrement,
 } from "@fontra/core/number-scrub.js";
+import "./icon-button.js"; // for <icon-button>, ticket 38's apply icon
 import { InlineSVG } from "./inline-svg.js";
 import { themeColorCSS } from "./theme-support.js";
 
@@ -62,6 +63,13 @@ export class CompactScrubField extends UnlitElement {
       font-size: 0.9em;
     }
 
+    .apply-icon {
+      flex: 0 0 auto;
+      width: 1.1em;
+      height: 1.1em;
+      cursor: pointer;
+    }
+
     .scrub-icon {
       flex: 0 0 auto;
       width: 0.9em;
@@ -99,6 +107,29 @@ export class CompactScrubField extends UnlitElement {
     this._step = undefined;
     this._integer = false;
     this._editing = false;
+    this._icon = undefined;
+    this._iconTooltip = "";
+  }
+
+  // Ticket 38: the transform row's own apply icon, drawn inside the field
+  // rather than as a separate label element. Clicking it, or pressing Enter
+  // while editing the value, dispatches "apply" -- the row applies the
+  // transform on either, same as its plain icon-button did before.
+  get icon() {
+    return this._icon;
+  }
+
+  set icon(value) {
+    this._icon = value || undefined;
+    this.requestUpdate();
+  }
+
+  get iconTooltip() {
+    return this._iconTooltip;
+  }
+
+  set iconTooltip(value) {
+    this._iconTooltip = value || "";
   }
 
   get label() {
@@ -173,9 +204,16 @@ export class CompactScrubField extends UnlitElement {
     };
   }
 
+  // Dimensions (ticket 38) has no selection to show sometimes, and passes
+  // null rather than a number: blank reads better there than the literal
+  // string "null".
+  _displayValue() {
+    return this._value == null ? "" : String(this._value);
+  }
+
   _renderValue() {
     if (this._valueElement && !this._editing) {
-      this._valueElement.textContent = String(this._value);
+      this._valueElement.textContent = this._displayValue();
     }
   }
 
@@ -196,8 +234,21 @@ export class CompactScrubField extends UnlitElement {
         class: "value",
         onclick: () => this._startEdit(),
       },
-      [String(this._value)]
+      [this._displayValue()]
     );
+
+    this._iconElement = this._icon
+      ? html.createDomElement("icon-button", {
+          "src": this._icon,
+          "class": "apply-icon",
+          "data-tooltip": this._iconTooltip || "",
+          "data-tooltipposition": "top",
+          "onclick": (event) => {
+            event.stopPropagation();
+            this.dispatchEvent(new CustomEvent("apply"));
+          },
+        })
+      : undefined;
 
     this._box = html.div(
       {
@@ -205,6 +256,7 @@ export class CompactScrubField extends UnlitElement {
         onpointerdown: (event) => this._onPointerDown(event),
       },
       [
+        ...(this._iconElement ? [this._iconElement] : []),
         this._nameElement,
         html.createDomElement("inline-svg", {
           class: "scrub-icon",
@@ -223,7 +275,7 @@ export class CompactScrubField extends UnlitElement {
     this._editing = true;
     const input = html.createDomElement("input", {
       type: "number",
-      value: String(this._value),
+      value: this._displayValue(),
     });
     if (this._minValue != null) {
       input.min = this._minValue;
@@ -259,7 +311,11 @@ export class CompactScrubField extends UnlitElement {
 
     input.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
+        // .blur() fires the "blur" listener below synchronously, committing
+        // the value, before "apply" goes out -- a row's apply handler always
+        // sees the value just typed, never the one before it.
         input.blur();
+        this.dispatchEvent(new CustomEvent("apply"));
       } else if (event.key === "Escape") {
         finishEdit(false);
       }
@@ -276,6 +332,10 @@ export class CompactScrubField extends UnlitElement {
     }
     if (this._valueElement.contains(event.target)) {
       // Let the click-to-edit handler take it instead.
+      return;
+    }
+    if (this._iconElement?.contains(event.target)) {
+      // Let the icon's own click (apply) handler take it instead.
       return;
     }
     this._box.setPointerCapture(event.pointerId);
