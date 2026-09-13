@@ -146,6 +146,7 @@ import { GlyphCell } from "@fontra/web-components/glyph-cell.js";
 import { GlyphCellView } from "@fontra/web-components/glyph-cell-view.js";
 import { IconButton } from "@fontra/web-components/icon-button.js"; // for <icon-button>, the delete-class control
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 14's Only marked switch
+import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 15
 import { MenuItemDivider, showMenu } from "@fontra/web-components/menu-panel.js";
 import { dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 // Backlog items 9+10 (combined): the exact settings-accordion mechanism
@@ -2511,18 +2512,34 @@ export class KerningViewController extends ViewController {
         });
       }
     };
-    bindCheckboxGroup(
-      [
-        ["#kerning-pairtable-unicode-uppercase", "uppercase"],
-        ["#kerning-pairtable-unicode-lowercase", "lowercase"],
-        ["#kerning-pairtable-unicode-punctuation", "punctuation"],
-        ["#kerning-pairtable-unicode-symbols", "symbols"],
-        ["#kerning-pairtable-unicode-marks", "marks"],
-        ["#kerning-pairtable-unicode-numbers", "numbers"],
-        ["#kerning-pairtable-unicode-non-unicode", "non-unicode"],
-      ],
-      "unicodeTypes"
-    );
+    // Ticket 15 (UI-REFACTOR.md §3.3, UI-NOMENCLATURE.md §14): Unicode types
+    // moves from an always-open fieldset into the shared multi-select
+    // dropdown. Same filter key, same OR-combined semantics -- only the
+    // control changes, not results-model.js's predicates.
+    const unicodeTypeLabels = [
+      ["uppercase", "Uppercase"],
+      ["lowercase", "Lowercase"],
+      ["punctuation", "Punctuation"],
+      ["symbols", "Symbols"],
+      ["marks", "Combining diacritics"],
+      ["numbers", "Numbers"],
+      ["non-unicode", "Non-Unicode glyphs"],
+    ];
+    this._unicodeTypesDropdown = html.createDomElement("multi-select-dropdown", {
+      label: "Unicode types",
+      items: unicodeTypeLabels.map(([value, label]) => ({
+        value,
+        label,
+        checked: filters.unicodeTypes.includes(value),
+      })),
+    });
+    this._unicodeTypesDropdown.addEventListener("change", (event) => {
+      this.autokernFiltersController.setItem("unicodeTypes", event.detail.checked);
+    });
+    document
+      .querySelector("#kerning-pairtable-filter-unicode-slot")
+      .replaceWith(this._unicodeTypesDropdown);
+
     bindCheckboxGroup(
       [
         ["#kerning-pairtable-rel-class-class", "class-class"],
@@ -4166,8 +4183,12 @@ export class KerningViewController extends ViewController {
   }
 
   updateNonUnicodeNote() {
-    const note = document.querySelector("#kerning-pairtable-nonunicode-note");
-    if (note) note.textContent = "";
+    // Ticket 15: the note now lives inside the Unicode types dropdown (a
+    // trailing non-interactive entry, multi-select-dropdown.js's `note`
+    // property) instead of a fieldset sibling span.
+    if (this._unicodeTypesDropdown) {
+      this._unicodeTypesDropdown.note = "";
+    }
   }
 
   handlePreviewPairModifierClick(hitGlyph) {

@@ -161,73 +161,15 @@
                    non-restrictive default. Replaces the old Hide
                    non-standalone/numbers/punctuation checkboxes (Backlog
                    item 3) entirely. -->
-              <fieldset id="kerning-pairtable-unicode-types">
-                <legend>Unicode types</legend>
-                <label
-                  ><input
-                    type="checkbox"
-                    id="kerning-pairtable-unicode-uppercase"
-                    checked
-                  />
-                  Uppercase</label
-                >
-                <label
-                  ><input
-                    type="checkbox"
-                    id="kerning-pairtable-unicode-lowercase"
-                    checked
-                  />
-                  Lowercase</label
-                >
-                <label
-                  ><input
-                    type="checkbox"
-                    id="kerning-pairtable-unicode-punctuation"
-                    checked
-                  />
-                  Punctuation</label
-                >
-                <label
-                  ><input
-                    type="checkbox"
-                    id="kerning-pairtable-unicode-symbols"
-                    checked
-                  />
-                  Symbols</label
-                >
-                <label
-                  ><input
-                    type="checkbox"
-                    id="kerning-pairtable-unicode-marks"
-                    checked
-                  />
-                  Combining diacritics</label
-                >
-                <label
-                  ><input
-                    type="checkbox"
-                    id="kerning-pairtable-unicode-numbers"
-                    checked
-                  />
-                  Numbers</label
-                >
-                <label
-                  ><input type="checkbox" id="kerning-pairtable-unicode-non-unicode" />
-                  Non-Unicode glyphs</label
-                >
-                <!-- Task 9, plan's own bullet: "if the filter still excludes
-                     a named request, explain the empty result rather than
-                     silently showing nothing unexplained." Ledger §8.2: the
-                     Non-Unicode filter governs the results TABLE only (not
-                     the pair preview) -- a /glyphname or %glyphname%! token
-                     naming a non-Unicode glyph stays out of the table while
-                     this box is unchecked; this note says why, rather than
-                     leaving an unexplained gap. -->
-                <span
-                  id="kerning-pairtable-nonunicode-note"
-                  class="kerning-pairtable-filter-help"
-                ></span>
-              </fieldset>
+              <!-- Ticket 15 (UI-REFACTOR.md §3.3, UI-NOMENCLATURE.md §14):
+                   the always-open Unicode types fieldset is gone -- a
+                   <multi-select-dropdown> (fontra-webcomponents/src/
+                   multi-select-dropdown.js) is mounted here in
+                   initPairTableSection, same seven types, same filter key.
+                   The non-Unicode note (Task 9, ledger §8.2) is now a
+                   trailing entry inside the open list instead of a fieldset
+                   sibling -- see updateNonUnicodeNote in kerning.js. -->
+              <div id="kerning-pairtable-filter-unicode-slot"></div>
               <!-- Task 9, spec F14: Class relationship, the same
                    OR-combined multi-select idiom as Unicode types above.
                    All four checked by default -- new filter, no prior
