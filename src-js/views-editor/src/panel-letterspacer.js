@@ -29,6 +29,7 @@ import {
 import { ObservableController } from "@fontra/core/observable-object.js";
 import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 35's Area/Depth/Overshoot row
+import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 36's Reverse icon
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, the header Enabled toggle
 import { Form } from "@fontra/web-components/ui-form.js";
 import Panel from "./panel.js";
@@ -298,26 +299,9 @@ export default class LetterspacerPanel extends Panel {
     });
     toggle.addEventListener("change", () => this.setAlgorithmEnabled(toggle.checked));
 
-    const controls = html.div(
-      { style: "display: flex; align-items: center; gap: 0.5rem;" },
-      [toggle]
-    );
-
-    if (this.algorithmEnabled) {
-      const reverseButton = html.createDomElement(
-        "button",
-        {
-          style:
-            "margin-left: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;",
-          onclick: (event) => this.reverseSpacing(event),
-          disabled: !this.hasCurrentMaster,
-        },
-        ["Reverse"]
-      );
-      controls.appendChild(reverseButton);
-    }
-
-    return controls;
+    return html.div({ style: "display: flex; align-items: center; gap: 0.5rem;" }, [
+      toggle,
+    ]);
   }
 
   // Ticket 35, spec §4.4: Area, Depth and Overshoot as three compact scrub
@@ -334,8 +318,22 @@ export default class LetterspacerPanel extends Panel {
       );
       return field;
     };
+    // Ticket 36, spec §4.4: Reverse becomes a round-arrows icon at the left
+    // end of the Area field -- same reverseSpacing guard and tooltip, only
+    // the anchor element changes.
+    const reverseIcon = html.createDomElement("icon-button", {
+      src: "/tabler-icons/refresh.svg",
+      style: "width: 1.1em; height: 1.1em; flex: 0 0 auto;",
+      disabled: !this.hasCurrentMaster,
+      onclick: (event) => this.reverseSpacing(event),
+    });
+    const areaField = html.div(
+      { style: "display: flex; align-items: center; gap: 0.25em; flex: 1 1 0;" },
+      [reverseIcon, makeField("area", translate("sidebar.letterspacer.area"))]
+    );
+
     return html.div({ style: "display: flex; gap: 0.5em;" }, [
-      makeField("area", translate("sidebar.letterspacer.area")),
+      areaField,
       makeField("depth", translate("sidebar.letterspacer.depth")),
       makeField("overshoot", translate("sidebar.letterspacer.overshoot")),
     ]);
