@@ -731,6 +731,30 @@ export default class DesignspaceNavigationPanel extends Panel {
         ),
       },
       {
+        // Ticket 27, spec §2.3: the two rows out of the debug accordion's
+        // whole resolver that a designer actually sets, as labeled toggles
+        // (their own row, not a header toggle -- no master switch exists to
+        // put on this header yet, see the ticket's Out of scope). The debug
+        // accordion keeps the whole set, unmoved; both stay in sync through
+        // the same setSnapParameter/subscribeSnapParameters this file
+        // already used for the debug row alone.
+        id: "snapping-and-smart-guides-accordion-item",
+        label: "Snapping and smart guides",
+        open: false,
+        content: html.div(
+          { style: "display: grid; gap: 0.5em;" },
+          [
+            SNAPPING_DEBUG_CONTROLS.find((c) => c.path === "offCurveSources"),
+            SNAPPING_DEBUG_CONTROLS.find((c) => c.path === "snapDuringFixedRib"),
+          ].map((control) =>
+            html.createDomElement("labeled-toggle", {
+              id: `snapping-guides-${control.path.replace(".", "-")}-toggle`,
+              label: control.label,
+            })
+          )
+        ),
+      },
+      {
         id: "snapping-debug-accordion-item",
         label: "Snapping (debug)",
         open: false,
@@ -1212,6 +1236,15 @@ export default class DesignspaceNavigationPanel extends Panel {
           input.value = String(value);
         }
       }
+      // Ticket 27: the Snapping and smart guides accordion's own copy of
+      // this same control, kept in sync through this one syncOne rather
+      // than a second sync path.
+      const guidesToggle = this.visualAccordion.querySelector(
+        `#snapping-guides-${id}-toggle`
+      );
+      if (guidesToggle) {
+        guidesToggle.checked = !!value;
+      }
       if (readout) {
         if (control.type === "toggle") {
           readout.textContent = value ? "on" : "off";
@@ -1243,6 +1276,19 @@ export default class DesignspaceNavigationPanel extends Panel {
         // figure shown beside every per-kind reach.
         SNAPPING_DEBUG_CONTROLS.forEach(syncOne);
         persist();
+        this.editorController.canvasController.requestUpdate();
+      });
+
+      // Ticket 27: the same control's own row in the Snapping and smart
+      // guides accordion writes through setSnapParameter too, so the
+      // subscribeSnapParameters callback below is the only place that
+      // re-syncs every copy of a control -- one writer path, however many
+      // places show it.
+      const guidesToggle = this.visualAccordion.querySelector(
+        `#snapping-guides-${id}-toggle`
+      );
+      guidesToggle?.addEventListener("change", () => {
+        setSnapParameter(control.path, guidesToggle.checked ? 1 : 0);
         this.editorController.canvasController.requestUpdate();
       });
     }
