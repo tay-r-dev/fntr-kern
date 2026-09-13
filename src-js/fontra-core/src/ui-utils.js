@@ -298,3 +298,30 @@ export function pickFile(fileTypes) {
 
   return resultPromise;
 }
+
+// Ticket 24, UI-REFACTOR.md §2.4, UI-NOMENCLATURE.md §14.1: the freeze a
+// header toggle applies to the rest of its accordion item. Built once here
+// so every header toggle (Coarse Grid, SpeedPunk, and later Snapping and
+// smart guides, Measurements, Tunni, Skeleton) reuses it instead of each
+// hand-rolling its own list of controls to disable.
+const FROZEN_CONTAINER_CLASS = "fontra-frozen-container";
+
+html.addStyleSheet(`
+.${FROZEN_CONTAINER_CLASS} {
+  opacity: 0.5;
+}
+`);
+
+export function setContainerFrozen(container, frozen) {
+  if (!container) {
+    return;
+  }
+  container.classList.toggle(FROZEN_CONTAINER_CLASS, !!frozen);
+  const controls = container.querySelectorAll(
+    "input, select, textarea, button, range-slider, icon-button, labeled-toggle"
+  );
+  for (const control of controls) {
+    control.disabled = !!frozen;
+    control.requestUpdate?.();
+  }
+}

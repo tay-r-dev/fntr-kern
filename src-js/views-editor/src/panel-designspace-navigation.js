@@ -34,6 +34,7 @@ import {
   labeledCheckbox,
   labeledPopupSelect,
   labeledTextInput,
+  setContainerFrozen,
 } from "@fontra/core/ui-utils.js";
 import {
   FocusKeeper,
@@ -65,6 +66,7 @@ import {
 import "@fontra/web-components/designspace-location.js";
 import { IconButton } from "@fontra/web-components/icon-button.js";
 import { InlineSVG } from "@fontra/web-components/inline-svg.js";
+import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, the Visual group's header toggles
 import { showMenu } from "@fontra/web-components/menu-panel.js";
 import { dialog, dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import "@fontra/web-components/range-slider.js";
@@ -347,6 +349,11 @@ export default class DesignspaceNavigationPanel extends Panel {
         width: 1.5rem;
         height: 1.5rem;
       }
+
+      .designspace-visual-heading {
+        font-weight: bold;
+        margin: 0.5em 0;
+      }
     `);
 
     this.fontController.ensureInitialized.then(() => {
@@ -354,6 +361,20 @@ export default class DesignspaceNavigationPanel extends Panel {
     });
 
     this.initActions();
+  }
+
+  // Ticket 24, spec §2.4, UI-NOMENCLATURE §14.1: a header toggle, placed
+  // through the accordion's own auxiliary header element slot -- ui-accordion.js
+  // is left unchanged. No label: the accordion's own title already says what
+  // it turns on, so the smallest option labeled-toggle.js offers (an unset
+  // label) covers this rather than a second, label-less element. The click
+  // listener keeps the toggle from also opening or closing the accordion --
+  // the same job makeAccordionHeaderButton's icon-button does for the
+  // existing header icons via stopImmediatePropagation in its own render.
+  _makeVisualHeaderToggle(id) {
+    const toggle = html.createDomElement("labeled-toggle", { id });
+    toggle.addEventListener("click", (event) => event.stopPropagation());
+    return toggle;
   }
 
   // Ticket 23, spec §2.1/§1.3: the Phrase heading, phrase box and alignment
@@ -559,12 +580,24 @@ export default class DesignspaceNavigationPanel extends Panel {
           ]
         ),
       },
+    ];
+
+    // Ticket 24, spec §2.1/§2.3: a second Accordion, under its own "Visual"
+    // heading -- ui-accordion.js takes an items array with no room for a
+    // plain heading between two of them, and is left unchanged, so the
+    // heading sits between two Accordion elements instead.
+    this.visualAccordion = new Accordion();
+    this.visualAccordion.items = [
       {
         id: "coarse-grid-accordion-item",
         label: translate("sidebar.designspace-navigation.coarse-grid"),
         open: false,
+        auxiliaryHeaderElement: this._makeVisualHeaderToggle(
+          "coarse-grid-header-toggle"
+        ),
         content: html.div(
           {
+            id: "coarse-grid-content",
             style: `
               display: grid;
               grid-template-columns: auto 1fr;
@@ -573,11 +606,6 @@ export default class DesignspaceNavigationPanel extends Panel {
             `,
           },
           [
-            html.label(
-              { for: "coarse-grid-display-toggle", style: "white-space: nowrap;" },
-              [translate("sidebar.designspace-navigation.coarse-grid.display")]
-            ),
-            html.input({ id: "coarse-grid-display-toggle", type: "checkbox" }),
             html.label(
               { for: "coarse-grid-spacing-input", style: "white-space: nowrap;" },
               [translate("sidebar.designspace-navigation.coarse-grid.spacing")]
@@ -797,7 +825,11 @@ export default class DesignspaceNavigationPanel extends Panel {
 
     return html.div({ class: "panel" }, [
       html.div({ class: "panel-section" }, [this._buildPhraseSection()]),
-      html.div({ class: "panel-section panel-section--full-height" }, [this.accordion]),
+      html.div({ class: "panel-section panel-section--full-height" }, [
+        this.accordion,
+        html.div({ class: "designspace-visual-heading" }, ["Visual"]),
+        this.visualAccordion,
+      ]),
     ]);
   }
 
@@ -817,56 +849,60 @@ export default class DesignspaceNavigationPanel extends Panel {
     return this.accordion.querySelector("#glyph-layers-accordion-item");
   }
 
+  get coarseGridHeaderToggle() {
+    return this.visualAccordion.querySelector("#coarse-grid-header-toggle");
+  }
+
+  get coarseGridContent() {
+    return this.visualAccordion.querySelector("#coarse-grid-content");
+  }
+
   get coarseGridSpacingInput() {
-    return this.accordion.querySelector("#coarse-grid-spacing-input");
+    return this.visualAccordion.querySelector("#coarse-grid-spacing-input");
   }
 
   get coarseGridCustomToggle() {
-    return this.accordion.querySelector("#coarse-grid-custom-toggle");
-  }
-
-  get coarseGridDisplayToggle() {
-    return this.accordion.querySelector("#coarse-grid-display-toggle");
+    return this.visualAccordion.querySelector("#coarse-grid-custom-toggle");
   }
 
   get coarseGridCustomFields() {
-    return this.accordion.querySelector("#coarse-grid-custom-fields");
+    return this.visualAccordion.querySelector("#coarse-grid-custom-fields");
   }
 
   get coarseGridBaseInput() {
-    return this.accordion.querySelector("#coarse-grid-base-input");
+    return this.visualAccordion.querySelector("#coarse-grid-base-input");
   }
 
   get coarseGridIncrementInput() {
-    return this.accordion.querySelector("#coarse-grid-increment-input");
+    return this.visualAccordion.querySelector("#coarse-grid-increment-input");
   }
 
   get speedPunkDisplayToggle() {
-    return this.accordion.querySelector("#speedpunk-display-toggle");
+    return this.visualAccordion.querySelector("#speedpunk-display-toggle");
   }
 
   get speedPunkPeakHeightInput() {
-    return this.accordion.querySelector("#speedpunk-peak-height-input");
+    return this.visualAccordion.querySelector("#speedpunk-peak-height-input");
   }
 
   get speedPunkReferenceTurnInput() {
-    return this.accordion.querySelector("#speedpunk-reference-turn-input");
+    return this.visualAccordion.querySelector("#speedpunk-reference-turn-input");
   }
 
   get speedPunkColorFlatTurnInput() {
-    return this.accordion.querySelector("#speedpunk-color-flat-turn-input");
+    return this.visualAccordion.querySelector("#speedpunk-color-flat-turn-input");
   }
 
   get speedPunkColorTightTurnInput() {
-    return this.accordion.querySelector("#speedpunk-color-tight-turn-input");
+    return this.visualAccordion.querySelector("#speedpunk-color-tight-turn-input");
   }
 
   get speedPunkSharpnessInput() {
-    return this.accordion.querySelector("#speedpunk-sharpness-input");
+    return this.visualAccordion.querySelector("#speedpunk-sharpness-input");
   }
 
   get speedPunkOpacityInput() {
-    return this.accordion.querySelector("#speedpunk-opacity-input");
+    return this.visualAccordion.querySelector("#speedpunk-opacity-input");
   }
 
   _readCoarseGridSettingsFromApp() {
@@ -898,17 +934,9 @@ export default class DesignspaceNavigationPanel extends Panel {
   _updateCoarseGridControlsEnabled() {
     const enabled =
       !!this.editorController.visualizationLayersSettings.model["fontra.coarse.grid"];
-    for (const element of [
-      this.coarseGridSpacingInput,
-      this.coarseGridCustomToggle,
-      this.coarseGridBaseInput,
-      this.coarseGridIncrementInput,
-    ]) {
-      if (element) {
-        element.disabled = !enabled;
-        element.requestUpdate?.();
-      }
-    }
+    // Ticket 24, spec §2.4: off freezes every control in the accordion item,
+    // not just the four named ones -- the shared helper both of them reuse.
+    setContainerFrozen(this.coarseGridContent, !enabled);
   }
 
   _syncCoarseGridControls() {
@@ -1038,7 +1066,7 @@ export default class DesignspaceNavigationPanel extends Panel {
   }
 
   _setupCoarseGridDisplayToggle() {
-    const toggle = this.coarseGridDisplayToggle;
+    const toggle = this.coarseGridHeaderToggle;
     if (!toggle) {
       return;
     }
@@ -1206,8 +1234,8 @@ export default class DesignspaceNavigationPanel extends Panel {
 
     const syncOne = (control) => {
       const id = control.path.replace(".", "-");
-      const input = this.accordion.querySelector(`#snapping-debug-${id}`);
-      const readout = this.accordion.querySelector(`#snapping-debug-${id}-value`);
+      const input = this.visualAccordion.querySelector(`#snapping-debug-${id}`);
+      const readout = this.visualAccordion.querySelector(`#snapping-debug-${id}-value`);
       const value = readSnapParameter(control.path);
       if (input) {
         if (control.type === "toggle") {
@@ -1233,7 +1261,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     for (const control of SNAPPING_DEBUG_CONTROLS) {
       syncOne(control);
       const id = control.path.replace(".", "-");
-      const input = this.accordion.querySelector(`#snapping-debug-${id}`);
+      const input = this.visualAccordion.querySelector(`#snapping-debug-${id}`);
       if (!input) {
         continue;
       }
@@ -1251,7 +1279,7 @@ export default class DesignspaceNavigationPanel extends Panel {
       });
     }
 
-    const resetButton = this.accordion.querySelector("#snapping-debug-reset");
+    const resetButton = this.visualAccordion.querySelector("#snapping-debug-reset");
     resetButton?.addEventListener("click", () => {
       resetSnapParameters();
       SNAPPING_DEBUG_CONTROLS.forEach(syncOne);
@@ -1272,8 +1300,8 @@ export default class DesignspaceNavigationPanel extends Panel {
   // The readout follows the live gesture, which no setting changes, so it polls
   // one frame at a time and only while the panel is open to be read.
   _startSnappingDebugReadout() {
-    const element = this.accordion.querySelector("#snapping-debug-readout");
-    const item = this.accordion.querySelector("#snapping-debug-accordion-item");
+    const element = this.visualAccordion.querySelector("#snapping-debug-readout");
+    const item = this.visualAccordion.querySelector("#snapping-debug-accordion-item");
     if (!element) {
       return;
     }
