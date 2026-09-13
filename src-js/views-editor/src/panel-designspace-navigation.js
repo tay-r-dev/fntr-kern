@@ -386,18 +386,25 @@ export default class DesignspaceNavigationPanel extends Panel {
   // initAlignmentRow), not the Text Entry panel's hand-built <inline-svg> row
   // -- panel-text-entry.js is left untouched.
   _buildPhraseSection() {
+    // this.sceneSettingsController/this.sceneSettings aren't assigned yet --
+    // Panel's own constructor calls getContentElement() (and so this method)
+    // as part of `super(editorController)`, before this subclass's
+    // constructor body runs. this.editorController is already set by then
+    // (Panel's constructor sets it first), so read the controller through
+    // that instead.
+    const sceneSettingsController = this.editorController.sceneSettingsController;
     const textarea = html.createDomElement("textarea", {
       id: "designspace-phrase-textarea",
       rows: 2,
       wrap: "off",
     });
-    textarea.value = this.sceneSettings.text ?? "";
+    textarea.value = sceneSettingsController.model.text ?? "";
     textarea.addEventListener("input", () => {
-      this.sceneSettingsController.setItem("text", textarea.value, {
+      sceneSettingsController.setItem("text", textarea.value, {
         senderID: this,
       });
     });
-    this.sceneSettingsController.addKeyListener("text", (event) => {
+    sceneSettingsController.addKeyListener("text", (event) => {
       if (event.senderInfo?.senderID === this) {
         return;
       }
@@ -426,14 +433,14 @@ export default class DesignspaceNavigationPanel extends Panel {
         button.on = key === align;
       }
     };
-    applyAlign(this.sceneSettings.align);
+    applyAlign(sceneSettingsController.model.align);
     for (const [key, button] of Object.entries(alignButtons)) {
       button.onclick = () => {
-        this.sceneSettingsController.setItem("align", key, { senderID: this });
+        sceneSettingsController.setItem("align", key, { senderID: this });
         applyAlign(key);
       };
     }
-    this.sceneSettingsController.addKeyListener("align", (event) => {
+    sceneSettingsController.addKeyListener("align", (event) => {
       applyAlign(event.newValue);
     });
 
