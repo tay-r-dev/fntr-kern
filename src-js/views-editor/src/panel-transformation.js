@@ -230,6 +230,10 @@ export default class TransformationPanel {
 
   // Put a set of values back, into both the model and the fields on screen.
   _setRelativeTransformValues(values) {
+    // Whatever put these values on screen -- a reset, an undo, a redo -- they
+    // are now what the fields hold, so the next apply records them as its
+    // before-half.
+    this._committedTransformValues = { ...values };
     for (const [name, { field }] of Object.entries(
       TransformationPanel.RELATIVE_TRANSFORM_FIELDS
     )) {
@@ -246,7 +250,10 @@ export default class TransformationPanel {
   // second; the undo path says which way it went.
   _transformUndoInfo() {
     const after = this._relativeTransformValues();
-    const before = this._committedTransformValues || after;
+    // Before the first apply the fields were neutral, so that is what undoing
+    // it owes them. Falling back to the applied values instead made the first
+    // step of undo leave the amount it had just undone in the field.
+    const before = this._committedTransformValues || this._neutralTransformValues();
     this._committedTransformValues = after;
     return {
       undoPanelValues: { transform: before },
@@ -258,13 +265,18 @@ export default class TransformationPanel {
   // stored property. Dimensions is excluded: it already always shows the
   // SELECTION's actual size via updateDimensions, not a "by" amount.
   _resetRelativeTransformFields() {
+    this._setRelativeTransformValues(this._neutralTransformValues());
+  }
+
+  // What every one of them holds with nothing pending.
+  _neutralTransformValues() {
     const neutral = {};
     for (const [name, { neutral: value }] of Object.entries(
       TransformationPanel.RELATIVE_TRANSFORM_FIELDS
     )) {
       neutral[name] = value;
     }
-    this._setRelativeTransformValues(neutral);
+    return neutral;
   }
 
   registerActions() {
