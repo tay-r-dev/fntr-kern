@@ -7,6 +7,7 @@ import {
   SERIF_PRESET_FIELDS,
   SKELETON_SOURCE_DEFAULT_FALLBACKS,
   SKELETON_SOURCE_DEFAULT_KEYS,
+  WIDTH_PRESET_SEED_NAMES,
   getSkeletonData,
   getSkeletonGlyphCase,
   getSkeletonPointWidth,
@@ -152,63 +153,88 @@ export default class SkeletonDefaultsPanel extends Panel {
     }
   }
 
-  // ---- Custom width profiles (donor: addCustomWidthRows) --------------------
+  // ---- Width presets ----------------------------------------------------------
+  // One list per master, shared by every case (§6.3). Base/Horizontal/Contrast
+  // are ordinary "both"-side presets under those three names; this panel still
+  // edits them as named fields, so the field and the stored preset are one
+  // entry rather than two representations of the same number. Everything else
+  // in the same case is a free-form "custom" row.
 
-  _getCustomWidthList(key) {
-    const list = this._sourceDefault(key);
-    if (!Array.isArray(list)) {
-      return [];
-    }
-    return list
-      .filter((item) => item && typeof item === "object")
-      .map((item) => ({
-        name: typeof item.name === "string" ? item.name : "",
-        value: Number.isFinite(Number(item.value)) ? Number(item.value) : 0,
-      }));
+  _getWidthPresets() {
+    const list = this._sourceDefault(SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS);
+    return Array.isArray(list) ? list.map((item) => ({ ...item })) : [];
   }
 
-  _buildCustomWidthRows(formContents, customKey) {
-    const list = this._getCustomWidthList(customKey);
-    const persist = async (next) => {
-      await this._persistSourceDefaults(
-        { [customKey]: next },
-        translate("sidebar.skeleton-parameters.undo.set-defaults")
+  async _persistWidthPresets(next) {
+    await this._persistSourceDefaults(
+      { [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]: next },
+      translate("sidebar.skeleton-parameters.undo.set-defaults")
+    );
+    await this.update();
+  }
+
+  _namedWidthPresetValue(glyphCase, name) {
+    const preset = this._getWidthPresets().find(
+      (item) => item.case === glyphCase && item.side === "both" && item.name === name
+    );
+    return preset && Number.isFinite(Number(preset.width)) ? Number(preset.width) : 0;
+  }
+
+  async _setNamedWidthPreset(glyphCase, name, value) {
+    const list = this._getWidthPresets();
+    const index = list.findIndex(
+      (item) => item.case === glyphCase && item.side === "both" && item.name === name
+    );
+    if (index >= 0) {
+      list[index] = { ...list[index], width: value };
+    } else {
+      list.push({ name, width: value, side: "both", case: glyphCase });
+    }
+    await this._persistWidthPresets(list);
+  }
+
+  _buildCustomWidthRows(formContents, glyphCase) {
+    const fullList = this._getWidthPresets();
+    const rows = fullList
+      .map((preset, index) => ({ preset, index }))
+      .filter(
+        ({ preset }) =>
+          preset.case === glyphCase &&
+          !(preset.side === "both" && WIDTH_PRESET_SEED_NAMES.includes(preset.name))
       );
-      await this.update();
-    };
-    list.forEach((item, index) => {
-      const rowId = `${customKey}:${index}`;
+    rows.forEach(({ preset, index }) => {
+      const rowId = `widthPreset:${index}`;
       const isConfirming = this._customDeleteConfirm === rowId;
       const nameInput = html.input({
         type: "text",
-        value: item.name,
+        value: preset.name || "",
         style: "width: 7em;",
         onchange: async (event) => {
-          const next = this._getCustomWidthList(customKey);
+          const next = this._getWidthPresets();
           if (!next[index]) {
             return;
           }
           next[index] = { ...next[index], name: String(event.target.value ?? "") };
           this._customDeleteConfirm = null;
-          await persist(next);
+          await this._persistWidthPresets(next);
         },
       });
       const valueInput = html.input({
         type: "number",
-        value: item.value,
+        value: Number(preset.width) || 0,
         style: "width: 4.5em;",
         onchange: async (event) => {
-          const next = this._getCustomWidthList(customKey);
+          const next = this._getWidthPresets();
           if (!next[index]) {
             return;
           }
           const numeric = Number(event.target.value);
           next[index] = {
             ...next[index],
-            value: Number.isFinite(numeric) ? numeric : 0,
+            width: Number.isFinite(numeric) ? numeric : 0,
           };
           this._customDeleteConfirm = null;
-          await persist(next);
+          await this._persistWidthPresets(next);
         },
       });
       // Two-click delete: first click arms (trash -> x), second click deletes.
@@ -227,13 +253,13 @@ export default class SkeletonDefaultsPanel extends Panel {
             await this.update();
             return;
           }
-          const next = this._getCustomWidthList(customKey);
+          const next = this._getWidthPresets();
           if (!next[index]) {
             return;
           }
           next.splice(index, 1);
           this._customDeleteConfirm = null;
-          await persist(next);
+          await this._persistWidthPresets(next);
         },
       });
       formContents.push({
@@ -251,10 +277,20 @@ export default class SkeletonDefaultsPanel extends Panel {
         html.button(
           {
             onclick: async () => {
-              const next = this._getCustomWidthList(customKey);
-              next.push({ name: `Custom ${next.length + 1}`, value: 0 });
+              const next = this._getWidthPresets();
+              const customCount = next.filter(
+                (item) =>
+                  item.case === glyphCase &&
+                  !WIDTH_PRESET_SEED_NAMES.includes(item.name)
+              ).length;
+              next.push({
+                name: `Custom ${customCount + 1}`,
+                width: 0,
+                side: "both",
+                case: glyphCase,
+              });
               this._customDeleteConfirm = null;
-              await persist(next);
+              await this._persistWidthPresets(next);
             },
           },
           [translate("sidebar.skeleton-parameters.custom-widths.add")]
@@ -517,14 +553,6 @@ export default class SkeletonDefaultsPanel extends Panel {
     const glyphCase = getSkeletonGlyphCase(glyphName);
     const isLower = glyphCase === "lowercase";
     const K = SKELETON_SOURCE_DEFAULT_KEYS;
-    const baseKey = isLower ? K.WIDTH_LOWERCASE_BASE : K.WIDTH_CAPITAL_BASE;
-    const horizKey = isLower
-      ? K.WIDTH_LOWERCASE_HORIZONTAL
-      : K.WIDTH_CAPITAL_HORIZONTAL;
-    const contrastKey = isLower ? K.WIDTH_LOWERCASE_CONTRAST : K.WIDTH_CAPITAL_CONTRAST;
-    const distKey = isLower
-      ? K.WIDTH_LOWERCASE_DISTRIBUTION
-      : K.WIDTH_CAPITAL_DISTRIBUTION;
 
     const formContents = [
       {
@@ -540,27 +568,29 @@ export default class SkeletonDefaultsPanel extends Panel {
         ),
       },
     ];
-    this._pushNumber(formContents, baseKey, "default-base");
-    this._pushNumber(formContents, horizKey, "default-horizontal");
-    this._pushNumber(formContents, contrastKey, "default-contrast");
     formContents.push({
-      type: "edit-number-slider",
-      key: `default:${distKey}`,
-      label: translate("sidebar.skeleton-parameters.default-distribution"),
-      value: this._sourceDefault(distKey),
-      minValue: -100,
-      defaultValue: 0,
-      maxValue: 100,
-      step: 10,
+      type: "edit-number",
+      key: "default:widthPreset:Base",
+      label: translate("sidebar.skeleton-parameters.default-base"),
+      value: this._namedWidthPresetValue(glyphCase, "Base"),
+    });
+    formContents.push({
+      type: "edit-number",
+      key: "default:widthPreset:Horizontal",
+      label: translate("sidebar.skeleton-parameters.default-horizontal"),
+      value: this._namedWidthPresetValue(glyphCase, "Horizontal"),
+    });
+    formContents.push({
+      type: "edit-number",
+      key: "default:widthPreset:Contrast",
+      label: translate("sidebar.skeleton-parameters.default-contrast"),
+      value: this._namedWidthPresetValue(glyphCase, "Contrast"),
     });
     formContents.push({
       type: "header",
       label: translate("sidebar.skeleton-parameters.custom-widths"),
     });
-    this._buildCustomWidthRows(
-      formContents,
-      isLower ? K.CUSTOM_WIDTHS_LOWERCASE : K.CUSTOM_WIDTHS_UPPERCASE
-    );
+    this._buildCustomWidthRows(formContents, glyphCase);
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
@@ -632,13 +662,35 @@ export default class SkeletonDefaultsPanel extends Panel {
           finalValue = streamedValue;
         }
       }
-      const K2 = SKELETON_SOURCE_DEFAULT_KEYS;
-      const baseCase =
-        name === K2.WIDTH_CAPITAL_BASE
-          ? "uppercase"
-          : name === K2.WIDTH_LOWERCASE_BASE
-            ? "lowercase"
-            : null;
+      if (name === "widthPreset") {
+        // 1.3: rib widths can follow the master width as mw+offset — offer an
+        // opt-in recalculation when the Base preset's width changes.
+        const oldValue = this._namedWidthPresetValue(glyphCase, field);
+        await this._setNamedWidthPreset(glyphCase, field, Number(finalValue) || 0);
+        const delta = Number(finalValue) - oldValue;
+        if (field === "Base" && Number.isFinite(delta) && delta !== 0) {
+          const result = await dialog(
+            translate("sidebar.skeleton-parameters.recalc-ribs.title"),
+            translate("sidebar.skeleton-parameters.recalc-ribs.body", delta),
+            [
+              {
+                title: translate("sidebar.skeleton-parameters.recalc-ribs.keep"),
+                resultValue: "keep",
+                isCancelButton: true,
+              },
+              {
+                title: translate("sidebar.skeleton-parameters.recalc-ribs.recalc"),
+                resultValue: "recalc",
+                isDefaultButton: true,
+              },
+            ]
+          );
+          if (result === "recalc") {
+            await this._recalculateRibWidths(glyphCase, delta);
+          }
+        }
+        return;
+      }
       const oldValue = this._sourceDefault(name);
       const storedValue =
         CAP_DISPLAY_CONVERTERS[name]?.fromDisplay(finalValue) ?? finalValue;
@@ -646,30 +698,6 @@ export default class SkeletonDefaultsPanel extends Panel {
         { [name]: storedValue },
         translate("sidebar.skeleton-parameters.undo.set-defaults")
       );
-      // 1.3: rib widths can follow the master width as mw+offset — offer an
-      // opt-in recalculation when the master base width changes
-      const delta = Number(finalValue) - Number(oldValue);
-      if (baseCase && Number.isFinite(delta) && delta !== 0) {
-        const result = await dialog(
-          translate("sidebar.skeleton-parameters.recalc-ribs.title"),
-          translate("sidebar.skeleton-parameters.recalc-ribs.body", delta),
-          [
-            {
-              title: translate("sidebar.skeleton-parameters.recalc-ribs.keep"),
-              resultValue: "keep",
-              isCancelButton: true,
-            },
-            {
-              title: translate("sidebar.skeleton-parameters.recalc-ribs.recalc"),
-              resultValue: "recalc",
-              isDefaultButton: true,
-            },
-          ]
-        );
-        if (result === "recalc") {
-          await this._recalculateRibWidths(baseCase, delta);
-        }
-      }
       await this.update();
     };
   }

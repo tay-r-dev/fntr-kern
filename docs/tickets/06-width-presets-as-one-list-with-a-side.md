@@ -1,6 +1,6 @@
 # 06: Width presets as one list with a side
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** None (can start immediately)
 

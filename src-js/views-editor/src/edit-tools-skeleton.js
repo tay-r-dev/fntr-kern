@@ -10,11 +10,11 @@ import {
   appendSkeletonInsertion,
   appendSkeletonPoint,
   closeSkeletonContour,
-  getDefaultSkeletonWidthKeyForGlyphName,
   getSkeletonData,
+  getSkeletonGlyphCase,
   makeSkeletonPoint,
   measureGeneratedHalfWidths,
-  resolveEffectiveSourceSkeletonDefault,
+  resolveEffectiveSkeletonBaseWidth,
 } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
@@ -135,10 +135,10 @@ export class SkeletonPenTool extends BaseTool {
       this.sceneSettings?.fontLocationSourceMapped ||
       this.sceneSettings?.fontLocationSource ||
       {};
-    const value = resolveEffectiveSourceSkeletonDefault(
+    const value = resolveEffectiveSkeletonBaseWidth(
       this.editor.fontController,
       location,
-      getDefaultSkeletonWidthKeyForGlyphName(glyphName)
+      getSkeletonGlyphCase(glyphName)
     );
     return Number.isFinite(Number(value)) && Number(value) > 0
       ? Number(value)

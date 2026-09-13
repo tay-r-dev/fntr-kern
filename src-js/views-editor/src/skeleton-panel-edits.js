@@ -16,6 +16,7 @@ import {
 import {
   DEFAULT_SERIF_PRESET,
   applySerifPreset,
+  applySkeletonWidthPreset,
   clearSkeletonSegmentCurvatureForHandle,
   closeSkeletonContour,
   findGeneratedOutputPosition,
@@ -206,6 +207,25 @@ export async function setPanelPointTotalWidth(
     pointAddresses,
     (point, _address, { defaultWidth }) => {
       setSkeletonPointTotalWidth(point, defaultWidth, value);
+    },
+    undoLabel
+  );
+}
+
+// Force-applies a width preset (name/width/side/case) to every selected
+// point. A "both" preset writes the total width, same as a plain typed
+// number; a "left"/"right" preset writes only that side.
+export async function setPanelPointWidthPreset(
+  sceneController,
+  pointAddresses,
+  preset,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, { defaultWidth }) => {
+      applySkeletonWidthPreset(point, defaultWidth, preset);
     },
     undoLabel
   );

@@ -53,6 +53,7 @@ import {
   setPanelPointSideWidth,
   setPanelPointTied,
   setPanelPointTotalWidth,
+  setPanelPointWidthPreset,
   editSelectedSkeletonInsertions,
   insertionRatioToUnits,
   insertionWidthReference,
@@ -582,50 +583,22 @@ export default class SkeletonParametersPanel {
     return resolveEffectiveSourceSkeletonDefault(this.fontController, location, key);
   }
 
-  // Width profile options for the edited glyph's case: the three master
-  // defaults plus the master's custom width entries (donor "Profile" select).
+  // Width profile options for the edited glyph's case: every width preset the
+  // master stores for that case, each carrying the side it applies to.
   _widthProfileOptions() {
-    const isLower = getSkeletonGlyphCase(this.getSelectedGlyphName()) === "lowercase";
-    const K = SKELETON_SOURCE_DEFAULT_KEYS;
-    const options = [
-      {
-        id: "base",
-        label: translate("sidebar.skeleton-parameters.default-base"),
-        value: this._resolveSourceDefault(
-          isLower ? K.WIDTH_LOWERCASE_BASE : K.WIDTH_CAPITAL_BASE
-        ),
-      },
-      {
-        id: "horizontal",
-        label: translate("sidebar.skeleton-parameters.default-horizontal"),
-        value: this._resolveSourceDefault(
-          isLower ? K.WIDTH_LOWERCASE_HORIZONTAL : K.WIDTH_CAPITAL_HORIZONTAL
-        ),
-      },
-      {
-        id: "contrast",
-        label: translate("sidebar.skeleton-parameters.default-contrast"),
-        value: this._resolveSourceDefault(
-          isLower ? K.WIDTH_LOWERCASE_CONTRAST : K.WIDTH_CAPITAL_CONTRAST
-        ),
-      },
-    ];
-    const custom = this._resolveSourceDefault(
-      isLower ? K.CUSTOM_WIDTHS_LOWERCASE : K.CUSTOM_WIDTHS_UPPERCASE
+    const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
+    const presets = this._resolveSourceDefault(
+      SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS
     );
-    if (Array.isArray(custom)) {
-      custom.forEach((item, index) => {
-        const value = Number(item?.value);
-        if (Number.isFinite(value)) {
-          options.push({
-            id: `custom:${index}`,
-            label: item?.name || `Custom ${index + 1}`,
-            value,
-          });
-        }
-      });
-    }
-    return options.filter((option) => Number.isFinite(Number(option.value)));
+    return (Array.isArray(presets) ? presets : [])
+      .filter((preset) => preset?.case === glyphCase)
+      .map((preset, index) => ({
+        id: `preset:${index}`,
+        label: preset.name || `Preset ${index + 1}`,
+        value: Number(preset.width),
+        side: preset.side,
+      }))
+      .filter((option) => Number.isFinite(option.value));
   }
 
   // Cap profile options for the active style: master cap defaults plus the
@@ -810,10 +783,10 @@ export default class SkeletonParametersPanel {
   }
 
   async _forceApplyWidthProfile(option) {
-    await setPanelPointTotalWidth(
+    await setPanelPointWidthPreset(
       this.sceneController,
       this._widthPoints(),
-      Number(option.value),
+      { width: Number(option.value), side: option.side },
       this._undo("set-total-width")
     );
     this._forceRebuild = true;

@@ -254,20 +254,11 @@ export function getSkeletonPointAddress(skeletonData, contourId, pointId) {
 }
 
 export const SKELETON_SOURCE_DEFAULT_KEYS = Object.freeze({
-  WIDTH_CAPITAL_BASE: "widthCapitalBase",
-  WIDTH_CAPITAL_HORIZONTAL: "widthCapitalHorizontal",
-  WIDTH_CAPITAL_CONTRAST: "widthCapitalContrast",
-  WIDTH_CAPITAL_DISTRIBUTION: "widthCapitalDistribution",
-  WIDTH_LOWERCASE_BASE: "widthLowercaseBase",
-  WIDTH_LOWERCASE_HORIZONTAL: "widthLowercaseHorizontal",
-  WIDTH_LOWERCASE_CONTRAST: "widthLowercaseContrast",
-  WIDTH_LOWERCASE_DISTRIBUTION: "widthLowercaseDistribution",
+  WIDTH_PRESETS: "widthPresets",
   CAP_RADIUS_RATIO: "capRadiusRatio",
   CAP_TENSION: "capTension",
   CAP_ANGLE: "capAngle",
   CAP_DISTANCE: "capDistance",
-  CUSTOM_WIDTHS_UPPERCASE: "customWidthsUppercase",
-  CUSTOM_WIDTHS_LOWERCASE: "customWidthsLowercase",
   CUSTOM_CAP_SQUARE: "customCapSquare",
   CUSTOM_CAP_ROUNDED: "customCapRounded",
   SERIF_UNITS_MODE: "serifUnitsMode",
@@ -276,20 +267,11 @@ export const SKELETON_SOURCE_DEFAULT_KEYS = Object.freeze({
 });
 
 export const SKELETON_SOURCE_DEFAULT_FALLBACKS = Object.freeze({
-  [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_CAPITAL_BASE]: 60,
-  [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_CAPITAL_HORIZONTAL]: 50,
-  [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_CAPITAL_CONTRAST]: 40,
-  [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_CAPITAL_DISTRIBUTION]: 0,
-  [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_LOWERCASE_BASE]: 60,
-  [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_LOWERCASE_HORIZONTAL]: 50,
-  [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_LOWERCASE_CONTRAST]: 40,
-  [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_LOWERCASE_DISTRIBUTION]: 0,
+  [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.CAP_RADIUS_RATIO]: 1 / 8,
   [SKELETON_SOURCE_DEFAULT_KEYS.CAP_TENSION]: 0.55,
   [SKELETON_SOURCE_DEFAULT_KEYS.CAP_ANGLE]: 0,
   [SKELETON_SOURCE_DEFAULT_KEYS.CAP_DISTANCE]: 0,
-  [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_WIDTHS_UPPERCASE]: [],
-  [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_WIDTHS_LOWERCASE]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_SQUARE]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_UNITS_MODE]: "absolute",
@@ -297,39 +279,74 @@ export const SKELETON_SOURCE_DEFAULT_FALLBACKS = Object.freeze({
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: [],
 });
 
+// A width preset's side: which half of the point's width it writes. "both"
+// writes the point's total width, same as the old base/horizontal/contrast
+// fields did.
+export const VALID_WIDTH_PRESET_SIDES = new Set(["left", "right", "both"]);
+export const VALID_WIDTH_PRESET_CASES = new Set(["uppercase", "lowercase"]);
+
+// The three names a fresh master's presets get when read from the pre-preset
+// format (a fixed base/horizontal/contrast field per case). A panel that still
+// offers those three as named fields, rather than a free-form list, matches
+// against these so the field and the stored preset are the same entry.
+export const WIDTH_PRESET_SEED_NAMES = Object.freeze([
+  "Base",
+  "Horizontal",
+  "Contrast",
+]);
+
+export function normalizeWidthPreset(preset) {
+  const width = Number(preset?.width ?? preset?.value);
+  return {
+    name: typeof preset?.name === "string" ? preset.name : "",
+    width: Number.isFinite(width) ? width : 0,
+    side: VALID_WIDTH_PRESET_SIDES.has(preset?.side) ? preset.side : "both",
+    case: VALID_WIDTH_PRESET_CASES.has(preset?.case) ? preset.case : "uppercase",
+  };
+}
+
+// The read shim for defaults saved before width presets existed: a fixed
+// base/horizontal/contrast per case, plus a per-case custom width list. Read
+// once, into ordinary "both"-side presets; nothing writes this shape again.
+// The width distribution default that used to live beside base/horizontal/
+// contrast is dropped here rather than carried into a preset — a point's own
+// distribution is what survives.
+function legacyWidthPresetsFromRawDefaults(raw) {
+  const presets = [];
+  const widthDefaults = raw?.widthDefaults;
+  const widthProfiles = raw?.widthProfiles;
+  for (const glyphCase of VALID_WIDTH_PRESET_CASES) {
+    const fixed = widthDefaults?.[glyphCase];
+    if (fixed && typeof fixed === "object") {
+      const fields = ["Base", "Horizontal", "Contrast"];
+      const fieldKeys = ["base", "horizontal", "contrast"];
+      for (let i = 0; i < fields.length; i++) {
+        const width = Number(fixed[fieldKeys[i]]);
+        if (Number.isFinite(width)) {
+          presets.push({ name: fields[i], width, side: "both", case: glyphCase });
+        }
+      }
+    }
+    const custom = widthProfiles?.[glyphCase];
+    if (Array.isArray(custom)) {
+      for (const item of custom) {
+        const width = Number(item?.value);
+        if (Number.isFinite(width)) {
+          presets.push({
+            name: typeof item?.name === "string" ? item.name : "",
+            width,
+            side: "both",
+            case: glyphCase,
+          });
+        }
+      }
+    }
+  }
+  return presets;
+}
+
 const SKELETON_SOURCE_DEFAULT_KEY_PATHS = new Map([
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_CAPITAL_BASE,
-    ["widthDefaults", "uppercase", "base"],
-  ],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_CAPITAL_HORIZONTAL,
-    ["widthDefaults", "uppercase", "horizontal"],
-  ],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_CAPITAL_CONTRAST,
-    ["widthDefaults", "uppercase", "contrast"],
-  ],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_CAPITAL_DISTRIBUTION,
-    ["widthDefaults", "uppercase", "distribution"],
-  ],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_LOWERCASE_BASE,
-    ["widthDefaults", "lowercase", "base"],
-  ],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_LOWERCASE_HORIZONTAL,
-    ["widthDefaults", "lowercase", "horizontal"],
-  ],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_LOWERCASE_CONTRAST,
-    ["widthDefaults", "lowercase", "contrast"],
-  ],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_LOWERCASE_DISTRIBUTION,
-    ["widthDefaults", "lowercase", "distribution"],
-  ],
+  [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS, ["widthPresets"]],
   [
     SKELETON_SOURCE_DEFAULT_KEYS.CAP_RADIUS_RATIO,
     ["capDefaults", "round", "radiusRatio"],
@@ -337,14 +354,6 @@ const SKELETON_SOURCE_DEFAULT_KEY_PATHS = new Map([
   [SKELETON_SOURCE_DEFAULT_KEYS.CAP_TENSION, ["capDefaults", "round", "tension"]],
   [SKELETON_SOURCE_DEFAULT_KEYS.CAP_ANGLE, ["capDefaults", "square", "angle"]],
   [SKELETON_SOURCE_DEFAULT_KEYS.CAP_DISTANCE, ["capDefaults", "square", "distance"]],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_WIDTHS_UPPERCASE,
-    ["widthProfiles", "uppercase"],
-  ],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_WIDTHS_LOWERCASE,
-    ["widthProfiles", "lowercase"],
-  ],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_SQUARE, ["capProfiles", "square"]],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED, ["capProfiles", "round"]],
   [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_UNITS_MODE, ["serifDefaults", "unitsMode"]],
@@ -373,15 +382,18 @@ function ensureSkeletonDefaultsArray(parent, key) {
 
 export function normalizeSkeletonSourceDefaults(rawDefaults) {
   const defaults = cloneSkeletonDefaultValue(rawDefaults) || {};
-  const widthDefaults = ensureSkeletonDefaultsObject(defaults, "widthDefaults");
-  ensureSkeletonDefaultsObject(widthDefaults, "uppercase");
-  ensureSkeletonDefaultsObject(widthDefaults, "lowercase");
+  // Once a source has been read (or written) in the preset shape, that list is
+  // authoritative. Only a source that has never seen a widthPresets array goes
+  // through the legacy read shim, so a designer who deletes every preset gets
+  // an empty table rather than the old fields resurrecting it.
+  defaults.widthPresets = Array.isArray(defaults.widthPresets)
+    ? defaults.widthPresets.map(normalizeWidthPreset)
+    : legacyWidthPresetsFromRawDefaults(defaults);
+  delete defaults.widthDefaults;
+  delete defaults.widthProfiles;
   const capDefaults = ensureSkeletonDefaultsObject(defaults, "capDefaults");
   ensureSkeletonDefaultsObject(capDefaults, "square");
   ensureSkeletonDefaultsObject(capDefaults, "round");
-  const widthProfiles = ensureSkeletonDefaultsObject(defaults, "widthProfiles");
-  ensureSkeletonDefaultsArray(widthProfiles, "uppercase");
-  ensureSkeletonDefaultsArray(widthProfiles, "lowercase");
   const capProfiles = ensureSkeletonDefaultsObject(defaults, "capProfiles");
   ensureSkeletonDefaultsArray(capProfiles, "square");
   ensureSkeletonDefaultsArray(capProfiles, "round");
@@ -467,10 +479,34 @@ export function getSkeletonGlyphCase(glyphName) {
   return info?.case === "lower" ? "lowercase" : "uppercase";
 }
 
-export function getDefaultSkeletonWidthKeyForGlyphName(glyphName) {
-  return getSkeletonGlyphCase(glyphName) === "lowercase"
-    ? SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_LOWERCASE_BASE
-    : SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_CAPITAL_BASE;
+// The width a freshly drawn skeleton point seeds with: the master's "Base"
+// preset for the glyph's case, or the module default when none is stored.
+// Named-lookup rather than a fixed field, because base is an ordinary preset
+// now, not a field of its own.
+export function getSkeletonBaseWidthForCase(source, glyphCase) {
+  const presets = source
+    ? getSourceSkeletonDefaultsValue(
+        source,
+        SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS,
+        SKELETON_SOURCE_DEFAULT_FALLBACKS[SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]
+      )
+    : [];
+  const base = (Array.isArray(presets) ? presets : []).find(
+    (preset) =>
+      preset?.case === glyphCase && preset?.side === "both" && preset?.name === "Base"
+  );
+  return base && Number.isFinite(Number(base.width))
+    ? Number(base.width)
+    : DEFAULT_SKELETON_WIDTH;
+}
+
+export function resolveEffectiveSkeletonBaseWidth(fontController, location, glyphCase) {
+  const sourceId =
+    fontController?.fontSourcesInstancer?.getSourceIdentifierForLocation(
+      location || {}
+    ) || fontController?.defaultSourceIdentifier;
+  const source = sourceId ? fontController?.sources?.[sourceId] : null;
+  return getSkeletonBaseWidthForCase(source, glyphCase);
 }
 
 export function applyFixedRibDelta(
@@ -2691,6 +2727,33 @@ export function setSkeletonPointWidthDistribution(
   width.right = Math.max(0, round((total * (1 - d / 100)) / 2));
   point.width = width;
   clearCollapsedRibSides(point);
+}
+
+// Applies a width preset to a point: a "both" preset writes the total width
+// through the same writer a typed total-width value uses, and a "left"/"right"
+// preset writes only that side through the same writer a one-sided drag uses.
+// This is point widths only — the cascade rule holds, a preset never rewrites
+// the contour default width.
+export function applySkeletonWidthPreset(point, defaultWidth, preset, options = {}) {
+  const normalized = normalizeWidthPreset(preset);
+  if (normalized.side === "left" || normalized.side === "right") {
+    // `independent` writes only the named side. The plain (linked) mode of
+    // this writer carries a delta to the other side to preserve its share,
+    // which is right for a drag but not for a preset: a one-sided preset
+    // states that side's width outright, and the other one is untouched.
+    setSkeletonPointWidthFromSide(
+      point,
+      defaultWidth,
+      normalized.side,
+      normalized.width,
+      {
+        independent: true,
+        ...options,
+      }
+    );
+  } else {
+    setSkeletonPointTotalWidth(point, defaultWidth, normalized.width, options);
+  }
 }
 
 export function setSkeletonPointWidthLinked(point, linked) {

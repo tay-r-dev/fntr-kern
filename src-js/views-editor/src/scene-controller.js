@@ -59,10 +59,10 @@ import {
 import {
   SKELETON_SOURCE_DEFAULT_KEYS,
   clearSkeletonData,
-  getDefaultSkeletonWidthKeyForGlyphName,
   getSkeletonContour,
   getSkeletonData,
   getSkeletonGlyphCase,
+  resolveEffectiveSkeletonBaseWidth,
   resolveEffectiveSourceSkeletonDefault,
   setSkeletonData,
 } from "@fontra/core/skeleton-model.js";
@@ -1448,49 +1448,29 @@ export class SceneController {
     });
   }
 
-  // The width choices the conversion dialog offers: the master's three base
-  // widths for the edited glyph's case, plus whatever named widths that master
-  // stores for the same case. This is the list the skeleton parameters panel
-  // already offers on a point, read the same way, so one glyph cannot be told
-  // two different sets of widths.
+  // The width choices the conversion dialog offers: every width preset the
+  // master stores for the edited glyph's case. This is the same list the
+  // skeleton parameters panel offers on a point, read the same way, so one
+  // glyph cannot be told two different sets of widths.
   _skeletonWidthProfileOptions() {
     const glyphName = this.getSelectedGlyphName();
     const location =
       this.sceneSettings?.fontLocationSourceMapped ||
       this.sceneSettings?.fontLocationSource ||
       {};
-    const read = (key) =>
-      resolveEffectiveSourceSkeletonDefault(this.fontController, location, key);
-    const isLower = getSkeletonGlyphCase(glyphName) === "lowercase";
-    const K = SKELETON_SOURCE_DEFAULT_KEYS;
-    const options = [
-      {
-        label: translate("sidebar.skeleton-parameters.default-base"),
-        value: read(isLower ? K.WIDTH_LOWERCASE_BASE : K.WIDTH_CAPITAL_BASE),
-      },
-      {
-        label: translate("sidebar.skeleton-parameters.default-horizontal"),
-        value: read(
-          isLower ? K.WIDTH_LOWERCASE_HORIZONTAL : K.WIDTH_CAPITAL_HORIZONTAL
-        ),
-      },
-      {
-        label: translate("sidebar.skeleton-parameters.default-contrast"),
-        value: read(isLower ? K.WIDTH_LOWERCASE_CONTRAST : K.WIDTH_CAPITAL_CONTRAST),
-      },
-    ];
-    const custom = read(
-      isLower ? K.CUSTOM_WIDTHS_LOWERCASE : K.CUSTOM_WIDTHS_UPPERCASE
+    const glyphCase = getSkeletonGlyphCase(glyphName);
+    const presets = resolveEffectiveSourceSkeletonDefault(
+      this.fontController,
+      location,
+      SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS
     );
-    if (Array.isArray(custom)) {
-      custom.forEach((item, index) => {
-        options.push({
-          label: item?.name || `${index + 1}`,
-          value: Number(item?.value),
-        });
-      });
-    }
-    return options.filter((option) => Number.isFinite(Number(option.value)));
+    return (Array.isArray(presets) ? presets : [])
+      .filter((preset) => preset?.case === glyphCase)
+      .map((preset, index) => ({
+        label: preset.name || `${index + 1}`,
+        value: Number(preset.width),
+      }))
+      .filter((option) => Number.isFinite(option.value));
   }
 
   // Asks for a stroke width and a side mode. Returns null when the designer
@@ -1623,10 +1603,10 @@ export class SceneController {
       this.sceneSettings?.fontLocationSource ||
       {};
     const masterWidth = Number(
-      resolveEffectiveSourceSkeletonDefault(
+      resolveEffectiveSkeletonBaseWidth(
         this.fontController,
         location,
-        getDefaultSkeletonWidthKeyForGlyphName(glyphName)
+        getSkeletonGlyphCase(glyphName)
       )
     );
     const answer = await this._runConvertToSkeletonDialog(
