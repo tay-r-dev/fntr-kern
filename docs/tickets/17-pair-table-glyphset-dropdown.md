@@ -1,6 +1,6 @@
 # 17: Pair table: Glyphset dropdown
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 15 (Pair table: Unicode types dropdown)
 

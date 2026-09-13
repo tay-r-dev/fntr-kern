@@ -180,19 +180,16 @@
                    is mounted here in initPairTableSection, same four
                    buckets, same filter key. -->
               <div id="kerning-pairtable-filter-relationships-slot"></div>
-              <!-- Task 9, spec F14: table Glyphset filter -- single-select,
-                   All by default (ledger §8.4). Options are populated in
-                   kerning.js from the project's already-added glyphsets
-                   (glyphsets-controller.js); this control does not offer an
-                   "add a glyphset" UI of its own. Distinct from the Font
-                   mode preview glyphset selector (F08/Task 13) -- neither
-                   changes the other. -->
-              <label
-                >Glyphset
-                <select id="kerning-pairtable-filter-glyphset" title="Table glyphset">
-                  <option value="">All</option>
-                </select></label
-              >
+              <!-- Ticket 17 (UI-REFACTOR.md §3.3): table Glyphset filter --
+                   single-choice, All by default (ledger §8.4), now a
+                   <multi-select-dropdown> in singleChoice mode instead of a
+                   plain select, same look as the other three dropdowns on
+                   this row. Options are populated in kerning.js from the
+                   project's already-added glyphsets (glyphsets-controller.js);
+                   this control does not offer an "add a glyphset" UI of its
+                   own. Distinct from the Font mode preview glyphset selector
+                   (F08/Task 13) -- neither changes the other. -->
+              <div id="kerning-pairtable-filter-glyphset-slot"></div>
               <!-- Ticket 14: Show members (as "Group members") moved to
                    #kerning-pairtable-switches above. -->
               <!-- Backlog item 11: the old two-state sort toggle button is

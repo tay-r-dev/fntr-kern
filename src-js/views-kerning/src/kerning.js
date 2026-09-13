@@ -2568,8 +2568,13 @@ export class KerningViewController extends ViewController {
     // classClassRowVisible via pairMatchesGlyphset.
     this._tableGlyphsetMembers = null;
 
-    const glyphsetSelect = document.querySelector("#kerning-pairtable-filter-glyphset");
+    // Ticket 17 (UI-REFACTOR.md §3.3): the plain select becomes a
+    // singleChoice multi-select-dropdown, same look as the other three
+    // dropdowns on this row.
     const glyphsetSettings = this.tableGlyphsetSettingsController.model;
+    const glyphsetItems = [
+      { value: "", label: "All", checked: !filters.tableGlyphsetId },
+    ];
     for (const info of Object.values({
       ...glyphsetSettings.projectGlyphSets,
       ...glyphsetSettings.myGlyphSets,
@@ -2580,12 +2585,20 @@ export class KerningViewController extends ViewController {
       if (info.url === THIS_FONTS_GLYPHSET) {
         continue;
       }
-      const option = document.createElement("option");
-      option.value = info.url;
-      option.textContent = info.name;
-      glyphsetSelect.appendChild(option);
+      glyphsetItems.push({
+        value: info.url,
+        label: info.name,
+        checked: filters.tableGlyphsetId === info.url,
+      });
     }
-    glyphsetSelect.value = filters.tableGlyphsetId || "";
+    const glyphsetDropdown = html.createDomElement("multi-select-dropdown", {
+      label: "Glyphset",
+      singleChoice: true,
+      items: glyphsetItems,
+    });
+    document
+      .querySelector("#kerning-pairtable-filter-glyphset-slot")
+      .replaceWith(glyphsetDropdown);
 
     const applyTableGlyphsetSelection = async (glyphsetId) => {
       if (!glyphsetId) {
@@ -2606,8 +2619,8 @@ export class KerningViewController extends ViewController {
     if (filters.tableGlyphsetId) {
       applyTableGlyphsetSelection(filters.tableGlyphsetId);
     }
-    glyphsetSelect.addEventListener("change", () => {
-      const glyphsetId = glyphsetSelect.value || null;
+    glyphsetDropdown.addEventListener("change", (event) => {
+      const glyphsetId = event.detail.checked[0] || null;
       this.autokernFiltersController.setItem("tableGlyphsetId", glyphsetId);
       applyTableGlyphsetSelection(glyphsetId);
     });
