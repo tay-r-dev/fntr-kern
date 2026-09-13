@@ -663,8 +663,10 @@ export default class DesignspaceNavigationPanel extends Panel {
         id: "speedpunk-accordion-item",
         label: translate("sidebar.designspace-navigation.speedpunk"),
         open: false,
+        auxiliaryHeaderElement: this._makeVisualHeaderToggle("speedpunk-header-toggle"),
         content: html.div(
           {
+            id: "speedpunk-content",
             style: `
               display: grid;
               grid-template-columns: auto 1fr;
@@ -673,11 +675,6 @@ export default class DesignspaceNavigationPanel extends Panel {
             `,
           },
           [
-            html.label(
-              { for: "speedpunk-display-toggle", style: "white-space: nowrap;" },
-              [translate("sidebar.designspace-navigation.speedpunk.display")]
-            ),
-            html.input({ id: "speedpunk-display-toggle", type: "checkbox" }),
             html.label(
               { for: "speedpunk-peak-height-input", style: "white-space: nowrap;" },
               [translate("sidebar.designspace-navigation.speedpunk.peak-height")]
@@ -877,8 +874,12 @@ export default class DesignspaceNavigationPanel extends Panel {
     return this.visualAccordion.querySelector("#coarse-grid-increment-input");
   }
 
-  get speedPunkDisplayToggle() {
-    return this.visualAccordion.querySelector("#speedpunk-display-toggle");
+  get speedPunkHeaderToggle() {
+    return this.visualAccordion.querySelector("#speedpunk-header-toggle");
+  }
+
+  get speedPunkContent() {
+    return this.visualAccordion.querySelector("#speedpunk-content");
   }
 
   get speedPunkPeakHeightInput() {
@@ -1153,18 +1154,8 @@ export default class DesignspaceNavigationPanel extends Panel {
   _updateSpeedPunkControlsEnabled() {
     const enabled =
       !!this.editorController.visualizationLayersSettings.model["fontra.curvature"];
-    for (const input of [
-      this.speedPunkPeakHeightInput,
-      this.speedPunkReferenceTurnInput,
-      this.speedPunkColorFlatTurnInput,
-      this.speedPunkColorTightTurnInput,
-      this.speedPunkSharpnessInput,
-      this.speedPunkOpacityInput,
-    ]) {
-      if (input) {
-        input.disabled = !enabled;
-      }
-    }
+    // Ticket 25, reusing ticket 24's freeze helper.
+    setContainerFrozen(this.speedPunkContent, !enabled);
   }
 
   _syncSpeedPunkControls() {
@@ -1397,7 +1388,7 @@ export default class DesignspaceNavigationPanel extends Panel {
       "speedPunkOpacity"
     );
 
-    const toggle = this.speedPunkDisplayToggle;
+    const toggle = this.speedPunkHeaderToggle;
     if (toggle) {
       const visualizationSettings = this.editorController.visualizationLayersSettings;
       toggle.checked = !!visualizationSettings.model["fontra.curvature"];
