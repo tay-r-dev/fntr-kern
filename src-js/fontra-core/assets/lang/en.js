@@ -743,6 +743,7 @@ export const strings = {
   "sidebar.selection-info.sidebearings": "Sidebearings",
   "sidebar.selection-info.title": "Metrics",
   "sidebar.selection-info.unicode": "Unicode",
+  "sidebar.selection": "Selection",
   "sidebar.selection-transformation": "Selection Transformation",
   "sidebar.selection-transformation.align": "Align Objects",
   "sidebar.selection-transformation.align.bottom": "Align bottom",

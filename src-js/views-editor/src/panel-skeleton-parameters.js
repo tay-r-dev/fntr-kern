@@ -25,7 +25,6 @@ import {
 } from "@fontra/core/skeleton-model.js";
 import { throttleCalls } from "@fontra/core/utils.ts";
 import { Form } from "@fontra/web-components/ui-form.js";
-import Panel from "./panel.js";
 import { editSkeleton } from "./skeleton-editing.js";
 import {
   SKELETON_PANEL_SENDER,
@@ -276,14 +275,13 @@ function cornerValuesFromField(name, value) {
   return null;
 }
 
-export default class SkeletonParametersPanel extends Panel {
-  identifier = "skeleton-parameters";
-  iconPath = "/tabler-icons/bone.svg";
-
-  constructor(editorController) {
-    super(editorController);
+// Composed into panel-selection.js's Selection panel, not registered as its
+// own sidebar panel (see ticket 05: merge into one "Selection" tab).
+export default class SkeletonParametersPanel {
+  constructor(editorController, contentElement) {
+    this.editorController = editorController;
     this.infoForm = new Form();
-    this.contentElement.appendChild(
+    contentElement.appendChild(
       html.div(
         { class: "panel-section panel-section--flex panel-section--scrollable" },
         [this.infoForm]
@@ -354,10 +352,6 @@ export default class SkeletonParametersPanel extends Panel {
       ],
       this.updateBound
     );
-  }
-
-  getContentElement() {
-    return html.div({ class: "panel" }, []);
   }
 
   async toggle(on) {

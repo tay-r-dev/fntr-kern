@@ -144,9 +144,8 @@ import SelectionInfoPanel, {
   MARGIN_SETTERS,
   resolveMetricsKeysForGlyph,
 } from "./panel-selection-info.js";
-import SkeletonParametersPanel from "./panel-skeleton-parameters.js";
+import SelectionPanel from "./panel-selection.js";
 import TextEntryPanel from "./panel-text-entry.js";
-import TransformationPanel from "./panel-transformation.js";
 import Panel from "./panel.js";
 
 const MIN_CANVAS_SPACE = 200;
@@ -1254,8 +1253,7 @@ export class EditorController extends ViewController {
     this.addSidebarPanel(new DesignspaceNavigationPanel(this), "left");
     this.addSidebarPanel(new ReferenceFontPanel(this), "left");
     this.addSidebarPanel(new SelectionInfoPanel(this), "right");
-    this.addSidebarPanel(new TransformationPanel(this), "right");
-    this.addSidebarPanel(new SkeletonParametersPanel(this), "right");
+    this.addSidebarPanel(new SelectionPanel(this), "right");
     this.addSidebarPanel(new MarkersPanel(this), "right");
     this.addSidebarPanel(new GlyphNotePanel(this), "right");
     this.addSidebarPanel(new RelatedGlyphsPanel(this), "right");

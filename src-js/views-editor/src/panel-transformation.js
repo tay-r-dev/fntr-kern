@@ -28,7 +28,6 @@ import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { Form } from "@fontra/web-components/ui-form.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
-import Panel from "./panel.js";
 import {
   applyGeneratedContourRemap,
   computeGeneratedContourRemap,
@@ -36,10 +35,9 @@ import {
   makeSkeletonPointTargetEntry,
 } from "./skeleton-editing.js";
 
-export default class TransformationPanel extends Panel {
-  identifier = "selection-transformation";
-  iconPath = "/tabler-icons/shape.svg";
-
+// Composed into panel-selection.js's Selection panel, not registered as its
+// own sidebar panel (see ticket 05: merge into one "Selection" tab).
+export default class TransformationPanel {
   static stylesForm = `
   .ui-form-label {
     overflow-x: unset;
@@ -82,11 +80,11 @@ export default class TransformationPanel extends Panel {
   }
 `;
 
-  constructor(editorController) {
-    super(editorController);
+  constructor(editorController, contentElement) {
+    this.editorController = editorController;
     this.infoForm = new Form();
     this.infoForm.appendStyle(TransformationPanel.stylesForm);
-    this.contentElement.appendChild(
+    contentElement.appendChild(
       html.div(
         { class: "panel-section panel-section--flex panel-section--scrollable" },
         [this.infoForm]
@@ -187,15 +185,6 @@ export default class TransformationPanel extends Panel {
         () => this.doPathOperations(pathOperationFunc, keyPart)
       );
     }
-  }
-
-  getContentElement() {
-    return html.div(
-      {
-        class: "panel",
-      },
-      []
-    );
   }
 
   async update(senderInfo) {
