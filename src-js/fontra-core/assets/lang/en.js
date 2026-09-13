@@ -711,6 +711,8 @@ export const strings = {
   "sidebar.skeleton-parameters.detached": "Detach",
   "sidebar.skeleton-parameters.generated-gizmos": "Gizmo editing",
   "sidebar.skeleton-parameters.generated-gizmos-off": "Direct handle editing",
+  "sidebar.skeleton-parameters.mode.gizmo": "Gizmo",
+  "sidebar.skeleton-parameters.mode.handles": "Handles",
   "sidebar.skeleton-parameters.reset-rib": "Reset rib",
   "sidebar.skeleton-parameters.reset-ribs-both": "Reset both ribs",
   "sidebar.skeleton-parameters.reset-handles": "Reset handles",

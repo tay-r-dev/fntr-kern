@@ -24,6 +24,7 @@ import {
   setSourceSkeletonDefaultsValues,
 } from "@fontra/core/skeleton-model.js";
 import { throttleCalls } from "@fontra/core/utils.ts";
+import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 44
 import { Form } from "@fontra/web-components/ui-form.js";
 import { editSkeleton } from "./skeleton-editing.js";
 import {
@@ -352,6 +353,35 @@ export default class SkeletonParametersPanel {
       ],
       this.updateBound
     );
+
+    // Ticket 44: a Gizmo/Handles pair at the Skeleton heading's right,
+    // replacing the Ribs section's Generated gizmos checkbox. Built once
+    // here rather than inside update()'s formContents, so the same node
+    // -- and the View menu's own external writes to it -- keep working
+    // whether the next update() rebuilds the form or takes its in-place,
+    // values-only path (formContentsLayoutSignature unchanged).
+    const gizmoHandlesOptions = [
+      { value: "gizmo", label: translate("sidebar.skeleton-parameters.mode.gizmo") },
+      {
+        value: "handles",
+        label: translate("sidebar.skeleton-parameters.mode.handles"),
+      },
+    ];
+    this.gizmoHandlesControl = html.createDomElement("segmented-control", {
+      options: gizmoHandlesOptions,
+      value: this._generatedGizmosEnabled() ? "gizmo" : "handles",
+    });
+    this.gizmoHandlesControl.addEventListener("change", (event) => {
+      this.editorController.visualizationLayersSettings.model[
+        "fontra.skeleton.generated-tunni"
+      ] = event.detail.value === "gizmo";
+    });
+    this.editorController.visualizationLayersSettings.addKeyListener(
+      "fontra.skeleton.generated-tunni",
+      (event) => {
+        this.gizmoHandlesControl.value = event.newValue === true ? "gizmo" : "handles";
+      }
+    );
   }
 
   async toggle(on) {
@@ -422,7 +452,11 @@ export default class SkeletonParametersPanel {
     this._disarmForceApply();
 
     const formContents = [
-      { type: "header", label: translate("sidebar.skeleton-parameters.title") },
+      {
+        type: "header",
+        label: translate("sidebar.skeleton-parameters.title"),
+        auxiliaryElement: this.gizmoHandlesControl,
+      },
     ];
     // Above the no-skeleton and no-selection branches, so it is there whatever
     // is selected. It is a generator setting: it applies to every outline the
@@ -1336,16 +1370,10 @@ export default class SkeletonParametersPanel {
       type: "header",
       label: translate("sidebar.skeleton-parameters.ribs"),
     });
-    // D9: the gizmos are the default way to shape a generated segment; dragging
-    // its handles directly is the opt-out. A behavior name, not a data mode
-    // (R-F) — both write the same fields, so flipping this loses nothing and
-    // there is nothing to reset on the way back.
-    formContents.push({
-      type: "checkbox",
-      key: "rib:generated-gizmos",
-      label: translate("sidebar.skeleton-parameters.generated-gizmos"),
-      value: this._generatedGizmosEnabled(),
-    });
+    // Ticket 44: the gizmo/handles mode switch moved to the Gizmo/Handles pair
+    // at the Skeleton heading's right (D9: the gizmos are the default way to
+    // shape a generated segment; dragging its handles directly is the
+    // opt-out -- both write the same fields, so flipping this loses nothing).
     // Locking blocks this side's generated adjustments without clearing them.
     // With a skeleton point selected the derived targets are both its ribs, so
     // this is the donor's combined lock control.
@@ -2721,12 +2749,6 @@ export default class SkeletonParametersPanel {
   }
 
   async _onRibChange(name, value) {
-    if (name === "generated-gizmos") {
-      this.editorController.visualizationLayersSettings.model[
-        "fontra.skeleton.generated-tunni"
-      ] = value === true;
-      return;
-    }
     if (name.startsWith("locked-")) {
       const kind = name.slice("locked-".length);
       await setPanelRibLocked(
