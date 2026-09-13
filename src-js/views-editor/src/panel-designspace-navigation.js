@@ -81,6 +81,45 @@ import {
 import { NumberFormatter } from "@fontra/core/formatters.js";
 import Panel from "./panel.js";
 
+// Bug fix: no accordion item's open/closed state survived a reload -- every
+// `open` below is a fixed initial value, nothing ever read or wrote it
+// back. Restored from local storage before an accordion first renders, and
+// persisted on every open/close from then on -- the same "read once, write
+// on change" idiom kerning.js's own KERNING_ALIGN_STORAGE_KEY already uses
+// for the alignment row.
+const ACCORDION_OPEN_STORAGE_PREFIX = "fontra-designspace-navigation-accordion-open.";
+
+function restoreAccordionOpenState(items) {
+  for (const item of items) {
+    if (!item.id) {
+      continue;
+    }
+    try {
+      const stored = localStorage.getItem(ACCORDION_OPEN_STORAGE_PREFIX + item.id);
+      if (stored != null) {
+        item.open = stored === "1";
+      }
+    } catch (error) {
+      // Storage can legitimately fail (quota, private browsing) -- fall back
+      // to the item's own default rather than surface an error over it.
+    }
+  }
+  return items;
+}
+
+function persistAccordionOpenState(accordion) {
+  accordion.onItemOpenClose = (item, open) => {
+    if (!item.id) {
+      return;
+    }
+    try {
+      localStorage.setItem(ACCORDION_OPEN_STORAGE_PREFIX + item.id, open ? "1" : "0");
+    } catch (error) {
+      // Same as above: losing persistence here isn't worth surfacing.
+    }
+  };
+}
+
 const FONTRA_STATUS_KEY = "fontra.development.status";
 const FONTRA_STATUS_DEFINITIONS_KEY = "fontra.sourceStatusFieldDefinitions";
 const SPEEDPUNK_PEAK_HEIGHT_DEFAULT_UPM = 24;
@@ -561,7 +600,7 @@ export default class DesignspaceNavigationPanel extends Panel {
 
     this._updateFontAxes = updateFontAxes;
 
-    this.accordion.items = [
+    this.accordion.items = restoreAccordionOpenState([
       fontAxesAccordionItem,
       hiddenFontAxesAccordionItem,
       {
@@ -634,14 +673,15 @@ export default class DesignspaceNavigationPanel extends Panel {
           ]
         ),
       },
-    ];
+    ]);
+    persistAccordionOpenState(this.accordion);
 
     // Ticket 24, spec §2.1/§2.3: a second Accordion, under its own "Visual"
     // heading -- ui-accordion.js takes an items array with no room for a
     // plain heading between two of them, and is left unchanged, so the
     // heading sits between two Accordion elements instead.
     this.visualAccordion = new Accordion();
-    this.visualAccordion.items = [
+    this.visualAccordion.items = restoreAccordionOpenState([
       {
         id: "coarse-grid-accordion-item",
         label: translate("sidebar.designspace-navigation.coarse-grid"),
@@ -872,7 +912,8 @@ export default class DesignspaceNavigationPanel extends Panel {
           ),
         ]),
       },
-    ];
+    ]);
+    persistAccordionOpenState(this.visualAccordion);
 
     return html.div({ class: "panel" }, [
       html.div({ class: "panel-section" }, [this._buildPhraseSection()]),
