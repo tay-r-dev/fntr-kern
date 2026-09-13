@@ -2449,15 +2449,30 @@ export class KerningViewController extends ViewController {
 
     // Task 17, spec F01: "Remove the current/applied/stale filter from the
     // results controls" -- the state dropdown itself is gone from
-    // kerning.html; only the "side" binding remains here.
-    const selectBindings = [["#kerning-pairtable-filter-side", "side"]];
-    for (const [selector, key] of selectBindings) {
-      const element = document.querySelector(selector);
-      element.value = filters[key];
-      element.addEventListener("change", () => {
-        this.autokernFiltersController.setItem(key, element.value);
-      });
-    }
+    // kerning.html; only "side" remains here.
+    // Ticket 18 (UI-REFACTOR.md §3.3): Side is now a singleChoice
+    // multi-select-dropdown instead of a plain select, first on the filter
+    // row, same look as the other three dropdowns.
+    const sideLabels = [
+      ["both", "Left or right"],
+      ["left", "Glyph on left"],
+      ["right", "Glyph on right"],
+    ];
+    const sideDropdown = html.createDomElement("multi-select-dropdown", {
+      label: "Side",
+      singleChoice: true,
+      items: sideLabels.map(([value, label]) => ({
+        value,
+        label,
+        checked: filters.side === value,
+      })),
+    });
+    sideDropdown.addEventListener("change", (event) => {
+      this.autokernFiltersController.setItem("side", event.detail.checked[0]);
+    });
+    document
+      .querySelector("#kerning-pairtable-filter-side-slot")
+      .replaceWith(sideDropdown);
 
     // Task 11, spec F17: "Show junk" -> "Show hidden."
     const showHiddenCheckbox = document.querySelector(

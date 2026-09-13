@@ -1,6 +1,6 @@
 # 18: Pair table: Side dropdown
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 17 (Pair table: Glyphset dropdown)
 

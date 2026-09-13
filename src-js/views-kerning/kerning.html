@@ -129,11 +129,10 @@
             </div>
 
             <div id="kerning-pairtable-filters">
-              <select id="kerning-pairtable-filter-side" title="Side">
-                <option value="both">Left or right</option>
-                <option value="left">Glyph on left</option>
-                <option value="right">Glyph on right</option>
-              </select>
+              <!-- Ticket 18 (UI-REFACTOR.md §3.3): Side is a singleChoice
+                   multi-select-dropdown now, not a plain select -- first on
+                   the row, same look as the other three dropdowns. -->
+              <div id="kerning-pairtable-filter-side-slot"></div>
               <!-- Task 5, spec F16: the sign filter (negative/positive) is
                    removed -- signs stay visible on Current/Proposed/Delta,
                    magnitude filtering is the Minimum/Maximum |Δ| pair
