@@ -203,11 +203,8 @@ export class SceneController {
   setupSceneSettings() {
     this.sceneSettingsController = new ObservableController({
       ...getSceneSettingsDefaults(),
-      // fork: extra scene settings for coarse-grid snapping + Point labels
+      // fork: extra scene setting for coarse-grid snapping
       gridSnapEnabled: true, // Default to enabled
-      showLabelsDistance: true,
-      showLabelsTension: true,
-      showLabelsAngle: false,
     });
     this.sceneSettings = this.sceneSettingsController.model;
 

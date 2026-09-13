@@ -754,6 +754,46 @@ export default class DesignspaceNavigationPanel extends Panel {
         ),
       },
       {
+        // Ticket 28, spec §2.3: header toggle drives the fontra.point.labels
+        // drawing layer, same wiring as Coarse Grid's header toggle; the
+        // three checkboxes bind by key (never by position, unlike the old
+        // Transformation panel block they replace) to the persisted app
+        // settings the label-drawing layers read (distance-angle.js,
+        // visualization-layer-skeleton.js).
+        id: "measurements-accordion-item",
+        label: translate("sidebar.designspace-navigation.measurements"),
+        open: false,
+        auxiliaryHeaderElement: this._makeVisualHeaderToggle(
+          "measurements-header-toggle"
+        ),
+        content: html.div(
+          {
+            id: "measurements-content",
+            style: `
+              display: grid;
+              grid-template-columns: auto auto;
+              gap: 0.35em 0.75em;
+              justify-content: start;
+              align-items: center;
+            `,
+          },
+          [
+            html.label({ for: "measurements-distance-toggle" }, [
+              translate("sidebar.designspace-navigation.measurements.distance"),
+            ]),
+            html.input({ id: "measurements-distance-toggle", type: "checkbox" }),
+            html.label({ for: "measurements-tension-toggle" }, [
+              translate("sidebar.designspace-navigation.measurements.tension"),
+            ]),
+            html.input({ id: "measurements-tension-toggle", type: "checkbox" }),
+            html.label({ for: "measurements-angle-toggle" }, [
+              translate("sidebar.designspace-navigation.measurements.angle"),
+            ]),
+            html.input({ id: "measurements-angle-toggle", type: "checkbox" }),
+          ]
+        ),
+      },
+      {
         id: "speedpunk-accordion-item",
         label: translate("sidebar.designspace-navigation.speedpunk"),
         open: false,
@@ -971,6 +1011,26 @@ export default class DesignspaceNavigationPanel extends Panel {
     return this.visualAccordion.querySelector("#coarse-grid-base-input");
   }
 
+  get measurementsHeaderToggle() {
+    return this.visualAccordion.querySelector("#measurements-header-toggle");
+  }
+
+  get measurementsContent() {
+    return this.visualAccordion.querySelector("#measurements-content");
+  }
+
+  get measurementsDistanceToggle() {
+    return this.visualAccordion.querySelector("#measurements-distance-toggle");
+  }
+
+  get measurementsTensionToggle() {
+    return this.visualAccordion.querySelector("#measurements-tension-toggle");
+  }
+
+  get measurementsAngleToggle() {
+    return this.visualAccordion.querySelector("#measurements-angle-toggle");
+  }
+
   get coarseGridIncrementInput() {
     return this.visualAccordion.querySelector("#coarse-grid-increment-input");
   }
@@ -1183,6 +1243,58 @@ export default class DesignspaceNavigationPanel extends Panel {
       toggle.checked = !!event.newValue;
       this._updateCoarseGridControlsEnabled();
     });
+  }
+
+  // Ticket 28: header toggle drives the fontra.point.labels drawing layer and
+  // freezes the three checkboxes, exactly like Coarse Grid's own header
+  // toggle (_setupCoarseGridDisplayToggle above). The three checkboxes bind
+  // by key to the persisted app settings the label-drawing layers read
+  // (distance-angle.js, visualization-layer-skeleton.js), and listen for
+  // external writes -- e.g. from the View menu's own fontra.point.labels
+  // entry -- so the header toggle always agrees with it.
+  _updateMeasurementsControlsEnabled() {
+    const enabled =
+      !!this.editorController.visualizationLayersSettings.model["fontra.point.labels"];
+    setContainerFrozen(this.measurementsContent, !enabled);
+  }
+
+  _setupMeasurementsDisplayToggle() {
+    const toggle = this.measurementsHeaderToggle;
+    if (!toggle) {
+      return;
+    }
+    const visualizationSettings = this.editorController.visualizationLayersSettings;
+    toggle.checked = !!visualizationSettings.model["fontra.point.labels"];
+    this._updateMeasurementsControlsEnabled();
+    toggle.addEventListener("change", () => {
+      visualizationSettings.model["fontra.point.labels"] = !!toggle.checked;
+      this._updateMeasurementsControlsEnabled();
+    });
+    visualizationSettings.addKeyListener("fontra.point.labels", (event) => {
+      toggle.checked = !!event.newValue;
+      this._updateMeasurementsControlsEnabled();
+    });
+  }
+
+  _setupMeasurementsCheckboxes() {
+    const bindings = [
+      [this.measurementsDistanceToggle, "showLabelsDistance"],
+      [this.measurementsTensionToggle, "showLabelsTension"],
+      [this.measurementsAngleToggle, "showLabelsAngle"],
+    ];
+    for (const [checkbox, settingKey] of bindings) {
+      if (!checkbox) {
+        continue;
+      }
+      checkbox.checked = !!applicationSettingsController.model[settingKey];
+      checkbox.addEventListener("change", () => {
+        applicationSettingsController.model[settingKey] = !!checkbox.checked;
+        this.sceneController.canvasController.requestUpdate();
+      });
+      applicationSettingsController.addKeyListener(settingKey, (event) => {
+        checkbox.checked = !!event.newValue;
+      });
+    }
   }
 
   _normalizeSpeedPunkPeakHeightUpm(value) {
@@ -1613,6 +1725,8 @@ export default class DesignspaceNavigationPanel extends Panel {
 
     this._setupCoarseGridControls();
     this._setupCoarseGridDisplayToggle();
+    this._setupMeasurementsDisplayToggle();
+    this._setupMeasurementsCheckboxes();
     this._setupSpeedPunkControls();
     this._setupSnappingDebugControls();
 

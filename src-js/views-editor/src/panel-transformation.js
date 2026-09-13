@@ -117,15 +117,8 @@ export default class TransformationPanel {
       customDistributionSpacing: null,
       dimensionWidth: null,
       dimensionHeight: null,
-      showLabelsDistance: true,
-      showLabelsTension: true,
-      showLabelsAngle: false,
     };
 
-    // Initialize scene settings with default values
-    this.sceneController.sceneSettingsController.setItem("showLabelsDistance", true);
-    this.sceneController.sceneSettingsController.setItem("showLabelsTension", true);
-    this.sceneController.sceneSettingsController.setItem("showLabelsAngle", true);
     this.registerActions();
 
     this.sceneController.sceneSettingsController.addKeyListener(
@@ -681,83 +674,9 @@ export default class TransformationPanel {
       field3: {},
     });
 
-    // Add Point labels control section
-    formContents.push({ type: "divider" });
-    formContents.push({
-      type: "header",
-      label: "Point labels",
-    });
-
-    // Create checkbox elements for Point labels
-    const distanceCheckbox = html.input({
-      type: "checkbox",
-      checked: this.transformParameters.showLabelsDistance ?? true,
-    });
-
-    const tensionCheckbox = html.input({
-      type: "checkbox",
-      checked: this.transformParameters.showLabelsTension ?? true,
-    });
-
-    const angleCheckbox = html.input({
-      type: "checkbox",
-      checked: this.transformParameters.showLabelsAngle ?? true,
-    });
-
-    // Add three individual checkboxes for distance, tension, and angle using universal-row
-    formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "auxiliaryElement",
-        key: "showLabelsDistance",
-        auxiliaryElement: distanceCheckbox,
-      },
-      field2: {
-        type: "text",
-        key: "labelDistance",
-        value: "Distance",
-      },
-      field3: {},
-    });
-
-    formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "auxiliaryElement",
-        key: "showLabelsTension",
-        auxiliaryElement: tensionCheckbox,
-      },
-      field2: {
-        type: "text",
-        key: "labelTension",
-        value: "Tension",
-      },
-      field3: {},
-    });
-
-    formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "auxiliaryElement",
-        key: "showLabelsAngle",
-        auxiliaryElement: angleCheckbox,
-      },
-      field2: {
-        type: "text",
-        key: "labelAngle",
-        value: "Angle",
-      },
-      field3: {},
-    });
-
-    // Harmonize section.
-    //
-    // Deliberately last: the Point-labels listeners below are bound by
-    // querySelectorAll position, so any checkbox added ahead of them would
-    // rebind Distance/Tension/Angle to the wrong controls. Those toggles are
-    // slated for deprecation, so this section works around the issue instead of
-    // fixing it. The fix, if they outlive the deprecation: bind those listeners
-    // by id rather than by position.
+    // Point labels checkboxes moved to the Measurements accordion in the
+    // Designspace panel's Visual group (ticket 28); the Harmonize section
+    // below no longer has a position-bound sibling ahead of it.
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
@@ -862,16 +781,6 @@ export default class TransformationPanel {
 
       this.transformParameters[fieldItem.key] = value;
 
-      // Handle Tunni visibility parameters
-      if (
-        ["showLabelsDistance", "showLabelsTension", "showLabelsAngle"].includes(
-          fieldItem.key
-        )
-      ) {
-        // Update the scene settings
-        this.sceneController.sceneSettingsController.setItem(fieldItem.key, value);
-      }
-
       if (
         [
           "harmonizeG3",
@@ -908,58 +817,6 @@ export default class TransformationPanel {
         });
       }
     };
-
-    // Add event listeners to the checkboxes to update the form values properly
-    setTimeout(() => {
-      // Use querySelector to find the checkboxes by their position in the form
-      const allCheckboxes = this.infoForm.contentElement.querySelectorAll(
-        'input[type="checkbox"]'
-      );
-
-      // Find the specific Tunni checkboxes by looking at the form structure
-      // The checkboxes are added in sequence: Distance, Tension, Angle
-      if (allCheckboxes.length >= 3) {
-        const distanceCheckbox = allCheckboxes[0];
-        const tensionCheckbox = allCheckboxes[1];
-        const angleCheckbox = allCheckboxes[2];
-
-        // Set initial checked states
-        distanceCheckbox.checked = this.transformParameters.showLabelsDistance ?? true;
-        tensionCheckbox.checked = this.transformParameters.showLabelsTension ?? true;
-        angleCheckbox.checked = this.transformParameters.showLabelsAngle ?? true;
-
-        // Add event listeners to each checkbox
-        distanceCheckbox.addEventListener("change", (event) => {
-          this.transformParameters.showLabelsDistance = event.target.checked;
-          this.sceneController.sceneSettingsController.setItem(
-            "showLabelsDistance",
-            event.target.checked
-          );
-          // Force a redraw of the visualization
-          this.sceneController.canvasController.requestUpdate();
-        });
-
-        tensionCheckbox.addEventListener("change", (event) => {
-          this.transformParameters.showLabelsTension = event.target.checked;
-          this.sceneController.sceneSettingsController.setItem(
-            "showLabelsTension",
-            event.target.checked
-          );
-          // Force a redraw of the visualization
-          this.sceneController.canvasController.requestUpdate();
-        });
-
-        angleCheckbox.addEventListener("change", (event) => {
-          this.transformParameters.showLabelsAngle = event.target.checked;
-          this.sceneController.sceneSettingsController.setItem(
-            "showLabelsAngle",
-            event.target.checked
-          );
-          // Force a redraw of the visualization
-          this.sceneController.canvasController.requestUpdate();
-        });
-      }
-    }, 0);
 
     this.updateDimensions();
   }

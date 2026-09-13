@@ -1,3 +1,4 @@
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import {
   drawCubicHandleLabelPair,
   drawPointStyleLabel,
@@ -1119,10 +1120,13 @@ registerVisualizationLayerDefinition({
     if (!skeletonData?.contours?.length) {
       return;
     }
+    // Same persisted store the Measurements accordion checkboxes write
+    // (ticket 28), shared with the ordinary-outline point labels layer.
+    const settings = applicationSettingsController.model;
     const show = {
-      distance: model.sceneSettings?.showLabelsDistance ?? true,
-      tension: model.sceneSettings?.showLabelsTension ?? true,
-      angle: model.sceneSettings?.showLabelsAngle ?? true,
+      distance: settings.showLabelsDistance ?? true,
+      tension: settings.showLabelsTension ?? true,
+      angle: settings.showLabelsAngle ?? false,
     };
     for (const contour of skeletonData.contours) {
       const points = contour.points || [];

@@ -2,6 +2,7 @@
 // Ported from Glyphs plugin "Show Distance And Angle"
 
 // Import necessary functions from vector.js for the new functions
+import { applicationSettingsController } from "./application-settings.js";
 import {
   calculateControlHandlePoint,
   calculateTunniPoint,
@@ -1195,14 +1196,12 @@ export function drawPointLabels(
 ) {
   const path = positionedGlyph.glyph.path;
 
-  // Extract visibility settings from model or controller
-  // Try multiple ways to access scene settings to ensure compatibility
-  const showDistance = model.sceneSettings?.showLabelsDistance ?? true;
-  const showTension = model.sceneSettings?.showLabelsTension ?? true;
-  const showAngle = model.sceneSettings?.showLabelsAngle ?? true;
-
-  // Debug logging to see if the function is being called and what values we're getting
-  // console.log("drawPointLabels called", { showDistance, showTension, showAngle, model });
+  // Which label kinds to draw: the single persisted store the Measurements
+  // accordion checkboxes write (ticket 28), not the unpersisted scene settings.
+  const settings = applicationSettingsController.model;
+  const showDistance = settings.showLabelsDistance ?? true;
+  const showTension = settings.showLabelsTension ?? true;
+  const showAngle = settings.showLabelsAngle ?? false;
 
   // Save context state
   context.save();

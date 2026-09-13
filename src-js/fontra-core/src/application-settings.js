@@ -44,6 +44,13 @@ export const applicationSettingsController = new ObservableController({
   // until asked (app-level, per D9 — not written to project files)
   relatedGlyphsLivePreviews: false,
   compositionMarkCloudSets: {},
+  // fork: point-label kinds shown by the fontra.point.labels visualization
+  // layer (app-level, per D9 — not written to project files). Single source
+  // of truth for both the Measurements accordion checkboxes and the layers
+  // that draw the labels (distance-angle.js, visualization-layer-skeleton.js).
+  showLabelsDistance: true,
+  showLabelsTension: true,
+  showLabelsAngle: false,
 });
 
 // Node has no localStorage, and this module is reached from the node test
