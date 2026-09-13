@@ -382,8 +382,22 @@ export default class DesignspaceNavigationPanel extends Panel {
         flex: 1 1 auto;
       }
 
-      .designspace-accordion-column > ui-accordion {
-        flex: 1 1 0;
+      /* The Designspace group (font/glyph axes, sources, layers) sizes to
+         its own content instead of being forced to fill half the column --
+         that forced stretch, not the heading's margin, was the real cause
+         of the big gap between Source layers and the Visual heading below
+         it: an equal flex share made this accordion taller than its open
+         items needed, leaving blank space at its own bottom. */
+      .designspace-accordion-column > ui-accordion:first-of-type {
+        flex: 0 0 auto;
+        min-height: 0;
+        overflow: auto;
+      }
+
+      /* The Visual group takes whatever space is left over and scrolls its
+         own overflow when its open items don't fit it. */
+      .designspace-accordion-column > ui-accordion:last-of-type {
+        flex: 1 1 auto;
         min-height: 0;
         overflow: auto;
       }
