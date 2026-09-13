@@ -214,49 +214,52 @@ export default class TransformationPanel {
     }
   }
 
-  // Ticket 38: Move/Scale/Skew/Dimensions each become one universal-row of
-  // two compact-scrub fields, the row's own icon-button folded into the X
-  // field instead of sitting beside both as a separate label. Built as a
-  // plain auxiliaryElement row -- like Flip/Align below -- rather than
-  // through the Form's edit-number-x-y field type, so scrubbing only ever
-  // edits transformParameters (never applies mid-drag) and "apply" (the
-  // icon, or Enter in either field) is the one place that calls the
-  // transform, same as the plain icon-button's onclick did before.
+  // Ticket 38 (revised per designer feedback): Move/Scale/Skew/Dimensions
+  // each become one universal-row: a plain text label on the left (the row's
+  // own name, e.g. "Move"), then two compact-scrub fields, each carrying the
+  // row's icon. A scrub applies the transform on every increment, live --
+  // there is no separate apply step -- and 0.1 is the rounding grid, not
+  // just the raw drag value, so a drag lands on a clean number instead of a
+  // long, jittery decimal (roundScrubValue's own step handling).
   _buildScrubXYRow({
+    label,
     icon,
     tooltip,
     valueX,
     valueY,
-    step,
+    step = 0.1,
     onChangeX,
     onChangeY,
     onApply,
   }) {
-    const stepProps = step != null ? { step } : {};
     const fieldX = html.createDomElement("compact-scrub-field", {
       label: "X",
       value: valueX,
       icon,
       iconTooltip: tooltip,
-      ...stepProps,
+      step,
     });
     const fieldY = html.createDomElement("compact-scrub-field", {
       label: "Y",
       value: valueY,
-      ...stepProps,
+      icon,
+      iconTooltip: tooltip,
+      step,
     });
-    fieldX.addEventListener("change", (event) => onChangeX(event.detail.value));
-    fieldY.addEventListener("change", (event) => onChangeY(event.detail.value));
-    fieldX.addEventListener("apply", () => onApply());
-    fieldY.addEventListener("apply", () => onApply());
+    const apply = (onChange) => (event) => {
+      onChange(event.detail.value);
+      onApply();
+    };
+    fieldX.addEventListener("change", apply(onChangeX));
+    fieldY.addEventListener("change", apply(onChangeY));
     return {
       fieldX,
       fieldY,
       row: {
         type: "universal-row",
-        field1: { type: "auxiliaryElement", auxiliaryElement: fieldX },
-        field2: { type: "auxiliaryElement", auxiliaryElement: fieldY },
-        field3: {},
+        field1: { type: "text", value: label },
+        field2: { type: "auxiliaryElement", auxiliaryElement: fieldX },
+        field3: { type: "auxiliaryElement", auxiliaryElement: fieldY },
       },
     };
   }
@@ -327,6 +330,7 @@ export default class TransformationPanel {
     formContents.push({ type: "divider" });
 
     const { row: moveRow } = this._buildScrubXYRow({
+      label: translate("sidebar.selection-transformation.move"),
       icon: "/tabler-icons/arrow-move-right.svg",
       tooltip: translate("sidebar.selection-transformation.move"),
       valueX: this.transformParameters.moveX,
@@ -346,6 +350,7 @@ export default class TransformationPanel {
     formContents.push(moveRow);
 
     const { row: scaleRow } = this._buildScrubXYRow({
+      label: translate("sidebar.selection-transformation.scale"),
       icon: "/tabler-icons/resize.svg",
       tooltip: translate("sidebar.selection-transformation.scale"),
       valueX: this.transformParameters.scaleX,
@@ -367,10 +372,11 @@ export default class TransformationPanel {
     formContents.push(scaleRow);
 
     const rotateField = html.createDomElement("compact-scrub-field", {
-      label: translate("sidebar.selection-transformation.rotate"),
+      label: "",
       value: this.transformParameters.rotation,
       icon: "/tabler-icons/rotate.svg",
       iconTooltip: translate("sidebar.selection-transformation.rotate"),
+      step: 0.1,
     });
     const applyRotate = () =>
       this.transformSelection(
@@ -378,19 +384,22 @@ export default class TransformationPanel {
           new Transform().rotate((this.transformParameters.rotation * Math.PI) / 180),
         "rotate"
       );
-    rotateField.addEventListener(
-      "change",
-      (event) => (this.transformParameters.rotation = event.detail.value)
-    );
-    rotateField.addEventListener("apply", applyRotate);
+    rotateField.addEventListener("change", (event) => {
+      this.transformParameters.rotation = event.detail.value;
+      applyRotate();
+    });
     formContents.push({
       type: "universal-row",
-      field1: { type: "auxiliaryElement", auxiliaryElement: rotateField },
-      field2: {},
+      field1: {
+        type: "text",
+        value: translate("sidebar.selection-transformation.rotate"),
+      },
+      field2: { type: "auxiliaryElement", auxiliaryElement: rotateField },
       field3: {},
     });
 
     const { row: skewRow } = this._buildScrubXYRow({
+      label: translate("sidebar.selection-transformation.skew"),
       icon: "/images/skew.svg",
       tooltip: translate("sidebar.selection-transformation.skew"),
       valueX: this.transformParameters.skewX,
@@ -453,11 +462,11 @@ export default class TransformationPanel {
       fieldX: dimensionWidthField,
       fieldY: dimensionHeightField,
     } = this._buildScrubXYRow({
+      label: translate("sidebar.selection-info.dimensions"),
       icon: "/tabler-icons/dimensions.svg",
       tooltip: translate("sidebar.selection-info.dimensions"),
       valueX: this.transformParameters.dimensionWidth,
       valueY: this.transformParameters.dimensionHeight,
-      step: 0.1,
       onChangeX: (value) => (this.transformParameters.dimensionWidth = value),
       onChangeY: (value) => (this.transformParameters.dimensionHeight = value),
       onApply: applyDimensions,

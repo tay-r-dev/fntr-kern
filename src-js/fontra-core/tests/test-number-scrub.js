@@ -91,6 +91,14 @@ describe("number scrub rounding", () => {
     expect(roundScrubValue(42.4, { integer: false })).to.equal(42.4);
   });
 
+  it("snaps a non-integer field with a step to that step, without float noise", () => {
+    expect(roundScrubValue(12.34918, { integer: false, step: 0.1 })).to.equal(12.3);
+    expect(roundScrubValue(12.37, { integer: false, step: 0.1 })).to.equal(12.4);
+    expect(roundScrubValue(0.1 + 0.2, { integer: false, step: 0.1 })).to.equal(0.3);
+    // No step: falls back to the raw value, same as today.
+    expect(roundScrubValue(12.34918, { integer: false })).to.equal(12.34918);
+  });
+
   it("keeps a fine drag from vanishing", () => {
     // The caller carries the travel unrounded and rounds only on the way out, so
     // ten one-tenth moves add up to one. Rounding each move on its own would

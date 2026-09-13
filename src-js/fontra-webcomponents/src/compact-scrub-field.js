@@ -201,6 +201,9 @@ export class CompactScrubField extends UnlitElement {
       minValue: this._minValue,
       maxValue: this._maxValue,
       integer: this._integer,
+      // Doubles as the rounding grid for a non-integer field (roundScrubValue),
+      // not just the per-pixel increment size scrubIncrement reads it for.
+      step: this._step,
     };
   }
 
@@ -283,7 +286,7 @@ export class CompactScrubField extends UnlitElement {
     if (this._maxValue != null) {
       input.max = this._maxValue;
     }
-    input.step = this._integer ? 1 : "any";
+    input.step = this._integer ? 1 : this._step || "any";
 
     this._valueElement.innerHTML = "";
     this._valueElement.appendChild(input);
