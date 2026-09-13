@@ -63,6 +63,7 @@ import {
   mapAxesFromUserSpaceToSourceSpace,
   piecewiseLinearMap,
 } from "@fontra/core/var-model.js";
+import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 26's SpeedPunk fields
 import "@fontra/web-components/designspace-location.js";
 import { IconButton } from "@fontra/web-components/icon-button.js";
 import { InlineSVG } from "@fontra/web-components/inline-svg.js";
@@ -669,86 +670,62 @@ export default class DesignspaceNavigationPanel extends Panel {
             id: "speedpunk-content",
             style: `
               display: grid;
-              grid-template-columns: auto 1fr;
+              grid-template-columns: 1fr 1fr;
               gap: 0.5em;
-              align-items: center;
             `,
           },
           [
-            html.label(
-              { for: "speedpunk-peak-height-input", style: "white-space: nowrap;" },
-              [translate("sidebar.designspace-navigation.speedpunk.peak-height")]
-            ),
-            html.input({
+            // Ticket 26, spec §2.5: two per row -- Peak height/Tight colour at
+            // turn, Full height at turn/Sharpness, Full colour at turn/Opacity.
+            html.createDomElement("compact-scrub-field", {
               id: "speedpunk-peak-height-input",
-              type: "number",
-              min: SPEEDPUNK_PEAK_HEIGHT_MIN_UPM,
-              max: SPEEDPUNK_PEAK_HEIGHT_MAX_UPM,
-              step: 1,
+              label: translate("sidebar.designspace-navigation.speedpunk.peak-height"),
+              minValue: SPEEDPUNK_PEAK_HEIGHT_MIN_UPM,
+              maxValue: SPEEDPUNK_PEAK_HEIGHT_MAX_UPM,
+              integer: true,
             }),
-            html.label(
-              {
-                for: "speedpunk-reference-turn-input",
-                style: "white-space: nowrap;",
-              },
-              [translate("sidebar.designspace-navigation.speedpunk.reference-turn")]
-            ),
-            html.input({
-              id: "speedpunk-reference-turn-input",
-              type: "number",
-              min: SPEEDPUNK_REFERENCE_TURN_MIN_DEGREES,
-              max: SPEEDPUNK_REFERENCE_TURN_MAX_DEGREES,
-              step: 1,
-            }),
-            html.label(
-              {
-                for: "speedpunk-color-flat-turn-input",
-                style: "white-space: nowrap;",
-              },
-              [translate("sidebar.designspace-navigation.speedpunk.color-flat-turn")]
-            ),
-            html.input({
-              id: "speedpunk-color-flat-turn-input",
-              type: "number",
-              min: SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
-              max: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
-              step: 1,
-            }),
-            html.label(
-              {
-                for: "speedpunk-color-tight-turn-input",
-                style: "white-space: nowrap;",
-              },
-              [translate("sidebar.designspace-navigation.speedpunk.color-tight-turn")]
-            ),
-            html.input({
+            html.createDomElement("compact-scrub-field", {
               id: "speedpunk-color-tight-turn-input",
-              type: "number",
-              min: SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
-              max: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
-              step: 1,
+              label: translate(
+                "sidebar.designspace-navigation.speedpunk.color-tight-turn"
+              ),
+              minValue: SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
+              maxValue: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
+              integer: true,
             }),
-            html.label(
-              { for: "speedpunk-sharpness-input", style: "white-space: nowrap;" },
-              [translate("sidebar.designspace-navigation.speedpunk.sharpness")]
-            ),
-            html.input({
+            html.createDomElement("compact-scrub-field", {
+              id: "speedpunk-reference-turn-input",
+              label: translate(
+                "sidebar.designspace-navigation.speedpunk.reference-turn"
+              ),
+              minValue: SPEEDPUNK_REFERENCE_TURN_MIN_DEGREES,
+              maxValue: SPEEDPUNK_REFERENCE_TURN_MAX_DEGREES,
+              integer: true,
+            }),
+            html.createDomElement("compact-scrub-field", {
               id: "speedpunk-sharpness-input",
-              type: "number",
-              min: SPEEDPUNK_SHARPNESS_MIN,
-              max: SPEEDPUNK_SHARPNESS_MAX,
+              label: translate("sidebar.designspace-navigation.speedpunk.sharpness"),
+              minValue: SPEEDPUNK_SHARPNESS_MIN,
+              maxValue: SPEEDPUNK_SHARPNESS_MAX,
               step: 0.1,
+              integer: false,
             }),
-            html.label(
-              { for: "speedpunk-opacity-input", style: "white-space: nowrap;" },
-              [translate("sidebar.designspace-navigation.speedpunk.opacity")]
-            ),
-            html.input({
+            html.createDomElement("compact-scrub-field", {
+              id: "speedpunk-color-flat-turn-input",
+              label: translate(
+                "sidebar.designspace-navigation.speedpunk.color-flat-turn"
+              ),
+              minValue: SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
+              maxValue: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
+              integer: true,
+            }),
+            html.createDomElement("compact-scrub-field", {
               id: "speedpunk-opacity-input",
-              type: "number",
-              min: SPEEDPUNK_OPACITY_MIN,
-              max: SPEEDPUNK_OPACITY_MAX,
+              label: translate("sidebar.designspace-navigation.speedpunk.opacity"),
+              minValue: SPEEDPUNK_OPACITY_MIN,
+              maxValue: SPEEDPUNK_OPACITY_MAX,
               step: 0.05,
+              integer: false,
             }),
           ]
         ),
@@ -1161,22 +1138,22 @@ export default class DesignspaceNavigationPanel extends Panel {
   _syncSpeedPunkControls() {
     const settings = this._speedPunkSettings;
     if (this.speedPunkPeakHeightInput) {
-      this.speedPunkPeakHeightInput.value = String(settings.peakHeightUpm);
+      this.speedPunkPeakHeightInput.value = settings.peakHeightUpm;
     }
     if (this.speedPunkReferenceTurnInput) {
-      this.speedPunkReferenceTurnInput.value = String(settings.referenceTurnDegrees);
+      this.speedPunkReferenceTurnInput.value = settings.referenceTurnDegrees;
     }
     if (this.speedPunkColorFlatTurnInput) {
-      this.speedPunkColorFlatTurnInput.value = String(settings.colorFlatTurnDegrees);
+      this.speedPunkColorFlatTurnInput.value = settings.colorFlatTurnDegrees;
     }
     if (this.speedPunkColorTightTurnInput) {
-      this.speedPunkColorTightTurnInput.value = String(settings.colorTightTurnDegrees);
+      this.speedPunkColorTightTurnInput.value = settings.colorTightTurnDegrees;
     }
     if (this.speedPunkSharpnessInput) {
-      this.speedPunkSharpnessInput.value = String(settings.sharpness);
+      this.speedPunkSharpnessInput.value = settings.sharpness;
     }
     if (this.speedPunkOpacityInput) {
-      this.speedPunkOpacityInput.value = String(settings.opacity);
+      this.speedPunkOpacityInput.value = settings.opacity;
     }
     this.sceneSettingsController.setItem(
       "speedPunkPeakHeightUpm",
@@ -1329,15 +1306,17 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._syncSpeedPunkControls();
     this._persistSpeedPunkSettings();
 
-    const bindNumberInput = (input, normalize, appKey, sceneKey) => {
-      if (!input) return;
-      input.addEventListener("change", () => {
-        const value = normalize(Number(input.value));
+    // Ticket 26: compact-scrub-field fires "change" on every scrub move, not
+    // only on commit, so the comb redraws while dragging as well as on type.
+    const bindNumberInput = (field, normalize, appKey, sceneKey) => {
+      if (!field) return;
+      field.addEventListener("change", (event) => {
+        const value = normalize(event.detail.value);
         this._speedPunkSettings = {
           ...this._speedPunkSettings,
           [appKey]: value,
         };
-        input.value = String(value);
+        field.value = value;
         this.sceneSettingsController.setItem(sceneKey, value, { senderID: this });
         this._persistSpeedPunkSettings();
       });

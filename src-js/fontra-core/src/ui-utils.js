@@ -318,7 +318,7 @@ export function setContainerFrozen(container, frozen) {
   }
   container.classList.toggle(FROZEN_CONTAINER_CLASS, !!frozen);
   const controls = container.querySelectorAll(
-    "input, select, textarea, button, range-slider, icon-button, labeled-toggle"
+    "input, select, textarea, button, range-slider, icon-button, labeled-toggle, compact-scrub-field"
   );
   for (const control of controls) {
     control.disabled = !!frozen;
