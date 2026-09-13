@@ -317,11 +317,109 @@ export default class DesignspaceNavigationPanel extends Panel {
       100
     );
 
+    this._appendStyle(`
+      .designspace-phrase-heading {
+        font-weight: bold;
+        margin: 0 0 0.5em 0;
+      }
+
+      #designspace-phrase-textarea {
+        background-color: var(--text-input-background-color);
+        color: var(--text-input-foreground-color);
+        border-radius: 0.25em;
+        border: 0.5px solid lightgray;
+        outline: none;
+        padding: 0.2em 0.5em;
+        font-family: fontra-ui-regular, sans-serif;
+        font-size: 1.1rem;
+        resize: none;
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      #designspace-phrase-align-row {
+        display: flex;
+        gap: 0.35em;
+        margin-top: 0.5em;
+      }
+
+      #designspace-phrase-align-row icon-button {
+        width: 1.5rem;
+        height: 1.5rem;
+      }
+    `);
+
     this.fontController.ensureInitialized.then(() => {
       this.setup();
     });
 
     this.initActions();
+  }
+
+  // Ticket 23, spec §2.1/§1.3: the Phrase heading, phrase box and alignment
+  // row, reused (not moved) from the Text Entry tab -- both write
+  // this.editorController.sceneSettingsController's "text" and "align" keys,
+  // so they can never disagree. Built with the same icon-button `on` state
+  // ticket 11 added for the Autokern panel's own alignment row (kerning.js's
+  // initAlignmentRow), not the Text Entry panel's hand-built <inline-svg> row
+  // -- panel-text-entry.js is left untouched.
+  _buildPhraseSection() {
+    const textarea = html.createDomElement("textarea", {
+      id: "designspace-phrase-textarea",
+      rows: 2,
+      wrap: "off",
+    });
+    textarea.value = this.sceneSettings.text ?? "";
+    textarea.addEventListener("input", () => {
+      this.sceneSettingsController.setItem("text", textarea.value, {
+        senderID: this,
+      });
+    });
+    this.sceneSettingsController.addKeyListener("text", (event) => {
+      if (event.senderInfo?.senderID === this) {
+        return;
+      }
+      textarea.value = event.newValue;
+    });
+
+    const alignButtons = {
+      left: html.createDomElement("icon-button", {
+        "id": "designspace-phrase-align-left",
+        "src": "/images/alignleft.svg",
+        "data-tooltip": "Align left",
+      }),
+      center: html.createDomElement("icon-button", {
+        "id": "designspace-phrase-align-center",
+        "src": "/images/aligncenter.svg",
+        "data-tooltip": "Align center",
+      }),
+      right: html.createDomElement("icon-button", {
+        "id": "designspace-phrase-align-right",
+        "src": "/images/alignright.svg",
+        "data-tooltip": "Align right",
+      }),
+    };
+    const applyAlign = (align) => {
+      for (const [key, button] of Object.entries(alignButtons)) {
+        button.on = key === align;
+      }
+    };
+    applyAlign(this.sceneSettings.align);
+    for (const [key, button] of Object.entries(alignButtons)) {
+      button.onclick = () => {
+        this.sceneSettingsController.setItem("align", key, { senderID: this });
+        applyAlign(key);
+      };
+    }
+    this.sceneSettingsController.addKeyListener("align", (event) => {
+      applyAlign(event.newValue);
+    });
+
+    return html.div({}, [
+      html.div({ class: "designspace-phrase-heading" }, ["Phrase"]),
+      textarea,
+      html.div({ id: "designspace-phrase-align-row" }, Object.values(alignButtons)),
+    ]);
   }
 
   initActions() {
@@ -698,6 +796,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     ];
 
     return html.div({ class: "panel" }, [
+      html.div({ class: "panel-section" }, [this._buildPhraseSection()]),
       html.div({ class: "panel-section panel-section--full-height" }, [this.accordion]),
     ]);
   }
