@@ -573,6 +573,10 @@ export default class LetterspacerPanel extends Panel {
       await this.updateMetricsKeyHeldMessage();
       if (this.algorithmEnabled) {
         await this.loadPersistedParams();
+        // The Current row must always read the glyph's actual sidebearings,
+        // not just after a Calculate press -- refresh it on every rebuild
+        // (glyph switch, panel open, edit) the same way Calculate does.
+        await this.updateCurrentValues();
       }
       this.hasCurrentMaster = this.algorithmEnabled
         ? await this.hasCurrentMasterForGlyph()
