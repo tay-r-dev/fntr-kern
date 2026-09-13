@@ -355,6 +355,35 @@ export default class DesignspaceNavigationPanel extends Panel {
         font-weight: bold;
         margin: 0.5em 0;
       }
+
+      /* Two ui-accordion elements now share this column (Designspace group,
+         then Visual group) instead of one alone filling it. Flex, rather
+         than the height:100% panel-section--full-height relied on for a
+         single child, so each accordion gets an explicit share of the
+         space and scrolls its own overflow instead of the pair fighting
+         over an ambiguous percentage height. */
+      .designspace-accordion-column {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5em;
+        min-height: 0;
+      }
+
+      /* Overrides panel.js's own .panel-section--full-height { height: 100% },
+         written for a single full-height child. With the Phrase section now
+         a sibling above it, this section should take whatever .panel (also
+         flex column) has left over, not a fixed 100% that fights the
+         sibling for space. */
+      .designspace-accordion-column.panel-section--full-height {
+        height: auto;
+        flex: 1 1 auto;
+      }
+
+      .designspace-accordion-column > ui-accordion {
+        flex: 1 1 0;
+        min-height: 0;
+        overflow: auto;
+      }
     `);
 
     this.fontController.ensureInitialized.then(() => {
@@ -830,11 +859,17 @@ export default class DesignspaceNavigationPanel extends Panel {
 
     return html.div({ class: "panel" }, [
       html.div({ class: "panel-section" }, [this._buildPhraseSection()]),
-      html.div({ class: "panel-section panel-section--full-height" }, [
-        this.accordion,
-        html.div({ class: "designspace-visual-heading" }, ["Visual"]),
-        this.visualAccordion,
-      ]),
+      html.div(
+        {
+          class:
+            "panel-section panel-section--full-height designspace-accordion-column",
+        },
+        [
+          this.accordion,
+          html.div({ class: "designspace-visual-heading" }, ["Visual"]),
+          this.visualAccordion,
+        ]
+      ),
     ]);
   }
 
