@@ -311,6 +311,11 @@ export default class LetterspacerPanel extends Panel {
       const field = html.createDomElement("compact-scrub-field", {
         label,
         value: this.params[key],
+        // The old edit-number rows scrubbed and typed whole numbers only
+        // (ui-form's own scrub defaults to integer when a field doesn't say
+        // otherwise); compact-scrub-field defaults the other way, so it has
+        // to be told here.
+        integer: true,
       });
       field.style.flex = "1 1 0";
       field.addEventListener("change", (event) =>
