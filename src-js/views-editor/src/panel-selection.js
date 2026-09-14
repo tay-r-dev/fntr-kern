@@ -19,14 +19,16 @@ export default class SelectionPanel extends Panel {
     super(editorController);
     // Panel's own constructor calls getContentElement() before this body
     // runs, so contentElement already exists here.
-    this.transformationPart = new TransformationPanel(
-      editorController,
-      this.contentElement
+    // One scroll area for both parts, so the Skeleton block follows the
+    // Transform block down one column instead of each taking half the height
+    // and scrolling on its own.
+    const scrollArea = html.div(
+      { class: "panel-section panel-section--flex panel-section--scrollable" },
+      []
     );
-    this.skeletonPart = new SkeletonParametersPanel(
-      editorController,
-      this.contentElement
-    );
+    this.contentElement.appendChild(scrollArea);
+    this.transformationPart = new TransformationPanel(editorController, scrollArea);
+    this.skeletonPart = new SkeletonParametersPanel(editorController, scrollArea);
   }
 
   async toggle(on, focus) {

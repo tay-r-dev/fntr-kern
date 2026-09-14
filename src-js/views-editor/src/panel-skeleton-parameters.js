@@ -304,12 +304,8 @@ export default class SkeletonParametersPanel {
   constructor(editorController, contentElement) {
     this.editorController = editorController;
     this.infoForm = new Form();
-    contentElement.appendChild(
-      html.div(
-        { class: "panel-section panel-section--flex panel-section--scrollable" },
-        [this.infoForm]
-      )
-    );
+    // The Selection panel owns the one scroll area; this part only adds its form.
+    contentElement.appendChild(html.div({}, [this.infoForm]));
     this.fontController = this.editorController.fontController;
     this.sceneController = this.editorController.sceneController;
     this.sceneSettingsController = this.editorController.sceneSettingsController;
@@ -734,6 +730,16 @@ export default class SkeletonParametersPanel {
         }`,
         checked: index === this._widthPresetIndex,
       }));
+    // A list with nothing in it opened as an empty frame.
+    if (!this.widthPresetDropdown.items.length) {
+      this.widthPresetDropdown.items = [
+        {
+          value: null,
+          label: translate("sidebar.skeleton-parameters.width-preset.none"),
+          disabled: true,
+        },
+      ];
+    }
     this.widthPresetDropdown.label =
       this._widthPresetIndex != null
         ? list[this._widthPresetIndex].name

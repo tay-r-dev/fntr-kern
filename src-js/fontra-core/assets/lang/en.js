@@ -680,6 +680,7 @@ export const strings = {
   "sidebar.skeleton-parameters.generation": "Generation",
   "sidebar.skeleton-parameters.width-preset": "Preset",
   "sidebar.skeleton-parameters.width-preset.add": "Add",
+  "sidebar.skeleton-parameters.width-preset.none": "No presets for this case",
   "sidebar.skeleton-parameters.width-preset.update": "Update",
   "sidebar.skeleton-parameters.group.lock": "Lock",
   "sidebar.skeleton-parameters.group.link": "Link",
