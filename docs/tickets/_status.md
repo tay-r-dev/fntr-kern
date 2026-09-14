@@ -13,17 +13,17 @@ One agent per group, one commit per ticket. Branch `ui/ux-refactor`.
 | Pair table dropdowns | 15–18 | done. Manual matrices not run |
 | Left sidebar | 23–28, 31 | 23–28 done. 31 waits on 30 |
 | Metrics panel | 32–37 | done |
-| Selection block | 38–44 | 38, 40, 42–44 done. 39 waits on 02, 41 needs a decision |
+| Selection block | 38–44 | 38, 40, 42–44 done. 39 ready, 41 needs a decision |
 | Skeleton Generation | 45–49, 52, 53 | done. Manual matrices not run |
 | Terminal and corners | 50, 51, 54–61 | done, manual matrices not run. 57 and 60 follow the 2026-09-14 serif decision (UI-REFACTOR §5.6) |
 | Markers panel | 62–66 | done, manual matrices not run. Section eye leaves group switches alone |
 | Skeleton settings | 67–74 | done, manual matrices not run. 70 and 74 follow the 2026-09-14 preset decisions |
 
-**Waiting on a decision:** 29 Tunni layer mapping, 30 skeleton switches, 41 preserve aspect ratio,
+**Waiting on a decision:** 80 canvas handles and the origin, 29 Tunni layer mapping, 30 skeleton switches, 41 preserve aspect ratio,
 75 corner distribution, 76 snapping master switch, 77 Detached, 78 contour
 default width and Insertion, 79 heading icons.
 
-**Not grouped:** 02, the reported origin fault. Reproduce it in the editor first.
+**Not grouped:** 02 closed, did not reproduce in the panel; the canvas handles ignore the origin (80).
 
 Shared elements built so far: the icon button's on state (11) and mixed state (47), the labeled
 toggle (14), the shared table (04; cells, row actions, selection, column menu, window and grip since 2026-09-14), the multi-select dropdown (15), the header toggle and the freeze

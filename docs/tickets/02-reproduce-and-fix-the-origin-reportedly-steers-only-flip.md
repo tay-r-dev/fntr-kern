@@ -1,6 +1,6 @@
 # 02: Reproduce and fix: the origin reportedly steers only Flip
 
-**Status:** ready-for-agent
+**Status:** done (did not reproduce)
 
 **Blocked by:** None (can start immediately)
 
@@ -40,3 +40,9 @@ Run in the running app and record each result in the commit message (rail R-G).
 | 5 | Change the origin, then Flip | Flip still mirrors about the chosen origin |
 
 **Spec:** docs/superpowers/UI-REFACTOR.md §5.3. **Rails:** docs/superpowers/FEATURE-ARCHITECTURE-MAP.md §2. **Commit** after the ticket, `git add .`.
+
+## Closing comment (2026-09-14)
+
+Did not reproduce in the panel. The designer set the origin to top-left on a rectangle and rotated from the panel: node 0 stayed put. A headless run of the panel's transform entry on the same glyph gave the same result for Rotate, Scale and Flip at three origins. No code changed.
+
+The cause of the report: the canvas selection box's handles do not read the panel's origin. A handle pins the opposite side (`edit-tools-pointer.js`, the handle drag), and Alt pins the centre. Flip exists only in the panel, so it was the one transform that followed the origin. Whether the handles should follow it is ticket 80.

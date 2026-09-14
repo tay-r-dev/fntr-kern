@@ -2,7 +2,7 @@
 
 **Status:** ready-for-agent
 
-**Blocked by:** 05 (Merge the Transformation and Skeleton parameters panels), 02 (Reproduce and fix: the origin reportedly steers only Flip)
+**Blocked by:** 05 (Merge the Transformation and Skeleton parameters panels)
 
 ## Today
 
