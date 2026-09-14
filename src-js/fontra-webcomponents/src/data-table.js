@@ -397,6 +397,17 @@ export class DataTable extends HTMLElement {
     return this._columns;
   }
 
+  // Called with (rowId, event) for a click on a row's plain cells. When set,
+  // the caller owns selection and `selectable` has no effect on clicks.
+  set onRowClick(callback) {
+    this._onRowClick = callback;
+    this._table?.classList.toggle("data-table-clickable", this._isClickable());
+  }
+
+  get onRowClick() {
+    return this._onRowClick;
+  }
+
   get tbody() {
     return this._tbody;
   }
