@@ -456,6 +456,65 @@ export function applyInsertionEasing(points, insertedIndex, easing) {
   return eased;
 }
 
+/**
+ * Turn a cut straight back into two plain straights when easing is zero.
+ *
+ * The split emits a straight as two cubics so that easing has handles to grow.
+ * At zero those four handles all sit on their on-curves and do nothing, so they
+ * are dropped, and the two on-curves at the ends of the straight become corners:
+ * a tension point with no handle toward the straight has nothing to be smooth
+ * with. A cut curve, or any handle with a length, leaves the points as they are.
+ *
+ * @param {Array} points - the side's points, after the split, ratio and easing
+ * @param {number} insertedIndex - the emitted on-curve's index
+ * @param {number} easing - the side's easing
+ * @param {boolean} closed - whether the side closes on its own first on-curve
+ * @returns {Array} a new array, or the input where nothing is dropped
+ */
+export function dropStraightInsertionHandles(points, insertedIndex, easing, closed) {
+  const count = points?.length ?? 0;
+  if (easing || !points?.[insertedIndex]) {
+    return points;
+  }
+  const at = (step) => {
+    const index = insertedIndex + step;
+    return closed ? (index + count) % count : index;
+  };
+  // Each handle and the on-curve it has to sit on.
+  const owners = [
+    [at(-2), at(-3)],
+    [at(-1), insertedIndex],
+    [at(1), insertedIndex],
+    [at(2), at(3)],
+  ];
+  const ends = [at(-3), at(3)];
+  const inRange = (index) => index >= 0 && index < count;
+  if (
+    !owners.every(
+      ([handle, owner]) =>
+        inRange(handle) &&
+        inRange(owner) &&
+        points[handle].type &&
+        !points[owner].type &&
+        Math.hypot(
+          points[handle].x - points[owner].x,
+          points[handle].y - points[owner].y
+        ) < 1e-9
+    )
+  ) {
+    return points;
+  }
+  const dropped = new Set(owners.map(([handle]) => handle));
+  return points.flatMap((point, index) => {
+    if (dropped.has(index)) {
+      return [];
+    }
+    return ends.includes(index) && point.smooth
+      ? [{ ...point, smooth: false }]
+      : [point];
+  });
+}
+
 // A handle moved along its own line toward a length, keeping its direction
 // exactly. At zero it is left as it was.
 function stretchToward(handle, anchor, fraction, smoothLength) {

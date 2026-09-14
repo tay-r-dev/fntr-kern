@@ -12,6 +12,7 @@ import { offsetCubicSide } from "./offset-cubic.js";
 import {
   applyInsertionEasing,
   applyInsertionRatio,
+  dropStraightInsertionHandles,
   sideParameterOnNormal,
   splitSideAtParameter,
 } from "./skeleton-insertions.js";
@@ -2627,7 +2628,14 @@ function cutOneSide(sidePoints, anchorIndex, insertion, side, segment, isClosed)
   // it, which is why sliding the point along a tapering stroke changes nothing.
   const ratio = side === "left" ? insertion.width.left : insertion.width.right;
   const moved = applyInsertionRatio(points, at, center, ratio);
-  return applyInsertionEasing(moved, at, insertion.easing[side]);
+  const easing = insertion.easing[side];
+  // At zero easing a cut straight goes back to plain straights and corners.
+  return dropStraightInsertionHandles(
+    applyInsertionEasing(moved, at, easing),
+    at,
+    easing,
+    isClosed
+  );
 }
 
 /**
