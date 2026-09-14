@@ -12,6 +12,8 @@ import {
   getSkeletonPointWidth,
   getSkeletonRibAddress,
   getSkeletonRibSidesForPoint,
+  getTerminalPresetFields,
+  captureSerifPreset,
   SKELETON_LOCK_KINDS,
   isSkeletonSideLocked,
   parseEditableGeneratedHandleKey,
@@ -350,6 +352,54 @@ export function pointDistribution(point, defaultWidth) {
 // where the selection states none: no points, or totals or projections that
 // disagree. The Generation header and the Skeleton settings tab both capture
 // through this one function.
+// The shape a selection states for one terminal kind, or null where the
+// selected endpoints disagree on any field. A field a point has never stored
+// reads as `fallbacks[field]`, the value the Terminal section shows for it, so a
+// captured preset reproduces what is on screen. A serif is captured whole by
+// the model, and the selected terminals have to capture alike.
+export function captureSelectionTerminalShape(panelSelection, type, fallbacks) {
+  const points = panelSelection ? collectWidthEditPoints(panelSelection) : [];
+  if (!points.length) {
+    return null;
+  }
+  if (type === "serif") {
+    const captured = points.map((entry) => captureSerifPreset(entry.point));
+    const first = JSON.stringify(captured[0]);
+    return captured.every((preset) => JSON.stringify(preset) === first)
+      ? captured[0]
+      : null;
+  }
+  const fields = getTerminalPresetFields(type);
+  if (!fields) {
+    return null;
+  }
+  const shape = {};
+  for (const field of fields) {
+    const values = new Set(
+      points.map((entry) => entry.point[field] ?? fallbacks?.[field])
+    );
+    if (values.size !== 1) {
+      return null;
+    }
+    [shape[field]] = values;
+  }
+  return shape;
+}
+
+// A terminal preset captured from a selection: the kind every selected
+// endpoint shares, and its shape. Null where the points are not all open
+// endpoints of one kind with fields, or the shapes disagree.
+export function captureSelectionTerminalPreset(panelSelection, fallbacks) {
+  const points = panelSelection ? collectWidthEditPoints(panelSelection) : [];
+  const style = summarizeSkeletonCapStyleSelection(points);
+  const type = style.canEdit && !style.mixed ? style.value : null;
+  if (!type || !getTerminalPresetFields(type)) {
+    return null;
+  }
+  const shape = captureSelectionTerminalShape(panelSelection, type, fallbacks);
+  return shape ? { type, shape } : null;
+}
+
 export function captureSelectionWidthPreset(panelSelection) {
   const points = collectWidthEditPoints(panelSelection);
   const contours = panelSelection?.contours || [];

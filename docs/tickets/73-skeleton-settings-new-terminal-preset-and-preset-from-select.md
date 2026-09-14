@@ -1,6 +1,6 @@
 # 73: Skeleton settings: New terminal preset and Preset from selection
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 71 (Skeleton settings: terminal presets table)
 

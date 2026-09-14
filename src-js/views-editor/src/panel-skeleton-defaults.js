@@ -3,6 +3,7 @@ import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import {
+  DEFAULT_SERIF_PRESET,
   DEFAULT_SKELETON_WIDTH,
   SKELETON_SOURCE_DEFAULT_FALLBACKS,
   SKELETON_SOURCE_DEFAULT_KEYS,
@@ -10,6 +11,7 @@ import {
   getSkeletonGlyphCase,
   getSkeletonPointWidth,
   getSourceSkeletonDefaultsValue,
+  getTerminalPresetFields,
   getTerminalPresetSourceKey,
   normalizeTerminalPreset,
   setSkeletonPointTotalWidth,
@@ -24,12 +26,14 @@ import {
   CAP_ANGLE_MAX,
   CAP_ANGLE_MIN,
   CAP_RADIUS_POSITIONS,
+  TERMINAL_FIELD_FALLBACKS,
   capRadiusIndexFromRatio,
   capRadiusRatioFromIndex,
 } from "./panel-skeleton-parameters.js";
 import Panel from "./panel.js";
 import { editSkeleton } from "./skeleton-editing.js";
 import {
+  captureSelectionTerminalPreset,
   captureSelectionWidthPreset,
   collectSkeletonPanelSelection,
 } from "./skeleton-panel-model.js";
@@ -210,6 +214,24 @@ export default class SkeletonSettingsPanel extends Panel {
         this.terminalPresetFilters.element,
       ]),
       this.terminalPresetTable,
+      // Ticket 73: New preset adds a row of the filtered kind, master and case;
+      // Preset from selection stores the selected terminal's kind and shape.
+      html.div({ class: "skeleton-settings-filters" }, [
+        html.button({ onclick: () => this._addTerminalPreset(null) }, [
+          translate("sidebar.skeleton-settings.new-preset"),
+        ]),
+        (this.terminalPresetFromSelectionButton = html.button(
+          {
+            onclick: () => {
+              const captured = this._captureSelectionTerminalPreset();
+              if (captured) {
+                this._addTerminalPreset(captured);
+              }
+            },
+          },
+          [translate("sidebar.skeleton-settings.preset-from-selection")]
+        )),
+      ]),
     ]);
     this.contentElement.appendChild(
       html.div(
@@ -438,10 +460,22 @@ export default class SkeletonSettingsPanel extends Panel {
     return panelSelection ? captureSelectionWidthPreset(panelSelection) : null;
   }
 
+  _captureSelectionTerminalPreset() {
+    return captureSelectionTerminalPreset(
+      this._currentSkeletonPanelSelection(),
+      TERMINAL_FIELD_FALLBACKS
+    );
+  }
+
   _refreshFromSelectionButtons() {
+    const readOnly = !!this.fontController?.readOnly;
     if (this.widthPresetFromSelectionButton) {
       this.widthPresetFromSelectionButton.disabled =
-        !!this.fontController?.readOnly || !this._captureSelectionWidthPreset();
+        readOnly || !this._captureSelectionWidthPreset();
+    }
+    if (this.terminalPresetFromSelectionButton) {
+      this.terminalPresetFromSelectionButton.disabled =
+        readOnly || !this._captureSelectionTerminalPreset();
     }
   }
 
@@ -687,6 +721,42 @@ export default class SkeletonSettingsPanel extends Panel {
       return;
     }
     next[index] = normalizeTerminalPreset(type, { ...next[index], ...patch });
+    await this._writeTerminalPresets(sourceId, type, next);
+  }
+
+  // One new row. A captured preset brings its own kind; otherwise the kind is
+  // the filtered one, or Serif where the filter shows all, starting on the
+  // shape a fresh terminal of that kind shows. Master and case are the
+  // filtered ones, or the edited glyph's.
+  async _addTerminalPreset(captured) {
+    const type = captured?.type ?? this._terminalPresetFilter.type ?? "serif";
+    const sourceId =
+      this._terminalPresetFilter.master ?? this._getEffectiveSource().sourceId;
+    if (!sourceId) {
+      return;
+    }
+    const glyphCase =
+      this._terminalPresetFilter.case ??
+      getSkeletonGlyphCase(this.sceneController.sceneSettings?.selectedGlyphName);
+    const shape =
+      captured?.shape ??
+      (type === "serif"
+        ? DEFAULT_SERIF_PRESET
+        : Object.fromEntries(
+            getTerminalPresetFields(type).map((field) => [
+              field,
+              TERMINAL_FIELD_FALLBACKS[field],
+            ])
+          ));
+    const next = this._terminalPresetList(sourceId, type);
+    const count = next.filter((preset) => preset.case === glyphCase).length;
+    next.push(
+      normalizeTerminalPreset(type, {
+        ...shape,
+        name: `${translate("sidebar.skeleton-parameters.width-preset")} ${count + 1}`,
+        case: glyphCase,
+      })
+    );
     await this._writeTerminalPresets(sourceId, type, next);
   }
 

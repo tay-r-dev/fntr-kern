@@ -13,10 +13,8 @@ import {
   VALID_SERIF_AXIS_MODES,
   VALID_SERIF_SIDES,
   applySerifPreset,
-  captureSerifPreset,
   getSkeletonData,
   getSkeletonGlyphCase,
-  getTerminalPresetFields,
   getTerminalPresetSourceKey,
   normalizeTerminalPreset,
   resolveEffectiveSourceSkeletonDefault,
@@ -76,6 +74,7 @@ import {
 } from "./skeleton-panel-edits.js";
 import {
   collectRibEditTargets,
+  captureSelectionTerminalShape,
   captureSelectionWidthPreset,
   collectSkeletonPanelSelection,
   collectWidthEditPoints,
@@ -119,7 +118,7 @@ const DEFAULT_CAP_BALL_EASING = 0;
 
 // Ticket 56: what the Terminal section shows for a cap field a point has never
 // stored, so a preset captured from that point stores what is on screen.
-const TERMINAL_FIELD_FALLBACKS = {
+export const TERMINAL_FIELD_FALLBACKS = {
   capAngle: DEFAULT_CAP_ANGLE,
   capDistance: 0,
   capRadiusRatio: DEFAULT_CAP_RADIUS_RATIO,
@@ -1222,38 +1221,14 @@ export default class SkeletonParametersPanel {
     return this._terminalPresetList(type)[value] ?? null;
   }
 
-  // The shape the selection states for one kind, or null where the selected
-  // endpoints disagree on any field. A field a point has never stored reads as
-  // the value the section shows for it, so a captured preset reproduces what is
-  // on screen. A serif is captured whole by the model, and the selected
-  // terminals have to capture alike.
+  // The shape the selection states for one kind (captureSelectionTerminalShape,
+  // shared with the Skeleton settings tab).
   _selectionTerminalPreset(type) {
-    const points = this._widthPoints?.() || [];
-    if (type === "serif") {
-      if (!points.length) {
-        return null;
-      }
-      const captured = points.map((entry) => captureSerifPreset(entry.point));
-      const first = JSON.stringify(captured[0]);
-      return captured.every((preset) => JSON.stringify(preset) === first)
-        ? captured[0]
-        : null;
-    }
-    const fields = getTerminalPresetFields(type);
-    if (!fields || !points.length) {
-      return null;
-    }
-    const shape = {};
-    for (const field of fields) {
-      const values = new Set(
-        points.map((entry) => entry.point[field] ?? TERMINAL_FIELD_FALLBACKS[field])
-      );
-      if (values.size !== 1) {
-        return null;
-      }
-      [shape[field]] = values;
-    }
-    return shape;
+    return captureSelectionTerminalShape(
+      this._panelSelection,
+      type,
+      TERMINAL_FIELD_FALLBACKS
+    );
   }
 
   _refreshTerminalPresetControl(type) {
