@@ -226,18 +226,15 @@ function splitLine(start, end, t) {
   // setting.
   const direction = normalize(span) ?? { x: 0, y: 0 };
   const back = { x: -direction.x, y: -direction.y };
-  // An outer handle is only needed where the on-curve it belongs to is smooth:
-  // there it holds the point's other handle colinear, which is the whole reason
-  // a cut straight becomes a curve. At a corner there is nothing to hold, so it
-  // collapses onto its on-curve and the piece draws a plain straight line.
-  const firstThird = start.smooth ? Math.hypot(at.x - start.x, at.y - start.y) / 3 : 0;
-  const secondThird = end.smooth ? Math.hypot(end.x - at.x, end.y - at.y) / 3 : 0;
+  // Every handle collapses onto its on-curve, so at easing zero a cut straight
+  // draws two plain straights and shows no handles. Each keeps the axis it was
+  // built on, which is the direction easing grows it along.
   return [
-    along(start, direction, firstThird),
+    along(start, direction, 0),
     stub(at, back),
     { x: at.x, y: at.y },
     stub(at, direction),
-    along(end, back, secondThird),
+    along(end, back, 0),
   ];
 }
 

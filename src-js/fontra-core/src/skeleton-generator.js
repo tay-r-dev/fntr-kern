@@ -1624,6 +1624,28 @@ function cutCurveAt(curve, t, half) {
   }
   const split = new Bezier(curve.map((point) => ({ x: point.x, y: point.y }))).split(t);
   const kept = (half === "left" ? split.left : split.right).points;
+  // A cubic whose handles sit on its own ends draws a straight. Its cut is still
+  // a straight, so the handles stay on the new ends instead of taking the
+  // lengths de Casteljau would give them.
+  if (
+    vector.distance(curve[1], curve[0]) < 1e-9 &&
+    vector.distance(curve[2], curve[3]) < 1e-9
+  ) {
+    return [
+      {
+        ...curve[1],
+        x: Math.round(kept[0].x),
+        y: Math.round(kept[0].y),
+        type: "cubic",
+      },
+      {
+        ...curve[2],
+        x: Math.round(kept[3].x),
+        y: Math.round(kept[3].y),
+        type: "cubic",
+      },
+    ];
+  }
   // Handle 1 keeps handle 1's address whichever end the cut came from, the same
   // rule the round-cap split follows.
   return [1, 2].map((index) => {

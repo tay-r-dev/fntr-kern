@@ -151,7 +151,7 @@ describe("splitSideAtParameter", () => {
     }
   });
 
-  it("keeps an outer handle where the on-curve it belongs to is smooth", () => {
+  it("emits no handle length on a cut straight, smooth ends included", () => {
     const smoothSide = () => [
       { x: 0, y: 0, smooth: true },
       { x: 100, y: 0, smooth: true },
@@ -163,11 +163,13 @@ describe("splitSideAtParameter", () => {
       { x: 50, y: -30 },
       2
     );
-    // On the line it was built on, so the smooth end keeps its direction.
-    expect(swollen[1]).to.include({ y: 0 });
-    expect(swollen[1].x).to.be.greaterThan(0);
-    expect(swollen[5]).to.include({ y: 0 });
-    expect(swollen[5].x).to.be.lessThan(100);
+    // Every handle sits on its on-curve, and keeps the axis easing grows it on.
+    expect(swollen[1]).to.include({ x: 0, y: 0 });
+    expect(swollen[1]._axis.x).to.equal(1);
+    expect(swollen[1]._axis.y).to.be.closeTo(0, 1e-12);
+    expect(swollen[5]).to.include({ x: 100, y: 0 });
+    expect(swollen[5]._axis.x).to.equal(-1);
+    expect(swollen[5]._axis.y).to.be.closeTo(0, 1e-12);
   });
 
   it("aims the insertion's own handles at their neighbours when it moves", () => {
