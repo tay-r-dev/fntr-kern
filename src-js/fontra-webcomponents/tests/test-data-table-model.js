@@ -21,23 +21,48 @@ describe("data-table-model", () => {
   });
 
   it("shifts the window by a step near an edge that has more rows", () => {
-    const box = { scrollHeight: 2000, clientHeight: 300, size: 100, step: 25, edge: 200 };
-    expect(scrollWindowShift({ ...box, scrollTop: 1600, start: 0, total: 235 })).to.equal(25);
-    expect(scrollWindowShift({ ...box, scrollTop: 1600, start: 135, total: 235 })).to.equal(0);
-    expect(scrollWindowShift({ ...box, scrollTop: 100, start: 25, total: 235 })).to.equal(-25);
-    expect(scrollWindowShift({ ...box, scrollTop: 100, start: 0, total: 235 })).to.equal(0);
-    expect(scrollWindowShift({ ...box, scrollTop: 800, start: 25, total: 235 })).to.equal(0);
+    const box = {
+      scrollHeight: 2000,
+      clientHeight: 300,
+      size: 100,
+      step: 25,
+      edge: 200,
+    };
+    expect(
+      scrollWindowShift({ ...box, scrollTop: 1600, start: 0, total: 235 })
+    ).to.equal(25);
+    expect(
+      scrollWindowShift({ ...box, scrollTop: 1600, start: 135, total: 235 })
+    ).to.equal(0);
+    expect(
+      scrollWindowShift({ ...box, scrollTop: 100, start: 25, total: 235 })
+    ).to.equal(-25);
+    expect(
+      scrollWindowShift({ ...box, scrollTop: 100, start: 0, total: 235 })
+    ).to.equal(0);
+    expect(
+      scrollWindowShift({ ...box, scrollTop: 800, start: 25, total: 235 })
+    ).to.equal(0);
   });
 
   it("parses a number cell, rounding when asked, and rejects empty or bad text", () => {
-    expect(parseCellValue("12.6", { type: "number", round: true })).to.deep.equal({ valid: true, value: 13 });
-    expect(parseCellValue("12.6", { type: "number" })).to.deep.equal({ valid: true, value: 12.6 });
+    expect(parseCellValue("12.6", { type: "number", round: true })).to.deep.equal({
+      valid: true,
+      value: 13,
+    });
+    expect(parseCellValue("12.6", { type: "number" })).to.deep.equal({
+      valid: true,
+      value: 12.6,
+    });
     expect(parseCellValue(" ", { type: "number" }).valid).to.equal(false);
     expect(parseCellValue("abc", { type: "number" }).valid).to.equal(false);
   });
 
   it("keeps a text cell as text", () => {
-    expect(parseCellValue("Stem", { type: "text" })).to.deep.equal({ valid: true, value: "Stem" });
+    expect(parseCellValue("Stem", { type: "text" })).to.deep.equal({
+      valid: true,
+      value: "Stem",
+    });
     expect(parseCellValue("", {})).to.deep.equal({ valid: true, value: "" });
   });
 });

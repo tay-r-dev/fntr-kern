@@ -275,9 +275,7 @@ export function editableCell({
 // [{value, label}].
 export function selectCell({ value, options, disabled = false, className, onChange }) {
   const select = document.createElement("select");
-  select.className = className
-    ? `data-table-select ${className}`
-    : "data-table-select";
+  select.className = className ? `data-table-select ${className}` : "data-table-select";
   select.disabled = disabled;
   for (const option of options) {
     const element = document.createElement("option");
@@ -342,7 +340,9 @@ export function actionsCell(actions, { className } = {}) {
 // row without a drag across rows sweeping text along.
 export function copyableText(text, { className } = {}) {
   const span = document.createElement("span");
-  span.className = className ? `data-table-copyable ${className}` : "data-table-copyable";
+  span.className = className
+    ? `data-table-copyable ${className}`
+    : "data-table-copyable";
   span.textContent = text;
   return span;
 }

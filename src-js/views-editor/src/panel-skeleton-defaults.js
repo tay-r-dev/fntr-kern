@@ -18,7 +18,14 @@ import {
   setSkeletonPointTotalWidth,
   setSourceSkeletonDefaultsValues,
 } from "@fontra/core/skeleton-model.js";
-import "@fontra/web-components/data-table.js"; // for <data-table>, ticket 68
+import {
+  actionsCell,
+  editableCell,
+  rowAction,
+  selectCell,
+  tableCell,
+  tableRow,
+} from "@fontra/web-components/data-table.js"; // for <data-table>, ticket 68
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 67
 import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 69
 import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 74
@@ -94,40 +101,13 @@ const SKELETON_SETTINGS_STYLES = `
     gap: 0.35rem;
   }
 
-  .skeleton-presets-table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
   .skeleton-presets-table th {
-    text-align: left;
     font-weight: normal;
     opacity: 0.7;
   }
 
-  .skeleton-presets-table td {
-    padding: 0.15rem 0.2rem;
-    vertical-align: top;
-  }
-
-  .skeleton-presets-table input[type="text"] {
-    width: 100%;
-    box-sizing: border-box;
-  }
-
-  .skeleton-presets-table input[type="number"] {
-    width: 4em;
-  }
-
-  .skeleton-presets-table icon-button {
-    width: 1.1em;
-    height: 1.1em;
-  }
-
-  .preset-actions {
-    display: flex;
-    gap: 0.3rem;
-    justify-content: flex-end;
+  .skeleton-presets-table .preset-width {
+    width: 4.5em;
   }
 
   .preset-origin {
@@ -165,7 +145,7 @@ export default class SkeletonSettingsPanel extends Panel {
     this.widthPresetTable.tableClassName = "skeleton-presets-table";
     this.widthPresetTable.columns = [
       { label: translate("sidebar.skeleton-settings.column.name") },
-      { label: translate("sidebar.skeleton-settings.column.width") },
+      { label: translate("sidebar.skeleton-settings.column.width"), align: "right" },
       { label: translate("sidebar.skeleton-settings.column.side") },
       { label: "" },
     ];
@@ -623,11 +603,10 @@ export default class SkeletonSettingsPanel extends Panel {
   }
 
   _renderWidthPresetRows() {
-    const tbody = this.widthPresetTable.tbody;
-    tbody.innerHTML = "";
     this.widthPresetFilters.refresh();
     this._refreshFromSelectionButtons();
     const readOnly = !!this.fontController.readOnly;
+    const items = [];
     for (const [sourceId, source] of Object.entries(
       this.fontController.sources || {}
     )) {
@@ -636,71 +615,84 @@ export default class SkeletonSettingsPanel extends Panel {
         SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS
       );
       list.forEach((preset, index) => {
-        if (!this.widthPresetFilters.matches(sourceId, preset.case)) {
-          return;
+        if (this.widthPresetFilters.matches(sourceId, preset.case)) {
+          items.push({
+            rowId: `${sourceId}:${index}`,
+            sourceId,
+            source,
+            preset,
+            index,
+          });
         }
-        const rowId = `${sourceId}:${index}`;
-        const nameInput = html.input({
-          type: "text",
-          value: preset.name || "",
-          disabled: readOnly,
-          onchange: (event) =>
-            this._editWidthPreset(sourceId, index, {
-              name: String(event.target.value ?? ""),
-            }),
-        });
-        const widthInput = html.input({
-          type: "number",
-          value: Number(preset.width) || 0,
-          disabled: readOnly,
-          onchange: (event) => {
-            const numeric = Number(event.target.value);
-            this._editWidthPreset(sourceId, index, {
-              width: Number.isFinite(numeric) ? numeric : 0,
-            });
-          },
-        });
-        const sideSelect = html.select(
-          {
-            disabled: readOnly,
-            onchange: (event) =>
-              this._editWidthPreset(sourceId, index, { side: event.target.value }),
-          },
-          ["both", "left", "right"].map((side) =>
-            html.option({ value: side, selected: preset.side === side }, [
-              translate(`sidebar.skeleton-settings.side.${side}`),
-            ])
-          )
-        );
-        const confirming = this._customDeleteConfirm === rowId;
-        const trash = html.createDomElement("icon-button", {
-          "src": confirming ? "/tabler-icons/x.svg" : "/tabler-icons/trash.svg",
-          "data-tooltip": translate(
-            confirming
-              ? "sidebar.skeleton-parameters.custom-widths.confirm-delete"
-              : "sidebar.skeleton-parameters.custom-widths.delete"
-          ),
-          "data-tooltipposition": "left",
-        });
-        trash.disabled = readOnly;
-        trash.onclick = () => this._deleteWidthPreset(sourceId, index, rowId);
-        tbody.appendChild(
-          html.createDomElement("tr", { "data-rowId": rowId }, [
-            html.createDomElement("td", {}, [
-              nameInput,
-              html.div({ class: "preset-origin" }, [
-                `${source.name || sourceId} · ${translate(
-                  `sidebar.skeleton-settings.case.${preset.case}`
-                )}`,
-              ]),
-            ]),
-            html.createDomElement("td", {}, [widthInput]),
-            html.createDomElement("td", {}, [sideSelect]),
-            html.createDomElement("td", {}, [trash]),
-          ])
-        );
       });
     }
+    this.widthPresetTable.setRows(
+      items,
+      ({ rowId, sourceId, source, preset, index }) =>
+        tableRow(rowId, [
+          tableCell([
+            editableCell({
+              value: preset.name || "",
+              disabled: readOnly,
+              onCommit: (name) => this._editWidthPreset(sourceId, index, { name }),
+            }),
+            this._presetOrigin(source, sourceId, preset),
+          ]),
+          tableCell(
+            editableCell({
+              type: "number",
+              value: Number(preset.width) || 0,
+              disabled: readOnly,
+              className: "preset-width",
+              onCommit: (width) => this._editWidthPreset(sourceId, index, { width }),
+            }),
+            { align: "right" }
+          ),
+          tableCell(
+            selectCell({
+              value: preset.side,
+              disabled: readOnly,
+              options: ["both", "left", "right"].map((side) => ({
+                value: side,
+                label: translate(`sidebar.skeleton-settings.side.${side}`),
+              })),
+              onChange: (side) => this._editWidthPreset(sourceId, index, { side }),
+            })
+          ),
+          actionsCell([
+            this._presetDeleteAction(rowId, readOnly, () =>
+              this._deleteWidthPreset(sourceId, index, rowId)
+            ),
+          ]),
+        ]),
+      { rowId: (item) => item.rowId }
+    );
+  }
+
+  // The source and case under a preset's name.
+  _presetOrigin(source, sourceId, preset) {
+    return html.div({ class: "preset-origin" }, [
+      `${source.name || sourceId} · ${translate(
+        `sidebar.skeleton-settings.case.${preset.case}`
+      )}`,
+    ]);
+  }
+
+  // The trash takes two presses; the armed trash stays visible as a cross.
+  _presetDeleteAction(rowId, readOnly, onClick) {
+    const confirming = this._customDeleteConfirm === rowId;
+    return rowAction({
+      src: confirming ? "/tabler-icons/x.svg" : "/tabler-icons/trash.svg",
+      tooltip: translate(
+        confirming
+          ? "sidebar.skeleton-parameters.custom-widths.confirm-delete"
+          : "sidebar.skeleton-parameters.custom-widths.delete"
+      ),
+      tooltipPosition: "left",
+      reveal: confirming ? "always" : "dim",
+      disabled: readOnly,
+      onClick,
+    });
   }
 
   // ---- Terminal presets table (ticket 71) -------------------------------------
@@ -1059,70 +1051,57 @@ export default class SkeletonSettingsPanel extends Panel {
   }
 
   _renderTerminalPresetRows() {
-    const tbody = this.terminalPresetTable.tbody;
-    tbody.innerHTML = "";
     this.terminalPresetFilters.refresh();
     const readOnly = !!this.fontController.readOnly;
+    const items = [];
     for (const [sourceId, source] of Object.entries(
       this.fontController.sources || {}
     )) {
       for (const type of TERMINAL_PRESET_KINDS) {
         this._terminalPresetList(sourceId, type).forEach((preset, index) => {
-          if (!this.terminalPresetFilters.matches(sourceId, preset.case, type)) {
-            return;
+          if (this.terminalPresetFilters.matches(sourceId, preset.case, type)) {
+            items.push({
+              rowId: `${sourceId}:${type}:${index}`,
+              sourceId,
+              source,
+              type,
+              preset,
+              index,
+            });
           }
-          const rowId = `${sourceId}:${type}:${index}`;
-          const nameInput = html.input({
-            type: "text",
-            value: preset.name || "",
-            disabled: readOnly,
-            onchange: (event) =>
-              this._editTerminalPreset(sourceId, type, index, {
-                name: String(event.target.value ?? ""),
-              }),
-          });
-          const confirming = this._customDeleteConfirm === rowId;
-          const trash = html.createDomElement("icon-button", {
-            "src": confirming ? "/tabler-icons/x.svg" : "/tabler-icons/trash.svg",
-            "data-tooltip": translate(
-              confirming
-                ? "sidebar.skeleton-parameters.custom-widths.confirm-delete"
-                : "sidebar.skeleton-parameters.custom-widths.delete"
-            ),
-            "data-tooltipposition": "left",
-          });
-          trash.disabled = readOnly;
-          trash.onclick = () =>
-            this._deleteTerminalPreset(sourceId, type, index, rowId);
-          // Ticket 74: the pencil opens the preset's fields in a dialog.
-          const pencil = html.createDomElement("icon-button", {
-            "src": "/tabler-icons/pencil.svg",
-            "data-tooltip": translate("sidebar.skeleton-settings.edit"),
-            "data-tooltipposition": "left",
-          });
-          pencil.disabled = readOnly;
-          pencil.onclick = () => this._editTerminalPresetDialog(sourceId, type, index);
-          tbody.appendChild(
-            html.createDomElement("tr", { "data-rowId": rowId }, [
-              html.createDomElement("td", {}, [
-                translate(`sidebar.skeleton-parameters.cap-style.${type}`),
-              ]),
-              html.createDomElement("td", {}, [
-                nameInput,
-                html.div({ class: "preset-origin" }, [
-                  `${source.name || sourceId} · ${translate(
-                    `sidebar.skeleton-settings.case.${preset.case}`
-                  )}`,
-                ]),
-              ]),
-              html.createDomElement("td", {}, [
-                html.div({ class: "preset-actions" }, [pencil, trash]),
-              ]),
-            ])
-          );
         });
       }
     }
+    this.terminalPresetTable.setRows(
+      items,
+      ({ rowId, sourceId, source, type, preset, index }) =>
+        tableRow(rowId, [
+          tableCell(translate(`sidebar.skeleton-parameters.cap-style.${type}`)),
+          tableCell([
+            editableCell({
+              value: preset.name || "",
+              disabled: readOnly,
+              onCommit: (name) =>
+                this._editTerminalPreset(sourceId, type, index, { name }),
+            }),
+            this._presetOrigin(source, sourceId, preset),
+          ]),
+          actionsCell([
+            // Ticket 74: the pencil opens the preset's fields in a dialog.
+            rowAction({
+              src: "/tabler-icons/pencil.svg",
+              tooltip: translate("sidebar.skeleton-settings.edit"),
+              tooltipPosition: "left",
+              disabled: readOnly,
+              onClick: () => this._editTerminalPresetDialog(sourceId, type, index),
+            }),
+            this._presetDeleteAction(rowId, readOnly, () =>
+              this._deleteTerminalPreset(sourceId, type, index, rowId)
+            ),
+          ]),
+        ]),
+      { rowId: (item) => item.rowId }
+    );
   }
 
   // ---- Form ----------------------------------------------------------------
