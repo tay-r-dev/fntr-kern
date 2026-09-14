@@ -1,6 +1,6 @@
 # 47: Skeleton block: Lock, Link and Reset icon groups
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 46 (Skeleton block: Generation layout), 11 (Autokern panel: alignment row)
 

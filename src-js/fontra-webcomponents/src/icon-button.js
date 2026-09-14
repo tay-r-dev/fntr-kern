@@ -66,6 +66,14 @@ export class IconButton extends UnlitElement {
       background-color: var(--icon-button-on-background-color);
       border-radius: 0.25em;
     }
+
+    /* Ticket 47: the mixed state, for a toggle whose selection disagrees --
+       a dashed edge instead of the on fill. Off by default, like "on". */
+    button.icon-button-mixed {
+      outline: 1px dashed var(--icon-button-on-background-color);
+      outline-offset: -1px;
+      border-radius: 0.25em;
+    }
   `;
 
   constructor(src) {
@@ -112,6 +120,22 @@ export class IconButton extends UnlitElement {
     }
   }
 
+  // Ticket 47: a boolean property for the mixed state, off by default and
+  // the same shape as `on`. A caller sets it where the selection disagrees,
+  // and leaves `on` false then.
+  get mixed() {
+    return this._buttonMixed ?? false;
+  }
+
+  set mixed(value) {
+    value = !!value;
+    this._buttonMixed = value;
+    this.toggleAttribute("mixed", value);
+    if (this._button) {
+      this._button.classList.toggle("icon-button-mixed", value);
+    }
+  }
+
   click() {
     this._button.click();
   }
@@ -127,7 +151,9 @@ export class IconButton extends UnlitElement {
           focus.restore();
         },
         disabled: this._buttonDisabled,
-        class: this.on ? "icon-button-on" : "",
+        class: [this.on ? "icon-button-on" : "", this.mixed ? "icon-button-mixed" : ""]
+          .join(" ")
+          .trim(),
         style: `color: undefined var(--foreground-color);`, // TODO: huh.
       },
       [html.createDomElement("inline-svg", { src: this.src })]

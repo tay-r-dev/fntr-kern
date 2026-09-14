@@ -28,6 +28,7 @@ import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 45
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 46
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 44
 import { Form } from "@fontra/web-components/ui-form.js";
+import { SELECTION_ROW_GROUP_STYLES } from "./selection-row-group-styles.js";
 import { editSkeleton } from "./skeleton-editing.js";
 import {
   SKELETON_PANEL_SENDER,
@@ -163,6 +164,13 @@ function capValuesFromField(name, value) {
   }
   return null;
 }
+
+// Ticket 47: one icon per lock kind. The tooltip carries the full name.
+const LOCK_KIND_ICONS = {
+  handles: "/tabler-icons/circle-dot.svg",
+  slide: "/tabler-icons/arrows-horizontal.svg",
+  width: "/tabler-icons/dimensions.svg",
+};
 
 // A compact scrub field streams the value under the hand. The width writers
 // move each point by a change, so the stream is turned into the change from
@@ -434,6 +442,71 @@ export default class SkeletonParametersPanel {
       this.widthChain,
       this.widthFields.right,
     ]);
+
+    // Ticket 47: under Generation, one row of labeled icon groups. Lock holds
+    // the three lock kinds, Link holds Linked and Tied ribs, Reset holds the
+    // three resets. Built once with its row, for the same reason as the width
+    // fields; each update sets the buttons' state from the selection.
+    this.infoForm.appendStyle(SELECTION_ROW_GROUP_STYLES);
+    const iconButton = (src, tooltipKey, onclick) => {
+      const button = html.createDomElement("icon-button", {
+        "src": src,
+        "data-tooltip": translate(`sidebar.skeleton-parameters.${tooltipKey}`),
+        "data-tooltipposition": "top",
+      });
+      button.onclick = onclick;
+      return button;
+    };
+    // A click turns a toggle on unless it is on; a mixed one therefore turns
+    // on, which is the one answer that states something about every member.
+    const toggleButton = (src, tooltipKey, write) => {
+      const button = iconButton(src, tooltipKey, () =>
+        this._runOwnEdit(() => write(!button.on))
+      );
+      return button;
+    };
+    this.lockButtons = Object.fromEntries(
+      SKELETON_LOCK_KINDS.map((kind) => [
+        kind,
+        toggleButton(LOCK_KIND_ICONS[kind], `locked.${kind}`, (value) =>
+          this._onRibChange(`locked-${kind}`, value)
+        ),
+      ])
+    );
+    this.linkedButton = toggleButton("/tabler-icons/link.svg", "linked", (value) =>
+      this._onWidthChange("linked", value)
+    );
+    this.tiedButton = toggleButton("/tabler-icons/link-plus.svg", "tied", (value) =>
+      this._onWidthChange("tied", value)
+    );
+    this.resetRibButton = iconButton("/tabler-icons/refresh.svg", "reset-rib", () =>
+      this._resetRibs({ handlesOnly: false })
+    );
+    this.resetHandlesButton = iconButton(
+      "/tabler-icons/rotate.svg",
+      "reset-handles",
+      () => this._resetRibs({ handlesOnly: true })
+    );
+    this.resetThisHandleButton = iconButton(
+      "/tabler-icons/x.svg",
+      "reset-this-handle",
+      () => this._resetSingleGeneratedHandle()
+    );
+    const iconGroup = (labelKey, buttons) => [
+      html.span({ class: "selection-row-group-label" }, [
+        translate(`sidebar.skeleton-parameters.${labelKey}`),
+      ]),
+      html.div({ class: "selection-row-group-icons" }, buttons),
+    ];
+    this.generationIconRow = html.div({ class: "selection-row-group" }, [
+      ...iconGroup("group.lock", Object.values(this.lockButtons)),
+      ...iconGroup("group.link", [this.linkedButton, this.tiedButton]),
+      ...iconGroup("group.reset", [
+        this.resetRibButton,
+        this.resetHandlesButton,
+        this.resetThisHandleButton,
+      ]),
+    ]);
   }
 
   // One Generation width field. A drag moves every selected point by the
@@ -614,6 +687,10 @@ export default class SkeletonParametersPanel {
     const { ribs: ribTargets, derived: ribsDerived } =
       collectRibEditTargets(panelSelection);
     this._ribTargets = ribTargets;
+    this._ribsDerived = ribsDerived;
+    // Before Generation, whose Reset group offers the narrow reset only while
+    // one generated handle is selected.
+    this._singleGeneratedHandle = singleGeneratedHandleTarget(panelSelection);
     if (widthPoints.length) {
       this._buildPointWidthSection(formContents, widthPoints);
     }
@@ -624,14 +701,10 @@ export default class SkeletonParametersPanel {
       this._buildCapSection(formContents, widthPoints);
       this._buildCornerSection(formContents, widthPoints);
     }
-    this._singleGeneratedHandle = singleGeneratedHandleTarget(panelSelection);
     const insertions = panelSelection.insertions || [];
     this._insertions = insertions;
     if (insertions.length) {
       this._buildInsertionSection(formContents, insertions);
-    }
-    if (ribTargets.length) {
-      this._buildRibSection(formContents, ribTargets, ribsDerived);
     }
 
     if (
@@ -927,15 +1000,6 @@ export default class SkeletonParametersPanel {
       type: "header",
       label: translate("sidebar.skeleton-parameters.generation"),
     });
-    // Only has an effect on a smooth point whose one handle faces away from a
-    // straight segment; harmless elsewhere, so it is always shown rather than
-    // appearing and disappearing as the selection changes.
-    formContents.push({
-      type: "checkbox",
-      key: "width:tied",
-      label: translate("sidebar.skeleton-parameters.tied"),
-      value: summary.tied.mixed ? false : summary.tied.value,
-    });
     // On a single-sided contour the visible edge is the TOTAL, so the per-side
     // numbers and the split between them describe nothing on screen. Greyed and
     // blank rather than hidden: they are still stored, and still what the point
@@ -967,6 +1031,50 @@ export default class SkeletonParametersPanel {
     });
     formContents.push({ type: "single-icon", element: this.widthTotalRow });
     formContents.push({ type: "single-icon", element: this.widthSidesRow });
+
+    // Ticket 47: Lock, Link and Reset. Tied ribs only has an effect on a smooth
+    // point whose one handle faces away from a straight segment; harmless
+    // elsewhere, so it is always offered rather than coming and going.
+    const ribs = this._ribTargets || [];
+    const ribSummary = summarizeSkeletonRibSelection(ribs);
+    const setToggle = (button, reduced, disabled = false) => {
+      button.mixed = reduced.mixed;
+      button.on = !reduced.mixed && reduced.value === true;
+      button.disabled = disabled;
+    };
+    for (const kind of SKELETON_LOCK_KINDS) {
+      setToggle(this.lockButtons[kind], ribSummary.locked[kind], !ribs.length);
+    }
+    setToggle(this.linkedButton, summary.linked);
+    setToggle(this.tiedButton, summary.tied);
+    // Derived targets cover both sides of each selected point, so the reset
+    // says so; an explicit rib selection resets just that rib.
+    this.resetRibButton.setAttribute(
+      "data-tooltip",
+      translate(
+        this._ribsDerived && ribs.length > 1
+          ? "sidebar.skeleton-parameters.reset-ribs-both"
+          : "sidebar.skeleton-parameters.reset-rib"
+      )
+    );
+    this.resetRibButton.disabled = !ribs.length;
+    this.resetHandlesButton.disabled = !ribs.length;
+    // The narrow reset clears one generated handle and leaves its pair alone
+    // (5.3), so it is live only with exactly one of them selected.
+    this.resetThisHandleButton.disabled = !this._singleGeneratedHandle;
+    formContents.push({ type: "single-icon", element: this.generationIconRow });
+    // Detached has no place in the image, so it stays a checkbox under the row
+    // until the designer places it. It does not move the handle; it changes how
+    // the handle's stored offset is measured, so it is offered whatever is
+    // locked.
+    formContents.push({
+      type: "checkbox",
+      key: "rib:detached",
+      label: translate("sidebar.skeleton-parameters.detached"),
+      value: ribSummary.detached.mixed ? false : ribSummary.detached.value,
+      indeterminate: ribSummary.detached.mixed,
+      disabled: !ribs.length,
+    });
     // The rib angle lock sits with the point rather than with the cap. It is a
     // property of the point's rib and it applies at every point: at a terminal
     // it decides the rib the cap is built on, and at a corner it replaces the
@@ -1431,70 +1539,6 @@ export default class SkeletonParametersPanel {
   // panel was showing a number the model had already rejected.
   _insertionEasingFromSlider(value) {
     return Number(value) / 100;
-  }
-
-  _buildRibSection(formContents, ribs, derived = false) {
-    const summary = summarizeSkeletonRibSelection(ribs);
-    // Derived targets cover both sides of each selected point, so the reset
-    // button says so; an explicit rib selection resets just that rib.
-    const resetRibLabel = derived && ribs.length > 1 ? "reset-ribs-both" : "reset-rib";
-    formContents.push({ type: "divider" });
-    formContents.push({
-      type: "header",
-      label: translate("sidebar.skeleton-parameters.ribs"),
-    });
-    // Ticket 44: the gizmo/handles mode switch moved to the Gizmo/Handles pair
-    // at the Skeleton heading's right (D9: the gizmos are the default way to
-    // shape a generated segment; dragging its handles directly is the
-    // opt-out -- both write the same fields, so flipping this loses nothing).
-    // Locking blocks this side's generated adjustments without clearing them.
-    // With a skeleton point selected the derived targets are both its ribs, so
-    // this is the donor's combined lock control.
-    // Three independent locks, one row each. The old single control could not
-    // say which of the three the designer meant.
-    for (const kind of SKELETON_LOCK_KINDS) {
-      const value = summary.locked[kind];
-      formContents.push({
-        type: "checkbox",
-        key: `rib:locked-${kind}`,
-        label: translate(`sidebar.skeleton-parameters.locked.${kind}`),
-        value: value.mixed ? false : value.value,
-        indeterminate: value.mixed,
-      });
-    }
-    // Detach is available whatever is locked. It does not move the handle; it
-    // changes how the handle's stored offset is measured, and a handle lock
-    // holds the handle where it is either way.
-    formContents.push({
-      type: "checkbox",
-      key: "rib:detached",
-      label: translate("sidebar.skeleton-parameters.detached"),
-      value: summary.detached.mixed ? false : summary.detached.value,
-    });
-    const buttons = [
-      html.button({ onclick: () => this._resetRibs({ handlesOnly: false }) }, [
-        translate(`sidebar.skeleton-parameters.${resetRibLabel}`),
-      ]),
-      html.button({ onclick: () => this._resetRibs({ handlesOnly: true }) }, [
-        translate("sidebar.skeleton-parameters.reset-handles"),
-      ]),
-    ];
-    // With exactly one generated handle selected, offer the narrow reset that
-    // clears only that handle and leaves its pair alone (5.3).
-    if (this._singleGeneratedHandle) {
-      buttons.push(
-        html.button({ onclick: () => this._resetSingleGeneratedHandle() }, [
-          translate("sidebar.skeleton-parameters.reset-this-handle"),
-        ])
-      );
-    }
-    formContents.push({
-      type: "single-icon",
-      element: html.div(
-        { style: "display:flex; gap:0.5rem; flex-wrap:wrap;" },
-        buttons
-      ),
-    });
   }
 
   // Serif parameters. Nine numbers per half plus the axis and the underside cup

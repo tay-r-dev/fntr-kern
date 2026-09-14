@@ -31,6 +31,7 @@ import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, tick
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 42
 import { Form } from "@fontra/web-components/ui-form.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
+import { SELECTION_ROW_GROUP_STYLES } from "./selection-row-group-styles.js";
 import {
   applyGeneratedContourRemap,
   computeGeneratedContourRemap,
@@ -84,34 +85,8 @@ export default class TransformationPanel {
 
   /* Ticket 40: Flip+Align share one row, Distribute+Bools share the next,
      each row carrying two small group labels instead of a header of its
-     own. */
-  .selection-row-group {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.5em 1em;
-  }
-
-  .selection-row-group-label {
-    font-size: 0.85em;
-    opacity: 0.7;
-    white-space: nowrap;
-  }
-
-  .selection-row-group-icons {
-    display: flex;
-    align-items: center;
-    gap: 0.35em;
-  }
-
-  .selection-row-group-icons icon-button {
-    width: 1.5em;
-    height: 1.5em;
-  }
-
-  .selection-row-group-icons input[type="number"] {
-    width: 3.5em;
-  }
+     own. The group styles are shared (selection-row-group-styles.js). */
+  ${SELECTION_ROW_GROUP_STYLES}
 `;
 
   constructor(editorController, contentElement) {
