@@ -587,8 +587,11 @@ describe("skeleton-generator corner rounding input", () => {
     };
   }
 
+  // Unlinked by default: these tests are about the rounding pass drawing the
+  // numbers it is given on each side. A linked corner resolves its two sides
+  // from one centerline distance first (test-skeleton-corner-link.js).
   function cornerBlock(values = {}) {
-    const { linked = true, left = {}, right = {} } = values;
+    const { linked = false, left = {}, right = {} } = values;
     return {
       corner: {
         linked,

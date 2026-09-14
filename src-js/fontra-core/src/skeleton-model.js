@@ -22,6 +22,9 @@ import {
   isStraightControlledSmoothPoint,
   offsetContourAlongNormals,
   straightSegmentNormal,
+  cornerArmDirections,
+  cornerHalfTurnTangent,
+  cornerSideIsOuter,
 } from "./offset-contour.js";
 import { offsetCubicSide } from "./offset-cubic.js";
 import { alignHandle, alignHandles } from "./path-functions.js";
@@ -1647,6 +1650,7 @@ export function reverseSkeletonContourPoints(contour) {
     for (const field of ["width", "nudge", "handleNudge", "locked", "corner"]) {
       swapProperties(point[field], "left", "right");
     }
+    negateCornerDistribution(point);
     // Side and role turn over together, so the two diagonals exchange.
     swapProperties(point.handleOffsets, "leftOut", "rightIn");
     swapProperties(point.handleOffsets, "leftIn", "rightOut");
@@ -3132,6 +3136,12 @@ export function setSkeletonCornerParameters(point, values, { round = null } = {}
   // (dev log §29).
   const sides =
     corner.linked || !values.side ? ["left", "right"] : [assertCornerSide(values.side)];
+  // With no contour in hand a linked distance is taken as the centerline's own.
+  // Where the contour is known, setSkeletonCornerSideDistance works a side's
+  // number back to the centerline instead.
+  if (corner.linked && Number.isFinite(values.distance)) {
+    corner.distance = Math.max(0, round ? round(values.distance) : values.distance);
+  }
   for (const side of sides) {
     if (Number.isFinite(values.distance)) {
       const distance = round ? round(values.distance) : values.distance;
@@ -3140,6 +3150,190 @@ export function setSkeletonCornerParameters(point, values, { round = null } = {}
     if (Number.isFinite(values.curvature)) {
       corner[side].curvature = clampCornerCurvature(values.curvature);
     }
+  }
+  point.corner = corner;
+}
+
+//
+// Linked corner rounding: one distance for the centerline, and a side's distance
+// offset from it the way a stroke is offset from its skeleton.
+//
+// The two sides of a rounded corner are arcs about one centre. The outer side's
+// radius is the centerline's plus that side's half-width, the inner side's the
+// centerline's less its own, so a side's distance differs from the centerline's
+// by its half-width times the tangent of half the turn. The inner side reaches
+// zero first and then stays sharp, as a true offset would.
+//
+// Below the inner side's reach both sides grow in proportion from zero instead,
+// so a zero distance is a sharp corner on both sides and the first unit of
+// rounding does not jump the outer side out by a whole reach.
+//
+// `distribution` (-100 to 100) then moves distance from one side to the other
+// and keeps their sum: 100 gives the left side all of it, -100 the right side,
+// the same sign the width distribution uses.
+//
+export function linkedCornerSideDistances({
+  distance,
+  distribution = 0,
+  outerHalfWidth,
+  innerHalfWidth,
+  halfTurnTangent,
+  leftIsOuter,
+}) {
+  const centerline = Math.max(0, asFiniteNumber(distance, 0));
+  const outerReach = Math.max(0, outerHalfWidth) * Math.max(0, halfTurnTangent);
+  const innerReach = Math.max(0, innerHalfWidth) * Math.max(0, halfTurnTangent);
+  const concentric = (value) => ({
+    outer: value + outerReach,
+    inner: Math.max(value - innerReach, 0),
+  });
+  const ramp = innerReach > CORNER_REACH_EPSILON ? innerReach : outerReach;
+  let natural;
+  if (ramp <= CORNER_REACH_EPSILON) {
+    natural = { outer: centerline, inner: centerline };
+  } else if (centerline >= ramp) {
+    natural = concentric(centerline);
+  } else {
+    const edge = concentric(ramp);
+    natural = {
+      outer: (edge.outer * centerline) / ramp,
+      inner: (edge.inner * centerline) / ramp,
+    };
+  }
+  const left = leftIsOuter ? natural.outer : natural.inner;
+  const right = leftIsOuter ? natural.inner : natural.outer;
+  const sum = left + right;
+  const share = Math.max(-100, Math.min(100, asFiniteNumber(distribution, 0))) / 100;
+  if (share >= 0) {
+    const shiftedRight = right * (1 - share);
+    return { left: sum - shiftedRight, right: shiftedRight };
+  }
+  const shiftedLeft = left * (1 + share);
+  return { left: shiftedLeft, right: sum - shiftedLeft };
+}
+
+const CORNER_REACH_EPSILON = 1e-9;
+
+// The geometry a linked corner resolves against: each side's half-width as the
+// generator uses it, the turn at the corner, and which side is outer.
+function skeletonCornerGeometry(contour, point) {
+  const points = contour?.points || [];
+  const arms = cornerArmDirections(points, contour?.closed, points.indexOf(point));
+  const left = getEffectiveRibHalfWidth(contour, point, "left");
+  const right = getEffectiveRibHalfWidth(contour, point, "right");
+  const leftIsOuter = arms ? cornerSideIsOuter(arms.dir1, arms.dir2, 1) : true;
+  return {
+    outerHalfWidth: leftIsOuter ? left : right,
+    innerHalfWidth: leftIsOuter ? right : left,
+    halfTurnTangent: arms ? cornerHalfTurnTangent(arms.dir1, arms.dir2) : 0,
+    leftIsOuter,
+  };
+}
+
+// The rounding distance each side of a corner point draws with. Unlinked, the
+// stored numbers; linked, the centerline's distance resolved per side.
+export function getSkeletonCornerDistances(contour, point) {
+  const corner = normalizeCorner(point?.corner);
+  if (!corner.linked) {
+    return { left: corner.left.distance, right: corner.right.distance };
+  }
+  return linkedCornerSideDistances({
+    ...skeletonCornerGeometry(contour, point),
+    distance: corner.distance,
+    distribution: corner.distribution,
+  });
+}
+
+// The centerline distance at which one side of a linked corner reaches `target`,
+// keeping the point's distribution. Each side only grows as the centerline does,
+// so a fixed bisection finds it. Null where that side cannot reach the target at
+// all, which is a side the distribution has given nothing.
+export function centerlineCornerDistanceFor(contour, point, side, target) {
+  return solveCenterlineCornerDistance(
+    contour,
+    point,
+    (sides) => sides[assertCornerSide(side)],
+    target,
+    normalizeCorner(point?.corner).distribution
+  );
+}
+
+function solveCenterlineCornerDistance(contour, point, read, target, distribution) {
+  const geometry = skeletonCornerGeometry(contour, point);
+  const at = (distance) =>
+    read(linkedCornerSideDistances({ ...geometry, distance, distribution }));
+  const goal = Math.max(0, asFiniteNumber(target, 0));
+  if (at(0) >= goal) {
+    return 0;
+  }
+  let high = Math.max(goal, 1);
+  for (let doubling = 0; at(high) < goal; doubling++) {
+    if (doubling > 40) {
+      return null;
+    }
+    high *= 2;
+  }
+  let low = 0;
+  for (let step = 0; step < 60; step++) {
+    const middle = (low + high) / 2;
+    if (at(middle) < goal) {
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+  return high;
+}
+
+// A side's distance, typed or dragged. Unlinked it is that side's number;
+// linked it is worked back to the centerline, so the other side follows by the
+// shared-centre rule.
+export function setSkeletonCornerSideDistance(contour, point, side, value) {
+  const corner = normalizeCorner(point.corner);
+  if (!corner.linked) {
+    corner[assertCornerSide(side)].distance = Math.max(0, asFiniteNumber(value, 0));
+    point.corner = corner;
+    return;
+  }
+  const centerline = centerlineCornerDistanceFor(contour, point, side, value);
+  if (centerline === null) {
+    return;
+  }
+  corner.distance = centerline;
+  point.corner = corner;
+}
+
+export function setSkeletonCornerDistribution(point, distribution) {
+  const corner = normalizeCorner(point.corner);
+  corner.distribution = Math.max(-100, Math.min(100, asFiniteNumber(distribution, 0)));
+  point.corner = corner;
+}
+
+// Opening the link writes what each side draws into its own number, so nothing
+// moves. Closing it finds the centerline distance that keeps the two sides' sum,
+// at the shared-centre split.
+export function setSkeletonCornerLinked(contour, point, linked) {
+  const corner = normalizeCorner(point.corner);
+  if (corner.linked === (linked === true)) {
+    return;
+  }
+  if (!linked) {
+    const sides = getSkeletonCornerDistances(contour, point);
+    corner.left.distance = sides.left;
+    corner.right.distance = sides.right;
+    corner.linked = false;
+  } else {
+    const sum = corner.left.distance + corner.right.distance;
+    corner.distribution = 0;
+    corner.distance =
+      solveCenterlineCornerDistance(
+        contour,
+        point,
+        (sides) => sides.left + sides.right,
+        sum,
+        0
+      ) ?? 0;
+    corner.linked = true;
   }
   point.corner = corner;
 }
@@ -3306,6 +3500,7 @@ export function transformSkeletonPointMetadata(point, affine) {
   ]) {
     swapProperties(point[field], "left", "right");
   }
+  negateCornerDistribution(point);
   swapProperties(point.handleOffsets, "leftIn", "rightIn");
   swapProperties(point.handleOffsets, "leftOut", "rightOut");
   point.capBallSide = swapSideName(point.capBallSide);
@@ -4620,6 +4815,14 @@ function normalizeWidth(width) {
   };
 }
 
+// The distribution names a side by its sign, so it turns round when the sides
+// swap.
+function negateCornerDistribution(point) {
+  if (point.corner && Number.isFinite(point.corner.distribution)) {
+    point.corner.distribution = -point.corner.distribution || 0;
+  }
+}
+
 function normalizeCornerSide(side) {
   return {
     distance: Math.max(0, asFiniteNumber(side?.distance, 0)),
@@ -4631,9 +4834,17 @@ function normalizeCornerSide(side) {
 // rounded holds two zero distances, so the block is always present and a reader
 // never falls through to a table.
 function normalizeCorner(corner) {
+  const left = normalizeCornerSide(corner?.left);
   return {
     linked: corner?.linked !== false,
-    left: normalizeCornerSide(corner?.left),
+    // The centerline's distance, which a linked corner resolves per side. A
+    // corner stored before it existed takes its left side's number.
+    distance: Math.max(0, asFiniteNumber(corner?.distance, left.distance)),
+    distribution: Math.max(
+      -100,
+      Math.min(100, asFiniteNumber(corner?.distribution, 0))
+    ),
+    left,
     right: normalizeCornerSide(corner?.right),
   };
 }

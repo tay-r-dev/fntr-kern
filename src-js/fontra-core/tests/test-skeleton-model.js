@@ -313,8 +313,12 @@ describe("skeleton-model constructors and normalization", () => {
     });
 
     const points = normalized.contours[0].points;
+    // A corner stored before the centerline distance existed takes its left
+    // side's number for it.
     expect(points[0].corner).to.deep.equal({
       linked: true,
+      distance: 12,
+      distribution: 0,
       left: { distance: 12, curvature: 0.3 },
       right: { distance: 0, curvature: DEFAULT_CORNER_CURVATURE },
     });
@@ -322,6 +326,8 @@ describe("skeleton-model constructors and normalization", () => {
     // before the control existed.
     expect(points[1].corner).to.deep.equal({
       linked: true,
+      distance: 0,
+      distribution: 0,
       left: { distance: 0, curvature: DEFAULT_CORNER_CURVATURE },
       right: { distance: 0, curvature: DEFAULT_CORNER_CURVATURE },
     });

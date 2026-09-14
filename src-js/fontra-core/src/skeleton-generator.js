@@ -3,6 +3,7 @@ import { buildHandleDomain } from "./natural-handle-solver.js";
 import {
   cornerMiter,
   cornerMiterIsHeld,
+  cornerSideIsOuter,
   cubicPointAt,
   offsetContourAlongNormals,
   splitCubicAt,
@@ -30,6 +31,7 @@ import {
   collectTiedRibGroups,
   getEffectiveNormal,
   getEffectiveRibHalfWidth,
+  getSkeletonCornerDistances,
   isStraightControlledSmoothPoint,
   meanHalfWidth,
   normalizeSkeletonData,
@@ -247,7 +249,9 @@ export function canonicalToGeneratorInput(skeletonData) {
       capBallSide: contour.capBallSide,
       serif: contour.serif ?? null,
       reversed: contour.reversed === true,
-      points: contour.points.map(canonicalPointToGeneratorPoint),
+      points: contour.points.map((point) =>
+        canonicalPointToGeneratorPoint(point, contour)
+      ),
       // A new field is invisible to the generator until something copies it
       // here. The curvature pin stored, read back and did nothing for exactly
       // this reason. Insertions carry their canonical point ids through
@@ -263,7 +267,7 @@ export function canonicalToGeneratorInput(skeletonData) {
   };
 }
 
-function canonicalPointToGeneratorPoint(point) {
+function canonicalPointToGeneratorPoint(point, contour) {
   const generatorPoint = {
     id: point.id,
     x: point.x,
@@ -295,7 +299,10 @@ function canonicalPointToGeneratorPoint(point) {
   generatorPoint.serif = point.serif ?? null;
   // The corner block travels whole, like the serif's. A new field inside it
   // therefore arrives without a copy line — which is not true of a flat field.
-  generatorPoint.corner = point.corner ?? null;
+  // A linked corner states one distance for the centerline, and the two sides'
+  // distances are resolved here, where the contour is still in hand, so the
+  // rounding pass reads one number per side as it always has.
+  generatorPoint.corner = point.corner ? resolveGeneratorCorner(contour, point) : null;
   // Three independent locks per side; see SKELETON_LOCK_KINDS in skeleton-model.
   for (const side of ["left", "right"]) {
     for (const kind of ["handles", "slide", "width"]) {
@@ -337,6 +344,15 @@ function canonicalPointToGeneratorPoint(point) {
     "Out"
   );
   return generatorPoint;
+}
+
+function resolveGeneratorCorner(contour, point) {
+  const distances = getSkeletonCornerDistances(contour, point);
+  return {
+    ...point.corner,
+    left: { ...point.corner.left, distance: distances.left },
+    right: { ...point.corner.right, distance: distances.right },
+  };
 }
 
 function copyHandleOffsetsToGenerator(generatorPoint, side, offset, inOut) {
@@ -4213,22 +4229,6 @@ function calculateCornerJoin(segment1, segment2) {
   // that offsets an ordinary outline (rail R-B).
   const miter = cornerMiter(dir1, dir2);
   return { normal: miter.normal, miterScale: miter.scale, dir1, dir2 };
-}
-
-/**
- * Whether one side of a corner has a gap between its two edge ends.
- *
- * `sideSign` is 1 for the left side and -1 for the right. The test reads the
- * geometry rather than the sign of the turn: it takes the ingoing arm's own
- * direction and the vector between the two edge ends, which is the half-width
- * times the difference of the two arms' normals. Pointing the same way means a
- * gap, which is the outer side.
- */
-function cornerSideIsOuter(dir1, dir2, sideSign) {
-  const n1 = vector.rotateVector90CW(dir1);
-  const n2 = vector.rotateVector90CW(dir2);
-  const between = { x: sideSign * (n2.x - n1.x), y: sideSign * (n2.y - n1.y) };
-  return dir1.x * between.x + dir1.y * between.y >= 0;
 }
 
 // How far a corner may reach is a multiple of ITS OWN SIDE'S half-width, and

@@ -316,6 +316,48 @@ export function cornerMiterIsHeld(scale) {
   return !Number.isFinite(scale) || scale > MITER_TRAVEL_LIMIT;
 }
 
+/**
+ * Whether one side of a corner has a gap between its two edge ends.
+ *
+ * `sideSign` is 1 for the left side and -1 for the right. The test reads the
+ * geometry rather than the sign of the turn: it takes the ingoing arm's own
+ * direction and the vector between the two edge ends, which is the half-width
+ * times the difference of the two arms' normals. Pointing the same way means a
+ * gap, which is the outer side. The generator's corner join and the linked
+ * corner rounding both ask, so there is one copy.
+ */
+export function cornerSideIsOuter(dir1, dir2, sideSign) {
+  const n1 = rotateVector90CW(dir1);
+  const n2 = rotateVector90CW(dir2);
+  const between = { x: sideSign * (n2.x - n1.x), y: sideSign * (n2.y - n1.y) };
+  return dir1.x * between.x + dir1.y * between.y >= 0;
+}
+
+/**
+ * The directions a corner's two arms travel at the corner point: `dir1`
+ * arriving and `dir2` leaving, both unit. Null where the point does not have an
+ * arm on both sides.
+ */
+export function cornerArmDirections(points, closed, pointIndex) {
+  const adjacent = adjacentSegments(points, closed, pointIndex);
+  if (!adjacent?.incoming || !adjacent?.outgoing) {
+    return null;
+  }
+  const dir1 = segmentEndDirection(adjacent.incoming);
+  const dir2 = segmentStartDirection(adjacent.outgoing);
+  return dir1 && dir2 ? { dir1, dir2 } : null;
+}
+
+// Tangent of half the turn between two unit directions: 0 on a straight run, 1
+// at a right angle. Capped at the miter limit, where a nearly reversed corner
+// would otherwise ask for an unbounded reach.
+export function cornerHalfTurnTangent(dir1, dir2) {
+  const dot = dir1.x * dir2.x + dir1.y * dir2.y;
+  const cross = dir1.x * dir2.y - dir1.y * dir2.x;
+  const halfTurn = Math.abs(Math.atan2(cross, dot)) / 2;
+  return Math.min(Math.tan(halfTurn), MITER_TRAVEL_LIMIT);
+}
+
 // The segments either side of an on-curve point, as indices into `segments`.
 function adjacentSegments(points, closed, pointIndex) {
   const onCurveIndices = [];
