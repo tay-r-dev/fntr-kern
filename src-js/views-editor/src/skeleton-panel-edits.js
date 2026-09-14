@@ -689,21 +689,6 @@ function moveOnePointCapParameter(point, field, next) {
   });
 }
 
-export async function scalePanelCapParameter(
-  sceneController,
-  pointAddresses,
-  field,
-  factor,
-  undoLabel
-) {
-  return editSelectedSkeletonPoints(
-    sceneController,
-    pointAddresses,
-    (point) => moveOnePointCapParameter(point, field, scaled(factor)),
-    undoLabel
-  );
-}
-
 // Apply a width snapshot (profile revert), restoring exact canonical widths.
 export async function applyPanelPointWidthSnapshot(
   sceneController,

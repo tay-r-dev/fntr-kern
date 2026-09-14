@@ -42,7 +42,6 @@ import {
   nudgePanelSerifValueStream,
   resetPanelGeneratedHandle,
   resetPanelRibs,
-  scalePanelCapParameter,
   scalePanelContourDefaultWidth,
   scalePanelCornerDistance,
   scalePanelSerifValue,
@@ -418,7 +417,7 @@ export default class SkeletonParametersPanel {
     // built inside update() would take these nodes with it as it is built, and
     // on a values-only refresh that row is never placed, so the fields would
     // leave the live form.
-    this._scrubbingWidthFields = new Set();
+    this._scrubbingFields = new Set();
     this.widthFields = {
       total: this._makeWidthField("total", "total-width"),
       distribution: this._makeWidthField("distribution", "distribution"),
@@ -616,6 +615,13 @@ export default class SkeletonParametersPanel {
       this.terminalKindControl,
     ]);
     this.terminalKindControl.style.flex = "1 1 auto";
+
+    // Ticket 51: the Square section, Project angle and Distance.
+    this.capFields = {
+      angle: this._makeCapField("angle", "cap-angle"),
+      distance: this._makeCapField("distance", "cap-distance"),
+    };
+    this.squareRow = fieldRow([this.capFields.angle, this.capFields.distance]);
     this.forceAngleRow = html.div({ class: "selection-row-group" }, [
       html.span({ class: "selection-row-group-label" }, [
         translate("sidebar.skeleton-parameters.force-angle"),
@@ -640,11 +646,11 @@ export default class SkeletonParametersPanel {
     ]);
   }
 
-  // One Generation width field. A drag moves every selected point by the
-  // change from where it started, so a mixed selection stays mixed, and it is
-  // one undo step. A typed value sets every point. Distribution is the one
-  // field that streams a value rather than a change, as its slider did.
-  _makeWidthField(name, labelKey) {
+  // One compact scrub field that lives for the life of the panel. A drag runs
+  // `scrub` once with the field's value stream, as one undo step; a typed value
+  // runs `commit`. `key` names the field while it is under the hand, so a
+  // refresh leaves it alone.
+  _makeCompactField(key, labelKey, { scrub, commit }) {
     const field = html.createDomElement("compact-scrub-field", {
       label: translate(`sidebar.skeleton-parameters.${labelKey}`),
       integer: true,
@@ -653,40 +659,76 @@ export default class SkeletonParametersPanel {
     field.style.minWidth = "0";
     field.addEventListener("scrubstart", (event) => {
       const { valueStream, startValue } = event.detail;
-      this._scrubbingWidthFields.add(name);
+      this._scrubbingFields.add(key);
       this._runOwnEdit(async () => {
         try {
-          if (name === "distribution") {
-            await setPanelPointDistributionStream(
-              this.sceneController,
-              this._widthPoints(),
-              valueStream,
-              this._undo("set-distribution")
-            );
-          } else {
-            await nudgePanelPointWidthStream(
-              this.sceneController,
-              this._widthPoints(),
-              name,
-              changesFrom(valueStream, startValue),
-              this._undo("set-width")
-            );
-          }
+          await scrub(valueStream, startValue);
         } finally {
           // Before the closing refresh, so the field takes the number the
           // model settled on rather than the one the drag reached.
-          this._scrubbingWidthFields.delete(name);
+          this._scrubbingFields.delete(key);
         }
       });
     });
     field.addEventListener("change", (event) => {
       // A drag reports every frame as a change too; the stream above owns those.
-      if (this._scrubbingWidthFields.has(name) || event.detail.cancelled) {
+      if (this._scrubbingFields.has(key) || event.detail.cancelled) {
         return;
       }
-      this._runOwnEdit(() => this._onWidthChange(name, event.detail.value));
+      this._runOwnEdit(() => commit(event.detail.value));
     });
     return field;
+  }
+
+  // One Generation width field. A drag moves every selected point by the
+  // change from where it started, so a mixed selection stays mixed. A typed
+  // value sets every point. Distribution is the one field that streams a value
+  // rather than a change, as its slider did.
+  _makeWidthField(name, labelKey) {
+    return this._makeCompactField(`width:${name}`, labelKey, {
+      scrub: (valueStream, startValue) =>
+        name === "distribution"
+          ? setPanelPointDistributionStream(
+              this.sceneController,
+              this._widthPoints(),
+              valueStream,
+              this._undo("set-distribution")
+            )
+          : nudgePanelPointWidthStream(
+              this.sceneController,
+              this._widthPoints(),
+              name,
+              changesFrom(valueStream, startValue),
+              this._undo("set-width")
+            ),
+      commit: (value) => this._onWidthChange(name, value),
+    });
+  }
+
+  // One Terminal field, named as capValuesFromField names it, which converts
+  // the panel's unit to the stored one. Distance drags by a change, as its
+  // label scrub did; every other field streams its value, as its slider did.
+  _makeCapField(name, labelKey) {
+    return this._makeCompactField(`cap:${name}`, labelKey, {
+      scrub: (valueStream, startValue) =>
+        name === "distance"
+          ? nudgePanelCapParameterStream(
+              this.sceneController,
+              this._widthPoints(),
+              "capDistance",
+              changesFrom(valueStream, startValue),
+              this._undo("set-cap")
+            )
+          : setPanelPointValuesStream(
+              this.sceneController,
+              this._widthPoints(),
+              valueStream,
+              (point, contour, value) =>
+                setSkeletonCapParameters(point, capValuesFromField(name, value)),
+              this._undo("set-cap")
+            ),
+      commit: (value) => this._onCapChange(name, value),
+    });
   }
 
   // Every width preset the current master stores, both cases, in stored order.
@@ -1439,26 +1481,21 @@ export default class SkeletonParametersPanel {
         { step: 5 }
       );
     } else if (styleValue === "square") {
-      const angleSummary = {
-        value: Math.round(cap.capAngle.value ?? DEFAULT_CAP_ANGLE),
-        mixed: cap.capAngle.mixed,
-      };
-      this._pushSummarySlider(
-        formContents,
+      this._refreshCompactField(
+        this.capFields.angle,
         "cap:angle",
-        "cap-angle",
-        angleSummary,
-        CAP_ANGLE_MIN,
-        CAP_ANGLE_MAX,
-        DEFAULT_CAP_ANGLE,
-        { step: 1 }
+        {
+          value: Math.round(cap.capAngle.value ?? DEFAULT_CAP_ANGLE),
+          mixed: cap.capAngle.mixed,
+        },
+        { minValue: CAP_ANGLE_MIN, maxValue: CAP_ANGLE_MAX }
       );
-      this._pushSummaryNumber(
-        formContents,
+      this._refreshCompactField(
+        this.capFields.distance,
         "cap:distance",
-        "cap-distance",
         cap.capDistance
       );
+      formContents.push({ type: "single-icon", element: this.squareRow });
     } else if (styleValue === "drop") {
       const ballSummary = {
         value: Math.round((cap.capBallRatio.value ?? DEFAULT_CAP_BALL_RATIO) * 100),
@@ -2317,18 +2354,28 @@ export default class SkeletonParametersPanel {
 
   // ---- Field description helpers -------------------------------------------
 
-  // Push one summary into a Generation width field. A field under the hand is
-  // left alone: it already shows the number it is sending.
-  _refreshWidthField(
-    name,
+  _refreshWidthField(name, summary, options = {}) {
+    this._refreshCompactField(
+      this.widthFields[name],
+      `width:${name}`,
+      summary,
+      options
+    );
+  }
+
+  // Push one summary into a compact field. A field under the hand is left
+  // alone: it already shows the number it is sending. A mixed field has no
+  // start value, so it drags by the change alone and takes no bounds.
+  _refreshCompactField(
+    field,
+    key,
     summary,
     { disabled = false, blank = false, minValue, maxValue, round = false } = {}
   ) {
-    const field = this.widthFields[name];
     field.disabled = disabled;
     field.minValue = summary.mixed ? undefined : minValue;
     field.maxValue = summary.mixed ? undefined : maxValue;
-    if (this._scrubbingWidthFields.has(name)) {
+    if (this._scrubbingFields.has(key)) {
       return;
     }
     const value =
@@ -2581,14 +2628,6 @@ export default class SkeletonParametersPanel {
         factor,
         this._undo("set-contour-width")
       );
-    } else if (group === "cap" && name === "distance") {
-      await scalePanelCapParameter(
-        sc,
-        this._widthPoints(),
-        "capDistance",
-        factor,
-        this._undo("set-cap")
-      );
     } else if (group === "corner") {
       const side = String(name).split("-")[0];
       if (side !== "left" && side !== "right") {
@@ -2716,16 +2755,6 @@ export default class SkeletonParametersPanel {
         this._panelSelection.contours,
         valueStream,
         this._undo("set-contour-width")
-      );
-      return;
-    }
-    if (group === "cap" && name === "distance") {
-      await nudgePanelCapParameterStream(
-        sc,
-        this._widthPoints(),
-        "capDistance",
-        valueStream,
-        this._undo("set-cap")
       );
       return;
     }
