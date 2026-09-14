@@ -1089,6 +1089,71 @@ export async function setPanelSerifParameters(
   );
 }
 
+// Only an open contour's two endpoints carry a serif.
+function isSkeletonContourEndpoint(contour, point) {
+  const endpoints = skeletonContourEndpointIndices(contour);
+  if (!endpoints) {
+    return false;
+  }
+  const pointIndex = contour.points.indexOf(point);
+  return pointIndex === endpoints.first || pointIndex === endpoints.last;
+}
+
+// Sets one serif field's link on every selected endpoint. Closing it copies the
+// left half's value onto the right through the writer's own carry, so a closed
+// chain never shows two numbers.
+export async function setPanelSerifLink(
+  sceneController,
+  pointAddresses,
+  field,
+  linked,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, { contour }) => {
+      if (!isSkeletonContourEndpoint(contour, point)) {
+        return;
+      }
+      setSkeletonSerifParameters(point, { links: { [field]: linked === true } });
+      if (linked === true) {
+        setSkeletonSerifParameters(point, {
+          left: { [field]: point.serif.left[field] },
+        });
+      }
+    },
+    undoLabel
+  );
+}
+
+// The Force menu: copies the named half fields from one side onto the other on
+// every selected endpoint, each point from its own values.
+export async function forcePanelSerifSide(
+  sceneController,
+  pointAddresses,
+  fromSide,
+  fields,
+  undoLabel
+) {
+  const toSide = fromSide === "left" ? "right" : "left";
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, { contour }) => {
+      if (!isSkeletonContourEndpoint(contour, point)) {
+        return;
+      }
+      const half = {};
+      for (const field of fields) {
+        half[field] = point.serif?.[fromSide]?.[field] ?? 0;
+      }
+      setSkeletonSerifParameters(point, { [toSide]: half });
+    },
+    undoLabel
+  );
+}
+
 // What a scrub may move each serif number to, in stored units. Distances cannot
 // go below zero, which is the default. Two exceptions:
 //

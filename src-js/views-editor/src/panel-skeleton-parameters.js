@@ -7,10 +7,7 @@ import {
   DEFAULT_UNDERSIDE_CUP_TENSION,
   MAX_TIP_CUT_ANGLE,
 } from "@fontra/core/serif-geometry.js";
-import {
-  DEFAULT_CAP_BALL_EASE_CURVATURE,
-  SERIF_HALF_DEFAULTS,
-} from "@fontra/core/skeleton-generator.js";
+import { DEFAULT_CAP_BALL_EASE_CURVATURE } from "@fontra/core/skeleton-generator.js";
 import {
   SERIF_HALF_FIELDS,
   SERIF_PRESETS,
@@ -30,6 +27,7 @@ import {
   setSourceSkeletonDefaultsValues,
 } from "@fontra/core/skeleton-model.js";
 import { throttleCalls } from "@fontra/core/utils.ts";
+import { showMenu } from "@fontra/web-components/menu-panel.js";
 import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 45
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 46
 import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 49
@@ -46,6 +44,7 @@ import {
   nudgePanelContourDefaultWidthStream,
   nudgePanelCornerDistanceStream,
   nudgePanelPointWidthStream,
+  forcePanelSerifSide,
   nudgePanelSerifValueStream,
   resetPanelGeneratedHandle,
   resetPanelRibs,
@@ -76,6 +75,7 @@ import {
   setPanelRibDetached,
   setPanelRibLocked,
   setPanelSerifParameters,
+  setPanelSerifLink,
   setPanelSerifParametersStream,
   setPanelTerminalPreset,
 } from "./skeleton-panel-edits.js";
@@ -181,6 +181,21 @@ function capValuesFromField(name, value) {
   }
   return null;
 }
+
+// Ticket 57: the serif's half fields in their groups, each row a left field, a
+// chain and a right field. The groups are also what the Force menu's middle
+// entry copies.
+const SERIF_FIELD_GROUPS = [
+  ["serif-group-wing", ["wingLength", "tipThickness", "wingSlope", "tipCutAngle"]],
+  ["serif-group-bracket", ["reach", "tension", "concavity"]],
+  ["serif-group-easing", ["easeDistance", "easeCurvature"]],
+];
+// Stored as a ratio, edited as a percent, with the range each one's slider had.
+const SERIF_PERCENT_FIELD_BOUNDS = {
+  tension: { minValue: 0, maxValue: 100 },
+  concavity: { minValue: -100, maxValue: 100 },
+  easeCurvature: { minValue: 0, maxValue: 100 },
+};
 
 // Ticket 47: one icon per lock kind. The tooltip carries the full name.
 const LOCK_KIND_ICONS = {
@@ -682,6 +697,65 @@ export default class SkeletonParametersPanel {
       this.cornerChains[1],
       this.cornerFields["right-curvature"],
     ]);
+
+    // Ticket 57: the serif's half fields, one row per field: left, chain,
+    // right. A closed chain is that field's link: it greys the right field and
+    // the writer carries a left write across. One check above each column says
+    // whether the serif is built on that side. Right-clicking a field offers the
+    // Force menu.
+    this.serifFields = {};
+    this.serifChains = {};
+    const chainSpacer = () => html.div({ style: "width: 1.2em; flex: 0 0 auto;" }, []);
+    this.serifGroupBlocks = SERIF_FIELD_GROUPS.map(([groupKey, fields]) =>
+      html.div({ style: "display: flex; flex-direction: column; gap: 0.35rem;" }, [
+        html.span({ class: "selection-row-group-label" }, [
+          translate(`sidebar.skeleton-parameters.${groupKey}`),
+        ]),
+        ...fields.map((field) => {
+          for (const side of ["left", "right"]) {
+            this.serifFields[`${side}-${field}`] = this._makeSerifField(side, field);
+          }
+          const chain = html.createDomElement("chain-link", {
+            tooltip: translate("sidebar.skeleton-parameters.linked"),
+          });
+          chain.addEventListener("change", (event) =>
+            this._runOwnEdit(() =>
+              setPanelSerifLink(
+                this.sceneController,
+                this._widthPoints(),
+                field,
+                event.detail.linked,
+                this._undo("set-serif")
+              )
+            )
+          );
+          this.serifChains[field] = chain;
+          return fieldRow([
+            this.serifFields[`left-${field}`],
+            chain,
+            this.serifFields[`right-${field}`],
+          ]);
+        }),
+      ])
+    );
+    this.serifSideChecks = {};
+    const sideCheck = (side) => {
+      const check = html.input({ type: "checkbox" });
+      check.addEventListener("change", () => this._onSerifSideCheck(side));
+      this.serifSideChecks[side] = check;
+      return html.label(
+        {
+          style:
+            "flex: 1 1 0; min-width: 0; display: flex; gap: 0.3em; align-items: center;",
+        },
+        [check, translate(`sidebar.skeleton-parameters.serif-side.${side}`)]
+      );
+    };
+    this.serifSideRow = fieldRow([
+      sideCheck("left"),
+      chainSpacer(),
+      sideCheck("right"),
+    ]);
     this.forceAngleRow = html.div({ class: "selection-row-group" }, [
       html.span({ class: "selection-row-group-label" }, [
         translate("sidebar.skeleton-parameters.force-angle"),
@@ -791,6 +865,97 @@ export default class SkeletonParametersPanel {
             ),
       commit: (value) => this._onCornerChange(name, value),
     });
+  }
+
+  // One serif half field. The name carries the side, so a write names one half
+  // and the writer's link carry decides whether the other follows. Lengths and
+  // the tip cut drag by a change, as their label scrubs did; the three ratios
+  // stream their percent, as their sliders did.
+  _makeSerifField(side, field) {
+    const name = `${side}-${field}`;
+    const element = this._makeCompactField(`serif:${name}`, `serif-field.${field}`, {
+      scrub: (valueStream, startValue) =>
+        field in SERIF_PERCENT_FIELD_BOUNDS
+          ? setPanelSerifParametersStream(
+              this.sceneController,
+              this._widthPoints(),
+              valueStream,
+              (value) => serifHalfValuesFromField(name, value),
+              this._undo("set-serif")
+            )
+          : nudgePanelSerifValueStream(
+              this.sceneController,
+              this._widthPoints(),
+              serifNudgeTargets(name),
+              changesFrom(valueStream, startValue),
+              this._undo("set-serif")
+            ),
+      commit: (value) => this._onSerifChange(name, value),
+    });
+    element.addEventListener("contextmenu", (event) =>
+      this._showSerifForceMenu(event, side, field)
+    );
+    return element;
+  }
+
+  // Right-click on a serif field: copy that field, its group, or every half
+  // field onto the other side.
+  _showSerifForceMenu(event, side, field) {
+    event.preventDefault();
+    if (this._scrubbingFields.has(`serif:${side}-${field}`)) {
+      return;
+    }
+    const other = side === "left" ? "right" : "left";
+    const otherName = translate(`sidebar.skeleton-parameters.serif-force.${other}`);
+    const [groupKey, groupFields] = SERIF_FIELD_GROUPS.find(([, fields]) =>
+      fields.includes(field)
+    );
+    const force = (fields) =>
+      this._runOwnEdit(() =>
+        forcePanelSerifSide(
+          this.sceneController,
+          this._widthPoints(),
+          side,
+          fields,
+          this._undo("set-serif")
+        )
+      );
+    showMenu(
+      [
+        {
+          title: translate("sidebar.skeleton-parameters.serif-force.field", otherName),
+          callback: () => force([field]),
+        },
+        {
+          title: translate(
+            "sidebar.skeleton-parameters.serif-force.group",
+            translate(`sidebar.skeleton-parameters.${groupKey}`),
+            otherName
+          ),
+          callback: () => force(groupFields),
+        },
+        {
+          title: translate("sidebar.skeleton-parameters.serif-force.all", otherName),
+          callback: () => force(SERIF_HALF_FIELDS),
+        },
+      ],
+      { x: event.clientX, y: event.clientY }
+    );
+  }
+
+  // The two side checks say which sides the serif is built on. At least one
+  // stays on: a serif on no side is not a serif, and Flat is the kind for that.
+  _onSerifSideCheck(changedSide) {
+    const on = {
+      left: this.serifSideChecks.left.checked,
+      right: this.serifSideChecks.right.checked,
+    };
+    if (!on.left && !on.right) {
+      this.serifSideChecks[changedSide].checked = true;
+      return;
+    }
+    const sides = on.left && on.right ? "both" : on.left ? "left" : "right";
+    this._runOwnEdit(() => this._onSerifChange("sides", sides));
   }
 
   // One Terminal field, named as capValuesFromField names it, which converts
@@ -1823,219 +1988,71 @@ export default class SkeletonParametersPanel {
   // the other and collapses back to one set of controls.
   _buildSerifSection(formContents, widthPoints, canEdit) {
     const serif = summarizeSkeletonSerifSelection(widthPoints);
+    // Ticket 57: the side checks, then one chained row per half field in its
+    // group. A mixed selection shows both checks indeterminate.
     const sides = serif.sides.mixed ? null : (serif.sides.value ?? "both");
-    const split = sides === "split";
-    // Collapsing two wings the designer has actually shaped would throw one of
-    // them away, so "both" stops being offered once they differ. Symmetrize is
-    // the way back from there, because it says which shape survives.
-    const halvesDiffer = SERIF_HALF_FIELDS.some((field) => {
-      const left = serif.left[field];
-      const right = serif.right[field];
-      return left.mixed || right.mixed || left.value !== right.value;
-    });
-
-    // A segmented control, not three loose buttons: joined, with the live
-    // segment filled.
-    const tab = (option, label, disabled) =>
-      html.button(
-        {
-          disabled: disabled || !canEdit,
-          style: `
-            flex: 1 1 0; min-width: 3em; margin: 0; border-radius: 0;
-            border: 1px solid var(--horizontal-rule-color, #8888);
-            ${option === "both" ? "border-radius: 4px 0 0 4px;" : "border-left: none;"}
-            ${option === "right" ? "border-radius: 0 4px 4px 0;" : ""}
-            ${
-              sides === option || (option === "both" && split)
-                ? "background: var(--editor-text-entry-input-background-color, #8884); font-weight: bold;"
-                : "background: transparent; opacity: 0.6;"
-            }
-          `,
-          onclick: () => this._onSerifChange("sides", option),
-        },
-        [label]
-      );
-
+    const on = { left: sides !== "right", right: sides !== "left" };
+    for (const side of ["left", "right"]) {
+      const check = this.serifSideChecks[side];
+      check.checked = on[side];
+      check.indeterminate = sides == null;
+      check.disabled = !canEdit;
+    }
     formContents.push({
       type: "single-icon",
-      // Which segment is lit shows in the styling, not in the row's text, so the
-      // layout signature would miss an L-to-R switch and leave the highlight
-      // behind. The key carries it instead; nothing reads it as a field.
-      key: `serif:sides-tabs-${sides ?? "mixed"}-${halvesDiffer ? "differ" : "same"}`,
-      element: html.div({ style: "display:flex; align-items:center; gap:0.5rem;" }, [
-        html.span({ style: "opacity:0.65;" }, [
-          translate("sidebar.skeleton-parameters.serif-sides"),
-        ]),
-        html.div({ style: "display:flex; flex: 1 1 auto;" }, [
-          tab(
-            "both",
-            translate("sidebar.skeleton-parameters.serif-sides.both"),
-            split && halvesDiffer
-          ),
-          tab("left", translate("sidebar.skeleton-parameters.serif-sides.left"), false),
-          tab(
-            "right",
-            translate("sidebar.skeleton-parameters.serif-sides.right"),
-            false
-          ),
-        ]),
-      ]),
+      element: this.serifSideRow,
+      layoutKey: "serifSideRow",
     });
+    // Lengths stop at zero, except the signed wing slope; the tip cut stops at
+    // the geometry's own limit either way; the three ratios keep their sliders'
+    // percent ranges. Declared here rather than left to the model: without it
+    // a drag past the end keeps counting while the shape has stopped.
+    const boundsOf = (field) =>
+      SERIF_PERCENT_FIELD_BOUNDS[field] ??
+      (field === "wingSlope"
+        ? {}
+        : field === "tipCutAngle"
+          ? { minValue: -MAX_TIP_CUT_ANGLE, maxValue: MAX_TIP_CUT_ANGLE }
+          : { minValue: 0 });
+    for (const [groupIndex, [, fields]] of SERIF_FIELD_GROUPS.entries()) {
+      for (const field of fields) {
+        const link = serif.links[field];
+        const linked = !link.mixed && link.value === true;
+        this.serifChains[field].linked = link.mixed ? null : link.value;
+        this.serifChains[field].disabled = !canEdit;
+        for (const side of ["left", "right"]) {
+          const summary = serif[side][field];
+          this._refreshCompactField(
+            this.serifFields[`${side}-${field}`],
+            `serif:${side}-${field}`,
+            field in SERIF_PERCENT_FIELD_BOUNDS ? percentSummary(summary) : summary,
+            {
+              // A side that is off draws nothing, and a closed chain leaves the
+              // right field nothing to say.
+              disabled:
+                !canEdit ||
+                (sides != null && !on[side]) ||
+                (side === "right" && linked),
+              ...boundsOf(field),
+            }
+          );
+        }
+      }
+      formContents.push({
+        type: "single-icon",
+        element: this.serifGroupBlocks[groupIndex],
+        layoutKey: `serifGroup${groupIndex}`,
+      });
+    }
 
     // Every serif length is a plain number whose label scrubs, like the rest of
-    // the panel. It used to carry a scale slider on the same line; the scrub
-    // replaced it, and took a row's worth of width back with it.
-    //
-    // The minimum is declared here rather than left to the model: without it a
-    // drag past the bottom of the range keeps counting down in the box while the
-    // shape has already stopped, and the number snaps back on release.
+    // the panel. The minimum is declared here rather than left to the model.
     const pushLength = (key, labelKey, summary, minValue = 0) => {
       this._pushSummaryNumber(formContents, key, labelKey, summary, {
         disabled: !canEdit,
         ...(minValue == null ? {} : { minValue }),
       });
     };
-
-    const pushGroup = (labelKey) => {
-      formContents.push({
-        type: "header",
-        label: translate(`sidebar.skeleton-parameters.${labelKey}`),
-      });
-    };
-
-    const pushHalf = (scope, half) => {
-      pushGroup("serif-group-wing");
-      pushLength(`serif:${scope}-wingLength`, "serif-wing-length", half.wingLength);
-      pushLength(
-        `serif:${scope}-tipThickness`,
-        "serif-tip-thickness",
-        half.tipThickness
-      );
-      // Signed, unlike the other three: a negative slope tilts the wing's inner
-      // face the other way and is a real family of shapes, not an error.
-      pushLength(`serif:${scope}-wingSlope`, "serif-wing-slope", half.wingSlope, null);
-      // Degrees rather than a length, but edited like the other three: a number
-      // whose label scrubs. It was a slider, which made it the odd one out in a
-      // group of four.
-      this._pushSummaryNumber(
-        formContents,
-        `serif:${scope}-tipCutAngle`,
-        "serif-tip-cut",
-        half.tipCutAngle,
-        {
-          disabled: !canEdit,
-          minValue: -MAX_TIP_CUT_ANGLE,
-          maxValue: MAX_TIP_CUT_ANGLE,
-        }
-      );
-
-      // An untouched half stores null on every field, and null means "inherit"
-      // — so these three sliders have to park on the generator's own default or
-      // they show a shape that is not on screen, and the first drag jumps.
-      const percentDefault = (field) => Math.round(SERIF_HALF_DEFAULTS[field] * 100);
-
-      pushGroup("serif-group-bracket");
-      // How far back along the stem flank the transition starts. It moves the
-      // junction, which moves the attractor the bracket bends around, so it is
-      // not a longer version of wing slope.
-      pushLength(`serif:${scope}-reach`, "serif-reach", half.reach);
-      // How far both handles travel toward the attractor. At 0 the bracket is a
-      // straight wedge; there is no separate corner-or-smooth switch.
-      this._pushSummarySlider(
-        formContents,
-        `serif:${scope}-tension`,
-        "serif-tension",
-        percentSummary(half.tension),
-        0,
-        100,
-        percentDefault("tension"),
-        { step: 1, disabled: !canEdit }
-      );
-      // Signed, and it places the attractor: negative bulges the transition
-      // convex, 0 is a flat chamfer, 100 puts it on the wing's inner corner.
-      this._pushSummarySlider(
-        formContents,
-        `serif:${scope}-concavity`,
-        "serif-concavity",
-        percentSummary(half.concavity),
-        -100,
-        100,
-        percentDefault("concavity"),
-        { step: 1, disabled: !canEdit }
-      );
-
-      pushGroup("serif-group-easing");
-      // Rounds the junction between the flank and the bracket. It switches
-      // itself off on a hollow bracket, which is why these two do nothing at
-      // positive concavity.
-      pushLength(
-        `serif:${scope}-easeDistance`,
-        "serif-ease-distance",
-        half.easeDistance
-      );
-      this._pushSummarySlider(
-        formContents,
-        `serif:${scope}-easeCurvature`,
-        "serif-ease-curvature",
-        percentSummary(half.easeCurvature),
-        0,
-        100,
-        percentDefault("easeCurvature"),
-        { step: 1, disabled: !canEdit }
-      );
-    };
-
-    // Copies its own side over the other and ties them, so the terminal goes
-    // back to one set of controls. Which shape survives is the designer's pick,
-    // which is why it sits in the section rather than on the "both" tab.
-    const pushSymmetrize = (side) => {
-      formContents.push({
-        type: "single-icon",
-        element: html.div({}, [
-          html.button(
-            {
-              disabled: !canEdit,
-              onclick: () => this._onSerifChange("symmetrize", side),
-            },
-            [translate("sidebar.skeleton-parameters.serif-symmetrize")]
-          ),
-        ]),
-      });
-    };
-
-    if (split) {
-      formContents.push({
-        type: "header",
-        label: translate("sidebar.skeleton-parameters.serif-left"),
-      });
-      pushHalf("left", serif.left);
-      pushSymmetrize("left");
-      formContents.push({
-        type: "header",
-        label: translate("sidebar.skeleton-parameters.serif-right"),
-      });
-      pushHalf("right", serif.right);
-      pushSymmetrize("right");
-    } else if (sides === "left" || sides === "right") {
-      // The two halves are held identical while only one is built, so the
-      // fields write to both and switching back to "both" shows the shape that
-      // is on screen rather than whatever the dead side was left holding.
-      pushHalf("both", serif[sides]);
-      formContents.push({
-        type: "single-icon",
-        element: html.div({}, [
-          html.button(
-            {
-              disabled: !canEdit,
-              onclick: () => this._onSerifChange("addOtherSide", sides),
-            },
-            [translate("sidebar.skeleton-parameters.serif-add-other-side")]
-          ),
-        ]),
-      });
-    } else {
-      pushHalf("both", serif.left);
-    }
 
     formContents.push({ type: "divider" });
     // The serif axis is independent of the rib angle lock above: the lock sets
@@ -2955,52 +2972,13 @@ export default class SkeletonParametersPanel {
         this._undo("set-serif")
       );
 
-    // The side control is three buttons and two more below them, none of which
-    // is a form field, so nothing on this route passes through the form's own
-    // change handler. These edits also change which controls exist rather than
-    // what they hold, so the rebuild has to happen against settled data —
-    // hence the echo, not an immediate call. Every branch that writes `sides`
-    // goes through here.
-    const applyAndRebuild = async (values) => {
-      this._rebuildOnOwnEcho = true;
-      await apply(values);
-    };
-
-    // Copy one summarized half onto the other, so the two are identical and one
-    // set of controls can describe both. A field that is mixed across the
-    // selection stays mixed rather than collapsing onto one number.
-    const mirrorOnto = (serif, from) => {
-      const other = from === "left" ? "right" : "left";
-      const half = {};
-      for (const field of SERIF_HALF_FIELDS) {
-        half[field] = serif[from][field].mixed ? null : serif[from][field].value;
-      }
-      return { [other]: half };
-    };
-
+    // The two side checks. A side that goes off keeps its numbers, so switching
+    // it back on shows the shape it had.
     if (name === "sides") {
       if (!VALID_SERIF_SIDES.has(value)) {
         return;
       }
-      const serif = summarizeSkeletonSerifSelection(this._widthPoints());
-      // Picking a single side keeps the halves identical: only one is built,
-      // and the other is what "both" comes back to.
-      const values = { sides: value };
-      if (value === "left" || value === "right") {
-        Object.assign(values, mirrorOnto(serif, value));
-      }
-      await applyAndRebuild(values);
-      return;
-    }
-    if (name === "addOtherSide") {
-      // The halves already match, so the new side arrives as a copy of the one
-      // that was drawn. Shaping them apart is the whole of it.
-      await applyAndRebuild({ sides: "split" });
-      return;
-    }
-    if (name === "symmetrize") {
-      const serif = summarizeSkeletonSerifSelection(this._widthPoints());
-      await applyAndRebuild({ sides: "both", ...mirrorOnto(serif, value) });
+      await apply({ sides: value });
       return;
     }
     if (name === "axismode") {
