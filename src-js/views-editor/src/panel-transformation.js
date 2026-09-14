@@ -52,45 +52,52 @@ export default class TransformationPanel {
     height: 1.6em;
   }
 
-  /* Ticket 39: the grid and the pick button share the Origin row's label
-     column, with the typed X and Y beside them. */
-  .origin-control {
+  /* Ticket 39: the Origin row is the grid, the typed X and Y, then the pick
+     and clear buttons one under the other. */
+  .origin-buttons {
     display: flex;
-    align-items: center;
-    justify-content: end;
-    gap: 0.3em;
+    flex-direction: column;
+    justify-content: center;
+    flex: none;
   }
 
-  .origin-control icon-button {
-    width: 1.1em;
-    height: 1.1em;
+  .origin-buttons icon-button {
+    width: 0.75em;
+    height: 0.75em;
   }
 
+  /* Sized to fit the row's 1.6em label height, so the dots stay round. */
   .origin-radio-buttons {
     display: grid;
-    grid-template-columns: auto auto auto;
+    grid-template-columns: repeat(3, 0.4em);
+    grid-auto-rows: 0.4em;
+    gap: 1px;
+    justify-content: end;
+    align-content: center;
   }
 
   .origin-radio-buttons > input[type="radio"] {
     appearance: none;
+    box-sizing: border-box;
     background-color: var(--editor-mini-console-background-color-light);
-    margin: 1px;
+    margin: 0;
+    padding: 0;
     color: var(--editor-mini-console-background-color-light);
-    width: 0.55em;
-    height: 0.55em;
-    border: 0.15em solid var(--editor-mini-console-background-color-light);
+    width: 0.4em;
+    height: 0.4em;
+    border: 0.1em solid var(--editor-mini-console-background-color-light);
     border-radius: 50%;
     cursor: pointer;
   }
 
   .origin-radio-buttons > input[type="radio"]:hover {
     background-color: var(--text-input-background-color-dark);
-    border: 0.15em solid var(--text-input-background-color-dark);
+    border: 0.1em solid var(--text-input-background-color-dark);
   }
 
   .origin-radio-buttons > input[type="radio"]:checked {
     background-color: var(--text-input-background-color-dark);
-    border: 0.15em solid var(--text-input-background-color-dark);
+    border: 0.1em solid var(--text-input-background-color-dark);
   }
 
   .harmonize-report {
@@ -434,16 +441,18 @@ export default class TransformationPanel {
     pickButton.onclick = () =>
       this._originPick ? this._stopOriginPick() : this._startOriginPick();
     this.originPickButton = pickButton;
+    // The cross drops a picked or typed origin, back to the grid's centre.
+    const clearButton = html.createDomElement("icon-button", {
+      "src": "/tabler-icons/x.svg",
+      "data-tooltip": translate("sidebar.selection-transformation.origin.clear"),
+      "data-tooltipposition": "bottom",
+    });
+    clearButton.onclick = () => this._clearOrigin();
 
-    // One row: the smaller grid and the pick button, then the typed X and Y.
+    // One row: the grid, the typed X and Y, then pick over clear.
     formContents.push({
       type: "universal-row",
-      field1: {
-        auxiliaryElement: html.div({ class: "origin-control" }, [
-          radioButtonOrigin,
-          pickButton,
-        ]),
-      },
+      field1: { auxiliaryElement: radioButtonOrigin },
       field2: {
         type: "edit-number",
         key: "originXButton",
@@ -455,6 +464,10 @@ export default class TransformationPanel {
         key: "originYButton",
         value: this.transformParameters.originYButton,
         allowEmptyField: true,
+        auxiliaryElement: html.div({ class: "origin-buttons" }, [
+          pickButton,
+          clearButton,
+        ]),
       },
     });
 
@@ -1468,6 +1481,15 @@ export default class TransformationPanel {
     this.transformParameters.originYButton = undefined;
     this.infoForm.setValue("originXButton", null);
     this.infoForm.setValue("originYButton", null);
+  }
+
+  _clearOrigin() {
+    this._changeOrigin("center", "middle");
+    for (const radioButton of this.infoForm.shadowRoot.querySelectorAll(
+      ".ui-form-radio-button"
+    )) {
+      radioButton.checked = radioButton.value === "center-middle";
+    }
   }
 
   // Ticket 39: pick mode. The canvas listeners run in the capture phase, so the
