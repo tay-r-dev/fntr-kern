@@ -196,11 +196,18 @@ export default class SkeletonSettingsPanel extends Panel {
       { label: translate("sidebar.skeleton-settings.column.name") },
       { label: "" },
     ];
+    this._terminalPresetFilter = { master: null, case: null, type: null };
+    this.terminalPresetFilters = this._makePresetFilterBar(
+      this._terminalPresetFilter,
+      () => this._renderTerminalPresetRows(),
+      { withType: true }
+    );
     this.terminalPresetsSection = html.div({ class: "skeleton-settings-section" }, [
       html.div({ class: "skeleton-settings-heading-row" }, [
         html.div({ class: "skeleton-settings-heading" }, [
           translate("sidebar.skeleton-settings.terminal-presets"),
         ]),
+        this.terminalPresetFilters.element,
       ]),
       this.terminalPresetTable,
     ]);
@@ -485,7 +492,7 @@ export default class SkeletonSettingsPanel extends Panel {
   // dropdown, each single-choice with All first. `state` holds the picked
   // master id and case, null for All. Current sets both to the edited glyph's
   // master and case. `refresh` redraws the dropdowns from `state`.
-  _makePresetFilterBar(state, onChange) {
+  _makePresetFilterBar(state, onChange, { withType = false } = {}) {
     const ALL = "*";
     const dropdown = (field) => {
       const element = html.createDomElement("multi-select-dropdown");
@@ -499,6 +506,8 @@ export default class SkeletonSettingsPanel extends Panel {
     };
     const master = dropdown("master");
     const glyphCase = dropdown("case");
+    // Ticket 72: the terminal table adds a Type dropdown.
+    const type = withType ? dropdown("type") : null;
     const current = html.button(
       {
         onclick: () => {
@@ -537,17 +546,34 @@ export default class SkeletonSettingsPanel extends Panel {
       glyphCase.label = state.case
         ? translate(`sidebar.skeleton-settings.case.${state.case}`)
         : translate("sidebar.skeleton-settings.filter.case");
+      if (type) {
+        type.items = [
+          option(ALL, translate("sidebar.skeleton-settings.filter.all"), !state.type),
+          ...TERMINAL_PRESET_KINDS.map((kind) =>
+            option(
+              kind,
+              translate(`sidebar.skeleton-parameters.cap-style.${kind}`),
+              state.type === kind
+            )
+          ),
+        ];
+        type.label = state.type
+          ? translate(`sidebar.skeleton-parameters.cap-style.${state.type}`)
+          : translate("sidebar.skeleton-settings.filter.type");
+      }
     };
     return {
       element: html.div({ class: "skeleton-settings-filters" }, [
         current,
+        ...(type ? [type] : []),
         master,
         glyphCase,
       ]),
       refresh,
-      matches: (sourceId, presetCase) =>
+      matches: (sourceId, presetCase, presetType) =>
         (!state.master || state.master === sourceId) &&
-        (!state.case || state.case === presetCase),
+        (!state.case || state.case === presetCase) &&
+        (!state.type || state.type === presetType),
     };
   }
 
@@ -682,12 +708,16 @@ export default class SkeletonSettingsPanel extends Panel {
   _renderTerminalPresetRows() {
     const tbody = this.terminalPresetTable.tbody;
     tbody.innerHTML = "";
+    this.terminalPresetFilters.refresh();
     const readOnly = !!this.fontController.readOnly;
     for (const [sourceId, source] of Object.entries(
       this.fontController.sources || {}
     )) {
       for (const type of TERMINAL_PRESET_KINDS) {
         this._terminalPresetList(sourceId, type).forEach((preset, index) => {
+          if (!this.terminalPresetFilters.matches(sourceId, preset.case, type)) {
+            return;
+          }
           const rowId = `${sourceId}:${type}:${index}`;
           const nameInput = html.input({
             type: "text",

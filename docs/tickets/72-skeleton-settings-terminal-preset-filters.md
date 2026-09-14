@@ -1,6 +1,6 @@
 # 72: Skeleton settings: terminal preset filters
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 71 (Skeleton settings: terminal presets table), 15 (Pair table: Unicode types dropdown)
 

@@ -615,6 +615,7 @@ export const strings = {
   "sidebar.skeleton-settings.filter.master": "Master",
   "sidebar.skeleton-settings.filter.case": "Case",
   "sidebar.skeleton-settings.filter.all": "All",
+  "sidebar.skeleton-settings.filter.type": "Type",
   "sidebar.skeleton-parameters.custom-widths.delete": "Delete",
   "sidebar.skeleton-parameters.custom-widths.confirm-delete": "Confirm delete",
   "sidebar.skeleton-parameters.default-caps": "Default caps",
