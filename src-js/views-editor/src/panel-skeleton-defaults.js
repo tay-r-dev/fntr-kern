@@ -47,13 +47,19 @@ import {
   TERMINAL_FIELD_FALLBACKS,
   capRadiusIndexFromRatio,
   capRadiusRatioFromIndex,
+  changesFrom,
 } from "./panel-skeleton-parameters.js";
 import Panel from "./panel.js";
 import { editSkeleton } from "./skeleton-editing.js";
 import {
+  nudgePanelContourDefaultWidthStream,
+  setPanelContourDefaultWidth,
+} from "./skeleton-panel-edits.js";
+import {
   captureSelectionTerminalPreset,
   captureSelectionWidthPreset,
   collectSkeletonPanelSelection,
+  summarizeSkeletonContourSelection,
 } from "./skeleton-panel-model.js";
 
 // Cap default values are stored in model units (radius ratio, tension 0–1)
@@ -139,6 +145,44 @@ export default class SkeletonSettingsPanel extends Panel {
     this.dropDeadPointsWarning = html.div({ style: "opacity: 0.7;" }, [
       translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
     ]);
+    // Ticket 78: the default width of the selected contours, under Delete
+    // collapsing points. It is per contour, so it reads and writes the contours
+    // the selection touches, and greys with none.
+    this.contourWidthField = html.createDomElement("compact-scrub-field", {
+      label: translate("sidebar.skeleton-parameters.contour-default-width"),
+      integer: true,
+    });
+    this._contourWidthScrubbing = false;
+    this.contourWidthField.addEventListener("scrubstart", async (event) => {
+      const { valueStream, startValue } = event.detail;
+      const contours = this._selectedContours();
+      this._contourWidthScrubbing = true;
+      try {
+        // A drag moves every contour by the change, so a mixed set stays mixed.
+        await nudgePanelContourDefaultWidthStream(
+          this.sceneController,
+          contours,
+          changesFrom(valueStream, startValue),
+          translate("sidebar.skeleton-parameters.undo.set-contour-width")
+        );
+      } finally {
+        this._contourWidthScrubbing = false;
+        this._refreshContourWidthField();
+      }
+    });
+    this.contourWidthField.addEventListener("change", async (event) => {
+      // A drag reports every frame as a change too; the stream above owns those.
+      if (this._contourWidthScrubbing || event.detail.cancelled) {
+        return;
+      }
+      await setPanelContourDefaultWidth(
+        this.sceneController,
+        this._selectedContours(),
+        event.detail.value,
+        translate("sidebar.skeleton-parameters.undo.set-contour-width")
+      );
+      this._refreshContourWidthField();
+    });
     // Ticket 68: the width presets table, built once and refilled on update.
     this._appendStyle(SKELETON_SETTINGS_STYLES);
     this.widthPresetTable = html.createDomElement("data-table");
@@ -233,7 +277,11 @@ export default class SkeletonSettingsPanel extends Panel {
               style:
                 "display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.75rem;",
             },
-            [this.dropDeadPointsToggle, this.dropDeadPointsWarning]
+            [
+              this.dropDeadPointsToggle,
+              this.dropDeadPointsWarning,
+              this.contourWidthField,
+            ]
           ),
           this.widthPresetsSection,
           this.terminalPresetsSection,
@@ -252,9 +300,31 @@ export default class SkeletonSettingsPanel extends Panel {
     );
     // A selection change only decides whether there is anything to capture,
     // so it refreshes that button and leaves the tables alone.
-    this.sceneSettingsController.addKeyListener("selection", () =>
-      this._refreshFromSelectionButtons()
+    this.sceneSettingsController.addKeyListener("selection", () => {
+      this._refreshFromSelectionButtons();
+      this._refreshContourWidthField();
+    });
+    this.sceneController.addCurrentGlyphChangeListener(() =>
+      this._refreshContourWidthField()
     );
+  }
+
+  _selectedContours() {
+    return this._currentSkeletonPanelSelection()?.contours || [];
+  }
+
+  // A field under the hand is left alone: it already shows what it is sending.
+  _refreshContourWidthField() {
+    if (this._contourWidthScrubbing) {
+      return;
+    }
+    const contours = this._selectedContours();
+    const summary = summarizeSkeletonContourSelection(contours).defaultWidth;
+    this.contourWidthField.disabled =
+      !contours.length || !!this.fontController.readOnly;
+    this.contourWidthField.minValue = summary.mixed ? undefined : 0;
+    this.contourWidthField.value =
+      summary.mixed || summary.value == null ? null : summary.value;
   }
 
   getContentElement() {
@@ -1198,6 +1268,7 @@ export default class SkeletonSettingsPanel extends Panel {
     this.dropDeadPointsToggle.disabled = !!this.fontController.readOnly;
     this.dropDeadPointsWarning.hidden = !dropDeadPoints;
 
+    this._refreshContourWidthField();
     this._renderWidthPresetRows();
     this._renderTerminalPresetRows();
 

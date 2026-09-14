@@ -432,6 +432,13 @@ selected point has a straight it could tie across, otherwise on, off or mixed ov
 do. The overflow holds the three locks (handles, slide, width), Force angle with its mode, and
 **Detach as a toggle**. Link is dropped from the icons: the width fields carry their own chain.
 
+**Contour default width moves to Skeleton settings** (decided 2026-09-14), under Delete collapsing
+points. It still reads and writes the contours the selection touches, and greys with none. The
+Selection tab's Contour section is gone.
+
+**Insertion is a context-dependent section** (decided 2026-09-14). An insertion point is a kind of
+skeleton selection, so its section sits where Terminal and Corner rounding sit for an on-curve point.
+
 ### 5.6 Terminal
 
 **A text segmented control picks the kind**, five across: Flat, Square, Rounded, Ball, Serif.

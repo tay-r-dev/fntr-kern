@@ -3,7 +3,7 @@
 Spec: `docs/superpowers/UI-REFACTOR.md`. Elements: `docs/superpowers/UI-NOMENCLATURE.md` §14.
 One agent per group, one commit per ticket. Branch `ui/ux-refactor`.
 
-**Done:** 02 (did not reproduce), 03–28, 32–74, 77.
+**Done:** 02 (did not reproduce), 03–28, 32–74, 77, 78.
 
 | Group | Tickets | State |
 | --- | --- | --- |
@@ -20,8 +20,7 @@ One agent per group, one commit per ticket. Branch `ui/ux-refactor`.
 | Skeleton settings | 67–74 | done, manual matrices not run. 70 and 74 follow the 2026-09-14 preset decisions |
 
 **Waiting on a decision:** 80 canvas handles and the origin, 29 Tunni layer mapping, 30 skeleton switches,
-75 corner distribution, 76 snapping master switch, 78 contour
-default width and Insertion, 79 heading icons.
+75 corner distribution, 76 snapping master switch, 79 heading icons.
 
 **Not grouped:** 02 closed, did not reproduce in the panel; the canvas handles ignore the origin (80).
 

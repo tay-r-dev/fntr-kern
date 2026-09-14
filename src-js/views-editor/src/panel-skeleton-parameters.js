@@ -35,17 +35,14 @@ import { SELECTION_ROW_GROUP_STYLES } from "./selection-row-group-styles.js";
 import {
   SKELETON_PANEL_SENDER,
   nudgePanelCapParameterStream,
-  nudgePanelContourDefaultWidthStream,
   nudgePanelCornerDistanceStream,
   nudgePanelPointWidthStream,
   forcePanelSerifSide,
   nudgePanelSerifValueStream,
   resetPanelGeneratedHandle,
   resetPanelRibs,
-  scalePanelContourDefaultWidth,
   setPanelCapParameters,
   setPanelCapStyle,
-  setPanelContourDefaultWidth,
   setPanelContourSingleSided,
   setPanelCornerParameters,
   setPanelPointDistribution,
@@ -195,7 +192,7 @@ export const SERIF_PERCENT_FIELD_BOUNDS = {
 // A compact scrub field streams the value under the hand. The width writers
 // move each point by a change, so the stream is turned into the change from
 // where the drag started. The cancel sentinel passes through untouched.
-async function* changesFrom(valueStream, startValue) {
+export async function* changesFrom(valueStream, startValue) {
   const start = Number(startValue) || 0;
   for await (const value of valueStream) {
     yield isScrubCancelled(value) ? value : Number(value) - start;
@@ -336,7 +333,6 @@ export default class SkeletonParametersPanel {
     this._lastSignature = null;
     // Per-field multiply ratios, kept across rebuilds so a rebuild after Apply
     // does not reset the box the user is working in.
-    this._multiplyFactors = {};
 
     this.updateBound = this.update.bind(this);
     // True while one of this panel's own fields is streaming a drag. It stops a
@@ -1401,13 +1397,13 @@ export default class SkeletonParametersPanel {
     if (widthPoints.length) {
       this._buildPointWidthSection(formContents, widthPoints);
     }
-    if (panelSelection.contours.length) {
-      this._buildContourSection(formContents, panelSelection.contours);
-    }
     if (widthPoints.length) {
       this._buildCapSection(formContents, widthPoints);
       this._buildCornerSection(formContents, widthPoints);
     }
+    // Ticket 78: an insertion point is a kind of skeleton selection, so its
+    // section is context-dependent, in the place Terminal and Corner rounding
+    // take for an on-curve point.
     const insertions = panelSelection.insertions || [];
     this._insertions = insertions;
     if (insertions.length) {
@@ -1629,25 +1625,6 @@ export default class SkeletonParametersPanel {
         await this._onRibChange("detached", item.checked);
       }
     });
-  }
-
-  _buildContourSection(formContents, contours) {
-    const summary = summarizeSkeletonContourSelection(contours);
-    formContents.push({ type: "divider" });
-    formContents.push({
-      type: "header",
-      label: translate("sidebar.skeleton-parameters.contour"),
-    });
-    // The sides and their two options moved to Generation's Projection group
-    // (ticket 48). Off is the plain write, which is what the app has always
-    // done: the centerline holds still and the letter moves.
-    this._pushSummaryNumber(
-      formContents,
-      "contour:default-width",
-      "contour-default-width",
-      summary.defaultWidth,
-      { minValue: 0 }
-    );
   }
 
   // Ticket 50: the Terminal section. It is offered only where every selected
@@ -2191,201 +2168,20 @@ export default class SkeletonParametersPanel {
   // panel's numbers are draggable — they all are. A caller that wants one inert
   // passes `scrub: false`.
   _summaryNumberField(key, summary, options = {}) {
-    const { blank = false, multiply = true, ...fieldOptions } = options;
+    const { blank = false, ...fieldOptions } = options;
     return {
       type: "edit-number",
       key,
       value: blank || summary.mixed ? null : summary.value,
       placeholder: blank ? "" : summary.placeholder || undefined,
       scrub: true,
-      auxiliaryElement:
-        fieldOptions.disabled || !multiply
-          ? undefined
-          : this._multiplyControl(key, summary),
       ...fieldOptions,
     };
-  }
-
-  // "× 1.1 → 44 Apply", packed into the same row as the number.
-  //
-  // A scrub adds and a multiply scales, and the two want different controls: a
-  // scrub is a continuous drag with the shape under the hand, a multiply is one
-  // ratio applied at once. Hence a field and a button rather than a second drag.
-  //
-  // The button carries the answer because a ratio is not a shape. 1.1 tells you
-  // nothing about where a 40 lands; 44 does.
-  _multiplyControl(key, summary) {
-    const factorOf = () => Number(this._multiplyFactors[key] ?? 1);
-    const preview = () => {
-      const factor = factorOf();
-      if (!Number.isFinite(factor) || summary.mixed || summary.value == null) {
-        return summary.mixed ? "mixed - Apply" : "Apply";
-      }
-      return `${Math.round(summary.value * factor)} - Apply`;
-    };
-    const button = html.button(
-      {
-        style: "white-space: nowrap;",
-        onclick: () => {
-          const factor = factorOf();
-          if (!Number.isFinite(factor) || factor === 1) {
-            return;
-          }
-          const [group, name] = String(key).split(":");
-          this._onMultiply(group, name, factor);
-        },
-      },
-      [preview()]
-    );
-    const input = html.input({
-      type: "number",
-      step: "0.1",
-      value: String(factorOf()),
-      style: "width: 3.5em;",
-      oninput: (event) => {
-        this._multiplyFactors[key] = event.target.value;
-        // Live, so the button always shows where this field's number lands
-        // rather than a stale answer to the previous ratio.
-        button.textContent = preview();
-      },
-    });
-    return html.div(
-      { style: "display:flex; gap:0.25rem; align-items:center; margin-left:auto;" },
-      [html.span({}, ["×"]), input, button]
-    );
-  }
-
-  _pushSummarySlider(
-    formContents,
-    key,
-    labelKey,
-    summary,
-    minValue,
-    maxValue,
-    defaultValue,
-    options = {}
-  ) {
-    // A mixed or absent value must NOT pin the thumb to minValue: that makes
-    // the slider draggable in only one direction. Park it at the default and
-    // show "mixed" as a placeholder instead (donor parity).
-    const noValue = summary.mixed || summary.value == null;
-    formContents.push({
-      type: "edit-number-slider",
-      key,
-      label: translate(`sidebar.skeleton-parameters.${labelKey}`),
-      value: noValue ? (defaultValue ?? minValue) : summary.value,
-      displayValue: summary.mixed ? "mixed" : undefined,
-      minValue,
-      // The RangeSlider web component requires a numeric defaultValue
-      defaultValue: defaultValue ?? minValue,
-      maxValue,
-      ...options,
-    });
-  }
-
-  // ---- Field change dispatch ------------------------------------------------
-
-  async _onFieldChange(fieldItem, value, valueStream) {
-    const [group, name] = String(fieldItem.key).split(":");
-    this._streamingFieldEdit = true;
-    // Remembered so the refresh at the end of this method leaves this one input
-    // alone: it already holds what the user put in it, and writing back would
-    // interrupt a run of arrow-key increments.
-    this._activeFieldKey = fieldItem.key;
-    try {
-      // A label scrub streams the CHANGE from where the drag started, not a
-      // value, and only the plain number fields scrub — every slider streams
-      // values. Applying a change per point is what keeps a mixed selection's
-      // differences instead of collapsing them onto one number.
-      //
-      // Checked before every other streaming branch: a scrubbed number would
-      // otherwise be read as an absolute value by whichever branch claims its
-      // group first, and set the field to the size of the drag.
-      if (valueStream && fieldItem.type === "edit-number") {
-        await this._onScrub(group, name, valueStream);
-        return;
-      }
-      // Cap and corner sliders stream onto the canvas while dragging; all other
-      // fields apply the committed value once. The width fields are compact
-      // scrub fields with their own streams (_makeWidthField).
-      if (valueStream && group === "insertion" && name.startsWith("easing-")) {
-        const side = name.slice("easing-".length);
-        await setPanelInsertionValuesStream(
-          this.sceneController,
-          this._insertions || [],
-          valueStream,
-          (insertion, contour, streamedValue) =>
-            setInsertionEasing(
-              insertion,
-              side,
-              this._insertionEasingFromSlider(streamedValue)
-            ),
-          this._undo("set-insertion-easing")
-        );
-        return;
-      }
-      const finalValue = await this._resolveStreamValue(value, valueStream);
-      // An abandoned drag has already put the shape back; there is no value to
-      // commit and committing one would undo the abandoning.
-      if (isScrubCancelled(finalValue)) {
-        return;
-      }
-      if (group === "width") {
-        await this._onWidthChange(name, finalValue);
-      } else if (group === "contour") {
-        await this._onContourChange(name, finalValue);
-      } else if (group === "cap") {
-        await this._onCapChange(name, finalValue);
-      } else if (group === "corner") {
-        await this._onCornerChange(name, finalValue);
-      } else if (group === "rib") {
-        await this._onRibChange(name, finalValue);
-      } else if (group === "insertion") {
-        await this._onInsertionChange(name, finalValue);
-      }
-    } finally {
-      this._streamingFieldEdit = false;
-      // A stream is a finished drag by the time we get here, so the input has
-      // to take whatever the model settled on — which is not the number the
-      // drag reached, if a bound trimmed it. Holding the field back here is
-      // what left a scrub showing a value the terminal was never at. A typed
-      // or arrow-key change is the case the hold-back is for: that field still
-      // has focus, and writing into it fights the next keystroke.
-      if (valueStream) {
-        this._activeFieldKey = null;
-      }
-      this._forceRebuild = true;
-      await this.update();
-      this._activeFieldKey = null;
-    }
   }
 
   // Route a label scrub to the edit path that moves its number by a change.
   // Every branch here is relative; nothing sets an absolute value, so a mixed
   // selection comes out of a drag as mixed as it went in.
-  // The multiply beside each scrub field. Same fields, same per-point writers,
-  // same undo labels — a scrub adds to what a point holds and this scales it, so
-  // the only thing that differs is the arithmetic.
-  //
-  // Per point, not against one number: scaling a mixed selection by 1.1 has to
-  // grow each point from its own value, which is the whole reason a multiply is
-  // not a scrub with the answer worked out in advance.
-  async _onMultiply(group, name, factor) {
-    const sc = this.sceneController;
-    if (group === "contour" && name === "default-width") {
-      await scalePanelContourDefaultWidth(
-        sc,
-        this._panelSelection.contours,
-        factor,
-        this._undo("set-contour-width")
-      );
-    } else {
-      return;
-    }
-    this._forceRebuild = true;
-    await this.update();
-  }
-
   async _onInsertionChange(name, value) {
     const insertions = this._insertions || [];
     if (!insertions.length) {
@@ -2476,15 +2272,6 @@ export default class SkeletonParametersPanel {
       );
       return;
     }
-    if (group === "contour" && name === "default-width") {
-      await nudgePanelContourDefaultWidthStream(
-        sc,
-        this._panelSelection.contours,
-        valueStream,
-        this._undo("set-contour-width")
-      );
-      return;
-    }
   }
 
   // Consume a slider value stream and return the final value: applying only the
@@ -2569,13 +2356,6 @@ export default class SkeletonParametersPanel {
           keepEdits:
             applicationSettingsController.model.skeletonSideModeKeepsEdits === true,
         }
-      );
-    } else if (name === "default-width") {
-      await setPanelContourDefaultWidth(
-        sc,
-        contours,
-        value,
-        this._undo("set-contour-width")
       );
     }
   }

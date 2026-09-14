@@ -1,6 +1,6 @@
 # 78: Decide: where Contour default width and Insertion go
 
-**Status:** needs-info
+**Status:** done
 
 **Blocked by:** None (can start immediately)
 
@@ -12,6 +12,10 @@ The skeleton panel has a Contour section with a default width field, and an Inse
 
 1. Ask the designer where each goes, or whether it is dropped.
 2. Record it in spec §5 and write build tickets.
+
+## Decision (2026-09-14)
+
+Contour default width goes to the Skeleton settings tab, under Delete collapsing points, acting on the selected contours. Insertion is a context-dependent section in the place of Terminal and Corner rounding. Built in the same commit; see UI-REFACTOR.md §5.5.
 
 ## Done when
 
