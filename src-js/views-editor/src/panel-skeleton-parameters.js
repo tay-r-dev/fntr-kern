@@ -2177,6 +2177,111 @@ export default class SkeletonParametersPanel {
     };
   }
 
+  _pushSummarySlider(
+    formContents,
+    key,
+    labelKey,
+    summary,
+    minValue,
+    maxValue,
+    defaultValue,
+    options = {}
+  ) {
+    // A mixed or absent value must NOT pin the thumb to minValue: that makes
+    // the slider draggable in only one direction. Park it at the default and
+    // show "mixed" as a placeholder instead (donor parity).
+    const noValue = summary.mixed || summary.value == null;
+    formContents.push({
+      type: "edit-number-slider",
+      key,
+      label: translate(`sidebar.skeleton-parameters.${labelKey}`),
+      value: noValue ? (defaultValue ?? minValue) : summary.value,
+      displayValue: summary.mixed ? "mixed" : undefined,
+      minValue,
+      // The RangeSlider web component requires a numeric defaultValue
+      defaultValue: defaultValue ?? minValue,
+      maxValue,
+      ...options,
+    });
+  }
+
+  // ---- Field change dispatch ------------------------------------------------
+
+  async _onFieldChange(fieldItem, value, valueStream) {
+    const [group, name] = String(fieldItem.key).split(":");
+    this._streamingFieldEdit = true;
+    // Remembered so the refresh at the end of this method leaves this one input
+    // alone: it already holds what the user put in it, and writing back would
+    // interrupt a run of arrow-key increments.
+    this._activeFieldKey = fieldItem.key;
+    try {
+      // A label scrub streams the CHANGE from where the drag started, not a
+      // value, and only the plain number fields scrub — every slider streams
+      // values. Applying a change per point is what keeps a mixed selection's
+      // differences instead of collapsing them onto one number.
+      //
+      // Checked before every other streaming branch: a scrubbed number would
+      // otherwise be read as an absolute value by whichever branch claims its
+      // group first, and set the field to the size of the drag.
+      if (valueStream && fieldItem.type === "edit-number") {
+        await this._onScrub(group, name, valueStream);
+        return;
+      }
+      // Cap and corner sliders stream onto the canvas while dragging; all other
+      // fields apply the committed value once. The width fields are compact
+      // scrub fields with their own streams (_makeWidthField).
+      if (valueStream && group === "insertion" && name.startsWith("easing-")) {
+        const side = name.slice("easing-".length);
+        await setPanelInsertionValuesStream(
+          this.sceneController,
+          this._insertions || [],
+          valueStream,
+          (insertion, contour, streamedValue) =>
+            setInsertionEasing(
+              insertion,
+              side,
+              this._insertionEasingFromSlider(streamedValue)
+            ),
+          this._undo("set-insertion-easing")
+        );
+        return;
+      }
+      const finalValue = await this._resolveStreamValue(value, valueStream);
+      // An abandoned drag has already put the shape back; there is no value to
+      // commit and committing one would undo the abandoning.
+      if (isScrubCancelled(finalValue)) {
+        return;
+      }
+      if (group === "width") {
+        await this._onWidthChange(name, finalValue);
+      } else if (group === "contour") {
+        await this._onContourChange(name, finalValue);
+      } else if (group === "cap") {
+        await this._onCapChange(name, finalValue);
+      } else if (group === "corner") {
+        await this._onCornerChange(name, finalValue);
+      } else if (group === "rib") {
+        await this._onRibChange(name, finalValue);
+      } else if (group === "insertion") {
+        await this._onInsertionChange(name, finalValue);
+      }
+    } finally {
+      this._streamingFieldEdit = false;
+      // A stream is a finished drag by the time we get here, so the input has
+      // to take whatever the model settled on — which is not the number the
+      // drag reached, if a bound trimmed it. Holding the field back here is
+      // what left a scrub showing a value the terminal was never at. A typed
+      // or arrow-key change is the case the hold-back is for: that field still
+      // has focus, and writing into it fights the next keystroke.
+      if (valueStream) {
+        this._activeFieldKey = null;
+      }
+      this._forceRebuild = true;
+      await this.update();
+      this._activeFieldKey = null;
+    }
+  }
+
   async _onInsertionChange(name, value) {
     const insertions = this._insertions || [];
     if (!insertions.length) {
