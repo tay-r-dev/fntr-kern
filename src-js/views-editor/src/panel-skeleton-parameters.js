@@ -55,11 +55,9 @@ import {
   setPanelPointTotalWidth,
   setPanelPointWidthPreset,
   editSelectedSkeletonInsertions,
-  insertionRatioToUnits,
-  insertionWidthReference,
   setInsertionEasing,
-  setInsertionRatioFromUnits,
   setInsertionWidthLinked,
+  setInsertionWidthRatio,
   setPanelInsertionValuesStream,
   setPanelPointValuesStream,
   setPanelRibAngleLock,
@@ -318,6 +316,15 @@ function cornerValuesFromField(name, value) {
   return null;
 }
 
+// A stored ratio as the percent a field shows. A mixed or absent one shows
+// nothing.
+function percentOfRatio(summary) {
+  return {
+    mixed: summary.mixed,
+    value: summary.value == null ? null : summary.value * 100,
+  };
+}
+
 // Composed into panel-selection.js's Selection panel, not registered as its
 // own sidebar panel (see ticket 05: merge into one "Selection" tab).
 export default class SkeletonParametersPanel {
@@ -474,25 +481,24 @@ export default class SkeletonParametersPanel {
         `insertion:${side}`,
         `${side}-width`,
         {
+          // Percent of the width the stroke draws at the point, 100 wherever
+          // it stands. A drag moves each point by the change, so a mixed
+          // selection stays mixed.
+          defaultValue: Math.round(DEFAULT_INSERTION_RATIO * 100),
           scrub: (valueStream, startValue) =>
-            this._onScrub("insertion", side, changesFrom(valueStream, startValue)),
-          commit: (value) => this._onInsertionChange(side, value),
-          // The default is the stroke's own half-width on this side, a ratio of
-          // one. In units it differs per insertion point, so it is written as
-          // the ratio.
-          reset: () =>
-            editSelectedSkeletonInsertions(
+            setPanelInsertionValuesStream(
               this.sceneController,
               this._insertions || [],
-              (insertion) => {
-                insertion.width[side] = DEFAULT_INSERTION_RATIO;
-                if (insertion.width.linked !== false) {
-                  insertion.width[side === "left" ? "right" : "left"] =
-                    DEFAULT_INSERTION_RATIO;
-                }
-              },
+              changesFrom(valueStream, startValue),
+              (insertion, contour, change) =>
+                setInsertionWidthRatio(
+                  insertion,
+                  side,
+                  insertion.width[side] + Number(change) / 100
+                ),
               this._undo("set-insertion-width")
             ),
+          commit: (value) => this._onInsertionChange(side, value),
         }
       );
       // The field reads percent and the model stores minus one to one: below
@@ -855,19 +861,13 @@ export default class SkeletonParametersPanel {
   // runs `commit`. `key` names the field while it is under the hand, so a
   // refresh leaves it alone.
   // `defaultValue`, in the field's own units, is what a double-click on the
-  // scrub area puts back. `reset` is for a default that is no one number in
-  // those units; it writes the default itself. Leave both out where a
-  // parameter has no default.
-  _makeCompactField(key, labelKey, { scrub, commit, defaultValue, reset }) {
+  // scrub area puts back. Leave it out where a parameter has no default.
+  _makeCompactField(key, labelKey, { scrub, commit, defaultValue }) {
     const field = html.createDomElement("compact-scrub-field", {
       label: translate(`sidebar.skeleton-parameters.${labelKey}`),
       integer: true,
     });
     field.defaultValue = defaultValue;
-    if (reset) {
-      field.resettable = true;
-      field.addEventListener("reset", () => this._runOwnEdit(reset));
-    }
     field.style.flex = "1 1 0";
     field.style.minWidth = "0";
     field.addEventListener("scrubstart", (event) => {
@@ -1939,11 +1939,10 @@ export default class SkeletonParametersPanel {
 
   // An insertion point's own parameters: the two widths and the easing.
   //
-  // The widths are shown in units and stored as a ratio of the half-width the
-  // stroke already draws there. A designer thinks in units, and a ratio is what
-  // lets the point slide along a tapering stroke without changing the shape.
-  // The conversion has one home, in skeleton-panel-edits.js, and both the field
-  // and the scrub come through it.
+  // The widths are relative: a ratio of the width the stroke draws where the
+  // point stands, shown as percent. 100 is the stroke itself wherever the point
+  // sits, which is what lets it slide along a tapering stroke without changing
+  // the shape.
   _buildInsertionSection(formContents, insertions) {
     const summary = summarizeSkeletonInsertionSelection(insertions);
     formContents.push({ type: "divider" });
@@ -1968,8 +1967,8 @@ export default class SkeletonParametersPanel {
       this._refreshCompactField(
         this.insertionFields[side],
         `insertion:${side}`,
-        this._insertionWidthSummary(insertions, side),
-        { disabled, minValue: 0 }
+        percentOfRatio(side === "left" ? summary.ratioLeft : summary.ratioRight),
+        { disabled, minValue: 0, round: true }
       );
       const easing = side === "left" ? summary.easingLeft : summary.easingRight;
       this._refreshCompactField(
@@ -1989,58 +1988,6 @@ export default class SkeletonParametersPanel {
       element: this.insertionEasingRow,
       layoutKey: "insertionEasingRow",
     });
-  }
-
-  // The two width fields read units, so each selected point's stored ratio is
-  // resolved against the outline it actually draws. A selection whose members
-  // resolve to different numbers reports mixed, and one whose reference cannot
-  // be read at all reports nothing rather than a number the shape does not obey.
-  _insertionWidthSummary(insertions, side) {
-    const values = insertions.map((entry) => this._insertionWidthInUnits(entry, side));
-    const first = values[0] ?? null;
-    return {
-      mixed: values.some((value) => value !== first),
-      value: first,
-    };
-  }
-
-  // One insertion point's half-width at that side, in units.
-  //
-  // The reference comes off the drawn outline of the layer the panel edits,
-  // which is the same layer its skeleton comes from. There is no candidate to
-  // choose between: a skeleton and the outline it drew are one layer's two
-  // halves, and taking them off the same one is what makes the number shown and
-  // the number written describe one stroke.
-  _insertionWidthInUnits(entry, side) {
-    const reference = this._insertionReference(entry, side);
-    const units = insertionRatioToUnits(reference, entry.insertion.width[side]);
-    return Number.isFinite(units) ? Math.round(units) : null;
-  }
-
-  // The half-width the stroke draws where one insertion point stands.
-  //
-  // Read off the drawn outline through the provenance the generator published,
-  // which is the same lookup the rib gizmo and the drawing layer already use.
-  // It was measured by regenerating the whole glyph instead, once per side and
-  // on every rebuild of the panel, plus twice more to open a scrub. The
-  // generator is the largest file in the fork and it draws the shape the panel
-  // is already looking at.
-  //
-  // The display, the scrub and the typed value all come through here, so the
-  // number shown and the number written cannot disagree.
-  _insertionReference(entry, side) {
-    const glyph = this._getEditLayerGlyph(this._getPositionedGlyph());
-    const skeletonData = getSkeletonData(glyph);
-    if (!skeletonData || !glyph?.path) {
-      return null;
-    }
-    return insertionWidthReference(
-      skeletonData,
-      glyph.path,
-      entry.contourId,
-      entry.insertionId,
-      side
-    );
   }
 
   // The easing slider reads percent and the model stores minus one to one. A
@@ -2269,18 +2216,6 @@ export default class SkeletonParametersPanel {
     // interrupt a run of arrow-key increments.
     this._activeFieldKey = fieldItem.key;
     try {
-      // A label scrub streams the CHANGE from where the drag started, not a
-      // value, and only the plain number fields scrub — every slider streams
-      // values. Applying a change per point is what keeps a mixed selection's
-      // differences instead of collapsing them onto one number.
-      //
-      // Checked before every other streaming branch: a scrubbed number would
-      // otherwise be read as an absolute value by whichever branch claims its
-      // group first, and set the field to the size of the drag.
-      if (valueStream && fieldItem.type === "edit-number") {
-        await this._onScrub(group, name, valueStream);
-        return;
-      }
       // Cap and corner sliders stream onto the canvas while dragging; all other
       // fields apply the committed value once. The width fields are compact
       // scrub fields with their own streams (_makeWidthField).
@@ -2364,68 +2299,13 @@ export default class SkeletonParametersPanel {
     if (name !== "left" && name !== "right") {
       return;
     }
-    // A typed number is units. It is divided by the reference the outline
-    // draws, once, before it is stored.
-    const references = new Map();
-    for (const entry of insertions) {
-      references.set(
-        `${entry.contourId}/${entry.insertionId}`,
-        this._insertionReference(entry, name)
-      );
-    }
+    // A typed number is percent.
     await editSelectedSkeletonInsertions(
       this.sceneController,
       insertions,
-      (insertion, contour) => {
-        const reference = references.get(`${contour.id}/${insertion.id}`);
-        if (reference) {
-          setInsertionRatioFromUnits(insertion, name, reference, value);
-        }
-      },
+      (insertion) => setInsertionWidthRatio(insertion, name, Number(value) / 100),
       this._undo("set-insertion-width")
     );
-  }
-
-  async _onScrub(group, name, valueStream) {
-    const sc = this.sceneController;
-    if (group === "insertion" && (name === "left" || name === "right")) {
-      // The scrub streams a change in units. Each frame resolves it against the
-      // reference the drag opened with, so the ratio the model stores stays a
-      // statement about the stroke rather than about the drag.
-      const references = new Map();
-      const startUnits = new Map();
-      for (const entry of this._insertions || []) {
-        const key = `${entry.contourId}/${entry.insertionId}`;
-        const reference = this._insertionReference(entry, name);
-        references.set(key, reference);
-        startUnits.set(
-          key,
-          reference === null
-            ? null
-            : insertionRatioToUnits(reference, entry.insertion.width[name])
-        );
-      }
-      await setPanelInsertionValuesStream(
-        sc,
-        this._insertions || [],
-        valueStream,
-        (insertion, contour, change) => {
-          const key = `${contour.id}/${insertion.id}`;
-          const reference = references.get(key);
-          if (!reference) {
-            return;
-          }
-          setInsertionRatioFromUnits(
-            insertion,
-            name,
-            reference,
-            startUnits.get(key) + Number(change)
-          );
-        },
-        this._undo("set-insertion-width")
-      );
-      return;
-    }
   }
 
   // Consume a slider value stream and return the final value: applying only the

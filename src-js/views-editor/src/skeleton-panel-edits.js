@@ -22,7 +22,6 @@ import {
   closeSkeletonContour,
   findGeneratedOutputPosition,
   findGeneratedPathAddress,
-  createSkeletonInsertionRibExecutor,
   getSkeletonContour,
   getSkeletonData,
   getSkeletonHandleOffset,
@@ -369,41 +368,6 @@ export async function setPanelPointValuesStream(
   );
 }
 
-// Units in, ratio out.
-//
-// The designer thinks in units and the model stores a ratio, so exactly one
-// place converts between them and every writer comes through it. The reference
-// is the half-width the stroke draws where the point stands, read off the drawn
-// outline. It is the number a ratio of one means.
-//
-// Null where the outline has not been drawn yet, or where the side is collapsed
-// onto the centerline. A ratio cannot lift a rib off a collapsed side, and the
-// panel shows no number rather than one it cannot honour.
-export function insertionWidthReference(
-  skeletonData,
-  path,
-  contourId,
-  insertionId,
-  side
-) {
-  const executor = createSkeletonInsertionRibExecutor(
-    skeletonData,
-    path,
-    contourId,
-    insertionId,
-    side
-  );
-  return executor ? executor.reference : null;
-}
-
-export function insertionUnitsToRatio(reference, units) {
-  return reference > 0 ? Math.max(0, Number(units) / reference) : null;
-}
-
-export function insertionRatioToUnits(reference, ratio) {
-  return reference > 0 ? reference * ratio : null;
-}
-
 // Every insertion-point write, across every editable layer, as one undo item.
 // The insertion is resolved by structural ordinal, the way a point is: an
 // insertion id is minted off each layer's own counter, so it is canonical in the
@@ -466,13 +430,15 @@ export async function setPanelInsertionValuesStream(
   );
 }
 
-// One insertion point's ratio, written from a number of units. The link
+// One insertion point's width on one side, as a ratio of the width the stroke
+// draws there: one is the stroke itself, wherever the point stands. The link
 // carries the write to the far side, the way it does on an ordinary rib.
-export function setInsertionRatioFromUnits(insertion, side, reference, units) {
-  const ratio = insertionUnitsToRatio(reference, units);
-  if (ratio === null) {
+export function setInsertionWidthRatio(insertion, side, ratio) {
+  const value = Number(ratio);
+  if (!Number.isFinite(value)) {
     return;
   }
+  ratio = Math.max(0, value);
   insertion.width[side] = ratio;
   if (insertion.width.linked !== false) {
     insertion.width[side === "left" ? "right" : "left"] = ratio;

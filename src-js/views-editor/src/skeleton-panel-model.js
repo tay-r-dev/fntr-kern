@@ -690,10 +690,8 @@ export function summarizeSkeletonRibSelection(selectedRibs) {
 
 // The selected insertion points, as one answer per control.
 //
-// A ratio is stored, and the panel shows units. The conversion needs the
-// reference the outline draws, which the panel reads through
-// `insertionWidthReference`. A selection whose members disagree answers null,
-// the same mixed state every other summary here uses.
+// The widths are ratios, shown as percent. A selection whose members disagree
+// answers null, the same mixed state every other summary here uses.
 export function summarizeSkeletonInsertionSelection(selectedInsertions) {
   return {
     ratioLeft: reduceValues(

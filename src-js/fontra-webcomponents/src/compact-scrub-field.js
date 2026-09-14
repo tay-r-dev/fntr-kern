@@ -21,10 +21,7 @@ import { themeColorCSS } from "./theme-support.js";
 //
 // A double-click on the scrub area (anywhere but the value, whose click opens
 // the keyboard editor) puts back `defaultValue`, as a typed value would. A
-// default that is not one number in the field's units -- one per selected
-// item, say -- is the caller's: set `resettable` instead, and the field sends
-// "reset" for the caller to write. A field with neither ignores the
-// double-click.
+// field with no default leaves it unset and ignores the double-click.
 //
 // The arithmetic and the cancel sentinel are number-scrub.js's, the same
 // ones ui-form.js's own label-drag scrub uses -- this is a second place to
@@ -168,14 +165,6 @@ export class CompactScrubField extends UnlitElement {
     this._defaultValue = value;
   }
 
-  get resettable() {
-    return this._resettable;
-  }
-
-  set resettable(value) {
-    this._resettable = !!value;
-  }
-
   get disabled() {
     return this._disabled;
   }
@@ -312,9 +301,6 @@ export class CompactScrubField extends UnlitElement {
       return;
     }
     if (this._defaultValue == null) {
-      if (this._resettable) {
-        this.dispatchEvent(new CustomEvent("reset"));
-      }
       return;
     }
     this._commit(
