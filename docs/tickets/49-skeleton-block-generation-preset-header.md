@@ -1,6 +1,6 @@
 # 49: Skeleton block: Generation preset header
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 46 (Skeleton block: Generation layout), 06 (Width presets as one list with a side)
 

@@ -26,6 +26,7 @@ import {
 import { throttleCalls } from "@fontra/core/utils.ts";
 import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 45
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 46
+import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 49
 import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 48
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 44
 import { Form } from "@fontra/web-components/ui-form.js";
@@ -316,7 +317,6 @@ export default class SkeletonParametersPanel {
     this._widthSnapshot = null;
     this._widthSnapshotKey = null;
     this._lastSignature = null;
-    this._widthProfileSelection = "base";
     // Per-field multiply ratios, kept across rebuilds so a rebuild after Apply
     // does not reset the box the user is working in.
     this._multiplyFactors = {};
@@ -560,6 +560,55 @@ export default class SkeletonParametersPanel {
         this._runOwnEdit(() => this._onWidthChange("ribanglelockmode", mode));
       }
     });
+    // Ticket 49: the Generation header's preset control -- a dropdown, Add and
+    // Update. Picking a preset arms it and picking it again applies it to the
+    // selected points, the two-click confirm the force-apply row had. Add
+    // stores the selection's width and side as a new preset for the glyph's
+    // case; Update writes them over the preset last picked.
+    this._widthPresetIndex = null;
+    this.widthPresetDropdown = html.createDomElement("multi-select-dropdown", {
+      label: translate("sidebar.skeleton-parameters.width-preset"),
+    });
+    this.widthPresetDropdown.singleChoice = true;
+    this.widthPresetDropdown.addEventListener("change", (event) => {
+      const [index] = [].concat(event.detail.checked);
+      if (index == null) {
+        return;
+      }
+      this._widthPresetIndex = index;
+      const preset = this._widthPresetList()[index];
+      this.widthPresetDropdown.label = preset?.name || "";
+      this.widthPresetUpdateButton.disabled = !this._canCaptureWidthPreset();
+      if (!preset) {
+        return;
+      }
+      this._confirmThenApply(
+        { currentTarget: this.widthPresetDropdown },
+        `width-preset:${index}`,
+        () =>
+          this._forceApplyWidthProfile({
+            value: Number(preset.width),
+            side: preset.side,
+          })
+      );
+    });
+    this.widthPresetAddButton = html.button({ onclick: () => this._addWidthPreset() }, [
+      translate("sidebar.skeleton-parameters.width-preset.add"),
+    ]);
+    this.widthPresetUpdateButton = html.button(
+      { onclick: () => this._updateWidthPreset() },
+      [translate("sidebar.skeleton-parameters.width-preset.update")]
+    );
+    this.widthPresetHeaderControls = html.div(
+      {
+        style: "display: flex; gap: 0.35rem; align-items: center; font-weight: normal;",
+      },
+      [
+        this.widthPresetDropdown,
+        this.widthPresetAddButton,
+        this.widthPresetUpdateButton,
+      ]
+    );
     this.forceAngleRow = html.div({ class: "selection-row-group" }, [
       html.span({ class: "selection-row-group-label" }, [
         translate("sidebar.skeleton-parameters.force-angle"),
@@ -631,6 +680,106 @@ export default class SkeletonParametersPanel {
       this._runOwnEdit(() => this._onWidthChange(name, event.detail.value));
     });
     return field;
+  }
+
+  // Every width preset the current master stores, both cases, in stored order.
+  // Indices into this list are what the dropdown's items carry, so Update
+  // writes the entry that was picked rather than its position in one case.
+  _widthPresetList() {
+    const list = this._resolveSourceDefault(SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS);
+    return Array.isArray(list) ? list.map((preset) => ({ ...preset })) : [];
+  }
+
+  // The width and side the selection states, or null where it states none. An
+  // explicit selection of ribs on one side stores that side's half-width; any
+  // other selection stores the total, side both. A selection whose members
+  // disagree has no one width to store.
+  _selectionWidthPreset() {
+    const points = this._widthPoints?.() || [];
+    if (!points.length) {
+      return null;
+    }
+    const ribs = this._panelSelection?.ribs || [];
+    const sides = new Set(ribs.map((rib) => rib.side));
+    if (!this._ribsDerived && ribs.length && sides.size === 1) {
+      const [side] = sides;
+      const summary = summarizeSkeletonPointWidths(points)[side];
+      return summary.mixed || summary.value == null
+        ? null
+        : { width: summary.value, side };
+    }
+    const total = summarizeSkeletonPointWidths(points).total;
+    return total.mixed || total.value == null
+      ? null
+      : { width: total.value, side: "both" };
+  }
+
+  _canCaptureWidthPreset() {
+    return !this.fontController.readOnly && this._selectionWidthPreset() !== null;
+  }
+
+  _refreshWidthPresetControls() {
+    const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
+    const list = this._widthPresetList();
+    if (this._widthPresetIndex != null && !list[this._widthPresetIndex]) {
+      this._widthPresetIndex = null;
+    }
+    this.widthPresetDropdown.items = list
+      .map((preset, index) => ({ preset, index }))
+      .filter(({ preset }) => preset?.case === glyphCase)
+      .map(({ preset, index }) => ({
+        value: index,
+        label: `${preset.name || ""} · ${preset.width}${
+          preset.side === "both" ? "" : ` ${preset.side === "left" ? "L" : "R"}`
+        }`,
+        checked: index === this._widthPresetIndex,
+      }));
+    this.widthPresetDropdown.label =
+      this._widthPresetIndex != null
+        ? list[this._widthPresetIndex].name
+        : translate("sidebar.skeleton-parameters.width-preset");
+    const canCapture = this._canCaptureWidthPreset();
+    this.widthPresetAddButton.disabled = !canCapture;
+    this.widthPresetUpdateButton.disabled =
+      !canCapture || this._widthPresetIndex == null;
+  }
+
+  async _addWidthPreset() {
+    const captured = this._selectionWidthPreset();
+    if (!captured) {
+      return;
+    }
+    const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
+    const list = this._widthPresetList();
+    const count = list.filter((preset) => preset.case === glyphCase).length;
+    list.push({
+      name: `${translate("sidebar.skeleton-parameters.width-preset")} ${count + 1}`,
+      width: captured.width,
+      side: captured.side,
+      case: glyphCase,
+    });
+    this._widthPresetIndex = list.length - 1;
+    await this._persistSourceDefaultValues({
+      [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]: list,
+    });
+    this._forceRebuild = true;
+    await this.update();
+  }
+
+  async _updateWidthPreset() {
+    const captured = this._selectionWidthPreset();
+    const list = this._widthPresetList();
+    const index = this._widthPresetIndex;
+    if (!captured || index == null || !list[index]) {
+      return;
+    }
+    // The name and case stay; the preset is the same entry with new numbers.
+    list[index] = { ...list[index], width: captured.width, side: captured.side };
+    await this._persistSourceDefaultValues({
+      [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]: list,
+    });
+    this._forceRebuild = true;
+    await this.update();
   }
 
   // The two projection options, read from the application settings.
@@ -864,24 +1013,6 @@ export default class SkeletonParametersPanel {
     return resolveEffectiveSourceSkeletonDefault(this.fontController, location, key);
   }
 
-  // Width profile options for the edited glyph's case: every width preset the
-  // master stores for that case, each carrying the side it applies to.
-  _widthProfileOptions() {
-    const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
-    const presets = this._resolveSourceDefault(
-      SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS
-    );
-    return (Array.isArray(presets) ? presets : [])
-      .filter((preset) => preset?.case === glyphCase)
-      .map((preset, index) => ({
-        id: `preset:${index}`,
-        label: preset.name || `Preset ${index + 1}`,
-        value: Number(preset.width),
-        side: preset.side,
-      }))
-      .filter((option) => Number.isFinite(option.value));
-  }
-
   // Cap profile options for the active style: master cap defaults plus the
   // master's custom cap profiles. `values` holds the point fields to write.
   _capProfileOptions(styleValue) {
@@ -1090,9 +1221,11 @@ export default class SkeletonParametersPanel {
   _buildPointWidthSection(formContents, widthPoints) {
     const summary = summarizeSkeletonPointWidths(widthPoints);
     formContents.push({ type: "divider" });
+    this._refreshWidthPresetControls();
     formContents.push({
       type: "header",
       label: translate("sidebar.skeleton-parameters.generation"),
+      auxiliaryElement: this.widthPresetHeaderControls,
     });
     // On a single-sided contour the visible edge is the TOTAL, so the per-side
     // numbers and the split between them describe nothing on screen. Greyed and
@@ -1195,14 +1328,6 @@ export default class SkeletonParametersPanel {
       value: ribSummary.detached.mixed ? false : ribSummary.detached.value,
       indeterminate: ribSummary.detached.mixed,
       disabled: !ribs.length,
-    });
-    // Force-apply a master width profile to the selected points (two-click
-    // confirm; the dropdown picks base/horizontal/contrast or a custom width).
-    this._buildForceApplyRow(formContents, {
-      options: this._widthProfileOptions(),
-      selectionProp: "_widthProfileSelection",
-      armKey: "width",
-      apply: (option) => this._forceApplyWidthProfile(option),
     });
   }
 
