@@ -19,9 +19,12 @@ import { themeColorCSS } from "./theme-support.js";
 // because it is a plain custom element, inside a `ui-form` row too (a later
 // ticket's job, not this one).
 //
-// A double-click on the value puts back `defaultValue`, as a typed value
-// would. A field with no default leaves `defaultValue` unset, and the
-// double-click then does nothing more than the click that opened the editor.
+// A double-click on the scrub area (anywhere but the value, whose click opens
+// the keyboard editor) puts back `defaultValue`, as a typed value would. A
+// default that is not one number in the field's units -- one per selected
+// item, say -- is the caller's: set `resettable` instead, and the field sends
+// "reset" for the caller to write. A field with neither ignores the
+// double-click.
 //
 // The arithmetic and the cancel sentinel are number-scrub.js's, the same
 // ones ui-form.js's own label-drag scrub uses -- this is a second place to
@@ -165,6 +168,14 @@ export class CompactScrubField extends UnlitElement {
     this._defaultValue = value;
   }
 
+  get resettable() {
+    return this._resettable;
+  }
+
+  set resettable(value) {
+    this._resettable = !!value;
+  }
+
   get disabled() {
     return this._disabled;
   }
@@ -256,9 +267,6 @@ export class CompactScrubField extends UnlitElement {
       {
         class: "value",
         onclick: () => this._startEdit(),
-        // The first click of the pair has opened the editor; the reset closes
-        // it without committing what it held.
-        ondblclick: () => this._resetToDefault(),
       },
       [this._displayValue()]
     );
@@ -280,6 +288,11 @@ export class CompactScrubField extends UnlitElement {
       {
         class: "box" + (this._disabled ? " disabled" : ""),
         onpointerdown: (event) => this._onPointerDown(event),
+        ondblclick: (event) => {
+          if (!this._valueElement.contains(event.target)) {
+            this._resetToDefault();
+          }
+        },
       },
       [
         ...(this._iconElement ? [this._iconElement] : []),
@@ -295,10 +308,15 @@ export class CompactScrubField extends UnlitElement {
   }
 
   _resetToDefault() {
-    if (this._disabled || this._defaultValue == null) {
+    if (this._disabled || this._editing) {
       return;
     }
-    this._cancelEdit?.();
+    if (this._defaultValue == null) {
+      if (this._resettable) {
+        this.dispatchEvent(new CustomEvent("reset"));
+      }
+      return;
+    }
     this._commit(
       roundScrubValue(
         clampScrubValue(Number(this._defaultValue), this._boundsFieldItem),
@@ -334,7 +352,6 @@ export class CompactScrubField extends UnlitElement {
         return;
       }
       this._editing = false;
-      this._cancelEdit = null;
       if (commit) {
         const parsed = parseFloat(input.value);
         const value = Number.isFinite(parsed)
@@ -361,7 +378,6 @@ export class CompactScrubField extends UnlitElement {
       }
     });
     input.addEventListener("blur", () => finishEdit(true), { once: true });
-    this._cancelEdit = () => finishEdit(false);
   }
 
   // Mirrors ui-form.js's own _attachScrub, adapted to an absolute value

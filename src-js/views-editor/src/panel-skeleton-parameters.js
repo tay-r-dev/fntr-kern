@@ -9,6 +9,7 @@ import {
   SERIF_HALF_FIELDS,
   SERIF_PRESETS,
   DEFAULT_CORNER_CURVATURE,
+  DEFAULT_INSERTION_RATIO,
   SKELETON_LOCK_KINDS,
   SKELETON_SOURCE_DEFAULT_KEYS,
   VALID_SERIF_AXIS_MODES,
@@ -476,6 +477,22 @@ export default class SkeletonParametersPanel {
           scrub: (valueStream, startValue) =>
             this._onScrub("insertion", side, changesFrom(valueStream, startValue)),
           commit: (value) => this._onInsertionChange(side, value),
+          // The default is the stroke's own half-width on this side, a ratio of
+          // one. In units it differs per insertion point, so it is written as
+          // the ratio.
+          reset: () =>
+            editSelectedSkeletonInsertions(
+              this.sceneController,
+              this._insertions || [],
+              (insertion) => {
+                insertion.width[side] = DEFAULT_INSERTION_RATIO;
+                if (insertion.width.linked !== false) {
+                  insertion.width[side === "left" ? "right" : "left"] =
+                    DEFAULT_INSERTION_RATIO;
+                }
+              },
+              this._undo("set-insertion-width")
+            ),
         }
       );
       // The field reads percent and the model stores minus one to one: below
@@ -838,13 +855,19 @@ export default class SkeletonParametersPanel {
   // runs `commit`. `key` names the field while it is under the hand, so a
   // refresh leaves it alone.
   // `defaultValue`, in the field's own units, is what a double-click on the
-  // value puts back. Leave it out where a parameter has no default.
-  _makeCompactField(key, labelKey, { scrub, commit, defaultValue }) {
+  // scrub area puts back. `reset` is for a default that is no one number in
+  // those units; it writes the default itself. Leave both out where a
+  // parameter has no default.
+  _makeCompactField(key, labelKey, { scrub, commit, defaultValue, reset }) {
     const field = html.createDomElement("compact-scrub-field", {
       label: translate(`sidebar.skeleton-parameters.${labelKey}`),
       integer: true,
     });
     field.defaultValue = defaultValue;
+    if (reset) {
+      field.resettable = true;
+      field.addEventListener("reset", () => this._runOwnEdit(reset));
+    }
     field.style.flex = "1 1 0";
     field.style.minWidth = "0";
     field.addEventListener("scrubstart", (event) => {
