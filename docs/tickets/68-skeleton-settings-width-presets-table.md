@@ -1,6 +1,6 @@
 # 68: Skeleton settings: width presets table
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 67 (Skeleton settings tab), 04 (Lift the pair table into a shared table component), 06 (Width presets as one list with a side)
 

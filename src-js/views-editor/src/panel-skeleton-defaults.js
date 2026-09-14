@@ -7,7 +7,6 @@ import {
   SERIF_PRESET_FIELDS,
   SKELETON_SOURCE_DEFAULT_FALLBACKS,
   SKELETON_SOURCE_DEFAULT_KEYS,
-  WIDTH_PRESET_SEED_NAMES,
   getSkeletonData,
   getSkeletonGlyphCase,
   getSkeletonPointWidth,
@@ -17,6 +16,7 @@ import {
   setSkeletonPointTotalWidth,
   setSourceSkeletonDefaultsValues,
 } from "@fontra/core/skeleton-model.js";
+import "@fontra/web-components/data-table.js"; // for <data-table>, ticket 68
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 67
 import { dialog } from "@fontra/web-components/modal-dialog.js";
 import { Form } from "@fontra/web-components/ui-form.js";
@@ -58,6 +58,54 @@ const SERIF_FIELD_LABELS = {
   easeCurvature: "serif-ease-curvature",
 };
 
+const SKELETON_SETTINGS_STYLES = `
+  .skeleton-settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .skeleton-settings-heading {
+    font-weight: bold;
+  }
+
+  .skeleton-presets-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .skeleton-presets-table th {
+    text-align: left;
+    font-weight: normal;
+    opacity: 0.7;
+  }
+
+  .skeleton-presets-table td {
+    padding: 0.15rem 0.2rem;
+    vertical-align: top;
+  }
+
+  .skeleton-presets-table input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .skeleton-presets-table input[type="number"] {
+    width: 4em;
+  }
+
+  .skeleton-presets-table icon-button {
+    width: 1.1em;
+    height: 1.1em;
+  }
+
+  .preset-origin {
+    font-size: 0.85em;
+    opacity: 0.55;
+  }
+`;
+
 // Ticket 67 (UI-REFACTOR.md §6.1, §6.2): the Skeleton settings tab, in the
 // right sidebar. It holds the generator setting Delete collapsing points and
 // the master-wide source defaults: the width presets, the serif presets and
@@ -84,6 +132,22 @@ export default class SkeletonSettingsPanel extends Panel {
     this.dropDeadPointsWarning = html.div({ style: "opacity: 0.7;" }, [
       translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
     ]);
+    // Ticket 68: the width presets table, built once and refilled on update.
+    this._appendStyle(SKELETON_SETTINGS_STYLES);
+    this.widthPresetTable = html.createDomElement("data-table");
+    this.widthPresetTable.tableClassName = "skeleton-presets-table";
+    this.widthPresetTable.columns = [
+      { label: translate("sidebar.skeleton-settings.column.name") },
+      { label: translate("sidebar.skeleton-settings.column.width") },
+      { label: translate("sidebar.skeleton-settings.column.side") },
+      { label: "" },
+    ];
+    this.widthPresetsSection = html.div({ class: "skeleton-settings-section" }, [
+      html.div({ class: "skeleton-settings-heading" }, [
+        translate("sidebar.skeleton-settings.width-presets"),
+      ]),
+      this.widthPresetTable,
+    ]);
     this.contentElement.appendChild(
       html.div(
         { class: "panel-section panel-section--flex panel-section--scrollable" },
@@ -95,6 +159,7 @@ export default class SkeletonSettingsPanel extends Panel {
             },
             [this.dropDeadPointsToggle, this.dropDeadPointsWarning]
           ),
+          this.widthPresetsSection,
           this.infoForm,
         ]
       )
@@ -143,11 +208,13 @@ export default class SkeletonSettingsPanel extends Panel {
     return source ? getSourceSkeletonDefaultsValue(source, key, fallback) : fallback;
   }
 
-  async _persistSourceDefaults(values, undoLabel) {
+  // Writes to one master: the edited one, unless a caller names another. The
+  // preset tables list every master, so a row writes to its own.
+  async _persistSourceDefaults(values, undoLabel, targetSourceId = null) {
     if (this.fontController.readOnly) {
       return;
     }
-    const { sourceId } = this._getEffectiveSource();
+    const sourceId = targetSourceId ?? this._getEffectiveSource().sourceId;
     if (!sourceId || !this.fontController.sources?.[sourceId]) {
       return;
     }
@@ -206,150 +273,165 @@ export default class SkeletonSettingsPanel extends Panel {
     }
   }
 
-  // ---- Width presets ----------------------------------------------------------
-  // One list per master, shared by every case (§6.3). Base/Horizontal/Contrast
-  // are ordinary "both"-side presets under those three names; this panel still
-  // edits them as named fields, so the field and the stored preset are one
-  // entry rather than two representations of the same number. Everything else
-  // in the same case is a free-form "custom" row.
+  // ---- Width presets table (ticket 68) ----------------------------------------
+  // One table for every master and every case (§6.3). Each master stores its
+  // own list; a row is one entry of one master's list and writes back to that
+  // master. Base, Horizontal and Contrast are ordinary rows under those names.
 
-  _getWidthPresets() {
-    const list = this._sourceDefault(SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS);
+  // One master's preset list, as a copy to edit.
+  _sourcePresetList(sourceId, key) {
+    const source = this.fontController.sources?.[sourceId];
+    const list = source ? getSourceSkeletonDefaultsValue(source, key, []) : [];
     return Array.isArray(list) ? list.map((item) => ({ ...item })) : [];
   }
 
-  async _persistWidthPresets(next) {
+  async _writeWidthPresets(sourceId, next) {
+    this._customDeleteConfirm = null;
     await this._persistSourceDefaults(
       { [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]: next },
-      translate("sidebar.skeleton-parameters.undo.set-defaults")
+      translate("sidebar.skeleton-parameters.undo.set-defaults"),
+      sourceId
     );
     await this.update();
   }
 
-  _namedWidthPresetValue(glyphCase, name) {
-    const preset = this._getWidthPresets().find(
-      (item) => item.case === glyphCase && item.side === "both" && item.name === name
+  async _editWidthPreset(sourceId, index, patch) {
+    const next = this._sourcePresetList(
+      sourceId,
+      SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS
     );
-    return preset && Number.isFinite(Number(preset.width)) ? Number(preset.width) : 0;
-  }
-
-  async _setNamedWidthPreset(glyphCase, name, value) {
-    const list = this._getWidthPresets();
-    const index = list.findIndex(
-      (item) => item.case === glyphCase && item.side === "both" && item.name === name
-    );
-    if (index >= 0) {
-      list[index] = { ...list[index], width: value };
-    } else {
-      list.push({ name, width: value, side: "both", case: glyphCase });
+    const previous = next[index];
+    if (!previous) {
+      return;
     }
-    await this._persistWidthPresets(list);
+    next[index] = { ...previous, ...patch };
+    await this._writeWidthPresets(sourceId, next);
+    // Rib widths can follow the master width as mw+offset (1.3), so a Base
+    // width changed on the edited master offers to recalculate them, as the
+    // Base field did.
+    const delta = Number(next[index].width) - Number(previous.width);
+    if (
+      "width" in patch &&
+      previous.name === "Base" &&
+      previous.side === "both" &&
+      sourceId === this._getEffectiveSource().sourceId &&
+      Number.isFinite(delta) &&
+      delta !== 0
+    ) {
+      const result = await dialog(
+        translate("sidebar.skeleton-parameters.recalc-ribs.title"),
+        translate("sidebar.skeleton-parameters.recalc-ribs.body", delta),
+        [
+          {
+            title: translate("sidebar.skeleton-parameters.recalc-ribs.keep"),
+            resultValue: "keep",
+            isCancelButton: true,
+          },
+          {
+            title: translate("sidebar.skeleton-parameters.recalc-ribs.recalc"),
+            resultValue: "recalc",
+            isDefaultButton: true,
+          },
+        ]
+      );
+      if (result === "recalc") {
+        await this._recalculateRibWidths(previous.case, delta);
+      }
+    }
   }
 
-  _buildCustomWidthRows(formContents, glyphCase) {
-    const fullList = this._getWidthPresets();
-    const rows = fullList
-      .map((preset, index) => ({ preset, index }))
-      .filter(
-        ({ preset }) =>
-          preset.case === glyphCase &&
-          !(preset.side === "both" && WIDTH_PRESET_SEED_NAMES.includes(preset.name))
+  // The trash takes two presses: the first arms it, the second deletes.
+  async _deleteWidthPreset(sourceId, index, rowId) {
+    if (this._customDeleteConfirm !== rowId) {
+      this._customDeleteConfirm = rowId;
+      this._renderWidthPresetRows();
+      return;
+    }
+    const next = this._sourcePresetList(
+      sourceId,
+      SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS
+    );
+    if (!next[index]) {
+      return;
+    }
+    next.splice(index, 1);
+    await this._writeWidthPresets(sourceId, next);
+  }
+
+  _renderWidthPresetRows() {
+    const tbody = this.widthPresetTable.tbody;
+    tbody.innerHTML = "";
+    const readOnly = !!this.fontController.readOnly;
+    for (const [sourceId, source] of Object.entries(
+      this.fontController.sources || {}
+    )) {
+      const list = this._sourcePresetList(
+        sourceId,
+        SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS
       );
-    rows.forEach(({ preset, index }) => {
-      const rowId = `widthPreset:${index}`;
-      const isConfirming = this._customDeleteConfirm === rowId;
-      const nameInput = html.input({
-        type: "text",
-        value: preset.name || "",
-        style: "width: 7em;",
-        onchange: async (event) => {
-          const next = this._getWidthPresets();
-          if (!next[index]) {
-            return;
-          }
-          next[index] = { ...next[index], name: String(event.target.value ?? "") };
-          this._customDeleteConfirm = null;
-          await this._persistWidthPresets(next);
-        },
-      });
-      const valueInput = html.input({
-        type: "number",
-        value: Number(preset.width) || 0,
-        style: "width: 4.5em;",
-        onchange: async (event) => {
-          const next = this._getWidthPresets();
-          if (!next[index]) {
-            return;
-          }
-          const numeric = Number(event.target.value);
-          next[index] = {
-            ...next[index],
-            width: Number.isFinite(numeric) ? numeric : 0,
-          };
-          this._customDeleteConfirm = null;
-          await this._persistWidthPresets(next);
-        },
-      });
-      // Two-click delete: first click arms (trash -> x), second click deletes.
-      const deleteButton = html.createDomElement("icon-button", {
-        "src": isConfirming ? "/tabler-icons/x.svg" : "/tabler-icons/trash.svg",
-        "style": "width: 1.1em; height: 1.1em;",
-        "data-tooltip": translate(
-          isConfirming
-            ? "sidebar.skeleton-parameters.custom-widths.confirm-delete"
-            : "sidebar.skeleton-parameters.custom-widths.delete"
-        ),
-        "data-tooltipposition": "left",
-        "onclick": async () => {
-          if (this._customDeleteConfirm !== rowId) {
-            this._customDeleteConfirm = rowId;
-            await this.update();
-            return;
-          }
-          const next = this._getWidthPresets();
-          if (!next[index]) {
-            return;
-          }
-          next.splice(index, 1);
-          this._customDeleteConfirm = null;
-          await this._persistWidthPresets(next);
-        },
-      });
-      formContents.push({
-        type: "single-icon",
-        element: html.div({ style: "display:flex; gap:0.35rem; align-items:center;" }, [
-          nameInput,
-          valueInput,
-          deleteButton,
-        ]),
-      });
-    });
-    formContents.push({
-      type: "single-icon",
-      element: html.div({}, [
-        html.button(
-          {
-            onclick: async () => {
-              const next = this._getWidthPresets();
-              const customCount = next.filter(
-                (item) =>
-                  item.case === glyphCase &&
-                  !WIDTH_PRESET_SEED_NAMES.includes(item.name)
-              ).length;
-              next.push({
-                name: `Custom ${customCount + 1}`,
-                width: 0,
-                side: "both",
-                case: glyphCase,
-              });
-              this._customDeleteConfirm = null;
-              await this._persistWidthPresets(next);
-            },
+      list.forEach((preset, index) => {
+        const rowId = `${sourceId}:${index}`;
+        const nameInput = html.input({
+          type: "text",
+          value: preset.name || "",
+          disabled: readOnly,
+          onchange: (event) =>
+            this._editWidthPreset(sourceId, index, {
+              name: String(event.target.value ?? ""),
+            }),
+        });
+        const widthInput = html.input({
+          type: "number",
+          value: Number(preset.width) || 0,
+          disabled: readOnly,
+          onchange: (event) => {
+            const numeric = Number(event.target.value);
+            this._editWidthPreset(sourceId, index, {
+              width: Number.isFinite(numeric) ? numeric : 0,
+            });
           },
-          [translate("sidebar.skeleton-parameters.custom-widths.add")]
-        ),
-      ]),
-    });
+        });
+        const sideSelect = html.select(
+          {
+            disabled: readOnly,
+            onchange: (event) =>
+              this._editWidthPreset(sourceId, index, { side: event.target.value }),
+          },
+          ["both", "left", "right"].map((side) =>
+            html.option({ value: side, selected: preset.side === side }, [
+              translate(`sidebar.skeleton-settings.side.${side}`),
+            ])
+          )
+        );
+        const confirming = this._customDeleteConfirm === rowId;
+        const trash = html.createDomElement("icon-button", {
+          "src": confirming ? "/tabler-icons/x.svg" : "/tabler-icons/trash.svg",
+          "data-tooltip": translate(
+            confirming
+              ? "sidebar.skeleton-parameters.custom-widths.confirm-delete"
+              : "sidebar.skeleton-parameters.custom-widths.delete"
+          ),
+          "data-tooltipposition": "left",
+        });
+        trash.disabled = readOnly;
+        trash.onclick = () => this._deleteWidthPreset(sourceId, index, rowId);
+        tbody.appendChild(
+          html.createDomElement("tr", { "data-row-id": rowId }, [
+            html.td({}, [
+              nameInput,
+              html.div({ class: "preset-origin" }, [
+                `${source.name || sourceId} · ${translate(
+                  `sidebar.skeleton-settings.case.${preset.case}`
+                )}`,
+              ]),
+            ]),
+            html.td({}, [widthInput]),
+            html.td({}, [sideSelect]),
+            html.td({}, [trash]),
+          ])
+        );
+      });
+    }
   }
 
   // ---- Serif presets --------------------------------------------------------
@@ -606,9 +688,6 @@ export default class SkeletonSettingsPanel extends Panel {
     }
     await this.fontController.ensureInitialized;
 
-    const glyphName = this.sceneController.sceneSettings?.selectedGlyphName;
-    const glyphCase = getSkeletonGlyphCase(glyphName);
-    const isLower = glyphCase === "lowercase";
     const K = SKELETON_SOURCE_DEFAULT_KEYS;
 
     const dropDeadPoints = this._sourceDefault(K.SERIF_REMOVE_COLLAPSED) === true;
@@ -616,48 +695,14 @@ export default class SkeletonSettingsPanel extends Panel {
     this.dropDeadPointsToggle.disabled = !!this.fontController.readOnly;
     this.dropDeadPointsWarning.hidden = !dropDeadPoints;
 
+    this._renderWidthPresetRows();
+
     const formContents = [
       {
         type: "header",
-        label: translate("sidebar.skeleton-parameters.source-defaults"),
-      },
-      {
-        type: "text",
-        value: translate(
-          isLower
-            ? "sidebar.skeleton-parameters.case.lowercase"
-            : "sidebar.skeleton-parameters.case.uppercase"
-        ),
+        label: translate("sidebar.skeleton-parameters.serif-presets"),
       },
     ];
-    formContents.push({
-      type: "edit-number",
-      key: "default:widthPreset:Base",
-      label: translate("sidebar.skeleton-parameters.default-base"),
-      value: this._namedWidthPresetValue(glyphCase, "Base"),
-    });
-    formContents.push({
-      type: "edit-number",
-      key: "default:widthPreset:Horizontal",
-      label: translate("sidebar.skeleton-parameters.default-horizontal"),
-      value: this._namedWidthPresetValue(glyphCase, "Horizontal"),
-    });
-    formContents.push({
-      type: "edit-number",
-      key: "default:widthPreset:Contrast",
-      label: translate("sidebar.skeleton-parameters.default-contrast"),
-      value: this._namedWidthPresetValue(glyphCase, "Contrast"),
-    });
-    formContents.push({
-      type: "header",
-      label: translate("sidebar.skeleton-parameters.custom-widths"),
-    });
-    this._buildCustomWidthRows(formContents, glyphCase);
-    formContents.push({ type: "divider" });
-    formContents.push({
-      type: "header",
-      label: translate("sidebar.skeleton-parameters.serif-presets"),
-    });
     this._buildSerifPresetRows(formContents);
     formContents.push({ type: "divider" });
     formContents.push({
@@ -723,35 +768,6 @@ export default class SkeletonSettingsPanel extends Panel {
           }
           finalValue = streamedValue;
         }
-      }
-      if (name === "widthPreset") {
-        // 1.3: rib widths can follow the master width as mw+offset — offer an
-        // opt-in recalculation when the Base preset's width changes.
-        const oldValue = this._namedWidthPresetValue(glyphCase, field);
-        await this._setNamedWidthPreset(glyphCase, field, Number(finalValue) || 0);
-        const delta = Number(finalValue) - oldValue;
-        if (field === "Base" && Number.isFinite(delta) && delta !== 0) {
-          const result = await dialog(
-            translate("sidebar.skeleton-parameters.recalc-ribs.title"),
-            translate("sidebar.skeleton-parameters.recalc-ribs.body", delta),
-            [
-              {
-                title: translate("sidebar.skeleton-parameters.recalc-ribs.keep"),
-                resultValue: "keep",
-                isCancelButton: true,
-              },
-              {
-                title: translate("sidebar.skeleton-parameters.recalc-ribs.recalc"),
-                resultValue: "recalc",
-                isDefaultButton: true,
-              },
-            ]
-          );
-          if (result === "recalc") {
-            await this._recalculateRibWidths(glyphCase, delta);
-          }
-        }
-        return;
       }
       const oldValue = this._sourceDefault(name);
       const storedValue =

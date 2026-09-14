@@ -34,7 +34,6 @@ import "@fontra/web-components/segmented-control.js"; // for <segmented-control>
 import { Form } from "@fontra/web-components/ui-form.js";
 import { PresetHeaderControl } from "./preset-header-control.js";
 import { SELECTION_ROW_GROUP_STYLES } from "./selection-row-group-styles.js";
-import { editSkeleton } from "./skeleton-editing.js";
 import {
   SKELETON_PANEL_SENDER,
   nudgePanelCapParameterStream,
