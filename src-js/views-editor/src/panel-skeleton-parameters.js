@@ -43,7 +43,6 @@ import {
   resetPanelGeneratedHandle,
   resetPanelRibs,
   scalePanelContourDefaultWidth,
-  scalePanelCornerDistance,
   scalePanelSerifValue,
   setPanelCapParameters,
   setPanelCapStyle,
@@ -633,6 +632,40 @@ export default class SkeletonParametersPanel {
       this.capFields.ballshape,
       this.capFields.balleasing,
     ]);
+
+    // Ticket 61: Corner rounding as two chained rows, Distance and Curvature,
+    // each left, chain, right. Both chains are `corner:linked`: closed greys the
+    // right field and the writer carries the left value to both sides.
+    // Distribution is not built; it needs the designer first (§5.7).
+    this.cornerFields = {};
+    for (const side of ["left", "right"]) {
+      for (const parameter of ["distance", "curvature"]) {
+        this.cornerFields[`${side}-${parameter}`] = this._makeCornerField(
+          side,
+          parameter
+        );
+      }
+    }
+    const cornerChain = () => {
+      const chain = html.createDomElement("chain-link", {
+        tooltip: translate("sidebar.skeleton-parameters.linked"),
+      });
+      chain.addEventListener("change", (event) =>
+        this._runOwnEdit(() => this._onCornerChange("linked", event.detail.linked))
+      );
+      return chain;
+    };
+    this.cornerChains = [cornerChain(), cornerChain()];
+    this.cornerDistanceRow = fieldRow([
+      this.cornerFields["left-distance"],
+      this.cornerChains[0],
+      this.cornerFields["right-distance"],
+    ]);
+    this.cornerCurvatureRow = fieldRow([
+      this.cornerFields["left-curvature"],
+      this.cornerChains[1],
+      this.cornerFields["right-curvature"],
+    ]);
     this.forceAngleRow = html.div({ class: "selection-row-group" }, [
       html.span({ class: "selection-row-group-label" }, [
         translate("sidebar.skeleton-parameters.force-angle"),
@@ -713,6 +746,34 @@ export default class SkeletonParametersPanel {
               this._undo("set-width")
             ),
       commit: (value) => this._onWidthChange(name, value),
+    });
+  }
+
+  // One Corner rounding field, named as cornerValuesFromField names it: the
+  // side travels in the name so linked and unlinked reach the same writer.
+  // Distance drags by a change, as its label scrub did; Curvature streams its
+  // percent, as its slider did.
+  _makeCornerField(side, parameter) {
+    const name = `${side}-${parameter}`;
+    return this._makeCompactField(`corner:${name}`, `corner-${parameter}-${side}`, {
+      scrub: (valueStream, startValue) =>
+        parameter === "distance"
+          ? nudgePanelCornerDistanceStream(
+              this.sceneController,
+              this._widthPoints(),
+              side,
+              changesFrom(valueStream, startValue),
+              this._undo("set-corner")
+            )
+          : setPanelPointValuesStream(
+              this.sceneController,
+              this._widthPoints(),
+              valueStream,
+              (point, contour, value) =>
+                setSkeletonCornerParameters(point, cornerValuesFromField(name, value)),
+              this._undo("set-corner")
+            ),
+      commit: (value) => this._onCornerChange(name, value),
     });
   }
 
@@ -1587,41 +1648,32 @@ export default class SkeletonParametersPanel {
       type: "header",
       label: translate("sidebar.skeleton-parameters.corner-rounding"),
     });
-    const gate = { disabled: !corner.canEdit };
-    formContents.push({
-      type: "checkbox",
-      key: "corner:linked",
-      label: translate("sidebar.skeleton-parameters.linked"),
-      value: corner.linked.mixed ? false : corner.linked.value,
-      ...gate,
-    });
     const asPercent = (summary) => ({
       value: summary.value == null ? null : Math.round(summary.value * 100),
       mixed: summary.mixed,
     });
-    // Linked writes both sides from one pair, so only the left is offered — the
-    // side the key names is the side the writer starts from.
-    const linked = !corner.linked.mixed && corner.linked.value;
-    const sides = linked ? ["left"] : ["left", "right"];
-    for (const side of sides) {
-      this._pushSummaryNumber(
-        formContents,
+    // A closed chain greys Right: the writer carries Left to both sides.
+    const linked = !corner.linked.mixed && corner.linked.value === true;
+    for (const chain of this.cornerChains) {
+      chain.linked = corner.linked.mixed ? null : corner.linked.value;
+    }
+    for (const side of ["left", "right"]) {
+      const disabled = side === "right" && linked;
+      this._refreshCompactField(
+        this.cornerFields[`${side}-distance`],
         `corner:${side}-distance`,
-        linked ? "corner-distance" : `corner-distance-${side}`,
         corner[side].distance,
-        { minValue: 0, ...gate }
+        { disabled, minValue: 0 }
       );
-      this._pushSummarySlider(
-        formContents,
+      this._refreshCompactField(
+        this.cornerFields[`${side}-curvature`],
         `corner:${side}-curvature`,
-        linked ? "corner-curvature" : `corner-curvature-${side}`,
         asPercent(corner[side].curvature),
-        0,
-        100,
-        55,
-        { step: 1, ...gate }
+        { disabled, minValue: 0, maxValue: 100 }
       );
     }
+    formContents.push({ type: "single-icon", element: this.cornerDistanceRow });
+    formContents.push({ type: "single-icon", element: this.cornerCurvatureRow });
   }
 
   // An insertion point's own parameters: the two widths and the easing.
@@ -2499,22 +2551,6 @@ export default class SkeletonParametersPanel {
       // Cap and corner sliders stream onto the canvas while dragging; all other
       // fields apply the committed value once. The width fields are compact
       // scrub fields with their own streams (_makeWidthField).
-      if (valueStream && (group === "cap" || group === "corner")) {
-        const makeValues = group === "cap" ? capValuesFromField : cornerValuesFromField;
-        const setter =
-          group === "cap" ? setSkeletonCapParameters : setSkeletonCornerParameters;
-        if (makeValues(name, value)) {
-          await setPanelPointValuesStream(
-            this.sceneController,
-            this._widthPoints(),
-            valueStream,
-            (point, contour, streamedValue) =>
-              setter(point, makeValues(name, streamedValue)),
-            this._undo(group === "cap" ? "set-cap" : "set-corner")
-          );
-          return;
-        }
-      }
       if (valueStream && group === "serif") {
         const makeValues = (streamed) =>
           name === "axisangle"
@@ -2611,18 +2647,6 @@ export default class SkeletonParametersPanel {
         this._panelSelection.contours,
         factor,
         this._undo("set-contour-width")
-      );
-    } else if (group === "corner") {
-      const side = String(name).split("-")[0];
-      if (side !== "left" && side !== "right") {
-        return;
-      }
-      await scalePanelCornerDistance(
-        sc,
-        this._widthPoints(),
-        side,
-        factor,
-        this._undo("set-corner")
       );
     } else if (group === "serif") {
       const targets = serifNudgeTargets(name);
@@ -2740,19 +2764,6 @@ export default class SkeletonParametersPanel {
         valueStream,
         this._undo("set-contour-width")
       );
-      return;
-    }
-    if (group === "corner") {
-      const side = String(name).split("-")[0];
-      if (side === "left" || side === "right") {
-        await nudgePanelCornerDistanceStream(
-          sc,
-          this._widthPoints(),
-          side,
-          valueStream,
-          this._undo("set-corner")
-        );
-      }
       return;
     }
     if (group === "serif") {

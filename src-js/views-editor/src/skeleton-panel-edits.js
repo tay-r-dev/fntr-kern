@@ -1286,25 +1286,6 @@ export async function nudgePanelCornerDistanceStream(
   );
 }
 
-export async function scalePanelCornerDistance(
-  sceneController,
-  pointAddresses,
-  side,
-  factor,
-  undoLabel
-) {
-  return editSelectedSkeletonPoints(
-    sceneController,
-    pointAddresses,
-    (point) =>
-      setSkeletonCornerParameters(point, {
-        side,
-        distance: Math.round((point.corner?.[side]?.distance ?? 0) * factor),
-      }),
-    undoLabel
-  );
-}
-
 // ---- Rib / editable-generated handle operations -----------------------------
 
 export async function resetPanelRibs(

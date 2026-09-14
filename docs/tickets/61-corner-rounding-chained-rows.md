@@ -1,6 +1,6 @@
 # 61: Corner rounding: chained rows
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 50 (Terminal: kind picker and one section per point), 45 (Skeleton block: chain on the width row), 26 (Visual: SpeedPunk compact scrub fields)
 
