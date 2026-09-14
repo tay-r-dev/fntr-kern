@@ -860,6 +860,57 @@ export default class DesignspaceNavigationPanel extends Panel {
         ),
       },
       {
+        // Tickets 30 and 31: app settings, per D9. SpeedPunk on skeleton only
+        // draws while the generated outline is hidden and SpeedPunk is on.
+        id: "skeleton-visual-accordion-item",
+        label: translate("sidebar.designspace-navigation.skeleton"),
+        open: false,
+        content: html.div(
+          {
+            id: "skeleton-visual-content",
+            style: `
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 0.5em;
+            `,
+          },
+          [
+            html.createDomElement("labeled-toggle", {
+              id: "skeleton-show-generated-toggle",
+              label: translate(
+                "sidebar.designspace-navigation.skeleton.show-generated"
+              ),
+              style: "grid-column: 1 / -1;",
+            }),
+            html.createDomElement("labeled-toggle", {
+              id: "skeleton-speedpunk-toggle",
+              label: translate("sidebar.designspace-navigation.skeleton.speedpunk"),
+              style: "grid-column: 1 / -1;",
+            }),
+            html.createDomElement("compact-scrub-field", {
+              id: "skeleton-width-input",
+              defaultValue: 1.5,
+              label: translate("sidebar.designspace-navigation.skeleton.width"),
+              minValue: 0.5,
+              maxValue: 12,
+              step: 0.5,
+              integer: false,
+            }),
+            html.createDomElement("compact-scrub-field", {
+              id: "skeleton-width-ungenerated-input",
+              defaultValue: 3,
+              label: translate(
+                "sidebar.designspace-navigation.skeleton.width-ungenerated"
+              ),
+              minValue: 0.5,
+              maxValue: 12,
+              step: 0.5,
+              integer: false,
+            }),
+          ]
+        ),
+      },
+      {
         id: "speedpunk-accordion-item",
         label: translate("sidebar.designspace-navigation.speedpunk"),
         open: false,
@@ -1587,6 +1638,40 @@ export default class DesignspaceNavigationPanel extends Panel {
     });
   }
 
+  _setupSkeletonVisualControls() {
+    const settings = applicationSettingsController;
+    const redraw = () => this.sceneController.canvasController.requestUpdate();
+    const bind = (id, key, fromEvent) => {
+      const element = this.visualAccordion.querySelector(`#${id}`);
+      const sync = () => {
+        if (element.localName === "labeled-toggle") {
+          element.checked = !!settings.model[key];
+        } else {
+          element.value = settings.model[key];
+        }
+      };
+      sync();
+      element.addEventListener("change", (event) => {
+        settings.model[key] = fromEvent(event, element);
+      });
+      settings.addKeyListener(key, () => {
+        sync();
+        redraw();
+      });
+    };
+    const fromToggle = (_event, element) => !!element.checked;
+    const fromNumber = (event) =>
+      Math.min(12, Math.max(0.5, Number(event.detail.value)));
+    bind("skeleton-show-generated-toggle", "skeletonShowGeneratedGeometry", fromToggle);
+    bind("skeleton-speedpunk-toggle", "skeletonSpeedPunk", fromToggle);
+    bind("skeleton-width-input", "skeletonCenterlineWidth", fromNumber);
+    bind(
+      "skeleton-width-ungenerated-input",
+      "skeletonCenterlineWidthUngenerated",
+      fromNumber
+    );
+  }
+
   _setupTunniDebugControls() {
     const stored = applicationSettingsController.model.tunniGizmoTuning || {};
     for (const control of TUNNI_DEBUG_CONTROLS) {
@@ -1942,6 +2027,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._setupTunniControls();
     this._setupTunniLabelsAlwaysVisibleToggle();
     this._setupTunniDebugControls();
+    this._setupSkeletonVisualControls();
     this._setupSpeedPunkControls();
     this._setupSnappingDebugControls();
 

@@ -584,7 +584,7 @@ registerVisualizationLayerDefinition({
   defaultOn: true,
   zIndex: 455,
   screenParameters: {
-    strokeWidth: 1.5,
+    pixel: 1,
   },
   colors: {
     strokeColor: "#2279d2",
@@ -593,9 +593,16 @@ registerVisualizationLayerDefinition({
     strokeColor: "#5fb2ff",
   },
   draw: (context, positionedGlyph, parameters, model) => {
+    // Ticket 31: the thickness is an app setting in screen pixels, one value
+    // for each state of Show generated geometry.
+    const settings = applicationSettingsController.model;
+    const width =
+      settings.skeletonShowGeneratedGeometry !== false
+        ? settings.skeletonCenterlineWidth
+        : settings.skeletonCenterlineWidthUngenerated;
     context.lineCap = "round";
     context.lineJoin = "round";
-    context.lineWidth = parameters.strokeWidth;
+    context.lineWidth = (Number(width) || 1.5) * parameters.pixel;
     context.strokeStyle = parameters.strokeColor;
     forEachSkeletonContour(positionedGlyph, model, (contour) => {
       context.stroke(skeletonContourToPath2d(contour));

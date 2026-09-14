@@ -56,6 +56,13 @@ export const applicationSettingsController = new ObservableController({
   showLabelsTension: true,
   showLabelsAngle: false,
   tunniLabelsAlwaysVisible: false,
+  // Ticket 30/31: the Visual > Skeleton accordion. Off, the generated outline is
+  // not drawn, and SpeedPunk can draw on the centerline instead. The centerline
+  // has one thickness per state, in screen pixels.
+  skeletonShowGeneratedGeometry: true,
+  skeletonSpeedPunk: false,
+  skeletonCenterlineWidth: 1.5,
+  skeletonCenterlineWidthUngenerated: 3,
 });
 
 // Node has no localStorage, and this module is reached from the node test

@@ -1,3 +1,4 @@
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { computeSpeedPunkSamples } from "@fontra/core/curvature.js";
 import {
   calculateBadgeDimensions,
@@ -36,6 +37,7 @@ import {
   getSkeletonData,
 } from "@fontra/core/skeleton-model.js";
 import { decomposedToTransform } from "@fontra/core/transform.js";
+import { VarPackedPath } from "@fontra/core/var-path.js";
 import {
   calculateCurvatureGizmoPoint,
   calculateSegmentTension,
@@ -864,7 +866,7 @@ registerVisualizationLayerDefinition({
   colorsDarkMode: { fillColor: "#FFF3" },
   draw: (context, positionedGlyph, parameters, model, controller) => {
     context.fillStyle = parameters.fillColor;
-    context.fill(positionedGlyph.glyph.closedContoursPath2d);
+    context.fill(drawnPath2d(positionedGlyph, model, true));
   },
 });
 
@@ -1324,7 +1326,8 @@ registerVisualizationLayerDefinition({
 function getGizmoHiddenContourIndices(positionedGlyph, model) {
   if (
     model?.visualizationLayersSettings?.model["fontra.skeleton.generated-tunni"] !==
-    true
+      true &&
+    applicationSettingsController.model.skeletonShowGeneratedGeometry !== false
   ) {
     return null;
   }
@@ -1334,13 +1337,47 @@ function getGizmoHiddenContourIndices(positionedGlyph, model) {
   return indices?.size ? indices : null;
 }
 
+// Ticket 30: the generated contours while Show generated geometry is off. Their
+// outline, handles and every node are left out of the drawing. Null when on.
+function getUndrawnContourIndices(positionedGlyph, model) {
+  if (applicationSettingsController.model.skeletonShowGeneratedGeometry !== false) {
+    return null;
+  }
+  const indices = getGeneratedPathContourIndices(
+    getTunniSkeletonData(positionedGlyph, model)
+  );
+  return indices.size ? indices : null;
+}
+
+// The glyph's outline without its undrawn contours. Components come after the
+// glyph's own contours in the flattened path, so the indices still match.
+function drawnPath2d(positionedGlyph, model, closedOnly = false) {
+  const glyph = positionedGlyph.glyph;
+  const undrawn = getUndrawnContourIndices(positionedGlyph, model);
+  if (!undrawn) {
+    return closedOnly ? glyph.closedContoursPath2d : glyph.flattenedPath2d;
+  }
+  const result = new Path2D();
+  const path = glyph.flattenedPath;
+  for (const [i, contour] of enumerate(path.contourInfo)) {
+    if (!undrawn.has(i) && (!closedOnly || contour.isClosed)) {
+      path.drawContourToPath2d(result, i);
+    }
+  }
+  return result;
+}
+
 // On a suppressed contour the off-curve nodes are circles attached to nothing
 // once their handle lines are gone, so they are dropped; the on-curve nodes stay
 // because they say where the outline is.
-function* iterGizmoVisibleNodes(path, hiddenContourIndices) {
+function* iterGizmoVisibleNodes(path, hiddenContourIndices, undrawnContourIndices) {
   let pointIndex = 0;
   for (const point of path.iterPoints()) {
-    if (!point.type || !hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
+    const contourIndex = path.getContourIndex(pointIndex);
+    if (
+      !undrawnContourIndices?.has(contourIndex) &&
+      (!point.type || !hiddenContourIndices?.has(contourIndex))
+    ) {
       yield point;
     }
     pointIndex++;
@@ -1349,13 +1386,22 @@ function* iterGizmoVisibleNodes(path, hiddenContourIndices) {
 
 // Same rule, over an explicit index list. An absent list means no points at all
 // — never every point, which is what an empty selection would otherwise paint.
-function* iterGizmoVisibleNodesByIndex(path, pointIndices, hiddenContourIndices) {
+function* iterGizmoVisibleNodesByIndex(
+  path,
+  pointIndices,
+  hiddenContourIndices,
+  undrawnContourIndices
+) {
   for (const pointIndex of pointIndices || []) {
     const point = path.getPoint(pointIndex);
     if (!point) {
       continue;
     }
-    if (point.type && hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
+    const contourIndex = path.getContourIndex(pointIndex);
+    if (
+      undrawnContourIndices?.has(contourIndex) ||
+      (point.type && hiddenContourIndices?.has(contourIndex))
+    ) {
       continue;
     }
     yield point;
@@ -1379,7 +1425,8 @@ registerVisualizationLayerDefinition({
     context.fillStyle = parameters.color;
     for (const pt of iterGizmoVisibleNodes(
       glyph.path,
-      getGizmoHiddenContourIndices(positionedGlyph, model)
+      getGizmoHiddenContourIndices(positionedGlyph, model),
+      getUndrawnContourIndices(positionedGlyph, model)
     )) {
       fillNode(context, pt, cornerSize, smoothSize, handleSize);
     }
@@ -1410,6 +1457,7 @@ registerVisualizationLayerDefinition({
     const { point: hoveredPointIndices } = parseSelection(model.hoverSelection);
     const { point: selectedPointIndices } = parseSelection(model.selection);
     const hiddenContourIndices = getGizmoHiddenContourIndices(positionedGlyph, model);
+    const undrawnContourIndices = getUndrawnContourIndices(positionedGlyph, model);
 
     // Under layer
     const underlayOffset = parameters.underlayOffset;
@@ -1417,7 +1465,8 @@ registerVisualizationLayerDefinition({
     for (const pt of iterGizmoVisibleNodesByIndex(
       glyph.path,
       selectedPointIndices,
-      hiddenContourIndices
+      hiddenContourIndices,
+      undrawnContourIndices
     )) {
       fillNode(
         context,
@@ -1432,7 +1481,8 @@ registerVisualizationLayerDefinition({
     for (const pt of iterGizmoVisibleNodesByIndex(
       glyph.path,
       selectedPointIndices,
-      hiddenContourIndices
+      hiddenContourIndices,
+      undrawnContourIndices
     )) {
       fillNode(context, pt, cornerSize, smoothSize, handleSize);
     }
@@ -1443,7 +1493,8 @@ registerVisualizationLayerDefinition({
     for (const pt of iterGizmoVisibleNodesByIndex(
       glyph.path,
       hoveredPointIndices,
-      hiddenContourIndices
+      hiddenContourIndices,
+      undrawnContourIndices
     )) {
       strokeNode(
         context,
@@ -1846,7 +1897,7 @@ registerVisualizationLayerDefinition({
     context.lineJoin = "round";
     context.lineWidth = parameters.strokeWidth;
     context.strokeStyle = parameters.color;
-    context.stroke(positionedGlyph.glyph.flattenedPath2d);
+    context.stroke(drawnPath2d(positionedGlyph, model));
   },
 });
 
@@ -1864,7 +1915,7 @@ registerVisualizationLayerDefinition({
     context.lineJoin = "round";
     context.lineWidth = parameters.strokeWidth;
     context.strokeStyle = parameters.color;
-    context.stroke(positionedGlyph.glyph.flattenedPath2d);
+    context.stroke(drawnPath2d(positionedGlyph, model));
   },
 });
 
@@ -1911,7 +1962,7 @@ registerVisualizationLayerDefinition({
     adaptStepsToCurveLength: false,
   },
   draw: (context, positionedGlyph, parameters, model, controller) => {
-    const path = positionedGlyph.glyph?.path;
+    const path = speedPunkPath(positionedGlyph, model);
     if (!path) return;
 
     const peakHeightGlyphUnits = model.sceneSettings?.speedPunkPeakHeightUpm ?? 24;
@@ -1959,6 +2010,32 @@ registerVisualizationLayerDefinition({
     context.restore();
   },
 });
+
+// Ticket 30: with the generated outline hidden, SpeedPunk leaves it out, and
+// draws on the skeleton centerline when SpeedPunk on skeleton is on.
+function speedPunkPath(positionedGlyph, model) {
+  const path = positionedGlyph.glyph?.path;
+  const undrawn = path && getUndrawnContourIndices(positionedGlyph, model);
+  if (!undrawn) {
+    return path;
+  }
+  const contours = path.unpackedContours().filter((_, i) => !undrawn.has(i));
+  if (applicationSettingsController.model.skeletonSpeedPunk) {
+    for (const contour of getTunniSkeletonData(positionedGlyph, model)?.contours ||
+      []) {
+      contours.push({
+        points: contour.points.map(({ x, y, type, smooth }) => ({
+          x,
+          y,
+          type,
+          smooth,
+        })),
+        isClosed: !!contour.closed,
+      });
+    }
+  }
+  return VarPackedPath.fromUnpackedContours(contours);
+}
 
 //
 // allGlyphsCleanVisualizationLayerDefinition is not registered, but used

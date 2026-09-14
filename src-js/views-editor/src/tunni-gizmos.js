@@ -62,8 +62,12 @@ export const TUNNI_KINDS = {
 export function isTunniControlLive(settingsModel, kind, control) {
   const keys = TUNNI_KINDS[kind];
   const on = (key) => settingsModel?.[key] === true;
+  // A generated gizmo needs its outline on screen.
   const main =
-    on(keys.curvature) && (kind !== "generated" || on(TUNNI_SETTINGS.generatedMode));
+    on(keys.curvature) &&
+    (kind !== "generated" ||
+      (on(TUNNI_SETTINGS.generatedMode) &&
+        applicationSettingsController.model.skeletonShowGeneratedGeometry !== false));
   return control === "curvature" ? main : main && on(keys[control]);
 }
 
