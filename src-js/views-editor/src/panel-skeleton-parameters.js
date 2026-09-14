@@ -24,6 +24,7 @@ import {
   setSourceSkeletonDefaultsValues,
 } from "@fontra/core/skeleton-model.js";
 import { throttleCalls } from "@fontra/core/utils.ts";
+import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 45
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 44
 import { Form } from "@fontra/web-components/ui-form.js";
 import { editSkeleton } from "./skeleton-editing.js";
@@ -383,6 +384,19 @@ export default class SkeletonParametersPanel {
         this.gizmoHandlesControl.value = event.newValue === true ? "gizmo" : "handles";
       }
     );
+
+    // Ticket 45: the chain between Left and Right, bound to `width:linked`.
+    // Built once, like the Gizmo/Handles pair, so a values-only refresh keeps
+    // the same node and the rebuild just re-places it. Its state is set on
+    // every update from the selection.
+    this.widthChain = html.createDomElement("chain-link", {
+      tooltip: translate("sidebar.skeleton-parameters.linked"),
+    });
+    this.widthChain.addEventListener("change", async (event) => {
+      await this._onWidthChange("linked", event.detail.linked);
+      this._forceRebuild = true;
+      await this.update();
+    });
   }
 
   async toggle(on) {
@@ -813,12 +827,6 @@ export default class SkeletonParametersPanel {
       type: "header",
       label: translate("sidebar.skeleton-parameters.point-widths"),
     });
-    formContents.push({
-      type: "checkbox",
-      key: "width:linked",
-      label: translate("sidebar.skeleton-parameters.linked"),
-      value: summary.linked.mixed ? false : summary.linked.value,
-    });
     // Only has an effect on a smooth point whose one handle faces away from a
     // straight segment; harmless elsewhere, so it is always shown rather than
     // appearing and disappearing as the selection changes.
@@ -841,20 +849,35 @@ export default class SkeletonParametersPanel {
     const perSideGate = summary.singleSided
       ? { disabled: true, blank: true, minValue: 0 }
       : { minValue: 0 };
-    this._pushSummaryNumber(
-      formContents,
-      "width:left",
-      "left-width",
-      summary.left,
-      perSideGate
-    );
-    this._pushSummaryNumber(
-      formContents,
-      "width:right",
-      "right-width",
-      summary.right,
-      perSideGate
-    );
+    // Ticket 45: Left, chain, Right on one row. A closed chain greys Right:
+    // Left is then the one place a side is typed, and the writer carries the
+    // other side by its share. The chain changes how numbers are typed and
+    // nothing else -- a drag never reads the flag (feature model §5).
+    const linkedClosed = !summary.linked.mixed && summary.linked.value === true;
+    this.widthChain.linked = summary.linked.mixed ? null : summary.linked.value;
+    this.widthChain.disabled = summary.singleSided;
+    formContents.push({
+      type: "universal-row",
+      field1: {
+        type: "text",
+        value: translate("sidebar.skeleton-parameters.left-right-width"),
+      },
+      field2: {
+        ...this._summaryNumberField("width:left", summary.left, {
+          ...perSideGate,
+          multiply: false,
+        }),
+        auxiliaryElement: this.widthChain,
+      },
+      // The row's one label drives the Left field's scrub. Right would share
+      // that label, so it does not scrub: it types, when the chain is open.
+      field3: this._summaryNumberField("width:right", summary.right, {
+        ...perSideGate,
+        disabled: perSideGate.disabled || linkedClosed,
+        multiply: false,
+        scrub: false,
+      }),
+    });
     this._pushSummarySlider(
       formContents,
       "width:distribution",
@@ -2010,16 +2033,17 @@ export default class SkeletonParametersPanel {
   // panel's numbers are draggable — they all are. A caller that wants one inert
   // passes `scrub: false`.
   _summaryNumberField(key, summary, options = {}) {
-    const { blank = false, ...fieldOptions } = options;
+    const { blank = false, multiply = true, ...fieldOptions } = options;
     return {
       type: "edit-number",
       key,
       value: blank || summary.mixed ? null : summary.value,
       placeholder: blank ? "" : summary.placeholder || undefined,
       scrub: true,
-      auxiliaryElement: fieldOptions.disabled
-        ? undefined
-        : this._multiplyControl(key, summary),
+      auxiliaryElement:
+        fieldOptions.disabled || !multiply
+          ? undefined
+          : this._multiplyControl(key, summary),
       ...fieldOptions,
     };
   }

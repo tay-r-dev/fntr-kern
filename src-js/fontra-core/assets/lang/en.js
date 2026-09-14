@@ -683,6 +683,7 @@ export const strings = {
   "sidebar.skeleton-parameters.total-width": "Total width",
   "sidebar.skeleton-parameters.left-width": "Left width",
   "sidebar.skeleton-parameters.right-width": "Right width",
+  "sidebar.skeleton-parameters.left-right-width": "Left / right",
   "sidebar.skeleton-parameters.distribution": "Distribution",
   "sidebar.skeleton-parameters.scale": "Scale %",
   "sidebar.skeleton-parameters.contour": "Contour",
