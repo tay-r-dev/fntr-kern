@@ -622,6 +622,12 @@ export default class SkeletonParametersPanel {
       distance: this._makeCapField("distance", "cap-distance"),
     };
     this.squareRow = fieldRow([this.capFields.angle, this.capFields.distance]);
+    // Ticket 54: the Rounded section. Radius keeps its logarithmic display, a
+    // position from 1 to 20, and Roundness its percent; capValuesFromField
+    // converts both back to the stored ratio.
+    this.capFields.radius = this._makeCapField("radius", "cap-radius");
+    this.capFields.tension = this._makeCapField("tension", "cap-tension");
+    this.roundedRow = fieldRow([this.capFields.radius, this.capFields.tension]);
     this.forceAngleRow = html.div({ class: "selection-row-group" }, [
       html.span({ class: "selection-row-group-label" }, [
         translate("sidebar.skeleton-parameters.force-angle"),
@@ -1443,43 +1449,33 @@ export default class SkeletonParametersPanel {
       ? undefined
       : (capStyle.value ?? "butt");
     formContents.push({ type: "single-icon", element: this.terminalKindRow });
-    // Donor parity: cap parameters appear as sliders, only for the styles
-    // they apply to. Radius maps 20 discrete slider positions logarithmically
-    // onto the [1/128, 1/4] ratio range; tension is edited in percent. Both
-    // are converted back in _onCapChange.
+    // Each kind shows its own fields. Radius maps 20 discrete positions
+    // logarithmically onto the [1/128, 1/4] ratio range; tension is edited in
+    // percent. Both are converted back in capValuesFromField.
     const styleValue = capStyle.mixed ? null : (capStyle.value ?? "butt");
     if (styleValue === "round") {
-      const radiusSummary = {
-        value:
-          capRadiusIndexFromRatio(
-            cap.capRadiusRatio.value ?? DEFAULT_CAP_RADIUS_RATIO
-          ) + 1,
-        mixed: cap.capRadiusRatio.mixed,
-      };
-      this._pushSummarySlider(
-        formContents,
+      this._refreshCompactField(
+        this.capFields.radius,
         "cap:radius",
-        "cap-radius",
-        radiusSummary,
-        1,
-        CAP_RADIUS_POSITIONS,
-        capRadiusIndexFromRatio(DEFAULT_CAP_RADIUS_RATIO) + 1,
-        { step: 1 }
+        {
+          value:
+            capRadiusIndexFromRatio(
+              cap.capRadiusRatio.value ?? DEFAULT_CAP_RADIUS_RATIO
+            ) + 1,
+          mixed: cap.capRadiusRatio.mixed,
+        },
+        { minValue: 1, maxValue: CAP_RADIUS_POSITIONS }
       );
-      const tensionSummary = {
-        value: Math.round((cap.capTension.value ?? DEFAULT_CAP_TENSION) * 100),
-        mixed: cap.capTension.mixed,
-      };
-      this._pushSummarySlider(
-        formContents,
+      this._refreshCompactField(
+        this.capFields.tension,
         "cap:tension",
-        "cap-tension",
-        tensionSummary,
-        0,
-        100,
-        Math.round(DEFAULT_CAP_TENSION * 100),
-        { step: 5 }
+        {
+          value: Math.round((cap.capTension.value ?? DEFAULT_CAP_TENSION) * 100),
+          mixed: cap.capTension.mixed,
+        },
+        { minValue: 0, maxValue: 100 }
       );
+      formContents.push({ type: "single-icon", element: this.roundedRow });
     } else if (styleValue === "square") {
       this._refreshCompactField(
         this.capFields.angle,
