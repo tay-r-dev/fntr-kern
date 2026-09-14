@@ -141,7 +141,7 @@ import { SceneView } from "@fontra/core/scene-view.js";
 import { difference, union } from "@fontra/core/set-ops.js";
 import { themeController } from "@fontra/core/theme-settings.js";
 import { ViewController } from "@fontra/core/view-controller.js";
-import { DataTable } from "@fontra/web-components/data-table.js"; // ticket 04: the shared table
+import { DataTable, editableCell } from "@fontra/web-components/data-table.js"; // ticket 04: the shared table
 import { GlyphCell } from "@fontra/web-components/glyph-cell.js";
 import { GlyphCellView } from "@fontra/web-components/glyph-cell-view.js";
 import { IconButton } from "@fontra/web-components/icon-button.js"; // for <icon-button>, the delete-class control
@@ -2412,8 +2412,7 @@ export class KerningViewController extends ViewController {
       this.autokernFiltersController.setItem("glyphName", urlGlyphName);
     }
     // Ticket 20: the Load next 100 button is gone -- the table is a
-    // windowed list now, scrolled into (initPairTableScrolling, wired
-    // below once the shared table is mounted).
+    // windowed list now, slid by the shared table's own scroll box.
     this._pairTableLoadStatus = document.querySelector(
       "#kerning-pairtable-load-status"
     );
@@ -2673,15 +2672,24 @@ export class KerningViewController extends ViewController {
       { label: "Glyph L", sortKey: "glyph", sortable: true, selectAll: true },
       {
         label: "Current",
+        key: "showCurrent",
+        hideable: true,
         sortKey: "current",
         sortable: true,
         headerClassName: "kerning-pairtable-current-col",
       },
       // Task 5, spec F13: Proposed is its own column, independently
       // hideable from Current and Delta.
-      { label: "Proposed", headerClassName: "kerning-pairtable-proposed-col" },
+      {
+        label: "Proposed",
+        key: "showProposed",
+        hideable: true,
+        headerClassName: "kerning-pairtable-proposed-col",
+      },
       {
         label: "Delta",
+        key: "showSuggestion",
+        hideable: true,
         sortKey: "delta",
         sortable: true,
         headerClassName: "kerning-pairtable-suggestion-col",
@@ -2690,7 +2698,12 @@ export class KerningViewController extends ViewController {
       // The row's one write action, as an icon in its own toggleable column
       // (Columns > Apply). See kerning.html's old comment (now here) for
       // what each row kind shows there.
-      { label: "Apply", headerClassName: "kerning-pairtable-apply-col" },
+      {
+        label: "Apply",
+        key: "showApply",
+        hideable: true,
+        headerClassName: "kerning-pairtable-apply-col",
+      },
       // F32's Hide action -- the eye control lives in this column.
       { label: "Hide" },
     ];
@@ -2733,52 +2746,29 @@ export class KerningViewController extends ViewController {
     // own controls is that control's, not a selection change -- the
     // component's own closest("input, button") guard keeps those apart.
     this._pairTable.onRowClick = (id, event) => this.selectRowFromClick(id, event);
+    this._pairTable.selectedRowClassName = "kerning-pairtable-row-highlighted";
+    // Ticket 20/22: a window of 100 rows that slides by 25 as the box scrolls
+    // near an edge, in a scroll box whose grip sets its height. The shared
+    // table does both; the height is kept under the key it always had.
+    this._pairTable.windowSize = 100;
+    this._pairTable.windowStep = 25;
+    this._pairTable.windowEdge = 200;
+    this._pairTable.minHeight = 120;
+    this._pairTable.resizable = true;
+    this._pairTable.heightStorageKey = "fontra-kerning-pairtable-table-height";
+    // A double-click makes a glyph or class name selectable, so it can be
+    // copied without a drag across rows sweeping text along.
+    this._pairTable.copyableSelector =
+      ".kerning-pairtable-glyph-name, .kerning-pairtable-class-name";
+    // Ticket 19 (UI-REFACTOR.md §3.4): Current, Proposed, Delta and Apply are
+    // checked entries in the table's column menu, opened on the header with
+    // the right mouse button. The filter keys stay the one state; the table
+    // shows the columns from them on every render.
+    this._pairTable.onColumnToggle = (key, visible) =>
+      this.autokernFiltersController.setItem(key, visible);
     document
       .querySelector("#kerning-pairtable-table-mount")
       .appendChild(this._pairTable);
-    this.initPairTableScrolling();
-    this.initPairTableResizeGrip();
-
-    // Ticket 19 (UI-REFACTOR.md §3.4): the Columns fieldset is gone --
-    // Current, Proposed, Delta and Apply are now checked entries in a
-    // context menu on the table header, opened with the right mouse
-    // button. Same four filter keys, same display-only effect (never which
-    // rows show, never what an action targets). Wired here, after
-    // this._pairTable is created and mounted (it exposes the actual
-    // <table> only once built).
-    this._pairTable.table
-      .querySelector("thead")
-      .addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        const model = this.autokernFiltersController.model;
-        const toggle = (key) =>
-          this.autokernFiltersController.setItem(key, !model[key]);
-        showMenu(
-          [
-            {
-              title: "Current",
-              checked: model.showCurrent,
-              callback: () => toggle("showCurrent"),
-            },
-            {
-              title: "Proposed",
-              checked: model.showProposed,
-              callback: () => toggle("showProposed"),
-            },
-            {
-              title: "Delta",
-              checked: model.showSuggestion,
-              callback: () => toggle("showSuggestion"),
-            },
-            {
-              title: "Apply",
-              checked: model.showApply,
-              callback: () => toggle("showApply"),
-            },
-          ],
-          event
-        );
-      });
 
     this.autokernFiltersController.addListener(() => this.renderPairTable());
 
@@ -2829,28 +2819,6 @@ export class KerningViewController extends ViewController {
         this.setResultsTab(tabButton.dataset.tab)
       );
     }
-
-    // A row is a control, not a paragraph: dragging across rows selects rows
-    // (kerning.css turns text selection off for the table). A glyph or class
-    // name is still worth copying out, so a double-click on one makes that
-    // name selectable and selects it -- a double-click starts no drag, so the
-    // two gestures never compete.
-    document
-      .querySelector("#kerning-pairtable-body")
-      ?.addEventListener?.("dblclick", (event) => {
-        const name = event.target?.closest?.(
-          ".kerning-pairtable-glyph-name, .kerning-pairtable-class-name"
-        );
-        if (!name) {
-          return;
-        }
-        name.setAttribute("data-selectable-name", "");
-        const range = document.createRange();
-        range.selectNodeContents(name);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-      });
 
     // Ticket 04: the select-all tick's own wiring moved to
     // this._pairTable.onSelectAllChange above, alongside the rest of the
@@ -3179,9 +3147,7 @@ export class KerningViewController extends ViewController {
   // shift-click ranging, which only makes sense between rows the designer
   // can actually see and click between.
   loadedPairTableRowIds() {
-    return [
-      ...document.querySelectorAll(".kerning-pairtable-table tr[data-row-id]"),
-    ].map((tr) => tr.dataset.rowId);
+    return this._pairTable?.loadedRowIds() ?? [];
   }
 
   // Ticket 21 (UI-REFACTOR.md §3.5): every row the filters admit, in and out
@@ -3209,15 +3175,7 @@ export class KerningViewController extends ViewController {
   // every renderPairTable rebuild (tbodies are rebuilt from scratch each
   // time, so freshly built rows start with no selection styling).
   applyResultSelectionToDom() {
-    for (const tr of document.querySelectorAll(
-      ".kerning-pairtable-table tr[data-row-id]"
-    )) {
-      const id = tr.dataset.rowId;
-      tr.classList.toggle(
-        "kerning-pairtable-row-highlighted",
-        this.resultSelection.selected.has(id)
-      );
-    }
+    this._pairTable?.setSelectedRows(this.resultSelection.selected);
   }
 
   // Task 4, spec F20: "Changing targets must cancel the armed state so the
@@ -3773,7 +3731,7 @@ export class KerningViewController extends ViewController {
     // starts back at the top. The window itself is rebuilt from
     // this._pairTableItems below (renderPairTableWindow), never patched.
     if (this._pairTableQueryKey !== queryKey) {
-      this._pairTableWindowStart = 0;
+      this._pairTableResetWindow = true;
     }
     this._pairTableQueryKey = queryKey;
     this._pairTableItems = [];
@@ -3785,6 +3743,8 @@ export class KerningViewController extends ViewController {
     // reject everything and produce an ordinary-looking, unexplained empty
     // table.
     if (this._unicodeTypesSet.size === 0 || this._relationshipsSet.size === 0) {
+      // The table drops its item list, so a scroll cannot bring old rows back.
+      this._pairTable?.setRows([], () => null);
       const emptyRow = document.createElement("tr");
       const emptyCell = document.createElement("td");
       emptyCell.colSpan = 7;
@@ -3828,24 +3788,10 @@ export class KerningViewController extends ViewController {
     // skip a stale literal pair.
     this._classSummaryStaleByRowId = new Map();
 
-    for (const el of document.querySelectorAll(".kerning-pairtable-current-col")) {
-      el.style.display = filters.showCurrent ? "" : "none";
-    }
-
-    // Task 5, spec F13: same header-toggle mechanism as showCurrent above.
-    for (const el of document.querySelectorAll(".kerning-pairtable-proposed-col")) {
-      el.style.display = filters.showProposed ? "" : "none";
-    }
-
-    // Backlog item 15: same header-toggle mechanism as showCurrent above --
-    // this only affects the <th> (tbody cells are cleared/rebuilt below and
-    // set their own inline display at creation time, same as currentCell).
-    for (const el of document.querySelectorAll(".kerning-pairtable-suggestion-col")) {
-      el.style.display = filters.showSuggestion ? "" : "none";
-    }
-
-    for (const el of document.querySelectorAll(".kerning-pairtable-apply-col")) {
-      el.style.display = filters.showApply ? "" : "none";
+    // Ticket 19: the column menu's four entries, shown or hidden as whole
+    // columns by the shared table -- header and cells alike.
+    for (const key of ["showCurrent", "showProposed", "showSuggestion", "showApply"]) {
+      this._pairTable?.setColumnVisible(key, filters[key]);
     }
 
     // Backlog item 11: keeps the header label/arrow in sync with the
@@ -4036,11 +3982,8 @@ export class KerningViewController extends ViewController {
       this._classSummaryStaleByRowId.set(item.sortId, !!item.stats.stale);
     }
     // Ticket 20: rebuilds the window fresh from this._pairTableItems --
-    // a value-only refresh keeps the same window position (clamped to the
-    // new item count); a new query already reset it to 0 above.
-    this._pairTableWindowStart = this.clampPairTableWindowStart(
-      this._pairTableWindowStart || 0
-    );
+    // a value-only refresh keeps the same window position; a new query
+    // starts it at the top (flagged above).
     this.renderPairTableWindow();
     this.refreshResetArmState();
     this.updatePairPreview(
@@ -4048,34 +3991,22 @@ export class KerningViewController extends ViewController {
     );
   }
 
-  // Ticket 20: keeps the window's start index inside the item list, so a
-  // shorter result (a tighter filter, a smaller font) never leaves the
-  // window pointing past the end.
-  clampPairTableWindowStart(start) {
-    const total = this._pairTableItems?.length || 0;
-    const maxStart = Math.max(0, total - 100);
-    return Math.max(0, Math.min(start, maxStart));
-  }
-
-  // Ticket 20: the only place that touches the tbody's children. Always a
-  // full rebuild of the current window from this._pairTableItems -- never a
-  // patch -- so the window and the item list can never drift apart.
+  // Ticket 20: hands the whole item list to the shared table, which renders
+  // the window and slides it as its box scrolls. Always a full rebuild of the
+  // window -- never a patch -- so the window and the item list cannot drift.
   renderPairTableWindow() {
-    const tbody = document.querySelector("#kerning-pairtable-body");
-    if (!tbody || !this._pairTableItems) {
+    if (!this._pairTable || !this._pairTableItems) {
       return;
     }
-    tbody.textContent = "";
-    const start = this._pairTableWindowStart || 0;
-    const end = Math.min(start + 100, this._pairTableItems.length);
-    for (let i = start; i < end; i++) {
-      const item = this._pairTableItems[i];
-      tbody.appendChild(
+    this._pairTable.setRows(
+      this._pairTableItems,
+      (item) =>
         item.renderKind === "class-rule"
           ? this.buildClassSummaryRowElement(item.group, item.stats, item.median)
-          : this.buildPairRowElement(item.row)
-      );
-    }
+          : this.buildPairRowElement(item.row),
+      { rowId: (item) => item.sortId, resetWindow: !!this._pairTableResetWindow }
+    );
+    this._pairTableResetWindow = false;
     this.syncSelectAllCheckboxes();
     this.updatePairTableLoadStatus();
   }
@@ -4088,70 +4019,6 @@ export class KerningViewController extends ViewController {
     if (this._pairTableLoadStatus) {
       this._pairTableLoadStatus.textContent = `Showing ${total} of ${total} rows`;
     }
-  }
-
-  // Ticket 20: slides the window by `delta` rows (positive toward the
-  // bottom, negative toward the top), then restores the scroll position on
-  // whichever row was at the scroller's visible top edge before the
-  // rebuild -- a full rebuild (rail: rebuild from the item list, never
-  // patch) would otherwise reset the scroll to the top of the new window.
-  shiftPairTableWindow(delta) {
-    const newStart = this.clampPairTableWindowStart(
-      (this._pairTableWindowStart || 0) + delta
-    );
-    if (newStart === (this._pairTableWindowStart || 0)) {
-      return;
-    }
-    const scroller = this._pairTableScroller;
-    const tbody = document.querySelector("#kerning-pairtable-body");
-    let anchorId, anchorOffset;
-    if (scroller?.getBoundingClientRect && tbody?.querySelectorAll) {
-      const containerTop = scroller.getBoundingClientRect().top;
-      for (const tr of tbody.querySelectorAll("tr[data-row-id]")) {
-        const rect = tr.getBoundingClientRect();
-        if (rect.bottom > containerTop) {
-          anchorId = tr.dataset.rowId;
-          anchorOffset = rect.top - containerTop;
-          break;
-        }
-      }
-    }
-    this._pairTableWindowStart = newStart;
-    this.renderPairTableWindow();
-    if (scroller?.getBoundingClientRect && anchorId != null) {
-      const newRow = [...tbody.querySelectorAll("tr[data-row-id]")].find(
-        (tr) => tr.dataset.rowId === anchorId
-      );
-      if (newRow) {
-        const containerTop = scroller.getBoundingClientRect().top;
-        const newOffset = newRow.getBoundingClientRect().top - containerTop;
-        scroller.scrollTop += newOffset - anchorOffset;
-      }
-    }
-  }
-
-  // Ticket 20/22: scrolling within 200px of either edge slides the window
-  // by 25 rows. The table's own scroll region (#kerning-pairtable-table-
-  // scroll, ticket 22) is the scrolling ancestor -- before ticket 22 gave
-  // the table its own resizable box, this listened on the whole section.
-  initPairTableScrolling() {
-    const scroller = document.querySelector("#kerning-pairtable-table-scroll");
-    this._pairTableScroller = scroller;
-    scroller?.addEventListener("scroll", () => {
-      if (!this._pairTableItems?.length) {
-        return;
-      }
-      const start = this._pairTableWindowStart || 0;
-      const end = Math.min(start + 100, this._pairTableItems.length);
-      const nearBottom =
-        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 200;
-      const nearTop = scroller.scrollTop < 200;
-      if (nearBottom && end < this._pairTableItems.length) {
-        this.shiftPairTableWindow(25);
-      } else if (nearTop && start > 0) {
-        this.shiftPairTableWindow(-25);
-      }
-    });
   }
 
   clearPreviewPairSelection() {
@@ -4535,34 +4402,16 @@ export class KerningViewController extends ViewController {
   }
 
   buildCurrentValueEditor(current, left, right) {
-    const input = document.createElement("input");
-    input.type = "number";
-    input.step = "1";
-    input.className = "kerning-pairtable-current-input";
-    input.value = String(current);
-    input.title = `Stored value for ${left} × ${right}. Type a value to write it.`;
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        input.blur();
-      } else if (event.key === "Escape") {
-        // Native number inputs do not revert on Escape, and a half-typed
-        // value left in the box would be written by the blur that follows.
-        input.value = String(current);
-        input.blur();
-      }
+    return editableCell({
+      type: "number",
+      step: 1,
+      round: true,
+      value: current,
+      className: "kerning-pairtable-current-input",
+      title: `Stored value for ${left} × ${right}. Type a value to write it.`,
+      onCommit: (value) =>
+        this.writePairValues([{ left, right }], () => value, true, true),
     });
-    input.addEventListener("change", async () => {
-      const value = Math.round(Number(input.value));
-      if (!Number.isFinite(value) || input.value.trim() === "") {
-        input.value = String(current);
-        return;
-      }
-      if (value === current) {
-        return;
-      }
-      await this.writePairValues([{ left, right }], () => value, true, true);
-    });
-    return input;
   }
 
   buildClassSummaryRowElement(group, stats, median) {
@@ -4620,9 +4469,6 @@ export class KerningViewController extends ViewController {
     // Display the stored value at this class address in the active source.
     const currentCell = document.createElement("td");
     currentCell.className = "kerning-pairtable-current-col";
-    currentCell.style.display = this.autokernFiltersController.model.showCurrent
-      ? ""
-      : "none";
     currentCell.appendChild(this.buildCurrentValueEditor(group.current, left, right));
     // The same reset a pair row carries. On this row it writes zero at the
     // class address, which is what the batch Reset already does for a
@@ -4641,17 +4487,11 @@ export class KerningViewController extends ViewController {
     // pair the rule covers reads it (isPairMarkedForPreview).
     proposedCell.appendChild(this.buildPreviewExclusionToggle({ left, right }));
     proposedCell.appendChild(buildValueSpan(median, stats.stale));
-    proposedCell.style.display = this.autokernFiltersController.model.showProposed
-      ? ""
-      : "none";
     tr.appendChild(proposedCell);
 
     const deltaCell = document.createElement("td");
     deltaCell.className = "kerning-pairtable-suggestion-col";
     deltaCell.appendChild(buildValueSpan(median - group.current, stats.stale));
-    deltaCell.style.display = this.autokernFiltersController.model.showSuggestion
-      ? ""
-      : "none";
     tr.appendChild(deltaCell);
 
     const rightCell = document.createElement("td");
@@ -4668,9 +4508,6 @@ export class KerningViewController extends ViewController {
     // row actions read as one family.
     const applyCell = document.createElement("td");
     applyCell.className = "kerning-pairtable-apply-col";
-    applyCell.style.display = this.autokernFiltersController.model.showApply
-      ? ""
-      : "none";
     const applyButton = document.createElement("icon-button");
     applyButton.className =
       "kerning-pairtable-apply-indicator kerning-pairtable-apply-class";
@@ -6263,9 +6100,6 @@ export class KerningViewController extends ViewController {
       this.buildCurrentValueEditor(row.current, row.left, row.right)
     );
     currentCell.appendChild(this.buildResetValueButton(row));
-    currentCell.style.display = this.autokernFiltersController.model.showCurrent
-      ? ""
-      : "none";
     tr.appendChild(currentCell);
 
     // Task 5, spec F13/F32: Proposed is its own column (the raw
@@ -6279,17 +6113,11 @@ export class KerningViewController extends ViewController {
     proposedCell.className = "kerning-pairtable-proposed-col";
     proposedCell.appendChild(this.buildPreviewExclusionToggle(row));
     proposedCell.appendChild(buildValueSpan(display.proposed, display.stale));
-    proposedCell.style.display = this.autokernFiltersController.model.showProposed
-      ? ""
-      : "none";
     tr.appendChild(proposedCell);
 
     const deltaCell = document.createElement("td");
     deltaCell.className = "kerning-pairtable-suggestion-col";
     deltaCell.appendChild(buildValueSpan(display.delta, display.stale));
-    deltaCell.style.display = this.autokernFiltersController.model.showSuggestion
-      ? ""
-      : "none";
     tr.appendChild(deltaCell);
 
     const rightCell = document.createElement("td");
@@ -6315,9 +6143,6 @@ export class KerningViewController extends ViewController {
     // between them and left the other empty on every row.
     const applyCell = document.createElement("td");
     applyCell.className = "kerning-pairtable-apply-col";
-    applyCell.style.display = this.autokernFiltersController.model.showApply
-      ? ""
-      : "none";
     const tab = this.activeResultsTab || "default";
     const hasApplicableClass =
       this.isLeftClassed(row.left) || this.isRightClassed(row.right);
@@ -7029,9 +6854,6 @@ export class KerningViewController extends ViewController {
       applyBottomHeight(clampBottomHeight(parseInt(storedHeight)));
     }
 
-    // Ticket 22 reuses this pointer-drag mechanism for the pair table's own
-    // resize grip (initPairTableResizeGrip, below) via initVerticalDragGutter
-    // (rail R-B: one copy of the drag dance).
     this.initVerticalDragGutter({
       gutter,
       // The gutter sits at the TOP edge of the bottom row (kerning.css:
@@ -7065,12 +6887,10 @@ export class KerningViewController extends ViewController {
     });
   }
 
-  // Ticket 22: the pointer-drag mechanics initMiddleRowSplitter built above,
-  // factored out so the pair table's resize grip reuses the exact dance
-  // (pointerdown arms a pointermove/pointerup pair, a Y delta becomes a new
-  // height through the caller's own clamp) instead of a second copy. Same
-  // cursor-lock class convention both drags use
-  // (:root.kerning-row-resizing, kerning.css).
+  // The pointer-drag mechanics of the middle row splitter: pointerdown arms a
+  // pointermove/pointerup pair, and a Y delta becomes a new height through
+  // the caller's own clamp. The cursor lock is :root.kerning-row-resizing
+  // (kerning.css). The pair table's grip is the shared table's own.
   initVerticalDragGutter({
     gutter,
     measureInitialHeight,
@@ -7106,44 +6926,6 @@ export class KerningViewController extends ViewController {
       document.documentElement.classList.add("kerning-row-resizing");
       document.addEventListener("pointermove", onPointerMove);
       document.addEventListener("pointerup", onPointerUp, { once: true });
-    });
-  }
-
-  // Ticket 22 (UI-REFACTOR.md §3.5): a grip at the table's bottom edge sets
-  // its height by drag, persisted the same way the middle row's height is.
-  initPairTableResizeGrip() {
-    const MIN_TABLE_HEIGHT = 120;
-    const grip = document.querySelector("#kerning-pairtable-resize-grip");
-    const scroller = document.querySelector("#kerning-pairtable-table-scroll");
-    if (!grip || !scroller) {
-      return;
-    }
-    const clampHeight = (height) => Math.max(MIN_TABLE_HEIGHT, height);
-    const applyHeight = (height, saveLocalStorage = false) => {
-      if (height === undefined) {
-        return;
-      }
-      if (saveLocalStorage) {
-        localStorage.setItem("fontra-kerning-pairtable-table-height", height);
-      }
-      document.documentElement.style.setProperty(
-        "--kerning-pairtable-table-height",
-        `${height}px`
-      );
-    };
-    const storedHeight = localStorage.getItem("fontra-kerning-pairtable-table-height");
-    if (storedHeight) {
-      applyHeight(clampHeight(parseInt(storedHeight)));
-    }
-    this.initVerticalDragGutter({
-      gutter: grip,
-      // The grip sits at the scroller's own bottom edge -- dragging it DOWN
-      // (a larger clientY) grows the table, the ordinary "drag the bottom
-      // edge down to make the box taller" sense, unlike the middle row
-      // gutter above (which sits at its row's TOP edge).
-      measureInitialHeight: () => scroller.getBoundingClientRect().height,
-      computeHeight: (initialHeight, deltaY) => clampHeight(initialHeight + deltaY),
-      applyHeight,
     });
   }
 

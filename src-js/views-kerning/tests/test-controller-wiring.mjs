@@ -6,7 +6,11 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import * as inputTokens from "../src/input-tokens.js";
-import { retainVisible, selectRange, selectRow } from "@fontra/web-components/table-selection.js";
+import {
+  retainVisible,
+  selectRange,
+  selectRow,
+} from "@fontra/web-components/table-selection.js";
 import { layoutPairPreview, normalizePairsPerRow } from "../src/pair-preview-layout.js";
 import {
   explicitPairExists,
@@ -182,96 +186,67 @@ test("Shift-click rerenders through the restored table renderer and toggles he/e
   assert.equal(view._previewPairSelections.size, 0);
 });
 
-test("ticket 20: the window renders at most 100 rows and rebuilds fresh from the item list on every shift", () => {
-  tbody.children = [];
+function makeFakePairTable() {
+  const table = { calls: [], rows: [] };
+  table.setRows = (items, renderRow, options) => {
+    table.calls.push({ items, options });
+    table.rows = items.map((item, index) => renderRow(item, index));
+  };
+  return table;
+}
+
+test("ticket 20: the table's window gets every item, its row ID and its row builder", () => {
   const view = Object.create(Controller.prototype);
-  let built = 0;
+  const table = makeFakePairTable();
   Object.assign(view, {
+    _pairTable: table,
     _pairTableItems: Array.from({ length: 235 }, (_, id) => ({
+      sortId: String(id),
       renderKind: id % 2 ? "pair" : "class-rule",
-      row: { id },
-      group: { id },
+      row: { id, kind: "pair" },
+      group: { id, kind: "class" },
     })),
-    _pairTableWindowStart: 0,
+    _pairTableResetWindow: true,
     _pairTableLoadStatus: {},
-    buildPairRowElement: (row) => {
-      built++;
-      return { id: row.id };
-    },
-    buildClassSummaryRowElement: (group) => {
-      built++;
-      return { id: group.id };
-    },
+    buildPairRowElement: (row) => row,
+    buildClassSummaryRowElement: (group) => group,
     syncSelectAllCheckboxes() {},
   });
 
   view.renderPairTableWindow();
-  assert.equal(built, 100);
-  assert.equal(tbody.children.length, 100);
-  assert.equal(tbody.children[0].id, 0);
-  assert.equal(tbody.children[99].id, 99);
+  assert.equal(table.calls.length, 1);
+  assert.equal(table.calls[0].items.length, 235);
+  assert.equal(table.calls[0].options.rowId(view._pairTableItems[7]), "7");
+  assert.equal(table.rows[0].kind, "class");
+  assert.equal(table.rows[1].kind, "pair");
+  // A new query starts the window at the top; the next refresh keeps it.
+  assert.equal(table.calls[0].options.resetWindow, true);
+  view.renderPairTableWindow();
+  assert.equal(table.calls[1].options.resetWindow, false);
   // Ticket 21: the count line covers every admitted row, not the window.
   assert.equal(view._pairTableLoadStatus.textContent, "Showing 235 of 235 rows");
-
-  built = 0;
-  view.shiftPairTableWindow(25);
-  assert.equal(view._pairTableWindowStart, 25);
-  assert.equal(tbody.children.length, 100);
-  assert.equal(tbody.children[0].id, 25);
-  assert.equal(tbody.children[99].id, 124);
-  // A full rebuild, never a patch: every one of the 100 rows was built again,
-  // even the 75 that were already on screen.
-  assert.equal(built, 100);
-
-  // A huge forward shift clamps so the window never runs past the end.
-  view.shiftPairTableWindow(1000);
-  assert.equal(view._pairTableWindowStart, 135);
-  assert.equal(tbody.children[99].id, 234);
-
-  // And a huge backward shift clamps at the top.
-  view.shiftPairTableWindow(-1000);
-  assert.equal(view._pairTableWindowStart, 0);
-  assert.equal(tbody.children[0].id, 0);
-});
-
-test("ticket 20: the window start clamps to the item list, never running past it", () => {
-  const view = Object.create(Controller.prototype);
-  view._pairTableItems = Array.from({ length: 4 }, (_, id) => ({ id }));
-  assert.equal(view.clampPairTableWindowStart(0), 0);
-  assert.equal(view.clampPairTableWindowStart(50), 0);
-  view._pairTableItems = Array.from({ length: 150 }, (_, id) => ({ id }));
-  assert.equal(view.clampPairTableWindowStart(200), 50);
-  assert.equal(view.clampPairTableWindowStart(-5), 0);
 });
 
 test("ticket 21: select-all covers every admitted row, in and out of the window", () => {
-  tbody.children = [];
   const view = Object.create(Controller.prototype);
+  const table = makeFakePairTable();
   Object.assign(view, {
-    _pairTableItems: Array.from({ length: 300 }, (_, i) => ({ sortId: String(i) })),
-    _pairTableWindowStart: 0,
+    _pairTable: table,
+    _pairTableItems: Array.from({ length: 300 }, (_, i) => ({
+      sortId: String(i),
+      renderKind: "pair",
+      row: { id: i },
+    })),
+    _pairTableLoadStatus: {},
     resultSelection: { selected: new Set() },
+    buildPairRowElement: (row) => row,
+    syncSelectAllCheckboxes() {},
   });
   const ids = view.admittedPairTableRowIds();
   assert.equal(ids.length, 300);
-
   view.resultSelection = { selected: new Set(ids) };
-  assert.equal(view.resultSelection.selected.size, 300);
-
-  // Rendering the window still only puts 100 rows in the document.
-  Object.assign(view, {
-    _pairTableLoadStatus: {},
-    buildPairRowElement: (row) => ({ id: row.id }),
-    buildClassSummaryRowElement: (group) => ({ id: group.id }),
-    syncSelectAllCheckboxes() {},
-  });
-  view._pairTableItems = view._pairTableItems.map((item, i) => ({
-    ...item,
-    renderKind: "pair",
-    row: { id: i },
-  }));
   view.renderPairTableWindow();
-  assert.equal(tbody.children.length, 100);
+  assert.equal(table.calls[0].items.length, 300);
   assert.equal(view.resultSelection.selected.size, 300);
 });
 
@@ -354,12 +329,13 @@ test("pair columns are configurable and kerning edits do not move other cells", 
 });
 
 test("ticket 20: a result set smaller than one window renders every row", () => {
-  tbody.children = [];
   const view = Object.create(Controller.prototype);
+  const table = makeFakePairTable();
   Object.assign(view, {
-    _pairTableWindowStart: 0,
+    _pairTable: table,
     _pairTableLoadStatus: {},
     _pairTableItems: Array.from({ length: 4 }, (_, id) => ({
+      sortId: String(id),
       renderKind: "pair",
       row: { id },
     })),
@@ -367,7 +343,7 @@ test("ticket 20: a result set smaller than one window renders every row", () => 
     syncSelectAllCheckboxes() {},
   });
   view.renderPairTableWindow();
-  assert.equal(tbody.children.length, 4);
+  assert.equal(table.rows.length, 4);
   assert.equal(view._pairTableLoadStatus.textContent, "Showing 4 of 4 rows");
 });
 

@@ -42,10 +42,6 @@
      property, let CSS calc() consume it" convention
      --kerning-middle-bottom-height itself already uses for the drag. */
   --kerning-preview-toolbar-height: 2.4em;
-  /* Ticket 22: the pair table's own drag-adjustable height, same one-
-     fixed-property convention as --kerning-middle-bottom-height above --
-     see initPairTableResizeGrip in kerning.js. */
-  --kerning-pairtable-table-height: 320px;
 }
 
 :root.sidebar-resizing {
@@ -563,26 +559,6 @@
   font-style: italic;
 }
 
-/* Ticket 22 (UI-REFACTOR.md §3.5): the table's own scroll region, height
-   drag-adjustable via initPairTableResizeGrip in kerning.js -- ticket 20's
-   windowed-loading scroll listener attaches here, not to the whole
-   #kerning-pairtable-section any more. */
-#kerning-pairtable-table-scroll {
-  height: var(--kerning-pairtable-table-height);
-  overflow-y: auto;
-}
-
-/* The grip itself, same row-resize idiom as #kerning-middle-resize-gutter
-   (:root.kerning-row-resizing, reused rather than a second cursor-lock
-   class). */
-#kerning-pairtable-resize-grip {
-  height: 4px;
-  margin-top: -2px;
-  cursor: row-resize;
-  position: relative;
-  z-index: 1;
-}
-
 .kerning-pairtable-table {
   width: 100%;
   border-collapse: collapse;
@@ -686,36 +662,11 @@ tr:focus-within .kerning-pairtable-exception-create {
   color: var(--fontra-red-color, #c00);
 }
 
-/* Backlog item 14: the Current cell's in-place editor. It reads as plain
-   text until the row is hovered or the box is focused, so a table of numbers
-   does not turn into a wall of input boxes -- the same "an action shows
-   itself when you reach for it" rule the lock and the eye already follow.
-   Right-aligned because it holds a number the eye compares down the column. */
+/* Backlog item 14: the Current cell's in-place editor, the shared table's
+   editable cell (it reads as text until the row is hovered). Narrow, so the
+   reset icon fits beside it. */
 .kerning-pairtable-current-input {
   width: 4.5em;
-  padding: 0 0.15em;
-  border: 1px solid transparent;
-  border-radius: 0.15em;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: right;
-  -moz-appearance: textfield;
-}
-
-.kerning-pairtable-current-input::-webkit-outer-spin-button,
-.kerning-pairtable-current-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-tr:hover .kerning-pairtable-current-input {
-  border-color: var(--horizontal-rule-color, #ccc);
-}
-
-.kerning-pairtable-current-input:focus {
-  border-color: var(--foreground-color);
-  outline: none;
 }
 
 /* A row's Apply action. Same sizing and the SAME row-hover reveal as the
