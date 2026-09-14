@@ -145,6 +145,7 @@ import SelectionInfoPanel, {
   resolveMetricsKeysForGlyph,
 } from "./panel-selection-info.js";
 import SelectionPanel from "./panel-selection.js";
+import SkeletonSettingsPanel from "./panel-skeleton-defaults.js";
 import TextEntryPanel from "./panel-text-entry.js";
 import Panel from "./panel.js";
 
@@ -1254,6 +1255,7 @@ export class EditorController extends ViewController {
     this.addSidebarPanel(new ReferenceFontPanel(this), "left");
     this.addSidebarPanel(new SelectionInfoPanel(this), "right");
     this.addSidebarPanel(new SelectionPanel(this), "right");
+    this.addSidebarPanel(new SkeletonSettingsPanel(this), "right");
     this.addSidebarPanel(new MarkersPanel(this), "right");
     this.addSidebarPanel(new GlyphNotePanel(this), "right");
     this.addSidebarPanel(new RelatedGlyphsPanel(this), "right");

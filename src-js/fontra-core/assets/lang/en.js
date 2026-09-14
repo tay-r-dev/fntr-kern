@@ -565,6 +565,7 @@ export const strings = {
   "sidebar.letterspacer.bulk.apply": "Apply to set",
   "sidebar.letterspacer.bulk.working": "Spacing...",
   "sidebar.skeleton-parameters": "Skeleton Parameters",
+  "sidebar.skeleton-settings": "Skeleton settings",
   "sidebar.markers": "Markers",
   "sidebar.markers.broken": "broken",
   "sidebar.markers.dimensions": "Dimensions",
@@ -611,7 +612,7 @@ export const strings = {
   "sidebar.skeleton-parameters.default-caps": "Default caps",
   "sidebar.skeleton-parameters.serif-presets": "Serif presets",
   "sidebar.skeleton-parameters.serif-presets.edit": "Edit shape",
-  "sidebar.skeleton-parameters.drop-dead-points": "Drop points that draw nothing",
+  "sidebar.skeleton-parameters.drop-dead-points": "Delete collapsing points",
   "sidebar.skeleton-parameters.drop-dead-points.warning":
     "Glyphs in this master stop interpolating with other masters.",
   "sidebar.skeleton-parameters.cap-style.flat": "Flat",

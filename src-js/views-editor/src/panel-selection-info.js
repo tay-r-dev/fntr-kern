@@ -37,7 +37,6 @@ import { showMenu } from "@fontra/web-components/menu-panel.js";
 import { dialog } from "@fontra/web-components/modal-dialog.js";
 import { Form } from "@fontra/web-components/ui-form.js";
 import LetterspacerPanel from "./panel-letterspacer.js";
-import SkeletonDefaultsPanel from "./panel-skeleton-defaults.js";
 import { editSkeleton } from "./skeleton-editing.js";
 import Panel from "./panel.js";
 
@@ -56,10 +55,6 @@ export default class SelectionInfoPanel extends Panel {
     this.letterspacerPanel = new LetterspacerPanel(this.editorController);
     if (this.letterspacerHost) {
       this.letterspacerHost.appendChild(this.letterspacerPanel);
-    }
-    this.skeletonDefaultsPanel = new SkeletonDefaultsPanel(this.editorController);
-    if (this.skeletonDefaultsHost) {
-      this.skeletonDefaultsHost.appendChild(this.skeletonDefaultsPanel);
     }
 
     this.sceneController.sceneSettingsController.addKeyListener(
@@ -104,7 +99,6 @@ export default class SelectionInfoPanel extends Panel {
   getContentElement() {
     this.infoForm = new Form();
     this.letterspacerHost = html.div({});
-    this.skeletonDefaultsHost = html.div({});
     return html.div(
       {
         class: "panel",
@@ -128,9 +122,6 @@ export default class SelectionInfoPanel extends Panel {
     }
     if (this.letterspacerPanel?.toggle) {
       await this.letterspacerPanel.toggle(on, focus);
-    }
-    if (this.skeletonDefaultsPanel?.toggle) {
-      await this.skeletonDefaultsPanel.toggle(on, focus);
     }
   }
 
@@ -443,10 +434,6 @@ export default class SelectionInfoPanel extends Panel {
           });
         }
         formContents.push({ type: "single-icon", element: this.letterspacerHost });
-        formContents.push({
-          type: "single-icon",
-          element: this.skeletonDefaultsHost,
-        });
         hostedPanelsInForm = true;
         formContents.push({
           type: "header",
@@ -700,17 +687,16 @@ export default class SelectionInfoPanel extends Panel {
       }
     }
 
-    // The two hosted panels draw nothing while their host is out of the DOM,
-    // and this rebuild is what puts it back. Their own toggle runs once, when
-    // this panel is switched on, which on a fresh load is before this form has
-    // ever been built — so they came up blank and stayed blank until the panel
-    // was switched off and on again.
+    // The hosted panel draws nothing while its host is out of the DOM, and this
+    // rebuild is what puts it back. Its own toggle runs once, when this panel is
+    // switched on, which on a fresh load is before this form has ever been built
+    // — so it came up blank and stayed blank until the panel was switched off
+    // and on again.
     //
     // Only on the rebuild that re-attaches the host, not on every one: this
-    // form is rebuilt on every selection change, and redrawing both panels there
+    // form is rebuilt on every selection change, and redrawing the panel there
     // would replace a control the user is still holding.
-    const hostsWereDetached =
-      hostedPanelsInForm && !this.skeletonDefaultsHost.offsetParent;
+    const hostsWereDetached = hostedPanelsInForm && !this.letterspacerHost.offsetParent;
 
     if (!formContents.length) {
       this.infoForm.setFieldDescriptions([
@@ -725,7 +711,6 @@ export default class SelectionInfoPanel extends Panel {
 
     if (hostsWereDetached) {
       await this.letterspacerPanel?.update();
-      await this.skeletonDefaultsPanel?.update();
     }
   }
 

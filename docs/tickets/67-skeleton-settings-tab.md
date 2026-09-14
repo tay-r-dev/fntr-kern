@@ -1,6 +1,6 @@
 # 67: Skeleton settings tab
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 05 (Merge the Transformation and Skeleton parameters panels), 14 (Pair table: switch row)
 

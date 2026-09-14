@@ -17,6 +17,7 @@ import {
   setSkeletonPointTotalWidth,
   setSourceSkeletonDefaultsValues,
 } from "@fontra/core/skeleton-model.js";
+import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 67
 import { dialog } from "@fontra/web-components/modal-dialog.js";
 import { Form } from "@fontra/web-components/ui-form.js";
 import {
@@ -57,11 +58,12 @@ const SERIF_FIELD_LABELS = {
   easeCurvature: "serif-ease-curvature",
 };
 
-// Master-wide skeleton defaults (1.3/1.4): per-source base widths (by glyph
-// case) and cap parameter presets. Hosted in the glyph panel below the
-// letterspacer; formerly a section of the skeleton parameters panel.
-export default class SkeletonDefaultsPanel extends Panel {
-  identifier = "skeleton-defaults";
+// Ticket 67 (UI-REFACTOR.md §6.1, §6.2): the Skeleton settings tab, in the
+// right sidebar. It holds the generator setting Delete collapsing points and
+// the master-wide source defaults: the width presets, the serif presets and
+// the default caps. The defaults used to be hosted in the Metrics panel.
+export default class SkeletonSettingsPanel extends Panel {
+  identifier = "skeleton-settings";
   iconPath = "/tabler-icons/bone.svg";
 
   constructor(editorController) {
@@ -71,10 +73,30 @@ export default class SkeletonDefaultsPanel extends Panel {
     // makes an all-open list unreadable.
     this._expandedSerifPreset = null;
     this.infoForm = new Form();
+    // Delete collapsing points is a labeled toggle standing alone
+    // (UI-NOMENCLATURE.md §14.1), with its warning under it while it is on.
+    this.dropDeadPointsToggle = html.createDomElement("labeled-toggle", {
+      label: translate("sidebar.skeleton-parameters.drop-dead-points"),
+    });
+    this.dropDeadPointsToggle.addEventListener("change", () =>
+      this._setDropDeadPoints(this.dropDeadPointsToggle.checked)
+    );
+    this.dropDeadPointsWarning = html.div({ style: "opacity: 0.7;" }, [
+      translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
+    ]);
     this.contentElement.appendChild(
       html.div(
         { class: "panel-section panel-section--flex panel-section--scrollable" },
-        [this.infoForm]
+        [
+          html.div(
+            {
+              style:
+                "display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.75rem;",
+            },
+            [this.dropDeadPointsToggle, this.dropDeadPointsWarning]
+          ),
+          this.infoForm,
+        ]
       )
     );
     this.fontController = this.editorController.fontController;
@@ -145,6 +167,36 @@ export default class SkeletonDefaultsPanel extends Panel {
       );
       await this._refreshDesignspacePanel();
     }
+  }
+
+  // The setting lives with the master, because the outline it changes is
+  // written into the master's glyphs. It applies to every outline the
+  // generator writes, not to the points that happen to be selected.
+  async _setDropDeadPoints(on) {
+    await this._persistSourceDefaults(
+      { [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED]: on === true },
+      translate("sidebar.skeleton-parameters.undo.set-defaults")
+    );
+    this.dropDeadPointsWarning.hidden = on !== true;
+    // The outline is stored, not recomputed on every draw, so the open glyph
+    // keeps the old one until something edits it. A mutation that changes
+    // nothing is enough to make it regenerate.
+    const glyphName = this.sceneController.sceneSettings?.selectedGlyphName;
+    if (!glyphName || this.fontController.readOnly) {
+      return;
+    }
+    await this.sceneController.editGlyphAndRecordChanges(
+      (glyph) => {
+        for (const layer of Object.values(glyph.layers || {})) {
+          if (getSkeletonData(layer.glyph)) {
+            editSkeleton(layer.glyph, () => {});
+          }
+        }
+        return translate("sidebar.skeleton-parameters.undo.set-defaults");
+      },
+      this,
+      false
+    );
   }
 
   async _refreshDesignspacePanel() {
@@ -559,6 +611,11 @@ export default class SkeletonDefaultsPanel extends Panel {
     const isLower = glyphCase === "lowercase";
     const K = SKELETON_SOURCE_DEFAULT_KEYS;
 
+    const dropDeadPoints = this._sourceDefault(K.SERIF_REMOVE_COLLAPSED) === true;
+    this.dropDeadPointsToggle.checked = dropDeadPoints;
+    this.dropDeadPointsToggle.disabled = !!this.fontController.readOnly;
+    this.dropDeadPointsWarning.hidden = !dropDeadPoints;
+
     const formContents = [
       {
         type: "header",
@@ -708,4 +765,4 @@ export default class SkeletonDefaultsPanel extends Panel {
   }
 }
 
-customElements.define("panel-skeleton-defaults", SkeletonDefaultsPanel);
+customElements.define("panel-skeleton-settings", SkeletonSettingsPanel);

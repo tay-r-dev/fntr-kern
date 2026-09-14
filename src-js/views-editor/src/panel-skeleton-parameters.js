@@ -1450,26 +1450,6 @@ export default class SkeletonParametersPanel {
         auxiliaryElement: this.gizmoHandlesControl,
       },
     ];
-    // Above the no-skeleton and no-selection branches, so it is there whatever
-    // is selected. It is a generator setting: it applies to every outline the
-    // generator writes, not to the points that happen to be selected.
-    const dropDeadPoints =
-      this._resolveSourceDefault(
-        SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED
-      ) === true;
-    formContents.push({
-      type: "checkbox",
-      key: `generator:dropDeadPoints`,
-      label: translate("sidebar.skeleton-parameters.drop-dead-points"),
-      value: dropDeadPoints,
-    });
-    if (dropDeadPoints) {
-      formContents.push({
-        type: "text",
-        value: translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
-      });
-    }
-
     if (!skeletonData) {
       formContents.push({
         type: "text",
@@ -1477,10 +1457,6 @@ export default class SkeletonParametersPanel {
       });
       this._lastFormLayout = null;
       this.infoForm.setFieldDescriptions(formContents);
-      // The generator switch is in this form even here, so the form still
-      // needs a working handler.
-      this.infoForm.onFieldChange = (fieldItem, value, valueStream) =>
-        this._onFieldChange(fieldItem, value, valueStream);
       return;
     }
 
@@ -2187,37 +2163,6 @@ export default class SkeletonParametersPanel {
     });
   }
 
-  // The setting lives with the master, because the outline it changes is
-  // written into the master's glyphs. The switch is in this panel because it is
-  // a generator setting a designer reaches for while drawing.
-  async _onGeneratorChange(name, value) {
-    if (name !== "dropDeadPoints") {
-      return;
-    }
-    await this._persistSourceDefaultValues({
-      [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED]: value === true,
-    });
-    // The outline is stored, not recomputed on every draw, so the open glyph
-    // keeps the old one until something edits it. A mutation that changes
-    // nothing is enough to make it regenerate.
-    const glyphName = this.sceneController.sceneSettings?.selectedGlyphName;
-    if (!glyphName || this.fontController.readOnly) {
-      return;
-    }
-    await this.sceneController.editGlyphAndRecordChanges(
-      (glyph) => {
-        for (const layer of Object.values(glyph.layers || {})) {
-          if (getSkeletonData(layer.glyph)) {
-            editSkeleton(layer.glyph, () => {});
-          }
-        }
-        return translate("sidebar.skeleton-parameters.undo.set-defaults");
-      },
-      this,
-      false
-    );
-  }
-
   async _persistSourceDefaultValues(values) {
     if (this.fontController.readOnly) {
       return;
@@ -2445,8 +2390,6 @@ export default class SkeletonParametersPanel {
         await this._onCornerChange(name, finalValue);
       } else if (group === "rib") {
         await this._onRibChange(name, finalValue);
-      } else if (group === "generator") {
-        await this._onGeneratorChange(name, finalValue);
       } else if (group === "insertion") {
         await this._onInsertionChange(name, finalValue);
       }
