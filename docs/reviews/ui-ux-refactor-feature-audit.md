@@ -16,7 +16,7 @@ P1 means a wrong result or serious scaling failure in a supported workflow. P2 m
 | --- | ---: | --- |
 | `src-js/views-kerning/src/kerning.js` | 8,330 | Run, cache, source, table, class, preview and undo paths reviewed; K1–K7 below. Related worker/cache findings are included here. |
 | `src-js/fontra-core/src/skeleton-generator.js` | 6,743 | Generation pipeline, cleanup, corners, cap construction, provenance and generation-option callers inspected; S1–S6. Static review, not a proof of the numerical solver. |
-| `src-js/fontra-core/src/skeleton-model.js` | 5,859 | Pending |
+| `src-js/fontra-core/src/skeleton-model.js` | 5,859 | Schema, topology operations, ID transport, width/rib rules, generated-target lookup, transforms, rounding and cache ownership inspected; M1–M6. |
 | Remaining feature files | — | Pending; final coverage inventory will distinguish deep review from supporting inspection. |
 
 ## 1. Kerning view — kerning.js
@@ -146,6 +146,70 @@ Both active cap dispatches handle round and square before the fallback `generate
 Debug payloads serialize points and allocate arrays before `logSkeletonDebug` checks whether logging is enabled. Gate construction at the caller or accept a lazy payload. This is a bounded allocation reduction, not evidence that debug preparation dominates generation time.
 
 Review limits: the numerical cap/offset solvers were inspected structurally, not proven over all inputs. S1–S6 are based on source control flow, arithmetic and call contracts. No tests, benchmarks or browser runs were performed for this review installment.
+
+## 3. Skeleton model — skeleton-model.js
+
+The shared mutation helpers, ordinary-path harmonization reuse, and immutable-section normalization cache are sound architectural choices. The cache is a `WeakMap` keyed by the stored section object (`4642–4657`), so it does not by itself retain every discarded glyph revision. Local maps/sets are temporary. No unbounded global retention was identified in this file. Allocation churn below should not be described as a memory leak.
+
+### M1 — P2, static complexity: rib queries repeatedly rebuild whole-contour data
+
+Locations: `skeleton-model.js:3632–3652`, `3699–3710`, `3793–3848`, `4217–4265`; generator `271–303`; model `3240–3267`.
+
+`getSkeletonRibPosition` calculates left and right effective widths, then calculates the requested side again for an ordinary two-sided stroke. Each call to `getEffectiveRibHalfWidth` rebuilds segments, serif-terminal sets, insertion-cut sets and all tied groups. Drawing both ends therefore makes six group builds per point on the ordinary path. Across N points this is at least O(N²) work, even when none of the points are tied. Normal and reach also call the same geometry calculation separately, and `indexOf` repeats point lookup.
+
+The same overhead reaches generation: every normalized on-curve has a corner object, so `canonicalPointToGeneratorPoint` resolves corner distances even at default zero distance. Linked-corner resolution calls the same two full-contour width queries per point. The generator's later efficient `coupledHalfWidths` pass does not remove this earlier duplication.
+
+Recommendation: derive point indices, normals/reaches, tied groups and effective widths once per contour revision and share them through a read context. At minimum, stop calculating unused widths and skip zero-distance corner geometry. Use per-operation data or revision-aware weak caches; a permanent map keyed by glyph names would create a retention problem while solving an allocation problem.
+
+### M2 — P1, confirmed cross-file disagreement: width locks affect the rib reader but not the generator's coupled width
+
+Locations: `skeleton-model.js:3699–3710`; `skeleton-generator.js:4172–4203`, `2396–2411`.
+
+The model explicitly returns a locked side's own stored width instead of its tied group's mean. The generator computes the mean for every group member and resolves each width from that map without checking the copied `leftLockedWidth`/`rightLockedWidth` fields. With tied widths 20 and 40, a locked member storing 20 is read as 20 by the rib model but generated at 30. Changing a sibling can move the supposedly locked generated edge. The two consumers share group detection but not the complete width policy.
+
+Recommendation: share the effective-width resolution as well as group collection, including lock behavior. Resolve once and use the same result for generation, rendering and editing constraints.
+
+### M3 — P1, confirmed: insertion references are omitted from topology and identity operations
+
+Locations: `skeleton-model.js:1575–1619`, `1642–1677`, `1743–1791`, `1900–1912`, `3556–3612`; paste caller `editor.js:2467–2477`.
+
+These paths predate or incompletely integrate the separate insertion list:
+
+- Paste rekeys contour and point IDs but neither allocates insertion IDs nor remaps insertion `pointId`. Regeneration normalizes insertions against the new on-curve IDs (`1270–1284`), so old references can be dropped or accidentally match a different point. The published `nextId` also excludes insertion IDs.
+- Joining concatenates only `points`, then removes the absorbed contour. Its insertions are not transferred. When a contour is reversed for joining, its insertions retain the old segment start and parameter; the preserved geometric address should use the former segment end and `1 - t`, with side values transposed.
+- Splitting an open contour clones its insertion list into the tail, but renames the split point. An insertion on the segment leaving that point retains the old ID and is lost from the tail during normalization.
+- Deletion keeps an insertion whenever its start point survives. If the segment's end was deleted, the insertion is silently applied to the replacement segment, contradicting the comment that insertions on merged segments are removed.
+- Reflection swaps ordinary point-side metadata but does not swap insertion width/easing sides.
+
+Recommendation: define insertion transport alongside the segment operation, not as a later point-ID cleanup. Explicitly map retained segments, endpoints, direction and IDs. For operations that cannot preserve an insertion, make the removal policy deliberate and consistent. This is one cross-cutting feature integration issue, not five unrelated utility rewrites.
+
+### M4 — P2, static allocation cost: repeated normalization copies data that the next stage discards
+
+Locations: `skeleton-model.js:384–438`, `1226–1240`; `skeleton-editing.js:280–284`; `skeleton-generator.js:100–103`; model `5295–5462`; visualization `visualization-layer-skeleton.js:946`, `1013`, `1064`.
+
+The edit path clones and normalizes the skeleton, then `generateFromSkeleton` normalizes it again. That second normalization deep-copies the old generated provenance, including construction snapshots, although `canonicalToGeneratorInput` never uses `generated`. The defaults reader similarly clones and normalizes all source defaults/preset arrays for a single scalar lookup; the editor asks it separately for units and cleanup on each regeneration.
+
+Generated Tunni data is rebuilt separately by curvature, on-curve and label layers. Each build walks the packed contours, allocates point/provenance arrays, and repeatedly linearly searches skeleton points for movability and locks. This combines repeated linear allocation with potentially quadratic address lookup. The normalized-section cache does not cache these derived results.
+
+Recommendation: normalize at the ownership boundary, expose a generation entry for already-normalized canonical input, and exclude obsolete derived provenance from that conversion. Read source defaults once per generation context. Build generated-segment descriptors once per geometry revision and share them among drawing and hit-testing, with path revision invalidation because packed paths can change in place.
+
+### M5 — P1, confirmed unit mismatch: creating a source rounds normalized serif ratios as font units
+
+Locations: `skeleton-model.js:4683–4729`; `panel-designspace-navigation.js:3044–3048`; generator `6484–6491`.
+
+`roundSkeletonCoordinates` always rounds the serif length fields to integers. In normalized units these values are stroke-width ratios: 0.2 becomes 0 even though the generator interprets it as 20 font units at width 100. Source creation calls this routine without units context. It rounds the already-instantiated path separately but does not regenerate from the rounded skeleton at that point, so the stored outline and skeleton can disagree until the next edit, which then changes the shape.
+
+Recommendation: pass the source's units mode, round only absolute lengths, and keep the canonical data and its derived outline synchronized when a new source is created. Preserve dimensionless ratios.
+
+### M6 — P3, functioning but unnecessarily indirect code
+
+`isFarSkeletonSegmentStraight` (`5465–5482`) has a loop whose first iteration always returns: it is a one-neighbor check disguised as a contour traversal. Replace it with that check, retaining the intended open/closed boundary rule.
+
+`collectInsertionCutSegments` (`4513–4525`) scans every segment for each insertion. Build a segment-start lookup once with the rest of the contour context. `getGeneratedSegmentLocks` (`5421–5439`) repeatedly searches the same point list for four handle checks and two slide checks; reuse resolved addresses rather than repeating the search under different predicates.
+
+There is no reason to replace every small side/role conditional with a class hierarchy. The useful simplification is to make data ownership and repeated derived work explicit. Existing finite-value checks and refusals at unsupported geometry should remain.
+
+Review limits: source inspection only. Geometry helpers were traced through their consumers; this is not an exhaustive proof of all setter combinations or interpolation behavior.
 
 ## Validation completed before the code-only request
 
