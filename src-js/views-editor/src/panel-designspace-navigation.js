@@ -907,6 +907,14 @@ export default class DesignspaceNavigationPanel extends Panel {
               step: 0.5,
               integer: false,
             }),
+            html.createDomElement("compact-scrub-field", {
+              id: "skeleton-ribs-opacity-input",
+              defaultValue: 100,
+              label: translate("sidebar.designspace-navigation.skeleton.ribs"),
+              minValue: 0,
+              maxValue: 100,
+              integer: true,
+            }),
           ]
         ),
       },
@@ -1669,6 +1677,9 @@ export default class DesignspaceNavigationPanel extends Panel {
       "skeleton-width-ungenerated-input",
       "skeletonCenterlineWidthUngenerated",
       fromNumber
+    );
+    bind("skeleton-ribs-opacity-input", "skeletonRibsOpacity", (event) =>
+      Math.min(100, Math.max(0, Math.round(Number(event.detail.value) || 0)))
     );
   }
 

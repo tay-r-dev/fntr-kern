@@ -63,6 +63,8 @@ export const applicationSettingsController = new ObservableController({
   skeletonSpeedPunk: false,
   skeletonCenterlineWidth: 1.5,
   skeletonCenterlineWidthUngenerated: 3,
+  // Percent. How strongly the skeleton rib lines draw; 0 hides them.
+  skeletonRibsOpacity: 100,
 });
 
 // Node has no localStorage, and this module is reached from the node test

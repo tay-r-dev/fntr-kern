@@ -418,6 +418,12 @@ registerVisualizationLayerDefinition({
     strokeColor: "rgba(95, 178, 255, 0.55)",
   },
   draw: (context, positionedGlyph, parameters, model) => {
+    const opacity =
+      (applicationSettingsController.model.skeletonRibsOpacity ?? 100) / 100;
+    if (!(opacity > 0)) {
+      return;
+    }
+    context.globalAlpha *= Math.min(1, opacity);
     context.lineWidth = parameters.lineWidth;
     context.strokeStyle = parameters.strokeColor;
     forEachSkeletonContour(positionedGlyph, model, (contour, outline) => {

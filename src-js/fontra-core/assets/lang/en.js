@@ -435,6 +435,7 @@ export const strings = {
   "sidebar.designspace-navigation.skeleton.speedpunk": "SpeedPunk on skeleton",
   "sidebar.designspace-navigation.skeleton.width": "Width",
   "sidebar.designspace-navigation.skeleton.width-ungenerated": "Width, no outline",
+  "sidebar.designspace-navigation.skeleton.ribs": "Ribs",
   "sidebar.designspace-navigation.speedpunk.peak-height": "Peak height",
   "sidebar.designspace-navigation.speedpunk.reference-turn": "Full height at turn°",
   "sidebar.designspace-navigation.speedpunk.color-flat-turn": "Flat colour at turn°",
