@@ -101,8 +101,11 @@ import {
 } from "./tunni-interactions.js";
 
 // A Tunni gizmo starts to show once the cursor rests within this many click
-// margins of it; a click still has to land within one.
+// margins of it. A click reaches it only within half a margin, about the gizmo's
+// own size, because the curvature gizmo sits on the curve and a wider catch
+// would take clicks meant for selecting the segment.
 const TUNNI_REVEAL_RADIUS_FACTOR = 2;
+const TUNNI_CLICK_RADIUS_FACTOR = 0.5;
 
 const transformHandleMargin = 6;
 const transformHandleSize = 8;
@@ -155,11 +158,17 @@ export class PointerTool extends BaseTool {
     this.independentRibMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
     this._boundRealtimeModifierWindowBlur = null;
-    // The drawing layers read the reveal off the scene model.
-    this.tunniGizmoReveal = new TunniGizmoReveal(() =>
+    // One reveal for the whole scene. There is more than one pointer tool, and
+    // the drawing layers read the reveal off the scene model: a reveal per tool
+    // left the layers reading one copy while the active tool armed another, so
+    // a gizmo took clicks and never showed.
+    this.sceneModel.tunniGizmoReveal ??= new TunniGizmoReveal(() =>
       this.canvasController.requestUpdate()
     );
-    this.sceneModel.tunniGizmoReveal = this.tunniGizmoReveal;
+  }
+
+  get tunniGizmoReveal() {
+    return this.sceneModel.tunniGizmoReveal;
   }
 
   _findTunniGizmo(point, radius, positionedGlyph) {
@@ -228,7 +237,11 @@ export class PointerTool extends BaseTool {
       ? this._findTunniGizmo(point, size * TUNNI_REVEAL_RADIUS_FACTOR, positionedGlyph)
       : null;
     this.tunniGizmoReveal.hover(gizmo?.key ?? null);
-    if (gizmo && gizmo.distance <= size && this.tunniGizmoReveal.isArmed(gizmo.key)) {
+    if (
+      gizmo &&
+      gizmo.distance <= size * TUNNI_CLICK_RADIUS_FACTOR &&
+      this.tunniGizmoReveal.isArmed(gizmo.key)
+    ) {
       // Crosshair moves on-curve points, pointer reshapes between them.
       this.canvasController.canvas.style.cursor = /on-curve|true-tunni/.test(gizmo.type)
         ? "crosshair"
@@ -382,7 +395,7 @@ export class PointerTool extends BaseTool {
     // A gizmo is reached only once it has shown. A skeleton point under the
     // pointer outranks the skeleton's own gizmos.
     const gizmo = positionedGlyph
-      ? this._findTunniGizmo(point, size, positionedGlyph)
+      ? this._findTunniGizmo(point, size * TUNNI_CLICK_RADIUS_FACTOR, positionedGlyph)
       : null;
     if (
       gizmo &&
