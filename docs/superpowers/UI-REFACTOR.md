@@ -406,15 +406,15 @@ The small external-link icon beside the Harmonize heading is not specified. Igno
 
 ### 5.5 Generation
 
-Total and Distribution on one row, left and right widths on the next. Then four icon groups: Lock,
-Projection, Link, Reset.
+Total and Distribution on one row, left and right widths on the next. Then two rows of icon groups:
+Projection and Reset, then Rib (decided 2026-09-14).
 
 **The section header carries a preset control.** A dropdown, an add button and an update button.
 Add writes the current values as a new preset. Update writes them over the selected one. Every
 terminal section carries the same three.
 
-**Force angle moves to Generation**, under the widths, for every point. It is the rib angle lock:
-Free, Vertical, Horizontal, with the lock mode behind its overflow. It applies at ends and at
+**Force angle moves to Generation**, into the Rib overflow, for every point. It is the rib angle
+lock: Free, Vertical, Horizontal, with the lock mode as a second choice beside it. It applies at ends and at
 corners, as the lock always has. Commit 06ce4ab21 opened it to every point because the field and
 the generator were always per point.
 
@@ -423,9 +423,14 @@ Its overflow is a multi-select dropdown with two checks, keep shape and preserve
 today's Keep form and Keep edits settings, and preserve changes stays disabled while keep shape is
 off. This is the component from §3.3.
 
-**Lock, Link and Reset are today's checkboxes and buttons.** Lock holds the three lock kinds:
-handles, slide and width. Link holds Linked and Tied ribs. Reset holds reset rib, reset handles and
-reset this handle. **Detached is not drawn** and stays reachable until the designer places it.
+**Reset is three icons: reset handle, reset slide, reset all.** Their reach follows the selection.
+A skeleton point resets both of its sides. A rib resets that rib and the handles on its side. A
+generated handle resets that handle alone, and greys reset slide and reset all.
+
+**Rib is the Tied ribs icon and an overflow.** Tied ribs reflects the selection: greyed where no
+selected point has a straight it could tie across, otherwise on, off or mixed over the points that
+do. The overflow holds the three locks (handles, slide, width), Force angle with its mode, and
+**Detach as a toggle**. Link is dropped from the icons: the width fields carry their own chain.
 
 ### 5.6 Terminal
 

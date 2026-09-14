@@ -20,6 +20,10 @@ import { themeColorCSS } from "./theme-support.js";
 // persistence; this component only tracks what's checked and reopens the
 // list after each pick so a designer can flip several checks in a row --
 // singleChoice closes on pick instead, matching a plain <select>.
+//
+// An item may carry `group`: the items of one group are one choice among
+// themselves, inside an otherwise multi-select list. `{divider: true}` draws a
+// line. "change" also carries the picked item in event.detail.item.
 const colors = {
   "multi-select-dropdown-border-color": ["#bbb", "#555"],
   "multi-select-dropdown-text-color": ["#000", "#fff"],
@@ -199,12 +203,16 @@ export class MultiSelectDropdown extends UnlitElement {
   openMenu() {
     const rect = this._button.getBoundingClientRect();
     // An item with `disabled` shows greyed and cannot be picked.
-    const menuItems = this._items.map((item) => ({
-      title: item.label,
-      checked: item.checked,
-      enabled: () => !item.disabled,
-      callback: () => this.pickItem(item),
-    }));
+    const menuItems = this._items.map((item) =>
+      item.divider
+        ? MenuItemDivider
+        : {
+            title: item.label,
+            checked: item.checked,
+            enabled: () => !item.disabled,
+            callback: () => this.pickItem(item),
+          }
+    );
     if (this._note) {
       menuItems.push(MenuItemDivider);
       menuItems.push({ title: this._note, enabled: () => false });
@@ -231,16 +239,24 @@ export class MultiSelectDropdown extends UnlitElement {
       for (const otherItem of this._items) {
         otherItem.checked = otherItem === item;
       }
+    } else if (item.group) {
+      for (const otherItem of this._items) {
+        if (otherItem.group === item.group) {
+          otherItem.checked = otherItem === item;
+        }
+      }
     } else {
       item.checked = !item.checked;
     }
     this.dispatchEvent(
-      new CustomEvent("change", { detail: { checked: this.checkedValues() } })
+      new CustomEvent("change", { detail: { checked: this.checkedValues(), item } })
     );
   }
 
   checkedValues() {
-    return this._items.filter((item) => item.checked).map((item) => item.value);
+    return this._items
+      .filter((item) => item.checked && !item.divider)
+      .map((item) => item.value);
   }
 }
 

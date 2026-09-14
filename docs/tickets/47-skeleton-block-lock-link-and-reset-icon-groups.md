@@ -16,6 +16,7 @@ The Ribs section has three lock checkboxes (handles, slide, width), a Detached c
 ## Constraints
 
 - Detached has no place in the image. Keep it as a checkbox under the row and tell the designer.
+- Amended 2026-09-14 (ticket 77): the Lock and Link groups are gone. The locks, Force angle and Detach sit in the Rib overflow; Tied ribs is the Rib icon; Reset is reset handle, reset slide, reset all.
 
 ## Done when
 

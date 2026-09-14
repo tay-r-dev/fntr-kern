@@ -3176,6 +3176,15 @@ export function resetSkeletonEditableRibHandles(point, side) {
   }
 }
 
+// The on-curve slide of one side, and nothing else: the handles, their own
+// slide and the curvature stay as they are.
+export function resetSkeletonRibSlide(point, side) {
+  assertSkeletonRibSide(side);
+  const nudge = normalizeNudge(point?.nudge);
+  nudge[side] = 0;
+  point.nudge = nudge;
+}
+
 // Is one named freedom of this side blocked? The kind is required: there is no
 // such thing as "locked" on its own any more.
 export function isSkeletonSideLocked(point, side, kind) {

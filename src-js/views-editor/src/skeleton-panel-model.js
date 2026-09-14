@@ -12,6 +12,7 @@ import {
   getSkeletonPointWidth,
   getSkeletonRibAddress,
   getSkeletonRibSidesForPoint,
+  getSkeletonRibTieGroup,
   getTerminalPresetFields,
   captureSerifPreset,
   SKELETON_LOCK_KINDS,
@@ -318,9 +319,15 @@ export function summarizeSkeletonPointWidths(selectedPoints) {
   const linked = reduceValues(
     selectedPoints.map((entry) => entry.point?.width?.linked !== false)
   );
-  const tied = reduceValues(
-    selectedPoints.map((entry) => entry.point?.width?.tied !== false)
+  // A tie describes a straight, so only a point with a straight it could tie
+  // across has an answer. The rest say nothing, and with none the toggle greys.
+  const tieable = selectedPoints.filter((entry) =>
+    getSkeletonRibTieGroup(entry.contour, entry.point)
   );
+  const tied = {
+    ...reduceValues(tieable.map((entry) => entry.point?.width?.tied !== false)),
+    canTie: tieable.length > 0,
+  };
   // A single-sided contour renders the SUM of the two half-widths on its visible
   // side, so per-side numbers and the split between them describe nothing the
   // designer can see. They are still stored, and still what the point returns to

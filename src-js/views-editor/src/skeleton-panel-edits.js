@@ -36,6 +36,7 @@ import {
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
   resetSkeletonEditableRibHandles,
+  resetSkeletonRibSlide,
   setSkeletonCapParameters,
   setSkeletonContourDefaultWidth,
   setSkeletonContourReversed,
@@ -1335,7 +1336,7 @@ export async function nudgePanelCornerDistanceStream(
 export async function resetPanelRibs(
   sceneController,
   ribAddresses,
-  { handlesOnly = false } = {},
+  { handlesOnly = false, part = handlesOnly ? "handles" : "all" } = {},
   undoLabel
 ) {
   return editSelectedSkeletonPoints(
@@ -1343,7 +1344,12 @@ export async function resetPanelRibs(
     ribAddresses,
     (point, address) => {
       // A lock blocks every route to the thing it holds, resets included.
-      if (handlesOnly) {
+      if (part === "slide") {
+        if (isSkeletonSideLocked(point, address.side, "slide")) {
+          return;
+        }
+        resetSkeletonRibSlide(point, address.side);
+      } else if (part === "handles") {
         if (isSkeletonSideLocked(point, address.side, "handles")) {
           return;
         }

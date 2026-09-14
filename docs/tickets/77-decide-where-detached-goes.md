@@ -1,6 +1,6 @@
 # 77: Decide: where Detached goes
 
-**Status:** needs-info
+**Status:** done
 
 **Blocked by:** None (can start immediately)
 
@@ -12,6 +12,10 @@ The Ribs section has a Detached checkbox for generated handles. The redesigned G
 
 1. Ask the designer where Detached goes: a Lock icon, the Reset group, an overflow, or dropped.
 2. Record it in spec §5.5 and amend ticket 47 (Skeleton block: Lock, Link and Reset icon groups).
+
+## Decision (2026-09-14)
+
+Detach is a toggle in the Rib group's overflow, beside the three locks and Force angle. The Generation rows became Projection and Reset, then Rib. See UI-REFACTOR.md §5.5.
 
 ## Done when
 

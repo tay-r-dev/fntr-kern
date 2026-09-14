@@ -44,6 +44,7 @@ import {
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
   resetSkeletonEditableRibHandles,
+  resetSkeletonRibSlide,
   reverseSkeletonContourPoints,
   setSkeletonCapParameters,
   setSkeletonContourDefaultWidth,
@@ -1018,6 +1019,21 @@ describe("skeleton-model panel-facing mutators", () => {
     expect(point.handleNudge.right).to.equal(6);
     expect(point.segmentCurvature.right).to.equal(0.7);
     expect(point.handleOffsets.rightOut).to.not.equal(undefined);
+  });
+
+  it("reset rib slide clears only the on-curve slide for one side", () => {
+    const point = makePoint({
+      nudge: { left: 5, right: 7 },
+      handleNudge: { left: 4, right: 6 },
+      segmentCurvature: { left: 0.4, right: 0.7 },
+      handleOffsets: { leftIn: { x: 1, y: 2, detached: true } },
+    });
+    resetSkeletonRibSlide(point, "left");
+    expect(point.nudge.left).to.equal(0);
+    expect(point.nudge.right).to.equal(7);
+    expect(point.handleNudge.left).to.equal(4);
+    expect(point.segmentCurvature.left).to.equal(0.4);
+    expect(point.handleOffsets.leftIn).to.not.equal(undefined);
   });
 
   it("reset rib handles removes only handle offsets for one side", () => {

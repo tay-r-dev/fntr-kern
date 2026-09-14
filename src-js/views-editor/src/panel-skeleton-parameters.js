@@ -192,13 +192,6 @@ export const SERIF_PERCENT_FIELD_BOUNDS = {
   easeCurvature: { minValue: 0, maxValue: 100 },
 };
 
-// Ticket 47: one icon per lock kind. The tooltip carries the full name.
-const LOCK_KIND_ICONS = {
-  handles: "/tabler-icons/circle-dot.svg",
-  slide: "/tabler-icons/arrows-horizontal.svg",
-  width: "/tabler-icons/dimensions.svg",
-};
-
 // A compact scrub field streams the value under the hand. The width writers
 // move each point by a change, so the stream is turned into the change from
 // where the drag started. The cancel sentinel passes through untouched.
@@ -485,32 +478,29 @@ export default class SkeletonParametersPanel {
       );
       return button;
     };
-    this.lockButtons = Object.fromEntries(
-      SKELETON_LOCK_KINDS.map((kind) => [
-        kind,
-        toggleButton(LOCK_KIND_ICONS[kind], `locked.${kind}`, (value) =>
-          this._onRibChange(`locked-${kind}`, value)
-        ),
-      ])
-    );
-    this.linkedButton = toggleButton("/tabler-icons/link.svg", "linked", (value) =>
-      this._onWidthChange("linked", value)
-    );
+    // Tied ribs reflects the selection: greyed where no point has a straight
+    // to tie across, and on, off or mixed over the points that do.
     this.tiedButton = toggleButton("/tabler-icons/link-plus.svg", "tied", (value) =>
       this._onWidthChange("tied", value)
     );
-    this.resetRibButton = iconButton("/tabler-icons/refresh.svg", "reset-rib", () =>
-      this._resetRibs({ handlesOnly: false })
-    );
-    this.resetHandlesButton = iconButton(
+    // Reset is three parts, and the selection sets their reach: a skeleton point
+    // resets both of its sides, a rib that side alone, a generated handle that
+    // handle alone, which greys the other two.
+    this.resetHandleButton = iconButton(
       "/tabler-icons/rotate.svg",
-      "reset-handles",
-      () => this._resetRibs({ handlesOnly: true })
+      "reset-handle",
+      () =>
+        this._singleGeneratedHandle
+          ? this._resetSingleGeneratedHandle()
+          : this._resetRibs("handles")
     );
-    this.resetThisHandleButton = iconButton(
-      "/tabler-icons/x.svg",
-      "reset-this-handle",
-      () => this._resetSingleGeneratedHandle()
+    this.resetSlideButton = iconButton(
+      "/tabler-icons/arrows-horizontal.svg",
+      "reset-slide",
+      () => this._resetRibs("slide")
+    );
+    this.resetAllButton = iconButton("/tabler-icons/refresh.svg", "reset-all", () =>
+      this._resetRibs("all")
     );
     const iconGroup = (labelKey, buttons) => [
       html.span({ class: "selection-row-group-label" }, [
@@ -545,40 +535,17 @@ export default class SkeletonParametersPanel {
       this._refreshProjectionOverflow();
     });
     this._refreshProjectionOverflow();
-    // Ticket 52: Force angle is the rib angle lock -- Free, Vertical,
-    // Horizontal -- offered at every point, as the lock always applied. At a
-    // terminal it decides the rib the cap is built on; at a corner it replaces
-    // the line that splits the angle between the two arms.
-    this.forceAngleControl = html.createDomElement("segmented-control", {
-      options: [
-        ["auto", "free"],
-        ["vertical", "vertical"],
-        ["horizontal", "horizontal"],
-      ].map(([value, labelKey]) => ({
-        value,
-        label: translate(`sidebar.skeleton-parameters.force-angle.${labelKey}`),
-      })),
-    });
-    this.forceAngleControl.addEventListener("change", (event) =>
-      this._runOwnEdit(() => this._onWidthChange("ribanglelock", event.detail.value))
-    );
-    // Ticket 53: the lock mode behind Force angle's overflow. A forced rib
-    // cannot both keep the stroke as wide as its number and blend cleanly
-    // between masters, so the point says which it holds on to. Keeping the
-    // stem width runs the rib further to reach the edge, so every master draws
-    // its number. Keeping the footprint keeps the bar the number long, which
-    // draws a turned stroke thinner and is the one that interpolates.
-    this.forceAngleOverflow = html.createDomElement("overflow-button", {
-      "data-tooltip": translate("sidebar.skeleton-parameters.rib-angle-lock-mode"),
+    // The Rib group's overflow: the three locks, Force angle (the rib angle
+    // lock: Free, Vertical, Horizontal) with the mode a forced rib keeps, and
+    // Detach. Force angle and the mode are each one choice; the rest are checks.
+    // Link is not here: the width fields carry their own chain.
+    this.ribOverflow = html.createDomElement("overflow-button", {
+      "data-tooltip": translate("sidebar.skeleton-parameters.rib-options"),
       "data-tooltipposition": "top",
     });
-    this.forceAngleOverflow.singleChoice = true;
-    this.forceAngleOverflow.addEventListener("change", (event) => {
-      const [mode] = [].concat(event.detail.checked);
-      if (mode) {
-        this._runOwnEdit(() => this._onWidthChange("ribanglelockmode", mode));
-      }
-    });
+    this.ribOverflow.addEventListener("change", (event) =>
+      this._onRibOverflowPick(event.detail.item)
+    );
     // Ticket 49: the Generation header's preset control. A preset is a total
     // width and a projection side. Add stores the selection's total and
     // projection as a new preset for the glyph's case; Update writes them over
@@ -792,27 +759,20 @@ export default class SkeletonParametersPanel {
     ]);
     this.serifAxisTiltField = this._makeSerifTiltField();
     this.serifAxisTiltRow = fieldRow([this.serifAxisTiltField]);
-    this.forceAngleRow = html.div({ class: "selection-row-group" }, [
-      html.span({ class: "selection-row-group-label" }, [
-        translate("sidebar.skeleton-parameters.force-angle"),
-      ]),
-      html.div({ class: "selection-row-group-icons" }, [
-        this.forceAngleControl,
-        this.forceAngleOverflow,
-      ]),
-    ]);
+    // Projection and Reset first, then the Rib group under them.
     this.generationIconRow = html.div({ class: "selection-row-group" }, [
-      ...iconGroup("group.lock", Object.values(this.lockButtons)),
       ...iconGroup("group.projection", [
         this.projectionControl,
         this.projectionOverflow,
       ]),
-      ...iconGroup("group.link", [this.linkedButton, this.tiedButton]),
       ...iconGroup("group.reset", [
-        this.resetRibButton,
-        this.resetHandlesButton,
-        this.resetThisHandleButton,
+        this.resetHandleButton,
+        this.resetSlideButton,
+        this.resetAllButton,
       ]),
+    ]);
+    this.ribRow = html.div({ class: "selection-row-group" }, [
+      ...iconGroup("group.rib", [this.tiedButton, this.ribOverflow]),
     ]);
   }
 
@@ -1568,44 +1528,13 @@ export default class SkeletonParametersPanel {
       layoutKey: "widthSidesRow",
     });
 
-    // Ticket 52: Force angle, under the widths. The rib angle lock is a
-    // property of the point's rib, so every selected point offers it. A mixed
-    // selection lights no segment.
-    const ribAngleLock = summarizeSkeletonRibAngleLockSelection(widthPoints);
-    this.forceAngleControl.value = ribAngleLock.mixed
-      ? undefined
-      : (ribAngleLock.value ?? "auto");
-    this.forceAngleControl.disabled = !ribAngleLock.canEdit;
-    // Ticket 53: one mode checked, none while the selection disagrees, and
-    // greyed while Force angle is Free, because the mode decides nothing then.
-    const lockMode = ribAngleLock.mode;
-    this.forceAngleOverflow.items = ["stroke", "rib"].map((value) => ({
-      value,
-      label: translate(`sidebar.skeleton-parameters.rib-angle-lock-mode.${value}`),
-      checked: !lockMode.mixed && (lockMode.value ?? "stroke") === value,
-    }));
-    this.forceAngleOverflow.disabled = !lockMode.canEdit;
-    formContents.push({
-      type: "single-icon",
-      element: this.forceAngleRow,
-      layoutKey: "forceAngleRow",
-    });
-
-    // Ticket 47: Lock, Link and Reset. Tied ribs only has an effect on a smooth
-    // point whose one handle faces away from a straight segment; harmless
-    // elsewhere, so it is always offered rather than coming and going.
     const ribs = this._ribTargets || [];
     const ribSummary = summarizeSkeletonRibSelection(ribs);
     const setToggle = (button, reduced, disabled = false) => {
-      button.mixed = reduced.mixed;
-      button.on = !reduced.mixed && reduced.value === true;
+      button.mixed = !disabled && reduced.mixed;
+      button.on = !disabled && !reduced.mixed && reduced.value === true;
       button.disabled = disabled;
     };
-    for (const kind of SKELETON_LOCK_KINDS) {
-      setToggle(this.lockButtons[kind], ribSummary.locked[kind], !ribs.length);
-    }
-    setToggle(this.linkedButton, summary.linked);
-    setToggle(this.tiedButton, summary.tied);
     // Projection reads the contours the selection touches. A mixed selection
     // lights no segment.
     const contours = this._panelSelection?.contours || [];
@@ -1614,37 +1543,91 @@ export default class SkeletonParametersPanel {
     this.projectionControl.disabled = !contours.length;
     this.projectionOverflow.disabled = !contours.length;
     this._refreshProjectionOverflow();
-    // Derived targets cover both sides of each selected point, so the reset
-    // says so; an explicit rib selection resets just that rib.
-    this.resetRibButton.setAttribute(
-      "data-tooltip",
-      translate(
-        this._ribsDerived && ribs.length > 1
-          ? "sidebar.skeleton-parameters.reset-ribs-both"
-          : "sidebar.skeleton-parameters.reset-rib"
-      )
-    );
-    this.resetRibButton.disabled = !ribs.length;
-    this.resetHandlesButton.disabled = !ribs.length;
-    // The narrow reset clears one generated handle and leaves its pair alone
-    // (5.3), so it is live only with exactly one of them selected.
-    this.resetThisHandleButton.disabled = !this._singleGeneratedHandle;
+    // A lone generated handle reaches only itself: Reset handle stays, the slide
+    // and the whole rib have nothing to act on.
+    const handleOnly = !!this._singleGeneratedHandle;
+    this.resetHandleButton.disabled = !handleOnly && !ribs.length;
+    this.resetSlideButton.disabled = handleOnly || !ribs.length;
+    this.resetAllButton.disabled = handleOnly || !ribs.length;
     formContents.push({
       type: "single-icon",
       element: this.generationIconRow,
       layoutKey: "generationIconRow",
     });
-    // Detached has no place in the image, so it stays a checkbox under the row
-    // until the designer places it. It does not move the handle; it changes how
-    // the handle's stored offset is measured, so it is offered whatever is
-    // locked.
+
+    setToggle(this.tiedButton, summary.tied, !summary.tied.canTie);
+    this._refreshRibOverflow(widthPoints, ribs, ribSummary);
     formContents.push({
-      type: "checkbox",
-      key: "rib:detached",
-      label: translate("sidebar.skeleton-parameters.detached"),
-      value: ribSummary.detached.mixed ? false : ribSummary.detached.value,
-      indeterminate: ribSummary.detached.mixed,
-      disabled: !ribs.length,
+      type: "single-icon",
+      element: this.ribRow,
+      layoutKey: "ribRow",
+    });
+  }
+
+  // One check per lock kind, Force angle and the forced rib's mode as two
+  // choices, and Detach. A mixed value checks nothing.
+  _refreshRibOverflow(widthPoints, ribs, ribSummary) {
+    const checkedTrue = (reduced) => !reduced.mixed && reduced.value === true;
+    const ribAngleLock = summarizeSkeletonRibAngleLockSelection(widthPoints);
+    const angle = ribAngleLock.mixed ? undefined : (ribAngleLock.value ?? "auto");
+    const lockMode = ribAngleLock.mode;
+    this.ribOverflow.items = [
+      ...SKELETON_LOCK_KINDS.map((kind) => ({
+        value: `lock:${kind}`,
+        label: translate(`sidebar.skeleton-parameters.locked.${kind}`),
+        checked: checkedTrue(ribSummary.locked[kind]),
+        disabled: !ribs.length,
+      })),
+      { divider: true },
+      ...[
+        ["auto", "free"],
+        ["vertical", "vertical"],
+        ["horizontal", "horizontal"],
+      ].map(([value, labelKey]) => ({
+        value: `angle:${value}`,
+        group: "angle",
+        label: `${translate("sidebar.skeleton-parameters.force-angle")}: ${translate(
+          `sidebar.skeleton-parameters.force-angle.${labelKey}`
+        )}`,
+        checked: angle === value,
+        disabled: !ribAngleLock.canEdit,
+      })),
+      // Greyed while Force angle is Free, because the mode decides nothing then.
+      ...["stroke", "rib"].map((value) => ({
+        value: `mode:${value}`,
+        group: "mode",
+        label: translate(`sidebar.skeleton-parameters.rib-angle-lock-mode.${value}`),
+        checked: !lockMode.mixed && (lockMode.value ?? "stroke") === value,
+        disabled: !lockMode.canEdit,
+      })),
+      { divider: true },
+      // Detach does not move the handle; it changes how the handle's stored
+      // offset is measured, so it is offered whatever is locked.
+      {
+        value: "detach",
+        label: translate("sidebar.skeleton-parameters.detached"),
+        checked: checkedTrue(ribSummary.detached),
+        disabled: !ribs.length,
+      },
+    ];
+    this.ribOverflow.disabled = !ribs.length && !ribAngleLock.canEdit;
+  }
+
+  _onRibOverflowPick(item) {
+    if (!item) {
+      return;
+    }
+    const [kind, value] = item.value.split(":");
+    this._runOwnEdit(async () => {
+      if (kind === "lock") {
+        await this._onRibChange(`locked-${value}`, item.checked);
+      } else if (kind === "angle") {
+        await this._onWidthChange("ribanglelock", value);
+      } else if (kind === "mode") {
+        await this._onWidthChange("ribanglelockmode", value);
+      } else if (kind === "detach") {
+        await this._onRibChange("detached", item.checked);
+      }
     });
   }
 
@@ -2765,12 +2748,16 @@ export default class SkeletonParametersPanel {
     await this.update();
   }
 
-  async _resetRibs({ handlesOnly }) {
+  // `part` is "handles", "slide" or "all". The rib targets already carry the
+  // reach: both sides of a selected point, or the one side of a selected rib.
+  async _resetRibs(part) {
     await resetPanelRibs(
       this.sceneController,
       this._ribTargets,
-      { handlesOnly },
-      this._undo(handlesOnly ? "reset-handles" : "reset-ribs")
+      { part },
+      this._undo(
+        { handles: "reset-handles", slide: "reset-slide", all: "reset-ribs" }[part]
+      )
     );
     this._forceRebuild = true;
     await this.update();
