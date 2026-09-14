@@ -27,6 +27,7 @@ import {
 import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 38
+import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39's origin pick
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 43's G3
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 42
 import { Form } from "@fontra/web-components/ui-form.js";
@@ -51,6 +52,20 @@ export default class TransformationPanel {
     height: 1.6em;
   }
 
+  /* Ticket 39: the grid and the pick button share the Origin row's label
+     column, with the typed X and Y beside them. */
+  .origin-control {
+    display: flex;
+    align-items: center;
+    justify-content: end;
+    gap: 0.3em;
+  }
+
+  .origin-control icon-button {
+    width: 1.1em;
+    height: 1.1em;
+  }
+
   .origin-radio-buttons {
     display: grid;
     grid-template-columns: auto auto auto;
@@ -59,10 +74,10 @@ export default class TransformationPanel {
   .origin-radio-buttons > input[type="radio"] {
     appearance: none;
     background-color: var(--editor-mini-console-background-color-light);
-    margin: 2px;
+    margin: 1px;
     color: var(--editor-mini-console-background-color-light);
-    width: 0.9em;
-    height: 0.9em;
+    width: 0.55em;
+    height: 0.55em;
     border: 0.15em solid var(--editor-mini-console-background-color-light);
     border-radius: 50%;
     cursor: pointer;
@@ -408,23 +423,38 @@ export default class TransformationPanel {
       }
     }
 
-    formContents.push({
-      type: "single-icon",
-      element: radioButtonOrigin,
+    // Ticket 39: a button beside the grid enters pick mode. The next canvas
+    // click types that point into X and Y; Escape leaves without a change.
+    const pickButton = html.createDomElement("icon-button", {
+      "src": "/tabler-icons/focus-2.svg",
+      "data-tooltip": translate("sidebar.selection-transformation.origin.pick"),
+      "data-tooltipposition": "bottom",
     });
+    pickButton.on = !!this._originPick;
+    pickButton.onclick = () =>
+      this._originPick ? this._stopOriginPick() : this._startOriginPick();
+    this.originPickButton = pickButton;
 
-    formContents.push({ type: "divider" });
-
+    // One row: the smaller grid and the pick button, then the typed X and Y.
     formContents.push({
-      type: "edit-number-x-y",
-      label: translate("sidebar.selection-transformation.origin"),
-      fieldX: {
+      type: "universal-row",
+      field1: {
+        auxiliaryElement: html.div({ class: "origin-control" }, [
+          radioButtonOrigin,
+          pickButton,
+        ]),
+      },
+      field2: {
+        type: "edit-number",
         key: "originXButton",
         value: this.transformParameters.originXButton,
+        allowEmptyField: true,
       },
-      fieldY: {
+      field3: {
+        type: "edit-number",
         key: "originYButton",
         value: this.transformParameters.originYButton,
+        allowEmptyField: true,
       },
     });
 
@@ -1431,12 +1461,82 @@ export default class TransformationPanel {
   }
 
   _changeOrigin(keyX, keyY) {
+    this._stopOriginPick();
     this.transformParameters.originX = keyX;
     this.transformParameters.originY = keyY;
     this.transformParameters.originXButton = undefined;
     this.transformParameters.originYButton = undefined;
     this.infoForm.setValue("originXButton", null);
     this.infoForm.setValue("originYButton", null);
+  }
+
+  // Ticket 39: pick mode. The canvas listeners run in the capture phase, so the
+  // pick click reaches no tool: it neither selects nor drags.
+  _startOriginPick() {
+    const canvas = this.editorController.canvasController?.canvas;
+    if (!canvas || this._originPick) {
+      return;
+    }
+    const onPointerDown = (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const point = this.sceneController.selectedGlyphPoint(event);
+      // The pointerup belongs to the pick too.
+      canvas.addEventListener("pointerup", swallow, { capture: true, once: true });
+      this._stopOriginPick();
+      if (point) {
+        this._setTypedOrigin(point.x, point.y);
+      }
+    };
+    const swallow = (event) => event.stopImmediatePropagation();
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this._stopOriginPick();
+      }
+    };
+    canvas.addEventListener("pointerdown", onPointerDown, { capture: true });
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    const previousCursor = canvas.style.cursor;
+    canvas.style.cursor = "crosshair";
+    this._originPick = () => {
+      canvas.removeEventListener("pointerdown", onPointerDown, { capture: true });
+      window.removeEventListener("keydown", onKeyDown, { capture: true });
+      canvas.style.cursor = previousCursor;
+    };
+    if (this.originPickButton) {
+      this.originPickButton.on = true;
+    }
+  }
+
+  _stopOriginPick() {
+    this._originPick?.();
+    this._originPick = null;
+    if (this.originPickButton) {
+      this.originPickButton.on = false;
+    }
+  }
+
+  // The same state a typed X and Y set: the point is the pin, and no grid
+  // position is checked.
+  _setTypedOrigin(x, y) {
+    x = Math.round(x);
+    y = Math.round(y);
+    this.transformParameters.originX = x;
+    this.transformParameters.originY = y;
+    this.transformParameters.originXButton = x;
+    this.transformParameters.originYButton = y;
+    this.infoForm.setValue("originXButton", x);
+    this.infoForm.setValue("originYButton", y);
+    for (const radioButton of this.infoForm.shadowRoot.querySelectorAll(
+      ".ui-form-radio-button"
+    )) {
+      radioButton.checked = false;
+    }
   }
 
   _splitSelection(layerGlyphController, selection) {

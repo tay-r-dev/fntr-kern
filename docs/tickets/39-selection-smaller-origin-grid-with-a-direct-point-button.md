@@ -1,6 +1,6 @@
 # 39: Selection: smaller origin grid with a direct-point button
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 05 (Merge the Transformation and Skeleton parameters panels)
 

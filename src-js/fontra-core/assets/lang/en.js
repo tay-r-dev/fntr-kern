@@ -837,6 +837,8 @@ export const strings = {
   "sidebar.selection-transformation.origin.middle.center": "Origin middle center",
   "sidebar.selection-transformation.origin.middle.left": "Origin middle left",
   "sidebar.selection-transformation.origin.middle.right": "Origin middle right",
+  "sidebar.selection-transformation.origin.pick":
+    "Pick the origin on the canvas. Escape cancels.",
   "sidebar.selection-transformation.origin.top.center": "Origin top center",
   "sidebar.selection-transformation.origin.top.left": "Origin top left",
   "sidebar.selection-transformation.origin.top.right": "Origin top right",
