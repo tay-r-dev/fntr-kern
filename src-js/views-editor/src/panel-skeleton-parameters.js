@@ -25,6 +25,7 @@ import {
 } from "@fontra/core/skeleton-model.js";
 import { throttleCalls } from "@fontra/core/utils.ts";
 import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 45
+import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 46
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 44
 import { Form } from "@fontra/web-components/ui-form.js";
 import { editSkeleton } from "./skeleton-editing.js";
@@ -41,7 +42,6 @@ import {
   scalePanelCapParameter,
   scalePanelContourDefaultWidth,
   scalePanelCornerDistance,
-  scalePanelPointWidth,
   scalePanelSerifValue,
   setPanelCapParameters,
   setPanelCapStyle,
@@ -162,6 +162,16 @@ function capValuesFromField(name, value) {
     return { capBallSide: value };
   }
   return null;
+}
+
+// A compact scrub field streams the value under the hand. The width writers
+// move each point by a change, so the stream is turned into the change from
+// where the drag started. The cancel sentinel passes through untouched.
+async function* changesFrom(valueStream, startValue) {
+  const start = Number(startValue) || 0;
+  for await (const value of valueStream) {
+    yield isScrubCancelled(value) ? value : Number(value) - start;
+  }
 }
 
 // A row that packs several inputs onto one line carries them as nested fields,
@@ -397,6 +407,96 @@ export default class SkeletonParametersPanel {
       this._forceRebuild = true;
       await this.update();
     });
+
+    // Ticket 46: Total and Distribution on one row, then Left, chain, Right,
+    // as compact scrub fields. The fields AND their rows are built once. A row
+    // built inside update() would take these nodes with it as it is built, and
+    // on a values-only refresh that row is never placed, so the fields would
+    // leave the live form.
+    this._scrubbingWidthFields = new Set();
+    this.widthFields = {
+      total: this._makeWidthField("total", "total-width"),
+      distribution: this._makeWidthField("distribution", "distribution"),
+      left: this._makeWidthField("left", "left-width"),
+      right: this._makeWidthField("right", "right-width"),
+    };
+    const fieldRow = (children) =>
+      html.div(
+        { style: "display: flex; gap: 0.35rem; align-items: center;" },
+        children
+      );
+    this.widthTotalRow = fieldRow([
+      this.widthFields.total,
+      this.widthFields.distribution,
+    ]);
+    this.widthSidesRow = fieldRow([
+      this.widthFields.left,
+      this.widthChain,
+      this.widthFields.right,
+    ]);
+  }
+
+  // One Generation width field. A drag moves every selected point by the
+  // change from where it started, so a mixed selection stays mixed, and it is
+  // one undo step. A typed value sets every point. Distribution is the one
+  // field that streams a value rather than a change, as its slider did.
+  _makeWidthField(name, labelKey) {
+    const field = html.createDomElement("compact-scrub-field", {
+      label: translate(`sidebar.skeleton-parameters.${labelKey}`),
+      integer: true,
+    });
+    field.style.flex = "1 1 0";
+    field.style.minWidth = "0";
+    field.addEventListener("scrubstart", (event) => {
+      const { valueStream, startValue } = event.detail;
+      this._scrubbingWidthFields.add(name);
+      this._runOwnEdit(async () => {
+        try {
+          if (name === "distribution") {
+            await setPanelPointDistributionStream(
+              this.sceneController,
+              this._widthPoints(),
+              valueStream,
+              this._undo("set-distribution")
+            );
+          } else {
+            await nudgePanelPointWidthStream(
+              this.sceneController,
+              this._widthPoints(),
+              name,
+              changesFrom(valueStream, startValue),
+              this._undo("set-width")
+            );
+          }
+        } finally {
+          // Before the closing refresh, so the field takes the number the
+          // model settled on rather than the one the drag reached.
+          this._scrubbingWidthFields.delete(name);
+        }
+      });
+    });
+    field.addEventListener("change", (event) => {
+      // A drag reports every frame as a change too; the stream above owns those.
+      if (this._scrubbingWidthFields.has(name) || event.detail.cancelled) {
+        return;
+      }
+      this._runOwnEdit(() => this._onWidthChange(name, event.detail.value));
+    });
+    return field;
+  }
+
+  // The bracket every one of this panel's own edits runs in, for the elements
+  // that are not form fields: the echo of the edit refreshes values while it
+  // runs, and the panel rebuilds against the result when it ends.
+  async _runOwnEdit(run) {
+    this._streamingFieldEdit = true;
+    try {
+      await run();
+    } finally {
+      this._streamingFieldEdit = false;
+      this._forceRebuild = true;
+      await this.update();
+    }
   }
 
   async toggle(on) {
@@ -825,7 +925,7 @@ export default class SkeletonParametersPanel {
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
-      label: translate("sidebar.skeleton-parameters.point-widths"),
+      label: translate("sidebar.skeleton-parameters.generation"),
     });
     // Only has an effect on a smooth point whose one handle faces away from a
     // straight segment; harmless elsewhere, so it is always shown rather than
@@ -836,60 +936,37 @@ export default class SkeletonParametersPanel {
       label: translate("sidebar.skeleton-parameters.tied"),
       value: summary.tied.mixed ? false : summary.tied.value,
     });
-    // The minimum is declared here rather than left to the model: without it a
-    // scrub past the bottom of the range keeps counting down in the box while
-    // the stroke has already stopped, and the number snaps back on release.
-    this._pushSummaryNumber(formContents, "width:total", "total-width", summary.total, {
-      minValue: 0,
-    });
     // On a single-sided contour the visible edge is the TOTAL, so the per-side
     // numbers and the split between them describe nothing on screen. Greyed and
     // blank rather than hidden: they are still stored, and still what the point
     // goes back to if the contour returns to double-sided.
-    const perSideGate = summary.singleSided
-      ? { disabled: true, blank: true, minValue: 0 }
-      : { minValue: 0 };
-    // Ticket 45: Left, chain, Right on one row. A closed chain greys Right:
-    // Left is then the one place a side is typed, and the writer carries the
-    // other side by its share. The chain changes how numbers are typed and
-    // nothing else -- a drag never reads the flag (feature model §5).
+    const sidesGate = { disabled: summary.singleSided, blank: summary.singleSided };
+    // Ticket 45: a closed chain greys Right. Left is then the one place a side
+    // is typed, and the writer carries the other side by its share. The chain
+    // changes how numbers are typed and nothing else -- a drag never reads the
+    // flag (feature model §5).
     const linkedClosed = !summary.linked.mixed && summary.linked.value === true;
     this.widthChain.linked = summary.linked.mixed ? null : summary.linked.value;
     this.widthChain.disabled = summary.singleSided;
-    formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "text",
-        value: translate("sidebar.skeleton-parameters.left-right-width"),
-      },
-      field2: {
-        ...this._summaryNumberField("width:left", summary.left, {
-          ...perSideGate,
-          multiply: false,
-        }),
-        auxiliaryElement: this.widthChain,
-      },
-      // The row's one label drives the Left field's scrub. Right would share
-      // that label, so it does not scrub: it types, when the chain is open.
-      field3: this._summaryNumberField("width:right", summary.right, {
-        ...perSideGate,
-        disabled: perSideGate.disabled || linkedClosed,
-        multiply: false,
-        scrub: false,
-      }),
+    // The minimum is declared rather than left to the model: without it a drag
+    // past the bottom keeps counting down in the box while the stroke has
+    // stopped. A mixed field has no start value, so it drags from zero by the
+    // change alone and takes no floor.
+    this._refreshWidthField("total", summary.total, { minValue: 0 });
+    this._refreshWidthField("distribution", summary.distribution, {
+      ...sidesGate,
+      minValue: -100,
+      maxValue: 100,
+      round: true,
     });
-    this._pushSummarySlider(
-      formContents,
-      "width:distribution",
-      "distribution",
-      summary.distribution,
-      -100,
-      100,
-      0,
-      summary.singleSided
-        ? { step: 10, disabled: true, displayValue: "" }
-        : { step: 10 }
-    );
+    this._refreshWidthField("left", summary.left, { ...sidesGate, minValue: 0 });
+    this._refreshWidthField("right", summary.right, {
+      ...sidesGate,
+      disabled: sidesGate.disabled || linkedClosed,
+      minValue: 0,
+    });
+    formContents.push({ type: "single-icon", element: this.widthTotalRow });
+    formContents.push({ type: "single-icon", element: this.widthSidesRow });
     // The rib angle lock sits with the point rather than with the cap. It is a
     // property of the point's rib and it applies at every point: at a terminal
     // it decides the rib the cap is built on, and at a corner it replaces the
@@ -2018,6 +2095,25 @@ export default class SkeletonParametersPanel {
 
   // ---- Field description helpers -------------------------------------------
 
+  // Push one summary into a Generation width field. A field under the hand is
+  // left alone: it already shows the number it is sending.
+  _refreshWidthField(
+    name,
+    summary,
+    { disabled = false, blank = false, minValue, maxValue, round = false } = {}
+  ) {
+    const field = this.widthFields[name];
+    field.disabled = disabled;
+    field.minValue = summary.mixed ? undefined : minValue;
+    field.maxValue = summary.mixed ? undefined : maxValue;
+    if (this._scrubbingWidthFields.has(name)) {
+      return;
+    }
+    const value =
+      blank || summary.mixed || summary.value == null ? null : summary.value;
+    field.value = value != null && round ? Math.round(value) : value;
+  }
+
   _pushSummaryNumber(formContents, key, labelKey, summary, options = {}) {
     formContents.push({
       label: translate(`sidebar.skeleton-parameters.${labelKey}`),
@@ -2147,17 +2243,9 @@ export default class SkeletonParametersPanel {
         await this._onScrub(group, name, valueStream);
         return;
       }
-      // Distribution, cap and corner sliders stream onto the canvas while
-      // dragging; all other fields apply the committed value once.
-      if (group === "width" && name === "distribution" && valueStream) {
-        await setPanelPointDistributionStream(
-          this.sceneController,
-          this._widthPoints(),
-          valueStream,
-          this._undo("set-distribution")
-        );
-        return;
-      }
+      // Cap and corner sliders stream onto the canvas while dragging; all other
+      // fields apply the committed value once. The width fields are compact
+      // scrub fields with their own streams (_makeWidthField).
       if (valueStream && (group === "cap" || group === "corner")) {
         const makeValues = group === "cap" ? capValuesFromField : cornerValuesFromField;
         const setter =
@@ -2264,18 +2352,7 @@ export default class SkeletonParametersPanel {
   // not a scrub with the answer worked out in advance.
   async _onMultiply(group, name, factor) {
     const sc = this.sceneController;
-    if (group === "width") {
-      if (name !== "total" && name !== "left" && name !== "right") {
-        return;
-      }
-      await scalePanelPointWidth(
-        sc,
-        this._widthPoints(),
-        name,
-        factor,
-        this._undo("set-width")
-      );
-    } else if (group === "contour" && name === "default-width") {
+    if (group === "contour" && name === "default-width") {
       await scalePanelContourDefaultWidth(
         sc,
         this._panelSelection.contours,
@@ -2373,19 +2450,6 @@ export default class SkeletonParametersPanel {
 
   async _onScrub(group, name, valueStream) {
     const sc = this.sceneController;
-    if (group === "width") {
-      if (name !== "total" && name !== "left" && name !== "right") {
-        return;
-      }
-      await nudgePanelPointWidthStream(
-        sc,
-        this._widthPoints(),
-        name,
-        valueStream,
-        this._undo("set-width")
-      );
-      return;
-    }
     if (group === "insertion" && (name === "left" || name === "right")) {
       // The scrub streams a change in units. Each frame resolves it against the
       // reference the drag opened with, so the ratio the model stores stays a

@@ -630,22 +630,6 @@ function moveOnePointWidth(point, contour, side, next) {
 const added = (amount) => (current) => current + Number(amount);
 const scaled = (amount) => (current) => Math.round(current * Number(amount));
 
-export async function scalePanelPointWidth(
-  sceneController,
-  pointAddresses,
-  side,
-  factor,
-  undoLabel
-) {
-  return editSelectedSkeletonPoints(
-    sceneController,
-    pointAddresses,
-    (point, _address, { contour }) =>
-      moveOnePointWidth(point, contour, side, scaled(factor)),
-    undoLabel
-  );
-}
-
 export async function nudgePanelContourDefaultWidthStream(
   sceneController,
   contourAddresses,

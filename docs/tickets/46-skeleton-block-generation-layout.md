@@ -1,6 +1,6 @@
 # 46: Skeleton block: Generation layout
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 45 (Skeleton block: chain on the width row), 26 (Visual: SpeedPunk compact scrub fields)
 
