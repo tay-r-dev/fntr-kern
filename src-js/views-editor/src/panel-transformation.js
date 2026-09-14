@@ -52,26 +52,37 @@ export default class TransformationPanel {
     height: 1.6em;
   }
 
-  /* Ticket 39: the Origin row is the grid, the typed X and Y, then the pick
-     and clear buttons one under the other. */
-  .origin-buttons {
+  /* Ticket 39: the Origin row is the grid, then the typed X and Y with the
+     pick and clear buttons in a row under them. The grid is twice an
+     input's height, so this row's label and value grow past 1.6em. */
+  .ui-form-label:has(.origin-radio-buttons) {
+    height: auto;
+  }
+
+  .ui-form-value:has(.origin-buttons) {
     display: flex;
-    flex-direction: column;
-    justify-content: center;
-    flex: none;
+    flex-wrap: wrap;
+    align-content: center;
+    column-gap: 0.3em;
+  }
+
+  .origin-buttons {
+    flex-basis: 100%;
+    display: flex;
+    gap: 0.3em;
   }
 
   .origin-buttons icon-button {
-    width: 0.75em;
-    height: 0.75em;
+    width: 1.1em;
+    height: 1.1em;
   }
 
-  /* Sized to fit the row's 1.6em label height, so the dots stay round. */
+  /* 3 x 0.96em + 2 gaps = 3.2em, two input heights. */
   .origin-radio-buttons {
     display: grid;
-    grid-template-columns: repeat(3, 0.4em);
-    grid-auto-rows: 0.4em;
-    gap: 1px;
+    grid-template-columns: repeat(3, 0.96em);
+    grid-auto-rows: 0.96em;
+    gap: 0.16em;
     justify-content: end;
     align-content: center;
   }
@@ -83,21 +94,21 @@ export default class TransformationPanel {
     margin: 0;
     padding: 0;
     color: var(--editor-mini-console-background-color-light);
-    width: 0.4em;
-    height: 0.4em;
-    border: 0.1em solid var(--editor-mini-console-background-color-light);
+    width: 100%;
+    height: 100%;
+    border: 0.15em solid var(--editor-mini-console-background-color-light);
     border-radius: 50%;
     cursor: pointer;
   }
 
   .origin-radio-buttons > input[type="radio"]:hover {
     background-color: var(--text-input-background-color-dark);
-    border: 0.1em solid var(--text-input-background-color-dark);
+    border: 0.15em solid var(--text-input-background-color-dark);
   }
 
   .origin-radio-buttons > input[type="radio"]:checked {
     background-color: var(--text-input-background-color-dark);
-    border: 0.1em solid var(--text-input-background-color-dark);
+    border: 0.15em solid var(--text-input-background-color-dark);
   }
 
   .harmonize-report {
