@@ -22,6 +22,7 @@ P1 means a wrong result or serious scaling failure in a supported workflow. P2 m
 | `src-js/views-editor/src/scene-controller.js` | 3,062 | Fork command dispatch, arrow edits, skeleton conversion, mixed selections, harmonization, overlap and undo integration inspected; C1–C4. |
 | `src-js/views-editor/src/visualization-layer-definitions.js` | 2,634 | Fork rendering additions and visibility filters inspected, including supporting `curvature.js` implementation; V1–V5. |
 | `src-js/views-editor/src/scene-model.js` | 2,614 | Fork hit-testing, generated-path filters, drag readouts, measurement state and shaping changes inspected; SM1–SM3. |
+| `src-js/views-editor/src/panel-skeleton-parameters.js` | 2,612 | Parameter controls, streaming edits, preset identity, source defaults, selection refresh and dispatch inspected; PS1–PS3. |
 | Remaining feature files | — | Pending; final coverage inventory will distinguish deep review from supporting inspection. |
 
 ## 1. Kerning view — kerning.js
@@ -393,6 +394,34 @@ Recommendation: maintain contour ranges or a revision-bound point mask, allow re
 Recommendation: use the existing core segment representation and shared Bezier evaluation, with a bounding-box rejection and tolerance-aware hit distance. The measurement state also stores four mutually exclusive nullable fields, clears all four, then recovers a kind through four branches (`202–258`); a single `{kind, payload}` target would state that invariant directly and simplify each transition.
 
 The new measurement reset clears geometry references when measurement stops. Existing scene subscription reconciliation is inherited and not counted as a fork leak. No new tests were run.
+
+## 9. Skeleton parameters — panel-skeleton-parameters.js
+
+### PS1 — P1, confirmed units mismatch: normalized serif lengths are edited as integers
+
+Locations: `panel-skeleton-parameters.js:889–895`, `983–1008`, `2040–2090`, `2140–2150`, `2479–2530`; `compact-scrub-field.js:371–390`, `457–458`; `number-scrub.js:67–72`.
+
+Every compact field is constructed with `integer: true`. Serif lengths and cup depth display and write their raw model values; only the designated ratio fields convert through percent. There is no branch for the source's normalized serif units. A stored length of 0.2 can be displayed, but committing that same typed value passes through `Math.round` and writes 0. Dragging also lands on integers. With a reference width of 100, the available adjacent normalized values represent a 100-unit change in outline length.
+
+Recommendation: declare units and precision for each parameter and make the display/write conversion aware of normalized mode. Either expose fractional coefficients with appropriate scrub steps or convert to a clearly labelled display unit and invert that conversion on write. This is separate from M5's source-creation rounding and S2's missing generation context; together they show the same units contract is missing at several boundaries.
+
+### PS2 — P2, confirmed identity mismatch: a preset index survives a change of master
+
+Locations: `panel-skeleton-parameters.js:1156–1162`, `1206–1222`, `1255–1271`, `1320–1346`, `1387–1401`, `1755–1763`; `preset-header-control.js:90–120`.
+
+The preset control remembers `lastPicked` as a numeric index into the current master's list. Refresh clears it only if the index no longer appears. Switching to another master with an entry at that index preserves the pick, even though that entry was never selected. Update then overwrites the entry in the new master. Serif controls can also display that unrelated entry as selected. Changing terminal kind explicitly resets the pick, but changing source does not.
+
+Recommendation: scope remembered picks to source identity and terminal kind, and reset on a scope change. Stable preset IDs would additionally avoid index drift after list edits. The existence check in the shared control is useful but does not establish identity across different lists.
+
+### PS3 — P2/P3, functioning but indirect: preset application regenerates twice and splits one action into two edits
+
+Locations: `panel-skeleton-parameters.js:1177–1201`; related writers in `skeleton-panel-edits.js`.
+
+When a width preset changes projection, `_applyWidthPreset` first awaits `setPanelContourSingleSided`, then separately awaits `setPanelPointWidthPreset`. Each helper performs a scene edit and skeleton regeneration. `_runOwnEdit` suppresses panel rebuilding during the operation; it does not combine the two undo records or the two geometry passes. Selecting one preset therefore exposes an intermediate state and can require two undos. Preserve the required projection-before-width ordering inside one recorded edit and regenerate once after both mutations.
+
+The panel also repeatedly maps, filters and maps preset lists to retain indices (`1209–1218`, `1297–1301`), then the shared control scans them for existence and selection and maps again. This is a small-list allocation/clarity issue, not a demonstrated bottleneck: one indexed pass can construct the displayed entries, and one `find` can establish both existence and the picked item. The simple command-dispatch branches are not themselves a performance problem; replace repeated metadata and conversions where that removes duplication, rather than replacing every conditional with a framework.
+
+Persistent compact controls and guards against rewriting an active field are appropriate. Their event listeners belong to those owned controls; this inspection does not establish a new leak in this panel. No tests were run for this review.
 
 ## Validation completed before the code-only request
 
