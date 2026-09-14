@@ -24,6 +24,7 @@ P1 means a wrong result or serious scaling failure in a supported workflow. P2 m
 | `src-js/views-editor/src/scene-model.js` | 2,614 | Fork hit-testing, generated-path filters, drag readouts, measurement state and shaping changes inspected; SM1–SM3. |
 | `src-js/views-editor/src/panel-skeleton-parameters.js` | 2,612 | Parameter controls, streaming edits, preset identity, source defaults, selection refresh and dispatch inspected; PS1–PS3. |
 | `src-js/fontra-core/src/harmonization.js` | 2,452 | G2/G3 construction, candidate ranking, rounding, convergence, reports and balance inspected; H1–H5. Numerical accuracy is not exhaustively established by static inspection. |
+| `src-js/views-editor/src/skeleton-editing.js` | 2,138 | Mutation/rollback pipeline, remapping, point/rib/insertion/generated-handle drags and tension adapters inspected; SE1–SE3, S2 and M4. |
 | Remaining feature files | — | Pending; final coverage inventory will distinguish deep review from supporting inspection. |
 
 ## 1. Kerning view — kerning.js
@@ -463,6 +464,36 @@ Recommendation: distinguish construction outcome, retained movement and final re
 `bendingEnergyOf` computes velocity once inside `curvatureAtParameter` and again for its speed at each of 21 sample positions (`914–983`). G3 slide evaluation samples both segments again for notch detection after energy sampling (`1190–1227`); collect curvature, speed, energy and notch information in one traversal per emitted segment. `combHasNotch` materializes all samples merely to retain the two endpoints and minimum. G2 slide considers zero in both directions (`1116–1123`). These are functioning paths with avoidable work inside an already nested search.
 
 The trailing `report` helper (`2431–2450`) is unused. Several comments still describe scoring multiple constructions or fairness in `scoreJoints`, although the outer dispatcher now chooses one construction and that score contains no fairness term. The Balance introduction says it cannot be a harmonization step immediately after code that uses it as a finishing step. Remove the dead helper and revise these comments to explain the current stages and their invariants. Keep the rationale for numerical limits, but move historical experiments out of repetitive inline blocks. No tests were run.
+
+## 11. Skeleton editing — skeleton-editing.js
+
+### SE1 — P1, confirmed cross-layer addressing defects in several drag paths
+
+Locations: `skeleton-editing.js:1068–1087`, `1122–1137`, `1162–1191`, `1226–1257`, `1609–1629`, `1638–1649`, `2104–2130`; `edit-tools-pointer.js:920–933`.
+
+Ordinary rib and generated-handle entry construction correctly resolves the edit layer's selection into each target layer. However, the executor record retains the reference layer's IDs. During a frame it asks a resolver whose reference argument is now the target layer's `skeletonData` to find those original IDs. If master-local IDs differ, resolution fails and the target layer is skipped; coincident IDs can resolve a different point. The point-drag implementation correctly keeps target IDs, demonstrating the intended contract.
+
+Insertion and insertion-rib drag constructors take no reference skeleton at all. Pointer dispatch passes the unchanged edit-layer selection to each layer, so these paths also fail when IDs differ, despite `resolveSkeletonInsertionAcrossLayers` already existing in the same file. Generated-handle direction additionally reads `publishedAuthoredAxis` from the reference layer even after resolving a target point in a different master; it should derive the target master's axis, as its fallback already does.
+
+Recommendation: translate selection identity exactly once when creating each layer's entry and retain a target ordinal/address for every frame. Use the shared insertion resolver too. This removes redundant searching as well as the mixed identity domains. The failure condition is compatible masters with different IDs, a supported condition explicitly documented by these resolvers.
+
+### SE2 — P2, functioning but costly: each pointer frame copies and searches far more than it changes
+
+Locations: `skeleton-editing.js:251–266`, `286–317`, `667–693`, `788–823`, `1508–1544`; `canUpdateGeneratedContoursInPlace:387–411`.
+
+The synthetic path includes every skeleton contour. Ordinary point drags copy every mapped point back, resolving each point by IDs through `getSkeletonPointAddress`, even for untouched contours. Those repeated linear searches can make mapping O(N²). Tension-aware dragging also unpacks and corrects every contour, whereas its transform counterpart explicitly limits the solve to contours containing selection. Each frame clones the whole layer path and custom data, then clones and normalizes the skeleton again before generation (M4). The in-place compatibility check materializes each old contour just to compare topology.
+
+Recommendation: precompute ordinal mappings and affected contours at drag start, carry the ordinary behavior's changed-point set into the skeleton copy, and compare packed point types/flags without unpacking. Retain one immutable drag baseline and isolate only the mutable data required by the generator. This is a simplification of ownership, not permission to mutate the baseline or skip neighboring handles affected by the behavior. Keep the sticky contour-replacement rule: it protects positional change application after topology changes. Its WeakSet does not retain finished drags.
+
+`computeGeneratedContourRemap` also executes a structural operation on a full scratch path before its real execution. That is a defensible compatibility adapter, but expensive for complex edits; an operation returning its contour-index mapping would avoid the second run and temporary marker traversal.
+
+### SE3 — P2, confirmed interacting edits: pin baking is repeated independently for both selected handles
+
+Locations: `skeleton-editing.js:1609–1629`, `1638–1649`, `1709–1788`, `1861–1885`, `1938–1946`.
+
+Each selected generated handle creates its own pin bake, regenerating the entire skeleton with that segment pin cleared. For two selected handles A and B of the same pinned segment, A's executor adds B's bake and sets A's offset including A's bake. B's executor then adds A's bake to A's already-baked offset before setting B's own offset. A receives the contribution twice; which endpoint gets it depends on selection iteration order. This requires nonzero pin contribution and attached handles, not malformed data.
+
+Recommendation: prepare one bake per segment/side, apply it once to the working skeleton, then apply each selected handle's delta against the common post-bake baseline. This simultaneously removes repeated full generation and makes the result independent of selection order. Generation must use the same source options as the final mutation (S2). No tests were run.
 
 ## Validation completed before the code-only request
 
