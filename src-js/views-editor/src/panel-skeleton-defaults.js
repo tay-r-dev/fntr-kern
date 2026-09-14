@@ -686,7 +686,7 @@ export default class SkeletonSettingsPanel extends Panel {
         trash.onclick = () => this._deleteWidthPreset(sourceId, index, rowId);
         tbody.appendChild(
           html.createDomElement("tr", { "data-row-id": rowId }, [
-            html.td({}, [
+            html.createDomElement("td", {}, [
               nameInput,
               html.div({ class: "preset-origin" }, [
                 `${source.name || sourceId} · ${translate(
@@ -694,9 +694,9 @@ export default class SkeletonSettingsPanel extends Panel {
                 )}`,
               ]),
             ]),
-            html.td({}, [widthInput]),
-            html.td({}, [sideSelect]),
-            html.td({}, [trash]),
+            html.createDomElement("td", {}, [widthInput]),
+            html.createDomElement("td", {}, [sideSelect]),
+            html.createDomElement("td", {}, [trash]),
           ])
         );
       });
@@ -1104,8 +1104,10 @@ export default class SkeletonSettingsPanel extends Panel {
           pencil.onclick = () => this._editTerminalPresetDialog(sourceId, type, index);
           tbody.appendChild(
             html.createDomElement("tr", { "data-row-id": rowId }, [
-              html.td({}, [translate(`sidebar.skeleton-parameters.cap-style.${type}`)]),
-              html.td({}, [
+              html.createDomElement("td", {}, [
+                translate(`sidebar.skeleton-parameters.cap-style.${type}`),
+              ]),
+              html.createDomElement("td", {}, [
                 nameInput,
                 html.div({ class: "preset-origin" }, [
                   `${source.name || sourceId} · ${translate(
@@ -1113,7 +1115,9 @@ export default class SkeletonSettingsPanel extends Panel {
                   )}`,
                 ]),
               ]),
-              html.td({}, [html.div({ class: "preset-actions" }, [pencil, trash])]),
+              html.createDomElement("td", {}, [
+                html.div({ class: "preset-actions" }, [pencil, trash]),
+              ]),
             ])
           );
         });
