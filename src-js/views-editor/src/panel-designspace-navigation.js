@@ -100,6 +100,7 @@ const TUNNI_DEBUG_CONTROLS = [
     unit: "ms",
   },
   { key: "fadeDuration", label: "Fade", min: 0, max: 1000, step: 10, unit: "ms" },
+  { key: "hoverDuration", label: "Hover", min: 0, max: 1000, step: 10, unit: "ms" },
 ];
 
 // Bug fix: no accordion item's open/closed state survived a reload -- every

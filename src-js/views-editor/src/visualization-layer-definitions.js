@@ -57,7 +57,6 @@ import { subVectors } from "@fontra/core/vector.js";
 import {
   isTunniControlLive,
   iterBasicTunniSegments,
-  TUNNI_GIZMO_TUNING,
   TUNNI_SETTINGS,
   tunniGizmoKey,
 } from "./tunni-gizmos.js";
@@ -2218,44 +2217,60 @@ function getTunniSkeletonData(positionedGlyph, model) {
 export const TUNNI_GIZMO_COLORS = { gizmoColor: "#2E4FBA" };
 export const TUNNI_GIZMO_COLORS_DARK = { gizmoColor: "#7B97F2" };
 
-// Draw one gizmo at its reveal's current opacity. Nothing is drawn while the
-// gizmo is fully hidden. The hot gizmo, the one a click would take, carries a
-// ring as wide as its click catch, so what the ring encloses is what a click
-// reaches. `parameters.pixel` is one screen pixel in glyph units. An on-curve
-// gizmo passes `alwaysVisible` and draws at full strength whatever the reveal
-// says; only its ring follows the cursor.
+// Draw one gizmo at its reveal's current opacity, as a filled circle or diamond.
+// Nothing is drawn while the gizmo is fully hidden. The gizmo a click would take
+// grows and gains a soft outline, both eased in and out by the reveal. An
+// on-curve gizmo passes `alwaysVisible` and draws at full strength whatever the
+// reveal says; only its hover emphasis follows the cursor. `before` draws under
+// the gizmo at the same opacity. `parameters.pixel` is one screen pixel in glyph
+// units.
+const TUNNI_HOVER_GROWTH = 0.45;
+const TUNNI_HOVER_OUTLINE_WIDTH = 2.5;
+const TUNNI_HOVER_OUTLINE_ALPHA = 0.4;
+
 export function drawRevealedTunniGizmo(
   context,
   model,
   key,
   point,
   parameters,
-  draw,
-  { alwaysVisible = false } = {}
+  { shape = "circle", alwaysVisible = false, before = null } = {}
 ) {
   const reveal = model.tunniGizmoReveal;
   const alpha = alwaysVisible ? 1 : (reveal?.alpha(key) ?? 0);
   if (!(alpha > 0)) {
     return;
   }
-  context.globalAlpha = alpha;
-  draw();
-  if (reveal?.isHot(key)) {
-    context.save();
-    context.strokeStyle = parameters.gizmoColor;
-    context.lineWidth = parameters.pixel * 1.5;
+  const hot = reveal?.hotness(key) ?? 0;
+  const size = parameters.gizmoSize * (1 + TUNNI_HOVER_GROWTH * hot);
+  const tracePath = (traceSize) => {
     context.beginPath();
-    context.arc(
-      point.x,
-      point.y,
-      TUNNI_GIZMO_TUNING.clickRadius * parameters.pixel,
-      0,
-      2 * Math.PI
-    );
+    if (shape === "diamond") {
+      const half = traceSize / 2;
+      context.moveTo(point.x, point.y - half);
+      context.lineTo(point.x + half, point.y);
+      context.lineTo(point.x, point.y + half);
+      context.lineTo(point.x - half, point.y);
+      context.closePath();
+    } else {
+      context.arc(point.x, point.y, traceSize / 2, 0, 2 * Math.PI);
+    }
+  };
+  context.save();
+  context.globalAlpha = alpha;
+  before?.();
+  context.fillStyle = parameters.gizmoColor;
+  tracePath(size);
+  context.fill();
+  if (hot > 0) {
+    const outline = TUNNI_HOVER_OUTLINE_WIDTH * parameters.pixel;
+    context.globalAlpha = alpha * TUNNI_HOVER_OUTLINE_ALPHA * hot;
+    context.strokeStyle = parameters.gizmoColor;
+    context.lineWidth = outline;
+    tracePath(size + outline * (shape === "diamond" ? 2.8 : 2));
     context.stroke();
-    context.restore();
   }
-  context.globalAlpha = 1;
+  context.restore();
 }
 
 registerVisualizationLayerDefinition({
@@ -2280,8 +2295,7 @@ registerVisualizationLayerDefinition({
         model,
         tunniGizmoKey("basic", "curvature", id),
         point,
-        parameters,
-        () => fillRoundNode(context, point, parameters.gizmoSize)
+        parameters
       );
     }
   },
@@ -2320,8 +2334,7 @@ registerVisualizationLayerDefinition({
         tunniGizmoKey("basic", "on-curve", id),
         tunniPoint,
         parameters,
-        () => drawDiamondNode(context, tunniPoint, parameters.gizmoSize, true),
-        { alwaysVisible: true }
+        { shape: "diamond", alwaysVisible: true }
       );
     }
   },

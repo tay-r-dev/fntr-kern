@@ -243,9 +243,16 @@ export const TUNNI_GIZMO_TUNING_DEFAULTS = {
   revealRadius: 28,
   clickRadius: 10,
   revealDelay: 200,
-  fadeDuration: 150,
+  fadeDuration: 180,
+  hoverDuration: 140,
 };
 export const TUNNI_GIZMO_TUNING = { ...TUNNI_GIZMO_TUNING_DEFAULTS };
+
+// Ease out on the way in and ease in on the way out, so a gizmo arrives softly
+// and leaves without lingering.
+function ease(progress, rising) {
+  return rising ? 1 - (1 - progress) ** 3 : progress ** 3;
+}
 
 //
 // A gizmo shows only after the cursor has rested near it, and fades in and out.
@@ -253,12 +260,12 @@ export const TUNNI_GIZMO_TUNING = { ...TUNNI_GIZMO_TUNING_DEFAULTS };
 // One gizmo is armed at a time. Hovering near a different one starts that one's
 // delay and lets the armed one go; leaving every gizmo lets it go too. An armed
 // gizmo is the only one a click reaches, and the hot one is the armed gizmo the
-// cursor is close enough to click.
+// cursor is close enough to click. Both states are eased, as two channels per
+// key: `alpha` for showing and `hot` for the hover emphasis.
 //
 // Every hover event runs as a pass. A tool that answers the pointer without
 // looking for gizmos, as the skeleton pen does while editing, never calls
-// hover(), and the pass then lets the armed gizmo go. Without the pass the gizmo
-// stayed up for as long as that tool was answering.
+// hover(), and the pass then lets the armed gizmo go.
 //
 export class TunniGizmoReveal {
   constructor(requestUpdate) {
@@ -267,9 +274,10 @@ export class TunniGizmoReveal {
     this._hotKey = null;
     this._pendingKey = null;
     this._timer = null;
-    this._fades = new Map();
+    this._tweens = new Map();
     this._frame = null;
     this._hoveredThisPass = false;
+    this._lastHot = false;
   }
 
   beginHoverPass() {
@@ -289,10 +297,13 @@ export class TunniGizmoReveal {
     this._lastHot = hot;
     if (key === this._armedKey) {
       this._cancelPending();
-    } else if (key !== this._pendingKey) {
+    } else if (!key || key !== this._pendingKey) {
+      // No key never matches a pending one: with nothing pending both are
+      // empty, and treating that as "still pending" kept a shown gizmo up for
+      // as long as the cursor stayed away from every gizmo.
       this._cancelPending();
       if (this._armedKey) {
-        this._fadeTo(this._armedKey, 0);
+        this._tweenTo("alpha", this._armedKey, 0);
         this._armedKey = null;
       }
       if (key && instant) {
@@ -303,23 +314,12 @@ export class TunniGizmoReveal {
           this._pendingKey = null;
           this._timer = null;
           this._armedKey = key;
+          this._tweenTo("alpha", key, 1);
           this._setHot(this._lastHot ? key : null);
-          this._fadeTo(key, 1);
         }, TUNNI_GIZMO_TUNING.revealDelay);
       }
     }
     this._setHot(hot && key === this._armedKey ? key : null);
-  }
-
-  isHot(key) {
-    return !!key && key === this._hotKey;
-  }
-
-  _setHot(key) {
-    if (key !== this._hotKey) {
-      this._hotKey = key;
-      this._requestUpdate();
-    }
   }
 
   isArmed(key) {
@@ -327,13 +327,44 @@ export class TunniGizmoReveal {
   }
 
   alpha(key, now = performance.now()) {
-    const fade = this._fades.get(key);
-    if (!fade) {
+    return this._value("alpha", key, now);
+  }
+
+  // 0 to 1: how far the hover emphasis has grown in.
+  hotness(key, now = performance.now()) {
+    return this._value("hot", key, now);
+  }
+
+  _setHot(key) {
+    if (key === this._hotKey) {
+      return;
+    }
+    if (this._hotKey) {
+      this._tweenTo("hot", this._hotKey, 0);
+    }
+    this._hotKey = key;
+    if (key) {
+      this._tweenTo("hot", key, 1);
+    }
+  }
+
+  _duration(channel) {
+    return Math.max(
+      channel === "hot"
+        ? TUNNI_GIZMO_TUNING.hoverDuration
+        : TUNNI_GIZMO_TUNING.fadeDuration,
+      1
+    );
+  }
+
+  _value(channel, key, now) {
+    const tween = this._tweens.get(`${channel}:${key}`);
+    if (!tween) {
       return 0;
     }
-    const duration = Math.max(TUNNI_GIZMO_TUNING.fadeDuration, 1);
-    const progress = Math.min((now - fade.start) / duration, 1);
-    return fade.from + (fade.to - fade.from) * progress;
+    const progress = Math.min((now - tween.start) / this._duration(channel), 1);
+    const rising = tween.to > tween.from;
+    return tween.from + (tween.to - tween.from) * ease(progress, rising);
   }
 
   _cancelPending() {
@@ -342,9 +373,14 @@ export class TunniGizmoReveal {
     this._pendingKey = null;
   }
 
-  _fadeTo(key, to) {
+  _tweenTo(channel, key, to) {
     const now = performance.now();
-    this._fades.set(key, { from: this.alpha(key, now), to, start: now });
+    this._tweens.set(`${channel}:${key}`, {
+      channel,
+      from: this._value(channel, key, now),
+      to,
+      start: now,
+    });
     this._animate();
   }
 
@@ -356,11 +392,11 @@ export class TunniGizmoReveal {
       this._frame = null;
       const now = performance.now();
       let moving = false;
-      for (const [key, fade] of this._fades) {
-        if (now - fade.start < TUNNI_GIZMO_TUNING.fadeDuration) {
+      for (const [id, tween] of this._tweens) {
+        if (now - tween.start < this._duration(tween.channel)) {
           moving = true;
-        } else if (fade.to === 0) {
-          this._fades.delete(key);
+        } else if (tween.to === 0) {
+          this._tweens.delete(id);
         }
       }
       this._requestUpdate();

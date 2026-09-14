@@ -774,8 +774,7 @@ registerVisualizationLayerDefinition({
             skeletonTunniSegmentId(contour, segment)
           ),
           point,
-          parameters,
-          () => fillRoundNode(context, point, parameters.gizmoSize)
+          parameters
         );
       }
     });
@@ -821,8 +820,7 @@ registerVisualizationLayerDefinition({
           ),
           point,
           parameters,
-          () => drawDiamondNode(context, point, parameters.gizmoSize, true),
-          { alwaysVisible: true }
+          { shape: "diamond", alwaysVisible: true }
         );
       }
     });
@@ -930,10 +928,13 @@ registerVisualizationLayerDefinition({
         tunniGizmoKey("generated", "curvature", generatedTunniSegmentId(segment)),
         anchor,
         parameters,
-        () => {
+        {
           // The axis is the direction the curve swells in; without it the node
           // looks free to go anywhere.
-          if (axis) {
+          before: () => {
+            if (!axis) {
+              return;
+            }
             context.setLineDash(parameters.lineDash);
             strokeLine(
               context,
@@ -943,8 +944,7 @@ registerVisualizationLayerDefinition({
               anchor.y + axis.y * parameters.curvatureAxisLength
             );
             context.setLineDash([]);
-          }
-          fillRoundNode(context, anchor, parameters.gizmoSize);
+          },
         }
       );
     }
@@ -991,8 +991,7 @@ registerVisualizationLayerDefinition({
         tunniGizmoKey("generated", "on-curve", generatedTunniSegmentId(segment)),
         gizmoPoint,
         parameters,
-        () => drawDiamondNode(context, gizmoPoint, parameters.gizmoSize, true),
-        { alwaysVisible: true }
+        { shape: "diamond", alwaysVisible: true }
       );
     }
   },
