@@ -526,6 +526,29 @@ export default class SkeletonParametersPanel {
       this._refreshProjectionOverflow();
     });
     this._refreshProjectionOverflow();
+    // Ticket 52: Force angle is the rib angle lock -- Free, Vertical,
+    // Horizontal -- offered at every point, as the lock always applied. At a
+    // terminal it decides the rib the cap is built on; at a corner it replaces
+    // the line that splits the angle between the two arms.
+    this.forceAngleControl = html.createDomElement("segmented-control", {
+      options: [
+        ["auto", "free"],
+        ["vertical", "vertical"],
+        ["horizontal", "horizontal"],
+      ].map(([value, labelKey]) => ({
+        value,
+        label: translate(`sidebar.skeleton-parameters.force-angle.${labelKey}`),
+      })),
+    });
+    this.forceAngleControl.addEventListener("change", (event) =>
+      this._runOwnEdit(() => this._onWidthChange("ribanglelock", event.detail.value))
+    );
+    this.forceAngleRow = html.div({ class: "selection-row-group" }, [
+      html.span({ class: "selection-row-group-label" }, [
+        translate("sidebar.skeleton-parameters.force-angle"),
+      ]),
+      html.div({ class: "selection-row-group-icons" }, [this.forceAngleControl]),
+    ]);
     this.generationIconRow = html.div({ class: "selection-row-group" }, [
       ...iconGroup("group.lock", Object.values(this.lockButtons)),
       ...iconGroup("group.projection", [
@@ -1083,6 +1106,16 @@ export default class SkeletonParametersPanel {
     formContents.push({ type: "single-icon", element: this.widthTotalRow });
     formContents.push({ type: "single-icon", element: this.widthSidesRow });
 
+    // Ticket 52: Force angle, under the widths. The rib angle lock is a
+    // property of the point's rib, so every selected point offers it. A mixed
+    // selection lights no segment.
+    const ribAngleLock = summarizeSkeletonRibAngleLockSelection(widthPoints);
+    this.forceAngleControl.value = ribAngleLock.mixed
+      ? undefined
+      : (ribAngleLock.value ?? "auto");
+    this.forceAngleControl.disabled = !ribAngleLock.canEdit;
+    formContents.push({ type: "single-icon", element: this.forceAngleRow });
+
     // Ticket 47: Lock, Link and Reset. Tied ribs only has an effect on a smooth
     // point whose one handle faces away from a straight segment; harmless
     // elsewhere, so it is always offered rather than coming and going.
@@ -1133,34 +1166,6 @@ export default class SkeletonParametersPanel {
       value: ribSummary.detached.mixed ? false : ribSummary.detached.value,
       indeterminate: ribSummary.detached.mixed,
       disabled: !ribs.length,
-    });
-    // The rib angle lock sits with the point rather than with the cap. It is a
-    // property of the point's rib and it applies at every point: at a terminal
-    // it decides the rib the cap is built on, and at a corner it replaces the
-    // line that splits the angle between the two arms, so both arms' edge ends
-    // land on the forced rib and the corner sits at a plain half-width along it.
-    const ribAngleLock = summarizeSkeletonRibAngleLockSelection(widthPoints);
-    formContents.push({
-      type: "select",
-      key: "width:ribanglelock",
-      label: translate("sidebar.skeleton-parameters.rib-angle-lock"),
-      value: ribAngleLock.mixed ? "" : (ribAngleLock.value ?? "auto"),
-      disabled: !ribAngleLock.canEdit,
-      options: [
-        ...(ribAngleLock.mixed ? [{ value: "", label: "mixed", disabled: true }] : []),
-        {
-          value: "auto",
-          label: translate("sidebar.skeleton-parameters.rib-angle-lock.auto"),
-        },
-        {
-          value: "horizontal",
-          label: translate("sidebar.skeleton-parameters.rib-angle-lock.horizontal"),
-        },
-        {
-          value: "vertical",
-          label: translate("sidebar.skeleton-parameters.rib-angle-lock.vertical"),
-        },
-      ],
     });
     // A forced rib cannot both keep the stroke as wide as its number and blend
     // cleanly between masters, so the point says which it holds on to. Stroke

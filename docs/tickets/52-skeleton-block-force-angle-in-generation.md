@@ -1,6 +1,6 @@
 # 52: Skeleton block: Force angle in Generation
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 46 (Skeleton block: Generation layout), 42 (Selection: Harmonize method as a segmented control)
 
