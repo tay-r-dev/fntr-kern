@@ -639,15 +639,117 @@ function tangentIntersection(segmentPoints, handleAxes) {
   );
 }
 
-// Where the gizmo sits: the curve at t = 0.5. Writing the Bernstein weights out
-// rather than reaching for a general evaluator, because half is the only
-// parameter this control ever needs.
+// Where the gizmo sits: the point of the curve furthest from its chord, which is
+// the top of the bulge the control swells or flattens. A curve that bends one
+// way has exactly one; an S has one per bump and the larger wins. Where the
+// chord has no length or the curve lies on it, there is no bulge to find and the
+// middle of the curve stands in.
 export function calculateCurvatureGizmoPoint(segmentPoints) {
   const [p1, p2, p3, p4] = segmentPoints;
-  return {
+  const pointAt = (t) => {
+    const s = 1 - t;
+    const [w1, w2, w3, w4] = [s * s * s, 3 * s * s * t, 3 * s * t * t, t * t * t];
+    return {
+      x: w1 * p1.x + w2 * p2.x + w3 * p3.x + w4 * p4.x,
+      y: w1 * p1.y + w2 * p2.y + w3 * p3.y + w4 * p4.y,
+    };
+  };
+  const middle = {
     x: (p1.x + 3 * p2.x + 3 * p3.x + p4.x) / 8,
     y: (p1.y + 3 * p2.y + 3 * p3.y + p4.y) / 8,
   };
+  const chord = subVectors(p4, p1);
+  if (!(vectorLength(chord) > CURVATURE_EPSILON)) {
+    return middle;
+  }
+  // The distance from the chord is extreme where the curve runs parallel to it:
+  // cross(chord, B'(t)) = 0, a quadratic in t.
+  const a = cross(chord, subVectors(p2, p1));
+  const b = cross(chord, subVectors(p3, p2));
+  const c = cross(chord, subVectors(p4, p3));
+  const quadratic = a - 2 * b + c;
+  const linear = 2 * (b - a);
+  const roots = [];
+  if (Math.abs(quadratic) > CURVATURE_EPSILON) {
+    const discriminant = linear * linear - 4 * quadratic * a;
+    if (discriminant >= 0) {
+      const root = Math.sqrt(discriminant);
+      roots.push(
+        (-linear + root) / (2 * quadratic),
+        (-linear - root) / (2 * quadratic)
+      );
+    }
+  } else if (Math.abs(linear) > CURVATURE_EPSILON) {
+    roots.push(-a / linear);
+  }
+  const reach = (point) => Math.abs(cross(chord, subVectors(point, p1)));
+  let best = null;
+  for (const t of roots) {
+    if (!(t > 0 && t < 1)) {
+      continue;
+    }
+    const point = pointAt(t);
+    if (!best || reach(point) > reach(best)) {
+      best = point;
+    }
+  }
+  return best && reach(best) > CURVATURE_EPSILON ? best : middle;
+}
+
+// Alt on the curvature gizmo: one handle takes the drag along its own line, and
+// the other changes length so the curvature at the leading handle's end stays
+// what it was. Pavel Kolchanov's Harmonic Move, applied to a segment rather than
+// to a selected handle.
+//
+// A cubic's curvature at its start is (2/3)·cross(P1−P0, P2−P1)/|P1−P0|³. With
+// both handle directions held, P1 = P0 + a·u and P2 = P3 + b·v, that is
+// (2/3)(cross(u, P3−P0) + b·cross(u, v))/a², linear in the far length b. So the
+// far length that keeps it is one division. Parallel handles make that division
+// by zero: no far length reaches the curvature, and the drag is declined.
+//
+// `lead` is 0 for the start handle and 1 for the end handle. Returns the two new
+// control points, or null where the drag cannot keep the curvature.
+export function calculateHarmonicHandleDrag(segmentPoints, delta, lead) {
+  if (lead === 1) {
+    const reversed = calculateHarmonicHandleDrag(
+      [...segmentPoints].reverse(),
+      delta,
+      0
+    );
+    return reversed ? [reversed[1], reversed[0]] : null;
+  }
+  const [p0, p1, p2, p3] = segmentPoints;
+  const nearLength = distance(p0, p1);
+  const farLength = distance(p3, p2);
+  if (!(nearLength > CURVATURE_EPSILON) || !(farLength > CURVATURE_EPSILON)) {
+    return null;
+  }
+  const u = normalizeVector(subVectors(p1, p0));
+  const v = normalizeVector(subVectors(p2, p3));
+  const alongChord = cross(u, subVectors(p3, p0));
+  const perFarUnit = cross(u, v);
+  if (Math.abs(perFarUnit) < CURVATURE_EPSILON) {
+    return null;
+  }
+  const kept = (alongChord + farLength * perFarUnit) / (nearLength * nearLength);
+  const nextNear = Math.max(nearLength + dotVector(delta, u), 0);
+  // Past zero the far handle would have to point backwards, which reverses the
+  // curve rather than keeping its curvature, so it stops on its point.
+  const nextFar = Math.max((kept * nextNear * nextNear - alongChord) / perFarUnit, 0);
+  return [
+    { x: p0.x + u.x * nextNear, y: p0.y + u.y * nextNear },
+    { x: p3.x + v.x * nextFar, y: p3.y + v.y * nextFar },
+  ];
+}
+
+// Which handle leads a harmonic drag: the one whose line the drag follows more
+// closely. The caller decides once and holds it for the whole drag, so the two
+// handles cannot trade places mid-gesture.
+export function harmonicDragLead(segmentPoints, delta) {
+  const [p0, p1, p2, p3] = segmentPoints;
+  const u = normalizeVector(subVectors(p1, p0));
+  const v = normalizeVector(subVectors(p2, p3));
+  return Math.abs(dotVector(delta, u)) >= Math.abs(dotVector(delta, v)) ? 0 : 1;
 }
 
 // Null when the two handle lines are parallel: there is no Tunni point to aim

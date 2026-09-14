@@ -5,7 +5,9 @@ import {
   calculateControlPointsFromCurvatureDelta,
   calculateCurvatureGizmoAxis,
   calculateCurvatureGizmoPoint,
+  calculateHarmonicHandleDrag,
   calculateSegmentTension,
+  harmonicDragLead,
   calculateTunniPoint,
   hasForwardTangentIntersection,
   shiftTensionsToMean,
@@ -159,16 +161,76 @@ describe("tunni-calculations: curvature gizmo", () => {
     return [Math.atan2(p2.y - p1.y, p2.x - p1.x), Math.atan2(p3.y - p4.y, p3.x - p4.x)];
   };
 
-  it("anchors on the curve at t = 0.5, not on the handle midpoint", () => {
-    const anchor = calculateCurvatureGizmoPoint(asymmetric);
-    const [p1, p2, p3, p4] = asymmetric;
-    expect(anchor.x).to.be.closeTo((p1.x + 3 * p2.x + 3 * p3.x + p4.x) / 8, 1e-9);
-    expect(anchor.y).to.be.closeTo((p1.y + 3 * p2.y + 3 * p3.y + p4.y) / 8, 1e-9);
+  const chordDistance = (points, point) => {
+    const [p1, , , p4] = points;
+    const chord = { x: p4.x - p1.x, y: p4.y - p1.y };
+    return (
+      Math.abs(chord.x * (point.y - p1.y) - chord.y * (point.x - p1.x)) /
+      Math.hypot(chord.x, chord.y)
+    );
+  };
+  const curveAt = (points, t) => {
+    const [p1, p2, p3, p4] = points;
+    const s = 1 - t;
+    const at = (key) =>
+      s * s * s * p1[key] +
+      3 * s * s * t * p2[key] +
+      3 * s * t * t * p3[key] +
+      t ** 3 * p4[key];
+    return { x: at("x"), y: at("y") };
+  };
 
+  it("anchors on the curve where it stands furthest from its chord", () => {
+    const anchor = calculateCurvatureGizmoPoint(asymmetric);
+    const reach = chordDistance(asymmetric, anchor);
+    for (let t = 0; t <= 1; t += 0.001) {
+      expect(chordDistance(asymmetric, curveAt(asymmetric, t))).to.be.at.most(
+        reach + 1e-9
+      );
+    }
     const handleMidpoint = calculateControlHandlePoint(asymmetric);
     expect(
       Math.hypot(anchor.x - handleMidpoint.x, anchor.y - handleMidpoint.y)
     ).to.be.above(1);
+  });
+
+  it("anchors a symmetric curve at its middle", () => {
+    const anchor = calculateCurvatureGizmoPoint(symmetric);
+    expect(anchor.x).to.be.closeTo(100, 1e-9);
+    expect(anchor.y).to.be.closeTo(60, 1e-9);
+  });
+
+  it("anchors an S curve on its larger bump", () => {
+    const sCurve = [
+      { x: 0, y: 0 },
+      { x: 30, y: 120 },
+      { x: 170, y: -40 },
+      { x: 200, y: 0 },
+    ];
+    const anchor = calculateCurvatureGizmoPoint(sCurve);
+    expect(anchor.y).to.be.above(0);
+    for (let t = 0; t <= 1; t += 0.001) {
+      expect(chordDistance(sCurve, curveAt(sCurve, t))).to.be.at.most(
+        chordDistance(sCurve, anchor) + 1e-9
+      );
+    }
+  });
+
+  it("anchors a straight or closed segment at t = 0.5", () => {
+    const straight = [
+      { x: 0, y: 0 },
+      { x: 50, y: 0 },
+      { x: 150, y: 0 },
+      { x: 200, y: 0 },
+    ];
+    expect(calculateCurvatureGizmoPoint(straight)).to.deep.equal({ x: 100, y: 0 });
+    const loop = [
+      { x: 0, y: 0 },
+      { x: 100, y: 100 },
+      { x: -100, y: 100 },
+      { x: 0, y: 0 },
+    ];
+    expect(calculateCurvatureGizmoPoint(loop)).to.deep.equal(curveAt(loop, 0.5));
   });
 
   it("takes its axis from the anchor toward the true Tunni point", () => {
@@ -523,5 +585,87 @@ describe("tunni-calculations: balanceSegment", () => {
     for (const [i, point] of forward.entries()) {
       expect(distance(point, backward[3 - i]), `point ${i}`).to.be.lessThan(1e-9);
     }
+  });
+});
+
+describe("tunni-calculations: harmonic handle drag", () => {
+  const segment = [
+    { x: 0, y: 0 },
+    { x: 20, y: 80 },
+    { x: 160, y: 60 },
+    { x: 200, y: 0 },
+  ];
+
+  // Signed curvature at one end, from the three control points nearest it.
+  const endCurvature = (points, atEnd) => {
+    const [a, b, c] = atEnd ? [points[3], points[2], points[1]] : points;
+    const first = { x: b.x - a.x, y: b.y - a.y };
+    const second = { x: c.x - b.x, y: c.y - b.y };
+    return (
+      ((2 / 3) * Math.abs(first.x * second.y - first.y * second.x)) /
+      Math.hypot(first.x, first.y) ** 3
+    );
+  };
+  const direction = (from, to) => {
+    const length = Math.hypot(to.x - from.x, to.y - from.y);
+    return { x: (to.x - from.x) / length, y: (to.y - from.y) / length };
+  };
+
+  it("leads with the handle the drag follows more closely", () => {
+    const u = direction(segment[0], segment[1]);
+    const v = direction(segment[3], segment[2]);
+    expect(harmonicDragLead(segment, { x: u.x * 10, y: u.y * 10 })).to.equal(0);
+    expect(harmonicDragLead(segment, { x: v.x * 10, y: v.y * 10 })).to.equal(1);
+  });
+
+  for (const lead of [0, 1]) {
+    it(`keeps the curvature at the leading end (lead ${lead}) across a sweep`, () => {
+      const anchor = lead === 0 ? 0 : 3;
+      const handle = lead === 0 ? 1 : 2;
+      const axis = direction(segment[anchor], segment[handle]);
+      const before = endCurvature(segment, lead === 1);
+      for (let step = -30; step <= 40; step += 0.5) {
+        const delta = { x: axis.x * step, y: axis.y * step };
+        const [c1, c2] = calculateHarmonicHandleDrag(segment, delta, lead);
+        const moved = [segment[0], c1, c2, segment[3]];
+        const lengths = [
+          Math.hypot(c1.x - segment[0].x, c1.y - segment[0].y),
+          Math.hypot(c2.x - segment[3].x, c2.y - segment[3].y),
+        ];
+        const original = Math.hypot(
+          segment[handle].x - segment[anchor].x,
+          segment[handle].y - segment[anchor].y
+        );
+        expect(lengths[lead]).to.be.closeTo(original + step, 1e-9);
+        if (lengths[1 - lead] > 0) {
+          expect(endCurvature(moved, lead === 1)).to.be.closeTo(before, 1e-9);
+        }
+      }
+    });
+  }
+
+  it("keeps both handles on their own lines", () => {
+    const [c1, c2] = calculateHarmonicHandleDrag(segment, { x: 7, y: 11 }, 0);
+    const cross = (a, b) => a.x * b.y - a.y * b.x;
+    const u = direction(segment[0], segment[1]);
+    const v = direction(segment[3], segment[2]);
+    expect(cross(u, { x: c1.x - segment[0].x, y: c1.y - segment[0].y })).to.be.closeTo(
+      0,
+      1e-9
+    );
+    expect(cross(v, { x: c2.x - segment[3].x, y: c2.y - segment[3].y })).to.be.closeTo(
+      0,
+      1e-9
+    );
+  });
+
+  it("declines parallel handles, where no length keeps the curvature", () => {
+    const parallel = [
+      { x: 0, y: 0 },
+      { x: 0, y: 50 },
+      { x: 100, y: 50 },
+      { x: 100, y: 0 },
+    ];
+    expect(calculateHarmonicHandleDrag(parallel, { x: 0, y: 10 }, 0)).to.equal(null);
   });
 });

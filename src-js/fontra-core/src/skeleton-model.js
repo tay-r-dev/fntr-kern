@@ -32,7 +32,6 @@ import {
 } from "./serif-geometry.js";
 import {
   areTensionsEqualized,
-  calculateControlHandlePoint,
   calculateControlPointsFromCurvatureDelta,
   calculateCurvatureGizmoPoint,
   calculateEqualizedControlPoints,
@@ -1017,7 +1016,7 @@ export function segmentToTunniPoints(segment) {
 
 export function calculateSkeletonTunniPoint(segment) {
   const points = segmentToTunniPoints(segment);
-  return points ? calculateControlHandlePoint(points) : null;
+  return points ? calculateCurvatureGizmoPoint(points) : null;
 }
 
 export function calculateSkeletonTrueTunniPoint(segment) {

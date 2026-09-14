@@ -108,7 +108,7 @@ describe("skeleton Tunni geometry helpers", () => {
   it("calculates midpoint and true Tunni points for a cubic skeleton segment", () => {
     const segment = buildSkeletonTunniSegments(makeIntersectingContour())[0];
 
-    expect(calculateSkeletonTunniPoint(segment)).to.deep.equal({ x: 50, y: 50 });
+    expect(calculateSkeletonTunniPoint(segment)).to.deep.equal({ x: 50, y: 37.5 });
     expect(roundPoint(calculateSkeletonTrueTunniPoint(segment))).to.deep.equal({
       x: 50,
       y: 100,
@@ -211,7 +211,7 @@ describe("skeleton Tunni hit testing", () => {
   it("returns midpoint hits for midpoint-only mode and ignores true Tunni points", () => {
     const skeletonData = { contours: [makeIntersectingContour()] };
 
-    const hit = skeletonTunniHitTest({ x: 50, y: 50 }, 5, skeletonData, {
+    const hit = skeletonTunniHitTest({ x: 50, y: 37.5 }, 5, skeletonData, {
       midpointOnly: true,
     });
     const trueHit = skeletonTunniHitTest({ x: 50, y: 100 }, 5, skeletonData, {
@@ -224,7 +224,7 @@ describe("skeleton Tunni hit testing", () => {
       contourIndex: 0,
       segmentIndex: 0,
     });
-    expect(hit.tunniPoint).to.deep.equal({ x: 50, y: 50 });
+    expect(hit.tunniPoint).to.deep.equal({ x: 50, y: 37.5 });
     expect(trueHit).to.equal(null);
   });
 
