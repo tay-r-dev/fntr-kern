@@ -17,6 +17,7 @@ P1 means a wrong result or serious scaling failure in a supported workflow. P2 m
 | `src-js/views-kerning/src/kerning.js` | 8,330 | Run, cache, source, table, class, preview and undo paths reviewed; K1–K7 below. Related worker/cache findings are included here. |
 | `src-js/fontra-core/src/skeleton-generator.js` | 6,743 | Generation pipeline, cleanup, corners, cap construction, provenance and generation-option callers inspected; S1–S6. Static review, not a proof of the numerical solver. |
 | `src-js/fontra-core/src/skeleton-model.js` | 5,859 | Schema, topology operations, ID transport, width/rib rules, generated-target lookup, transforms, rounding and cache ownership inspected; M1–M6. |
+| `src-js/views-editor/src/editor.js` | 4,307 | Fork diff and surrounding clipboard, delete, bulk metrics, tool lifecycle and registration code inspected; E1–E4, S2 and M3. |
 | Remaining feature files | — | Pending; final coverage inventory will distinguish deep review from supporting inspection. |
 
 ## 1. Kerning view — kerning.js
@@ -210,6 +211,44 @@ Recommendation: pass the source's units mode, round only absolute lengths, and k
 There is no reason to replace every small side/role conditional with a class hierarchy. The useful simplification is to make data ownership and repeated derived work explicit. Existing finite-value checks and refusals at unsupported geometry should remain.
 
 Review limits: source inspection only. Geometry helpers were traced through their consumers; this is not an exhaustive proof of all setter combinations or interpolation behavior.
+
+## 4. Editor integration — editor.js
+
+The review here targets the fork diff, not an audit of all inherited editor behavior. Existing window listeners and the root resize observer belong to the page-lifetime upstream controller; their existence alone is not evidence of a new memory leak. New tool classes are instantiated with the editor, rather than repeatedly on every selection.
+
+### E1 — P2, confirmed: Cut copies a skeleton but does not remove it
+
+Locations: `editor.js:1701–1744`, `1892–1955`, `1979–2083`, `2600–2603`, `2681`.
+
+The clipboard sidecar copies contours selected through skeleton points, including when `doCut` is true. The actual cut helper only parses ordinary points, components, anchors, guidelines and background images. It never removes skeleton points or contours. Cut therefore behaves like Copy for a skeleton and then clears its selection. Alt-delete routes through the same helper and explicitly bypasses ordinary skeleton deletion, so it also leaves those points intact.
+
+Recommendation: decide whether a skeleton cut means selected points or whole copied contours, then perform the matching removal through the existing skeleton edit path in the same undo operation. Keep clipboard selection and removal scope identical.
+
+### E2 — P2, confirmed: pasted skeleton layers do not follow the regular layer-matching policy
+
+Locations: `editor.js:2354–2377`, `2435–2440`, `2458–2461`.
+
+Ordinary pasted outlines select a source layer by name, then location string, then first-layer fallback. The skeleton sidecar uses name, then first-layer fallback only. Copying between glyphs with equivalent source locations but different layer names can paste each ordinary outline from its correct source while giving every target layer the first source's skeleton. Subsequent regeneration follows that mismatched skeleton.
+
+Recommendation: resolve one clipboard source-layer identity for each target layer and use it for both ordinary data and the skeleton sidecar. Do not maintain parallel fallback policies.
+
+### E3 — P2/P3, functioning but wasteful: repeated parsing and complete regeneration within one delete
+
+Locations: `editor.js:2554–2574`, `2640–2711`.
+
+The delete handler parses the same selection three times. More significantly, a mixed skeleton-point/insertion deletion makes a full `editSkeleton` call for insertions and another for points, per layer. Each call clones, normalizes, regenerates the full skeleton, remaps generated contours and records changes. Only the final outline is needed. The intermediate generation also increases the complexity of reference-address handling.
+
+Recommendation: parse once, resolve both sets against one pre-edit reference, and apply both mutations in one skeleton edit per layer. This preserves one undo operation while eliminating a complete generation pass. Marker deletion currently returns early and clears the whole selection; if mixed marker/object selections are supported, that path must either handle the remaining selected objects or preserve their selection rather than silently deselecting undeleted objects.
+
+### E4 — P2, static scalability: font-wide metrics update repeatedly sweeps unchanged dependencies
+
+Locations: `editor.js:3436–3540`.
+
+The command loads every glyph sequentially to identify keyed glyphs, then resolves every keyed glyph on each pass, up to the full glyph count. A dependency chain settles one link per pass. In unfavorable order this means O(G²) glyph-resolution work and repeated backend commits/invalidations, while independent keyed glyphs are rechecked unnecessarily. The explicit confirmation and lack of multi-glyph undo are documented product choices; those are not reported as accidental defects.
+
+Recommendation: derive the metrics dependency graph once, process acyclic dependencies in order, and isolate cycles according to the existing resolver's policy. Batch independent loads with a concurrency limit rather than serially awaiting each glyph or launching an unbounded `Promise.all`. Report affected glyphs, and retain progress/cancellation if the operation remains long-running. No runtime timing is claimed.
+
+The module-global generation-options reader is covered by S2; insertion paste IDs are covered by M3. Avoid treating the same issue as an additional independent finding here.
 
 ## Validation completed before the code-only request
 
