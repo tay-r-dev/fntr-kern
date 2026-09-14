@@ -91,17 +91,18 @@ import {
   strokeRoundNode,
   strokeSquareNode,
 } from "./visualization-layer-definitions.js";
-// Import Tunni functions for integration with pointer tool
+import { findTunniGizmo, TunniGizmoReveal } from "./tunni-gizmos.js";
 import {
   equalizeSkeletonTunniTensions,
   handleGeneratedTunniCommand,
   handleGeneratedTunniDrag,
   handleSkeletonTunniDrag,
-  handleTrueTunniPointMouseDown,
   handleTunniDrag,
-  handleTunniPointMouseDown,
-  tunniHoverResult,
 } from "./tunni-interactions.js";
+
+// A Tunni gizmo starts to show once the cursor rests within this many click
+// margins of it; a click still has to land within one.
+const TUNNI_REVEAL_RADIUS_FACTOR = 2;
 
 const transformHandleMargin = 6;
 const transformHandleSize = 8;
@@ -154,6 +155,23 @@ export class PointerTool extends BaseTool {
     this.independentRibMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
     this._boundRealtimeModifierWindowBlur = null;
+    // The drawing layers read the reveal off the scene model.
+    this.tunniGizmoReveal = new TunniGizmoReveal(() =>
+      this.canvasController.requestUpdate()
+    );
+    this.sceneModel.tunniGizmoReveal = this.tunniGizmoReveal;
+  }
+
+  _findTunniGizmo(point, radius, positionedGlyph) {
+    return findTunniGizmo(
+      { x: point.x - positionedGlyph.x, y: point.y - positionedGlyph.y },
+      radius,
+      {
+        path: positionedGlyph.glyph.path,
+        skeletonData: this.sceneModel._getEditLayerSkeletonData(positionedGlyph),
+        settingsModel: this.editor.visualizationLayersSettings.model,
+      }
+    );
   }
 
   handleHover(event) {
@@ -206,22 +224,16 @@ export class PointerTool extends BaseTool {
     this.sceneController.sceneModel.showTransformSelection = true;
 
     const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
-    if (positionedGlyph) {
-      const glyphPoint = {
-        x: point.x - positionedGlyph.x,
-        y: point.y - positionedGlyph.y,
-      };
-      const tunni = tunniHoverResult(
-        glyphPoint,
-        size,
-        positionedGlyph,
-        this.editor.visualizationLayersSettings,
-        this.sceneModel
-      );
-      if (tunni) {
-        this.canvasController.canvas.style.cursor = tunni.cursor;
-        return;
-      }
+    const gizmo = positionedGlyph
+      ? this._findTunniGizmo(point, size * TUNNI_REVEAL_RADIUS_FACTOR, positionedGlyph)
+      : null;
+    this.tunniGizmoReveal.hover(gizmo?.key ?? null);
+    if (gizmo && gizmo.distance <= size && this.tunniGizmoReveal.isArmed(gizmo.key)) {
+      // Crosshair moves on-curve points, pointer reshapes between them.
+      this.canvasController.canvas.style.cursor = /on-curve|true-tunni/.test(gizmo.type)
+        ? "crosshair"
+        : "pointer";
+      return;
     }
 
     const resizeHandle = this.getResizeHandle(event, sceneController.selection);
@@ -237,9 +249,83 @@ export class PointerTool extends BaseTool {
     } else if (resizeHandle) {
       this.setCursorForResizeHandle(resizeHandle);
     } else {
-      // Tunni-point hover cursors are handled earlier via tunniHoverResult(),
-      // which sets the cursor and returns before reaching this point.
+      // Tunni gizmo hover cursors are set earlier, which returns before
+      // reaching this point.
       this.setCursor();
+    }
+  }
+
+  async _handleTunniGizmoDrag(gizmo, eventStream, initialEvent) {
+    const sceneController = this.sceneController;
+    if (gizmo.kind === "generated") {
+      if (initialEvent.detail >= 2) {
+        await handleGeneratedTunniCommand({
+          sceneController,
+          gizmoHit: gizmo,
+          command: "reset",
+        });
+        return;
+      }
+      // Equalizing the two handles is a click on the curvature gizmo, so the
+      // modifiers must not cost the drag: once the pointer moves this falls
+      // through to the ordinary curvature drag.
+      if (
+        initialEvent.ctrlKey &&
+        initialEvent.shiftKey &&
+        gizmo.type === "generated-curvature" &&
+        !(await shouldInitiateDrag(eventStream, initialEvent))
+      ) {
+        await handleGeneratedTunniCommand({
+          sceneController,
+          gizmoHit: gizmo,
+          command: "equalize",
+        });
+        return;
+      }
+      // The readout layer re-reads the segment from live geometry each frame,
+      // so it shows the curvature the drag is arriving at even when the label
+      // layer is switched off.
+      this.sceneModel.generatedCurvatureDragTarget =
+        gizmo.type === "generated-curvature"
+          ? makeGeneratedCurvatureDragTarget(gizmo)
+          : null;
+      try {
+        await handleGeneratedTunniDrag({
+          sceneController,
+          eventStream,
+          initialEvent,
+          gizmoHit: gizmo,
+        });
+      } finally {
+        this.sceneModel.generatedCurvatureDragTarget = null;
+      }
+      return;
+    }
+
+    if (gizmo.kind === "skeleton") {
+      if (gizmo.type === "tunni" && initialEvent.ctrlKey && initialEvent.shiftKey) {
+        await equalizeSkeletonTunniTensions({ sceneController, tunniHit: gizmo });
+        return;
+      }
+      this.sceneModel.tunniDragTarget = makeSkeletonTunniDragTarget(gizmo);
+      try {
+        await handleSkeletonTunniDrag({
+          sceneController,
+          eventStream,
+          initialEvent,
+          tunniHit: gizmo,
+        });
+      } finally {
+        this.sceneModel.tunniDragTarget = null;
+      }
+      return;
+    }
+
+    this.sceneModel.tunniDragTarget = makePathTunniDragTarget(gizmo);
+    try {
+      await handleTunniDrag({ sceneController, eventStream, initialEvent, gizmo });
+    } finally {
+      this.sceneModel.tunniDragTarget = null;
     }
   }
 
@@ -293,154 +379,24 @@ export class PointerTool extends BaseTool {
     const point = sceneController.localPoint(initialEvent);
     const size = sceneController.mouseClickMargin;
     const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
-    const isSkeletonTunniLayerActive =
-      this.editor.visualizationLayersSettings.model["fontra.skeleton.tunni"];
-    const isGeneratedTunniLayerActive =
-      this.editor.visualizationLayersSettings.model["fontra.skeleton.generated-tunni"];
-
-    if (initialEvent.ctrlKey && initialEvent.shiftKey && positionedGlyph) {
-      const tunniHit = this.sceneModel.skeletonTunniAtPoint(
-        point,
-        size * 2,
-        positionedGlyph,
-        { midpointOnly: true }
-      );
-      if (tunniHit) {
-        await equalizeSkeletonTunniTensions({
-          sceneController,
-          tunniHit,
-        });
-        return;
-      }
-    }
-
-    if (isSkeletonTunniLayerActive && positionedGlyph) {
-      const skeletonPointSelection = this.sceneModel.skeletonPointAtPoint(
-        point,
-        size,
-        parseSelection(sceneController.selection)
-      );
-      if (!skeletonPointSelection.size) {
-        const tunniHit = this.sceneModel.skeletonTunniAtPoint(
+    // A gizmo is reached only once it has shown. A skeleton point under the
+    // pointer outranks the skeleton's own gizmos.
+    const gizmo = positionedGlyph
+      ? this._findTunniGizmo(point, size, positionedGlyph)
+      : null;
+    if (
+      gizmo &&
+      this.tunniGizmoReveal.isArmed(gizmo.key) &&
+      !(
+        gizmo.kind === "skeleton" &&
+        this.sceneModel.skeletonPointAtPoint(
           point,
           size,
-          positionedGlyph
-        );
-        if (tunniHit) {
-          this.sceneModel.tunniDragTarget = makeSkeletonTunniDragTarget(tunniHit);
-          try {
-            await handleSkeletonTunniDrag({
-              sceneController,
-              eventStream,
-              initialEvent,
-              tunniHit,
-            });
-          } finally {
-            this.sceneModel.tunniDragTarget = null;
-          }
-          return;
-        }
-      }
-    }
-
-    // The generated contours' own gizmos. Checked after the skeleton's Tunni
-    // gizmos so a skeleton control is never stolen by an outline control lying
-    // underneath it, and before path selection so a click on a gizmo does not
-    // fall through to selecting the outline point behind it.
-    if (isGeneratedTunniLayerActive && positionedGlyph) {
-      const gizmoHit = this.sceneModel.generatedTunniAtPoint(
-        point,
-        size,
-        positionedGlyph
-      );
-      if (gizmoHit) {
-        if (initialEvent.detail >= 2) {
-          await handleGeneratedTunniCommand({
-            sceneController,
-            gizmoHit,
-            command: "reset",
-          });
-          return;
-        }
-        // Equalizing the two handles is a click on the curvature gizmo, so the
-        // modifiers must not cost the drag: once the pointer moves this falls
-        // through to the ordinary curvature drag. The on-curve gizmo has no
-        // modified gesture at all.
-        if (
-          initialEvent.ctrlKey &&
-          initialEvent.shiftKey &&
-          gizmoHit.type === "generated-curvature" &&
-          !(await shouldInitiateDrag(eventStream, initialEvent))
-        ) {
-          await handleGeneratedTunniCommand({
-            sceneController,
-            gizmoHit,
-            command: "equalize",
-          });
-          return;
-        }
-        // The readout layer re-reads the segment from live geometry each frame,
-        // so it shows the curvature the drag is arriving at even when the label
-        // layer is switched off.
-        this.sceneModel.generatedCurvatureDragTarget =
-          gizmoHit.type === "generated-curvature"
-            ? makeGeneratedCurvatureDragTarget(gizmoHit)
-            : null;
-        try {
-          await handleGeneratedTunniDrag({
-            sceneController,
-            eventStream,
-            initialEvent,
-            gizmoHit,
-          });
-        } finally {
-          this.sceneModel.generatedCurvatureDragTarget = null;
-        }
-        return;
-      }
-    }
-
-    const isTunniCombinedLayerActive =
-      this.editor.visualizationLayersSettings.model["fontra.tunni.handle"];
-    const isTunniActualLayerActive =
-      this.editor.visualizationLayersSettings.model["fontra.tunni.point"];
-    let tunniInitialState = null;
-    let isTrueTunniPoint = false;
-
-    if (isTunniCombinedLayerActive || isTunniActualLayerActive) {
-      if (isTunniActualLayerActive) {
-        tunniInitialState = handleTrueTunniPointMouseDown(
-          initialEvent,
-          sceneController,
-          this.editor.visualizationLayersSettings
-        );
-        if (tunniInitialState) {
-          isTrueTunniPoint = true;
-        }
-      }
-
-      if (!tunniInitialState && isTunniCombinedLayerActive) {
-        tunniInitialState = handleTunniPointMouseDown(
-          initialEvent,
-          sceneController,
-          this.editor.visualizationLayersSettings
-        );
-      }
-    }
-
-    if (tunniInitialState) {
-      this.sceneModel.tunniDragTarget = makePathTunniDragTarget(tunniInitialState);
-      try {
-        await handleTunniDrag({
-          sceneController,
-          eventStream,
-          initialEvent,
-          isTrueTunniPoint,
-          tunniInitialState,
-        });
-      } finally {
-        this.sceneModel.tunniDragTarget = null;
-      }
+          parseSelection(sceneController.selection)
+        ).size
+      )
+    ) {
+      await this._handleTunniGizmoDrag(gizmo, eventStream, initialEvent);
       return;
     }
 
@@ -1609,8 +1565,8 @@ function isGeneratedHandleAdjustBehavior(name) {
 // Identify the segment under a Tunni drag so the readout layer can re-read it
 // from live geometry each frame. Path segments are addressed by their four
 // parent point indices, skeleton segments by contour + endpoint ids.
-function makePathTunniDragTarget(tunniInitialState) {
-  const indices = tunniInitialState?.selectedSegment?.parentPointIndices;
+function makePathTunniDragTarget(gizmo) {
+  const indices = gizmo?.segment?.parentPointIndices;
   return indices?.length === 4 ? { kind: "path", pointIndices: [...indices] } : null;
 }
 

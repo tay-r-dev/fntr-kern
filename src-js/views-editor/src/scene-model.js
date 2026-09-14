@@ -27,7 +27,6 @@ import {
   buildGeneratedTunniSegments,
   findGeneratedPathAddress,
   formatGeneratedCurvature,
-  generatedTunniHitTest,
   getGeneratedPathContourIndices,
   getGeneratedSegmentCurvature,
   getSkeletonData,
@@ -39,7 +38,6 @@ import {
   parseEditableGeneratedHandleKey,
   parseEditableGeneratedPointKey,
   resolveEditableGeneratedTarget,
-  skeletonTunniHitTest,
 } from "@fontra/core/skeleton-model.js";
 import { decomposedToTransform } from "@fontra/core/transform.js";
 import { calculateCurvatureGizmoPoint } from "@fontra/core/tunni-calculations.js";
@@ -1537,55 +1535,6 @@ d ${measure.distance.toFixed(1)}`,
       }
     }
     return null;
-  }
-
-  skeletonTunniAtPoint(
-    point,
-    size,
-    positionedGlyph = this.getSelectedPositionedGlyph(),
-    options = {}
-  ) {
-    if (!positionedGlyph) {
-      return null;
-    }
-    const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
-    if (!skeletonData?.contours?.length) {
-      return null;
-    }
-
-    const glyphPoint = {
-      x: point.x - positionedGlyph.x,
-      y: point.y - positionedGlyph.y,
-    };
-    return skeletonTunniHitTest(glyphPoint, size, skeletonData, options);
-  }
-
-  // The gizmos on the GENERATED contours, as opposed to skeletonTunniAtPoint,
-  // which targets the skeleton itself.
-  generatedTunniAtPoint(
-    point,
-    size,
-    positionedGlyph = this.getSelectedPositionedGlyph(),
-    options = {}
-  ) {
-    if (!positionedGlyph?.glyph?.path) {
-      return null;
-    }
-    const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
-    if (!skeletonData?.generated?.length) {
-      return null;
-    }
-    const glyphPoint = {
-      x: point.x - positionedGlyph.x,
-      y: point.y - positionedGlyph.y,
-    };
-    return generatedTunniHitTest(
-      glyphPoint,
-      size,
-      skeletonData,
-      positionedGlyph.glyph.path,
-      options
-    );
   }
 
   skeletonRibSelectionAtPoint(point, size, parsedCurrentSelection) {

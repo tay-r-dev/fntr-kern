@@ -25,6 +25,7 @@ import {
   makeSkeletonInsertionKey,
   skeletonInsertionKeyFromSelectionItem,
   makeSkeletonRibKey,
+  segmentToTunniPoints,
 } from "@fontra/core/skeleton-model.js";
 import {
   calculateCurvatureGizmoAxis,
@@ -33,10 +34,22 @@ import {
 import { parseSelection } from "@fontra/core/utils.ts";
 
 import {
+  generatedTunniSegmentId,
+  isGeneratedGizmoLive,
+  skeletonTunniSegmentId,
+  TUNNI_SETTINGS,
+  tunniGizmoKey,
+} from "./tunni-gizmos.js";
+import {
+  drawDiamondNode,
+  drawRevealedTunniGizmo,
+  drawTunniTensionLabel,
   fillRoundNode,
   glyphSelector,
   registerVisualizationLayerDefinition,
   strokeLine,
+  TUNNI_GIZMO_COLORS,
+  TUNNI_GIZMO_COLORS_DARK,
 } from "./visualization-layer-definitions.js";
 
 // The layer the skeleton is being edited on. Its skeleton section and its path
@@ -264,20 +277,6 @@ function strokeRoundNode(context, point, size) {
 
 function strokeSquareNode(context, point, size) {
   context.strokeRect(point.x - size / 2, point.y - size / 2, size, size);
-}
-
-function drawDiamondNode(context, point, size, fill) {
-  const half = size / 2;
-  context.beginPath();
-  context.moveTo(point.x, point.y - half);
-  context.lineTo(point.x + half, point.y);
-  context.lineTo(point.x, point.y + half);
-  context.lineTo(point.x - half, point.y);
-  context.closePath();
-  if (fill) {
-    context.fill();
-  }
-  context.stroke();
 }
 
 function fillSquareNode(context, point, size) {
@@ -746,124 +745,152 @@ registerVisualizationLayerDefinition({
   },
 });
 
+// The Tunni gizmos on the skeleton's centerline. Like the ordinary curve's, each
+// shows only once the cursor has rested near it (tunni-gizmos.js).
 registerVisualizationLayerDefinition({
-  identifier: "fontra.skeleton.tunni",
-  name: "Skeleton Tunni",
+  identifier: TUNNI_SETTINGS.skeletonCurvature,
+  name: "Skeleton Tunni curvature gizmos",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: true,
+  zIndex: 547,
+  screenParameters: { gizmoSize: 7 },
+  colors: TUNNI_GIZMO_COLORS,
+  colorsDarkMode: TUNNI_GIZMO_COLORS_DARK,
+  draw: (context, positionedGlyph, parameters, model) => {
+    context.fillStyle = parameters.gizmoColor;
+    forEachSkeletonContour(positionedGlyph, model, (contour) => {
+      for (const segment of buildSkeletonTunniSegments(contour)) {
+        const point = calculateSkeletonTunniPoint(segment);
+        if (!point) {
+          continue;
+        }
+        drawRevealedTunniGizmo(
+          context,
+          model,
+          tunniGizmoKey(
+            "skeleton",
+            "curvature",
+            skeletonTunniSegmentId(contour, segment)
+          ),
+          () => fillRoundNode(context, point, parameters.gizmoSize)
+        );
+      }
+    });
+  },
+});
+
+registerVisualizationLayerDefinition({
+  identifier: TUNNI_SETTINGS.skeletonOnCurve,
+  name: "Skeleton Tunni on-curve gizmos",
   selectionFunc: glyphSelector("editing"),
   userSwitchable: true,
   defaultOn: false,
   zIndex: 547,
-  screenParameters: {
-    lineDash: [4, 4],
-    midpointSize: 7,
-    strokeWidth: 1,
-    truePointSize: 8,
-  },
-  colors: {
-    lineColor: "rgba(34, 121, 210, 0.55)",
-    midpointColor: "rgba(0, 185, 220, 0.95)",
-    truePointColor: "rgba(255, 128, 0, 0.95)",
-  },
-  colorsDarkMode: {
-    lineColor: "rgba(95, 178, 255, 0.65)",
-    midpointColor: "rgba(77, 213, 236, 1)",
-    truePointColor: "rgba(255, 174, 68, 1)",
-  },
+  screenParameters: { gizmoSize: 8, strokeWidth: 1 },
+  colors: { gizmoColor: "rgba(255, 128, 0, 0.95)" },
+  colorsDarkMode: { gizmoColor: "rgba(255, 174, 68, 1)" },
   draw: (context, positionedGlyph, parameters, model) => {
-    context.save();
+    context.fillStyle = parameters.gizmoColor;
+    context.strokeStyle = parameters.gizmoColor;
     context.lineWidth = parameters.strokeWidth;
-    context.strokeStyle = parameters.lineColor;
-    context.setLineDash(parameters.lineDash);
     forEachSkeletonContour(positionedGlyph, model, (contour) => {
       for (const segment of buildSkeletonTunniSegments(contour)) {
-        if (segment.controlPoints.length !== 2) {
+        const point = calculateSkeletonTrueTunniPoint(segment);
+        if (!point) {
           continue;
         }
-        const [control1, control2] = segment.controlPoints;
-        strokeLine(
+        drawRevealedTunniGizmo(
           context,
-          segment.startPoint.x,
-          segment.startPoint.y,
-          control1.x,
-          control1.y
+          model,
+          tunniGizmoKey(
+            "skeleton",
+            "on-curve",
+            skeletonTunniSegmentId(contour, segment)
+          ),
+          () => drawDiamondNode(context, point, parameters.gizmoSize, true)
         );
-        strokeLine(
-          context,
-          segment.endPoint.x,
-          segment.endPoint.y,
-          control2.x,
-          control2.y
-        );
-        strokeLine(context, control1.x, control1.y, control2.x, control2.y);
       }
     });
-    context.setLineDash([]);
-    forEachSkeletonContour(positionedGlyph, model, (contour) => {
-      for (const segment of buildSkeletonTunniSegments(contour)) {
-        if (segment.controlPoints.length !== 2) {
-          continue;
-        }
-        const midpoint = calculateSkeletonTunniPoint(segment);
-        const truePoint = calculateSkeletonTrueTunniPoint(segment);
-        if (midpoint) {
-          context.fillStyle = parameters.midpointColor;
-          fillRoundNode(context, midpoint, parameters.midpointSize);
-        }
-        if (truePoint) {
-          context.fillStyle = parameters.truePointColor;
-          drawDiamondNode(context, truePoint, parameters.truePointSize, true);
-        }
-      }
-    });
-    context.restore();
   },
 });
 
-// The two gizmos on a GENERATED segment (D8). Deliberately a separate layer
-// from fontra.skeleton.tunni: that one controls the skeleton, this one controls
-// the outline the skeleton produced, and a designer switches between the two
-// questions independently.
 registerVisualizationLayerDefinition({
-  identifier: "fontra.skeleton.generated-tunni",
-  name: "Generated contour gizmos",
+  identifier: TUNNI_SETTINGS.skeletonLabels,
+  name: "Skeleton Tunni labels",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: false,
+  zIndex: 548,
+  screenParameters: { labelOffset: 13, labelInset: 5 },
+  colors: { labelColor: "#2E4FBA" },
+  colorsDarkMode: { labelColor: "#7B97F2" },
+  draw: (context, positionedGlyph, parameters, model) => {
+    forEachSkeletonContour(positionedGlyph, model, (contour) => {
+      for (const segment of buildSkeletonTunniSegments(contour)) {
+        const points = segmentToTunniPoints(segment);
+        if (points) {
+          drawTunniTensionLabel(context, points, parameters);
+        }
+      }
+    });
+  },
+});
+
+// Gizmo mode for the GENERATED contours. A setting with nothing of its own to
+// draw: on, the gizmos below edit the outline and the generated points and
+// handles cannot be dragged directly; off, the reverse. tunni-gizmos.js keeps it
+// and the two gizmo switches consistent.
+registerVisualizationLayerDefinition({
+  identifier: TUNNI_SETTINGS.generatedMode,
+  name: "Generated contour gizmo mode",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: true,
+  zIndex: 548,
+  draw: () => {},
+});
+
+// The two gizmos on a GENERATED segment (D8). Separate layers from the
+// skeleton's: those control the skeleton, these control the outline the skeleton
+// produced, and a designer switches between the two questions independently.
+registerVisualizationLayerDefinition({
+  identifier: TUNNI_SETTINGS.generatedCurvature,
+  name: "Generated contour curvature gizmos",
   selectionFunc: glyphSelector("editing"),
   userSwitchable: true,
   defaultOn: true,
   zIndex: 548,
   screenParameters: {
     lineDash: [3, 3],
-    curvatureSize: 7,
+    gizmoSize: 7,
     strokeWidth: 1,
-    onCurveSize: 8,
     curvatureAxisLength: 18,
   },
-  colors: {
-    axisColor: "rgba(0, 160, 120, 0.5)",
-    curvatureColor: "rgba(0, 175, 130, 0.95)",
-    onCurveColor: "rgba(210, 90, 190, 0.95)",
-  },
+  colors: { ...TUNNI_GIZMO_COLORS, axisColor: "rgba(46, 79, 186, 0.5)" },
   colorsDarkMode: {
-    axisColor: "rgba(80, 220, 180, 0.6)",
-    curvatureColor: "rgba(96, 232, 190, 1)",
-    onCurveColor: "rgba(240, 140, 220, 1)",
+    ...TUNNI_GIZMO_COLORS_DARK,
+    axisColor: "rgba(123, 151, 242, 0.6)",
   },
   draw: (context, positionedGlyph, parameters, model) => {
-    const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
-    const segments = buildGeneratedTunniSegments(
-      skeletonData,
-      positionedGlyph.glyph.path
-    );
-    if (!segments.length) {
+    if (
+      !isGeneratedGizmoLive(
+        model.visualizationLayersSettings?.model,
+        TUNNI_SETTINGS.generatedCurvature
+      )
+    ) {
       return;
     }
-    context.save();
+    const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
     context.lineWidth = parameters.strokeWidth;
     context.strokeStyle = parameters.axisColor;
-    context.setLineDash(parameters.lineDash);
-    // The axis first, so both nodes sit on top of it. Drawing the axis at all
-    // is what makes the curvature control legible: it is the direction the
-    // curve swells in, and without it the node looks free to go anywhere.
-    for (const segment of segments) {
+    context.fillStyle = parameters.gizmoColor;
+    for (const segment of buildGeneratedTunniSegments(
+      skeletonData,
+      positionedGlyph.glyph.path
+    )) {
+      // A handle-locked side has no curvature gizmo: the control is gone, not
+      // merely inert.
       if (segment.handlesLocked) {
         continue;
       }
@@ -872,36 +899,71 @@ registerVisualizationLayerDefinition({
         segment.points,
         generatedSegmentHandleAxes(segment.provenance)
       );
-      if (anchor && axis) {
-        strokeLine(
-          context,
-          anchor.x,
-          anchor.y,
-          anchor.x + axis.x * parameters.curvatureAxisLength,
-          anchor.y + axis.y * parameters.curvatureAxisLength
-        );
-      }
+      drawRevealedTunniGizmo(
+        context,
+        model,
+        tunniGizmoKey("generated", "curvature", generatedTunniSegmentId(segment)),
+        () => {
+          // The axis is the direction the curve swells in; without it the node
+          // looks free to go anywhere.
+          if (axis) {
+            context.setLineDash(parameters.lineDash);
+            strokeLine(
+              context,
+              anchor.x,
+              anchor.y,
+              anchor.x + axis.x * parameters.curvatureAxisLength,
+              anchor.y + axis.y * parameters.curvatureAxisLength
+            );
+            context.setLineDash([]);
+          }
+          fillRoundNode(context, anchor, parameters.gizmoSize);
+        }
+      );
     }
-    context.setLineDash([]);
-    for (const segment of segments) {
+  },
+});
+
+registerVisualizationLayerDefinition({
+  identifier: TUNNI_SETTINGS.generatedOnCurve,
+  name: "Generated contour on-curve gizmos",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: false,
+  zIndex: 548,
+  screenParameters: { gizmoSize: 8, strokeWidth: 1 },
+  colors: { gizmoColor: "rgba(210, 90, 190, 0.95)" },
+  colorsDarkMode: { gizmoColor: "rgba(240, 140, 220, 1)" },
+  draw: (context, positionedGlyph, parameters, model) => {
+    if (
+      !isGeneratedGizmoLive(
+        model.visualizationLayersSettings?.model,
+        TUNNI_SETTINGS.generatedOnCurve
+      )
+    ) {
+      return;
+    }
+    const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
+    context.lineWidth = parameters.strokeWidth;
+    context.strokeStyle = parameters.gizmoColor;
+    context.fillStyle = parameters.gizmoColor;
+    for (const segment of buildGeneratedTunniSegments(
+      skeletonData,
+      positionedGlyph.glyph.path
+    )) {
       const gizmoPoint = segment.onCurveMovable?.some(Boolean)
         ? calculateGeneratedOnCurveGizmoPoint(segment)
         : null;
-      if (gizmoPoint) {
-        context.fillStyle = parameters.onCurveColor;
-        drawDiamondNode(context, gizmoPoint, parameters.onCurveSize, true);
+      if (!gizmoPoint) {
+        continue;
       }
-      // A handle-locked side has no curvature gizmo: the control is gone, not
-      // merely inert.
-      const anchor = segment.handlesLocked
-        ? null
-        : calculateCurvatureGizmoPoint(segment.points);
-      if (anchor) {
-        context.fillStyle = parameters.curvatureColor;
-        fillRoundNode(context, anchor, parameters.curvatureSize);
-      }
+      drawRevealedTunniGizmo(
+        context,
+        model,
+        tunniGizmoKey("generated", "on-curve", generatedTunniSegmentId(segment)),
+        () => drawDiamondNode(context, gizmoPoint, parameters.gizmoSize, true)
+      );
     }
-    context.restore();
   },
 });
 

@@ -1,0 +1,303 @@
+import {
+  buildGeneratedTunniSegments,
+  buildSkeletonTunniSegments,
+  calculateGeneratedOnCurveGizmoPoint,
+  calculateSkeletonTrueTunniPoint,
+  calculateSkeletonTunniPoint,
+  getGeneratedPathContourIndices,
+} from "@fontra/core/skeleton-model.js";
+import {
+  calculateCurvatureGizmoPoint,
+  calculateTunniPoint,
+} from "@fontra/core/tunni-calculations.js";
+import { VarPackedPath } from "@fontra/core/var-path.js";
+import { distance } from "@fontra/core/vector.js";
+
+// The Tunni gizmos on all three kinds of curve, in one place: which setting
+// switches each one, where each one sits, and whether the cursor has rested on
+// it long enough for it to show.
+//
+// Each switch governs a gizmo's drawing AND its function. A gizmo that is off
+// is not a hidden control, it is no control.
+
+export const TUNNI_SETTINGS = {
+  basicCurvature: "fontra.tunni.curvature",
+  basicOnCurve: "fontra.tunni.on-curve",
+  basicLabels: "fontra.tunni.labels",
+  skeletonCurvature: "fontra.skeleton.tunni-curvature",
+  skeletonOnCurve: "fontra.skeleton.tunni-on-curve",
+  skeletonLabels: "fontra.skeleton.tunni-labels",
+  // Gizmo mode for generated contours: on, the gizmos edit the outline and the
+  // generated points and handles cannot be dragged directly; off, the reverse.
+  generatedMode: "fontra.skeleton.generated-tunni",
+  generatedCurvature: "fontra.skeleton.generated-curvature",
+  generatedOnCurve: "fontra.skeleton.generated-on-curve",
+  generatedLabels: "fontra.skeleton.generated-curvature-labels",
+};
+
+// A generated gizmo works only in gizmo mode, and only while its own switch is on.
+export function isGeneratedGizmoLive(settingsModel, key) {
+  return (
+    settingsModel?.[TUNNI_SETTINGS.generatedMode] === true &&
+    settingsModel?.[key] === true
+  );
+}
+
+// The mode and the visibility are two settings with one rule between them:
+// handles mode has no gizmos, so leaving gizmo mode switches them off, and asking
+// for a gizmo while in handles mode is asking for gizmo mode. Entering gizmo mode
+// brings the curvature gizmo back, so the mode switch never lands on a mode that
+// shows and does nothing.
+export function coupleGeneratedGizmoSettings(settings) {
+  const { generatedMode, generatedCurvature, generatedOnCurve } = TUNNI_SETTINGS;
+  settings.addKeyListener(generatedMode, (event) => {
+    if (event.newValue === true) {
+      settings.model[generatedCurvature] = true;
+    } else {
+      settings.model[generatedCurvature] = false;
+      settings.model[generatedOnCurve] = false;
+    }
+  });
+  settings.addKeyListener([generatedCurvature, generatedOnCurve], (event) => {
+    if (event.newValue === true && settings.model[generatedMode] !== true) {
+      settings.model[generatedMode] = true;
+    }
+  });
+}
+
+export function tunniGizmoKey(kind, type, id) {
+  return `${kind}:${type}:${id}`;
+}
+
+// The ordinary path's cubic segments that carry gizmos: every one outside the
+// generated contours, which have their own.
+export function* iterBasicTunniSegments(path, skeletonData) {
+  if (!path) {
+    return;
+  }
+  const generated = getGeneratedPathContourIndices(skeletonData);
+  const isCubicControl = (index) =>
+    (path.pointTypes[index] & VarPackedPath.POINT_TYPE_MASK) ===
+    VarPackedPath.OFF_CURVE_CUBIC;
+  for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
+    if (generated.has(contourIndex)) {
+      continue;
+    }
+    for (const segment of path.iterContourDecomposedSegments(contourIndex)) {
+      if (
+        segment.points.length === 4 &&
+        isCubicControl(segment.parentPointIndices[1]) &&
+        isCubicControl(segment.parentPointIndices[2])
+      ) {
+        yield {
+          contourIndex,
+          segment,
+          id: `${contourIndex}/${segment.parentPointIndices[0]}`,
+        };
+      }
+    }
+  }
+}
+
+export function skeletonTunniSegmentId(contour, segment) {
+  return `${contour.id}/${segment.startPointId}`;
+}
+
+export function generatedTunniSegmentId(segment) {
+  return `${segment.pathContourIndex}/${segment.segmentIndex}`;
+}
+
+//
+// The nearest live gizmo within `radius` of `point`, in glyph coordinates, or
+// null. Each result carries the hit the matching drag handler takes.
+//
+export function findTunniGizmo(point, radius, { path, skeletonData, settingsModel }) {
+  let best = null;
+  const consider = (key, gizmoPoint, hit) => {
+    if (!gizmoPoint) {
+      return;
+    }
+    const gap = distance(point, gizmoPoint);
+    if (gap <= radius && (!best || gap < best.distance)) {
+      best = { key, distance: gap, gizmoPoint, ...hit };
+    }
+  };
+
+  const basicCurvature = settingsModel?.[TUNNI_SETTINGS.basicCurvature] === true;
+  const basicOnCurve = settingsModel?.[TUNNI_SETTINGS.basicOnCurve] === true;
+  if (basicCurvature || basicOnCurve) {
+    for (const { segment, id } of iterBasicTunniSegments(path, skeletonData)) {
+      const hit = { kind: "basic", segment };
+      if (basicCurvature) {
+        consider(
+          tunniGizmoKey("basic", "curvature", id),
+          calculateCurvatureGizmoPoint(segment.points),
+          { ...hit, type: "curvature" }
+        );
+      }
+      if (basicOnCurve) {
+        consider(
+          tunniGizmoKey("basic", "on-curve", id),
+          calculateTunniPoint(segment.points),
+          { ...hit, type: "on-curve" }
+        );
+      }
+    }
+  }
+
+  const skeletonCurvature = settingsModel?.[TUNNI_SETTINGS.skeletonCurvature] === true;
+  const skeletonOnCurve = settingsModel?.[TUNNI_SETTINGS.skeletonOnCurve] === true;
+  if (skeletonCurvature || skeletonOnCurve) {
+    (skeletonData?.contours || []).forEach((contour, contourIndex) => {
+      for (const segment of buildSkeletonTunniSegments(contour)) {
+        if (segment.controlPoints.length !== 2) {
+          continue;
+        }
+        const id = skeletonTunniSegmentId(contour, segment);
+        const hit = {
+          kind: "skeleton",
+          contourId: contour.id,
+          contourIndex,
+          segmentIndex: segment.segmentIndex,
+          segment,
+        };
+        if (skeletonCurvature) {
+          consider(
+            tunniGizmoKey("skeleton", "curvature", id),
+            calculateSkeletonTunniPoint(segment),
+            { ...hit, type: "tunni" }
+          );
+        }
+        if (skeletonOnCurve) {
+          consider(
+            tunniGizmoKey("skeleton", "on-curve", id),
+            calculateSkeletonTrueTunniPoint(segment),
+            { ...hit, type: "true-tunni" }
+          );
+        }
+      }
+    });
+  }
+
+  const generatedCurvature = isGeneratedGizmoLive(
+    settingsModel,
+    TUNNI_SETTINGS.generatedCurvature
+  );
+  const generatedOnCurve = isGeneratedGizmoLive(
+    settingsModel,
+    TUNNI_SETTINGS.generatedOnCurve
+  );
+  if ((generatedCurvature || generatedOnCurve) && skeletonData?.generated?.length) {
+    for (const segment of buildGeneratedTunniSegments(skeletonData, path)) {
+      const id = generatedTunniSegmentId(segment);
+      if (generatedCurvature && !segment.handlesLocked) {
+        consider(
+          tunniGizmoKey("generated", "curvature", id),
+          calculateCurvatureGizmoPoint(segment.points),
+          { kind: "generated", type: "generated-curvature", segment }
+        );
+      }
+      if (generatedOnCurve && segment.onCurveMovable?.some(Boolean)) {
+        consider(
+          tunniGizmoKey("generated", "on-curve", id),
+          calculateGeneratedOnCurveGizmoPoint(segment),
+          { kind: "generated", type: "generated-on-curve", segment }
+        );
+      }
+    }
+  }
+
+  return best;
+}
+
+const REVEAL_DELAY_MS = 200;
+const FADE_MS = 150;
+
+//
+// A gizmo shows only after the cursor has rested near it, and fades in and out.
+//
+// One gizmo is armed at a time. Hovering near a different one starts that one's
+// delay and lets the armed one go; leaving every gizmo lets it go too. An armed
+// gizmo is the only one a click reaches.
+//
+export class TunniGizmoReveal {
+  constructor(requestUpdate) {
+    this._requestUpdate = requestUpdate;
+    this._armedKey = null;
+    this._pendingKey = null;
+    this._timer = null;
+    this._fades = new Map();
+    this._frame = null;
+  }
+
+  hover(key) {
+    if (key === this._armedKey) {
+      this._cancelPending();
+      return;
+    }
+    if (key === this._pendingKey) {
+      return;
+    }
+    this._cancelPending();
+    if (this._armedKey) {
+      this._fadeTo(this._armedKey, 0);
+      this._armedKey = null;
+    }
+    if (key) {
+      this._pendingKey = key;
+      this._timer = setTimeout(() => {
+        this._pendingKey = null;
+        this._timer = null;
+        this._armedKey = key;
+        this._fadeTo(key, 1);
+      }, REVEAL_DELAY_MS);
+    }
+  }
+
+  isArmed(key) {
+    return !!key && key === this._armedKey;
+  }
+
+  alpha(key, now = performance.now()) {
+    const fade = this._fades.get(key);
+    if (!fade) {
+      return 0;
+    }
+    const progress = Math.min((now - fade.start) / FADE_MS, 1);
+    return fade.from + (fade.to - fade.from) * progress;
+  }
+
+  _cancelPending() {
+    clearTimeout(this._timer);
+    this._timer = null;
+    this._pendingKey = null;
+  }
+
+  _fadeTo(key, to) {
+    const now = performance.now();
+    this._fades.set(key, { from: this.alpha(key, now), to, start: now });
+    this._animate();
+  }
+
+  _animate() {
+    if (this._frame !== null) {
+      return;
+    }
+    this._frame = requestAnimationFrame(() => {
+      this._frame = null;
+      const now = performance.now();
+      let moving = false;
+      for (const [key, fade] of this._fades) {
+        if (now - fade.start < FADE_MS) {
+          moving = true;
+        } else if (fade.to === 0) {
+          this._fades.delete(key);
+        }
+      }
+      this._requestUpdate();
+      if (moving) {
+        this._animate();
+      }
+    });
+  }
+}

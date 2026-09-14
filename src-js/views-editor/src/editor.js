@@ -103,6 +103,7 @@ import {
   persistentSceneSettingsKeys,
 } from "./scene-controller.js";
 import { MIN_SIDEBAR_WIDTH, Sidebar } from "./sidebar.js";
+import { coupleGeneratedGizmoSettings } from "./tunni-gizmos.js";
 import {
   applyGeneratedContourRemap,
   computeGeneratedContourRemap,
@@ -197,6 +198,7 @@ export class EditorController extends ViewController {
       this.visualizationLayers.toggle(event.key, event.newValue);
       this.canvasController.requestUpdate();
     }, true);
+    coupleGeneratedGizmoSettings(this.visualizationLayersSettings);
 
     this.sceneController = new SceneController(
       this.fontController,

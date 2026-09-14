@@ -80,6 +80,28 @@ import {
 
 import { NumberFormatter } from "@fontra/core/formatters.js";
 import Panel from "./panel.js";
+import { isGeneratedGizmoLive, TUNNI_SETTINGS } from "./tunni-gizmos.js";
+
+const TUNNI_PANEL_COLUMNS = [
+  {
+    kind: "basic",
+    curvature: TUNNI_SETTINGS.basicCurvature,
+    onCurve: TUNNI_SETTINGS.basicOnCurve,
+    labels: TUNNI_SETTINGS.basicLabels,
+  },
+  {
+    kind: "skeleton",
+    curvature: TUNNI_SETTINGS.skeletonCurvature,
+    onCurve: TUNNI_SETTINGS.skeletonOnCurve,
+    labels: TUNNI_SETTINGS.skeletonLabels,
+  },
+  {
+    kind: "generated",
+    curvature: TUNNI_SETTINGS.generatedCurvature,
+    onCurve: TUNNI_SETTINGS.generatedOnCurve,
+    labels: TUNNI_SETTINGS.generatedLabels,
+  },
+];
 
 // Bug fix: no accordion item's open/closed state survived a reload -- every
 // `open` below is a fixed initial value, nothing ever read or wrote it
@@ -794,6 +816,43 @@ export default class DesignspaceNavigationPanel extends Panel {
         ),
       },
       {
+        // Ticket 29: one column per kind of curve, and no switch for the whole
+        // section. The toggle is that kind's curvature gizmo; the checks under
+        // it are its on-curve gizmo and its tension label. Rows run across the
+        // columns, so the grid fills toggles first, then on-curve, then label.
+        id: "tunni-accordion-item",
+        label: translate("sidebar.designspace-navigation.tunni"),
+        open: false,
+        content: html.div(
+          {
+            id: "tunni-content",
+            style: `
+              display: grid;
+              grid-template-columns: repeat(3, auto);
+              gap: 0.35em 1em;
+              justify-content: start;
+              align-items: center;
+            `,
+          },
+          [
+            ...TUNNI_PANEL_COLUMNS.map((column) =>
+              html.createDomElement("labeled-toggle", {
+                id: `tunni-${column.kind}-toggle`,
+                label: translate(`sidebar.designspace-navigation.tunni.${column.kind}`),
+              })
+            ),
+            ...["on-curve", "label"].flatMap((row) =>
+              TUNNI_PANEL_COLUMNS.map((column) =>
+                html.label({ style: "white-space: nowrap;" }, [
+                  html.input({ id: `tunni-${column.kind}-${row}`, type: "checkbox" }),
+                  translate(`sidebar.designspace-navigation.tunni.${row}`),
+                ])
+              )
+            ),
+          ]
+        ),
+      },
+      {
         id: "speedpunk-accordion-item",
         label: translate("sidebar.designspace-navigation.speedpunk"),
         open: false,
@@ -1426,6 +1485,39 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._updateSpeedPunkControlsEnabled();
   }
 
+  // Ticket 29: every control binds to its drawing layer's own switch, so it and
+  // the View menu entry always agree. A generated gizmo reads as on only while
+  // gizmo mode is on too, because that is the only time it does anything.
+  _setupTunniControls() {
+    const settings = this.editorController.visualizationLayersSettings;
+    const bind = (element, key, isGenerated) => {
+      if (!element) {
+        return;
+      }
+      const read = () =>
+        isGenerated
+          ? isGeneratedGizmoLive(settings.model, key)
+          : settings.model[key] === true;
+      element.checked = read();
+      element.addEventListener("change", () => {
+        settings.model[key] = !!element.checked;
+      });
+      settings.addKeyListener(
+        isGenerated ? [key, TUNNI_SETTINGS.generatedMode] : [key],
+        () => {
+          element.checked = read();
+        }
+      );
+    };
+    const find = (id) => this.visualAccordion.querySelector(`#${id}`);
+    for (const column of TUNNI_PANEL_COLUMNS) {
+      const isGenerated = column.kind === "generated";
+      bind(find(`tunni-${column.kind}-toggle`), column.curvature, isGenerated);
+      bind(find(`tunni-${column.kind}-on-curve`), column.onCurve, isGenerated);
+      bind(find(`tunni-${column.kind}-label`), column.labels, false);
+    }
+  }
+
   _setupSnappingDebugControls() {
     const stored = applicationSettingsController.model.snapDebugParameters || {};
     for (const [path, value] of Object.entries(stored)) {
@@ -1733,6 +1825,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._setupCoarseGridDisplayToggle();
     this._setupMeasurementsDisplayToggle();
     this._setupMeasurementsCheckboxes();
+    this._setupTunniControls();
     this._setupSpeedPunkControls();
     this._setupSnappingDebugControls();
 

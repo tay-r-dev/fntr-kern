@@ -16,6 +16,7 @@ import {
   drawMeasureOverlay,
   drawOffCurveDistanceVisualization,
   drawPointLabels,
+  drawPointStyleLabel,
   formatDistanceAndAngle,
   formatDistanceTensionAngle,
   OFFCURVE_DISTANCE_BADGE_COLOR,
@@ -30,14 +31,13 @@ import { guessGlyphPlaceholderString } from "@fontra/core/glyph-data.js";
 import { translate } from "@fontra/core/localization.js";
 import { rectToPoints } from "@fontra/core/rectangle.ts";
 import { difference, isSuperset, union } from "@fontra/core/set-ops.js";
-import {
-  getGeneratedPathContourIndices,
-  getSkeletonData,
-} from "@fontra/core/skeleton-model.js";
+import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { decomposedToTransform } from "@fontra/core/transform.js";
 import {
-  calculateControlHandlePoint,
+  calculateCurvatureGizmoPoint,
+  calculateSegmentTension,
   calculateTunniPoint,
+  hasForwardTangentIntersection,
 } from "@fontra/core/tunni-calculations.js";
 import {
   chain,
@@ -51,6 +51,11 @@ import {
   withSavedState,
 } from "@fontra/core/utils.ts";
 import { subVectors } from "@fontra/core/vector.js";
+import {
+  iterBasicTunniSegments,
+  TUNNI_SETTINGS,
+  tunniGizmoKey,
+} from "./tunni-gizmos.js";
 
 export const visualizationLayerDefinitions = [];
 
@@ -2192,201 +2197,144 @@ registerVisualizationLayerDefinition({
   },
 });
 
-registerVisualizationLayerDefinition({
-  identifier: "fontra.tunni.handle",
-  name: "Tunni handles",
-  selectionFunc: glyphSelector("editing"),
-  userSwitchable: true,
-  defaultOn: false,
-  zIndex: 50,
-  screenParameters: {
-    strokeWidth: 1,
-    dashPattern: [5, 5],
-    tunniPointSize: 4,
-  },
-  colors: {
-    tunniLineColor: "#0000FF80", // Semi-transparent blue
-    tunniPointColor: "#0000FF", // Blue color
-  },
-  colorsDarkMode: {
-    tunniLineColor: "#00FFFF80", // Semi-transparent light blue
-    tunniPointColor: "#00FFFF", // Light blue in dark mode
-  },
-  draw: drawTunniCombined,
-});
-
-// Generated skeleton contours are derived geometry and get no regular Tunni
-// points/lines (skeleton Tunni operates on the skeleton itself).
-function getGeneratedContourIndicesForTunni(positionedGlyph, model) {
+// The Tunni gizmos on ordinary curves. Each gizmo shows only once the cursor has
+// rested near it, and fades in and out (tunni-gizmos.js); the labels always show.
+// A layer that is off takes its gizmo's function with it.
+function getTunniSkeletonData(positionedGlyph, model) {
   const editLayerName =
     model.sceneSettings?.editLayerName || positionedGlyph.glyph?.layerName;
   const layerGlyph =
     editLayerName && positionedGlyph.varGlyph?.glyph?.layers?.[editLayerName]?.glyph;
-  return getGeneratedPathContourIndices(
-    getSkeletonData(layerGlyph || positionedGlyph.glyph)
-  );
+  return getSkeletonData(layerGlyph || positionedGlyph.glyph);
 }
 
-function drawTunniCombined(context, positionedGlyph, parameters, model, controller) {
-  const path = positionedGlyph.glyph.path;
-  const generatedContourIndices = getGeneratedContourIndicesForTunni(
-    positionedGlyph,
-    model
-  );
+export const TUNNI_GIZMO_COLORS = { gizmoColor: "#2E4FBA" };
+export const TUNNI_GIZMO_COLORS_DARK = { gizmoColor: "#7B97F2" };
 
-  // Draw the Tunni lines
-  context.strokeStyle = parameters.tunniLineColor;
-  context.lineWidth = parameters.strokeWidth;
-  context.setLineDash(parameters.dashPattern);
-
-  // Iterate through all contours
-  for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
-    if (generatedContourIndices.has(contourIndex)) {
-      continue;
-    }
-    // Iterate through all segments in the contour
-    for (const segment of path.iterContourDecomposedSegments(contourIndex)) {
-      if (segment.points.length === 4) {
-        // Check if it's a cubic segment
-        const pointTypes = segment.parentPointIndices.map(
-          (index) => path.pointTypes[index]
-        );
-
-        // Both control points must be cubic
-        if (pointTypes[1] === 2 && pointTypes[2] === 2) {
-          const [p1, p2, p3, p4] = segment.points;
-
-          // Draw lines from start to first control and from second control to end
-          // These represent the on-curve to off-curve vectors
-          context.beginPath();
-          context.moveTo(p1.x, p1.y);
-          context.lineTo(p2.x, p2.y);
-          context.stroke();
-
-          context.beginPath();
-          context.moveTo(p4.x, p4.y);
-          context.lineTo(p3.x, p3.y);
-          context.stroke();
-
-          // Draw line between control points (the current handle line)
-          context.beginPath();
-          context.moveTo(p2.x, p2.y);
-          context.lineTo(p3.x, p3.y);
-          context.stroke();
-        }
-      }
-    }
+// Draw one gizmo at its reveal's current opacity. Nothing is drawn while the
+// gizmo is fully hidden.
+export function drawRevealedTunniGizmo(context, model, key, draw) {
+  const alpha = model.tunniGizmoReveal?.alpha(key) ?? 0;
+  if (!(alpha > 0)) {
+    return;
   }
-
-  context.setLineDash([]);
-
-  // Draw the visual Tunni points
-  context.fillStyle = parameters.tunniPointColor;
-
-  // Iterate through all contours
-  for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
-    if (generatedContourIndices.has(contourIndex)) {
-      continue;
-    }
-    // Iterate through all segments in the contour
-    for (const segment of path.iterContourDecomposedSegments(contourIndex)) {
-      if (segment.points.length === 4) {
-        // Check if it's a cubic segment
-        const pointTypes = segment.parentPointIndices.map(
-          (index) => path.pointTypes[index]
-        );
-
-        // Both control points must be cubic
-        if (pointTypes[1] === 2 && pointTypes[2] === 2) {
-          // Draw the current Tunni point (midpoint between control points)
-          const tunniPoint = calculateControlHandlePoint(segment.points);
-          if (tunniPoint) {
-            context.beginPath();
-            context.arc(
-              tunniPoint.x,
-              tunniPoint.y,
-              parameters.tunniPointSize,
-              0,
-              2 * Math.PI
-            );
-            context.fill();
-          }
-        }
-      }
-    }
-  }
+  context.globalAlpha = alpha;
+  draw();
+  context.globalAlpha = 1;
 }
 
-// Register the Tunni point visualization layer
 registerVisualizationLayerDefinition({
-  identifier: "fontra.tunni.point",
-  name: "Tunni point",
+  identifier: TUNNI_SETTINGS.basicCurvature,
+  name: "Tunni curvature gizmos",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: true,
+  zIndex: 56,
+  screenParameters: { gizmoSize: 7 },
+  colors: TUNNI_GIZMO_COLORS,
+  colorsDarkMode: TUNNI_GIZMO_COLORS_DARK,
+  draw: (context, positionedGlyph, parameters, model) => {
+    context.fillStyle = parameters.gizmoColor;
+    for (const { segment, id } of iterBasicTunniSegments(
+      positionedGlyph.glyph.path,
+      getTunniSkeletonData(positionedGlyph, model)
+    )) {
+      drawRevealedTunniGizmo(
+        context,
+        model,
+        tunniGizmoKey("basic", "curvature", id),
+        () =>
+          fillRoundNode(
+            context,
+            calculateCurvatureGizmoPoint(segment.points),
+            parameters.gizmoSize
+          )
+      );
+    }
+  },
+});
+
+registerVisualizationLayerDefinition({
+  identifier: TUNNI_SETTINGS.basicOnCurve,
+  name: "Tunni on-curve gizmos",
   selectionFunc: glyphSelector("editing"),
   userSwitchable: true,
   defaultOn: false,
-  zIndex: 56, // Highest of the TUNNI layers for visibility
-  screenParameters: {
-    tunniPointSize: 4,
+  zIndex: 56,
+  screenParameters: { gizmoSize: 8, strokeWidth: 1 },
+  colors: { gizmoColor: "#FF8C00" },
+  colorsDarkMode: { gizmoColor: "#FFA500" },
+  draw: (context, positionedGlyph, parameters, model) => {
+    context.fillStyle = parameters.gizmoColor;
+    context.strokeStyle = parameters.gizmoColor;
+    context.lineWidth = parameters.strokeWidth;
+    for (const { segment, id } of iterBasicTunniSegments(
+      positionedGlyph.glyph.path,
+      getTunniSkeletonData(positionedGlyph, model)
+    )) {
+      const tunniPoint = calculateTunniPoint(segment.points);
+      if (!tunniPoint) {
+        continue;
+      }
+      drawRevealedTunniGizmo(
+        context,
+        model,
+        tunniGizmoKey("basic", "on-curve", id),
+        () => drawDiamondNode(context, tunniPoint, parameters.gizmoSize, true)
+      );
+    }
   },
-  colors: {
-    tunniPointColor: "#FF8C00", // Orange color
-  },
-  colorsDarkMode: {
-    tunniPointColor: "#FFA500", // Lighter orange in dark mode
-  },
-  draw: drawActualTunniPoints,
 });
 
-function drawActualTunniPoints(
-  context,
-  positionedGlyph,
-  parameters,
-  model,
-  controller
-) {
-  const path = positionedGlyph.glyph.path;
-  const generatedContourIndices = getGeneratedContourIndicesForTunni(
-    positionedGlyph,
-    model
-  );
-
-  context.fillStyle = parameters.tunniPointColor;
-
-  // Iterate through all contours
-  for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
-    if (generatedContourIndices.has(contourIndex)) {
-      continue;
+// The tension each curvature gizmo owns, straight above where the gizmo sits.
+registerVisualizationLayerDefinition({
+  identifier: TUNNI_SETTINGS.basicLabels,
+  name: "Tunni labels",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: false,
+  zIndex: 57,
+  screenParameters: { labelOffset: 13, labelInset: 5 },
+  colors: { labelColor: "#2E4FBA" },
+  colorsDarkMode: { labelColor: "#7B97F2" },
+  draw: (context, positionedGlyph, parameters, model) => {
+    for (const { segment } of iterBasicTunniSegments(
+      positionedGlyph.glyph.path,
+      getTunniSkeletonData(positionedGlyph, model)
+    )) {
+      drawTunniTensionLabel(context, segment.points, parameters);
     }
-    // Iterate through all segments in the contour
-    for (const segment of path.iterContourDecomposedSegments(contourIndex)) {
-      if (segment.points.length === 4) {
-        // Check if it's a cubic segment
-        const pointTypes = segment.parentPointIndices.map(
-          (index) => path.pointTypes[index]
-        );
+  },
+});
 
-        // Both control points must be cubic
-        if (pointTypes[1] === 2 && pointTypes[2] === 2) {
-          // Draw the true Tunni point (intersection of on-curve to off-curve vectors)
-          const trueTunniPoint = calculateTunniPoint(segment.points);
-          if (trueTunniPoint) {
-            context.beginPath();
-            // Draw as a square/diamond shape to distinguish from visual points
-            const size = parameters.tunniPointSize;
-            context.rect(
-              trueTunniPoint.x - size / 2,
-              trueTunniPoint.y - size / 2,
-              size,
-              size
-            );
-            context.fill();
-          }
-        }
-      }
-    }
+export function drawTunniTensionLabel(context, segmentPoints, parameters) {
+  if (!hasForwardTangentIntersection(segmentPoints)) {
+    return;
   }
+  const [p0, p1, p2, p3] = segmentPoints;
+  const tension = calculateSegmentTension(p1, p0, p2, p3);
+  const anchor = calculateCurvatureGizmoPoint(segmentPoints);
+  drawPointStyleLabel(
+    context,
+    anchor.x + parameters.labelInset,
+    anchor.y + parameters.labelOffset,
+    tension.toFixed(2),
+    parameters.labelColor
+  );
+}
 
-  context.setLineDash([]);
+export function drawDiamondNode(context, point, size, fill) {
+  const half = size / 2;
+  context.beginPath();
+  context.moveTo(point.x, point.y - half);
+  context.lineTo(point.x + half, point.y);
+  context.lineTo(point.x, point.y + half);
+  context.lineTo(point.x - half, point.y);
+  context.closePath();
+  if (fill) {
+    context.fill();
+  }
+  context.stroke();
 }
 
 registerVisualizationLayerDefinition({
