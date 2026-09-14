@@ -18,6 +18,7 @@ import {
 } from "@fontra/core/skeleton-model.js";
 import "@fontra/web-components/data-table.js"; // for <data-table>, ticket 68
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 67
+import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 69
 import { dialog } from "@fontra/web-components/modal-dialog.js";
 import { Form } from "@fontra/web-components/ui-form.js";
 import {
@@ -68,6 +69,21 @@ const SKELETON_SETTINGS_STYLES = `
 
   .skeleton-settings-heading {
     font-weight: bold;
+  }
+
+  .skeleton-settings-heading-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem;
+  }
+
+  .skeleton-settings-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
   }
 
   .skeleton-presets-table {
@@ -142,9 +158,18 @@ export default class SkeletonSettingsPanel extends Panel {
       { label: translate("sidebar.skeleton-settings.column.side") },
       { label: "" },
     ];
+    // Ticket 69: the table's filters. Every master and case shows until one is
+    // picked.
+    this._widthPresetFilter = { master: null, case: null };
+    this.widthPresetFilters = this._makePresetFilterBar(this._widthPresetFilter, () =>
+      this._renderWidthPresetRows()
+    );
     this.widthPresetsSection = html.div({ class: "skeleton-settings-section" }, [
-      html.div({ class: "skeleton-settings-heading" }, [
-        translate("sidebar.skeleton-settings.width-presets"),
+      html.div({ class: "skeleton-settings-heading-row" }, [
+        html.div({ class: "skeleton-settings-heading" }, [
+          translate("sidebar.skeleton-settings.width-presets"),
+        ]),
+        this.widthPresetFilters.element,
       ]),
       this.widthPresetTable,
     ]);
@@ -358,9 +383,80 @@ export default class SkeletonSettingsPanel extends Panel {
     await this._writeWidthPresets(sourceId, next);
   }
 
+  // A table header's filters (§6.5): Current, then a Master and a Case
+  // dropdown, each single-choice with All first. `state` holds the picked
+  // master id and case, null for All. Current sets both to the edited glyph's
+  // master and case. `refresh` redraws the dropdowns from `state`.
+  _makePresetFilterBar(state, onChange) {
+    const ALL = "*";
+    const dropdown = (field) => {
+      const element = html.createDomElement("multi-select-dropdown");
+      element.singleChoice = true;
+      element.addEventListener("change", (event) => {
+        const [value] = [].concat(event.detail.checked);
+        state[field] = value == null || value === ALL ? null : value;
+        onChange();
+      });
+      return element;
+    };
+    const master = dropdown("master");
+    const glyphCase = dropdown("case");
+    const current = html.button(
+      {
+        onclick: () => {
+          state.master = this._getEffectiveSource().sourceId ?? null;
+          state.case = getSkeletonGlyphCase(
+            this.sceneController.sceneSettings?.selectedGlyphName
+          );
+          onChange();
+        },
+      },
+      [translate("sidebar.skeleton-settings.filter.current")]
+    );
+    const option = (value, label, picked) => ({ value, label, checked: picked });
+    const refresh = () => {
+      const sources = Object.entries(this.fontController.sources || {});
+      master.items = [
+        option(ALL, translate("sidebar.skeleton-settings.filter.all"), !state.master),
+        ...sources.map(([id, source]) =>
+          option(id, source.name || id, state.master === id)
+        ),
+      ];
+      const pickedSource = state.master && this.fontController.sources?.[state.master];
+      master.label = pickedSource
+        ? pickedSource.name || state.master
+        : translate("sidebar.skeleton-settings.filter.master");
+      glyphCase.items = [
+        option(ALL, translate("sidebar.skeleton-settings.filter.all"), !state.case),
+        ...["uppercase", "lowercase"].map((value) =>
+          option(
+            value,
+            translate(`sidebar.skeleton-settings.case.${value}`),
+            state.case === value
+          )
+        ),
+      ];
+      glyphCase.label = state.case
+        ? translate(`sidebar.skeleton-settings.case.${state.case}`)
+        : translate("sidebar.skeleton-settings.filter.case");
+    };
+    return {
+      element: html.div({ class: "skeleton-settings-filters" }, [
+        current,
+        master,
+        glyphCase,
+      ]),
+      refresh,
+      matches: (sourceId, presetCase) =>
+        (!state.master || state.master === sourceId) &&
+        (!state.case || state.case === presetCase),
+    };
+  }
+
   _renderWidthPresetRows() {
     const tbody = this.widthPresetTable.tbody;
     tbody.innerHTML = "";
+    this.widthPresetFilters.refresh();
     const readOnly = !!this.fontController.readOnly;
     for (const [sourceId, source] of Object.entries(
       this.fontController.sources || {}
@@ -370,6 +466,9 @@ export default class SkeletonSettingsPanel extends Panel {
         SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS
       );
       list.forEach((preset, index) => {
+        if (!this.widthPresetFilters.matches(sourceId, preset.case)) {
+          return;
+        }
         const rowId = `${sourceId}:${index}`;
         const nameInput = html.input({
           type: "text",
