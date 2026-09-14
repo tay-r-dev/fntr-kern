@@ -20,6 +20,7 @@ P1 means a wrong result or serious scaling failure in a supported workflow. P2 m
 | `src-js/views-editor/src/editor.js` | 4,307 | Fork diff and surrounding clipboard, delete, bulk metrics, tool lifecycle and registration code inspected; E1–E4, S2 and M3. |
 | `src-js/views-editor/src/panel-designspace-navigation.js` | 3,895 | Fork-added visual controls, persistence, debug polling/subscriptions and source creation inspected; D1–D3 and M5. |
 | `src-js/views-editor/src/scene-controller.js` | 3,062 | Fork command dispatch, arrow edits, skeleton conversion, mixed selections, harmonization, overlap and undo integration inspected; C1–C4. |
+| `src-js/views-editor/src/visualization-layer-definitions.js` | 2,634 | Fork rendering additions and visibility filters inspected, including supporting `curvature.js` implementation; V1–V5. |
 | Remaining feature files | — | Pending; final coverage inventory will distinguish deep review from supporting inspection. |
 
 ## 1. Kerning view — kerning.js
@@ -317,6 +318,52 @@ The command checks object-ness, `instanceof VarPackedPath`, six method names, `g
 Recommendation: rely on the internal path contract (or one boundary assertion), perform the geometry operation on scratch paths, and commit once all intended layers have a defined result. Remove the repeated `getPoint` check and redundant adapter if it serves no public API purpose. Report unsupported geometry explicitly rather than swallowing programming errors.
 
 The realization path deliberately avoids regeneration so detached outlines remain in place; that is justified, not a violation to repair mechanically. Conversion batches the final skeleton regeneration, although contour-remap work can still be consolidated when many ordinary contours are consumed.
+
+## 7. Visualization definitions — visualization-layer-definitions.js
+
+### V1 — P1, confirmed by arithmetic and call chain: SpeedPunk's sample budget is incorrectly scaled with zoom
+
+Locations: `visualization-layer-definitions.js:1975–2013`; `visualization-layers.js:62–67`; `editor.js:1438`; `curvature.js:203–216`, `451–466`.
+
+`baseSegmentBudget: 400` and `minSegmentsPerCurve: 5` live in `screenParameters`. The visualization framework multiplies numeric values there by inverse magnification. The sampler then multiplies the already-scaled budget by square-root magnification. The effective total becomes approximately 400/sqrt(m), so zooming in reduces rather than increases detail. The minimum becomes 5/m and can be fractional.
+
+At magnification 100, with more than 40 curve segments, the floored budget per curve is zero and the minimum is 0.05. The sampling loop produces only its t=0 sample; quad assembly requires two samples and emits nothing. This is a code-derived scenario within the canvas's allowed zoom range, not a browser reproduction.
+
+Recommendation: put dimensionless settings and sampling counts outside `screenParameters`; reserve that object for lengths that must remain constant in screen pixels. Enforce an integer minimum at the sampling boundary as well.
+
+### V2 — P2, confirmed algebra: quadratic curvature uses doubled derivatives
+
+Locations: `curvature.js:44–61`, `84–97`, `222–233`, `419–470`.
+
+The quadratic solver already includes the correct factor of 2 in both derivative expressions and then multiplies both by 2 again. Curvature is therefore half its correct value, and the arc-length estimator is doubled. Those errors can cancel in the normalized comb on an all-quadratic run, which makes the defect less obvious. At a shared quadratic/cubic joint, both segments use the same mean length but only the quadratic curvature is halved, producing a false discontinuity even if the geometry has equal curvature.
+
+Recommendation: correct the derivative formula, rather than compensating downstream in color or height. Keep the cubic and quadratic curvature-from-derivatives implementation shared; the current two functions contain the same formula.
+
+### V3 — P2, confirmed coverage gap: SpeedPunk duplicates a segment walker that omits implicit quadratic on-curves
+
+Locations: `curvature.js:264–306`, `collectCurveSegments`, `forEachCurveSegment:531–571`; compare the supported `VarPackedPath.iterContourDecomposedSegments` API already used in `skeleton-model.js:5317`.
+
+Both counting and sampling recognize only an explicit on-curve followed by either two cubic controls or one quadratic control and another explicit on-curve. Consecutive quadratic controls and all-off-curve quadratic contours, which Fontra represents with implicit on-curves, are not decomposed and are omitted. The code also uses wrap-around indexing without consulting whether a contour is open.
+
+Recommendation: collect canonical decomposed segments once, then derive the count and samples from that collection. Retain explicit shared endpoint identity for the normalizer, including synthetic identities for implicit joins. Do not maintain separate handwritten recognizers for count, length and drawing.
+
+### V4 — P2, functioning but expensive: rendering rebuilds sampling geometry on every unrelated redraw
+
+Locations: `visualization-layer-definitions.js:1983–2028`, `2035–2057`; `curvature.js:383–513`, `135–144`.
+
+Every redraw recounts curves, constructs segments, integrates arc lengths, samples curvature, builds on/off-curve arrays and quad arrays, parses the same color-stop strings for each quad, and creates one `Path2D` per quad. The sampling loop evaluates each Bezier twice: once to obtain curvature and again for position/tangent. Even opacity zero performs all geometry work. With generated contours hidden, `speedPunkPath` also unpacks and repacks the whole selected path every draw, defeating simple object-identity caching.
+
+Recommendation: return early for zero opacity; calculate position, derivatives and curvature together; parse color stops once; collect segments once. Cache geometry by path revision and the settings that actually change it, separating opacity from geometry and zoom-dependent sample density from arc lengths. Consider a bounded per-glyph render cache and direct canvas quad paths; preserve ordering/alpha semantics if batching fills. Repeated allocation is established; no memory leak or measured frame-time dominance is claimed.
+
+### V5 — P2/P3, static rendering cost: grid and hidden-contour paths lack efficient common-case handling
+
+Locations: `visualization-layer-definitions.js:1355–1404`, `2255–2300`; `strokeLine:2118–2123`.
+
+The coarse grid draws each line with its own begin/stroke pair and has no screen-density cutoff. At small magnification, a viewport covers many glyph units, so it draws thousands of indistinguishable lines. The original unit-grid layer already skips low zoom. Batch grid lines into one path and suppress or decimate a grid denser than a meaningful pixel interval.
+
+Hidden-contour outline paths are rebuilt each time a fill/stroke layer asks for them. Node filtering calls `getContourIndex` for every point even when neither hidden set exists. Use the ordinary iterator directly in that common case and derive filtered paths once per geometry/settings revision. These changes simplify functioning code without altering the visual model.
+
+The skeleton SpeedPunk switch is intentionally scoped by its source comment to hidden generated outlines; this review does not call that choice a defect. Existing saved canvas state around each layer is appropriate and should be retained.
 
 ## Validation completed before the code-only request
 
