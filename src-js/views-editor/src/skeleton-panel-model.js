@@ -472,15 +472,19 @@ export function summarizeSkeletonSerifSelection(selectedPoints) {
   return {
     left: half("left"),
     right: half("right"),
-    // Which sides carry a serif, and whether the two are shaped as one. A side
-    // left out of it generates nothing. It falls back through the old link flag
-    // so a file written before the tab row reads the same way it drew.
+    // Which sides carry a serif: the two side checks. A side left out generates
+    // nothing. Points are normalized, so the stored value is always there.
     sides: reduceValues(
-      selectedPoints.map(
-        (entry) =>
-          entry.point.serif?.sides ??
-          (entry.point.serif?.linked === false ? "split" : "both")
-      )
+      selectedPoints.map((entry) => entry.point.serif?.sides ?? "both")
+    ),
+    // One link per half field: the chain on that field's row.
+    links: Object.fromEntries(
+      SERIF_HALF_FIELDS.map((field) => [
+        field,
+        reduceValues(
+          selectedPoints.map((entry) => entry.point.serif?.links?.[field] !== false)
+        ),
+      ])
     ),
     axisMode: terminal("axisMode", "perpendicular"),
     axisAngle: terminal("axisAngle", 0),

@@ -1,6 +1,6 @@
 # 57: Terminal: Serif Wing and Bracket groups with chains
 
-**Status:** needs-info
+**Status:** ready-for-agent
 
 **Blocked by:** 50 (Terminal: kind picker and one section per point), 45 (Skeleton block: chain on the width row)
 
@@ -17,7 +17,7 @@ The Serif section shows a Sides row (Both, L, R), per-half headers when halves d
 ## Constraints
 
 - A wingless half is still switched off at width zero (feature model §8).
-- Single-sided halves: decide with the designer how a one-sided serif is picked once the Sides row is gone, before removing it.
+- Decided 2026-09-14: one on/off check above each column replaces the Sides row, and right-clicking a left or right field offers Force to L/R side for the field, its group and all fields. See UI-REFACTOR.md §5.6.
 
 ## Done when
 

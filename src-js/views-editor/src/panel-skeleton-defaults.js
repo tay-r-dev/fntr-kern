@@ -13,6 +13,7 @@ import {
   getSkeletonPointWidth,
   getSourceSkeletonDefaultsValue,
   makeSerifPreset,
+  normalizeTerminalPreset,
   setSkeletonPointTotalWidth,
   setSourceSkeletonDefaultsValues,
 } from "@fontra/core/skeleton-model.js";
@@ -309,15 +310,12 @@ export default class SkeletonDefaultsPanel extends Panel {
     if (!Array.isArray(list)) {
       return [];
     }
+    // Read through the model's normalizer, so an old one-wing preset and a
+    // whole-terminal one arrive in the same shape.
     return list
       .filter((item) => item && typeof item === "object")
       .map((item) => {
-        const preset = { name: typeof item.name === "string" ? item.name : "" };
-        for (const field of SERIF_PRESET_FIELDS) {
-          // A preset saved before the wings collapsed carries a `left` block.
-          const value = Number(item[field] ?? item.left?.[field]);
-          preset[field] = Number.isFinite(value) ? value : 0;
-        }
+        const { type, case: _case, ...preset } = normalizeTerminalPreset("serif", item);
         return preset;
       });
   }
@@ -437,7 +435,9 @@ export default class SkeletonDefaultsPanel extends Panel {
           type: "edit-number",
           key: `serifPreset:${index}:${field}`,
           label: translate(`sidebar.skeleton-parameters.${SERIF_FIELD_LABELS[field]}`),
-          value: preset[field],
+          // This editor shows one wing, the left; a field typed here writes
+          // both halves.
+          value: preset.left[field],
         });
       }
     }
@@ -454,11 +454,16 @@ export default class SkeletonDefaultsPanel extends Panel {
     if (!next[index]) {
       return;
     }
-    const numeric = Number(value);
-    next[index] = {
-      ...next[index],
-      [field]: Number.isFinite(numeric) ? numeric : 0,
-    };
+    const numeric = Number.isFinite(Number(value)) ? Number(value) : 0;
+    const preset = next[index];
+    next[index] =
+      SERIF_PRESET_FIELDS.includes(field) && field in preset.left
+        ? {
+            ...preset,
+            left: { ...preset.left, [field]: numeric },
+            right: { ...preset.right, [field]: numeric },
+          }
+        : { ...preset, [field]: numeric };
     await this._persistSerifPresets(next);
   }
 

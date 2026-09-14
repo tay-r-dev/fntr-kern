@@ -1271,12 +1271,16 @@ describe("skeleton-model transform/translate/id-allocation", () => {
 });
 
 describe("skeleton-model serif schema", () => {
-  it("captures one wing and applies it to both", () => {
+  // A preset is the whole terminal: both halves, every chain, the angle and the
+  // cup. Applying it reproduces what was captured.
+  it("captures both halves, the links, the angle and the cup, and applies them", () => {
     const point = normalizeSkeletonPoint({
       x: 0,
       y: 0,
       serif: {
-        linked: false,
+        links: { wingLength: false },
+        axisMode: "tilt",
+        axisTilt: 12,
         undersideCup: 12,
         left: { wingLength: 40 },
         right: { wingLength: 30 },
@@ -1284,39 +1288,91 @@ describe("skeleton-model serif schema", () => {
     });
     const preset = captureSerifPreset(point);
 
-    expect(preset).to.include({ wingLength: 40, undersideCup: 12 });
-    expect(preset).to.not.have.any.keys("left", "right", "linked", "axisMode");
+    expect(preset.left.wingLength).to.equal(40);
+    expect(preset.right.wingLength).to.equal(30);
+    expect(preset.links.wingLength).to.equal(false);
+    expect(preset.links.reach).to.equal(true);
+    expect(preset).to.include({ axisMode: "tilt", axisTilt: 12, undersideCup: 12 });
+    expect(preset).to.not.have.property("sides");
 
-    const both = applySerifPreset(preset);
-    expect(both.left).to.deep.equal(both.right);
-    expect(both.left.wingLength).to.equal(40);
-    expect(both.left).to.not.have.property("undersideCup");
-    expect(both.undersideCup).to.equal(12);
-    expect(both).to.not.have.property("linked");
-
-    const left = applySerifPreset(preset, { scope: "left" });
-    expect(Object.keys(left)).to.deep.equal(["left"]);
-    expect(left.left.wingLength).to.equal(40);
+    const applied = applySerifPreset(preset);
+    expect(applied.left.wingLength).to.equal(40);
+    expect(applied.right.wingLength).to.equal(30);
+    expect(applied.links.wingLength).to.equal(false);
+    expect(applied).to.include({ axisMode: "tilt", axisTilt: 12, undersideCup: 12 });
   });
 
-  it("reads a preset saved with the old two-wing shape", () => {
-    const applied = applySerifPreset({ left: { wingLength: 40 }, undersideCup: 5 });
-    expect(applied.left.wingLength).to.equal(40);
-    expect(applied.right.wingLength).to.equal(40);
-    expect(applied.undersideCup).to.equal(5);
+  // The side checks are not part of a preset: a side that is off is stored as
+  // the zero half it draws.
+  it("captures a side that is switched off as zeroes", () => {
+    const point = normalizeSkeletonPoint({
+      x: 0,
+      y: 0,
+      serif: {
+        sides: "left",
+        left: { wingLength: 40 },
+        right: { wingLength: 30, reach: 8 },
+      },
+    });
+    const preset = captureSerifPreset(point);
+    expect(preset.left.wingLength).to.equal(40);
+    expect(Object.values(preset.right).every((value) => value === 0)).to.equal(true);
+  });
+
+  it("reads a one-wing preset onto both halves, every link closed", () => {
+    for (const oneWing of [
+      { wingLength: 40, undersideCup: 5 },
+      { left: { wingLength: 40 }, undersideCup: 5 },
+    ]) {
+      const applied = applySerifPreset(oneWing);
+      expect(applied.left.wingLength).to.equal(40);
+      expect(applied.right.wingLength).to.equal(40);
+      expect(Object.values(applied.links).every((value) => value === true)).to.equal(
+        true
+      );
+      expect(applied.axisMode).to.equal("perpendicular");
+      expect(applied.undersideCup).to.equal(5);
+    }
   });
 
   it("starts a new serif on the default preset", () => {
     expect(DEFAULT_SERIF_PRESET.name).to.equal("Egyptian");
-    expect(DEFAULT_SERIF_PRESET).to.include({
-      wingLength: 20,
-      tipThickness: 20,
-      wingSlope: 20,
-      reach: 0,
-      tension: 0,
-      concavity: 0,
-      undersideCup: 0,
-    });
+    for (const side of ["left", "right"]) {
+      expect(DEFAULT_SERIF_PRESET[side]).to.include({
+        wingLength: 20,
+        tipThickness: 20,
+        wingSlope: 20,
+        reach: 0,
+        tension: 0,
+        concavity: 0,
+      });
+    }
+    expect(DEFAULT_SERIF_PRESET.undersideCup).to.equal(0);
+  });
+
+  // A closed chain is one number typed for both halves, so the writer carries
+  // a one-sided write across. An open chain edits that half alone.
+  it("writes a linked field to both halves and an unlinked one to its own", () => {
+    const point = { x: 0, y: 0 };
+    setSkeletonSerifParameters(point, { left: { wingLength: 30 } });
+    expect(point.serif.right.wingLength).to.equal(30);
+
+    setSkeletonSerifParameters(point, { links: { reach: false } });
+    setSkeletonSerifParameters(point, { left: { reach: 12 } });
+    expect(point.serif.left.reach).to.equal(12);
+    expect(point.serif.right.reach).to.equal(0);
+    expect(point.serif.links.wingLength).to.equal(true);
+  });
+
+  it("reads a split terminal, or the old link flag, as both sides with every link open", () => {
+    for (const serif of [{ sides: "split" }, { linked: false }]) {
+      const point = normalizeSkeletonPoint({ x: 0, y: 0, serif });
+      expect(point.serif.sides).to.equal("both");
+      expect(
+        Object.values(point.serif.links).every((value) => value === false)
+      ).to.equal(true);
+      expect(point.serif).to.not.have.property("linked");
+    }
   });
 
   it("accepts serif as a cap style", () => {
@@ -1358,12 +1414,16 @@ describe("skeleton-model serif schema", () => {
     expect(point.serif.left.easeDistance).to.equal(Math.round(Math.hypot(30, 10)));
   });
 
-  it("defaults the axis mode and the link flag", () => {
+  it("defaults the axis mode, both sides and every link closed", () => {
     const point = normalizeSkeletonPoint({ x: 0, y: 0 });
     expect(point.serif.axisMode).to.equal("perpendicular");
     expect(point.serif.axisAngle).to.equal(0);
     expect(point.serif.axisTilt).to.equal(0);
-    expect(point.serif.linked).to.equal(true);
+    expect(point.serif.sides).to.equal("both");
+    expect(Object.keys(point.serif.links)).to.have.length(9);
+    expect(Object.values(point.serif.links).every((value) => value === true)).to.equal(
+      true
+    );
   });
 
   it("accepts the tilt mode and stores its angle", () => {

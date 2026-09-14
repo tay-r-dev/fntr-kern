@@ -954,23 +954,24 @@ dimensionless in every mode, and nothing scales them.
 
 ### Presets, and what a fresh serif is
 
-**A serif preset is one wing plus the underside cup.** Ten numbers under a name. Applying it writes
-that wing to both sides. Asymmetry is a decision about the terminal being edited, not about the
-shape that was saved, so `linked` does not travel with a preset and a preset never stores two
-different wings. The cup belongs to the terminal rather than to a wing, and is stored once either
-way.
+**A serif preset is the whole terminal** (decided 2026-09-14). It stores both halves with all
+their values, one link per half field, the axis mode with its angle and tilt, and the underside
+cup. Applying it writes all of that, so a terminal takes exactly the shape that was saved. The
+side checks are not part of it: a side that is switched off is captured as a zero half, which is
+what it draws. An old preset stored one wing; it reads onto both halves with every link closed.
 
-A preset carries no `axisMode`, no `axisAngle` and no `axisTilt`. Those place the terminal rather
-than shape it. A
-preset captured on an upright stem foot would otherwise force a slanted terminal back to
-perpendicular, and one preset has to stay correct on every terminal in the font.
+**The two halves are linked field by field.** Each half field has its own link, shown as the
+chain on that field's row. A closed link is one number typed for both halves: the serif writer
+carries a write that names one half across to the other. An open link edits each half alone.
+Which sides the serif is built on is a separate field, `sides`, set by one check above each
+column. A terminal stored as `split`, or with the old single link flag off, reads as both sides
+with every link open.
 
-**The same rule holds for every terminal kind that has fields to save, not only serif.** Square,
-round and drop each carry a preset table of their own (§6.4), and each one leaves out the fields
-that orient the terminal instead of drawing it: a square preset carries no rib angle lock and no
-lock mode, and a drop preset carries no `capBallSide`. **A preset shapes a terminal and never
-places it** — that is the general rule the serif one above is a special case of. Flat has no fields,
-so it has no preset table at all.
+**Square, round and drop presets shape a terminal and never place it.** Each carries a preset
+table of its own (§6.4), and each one leaves out the fields that orient the terminal instead of
+drawing it: a square preset carries no rib angle lock and no lock mode, and a drop preset carries
+no `capBallSide`. The serif is the exception since 2026-09-14: its preset keeps the axis. Flat has
+no fields, so it has no preset table at all.
 
 Five built-ins ship with the feature: **Egyptian, Clarendon, Didone, Old style, Wedge**. A master
 holds its own list beside them, in the source defaults, per master because absolute lengths do not

@@ -300,7 +300,7 @@ describe("terminal presets", () => {
     expect(normalized.type).to.equal("serif");
     for (const field of Object.keys(DEFAULT_SERIF_PRESET)) {
       if (field === "name") continue;
-      expect(normalized[field]).to.equal(DEFAULT_SERIF_PRESET[field]);
+      expect(normalized[field]).to.deep.equal(DEFAULT_SERIF_PRESET[field]);
     }
   });
 

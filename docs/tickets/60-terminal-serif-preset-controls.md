@@ -10,11 +10,11 @@ Serif presets are a select, a scope select (both, left, right), an apply button 
 
 ## Target
 
-1. The Serif header carries a left preset control and a right preset control with a chain between them. Closed applies one preset to both wings.
+1. The Serif carries one preset control (decided 2026-09-14). A preset stores both halves, every link, the angle and the cup, and applying it writes all of them.
 
 ## Done when
 
-- [ ] Applying left-only leaves the right wing unchanged.
+- [ ] Add, then pick on another endpoint, reproduces both halves, the links and the angle.
 - [ ] `node --check` passes on every touched file under `views-editor` and `fontra-webcomponents`.
 - [ ] `npx prettier --write` has run on every touched file.
 - [ ] The user's bundle-watch reports no compile error. Ask them; do not run the bundle.

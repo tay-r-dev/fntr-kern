@@ -454,7 +454,11 @@ width. That is `ribAngleLockMode`, whose two values are `rib` and `stroke`. The 
 §3.2 states the trade, and the development log measured it: a locked rib cannot hold both the
 stated width and a clean interpolation, so the point says which it keeps.
 
-**The serif carries two preset controls**, one per half, with a chain between them.
+**The serif carries one preset control** (decided 2026-09-14). A serif preset is the whole
+terminal: both halves with all their values, every row's link, the angle, and the cup. The Sides
+row goes; one on/off check above each column says which sides the serif is built on, and a
+preset captures a side that is off as zeroes. Right-clicking a left or right field offers **Force
+to L/R side** for that field, for its group, and for all fields, each copying onto the other half.
 
 ### 5.7 Corner rounding
 

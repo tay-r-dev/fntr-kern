@@ -128,16 +128,12 @@ export const VALID_SERIF_AXIS_MODES = new Set([
   "tilt",
 ]);
 export const VALID_SERIF_UNITS_MODES = new Set(["absolute", "normalized"]);
-// Which sides of the terminal the serif is built on, and whether the two are
-// edited as one shape. A side left out generates nothing at all — it still
-// emits every one of its points, collapsed, because point count is the
-// interpolation contract.
-//
-// "both" is one shape on two sides. "split" is two wings shaped separately,
-// which only the panel's create-the-other-side button produces. They are one
-// field rather than a side list plus a link flag, because two flags can
-// half-apply and leave a state neither of them describes.
-export const VALID_SERIF_SIDES = new Set(["both", "left", "right", "split"]);
+// Which sides of the terminal the serif is built on: the panel's two side
+// checks. A side left out generates nothing at all — it still emits every one
+// of its points, collapsed, because point count is the interpolation contract.
+// Whether the two halves are typed as one is not this field's business; that is
+// `links`, one flag per half field.
+export const VALID_SERIF_SIDES = new Set(["both", "left", "right"]);
 
 // One half-serif's shape. Absolute font units unless the source's serif units
 // mode says otherwise; `tipCutAngle` is degrees and `tension`, `concavity` and
@@ -2805,19 +2801,40 @@ export function setSkeletonSerifParameters(point, values) {
     return;
   }
   const serif = normalizeSerif(point?.serif);
+  // Links first, so a write that sets a link and a value together reads the
+  // link it just set.
+  if (values.links && typeof values.links === "object") {
+    for (const field of SERIF_HALF_FIELDS) {
+      if (field in values.links) {
+        serif.links[field] = values.links[field] === true;
+      }
+    }
+  }
+  const halfValues = (side) =>
+    values[side] && typeof values[side] === "object" ? values[side] : null;
   for (const side of ["left", "right"]) {
-    if (!values[side] || typeof values[side] !== "object") {
+    const own = halfValues(side);
+    if (!own) {
       continue;
     }
+    const other = halfValues(side === "left" ? "right" : "left");
+    const otherSide = side === "left" ? "right" : "left";
     for (const field of SERIF_HALF_FIELDS) {
-      if (!(field in values[side])) {
+      if (!(field in own)) {
         continue;
       }
       // Clearing a box stores zero. The migration table is for reading old data
       // that never held a number, not for a designer who just emptied a field.
-      const value = values[side][field];
-      serif[side][field] = Number.isFinite(value) ? value : 0;
+      const value = Number.isFinite(own[field]) ? own[field] : 0;
+      serif[side][field] = value;
+      // A closed chain is one number typed for both halves, so a write that
+      // names one half carries across. A write naming both halves states both.
+      if (serif.links[field] && !(other && field in other)) {
+        serif[otherSide][field] = value;
+      }
     }
+  }
+  for (const side of ["left", "right"]) {
     // The ease distance stops where the rounding runs out of bracket to eat.
     // Every path into a serif comes through here — the panel field, the scrub,
     // a preset — so the ceiling belongs here rather than on any one of them,
@@ -2830,9 +2847,6 @@ export function setSkeletonSerifParameters(point, values) {
   }
   if (VALID_SERIF_AXIS_MODES.has(values.axisMode)) {
     serif.axisMode = values.axisMode;
-  }
-  if ("linked" in values) {
-    serif.linked = values.linked === true;
   }
   if (VALID_SERIF_SIDES.has(values.sides)) {
     serif.sides = values.sides;
@@ -2860,10 +2874,13 @@ export function setSkeletonSerifParameters(point, values) {
   point.serif = serif;
 }
 
-// A preset is ONE wing plus the underside cup, which is per terminal. Applying
-// it writes that wing to both sides. Asymmetry is a decision about the terminal
-// being edited, not about the shape that was saved, so the link flag does not
-// travel with a preset and a preset never stores two different wings.
+// A preset is the whole terminal: both halves, one link per half field, the
+// axis mode with its angle and tilt, and the underside cup (decided 2026-09-14,
+// replacing the one-wing preset). The side checks are not part of it: a side
+// that is off is captured as the zero half it draws.
+//
+// The numbers one wing and the cup hold, which is what an old one-wing preset
+// stored flat at the top level.
 export const SERIF_PRESET_FIELDS = Object.freeze([
   ...SERIF_HALF_FIELDS,
   "undersideCup",
@@ -2871,12 +2888,44 @@ export const SERIF_PRESET_FIELDS = Object.freeze([
   "undersideCupBalance",
 ]);
 
+const SERIF_CUP_FIELDS = Object.freeze([
+  "undersideCup",
+  "undersideCupTension",
+  "undersideCupBalance",
+]);
+
+function normalizeSerifPresetHalf(block) {
+  const half = {};
+  for (const field of SERIF_HALF_FIELDS) {
+    const value = Number(block?.[field]);
+    half[field] = Number.isFinite(value) ? value : 0;
+  }
+  return half;
+}
+
 function normalizeSerifPreset(preset) {
-  const normalized = {};
-  for (const field of SERIF_PRESET_FIELDS) {
-    // A preset written before the wings collapsed carries a `left` block.
-    const raw = preset?.[field] ?? preset?.left?.[field];
-    const value = Number(raw);
+  // An old preset is one wing: stored flat, or as a `left` block alone. It
+  // reads onto both halves with every link closed, which is what it drew.
+  const left = normalizeSerifPresetHalf(preset?.left ?? preset);
+  const right = preset?.right ? normalizeSerifPresetHalf(preset.right) : { ...left };
+  const links = {};
+  for (const field of SERIF_HALF_FIELDS) {
+    links[field] = preset?.links?.[field] !== false;
+  }
+  const normalized = {
+    left,
+    right,
+    links,
+    axisMode: VALID_SERIF_AXIS_MODES.has(preset?.axisMode)
+      ? preset.axisMode
+      : "perpendicular",
+    axisAngle: Number.isFinite(Number(preset?.axisAngle))
+      ? Number(preset.axisAngle)
+      : 0,
+    axisTilt: Number.isFinite(Number(preset?.axisTilt)) ? Number(preset.axisTilt) : 0,
+  };
+  for (const field of SERIF_CUP_FIELDS) {
+    const value = Number(preset?.[field]);
     // A preset saved before the cup gained its tension keeps the foot it was
     // captured with, the same as a terminal does.
     normalized[field] = Number.isFinite(value)
@@ -2940,38 +2989,33 @@ export const SERIF_PRESETS = Object.freeze(
 
 export const DEFAULT_SERIF_PRESET = SERIF_PRESETS[0];
 
-// One wing off a drawn terminal. The left one: a preset holds a single wing, so
-// capturing an asymmetric terminal has to pick, and picking silently is better
-// than refusing a shape the designer can see.
+// The whole terminal off a drawn point. A side the checks have switched off is
+// captured as zeroes, because zeroes are what it draws.
 export function captureSerifPreset(point) {
   const serif = normalizeSerif(point?.serif);
+  const zeroes = { ...SERIF_HALF_ZEROS };
   return normalizeSerifPreset({
-    ...serif.left,
+    left: serif.sides === "right" ? zeroes : serif.left,
+    right: serif.sides === "left" ? zeroes : serif.right,
+    links: serif.links,
+    axisMode: serif.axisMode,
+    axisAngle: serif.axisAngle,
+    axisTilt: serif.axisTilt,
     undersideCup: serif.undersideCup,
     undersideCupTension: serif.undersideCupTension,
     undersideCupBalance: serif.undersideCupBalance,
   });
 }
 
-// The partial the serif writer takes. Scope "both" puts the one wing on both
-// sides; a single side leaves the other wing and the cup alone.
-export function applySerifPreset(preset, { scope = "both" } = {}) {
-  const wing = normalizeSerifPreset(preset);
-  const cup = wing.undersideCup;
-  const cupTension = wing.undersideCupTension;
-  const cupBalance = wing.undersideCupBalance;
-  delete wing.undersideCup;
-  delete wing.undersideCupTension;
-  delete wing.undersideCupBalance;
-  if (scope === "left" || scope === "right") {
-    return { [scope]: wing };
-  }
+// The partial the serif writer takes: every number and link the preset holds.
+// Both halves are named, so the writer's link carry does not touch them.
+export function applySerifPreset(preset) {
+  const normalized = normalizeSerifPreset(preset);
   return {
-    left: wing,
-    right: { ...wing },
-    undersideCup: cup,
-    undersideCupTension: cupTension,
-    undersideCupBalance: cupBalance,
+    ...normalized,
+    left: { ...normalized.left },
+    right: { ...normalized.right },
+    links: { ...normalized.links },
   };
 }
 
@@ -4602,17 +4646,20 @@ function normalizeSerifHalf(half) {
 }
 
 function normalizeSerif(serif) {
+  // One link per half field, closed by default. A terminal stored as "split",
+  // or with the one old link flag off, had its halves shaped apart, so every
+  // link reads open; an explicit link still wins.
+  const shapedApart = serif?.sides === "split" || serif?.linked === false;
+  const links = {};
+  for (const field of SERIF_HALF_FIELDS) {
+    const stored = serif?.links?.[field];
+    links[field] = typeof stored === "boolean" ? stored : !shapedApart;
+  }
   const normalized = {
     left: normalizeSerifHalf(serif?.left),
     right: normalizeSerifHalf(serif?.right),
-    linked: serif?.linked !== false,
-    // A file written before the tab row carries the old link flag instead, and
-    // an unlinked terminal is exactly what "split" now means.
-    sides: VALID_SERIF_SIDES.has(serif?.sides)
-      ? serif.sides
-      : serif?.linked === false
-        ? "split"
-        : "both",
+    links,
+    sides: VALID_SERIF_SIDES.has(serif?.sides) ? serif.sides : "both",
     axisMode: VALID_SERIF_AXIS_MODES.has(serif?.axisMode)
       ? serif.axisMode
       : "perpendicular",
