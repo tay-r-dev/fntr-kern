@@ -97,6 +97,12 @@ export class CompactScrubField extends UnlitElement {
       cursor: text;
     }
 
+    .value.mixed {
+      font-family: inherit;
+      font-style: italic;
+      opacity: 0.6;
+    }
+
     .value input {
       width: 4em;
       text-align: right;
@@ -113,6 +119,7 @@ export class CompactScrubField extends UnlitElement {
     super();
     this._label = "";
     this._value = 0;
+    this._mixed = false;
     this._disabled = false;
     this._minValue = undefined;
     this._maxValue = undefined;
@@ -162,6 +169,17 @@ export class CompactScrubField extends UnlitElement {
 
   set value(value) {
     this._value = value;
+    this._renderValue();
+  }
+
+  // A selection whose values differ. The box reads "mixed" until a value is
+  // typed or scrubbed in.
+  get mixed() {
+    return this._mixed;
+  }
+
+  set mixed(value) {
+    this._mixed = !!value;
     this._renderValue();
   }
 
@@ -235,14 +253,22 @@ export class CompactScrubField extends UnlitElement {
     return this._value == null ? "" : String(this._value);
   }
 
+  _showsMixed() {
+    return this._mixed && this._value == null;
+  }
+
   _renderValue() {
     if (this._valueElement && !this._editing) {
-      this._valueElement.textContent = this._displayValue();
+      this._valueElement.textContent = this._showsMixed()
+        ? "mixed"
+        : this._displayValue();
+      this._valueElement.classList.toggle("mixed", this._showsMixed());
     }
   }
 
   _commit(value, cancelMarker) {
     this._value = value;
+    this._mixed = false;
     this._renderValue();
     this.dispatchEvent(
       new CustomEvent("change", {
@@ -262,10 +288,10 @@ export class CompactScrubField extends UnlitElement {
     this._nameElement = html.span({ class: "name" }, [this._label]);
     this._valueElement = html.span(
       {
-        class: "value",
+        class: "value" + (this._showsMixed() ? " mixed" : ""),
         onclick: () => this._startEdit(),
       },
-      [this._displayValue()]
+      [this._showsMixed() ? "mixed" : this._displayValue()]
     );
 
     // Decorative only: a plain inline-svg, not an icon-button -- no click
@@ -327,6 +353,7 @@ export class CompactScrubField extends UnlitElement {
     const input = html.createDomElement("input", {
       type: "number",
       value: this._displayValue(),
+      placeholder: this._showsMixed() ? "mixed" : "",
     });
     if (this._minValue != null) {
       input.min = this._minValue;
@@ -348,13 +375,18 @@ export class CompactScrubField extends UnlitElement {
       this._editing = false;
       if (commit) {
         const parsed = parseFloat(input.value);
-        const value = Number.isFinite(parsed)
-          ? roundScrubValue(
-              clampScrubValue(parsed, this._boundsFieldItem),
-              this._boundsFieldItem
-            )
-          : this._value;
-        this._commit(value);
+        // Nothing typed leaves the values alone. Committing the old value would
+        // write a blank, which callers read as zero.
+        if (!Number.isFinite(parsed)) {
+          this._renderValue();
+          return;
+        }
+        this._commit(
+          roundScrubValue(
+            clampScrubValue(parsed, this._boundsFieldItem),
+            this._boundsFieldItem
+          )
+        );
       } else {
         this._renderValue();
       }

@@ -2230,6 +2230,7 @@ export default class SkeletonParametersPanel {
     const value =
       blank || summary.mixed || summary.value == null ? null : summary.value;
     field.value = value != null && round ? Math.round(value) : value;
+    field.mixed = !blank && summary.mixed;
   }
 
   // ---- Field change dispatch ------------------------------------------------
