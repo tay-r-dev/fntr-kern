@@ -23,6 +23,7 @@ P1 means a wrong result or serious scaling failure in a supported workflow. P2 m
 | `src-js/views-editor/src/visualization-layer-definitions.js` | 2,634 | Fork rendering additions and visibility filters inspected, including supporting `curvature.js` implementation; V1–V5. |
 | `src-js/views-editor/src/scene-model.js` | 2,614 | Fork hit-testing, generated-path filters, drag readouts, measurement state and shaping changes inspected; SM1–SM3. |
 | `src-js/views-editor/src/panel-skeleton-parameters.js` | 2,612 | Parameter controls, streaming edits, preset identity, source defaults, selection refresh and dispatch inspected; PS1–PS3. |
+| `src-js/fontra-core/src/harmonization.js` | 2,452 | G2/G3 construction, candidate ranking, rounding, convergence, reports and balance inspected; H1–H5. Numerical accuracy is not exhaustively established by static inspection. |
 | Remaining feature files | — | Pending; final coverage inventory will distinguish deep review from supporting inspection. |
 
 ## 1. Kerning view — kerning.js
@@ -422,6 +423,46 @@ When a width preset changes projection, `_applyWidthPreset` first awaits `setPan
 The panel also repeatedly maps, filters and maps preset lists to retain indices (`1209–1218`, `1297–1301`), then the shared control scans them for existence and selection and maps again. This is a small-list allocation/clarity issue, not a demonstrated bottleneck: one indexed pass can construct the displayed entries, and one `find` can establish both existence and the picked item. The simple command-dispatch branches are not themselves a performance problem; replace repeated metadata and conversions where that removes duplication, rather than replacing every conditional with a framework.
 
 Persistent compact controls and guards against rewriting an active field are appropriate. Their event listeners belong to those owned controls; this inspection does not establish a new leak in this panel. No tests were run for this review.
+
+## 10. Harmonization — harmonization.js
+
+### H1 — P2, confirmed comparison defect: infinite scores are treated as tied with finite scores
+
+Locations: `harmonization.js:897–909`; nonfinite residual handling at `715–716`.
+
+`tied(a, b)` compares `abs(a-b)` with a relative tolerance based on `max(abs(a), abs(b))`. For a finite value and Infinity, both sides evaluate to Infinity, so the comparison is true. For two Infinities the left side is NaN, so it is false. Consequently the ranking can ignore a finite-versus-infinite residual and decide on travel, while equal infinite residuals stop comparison before travel. This contradicts the explicit intent that finite candidates beat infinite incumbents.
+
+Recommendation: handle exact equality first, then order unequal nonfinite values explicitly, applying relative tolerance only to finite pairs. Reject NaN at the score boundary. The arithmetic defect is certain; its frequency in normal glyphs is not measured.
+
+### H2 — P2, static scaling problem: a local grid trial recomputes the entire global score
+
+Locations: `harmonization.js:1412–1453`, `1502–1516`, `1673–1688`, `1960–1987`.
+
+For each moved point, `snapToGrid` tries up to four placements over up to three passes. Every placement calls `scoreJoints` over all candidates and `travelSoFar` over every path point. With T touched points, J joints and N path points, one rounding pass costs O(T × (J + N)), before the canonical solver's up-to-40 settling attempts. Unselected contours contribute to every travel scan even though their displacement is zero. Each global score also reconstructs segment arrays and point objects.
+
+Recommendation: precompute the dependency from point indices to affected joint stencils. A trial changes only those scores and one travel contribution; update an aggregate score and restore the small affected set on rejection. Retain the existing lexicographic order and candidate traversal. Scope cycle keys and snapshots to potentially changed coordinates rather than serializing every point each attempt. The current `seen` Set is bounded and local, so this is temporary memory pressure, not a persistent leak.
+
+### H3 — P2, confirmed curve-type inconsistency: Balance accepts quadratic handles as cubic handles
+
+Locations: `harmonization.js:2305–2318`, `2356–2400`; contrast `isCubicOffCurve` and `getJointContext`.
+
+Balance accepts a four-point window whenever its endpoints are on-curve and both middle points have any off-curve type. It then applies cubic Tunni geometry. A valid quadratic run `[on, quadratic-off, quadratic-off, on]` represents two quadratic segments with an implied on-curve midpoint, not one cubic. The command can therefore move those quadratic controls according to the wrong curve model. Harmonization itself correctly requires cubic types.
+
+Recommendation: explicitly require cubic off-curves for this implementation, or decompose and implement the quadratic operation separately. Do not silently reinterpret the topology. The balancing finish also always rounds its handles (`2366–2367`), even when the enclosing `harmonizePathInPlace` caller requests `roundCoordinates: false`; thread the rounding policy through that shared operation.
+
+### H4 — P2, result consistency: final reports are not fully measured against the retained geometry
+
+Locations: `harmonization.js:1550–1552`, `1579–1594`, `1931–1955`, `2025–2045`, `2240–2253`.
+
+The nearest solver records a joint's status when it visits that joint, then later joints can move shared handles and the grid pass can move them again. The final pass only consults `everMoved`, which records movement before rounding; it does not recompute final continuity or compare final coordinates. It can therefore report success for a result rounded back to its starting coordinates, or for a joint disturbed after its last solve. The canonical path checks final movement but retains the pre-rounding convergence status. The finishing report also deliberately preserves an initial `partial` status despite having run repair on that same nonstructural joint; its comment that repair never ran there disagrees with the `reached` filter.
+
+Recommendation: distinguish construction outcome, retained movement and final residual, then derive the public status once after all preparation, rounding, balancing and repair. This also avoids describing a preparation-only alignment as an unchanged skipped command. Static inspection establishes the missing final checks; it does not quantify misleading reports in use.
+
+### H5 — P3, unnecessary work and stale explanations obscure the current algorithm
+
+`bendingEnergyOf` computes velocity once inside `curvatureAtParameter` and again for its speed at each of 21 sample positions (`914–983`). G3 slide evaluation samples both segments again for notch detection after energy sampling (`1190–1227`); collect curvature, speed, energy and notch information in one traversal per emitted segment. `combHasNotch` materializes all samples merely to retain the two endpoints and minimum. G2 slide considers zero in both directions (`1116–1123`). These are functioning paths with avoidable work inside an already nested search.
+
+The trailing `report` helper (`2431–2450`) is unused. Several comments still describe scoring multiple constructions or fairness in `scoreJoints`, although the outer dispatcher now chooses one construction and that score contains no fairness term. The Balance introduction says it cannot be a harmonization step immediately after code that uses it as a finishing step. Remove the dead helper and revise these comments to explain the current stages and their invariants. Keep the rationale for numerical limits, but move historical experiments out of repetitive inline blocks. No tests were run.
 
 ## Validation completed before the code-only request
 
