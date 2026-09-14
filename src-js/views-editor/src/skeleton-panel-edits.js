@@ -32,6 +32,7 @@ import {
   isSkeletonSideLocked,
   isSkeletonSideLockedAtAll,
   joinSkeletonContours,
+  clearSkeletonRibCurvaturePins,
   resetSkeletonEditableRib,
   resetSkeletonEditableRibHandle,
   resetSkeletonEditableRibHandles,
@@ -1341,7 +1342,7 @@ export async function resetPanelRibs(
   return editSelectedSkeletonPoints(
     sceneController,
     ribAddresses,
-    (point, address) => {
+    (point, address, { contour }) => {
       // A lock blocks every route to the thing it holds, resets included.
       if (part === "slide") {
         if (isSkeletonSideLocked(point, address.side, "slide")) {
@@ -1353,11 +1354,14 @@ export async function resetPanelRibs(
           return;
         }
         resetSkeletonEditableRibHandles(point, address.side);
+        // The curvature gizmo's pin sets the handles' lengths, so it goes too.
+        clearSkeletonRibCurvaturePins(contour, point, address.side);
       } else {
         if (isSkeletonSideLockedAtAll(point, address.side)) {
           return;
         }
         resetSkeletonEditableRib(point, address.side);
+        clearSkeletonRibCurvaturePins(contour, point, address.side);
       }
     },
     undoLabel
@@ -1463,6 +1467,7 @@ export async function resetPanelGeneratedHandle(
           return;
         }
         resetSkeletonEditableRibHandle(resolved.point, side, role);
+        clearSkeletonRibCurvaturePins(resolved.contour, resolved.point, side, role);
         if (anchor) {
           setSkeletonHandleOffset(resolved.point, side, role, {
             x: anchor.x,

@@ -23,7 +23,10 @@ import {
   symmetricDifference,
   union,
 } from "@fontra/core/set-ops.js";
-import { getSkeletonData } from "@fontra/core/skeleton-model.js";
+import {
+  getSkeletonData,
+  parseEditableGeneratedHandleKey,
+} from "@fontra/core/skeleton-model.js";
 import { SNAP_PARAMETERS } from "@fontra/core/snapping.js";
 import { Transform } from "@fontra/core/transform.js";
 import {
@@ -50,6 +53,7 @@ import { deleteMarkers, handleMarkerDrag } from "./marker-editing.js";
 import { MeasureInteraction } from "./measure-interactions.js";
 import { getPinPoint } from "./panel-transformation.js";
 import { equalGlyphSelection } from "./scene-controller.js";
+import { resetPanelGeneratedHandle, resetPanelRibs } from "./skeleton-panel-edits.js";
 import {
   createEditableGeneratedHandleTargetEntries,
   createEditableGeneratedPointTargetEntries,
@@ -68,7 +72,6 @@ import {
   makeSkeletonTensionAwareTargetEntry,
   makeSkeletonTensionAwareTransformEntry,
   parseSkeletonPointKey,
-  toggleEditableGeneratedHandleDetached,
   toggleSkeletonSmooth,
 } from "./skeleton-editing.js";
 import {
@@ -599,6 +602,10 @@ export class PointerTool extends BaseTool {
         await this.handleEditableGeneratedHandlesDoubleClick(selection);
         return;
       }
+      if (clickedSelection.skeletonRib?.length) {
+        await this.handleSkeletonRibsDoubleClick(selection);
+        return;
+      }
       if (hasSkeletonPointSelection(sceneController.selection)) {
         // Double-click on the centerline itself (no point under the cursor)
         // selects the whole skeleton contour; on a point it toggles smooth.
@@ -693,13 +700,36 @@ export class PointerTool extends BaseTool {
     });
   }
 
+  // Double-click puts a generated handle back where the generator puts it, the
+  // same as the panel's reset for one handle.
   async handleEditableGeneratedHandlesDoubleClick(selection) {
-    await this.sceneController.editLayersAndRecordChanges((layerGlyphs) => {
-      for (const layerGlyph of Object.values(layerGlyphs)) {
-        toggleEditableGeneratedHandleDetached(layerGlyph, selection);
-      }
-      return translate("edit-tools-pointer.undo.toggle-smooth");
+    for (const key of parseSelection(selection).editableGeneratedHandle || []) {
+      const handle = parseEditableGeneratedHandleKey(`editableGeneratedHandle/${key}`);
+      await resetPanelGeneratedHandle(
+        this.sceneController,
+        {
+          ...handle,
+          contourId: Number(handle.contourId),
+          pointId: Number(handle.pointId),
+        },
+        translate("sidebar.skeleton-parameters.undo.reset-this-handle")
+      );
+    }
+    this.sceneController.selection = new Set(selection);
+  }
+
+  // Double-click on a rib end resets its slide, the same as the panel's button.
+  async handleSkeletonRibsDoubleClick(selection) {
+    const ribs = (parseSelection(selection).skeletonRib || []).map((key) => {
+      const [contourId, pointId, side] = `${key}`.split("/");
+      return { contourId: Number(contourId), pointId: Number(pointId), side };
     });
+    await resetPanelRibs(
+      this.sceneController,
+      ribs,
+      { part: "slide" },
+      translate("sidebar.skeleton-parameters.undo.reset-slide")
+    );
     this.sceneController.selection = new Set(selection);
   }
 

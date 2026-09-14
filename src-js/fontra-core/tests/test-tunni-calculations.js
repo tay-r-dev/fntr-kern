@@ -209,10 +209,31 @@ describe("tunni-calculations: curvature gizmo", () => {
     ];
     const anchor = calculateCurvatureGizmoPoint(sCurve);
     expect(anchor.y).to.be.above(0);
-    for (let t = 0; t <= 1; t += 0.001) {
-      expect(chordDistance(sCurve, curveAt(sCurve, t))).to.be.at.most(
-        chordDistance(sCurve, anchor) + 1e-9
-      );
+  });
+
+  it("slides toward the middle on a near-flat or balanced curve, without a jump", () => {
+    const balanced = [
+      { x: 0, y: 0 },
+      { x: 70, y: 40 },
+      { x: 130, y: -40 },
+      { x: 200, y: 0 },
+    ];
+    const anchor = calculateCurvatureGizmoPoint(balanced);
+    expect(anchor.x).to.be.closeTo(100, 1e-6);
+    expect(anchor.y).to.be.closeTo(0, 1e-6);
+    // Flattening a bulge moves the gizmo a little per step, never across the curve.
+    let previous = null;
+    for (let height = 40; height >= 0; height -= 0.25) {
+      const point = calculateCurvatureGizmoPoint([
+        { x: 0, y: 0 },
+        { x: 30, y: height },
+        { x: 170, y: height * 0.9 },
+        { x: 200, y: 0 },
+      ]);
+      if (previous) {
+        expect(Math.hypot(point.x - previous.x, point.y - previous.y)).to.be.below(2);
+      }
+      previous = point;
     }
   });
 

@@ -683,18 +683,28 @@ export function calculateCurvatureGizmoPoint(segmentPoints) {
     roots.push(-a / linear);
   }
   const reach = (point) => Math.abs(cross(chord, subVectors(point, p1)));
-  let best = null;
-  for (const t of roots) {
-    if (!(t > 0 && t < 1)) {
-      continue;
-    }
-    const point = pointAt(t);
-    if (!best || reach(point) > reach(best)) {
-      best = point;
-    }
+  const bumps = roots
+    .filter((t) => t > 0 && t < 1)
+    .map((t) => ({ t, reach: reach(pointAt(t)) }))
+    .sort((one, other) => other.reach - one.reach);
+  const best = bumps[0];
+  if (!best || !(best.reach > CURVATURE_EPSILON)) {
+    return middle;
   }
-  return best && reach(best) > CURVATURE_EPSILON ? best : middle;
+  // Near flat, and on an S whose two bumps are close in size, the apex jumps
+  // along the curve at the smallest change. The gizmo slides toward the middle
+  // there instead: in proportion to how flat the curve is, and to how close the
+  // second bump comes to the first.
+  const chordLength = vectorLength(chord);
+  const flatness = best.reach / (chordLength * chordLength);
+  const sway = bumps.length > 1 ? 1 - bumps[1].reach / best.reach : 1;
+  const weight = Math.min(1, flatness / GIZMO_APEX_FLATNESS) * sway;
+  return pointAt(0.5 + (best.t - 0.5) * weight);
 }
+
+// The height of a bulge, as a fraction of its chord, below which the curvature
+// gizmo starts to slide from the apex toward the middle of the curve.
+const GIZMO_APEX_FLATNESS = 0.08;
 
 // Alt on the curvature gizmo: one handle takes the drag along its own line, and
 // the other changes length so the curvature at the leading handle's end stays

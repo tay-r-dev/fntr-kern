@@ -2539,6 +2539,27 @@ export function setSkeletonSegmentCurvature(point, side, tension) {
   point.segmentCurvature = curvature;
 }
 
+// Clear the curvature pins a rib's handles are part of, on one side. A pin is
+// stored on the on-curve its segment starts at, so the out handle's pin is on
+// the point itself and the in handle's pin is on the previous on-curve. Pass a
+// role to clear only that handle's segment.
+export function clearSkeletonRibCurvaturePins(contour, point, side, role = null) {
+  assertSkeletonRibSide(side);
+  if (role !== "in") {
+    setSkeletonSegmentCurvature(point, side, null);
+  }
+  if (role === "out") {
+    return;
+  }
+  const onCurves = (contour?.points || []).filter((candidate) => !candidate.type);
+  const index = onCurves.indexOf(point);
+  const previous =
+    index > 0 ? onCurves[index - 1] : contour?.closed ? onCurves.at(-1) : null;
+  if (previous && previous !== point) {
+    setSkeletonSegmentCurvature(previous, side, null);
+  }
+}
+
 export function getSkeletonHandleOffsetKey(side, role) {
   assertSkeletonRibSide(side);
   assertSkeletonHandleRole(role);
