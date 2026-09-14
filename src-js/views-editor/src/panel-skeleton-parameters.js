@@ -450,6 +450,67 @@ export default class SkeletonParametersPanel {
       this.widthFields.right,
     ]);
 
+    // The Insertion section in the same layout: Left, chain, Right for the
+    // widths, and the same for the easings. One link governs both pairs, so
+    // both chains are `insertion:linked`.
+    const insertionChain = () => {
+      const chain = html.createDomElement("chain-link", {
+        tooltip: translate("sidebar.skeleton-parameters.linked"),
+      });
+      chain.addEventListener("change", (event) =>
+        this._runOwnEdit(() => this._onInsertionChange("linked", event.detail.linked))
+      );
+      return chain;
+    };
+    this.insertionWidthChain = insertionChain();
+    this.insertionEasingChain = insertionChain();
+    this.insertionFields = {};
+    for (const side of ["left", "right"]) {
+      // A drag moves each point's width by the change in units, from where it
+      // started, so a mixed selection stays mixed.
+      this.insertionFields[side] = this._makeCompactField(
+        `insertion:${side}`,
+        `${side}-width`,
+        {
+          scrub: (valueStream, startValue) =>
+            this._onScrub("insertion", side, changesFrom(valueStream, startValue)),
+          commit: (value) => this._onInsertionChange(side, value),
+        }
+      );
+      // The field reads percent and the model stores minus one to one: below
+      // zero the joint tightens toward a point, above it fills out.
+      this.insertionFields[`easing-${side}`] = this._makeCompactField(
+        `insertion:easing-${side}`,
+        `insertion-easing-${side}`,
+        {
+          scrub: (valueStream) =>
+            setPanelInsertionValuesStream(
+              this.sceneController,
+              this._insertions || [],
+              valueStream,
+              (insertion, contour, streamedValue) =>
+                setInsertionEasing(
+                  insertion,
+                  side,
+                  this._insertionEasingFromSlider(streamedValue)
+                ),
+              this._undo("set-insertion-easing")
+            ),
+          commit: (value) => this._onInsertionChange(`easing-${side}`, value),
+        }
+      );
+    }
+    this.insertionWidthRow = fieldRow([
+      this.insertionFields.left,
+      this.insertionWidthChain,
+      this.insertionFields.right,
+    ]);
+    this.insertionEasingRow = fieldRow([
+      this.insertionFields["easing-left"],
+      this.insertionEasingChain,
+      this.insertionFields["easing-right"],
+    ]);
+
     // Ticket 47: under Generation, one row of labeled icon groups. Lock holds
     // the three lock kinds, Link holds Linked and Tied ribs, Reset holds the
     // three resets. Built once with its row, for the same reason as the width
@@ -1843,44 +1904,44 @@ export default class SkeletonParametersPanel {
       type: "header",
       label: translate("sidebar.skeleton-parameters.insertion"),
     });
-    formContents.push({
-      type: "checkbox",
-      key: "insertion:linked",
-      label: translate("sidebar.skeleton-parameters.linked"),
-      value: summary.linked.mixed ? false : summary.linked.value,
-    });
-    // Never greyed. An insertion point's ratio used to be treated as inert on a
-    // tied straight, on the reasoning that the tie owns the offset there. That
-    // was written before a cut straight became two cubics: the ends keep their
-    // direction through their own outer handles now, whatever the middle does,
-    // so the tie has nothing left to take away from the point between them. A
-    // stem is exactly where a designer reaches for this control.
-    const gate = { minValue: 0 };
+    // A closed link greys the right-hand fields, which follow the left, the
+    // way Generation's widths do.
+    const linked = summary.linked.mixed ? null : summary.linked.value === true;
+    for (const chain of [this.insertionWidthChain, this.insertionEasingChain]) {
+      chain.linked = linked;
+    }
+    // Never greyed otherwise. An insertion point's ratio used to be treated as
+    // inert on a tied straight, on the reasoning that the tie owns the offset
+    // there. That was written before a cut straight became two cubics: the ends
+    // keep their direction through their own outer handles now, whatever the
+    // middle does, so the tie has nothing left to take away from the point
+    // between them. A stem is exactly where a designer reaches for this control.
     for (const side of ["left", "right"]) {
-      this._pushSummaryNumber(
-        formContents,
+      const disabled = side === "right" && linked === true;
+      this._refreshCompactField(
+        this.insertionFields[side],
         `insertion:${side}`,
-        `${side}-width`,
         this._insertionWidthSummary(insertions, side),
-        gate
+        { disabled, minValue: 0 }
       );
-    }
-    // One per side, because the link governs easing as well as width. The
-    // slider reads percent and the model stores minus one to one: below zero
-    // the joint tightens toward a point, above it fills out.
-    for (const side of ["left", "right"]) {
-      const value = side === "left" ? summary.easingLeft : summary.easingRight;
-      this._pushSummarySlider(
-        formContents,
+      const easing = side === "left" ? summary.easingLeft : summary.easingRight;
+      this._refreshCompactField(
+        this.insertionFields[`easing-${side}`],
         `insertion:easing-${side}`,
-        `insertion-easing-${side}`,
-        { ...value, value: value.value == null ? null : value.value * 100 },
-        -100,
-        100,
-        0,
-        { step: 1 }
+        { ...easing, value: easing.value == null ? null : easing.value * 100 },
+        { disabled, minValue: -100, maxValue: 100, round: true }
       );
     }
+    formContents.push({
+      type: "single-icon",
+      element: this.insertionWidthRow,
+      layoutKey: "insertionWidthRow",
+    });
+    formContents.push({
+      type: "single-icon",
+      element: this.insertionEasingRow,
+      layoutKey: "insertionEasingRow",
+    });
   }
 
   // The two width fields read units, so each selected point's stored ratio is
@@ -2149,60 +2210,6 @@ export default class SkeletonParametersPanel {
     const value =
       blank || summary.mixed || summary.value == null ? null : summary.value;
     field.value = value != null && round ? Math.round(value) : value;
-  }
-
-  _pushSummaryNumber(formContents, key, labelKey, summary, options = {}) {
-    formContents.push({
-      label: translate(`sidebar.skeleton-parameters.${labelKey}`),
-      ...this._summaryNumberField(key, summary, options),
-    });
-  }
-
-  // The number input on its own, so a caller can either give it a row of its
-  // own or pack it beside something else.
-  //
-  // Every one of these scrubs: dragging its label sideways moves the number.
-  // On by default rather than per field, so there is no guessing which of the
-  // panel's numbers are draggable — they all are. A caller that wants one inert
-  // passes `scrub: false`.
-  _summaryNumberField(key, summary, options = {}) {
-    const { blank = false, ...fieldOptions } = options;
-    return {
-      type: "edit-number",
-      key,
-      value: blank || summary.mixed ? null : summary.value,
-      placeholder: blank ? "" : summary.placeholder || undefined,
-      scrub: true,
-      ...fieldOptions,
-    };
-  }
-
-  _pushSummarySlider(
-    formContents,
-    key,
-    labelKey,
-    summary,
-    minValue,
-    maxValue,
-    defaultValue,
-    options = {}
-  ) {
-    // A mixed or absent value must NOT pin the thumb to minValue: that makes
-    // the slider draggable in only one direction. Park it at the default and
-    // show "mixed" as a placeholder instead (donor parity).
-    const noValue = summary.mixed || summary.value == null;
-    formContents.push({
-      type: "edit-number-slider",
-      key,
-      label: translate(`sidebar.skeleton-parameters.${labelKey}`),
-      value: noValue ? (defaultValue ?? minValue) : summary.value,
-      displayValue: summary.mixed ? "mixed" : undefined,
-      minValue,
-      // The RangeSlider web component requires a numeric defaultValue
-      defaultValue: defaultValue ?? minValue,
-      maxValue,
-      ...options,
-    });
   }
 
   // ---- Field change dispatch ------------------------------------------------
