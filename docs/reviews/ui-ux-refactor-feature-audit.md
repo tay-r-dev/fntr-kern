@@ -4,7 +4,7 @@ Review target: `02bbd755925f4eb8a5f00fc248853aac7ba1f756`.
 Upstream: `fontra/fontra`, inspected at `ba03f8917e4df6cd783e755dd372b519b1f3225f`.
 Comparison base: `1066c5cb3f0f0442037d9ea6394ab516553ca44c`, the merge base of upstream and the target. The older `googlefonts/fontra` repository is archived; comparing only with it would misclassify later upstream work as fork additions.
 
-This review covers fork-specific features, with priority on skeleton editing and visualizations. It assesses correctness and code quality, performance, and consistency. It changes no application code. Findings are committed after each primary file review; related files are traced where needed. This is a growing report until the coverage ledger is complete. Subsequent installments use code inspection only, as requested; no further tests are run.
+This review covers fork-specific features, with priority on skeleton editing and visualizations. It assesses correctness and code quality, performance, and consistency. It changes no application code. Findings are committed after each primary file review; related files are traced where needed. This is a growing report until the coverage ledger is complete.
 
 The reference set starts at `docs/superpowers/START-HERE.md`: glossary, architecture map, feature model and development log. Code takes precedence where those documents disagree. Ponytail's Markdown review guidance was read from a separate clone, without installation. Its simplicity checks supplement this review; they do not replace correctness checks. The requested `ste-writing` skill is not present in the repository or available skill directories; this report uses plain language.
 
@@ -18,6 +18,7 @@ P1 means a wrong result or serious scaling failure in a supported workflow. P2 m
 | `src-js/fontra-core/src/skeleton-generator.js` | 6,743 | Generation pipeline, cleanup, corners, cap construction, provenance and generation-option callers inspected; S1–S6. Static review, not a proof of the numerical solver. |
 | `src-js/fontra-core/src/skeleton-model.js` | 5,859 | Schema, topology operations, ID transport, width/rib rules, generated-target lookup, transforms, rounding and cache ownership inspected; M1–M6. |
 | `src-js/views-editor/src/editor.js` | 4,307 | Fork diff and surrounding clipboard, delete, bulk metrics, tool lifecycle and registration code inspected; E1–E4, S2 and M3. |
+| `src-js/views-editor/src/panel-designspace-navigation.js` | 3,895 | Fork-added visual controls, persistence, debug polling/subscriptions and source creation inspected; D1–D3 and M5. |
 | Remaining feature files | — | Pending; final coverage inventory will distinguish deep review from supporting inspection. |
 
 ## 1. Kerning view — kerning.js
@@ -249,6 +250,36 @@ The command loads every glyph sequentially to identify keyed glyphs, then resolv
 Recommendation: derive the metrics dependency graph once, process acyclic dependencies in order, and isolate cycles according to the existing resolver's policy. Batch independent loads with a concurrency limit rather than serially awaiting each glyph or launching an unbounded `Promise.all`. Report affected glyphs, and retain progress/cancellation if the operation remains long-running. No runtime timing is claimed.
 
 The module-global generation-options reader is covered by S2; insertion paste IDs are covered by M3. Avoid treating the same issue as an additional independent finding here.
+
+## 5. Designspace and visual controls — panel-designspace-navigation.js
+
+### D1 — P2, confirmed idle work; retention risk on removal: debug polling never stops
+
+Locations: `panel-designspace-navigation.js:1826–1848`; `snapping.js:303–313`; base `panel.js`.
+
+`_startSnappingDebugReadout` unconditionally schedules another animation frame. The visibility check only suppresses its body; it does not stop polling. It checks the accordion item, whose header can remain visible while its content is collapsed, instead of the readout's visibility. The loop also rewrites the text even when the readout has not changed. A debug aid therefore schedules work throughout the editor session.
+
+The callback captures the panel, and there is no stored frame ID or disconnect cleanup. The global snapping subscription likewise returns an unsubscribe function that this panel discards. If a panel is removed or replaced within the same document, both are retention paths for the detached panel and its editor. This is a concrete lifetime hazard, not a claim that normal tab use creates an ever-growing number of panels: the current editor constructs this panel once.
+
+Recommendation: start polling only while the readout is visible and a gesture is active, stop on close/disconnect, and update text only on change. Retain and invoke the subscription disposer. An existing gesture-update signal would eliminate polling entirely.
+
+### D2 — P2/P3, functioning but redundant: snapping controls synchronize and persist twice per input
+
+Locations: `panel-designspace-navigation.js:1740–1780`, `1790–1800`, `1817–1830`; `snapping.js:310–334`.
+
+`setSnapParameter` synchronously notifies subscribers. The panel subscriber synchronizes every row and persists every parameter. The input handler then repeats that same full synchronization and persistence. Reset duplicates the same work. Each synchronization performs multiple DOM queries per row, even for unrelated scalar changes.
+
+Recommendation: let the subscription be the single synchronization/persistence path, as the comment already claims. Capture control elements once during setup. Update dependent reach readouts when the master reach changes; other changes need only their own row and duplicate toggle. Keep whole-state persistence at commit/debounce boundaries where live persistence is not required.
+
+### D3 — P3, consistency and maintainability: ordinary visual settings use several parallel binding styles
+
+Locations: `panel-designspace-navigation.js:495–558`, `1162–1240`, `1402–1470`, `1506–1647`, `1870–1950`.
+
+The same control lifecycle—read, normalize, display, write, synchronize an external change, persist—is handwritten differently for grid, SpeedPunk, measurement and Tunni controls. SpeedPunk alone maintains field getters, private state, scene settings and persisted app settings with separate lists. That is more state and repetition than the feature requires. Grid and SpeedPunk settings also have different external-change synchronization paths.
+
+Recommendation: use a small field descriptor table and one binding helper for these repeated scalar controls, retaining feature-specific normalization. The existing Tunni/debug tables demonstrate that this fits the codebase. Do not turn the entire designspace panel into a generic form framework. New ordinary UI strings such as “Phrase” and alignment tooltips bypass `translate`, unlike neighboring controls; route user-facing labels through localization while leaving explicitly developer-only debug labels under their documented policy.
+
+Source rounding is covered by M5. No new tests or profiling were performed.
 
 ## Validation completed before the code-only request
 
