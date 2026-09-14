@@ -25,6 +25,7 @@ import {
 } from "@fontra/core/set-ops.js";
 import {
   getSkeletonData,
+  makeSkeletonRibKey,
   parseEditableGeneratedHandleKey,
 } from "@fontra/core/skeleton-model.js";
 import { SNAP_PARAMETERS } from "@fontra/core/snapping.js";
@@ -274,8 +275,40 @@ export class PointerTool extends BaseTool {
     }
   }
 
+  // Pressing a skeleton or generated gizmo selects what it belongs to, so the
+  // panel shows that object: a skeleton segment's two points, or the ribs at
+  // the two ends of a generated segment.
+  _selectTunniGizmoOwner(gizmo) {
+    const keys = new Set();
+    const segment = gizmo.segment;
+    if (gizmo.kind === "skeleton" && segment) {
+      for (const pointId of [segment.startPointId, segment.endPointId]) {
+        if (pointId !== undefined) {
+          keys.add(makeSkeletonPointKey(gizmo.contourId, pointId));
+        }
+      }
+    } else if (gizmo.kind === "generated" && segment) {
+      for (const entry of [segment.provenance?.[0], segment.provenance?.at(-1)]) {
+        if (entry?.skeletonPointId === undefined || entry.insertion) {
+          continue;
+        }
+        keys.add(
+          makeSkeletonRibKey(
+            entry.skeletonContourId ?? segment.skeletonContourId,
+            entry.skeletonPointId,
+            segment.side
+          )
+        );
+      }
+    }
+    if (keys.size) {
+      this.sceneController.selection = keys;
+    }
+  }
+
   async _handleTunniGizmoDrag(gizmo, eventStream, initialEvent) {
     const sceneController = this.sceneController;
+    this._selectTunniGizmoOwner(gizmo);
     if (gizmo.kind === "generated") {
       if (initialEvent.detail >= 2) {
         await handleGeneratedTunniCommand({

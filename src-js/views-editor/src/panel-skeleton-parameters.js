@@ -1503,16 +1503,6 @@ export default class SkeletonParametersPanel {
         auxiliaryElement: this.gizmoHandlesControl,
       },
     ];
-    if (!skeletonData) {
-      formContents.push({
-        type: "text",
-        value: translate("sidebar.skeleton-parameters.no-skeleton"),
-      });
-      this._lastFormLayout = null;
-      this.infoForm.setFieldDescriptions(formContents);
-      return;
-    }
-
     const widthPoints = collectWidthEditPoints(panelSelection);
     // Ribs fall back to both sides of every resolved point, so the rib
     // parameters show for any skeleton selection (4.10) and the reset buttons
@@ -1524,9 +1514,10 @@ export default class SkeletonParametersPanel {
     // Before Generation, whose Reset group offers the narrow reset only while
     // one generated handle is selected.
     this._singleGeneratedHandle = singleGeneratedHandleTarget(panelSelection);
-    if (widthPoints.length) {
-      this._buildPointWidthSection(formContents, widthPoints);
-    }
+    // The basic section is always there, so the panel keeps its shape. Without a
+    // skeleton point in the selection its inputs are greyed. The sections for
+    // one kind of point follow under it.
+    this._buildPointWidthSection(formContents, widthPoints);
     if (widthPoints.length) {
       this._buildCapSection(formContents, widthPoints);
       this._buildCornerSection(formContents, widthPoints);
@@ -1538,18 +1529,6 @@ export default class SkeletonParametersPanel {
     this._insertions = insertions;
     if (insertions.length) {
       this._buildInsertionSection(formContents, insertions);
-    }
-
-    if (
-      !widthPoints.length &&
-      !panelSelection.contours.length &&
-      !ribTargets.length &&
-      !insertions.length
-    ) {
-      formContents.push({
-        type: "text",
-        value: translate("sidebar.skeleton-parameters.no-selection"),
-      });
     }
 
     formContents.push({ type: "spacer" });
@@ -1618,19 +1597,23 @@ export default class SkeletonParametersPanel {
     // numbers and the split between them describe nothing on screen. Greyed and
     // blank rather than hidden: they are still stored, and still what the point
     // goes back to if the contour returns to double-sided.
-    const sidesGate = { disabled: summary.singleSided, blank: summary.singleSided };
+    const none = !widthPoints.length;
+    const sidesGate = {
+      disabled: none || summary.singleSided,
+      blank: summary.singleSided,
+    };
     // Ticket 45: a closed chain greys Right. Left is then the one place a side
     // is typed, and the writer carries the other side by its share. The chain
     // changes how numbers are typed and nothing else -- a drag never reads the
     // flag (feature model §5).
     const linkedClosed = !summary.linked.mixed && summary.linked.value === true;
     this.widthChain.linked = summary.linked.mixed ? null : summary.linked.value;
-    this.widthChain.disabled = summary.singleSided;
+    this.widthChain.disabled = none || summary.singleSided;
     // The minimum is declared rather than left to the model: without it a drag
     // past the bottom keeps counting down in the box while the stroke has
     // stopped. A mixed field has no start value, so it drags from zero by the
     // change alone and takes no floor.
-    this._refreshWidthField("total", summary.total, { minValue: 0 });
+    this._refreshWidthField("total", summary.total, { disabled: none, minValue: 0 });
     this._refreshWidthField("distribution", summary.distribution, {
       ...sidesGate,
       minValue: -100,
