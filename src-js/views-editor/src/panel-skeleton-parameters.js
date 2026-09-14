@@ -26,6 +26,7 @@ import {
 import { throttleCalls } from "@fontra/core/utils.ts";
 import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 45
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 46
+import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 48
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 44
 import { Form } from "@fontra/web-components/ui-form.js";
 import { SELECTION_ROW_GROUP_STYLES } from "./selection-row-group-styles.js";
@@ -498,8 +499,39 @@ export default class SkeletonParametersPanel {
       ]),
       html.div({ class: "selection-row-group-icons" }, buttons),
     ];
+    // Ticket 48: Projection is the contour's sides, D, L and R for both, left
+    // and right. Its overflow holds the two options on that change: keep
+    // shape and preserve changes, which are application settings rather than
+    // contour data. Preserve changes stays greyed while keep shape is off.
+    this.projectionControl = html.createDomElement("segmented-control", {
+      options: ["both", "left", "right"].map((value) => ({
+        value,
+        label: translate(`sidebar.skeleton-parameters.projection.${value}`),
+      })),
+    });
+    this.projectionControl.addEventListener("change", (event) =>
+      this._runOwnEdit(() => this._onContourChange("single-sided", event.detail.value))
+    );
+    this.projectionOverflow = html.createDomElement("overflow-button", {
+      "data-tooltip": translate("sidebar.skeleton-parameters.projection.options"),
+      "data-tooltipposition": "top",
+    });
+    this.projectionOverflow.addEventListener("change", (event) => {
+      const checked = event.detail.checked;
+      const settings = applicationSettingsController.model;
+      settings.skeletonSideModeKeepsForm = checked.includes("keep-form");
+      settings.skeletonSideModeKeepsEdits = checked.includes("keep-edits");
+      // Before the list reopens, so it shows preserve changes greyed or live
+      // the moment keep shape changes.
+      this._refreshProjectionOverflow();
+    });
+    this._refreshProjectionOverflow();
     this.generationIconRow = html.div({ class: "selection-row-group" }, [
       ...iconGroup("group.lock", Object.values(this.lockButtons)),
+      ...iconGroup("group.projection", [
+        this.projectionControl,
+        this.projectionOverflow,
+      ]),
       ...iconGroup("group.link", [this.linkedButton, this.tiedButton]),
       ...iconGroup("group.reset", [
         this.resetRibButton,
@@ -556,6 +588,25 @@ export default class SkeletonParametersPanel {
       this._runOwnEdit(() => this._onWidthChange(name, event.detail.value));
     });
     return field;
+  }
+
+  // The two projection options, read from the application settings.
+  _refreshProjectionOverflow() {
+    const settings = applicationSettingsController.model;
+    const keepForm = settings.skeletonSideModeKeepsForm === true;
+    this.projectionOverflow.items = [
+      {
+        value: "keep-form",
+        label: translate("sidebar.skeleton-parameters.sides.keep-form"),
+        checked: keepForm,
+      },
+      {
+        value: "keep-edits",
+        label: translate("sidebar.skeleton-parameters.sides.keep-edits"),
+        checked: settings.skeletonSideModeKeepsEdits === true,
+        disabled: !keepForm,
+      },
+    ];
   }
 
   // The bracket every one of this panel's own edits runs in, for the elements
@@ -1047,6 +1098,14 @@ export default class SkeletonParametersPanel {
     }
     setToggle(this.linkedButton, summary.linked);
     setToggle(this.tiedButton, summary.tied);
+    // Projection reads the contours the selection touches. A mixed selection
+    // lights no segment.
+    const contours = this._panelSelection?.contours || [];
+    const sides = summarizeSkeletonContourSelection(contours).singleSided;
+    this.projectionControl.value = sides.mixed ? undefined : (sides.value ?? "both");
+    this.projectionControl.disabled = !contours.length;
+    this.projectionOverflow.disabled = !contours.length;
+    this._refreshProjectionOverflow();
     // Derived targets cover both sides of each selected point, so the reset
     // says so; an explicit rib selection resets just that rib.
     this.resetRibButton.setAttribute(
@@ -1146,41 +1205,9 @@ export default class SkeletonParametersPanel {
       type: "header",
       label: translate("sidebar.skeleton-parameters.contour"),
     });
-    // One control with three named states, replacing a checkbox that turned
-    // one-sided on and a second one that then chose the side. Which side a
-    // stroke sits on is one setting with three values, and the pair could show
-    // a state the stored setting does not have.
-    const singleSided = summary.singleSided.value;
-    formContents.push({
-      type: "select",
-      key: "contour:single-sided",
-      label: translate("sidebar.skeleton-parameters.sides"),
-      value: summary.singleSided.mixed ? "" : (singleSided ?? "both"),
-      options: [
-        ...(summary.singleSided.mixed
-          ? [{ value: "", label: "mixed", disabled: true }]
-          : []),
-        { value: "both", label: translate("sidebar.skeleton-parameters.sides.both") },
-        { value: "left", label: translate("sidebar.skeleton-parameters.sides.left") },
-        { value: "right", label: translate("sidebar.skeleton-parameters.sides.right") },
-      ],
-    });
-    // Two options on that change, not on the contour: they say what the change
-    // does to the drawing. Off is the plain write, which is what the app has
-    // always done — the centerline holds still and the letter moves.
-    formContents.push({
-      type: "checkbox",
-      key: "contour:sides-keep-form",
-      label: translate("sidebar.skeleton-parameters.sides.keep-form"),
-      value: applicationSettingsController.model.skeletonSideModeKeepsForm === true,
-    });
-    formContents.push({
-      type: "checkbox",
-      key: "contour:sides-keep-edits",
-      label: translate("sidebar.skeleton-parameters.sides.keep-edits"),
-      value: applicationSettingsController.model.skeletonSideModeKeepsEdits === true,
-      disabled: applicationSettingsController.model.skeletonSideModeKeepsForm !== true,
-    });
+    // The sides and their two options moved to Generation's Projection group
+    // (ticket 48). Off is the plain write, which is what the app has always
+    // done: the centerline holds still and the letter moves.
     this._pushSummaryNumber(
       formContents,
       "contour:default-width",
@@ -2661,11 +2688,6 @@ export default class SkeletonParametersPanel {
             applicationSettingsController.model.skeletonSideModeKeepsEdits === true,
         }
       );
-    } else if (name === "sides-keep-form") {
-      applicationSettingsController.model.skeletonSideModeKeepsForm = value === true;
-      await this.update();
-    } else if (name === "sides-keep-edits") {
-      applicationSettingsController.model.skeletonSideModeKeepsEdits = value === true;
     } else if (name === "default-width") {
       await setPanelContourDefaultWidth(
         sc,

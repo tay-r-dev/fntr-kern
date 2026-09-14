@@ -1,5 +1,6 @@
 import * as html from "@fontra/core/html-utils.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
+import "./inline-svg.js";
 import { MenuItemDivider, showMenu } from "./menu-panel.js";
 import { themeColorCSS } from "./theme-support.js";
 
@@ -53,6 +54,29 @@ export class MultiSelectDropdown extends UnlitElement {
       font-size: 0.7em;
       vertical-align: middle;
     }
+
+    /* Ticket 48: the icon mode, which is how the overflow button draws. */
+    button.icon-mode {
+      display: flex;
+      border: none;
+      padding: 0;
+      width: 1.5em;
+      height: 1.5em;
+    }
+
+    button.icon-mode inline-svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    button:disabled {
+      cursor: default;
+      opacity: 35%;
+    }
+
+    button:disabled:hover {
+      background-color: transparent;
+    }
   `;
 
   constructor() {
@@ -61,7 +85,35 @@ export class MultiSelectDropdown extends UnlitElement {
     this._items = [];
     this._singleChoice = false;
     this._note = "";
+    this._icon = "";
+    this._disabled = false;
     this._menu = null;
+  }
+
+  // Ticket 48: an icon in place of the label and the triangle. The list it
+  // opens is the same list.
+  get icon() {
+    return this._icon;
+  }
+
+  set icon(value) {
+    this._icon = value || "";
+    this.requestUpdate();
+  }
+
+  get disabled() {
+    return this._disabled;
+  }
+
+  set disabled(value) {
+    this._disabled = !!value;
+    if (this._button) {
+      this._button.disabled = this._disabled;
+    }
+    if (this._disabled && this._menu) {
+      this._menu.dismiss();
+      this._menu = null;
+    }
   }
 
   get label() {
@@ -105,6 +157,8 @@ export class MultiSelectDropdown extends UnlitElement {
       "button",
       {
         type: "button",
+        class: this._icon ? "icon-mode" : "",
+        disabled: this._disabled,
         // A press on the button toggles, and it has to be mousedown: the
         // menu closes itself on any window mousedown (menu-panel.js's own
         // listener), so by the time a click event arrived the menu was
@@ -123,12 +177,17 @@ export class MultiSelectDropdown extends UnlitElement {
           }
         },
       },
-      [this._labelSpan, html.span({ class: "triangle" }, ["▾"])]
+      this._icon
+        ? [html.createDomElement("inline-svg", { src: this._icon })]
+        : [this._labelSpan, html.span({ class: "triangle" }, ["▾"])]
     );
     return this._button;
   }
 
   toggleMenu() {
+    if (this._disabled) {
+      return;
+    }
     if (this._menu) {
       this._menu.dismiss();
       this._menu = null;
@@ -139,9 +198,11 @@ export class MultiSelectDropdown extends UnlitElement {
 
   openMenu() {
     const rect = this._button.getBoundingClientRect();
+    // An item with `disabled` shows greyed and cannot be picked.
     const menuItems = this._items.map((item) => ({
       title: item.label,
       checked: item.checked,
+      enabled: () => !item.disabled,
       callback: () => this.pickItem(item),
     }));
     if (this._note) {

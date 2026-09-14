@@ -1,6 +1,6 @@
 # 48: Skeleton block: Projection with its overflow
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 47 (Skeleton block: Lock, Link and Reset icon groups), 42 (Selection: Harmonize method as a segmented control), 15 (Pair table: Unicode types dropdown)
 
