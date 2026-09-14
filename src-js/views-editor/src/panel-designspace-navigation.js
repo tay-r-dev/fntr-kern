@@ -849,6 +849,13 @@ export default class DesignspaceNavigationPanel extends Panel {
                 ])
               )
             ),
+            html.createDomElement("labeled-toggle", {
+              id: "tunni-labels-always-visible-toggle",
+              label: translate(
+                "sidebar.designspace-navigation.tunni.labels-always-visible"
+              ),
+              style: "grid-column: 1 / -1;",
+            }),
           ]
         ),
       },
@@ -1565,6 +1572,21 @@ export default class DesignspaceNavigationPanel extends Panel {
     }
   }
 
+  _setupTunniLabelsAlwaysVisibleToggle() {
+    const toggle = this.visualAccordion.querySelector(
+      "#tunni-labels-always-visible-toggle"
+    );
+    const key = "tunniLabelsAlwaysVisible";
+    toggle.checked = !!applicationSettingsController.model[key];
+    toggle.addEventListener("change", () => {
+      applicationSettingsController.model[key] = !!toggle.checked;
+      this.sceneController.canvasController.requestUpdate();
+    });
+    applicationSettingsController.addKeyListener(key, (event) => {
+      toggle.checked = !!event.newValue;
+    });
+  }
+
   _setupTunniDebugControls() {
     const stored = applicationSettingsController.model.tunniGizmoTuning || {};
     for (const control of TUNNI_DEBUG_CONTROLS) {
@@ -1918,6 +1940,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._setupMeasurementsDisplayToggle();
     this._setupMeasurementsCheckboxes();
     this._setupTunniControls();
+    this._setupTunniLabelsAlwaysVisibleToggle();
     this._setupTunniDebugControls();
     this._setupSpeedPunkControls();
     this._setupSnappingDebugControls();

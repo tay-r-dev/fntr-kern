@@ -55,6 +55,7 @@ export const applicationSettingsController = new ObservableController({
   showLabelsDistance: true,
   showLabelsTension: true,
   showLabelsAngle: false,
+  tunniLabelsAlwaysVisible: false,
 });
 
 // Node has no localStorage, and this module is reached from the node test

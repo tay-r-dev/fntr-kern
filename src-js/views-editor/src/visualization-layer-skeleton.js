@@ -39,6 +39,7 @@ import {
   skeletonTunniSegmentId,
   TUNNI_SETTINGS,
   tunniGizmoKey,
+  tunniLabelAlpha,
 } from "./tunni-gizmos.js";
 import {
   drawDiamondNode,
@@ -853,13 +854,14 @@ registerVisualizationLayerDefinition({
         if (points) {
           drawTunniTensionLabel(
             context,
-            model.tunniGizmoReveal?.alpha(
+            tunniLabelAlpha(
+              model,
               tunniGizmoKey(
                 "skeleton",
                 "curvature",
                 skeletonTunniSegmentId(contour, segment)
               )
-            ) ?? 0,
+            ),
             points,
             parameters
           );
@@ -1042,10 +1044,10 @@ registerVisualizationLayerDefinition({
       positionedGlyph.glyph.path
     )) {
       // Shown with its curvature gizmo and faded with it.
-      const alpha =
-        model.tunniGizmoReveal?.alpha(
-          tunniGizmoKey("generated", "curvature", generatedTunniSegmentId(segment))
-        ) ?? 0;
+      const alpha = tunniLabelAlpha(
+        model,
+        tunniGizmoKey("generated", "curvature", generatedTunniSegmentId(segment))
+      );
       if (!(alpha > 0)) {
         continue;
       }

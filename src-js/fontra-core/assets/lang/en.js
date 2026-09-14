@@ -426,6 +426,7 @@ export const strings = {
   "sidebar.designspace-navigation.tunni.generated": "Generated",
   "sidebar.designspace-navigation.tunni.on-curve": "On-curve",
   "sidebar.designspace-navigation.tunni.label": "Label",
+  "sidebar.designspace-navigation.tunni.labels-always-visible": "Always show labels",
   "sidebar.designspace-navigation.speedpunk": "SpeedPunk",
   "sidebar.designspace-navigation.speedpunk.display": "Display",
   "sidebar.designspace-navigation.speedpunk.opacity": "Opacity",

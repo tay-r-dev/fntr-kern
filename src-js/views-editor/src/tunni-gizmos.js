@@ -1,3 +1,4 @@
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import {
   buildGeneratedTunniSegments,
   buildSkeletonTunniSegments,
@@ -92,6 +93,14 @@ export function coupleGeneratedGizmoSettings(settings) {
       settings.model[generatedMode] = true;
     }
   });
+}
+
+// A label follows its curvature gizmo, showing and fading with it, unless the
+// Tunni section's "Always show labels" toggle is on.
+export function tunniLabelAlpha(model, key) {
+  return applicationSettingsController.model.tunniLabelsAlwaysVisible
+    ? 1
+    : (model.tunniGizmoReveal?.alpha(key) ?? 0);
 }
 
 export function tunniGizmoKey(kind, type, id) {

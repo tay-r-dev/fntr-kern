@@ -57,6 +57,7 @@ import { subVectors } from "@fontra/core/vector.js";
 import {
   isTunniControlLive,
   iterBasicTunniSegments,
+  tunniLabelAlpha,
   TUNNI_SETTINGS,
   tunniGizmoKey,
 } from "./tunni-gizmos.js";
@@ -2363,7 +2364,7 @@ registerVisualizationLayerDefinition({
     )) {
       drawTunniTensionLabel(
         context,
-        model.tunniGizmoReveal?.alpha(tunniGizmoKey("basic", "curvature", id)) ?? 0,
+        tunniLabelAlpha(model, tunniGizmoKey("basic", "curvature", id)),
         segment.points,
         parameters
       );
