@@ -1,6 +1,6 @@
 # 71: Skeleton settings: terminal presets table
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 67 (Skeleton settings tab), 04 (Lift the pair table into a shared table component), 07 (Terminal presets cover the four kinds with fields)
 
