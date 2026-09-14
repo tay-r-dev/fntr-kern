@@ -22,6 +22,7 @@ import {
   parseSkeletonInsertionSelectionItem,
   parseSkeletonRibKey,
 } from "@fontra/core/skeleton-model.js";
+import { getSkeletonCornerDistances } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 import { getSkeletonPointAddress, parseSkeletonPointKey } from "./skeleton-editing.js";
 
@@ -602,17 +603,28 @@ export function summarizeSkeletonCornerSelection(selectedPoints) {
     reduceValues(
       selectedPoints.map((entry) => entry.point.corner?.[side]?.[field] ?? null)
     );
+  // The distance a side draws with, which on a linked corner is resolved from
+  // the centerline's distance rather than read off the side.
+  const sideDistance = (side) =>
+    reduceValues(
+      selectedPoints.map(
+        (entry) => getSkeletonCornerDistances(entry.contour, entry.point)[side]
+      )
+    );
   return {
     canEdit,
     linked: reduceValues(
       selectedPoints.map((entry) => entry.point.corner?.linked !== false)
     ),
+    distribution: reduceValues(
+      selectedPoints.map((entry) => entry.point.corner?.distribution ?? 0)
+    ),
     left: {
-      distance: sideValue("left", "distance"),
+      distance: sideDistance("left"),
       curvature: sideValue("left", "curvature"),
     },
     right: {
-      distance: sideValue("right", "distance"),
+      distance: sideDistance("right"),
       curvature: sideValue("right", "curvature"),
     },
   };

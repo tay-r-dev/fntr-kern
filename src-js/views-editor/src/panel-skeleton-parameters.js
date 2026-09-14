@@ -38,6 +38,7 @@ import {
   SKELETON_PANEL_SENDER,
   nudgePanelCapParameterStream,
   nudgePanelCornerDistanceStream,
+  setPanelCornerDistributionStream,
   nudgePanelPointWidthStream,
   forcePanelSerifSide,
   nudgePanelSerifValueStream,
@@ -314,6 +315,11 @@ function cornerValuesFromField(name, value) {
     return { side, curvature: Number(value) / 100 };
   }
   return null;
+}
+
+// The corner distribution, which names no side: -100 to 100, left positive.
+function cornerValuesFromDistribution(value) {
+  return { distribution: Number(value) };
 }
 
 // A stored ratio as the percent a field shows. A mixed or absent one shows
@@ -705,9 +711,11 @@ export default class SkeletonParametersPanel {
     ]);
 
     // Ticket 61: Corner rounding as two chained rows, Distance and Curvature,
-    // each left, chain, right. Both chains are `corner:linked`: closed greys the
-    // right field and the writer carries the left value to both sides.
-    // Distribution is not built; it needs the designer first (§5.7).
+    // each left, chain, right. Both chains are `corner:linked`. Closed, the
+    // curvature writer carries the left value to both sides and greys the right
+    // field; both distances stay editable, because each is one side of the
+    // same shared-centre rounding and moves the other by that rule. Ticket 75:
+    // the Distribution row under them moves distance between the two sides.
     this.cornerFields = {};
     for (const side of ["left", "right"]) {
       for (const parameter of ["distance", "curvature"]) {
@@ -737,6 +745,22 @@ export default class SkeletonParametersPanel {
       this.cornerChains[1],
       this.cornerFields["right-curvature"],
     ]);
+    this.cornerDistributionField = this._makeCompactField(
+      "corner:distribution",
+      "corner-distribution",
+      {
+        defaultValue: 0,
+        scrub: (valueStream) =>
+          setPanelCornerDistributionStream(
+            this.sceneController,
+            this._widthPoints(),
+            valueStream,
+            this._undo("set-corner")
+          ),
+        commit: (value) => this._onCornerChange("distribution", value),
+      }
+    );
+    this.cornerDistributionRow = fieldRow([this.cornerDistributionField]);
 
     // Ticket 57: the serif's half fields, one row per field: left, chain,
     // right. A closed chain is that field's link: it greys the right field and
@@ -1905,30 +1929,49 @@ export default class SkeletonParametersPanel {
       value: summary.value == null ? null : Math.round(summary.value * 100),
       mixed: summary.mixed,
     });
-    // A closed chain greys Right: the writer carries Left to both sides.
+    // A closed chain greys Right curvature, which the writer carries from Left.
+    // Both distances stay live: a linked distance is one side of the shared
+    // rounding, and typing either moves the other.
     const linked = !corner.linked.mixed && corner.linked.value === true;
     for (const chain of this.cornerChains) {
       chain.linked = corner.linked.mixed ? null : corner.linked.value;
     }
     for (const side of ["left", "right"]) {
-      const disabled = side === "right" && linked;
       this._refreshCompactField(
         this.cornerFields[`${side}-distance`],
         `corner:${side}-distance`,
-        corner[side].distance,
-        { disabled, minValue: 0 }
+        {
+          ...corner[side].distance,
+          value:
+            corner[side].distance.value == null
+              ? null
+              : Math.round(corner[side].distance.value),
+        },
+        { minValue: 0 }
       );
       this._refreshCompactField(
         this.cornerFields[`${side}-curvature`],
         `corner:${side}-curvature`,
         asPercent(corner[side].curvature),
-        { disabled, minValue: 0, maxValue: 100 }
+        { disabled: side === "right" && linked, minValue: 0, maxValue: 100 }
       );
     }
+    // The distribution only means something while the sides are linked.
+    this._refreshCompactField(
+      this.cornerDistributionField,
+      "corner:distribution",
+      corner.distribution,
+      { disabled: !linked, minValue: -100, maxValue: 100, round: true }
+    );
     formContents.push({
       type: "single-icon",
       element: this.cornerDistanceRow,
       layoutKey: "cornerDistanceRow",
+    });
+    formContents.push({
+      type: "single-icon",
+      element: this.cornerDistributionRow,
+      layoutKey: "cornerDistributionRow",
     });
     formContents.push({
       type: "single-icon",
@@ -2505,7 +2548,9 @@ export default class SkeletonParametersPanel {
     const values =
       name === "linked"
         ? { linked: value === true }
-        : cornerValuesFromField(name, value);
+        : name === "distribution"
+          ? cornerValuesFromDistribution(value)
+          : cornerValuesFromField(name, value);
     if (!values) {
       return;
     }

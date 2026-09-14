@@ -737,6 +737,7 @@ export const strings = {
   "sidebar.skeleton-parameters.corner-curvature-left": "Curvature L",
   "sidebar.skeleton-parameters.corner-distance-right": "Distance R",
   "sidebar.skeleton-parameters.corner-curvature-right": "Curvature R",
+  "sidebar.skeleton-parameters.corner-distribution": "Distribution",
   "sidebar.skeleton-parameters.insertion": "Insertion point",
   "sidebar.skeleton-parameters.insertion-easing-left": "Left easing",
   "sidebar.skeleton-parameters.insertion-easing-right": "Right easing",

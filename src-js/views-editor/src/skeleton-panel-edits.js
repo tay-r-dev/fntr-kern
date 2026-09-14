@@ -40,7 +40,11 @@ import {
   setSkeletonContourDefaultWidth,
   setSkeletonContourReversed,
   setSkeletonContourSingleSided,
+  getSkeletonCornerDistances,
+  setSkeletonCornerDistribution,
+  setSkeletonCornerLinked,
   setSkeletonCornerParameters,
+  setSkeletonCornerSideDistance,
   setSkeletonData,
   setSkeletonHandleDetached,
   setSkeletonHandleOffset,
@@ -1267,8 +1271,19 @@ export async function setPanelCornerParameters(
   return editSelectedSkeletonPoints(
     sceneController,
     pointAddresses,
-    (point) => {
-      setSkeletonCornerParameters(point, values);
+    (point, _address, { contour }) => {
+      // The link and a side's distance read the contour: opening the link keeps
+      // what each side draws, and a linked side's number is worked back to the
+      // centerline's distance.
+      if ("linked" in values) {
+        setSkeletonCornerLinked(contour, point, values.linked);
+      } else if (Number.isFinite(values.distance)) {
+        setSkeletonCornerSideDistance(contour, point, values.side, values.distance);
+      } else if (Number.isFinite(values.distribution)) {
+        setSkeletonCornerDistribution(point, values.distribution);
+      } else {
+        setSkeletonCornerParameters(point, values);
+      }
     },
     undoLabel
   );
@@ -1288,11 +1303,29 @@ export async function nudgePanelCornerDistanceStream(
     sceneController,
     pointAddresses,
     valueStream,
-    (point, _contour, change) =>
-      setSkeletonCornerParameters(point, {
+    (point, contour, change) =>
+      setSkeletonCornerSideDistance(
+        contour,
+        point,
         side,
-        distance: (point.corner?.[side]?.distance ?? 0) + Number(change),
-      }),
+        getSkeletonCornerDistances(contour, point)[side] + Number(change)
+      ),
+    undoLabel
+  );
+}
+
+// The distribution streams its value, as the width distribution does.
+export async function setPanelCornerDistributionStream(
+  sceneController,
+  pointAddresses,
+  valueStream,
+  undoLabel
+) {
+  return setPanelPointValuesStream(
+    sceneController,
+    pointAddresses,
+    valueStream,
+    (point, _contour, value) => setSkeletonCornerDistribution(point, Number(value)),
     undoLabel
   );
 }
