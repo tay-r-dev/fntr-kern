@@ -69,7 +69,7 @@ const DEFAULT_CAP_BALL_EASING = 0;
 // The eased neck's own curvature, in the curvature gizmo's unit: 1 puts both
 // handles on the tangent intersection. The gizmo writes it per point; this is
 // what an unset bulb draws.
-const DEFAULT_CAP_BALL_EASE_CURVATURE = 0.55;
+export const DEFAULT_CAP_BALL_EASE_CURVATURE = 0.55;
 // Fallback neck handle length as a fraction of the neck chord, used only where
 // the two tangents give no intersection to measure against.
 const NECK_HANDLE_FRACTION = 0.45;

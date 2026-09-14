@@ -3,7 +3,7 @@
 Spec: `docs/superpowers/UI-REFACTOR.md`. Elements: `docs/superpowers/UI-NOMENCLATURE.md` §14.
 One agent per group, one commit per ticket. Branch `ui/ux-refactor`.
 
-**Done:** 03–28, 32–38, 40, 42–49, 52, 53.
+**Done:** 03–28, 32–38, 40, 42–56, 61.
 
 | Group | Tickets | State |
 | --- | --- | --- |
@@ -15,7 +15,7 @@ One agent per group, one commit per ticket. Branch `ui/ux-refactor`.
 | Metrics panel | 32–37 | done |
 | Selection block | 38–44 | 38, 40, 42–44 done. 39 waits on 02, 41 needs a decision |
 | Skeleton Generation | 45–49, 52, 53 | done. Manual matrices not run |
-| Terminal and corners | 50, 51, 54–61 | open |
+| Terminal and corners | 50, 51, 54–61 | 50, 51, 54–56, 61 done, manual matrices not run. 57 needs a decision; 58–60 wait on 57 |
 | Markers panel | 62–66 | open |
 | Skeleton settings | 67–74 | open |
 
@@ -28,4 +28,4 @@ default width and Insertion, 79 heading icons.
 Shared elements built so far: the icon button's on state (11) and mixed state (47), the labeled
 toggle (14), the shared table (04), the multi-select dropdown (15), the header toggle and the freeze
 helper (24), the compact scrub field (26), the segmented control (42), the chain (45), the overflow
-button (48).
+button (48), the section preset control (56, `views-editor/src/preset-header-control.js`).

@@ -7,7 +7,10 @@ import {
   DEFAULT_UNDERSIDE_CUP_TENSION,
   MAX_TIP_CUT_ANGLE,
 } from "@fontra/core/serif-geometry.js";
-import { SERIF_HALF_DEFAULTS } from "@fontra/core/skeleton-generator.js";
+import {
+  DEFAULT_CAP_BALL_EASE_CURVATURE,
+  SERIF_HALF_DEFAULTS,
+} from "@fontra/core/skeleton-generator.js";
 import {
   SERIF_HALF_FIELDS,
   SERIF_PRESETS,
@@ -18,6 +21,9 @@ import {
   captureSerifPreset,
   getSkeletonData,
   getSkeletonGlyphCase,
+  getTerminalPresetFields,
+  getTerminalPresetSourceKey,
+  normalizeTerminalPreset,
   resolveEffectiveSourceSkeletonDefault,
   setSkeletonCapParameters,
   setSkeletonCornerParameters,
@@ -30,6 +36,7 @@ import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-d
 import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 48
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 44
 import { Form } from "@fontra/web-components/ui-form.js";
+import { PresetHeaderControl } from "./preset-header-control.js";
 import { SELECTION_ROW_GROUP_STYLES } from "./selection-row-group-styles.js";
 import { editSkeleton } from "./skeleton-editing.js";
 import {
@@ -70,6 +77,7 @@ import {
   setPanelRibLocked,
   setPanelSerifParameters,
   setPanelSerifParametersStream,
+  setPanelTerminalPreset,
 } from "./skeleton-panel-edits.js";
 import {
   collectRibEditTargets,
@@ -112,6 +120,19 @@ export const CAP_SHAPE_MAX = 100;
 // to the next generated on-curve. 100 collapses the two, and there is nothing
 // past it, so this is a hard end rather than a slider convenience.
 const DEFAULT_CAP_BALL_EASING = 0;
+
+// Ticket 56: what the Terminal section shows for a cap field a point has never
+// stored, so a preset captured from that point stores what is on screen.
+const TERMINAL_FIELD_FALLBACKS = {
+  capAngle: DEFAULT_CAP_ANGLE,
+  capDistance: 0,
+  capRadiusRatio: DEFAULT_CAP_RADIUS_RATIO,
+  capTension: DEFAULT_CAP_TENSION,
+  capBallRatio: DEFAULT_CAP_BALL_RATIO,
+  capBallShape: DEFAULT_CAP_BALL_SHAPE,
+  capBallEasing: DEFAULT_CAP_BALL_EASING,
+  capBallEaseCurvature: DEFAULT_CAP_BALL_EASE_CURVATURE,
+};
 export const CAP_BALL_EASING_MAX = 100;
 
 export function capRadiusRatioFromIndex(index) {
@@ -313,7 +334,6 @@ export default class SkeletonParametersPanel {
     // Per-field multiply ratios, kept across rebuilds so a rebuild after Apply
     // does not reset the box the user is working in.
     this._multiplyFactors = {};
-    this._capProfileSelection = "base";
     this._serifPresetSelection = null;
     this._serifApplyScope = "both";
     this._forceApplyArmed = null;
@@ -553,42 +573,35 @@ export default class SkeletonParametersPanel {
         this._runOwnEdit(() => this._onWidthChange("ribanglelockmode", mode));
       }
     });
-    // Ticket 49: the Generation header's preset control -- a dropdown, Add and
-    // Update. A preset is a total width and a projection side. Picking one
-    // applies it at once. Add stores the selection's total and projection as a
-    // new preset for the glyph's case; Update writes them over the preset last
-    // picked. The dropdown shows no picked state: its label stays "Preset".
-    this._widthPresetIndex = null;
-    this.widthPresetDropdown = html.createDomElement("multi-select-dropdown", {
-      label: translate("sidebar.skeleton-parameters.width-preset"),
-    });
-    this.widthPresetDropdown.singleChoice = true;
-    this.widthPresetDropdown.addEventListener("change", (event) => {
-      const [index] = [].concat(event.detail.checked);
-      const preset = index == null ? null : this._widthPresetList()[index];
-      if (!preset) {
-        return;
-      }
-      this._widthPresetIndex = index;
-      this._applyWidthPreset(preset);
-    });
-    this.widthPresetAddButton = html.button({ onclick: () => this._addWidthPreset() }, [
-      translate("sidebar.skeleton-parameters.width-preset.add"),
-    ]);
-    this.widthPresetUpdateButton = html.button(
-      { onclick: () => this._updateWidthPreset() },
-      [translate("sidebar.skeleton-parameters.width-preset.update")]
-    );
-    this.widthPresetHeaderControls = html.div(
-      {
-        style: "display: flex; gap: 0.35rem; align-items: center; font-weight: normal;",
+    // Ticket 49: the Generation header's preset control. A preset is a total
+    // width and a projection side. Add stores the selection's total and
+    // projection as a new preset for the glyph's case; Update writes them over
+    // the preset picked last.
+    this.widthPresetControl = new PresetHeaderControl({
+      onPick: (index) => {
+        const preset = this._widthPresetList()[index];
+        if (preset) {
+          this._applyWidthPreset(preset);
+        }
       },
-      [
-        this.widthPresetDropdown,
-        this.widthPresetAddButton,
-        this.widthPresetUpdateButton,
-      ]
-    );
+      onAdd: () => this._addWidthPreset(),
+      onUpdate: (index) => this._updateWidthPreset(index),
+    });
+    // Ticket 56: the Terminal header's preset control, the same control for
+    // the kind the selection shows -- Square, Rounded or Ball. Serif has its own
+    // (ticket 60) and Flat has no fields.
+    this._terminalPresetType = null;
+    this.terminalPresetControl = new PresetHeaderControl({
+      onPick: (index) => {
+        const type = this._terminalPresetType;
+        const preset = type ? this._terminalPresetList(type)[index] : null;
+        if (preset) {
+          this._applyTerminalPreset(type, preset);
+        }
+      },
+      onAdd: () => this._addTerminalPreset(this._terminalPresetType),
+      onUpdate: (index) => this._updateTerminalPreset(this._terminalPresetType, index),
+    });
     // Ticket 50: the terminal kind, five across, writing the cap style. Picking
     // a kind changes which section the panel shows, so the rebuild waits for
     // the edit's own echo, as the serif sides row does. Picking Serif applies
@@ -873,34 +886,25 @@ export default class SkeletonParametersPanel {
 
   _refreshWidthPresetControls() {
     const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
-    const list = this._widthPresetList();
-    if (this._widthPresetIndex != null && !list[this._widthPresetIndex]) {
-      this._widthPresetIndex = null;
-    }
-    this.widthPresetDropdown.items = list
-      .map((preset, index) => ({ preset, index }))
-      .filter(({ preset }) => preset?.case === glyphCase)
-      .map(({ preset, index }) => ({
-        value: index,
-        label: `${preset.name || ""} · ${preset.width}${
-          preset.side === "both" ? "" : ` ${preset.side === "left" ? "L" : "R"}`
-        }`,
-        checked: false,
-      }));
-    // A list with nothing in it opened as an empty frame.
-    if (!this.widthPresetDropdown.items.length) {
-      this.widthPresetDropdown.items = [
-        {
-          value: null,
-          label: translate("sidebar.skeleton-parameters.width-preset.none"),
-          disabled: true,
-        },
-      ];
-    }
-    const canCapture = this._canCaptureWidthPreset();
-    this.widthPresetAddButton.disabled = !canCapture;
-    this.widthPresetUpdateButton.disabled =
-      !canCapture || this._widthPresetIndex == null;
+    this.widthPresetControl.refresh({
+      items: this._widthPresetList()
+        .map((preset, index) => ({ preset, index }))
+        .filter(({ preset }) => preset?.case === glyphCase)
+        .map(({ preset, index }) => ({
+          value: index,
+          label: `${preset.name || ""} · ${preset.width}${
+            preset.side === "both" ? "" : ` ${preset.side === "left" ? "L" : "R"}`
+          }`,
+        })),
+      canCapture: this._canCaptureWidthPreset(),
+    });
+  }
+
+  // A new preset's name: the word, then one more than the presets this case
+  // already has in the list.
+  _nextPresetName(list, glyphCase) {
+    const count = list.filter((preset) => preset?.case === glyphCase).length;
+    return `${translate("sidebar.skeleton-parameters.width-preset")} ${count + 1}`;
   }
 
   async _addWidthPreset() {
@@ -910,14 +914,13 @@ export default class SkeletonParametersPanel {
     }
     const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
     const list = this._widthPresetList();
-    const count = list.filter((preset) => preset.case === glyphCase).length;
     list.push({
-      name: `${translate("sidebar.skeleton-parameters.width-preset")} ${count + 1}`,
+      name: this._nextPresetName(list, glyphCase),
       width: captured.width,
       side: captured.side,
       case: glyphCase,
     });
-    this._widthPresetIndex = list.length - 1;
+    this.widthPresetControl.lastPicked = list.length - 1;
     await this._persistSourceDefaultValues({
       [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]: list,
     });
@@ -925,10 +928,9 @@ export default class SkeletonParametersPanel {
     await this.update();
   }
 
-  async _updateWidthPreset() {
+  async _updateWidthPreset(index) {
     const captured = this._selectionWidthPreset();
     const list = this._widthPresetList();
-    const index = this._widthPresetIndex;
     if (!captured || index == null || !list[index]) {
       return;
     }
@@ -936,6 +938,106 @@ export default class SkeletonParametersPanel {
     list[index] = { ...list[index], width: captured.width, side: captured.side };
     await this._persistSourceDefaultValues({
       [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]: list,
+    });
+    this._forceRebuild = true;
+    await this.update();
+  }
+
+  // ---- Terminal presets (ticket 56) ------------------------------------------
+
+  // Every preset of one kind the current master stores, both cases, in stored
+  // order, read through the model's normalizer.
+  _terminalPresetList(type) {
+    const key = getTerminalPresetSourceKey(type);
+    const list = key ? this._resolveSourceDefault(key) : null;
+    return Array.isArray(list)
+      ? list.map((preset) => normalizeTerminalPreset(type, preset))
+      : [];
+  }
+
+  // The shape the selection states for one kind, or null where the selected
+  // endpoints disagree on any field. A field a point has never stored reads as
+  // the value the section shows for it, so a captured preset reproduces what is
+  // on screen.
+  _selectionTerminalPreset(type) {
+    const fields = getTerminalPresetFields(type);
+    const points = this._widthPoints?.() || [];
+    if (!fields || !points.length) {
+      return null;
+    }
+    const shape = {};
+    for (const field of fields) {
+      const values = new Set(
+        points.map((entry) => entry.point[field] ?? TERMINAL_FIELD_FALLBACKS[field])
+      );
+      if (values.size !== 1) {
+        return null;
+      }
+      [shape[field]] = values;
+    }
+    return shape;
+  }
+
+  _refreshTerminalPresetControl(type) {
+    const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
+    this.terminalPresetControl.refresh({
+      items: this._terminalPresetList(type)
+        .map((preset, index) => ({ preset, index }))
+        .filter(({ preset }) => preset?.case === glyphCase)
+        .map(({ preset, index }) => ({ value: index, label: preset.name || "" })),
+      canCapture:
+        !this.fontController.readOnly && this._selectionTerminalPreset(type) !== null,
+    });
+  }
+
+  async _applyTerminalPreset(type, preset) {
+    const points = this._widthPoints();
+    if (!points.length) {
+      return;
+    }
+    await this._runOwnEdit(() =>
+      setPanelTerminalPreset(
+        this.sceneController,
+        points,
+        type,
+        preset,
+        this._undo("set-cap")
+      )
+    );
+  }
+
+  async _addTerminalPreset(type) {
+    const shape = type ? this._selectionTerminalPreset(type) : null;
+    if (!shape) {
+      return;
+    }
+    const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
+    const list = this._terminalPresetList(type);
+    list.push(
+      normalizeTerminalPreset(type, {
+        name: this._nextPresetName(list, glyphCase),
+        case: glyphCase,
+        ...shape,
+      })
+    );
+    this.terminalPresetControl.lastPicked = list.length - 1;
+    await this._persistSourceDefaultValues({
+      [getTerminalPresetSourceKey(type)]: list,
+    });
+    this._forceRebuild = true;
+    await this.update();
+  }
+
+  async _updateTerminalPreset(type, index) {
+    const shape = type ? this._selectionTerminalPreset(type) : null;
+    const list = type ? this._terminalPresetList(type) : [];
+    if (!shape || index == null || !list[index]) {
+      return;
+    }
+    // The name and case stay; the preset is the same entry with a new shape.
+    list[index] = normalizeTerminalPreset(type, { ...list[index], ...shape });
+    await this._persistSourceDefaultValues({
+      [getTerminalPresetSourceKey(type)]: list,
     });
     this._forceRebuild = true;
     await this.update();
@@ -1172,79 +1274,6 @@ export default class SkeletonParametersPanel {
     return resolveEffectiveSourceSkeletonDefault(this.fontController, location, key);
   }
 
-  // Cap profile options for the active style: master cap defaults plus the
-  // master's custom cap profiles. `values` holds the point fields to write.
-  _capProfileOptions(styleValue) {
-    const K = SKELETON_SOURCE_DEFAULT_KEYS;
-    const options = [];
-    if (styleValue === "round") {
-      options.push({
-        id: "base",
-        label: translate("sidebar.skeleton-parameters.default-caps"),
-        values: {
-          capRadiusRatio: Number(this._resolveSourceDefault(K.CAP_RADIUS_RATIO)),
-          capTension: Number(this._resolveSourceDefault(K.CAP_TENSION)),
-        },
-      });
-      const custom = this._resolveSourceDefault(K.CUSTOM_CAP_ROUNDED);
-      if (Array.isArray(custom)) {
-        custom.forEach((item, index) => {
-          const radius = Number(item?.radius ?? item?.value);
-          let tension = Number(item?.tension);
-          if (Number.isFinite(tension) && tension > 1) {
-            tension = tension / 100;
-          }
-          if (Number.isFinite(radius)) {
-            options.push({
-              id: `custom:${index}`,
-              label: item?.name || `Custom ${index + 1}`,
-              values: {
-                capRadiusRatio: radius,
-                capTension: Number.isFinite(tension) ? tension : DEFAULT_CAP_TENSION,
-              },
-            });
-          }
-        });
-      }
-    } else if (styleValue === "square") {
-      options.push({
-        id: "base",
-        label: translate("sidebar.skeleton-parameters.default-caps"),
-        values: {
-          capAngle: Number(this._resolveSourceDefault(K.CAP_ANGLE)),
-          capDistance: Number(this._resolveSourceDefault(K.CAP_DISTANCE)),
-        },
-      });
-      const custom = this._resolveSourceDefault(K.CUSTOM_CAP_SQUARE);
-      if (Array.isArray(custom)) {
-        custom.forEach((item, index) => {
-          const angle = Number(item?.angle ?? item?.value);
-          const distance = Number(item?.distance);
-          if (Number.isFinite(angle)) {
-            options.push({
-              id: `custom:${index}`,
-              label: item?.name || `Custom ${index + 1}`,
-              values: {
-                capAngle: angle,
-                capDistance: Number.isFinite(distance) ? distance : 0,
-              },
-            });
-          }
-        });
-      }
-    } else if (styleValue === "drop") {
-      options.push({
-        id: "base",
-        label: translate("sidebar.skeleton-parameters.default-caps"),
-        values: {
-          capBallRatio: DEFAULT_CAP_BALL_RATIO,
-          capBallEasing: DEFAULT_CAP_BALL_EASING,
-        },
-      });
-    }
-    return options;
-  }
-
   // Two-click confirm (letterspacer reverse pattern): first click arms the
   // button and shows a tooltip, second click applies.
   _confirmThenApply(event, armKey, apply) {
@@ -1311,59 +1340,6 @@ export default class SkeletonParametersPanel {
     }
   }
 
-  _buildForceApplyRow(formContents, { options, selectionProp, armKey, apply }) {
-    if (!options.length) {
-      return;
-    }
-    if (!options.some((option) => option.id === this[selectionProp])) {
-      this[selectionProp] = options[0].id;
-    }
-    const select = html.select(
-      {
-        style: "min-width: 9em;",
-        onchange: (event) => {
-          this[selectionProp] = event.target.value;
-          this._disarmForceApply();
-        },
-      },
-      options.map((option) =>
-        html.option({ value: option.id, selected: this[selectionProp] === option.id }, [
-          option.label,
-        ])
-      )
-    );
-    const button = html.button(
-      {
-        onclick: (event) => {
-          const option = options.find((item) => item.id === this[selectionProp]);
-          if (!option) {
-            return;
-          }
-          this._confirmThenApply(event, armKey, () => apply(option));
-        },
-      },
-      [translate("sidebar.skeleton-parameters.force-apply")]
-    );
-    formContents.push({
-      type: "single-icon",
-      element: html.div(
-        { style: "display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;" },
-        [select, button]
-      ),
-    });
-  }
-
-  async _forceApplyCapProfile(option) {
-    await setPanelCapParameters(
-      this.sceneController,
-      this._widthPoints(),
-      option.values,
-      this._undo("set-cap")
-    );
-    this._forceRebuild = true;
-    await this.update();
-  }
-
   // ---- Section builders -----------------------------------------------------
 
   _buildPointWidthSection(formContents, widthPoints) {
@@ -1373,7 +1349,7 @@ export default class SkeletonParametersPanel {
     formContents.push({
       type: "header",
       label: translate("sidebar.skeleton-parameters.generation"),
-      auxiliaryElement: this.widthPresetHeaderControls,
+      auxiliaryElement: this.widthPresetControl.element,
     });
     // On a single-sided contour the visible edge is the TOTAL, so the per-side
     // numbers and the split between them describe nothing on screen. Greyed and
@@ -1524,15 +1500,29 @@ export default class SkeletonParametersPanel {
     if (!capStyle.canEdit) {
       return;
     }
+    const styleValue = capStyle.mixed ? null : (capStyle.value ?? "butt");
+    // Ticket 56: the header carries the preset control for the kind shown, when
+    // that kind is one with a preset table here. A different kind starts with
+    // nothing picked, so Update cannot write one kind's shape over another's.
+    const presetType = ["square", "round", "drop"].includes(styleValue)
+      ? styleValue
+      : null;
+    if (presetType !== this._terminalPresetType) {
+      this._terminalPresetType = presetType;
+      this.terminalPresetControl.lastPicked = null;
+    }
+    if (presetType) {
+      this._refreshTerminalPresetControl(presetType);
+    }
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
       label: translate("sidebar.skeleton-parameters.caps"),
+      auxiliaryElement: presetType ? this.terminalPresetControl.element : undefined,
+      layoutKey: presetType ? "terminalPreset" : "",
     });
     // A mixed selection lights no segment and shows no section.
-    this.terminalKindControl.value = capStyle.mixed
-      ? undefined
-      : (capStyle.value ?? "butt");
+    this.terminalKindControl.value = styleValue ?? undefined;
     formContents.push({
       type: "single-icon",
       element: this.terminalKindRow,
@@ -1541,7 +1531,6 @@ export default class SkeletonParametersPanel {
     // Each kind shows its own fields. Radius maps 20 discrete positions
     // logarithmically onto the [1/128, 1/4] ratio range; tension is edited in
     // percent. Both are converted back in capValuesFromField.
-    const styleValue = capStyle.mixed ? null : (capStyle.value ?? "butt");
     if (styleValue === "round") {
       this._refreshCompactField(
         this.capFields.radius,
@@ -1649,20 +1638,6 @@ export default class SkeletonParametersPanel {
       });
     } else if (styleValue === "serif") {
       this._buildSerifSection(formContents, widthPoints, capStyle.canEdit);
-    }
-    // Force-apply master cap defaults (or a custom cap profile) to the
-    // selected endpoints, two-click confirm. Serifs have no profile library
-    // yet, so they are not offered here.
-    if (
-      (styleValue === "round" || styleValue === "square" || styleValue === "drop") &&
-      capStyle.canEdit
-    ) {
-      this._buildForceApplyRow(formContents, {
-        options: this._capProfileOptions(styleValue),
-        selectionProp: "_capProfileSelection",
-        armKey: "cap",
-        apply: (option) => this._forceApplyCapProfile(option),
-      });
     }
   }
 

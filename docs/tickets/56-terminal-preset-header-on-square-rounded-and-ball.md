@@ -1,6 +1,6 @@
 # 56: Terminal: preset header on Square, Rounded and Ball
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 51 (Terminal: Square section), 54 (Terminal: Rounded section), 55 (Terminal: Drop section), 07 (Terminal presets cover the four kinds with fields), 49 (Skeleton block: Generation preset header)
 

@@ -3023,6 +3023,12 @@ export function getTerminalPresetSourceKey(type) {
   return TERMINAL_PRESET_TYPES[type]?.key ?? null;
 }
 
+// The shape fields one type's preset stores, so a caller capturing a preset
+// from a point reads the same list the normalizer and applyTerminalPreset use.
+export function getTerminalPresetFields(type) {
+  return TERMINAL_PRESET_TYPES[type]?.fields ?? null;
+}
+
 // A terminal preset carries the type's own shape fields, a name and a case.
 // Serif is normalized through the existing serif-specific reader, unchanged,
 // so old customSerifs entries (which carry no case) keep reading exactly as

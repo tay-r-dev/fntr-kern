@@ -10,6 +10,7 @@ import {
   getSkeletonBaseWidthForCase,
   getSkeletonGlyphCase,
   getSourceSkeletonDefaultsValue,
+  getTerminalPresetFields,
   getTerminalPresetSourceKey,
   normalizeSkeletonSourceDefaults,
   normalizeTerminalPreset,
@@ -272,6 +273,26 @@ describe("terminal presets", () => {
       SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS
     );
     expect(getTerminalPresetSourceKey("flat")).to.equal(null);
+  });
+
+  // The panel captures a preset from the selection, so it needs the one list
+  // of fields a type stores rather than a second copy of it.
+  it("names the shape fields each of the other three types stores", () => {
+    expect(getTerminalPresetFields("square")).to.deep.equal([
+      "capAngle",
+      "capDistance",
+    ]);
+    expect(getTerminalPresetFields("round")).to.deep.equal([
+      "capRadiusRatio",
+      "capTension",
+    ]);
+    expect(getTerminalPresetFields("drop")).to.deep.equal([
+      "capBallRatio",
+      "capBallShape",
+      "capBallEasing",
+      "capBallEaseCurvature",
+    ]);
+    expect(getTerminalPresetFields("flat")).to.equal(null);
   });
 
   it("reads an existing serif preset as type serif, unchanged", () => {

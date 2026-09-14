@@ -17,6 +17,7 @@ import {
   DEFAULT_SERIF_PRESET,
   applySerifPreset,
   applySkeletonWidthPreset,
+  applyTerminalPreset,
   clearSkeletonSegmentCurvatureForHandle,
   closeSkeletonContour,
   findGeneratedOutputPosition,
@@ -1031,6 +1032,24 @@ export async function setPanelCapStyle(
 // Applying a preset is the ordinary serif write with every field at once. The
 // scope decides how much of the preset the write carries, and the model owns
 // that decision — this is not a second write path.
+// Applies a Square, Rounded or Ball preset to every selected endpoint through
+// the model's applyTerminalPreset, which writes through the cap writer a typed
+// value uses and sets the point's kind to the preset's.
+export async function setPanelTerminalPreset(
+  sceneController,
+  pointAddresses,
+  type,
+  preset,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point) => applyTerminalPreset(point, type, preset),
+    undoLabel
+  );
+}
+
 export async function applyPanelSerifPreset(
   sceneController,
   pointAddresses,
