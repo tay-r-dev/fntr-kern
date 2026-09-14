@@ -26,6 +26,6 @@ default width and Insertion, 79 heading icons.
 **Not grouped:** 02, the reported origin fault. Reproduce it in the editor first.
 
 Shared elements built so far: the icon button's on state (11) and mixed state (47), the labeled
-toggle (14), the shared table (04), the multi-select dropdown (15), the header toggle and the freeze
+toggle (14), the shared table (04; cells, row actions, selection, column menu, window and grip since 2026-09-14), the multi-select dropdown (15), the header toggle and the freeze
 helper (24), the compact scrub field (26), the segmented control (42), the chain (45), the overflow
 button (48), the section preset control (56, `views-editor/src/preset-header-control.js`).
