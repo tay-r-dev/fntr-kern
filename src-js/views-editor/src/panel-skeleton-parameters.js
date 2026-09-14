@@ -331,8 +331,6 @@ export default class SkeletonParametersPanel {
     this._widthSnapshot = null;
     this._widthSnapshotKey = null;
     this._lastSignature = null;
-    // Per-field multiply ratios, kept across rebuilds so a rebuild after Apply
-    // does not reset the box the user is working in.
 
     this.updateBound = this.update.bind(this);
     // True while one of this panel's own fields is streaming a drag. It stops a
@@ -2179,9 +2177,6 @@ export default class SkeletonParametersPanel {
     };
   }
 
-  // Route a label scrub to the edit path that moves its number by a change.
-  // Every branch here is relative; nothing sets an absolute value, so a mixed
-  // selection comes out of a drag as mixed as it went in.
   async _onInsertionChange(name, value) {
     const insertions = this._insertions || [];
     if (!insertions.length) {
