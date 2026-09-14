@@ -355,6 +355,7 @@ export default class TransformationPanel {
     valueX,
     valueY,
     step = 0.1,
+    defaultValue,
     onChangeX,
     onChangeY,
     onApply,
@@ -369,6 +370,7 @@ export default class TransformationPanel {
       iconTooltip: tooltip,
       step,
     });
+    fieldX.defaultValue = defaultValue;
     const fieldY = html.createDomElement("compact-scrub-field", {
       label: "Y",
       value: valueY,
@@ -376,6 +378,7 @@ export default class TransformationPanel {
       iconTooltip: tooltip,
       step,
     });
+    fieldY.defaultValue = defaultValue;
     // The value stays exactly where the drag or the typed edit left it --
     // applying the same amount again to the same selection is the normal,
     // repeated way to use these fields. Only a changed selection resets them
@@ -523,6 +526,7 @@ export default class TransformationPanel {
       makeTransformationForY: (y) => () =>
         new Transform().translate(this.transformParameters.moveX, y),
       undoLabel: "move",
+      defaultValue: 0,
     });
     this.moveXField = moveXField;
     this.moveYField = moveYField;
@@ -559,6 +563,7 @@ export default class TransformationPanel {
       makeTransformationForY: (y) => () =>
         new Transform().scale(this.transformParameters.scaleX / 100, y / 100),
       undoLabel: "scale",
+      defaultValue: 100,
     });
     this.scaleXField = scaleXField;
     this.scaleYField = scaleYField;
@@ -596,6 +601,7 @@ export default class TransformationPanel {
       iconTooltip: translate("sidebar.selection-transformation.rotate"),
       step: 0.1,
     });
+    rotateField.defaultValue = 0;
     const applyRotate = () =>
       this.transformSelection(
         () =>
@@ -657,6 +663,7 @@ export default class TransformationPanel {
           (y * Math.PI) / 180
         ),
       undoLabel: "skew",
+      defaultValue: 0,
     });
     this.skewXField = skewXField;
     this.skewYField = skewYField;

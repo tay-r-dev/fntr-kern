@@ -8,6 +8,7 @@ import { DEFAULT_CAP_BALL_EASE_CURVATURE } from "@fontra/core/skeleton-generator
 import {
   SERIF_HALF_FIELDS,
   SERIF_PRESETS,
+  DEFAULT_CORNER_CURVATURE,
   SKELETON_LOCK_KINDS,
   SKELETON_SOURCE_DEFAULT_KEYS,
   VALID_SERIF_AXIS_MODES,
@@ -483,6 +484,7 @@ export default class SkeletonParametersPanel {
         `insertion:easing-${side}`,
         `insertion-easing-${side}`,
         {
+          defaultValue: 0,
           scrub: (valueStream) =>
             setPanelInsertionValuesStream(
               this.sceneController,
@@ -835,11 +837,14 @@ export default class SkeletonParametersPanel {
   // `scrub` once with the field's value stream, as one undo step; a typed value
   // runs `commit`. `key` names the field while it is under the hand, so a
   // refresh leaves it alone.
-  _makeCompactField(key, labelKey, { scrub, commit }) {
+  // `defaultValue`, in the field's own units, is what a double-click on the
+  // value puts back. Leave it out where a parameter has no default.
+  _makeCompactField(key, labelKey, { scrub, commit, defaultValue }) {
     const field = html.createDomElement("compact-scrub-field", {
       label: translate(`sidebar.skeleton-parameters.${labelKey}`),
       integer: true,
     });
+    field.defaultValue = defaultValue;
     field.style.flex = "1 1 0";
     field.style.minWidth = "0";
     field.addEventListener("scrubstart", (event) => {
@@ -871,6 +876,8 @@ export default class SkeletonParametersPanel {
   // rather than a change, as its slider did.
   _makeWidthField(name, labelKey) {
     return this._makeCompactField(`width:${name}`, labelKey, {
+      // An even split. The widths themselves have no default to return to.
+      defaultValue: name === "distribution" ? 0 : undefined,
       scrub: (valueStream, startValue) =>
         name === "distribution"
           ? setPanelPointDistributionStream(
@@ -897,6 +904,10 @@ export default class SkeletonParametersPanel {
   _makeCornerField(side, parameter) {
     const name = `${side}-${parameter}`;
     return this._makeCompactField(`corner:${name}`, `corner-${parameter}-${side}`, {
+      defaultValue:
+        parameter === "curvature"
+          ? Math.round(DEFAULT_CORNER_CURVATURE * 100)
+          : undefined,
       scrub: (valueStream, startValue) =>
         parameter === "distance"
           ? nudgePanelCornerDistanceStream(
@@ -953,6 +964,7 @@ export default class SkeletonParametersPanel {
   // writes the tilt mode with it, which is what Free is.
   _makeSerifTiltField() {
     return this._makeCompactField("serif:axistilt", "serif-axis-tilt", {
+      defaultValue: 0,
       scrub: (valueStream) =>
         setPanelSerifParametersStream(
           this.sceneController,
@@ -1057,7 +1069,19 @@ export default class SkeletonParametersPanel {
   // the panel's unit to the stored one. Distance drags by a change, as its
   // label scrub did; every other field streams its value, as its slider did.
   _makeCapField(name, labelKey) {
+    // In the units each field shows: radius as its 1-based position, the rest
+    // as percent, angle and distance as they are.
+    const capDefaults = {
+      radius: capRadiusIndexFromRatio(DEFAULT_CAP_RADIUS_RATIO) + 1,
+      tension: Math.round(DEFAULT_CAP_TENSION * 100),
+      angle: DEFAULT_CAP_ANGLE,
+      distance: 0,
+      ball: Math.round(DEFAULT_CAP_BALL_RATIO * 100),
+      ballshape: Math.round(DEFAULT_CAP_BALL_SHAPE * 100),
+      balleasing: Math.round(DEFAULT_CAP_BALL_EASING * 100),
+    };
     return this._makeCompactField(`cap:${name}`, labelKey, {
+      defaultValue: capDefaults[name],
       scrub: (valueStream, startValue) =>
         name === "distance"
           ? nudgePanelCapParameterStream(

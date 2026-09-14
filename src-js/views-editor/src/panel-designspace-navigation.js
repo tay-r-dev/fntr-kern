@@ -812,6 +812,7 @@ export default class DesignspaceNavigationPanel extends Panel {
             // turn, Full height at turn/Sharpness, Full colour at turn/Opacity.
             html.createDomElement("compact-scrub-field", {
               id: "speedpunk-peak-height-input",
+              defaultValue: SPEEDPUNK_PEAK_HEIGHT_DEFAULT_UPM,
               label: translate("sidebar.designspace-navigation.speedpunk.peak-height"),
               minValue: SPEEDPUNK_PEAK_HEIGHT_MIN_UPM,
               maxValue: SPEEDPUNK_PEAK_HEIGHT_MAX_UPM,
@@ -819,6 +820,7 @@ export default class DesignspaceNavigationPanel extends Panel {
             }),
             html.createDomElement("compact-scrub-field", {
               id: "speedpunk-color-tight-turn-input",
+              defaultValue: SPEEDPUNK_COLOR_TIGHT_TURN_DEFAULT_DEGREES,
               label: translate(
                 "sidebar.designspace-navigation.speedpunk.color-tight-turn"
               ),
@@ -828,6 +830,7 @@ export default class DesignspaceNavigationPanel extends Panel {
             }),
             html.createDomElement("compact-scrub-field", {
               id: "speedpunk-reference-turn-input",
+              defaultValue: SPEEDPUNK_REFERENCE_TURN_DEFAULT_DEGREES,
               label: translate(
                 "sidebar.designspace-navigation.speedpunk.reference-turn"
               ),
@@ -837,6 +840,7 @@ export default class DesignspaceNavigationPanel extends Panel {
             }),
             html.createDomElement("compact-scrub-field", {
               id: "speedpunk-sharpness-input",
+              defaultValue: SPEEDPUNK_SHARPNESS_DEFAULT,
               label: translate("sidebar.designspace-navigation.speedpunk.sharpness"),
               minValue: SPEEDPUNK_SHARPNESS_MIN,
               maxValue: SPEEDPUNK_SHARPNESS_MAX,
@@ -845,6 +849,7 @@ export default class DesignspaceNavigationPanel extends Panel {
             }),
             html.createDomElement("compact-scrub-field", {
               id: "speedpunk-color-flat-turn-input",
+              defaultValue: SPEEDPUNK_COLOR_FLAT_TURN_DEFAULT_DEGREES,
               label: translate(
                 "sidebar.designspace-navigation.speedpunk.color-flat-turn"
               ),
@@ -854,6 +859,7 @@ export default class DesignspaceNavigationPanel extends Panel {
             }),
             html.createDomElement("compact-scrub-field", {
               id: "speedpunk-opacity-input",
+              defaultValue: SPEEDPUNK_OPACITY_DEFAULT,
               label: translate("sidebar.designspace-navigation.speedpunk.opacity"),
               minValue: SPEEDPUNK_OPACITY_MIN,
               maxValue: SPEEDPUNK_OPACITY_MAX,

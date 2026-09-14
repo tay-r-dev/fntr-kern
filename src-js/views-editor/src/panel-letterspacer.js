@@ -319,6 +319,7 @@ export default class LetterspacerPanel extends Panel {
         integer: true,
       });
       field.style.flex = "1 1 0";
+      field.defaultValue = LETTERSPACER_DEFAULTS[key];
       field.addEventListener("change", (event) =>
         this._onSpacingParamChange(key, event.detail.value)
       );
