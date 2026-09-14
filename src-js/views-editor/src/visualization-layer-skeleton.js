@@ -179,6 +179,15 @@ function drawSideLockMarks(context, parameters, sourcePoint, ribEnd, side) {
   }
 }
 
+// The Ribs field in Visual > Skeleton fades rib lines and rib points together.
+// False when they are fully faded, so the layer draws nothing.
+function applyRibsOpacity(context) {
+  const percent = applicationSettingsController.model.skeletonRibsOpacity ?? 100;
+  const opacity = Math.min(1, Math.max(0, percent / 100));
+  context.globalAlpha *= opacity;
+  return opacity > 0;
+}
+
 function getRibPoints(contour, pointIndex, outline) {
   const point = contour.points[pointIndex];
   const activeSingleSide =
@@ -418,12 +427,9 @@ registerVisualizationLayerDefinition({
     strokeColor: "rgba(95, 178, 255, 0.55)",
   },
   draw: (context, positionedGlyph, parameters, model) => {
-    const opacity =
-      (applicationSettingsController.model.skeletonRibsOpacity ?? 100) / 100;
-    if (!(opacity > 0)) {
+    if (!applyRibsOpacity(context)) {
       return;
     }
-    context.globalAlpha *= Math.min(1, opacity);
     context.lineWidth = parameters.lineWidth;
     context.strokeStyle = parameters.strokeColor;
     forEachSkeletonContour(positionedGlyph, model, (contour, outline) => {
@@ -481,6 +487,9 @@ registerVisualizationLayerDefinition({
     lockedSelectedColor: "rgba(180, 80, 200, 1)",
   },
   draw: (context, positionedGlyph, parameters, model) => {
+    if (!applyRibsOpacity(context)) {
+      return;
+    }
     const ribSelection = getSkeletonRibSelectionSets(model);
     const insertionSelection = getSkeletonInsertionSelectionSets(model);
     context.lineWidth = parameters.strokeWidth;
