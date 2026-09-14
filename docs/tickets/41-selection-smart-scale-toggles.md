@@ -1,6 +1,6 @@
 # 41: Selection: Smart scale toggles
 
-**Status:** needs-info
+**Status:** done
 
 **Blocked by:** 05 (Merge the Transformation and Skeleton parameters panels), 14 (Pair table: switch row)
 
@@ -11,6 +11,10 @@ Inside the merged Selection panel, the transform part holds: a nine-radio origin
 ## Target
 
 1. A Smart scale heading with two labeled toggles: preserve aspect ratio, and slide adjacent tension points bound to `slideBothTensionPoints`.
+
+## Decision (2026-09-14)
+
+Both settings go in a three-dot overflow at the end of the Scale row, not under a heading. Preserve aspect ratio turns the slide on and off: off, the scale only adjusts handles. Slide adjacent tension points is greyed while it is off. See UI-REFACTOR.md §5.3.
 
 ## Constraints
 

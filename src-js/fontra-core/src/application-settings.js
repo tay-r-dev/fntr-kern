@@ -38,6 +38,10 @@ export const applicationSettingsController = new ObservableController({
   // On, both of its tension points travel, each to what its own curve asks.
   // A slanted straight always travels (app-level, per D9).
   slideBothTensionPoints: false,
+  // fork: the tension-aware scale (held on X) slides tension points along their
+  // straights to keep each curve's proportions. Off, it only adjusts handles
+  // (app-level, per D9).
+  preserveAspectRatio: true,
   // fork: mark-cloud settings (app-level, per D9 — not written to project files)
   compositionMarkCloudOn: false,
   // fork: related-glyphs preview tiles follow their glyph live, or hold still

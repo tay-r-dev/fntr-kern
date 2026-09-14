@@ -28,6 +28,7 @@ import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 38
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39's origin pick
+import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 41
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 43's G3
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 42
 import { Form } from "@fontra/web-components/ui-form.js";
@@ -55,6 +56,18 @@ export default class TransformationPanel {
   /* Ticket 39: the Origin row is the grid, then the typed X and Y with the
      pick and clear buttons in a row under them. The grid is twice an
      input's height, so this row's label and value grow past 1.6em. */
+  /* Ticket 41: the Smart scale overflow sits after Scale Y. */
+  .scale-y-with-overflow {
+    display: flex;
+    align-items: center;
+    gap: 0.2em;
+  }
+
+  .scale-y-with-overflow > compact-scrub-field {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
   .ui-form-label:has(.origin-radio-buttons) {
     height: auto;
   }
@@ -549,6 +562,31 @@ export default class TransformationPanel {
     });
     this.scaleXField = scaleXField;
     this.scaleYField = scaleYField;
+    // Ticket 41: Smart scale, the tension-aware scale held on X, keeps its two
+    // app-wide settings in an overflow at the row's end. Preserve aspect ratio
+    // lets tension points slide along their straights; off, the scale only
+    // adjusts handles. Slide adjacent tension points lets both ends of a
+    // straight lying across the scaled axis travel; off, both stand still. It
+    // means nothing while the slide is off, so it is greyed then.
+    this.scaleOverflow = html.createDomElement("overflow-button", {
+      "data-tooltip": translate("sidebar.selection-transformation.smart-scale"),
+      "data-tooltipposition": "left",
+    });
+    this.scaleOverflow.addEventListener("change", (event) => {
+      const checked = event.detail.checked;
+      const settings = applicationSettingsController.model;
+      settings.preserveAspectRatio = checked.includes("preserve-aspect-ratio");
+      settings.slideBothTensionPoints = checked.includes("slide-adjacent");
+      this._refreshScaleOverflow();
+    });
+    this._refreshScaleOverflow();
+    scaleRow.field3 = {
+      type: "auxiliaryElement",
+      auxiliaryElement: html.div({ class: "scale-y-with-overflow" }, [
+        scaleYField,
+        this.scaleOverflow,
+      ]),
+    };
     formContents.push(scaleRow);
 
     const rotateField = html.createDomElement("compact-scrub-field", {
@@ -623,17 +661,6 @@ export default class TransformationPanel {
     this.skewXField = skewXField;
     this.skewYField = skewYField;
     formContents.push(skewRow);
-
-    // A straight running exactly across the axis being scaled stands still by
-    // default: travel along it is travel the scale never asked for. On, both of
-    // its tension points travel, each to what its own curve asks for. A slanted
-    // straight travels either way. App-wide, not per segment.
-    formContents.push({
-      type: "checkbox",
-      key: "slideBothTensionPoints",
-      label: translate("sidebar.selection-transformation.slide-both-tension-points"),
-      value: applicationSettingsController.model.slideBothTensionPoints,
-    });
 
     formContents.push({ type: "divider" });
 
@@ -973,13 +1000,7 @@ export default class TransformationPanel {
 
       this.transformParameters[fieldItem.key] = value;
 
-      if (
-        [
-          "harmonizeEqualize",
-          "harmonizeOtherSources",
-          "slideBothTensionPoints",
-        ].includes(fieldItem.key)
-      ) {
+      if (["harmonizeEqualize", "harmonizeOtherSources"].includes(fieldItem.key)) {
         applicationSettingsController.model[fieldItem.key] = value;
       }
 
@@ -1482,6 +1503,24 @@ export default class TransformationPanel {
       };
     });
     return committed;
+  }
+
+  _refreshScaleOverflow() {
+    const settings = applicationSettingsController.model;
+    const preserve = settings.preserveAspectRatio !== false;
+    this.scaleOverflow.items = [
+      {
+        value: "preserve-aspect-ratio",
+        label: translate("sidebar.selection-transformation.preserve-aspect-ratio"),
+        checked: preserve,
+      },
+      {
+        value: "slide-adjacent",
+        label: translate("sidebar.selection-transformation.slide-both-tension-points"),
+        checked: !!settings.slideBothTensionPoints,
+        disabled: !preserve,
+      },
+    ];
   }
 
   _changeOrigin(keyX, keyY) {

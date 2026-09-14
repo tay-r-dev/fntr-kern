@@ -378,12 +378,16 @@ The new button beside it sets the origin to a point the designer picks.
 > transform entry that pins every transform at the origin, so the fault is not visible by reading.
 > Reproduce it in the editor before changing anything.
 
-**Preserve aspect ratio has no setting today** and no stated effect. It needs the designer before it
-is built.
 
-**Smart scale is the tension-aware scale**, the behavior held on X (F10). Two labeled toggles:
-preserve aspect ratio, and slide adjacent tension points. The second is `slideBothTensionPoints`
-and already has a control. The development log's F10 section is the reference for what these do.
+**Smart scale is the tension-aware scale**, the behavior held on X (F10). Its two settings sit in a
+three-dot overflow at the end of the Scale row (decided 2026-09-14):
+
+- **Preserve aspect ratio** (`preserveAspectRatio`, on by default). Tension points that share a
+  straight slide along it under a horizontal scale, so each curve keeps its proportions. Off, nothing
+  slides and the scale only adjusts handles.
+- **Slide adjacent tension points** (`slideBothTensionPoints`). Where two tension points sit at
+  the two ends of one straight across the scaled axis, both slide. Off, neither does. Greyed while
+  Preserve aspect ratio is off.
 
 ### 5.4 Harmonize
 

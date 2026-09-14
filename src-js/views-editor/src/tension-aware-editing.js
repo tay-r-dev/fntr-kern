@@ -340,8 +340,11 @@ function buildFrames(originals, solved, axis) {
     // the designer asks for it to travel. The setting is app-wide, next to skew
     // in the transform panel. A slanted straight travels either way: it has
     // extent along the axis, so the scale does touch it.
+    // Preserve aspect ratio off, the scale slides nothing and only adjusts the
+    // handles. Both settings sit in the Scale row's overflow.
     applyTensionAwareEdit(before, after, contour.isClosed, {
       axis,
+      slide: applicationSettingsController.model.preserveAspectRatio !== false,
       slideBothTensionPoints:
         !!applicationSettingsController.model.slideBothTensionPoints,
     });

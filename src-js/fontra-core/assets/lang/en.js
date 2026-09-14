@@ -853,7 +853,9 @@ export const strings = {
   "sidebar.selection-transformation.scale": "Scale",
   "sidebar.selection-transformation.skew": "Skew",
   "sidebar.selection-transformation.slide-both-tension-points":
-    "Slide both tension points on a vertical",
+    "Slide adjacent tension points",
+  "sidebar.selection-transformation.preserve-aspect-ratio": "Preserve aspect ratio",
+  "sidebar.selection-transformation.smart-scale": "Smart scale (hold X)",
   "sidebar.selection-transformation.title": "Transformation",
   "sidebar.text-entry": "Text Entry",
   "sidebar.text-entry.apply-text-shaping": "Apply text shaping and features",

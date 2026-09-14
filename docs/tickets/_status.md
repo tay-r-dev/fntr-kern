@@ -3,7 +3,7 @@
 Spec: `docs/superpowers/UI-REFACTOR.md`. Elements: `docs/superpowers/UI-NOMENCLATURE.md` §14.
 One agent per group, one commit per ticket. Branch `ui/ux-refactor`.
 
-**Done:** 02 (did not reproduce), 03–28, 32–40, 42–74.
+**Done:** 02 (did not reproduce), 03–28, 32–74.
 
 | Group | Tickets | State |
 | --- | --- | --- |
@@ -13,13 +13,13 @@ One agent per group, one commit per ticket. Branch `ui/ux-refactor`.
 | Pair table dropdowns | 15–18 | done. Manual matrices not run |
 | Left sidebar | 23–28, 31 | 23–28 done. 31 waits on 30 |
 | Metrics panel | 32–37 | done |
-| Selection block | 38–44 | 38–40, 42–44 done, 39 manual matrix not run. 41 needs a decision |
+| Selection block | 38–44 | done. 39 and 41 manual matrices not run |
 | Skeleton Generation | 45–49, 52, 53 | done. Manual matrices not run |
 | Terminal and corners | 50, 51, 54–61 | done, manual matrices not run. 57 and 60 follow the 2026-09-14 serif decision (UI-REFACTOR §5.6) |
 | Markers panel | 62–66 | done, manual matrices not run. Section eye leaves group switches alone |
 | Skeleton settings | 67–74 | done, manual matrices not run. 70 and 74 follow the 2026-09-14 preset decisions |
 
-**Waiting on a decision:** 80 canvas handles and the origin, 29 Tunni layer mapping, 30 skeleton switches, 41 preserve aspect ratio,
+**Waiting on a decision:** 80 canvas handles and the origin, 29 Tunni layer mapping, 30 skeleton switches,
 75 corner distribution, 76 snapping master switch, 77 Detached, 78 contour
 default width and Insertion, 79 heading icons.
 
