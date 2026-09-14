@@ -1,6 +1,6 @@
 # 70: Skeleton settings: New width preset and Preset from selection
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 68 (Skeleton settings: width presets table)
 

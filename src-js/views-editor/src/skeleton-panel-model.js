@@ -345,6 +345,25 @@ export function pointDistribution(point, defaultWidth) {
   return ((left - right) / total) * 100;
 }
 
+// A width preset captured from a selection: the total width of the selected
+// points and the projection of their contours (the 2026-09-14 decision). Null
+// where the selection states none: no points, or totals or projections that
+// disagree. The Generation header and the Skeleton settings tab both capture
+// through this one function.
+export function captureSelectionWidthPreset(panelSelection) {
+  const points = collectWidthEditPoints(panelSelection);
+  const contours = panelSelection?.contours || [];
+  if (!points.length || !contours.length) {
+    return null;
+  }
+  const total = summarizeSkeletonPointWidths(points).total;
+  const projection = summarizeSkeletonContourSelection(contours).singleSided;
+  if (total.mixed || total.value == null || projection.mixed) {
+    return null;
+  }
+  return { width: total.value, side: projection.value ?? "both" };
+}
+
 export function summarizeSkeletonContourSelection(contours) {
   return {
     singleSided: reduceValues(

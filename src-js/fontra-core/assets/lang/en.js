@@ -607,6 +607,8 @@ export const strings = {
   "sidebar.skeleton-settings.side.right": "Right",
   "sidebar.skeleton-settings.case.uppercase": "Uppercase",
   "sidebar.skeleton-settings.case.lowercase": "Lowercase",
+  "sidebar.skeleton-settings.new-preset": "New preset",
+  "sidebar.skeleton-settings.preset-from-selection": "Preset from selection",
   "sidebar.skeleton-settings.filter.current": "Current",
   "sidebar.skeleton-settings.filter.master": "Master",
   "sidebar.skeleton-settings.filter.case": "Case",

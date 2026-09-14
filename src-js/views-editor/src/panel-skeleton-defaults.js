@@ -30,6 +30,10 @@ import {
 } from "./panel-skeleton-parameters.js";
 import Panel from "./panel.js";
 import { editSkeleton } from "./skeleton-editing.js";
+import {
+  captureSelectionWidthPreset,
+  collectSkeletonPanelSelection,
+} from "./skeleton-panel-model.js";
 
 // Cap default values are stored in model units (radius ratio, tension 0–1)
 // but edited with the same sliders as the skeleton parameters panel (radius
@@ -172,6 +176,24 @@ export default class SkeletonSettingsPanel extends Panel {
         this.widthPresetFilters.element,
       ]),
       this.widthPresetTable,
+      // Ticket 70: New preset adds a row in the filtered master and case;
+      // Preset from selection stores the selection's total and projection.
+      html.div({ class: "skeleton-settings-filters" }, [
+        html.button({ onclick: () => this._addWidthPreset(null) }, [
+          translate("sidebar.skeleton-settings.new-preset"),
+        ]),
+        (this.widthPresetFromSelectionButton = html.button(
+          {
+            onclick: () => {
+              const captured = this._captureSelectionWidthPreset();
+              if (captured) {
+                this._addWidthPreset(captured);
+              }
+            },
+          },
+          [translate("sidebar.skeleton-settings.preset-from-selection")]
+        )),
+      ]),
     ]);
     this.contentElement.appendChild(
       html.div(
@@ -197,6 +219,11 @@ export default class SkeletonSettingsPanel extends Panel {
     this.sceneSettingsController.addKeyListener(
       ["fontLocationSourceMapped", "selectedGlyphName"],
       this.updateBound
+    );
+    // A selection change only decides whether there is anything to capture,
+    // so it refreshes that button and leaves the tables alone.
+    this.sceneSettingsController.addKeyListener("selection", () =>
+      this._refreshFromSelectionButtons()
     );
   }
 
@@ -365,6 +392,67 @@ export default class SkeletonSettingsPanel extends Panel {
     }
   }
 
+  // The skeleton selection of the edited layer, the way the Selection panel
+  // reads it: the edit layer's ids are the canonical ones (WS-9).
+  _currentSkeletonPanelSelection() {
+    const positionedGlyph =
+      this.sceneController.sceneModel?.getSelectedPositionedGlyph?.() || null;
+    if (!positionedGlyph) {
+      return null;
+    }
+    const editLayerName =
+      this.sceneSettingsController.model?.editLayerName ||
+      positionedGlyph.glyph?.layerName;
+    const layerGlyph =
+      (editLayerName &&
+        positionedGlyph.varGlyph?.glyph?.layers?.[editLayerName]?.glyph) ||
+      positionedGlyph.glyph;
+    const skeletonData = getSkeletonData(layerGlyph);
+    return skeletonData
+      ? collectSkeletonPanelSelection({
+          selection: this.sceneController.selection,
+          skeletonData,
+        })
+      : null;
+  }
+
+  _captureSelectionWidthPreset() {
+    const panelSelection = this._currentSkeletonPanelSelection();
+    return panelSelection ? captureSelectionWidthPreset(panelSelection) : null;
+  }
+
+  _refreshFromSelectionButtons() {
+    if (this.widthPresetFromSelectionButton) {
+      this.widthPresetFromSelectionButton.disabled =
+        !!this.fontController?.readOnly || !this._captureSelectionWidthPreset();
+    }
+  }
+
+  // One new row, in the filtered master and case, or the edited glyph's where
+  // a filter shows all. `captured` carries a selection's width and side.
+  async _addWidthPreset(captured) {
+    const sourceId =
+      this._widthPresetFilter.master ?? this._getEffectiveSource().sourceId;
+    if (!sourceId) {
+      return;
+    }
+    const glyphCase =
+      this._widthPresetFilter.case ??
+      getSkeletonGlyphCase(this.sceneController.sceneSettings?.selectedGlyphName);
+    const next = this._sourcePresetList(
+      sourceId,
+      SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS
+    );
+    const count = next.filter((preset) => preset.case === glyphCase).length;
+    next.push({
+      name: `${translate("sidebar.skeleton-parameters.width-preset")} ${count + 1}`,
+      width: captured?.width ?? DEFAULT_SKELETON_WIDTH,
+      side: captured?.side ?? "both",
+      case: glyphCase,
+    });
+    await this._writeWidthPresets(sourceId, next);
+  }
+
   // The trash takes two presses: the first arms it, the second deletes.
   async _deleteWidthPreset(sourceId, index, rowId) {
     if (this._customDeleteConfirm !== rowId) {
@@ -457,6 +545,7 @@ export default class SkeletonSettingsPanel extends Panel {
     const tbody = this.widthPresetTable.tbody;
     tbody.innerHTML = "";
     this.widthPresetFilters.refresh();
+    this._refreshFromSelectionButtons();
     const readOnly = !!this.fontController.readOnly;
     for (const [sourceId, source] of Object.entries(
       this.fontController.sources || {}

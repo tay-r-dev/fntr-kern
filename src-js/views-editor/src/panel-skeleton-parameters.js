@@ -76,6 +76,7 @@ import {
 } from "./skeleton-panel-edits.js";
 import {
   collectRibEditTargets,
+  captureSelectionWidthPreset,
   collectSkeletonPanelSelection,
   collectWidthEditPoints,
   makeSkeletonPanelStateSignature,
@@ -1076,17 +1077,9 @@ export default class SkeletonParametersPanel {
   // where it states none: a selection whose totals or whose contours'
   // projections disagree has no one preset to store.
   _selectionWidthPreset() {
-    const points = this._widthPoints?.() || [];
-    const contours = this._panelSelection?.contours || [];
-    if (!points.length || !contours.length) {
-      return null;
-    }
-    const total = summarizeSkeletonPointWidths(points).total;
-    const projection = summarizeSkeletonContourSelection(contours).singleSided;
-    if (total.mixed || total.value == null || projection.mixed) {
-      return null;
-    }
-    return { width: total.value, side: projection.value ?? "both" };
+    return this._panelSelection
+      ? captureSelectionWidthPreset(this._panelSelection)
+      : null;
   }
 
   // Applying a preset switches the selection's contours to its projection,
