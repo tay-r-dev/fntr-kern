@@ -10,10 +10,10 @@ Each master's skeleton source defaults hold, per case, a base, a horizontal and 
 
 ## Target
 
-1. A width preset is a name, a width, a side (left, right or both) and a case. It lives in its master's source defaults, in one list.
+1. A width preset is a name, a total width, a side (the projection: both, left or right) and a case. It lives in its master's source defaults, in one list.
 2. Reading old defaults turns base, horizontal and contrast into three presets with those names, side both, one per case, and turns each custom width into a preset.
 3. The distribution default is dropped. A point's own distribution stays.
-4. Applying a preset writes its width to its side only, or to both.
+4. Applying a preset writes its total width to the points and its projection to their contours (changed 2026-09-14; it first wrote one rib side).
 
 ## Constraints
 

@@ -212,9 +212,9 @@ export async function setPanelPointTotalWidth(
   );
 }
 
-// Force-applies a width preset (name/width/side/case) to every selected
-// point. A "both" preset writes the total width, same as a plain typed
-// number; a "left"/"right" preset writes only that side.
+// Applies a width preset (name/width/side/case) to every selected point: its
+// width is the total, same as a plain typed number. Its side is the contour's
+// projection, which the caller writes to the contours.
 export async function setPanelPointWidthPreset(
   sceneController,
   pointAddresses,

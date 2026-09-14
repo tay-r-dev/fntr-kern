@@ -166,7 +166,9 @@ describe("skeleton width presets", () => {
     expect(point.width.left + point.width.right).to.equal(60);
   });
 
-  it("applies a left-side preset without touching the right width", () => {
+  // A preset's side is the contour's projection, not a rib side, so the width
+  // it carries is always the total, whatever projection it was stored with.
+  it("applies a left-projection preset to the point's total width", () => {
     const point = { width: { left: 10, right: 40 } };
     applySkeletonWidthPreset(point, DEFAULT_SKELETON_WIDTH, {
       name: "Stem",
@@ -174,8 +176,7 @@ describe("skeleton width presets", () => {
       side: "left",
       case: "uppercase",
     });
-    expect(point.width.left).to.equal(70);
-    expect(point.width.right).to.equal(40);
+    expect(point.width.left + point.width.right).to.equal(70);
   });
 
   it("resolves the base width for a case from its named preset", () => {

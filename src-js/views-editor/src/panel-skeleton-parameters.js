@@ -557,10 +557,10 @@ export default class SkeletonParametersPanel {
       }
     });
     // Ticket 49: the Generation header's preset control -- a dropdown, Add and
-    // Update. Picking a preset arms it and picking it again applies it to the
-    // selected points, the two-click confirm the force-apply row had. Add
-    // stores the selection's width and side as a new preset for the glyph's
-    // case; Update writes them over the preset last picked.
+    // Update. A preset is a total width and a projection side. Picking one
+    // applies it at once. Add stores the selection's total and projection as a
+    // new preset for the glyph's case; Update writes them over the preset last
+    // picked. The dropdown shows no picked state: its label stays "Preset".
     this._widthPresetIndex = null;
     this.widthPresetDropdown = html.createDomElement("multi-select-dropdown", {
       label: translate("sidebar.skeleton-parameters.width-preset"),
@@ -568,25 +568,12 @@ export default class SkeletonParametersPanel {
     this.widthPresetDropdown.singleChoice = true;
     this.widthPresetDropdown.addEventListener("change", (event) => {
       const [index] = [].concat(event.detail.checked);
-      if (index == null) {
-        return;
-      }
-      this._widthPresetIndex = index;
-      const preset = this._widthPresetList()[index];
-      this.widthPresetDropdown.label = preset?.name || "";
-      this.widthPresetUpdateButton.disabled = !this._canCaptureWidthPreset();
+      const preset = index == null ? null : this._widthPresetList()[index];
       if (!preset) {
         return;
       }
-      this._confirmThenApply(
-        { currentTarget: this.widthPresetDropdown },
-        `width-preset:${index}`,
-        () =>
-          this._forceApplyWidthProfile({
-            value: Number(preset.width),
-            side: preset.side,
-          })
-      );
+      this._widthPresetIndex = index;
+      this._applyWidthPreset(preset);
     });
     this.widthPresetAddButton = html.button({ onclick: () => this._addWidthPreset() }, [
       translate("sidebar.skeleton-parameters.width-preset.add"),
@@ -686,28 +673,57 @@ export default class SkeletonParametersPanel {
     return Array.isArray(list) ? list.map((preset) => ({ ...preset })) : [];
   }
 
-  // The width and side the selection states, or null where it states none. An
-  // explicit selection of ribs on one side stores that side's half-width; any
-  // other selection stores the total, side both. A selection whose members
-  // disagree has no one width to store.
+  // The total width and the projection side the selection states, or null
+  // where it states none: a selection whose totals or whose contours'
+  // projections disagree has no one preset to store.
   _selectionWidthPreset() {
     const points = this._widthPoints?.() || [];
-    if (!points.length) {
+    const contours = this._panelSelection?.contours || [];
+    if (!points.length || !contours.length) {
       return null;
     }
-    const ribs = this._panelSelection?.ribs || [];
-    const sides = new Set(ribs.map((rib) => rib.side));
-    if (!this._ribsDerived && ribs.length && sides.size === 1) {
-      const [side] = sides;
-      const summary = summarizeSkeletonPointWidths(points)[side];
-      return summary.mixed || summary.value == null
-        ? null
-        : { width: summary.value, side };
-    }
     const total = summarizeSkeletonPointWidths(points).total;
-    return total.mixed || total.value == null
-      ? null
-      : { width: total.value, side: "both" };
+    const projection = summarizeSkeletonContourSelection(contours).singleSided;
+    if (total.mixed || total.value == null || projection.mixed) {
+      return null;
+    }
+    return { width: total.value, side: projection.value ?? "both" };
+  }
+
+  // Applying a preset switches the selection's contours to its projection,
+  // with the Keep shape and Preserve changes settings, then writes its total
+  // width to the selected points. The projection goes first, so the total the
+  // preset states is the total the points end with.
+  async _applyWidthPreset(preset) {
+    const points = this._widthPoints();
+    const contours = this._panelSelection?.contours || [];
+    if (!points.length) {
+      return;
+    }
+    const settings = applicationSettingsController.model;
+    await this._runOwnEdit(async () => {
+      const current = summarizeSkeletonContourSelection(contours).singleSided;
+      const target =
+        preset.side === "left" || preset.side === "right" ? preset.side : null;
+      if (contours.length && (current.mixed || (current.value ?? null) !== target)) {
+        await setPanelContourSingleSided(
+          this.sceneController,
+          contours,
+          target,
+          this._undo("set-single-sided"),
+          {
+            keepForm: settings.skeletonSideModeKeepsForm === true,
+            keepEdits: settings.skeletonSideModeKeepsEdits === true,
+          }
+        );
+      }
+      await setPanelPointWidthPreset(
+        this.sceneController,
+        points,
+        { width: Number(preset.width), side: preset.side },
+        this._undo("set-total-width")
+      );
+    });
   }
 
   _canCaptureWidthPreset() {
@@ -728,7 +744,7 @@ export default class SkeletonParametersPanel {
         label: `${preset.name || ""} · ${preset.width}${
           preset.side === "both" ? "" : ` ${preset.side === "left" ? "L" : "R"}`
         }`,
-        checked: index === this._widthPresetIndex,
+        checked: false,
       }));
     // A list with nothing in it opened as an empty frame.
     if (!this.widthPresetDropdown.items.length) {
@@ -740,10 +756,6 @@ export default class SkeletonParametersPanel {
         },
       ];
     }
-    this.widthPresetDropdown.label =
-      this._widthPresetIndex != null
-        ? list[this._widthPresetIndex].name
-        : translate("sidebar.skeleton-parameters.width-preset");
     const canCapture = this._canCaptureWidthPreset();
     this.widthPresetAddButton.disabled = !canCapture;
     this.widthPresetUpdateButton.disabled =
@@ -1198,17 +1210,6 @@ export default class SkeletonParametersPanel {
         [select, button]
       ),
     });
-  }
-
-  async _forceApplyWidthProfile(option) {
-    await setPanelPointWidthPreset(
-      this.sceneController,
-      this._widthPoints(),
-      { width: Number(option.value), side: option.side },
-      this._undo("set-total-width")
-    );
-    this._forceRebuild = true;
-    await this.update();
   }
 
   async _forceApplyCapProfile(option) {

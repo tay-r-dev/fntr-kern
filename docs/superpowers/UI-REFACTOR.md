@@ -502,12 +502,12 @@ One table for every master and every case.
 | Column | Holds |
 | --- | --- |
 | Name | The preset name, with its master and case beside it in grey |
-| Width | One number |
-| Side | Left, right or both |
+| Width | One number, the total width |
+| Side | The projection: both, left or right |
 | Action | Trash |
 
 **New preset** and **Preset from selection** sit under the table. Preset from selection takes the
-width and the side of the selected rib.
+total width of the selected points and the projection of their contours.
 
 **What this replaces.** Today each master stores base, horizontal and contrast widths and a
 distribution, once for lowercase and once for capitals, plus a list of custom widths per case. The
@@ -518,8 +518,10 @@ block shows only the current glyph's case.
 - Custom widths become presets in the same table.
 - **Distribution is dropped.**
 
-**A width preset carries its side.** Applied, it writes that side only, or both. The image draws no
-Side column. Add one.
+**A width preset carries its side, and the side is the projection.** A preset always stores the
+total width. Applied, it switches the selected contours to its projection, honoring Keep shape and
+Preserve changes, then writes its total to the selected points. The image draws no Side column. Add
+one.
 
 ### 6.4 Terminal presets
 

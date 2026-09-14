@@ -2733,31 +2733,15 @@ export function setSkeletonPointWidthDistribution(
   clearCollapsedRibSides(point);
 }
 
-// Applies a width preset to a point: a "both" preset writes the total width
-// through the same writer a typed total-width value uses, and a "left"/"right"
-// preset writes only that side through the same writer a one-sided drag uses.
-// This is point widths only — the cascade rule holds, a preset never rewrites
-// the contour default width.
+// Applies a width preset to a point: the preset's width is always the total,
+// written through the same writer a typed total-width value uses. A preset's
+// side is the contour's projection (both, left or right), which is contour
+// data, so the caller applies it to the contour; it never picks a rib side
+// here. This is point widths only — the cascade rule holds, a preset never
+// rewrites the contour default width.
 export function applySkeletonWidthPreset(point, defaultWidth, preset, options = {}) {
   const normalized = normalizeWidthPreset(preset);
-  if (normalized.side === "left" || normalized.side === "right") {
-    // `independent` writes only the named side. The plain (linked) mode of
-    // this writer carries a delta to the other side to preserve its share,
-    // which is right for a drag but not for a preset: a one-sided preset
-    // states that side's width outright, and the other one is untouched.
-    setSkeletonPointWidthFromSide(
-      point,
-      defaultWidth,
-      normalized.side,
-      normalized.width,
-      {
-        independent: true,
-        ...options,
-      }
-    );
-  } else {
-    setSkeletonPointTotalWidth(point, defaultWidth, normalized.width, options);
-  }
+  setSkeletonPointTotalWidth(point, defaultWidth, normalized.width, options);
 }
 
 export function setSkeletonPointWidthLinked(point, linked) {
