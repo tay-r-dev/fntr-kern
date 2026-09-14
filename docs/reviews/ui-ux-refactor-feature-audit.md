@@ -4,7 +4,7 @@ Review target: `02bbd755925f4eb8a5f00fc248853aac7ba1f756`.
 Upstream: `fontra/fontra`, inspected at `ba03f8917e4df6cd783e755dd372b519b1f3225f`.
 Comparison base: `1066c5cb3f0f0442037d9ea6394ab516553ca44c`, the merge base of upstream and the target. The older `googlefonts/fontra` repository is archived; comparing only with it would misclassify later upstream work as fork additions.
 
-This review covers fork-specific features, with priority on skeleton editing and visualizations. It assesses correctness and code quality, performance, and consistency. It changes no application code. Findings are committed after each primary file review; related files are traced where needed. This is a growing report until the coverage ledger is complete. The initial PR contains the kerning review; the skeleton and visualization reviews remain pending. Following the request made after the first review, subsequent findings will use code inspection only, with no further test runs.
+This review covers fork-specific features, with priority on skeleton editing and visualizations. It assesses correctness and code quality, performance, and consistency. It changes no application code. Findings are committed after each primary file review; related files are traced where needed. This is a growing report until the coverage ledger is complete. Subsequent installments use code inspection only, as requested; no further tests are run.
 
 The reference set starts at `docs/superpowers/START-HERE.md`: glossary, architecture map, feature model and development log. Code takes precedence where those documents disagree. Ponytail's Markdown review guidance was read from a separate clone, without installation. Its simplicity checks supplement this review; they do not replace correctness checks. The requested `ste-writing` skill is not present in the repository or available skill directories; this report uses plain language.
 
@@ -15,7 +15,7 @@ P1 means a wrong result or serious scaling failure in a supported workflow. P2 m
 | Primary file | Lines at target | Review and result |
 | --- | ---: | --- |
 | `src-js/views-kerning/src/kerning.js` | 8,330 | Run, cache, source, table, class, preview and undo paths reviewed; K1–K7 below. Related worker/cache findings are included here. |
-| `src-js/fontra-core/src/skeleton-generator.js` | 6,743 | Next |
+| `src-js/fontra-core/src/skeleton-generator.js` | 6,743 | Generation pipeline, cleanup, corners, cap construction, provenance and generation-option callers inspected; S1–S6. Static review, not a proof of the numerical solver. |
 | `src-js/fontra-core/src/skeleton-model.js` | 5,859 | Pending |
 | Remaining feature files | — | Pending; final coverage inventory will distinguish deep review from supporting inspection. |
 
@@ -85,7 +85,69 @@ The 8,330-line controller owns worker lifetime, persistence, source state, class
 
 Recommendation: first consolidate the source-bound run lifecycle and batch class-edit operation, then let the existing results model own table derivation. Reuse the shared data table. Do not split every method into a file or replace the existing scene with a second implementation. Move historical narratives to the development log; keep contracts beside code. No defensible net line/dependency saving is claimed without an implementation.
 
-## Validation so far
+## 2. Skeleton generation — skeleton-generator.js
+
+This file is entirely fork-specific at the comparison base. The staged solve, insertion, join, rounding and cap pipeline is a useful separation. Coupled rib widths are computed once for the solve, and insertions commit both sides together. Publishing construction geometry for trimmed handles is also preferable to reconstructing it from rounded display coordinates. These choices should be retained.
+
+### S1 — P1, confirmed by code and algebra: cleanup can delete real curve geometry
+
+Locations: `skeleton-generator.js:506–579`, called on the complete open-stroke outline at `3216–3218`.
+
+`removeCoincidentOnCurves` deletes all intervening handles whenever the two on-curves coincide within tolerance. Equal endpoints do not establish a collapsed curve: a cubic from (0,0), through (100,100) and (-100,100), back to (0,0) has a nonzero loop. This routine deletes that loop without examining either handle.
+
+`removeStraightSegmentHandles` checks perpendicular distance to the infinite chord line but not extent along it. For a cubic with x coordinates 0, 200, 200, 100 and all y coordinates zero, the midpoint is x=162.5. Replacing it with the line from 0 to 100 loses the overshoot. The comment that doubling back still draws the same straight line confuses the supporting line with the occupied segment. This is an algebraic counterexample, not a newly executed test.
+
+The setting lives under serif defaults, but cleanup runs over every point in every open skeleton outline, including non-serif strokes. Its geometric assumptions must therefore hold for the whole output. Closed skeletons return earlier at `2741` and never run cleanup: either document that scope explicitly or move a safe cleanup into shared finalization. The closed/open difference alone is a scope inconsistency, not proof that closed strokes were intended to be cleaned.
+
+Recommendation: drop a coincident-endpoint segment only when its entire curve is collapsed; remove collinear controls only when the curve stays within the replacement segment and the intended traversal is preserved. Keep topology-changing cleanup opt-in, as it already is.
+
+### S2 — P1, confirmed cross-file mismatch: regeneration options are not tied to the layer being edited
+
+Locations: `editor.js:228–246`; `skeleton-editing.js:219–284`, `1735`; `skeleton-panel-edits.js:1400`, `1577`; `tunni-interactions.js:407`; `skeleton-generator.js:130–133`, `6484–6523`.
+
+The central edit path obtains options from a module-global zero-argument reader. The editor installs a reader using its active scene location. It does not receive the edited layer or that layer's source location. When multiple source layers are edited together, each generation therefore receives the active source's serif units and cleanup policy, even if the sources differ.
+
+Separately, reset, detach/reattach and pin-baking calculations call `generateFromSkeleton(scratch)` without options. That means absolute serif units and cleanup disabled. The subsequent actual edit uses the active source's options. With normalized serif units, a stored length of 0.2 at stroke width 100 means 20 units in the actual outline but 0.2 in the scratch calculation. Offsets calculated against those different constructions cannot generally preserve position. Cleanup can also change which handles exist between the two calculations.
+
+Recommendation: resolve a generation context for each edited source layer and pass it explicitly through actual and scratch generation. A single context should describe both sides of every position-preserving calculation. Avoid another implicit reader dedicated to scratch paths.
+
+### S3 — P2, static complexity: cleanup and corner processing introduce avoidable quadratic work
+
+Locations: `skeleton-generator.js:555–579`, `1441–1486`, `1489–1497`, `1525–1619`, `1766–2070`.
+
+For each on-curve, cleanup copies and reverses the entire growing `kept` array to find the previous on-curve. A contour with N ordinary on-curves therefore allocates and visits O(N²) entries even when no point is removed. Maintain the last retained on-curve directly.
+
+The inner-corner pass repeatedly searches from index zero and reconstructs the contour after each merge. Rounding repeatedly splices into a growing array. With O(N) corners these also reach O(N²) bookkeeping, before curve solving. These paths run during regeneration on drag frames. This is a complexity finding; no new timings or frame-rate claim are made.
+
+Recommendation: remove the needless cleanup copies first. For corner processing, collect candidates and use a controlled traversal or emission pass that preserves adjacency and wrap-around semantics. Keep edits local to the generation-owned arrays; no immutable consumer requires a fresh full contour after each corner.
+
+### S4 — P2, static complexity: the crossing search's guard does not bound its work
+
+Locations: `skeleton-generator.js:1291–1292`, `1347–1385`.
+
+`CROSSING_MAX_SPANS` is checked against the pending DFS stack length, not the number of spans processed. A depth-first subdivision can visit a very large search tree while keeping a small stack. Long coincident or nearly coincident spans keep overlapping until the fixed 0.01 coordinate precision is reached, so this guard does not provide the apparent 4,000-span work budget. The result list and subsequent clustering can grow as well. Returning a partial crossing list when the guard trips also does not distinguish incomplete search from a complete result.
+
+Recommendation: count processed work explicitly, detect overlapping/degenerate spans, and return an explicit unresolved result when a budget is exhausted. The caller already supports retaining an unmerged corner when a crossing is not uniquely established. Preserve that fallback rather than accepting a partial search as a unique crossing.
+
+### S5 — P2, confirmed data-flow mismatch: “respect changes” omits the final carried-handle displacement
+
+Locations: `skeleton-generator.js:2114–2159`, `2184–2277`, `3953–4088`, `1194–1206`.
+
+The single-sided conversion reads positions from `solveSkeletonContourSides`, copies its handles into the centerline, and clears the collapsing side's `handleNudge`. The solve stores carried displacement in `_handleNudge`; it does not add that displacement to the handle coordinates. The later `enforceSmoothColinearity` pass applies it. Thus the conversion takes pre-displacement handle positions and then erases the authored displacement that would have moved them. For a nonzero carried nudge, this does not preserve the edge as drawn, contrary to the conversion's contract. Final collinearity adjustments are also absent from the sampled solve.
+
+Recommendation: provide an explicitly finalized, pre-cap side representation for this conversion, with authored carry applied exactly once and stable point ownership. Do not simply copy the fully capped outline into the centerline: cap topology does not match skeleton topology.
+
+### S6 — P3, maintainability: unreachable cap implementations and eager debug payloads obscure the active path
+
+Locations: `skeleton-generator.js:6603–6735`, dispatch at `2776–3176`; `5444–5451`; `5079–5087`, `5136–5142`, `5311–5329`, `5419–5440`, `3350–3361`.
+
+Both active cap dispatches handle round and square before the fallback `generateCap` call. Its round and square implementations are therefore unreachable from these callers, leaving a second description of geometry that the app does not use. `assembleOpenOutlineWithRoundCaps` is also unused. Removing those private dead paths would reduce review and maintenance cost without introducing abstractions.
+
+Debug payloads serialize points and allocate arrays before `logSkeletonDebug` checks whether logging is enabled. Gate construction at the caller or accept a lazy payload. This is a bounded allocation reduction, not evidence that debug preparation dominates generation time.
+
+Review limits: the numerical cap/offset solvers were inspected structurally, not proven over all inputs. S1–S6 are based on source control flow, arithmetic and call contracts. No tests, benchmarks or browser runs were performed for this review installment.
+
+## Validation completed before the code-only request
 
 - `npm ci --ignore-scripts --no-audit --no-fund` succeeded; no tracked dependency file changed.
 - Core suite: **2,630 passing**.
