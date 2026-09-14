@@ -31,7 +31,10 @@ import { guessGlyphPlaceholderString } from "@fontra/core/glyph-data.js";
 import { translate } from "@fontra/core/localization.js";
 import { rectToPoints } from "@fontra/core/rectangle.ts";
 import { difference, isSuperset, union } from "@fontra/core/set-ops.js";
-import { getSkeletonData } from "@fontra/core/skeleton-model.js";
+import {
+  getGeneratedPathContourIndices,
+  getSkeletonData,
+} from "@fontra/core/skeleton-model.js";
 import { decomposedToTransform } from "@fontra/core/transform.js";
 import {
   calculateCurvatureGizmoPoint,
@@ -1323,7 +1326,9 @@ function getGizmoHiddenContourIndices(positionedGlyph, model) {
   ) {
     return null;
   }
-  const indices = getGeneratedContourIndicesForTunni(positionedGlyph, model);
+  const indices = getGeneratedPathContourIndices(
+    getTunniSkeletonData(positionedGlyph, model)
+  );
   return indices?.size ? indices : null;
 }
 
