@@ -852,7 +852,10 @@ registerVisualizationLayerDefinition({
     context.lineJoin = "round";
     context.strokeStyle = parameters.strokeColor;
     context.lineWidth = parameters.strokeWidth;
-    context.stroke(model.ghostPath);
+    // With the generated outline hidden, the ghost is that outline as it is now,
+    // so it follows the skeleton through the drag. Otherwise it is the outline
+    // from before the edit.
+    context.stroke(undrawnPath2d(positionedGlyph, model) || model.ghostPath);
   },
 });
 
@@ -1347,6 +1350,22 @@ function getUndrawnContourIndices(positionedGlyph, model) {
     getTunniSkeletonData(positionedGlyph, model)
   );
   return indices.size ? indices : null;
+}
+
+// Only the undrawn contours, as they are now. Null when nothing is undrawn.
+function undrawnPath2d(positionedGlyph, model) {
+  const undrawn = getUndrawnContourIndices(positionedGlyph, model);
+  if (!undrawn) {
+    return null;
+  }
+  const result = new Path2D();
+  const path = positionedGlyph.glyph.flattenedPath;
+  for (const i of undrawn) {
+    if (i < path.numContours) {
+      path.drawContourToPath2d(result, i);
+    }
+  }
+  return result;
 }
 
 // The glyph's outline without its undrawn contours. Components come after the
