@@ -21,6 +21,7 @@ P1 means a wrong result or serious scaling failure in a supported workflow. P2 m
 | `src-js/views-editor/src/panel-designspace-navigation.js` | 3,895 | Fork-added visual controls, persistence, debug polling/subscriptions and source creation inspected; D1–D3 and M5. |
 | `src-js/views-editor/src/scene-controller.js` | 3,062 | Fork command dispatch, arrow edits, skeleton conversion, mixed selections, harmonization, overlap and undo integration inspected; C1–C4. |
 | `src-js/views-editor/src/visualization-layer-definitions.js` | 2,634 | Fork rendering additions and visibility filters inspected, including supporting `curvature.js` implementation; V1–V5. |
+| `src-js/views-editor/src/scene-model.js` | 2,614 | Fork hit-testing, generated-path filters, drag readouts, measurement state and shaping changes inspected; SM1–SM3. |
 | Remaining feature files | — | Pending; final coverage inventory will distinguish deep review from supporting inspection. |
 
 ## 1. Kerning view — kerning.js
@@ -364,6 +365,34 @@ The coarse grid draws each line with its own begin/stroke pair and has no screen
 Hidden-contour outline paths are rebuilt each time a fill/stroke layer asks for them. Node filtering calls `getContourIndex` for every point even when neither hidden set exists. Use the ordinary iterator directly in that common case and derive filtered paths once per geometry/settings revision. These changes simplify functioning code without altering the visual model.
 
 The skeleton SpeedPunk switch is intentionally scoped by its source comment to hidden generated outlines; this review does not call that choice a defect. Existing saved canvas state around each layer is appropriate and should be retained.
+
+## 8. Scene model — scene-model.js
+
+### SM1 — P2, confirmed visibility inconsistency: hidden generated handles can still capture clicks
+
+Locations: `scene-model.js:813–820`, `1126–1173`; `visualization-layer-definitions.js:1338–1348`; contrast `tunni-gizmos.js:isTunniControlLive`.
+
+Direct generated-point/handle hit-testing refuses gizmo mode but never checks `skeletonShowGeneratedGeometry`. Turning off generated geometry while direct editing is enabled hides those nodes and handles yet leaves their hit targets active. An invisible target can take the click before ordinary points or markers. The Tunni eligibility helper does check the visibility setting, so direct and gizmo editing disagree.
+
+Recommendation: use one generated-control eligibility rule for rendering, pointer hit-testing and keyboard target collection, preserving any deliberate behavior for already-selected hidden targets explicitly.
+
+### SM2 — P2, functioning but allocation-heavy: each hit-test recreates global candidate lists
+
+Locations: `scene-model.js:914–936`, `875–902`, `1540–1580`, `1214–1234`; supporting costs in M1 and M4.
+
+The ordinary-point filter builds a Set containing every generated point index, then builds an array of every non-generated point index. These can be rebuilt in several paths during one pointer query. Rib selection may enumerate all targets once for selection preference and then enumerate and materialize them again merely to reverse the order. Each enumeration triggers the expensive rib derivation described in M1. A single curvature drag readout rebuilds every generated Tunni segment to find one target.
+
+Recommendation: maintain contour ranges or a revision-bound point mask, allow reverse target traversal without a temporary reversed array, and share the target descriptors between selection preference, fallback, drawing and readouts. Preserve the existing hit priority; a faster query that changes which overlapping target wins is not equivalent.
+
+### SM3 — P3, duplicated and indirect code with an accuracy tradeoff
+
+`_getEditLayerGlyph` is defined twice (`938–946`, `995–1004`). JavaScript silently uses the later method; their current behavior is equivalent. Remove the shadowed definition so later changes cannot be made to an inactive copy.
+
+`iterSkeletonCurveSegments` (`2517–2547`) reimplements the skeleton segment walk already exposed by the core model. Its companion `skeletonSegmentDistance` (`2564–2614`) embeds another quadratic/cubic evaluator and samples exactly 24 line pieces regardless of zoom or curve shape. At high magnification, approximation error is enlarged while click tolerance in glyph units shrinks, so the sampled polyline is not guaranteed to match a visibly targeted curve. This is a static accuracy limitation, not a measured missed-click rate.
+
+Recommendation: use the existing core segment representation and shared Bezier evaluation, with a bounding-box rejection and tolerance-aware hit distance. The measurement state also stores four mutually exclusive nullable fields, clears all four, then recovers a kind through four branches (`202–258`); a single `{kind, payload}` target would state that invariant directly and simplify each transition.
+
+The new measurement reset clears geometry references when measurement stops. Existing scene subscription reconciliation is inherited and not counted as a fork leak. No new tests were run.
 
 ## Validation completed before the code-only request
 
