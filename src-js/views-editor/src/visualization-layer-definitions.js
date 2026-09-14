@@ -55,7 +55,9 @@ import {
 } from "@fontra/core/utils.ts";
 import { subVectors } from "@fontra/core/vector.js";
 import {
+  isTunniControlLive,
   iterBasicTunniSegments,
+  TUNNI_GIZMO_TUNING,
   TUNNI_SETTINGS,
   tunniGizmoKey,
 } from "./tunni-gizmos.js";
@@ -2217,14 +2219,42 @@ export const TUNNI_GIZMO_COLORS = { gizmoColor: "#2E4FBA" };
 export const TUNNI_GIZMO_COLORS_DARK = { gizmoColor: "#7B97F2" };
 
 // Draw one gizmo at its reveal's current opacity. Nothing is drawn while the
-// gizmo is fully hidden.
-export function drawRevealedTunniGizmo(context, model, key, draw) {
-  const alpha = model.tunniGizmoReveal?.alpha(key) ?? 0;
+// gizmo is fully hidden. The hot gizmo, the one a click would take, carries a
+// ring as wide as its click catch, so what the ring encloses is what a click
+// reaches. `parameters.pixel` is one screen pixel in glyph units. An on-curve
+// gizmo passes `alwaysVisible` and draws at full strength whatever the reveal
+// says; only its ring follows the cursor.
+export function drawRevealedTunniGizmo(
+  context,
+  model,
+  key,
+  point,
+  parameters,
+  draw,
+  { alwaysVisible = false } = {}
+) {
+  const reveal = model.tunniGizmoReveal;
+  const alpha = alwaysVisible ? 1 : (reveal?.alpha(key) ?? 0);
   if (!(alpha > 0)) {
     return;
   }
   context.globalAlpha = alpha;
   draw();
+  if (reveal?.isHot(key)) {
+    context.save();
+    context.strokeStyle = parameters.gizmoColor;
+    context.lineWidth = parameters.pixel * 1.5;
+    context.beginPath();
+    context.arc(
+      point.x,
+      point.y,
+      TUNNI_GIZMO_TUNING.clickRadius * parameters.pixel,
+      0,
+      2 * Math.PI
+    );
+    context.stroke();
+    context.restore();
+  }
   context.globalAlpha = 1;
 }
 
@@ -2235,7 +2265,7 @@ registerVisualizationLayerDefinition({
   userSwitchable: true,
   defaultOn: true,
   zIndex: 56,
-  screenParameters: { gizmoSize: 7 },
+  screenParameters: { gizmoSize: 7, pixel: 1 },
   colors: TUNNI_GIZMO_COLORS,
   colorsDarkMode: TUNNI_GIZMO_COLORS_DARK,
   draw: (context, positionedGlyph, parameters, model) => {
@@ -2244,16 +2274,14 @@ registerVisualizationLayerDefinition({
       positionedGlyph.glyph.path,
       getTunniSkeletonData(positionedGlyph, model)
     )) {
+      const point = calculateCurvatureGizmoPoint(segment.points);
       drawRevealedTunniGizmo(
         context,
         model,
         tunniGizmoKey("basic", "curvature", id),
-        () =>
-          fillRoundNode(
-            context,
-            calculateCurvatureGizmoPoint(segment.points),
-            parameters.gizmoSize
-          )
+        point,
+        parameters,
+        () => fillRoundNode(context, point, parameters.gizmoSize)
       );
     }
   },
@@ -2266,10 +2294,15 @@ registerVisualizationLayerDefinition({
   userSwitchable: true,
   defaultOn: false,
   zIndex: 56,
-  screenParameters: { gizmoSize: 8, strokeWidth: 1 },
+  screenParameters: { gizmoSize: 8, strokeWidth: 1, pixel: 1 },
   colors: { gizmoColor: "#FF8C00" },
   colorsDarkMode: { gizmoColor: "#FFA500" },
   draw: (context, positionedGlyph, parameters, model) => {
+    if (
+      !isTunniControlLive(model.visualizationLayersSettings?.model, "basic", "onCurve")
+    ) {
+      return;
+    }
     context.fillStyle = parameters.gizmoColor;
     context.strokeStyle = parameters.gizmoColor;
     context.lineWidth = parameters.strokeWidth;
@@ -2285,7 +2318,10 @@ registerVisualizationLayerDefinition({
         context,
         model,
         tunniGizmoKey("basic", "on-curve", id),
-        () => drawDiamondNode(context, tunniPoint, parameters.gizmoSize, true)
+        tunniPoint,
+        parameters,
+        () => drawDiamondNode(context, tunniPoint, parameters.gizmoSize, true),
+        { alwaysVisible: true }
       );
     }
   },
@@ -2303,6 +2339,11 @@ registerVisualizationLayerDefinition({
   colors: { labelColor: "#2E4FBA" },
   colorsDarkMode: { labelColor: "#7B97F2" },
   draw: (context, positionedGlyph, parameters, model) => {
+    if (
+      !isTunniControlLive(model.visualizationLayersSettings?.model, "basic", "labels")
+    ) {
+      return;
+    }
     for (const { segment } of iterBasicTunniSegments(
       positionedGlyph.glyph.path,
       getTunniSkeletonData(positionedGlyph, model)

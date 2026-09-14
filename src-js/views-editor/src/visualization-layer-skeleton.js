@@ -35,7 +35,7 @@ import { parseSelection } from "@fontra/core/utils.ts";
 
 import {
   generatedTunniSegmentId,
-  isGeneratedGizmoLive,
+  isTunniControlLive,
   skeletonTunniSegmentId,
   TUNNI_SETTINGS,
   tunniGizmoKey,
@@ -754,7 +754,7 @@ registerVisualizationLayerDefinition({
   userSwitchable: true,
   defaultOn: true,
   zIndex: 547,
-  screenParameters: { gizmoSize: 7 },
+  screenParameters: { gizmoSize: 7, pixel: 1 },
   colors: TUNNI_GIZMO_COLORS,
   colorsDarkMode: TUNNI_GIZMO_COLORS_DARK,
   draw: (context, positionedGlyph, parameters, model) => {
@@ -773,6 +773,8 @@ registerVisualizationLayerDefinition({
             "curvature",
             skeletonTunniSegmentId(contour, segment)
           ),
+          point,
+          parameters,
           () => fillRoundNode(context, point, parameters.gizmoSize)
         );
       }
@@ -787,10 +789,19 @@ registerVisualizationLayerDefinition({
   userSwitchable: true,
   defaultOn: false,
   zIndex: 547,
-  screenParameters: { gizmoSize: 8, strokeWidth: 1 },
+  screenParameters: { gizmoSize: 8, strokeWidth: 1, pixel: 1 },
   colors: { gizmoColor: "rgba(255, 128, 0, 0.95)" },
   colorsDarkMode: { gizmoColor: "rgba(255, 174, 68, 1)" },
   draw: (context, positionedGlyph, parameters, model) => {
+    if (
+      !isTunniControlLive(
+        model.visualizationLayersSettings?.model,
+        "skeleton",
+        "onCurve"
+      )
+    ) {
+      return;
+    }
     context.fillStyle = parameters.gizmoColor;
     context.strokeStyle = parameters.gizmoColor;
     context.lineWidth = parameters.strokeWidth;
@@ -808,7 +819,10 @@ registerVisualizationLayerDefinition({
             "on-curve",
             skeletonTunniSegmentId(contour, segment)
           ),
-          () => drawDiamondNode(context, point, parameters.gizmoSize, true)
+          point,
+          parameters,
+          () => drawDiamondNode(context, point, parameters.gizmoSize, true),
+          { alwaysVisible: true }
         );
       }
     });
@@ -826,6 +840,15 @@ registerVisualizationLayerDefinition({
   colors: { labelColor: "#2E4FBA" },
   colorsDarkMode: { labelColor: "#7B97F2" },
   draw: (context, positionedGlyph, parameters, model) => {
+    if (
+      !isTunniControlLive(
+        model.visualizationLayersSettings?.model,
+        "skeleton",
+        "labels"
+      )
+    ) {
+      return;
+    }
     forEachSkeletonContour(positionedGlyph, model, (contour) => {
       for (const segment of buildSkeletonTunniSegments(contour)) {
         const points = segmentToTunniPoints(segment);
@@ -866,6 +889,7 @@ registerVisualizationLayerDefinition({
     gizmoSize: 7,
     strokeWidth: 1,
     curvatureAxisLength: 18,
+    pixel: 1,
   },
   colors: { ...TUNNI_GIZMO_COLORS, axisColor: "rgba(46, 79, 186, 0.5)" },
   colorsDarkMode: {
@@ -874,9 +898,10 @@ registerVisualizationLayerDefinition({
   },
   draw: (context, positionedGlyph, parameters, model) => {
     if (
-      !isGeneratedGizmoLive(
+      !isTunniControlLive(
         model.visualizationLayersSettings?.model,
-        TUNNI_SETTINGS.generatedCurvature
+        "generated",
+        "curvature"
       )
     ) {
       return;
@@ -903,6 +928,8 @@ registerVisualizationLayerDefinition({
         context,
         model,
         tunniGizmoKey("generated", "curvature", generatedTunniSegmentId(segment)),
+        anchor,
+        parameters,
         () => {
           // The axis is the direction the curve swells in; without it the node
           // looks free to go anywhere.
@@ -931,14 +958,15 @@ registerVisualizationLayerDefinition({
   userSwitchable: true,
   defaultOn: false,
   zIndex: 548,
-  screenParameters: { gizmoSize: 8, strokeWidth: 1 },
+  screenParameters: { gizmoSize: 8, strokeWidth: 1, pixel: 1 },
   colors: { gizmoColor: "rgba(210, 90, 190, 0.95)" },
   colorsDarkMode: { gizmoColor: "rgba(240, 140, 220, 1)" },
   draw: (context, positionedGlyph, parameters, model) => {
     if (
-      !isGeneratedGizmoLive(
+      !isTunniControlLive(
         model.visualizationLayersSettings?.model,
-        TUNNI_SETTINGS.generatedOnCurve
+        "generated",
+        "onCurve"
       )
     ) {
       return;
@@ -961,7 +989,10 @@ registerVisualizationLayerDefinition({
         context,
         model,
         tunniGizmoKey("generated", "on-curve", generatedTunniSegmentId(segment)),
-        () => drawDiamondNode(context, gizmoPoint, parameters.gizmoSize, true)
+        gizmoPoint,
+        parameters,
+        () => drawDiamondNode(context, gizmoPoint, parameters.gizmoSize, true),
+        { alwaysVisible: true }
       );
     }
   },
@@ -986,6 +1017,15 @@ registerVisualizationLayerDefinition({
     pinnedColor: "rgba(255, 150, 90, 1)",
   },
   draw: (context, positionedGlyph, parameters, model) => {
+    if (
+      !isTunniControlLive(
+        model.visualizationLayersSettings?.model,
+        "generated",
+        "labels"
+      )
+    ) {
+      return;
+    }
     const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
     for (const segment of buildGeneratedTunniSegments(
       skeletonData,

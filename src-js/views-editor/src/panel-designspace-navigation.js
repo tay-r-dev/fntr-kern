@@ -80,27 +80,26 @@ import {
 
 import { NumberFormatter } from "@fontra/core/formatters.js";
 import Panel from "./panel.js";
-import { isGeneratedGizmoLive, TUNNI_SETTINGS } from "./tunni-gizmos.js";
+import {
+  isTunniControlLive,
+  TUNNI_GIZMO_TUNING,
+  TUNNI_GIZMO_TUNING_DEFAULTS,
+  TUNNI_KINDS,
+  TUNNI_SETTINGS,
+} from "./tunni-gizmos.js";
 
-const TUNNI_PANEL_COLUMNS = [
+const TUNNI_DEBUG_CONTROLS = [
+  { key: "revealRadius", label: "Reveal radius", min: 4, max: 80, step: 1, unit: "px" },
+  { key: "clickRadius", label: "Click radius", min: 2, max: 40, step: 1, unit: "px" },
   {
-    kind: "basic",
-    curvature: TUNNI_SETTINGS.basicCurvature,
-    onCurve: TUNNI_SETTINGS.basicOnCurve,
-    labels: TUNNI_SETTINGS.basicLabels,
+    key: "revealDelay",
+    label: "Reveal delay",
+    min: 0,
+    max: 1000,
+    step: 10,
+    unit: "ms",
   },
-  {
-    kind: "skeleton",
-    curvature: TUNNI_SETTINGS.skeletonCurvature,
-    onCurve: TUNNI_SETTINGS.skeletonOnCurve,
-    labels: TUNNI_SETTINGS.skeletonLabels,
-  },
-  {
-    kind: "generated",
-    curvature: TUNNI_SETTINGS.generatedCurvature,
-    onCurve: TUNNI_SETTINGS.generatedOnCurve,
-    labels: TUNNI_SETTINGS.generatedLabels,
-  },
+  { key: "fadeDuration", label: "Fade", min: 0, max: 1000, step: 10, unit: "ms" },
 ];
 
 // Bug fix: no accordion item's open/closed state survived a reload -- every
@@ -835,16 +834,16 @@ export default class DesignspaceNavigationPanel extends Panel {
             `,
           },
           [
-            ...TUNNI_PANEL_COLUMNS.map((column) =>
+            ...Object.keys(TUNNI_KINDS).map((kind) =>
               html.createDomElement("labeled-toggle", {
-                id: `tunni-${column.kind}-toggle`,
-                label: translate(`sidebar.designspace-navigation.tunni.${column.kind}`),
+                id: `tunni-${kind}-toggle`,
+                label: translate(`sidebar.designspace-navigation.tunni.${kind}`),
               })
             ),
             ...["on-curve", "label"].flatMap((row) =>
-              TUNNI_PANEL_COLUMNS.map((column) =>
+              Object.keys(TUNNI_KINDS).map((kind) =>
                 html.label({ style: "white-space: nowrap;" }, [
-                  html.input({ id: `tunni-${column.kind}-${row}`, type: "checkbox" }),
+                  html.input({ id: `tunni-${kind}-${row}`, type: "checkbox" }),
                   translate(`sidebar.designspace-navigation.tunni.${row}`),
                 ])
               )
@@ -951,6 +950,47 @@ export default class DesignspaceNavigationPanel extends Panel {
             })
           )
         ),
+      },
+      {
+        // How the Tunni gizmos reveal themselves, for tuning by hand. Live and
+        // stored per browser, like the snapping debug numbers below.
+        id: "tunni-debug-accordion-item",
+        label: "Tunni (debug)",
+        open: false,
+        content: html.div({}, [
+          html.div(
+            {
+              style: `
+                display: grid;
+                grid-template-columns: auto 1fr auto;
+                gap: 0.35em 0.5em;
+                align-items: center;
+              `,
+            },
+            TUNNI_DEBUG_CONTROLS.flatMap((control) => [
+              html.label({ style: "white-space: nowrap; font-size: 0.9em;" }, [
+                control.label,
+              ]),
+              html.input({
+                id: `tunni-debug-${control.key}`,
+                type: "range",
+                min: control.min,
+                max: control.max,
+                step: control.step,
+              }),
+              html.span(
+                {
+                  id: `tunni-debug-${control.key}-value`,
+                  style: "font-family: monospace; font-size: 0.85em; min-width: 4em;",
+                },
+                [""]
+              ),
+            ])
+          ),
+          html.div({ style: "padding-top: 0.6em;" }, [
+            html.button({ id: "tunni-debug-reset" }, ["Reset to defaults"]),
+          ]),
+        ]),
       },
       {
         id: "snapping-debug-accordion-item",
@@ -1486,36 +1526,87 @@ export default class DesignspaceNavigationPanel extends Panel {
   }
 
   // Ticket 29: every control binds to its drawing layer's own switch, so it and
-  // the View menu entry always agree. A generated gizmo reads as on only while
-  // gizmo mode is on too, because that is the only time it does anything.
+  // the View menu entry always agree. The toggle is the kind's main switch: with
+  // it off, the two checks under it keep their own state but are frozen, because
+  // neither the on-curve gizmo nor the label works without it. A generated toggle
+  // reads as on only in gizmo mode, the only time it does anything.
   _setupTunniControls() {
     const settings = this.editorController.visualizationLayersSettings;
-    const bind = (element, key, isGenerated) => {
-      if (!element) {
-        return;
-      }
-      const read = () =>
-        isGenerated
-          ? isGeneratedGizmoLive(settings.model, key)
-          : settings.model[key] === true;
-      element.checked = read();
-      element.addEventListener("change", () => {
-        settings.model[key] = !!element.checked;
-      });
-      settings.addKeyListener(
-        isGenerated ? [key, TUNNI_SETTINGS.generatedMode] : [key],
-        () => {
-          element.checked = read();
-        }
-      );
-    };
     const find = (id) => this.visualAccordion.querySelector(`#${id}`);
-    for (const column of TUNNI_PANEL_COLUMNS) {
-      const isGenerated = column.kind === "generated";
-      bind(find(`tunni-${column.kind}-toggle`), column.curvature, isGenerated);
-      bind(find(`tunni-${column.kind}-on-curve`), column.onCurve, isGenerated);
-      bind(find(`tunni-${column.kind}-label`), column.labels, false);
+    for (const kind of Object.keys(TUNNI_KINDS)) {
+      const keys = TUNNI_KINDS[kind];
+      const toggle = find(`tunni-${kind}-toggle`);
+      const checks = [
+        [find(`tunni-${kind}-on-curve`), keys.onCurve],
+        [find(`tunni-${kind}-label`), keys.labels],
+      ];
+      const sync = () => {
+        const main = isTunniControlLive(settings.model, kind, "curvature");
+        toggle.checked = main;
+        for (const [check, key] of checks) {
+          check.checked = settings.model[key] === true;
+          check.disabled = !main;
+        }
+      };
+      toggle.addEventListener("change", () => {
+        settings.model[keys.curvature] = !!toggle.checked;
+      });
+      for (const [check, key] of checks) {
+        check.addEventListener("change", () => {
+          settings.model[key] = !!check.checked;
+        });
+      }
+      settings.addKeyListener(
+        [keys.curvature, keys.onCurve, keys.labels, TUNNI_SETTINGS.generatedMode],
+        sync
+      );
+      sync();
     }
+  }
+
+  _setupTunniDebugControls() {
+    const stored = applicationSettingsController.model.tunniGizmoTuning || {};
+    for (const control of TUNNI_DEBUG_CONTROLS) {
+      if (Number.isFinite(stored[control.key])) {
+        TUNNI_GIZMO_TUNING[control.key] = stored[control.key];
+      }
+    }
+    const sync = () => {
+      for (const control of TUNNI_DEBUG_CONTROLS) {
+        const input = this.visualAccordion.querySelector(`#tunni-debug-${control.key}`);
+        const readout = this.visualAccordion.querySelector(
+          `#tunni-debug-${control.key}-value`
+        );
+        const value = TUNNI_GIZMO_TUNING[control.key];
+        if (input) {
+          input.value = String(value);
+        }
+        if (readout) {
+          readout.textContent = `${value} ${control.unit}`;
+        }
+      }
+    };
+    const persist = () => {
+      applicationSettingsController.model.tunniGizmoTuning = { ...TUNNI_GIZMO_TUNING };
+      this.sceneController.canvasController.requestUpdate();
+    };
+    for (const control of TUNNI_DEBUG_CONTROLS) {
+      this.visualAccordion
+        .querySelector(`#tunni-debug-${control.key}`)
+        ?.addEventListener("input", (event) => {
+          TUNNI_GIZMO_TUNING[control.key] = Number(event.target.value);
+          sync();
+          persist();
+        });
+    }
+    this.visualAccordion
+      .querySelector("#tunni-debug-reset")
+      ?.addEventListener("click", () => {
+        Object.assign(TUNNI_GIZMO_TUNING, TUNNI_GIZMO_TUNING_DEFAULTS);
+        sync();
+        persist();
+      });
+    sync();
   }
 
   _setupSnappingDebugControls() {
@@ -1826,6 +1917,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._setupMeasurementsDisplayToggle();
     this._setupMeasurementsCheckboxes();
     this._setupTunniControls();
+    this._setupTunniDebugControls();
     this._setupSpeedPunkControls();
     this._setupSnappingDebugControls();
 

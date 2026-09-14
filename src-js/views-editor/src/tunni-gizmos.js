@@ -35,12 +35,41 @@ export const TUNNI_SETTINGS = {
   generatedLabels: "fontra.skeleton.generated-curvature-labels",
 };
 
-// A generated gizmo works only in gizmo mode, and only while its own switch is on.
-export function isGeneratedGizmoLive(settingsModel, key) {
-  return (
-    settingsModel?.[TUNNI_SETTINGS.generatedMode] === true &&
-    settingsModel?.[key] === true
-  );
+// The three switches per kind of curve. The curvature switch is the kind's main
+// toggle: the on-curve gizmo and the label work only while it is on, whatever
+// their own checks say.
+export const TUNNI_KINDS = {
+  basic: {
+    curvature: TUNNI_SETTINGS.basicCurvature,
+    onCurve: TUNNI_SETTINGS.basicOnCurve,
+    labels: TUNNI_SETTINGS.basicLabels,
+  },
+  skeleton: {
+    curvature: TUNNI_SETTINGS.skeletonCurvature,
+    onCurve: TUNNI_SETTINGS.skeletonOnCurve,
+    labels: TUNNI_SETTINGS.skeletonLabels,
+  },
+  generated: {
+    curvature: TUNNI_SETTINGS.generatedCurvature,
+    onCurve: TUNNI_SETTINGS.generatedOnCurve,
+    labels: TUNNI_SETTINGS.generatedLabels,
+  },
+};
+
+// Whether one control of one kind does anything. `control` is "curvature",
+// "onCurve" or "labels". A generated control also needs gizmo mode.
+export function isTunniControlLive(settingsModel, kind, control) {
+  const keys = TUNNI_KINDS[kind];
+  const on = (key) => settingsModel?.[key] === true;
+  const main =
+    on(keys.curvature) && (kind !== "generated" || on(TUNNI_SETTINGS.generatedMode));
+  return control === "curvature" ? main : main && on(keys[control]);
+}
+
+// On-curve gizmos show at all times; only the curvature gizmo waits for the
+// cursor.
+export function isTunniOnCurveType(type) {
+  return type === "on-curve" || type === "true-tunni" || type === "generated-on-curve";
 }
 
 // The mode and the visibility are two settings with one rule between them:
@@ -123,8 +152,8 @@ export function findTunniGizmo(point, radius, { path, skeletonData, settingsMode
     }
   };
 
-  const basicCurvature = settingsModel?.[TUNNI_SETTINGS.basicCurvature] === true;
-  const basicOnCurve = settingsModel?.[TUNNI_SETTINGS.basicOnCurve] === true;
+  const basicCurvature = isTunniControlLive(settingsModel, "basic", "curvature");
+  const basicOnCurve = isTunniControlLive(settingsModel, "basic", "onCurve");
   if (basicCurvature || basicOnCurve) {
     for (const { segment, id } of iterBasicTunniSegments(path, skeletonData)) {
       const hit = { kind: "basic", segment };
@@ -145,8 +174,8 @@ export function findTunniGizmo(point, radius, { path, skeletonData, settingsMode
     }
   }
 
-  const skeletonCurvature = settingsModel?.[TUNNI_SETTINGS.skeletonCurvature] === true;
-  const skeletonOnCurve = settingsModel?.[TUNNI_SETTINGS.skeletonOnCurve] === true;
+  const skeletonCurvature = isTunniControlLive(settingsModel, "skeleton", "curvature");
+  const skeletonOnCurve = isTunniControlLive(settingsModel, "skeleton", "onCurve");
   if (skeletonCurvature || skeletonOnCurve) {
     (skeletonData?.contours || []).forEach((contour, contourIndex) => {
       for (const segment of buildSkeletonTunniSegments(contour)) {
@@ -179,14 +208,12 @@ export function findTunniGizmo(point, radius, { path, skeletonData, settingsMode
     });
   }
 
-  const generatedCurvature = isGeneratedGizmoLive(
+  const generatedCurvature = isTunniControlLive(
     settingsModel,
-    TUNNI_SETTINGS.generatedCurvature
+    "generated",
+    "curvature"
   );
-  const generatedOnCurve = isGeneratedGizmoLive(
-    settingsModel,
-    TUNNI_SETTINGS.generatedOnCurve
-  );
+  const generatedOnCurve = isTunniControlLive(settingsModel, "generated", "onCurve");
   if ((generatedCurvature || generatedOnCurve) && skeletonData?.generated?.length) {
     for (const segment of buildGeneratedTunniSegments(skeletonData, path)) {
       const id = generatedTunniSegmentId(segment);
@@ -210,47 +237,88 @@ export function findTunniGizmo(point, radius, { path, skeletonData, settingsMode
   return best;
 }
 
-const REVEAL_DELAY_MS = 200;
-const FADE_MS = 150;
+// How the reveal behaves, in screen pixels and milliseconds. Live numbers the
+// Visual panel's debug section edits, read at the moment they are needed.
+export const TUNNI_GIZMO_TUNING_DEFAULTS = {
+  revealRadius: 28,
+  clickRadius: 10,
+  revealDelay: 200,
+  fadeDuration: 150,
+};
+export const TUNNI_GIZMO_TUNING = { ...TUNNI_GIZMO_TUNING_DEFAULTS };
 
 //
 // A gizmo shows only after the cursor has rested near it, and fades in and out.
 //
 // One gizmo is armed at a time. Hovering near a different one starts that one's
 // delay and lets the armed one go; leaving every gizmo lets it go too. An armed
-// gizmo is the only one a click reaches.
+// gizmo is the only one a click reaches, and the hot one is the armed gizmo the
+// cursor is close enough to click.
+//
+// Every hover event runs as a pass. A tool that answers the pointer without
+// looking for gizmos, as the skeleton pen does while editing, never calls
+// hover(), and the pass then lets the armed gizmo go. Without the pass the gizmo
+// stayed up for as long as that tool was answering.
 //
 export class TunniGizmoReveal {
   constructor(requestUpdate) {
     this._requestUpdate = requestUpdate;
     this._armedKey = null;
+    this._hotKey = null;
     this._pendingKey = null;
     this._timer = null;
     this._fades = new Map();
     this._frame = null;
+    this._hoveredThisPass = false;
   }
 
-  hover(key) {
+  beginHoverPass() {
+    this._hoveredThisPass = false;
+  }
+
+  endHoverPass() {
+    if (!this._hoveredThisPass) {
+      this.hover(null);
+    }
+  }
+
+  // `hot`: the cursor is within the key's click catch. `instant`: the gizmo is
+  // always shown, so it arms at once instead of after the delay.
+  hover(key, { hot = false, instant = false } = {}) {
+    this._hoveredThisPass = true;
+    this._lastHot = hot;
     if (key === this._armedKey) {
       this._cancelPending();
-      return;
-    }
-    if (key === this._pendingKey) {
-      return;
-    }
-    this._cancelPending();
-    if (this._armedKey) {
-      this._fadeTo(this._armedKey, 0);
-      this._armedKey = null;
-    }
-    if (key) {
-      this._pendingKey = key;
-      this._timer = setTimeout(() => {
-        this._pendingKey = null;
-        this._timer = null;
+    } else if (key !== this._pendingKey) {
+      this._cancelPending();
+      if (this._armedKey) {
+        this._fadeTo(this._armedKey, 0);
+        this._armedKey = null;
+      }
+      if (key && instant) {
         this._armedKey = key;
-        this._fadeTo(key, 1);
-      }, REVEAL_DELAY_MS);
+      } else if (key) {
+        this._pendingKey = key;
+        this._timer = setTimeout(() => {
+          this._pendingKey = null;
+          this._timer = null;
+          this._armedKey = key;
+          this._setHot(this._lastHot ? key : null);
+          this._fadeTo(key, 1);
+        }, TUNNI_GIZMO_TUNING.revealDelay);
+      }
+    }
+    this._setHot(hot && key === this._armedKey ? key : null);
+  }
+
+  isHot(key) {
+    return !!key && key === this._hotKey;
+  }
+
+  _setHot(key) {
+    if (key !== this._hotKey) {
+      this._hotKey = key;
+      this._requestUpdate();
     }
   }
 
@@ -263,7 +331,8 @@ export class TunniGizmoReveal {
     if (!fade) {
       return 0;
     }
-    const progress = Math.min((now - fade.start) / FADE_MS, 1);
+    const duration = Math.max(TUNNI_GIZMO_TUNING.fadeDuration, 1);
+    const progress = Math.min((now - fade.start) / duration, 1);
     return fade.from + (fade.to - fade.from) * progress;
   }
 
@@ -288,7 +357,7 @@ export class TunniGizmoReveal {
       const now = performance.now();
       let moving = false;
       for (const [key, fade] of this._fades) {
-        if (now - fade.start < FADE_MS) {
+        if (now - fade.start < TUNNI_GIZMO_TUNING.fadeDuration) {
           moving = true;
         } else if (fade.to === 0) {
           this._fades.delete(key);
