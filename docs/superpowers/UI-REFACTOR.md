@@ -445,8 +445,9 @@ point-count change. Flat has no fields and no section.
 A group heading now carries the word each label used to repeat, which is where the shorter names
 come from. **Tension keeps its name** in the Bracket group.
 
-**Serif Force angle is a segmented control with an overflow.** It is the serif axis. Free, Vertical
-and Horizontal are on the control, and absolute angle and tilt sit behind the overflow.
+**Serif Force angle is a segmented control with Tilt under it** (decided 2026-09-14). It is the
+serif axis. Free, Vertical and Horizontal are on the control, with no overflow. Tilt sits openly
+below it and is live only in Free. The absolute angle is dropped from the panel.
 
 **The rib angle lock mode is the overflow on Generation's Force angle**, see §5.5, not Square's.
 It was drawn under Square in the image. Two entries: keep the footprint, or keep the stem

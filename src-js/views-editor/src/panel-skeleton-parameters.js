@@ -12,6 +12,7 @@ import {
   SKELETON_SOURCE_DEFAULT_KEYS,
   VALID_SERIF_AXIS_MODES,
   VALID_SERIF_SIDES,
+  applySerifPreset,
   captureSerifPreset,
   getSkeletonData,
   getSkeletonGlyphCase,
@@ -603,11 +604,6 @@ export default class SkeletonParametersPanel {
       onPick: (value) => {
         const type = this._terminalPresetType;
         const preset = type ? this._terminalPresetByValue(type, value) : null;
-        // A built-in cannot be updated in place, so picking one leaves nothing
-        // for Update to write over.
-        if (typeof value === "string") {
-          this.terminalPresetControl.lastPicked = null;
-        }
         if (preset) {
           this._applyTerminalPreset(type, preset);
         }
@@ -770,14 +766,15 @@ export default class SkeletonParametersPanel {
       ]
     );
 
-    // Ticket 59: the serif Angle group. The serif axis is independent of the
-    // rib angle lock: the lock sets the rib the cap is built on, this sets
-    // which way the wings run, and both apply at once. Free, Vertical and
-    // Horizontal sit on the control; absolute and tilt sit behind its overflow,
-    // and each shows its own field under the row.
+    // The serif Angle group. The serif axis is independent of the rib angle
+    // lock: the lock sets the rib the cap is built on, this sets which way the
+    // wings run, and both apply at once. Free, Vertical and Horizontal sit on the
+    // control, and Tilt sits openly under it (decided 2026-09-14; the absolute
+    // angle is gone from the panel). Free is the tilt mode: a tilt of zero is the
+    // plain perpendicular, so Free with Tilt 0 draws what it always drew.
     this.serifAxisControl = html.createDomElement("segmented-control", {
       options: [
-        ["perpendicular", "free"],
+        ["tilt", "free"],
         ["vertical", "vertical"],
         ["horizontal", "horizontal"],
       ].map(([value, labelKey]) => ({
@@ -788,32 +785,13 @@ export default class SkeletonParametersPanel {
     this.serifAxisControl.addEventListener("change", (event) =>
       this._runOwnEdit(() => this._onSerifChange("axismode", event.detail.value))
     );
-    this.serifAxisOverflow = html.createDomElement("overflow-button", {
-      "data-tooltip": translate("sidebar.skeleton-parameters.serif-axis"),
-      "data-tooltipposition": "top",
-    });
-    this.serifAxisOverflow.singleChoice = true;
-    this.serifAxisOverflow.addEventListener("change", (event) => {
-      const [mode] = [].concat(event.detail.checked);
-      if (mode) {
-        this._runOwnEdit(() => this._onSerifChange("axismode", mode));
-      }
-    });
     this.serifAxisRow = html.div({ class: "selection-row-group" }, [
       html.span({ class: "selection-row-group-label" }, [
         translate("sidebar.skeleton-parameters.serif-group-angle"),
       ]),
-      html.div({ class: "selection-row-group-icons" }, [
-        this.serifAxisControl,
-        this.serifAxisOverflow,
-      ]),
+      html.div({ class: "selection-row-group-icons" }, [this.serifAxisControl]),
     ]);
-    this.serifAxisAngleField = this._makeSerifAxisField(
-      "axisangle",
-      "serif-axis-angle"
-    );
-    this.serifAxisTiltField = this._makeSerifAxisField("axistilt", "serif-axis-tilt");
-    this.serifAxisAngleRow = fieldRow([this.serifAxisAngleField]);
+    this.serifAxisTiltField = this._makeSerifTiltField();
     this.serifAxisTiltRow = fieldRow([this.serifAxisTiltField]);
     this.forceAngleRow = html.div({ class: "selection-row-group" }, [
       html.span({ class: "selection-row-group-label" }, [
@@ -957,22 +935,19 @@ export default class SkeletonParametersPanel {
     return element;
   }
 
-  // One serif axis field, the absolute angle or the tilt. Each streams its
-  // degrees, as its slider did.
-  _makeSerifAxisField(name, labelKey) {
-    return this._makeCompactField(`serif:${name}`, labelKey, {
+  // The serif Tilt field. It streams its degrees, as its slider did, and
+  // writes the tilt mode with it, which is what Free is.
+  _makeSerifTiltField() {
+    return this._makeCompactField("serif:axistilt", "serif-axis-tilt", {
       scrub: (valueStream) =>
         setPanelSerifParametersStream(
           this.sceneController,
           this._widthPoints(),
           valueStream,
-          (value) =>
-            name === "axisangle"
-              ? { axisAngle: Number(value) }
-              : { axisTilt: Number(value) },
+          (value) => ({ axisMode: "tilt", axisTilt: Number(value) }),
           this._undo("set-serif")
         ),
-      commit: (value) => this._onSerifChange(name, value),
+      commit: (value) => this._onSerifChange("axistilt", value),
     });
   }
 
@@ -1290,10 +1265,29 @@ export default class SkeletonParametersPanel {
   }
 
   _refreshTerminalPresetControl(type) {
+    const captured = this.fontController.readOnly
+      ? null
+      : this._selectionTerminalPreset(type);
+    if (type !== "serif") {
+      this.terminalPresetControl.refresh({
+        items: this._terminalPresetItems(type),
+        canCapture: captured !== null,
+      });
+      return;
+    }
+    // A serif shows which preset is picked. Update is live only when the
+    // picked preset is one of the master's own (a built-in cannot be updated in
+    // place) and the selection no longer matches it, and it takes two presses.
+    const picked = this.terminalPresetControl.lastPicked;
+    const preset =
+      typeof picked === "number" ? this._terminalPresetByValue(type, picked) : null;
+    const shapeOf = (serifPreset) => JSON.stringify(applySerifPreset(serifPreset));
     this.terminalPresetControl.refresh({
       items: this._terminalPresetItems(type),
-      canCapture:
-        !this.fontController.readOnly && this._selectionTerminalPreset(type) !== null,
+      canCapture: captured !== null,
+      showPicked: true,
+      updateEnabled: !!(preset && captured && shapeOf(captured) !== shapeOf(preset)),
+      confirmUpdate: true,
     });
   }
 
@@ -2120,65 +2114,46 @@ export default class SkeletonParametersPanel {
       });
     }
 
-    // Ticket 59: the Angle group. A mixed selection lights no segment and checks
-    // nothing behind the overflow.
+    // The Angle group. Free covers both the plain perpendicular and the tilt,
+    // which are one construction at different tilts. A mixed selection, or a
+    // terminal stored with the absolute angle the panel no longer offers,
+    // lights no segment.
     const axisMode = serif.axisMode.mixed
       ? null
       : (serif.axisMode.value ?? "perpendicular");
-    this.serifAxisControl.value = ["perpendicular", "vertical", "horizontal"].includes(
-      axisMode
-    )
-      ? axisMode
-      : undefined;
+    const free = axisMode === "perpendicular" || axisMode === "tilt";
+    this.serifAxisControl.value = free
+      ? "tilt"
+      : axisMode === "vertical" || axisMode === "horizontal"
+        ? axisMode
+        : undefined;
     this.serifAxisControl.disabled = !canEdit;
-    this.serifAxisOverflow.items = ["absolute", "tilt"].map((value) => ({
-      value,
-      label: translate(`sidebar.skeleton-parameters.serif-axis.${value}`),
-      checked: axisMode === value,
-    }));
-    this.serifAxisOverflow.disabled = !canEdit;
     formContents.push({
       type: "single-icon",
       element: this.serifAxisRow,
       layoutKey: "serifAxisRow",
     });
-    if (axisMode === "absolute") {
-      this._refreshCompactField(
-        this.serifAxisAngleField,
-        "serif:axisangle",
-        serif.axisAngle,
-        { disabled: !canEdit, minValue: -90, maxValue: 90 }
-      );
-      formContents.push({
-        type: "single-icon",
-        element: this.serifAxisAngleRow,
-        layoutKey: "serifAxisAngleRow",
-      });
-    }
-    // The tilt takes the same place the absolute angle does, because the two
-    // never appear together. Its range is 40 either way, which is the lab's own
-    // and is also where the terminal stops moving by rotation alone: past about
-    // 38 degrees the wing runs so far along the stem that the construction's
-    // searches meet the wall tangentially and the shape steps. The range is a
-    // field bound and not a clamp in the writer, exactly as the absolute
-    // angle's is — the shape does not stop there, it steps.
-    if (axisMode === "tilt") {
-      this._refreshCompactField(
-        this.serifAxisTiltField,
-        "serif:axistilt",
-        serif.axisTilt,
-        {
-          disabled: !canEdit,
-          minValue: -40,
-          maxValue: 40,
-        }
-      );
-      formContents.push({
-        type: "single-icon",
-        element: this.serifAxisTiltRow,
-        layoutKey: "serifAxisTiltRow",
-      });
-    }
+    // Tilt is always shown and live only in Free. Its range is 40 either way,
+    // which is the lab's own and is also where the terminal stops moving by
+    // rotation alone: past about 38 degrees the wing runs so far along the stem
+    // that the construction's searches meet the wall tangentially and the shape
+    // steps. The range is a field bound and not a clamp in the writer — the
+    // shape does not stop there, it steps.
+    this._refreshCompactField(
+      this.serifAxisTiltField,
+      "serif:axistilt",
+      serif.axisTilt,
+      {
+        disabled: !canEdit || !free,
+        minValue: -40,
+        maxValue: 40,
+      }
+    );
+    formContents.push({
+      type: "single-icon",
+      element: this.serifAxisTiltRow,
+      layoutKey: "serifAxisTiltRow",
+    });
     // Ticket 58: the Cup group, three single fields, because the cup belongs to
     // the terminal rather than to a half: a cup on each half would meet at a
     // break in the middle. The depth sets how deep the foot centre sits, the
@@ -2792,12 +2767,9 @@ export default class SkeletonParametersPanel {
       await apply({ axisMode: value });
       return;
     }
-    if (name === "axisangle") {
-      await apply({ axisAngle: Number(value) });
-      return;
-    }
     if (name === "axistilt") {
-      await apply({ axisTilt: Number(value) });
+      // The tilt is what Free means, so a tilt written is the tilt mode.
+      await apply({ axisMode: "tilt", axisTilt: Number(value) });
       return;
     }
     if (name === "cup") {
