@@ -1,6 +1,6 @@
 # 66: Markers: group rows
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 11 (Autokern panel: alignment row)
 

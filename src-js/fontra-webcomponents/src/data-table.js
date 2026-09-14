@@ -232,13 +232,15 @@ export function tableCell(children = [], { className, align } = {}) {
 }
 
 // An in-place editor that reads as text until its row is hovered. Enter
-// commits, Escape restores, and a number cell commits only a number.
+// commits, Escape restores, and a number cell commits only a number (or null
+// for empty text, with `allowEmpty`).
 // `onCommit(value)` runs only for a changed, valid value.
 export function editableCell({
   value,
   type = "text",
   step,
   round = false,
+  allowEmpty = false,
   title,
   placeholder,
   disabled = false,
@@ -270,7 +272,7 @@ export function editableCell({
     }
   });
   input.addEventListener("change", () => {
-    const parsed = parseCellValue(input.value, { type, round });
+    const parsed = parseCellValue(input.value, { type, round, allowEmpty });
     if (!parsed.valid) {
       input.value = String(committed);
       return;

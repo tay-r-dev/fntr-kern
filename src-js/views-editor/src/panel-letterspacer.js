@@ -29,6 +29,7 @@ import {
 import { ObservableController } from "@fontra/core/observable-object.js";
 import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 35's Area/Depth/Overshoot row
+import { showArmedTooltip } from "@fontra/web-components/armed-tooltip.js";
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 36's Reverse icon
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, the header Enabled toggle
 import { Form } from "@fontra/web-components/ui-form.js";
@@ -2061,51 +2062,12 @@ export default class LetterspacerPanel extends Panel {
       return;
     }
     this.hideReverseWarningTooltip();
-
-    const tooltip = document.createElement("div");
-    tooltip.textContent = message;
-    Object.assign(tooltip.style, {
-      position: "fixed",
-      zIndex: "9999",
-      maxWidth: "220px",
-      padding: "8px 10px",
-      borderRadius: "6px",
-      fontSize: "0.85rem",
-      lineHeight: "1.3",
-      color: "var(--tooltip-foreground-color, #fff)",
-      background: "var(--tooltip-background-color, #000)",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
-      pointerEvents: "none",
-      whiteSpace: "normal",
-      overflowWrap: "anywhere",
-      wordBreak: "break-word",
-      boxSizing: "border-box",
-    });
-
-    document.body.appendChild(tooltip);
-
-    const rect = anchor.getBoundingClientRect();
-    const tipRect = tooltip.getBoundingClientRect();
-    const margin = 8;
-    let left = rect.left - tipRect.width - margin;
-    if (left < margin) {
-      left = rect.right + margin;
-    }
-    if (left + tipRect.width > window.innerWidth - margin) {
-      left = Math.max(margin, window.innerWidth - tipRect.width - margin);
-    }
-    let top = rect.top + rect.height / 2 - tipRect.height / 2;
-    top = Math.min(window.innerHeight - tipRect.height - margin, Math.max(margin, top));
-
-    tooltip.style.left = `${Math.round(left)}px`;
-    tooltip.style.top = `${Math.round(top)}px`;
-
-    this.reverseWarningTooltip = tooltip;
+    this.reverseWarningTooltip = showArmedTooltip(anchor, message);
   }
 
   hideReverseWarningTooltip() {
     if (this.reverseWarningTooltip) {
-      this.reverseWarningTooltip.remove();
+      this.reverseWarningTooltip();
       this.reverseWarningTooltip = null;
     }
   }

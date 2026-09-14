@@ -1,6 +1,6 @@
 # 65: Markers: per-section trash with an armed tooltip
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 62 (Markers: Rays table)
 

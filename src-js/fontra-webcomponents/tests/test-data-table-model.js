@@ -58,6 +58,19 @@ describe("data-table-model", () => {
     expect(parseCellValue("abc", { type: "number" }).valid).to.equal(false);
   });
 
+  it("commits empty number text as null only when empty is allowed", () => {
+    expect(parseCellValue("", { type: "number", allowEmpty: true })).to.deep.equal({
+      valid: true,
+      value: null,
+    });
+    expect(parseCellValue("  ", { type: "number", allowEmpty: true }).value).to.equal(
+      null
+    );
+    expect(parseCellValue("x", { type: "number", allowEmpty: true }).valid).to.equal(
+      false
+    );
+  });
+
   it("keeps a text cell as text", () => {
     expect(parseCellValue("Stem", { type: "text" })).to.deep.equal({
       valid: true,

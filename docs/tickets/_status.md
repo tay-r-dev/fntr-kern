@@ -3,7 +3,7 @@
 Spec: `docs/superpowers/UI-REFACTOR.md`. Elements: `docs/superpowers/UI-NOMENCLATURE.md` §14.
 One agent per group, one commit per ticket. Branch `ui/ux-refactor`.
 
-**Done:** 03–28, 32–38, 40, 42–61, 67–74.
+**Done:** 03–28, 32–38, 40, 42–74.
 
 | Group | Tickets | State |
 | --- | --- | --- |
@@ -16,7 +16,7 @@ One agent per group, one commit per ticket. Branch `ui/ux-refactor`.
 | Selection block | 38–44 | 38, 40, 42–44 done. 39 waits on 02, 41 needs a decision |
 | Skeleton Generation | 45–49, 52, 53 | done. Manual matrices not run |
 | Terminal and corners | 50, 51, 54–61 | done, manual matrices not run. 57 and 60 follow the 2026-09-14 serif decision (UI-REFACTOR §5.6) |
-| Markers panel | 62–66 | open |
+| Markers panel | 62–66 | done, manual matrices not run. Section eye leaves group switches alone |
 | Skeleton settings | 67–74 | done, manual matrices not run. 70 and 74 follow the 2026-09-14 preset decisions |
 
 **Waiting on a decision:** 29 Tunni layer mapping, 30 skeleton switches, 41 preserve aspect ratio,
@@ -28,4 +28,4 @@ default width and Insertion, 79 heading icons.
 Shared elements built so far: the icon button's on state (11) and mixed state (47), the labeled
 toggle (14), the shared table (04; cells, row actions, selection, column menu, window and grip since 2026-09-14), the multi-select dropdown (15), the header toggle and the freeze
 helper (24), the compact scrub field (26), the segmented control (42), the chain (45), the overflow
-button (48), the section preset control (56, `views-editor/src/preset-header-control.js`).
+button (48), the section preset control (56, `views-editor/src/preset-header-control.js`), the armed tooltip (65, `fontra-webcomponents/src/armed-tooltip.js`).

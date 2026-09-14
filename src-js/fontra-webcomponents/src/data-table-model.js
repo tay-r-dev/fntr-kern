@@ -33,13 +33,20 @@ export function scrollWindowShift({
   return 0;
 }
 
-// A number cell commits only a finite number; empty text is not zero.
-export function parseCellValue(text, { type = "text", round = false } = {}) {
+// A number cell commits only a finite number; empty text is not zero. With
+// `allowEmpty`, empty text commits null, for a value that can be cleared.
+export function parseCellValue(
+  text,
+  { type = "text", round = false, allowEmpty = false } = {}
+) {
   if (type !== "number") {
     return { valid: true, value: String(text ?? "") };
   }
   const trimmed = String(text ?? "").trim();
   const numeric = Number(trimmed);
+  if (trimmed === "" && allowEmpty) {
+    return { valid: true, value: null };
+  }
   if (trimmed === "" || !Number.isFinite(numeric)) {
     return { valid: false, value: undefined };
   }

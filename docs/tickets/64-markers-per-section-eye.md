@@ -1,6 +1,6 @@
 # 64: Markers: per-section eye
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 62 (Markers: Rays table)
 

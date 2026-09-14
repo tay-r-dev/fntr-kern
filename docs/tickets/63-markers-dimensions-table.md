@@ -1,6 +1,6 @@
 # 63: Markers: Dimensions table
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 62 (Markers: Rays table)
 

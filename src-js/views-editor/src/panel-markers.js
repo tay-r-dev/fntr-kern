@@ -4,22 +4,99 @@ import { markerGeometry } from "@fontra/core/marker-measure.js";
 import { getMarkerGroups, getMarkers } from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { round, throttleCalls } from "@fontra/core/utils.ts";
-import { Form } from "@fontra/web-components/ui-form.js";
+import { showArmedTooltip } from "@fontra/web-components/armed-tooltip.js";
+import {
+  actionsCell,
+  editableCell,
+  rowAction,
+  selectCell,
+  tableCell,
+  tableRow,
+} from "@fontra/web-components/data-table.js"; // for <data-table>, tickets 62, 63, 66
+import "@fontra/web-components/icon-button.js"; // for <icon-button>, tickets 64, 65
 import {
   createGroup,
   deleteGroup,
   deleteMarkers,
   renameGroup,
-  setAllMarkersVisible,
   setGroupVisible,
   setMarkerGroup,
   setMarkerTarget,
   setMarkerVisible,
+  setMarkersVisible,
 } from "./marker-editing.js";
 import Panel from "./panel.js";
 
 // The panel reads; every write goes through marker-editing.js. It never touches the
 // stored section itself.
+//
+// UI-REFACTOR.md §7: Rays and Dimensions are shared tables (tickets 62, 63), each under
+// a heading with an eye and a two-press trash for that section alone (64, 65). Groups
+// are a third table: name, count, eye and trash (66).
+
+// How long a section trash stays armed, in milliseconds.
+const ERASE_ARMED_MILLISECONDS = 4000;
+
+const MARKERS_PANEL_STYLES = `
+  .markers-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .markers-section[hidden] {
+    display: none;
+  }
+
+  .markers-heading-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .markers-heading {
+    font-weight: bold;
+    flex: 1 1 auto;
+  }
+
+  .markers-heading-row icon-button {
+    width: 1.1em;
+    height: 1.1em;
+  }
+
+  .markers-table th {
+    font-weight: normal;
+    opacity: 0.7;
+  }
+
+  .markers-goal-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.25em;
+  }
+
+  .markers-goal {
+    width: 3.5em;
+  }
+
+  .markers-delta {
+    opacity: 0.6;
+    white-space: nowrap;
+  }
+
+  .markers-group-select {
+    max-width: 6em;
+  }
+
+  .markers-broken {
+    color: var(--fontra-red-color, #c00);
+  }
+
+  .markers-empty {
+    opacity: 0.6;
+  }
+`;
 
 export default class MarkersPanel extends Panel {
   identifier = "markers";
@@ -27,20 +104,36 @@ export default class MarkersPanel extends Panel {
 
   constructor(editorController) {
     super(editorController);
-    this.infoForm = new Form();
+    this.sceneController = this.editorController.sceneController;
+    this.sceneSettingsController = this.editorController.sceneSettingsController;
+    this._appendStyle(MARKERS_PANEL_STYLES);
+
+    // Which section trash is armed ("rays" or "dimensions"), its lapse timer and the
+    // tooltip it shows.
+    this._eraseArmed = null;
+    this._eraseTimer = null;
+    this._hideEraseTooltip = null;
+
+    this.noGlyphNote = html.div({ class: "markers-empty" }, [
+      translate("sidebar.markers.no-glyph"),
+    ]);
+    this.rays = this._buildMarkerSection("rays", "sidebar.markers.rays");
+    this.dimensions = this._buildMarkerSection(
+      "dimensions",
+      "sidebar.markers.dimensions"
+    );
+    this.groups = this._buildGroupSection();
     this.contentElement.appendChild(
       html.div(
         { class: "panel-section panel-section--flex panel-section--scrollable" },
-        [this.infoForm]
+        [
+          this.noGlyphNote,
+          this.rays.element,
+          this.dimensions.element,
+          this.groups.element,
+        ]
       )
     );
-    this.sceneController = this.editorController.sceneController;
-    this.sceneSettingsController = this.editorController.sceneSettingsController;
-
-    this._lastFormLayout = null;
-    this._activeFieldKey = null;
-    this._eraseArmed = false;
-    this._eraseTimer = null;
 
     this.updateBound = this.update.bind(this);
     this._throttledUpdate = throttleCalls(() => this.update(), 100);
@@ -71,6 +164,74 @@ export default class MarkersPanel extends Panel {
     }
   }
 
+  // A section: heading with its eye and trash, a note when empty, and the table.
+  _buildMarkerSection(kind, labelKey) {
+    const eye = html.createDomElement("icon-button", {
+      "src": "/tabler-icons/eye.svg",
+      "data-tooltipposition": "left",
+    });
+    eye.onclick = () => this.toggleSectionVisible(kind);
+    const trash = html.createDomElement("icon-button", {
+      "src": "/tabler-icons/trash.svg",
+      "data-tooltip": translate("sidebar.markers.erase-section"),
+      "data-tooltipposition": "left",
+    });
+    trash.onclick = (event) => this.pressEraseSection(kind, event.currentTarget);
+    const table = html.createDomElement("data-table");
+    table.tableClassName = "markers-table";
+    table.columns = [
+      { label: translate("sidebar.markers.column.id") },
+      { label: translate("sidebar.markers.column.nodes") },
+      { label: translate("sidebar.markers.column.value"), align: "right" },
+      { label: translate("sidebar.markers.column.goal") },
+      { label: translate("sidebar.markers.column.group") },
+      { label: translate("sidebar.markers.column.action") },
+    ];
+    // §7.1: both tables carry a vertical resize grip.
+    table.minHeight = 60;
+    table.resizable = true;
+    table.heightStorageKey = `fontra-markers-${kind}-table-height`;
+    const empty = html.div({ class: "markers-empty" }, [
+      translate("sidebar.markers.none"),
+    ]);
+    const element = html.div({ class: "markers-section" }, [
+      html.div({ class: "markers-heading-row" }, [
+        html.div({ class: "markers-heading" }, [translate(labelKey)]),
+        eye,
+        trash,
+      ]),
+      empty,
+      table,
+    ]);
+    return { element, eye, trash, table, empty, markers: [] };
+  }
+
+  _buildGroupSection() {
+    const table = html.createDomElement("data-table");
+    table.tableClassName = "markers-table";
+    table.columns = [
+      { label: translate("sidebar.markers.column.name") },
+      { label: translate("sidebar.markers.column.count"), align: "right" },
+      { label: "" },
+    ];
+    const empty = html.div({ class: "markers-empty" }, [
+      translate("sidebar.markers.no-groups"),
+    ]);
+    const element = html.div({ class: "markers-section" }, [
+      html.div({ class: "markers-heading-row" }, [
+        html.div({ class: "markers-heading" }, [translate("sidebar.markers.groups")]),
+      ]),
+      empty,
+      table,
+      html.div({}, [
+        html.button({ onclick: () => this._createNextGroup() }, [
+          translate("sidebar.markers.new-group"),
+        ]),
+      ]),
+    ]);
+    return { element, table, empty, groups: [] };
+  }
+
   _getPositionedGlyph() {
     return this.sceneController.sceneModel?.getSelectedPositionedGlyph?.() || null;
   }
@@ -88,15 +249,12 @@ export default class MarkersPanel extends Panel {
 
   async update() {
     const positionedGlyph = this._getPositionedGlyph();
-    const formContents = [];
-
+    this.noGlyphNote.hidden = !!positionedGlyph;
+    for (const section of [this.rays, this.dimensions, this.groups]) {
+      section.element.hidden = !positionedGlyph;
+    }
     if (!positionedGlyph) {
-      formContents.push({ type: "header", label: translate("sidebar.markers.title") });
-      formContents.push({
-        type: "text",
-        value: translate("sidebar.markers.no-glyph"),
-      });
-      this._applyFormContents(formContents);
+      this._disarmErase();
       return;
     }
 
@@ -104,24 +262,14 @@ export default class MarkersPanel extends Panel {
     const skeletonData = getSkeletonData(layerGlyph);
     const markers = getMarkers(layerGlyph);
     const groups = getMarkerGroups(layerGlyph);
-    this._markers = markers;
 
     // A ray and a dimension are read differently — one is a thickness at a place, the
     // other a distance between two named points — so they are listed apart rather than
     // interleaved by the order they happened to be drawn in.
-    const rays = markers.filter((marker) => isRay(marker));
-    const dimensions = markers.filter((marker) => !isRay(marker));
-
-    // The group menu on every marker row carries the group NAMES, so a rename has to
-    // reach rows that are not the renamed one. Naming the groups in the layout makes
-    // the whole form rebuild on rename, which is exactly what a rename needs.
     const groupOptions = [
       { value: "", label: translate("sidebar.markers.no-group") },
       ...groups.map((group) => ({ value: group.id, label: group.name })),
     ];
-    const groupFingerprint = groups
-      .map((group) => `${group.id}=${group.name}`)
-      .join(",");
 
     // A marker is called by its number. Once it belongs to a group it is called by the
     // group and its number WITHIN that group, so the panel reads the way the drawing
@@ -136,288 +284,228 @@ export default class MarkersPanel extends Panel {
       labels.set(marker.id, group ? `${group.name} ${ordinal}` : String(ordinal));
     }
 
-    const section = (label, list) => {
-      formContents.push({ type: "header", label: translate(label) });
-      if (!list.length) {
-        formContents.push({ type: "text", value: translate("sidebar.markers.none") });
-        return;
-      }
-      for (const marker of list) {
-        this._pushMarkerRow(formContents, {
-          marker,
-          positionedGlyph,
-          skeletonData,
-          groupOptions,
-          groupFingerprint,
-          label: labels.get(marker.id),
-        });
-      }
-    };
-
-    section("sidebar.markers.rays", rays);
-    section("sidebar.markers.dimensions", dimensions);
-
-    // Two glyph-wide commands. They are drawn only where there is something to act on,
-    // and the visibility one reads as show-all once nothing is left to hide, so the
-    // button always says what pressing it will do.
-    if (markers.length) {
-      const allHidden = markers.every((marker) => marker.hidden);
-      formContents.push({
-        type: "single-icon",
-        // The label flips between hide-all and show-all, and the form only rebuilds a
-        // row whose description changed, so the state has to be part of the key.
-        key: `allVisible:${allHidden}:${this._eraseArmed}`,
-        element: html.span({ style: ROW_CONTROLS_STYLE }, [
-          html.button({ onclick: () => this.setAllVisible(allHidden) }, [
-            translate(
-              allHidden ? "sidebar.markers.show-all" : "sidebar.markers.hide-all"
-            ),
-          ]),
-          // Erasing every marker in the glyph cannot be aimed at anything smaller and
-          // cannot be seen coming, so it takes two presses. The first press only changes
-          // what the button says; the second one does it. The arming lapses on its own
-          // after a few seconds, so a stray press never leaves a live delete sitting
-          // under the cursor.
-          html.button({ onclick: () => this.pressEraseAll() }, [
-            translate(
-              this._eraseArmed
-                ? "sidebar.markers.erase-all-confirm"
-                : "sidebar.markers.erase-all"
-            ),
-          ]),
-        ]),
-      });
-    }
-
-    // Groups carry visibility and a name, nothing else. Deleting one leaves its markers
-    // in place and ungrouped.
-    formContents.push({ type: "header", label: translate("sidebar.markers.groups") });
-    if (!groups.length) {
-      formContents.push({
-        type: "text",
-        value: translate("sidebar.markers.no-groups"),
-      });
-    }
-    for (const group of groups) {
-      const members = markers.filter((marker) => marker.groupId === group.id);
-      const hiddenCount = members.filter((marker) => marker.hidden).length;
-      formContents.push({
-        type: "universal-row",
-        field1: {
-          type: "checkbox",
-          key: `groupVisible:${group.id}`,
-          value: group.visible !== false,
-        },
-        field2: {
-          type: "edit-text",
-          key: `groupName:${group.id}`,
-          value: group.name,
-        },
-        field3: {
-          type: "text",
-          key: `groupInfo:${group.id}`,
-          value: hiddenCount
-            ? `${members.length} · ${hiddenCount} hidden`
-            : `${members.length}`,
-          auxiliaryElement: this._removeButton(
-            translate("sidebar.markers.delete-group"),
-            () => this.deleteGroup(group.id)
-          ),
-        },
-      });
-    }
-    formContents.push({
-      type: "single-icon",
-      element: html.button(
-        {
-          onclick: () =>
-            this.createGroup(
-              `${translate("sidebar.markers.group")} ${groups.length + 1}`
-            ),
-        },
-        [translate("sidebar.markers.new-group")]
-      ),
-    });
-
-    this._applyFormContents(formContents);
-    this.infoForm.onFieldChange = (fieldItem, value, valueStream) =>
-      this._onFieldChange(fieldItem, value, valueStream);
+    const context = { positionedGlyph, skeletonData, groupOptions, labels };
+    this._renderMarkerSection(this.rays, markers.filter(isRay), context);
+    this._renderMarkerSection(
+      this.dimensions,
+      markers.filter((marker) => !isRay(marker)),
+      context
+    );
+    this._renderGroupSection(groups, markers);
   }
 
-  // One line per marker: what it is and what it holds, what it measures, what it is
-  // aiming at, and its controls. A marker is a small thing and should read as one.
-  _pushMarkerRow(
-    formContents,
-    { marker, positionedGlyph, skeletonData, groupOptions, groupFingerprint, label }
-  ) {
+  _renderMarkerSection(section, markers, context) {
+    section.markers = markers;
+    section.empty.hidden = markers.length > 0;
+    // Not `hidden`: the table's own display rule outranks the hidden attribute.
+    section.table.style.display = markers.length ? "" : "none";
+    // The eye says what pressing it does: hide while anything shows, show once
+    // everything is hidden.
+    const allHidden = markers.length > 0 && markers.every((marker) => marker.hidden);
+    section.eye.src = allHidden
+      ? "/tabler-icons/eye-closed.svg"
+      : "/tabler-icons/eye.svg";
+    section.eye.setAttribute(
+      "data-tooltip",
+      translate(
+        allHidden ? "sidebar.markers.show-section" : "sidebar.markers.hide-section"
+      )
+    );
+    section.eye.disabled = markers.length === 0;
+    section.trash.disabled = markers.length === 0;
+    section.table.setRows(markers, (marker) => this._markerRow(marker, context), {
+      rowId: (marker) => marker.id,
+    });
+  }
+
+  // ID, Nodes, Value, Goal with the delta after it, Group, and the eye and trash.
+  _markerRow(marker, { positionedGlyph, skeletonData, groupOptions, labels }) {
     const geometry = markerGeometry(positionedGlyph.glyph, marker, skeletonData);
-    const measurement = geometry.stale
-      ? translate("sidebar.markers.broken")
+    const hasTarget = marker.target !== undefined && marker.target !== null;
+    // A stale marker reads broken in Value and carries no delta.
+    const value = geometry.stale
+      ? html.span({ class: "markers-broken" }, [translate("sidebar.markers.broken")])
       : geometry.distance === null
         ? "—"
         : String(round(geometry.distance, 1));
     const delta =
-      !geometry.stale &&
-      geometry.distance !== null &&
-      marker.target !== undefined &&
-      marker.target !== null
+      !geometry.stale && geometry.distance !== null && hasTarget
         ? round(geometry.distance - marker.target, 1)
         : null;
 
-    const place = describeEnds(marker, positionedGlyph.glyph.flattenedPath);
-
-    formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "text",
-        key: `id:${marker.id}`,
-        value: place ? `${label} · ${place}` : label,
-      },
-      field2: {
-        type: "text",
-        key: `measure:${marker.id}`,
-        value: delta === null ? measurement : `${measurement} (${signed(delta)})`,
-      },
-      field3: {
-        type: "edit-number",
-        key: `target:${marker.id}`,
-        value: marker.target ?? "",
-        allowEmptyField: true,
-        auxiliaryElement: html.span({ style: ROW_CONTROLS_STYLE }, [
-          this._groupSelect(marker, groupOptions),
-          html.button(
-            {
-              style: ROW_BUTTON_STYLE,
-              title: translate(
-                marker.hidden
-                  ? "sidebar.markers.show-marker"
-                  : "sidebar.markers.hide-marker"
-              ),
-              onclick: () => this.setMarkerVisible(marker.id, !!marker.hidden),
-            },
-            [marker.hidden ? "◌" : "●"]
+    return tableRow(marker.id, [
+      tableCell(labels.get(marker.id)),
+      tableCell(describeEnds(marker, positionedGlyph.glyph.flattenedPath)),
+      tableCell(value, { align: "right" }),
+      tableCell(
+        html.div({ class: "markers-goal-cell" }, [
+          editableCell({
+            type: "number",
+            value: hasTarget ? marker.target : "",
+            allowEmpty: true,
+            className: "markers-goal",
+            title: translate("sidebar.markers.target"),
+            onCommit: (target) =>
+              setMarkerTarget(this.sceneController, marker.id, target ?? undefined),
+          }),
+          delta === null
+            ? null
+            : html.span({ class: "markers-delta" }, [signed(delta)]),
+        ])
+      ),
+      tableCell(
+        selectCell({
+          value: marker.groupId || "",
+          options: groupOptions,
+          className: "markers-group-select",
+          onChange: (groupId) => this.assignGroup(marker.id, groupId || undefined),
+        })
+      ),
+      actionsCell([
+        rowAction({
+          src: marker.hidden ? "/tabler-icons/eye-closed.svg" : "/tabler-icons/eye.svg",
+          tooltip: translate(
+            marker.hidden
+              ? "sidebar.markers.show-marker"
+              : "sidebar.markers.hide-marker"
           ),
-          this._removeButton(translate("sidebar.markers.delete-marker"), () =>
-            this.deleteMarker(marker.id)
-          ),
-        ]),
-      },
-      // The menu and the eye are drawn, not set, so both have to survive in the layout
-      // or the row will never be rebuilt when they change.
-      flags: `${marker.hidden ? "hidden" : ""}|${groupFingerprint}|${label}|${place}`,
-    });
+          tooltipPosition: "left",
+          // A hidden marker's closed eye is a state, so it stays readable.
+          reveal: marker.hidden ? "always" : "dim",
+          onClick: () => this.setMarkerVisible(marker.id, !!marker.hidden),
+        }),
+        rowAction({
+          src: "/tabler-icons/trash.svg",
+          tooltip: translate("sidebar.markers.delete-marker"),
+          tooltipPosition: "left",
+          onClick: () => this.deleteMarker(marker.id),
+        }),
+      ]),
+    ]);
   }
 
-  // The group menu is built here rather than as a form field: the row already spends its
-  // three fields, and this control is a plain menu with nothing to remember.
-  _groupSelect(marker, groupOptions) {
-    const select = html.select(
-      {
-        style: "max-width: 5em; flex: 0 1 auto;",
-        title: translate("sidebar.markers.group"),
-        onchange: () => this.assignGroup(marker.id, select.value || undefined),
+  // Groups carry visibility and a name, nothing else. Deleting one leaves its markers
+  // in place and ungrouped.
+  _renderGroupSection(groups, markers) {
+    const section = this.groups;
+    section.groups = groups;
+    section.empty.hidden = groups.length > 0;
+    section.table.style.display = groups.length ? "" : "none";
+    section.table.setRows(
+      groups,
+      (group) => {
+        const members = markers.filter((marker) => marker.groupId === group.id);
+        const hiddenCount = members.filter((marker) => marker.hidden).length;
+        const visible = group.visible !== false;
+        // The eye is an on-state icon button: lit while the group shows.
+        const eye = rowAction({
+          src: visible ? "/tabler-icons/eye.svg" : "/tabler-icons/eye-closed.svg",
+          tooltip: translate(
+            visible ? "sidebar.markers.hide-group" : "sidebar.markers.show-group"
+          ),
+          tooltipPosition: "left",
+          reveal: "always",
+          onClick: () => setGroupVisible(this.sceneController, group.id, !visible),
+        });
+        eye.on = visible;
+        return tableRow(group.id, [
+          tableCell(
+            editableCell({
+              value: group.name,
+              onCommit: (name) => this.renameGroup(group.id, name),
+            })
+          ),
+          tableCell(
+            hiddenCount
+              ? `${members.length} · ${hiddenCount} hidden`
+              : `${members.length}`,
+            { align: "right" }
+          ),
+          actionsCell([
+            eye,
+            rowAction({
+              src: "/tabler-icons/trash.svg",
+              tooltip: translate("sidebar.markers.delete-group"),
+              tooltipPosition: "left",
+              onClick: () => this.deleteGroup(group.id),
+            }),
+          ]),
+        ]);
       },
-      groupOptions.map((option) => html.option({ value: option.value }, [option.label]))
+      { rowId: (group) => group.id }
     );
-    select.value = marker.groupId || "";
-    return select;
   }
 
-  _removeButton(title, onclick) {
-    return html.button({ style: ROW_BUTTON_STYLE, title, onclick }, ["×"]);
-  }
-
-  // Handing the form a new set of field descriptions rebuilds every input from scratch,
-  // which throws away focus and any in-flight interaction: an arrow key in a number
-  // input would apply once and then stop. When only the VALUES moved — the common case,
-  // since editing a marker is what triggers the update — the existing inputs are still
-  // the right ones and just need their values pushed in.
-  _applyFormContents(formContents) {
-    const layout = formContents
-      .map((item) =>
-        item.type === "universal-row"
-          ? [
-              item.type,
-              item.flags ?? "",
-              ...packedFields(item).map((field) => field.key ?? ""),
-            ].join(" ")
-          : [item.type, item.key ?? "", item.label ?? ""].join(" ")
-      )
-      .join("");
-    if (layout === this._lastFormLayout) {
-      const fields = formContents.flatMap((item) =>
-        item.type === "universal-row" ? packedFields(item) : [item]
-      );
-      for (const item of fields) {
-        if (item.key == null || !this.infoForm.hasKey(item.key)) {
-          continue;
-        }
-        if (item.key === this._activeFieldKey) {
-          continue;
-        }
-        this.infoForm.setValue(item.key, item.value);
-      }
-      return;
-    }
-    this._lastFormLayout = layout;
-    this.infoForm.setFieldDescriptions(formContents);
-  }
-
-  async _onFieldChange(fieldItem, value, valueStream) {
-    const [kind, id] = String(fieldItem.key || "").split(":");
-    this._activeFieldKey = fieldItem.key;
-    try {
-      if (kind === "target") {
-        await setMarkerTarget(this.sceneController, id, valueOrUndefined(value));
-      } else if (kind === "groupVisible") {
-        await setGroupVisible(this.sceneController, id, !!value);
-      } else if (kind === "groupName") {
-        await this.renameGroup(id, value);
-      }
-    } finally {
-      this._activeFieldKey = null;
-    }
-    if (kind === "groupName") {
-      // The renamed group is named on every marker's menu, so the whole form is stale.
-      await this.update();
-    }
+  _section(kind) {
+    return kind === "rays" ? this.rays : this.dimensions;
   }
 
   // Panel-side commands, for whatever calls them: the context menu, a button row, or a
   // test. They exist so nothing outside this file needs to know the write path.
+  async toggleSectionVisible(kind) {
+    const markers = this._section(kind).markers;
+    if (!markers.length) {
+      return;
+    }
+    const allHidden = markers.every((marker) => marker.hidden);
+    await setMarkersVisible(
+      this.sceneController,
+      markers.map((marker) => marker.id),
+      allHidden
+    );
+  }
+
+  // Erasing a section cannot be seen coming, so it takes two presses. The first press
+  // arms and shows a tooltip; the second, within the lapse, erases that section only.
+  // The arming lapses on its own, so a stray press never leaves a live delete sitting
+  // under the cursor.
+  async pressEraseSection(kind, anchor) {
+    if (this._eraseArmed === kind) {
+      this._disarmErase();
+      await this.eraseSection(kind);
+      return;
+    }
+    this._disarmErase();
+    this._eraseArmed = kind;
+    this._hideEraseTooltip = showArmedTooltip(
+      anchor,
+      translate("sidebar.markers.erase-section-armed")
+    );
+    this._eraseTimer = setTimeout(() => this._disarmErase(), ERASE_ARMED_MILLISECONDS);
+  }
+
+  _disarmErase() {
+    clearTimeout(this._eraseTimer);
+    this._eraseTimer = null;
+    this._eraseArmed = null;
+    this._hideEraseTooltip?.();
+    this._hideEraseTooltip = null;
+  }
+
+  async eraseSection(kind) {
+    const markers = this._section(kind).markers;
+    if (!markers.length) {
+      return;
+    }
+    await deleteMarkers(
+      this.sceneController,
+      markers.map((marker) => marker.id),
+      kind === "rays" ? "Delete Rays" : "Delete Dimensions"
+    );
+  }
+
   async deleteMarker(id) {
     await deleteMarkers(this.sceneController, [id]);
   }
 
-  async setAllVisible(visible) {
-    await setAllMarkersVisible(this.sceneController, visible);
-  }
-
-  async pressEraseAll() {
-    clearTimeout(this._eraseTimer);
-    if (this._eraseArmed) {
-      this._eraseArmed = false;
-      await this.deleteAllMarkers();
-      return;
-    }
-    this._eraseArmed = true;
-    this._eraseTimer = setTimeout(() => {
-      this._eraseArmed = false;
-      this.update();
-    }, ERASE_ARMED_MILLISECONDS);
-    await this.update();
-  }
-
-  async deleteAllMarkers() {
-    await deleteMarkers(
-      this.sceneController,
-      (this._markers || []).map((marker) => marker.id),
-      "Delete All Markers"
-    );
-  }
-
   async setMarkerVisible(id, visible) {
     await setMarkerVisible(this.sceneController, id, visible);
+  }
+
+  async _createNextGroup() {
+    await this.createGroup(
+      `${translate("sidebar.markers.group")} ${this.groups.groups.length + 1}`
+    );
   }
 
   async createGroup(name) {
@@ -437,22 +525,8 @@ export default class MarkersPanel extends Panel {
   }
 }
 
-// The controls sit in the form's own shadow root, so they carry their sizing with them:
-// nothing outside can reach in with a stylesheet.
-// How long the erase button stays armed, in milliseconds.
-const ERASE_ARMED_MILLISECONDS = 4000;
-
-const ROW_CONTROLS_STYLE =
-  "display: flex; align-items: center; gap: 0.2em; flex: 0 0 auto;";
-const ROW_BUTTON_STYLE =
-  "flex: 0 0 auto; padding: 0 0.3em; background: none; border: none; cursor: pointer; font-size: 1em;";
-
 function isRay(marker) {
   return (marker.ends || []).some((end) => end.kind === "cast");
-}
-
-function packedFields(item) {
-  return [item.field1, item.field2, item.field3].filter((field) => field);
 }
 
 // What the marker is holding on to, named by the POINT it sits on. A segment number is
@@ -506,10 +580,6 @@ function pointNameOfSegment(path, end) {
 
 function signed(value) {
   return `${value >= 0 ? "+" : ""}${value}`;
-}
-
-function valueOrUndefined(value) {
-  return value === "" || value === null ? undefined : value;
 }
 
 customElements.define("panel-markers", MarkersPanel);

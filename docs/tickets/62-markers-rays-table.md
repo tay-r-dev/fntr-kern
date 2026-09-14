@@ -1,6 +1,6 @@
 # 62: Markers: Rays table
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 04 (Lift the pair table into a shared table component)
 
