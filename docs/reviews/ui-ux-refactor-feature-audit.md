@@ -19,6 +19,7 @@ P1 means a wrong result or serious scaling failure in a supported workflow. P2 m
 | `src-js/fontra-core/src/skeleton-model.js` | 5,859 | Schema, topology operations, ID transport, width/rib rules, generated-target lookup, transforms, rounding and cache ownership inspected; M1–M6. |
 | `src-js/views-editor/src/editor.js` | 4,307 | Fork diff and surrounding clipboard, delete, bulk metrics, tool lifecycle and registration code inspected; E1–E4, S2 and M3. |
 | `src-js/views-editor/src/panel-designspace-navigation.js` | 3,895 | Fork-added visual controls, persistence, debug polling/subscriptions and source creation inspected; D1–D3 and M5. |
+| `src-js/views-editor/src/scene-controller.js` | 3,062 | Fork command dispatch, arrow edits, skeleton conversion, mixed selections, harmonization, overlap and undo integration inspected; C1–C4. |
 | Remaining feature files | — | Pending; final coverage inventory will distinguish deep review from supporting inspection. |
 
 ## 1. Kerning view — kerning.js
@@ -280,6 +281,42 @@ The same control lifecycle—read, normalize, display, write, synchronize an ext
 Recommendation: use a small field descriptor table and one binding helper for these repeated scalar controls, retaining feature-specific normalization. The existing Tunni/debug tables demonstrate that this fits the codebase. Do not turn the entire designspace panel into a generic form framework. New ordinary UI strings such as “Phrase” and alignment tooltips bypass `translate`, unlike neighboring controls; route user-facing labels through localization while leaving explicitly developer-only debug labels under their documented policy.
 
 Source rounding is covered by M5. No new tests or profiling were performed.
+
+## 6. Scene commands — scene-controller.js
+
+### C1 — P2, confirmed: custom coarse-grid presets and keyboard stepping disagree
+
+Locations: `scene-controller.js:712–762`; `panel-designspace-navigation.js:1383–1398`; `coarse-grid-presets.js:26–73`.
+
+The grid shortcuts hard-code a step of 5 and limits of 5/40. The panel then snaps that requested value to its configurable preset list. With custom values 5, 15, 25, 35, pressing increase at 5 requests 10; the nearest-value tie resolves to 5, so the shortcut does nothing. Other increments can skip entries. The slider and keyboard are two entry points for the same setting but use different stepping rules.
+
+Recommendation: move to the previous/next entry in the shared normalized preset list. Remove duplicated magic steps and bounds from action handlers.
+
+### C2 — P2, confirmed: harmonization's other-source switch is ignored for skeleton selections
+
+Locations: `scene-controller.js:2516–2560`, `2600–2611`; `skeleton-panel-edits.js:854–886` and `runSkeletonPanelEdit`.
+
+`doHarmonize` reads `applyToOtherSources`, then its skeleton branch calls the panel helper without that option. The helper uses the normal all-editing-layers path. Only the ordinary-outline branch narrows targets when the option is false. The same command can therefore affect additional skeleton sources despite the chosen scope.
+
+Recommendation: resolve the target layers once before kind-specific dispatch, or pass an explicit scope into both paths. Keep each layer's independent solve and the current no-op change filtering.
+
+### C3 — P2, confirmed: mixed-selection commands lack a consistent transaction scope
+
+Locations: `scene-controller.js:2134–2195`, `2328–2334`, `2540–2560`.
+
+Reverse handles skeleton and ordinary contours in two awaited edit operations, so one user action can require two undos. Break returns immediately after its skeleton branch and ignores selected ordinary points. Harmonize similarly chooses its skeleton branch exclusively. Mixed ordinary/skeleton selections are explicitly supported by Reverse's own comment and by Select All, so “a skeleton selection is never also a path selection” elsewhere is not a valid general assumption.
+
+Recommendation: collect all applicable target kinds and execute their writes in one outer edit transaction. Keep generation restricted to skeleton-owned data. Avoid solving this with another chain of early returns for individual combinations.
+
+### C4 — P3, functioning but overcomplicated: Add Overlap repeats internal type checks and hides failures
+
+Locations: `scene-controller.js:2441–2505`; `path-functions.js:1223–1226`.
+
+The command checks object-ness, `instanceof VarPackedPath`, six method names, `getPoint` a second time, and `numContours`, before calling a one-line adapter to the geometry function. This is an internal typed path, not an untrusted plugin protocol. The layered checks obscure the actual operation; per-layer catch-and-continue then clears selection and returns a success label even if a layer failed. That can leave a multi-source operation partly applied without a useful user-facing result.
+
+Recommendation: rely on the internal path contract (or one boundary assertion), perform the geometry operation on scratch paths, and commit once all intended layers have a defined result. Remove the repeated `getPoint` check and redundant adapter if it serves no public API purpose. Report unsupported geometry explicitly rather than swallowing programming errors.
+
+The realization path deliberately avoids regeneration so detached outlines remain in place; that is justified, not a violation to repair mechanically. Conversion batches the final skeleton regeneration, although contour-remap work can still be consolidated when many ordinary contours are consumed.
 
 ## Validation completed before the code-only request
 
