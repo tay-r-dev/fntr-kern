@@ -46,7 +46,6 @@ import {
   resetPanelGeneratedHandle,
   resetPanelRibs,
   scalePanelContourDefaultWidth,
-  scalePanelSerifValue,
   setPanelCapParameters,
   setPanelCapStyle,
   setPanelContourDefaultWidth,
@@ -768,6 +767,52 @@ export default class SkeletonParametersPanel {
         fieldRow(Object.values(this.serifCupFields)),
       ]
     );
+
+    // Ticket 59: the serif Angle group. The serif axis is independent of the
+    // rib angle lock: the lock sets the rib the cap is built on, this sets
+    // which way the wings run, and both apply at once. Free, Vertical and
+    // Horizontal sit on the control; absolute and tilt sit behind its overflow,
+    // and each shows its own field under the row.
+    this.serifAxisControl = html.createDomElement("segmented-control", {
+      options: [
+        ["perpendicular", "free"],
+        ["vertical", "vertical"],
+        ["horizontal", "horizontal"],
+      ].map(([value, labelKey]) => ({
+        value,
+        label: translate(`sidebar.skeleton-parameters.force-angle.${labelKey}`),
+      })),
+    });
+    this.serifAxisControl.addEventListener("change", (event) =>
+      this._runOwnEdit(() => this._onSerifChange("axismode", event.detail.value))
+    );
+    this.serifAxisOverflow = html.createDomElement("overflow-button", {
+      "data-tooltip": translate("sidebar.skeleton-parameters.serif-axis"),
+      "data-tooltipposition": "top",
+    });
+    this.serifAxisOverflow.singleChoice = true;
+    this.serifAxisOverflow.addEventListener("change", (event) => {
+      const [mode] = [].concat(event.detail.checked);
+      if (mode) {
+        this._runOwnEdit(() => this._onSerifChange("axismode", mode));
+      }
+    });
+    this.serifAxisRow = html.div({ class: "selection-row-group" }, [
+      html.span({ class: "selection-row-group-label" }, [
+        translate("sidebar.skeleton-parameters.serif-group-angle"),
+      ]),
+      html.div({ class: "selection-row-group-icons" }, [
+        this.serifAxisControl,
+        this.serifAxisOverflow,
+      ]),
+    ]);
+    this.serifAxisAngleField = this._makeSerifAxisField(
+      "axisangle",
+      "serif-axis-angle"
+    );
+    this.serifAxisTiltField = this._makeSerifAxisField("axistilt", "serif-axis-tilt");
+    this.serifAxisAngleRow = fieldRow([this.serifAxisAngleField]);
+    this.serifAxisTiltRow = fieldRow([this.serifAxisTiltField]);
     this.forceAngleRow = html.div({ class: "selection-row-group" }, [
       html.span({ class: "selection-row-group-label" }, [
         translate("sidebar.skeleton-parameters.force-angle"),
@@ -908,6 +953,25 @@ export default class SkeletonParametersPanel {
       this._showSerifForceMenu(event, side, field)
     );
     return element;
+  }
+
+  // One serif axis field, the absolute angle or the tilt. Each streams its
+  // degrees, as its slider did.
+  _makeSerifAxisField(name, labelKey) {
+    return this._makeCompactField(`serif:${name}`, labelKey, {
+      scrub: (valueStream) =>
+        setPanelSerifParametersStream(
+          this.sceneController,
+          this._widthPoints(),
+          valueStream,
+          (value) =>
+            name === "axisangle"
+              ? { axisAngle: Number(value) }
+              : { axisTilt: Number(value) },
+          this._undo("set-serif")
+        ),
+      commit: (value) => this._onSerifChange(name, value),
+    });
   }
 
   // One Cup field, named as _onSerifChange names it. The depth drags by a
@@ -2085,72 +2149,64 @@ export default class SkeletonParametersPanel {
       });
     }
 
-    formContents.push({ type: "divider" });
-    // The serif axis is independent of the rib angle lock above: the lock sets
-    // the rib the cap is built on, this sets which way the wings run. Both
-    // apply at once.
+    // Ticket 59: the Angle group. A mixed selection lights no segment and checks
+    // nothing behind the overflow.
+    const axisMode = serif.axisMode.mixed
+      ? null
+      : (serif.axisMode.value ?? "perpendicular");
+    this.serifAxisControl.value = ["perpendicular", "vertical", "horizontal"].includes(
+      axisMode
+    )
+      ? axisMode
+      : undefined;
+    this.serifAxisControl.disabled = !canEdit;
+    this.serifAxisOverflow.items = ["absolute", "tilt"].map((value) => ({
+      value,
+      label: translate(`sidebar.skeleton-parameters.serif-axis.${value}`),
+      checked: axisMode === value,
+    }));
+    this.serifAxisOverflow.disabled = !canEdit;
     formContents.push({
-      type: "select",
-      key: "serif:axismode",
-      label: translate("sidebar.skeleton-parameters.serif-axis"),
-      value: serif.axisMode.mixed ? "" : (serif.axisMode.value ?? "perpendicular"),
-      disabled: !canEdit,
-      options: [
-        ...(serif.axisMode.mixed
-          ? [{ value: "", label: "mixed", disabled: true }]
-          : []),
-        {
-          value: "perpendicular",
-          label: translate("sidebar.skeleton-parameters.serif-axis.perpendicular"),
-        },
-        {
-          value: "horizontal",
-          label: translate("sidebar.skeleton-parameters.serif-axis.horizontal"),
-        },
-        {
-          value: "vertical",
-          label: translate("sidebar.skeleton-parameters.serif-axis.vertical"),
-        },
-        {
-          value: "absolute",
-          label: translate("sidebar.skeleton-parameters.serif-axis.absolute"),
-        },
-        {
-          value: "tilt",
-          label: translate("sidebar.skeleton-parameters.serif-axis.tilt"),
-        },
-      ],
+      type: "single-icon",
+      element: this.serifAxisRow,
+      layoutKey: "serifAxisRow",
     });
-    if (serif.axisMode.value === "absolute" && !serif.axisMode.mixed) {
-      this._pushSummarySlider(
-        formContents,
+    if (axisMode === "absolute") {
+      this._refreshCompactField(
+        this.serifAxisAngleField,
         "serif:axisangle",
-        "serif-axis-angle",
         serif.axisAngle,
-        -90,
-        90,
-        0,
-        { step: 1, disabled: !canEdit }
+        { disabled: !canEdit, minValue: -90, maxValue: 90 }
       );
+      formContents.push({
+        type: "single-icon",
+        element: this.serifAxisAngleRow,
+        layoutKey: "serifAxisAngleRow",
+      });
     }
     // The tilt takes the same place the absolute angle does, because the two
     // never appear together. Its range is 40 either way, which is the lab's own
     // and is also where the terminal stops moving by rotation alone: past about
     // 38 degrees the wing runs so far along the stem that the construction's
     // searches meet the wall tangentially and the shape steps. The range is a
-    // slider bound and not a clamp in the writer, exactly as the absolute
+    // field bound and not a clamp in the writer, exactly as the absolute
     // angle's is — the shape does not stop there, it steps.
-    if (serif.axisMode.value === "tilt" && !serif.axisMode.mixed) {
-      this._pushSummarySlider(
-        formContents,
+    if (axisMode === "tilt") {
+      this._refreshCompactField(
+        this.serifAxisTiltField,
         "serif:axistilt",
-        "serif-axis-tilt",
         serif.axisTilt,
-        -40,
-        40,
-        0,
-        { step: 1, disabled: !canEdit }
+        {
+          disabled: !canEdit,
+          minValue: -40,
+          maxValue: 40,
+        }
       );
+      formContents.push({
+        type: "single-icon",
+        element: this.serifAxisTiltRow,
+        layoutKey: "serifAxisTiltRow",
+      });
     }
     // Ticket 58: the Cup group, three single fields, because the cup belongs to
     // the terminal rather than to a half: a cup on each half would meet at a
@@ -2622,28 +2678,6 @@ export default class SkeletonParametersPanel {
       // Cap and corner sliders stream onto the canvas while dragging; all other
       // fields apply the committed value once. The width fields are compact
       // scrub fields with their own streams (_makeWidthField).
-      if (valueStream && group === "serif") {
-        const makeValues = (streamed) =>
-          name === "axisangle"
-            ? { axisAngle: Number(streamed) }
-            : name === "axistilt"
-              ? { axisTilt: Number(streamed) }
-              : name === "cuptension"
-                ? { undersideCupTension: Number(streamed) / 100 }
-                : name === "cupbalance"
-                  ? { undersideCupBalance: Number(streamed) / 100 }
-                  : serifHalfValuesFromField(name, streamed);
-        if (makeValues(value)) {
-          await setPanelSerifParametersStream(
-            this.sceneController,
-            this._widthPoints(),
-            valueStream,
-            makeValues,
-            this._undo("set-serif")
-          );
-          return;
-        }
-      }
       if (valueStream && group === "insertion" && name.startsWith("easing-")) {
         const side = name.slice("easing-".length);
         await setPanelInsertionValuesStream(
@@ -2676,8 +2710,6 @@ export default class SkeletonParametersPanel {
         await this._onCornerChange(name, finalValue);
       } else if (group === "rib") {
         await this._onRibChange(name, finalValue);
-      } else if (group === "serif") {
-        await this._onSerifChange(name, finalValue);
       } else if (group === "generator") {
         await this._onGeneratorChange(name, finalValue);
       } else if (group === "insertion") {
@@ -2718,18 +2750,6 @@ export default class SkeletonParametersPanel {
         this._panelSelection.contours,
         factor,
         this._undo("set-contour-width")
-      );
-    } else if (group === "serif") {
-      const targets = serifNudgeTargets(name);
-      if (!targets.length) {
-        return;
-      }
-      await scalePanelSerifValue(
-        sc,
-        this._widthPoints(),
-        targets,
-        factor,
-        this._undo("set-serif")
       );
     } else {
       return;
@@ -2836,18 +2856,6 @@ export default class SkeletonParametersPanel {
         this._undo("set-contour-width")
       );
       return;
-    }
-    if (group === "serif") {
-      const targets = serifNudgeTargets(name);
-      if (targets.length) {
-        await nudgePanelSerifValueStream(
-          sc,
-          this._widthPoints(),
-          targets,
-          valueStream,
-          this._undo("set-serif")
-        );
-      }
     }
   }
 

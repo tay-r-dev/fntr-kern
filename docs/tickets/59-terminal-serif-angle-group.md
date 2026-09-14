@@ -1,6 +1,6 @@
 # 59: Terminal: Serif Angle group
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 57 (Terminal: Serif Wing and Bracket groups with chains), 48 (Skeleton block: Projection with its overflow)
 

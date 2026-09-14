@@ -1232,31 +1232,6 @@ export async function nudgePanelSerifValueStream(
   );
 }
 
-export async function scalePanelSerifValue(
-  sceneController,
-  pointAddresses,
-  targets,
-  factor,
-  undoLabel
-) {
-  return editSelectedSkeletonPoints(
-    sceneController,
-    pointAddresses,
-    (point, _address, { contour }) => {
-      const endpoints = skeletonContourEndpointIndices(contour);
-      if (!endpoints) {
-        return;
-      }
-      const pointIndex = contour.points.indexOf(point);
-      if (pointIndex !== endpoints.first && pointIndex !== endpoints.last) {
-        return;
-      }
-      nudgeOnePointSerif(point, contour, targets, scaled(factor));
-    },
-    undoLabel
-  );
-}
-
 // Streaming variant, for the serif sliders: the terminal redraws under the
 // thumb instead of jumping once on release. Same endpoint gate as the committed
 // path, applied per point rather than up front because the stream helper hands
