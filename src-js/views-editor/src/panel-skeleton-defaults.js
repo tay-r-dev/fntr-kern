@@ -685,7 +685,7 @@ export default class SkeletonSettingsPanel extends Panel {
         trash.disabled = readOnly;
         trash.onclick = () => this._deleteWidthPreset(sourceId, index, rowId);
         tbody.appendChild(
-          html.createDomElement("tr", { "data-row-id": rowId }, [
+          html.createDomElement("tr", { "data-rowId": rowId }, [
             html.createDomElement("td", {}, [
               nameInput,
               html.div({ class: "preset-origin" }, [
@@ -1103,7 +1103,7 @@ export default class SkeletonSettingsPanel extends Panel {
           pencil.disabled = readOnly;
           pencil.onclick = () => this._editTerminalPresetDialog(sourceId, type, index);
           tbody.appendChild(
-            html.createDomElement("tr", { "data-row-id": rowId }, [
+            html.createDomElement("tr", { "data-rowId": rowId }, [
               html.createDomElement("td", {}, [
                 translate(`sidebar.skeleton-parameters.cap-style.${type}`),
               ]),
