@@ -102,17 +102,13 @@ export const CAP_ANGLE_MIN = -85;
 export const CAP_ANGLE_MAX = 85;
 // Drop (ball terminal) cap: ratio edited as a percent of stroke width.
 const DEFAULT_CAP_BALL_RATIO = 1.25;
-// The slider stops at 105%: below that the ball is narrower than the stroke and
-// there is nothing to read as a bulb. Typing into the field still reaches the
-// model's full 50–300% range.
-export const CAP_BALL_MIN = 105;
+// The model's full range, which the Size field reaches by typing and dragging.
+export const CAP_BALL_MIN = 50;
 export const CAP_BALL_MAX = 300;
 // Ball shape: 0% round -> 100% teardrop, edited as a percent.
 const DEFAULT_CAP_BALL_SHAPE = 0;
-// The slider stops at 40%: past that the ball attaches so far back that it
-// stops reading as a terminal. Typing into the field still reaches 100%.
 export const CAP_SHAPE_MIN = 0;
-export const CAP_SHAPE_MAX = 40;
+export const CAP_SHAPE_MAX = 100;
 // Bulb easing: a percent of the run from the ball's crossing on the inner edge
 // to the next generated on-curve. 100 collapses the two, and there is nothing
 // past it, so this is a hard end rather than a slider convenience.
@@ -628,6 +624,15 @@ export default class SkeletonParametersPanel {
     this.capFields.radius = this._makeCapField("radius", "cap-radius");
     this.capFields.tension = this._makeCapField("tension", "cap-tension");
     this.roundedRow = fieldRow([this.capFields.radius, this.capFields.tension]);
+    // Ticket 55: the Ball section, Size, Shape and Ease, each in percent.
+    this.capFields.ball = this._makeCapField("ball", "cap-ball");
+    this.capFields.ballshape = this._makeCapField("ballshape", "cap-ball-shape");
+    this.capFields.balleasing = this._makeCapField("balleasing", "cap-ball-easing");
+    this.ballRow = fieldRow([
+      this.capFields.ball,
+      this.capFields.ballshape,
+      this.capFields.balleasing,
+    ]);
     this.forceAngleRow = html.div({ class: "selection-row-group" }, [
       html.span({ class: "selection-row-group-label" }, [
         translate("sidebar.skeleton-parameters.force-angle"),
@@ -1493,52 +1498,35 @@ export default class SkeletonParametersPanel {
       );
       formContents.push({ type: "single-icon", element: this.squareRow });
     } else if (styleValue === "drop") {
-      const ballSummary = {
-        value: Math.round((cap.capBallRatio.value ?? DEFAULT_CAP_BALL_RATIO) * 100),
-        mixed: cap.capBallRatio.mixed,
-      };
-      this._pushSummarySlider(
-        formContents,
+      const percentOf = (summary, fallback) => ({
+        value: Math.round((summary.value ?? fallback) * 100),
+        mixed: summary.mixed,
+      });
+      // Size and Shape reach the model's whole range. The sliders stopped short
+      // (105 and 40) and left the rest to typing; a scrub field types and drags
+      // alike.
+      this._refreshCompactField(
+        this.capFields.ball,
         "cap:ball",
-        "cap-ball",
-        ballSummary,
-        CAP_BALL_MIN,
-        CAP_BALL_MAX,
-        Math.round(DEFAULT_CAP_BALL_RATIO * 100),
-        { step: 5, allowInputBeyondRange: true }
+        percentOf(cap.capBallRatio, DEFAULT_CAP_BALL_RATIO),
+        { minValue: CAP_BALL_MIN, maxValue: CAP_BALL_MAX }
       );
-      const shapeSummary = {
-        value: Math.round((cap.capBallShape.value ?? DEFAULT_CAP_BALL_SHAPE) * 100),
-        mixed: cap.capBallShape.mixed,
-      };
-      this._pushSummarySlider(
-        formContents,
+      this._refreshCompactField(
+        this.capFields.ballshape,
         "cap:ballshape",
-        "cap-ball-shape",
-        shapeSummary,
-        CAP_SHAPE_MIN,
-        CAP_SHAPE_MAX,
-        Math.round(DEFAULT_CAP_BALL_SHAPE * 100),
-        { step: 5, allowInputBeyondRange: true }
+        percentOf(cap.capBallShape, DEFAULT_CAP_BALL_SHAPE),
+        { minValue: CAP_SHAPE_MIN, maxValue: CAP_SHAPE_MAX }
       );
-      // Easing, not tension: this sets how far back along the inner edge the
-      // neck starts, as a percent of the run to the next generated on-curve.
-      // 100 collapses the two, and there is no geometry past it — so the slider
-      // ends there and typing cannot reach beyond it either.
-      const easingSummary = {
-        value: Math.round((cap.capBallEasing.value ?? DEFAULT_CAP_BALL_EASING) * 100),
-        mixed: cap.capBallEasing.mixed,
-      };
-      this._pushSummarySlider(
-        formContents,
+      // Easing, not tension: how far back along the inner edge the neck starts,
+      // as a percent of the run to the next generated on-curve. 100 collapses
+      // the two, and there is no geometry past it.
+      this._refreshCompactField(
+        this.capFields.balleasing,
         "cap:balleasing",
-        "cap-ball-easing",
-        easingSummary,
-        0,
-        CAP_BALL_EASING_MAX,
-        Math.round(DEFAULT_CAP_BALL_EASING * 100),
-        { step: 5 }
+        percentOf(cap.capBallEasing, DEFAULT_CAP_BALL_EASING),
+        { minValue: 0, maxValue: CAP_BALL_EASING_MAX }
       );
+      formContents.push({ type: "single-icon", element: this.ballRow });
       formContents.push({
         type: "select",
         key: "cap:ballside",
