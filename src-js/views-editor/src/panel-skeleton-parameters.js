@@ -543,11 +543,31 @@ export default class SkeletonParametersPanel {
     this.forceAngleControl.addEventListener("change", (event) =>
       this._runOwnEdit(() => this._onWidthChange("ribanglelock", event.detail.value))
     );
+    // Ticket 53: the lock mode behind Force angle's overflow. A forced rib
+    // cannot both keep the stroke as wide as its number and blend cleanly
+    // between masters, so the point says which it holds on to. Keeping the
+    // stem width runs the rib further to reach the edge, so every master draws
+    // its number. Keeping the footprint keeps the bar the number long, which
+    // draws a turned stroke thinner and is the one that interpolates.
+    this.forceAngleOverflow = html.createDomElement("overflow-button", {
+      "data-tooltip": translate("sidebar.skeleton-parameters.rib-angle-lock-mode"),
+      "data-tooltipposition": "top",
+    });
+    this.forceAngleOverflow.singleChoice = true;
+    this.forceAngleOverflow.addEventListener("change", (event) => {
+      const [mode] = [].concat(event.detail.checked);
+      if (mode) {
+        this._runOwnEdit(() => this._onWidthChange("ribanglelockmode", mode));
+      }
+    });
     this.forceAngleRow = html.div({ class: "selection-row-group" }, [
       html.span({ class: "selection-row-group-label" }, [
         translate("sidebar.skeleton-parameters.force-angle"),
       ]),
-      html.div({ class: "selection-row-group-icons" }, [this.forceAngleControl]),
+      html.div({ class: "selection-row-group-icons" }, [
+        this.forceAngleControl,
+        this.forceAngleOverflow,
+      ]),
     ]);
     this.generationIconRow = html.div({ class: "selection-row-group" }, [
       ...iconGroup("group.lock", Object.values(this.lockButtons)),
@@ -1114,6 +1134,15 @@ export default class SkeletonParametersPanel {
       ? undefined
       : (ribAngleLock.value ?? "auto");
     this.forceAngleControl.disabled = !ribAngleLock.canEdit;
+    // Ticket 53: one mode checked, none while the selection disagrees, and
+    // greyed while Force angle is Free, because the mode decides nothing then.
+    const lockMode = ribAngleLock.mode;
+    this.forceAngleOverflow.items = ["stroke", "rib"].map((value) => ({
+      value,
+      label: translate(`sidebar.skeleton-parameters.rib-angle-lock-mode.${value}`),
+      checked: !lockMode.mixed && (lockMode.value ?? "stroke") === value,
+    }));
+    this.forceAngleOverflow.disabled = !lockMode.canEdit;
     formContents.push({ type: "single-icon", element: this.forceAngleRow });
 
     // Ticket 47: Lock, Link and Reset. Tied ribs only has an effect on a smooth
@@ -1166,32 +1195,6 @@ export default class SkeletonParametersPanel {
       value: ribSummary.detached.mixed ? false : ribSummary.detached.value,
       indeterminate: ribSummary.detached.mixed,
       disabled: !ribs.length,
-    });
-    // A forced rib cannot both keep the stroke as wide as its number and blend
-    // cleanly between masters, so the point says which it holds on to. Stroke
-    // width runs the rib further to reach the edge, so every master draws its
-    // number. Rib length keeps the bar the number long, which draws a turned
-    // stroke thinner and is the one that interpolates. Greyed with no lock,
-    // because it decides nothing then.
-    formContents.push({
-      type: "select",
-      key: "width:ribanglelockmode",
-      label: translate("sidebar.skeleton-parameters.rib-angle-lock-mode"),
-      value: ribAngleLock.mode.mixed ? "" : (ribAngleLock.mode.value ?? "stroke"),
-      disabled: !ribAngleLock.mode.canEdit,
-      options: [
-        ...(ribAngleLock.mode.mixed
-          ? [{ value: "", label: "mixed", disabled: true }]
-          : []),
-        {
-          value: "stroke",
-          label: translate("sidebar.skeleton-parameters.rib-angle-lock-mode.stroke"),
-        },
-        {
-          value: "rib",
-          label: translate("sidebar.skeleton-parameters.rib-angle-lock-mode.rib"),
-        },
-      ],
     });
     // Force-apply a master width profile to the selected points (two-click
     // confirm; the dropdown picks base/horizontal/contrast or a custom width).

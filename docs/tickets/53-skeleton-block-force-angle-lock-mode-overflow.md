@@ -1,6 +1,6 @@
 # 53: Skeleton block: Force angle lock-mode overflow
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 52 (Skeleton block: Force angle in Generation), 48 (Skeleton block: Projection with its overflow)
 
