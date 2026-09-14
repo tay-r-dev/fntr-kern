@@ -36,7 +36,6 @@ import { SELECTION_ROW_GROUP_STYLES } from "./selection-row-group-styles.js";
 import { editSkeleton } from "./skeleton-editing.js";
 import {
   SKELETON_PANEL_SENDER,
-  applyPanelSerifPreset,
   nudgePanelCapParameterStream,
   nudgePanelContourDefaultWidthStream,
   nudgePanelCornerDistanceStream,
@@ -345,10 +344,6 @@ export default class SkeletonParametersPanel {
     // Per-field multiply ratios, kept across rebuilds so a rebuild after Apply
     // does not reset the box the user is working in.
     this._multiplyFactors = {};
-    this._serifPresetSelection = null;
-    this._serifApplyScope = "both";
-    this._forceApplyArmed = null;
-    this._confirmTooltip = null;
 
     this.updateBound = this.update.bind(this);
     // True while one of this panel's own fields is streaming a drag. It stops a
@@ -598,14 +593,21 @@ export default class SkeletonParametersPanel {
       onAdd: () => this._addWidthPreset(),
       onUpdate: (index) => this._updateWidthPreset(index),
     });
-    // Ticket 56: the Terminal header's preset control, the same control for
-    // the kind the selection shows -- Square, Rounded or Ball. Serif has its own
-    // (ticket 60) and Flat has no fields.
+    // Tickets 56 and 60: the Terminal header's preset control, the same control
+    // for the kind the selection shows -- Square, Rounded, Ball or Serif. Flat
+    // has no fields. A serif preset is the whole terminal (both halves, every
+    // link, the angle and the cup), so the serif needs one control, not one per
+    // side.
     this._terminalPresetType = null;
     this.terminalPresetControl = new PresetHeaderControl({
-      onPick: (index) => {
+      onPick: (value) => {
         const type = this._terminalPresetType;
-        const preset = type ? this._terminalPresetList(type)[index] : null;
+        const preset = type ? this._terminalPresetByValue(type, value) : null;
+        // A built-in cannot be updated in place, so picking one leaves nothing
+        // for Update to write over.
+        if (typeof value === "string") {
+          this.terminalPresetControl.lastPicked = null;
+        }
         if (preset) {
           this._applyTerminalPreset(type, preset);
         }
@@ -1224,13 +1226,53 @@ export default class SkeletonParametersPanel {
       : [];
   }
 
+  // The dropdown's entries for one kind: for a serif, the five built-ins first
+  // (they cannot be updated in place), then the master's own for the glyph's
+  // case, each carrying its index in the stored list.
+  _terminalPresetItems(type) {
+    const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
+    const builtins =
+      type === "serif"
+        ? SERIF_PRESETS.map((preset, index) => ({
+            value: `builtin:${index}`,
+            label: preset.name,
+          }))
+        : [];
+    return [
+      ...builtins,
+      ...this._terminalPresetList(type)
+        .map((preset, index) => ({ preset, index }))
+        .filter(({ preset }) => preset?.case === glyphCase)
+        .map(({ preset, index }) => ({ value: index, label: preset.name || "" })),
+    ];
+  }
+
+  _terminalPresetByValue(type, value) {
+    if (typeof value === "string") {
+      const index = Number(value.slice("builtin:".length));
+      return type === "serif" ? (SERIF_PRESETS[index] ?? null) : null;
+    }
+    return this._terminalPresetList(type)[value] ?? null;
+  }
+
   // The shape the selection states for one kind, or null where the selected
   // endpoints disagree on any field. A field a point has never stored reads as
   // the value the section shows for it, so a captured preset reproduces what is
-  // on screen.
+  // on screen. A serif is captured whole by the model, and the selected
+  // terminals have to capture alike.
   _selectionTerminalPreset(type) {
-    const fields = getTerminalPresetFields(type);
     const points = this._widthPoints?.() || [];
+    if (type === "serif") {
+      if (!points.length) {
+        return null;
+      }
+      const captured = points.map((entry) => captureSerifPreset(entry.point));
+      const first = JSON.stringify(captured[0]);
+      return captured.every((preset) => JSON.stringify(preset) === first)
+        ? captured[0]
+        : null;
+    }
+    const fields = getTerminalPresetFields(type);
     if (!fields || !points.length) {
       return null;
     }
@@ -1248,12 +1290,8 @@ export default class SkeletonParametersPanel {
   }
 
   _refreshTerminalPresetControl(type) {
-    const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
     this.terminalPresetControl.refresh({
-      items: this._terminalPresetList(type)
-        .map((preset, index) => ({ preset, index }))
-        .filter(({ preset }) => preset?.case === glyphCase)
-        .map(({ preset, index }) => ({ value: index, label: preset.name || "" })),
+      items: this._terminalPresetItems(type),
       canCapture:
         !this.fontController.readOnly && this._selectionTerminalPreset(type) !== null,
     });
@@ -1410,7 +1448,6 @@ export default class SkeletonParametersPanel {
     }
     this._lastSignature = signature;
     this._forceRebuild = false;
-    this._disarmForceApply();
 
     const formContents = [
       {
@@ -1541,72 +1578,6 @@ export default class SkeletonParametersPanel {
       this.sceneController.sceneSettings.fontLocationSource ||
       {};
     return resolveEffectiveSourceSkeletonDefault(this.fontController, location, key);
-  }
-
-  // Two-click confirm (letterspacer reverse pattern): first click arms the
-  // button and shows a tooltip, second click applies.
-  _confirmThenApply(event, armKey, apply) {
-    if (this._forceApplyArmed !== armKey) {
-      this._forceApplyArmed = armKey;
-      this._showConfirmTooltip(
-        event?.currentTarget,
-        translate("sidebar.skeleton-parameters.force-apply.confirm")
-      );
-      return;
-    }
-    this._forceApplyArmed = null;
-    this._hideConfirmTooltip();
-    apply();
-  }
-
-  _disarmForceApply() {
-    this._forceApplyArmed = null;
-    this._hideConfirmTooltip();
-  }
-
-  _showConfirmTooltip(anchor, message) {
-    this._hideConfirmTooltip();
-    if (!anchor || !message) {
-      return;
-    }
-    const tooltip = html.div({}, [message]);
-    Object.assign(tooltip.style, {
-      position: "fixed",
-      zIndex: "9999",
-      maxWidth: "220px",
-      padding: "8px 10px",
-      borderRadius: "6px",
-      fontSize: "0.85rem",
-      lineHeight: "1.3",
-      color: "var(--tooltip-foreground-color, #fff)",
-      background: "var(--tooltip-background-color, #000)",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
-      pointerEvents: "none",
-      whiteSpace: "normal",
-      overflowWrap: "anywhere",
-    });
-    document.body.appendChild(tooltip);
-    const rect = anchor.getBoundingClientRect();
-    const tipRect = tooltip.getBoundingClientRect();
-    const margin = 8;
-    let left = rect.left - tipRect.width - margin;
-    if (left < margin) {
-      left = Math.min(rect.right + margin, window.innerWidth - tipRect.width - margin);
-    }
-    const top = Math.min(
-      window.innerHeight - tipRect.height - margin,
-      Math.max(margin, rect.top + rect.height / 2 - tipRect.height / 2)
-    );
-    tooltip.style.left = `${Math.round(left)}px`;
-    tooltip.style.top = `${Math.round(top)}px`;
-    this._confirmTooltip = tooltip;
-  }
-
-  _hideConfirmTooltip() {
-    if (this._confirmTooltip) {
-      this._confirmTooltip.remove();
-      this._confirmTooltip = null;
-    }
   }
 
   // ---- Section builders -----------------------------------------------------
@@ -1773,7 +1744,7 @@ export default class SkeletonParametersPanel {
     // Ticket 56: the header carries the preset control for the kind shown, when
     // that kind is one with a preset table here. A different kind starts with
     // nothing picked, so Update cannot write one kind's shape over another's.
-    const presetType = ["square", "round", "drop"].includes(styleValue)
+    const presetType = ["square", "round", "drop", "serif"].includes(styleValue)
       ? styleValue
       : null;
     if (presetType !== this._terminalPresetType) {
@@ -2239,53 +2210,6 @@ export default class SkeletonParametersPanel {
       element: this.serifCupBlock,
       layoutKey: "serifCupBlock",
     });
-    this._buildSerifPresetControls(formContents, serif, canEdit);
-  }
-
-  // ---- Serif presets --------------------------------------------------------
-
-  // The ported built-ins first, then the master's own — the same order the
-  // width and cap selects use. A built-in cannot be updated in place.
-  _serifPresetOptions() {
-    const options = SERIF_PRESETS.map((preset, index) => ({
-      id: `builtin:${index}`,
-      label: preset.name,
-      preset,
-      builtin: true,
-    }));
-    const list = this._resolveSourceDefault(SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS);
-    if (Array.isArray(list)) {
-      list
-        .filter((item) => item && typeof item === "object")
-        .forEach((item, index) => {
-          options.push({
-            id: `custom:${index}`,
-            index,
-            label: item.name || `Serif ${index + 1}`,
-            preset: item,
-            builtin: false,
-          });
-        });
-    }
-    return options;
-  }
-
-  // A preset is one shape. Capturing two different terminals into one would
-  // produce neither of them, so create and update refuse a mixed selection.
-  _serifSelectionIsMixed(serif) {
-    for (const side of ["left", "right"]) {
-      for (const field of SERIF_HALF_FIELDS) {
-        if (serif[side][field].mixed) {
-          return true;
-        }
-      }
-    }
-    return (
-      serif.sides.mixed ||
-      serif.undersideCup.mixed ||
-      serif.undersideCupTension.mixed ||
-      serif.undersideCupBalance.mixed
-    );
   }
 
   // The setting lives with the master, because the outline it changes is
@@ -2349,170 +2273,6 @@ export default class SkeletonParametersPanel {
         this
       );
     }
-  }
-
-  async _persistSerifPresetList(next) {
-    await this._persistSourceDefaultValues({
-      [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: next,
-    });
-  }
-
-  _customSerifPresets() {
-    return this._serifPresetOptions()
-      .filter((option) => !option.builtin)
-      .map((option) => ({ ...option.preset }));
-  }
-
-  _selectedSerifPoint() {
-    return this._widthPoints()[0] ?? null;
-  }
-
-  async _applySerifPreset(option) {
-    await applyPanelSerifPreset(
-      this.sceneController,
-      this._widthPoints(),
-      option.preset,
-      this._serifApplyScope,
-      this._undo("set-serif")
-    );
-    this._forceRebuild = true;
-    await this.update();
-  }
-
-  async _createSerifPreset() {
-    const entry = this._selectedSerifPoint();
-    if (!entry) {
-      return;
-    }
-    const next = this._customSerifPresets();
-    next.push({
-      name: `Serif ${next.length + 1}`,
-      ...captureSerifPreset(entry.point),
-    });
-    this._serifPresetSelection = `custom:${next.length - 1}`;
-    await this._persistSerifPresetList(next);
-    this._forceRebuild = true;
-    await this.update();
-  }
-
-  async _updateSerifPreset(option) {
-    const entry = this._selectedSerifPoint();
-    if (!entry) {
-      return;
-    }
-    const next = this._customSerifPresets();
-    next[option.index] = {
-      name: option.preset.name,
-      ...captureSerifPreset(entry.point),
-    };
-    await this._persistSerifPresetList(next);
-    this._forceRebuild = true;
-    await this.update();
-  }
-
-  _buildSerifPresetControls(formContents, serif, canEdit) {
-    const options = this._serifPresetOptions();
-    const mixed = this._serifSelectionIsMixed(serif);
-    const hasPoint = !!this._selectedSerifPoint();
-    formContents.push({ type: "divider" });
-    formContents.push({
-      type: "header",
-      label: translate("sidebar.skeleton-parameters.serif-presets"),
-    });
-    if (options.length) {
-      if (!options.some((option) => option.id === this._serifPresetSelection)) {
-        this._serifPresetSelection = options[0].id;
-      }
-      const select = html.select(
-        {
-          style: "min-width: 8em;",
-          disabled: !canEdit,
-          onchange: (event) => {
-            this._serifPresetSelection = event.target.value;
-            this._disarmForceApply();
-            this.update();
-          },
-        },
-        options.map((option) =>
-          html.option(
-            { value: option.id, selected: this._serifPresetSelection === option.id },
-            [option.label]
-          )
-        )
-      );
-      const scopeSelect = html.select(
-        {
-          style: "min-width: 6em;",
-          disabled: !canEdit,
-          onchange: (event) => {
-            this._serifApplyScope = event.target.value;
-            this._disarmForceApply();
-          },
-        },
-        ["both", "left", "right"].map((scope) =>
-          html.option({ value: scope, selected: this._serifApplyScope === scope }, [
-            translate(`sidebar.skeleton-parameters.serif-presets.scope-${scope}`),
-          ])
-        )
-      );
-      const selected = options.find(
-        (option) => option.id === this._serifPresetSelection
-      );
-      const applyButton = html.button(
-        {
-          disabled: !canEdit,
-          onclick: (event) => {
-            if (!selected) {
-              return;
-            }
-            this._confirmThenApply(event, "serif-preset", () =>
-              this._applySerifPreset(selected)
-            );
-          },
-        },
-        [translate("sidebar.skeleton-parameters.force-apply")]
-      );
-      // The name rides on the button, so a select changed between the two
-      // presses cannot aim the overwrite at a preset the designer is not
-      // looking at.
-      const updateButton = html.button(
-        {
-          disabled: !canEdit || mixed || !hasPoint || !selected || selected.builtin,
-          onclick: (event) => {
-            if (!selected) {
-              return;
-            }
-            this._confirmThenApply(event, "serif-preset-update", () =>
-              this._updateSerifPreset(selected)
-            );
-          },
-        },
-        [
-          translate(
-            "sidebar.skeleton-parameters.serif-presets.update",
-            selected?.label ?? ""
-          ),
-        ]
-      );
-      formContents.push({
-        type: "single-icon",
-        element: html.div(
-          { style: "display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;" },
-          [select, scopeSelect, applyButton, updateButton]
-        ),
-      });
-    }
-    const createButton = html.button(
-      {
-        disabled: !canEdit || mixed || !hasPoint,
-        onclick: () => this._createSerifPreset(),
-      },
-      [translate("sidebar.skeleton-parameters.serif-presets.create")]
-    );
-    formContents.push({
-      type: "single-icon",
-      element: html.div({}, [createButton]),
-    });
   }
 
   // ---- Field description helpers -------------------------------------------

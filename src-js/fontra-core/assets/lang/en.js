@@ -608,17 +608,9 @@ export const strings = {
   "sidebar.skeleton-parameters.custom-widths.add": "Add",
   "sidebar.skeleton-parameters.custom-widths.delete": "Delete",
   "sidebar.skeleton-parameters.custom-widths.confirm-delete": "Confirm delete",
-  "sidebar.skeleton-parameters.force-apply": "Apply default",
-  "sidebar.skeleton-parameters.force-apply.confirm":
-    "Will overwrite the selected points' values. Press again to apply.",
   "sidebar.skeleton-parameters.default-caps": "Default caps",
   "sidebar.skeleton-parameters.serif-presets": "Serif presets",
   "sidebar.skeleton-parameters.serif-presets.edit": "Edit shape",
-  "sidebar.skeleton-parameters.serif-presets.scope-both": "Both wings",
-  "sidebar.skeleton-parameters.serif-presets.scope-left": "Left only",
-  "sidebar.skeleton-parameters.serif-presets.scope-right": "Right only",
-  "sidebar.skeleton-parameters.serif-presets.create": "Create from selection",
-  "sidebar.skeleton-parameters.serif-presets.update": "Update “%0”",
   "sidebar.skeleton-parameters.drop-dead-points": "Drop points that draw nothing",
   "sidebar.skeleton-parameters.drop-dead-points.warning":
     "Glyphs in this master stop interpolating with other masters.",

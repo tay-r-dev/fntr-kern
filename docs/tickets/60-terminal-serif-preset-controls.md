@@ -1,6 +1,6 @@
 # 60: Terminal: serif preset controls
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 57 (Terminal: Serif Wing and Bracket groups with chains), 07 (Terminal presets cover the four kinds with fields), 49 (Skeleton block: Generation preset header)
 

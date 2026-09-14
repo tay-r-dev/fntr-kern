@@ -1050,21 +1050,6 @@ export async function setPanelTerminalPreset(
   );
 }
 
-export async function applyPanelSerifPreset(
-  sceneController,
-  pointAddresses,
-  preset,
-  scope,
-  undoLabel
-) {
-  return setPanelSerifParameters(
-    sceneController,
-    pointAddresses,
-    applySerifPreset(preset, { scope }),
-    undoLabel
-  );
-}
-
 export async function setPanelSerifParameters(
   sceneController,
   pointAddresses,
