@@ -180,13 +180,13 @@ function capValuesFromField(name, value) {
 // Ticket 57: the serif's half fields in their groups, each row a left field, a
 // chain and a right field. The groups are also what the Force menu's middle
 // entry copies.
-const SERIF_FIELD_GROUPS = [
+export const SERIF_FIELD_GROUPS = [
   ["serif-group-wing", ["wingLength", "tipThickness", "wingSlope", "tipCutAngle"]],
   ["serif-group-bracket", ["reach", "tension", "concavity"]],
   ["serif-group-easing", ["easeDistance", "easeCurvature"]],
 ];
 // Stored as a ratio, edited as a percent, with the range each one's slider had.
-const SERIF_PERCENT_FIELD_BOUNDS = {
+export const SERIF_PERCENT_FIELD_BOUNDS = {
   tension: { minValue: 0, maxValue: 100 },
   concavity: { minValue: -100, maxValue: 100 },
   easeCurvature: { minValue: 0, maxValue: 100 },

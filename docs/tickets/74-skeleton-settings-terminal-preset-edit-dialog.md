@@ -1,6 +1,6 @@
 # 74: Skeleton settings: terminal preset edit dialog
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 71 (Skeleton settings: terminal presets table), 51 (Terminal: Square section), 54 (Terminal: Rounded section), 55 (Terminal: Drop section), 58 (Terminal: Serif Easing and Cup groups), 59 (Terminal: Serif Angle group)
 

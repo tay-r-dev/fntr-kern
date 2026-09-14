@@ -2,6 +2,7 @@ import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { isScrubCancelled } from "@fontra/core/number-scrub.js";
+import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
 import {
   DEFAULT_SERIF_PRESET,
   DEFAULT_SKELETON_WIDTH,
@@ -20,12 +21,22 @@ import {
 import "@fontra/web-components/data-table.js"; // for <data-table>, ticket 68
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 67
 import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 69
-import { dialog } from "@fontra/web-components/modal-dialog.js";
+import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 74
+import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 74
+import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 74
+import { dialog, dialogSetup } from "@fontra/web-components/modal-dialog.js";
 import { Form } from "@fontra/web-components/ui-form.js";
 import {
   CAP_ANGLE_MAX,
   CAP_ANGLE_MIN,
+  CAP_BALL_EASING_MAX,
+  CAP_BALL_MAX,
+  CAP_BALL_MIN,
   CAP_RADIUS_POSITIONS,
+  CAP_SHAPE_MAX,
+  CAP_SHAPE_MIN,
+  SERIF_FIELD_GROUPS,
+  SERIF_PERCENT_FIELD_BOUNDS,
   TERMINAL_FIELD_FALLBACKS,
   capRadiusIndexFromRatio,
   capRadiusRatioFromIndex,
@@ -760,6 +771,278 @@ export default class SkeletonSettingsPanel extends Panel {
     await this._writeTerminalPresets(sourceId, type, next);
   }
 
+  // Ticket 74: every field of one preset in a modal dialog, built from the
+  // Terminal section's own controls. Edits change a working copy; OK writes it
+  // back as one step and Cancel drops it. A serif preset holds both halves,
+  // every link, the cup and the angle (the 2026-09-14 decision), so its dialog
+  // shows all of them; the other kinds show their shape fields only.
+  async _editTerminalPresetDialog(sourceId, type, index) {
+    const preset = this._terminalPresetList(sourceId, type)[index];
+    if (!preset) {
+      return;
+    }
+    const working = structuredClone(preset);
+    const presetDialog = await dialogSetup(
+      translate("sidebar.skeleton-settings.edit-preset", preset.name || ""),
+      null,
+      [
+        { title: translate("dialog.cancel"), isCancelButton: true },
+        { title: translate("dialog.okay"), isDefaultButton: true, resultValue: true },
+      ]
+    );
+    presetDialog.setContent(this._buildTerminalPresetEditor(type, working));
+    if (!(await presetDialog.run())) {
+      return;
+    }
+    const next = this._terminalPresetList(sourceId, type);
+    if (!next[index]) {
+      return;
+    }
+    next[index] = normalizeTerminalPreset(type, {
+      ...working,
+      name: next[index].name,
+      case: next[index].case,
+    });
+    await this._writeTerminalPresets(sourceId, type, next);
+  }
+
+  _buildTerminalPresetEditor(type, working) {
+    const label = (key) => translate(`sidebar.skeleton-parameters.${key}`);
+    // One compact scrub field over a stored number. `toDisplay` and
+    // `fromDisplay` are the Terminal section's own conversions.
+    const field = (
+      labelKey,
+      value,
+      bounds,
+      onValue,
+      { toDisplay = Math.round, fromDisplay = (v) => v } = {}
+    ) => {
+      const element = html.createDomElement("compact-scrub-field", {
+        label: label(labelKey),
+        integer: true,
+      });
+      element.minValue = bounds.minValue;
+      element.maxValue = bounds.maxValue;
+      element.value = toDisplay(Number(value) || 0);
+      element.style.flex = "1 1 0";
+      element.style.minWidth = "0";
+      // A drag reports every frame, and an abandoned one reports its start
+      // value, so every report is simply the value now.
+      element.addEventListener("change", (event) =>
+        onValue(fromDisplay(Number(event.detail.value)))
+      );
+      element._toDisplay = toDisplay;
+      return element;
+    };
+    const percent = {
+      toDisplay: (v) => Math.round(v * 100),
+      fromDisplay: (v) => v / 100,
+    };
+    const row = (children) =>
+      html.div(
+        { style: "display: flex; gap: 0.35rem; align-items: center;" },
+        children
+      );
+    const group = (labelKey, rows) =>
+      html.div({ style: "display: flex; flex-direction: column; gap: 0.35rem;" }, [
+        html.span({ style: "opacity: 0.7;" }, [label(labelKey)]),
+        ...rows,
+      ]);
+    const set = (key) => (value) => (working[key] = value);
+    const container = (children) =>
+      html.div(
+        {
+          style:
+            "display: flex; flex-direction: column; gap: 0.75rem; min-width: 22em;",
+        },
+        children
+      );
+
+    if (type === "square") {
+      return container([
+        row([
+          field(
+            "cap-angle",
+            working.capAngle,
+            { minValue: CAP_ANGLE_MIN, maxValue: CAP_ANGLE_MAX },
+            set("capAngle")
+          ),
+          field(
+            "cap-distance",
+            working.capDistance,
+            { minValue: 0 },
+            set("capDistance")
+          ),
+        ]),
+      ]);
+    }
+    if (type === "round") {
+      return container([
+        row([
+          field(
+            "cap-radius",
+            working.capRadiusRatio,
+            { minValue: 1, maxValue: CAP_RADIUS_POSITIONS },
+            set("capRadiusRatio"),
+            {
+              toDisplay: (v) => capRadiusIndexFromRatio(v) + 1,
+              fromDisplay: (v) => capRadiusRatioFromIndex(v - 1),
+            }
+          ),
+          field(
+            "cap-tension",
+            working.capTension,
+            { minValue: 0, maxValue: 100 },
+            set("capTension"),
+            percent
+          ),
+        ]),
+      ]);
+    }
+    if (type === "drop") {
+      return container([
+        row([
+          field(
+            "cap-ball",
+            working.capBallRatio,
+            { minValue: CAP_BALL_MIN, maxValue: CAP_BALL_MAX },
+            set("capBallRatio"),
+            percent
+          ),
+          field(
+            "cap-ball-shape",
+            working.capBallShape,
+            { minValue: CAP_SHAPE_MIN, maxValue: CAP_SHAPE_MAX },
+            set("capBallShape"),
+            percent
+          ),
+        ]),
+        row([
+          field(
+            "cap-ball-easing",
+            working.capBallEasing,
+            { minValue: 0, maxValue: CAP_BALL_EASING_MAX },
+            set("capBallEasing"),
+            percent
+          ),
+          field(
+            "cap-ball-ease-curvature",
+            working.capBallEaseCurvature,
+            { minValue: 0, maxValue: 100 },
+            set("capBallEaseCurvature"),
+            percent
+          ),
+        ]),
+      ]);
+    }
+
+    // Serif: one chained row per half field, as the Terminal section draws it.
+    const halfBounds = (halfField) =>
+      SERIF_PERCENT_FIELD_BOUNDS[halfField] ??
+      (halfField === "wingSlope"
+        ? {}
+        : halfField === "tipCutAngle"
+          ? { minValue: -MAX_TIP_CUT_ANGLE, maxValue: MAX_TIP_CUT_ANGLE }
+          : { minValue: 0 });
+    const halfGroups = SERIF_FIELD_GROUPS.map(([groupKey, fields]) =>
+      group(
+        groupKey,
+        fields.map((halfField) => {
+          const conversion = halfField in SERIF_PERCENT_FIELD_BOUNDS ? percent : {};
+          const right = field(
+            `serif-field.${halfField}`,
+            working.right[halfField],
+            halfBounds(halfField),
+            (value) => (working.right[halfField] = value),
+            conversion
+          );
+          const left = field(
+            `serif-field.${halfField}`,
+            working.left[halfField],
+            halfBounds(halfField),
+            (value) => {
+              working.left[halfField] = value;
+              // A closed chain is one number for both halves.
+              if (working.links[halfField]) {
+                working.right[halfField] = value;
+                right.value = right._toDisplay(value);
+              }
+            },
+            conversion
+          );
+          const chain = html.createDomElement("chain-link", {
+            tooltip: label("linked"),
+          });
+          chain.linked = working.links[halfField];
+          right.disabled = working.links[halfField];
+          chain.addEventListener("change", (event) => {
+            working.links[halfField] = event.detail.linked;
+            right.disabled = event.detail.linked;
+            if (event.detail.linked) {
+              working.right[halfField] = working.left[halfField];
+              right.value = right._toDisplay(working.left[halfField]);
+            }
+          });
+          return row([left, chain, right]);
+        })
+      )
+    );
+    const cup = group("serif-group-cup", [
+      row([
+        field(
+          "serif-underside-cup",
+          working.undersideCup,
+          { minValue: 0 },
+          set("undersideCup")
+        ),
+        field(
+          "serif-underside-cup-balance",
+          working.undersideCupBalance,
+          { minValue: -100, maxValue: 100 },
+          set("undersideCupBalance"),
+          percent
+        ),
+        field(
+          "serif-underside-cup-tension",
+          working.undersideCupTension,
+          { minValue: 0, maxValue: 100 },
+          set("undersideCupTension"),
+          percent
+        ),
+      ]),
+    ]);
+    // Angle: Free (the tilt mode, where Tilt is live), Vertical, Horizontal.
+    const free = working.axisMode === "perpendicular" || working.axisMode === "tilt";
+    const tilt = field(
+      "serif-axis-tilt",
+      working.axisTilt,
+      { minValue: -40, maxValue: 40 },
+      (value) => {
+        working.axisMode = "tilt";
+        working.axisTilt = value;
+      }
+    );
+    tilt.disabled = !free;
+    const axisControl = html.createDomElement("segmented-control", {
+      options: [
+        ["tilt", "free"],
+        ["vertical", "vertical"],
+        ["horizontal", "horizontal"],
+      ].map(([value, key]) => ({ value, label: label(`force-angle.${key}`) })),
+    });
+    axisControl.value = free
+      ? "tilt"
+      : ["vertical", "horizontal"].includes(working.axisMode)
+        ? working.axisMode
+        : undefined;
+    axisControl.addEventListener("change", (event) => {
+      working.axisMode = event.detail.value;
+      tilt.disabled = event.detail.value !== "tilt";
+    });
+    const angle = group("serif-group-angle", [row([axisControl]), row([tilt])]);
+    return container([...halfGroups, cup, angle]);
+  }
+
   // The trash takes two presses: the first arms it, the second deletes.
   async _deleteTerminalPreset(sourceId, type, index, rowId) {
     if (this._customDeleteConfirm !== rowId) {
@@ -811,6 +1094,14 @@ export default class SkeletonSettingsPanel extends Panel {
           trash.disabled = readOnly;
           trash.onclick = () =>
             this._deleteTerminalPreset(sourceId, type, index, rowId);
+          // Ticket 74: the pencil opens the preset's fields in a dialog.
+          const pencil = html.createDomElement("icon-button", {
+            "src": "/tabler-icons/pencil.svg",
+            "data-tooltip": translate("sidebar.skeleton-settings.edit"),
+            "data-tooltipposition": "left",
+          });
+          pencil.disabled = readOnly;
+          pencil.onclick = () => this._editTerminalPresetDialog(sourceId, type, index);
           tbody.appendChild(
             html.createDomElement("tr", { "data-row-id": rowId }, [
               html.td({}, [translate(`sidebar.skeleton-parameters.cap-style.${type}`)]),
@@ -822,7 +1113,7 @@ export default class SkeletonSettingsPanel extends Panel {
                   )}`,
                 ]),
               ]),
-              html.td({}, [html.div({ class: "preset-actions" }, [trash])]),
+              html.td({}, [html.div({ class: "preset-actions" }, [pencil, trash])]),
             ])
           );
         });

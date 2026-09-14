@@ -3,7 +3,7 @@
 Spec: `docs/superpowers/UI-REFACTOR.md`. Elements: `docs/superpowers/UI-NOMENCLATURE.md` §14.
 One agent per group, one commit per ticket. Branch `ui/ux-refactor`.
 
-**Done:** 03–28, 32–38, 40, 42–61.
+**Done:** 03–28, 32–38, 40, 42–61, 67–74.
 
 | Group | Tickets | State |
 | --- | --- | --- |
@@ -17,7 +17,7 @@ One agent per group, one commit per ticket. Branch `ui/ux-refactor`.
 | Skeleton Generation | 45–49, 52, 53 | done. Manual matrices not run |
 | Terminal and corners | 50, 51, 54–61 | done, manual matrices not run. 57 and 60 follow the 2026-09-14 serif decision (UI-REFACTOR §5.6) |
 | Markers panel | 62–66 | open |
-| Skeleton settings | 67–74 | open |
+| Skeleton settings | 67–74 | done, manual matrices not run. 70 and 74 follow the 2026-09-14 preset decisions |
 
 **Waiting on a decision:** 29 Tunni layer mapping, 30 skeleton switches, 41 preserve aspect ratio,
 75 corner distribution, 76 snapping master switch, 77 Detached, 78 contour
