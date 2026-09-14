@@ -25,6 +25,7 @@ P1 means a wrong result or serious scaling failure in a supported workflow. P2 m
 | `src-js/views-editor/src/panel-skeleton-parameters.js` | 2,612 | Parameter controls, streaming edits, preset identity, source defaults, selection refresh and dispatch inspected; PS1–PS3. |
 | `src-js/fontra-core/src/harmonization.js` | 2,452 | G2/G3 construction, candidate ranking, rounding, convergence, reports and balance inspected; H1–H5. Numerical accuracy is not exhaustively established by static inspection. |
 | `src-js/views-editor/src/skeleton-editing.js` | 2,138 | Mutation/rollback pipeline, remapping, point/rib/insertion/generated-handle drags and tension adapters inspected; SE1–SE3, S2 and M4. |
+| `src-js/views-editor/src/panel-transformation.js` | 2,109 | Transform/stream paths, bounds, boolean linkage, alignment, origin picking and harmonization UI inspected; T1–T5. |
 | Remaining feature files | — | Pending; final coverage inventory will distinguish deep review from supporting inspection. |
 
 ## 1. Kerning view — kerning.js
@@ -494,6 +495,48 @@ Locations: `skeleton-editing.js:1609–1629`, `1638–1649`, `1709–1788`, `186
 Each selected generated handle creates its own pin bake, regenerating the entire skeleton with that segment pin cleared. For two selected handles A and B of the same pinned segment, A's executor adds B's bake and sets A's offset including A's bake. B's executor then adds A's bake to A's already-baked offset before setting B's own offset. A receives the contribution twice; which endpoint gets it depends on selection iteration order. This requires nonzero pin contribution and attached handles, not malformed data.
 
 Recommendation: prepare one bake per segment/side, apply it once to the working skeleton, then apply each selected handle's delta against the common post-bake baseline. This simultaneously removes repeated full generation and makes the result independent of selection order. Generation must use the same source options as the final mutation (S2). No tests were run.
+
+## 12. Transformation panel — panel-transformation.js
+
+### T1 — P1, confirmed integration gap: master-local skeleton bounds are not resolved with the movement targets
+
+Locations: `panel-transformation.js:1241–1277`, `1387–1422`, `1752–1768`, `1843–1848`; `glyph-controller.js:863–882`; `skeleton-editing.js:577–598`.
+
+The transform entry resolves skeleton IDs across masters by ordinal, but both bounds readers receive the original selection IDs and search each target master literally. A skeleton-only selection can therefore have a valid movement entry but undefined bounds in another master. `getPinPoint` immediately dereferences those bounds. With coincident but unrelated IDs, the transform instead uses the wrong origin. Align/distribute has the same mismatch: its per-layer bounds are computed without the reference skeleton and its descriptors assume all bounds exist.
+
+Recommendation: resolve each layer's selection once and use that same resolved selection for bounds, point movement, metadata and eligibility. Handle an incompatible layer before any edit is applied. Avoid keeping a second ad hoc skeleton-bounds pass beside `getSelectionBounds`, which already handles skeleton points.
+
+### T2 — P1, acknowledged but still unsafe integration: whole-path booleans retain obsolete generated linkage
+
+Locations: `panel-transformation.js:1184–1191`; `skeleton-editing.js:325–382`.
+
+Whole-path union/subtract/intersect/exclude replace the path but leave skeleton data and its generated contour indices intact. The inline comment acknowledges this limitation. A later skeleton edit trusts any old indices still within the new path's range, deleting or overwriting whatever boolean-result contours now occupy them. If no old index remains valid, regeneration can instead append the skeleton outline alongside the boolean result. The problem is delayed corruption of the linkage, not merely that a boolean changed generated geometry.
+
+Recommendation: define the operation's contract: reject unsupported linked operations, or explicitly realize/detach the affected skeleton representation in the same undoable edit. Do not retain indices that no longer identify generated contours. Existing upstream boolean code is not itself classified as a fork addition; retaining the fork's new metadata across it is the integration defect.
+
+### T3 — P2/P3, avoidable repeated work: alignment regenerates per object and transform setup is duplicated
+
+Locations: `panel-transformation.js:1761–1787`, `1850–1872`, `1209–1317`, `1335–1457`.
+
+Every selected skeleton point becomes a separate movable object. Each object builds its own synthetic path and baseline, applies one delta, and regenerates the whole skeleton before the next object starts. K selected points therefore pay K complete edit/generation pipelines per layer. Batch point-specific deltas inside one skeleton mutation while preserving the intended smooth-handle interactions. The newly corrected reverse rollback order is necessary, but repeated `unshift` also shifts the accumulated array on every object; append and reverse once.
+
+The one-shot and streaming transform methods duplicate selection eligibility, reference-layer selection, factory setup, bounds and pinned-transform construction. T1 appears in both copies. Extract their common prepared operation, leaving stream throttling, cancellation and final commit in the stream owner. The existing stream correctly flushes its final value and restores on cancellation; those behaviors should survive the simplification.
+
+### T4 — P2, lifecycle inconsistency: hidden origin-pick mode still intercepts canvas input
+
+Locations: `panel-transformation.js:1547–1596`, `1804–1808`; `panel-selection.js:40–43`.
+
+Origin picking installs capture listeners on the canvas and window and changes the cursor. Normal pick/Escape cleanup exists, but `toggle(false)` never invokes it. Switching away from the Selection panel leaves a hidden mode that consumes the next canvas click as an origin pick. If the part is removed while armed, the global listener can also retain it until cleanup; ordinary page-lifetime ownership alone is not a leak. The one-shot pointerup suppressor is installed separately and is not removed on pointer cancellation.
+
+Recommendation: stop picking on panel deactivation, tool/context change and disposal; own the gesture's pointerup/cancel listeners in the same cleanup function. A single explicit lifecycle is simpler than independent once-listeners that may outlive the gesture.
+
+### T5 — P2, new interaction inconsistency: typed and scrubbed zero values mean different things
+
+Locations: `panel-transformation.js:554–570`, `685–698`, `724–739`.
+
+The inherited typed Scale Y path uses truthiness to treat 0 as an absent value and substitutes Scale X. The new Y scrub path applies 0 literally. Typed dimensions similarly substitute the old dimension for a zero target, while the new scrub path can collapse it to zero. Typing and dragging the same displayed value therefore produce different geometry. This is an inherited edge case newly exposed by a second input path, not a claim that the old truthiness code originated in this fork.
+
+Recommendation: define absent versus zero once with explicit null/undefined handling and share the conversion across typed and streamed input. Define the zero-size selection case before division as well. No tests were run.
 
 ## Validation completed before the code-only request
 
