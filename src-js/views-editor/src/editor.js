@@ -3755,33 +3755,28 @@ export class EditorController extends ViewController {
     this.insertGlyphInfos([glyphInfo], where, true);
   }
 
+  // The middle button pans whatever modifiers are held, the same way the Space
+  // hand shortcut matches every modifier combination. Refusing Ctrl here handed
+  // a Ctrl+middle drag to the current tool instead, so the canvas did not move.
   pointerDownHandler(event) {
-    if (
-      event.button !== 1 ||
-      event.altKey ||
-      event.shitKey ||
-      event.ctrlKey ||
-      event.metaKey
-    ) {
+    if (event.button !== 1) {
       return;
     }
 
     this.canvasController.canvas.setPointerCapture(event.pointerId);
 
+    this._middleButtonHand = true;
     this.savedSelectedToolIdentifier = this.selectedToolIdentifier;
     this.setSelectedTool("hand-tool");
   }
 
   pointerUpHandler(event) {
-    if (
-      event.button !== 1 ||
-      event.altKey ||
-      event.shitKey ||
-      event.ctrlKey ||
-      event.metaKey
-    ) {
+    // Only a press that took the hand gives it back, so a modifier pressed or
+    // released during the drag cannot strand the hand tool or skip the restore.
+    if (event.button !== 1 || !this._middleButtonHand) {
       return;
     }
+    this._middleButtonHand = false;
 
     this.canvasController.canvas.releasePointerCapture(event.pointerId);
 
