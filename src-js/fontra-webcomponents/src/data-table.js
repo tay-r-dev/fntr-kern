@@ -72,9 +72,15 @@ const DATA_TABLE_STYLES = `
     user-select: text;
   }
 
+  /* Width stays weak, so a caller's own width class wins. */
   :where(.data-table-input, .data-table-select) {
-    box-sizing: border-box;
     width: 100%;
+  }
+
+  /* The look is not weak: it has to beat a page's global input rule. */
+  .data-table .data-table-input,
+  .data-table .data-table-select {
+    box-sizing: border-box;
     min-width: 0;
     margin: 0;
     padding: 0 0.15em;
@@ -87,7 +93,7 @@ const DATA_TABLE_STYLES = `
     -webkit-appearance: none;
   }
 
-  :where(.data-table-input[type="number"]) {
+  .data-table .data-table-input[type="number"] {
     text-align: right;
     -moz-appearance: textfield;
   }
@@ -98,16 +104,17 @@ const DATA_TABLE_STYLES = `
     margin: 0;
   }
 
-  :where(.data-table-select:not(:disabled)) {
+  .data-table .data-table-select:not(:disabled) {
     cursor: pointer;
   }
 
-  :where(.data-table tr:hover .data-table-input:not(:disabled),
-    .data-table tr:hover .data-table-select:not(:disabled)) {
+  .data-table tr:hover .data-table-input:not(:disabled),
+  .data-table tr:hover .data-table-select:not(:disabled) {
     border-color: var(--horizontal-rule-color, #ccc);
   }
 
-  :where(.data-table-input:focus, .data-table-select:focus) {
+  .data-table .data-table-input:focus,
+  .data-table .data-table-select:focus {
     border-color: var(--foreground-color);
     outline: none;
   }
@@ -178,14 +185,21 @@ const DATA_TABLE_STYLES = `
   ).join("\n  ")}
 `;
 
-let stylesAdded = false;
+const styledRoots = new WeakSet();
 
-function addDataTableStyles() {
-  if (stylesAdded) {
+// Styles go into the root the table is mounted in: the document's head, or a
+// shadow root when the table sits inside a panel, where head styles never
+// reach.
+function addDataTableStyles(element) {
+  const root = element.getRootNode();
+  if (styledRoots.has(root)) {
     return;
   }
-  stylesAdded = true;
-  html.addStyleSheet(DATA_TABLE_STYLES);
+  styledRoots.add(root);
+  html.addStyleSheet(
+    DATA_TABLE_STYLES,
+    root instanceof ShadowRoot ? root : document.head
+  );
 }
 
 // A row. `rowId` is what selection, windowing and `onRowClick` know it by.
@@ -358,7 +372,6 @@ export class DataTable extends HTMLElement {
 
   constructor() {
     super();
-    addDataTableStyles();
     this._columns = [];
     this._sortColumn = null;
     this._sortDirection = "asc";
@@ -382,6 +395,10 @@ export class DataTable extends HTMLElement {
     this.onColumnToggle = null;
     // Called after every row render, window or full.
     this.onRowsRender = null;
+  }
+
+  connectedCallback() {
+    addDataTableStyles(this);
   }
 
   // Column descriptor shape: { label, key, sortKey, sortable, selectAll,
