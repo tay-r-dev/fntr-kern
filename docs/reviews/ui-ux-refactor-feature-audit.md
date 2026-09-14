@@ -538,6 +538,42 @@ The inherited typed Scale Y path uses truthiness to treat 0 as an absent value a
 
 Recommendation: define absent versus zero once with explicit null/undefined handling and share the conversion across typed and streamed input. Define the zero-size selection case before division as well. No tests were run.
 
+## Repository-wide performance-pattern scan
+
+A static text scan covered all **227 JavaScript/TypeScript files under `src-js` outside `tests` and `node_modules`**. It searches for candidate operations; it does not execute application code or tests. Matches in standalone comment lines were excluded, but this is not an AST analysis: inline comments, strings and multiline expressions can still create false positives or omissions. Added-line attribution uses the comparison-base-to-target diff and does not by itself prove an operation is unique to the fork.
+
+| Candidate category | Occurrences across scanned files |
+| --- | ---: |
+| Copies and serialization | 130 |
+| Collection searches | 638 |
+| Collection transforms/sorts | 1,105 |
+| Listener/timer/frame registration | 488 |
+| Layout reads | 55 |
+| Front insertion/removal and splicing | 108 |
+| `await` expressions | 1,137 |
+
+There are **3,661 category occurrences**, of which **1,694 occur on added/changed lines**. Categories overlap; these are neither distinct lines nor issue counts. The collection-transform category matches individual operations, not necessarily chains. The await category does not establish that independent operations are serialized. A listener registration does not establish a leak.
+
+The strongest next candidates among files without a completed primary review are:
+
+| File | Candidate occurrences on added lines | Follow-up question |
+| --- | ---: | --- |
+| `panel-letterspacer.js` | 90 | Do bulk spacing and refresh paths repeat independent reads or measurements? |
+| `panel-skeleton-defaults.js` | 57 | Are presets/defaults repeatedly normalized or copied during interaction? |
+| `skeleton-panel-model.js` | 51 | How much selection data is serialized and searched per refresh? |
+| `tunni-interactions.js` | 39 | Which copies and geometry derivations run per pointer frame? |
+| `edit-tools-skeleton.js` | 39 | Are topology edits and preview updates unnecessarily repeated? |
+| `marker-editing.js` | 38 | Does each selected marker trigger a full-data traversal? |
+| `skeleton-panel-edits.js` | 35 | Can related edits share normalization and regeneration? |
+| `composition-editing.js` | 35 | Are component/dependency traversals bounded and reused? |
+| `data-table.js` | 34 | How many rows and DOM nodes are rebuilt per change? |
+
+These are triage questions, not findings. Raw counts are influenced by file size and should not be interpreted as a ranking of runtime cost. The ongoing largest-file review remains necessary for state, identity, numerical and undo defects that syntax searches cannot detect.
+
+One inspected false positive: `visualization-layer-snapping.js:25–33` schedules animation frames, but deduplicates outstanding requests and `drawIndicator` stops requesting them after its 180 ms transition. It is not an always-running poll. This supporting inspection is not a complete review of every snapping behavior.
+
+The scan corroborates where to investigate existing findings: cache copying (K3), repeated generation (PS3/SE3/T3), global rescoring (H2), per-frame geometry allocation (V4/SM2/SE2), and listener ownership (D1/T4). Confirming additional defects requires reading the matched function, its callers, data size and lifecycle. Performance magnitudes require measurement later; this audit remains code-only as requested.
+
 ## Validation completed before the code-only request
 
 - `npm ci --ignore-scripts --no-audit --no-fund` succeeded; no tracked dependency file changed.
