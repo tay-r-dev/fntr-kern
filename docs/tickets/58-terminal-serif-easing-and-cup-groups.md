@@ -1,6 +1,6 @@
 # 58: Terminal: Serif Easing and Cup groups
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 57 (Terminal: Serif Wing and Bracket groups with chains)
 

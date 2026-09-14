@@ -3,10 +3,7 @@ import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { isScrubCancelled } from "@fontra/core/number-scrub.js";
-import {
-  DEFAULT_UNDERSIDE_CUP_TENSION,
-  MAX_TIP_CUT_ANGLE,
-} from "@fontra/core/serif-geometry.js";
+import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
 import { DEFAULT_CAP_BALL_EASE_CURVATURE } from "@fontra/core/skeleton-generator.js";
 import {
   SERIF_HALF_FIELDS,
@@ -756,6 +753,21 @@ export default class SkeletonParametersPanel {
       chainSpacer(),
       sideCheck("right"),
     ]);
+    // Ticket 58: the Cup group, three single fields on one row.
+    this.serifCupFields = {
+      cup: this._makeSerifCupField("cup", "serif-underside-cup"),
+      cupbalance: this._makeSerifCupField("cupbalance", "serif-underside-cup-balance"),
+      cuptension: this._makeSerifCupField("cuptension", "serif-underside-cup-tension"),
+    };
+    this.serifCupBlock = html.div(
+      { style: "display: flex; flex-direction: column; gap: 0.35rem;" },
+      [
+        html.span({ class: "selection-row-group-label" }, [
+          translate("sidebar.skeleton-parameters.serif-group-cup"),
+        ]),
+        fieldRow(Object.values(this.serifCupFields)),
+      ]
+    );
     this.forceAngleRow = html.div({ class: "selection-row-group" }, [
       html.span({ class: "selection-row-group-label" }, [
         translate("sidebar.skeleton-parameters.force-angle"),
@@ -896,6 +908,34 @@ export default class SkeletonParametersPanel {
       this._showSerifForceMenu(event, side, field)
     );
     return element;
+  }
+
+  // One Cup field, named as _onSerifChange names it. The depth drags by a
+  // change, as its label scrub did; the balance and the tension stream their
+  // percent, as their sliders did.
+  _makeSerifCupField(name, labelKey) {
+    return this._makeCompactField(`serif:${name}`, labelKey, {
+      scrub: (valueStream, startValue) =>
+        name === "cup"
+          ? nudgePanelSerifValueStream(
+              this.sceneController,
+              this._widthPoints(),
+              serifNudgeTargets("cup"),
+              changesFrom(valueStream, startValue),
+              this._undo("set-serif")
+            )
+          : setPanelSerifParametersStream(
+              this.sceneController,
+              this._widthPoints(),
+              valueStream,
+              (value) =>
+                name === "cuptension"
+                  ? { undersideCupTension: Number(value) / 100 }
+                  : { undersideCupBalance: Number(value) / 100 },
+              this._undo("set-serif")
+            ),
+      commit: (value) => this._onSerifChange(name, value),
+    });
   }
 
   // Right-click on a serif field: copy that field, its group, or every half
@@ -2045,15 +2085,6 @@ export default class SkeletonParametersPanel {
       });
     }
 
-    // Every serif length is a plain number whose label scrubs, like the rest of
-    // the panel. The minimum is declared here rather than left to the model.
-    const pushLength = (key, labelKey, summary, minValue = 0) => {
-      this._pushSummaryNumber(formContents, key, labelKey, summary, {
-        disabled: !canEdit,
-        ...(minValue == null ? {} : { minValue }),
-      });
-    };
-
     formContents.push({ type: "divider" });
     // The serif axis is independent of the rib angle lock above: the lock sets
     // the rib the cap is built on, this sets which way the wings run. Both
@@ -2121,32 +2152,37 @@ export default class SkeletonParametersPanel {
         { step: 1, disabled: !canEdit }
       );
     }
-    // One curve across the whole terminal, so these are shared rather than per
-    // half: a cup on each half would meet at a break in the middle. Three
-    // numbers: the depth sets how deep the foot centre sits, the balance slides
-    // that centre from tip to tip, and the tension sets how long the four
-    // handles reaching it are.
-    pushLength("serif:cup", "serif-underside-cup", serif.undersideCup);
-    this._pushSummarySlider(
-      formContents,
+    // Ticket 58: the Cup group, three single fields, because the cup belongs to
+    // the terminal rather than to a half: a cup on each half would meet at a
+    // break in the middle. The depth sets how deep the foot centre sits, the
+    // balance slides that centre from tip to tip, and the tension sets how long
+    // the four handles reaching it are.
+    this._refreshCompactField(
+      this.serifCupFields.cup,
+      "serif:cup",
+      serif.undersideCup,
+      {
+        disabled: !canEdit,
+        minValue: 0,
+      }
+    );
+    this._refreshCompactField(
+      this.serifCupFields.cupbalance,
       "serif:cupbalance",
-      "serif-underside-cup-balance",
       percentSummary(serif.undersideCupBalance),
-      -100,
-      100,
-      0,
-      { step: 1, disabled: !canEdit }
+      { disabled: !canEdit, minValue: -100, maxValue: 100 }
     );
-    this._pushSummarySlider(
-      formContents,
+    this._refreshCompactField(
+      this.serifCupFields.cuptension,
       "serif:cuptension",
-      "serif-underside-cup-tension",
       percentSummary(serif.undersideCupTension),
-      0,
-      100,
-      Math.round(DEFAULT_UNDERSIDE_CUP_TENSION * 100),
-      { step: 1, disabled: !canEdit }
+      { disabled: !canEdit, minValue: 0, maxValue: 100 }
     );
+    formContents.push({
+      type: "single-icon",
+      element: this.serifCupBlock,
+      layoutKey: "serifCupBlock",
+    });
     this._buildSerifPresetControls(formContents, serif, canEdit);
   }
 
