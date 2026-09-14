@@ -219,6 +219,9 @@ export function formContentsLayoutSignature(formContents) {
         // with. Folding their text in makes any change to what they offer count
         // as a layout change, which rebuilds them.
         item.element?.textContent ?? "",
+        // A row built once and re-placed carries no text of its own, so two
+        // different rows would read alike; its layoutKey names which one it is.
+        item.layoutKey ?? "",
       ].join("")
     )
     .join("");
@@ -1401,8 +1404,16 @@ export default class SkeletonParametersPanel {
       disabled: sidesGate.disabled || linkedClosed,
       minValue: 0,
     });
-    formContents.push({ type: "single-icon", element: this.widthTotalRow });
-    formContents.push({ type: "single-icon", element: this.widthSidesRow });
+    formContents.push({
+      type: "single-icon",
+      element: this.widthTotalRow,
+      layoutKey: "widthTotalRow",
+    });
+    formContents.push({
+      type: "single-icon",
+      element: this.widthSidesRow,
+      layoutKey: "widthSidesRow",
+    });
 
     // Ticket 52: Force angle, under the widths. The rib angle lock is a
     // property of the point's rib, so every selected point offers it. A mixed
@@ -1421,7 +1432,11 @@ export default class SkeletonParametersPanel {
       checked: !lockMode.mixed && (lockMode.value ?? "stroke") === value,
     }));
     this.forceAngleOverflow.disabled = !lockMode.canEdit;
-    formContents.push({ type: "single-icon", element: this.forceAngleRow });
+    formContents.push({
+      type: "single-icon",
+      element: this.forceAngleRow,
+      layoutKey: "forceAngleRow",
+    });
 
     // Ticket 47: Lock, Link and Reset. Tied ribs only has an effect on a smooth
     // point whose one handle faces away from a straight segment; harmless
@@ -1461,7 +1476,11 @@ export default class SkeletonParametersPanel {
     // The narrow reset clears one generated handle and leaves its pair alone
     // (5.3), so it is live only with exactly one of them selected.
     this.resetThisHandleButton.disabled = !this._singleGeneratedHandle;
-    formContents.push({ type: "single-icon", element: this.generationIconRow });
+    formContents.push({
+      type: "single-icon",
+      element: this.generationIconRow,
+      layoutKey: "generationIconRow",
+    });
     // Detached has no place in the image, so it stays a checkbox under the row
     // until the designer places it. It does not move the handle; it changes how
     // the handle's stored offset is measured, so it is offered whatever is
@@ -1514,7 +1533,11 @@ export default class SkeletonParametersPanel {
     this.terminalKindControl.value = capStyle.mixed
       ? undefined
       : (capStyle.value ?? "butt");
-    formContents.push({ type: "single-icon", element: this.terminalKindRow });
+    formContents.push({
+      type: "single-icon",
+      element: this.terminalKindRow,
+      layoutKey: "terminalKindRow",
+    });
     // Each kind shows its own fields. Radius maps 20 discrete positions
     // logarithmically onto the [1/128, 1/4] ratio range; tension is edited in
     // percent. Both are converted back in capValuesFromField.
@@ -1541,7 +1564,11 @@ export default class SkeletonParametersPanel {
         },
         { minValue: 0, maxValue: 100 }
       );
-      formContents.push({ type: "single-icon", element: this.roundedRow });
+      formContents.push({
+        type: "single-icon",
+        element: this.roundedRow,
+        layoutKey: "roundedRow",
+      });
     } else if (styleValue === "square") {
       this._refreshCompactField(
         this.capFields.angle,
@@ -1557,7 +1584,11 @@ export default class SkeletonParametersPanel {
         "cap:distance",
         cap.capDistance
       );
-      formContents.push({ type: "single-icon", element: this.squareRow });
+      formContents.push({
+        type: "single-icon",
+        element: this.squareRow,
+        layoutKey: "squareRow",
+      });
     } else if (styleValue === "drop") {
       const percentOf = (summary, fallback) => ({
         value: Math.round((summary.value ?? fallback) * 100),
@@ -1587,7 +1618,11 @@ export default class SkeletonParametersPanel {
         percentOf(cap.capBallEasing, DEFAULT_CAP_BALL_EASING),
         { minValue: 0, maxValue: CAP_BALL_EASING_MAX }
       );
-      formContents.push({ type: "single-icon", element: this.ballRow });
+      formContents.push({
+        type: "single-icon",
+        element: this.ballRow,
+        layoutKey: "ballRow",
+      });
       formContents.push({
         type: "select",
         key: "cap:ballside",
@@ -1672,8 +1707,16 @@ export default class SkeletonParametersPanel {
         { disabled, minValue: 0, maxValue: 100 }
       );
     }
-    formContents.push({ type: "single-icon", element: this.cornerDistanceRow });
-    formContents.push({ type: "single-icon", element: this.cornerCurvatureRow });
+    formContents.push({
+      type: "single-icon",
+      element: this.cornerDistanceRow,
+      layoutKey: "cornerDistanceRow",
+    });
+    formContents.push({
+      type: "single-icon",
+      element: this.cornerCurvatureRow,
+      layoutKey: "cornerCurvatureRow",
+    });
   }
 
   // An insertion point's own parameters: the two widths and the easing.
