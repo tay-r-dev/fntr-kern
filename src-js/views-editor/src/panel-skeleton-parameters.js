@@ -592,6 +592,30 @@ export default class SkeletonParametersPanel {
         this.widthPresetUpdateButton,
       ]
     );
+    // Ticket 50: the terminal kind, five across, writing the cap style. Picking
+    // a kind changes which section the panel shows, so the rebuild waits for
+    // the edit's own echo, as the serif sides row does. Picking Serif applies
+    // Egyptian, through the same style writer the select used.
+    this.terminalKindControl = html.createDomElement("segmented-control", {
+      options: [
+        ["butt", "flat"],
+        ["square", "square"],
+        ["round", "round"],
+        ["drop", "drop"],
+        ["serif", "serif"],
+      ].map(([value, labelKey]) => ({
+        value,
+        label: translate(`sidebar.skeleton-parameters.cap-style.${labelKey}`),
+      })),
+    });
+    this.terminalKindControl.addEventListener("change", (event) => {
+      this._rebuildOnOwnEcho = true;
+      this._runOwnEdit(() => this._onCapChange("style", event.detail.value));
+    });
+    this.terminalKindRow = html.div({ style: "display: flex;" }, [
+      this.terminalKindControl,
+    ]);
+    this.terminalKindControl.style.flex = "1 1 auto";
     this.forceAngleRow = html.div({ class: "selection-row-group" }, [
       html.span({ class: "selection-row-group-label" }, [
         translate("sidebar.skeleton-parameters.force-angle"),
@@ -1357,44 +1381,26 @@ export default class SkeletonParametersPanel {
     );
   }
 
+  // Ticket 50: the Terminal section. It is offered only where every selected
+  // point is an open endpoint, and a point shows only its own kind's section
+  // (UI-REFACTOR §5.2): a terminal never shows beside Corner rounding, and never
+  // two terminals at once.
   _buildCapSection(formContents, widthPoints) {
     const cap = summarizeSkeletonCapSelection(widthPoints);
     const capStyle = summarizeSkeletonCapStyleSelection(widthPoints);
+    if (!capStyle.canEdit) {
+      return;
+    }
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
       label: translate("sidebar.skeleton-parameters.caps"),
     });
-    formContents.push({
-      type: "select",
-      key: "cap:style",
-      label: translate("sidebar.skeleton-parameters.cap-style"),
-      value: capStyle.mixed ? "" : (capStyle.value ?? "butt"),
-      disabled: !capStyle.canEdit,
-      options: [
-        ...(capStyle.mixed ? [{ value: "", label: "mixed", disabled: true }] : []),
-        {
-          value: "butt",
-          label: translate("sidebar.skeleton-parameters.cap-style.flat"),
-        },
-        {
-          value: "square",
-          label: translate("sidebar.skeleton-parameters.cap-style.square"),
-        },
-        {
-          value: "round",
-          label: translate("sidebar.skeleton-parameters.cap-style.round"),
-        },
-        {
-          value: "drop",
-          label: translate("sidebar.skeleton-parameters.cap-style.drop"),
-        },
-        {
-          value: "serif",
-          label: translate("sidebar.skeleton-parameters.cap-style.serif"),
-        },
-      ],
-    });
+    // A mixed selection lights no segment and shows no section.
+    this.terminalKindControl.value = capStyle.mixed
+      ? undefined
+      : (capStyle.value ?? "butt");
+    formContents.push({ type: "single-icon", element: this.terminalKindRow });
     // Donor parity: cap parameters appear as sliders, only for the styles
     // they apply to. Radius maps 20 discrete slider positions logarithmically
     // onto the [1/128, 1/4] ratio range; tension is edited in percent. Both
@@ -1550,6 +1556,11 @@ export default class SkeletonParametersPanel {
   // gizmo use. Linked shows one pair and writes both sides.
   _buildCornerSection(formContents, widthPoints) {
     const corner = summarizeSkeletonCornerSelection(widthPoints);
+    // Ticket 50: a selected corner shows Corner rounding, and nothing else
+    // does. The section used to show greyed for every other point.
+    if (!corner.canEdit) {
+      return;
+    }
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",

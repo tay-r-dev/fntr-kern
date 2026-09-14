@@ -1,6 +1,6 @@
 # 50: Terminal: kind picker and one section per point
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Blocked by:** 42 (Selection: Harmonize method as a segmented control), 05 (Merge the Transformation and Skeleton parameters panels)
 
