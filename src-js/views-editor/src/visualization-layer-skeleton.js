@@ -851,7 +851,18 @@ registerVisualizationLayerDefinition({
       for (const segment of buildSkeletonTunniSegments(contour)) {
         const points = segmentToTunniPoints(segment);
         if (points) {
-          drawTunniTensionLabel(context, points, parameters);
+          drawTunniTensionLabel(
+            context,
+            model.tunniGizmoReveal?.alpha(
+              tunniGizmoKey(
+                "skeleton",
+                "curvature",
+                skeletonTunniSegmentId(contour, segment)
+              )
+            ) ?? 0,
+            points,
+            parameters
+          );
         }
       }
     });
@@ -1030,11 +1041,20 @@ registerVisualizationLayerDefinition({
       skeletonData,
       positionedGlyph.glyph.path
     )) {
+      // Shown with its curvature gizmo and faded with it.
+      const alpha =
+        model.tunniGizmoReveal?.alpha(
+          tunniGizmoKey("generated", "curvature", generatedTunniSegmentId(segment))
+        ) ?? 0;
+      if (!(alpha > 0)) {
+        continue;
+      }
       const curvature = getGeneratedSegmentCurvature(skeletonData, segment);
       const anchor = calculateCurvatureGizmoPoint(segment.points);
       if (!curvature || !anchor) {
         continue;
       }
+      context.globalAlpha = alpha;
       // Straight above the gizmo, clear of the node. Placing it along the axis
       // instead put it where the gizmo and its stub already are, and an offset
       // that follows the axis moves the number around as the segment turns —
@@ -1047,6 +1067,7 @@ registerVisualizationLayerDefinition({
         formatGeneratedCurvature(curvature),
         curvature.pinned ? parameters.pinnedColor : parameters.color
       );
+      context.globalAlpha = 1;
     }
   },
 });

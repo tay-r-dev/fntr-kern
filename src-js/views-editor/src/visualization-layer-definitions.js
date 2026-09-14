@@ -2204,7 +2204,7 @@ registerVisualizationLayerDefinition({
 });
 
 // The Tunni gizmos on ordinary curves. Each gizmo shows only once the cursor has
-// rested near it, and fades in and out (tunni-gizmos.js); the labels always show.
+// rested near it, and fades in and out (tunni-gizmos.js); a label follows its gizmo.
 // A layer that is off takes its gizmo's function with it.
 function getTunniSkeletonData(positionedGlyph, model) {
   const editLayerName =
@@ -2357,22 +2357,31 @@ registerVisualizationLayerDefinition({
     ) {
       return;
     }
-    for (const { segment } of iterBasicTunniSegments(
+    for (const { segment, id } of iterBasicTunniSegments(
       positionedGlyph.glyph.path,
       getTunniSkeletonData(positionedGlyph, model)
     )) {
-      drawTunniTensionLabel(context, segment.points, parameters);
+      drawTunniTensionLabel(
+        context,
+        model.tunniGizmoReveal?.alpha(tunniGizmoKey("basic", "curvature", id)) ?? 0,
+        segment.points,
+        parameters
+      );
     }
   },
 });
 
-export function drawTunniTensionLabel(context, segmentPoints, parameters) {
-  if (!hasForwardTangentIntersection(segmentPoints)) {
+// A label shows with its curvature gizmo and fades with it, so `alpha` is that
+// gizmo's reveal opacity.
+export function drawTunniTensionLabel(context, alpha, segmentPoints, parameters) {
+  if (!(alpha > 0) || !hasForwardTangentIntersection(segmentPoints)) {
     return;
   }
   const [p0, p1, p2, p3] = segmentPoints;
   const tension = calculateSegmentTension(p1, p0, p2, p3);
   const anchor = calculateCurvatureGizmoPoint(segmentPoints);
+  context.save();
+  context.globalAlpha = alpha;
   drawPointStyleLabel(
     context,
     anchor.x + parameters.labelInset,
@@ -2380,6 +2389,7 @@ export function drawTunniTensionLabel(context, segmentPoints, parameters) {
     tension.toFixed(2),
     parameters.labelColor
   );
+  context.restore();
 }
 
 export function drawDiamondNode(context, point, size, fill) {
