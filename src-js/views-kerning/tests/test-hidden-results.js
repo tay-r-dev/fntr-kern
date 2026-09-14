@@ -4,7 +4,7 @@ import {
   rowVisibleForHiddenState,
   rowId,
 } from "../src/results-model.js";
-import { retainVisible } from "../src/results-selection.js";
+import { retainVisible } from "@fontra/web-components/table-selection.js";
 
 // Task 11, spec F10/F17. Three pure pieces named in the brief: the
 // junk/hidden field-mapping decision, the hidden-state visibility

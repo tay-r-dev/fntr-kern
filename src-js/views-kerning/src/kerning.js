@@ -209,7 +209,7 @@ import {
   retainVisible,
   selectRange,
   selectRow,
-} from "./results-selection.js";
+} from "@fontra/web-components/table-selection.js";
 
 // Spec §2.4: the three control glyphs calibration reads.
 const CONTROL_GLYPH_NAMES = ["l", "n", "o"];
@@ -2267,7 +2267,7 @@ export class KerningViewController extends ViewController {
 
     // Task 3 (spec F04/F24/F25): highlight (preview selection) and tick
     // (action-target selection) are two independent Sets of row IDs, kept
-    // outside the DOM -- see results-selection.js. renderPairTable prunes
+    // outside the DOM -- see table-selection.js. renderPairTable prunes
     // this after every rebuild (F25); Deselect below clears it (F24).
     this.resultSelection = deselectAll();
 
@@ -4385,7 +4385,7 @@ export class KerningViewController extends ViewController {
   // Task 8: a class-summary row is now the SAME kind of row as an
   // individual pair row -- clickable, Shift-clickable, tickable,
   // highlightable, through the exact same selectRow/tickRow/retainVisible
-  // mechanism buildPairRowElement uses (results-selection.js). It is not a
+  // mechanism buildPairRowElement uses (table-selection.js). It is not a
   // separate, non-interactive display element; the only difference from a
   // pair row is that its Glyph L/Glyph R columns show class names (F32)
   // instead of glyph names. "Left class"/"Right class" show each side's
@@ -6245,7 +6245,7 @@ export class KerningViewController extends ViewController {
 
     // Glyph L (name) / Current / Proposed / Delta / Glyph R (name) /
     // Apply / Hide, in that order. No tick: selection is the row itself
-    // (see results-selection.js), and a row's actions act on every selected
+    // (see table-selection.js), and a row's actions act on every selected
     // row.
     const leftCell = document.createElement("td");
     const leftLabel = document.createElement("span");
@@ -6538,7 +6538,7 @@ export class KerningViewController extends ViewController {
   // "remove exception" (that stays its own, separate control -- plan
   // Task 10, not built yet). First press arms and shows the target count;
   // a second press with the SAME ticked set commits. Any change to the
-  // ticked set between presses disarms (results-selection.js's pressReset,
+  // ticked set between presses disarms (table-selection.js's pressReset,
   // called via refreshResetArmState from every place resultSelection.ticked
   // can change).
   //

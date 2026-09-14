@@ -1,6 +1,7 @@
-// Pure selection/reset-arming state transitions. Spec F04 (row selection),
-// F20 (double-press Reset), F24 (Deselect), F25 (filtered-out rows lose
-// selection).
+// The shared table's pure selection and reset-arming state transitions,
+// moved from the kerning view so every <data-table> selects the same way.
+// Spec F04 (row selection), F20 (double-press Reset), F24 (Deselect), F25
+// (filtered-out rows lose selection).
 //
 // State lives outside the DOM: `{selected}`, a Set of row IDs
 // (results-model.js's rowId). kerning.js renders from this state; it never

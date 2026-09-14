@@ -1,7 +1,7 @@
 {
   "name": "@fontra/web-components",
   "scripts": {
-    "test": "echo \"No test specified for @fontra/web-components\""
+    "test": "mocha tests --extension js --reporter spec"
   },
   "version": "0.0.1",
   "exports": {

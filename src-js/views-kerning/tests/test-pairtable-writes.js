@@ -10,7 +10,7 @@ import { FontSourcesInstancer } from "@fontra/core/font-sources-instancer.js";
 import { KerningController } from "@fontra/core/kerning-controller.js";
 import { deepCopyObject } from "@fontra/core/utils.ts";
 import { expect } from "chai";
-import { pressReset } from "../src/results-selection.js";
+import { pressReset } from "@fontra/web-components/table-selection.js";
 import { explicitPairExists, rowId } from "../src/results-model.js";
 
 describe("Task 4: reset-selected write-and-undo, real KerningController", () => {

@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import * as inputTokens from "../src/input-tokens.js";
-import { retainVisible, selectRange, selectRow } from "../src/results-selection.js";
+import { retainVisible, selectRange, selectRow } from "@fontra/web-components/table-selection.js";
 import { layoutPairPreview, normalizePairsPerRow } from "../src/pair-preview-layout.js";
 import {
   explicitPairExists,

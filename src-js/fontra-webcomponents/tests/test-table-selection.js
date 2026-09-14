@@ -5,9 +5,9 @@ import {
   retainVisible,
   selectRange,
   selectRow,
-} from "../src/results-selection.js";
+} from "../src/table-selection.js";
 
-describe("results-selection", () => {
+describe("table-selection", () => {
   it("ordinary click selects alone; ctrl-click toggles individually", () => {
     let s = { selected: new Set() };
     s = selectRow(s, "a", false);
