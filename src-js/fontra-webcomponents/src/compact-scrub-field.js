@@ -81,10 +81,18 @@ export class CompactScrubField extends UnlitElement {
       opacity: 0.55;
     }
 
+    /* Stretched to the box's height, so a blank value -- a mixed selection,
+       or no selection at all -- still has something to click. Centred on its
+       own text line it collapsed to zero height, and the keyboard editor it
+       opens was out of reach. */
     .value {
       flex: 0 0 auto;
+      align-self: stretch;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
       min-width: 2.5em;
-      text-align: right;
+      min-height: 1.2em;
       font-family: monospace;
       cursor: text;
     }
