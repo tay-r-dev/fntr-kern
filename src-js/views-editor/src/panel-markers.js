@@ -187,10 +187,7 @@ export default class MarkersPanel extends Panel {
       { label: translate("sidebar.markers.column.group") },
       { label: translate("sidebar.markers.column.action") },
     ];
-    // §7.1: both tables carry a vertical resize grip.
-    table.minHeight = 60;
-    table.resizable = true;
-    table.heightStorageKey = `fontra-markers-${kind}-table-height`;
+    // No scroll box and no grip: the table, and so the panel, sizes to its rows.
     const empty = html.div({ class: "markers-empty" }, [
       translate("sidebar.markers.none"),
     ]);
