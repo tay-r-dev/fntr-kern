@@ -76,4 +76,32 @@ For G positioned glyphs this adds O(G) traversal and arrays per repaint, includi
 
 Zoom/theme/visibility changes legitimately rebuild parameters. There is no unconditional per-draw layer rebuild here, and replacing the existing cache would add complexity without establishing a gain.
 
+## Natural handle solve
+
+Primary source: [natural-handle-solver.js](../../src-js/fontra-core/src/natural-handle-solver.js). Called by offsetCubicSide, which is used in skeleton generation and interactive ordinary-outline expansion.
+
+### R09 — Moderate: the same derivative samples are evaluated twice per side solve
+
+**Evidence:** `buildOffsetSamples:73–92` calls cubicPointAndDerivative at five fixed parameters. Later `pullWeightRatio:339–362` evaluates curvature at those same five parameters plus endpoints, invoking the same point/derivative helper again. The first pass also computes second derivatives that it discards.
+
+Reuse a per-solve table containing point, velocity, speed and curvature. Share skeleton-only samples across the two side solves where their input control points agree; width-dependent requested positions and cusp factors must remain side-specific. This is constant-factor work per segment, multiplied across regenerated segments, not a claim of an unbounded numerical solver.
+
+### R10 — Low priority: constant Bernstein coefficients are recomputed
+
+**Evidence:** `cubicBasis:28–36` is evaluated in both sample construction and `buildPerpendicularErrorSystem:106`, although the five sample parameters are fixed constants.
+
+Precompute the five basis records once. This saves repeated arithmetic and tiny objects, but its maximum gain per solve is small; prioritize projection and topology costs first. Do not turn this into a global geometry cache or change the quadrature/sample locations.
+
+### R11 — Low priority: discarded diagnostics still evaluate the objective
+
+**Evidence:** `solveNaturalHandles:365–389` computes perpendicularRms with another objective evaluation and square root. `offset-cubic.js:148–178` consumes the natural lengths and emits its own result without that RMS or the diagnostic pullWeightRatio field.
+
+Make diagnostic output opt-in or separate it from the interactive result if profiling later shows this code is hot. The pull ratio itself is necessary for regularization and must still be calculated; only the unused output and final RMS evaluation are avoidable.
+
+### R12 — Rejected: rectangle minimization has an uncontrolled search budget
+
+**Evidence:** `minimizeInsideRectangle:295–336` considers at most one interior solution, four boundary solutions and four corners. It has no recursive refinement or convergence loop.
+
+Its arrays and slice are small, bounded allocations. Scalar best-candidate tracking is possible, but this is not a likely major performance problem and should not be redesigned as an approximate solver merely because nested loops appear in the scan.
+
 <!-- review checkpoint -->
