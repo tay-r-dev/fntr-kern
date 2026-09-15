@@ -60,4 +60,20 @@ Read one rectangle and derive both corners using the same origin/magnification s
 
 If controllers are created and discarded within a live document, the global listener retains the old controller and wheel/timer work multiplies. The inspected editor normally owns its controller for the page lifetime, so this is not a demonstrated leak during ordinary drawing. Add explicit disposal if supporting in-page controller replacement; do not label existing page-lifetime ownership a leak.
 
+## Visualization orchestration
+
+Primary source: [visualization-layers.js](../../src-js/views-editor/src/visualization-layers.js), unchanged from the upstream comparison base.
+
+### R07 — Moderate: selection buckets are reconstructed for each draw
+
+**Evidence:** `editor.js:250–266` creates a new VisualizationContext for each normal or clean-scene draw. Its constructor calls `getGlyphsBySelectionMode:106–127`, which flattens all positioned lines and filters the glyph list twice, eagerly constructing buckets whether the active layers use them or not.
+
+For G positioned glyphs this adds O(G) traversal and arrays per repaint, including cursor-only repaints. Prepare buckets on positioned-line/selection/hover revisions, or compute only requested buckets within the frame. Preserve object identity and editing-mode semantics. This concerns orchestration of glyph lists, not the geometry sampling findings already reported elsewhere.
+
+### R08 — Rejected: every draw rebuilds every layer's parameter object
+
+**Evidence:** `drawVisualizationLayers:79–96` calls `buildLayers` only when `this.layers` is absent. Setters and toggles invalidate it deliberately. Unchanged draws reuse the prepared layers.
+
+Zoom/theme/visibility changes legitimately rebuild parameters. There is no unconditional per-draw layer rebuild here, and replacing the existing cache would add complexity without establishing a gain.
+
 <!-- review checkpoint -->
