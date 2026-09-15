@@ -33,8 +33,10 @@ export class PresetHeaderControl {
     });
     this.dropdown.style.setProperty("--multi-select-dropdown-height", TILE);
     // One fixed width for every preset dropdown, so a longer name does not move
-    // the buttons beside it; a name that does not fit ends in an ellipsis.
-    this.dropdown.style.setProperty("--multi-select-dropdown-width", "10em");
+    // the buttons beside it; a name that does not fit ends in an ellipsis. In
+    // rem, not em: the Generation dropdown sits in a section heading and the
+    // Terminal one in a row, and the two do not share a font size.
+    this.dropdown.style.setProperty("--multi-select-dropdown-width", "8.5rem");
     this.dropdown.singleChoice = true;
     this.dropdown.addEventListener("change", (event) => {
       const [value] = [].concat(event.detail.checked);
