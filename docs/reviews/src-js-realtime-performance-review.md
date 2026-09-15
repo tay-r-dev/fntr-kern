@@ -222,4 +222,14 @@ Build an object-identity-to-index map once and process each distinct group once.
 
 For these internal call sites, the while loop is bounded by contour length. No malformed-input scenario is needed to explain normal performance, and adding arbitrary iteration limits would not solve an established problem here.
 
+## Base-expand gesture
+
+Primary source: [base-expand-editing.js](../../src-js/views-editor/src/base-expand-editing.js).
+
+### R30 — Prioritize for multi-contour expansion: every other contour recomputes the same axis projection
+
+**Evidence:** `makeChangeForDelta:136–169` calls borrowOffsets for each contour other than the clicked contour. `borrowOffsets:53–72` reruns computeContourExpandOffsets on the identical axis contour, axis point and frame delta each time, then runs another zero-delta offset computation on the target contour just to obtain its member keys.
+
+Compute the shared projected distance once per frame. Prepare each contour's expanded target-index set and the clicked axis direction from the immutable drag baseline once per gesture. Fill offsets from that distance directly. With K contours, this removes K−1 repeated axis-contour preparations per frame. Preserve the existing clicked-contour selection-dependent corner direction; do not accidentally substitute the single-point selection used by borrowOffsets for that full selection.
+
 <!-- review checkpoint -->
