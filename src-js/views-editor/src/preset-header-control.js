@@ -3,10 +3,10 @@ import { translate } from "@fontra/core/localization.js";
 import "@fontra/web-components/icon-button.js";
 import "@fontra/web-components/multi-select-dropdown.js";
 
-// A section header's preset control: Add, Update and a dropdown. Generation
-// carries one for width presets (ticket 49) and Terminal one for the Square,
-// Rounded, Ball and Serif presets (tickets 56, 60); this is the one copy of it
-// (rail R-B). A caller that passes no `onUpdate` gets no Update button.
+// A section header's preset control: Add, Update, Lock, Refresh and a dropdown.
+// Generation carries one for width presets (ticket 49) and Terminal one for the
+// Square, Rounded, Ball and Serif presets (tickets 56, 60); this is the one copy
+// of it (rail R-B). A button whose callback the caller leaves out is not drawn.
 //
 // Picking an entry applies it at once. Update writes over the entry picked
 // last, which is remembered here. By default the dropdown shows no picked
@@ -14,17 +14,24 @@ import "@fontra/web-components/multi-select-dropdown.js";
 // ask for the picked entry to show (a check and its name on the button), for
 // Update to be live only when it says so, and for Update to take two presses.
 //
+// Lock binds the selection to the picked preset, and shows lit while it is
+// bound. Refresh brings bound points back to their presets, and shows lit while
+// a preset has changed since. Neither changes anything on its own.
+//
 // The caller owns the list, the capture and the writes. Items carry whatever
 // value the caller needs to find the entry again, typically its index in the
 // stored list, and may carry a shorter `name` for the button.
+const TILE = "1.8em";
+
 export class PresetHeaderControl {
-  constructor({ onPick, onAdd, onUpdate }) {
+  constructor({ onPick, onAdd, onUpdate, onLock, onRefresh }) {
     this.lastPicked = null;
     this._updateArmed = false;
     this._confirmUpdate = false;
     this.dropdown = html.createDomElement("multi-select-dropdown", {
       label: translate("sidebar.skeleton-parameters.width-preset"),
     });
+    this.dropdown.style.setProperty("--multi-select-dropdown-height", TILE);
     this.dropdown.singleChoice = true;
     this.dropdown.addEventListener("change", (event) => {
       const [value] = [].concat(event.detail.checked);
@@ -35,16 +42,14 @@ export class PresetHeaderControl {
       this._disarmUpdate();
       onPick(value);
     });
-    // Add and Update are the design's plus and arrow-up icons, ahead of the
-    // dropdown. An armed Update shows lit, and its tooltip asks for the second
-    // press. The glyph is inset in a square box, so it sits centred.
+    // Square tiles, the same size as the tiles in a Generation tray. The glyph
+    // is inset, so it sits centred.
     const iconButton = (src, tooltipKey, onclick) => {
       const button = html.createDomElement("icon-button", {
         "src": src,
         "data-tooltip": translate(tooltipKey),
         "data-tooltipposition": "top",
-        "style":
-          "display: block; box-sizing: border-box; width: 1.6em; height: 1.6em; padding: 0.3em;",
+        "style": `display: block; box-sizing: border-box; width: ${TILE}; height: ${TILE}; padding: 0.4em;`,
       });
       button.onclick = onclick;
       return button;
@@ -79,11 +84,31 @@ export class PresetHeaderControl {
           }
         )
       : null;
+    this.lockButton = onLock
+      ? iconButton(
+          "/tabler-icons/lock.svg",
+          "sidebar.skeleton-parameters.width-preset.lock",
+          () => onLock(this.lastPicked)
+        )
+      : null;
+    this.refreshButton = onRefresh
+      ? iconButton(
+          "/tabler-icons/refresh.svg",
+          "sidebar.skeleton-parameters.width-preset.refresh",
+          () => onRefresh()
+        )
+      : null;
     this.element = html.div(
       {
         style: "display: flex; gap: 0.1rem; align-items: center; font-weight: normal;",
       },
-      [this.addButton, ...(this.updateButton ? [this.updateButton] : []), this.dropdown]
+      [
+        this.addButton,
+        this.updateButton,
+        this.lockButton,
+        this.refreshButton,
+        this.dropdown,
+      ].filter(Boolean)
     );
   }
 
@@ -104,13 +129,16 @@ export class PresetHeaderControl {
   //
   // `showPicked` checks the picked entry and puts its name on the button.
   // `updateEnabled`, when given, is the caller's word on whether Update is
-  // live. `confirmUpdate` makes Update take two presses.
+  // live. `confirmUpdate` makes Update take two presses. `bond` is the
+  // selection's bond: `locked` (true, false or "mixed"), `lockEnabled`,
+  // `stale` and `refreshEnabled`.
   refresh({
     items,
     canCapture,
     showPicked = false,
     updateEnabled,
     confirmUpdate = false,
+    bond = null,
   }) {
     if (
       this.lastPicked != null &&
@@ -136,6 +164,15 @@ export class PresetHeaderControl {
         ? (picked.name ?? picked.label)
         : translate("sidebar.skeleton-parameters.width-preset");
     this.addButton.disabled = !canCapture;
+    if (this.lockButton) {
+      this.lockButton.on = bond?.locked === true;
+      this.lockButton.mixed = bond?.locked === "mixed";
+      this.lockButton.disabled = !bond?.lockEnabled;
+    }
+    if (this.refreshButton) {
+      this.refreshButton.on = !!bond?.stale;
+      this.refreshButton.disabled = !bond?.refreshEnabled;
+    }
     if (!this.updateButton) {
       return;
     }

@@ -58,15 +58,20 @@ export const SELECTION_ROW_GROUP_STYLES = `
 
   .selection-row-group-icons.tray overflow-button,
   .selection-row-group-icons.tray overflow-popover {
-    align-self: stretch;
+    box-sizing: border-box;
+    height: 1.8em;
     display: flex;
     align-items: center;
-    padding: 0 0.2em;
+    padding: 0 0.15em;
     border-left: 1px solid #0002;
   }
 
+  /* Every tile in a tray is one height: icon buttons, segments and the
+     overflow alike. */
   .selection-row-group-icons.tray segmented-control {
     --segmented-control-tray-color: transparent;
     --segmented-control-border-color: transparent;
+    --segmented-control-tray-padding: 0;
+    --segmented-control-button-height: 1.8em;
   }
 `;

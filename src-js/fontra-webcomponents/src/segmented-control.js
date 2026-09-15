@@ -36,7 +36,7 @@ export class SegmentedControl extends UnlitElement {
       display: flex;
       flex: 1 1 auto;
       align-items: center;
-      padding: 0.2em;
+      padding: var(--segmented-control-tray-padding, 0.2em);
       gap: 0;
       background: var(--segmented-control-tray-color);
       border: 1px solid var(--segmented-control-border-color);
@@ -54,6 +54,8 @@ export class SegmentedControl extends UnlitElement {
       font: inherit;
       white-space: nowrap;
       cursor: pointer;
+      box-sizing: border-box;
+      height: var(--segmented-control-button-height, auto);
     }
 
     button.on {

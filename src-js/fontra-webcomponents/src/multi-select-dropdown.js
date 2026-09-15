@@ -47,6 +47,8 @@ export class MultiSelectDropdown extends UnlitElement {
       padding: 0.2em 0.6em;
       font-family: inherit;
       font-size: inherit;
+      box-sizing: border-box;
+      height: var(--multi-select-dropdown-height, auto);
     }
 
     button:hover {

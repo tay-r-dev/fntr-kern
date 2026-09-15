@@ -27,7 +27,9 @@ import {
   getSkeletonHandleOffset,
   getSkeletonHandleOffsetKey,
   getSkeletonPointHalfWidth,
+  getSkeletonPointPreset,
   getSkeletonPointWidth,
+  setSkeletonPointPreset,
   harmonizeSkeletonPoints,
   isSkeletonSideLocked,
   isSkeletonSideLockedAtAll,
@@ -93,7 +95,12 @@ function resolveContourAcrossLayers(reference, target, contourId) {
 // The generic loop: run `applyToLayer(working, referenceSkeletonData, isEditLayer)`
 // on every editable layer's working skeleton, combine the per-layer changes into
 // one undo item. Mirrors edit-tools-skeleton.js `_editSkeletonAcrossLayers`.
-export async function runSkeletonPanelEdit(sceneController, undoLabel, applyToLayer) {
+export async function runSkeletonPanelEdit(
+  sceneController,
+  undoLabel,
+  applyToLayer,
+  editOptions = {}
+) {
   return await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
     const editingLayers = sceneController.getEditingLayerFromGlyphLayers(glyph.layers);
     const entries = Object.entries(editingLayers);
@@ -107,9 +114,13 @@ export async function runSkeletonPanelEdit(sceneController, undoLabel, applyToLa
     const allChanges = [];
     for (const [layerName, layerGlyph] of entries) {
       const isEditLayer = layerGlyph === editLayerGlyph;
-      const changes = editSkeleton(layerGlyph, (working) => {
-        applyToLayer(working, referenceSkeletonData, isEditLayer);
-      });
+      const changes = editSkeleton(
+        layerGlyph,
+        (working) => {
+          applyToLayer(working, referenceSkeletonData, isEditLayer);
+        },
+        editOptions
+      );
       allChanges.push(changes.prefixed(["layers", layerName, "glyph"]));
     }
 
@@ -126,7 +137,8 @@ export async function editSelectedSkeletonPoints(
   sceneController,
   selectionAddresses,
   mutator,
-  undoLabel
+  undoLabel,
+  editOptions = {}
 ) {
   if (!selectionAddresses.length) {
     return null;
@@ -150,7 +162,51 @@ export async function editSelectedSkeletonPoints(
           defaultWidth: resolved.contour.defaultWidth,
         });
       }
-    }
+    },
+    editOptions
+  );
+}
+
+// Binds every selected point to the named preset of one kind, or unbinds it
+// with a null name. The values stay as they are.
+export async function setPanelPointPresetBond(
+  sceneController,
+  pointAddresses,
+  kind,
+  name,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point) => setSkeletonPointPreset(point, kind, name),
+    undoLabel,
+    { presetWrite: true }
+  );
+}
+
+// Brings every selected bound point back to its own preset. `resolvePreset`
+// finds a preset by name; a bond whose preset is gone is left alone.
+// `applyPreset(point, preset, { defaultWidth })` writes the values.
+export async function refreshPanelPointPresets(
+  sceneController,
+  pointAddresses,
+  kind,
+  resolvePreset,
+  applyPreset,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, context) => {
+      const preset = resolvePreset(getSkeletonPointPreset(point, kind));
+      if (preset) {
+        applyPreset(point, preset, context);
+      }
+    },
+    undoLabel,
+    { presetWrite: true }
   );
 }
 
@@ -232,8 +288,13 @@ export async function setPanelPointWidthPreset(
     pointAddresses,
     (point, _address, { defaultWidth }) => {
       applySkeletonWidthPreset(point, defaultWidth, preset);
+      // A bound point follows the preset it was given.
+      if (getSkeletonPointPreset(point, "width") && preset.name) {
+        setSkeletonPointPreset(point, "width", preset.name);
+      }
     },
-    undoLabel
+    undoLabel,
+    { presetWrite: true }
   );
 }
 
@@ -1017,8 +1078,15 @@ export async function setPanelTerminalPreset(
   return editSelectedSkeletonPoints(
     sceneController,
     pointAddresses,
-    (point) => applyTerminalPreset(point, type, preset),
-    undoLabel
+    (point) => {
+      applyTerminalPreset(point, type, preset);
+      // A bound point follows the preset it was given.
+      if (getSkeletonPointPreset(point, "terminal") && preset.name) {
+        setSkeletonPointPreset(point, "terminal", preset.name);
+      }
+    },
+    undoLabel,
+    { presetWrite: true }
   );
 }
 

@@ -5,6 +5,7 @@ import {
   outlineContourToPackedPath,
 } from "@fontra/core/skeleton-generator.js";
 import {
+  liftChangedPresetBindings,
   alignSkeletonSmoothHandles,
   applyFixedRibDelta,
   applySkeletonInsertionExecutorResult,
@@ -281,6 +282,17 @@ function applySkeletonMutation(layerGlyph, mutate, options = {}) {
     structuredClone(original || makeEmptySkeletonData())
   );
   mutate(working);
+  // A hand edit that changes what a preset bond covers lifts the bond. A
+  // preset write says so, because it changes those values on purpose.
+  if (
+    !options.presetWrite &&
+    original?.contours?.some((contour) => contour.points?.some((point) => point.preset))
+  ) {
+    liftChangedPresetBindings(
+      normalizeSkeletonData(structuredClone(original)),
+      working
+    );
+  }
   const generated = generateFromSkeleton(working, readSkeletonGenerationOptions());
   const replacedContours = replaceGeneratedSkeletonContours(
     layerGlyph,

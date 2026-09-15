@@ -17,7 +17,11 @@ import {
   applySerifPreset,
   getSkeletonData,
   getSkeletonGlyphCase,
+  getSkeletonPointPreset,
   getTerminalPresetSourceKey,
+  isSkeletonPointPresetStale,
+  applySkeletonWidthPreset,
+  applyTerminalPreset,
   normalizeTerminalPreset,
   resolveEffectiveSourceSkeletonDefault,
   setSkeletonCapParameters,
@@ -70,6 +74,8 @@ import {
   setPanelSerifLink,
   setPanelSerifParametersStream,
   setPanelTerminalPreset,
+  setPanelPointPresetBond,
+  refreshPanelPointPresets,
 } from "./skeleton-panel-edits.js";
 import {
   collectRibEditTargets,
@@ -706,6 +712,8 @@ export default class SkeletonParametersPanel {
         }
       },
       onAdd: () => this._addWidthPreset(),
+      onLock: () => this._togglePresetBond("width"),
+      onRefresh: () => this._refreshPresetBonds("width"),
     });
     // Tickets 56 and 60: the Terminal header's preset control, the same control
     // for the kind the selection shows -- Square, Rounded, Ball or Serif. Flat
@@ -723,6 +731,8 @@ export default class SkeletonParametersPanel {
       },
       onAdd: () => this._addTerminalPreset(this._terminalPresetType),
       onUpdate: (index) => this._updateTerminalPreset(this._terminalPresetType, index),
+      onLock: () => this._togglePresetBond("terminal"),
+      onRefresh: () => this._refreshPresetBonds("terminal"),
     });
     // Ticket 50: the terminal kind, five across, writing the cap style. Picking
     // a kind changes which section the panel shows, so the rebuild waits for
@@ -888,6 +898,14 @@ export default class SkeletonParametersPanel {
     });
     this.serifSidesOverflow.addEventListener("change", (event) =>
       this._onSerifSideCheck(event.detail.checked)
+    );
+    // The Terminal header's controls while the kind is Serif, built once. A
+    // wrapper built inside update() took the preset control with it on a
+    // values-only refresh, which never places the wrapper, and the preset
+    // dropdown left the panel.
+    this.serifPresetHeader = html.div(
+      { style: "display: flex; align-items: center; gap: 0.2rem;" },
+      [this.terminalPresetControl.element, this.serifSidesOverflow]
     );
     // Ticket 58: the Cup group, three single fields, one row each.
     this.serifCupFields = {
@@ -1254,7 +1272,7 @@ export default class SkeletonParametersPanel {
       await setPanelPointWidthPreset(
         this.sceneController,
         points,
-        { width: Number(preset.width), side: preset.side },
+        { name: preset.name, width: Number(preset.width), side: preset.side },
         this._undo("set-total-width")
       );
     });
@@ -1266,8 +1284,17 @@ export default class SkeletonParametersPanel {
 
   _refreshWidthPresetControls() {
     const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
+    const list = this._widthPresetList();
+    const bond = this._presetBondSummary("width");
+    // The dropdown follows the selection's bond, so a bound point shows the
+    // preset it is bound to rather than the one picked last.
+    if (bond.name) {
+      this.widthPresetControl.lastPicked = list.findIndex(
+        (preset) => preset.case === glyphCase && preset.name === bond.name
+      );
+    }
     this.widthPresetControl.refresh({
-      items: this._widthPresetList()
+      items: list
         .map((preset, index) => ({ preset, index }))
         .filter(({ preset }) => preset?.case === glyphCase)
         .map(({ preset, index }) => ({
@@ -1279,7 +1306,143 @@ export default class SkeletonParametersPanel {
         })),
       canCapture: this._canCaptureWidthPreset(),
       showPicked: true,
+      bond: this._presetBondState("width", bond),
     });
+  }
+
+  // ---- Preset bonds ------------------------------------------------------------
+
+  // The preset of one kind a bond names, for the glyph's case, or null where
+  // none exists by that name any more. A terminal bond reads the kind the
+  // selection shows.
+  _presetByName(kind, name) {
+    if (!name) {
+      return null;
+    }
+    const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
+    if (kind === "width") {
+      return (
+        this._widthPresetList().find(
+          (preset) => preset.case === glyphCase && preset.name === name
+        ) ?? null
+      );
+    }
+    const type = this._terminalPresetType;
+    if (!type) {
+      return null;
+    }
+    return (
+      (type === "serif"
+        ? SERIF_PRESETS.find((preset) => preset.name === name)
+        : null) ??
+      this._terminalPresetList(type).find(
+        (preset) => preset.case === glyphCase && preset.name === name
+      ) ??
+      null
+    );
+  }
+
+  // The selection's bonds of one kind: the one name every point is bound to,
+  // whether they disagree, whether any point is bound, and whether any bound
+  // point's preset has changed since. A bond to a preset that is gone counts as
+  // no bond.
+  _presetBondSummary(kind) {
+    const points = this._widthPoints();
+    const names = points.map((entry) => {
+      const name = getSkeletonPointPreset(entry.point, kind);
+      return this._presetByName(kind, name) ? name : null;
+    });
+    const distinct = new Set(names);
+    const stale = points.some((entry, index) => {
+      const preset = this._presetByName(kind, names[index]);
+      return (
+        !!preset &&
+        isSkeletonPointPresetStale(
+          entry.point,
+          kind,
+          preset,
+          entry.contour?.defaultWidth
+        )
+      );
+    });
+    return {
+      points,
+      name: distinct.size === 1 ? names[0] : null,
+      mixed: distinct.size > 1,
+      any: names.some(Boolean),
+      stale,
+    };
+  }
+
+  // The header control's view of a bond: lit when the whole selection is bound
+  // to the preset the dropdown shows.
+  _presetBondState(kind, bond) {
+    const control =
+      kind === "width" ? this.widthPresetControl : this.terminalPresetControl;
+    const picked = this._pickedPresetName(kind, control.lastPicked);
+    return {
+      locked: bond.mixed ? "mixed" : !!bond.name && bond.name === picked,
+      lockEnabled:
+        !this.fontController.readOnly && !!bond.points.length && (!!picked || bond.any),
+      stale: bond.stale,
+      refreshEnabled: !this.fontController.readOnly && bond.any,
+    };
+  }
+
+  _pickedPresetName(kind, picked) {
+    if (picked == null || picked === -1) {
+      return null;
+    }
+    if (kind === "width") {
+      return this._widthPresetList()[picked]?.name ?? null;
+    }
+    const type = this._terminalPresetType;
+    return type ? (this._terminalPresetByValue(type, picked)?.name ?? null) : null;
+  }
+
+  // Lock: bound to the picked preset, the press unbinds; otherwise it binds the
+  // selection to the picked preset. The values stay as they are, so a preset
+  // that differs shows stale at once.
+  async _togglePresetBond(kind) {
+    const bond = this._presetBondSummary(kind);
+    const control =
+      kind === "width" ? this.widthPresetControl : this.terminalPresetControl;
+    const picked = this._pickedPresetName(kind, control.lastPicked);
+    const name = bond.name && bond.name === picked ? null : picked;
+    if (!bond.points.length || (!name && !bond.any)) {
+      return;
+    }
+    await this._runOwnEdit(() =>
+      setPanelPointPresetBond(
+        this.sceneController,
+        bond.points,
+        kind,
+        name,
+        this._undo("set-preset-bond")
+      )
+    );
+  }
+
+  // Refresh: every selected bound point takes its own preset's values again.
+  async _refreshPresetBonds(kind) {
+    const points = this._widthPoints();
+    if (!points.length) {
+      return;
+    }
+    const type = this._terminalPresetType;
+    await this._runOwnEdit(() =>
+      refreshPanelPointPresets(
+        this.sceneController,
+        points,
+        kind,
+        (name) => this._presetByName(kind, name),
+        (point, preset, { defaultWidth }) =>
+          kind === "width"
+            ? applySkeletonWidthPreset(point, defaultWidth, preset)
+            : applyTerminalPreset(point, type, preset),
+        this._undo("refresh-preset")
+      )
+    );
   }
 
   // A new preset's name: the word, then one more than the presets this case
@@ -1365,10 +1528,23 @@ export default class SkeletonParametersPanel {
     const captured = this.fontController.readOnly
       ? null
       : this._selectionTerminalPreset(type);
+    // The dropdown follows the selection's bond, as the width one does.
+    const bond = this._presetBondSummary("terminal");
+    if (bond.name) {
+      const items = this._terminalPresetItems(type);
+      const match = items.find(
+        (item) => this._terminalPresetByValue(type, item.value)?.name === bond.name
+      );
+      if (match) {
+        this.terminalPresetControl.lastPicked = match.value;
+      }
+    }
     if (type !== "serif") {
       this.terminalPresetControl.refresh({
         items: this._terminalPresetItems(type),
         canCapture: captured !== null,
+        showPicked: true,
+        bond: this._presetBondState("terminal", bond),
       });
       return;
     }
@@ -1385,6 +1561,7 @@ export default class SkeletonParametersPanel {
       showPicked: true,
       updateEnabled: !!(preset && captured && shapeOf(captured) !== shapeOf(preset)),
       confirmUpdate: true,
+      bond: this._presetBondState("terminal", bond),
     });
   }
 
@@ -1766,10 +1943,8 @@ export default class SkeletonParametersPanel {
       // A serif also carries the overflow with its side checks.
       auxiliaryElement:
         presetType === "serif"
-          ? html.div({ style: "display: flex; align-items: center; gap: 0.2rem;" }, [
-              this.terminalPresetControl.element,
-              this.serifSidesOverflow,
-            ])
+          ? (this.serifPresetHeader.prepend(this.terminalPresetControl.element),
+            this.serifPresetHeader)
           : presetType
             ? this.terminalPresetControl.element
             : undefined,
