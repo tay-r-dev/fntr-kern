@@ -167,3 +167,24 @@ The already-documented S1/S2 feedback deserves consideration as an **idle produc
 This establishes a route from settings churn to repeated overlay allocations. It does **not** establish monotonically retained geometry: the inspected SpeedPunk and skeleton drawing paths create temporary geometry without appending it to a permanent collection. It also does not directly call `updateShaperInfo`; the connection to M1 cannot simply be assumed. Timer/event backlog, GC/native allocation behavior and actual settings activity would need evidence to connect this producer to the RAM incident.
 
 The debug parameter subscriber (`panel-designspace-navigation.js:1826–1829`) synchronizes controls and persists a fresh settings object; it does not call `setSnapParameter` again. The inspected setup therefore does not establish a synchronous self-recursive notification loop. The shared asynchronous storage transport remains the separate risk described in S1.
+
+### F4. Skeleton and overlay geometry: inspected owners do not accumulate every frame
+
+- `skeleton-model.js:4636–4675`: normalized skeleton data is memoized in a **WeakMap keyed by the stored section object**. The cache alone does not keep obsolete raw sections alive. If another owner retains those sections, their normalized counterparts may remain too, but repeated reads of the same section reuse its entry. A permanent Map growing with each frame was not found here.
+- `visualization-layer-skeleton.js:82–128`: contour paths are fresh local Path2D objects. The inspected skeleton drawing helpers and the marker/snapping drawing paths use `beginPath` for their context-built paths or create separate Path2D objects. Shared `strokeLine`, round-node and circle helpers (`visualization-layer-definitions.js:2102–2131,2630–2634`) also reset the path. No cross-frame accumulation through a never-reset current canvas path was established in these inspected helpers. This matters because clearing pixels alone would not prove path cleanup.
+- `visualization-layer-markers.js:309–312` holds **one** placement preview and replaces it. `edit-tools-marker.js:48,126` clears it on the inspected exit paths. It does not append previews to history.
+- `visualization-layer-letterspacer.js` reads one `sceneModel.letterspacerVisualizationData` object. Its producers (`panel-letterspacer.js:1647–1648,1855–1858,1942–1943`) replace that object, while `clearVisualizationData` clears it. Fading changes opacity once; it is not a repeating fade timer. These assignments do not retain a list of prior scan-line/polygon datasets. This is the editor overlay, not the excluded kerning view.
+
+These observations rule down specific ownership hypotheses, not browser-native allocation problems. Repeatedly rebuilding temporary Path2D/label data under F3 can still cause pressure; neither allocation volume nor retention duration was measured.
+
+### F5. Input and marker callbacks have bounded normal lifetimes
+
+`snapping-interactions.js:432–476` supports two held snap modes. Key repeat is guarded by the mode flag, and keyup/blur remove the installed window listeners and Map entry. `edit-tools-pointer.js:1513–1585` similarly tracks a fixed set of modifier actions, guards repeated activation, and removes handlers on release/blur. These callback registrations are not performed on every idle frame. This does not prove every exceptional disposal path is correct, but it does not establish unbounded registration during inactivity.
+
+`panel-markers.js:459–480` cancels the previous erase-arm timeout before arming another and clears the tooltip callback when disarmed. It is a one-shot timer with a replacement policy, not a recurring allocation source.
+
+### Scope and revised ranking
+
+The fork extension used a changed-source scan for added timers, animation scheduling, workers, listener registration and Map/WeakMap owners, followed by the focused caller/ownership reads above. Tests, assets and the separate kerning view were excluded from that scan. New core geometry maps were inspected as candidates rather than automatically classified as leaks; a local per-operation Map is not an idle retention mechanism. This follow-up is **not an exhaustive read-through of every fork file** or a proof that fork code is leak-free.
+
+For the reported browser-idle symptom, investigate (1) whether settings are still changing and causing redraws, (2) whether inherited classification/layout/shaper work is continuing, and (3) which objects remain retained after those producers stop. The fork debug readout is a confirmed permanent background producer with cleanup weaknesses, but its inspected steady-state replacement behavior is a weak explanation for 32 GB of retained RAM. No complete code-proven chain from an idle fork producer to unlimited retained memory was found in this pass. M1's inherited callback leak remains relevant alongside fork causes, rather than being treated as the only possible cause.
