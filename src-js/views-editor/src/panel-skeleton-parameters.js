@@ -413,6 +413,7 @@ export default class SkeletonParametersPanel {
       options: gizmoHandlesOptions,
       value: this._generatedGizmosEnabled() ? "gizmo" : "handles",
     });
+    this.gizmoHandlesControl.setAttribute("small", "");
     this.gizmoHandlesControl.addEventListener("change", (event) => {
       this.editorController.visualizationLayersSettings.model[
         "fontra.skeleton.generated-tunni"

@@ -10,13 +10,18 @@ import { themeColorCSS } from "./theme-support.js";
 // instead. Placement-agnostic, the same way labeled-toggle.js is: a caller
 // drops it into a form row, an accordion header, or anywhere else.
 //
+// It draws as the design's chip selector: a tray with the lit chip on a white
+// face. The `small` attribute is the pill form a heading carries (Gizmo and
+// Handles).
+//
 // `options`, `value` and `disabled` are plain JS properties, not HTML
 // attributes -- set them after creating the element, the convention every
 // UnlitElement-based component in this tree uses.
 const colors = {
-  "segmented-control-border-color": ["#8888", "#8888"],
-  "segmented-control-on-background-color": ["#8884", "#8884"],
-  "segmented-control-off-background-color": ["transparent", "transparent"],
+  "segmented-control-tray-color": ["#e9e9ed", "#3a3a3e"],
+  "segmented-control-border-color": ["#8f8f9d", "#6a6a74"],
+  "segmented-control-small-border-color": ["#8f8f9d29", "#8f8f9d40"],
+  "segmented-control-on-background-color": ["#fff", "#5a5a60"],
 };
 
 export class SegmentedControl extends UnlitElement {
@@ -30,44 +35,51 @@ export class SegmentedControl extends UnlitElement {
     .row {
       display: flex;
       flex: 1 1 auto;
+      align-items: center;
+      padding: 0.2em;
+      gap: 0;
+      background: var(--segmented-control-tray-color);
+      border: 1px solid var(--segmented-control-border-color);
+      border-radius: 0.65em;
     }
 
     button {
-      flex: 1 1 0;
-      min-width: 3em;
+      flex: 1 1 auto;
       margin: 0;
-      padding: 0.25em 0.5em;
-      border: 1px solid var(--segmented-control-border-color);
-      border-left: none;
-      border-radius: 0;
-      background: var(--segmented-control-off-background-color);
+      padding: 0.2em 0.85em;
+      border: none;
+      border-radius: 0.45em;
+      background: transparent;
       color: inherit;
       font: inherit;
-      opacity: 0.6;
+      white-space: nowrap;
       cursor: pointer;
-    }
-
-    button:first-child {
-      border-left: 1px solid var(--segmented-control-border-color);
-      border-radius: 4px 0 0 4px;
-    }
-
-    button:last-child {
-      border-radius: 0 4px 4px 0;
     }
 
     button.on {
       background: var(--segmented-control-on-background-color);
-      font-weight: bold;
-      opacity: 1;
     }
 
     button:disabled {
       cursor: default;
+      opacity: 0.5;
     }
 
     :host([disabled]) button {
       cursor: default;
+    }
+
+    :host([small]) .row {
+      padding: 2px;
+      border-color: var(--segmented-control-small-border-color);
+      border-radius: 999px;
+      font-size: 0.8em;
+    }
+
+    :host([small]) button {
+      flex: 1 1 0;
+      padding: 0.15em 1em;
+      border-radius: 999px;
     }
   `;
 
