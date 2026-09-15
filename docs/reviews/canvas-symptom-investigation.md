@@ -2,6 +2,8 @@
 
 Source: `ui/ux-refactor` at `02bbd755925f4eb8a5f00fc248853aac7ba1f756`. Static code review only; no application changes, tests, benchmarks, or runtime reproduction. Inherited-source comparison: `1066c5cb3f0f0442037d9ea6394ab516553ca44c`. References below use paths relative to the repository; line numbers refer to that source snapshot. This report investigates the reported symptoms rather than repeating the general optimization inventory or the fork audit. Kerning view is excluded.
 
+**Updated symptom constraint:** the user reports slow, continuing RAM consumption without user input, potentially exhausting 32 GB. Ordinary editing history and cache occupancy are not adequate explanations for that observation. M1 remains a retention defect, but is not a complete idle-growth diagnosis without identifying a producer that continues calling it. The idle-producer follow-up below supersedes the earlier investigation priority for this specific symptom.
+
 ## Oscillating Gizmo/Handles and coarse-grid switches
 
 ### S1. Shared persistence can replay obsolete settings and echo them between tabs
@@ -114,3 +116,28 @@ This is a plausible explanation for a delayed hitch around gesture boundaries, e
 3. **Zoom:** distinguish overlay CPU time from the post-gesture serialization task and collection/rendering costs before choosing a fix. No cold-cache expiry was found.
 
 Read-throughs covered the observable dispatch/storage implementation, both current widget implementations and panel bindings, gizmo coupling/reveal, canvas wheel/draw logic, visualization orchestration and the relevant SpeedPunk/measurement functions, view-box and URL persistence listeners, representation and LRU caches, font instance eviction/invalidation/undo/request ownership, RemoteObject request settlement, HBShaper construction/shaping/message integration, ShaperController replacement callers, and the installed HarfBuzz 1.4.0 callback/finalization implementations. The inherited files `observable-object.ts`, `font-controller.js`, `remote.js`, `shaper.js`, and `shaper-controller.js` are unchanged between the comparison upstream and reviewed fork snapshot. This is a directed investigation, not an exhaustive proof of all application or browser memory ownership.
+
+## Follow-up: growth with no user input
+
+The required explanation now has two parts: an autonomous or externally driven producer, and an accumulation mechanism. Finding a leak in a function that is never called while idle is insufficient. No 32 GB estimate is inferred from the static findings.
+
+### I1. Inherited glyph-cache classification can feed back into its own input
+
+`shaper-controller.js:53–59` subscribes to glyph-cache changes and debounces a scan of cached glyph names by 10 ms. `updateAdHocMarkSetFromCachedGlyphs:242–246` filters names using membership in `_adHocMarkGlyphs`, then starts `updateAdHocMarkSet` without awaiting/returning its promise. That method (`212–239`) awaits `getGlyphInstance(name, {})` for every name.
+
+Two concrete weaknesses matter for background work:
+
+- For an unrecorded non-mark, `isAdHocMark` is false and `!!this._adHocMarkGlyphs[name]` is also false. The conditional assignment does not run. Consequently the supposedly already-checked filter never remembers these negative results, so later cache notifications schedule them again.
+- The debounce cancels only pending starts. It neither cancels nor serializes asynchronous scans already running. Additional notifications during a scan can start overlapping scans.
+
+`font-controller.js:449–466` increments the cache notification counter on glyph-cache misses. Classification instantiates glyphs and may load their components. With eviction/component-loading churn, that consumer can therefore produce more cache notifications and more scans, even after input stops. This is a **conditional feedback candidate**, not a demonstrated infinite cycle: a stable working set whose instances remain cached can drain and become idle. Repeated negative classifications alone also do not invalidate the shaper, since `didChange` stays false. A complete link from this path to perpetual M1 shaper creation has not been established.
+
+Corrective direction: record both positive and negative classifications, track pending names, and serialize/coalesce classification work. Check whether scans introduce cache misses and outlive their triggering state before attributing the reported idle runaway to this path.
+
+### I2. Other inspected idle producers and their limits
+
+- The fork's snapping-debug readout (`panel-designspace-navigation.js:1836–1849`) does schedule animation frames forever; visibility gates text replacement, not scheduling. This is continuing background work, but each update replaces text rather than appending retained history. It also cannot explain the user's pre-fork history. It is not evidence of a 32 GB leak by itself.
+- Tunni reveal stops scheduling when tweens finish (`tunni-gizmos.js:400–420`); it is not an unconditional permanent redraw loop.
+- Incoming backend changes can reload state without local input (`view-controller.js:122–149`). Initial inspection of `src/fontra/backends/filewatcher.py` shows change-driven callbacks and self-write filtering, and `src/fontra/core/fonthandler.py:114–149` waits for a write event and drains pending writes. Their `while`/watch loops are not by themselves evidence of busy allocation. Repeated filesystem notifications remain a possible external producer, not a confirmed notification storm.
+
+The next decisive fact is **which process grows**: browser renderer/tab, browser GPU process, or Fontra/Python backend. These lead to different ownership investigations. Total system RAM consumption alone does not locate the leak. No profiling, reproduction, or tests were performed for this follow-up.
