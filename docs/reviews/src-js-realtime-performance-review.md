@@ -178,4 +178,32 @@ Separate the cheap visual publication from debug aggregation. Compute diagnostic
 
 Collect both outputs in one traversal while preserving their different exclusion rules: moved straight/generated geometry is excluded, but ordinary cubic projections can intentionally refer to the frozen pre-drag curve. This reduces scene-build work and allocations without changing which targets exist. It helps even for legitimately required snapshot rebuilds.
 
+## Tension-aware geometry
+
+Primary source: [tension-aware-edit.js](../../src-js/fontra-core/src/tension-aware-edit.js). Pointer and transform entries call applyTensionAwareEdit; the skeleton adapters use the same math.
+
+### R24 — Prioritize for long coupled groups: repeated group serialization just to deduplicate
+
+**Evidence:** `carryCoupledStraights:916–920` iterates groups.values, maps each group to indices, copies/sorts those indices and joins a string before testing seen. The collector in `offset-contour.js:175–176` assigns the same group array to every member.
+
+A group of G members therefore repeats a G-element map/sort G times: O(G² log G) deduplication work. Check group-array identity in a Set before building indices. This relies on the collector's current shared-array contract; document it or expose unique groups explicitly. It removes duplicate downstream processing rather than changing how coupling is calculated.
+
+### R25 — Prioritize for multi-point correction: each carried point scans every segment for its handles
+
+**Evidence:** `moveOnCurveWithHandles:860–881` traverses all segments to find the cubic handles adjacent to one on-curve. `carryCoupledStraights:927–940` can call it for multiple points.
+
+For M moved points and S segments this is O(MS), although an on-curve has only a small local adjacency. Build a point-to-adjacent-handle-index map once per immutable topology and visit those entries directly. Preserve both incidences on closed contours and update each intended handle once. This is within the math routine, separate from the previously reported whole-skeleton mapping cost.
+
+### R26 — Prioritize: rigid-link scale reconstructs invariant topology every frame
+
+**Evidence:** `solveRigidLinkScale:659–709` rebuilds indexed segments, straight bodies, curve runs, body bounds and their axis ordering on every call. `makeTensionAwareAxisScaleSolver` in `tension-aware-editing.js:277–305` captures unchanged original contours but invokes that preparation again for each transform frame.
+
+Prepare the body/run graph, bounds, order and gap proportions once per gesture and axis; then solve the factor/origin-dependent displacement each frame. Parameter-dependent correction still runs afterward. This avoids repeated topology work without caching a previous frame's answer or introducing path dependence.
+
+### R27 — Rejected: tension restoration always solves unchanged segments
+
+**Evidence:** `restoreSegmentTensions:191–213` compares the displacement of the two endpoints and skips a segment when both take the same delta. This covers unchanged segments and pure translation before tangent/tension calculations.
+
+The segment walk itself still occurs, but the expensive correction is already guarded. Preserve this fast path. A claim that every segment receives a full solve on every drag would be inaccurate.
+
 <!-- review checkpoint -->
