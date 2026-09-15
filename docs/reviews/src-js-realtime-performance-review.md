@@ -150,4 +150,32 @@ For P anchors, the bounded candidate work is multiplied by P; curve projection a
 
 Carry the winning projection's t and tangent through the result. The final projection of the rounded trial is still needed to keep the emitted point on the curve; the intermediate re-search is avoidable. Reuse must be scoped to the same candidate and query, not an approximate cache across moving cursor positions.
 
+## Snapping session and scene preparation
+
+Primary source: [snapping-interactions.js](../../src-js/views-editor/src/snapping-interactions.js); supporting callers in the ordinary and skeleton pen tools.
+
+### R20 — Prioritize: pen hover rebuilds a geometry snapshot even when geometry is unchanged
+
+**Evidence:** `edit-tools-pen.js:46–47` and `edit-tools-skeleton.js:221–223` call session.refresh on hover. `SnappingSession.refresh:563–571` calls buildSnapScene, which scans path points, segments and skeleton geometry.
+
+Pointer movement changes the query, not necessarily the scene. Reuse the snapshot until glyph geometry, exclusion/selection, source metrics/guides or viewport changes. Because the builder performs viewport culling, a geometry-only revision would be insufficient. Preserve the explicit force-refresh epoch and the frozen baseline semantics during drags. This finding is the unnecessary refresh frequency, independent of the already-documented cost of rib derivation.
+
+### R21 — Prioritize: disabled/suppressed snapping still prepares the hover scene
+
+**Evidence:** the same pen callers invoke refresh before setting suppression or calling resolve. The enabled check is inside `resolve:629–634`, after refresh has already done its work; the SnappingSession constructor also eagerly builds a scene.
+
+Skip or lazily defer scene construction while snapping is disabled or the tool is performing a gesture that suppresses snapping. Clear published guides/indicator immediately and mark the snapshot dirty for re-enabling. This provides a no-snapping fast path even when revisions cannot yet be introduced for R20.
+
+### R22 — Prioritize: debug publication repeats candidate scoring unconditionally
+
+**Evidence:** `_publish:592–626` calls candidatePull for every candidate to compute byKind on every resolve, regardless of whether the debug UI is visible. Curves therefore incur another complete projection search after collection/resolution.
+
+Separate the cheap visual publication from debug aggregation. Compute diagnostics only while observed, or reuse the exact matching query scores when available. In resolveSet, debug scores use the cursor while candidate selection evaluates anchors, so not every score can be reused blindly. This concerns producer-side scoring, not the debug-panel polling already reported.
+
+### R23 — Moderate: scene construction walks path segments twice
+
+**Evidence:** `buildSnapScene:336–360` first iterates all path segments for straight candidates, discarding curves, then repeats iterPathSegments to collect curves. That iterator materializes segment geometry.
+
+Collect both outputs in one traversal while preserving their different exclusion rules: moved straight/generated geometry is excluded, but ordinary cubic projections can intentionally refer to the frozen pre-drag curve. This reduces scene-build work and allocations without changing which targets exist. It helps even for legitimately required snapshot rebuilds.
+
 <!-- review checkpoint -->
