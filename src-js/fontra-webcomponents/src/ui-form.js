@@ -15,6 +15,7 @@ import {
   round,
   scheduleCalls,
 } from "@fontra/core/utils.ts";
+import { LoopedScrub } from "@fontra/web-components/looped-scrub.js";
 import { RangeSlider } from "@fontra/web-components/range-slider.js";
 import "@fontra/web-components/rotary-control.js";
 
@@ -322,7 +323,7 @@ export class Form extends SimpleElement {
       // works — the change is what is being sent — but nothing truthful can be
       // shown in the box, so it is left alone.
       const hasStartValue = Number.isFinite(startValue);
-      let lastX = startX;
+      const looped = new LoopedScrub(labelElement);
       // Unrounded, always. What the box shows and what goes down the stream are
       // rounded off this, never back into it: a fine drag moves a tenth of a unit
       // per pixel, and rounding the running total would floor every one of those
@@ -341,15 +342,14 @@ export class Form extends SimpleElement {
           // drag starts counting from where it crossed rather than from the
           // press — otherwise the value lurches by the dead zone on the first
           // move that registers.
-          lastX = moveEvent.clientX;
+          looped.begin(moveEvent);
         }
-        travel += scrubIncrement(moveEvent.clientX - lastX, {
+        travel += scrubIncrement(looped.delta(moveEvent), {
           step,
           shiftKey: moveEvent.shiftKey,
           ctrlKey: moveEvent.ctrlKey,
           metaKey: moveEvent.metaKey,
         });
-        lastX = moveEvent.clientX;
         let change;
         if (hasStartValue) {
           const clamped = clampScrubValue(startValue + travel, fieldItem);
@@ -380,6 +380,7 @@ export class Form extends SimpleElement {
         labelElement.removeEventListener("pointerdown", onSecondButton);
         labelElement.removeEventListener("contextmenu", onContextMenu);
         labelElement.releasePointerCapture?.(event.pointerId);
+        looped.end();
       };
 
       const onUp = () => {

@@ -10,6 +10,7 @@ import {
 } from "@fontra/core/number-scrub.js";
 import { QueueIterator } from "@fontra/core/queue-iterator.js";
 import { InlineSVG } from "./inline-svg.js";
+import { LoopedScrub } from "./looped-scrub.js";
 import { themeColorCSS } from "./theme-support.js";
 
 // Ticket 26 (UI-REFACTOR.md §2.5, UI-NOMENCLATURE.md §14): the compact scrub
@@ -428,9 +429,9 @@ export class CompactScrubField extends UnlitElement {
 
     const startX = event.clientX;
     const startValue = this._value;
-    let lastX = startX;
     let travel = 0;
     let dragging = false;
+    const looped = new LoopedScrub(this._box);
 
     const onMove = (moveEvent) => {
       if (!dragging) {
@@ -438,7 +439,7 @@ export class CompactScrubField extends UnlitElement {
           return;
         }
         dragging = true;
-        lastX = moveEvent.clientX;
+        looped.begin(moveEvent);
         // One stream per gesture, opened the moment it is confirmed to be a
         // drag rather than a click. A caller that wants the whole drag as one
         // undo step (a live preview it commits once) reads this instead of
@@ -451,13 +452,12 @@ export class CompactScrubField extends UnlitElement {
           })
         );
       }
-      travel += scrubIncrement(moveEvent.clientX - lastX, {
+      travel += scrubIncrement(looped.delta(moveEvent), {
         step: this._step,
         shiftKey: moveEvent.shiftKey,
         ctrlKey: moveEvent.ctrlKey,
         metaKey: moveEvent.metaKey,
       });
-      lastX = moveEvent.clientX;
       const clamped = clampScrubValue(startValue + travel, this._boundsFieldItem);
       travel = clamped - startValue;
       const rounded = roundScrubValue(clamped, this._boundsFieldItem);
@@ -471,6 +471,7 @@ export class CompactScrubField extends UnlitElement {
       this._box.removeEventListener("pointerdown", onSecondButton);
       this._box.removeEventListener("contextmenu", onContextMenu);
       this._box.releasePointerCapture?.(event.pointerId);
+      looped.end();
     };
 
     const endStream = () => {
