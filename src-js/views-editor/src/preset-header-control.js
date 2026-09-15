@@ -3,10 +3,10 @@ import { translate } from "@fontra/core/localization.js";
 import "@fontra/web-components/icon-button.js";
 import "@fontra/web-components/multi-select-dropdown.js";
 
-// A section header's preset control: a dropdown, Add and Update. Generation
+// A section header's preset control: Add, Update and a dropdown. Generation
 // carries one for width presets (ticket 49) and Terminal one for the Square,
 // Rounded, Ball and Serif presets (tickets 56, 60); this is the one copy of it
-// (rail R-B).
+// (rail R-B). A caller that passes no `onUpdate` gets no Update button.
 //
 // Picking an entry applies it at once. Update writes over the entry picked
 // last, which is remembered here. By default the dropdown shows no picked
@@ -16,7 +16,7 @@ import "@fontra/web-components/multi-select-dropdown.js";
 //
 // The caller owns the list, the capture and the writes. Items carry whatever
 // value the caller needs to find the entry again, typically its index in the
-// stored list.
+// stored list, and may carry a shorter `name` for the button.
 export class PresetHeaderControl {
   constructor({ onPick, onAdd, onUpdate }) {
     this.lastPicked = null;
@@ -37,13 +37,14 @@ export class PresetHeaderControl {
     });
     // Add and Update are the design's plus and arrow-up icons, ahead of the
     // dropdown. An armed Update shows lit, and its tooltip asks for the second
-    // press.
+    // press. The glyph is inset in a square box, so it sits centred.
     const iconButton = (src, tooltipKey, onclick) => {
       const button = html.createDomElement("icon-button", {
         "src": src,
         "data-tooltip": translate(tooltipKey),
         "data-tooltipposition": "top",
-        "style": "width: 1.1em; height: 1.1em; padding: 0.15em;",
+        "style":
+          "display: block; box-sizing: border-box; width: 1.6em; height: 1.6em; padding: 0.3em;",
       });
       button.onclick = onclick;
       return button;
@@ -56,36 +57,41 @@ export class PresetHeaderControl {
         onAdd();
       }
     );
-    this.updateButton = iconButton(
-      "/images/preset-update.svg",
-      "sidebar.skeleton-parameters.width-preset.update",
-      () => {
-        if (this.lastPicked == null) {
-          return;
-        }
-        if (this._confirmUpdate && !this._updateArmed) {
-          this._updateArmed = true;
-          this.updateButton.on = true;
-          this.updateButton.setAttribute(
-            "data-tooltip",
-            translate("sidebar.skeleton-parameters.width-preset.update-confirm")
-          );
-          return;
-        }
-        this._disarmUpdate();
-        onUpdate(this.lastPicked);
-      }
-    );
+    this.updateButton = onUpdate
+      ? iconButton(
+          "/images/preset-update.svg",
+          "sidebar.skeleton-parameters.width-preset.update",
+          () => {
+            if (this.lastPicked == null) {
+              return;
+            }
+            if (this._confirmUpdate && !this._updateArmed) {
+              this._updateArmed = true;
+              this.updateButton.on = true;
+              this.updateButton.setAttribute(
+                "data-tooltip",
+                translate("sidebar.skeleton-parameters.width-preset.update-confirm")
+              );
+              return;
+            }
+            this._disarmUpdate();
+            onUpdate(this.lastPicked);
+          }
+        )
+      : null;
     this.element = html.div(
       {
-        style: "display: flex; gap: 0.2rem; align-items: center; font-weight: normal;",
+        style: "display: flex; gap: 0.1rem; align-items: center; font-weight: normal;",
       },
-      [this.addButton, this.updateButton, this.dropdown]
+      [this.addButton, ...(this.updateButton ? [this.updateButton] : []), this.dropdown]
     );
   }
 
   _disarmUpdate() {
     this._updateArmed = false;
+    if (!this.updateButton) {
+      return;
+    }
     this.updateButton.on = false;
     this.updateButton.setAttribute(
       "data-tooltip",
@@ -93,8 +99,8 @@ export class PresetHeaderControl {
     );
   }
 
-  // `items` is [{value, label}]. A list with nothing in it shows one greyed
-  // entry, because an empty list opened as an empty frame.
+  // `items` is [{value, label, name}]. A list with nothing in it shows one
+  // greyed entry, because an empty list opened as an empty frame.
   //
   // `showPicked` checks the picked entry and puts its name on the button.
   // `updateEnabled`, when given, is the caller's word on whether Update is
@@ -127,9 +133,12 @@ export class PresetHeaderControl {
         ];
     this.dropdown.label =
       showPicked && picked
-        ? picked.label
+        ? (picked.name ?? picked.label)
         : translate("sidebar.skeleton-parameters.width-preset");
     this.addButton.disabled = !canCapture;
+    if (!this.updateButton) {
+      return;
+    }
     this._confirmUpdate = confirmUpdate;
     const updateLive = updateEnabled ?? (canCapture && this.lastPicked != null);
     this.updateButton.disabled = !updateLive;

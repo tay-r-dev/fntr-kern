@@ -590,11 +590,12 @@ export default class SkeletonParametersPanel {
     this.resetAllButton = iconButton("/tabler-icons/refresh.svg", "reset-all", () =>
       this._resetRibs("all")
     );
+    // Each group's buttons sit in one tray, as in the design.
     const iconGroup = (labelKey, buttons) => [
       html.span({ class: "selection-row-group-label" }, [
         translate(`sidebar.skeleton-parameters.${labelKey}`),
       ]),
-      html.div({ class: "selection-row-group-icons" }, buttons),
+      html.div({ class: "selection-row-group-icons tray" }, buttons),
     ];
     // Ticket 48: Projection is the contour's sides, D, L and R for both, left
     // and right. Its overflow holds the two options on that change: keep
@@ -705,7 +706,6 @@ export default class SkeletonParametersPanel {
         }
       },
       onAdd: () => this._addWidthPreset(),
-      onUpdate: (index) => this._updateWidthPreset(index),
     });
     // Tickets 56 and 60: the Terminal header's preset control, the same control
     // for the kind the selection shows -- Square, Rounded, Ball or Serif. Flat
@@ -842,17 +842,14 @@ export default class SkeletonParametersPanel {
         fieldRow(children),
       ]);
     const groupTitle = (labelKey) =>
-      html.span({ style: "font-weight: bold; grid-column: 1 / -1;" }, [
-        translate(`sidebar.skeleton-parameters.${labelKey}`),
-      ]);
-    const groupBlock = (children) =>
-      html.div(
-        {
-          style:
-            "display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.35rem 0.75em; align-items: center;",
-        },
-        children
+      html.span(
+        { style: "font-weight: bold; grid-column: 1 / -1; margin-top: 0.5em;" },
+        [translate(`sidebar.skeleton-parameters.${labelKey}`)]
       );
+    // A group adds its cells to the one serif grid below, so every serif label
+    // shares one column, as wide as the widest of them.
+    const groupBlock = (children) =>
+      html.div({ style: "display: contents;" }, children);
     this.serifGroupBlocks = SERIF_FIELD_GROUPS.map(([groupKey, fields]) =>
       groupBlock([
         groupTitle(groupKey),
@@ -913,8 +910,16 @@ export default class SkeletonParametersPanel {
       groupTitle("serif-group-angle"),
       labeledRow("serif-axis-tilt", [this.serifAxisTiltField]),
     ]);
-    // Projection and Reset first, then the Rib group under them.
-    this.generationIconRow = html.div({ class: "selection-row-group" }, [
+    // All serif groups in one grid, in the order they show.
+    this.serifGrid = html.div(
+      {
+        style:
+          "display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.35rem 0.75em; align-items: center;",
+      },
+      [...this.serifGroupBlocks, this.serifAxisRow, this.serifCupBlock]
+    );
+    // Projection, Reset and Rib, one row spread across the panel.
+    this.generationIconRow = html.div({ class: "selection-row-group spread" }, [
       ...iconGroup("group.projection", [
         this.projectionControl,
         this.projectionOverflow,
@@ -924,8 +929,6 @@ export default class SkeletonParametersPanel {
         this.resetSlideButton,
         this.resetAllButton,
       ]),
-    ]);
-    this.ribRow = html.div({ class: "selection-row-group" }, [
       ...iconGroup("group.rib", [this.tiedButton, this.ribOverflow]),
     ]);
   }
@@ -1272,8 +1275,10 @@ export default class SkeletonParametersPanel {
           label: `${preset.name || ""} · ${preset.width}${
             preset.side === "both" ? "" : ` ${preset.side === "left" ? "L" : "R"}`
           }`,
+          name: preset.name || "",
         })),
       canCapture: this._canCaptureWidthPreset(),
+      showPicked: true,
     });
   }
 
@@ -1298,21 +1303,6 @@ export default class SkeletonParametersPanel {
       case: glyphCase,
     });
     this.widthPresetControl.lastPicked = list.length - 1;
-    await this._persistSourceDefaultValues({
-      [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]: list,
-    });
-    this._forceRebuild = true;
-    await this.update();
-  }
-
-  async _updateWidthPreset(index) {
-    const captured = this._selectionWidthPreset();
-    const list = this._widthPresetList();
-    if (!captured || index == null || !list[index]) {
-      return;
-    }
-    // The name and case stay; the preset is the same entry with new numbers.
-    list[index] = { ...list[index], width: captured.width, side: captured.side };
     await this._persistSourceDefaultValues({
       [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]: list,
     });
@@ -1712,18 +1702,12 @@ export default class SkeletonParametersPanel {
     this.resetHandleButton.disabled = !handleOnly && !ribs.length;
     this.resetSlideButton.disabled = handleOnly || !ribs.length;
     this.resetAllButton.disabled = handleOnly || !ribs.length;
-    formContents.push({
-      type: "single-icon",
-      element: this.generationIconRow,
-      layoutKey: "generationIconRow",
-    });
-
     setToggle(this.tiedButton, summary.tied, !summary.tied.canTie);
     this._refreshRibOverflow(widthPoints, ribs, ribSummary);
     formContents.push({
       type: "single-icon",
-      element: this.ribRow,
-      layoutKey: "ribRow",
+      element: this.generationIconRow,
+      layoutKey: "generationIconRow",
     });
   }
 
@@ -2106,11 +2090,6 @@ export default class SkeletonParametersPanel {
           );
         }
       }
-      formContents.push({
-        type: "single-icon",
-        element: this.serifGroupBlocks[groupIndex],
-        layoutKey: `serifGroup${groupIndex}`,
-      });
     }
 
     // The Angle group. Free covers both the plain perpendicular and the tilt,
@@ -2137,11 +2116,6 @@ export default class SkeletonParametersPanel {
         maxValue: 40,
       }
     );
-    formContents.push({
-      type: "single-icon",
-      element: this.serifAxisRow,
-      layoutKey: "serifAxisRow",
-    });
     // Ticket 58: the Cup group, three single fields, because the cup belongs to
     // the terminal rather than to a half: a cup on each half would meet at a
     // break in the middle. The depth sets how deep the foot centre sits, the
@@ -2170,8 +2144,8 @@ export default class SkeletonParametersPanel {
     );
     formContents.push({
       type: "single-icon",
-      element: this.serifCupBlock,
-      layoutKey: "serifCupBlock",
+      element: this.serifGrid,
+      layoutKey: "serifGrid",
     });
   }
 

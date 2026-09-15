@@ -100,6 +100,11 @@ export class UnlitElement extends SimpleElement {
     this._attachStyles();
 
     let elements = await this.render();
+    // Cleared again after the await. Two renders can overlap -- a connect and
+    // an update, or an element moved between two parents -- and both cleared
+    // before either appended, so the element drew its contents twice.
+    this.shadowRoot.innerHTML = "";
+    this._attachStyles();
     if (!elements) {
       return;
     }
