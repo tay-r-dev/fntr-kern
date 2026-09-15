@@ -104,9 +104,9 @@ export class PresetHeaderControl {
       },
       [
         this.addButton,
-        this.updateButton,
-        this.lockButton,
         this.refreshButton,
+        this.lockButton,
+        this.updateButton,
         this.dropdown,
       ].filter(Boolean)
     );

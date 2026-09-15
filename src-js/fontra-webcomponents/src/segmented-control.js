@@ -79,8 +79,8 @@ export class SegmentedControl extends UnlitElement {
     }
 
     :host([small]) button {
-      flex: 1 1 0;
-      padding: 0.15em 1em;
+      flex: 1 1 auto;
+      padding: 0.15em 0.6em;
       border-radius: 999px;
     }
   `;

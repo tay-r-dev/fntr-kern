@@ -755,10 +755,8 @@ export default class SkeletonParametersPanel {
       this._rebuildOnOwnEcho = true;
       this._runOwnEdit(() => this._onCapChange("style", event.detail.value));
     });
-    this.terminalKindRow = html.div({ style: "display: flex;" }, [
-      this.terminalKindControl,
-    ]);
-    this.terminalKindControl.style.flex = "1 1 auto";
+    // The small pill form, as it sits on the Terminal heading.
+    this.terminalKindControl.setAttribute("small", "");
 
     // Ticket 51: the Square section, Project angle and Distance.
     this.capFields = {
@@ -907,6 +905,17 @@ export default class SkeletonParametersPanel {
     this.serifPresetHeader = html.div(
       { style: "display: flex; align-items: center; gap: 0.2rem;" },
       [this.terminalPresetControl.element, this.serifSidesOverflow]
+    );
+    // The kind's own heading under the Terminal header: its name, then the
+    // preset controls for that kind. Built once, like the rows it heads.
+    this.terminalTypeTitle = html.span({ style: "font-weight: bold;" }, []);
+    this.terminalTypeControls = html.div({}, []);
+    this.terminalTypeHeader = html.div(
+      {
+        style:
+          "display: flex; align-items: center; justify-content: space-between; gap: 0.5em;",
+      },
+      [this.terminalTypeTitle, this.terminalTypeControls]
     );
     // Ticket 58: the Cup group, three single fields, one row each.
     this.serifCupFields = {
@@ -2060,24 +2069,37 @@ export default class SkeletonParametersPanel {
     formContents.push({
       type: "header",
       label: translate("sidebar.skeleton-parameters.caps"),
-      // A serif also carries the overflow with its side checks.
-      auxiliaryElement:
-        presetType === "serif"
-          ? (this.serifPresetHeader.prepend(this.terminalPresetControl.element),
-            this.serifPresetHeader)
-          : presetType
-            ? this.terminalPresetControl.element
-            : undefined,
-      layoutKey: presetType ? `terminalPreset-${presetType}` : "",
+      // The kind, as the small chips on the heading.
+      auxiliaryElement: this.terminalKindControl,
+      layoutKey: "terminalKind",
     });
     // A mixed selection lights no segment and shows no section.
     this.terminalKindControl.value = styleValue ?? undefined;
     this.terminalKindControl.disabled = !!this._terminalBound;
-    formContents.push({
-      type: "single-icon",
-      element: this.terminalKindRow,
-      layoutKey: "terminalKindRow",
-    });
+    // The kind's heading carries its presets; a serif also carries the overflow
+    // with its side checks. Flat has no fields and no heading.
+    if (presetType) {
+      const labelKey = {
+        square: "square",
+        round: "round",
+        drop: "drop",
+        serif: "serif",
+      }[presetType];
+      this.terminalTypeTitle.textContent = translate(
+        `sidebar.skeleton-parameters.cap-style.${labelKey}`
+      );
+      if (presetType === "serif") {
+        this.serifPresetHeader.prepend(this.terminalPresetControl.element);
+        this.terminalTypeControls.replaceChildren(this.serifPresetHeader);
+      } else {
+        this.terminalTypeControls.replaceChildren(this.terminalPresetControl.element);
+      }
+      formContents.push({
+        type: "single-icon",
+        element: this.terminalTypeHeader,
+        layoutKey: `terminalType-${presetType}`,
+      });
+    }
     // Each kind shows its own fields. Radius maps 20 discrete positions
     // logarithmically onto the [1/128, 1/4] ratio range; tension is edited in
     // percent. Both are converted back in capValuesFromField.
