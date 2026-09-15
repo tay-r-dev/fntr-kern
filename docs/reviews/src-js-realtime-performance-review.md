@@ -206,4 +206,20 @@ Prepare the body/run graph, bounds, order and gap proportions once per gesture a
 
 The segment walk itself still occurs, but the expensive correction is already guarded. Preserve this fast path. A claim that every segment receives a full solve on every drag would be inaccurate.
 
+## Base-offset support
+
+Primary source: [offset-contour.js](../../src-js/fontra-core/src/offset-contour.js), reached by the ordinary-outline base-expand gesture.
+
+### R28 — Moderate: expanded group members repeatedly search the original point array
+
+**Evidence:** `expandIndicesToCoupledGroups:844–857` loops selected points, then each selected point's group, and calls points.indexOf(member). Multiple selected points in one group also revisit the same members.
+
+Build an object-identity-to-index map once and process each distinct group once. For N points and repeated membership visits V, replace O(VN) lookup work with O(N + V), reducing V too through group identity. Precompute expanded selection for a gesture whose baseline topology and selection stay fixed. This is the base-offset index mapping, not a repeat of the earlier rib-reader finding.
+
+### R29 — Rejected: the wrapping control-point loop necessarily risks an infinite loop
+
+**Evidence:** `getControlPointIndicesBetween:817–830` is called by offsetSegmentHandles with start/end indices drawn from its own onCurveIndices array. Valid endpoints are therefore within the same finite point array; closed traversal reaches the end index, while open traversal also stops at array length.
+
+For these internal call sites, the while loop is bounded by contour length. No malformed-input scenario is needed to explain normal performance, and adding arbitrary iteration limits would not solve an established problem here.
+
 <!-- review checkpoint -->
