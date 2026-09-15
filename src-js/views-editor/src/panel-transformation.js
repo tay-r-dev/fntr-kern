@@ -49,23 +49,42 @@ export default class TransformationPanel {
     overflow-x: unset;
     display: grid;
     align-items: center;
-    justify-content: end;
+    justify-content: start;
     height: 1.6em;
+  }
+
+  /* Every packed row shares one grid: its fields split the value column
+     evenly, and a trailing gutter holds an overflow where a row has one, so
+     a row with an overflow lines up with a row without. Labels sit flush
+     left, as in the design. */
+  .ui-form-value.universal-row {
+    position: relative;
+    padding-right: 1.6em;
+  }
+
+  .ui-form-value.universal-row > compact-scrub-field,
+  .ui-form-value.universal-row > .scale-y-with-overflow {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   /* Ticket 39: the Origin row is the grid, then the typed X and Y with the
      pick and clear buttons in a row under them. The grid is twice an
      input's height, so this row's label and value grow past 1.6em. */
-  /* Ticket 41: the Smart scale overflow sits after Scale Y. */
+  /* Ticket 41: the Smart scale overflow sits after Scale Y, in the gutter. */
   .scale-y-with-overflow {
     display: flex;
     align-items: center;
-    gap: 0.2em;
   }
 
   .scale-y-with-overflow > compact-scrub-field {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-width: 0;
+  }
+
+  .scale-y-with-overflow > overflow-button {
+    position: absolute;
+    right: 0;
   }
 
   .ui-form-label:has(.origin-radio-buttons) {
