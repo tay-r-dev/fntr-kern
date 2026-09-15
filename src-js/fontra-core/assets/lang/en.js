@@ -659,6 +659,7 @@ export const strings = {
   "sidebar.skeleton-parameters.serif-underside-cup-tension": "Cup tension",
   "sidebar.skeleton-parameters.serif-side.left": "Left",
   "sidebar.skeleton-parameters.serif-side.right": "Right",
+  "sidebar.skeleton-parameters.serif-sides": "Sides",
   "sidebar.skeleton-parameters.serif-force.left": "L",
   "sidebar.skeleton-parameters.serif-force.right": "R",
   "sidebar.skeleton-parameters.serif-force.field": "Force to %0 side",

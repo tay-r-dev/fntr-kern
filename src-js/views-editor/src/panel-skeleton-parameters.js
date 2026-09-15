@@ -770,12 +770,36 @@ export default class SkeletonParametersPanel {
     // Force menu.
     this.serifFields = {};
     this.serifChains = {};
-    const chainSpacer = () => html.div({ style: "width: 1.2em; flex: 0 0 auto;" }, []);
+    // The serif rows follow the Transform rows: the name in a label column,
+    // the fields after it. The group title is bold, as in the design.
+    const labeledRow = (labelKey, children) =>
+      html.div(
+        {
+          style:
+            "display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: 0.35rem; align-items: center;",
+        },
+        [
+          html.span(
+            {
+              style: "overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+            },
+            [translate(`sidebar.skeleton-parameters.${labelKey}`)]
+          ),
+          fieldRow(children),
+        ]
+      );
+    const groupTitle = (labelKey) =>
+      html.span({ style: "font-weight: bold;" }, [
+        translate(`sidebar.skeleton-parameters.${labelKey}`),
+      ]);
+    const groupBlock = (children) =>
+      html.div(
+        { style: "display: flex; flex-direction: column; gap: 0.35rem;" },
+        children
+      );
     this.serifGroupBlocks = SERIF_FIELD_GROUPS.map(([groupKey, fields]) =>
-      html.div({ style: "display: flex; flex-direction: column; gap: 0.35rem;" }, [
-        html.span({ class: "selection-row-group-label" }, [
-          translate(`sidebar.skeleton-parameters.${groupKey}`),
-        ]),
+      groupBlock([
+        groupTitle(groupKey),
         ...fields.map((field) => {
           for (const side of ["left", "right"]) {
             this.serifFields[`${side}-${field}`] = this._makeSerifField(side, field);
@@ -795,7 +819,7 @@ export default class SkeletonParametersPanel {
             )
           );
           this.serifChains[field] = chain;
-          return fieldRow([
+          return labeledRow(`serif-field.${field}`, [
             this.serifFields[`left-${field}`],
             chain,
             this.serifFields[`right-${field}`],
@@ -803,39 +827,27 @@ export default class SkeletonParametersPanel {
         }),
       ])
     );
-    this.serifSideChecks = {};
-    const sideCheck = (side) => {
-      const check = html.input({ type: "checkbox" });
-      check.addEventListener("change", () => this._onSerifSideCheck(side));
-      this.serifSideChecks[side] = check;
-      return html.label(
-        {
-          style:
-            "flex: 1 1 0; min-width: 0; display: flex; gap: 0.3em; align-items: center;",
-        },
-        [check, translate(`sidebar.skeleton-parameters.serif-side.${side}`)]
-      );
-    };
-    this.serifSideRow = fieldRow([
-      sideCheck("left"),
-      chainSpacer(),
-      sideCheck("right"),
-    ]);
-    // Ticket 58: the Cup group, three single fields on one row.
+    // Which sides the serif is built on, as two checks in the Terminal header's
+    // overflow while the kind is Serif.
+    this.serifSidesOverflow = html.createDomElement("overflow-button", {
+      "data-tooltip": translate("sidebar.skeleton-parameters.serif-sides"),
+      "data-tooltipposition": "left",
+    });
+    this.serifSidesOverflow.addEventListener("change", (event) =>
+      this._onSerifSideCheck(event.detail.checked)
+    );
+    // Ticket 58: the Cup group, three single fields, one row each.
     this.serifCupFields = {
       cup: this._makeSerifCupField("cup", "serif-underside-cup"),
       cupbalance: this._makeSerifCupField("cupbalance", "serif-underside-cup-balance"),
       cuptension: this._makeSerifCupField("cuptension", "serif-underside-cup-tension"),
     };
-    this.serifCupBlock = html.div(
-      { style: "display: flex; flex-direction: column; gap: 0.35rem;" },
-      [
-        html.span({ class: "selection-row-group-label" }, [
-          translate("sidebar.skeleton-parameters.serif-group-cup"),
-        ]),
-        fieldRow(Object.values(this.serifCupFields)),
-      ]
-    );
+    this.serifCupBlock = groupBlock([
+      groupTitle("serif-group-cup"),
+      labeledRow("serif-underside-cup", [this.serifCupFields.cup]),
+      labeledRow("serif-underside-cup-balance", [this.serifCupFields.cupbalance]),
+      labeledRow("serif-underside-cup-tension", [this.serifCupFields.cuptension]),
+    ]);
 
     // The serif Angle group. The serif axis is independent of the rib angle
     // lock: the lock sets the rib the cap is built on, this sets which way the
@@ -856,14 +868,12 @@ export default class SkeletonParametersPanel {
     this.serifAxisControl.addEventListener("change", (event) =>
       this._runOwnEdit(() => this._onSerifChange("axismode", event.detail.value))
     );
-    this.serifAxisRow = html.div({ class: "selection-row-group" }, [
-      html.span({ class: "selection-row-group-label" }, [
-        translate("sidebar.skeleton-parameters.serif-group-angle"),
-      ]),
-      html.div({ class: "selection-row-group-icons" }, [this.serifAxisControl]),
-    ]);
+    this.serifAxisRow = html.div(
+      { style: "display: flex; align-items: center; gap: 1em;" },
+      [groupTitle("serif-group-angle"), this.serifAxisControl]
+    );
     this.serifAxisTiltField = this._makeSerifTiltField();
-    this.serifAxisTiltRow = fieldRow([this.serifAxisTiltField]);
+    this.serifAxisTiltRow = labeledRow("serif-axis-tilt", [this.serifAxisTiltField]);
     // Projection and Reset first, then the Rib group under them.
     this.generationIconRow = html.div({ class: "selection-row-group" }, [
       ...iconGroup("group.projection", [
@@ -887,9 +897,11 @@ export default class SkeletonParametersPanel {
   // refresh leaves it alone.
   // `defaultValue`, in the field's own units, is what a double-click on the
   // scrub area puts back. Leave it out where a parameter has no default.
-  _makeCompactField(key, labelKey, { scrub, commit, defaultValue }) {
+  // `label`, where given, is the text in the box itself, for a field whose row
+  // already carries the name.
+  _makeCompactField(key, labelKey, { scrub, commit, defaultValue, label }) {
     const field = html.createDomElement("compact-scrub-field", {
-      label: translate(`sidebar.skeleton-parameters.${labelKey}`),
+      label: label ?? translate(`sidebar.skeleton-parameters.${labelKey}`),
       integer: true,
     });
     field.defaultValue = defaultValue;
@@ -984,6 +996,7 @@ export default class SkeletonParametersPanel {
   _makeSerifField(side, field) {
     const name = `${side}-${field}`;
     const element = this._makeCompactField(`serif:${name}`, `serif-field.${field}`, {
+      label: translate(`sidebar.skeleton-parameters.projection.${side}`),
       scrub: (valueStream, startValue) =>
         field in SERIF_PERCENT_FIELD_BOUNDS
           ? setPanelSerifParametersStream(
@@ -1012,6 +1025,7 @@ export default class SkeletonParametersPanel {
   // writes the tilt mode with it, which is what Free is.
   _makeSerifTiltField() {
     return this._makeCompactField("serif:axistilt", "serif-axis-tilt", {
+      label: "",
       defaultValue: 0,
       scrub: (valueStream) =>
         setPanelSerifParametersStream(
@@ -1030,6 +1044,7 @@ export default class SkeletonParametersPanel {
   // percent, as their sliders did.
   _makeSerifCupField(name, labelKey) {
     return this._makeCompactField(`serif:${name}`, labelKey, {
+      label: "",
       scrub: (valueStream, startValue) =>
         name === "cup"
           ? nudgePanelSerifValueStream(
@@ -1100,13 +1115,12 @@ export default class SkeletonParametersPanel {
 
   // The two side checks say which sides the serif is built on. At least one
   // stays on: a serif on no side is not a serif, and Flat is the kind for that.
-  _onSerifSideCheck(changedSide) {
-    const on = {
-      left: this.serifSideChecks.left.checked,
-      right: this.serifSideChecks.right.checked,
-    };
+  _onSerifSideCheck(checked) {
+    const on = { left: checked.includes("left"), right: checked.includes("right") };
     if (!on.left && !on.right) {
-      this.serifSideChecks[changedSide].checked = true;
+      for (const item of this.serifSidesOverflow.items) {
+        item.checked = true;
+      }
       return;
     }
     const sides = on.left && on.right ? "both" : on.left ? "left" : "right";
@@ -1769,8 +1783,17 @@ export default class SkeletonParametersPanel {
     formContents.push({
       type: "header",
       label: translate("sidebar.skeleton-parameters.caps"),
-      auxiliaryElement: presetType ? this.terminalPresetControl.element : undefined,
-      layoutKey: presetType ? "terminalPreset" : "",
+      // A serif also carries the overflow with its side checks.
+      auxiliaryElement:
+        presetType === "serif"
+          ? html.div({ style: "display: flex; align-items: center; gap: 0.2rem;" }, [
+              this.terminalPresetControl.element,
+              this.serifSidesOverflow,
+            ])
+          : presetType
+            ? this.terminalPresetControl.element
+            : undefined,
+      layoutKey: presetType ? `terminalPreset-${presetType}` : "",
     });
     // A mixed selection lights no segment and shows no section.
     this.terminalKindControl.value = styleValue ?? undefined;
@@ -2042,19 +2065,16 @@ export default class SkeletonParametersPanel {
     const serif = summarizeSkeletonSerifSelection(widthPoints);
     // Ticket 57: the side checks, then one chained row per half field in its
     // group. A mixed selection shows both checks indeterminate.
+    // The side checks live in the Terminal header's overflow. A mixed selection
+    // checks neither.
     const sides = serif.sides.mixed ? null : (serif.sides.value ?? "both");
     const on = { left: sides !== "right", right: sides !== "left" };
-    for (const side of ["left", "right"]) {
-      const check = this.serifSideChecks[side];
-      check.checked = on[side];
-      check.indeterminate = sides == null;
-      check.disabled = !canEdit;
-    }
-    formContents.push({
-      type: "single-icon",
-      element: this.serifSideRow,
-      layoutKey: "serifSideRow",
-    });
+    this.serifSidesOverflow.items = ["left", "right"].map((side) => ({
+      value: side,
+      label: translate(`sidebar.skeleton-parameters.serif-side.${side}`),
+      checked: sides != null && on[side],
+    }));
+    this.serifSidesOverflow.disabled = !canEdit;
     // Lengths stop at zero, except the signed wing slope; the tip cut stops at
     // the geometry's own limit either way; the three ratios keep their sliders'
     // percent ranges. Declared here rather than left to the model: without it
