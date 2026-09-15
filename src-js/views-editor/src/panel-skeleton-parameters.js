@@ -716,6 +716,7 @@ export default class SkeletonParametersPanel {
         }
       },
       onAdd: () => this._addWidthPreset(),
+      onUpdate: (index) => this._updateWidthPreset(index),
       onLock: () => this._togglePresetBond("width"),
       onRefresh: () => this._refreshPresetBonds("width"),
       onReset: () => this._resetToDefaults("width"),
@@ -1327,6 +1328,18 @@ export default class SkeletonParametersPanel {
       items,
       canCapture: this._canCaptureWidthPreset(),
       showPicked: true,
+      // Live only where the selection differs from the preset shown, and it
+      // takes two presses, as the terminal one does.
+      updateEnabled: (() => {
+        const shown = list[this.widthPresetControl.lastPicked];
+        return (
+          !!shown &&
+          !!captured &&
+          (Number(shown.width) !== Number(captured.width) ||
+            (shown.side ?? "both") !== captured.side)
+        );
+      })(),
+      confirmUpdate: true,
       bond: this._presetBondState("width", bond),
     });
   }
@@ -1617,6 +1630,22 @@ export default class SkeletonParametersPanel {
       case: glyphCase,
     });
     this.widthPresetControl.lastPicked = list.length - 1;
+    await this._persistSourceDefaultValues({
+      [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]: list,
+    });
+    this._forceRebuild = true;
+    await this.update();
+  }
+
+  // Update writes the selection's total width and projection side over the
+  // preset the dropdown shows. The name and case stay.
+  async _updateWidthPreset(index) {
+    const captured = this._selectionWidthPreset();
+    const list = this._widthPresetList();
+    if (!captured || index == null || !list[index]) {
+      return;
+    }
+    list[index] = { ...list[index], width: captured.width, side: captured.side };
     await this._persistSourceDefaultValues({
       [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]: list,
     });
