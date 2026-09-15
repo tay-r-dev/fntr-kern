@@ -215,7 +215,8 @@ export async function editSelectedSkeletonContours(
   sceneController,
   contourAddresses,
   mutator,
-  undoLabel
+  undoLabel,
+  editOptions = {}
 ) {
   if (!contourAddresses.length) {
     return null;
@@ -235,7 +236,8 @@ export async function editSelectedSkeletonContours(
         }
         mutator(contour, address);
       }
-    }
+    },
+    editOptions
   );
 }
 
@@ -766,7 +768,7 @@ export async function setPanelContourSingleSided(
   contourAddresses,
   sideOrNull,
   undoLabel,
-  { keepForm = false, keepEdits = false } = {}
+  { keepForm = false, keepEdits = false, presetWrite = false } = {}
 ) {
   return editSelectedSkeletonContours(
     sceneController,
@@ -782,7 +784,9 @@ export async function setPanelContourSingleSided(
       }
       setSkeletonContourSingleSided(contour, sideOrNull);
     },
-    undoLabel
+    undoLabel,
+    // A side a width preset writes keeps the bonds it covers.
+    { presetWrite }
   );
 }
 

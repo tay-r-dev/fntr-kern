@@ -3184,9 +3184,12 @@ export function setSkeletonPointPreset(point, kind, name) {
 
 // The values a bond of one kind covers, as one comparable string: the total
 // width for a width bond, the kind and its shape for a terminal bond.
-function skeletonPointPresetSignature(point, kind, defaultWidth) {
+function skeletonPointPresetSignature(point, kind, contour) {
   if (kind === "width") {
-    return String(getSkeletonPointWidth(point, defaultWidth));
+    // The projection side is the contour's, so a width bond reads it there.
+    return `${getSkeletonPointWidth(point, contour?.defaultWidth)}|${
+      contour?.singleSided ?? "both"
+    }`;
   }
   const type = point.capStyle ?? null;
   if (type === "serif") {
@@ -3196,17 +3199,24 @@ function skeletonPointPresetSignature(point, kind, defaultWidth) {
   return `${type}:${JSON.stringify(fields.map((field) => point[field] ?? null))}`;
 }
 
-// Whether applying `preset` would change what the point's bond covers.
-export function isSkeletonPointPresetStale(point, kind, preset, defaultWidth) {
+// Whether applying `preset` would change what the point's bond covers. A width
+// preset states the contour's projection side as well as the point's width.
+export function isSkeletonPointPresetStale(point, kind, preset, contour) {
   const applied = structuredClone(point);
+  let appliedContour = contour;
   if (kind === "width") {
-    applySkeletonWidthPreset(applied, defaultWidth, preset);
+    const normalized = normalizeWidthPreset(preset);
+    applySkeletonWidthPreset(applied, contour?.defaultWidth, normalized);
+    appliedContour = {
+      ...contour,
+      singleSided: normalized.side === "both" ? null : normalized.side,
+    };
   } else {
     applyTerminalPreset(applied, point.capStyle, preset);
   }
   return (
-    skeletonPointPresetSignature(applied, kind, defaultWidth) !==
-    skeletonPointPresetSignature(point, kind, defaultWidth)
+    skeletonPointPresetSignature(applied, kind, appliedContour) !==
+    skeletonPointPresetSignature(point, kind, contour)
   );
 }
 
@@ -3230,8 +3240,8 @@ export function liftChangedPresetBindings(before, after) {
       for (const kind of SKELETON_PRESET_KINDS) {
         if (
           getSkeletonPointPreset(point, kind) &&
-          skeletonPointPresetSignature(point, kind, contour.defaultWidth) !==
-            skeletonPointPresetSignature(beforePoint, kind, beforeContour.defaultWidth)
+          skeletonPointPresetSignature(point, kind, contour) !==
+            skeletonPointPresetSignature(beforePoint, kind, beforeContour)
         ) {
           setSkeletonPointPreset(point, kind, null);
         }

@@ -1266,6 +1266,7 @@ export default class SkeletonParametersPanel {
           {
             keepForm: settings.skeletonSideModeKeepsForm === true,
             keepEdits: settings.skeletonSideModeKeepsEdits === true,
+            presetWrite: true,
           }
         );
       }
@@ -1356,13 +1357,7 @@ export default class SkeletonParametersPanel {
     const stale = points.some((entry, index) => {
       const preset = this._presetByName(kind, names[index]);
       return (
-        !!preset &&
-        isSkeletonPointPresetStale(
-          entry.point,
-          kind,
-          preset,
-          entry.contour?.defaultWidth
-        )
+        !!preset && isSkeletonPointPresetStale(entry.point, kind, preset, entry.contour)
       );
     });
     return {
@@ -1430,8 +1425,11 @@ export default class SkeletonParametersPanel {
       return;
     }
     const type = this._terminalPresetType;
-    await this._runOwnEdit(() =>
-      refreshPanelPointPresets(
+    await this._runOwnEdit(async () => {
+      if (kind === "width") {
+        await this._refreshBoundProjectionSides(points);
+      }
+      await refreshPanelPointPresets(
         this.sceneController,
         points,
         kind,
@@ -1441,8 +1439,56 @@ export default class SkeletonParametersPanel {
             ? applySkeletonWidthPreset(point, defaultWidth, preset)
             : applyTerminalPreset(point, type, preset),
         this._undo("refresh-preset")
-      )
-    );
+      );
+    });
+  }
+
+  // A width preset's side belongs to the contour. A contour takes it when
+  // every bound point on it in the selection names the same side; where they
+  // disagree the side stays, and refresh stays lit. The side goes first, as it
+  // does when a preset is applied, so the width the preset states is the width
+  // the points end with.
+  async _refreshBoundProjectionSides(points) {
+    const sidesByContour = new Map();
+    for (const entry of points) {
+      const preset = this._presetByName(
+        "width",
+        getSkeletonPointPreset(entry.point, "width")
+      );
+      if (!preset) {
+        continue;
+      }
+      const side =
+        preset.side === "left" || preset.side === "right" ? preset.side : null;
+      const record = sidesByContour.get(entry.contourId) ?? {
+        contour: entry.contour,
+        sides: new Set(),
+      };
+      record.sides.add(side);
+      sidesByContour.set(entry.contourId, record);
+    }
+    const contoursBySide = new Map();
+    for (const [contourId, { contour, sides }] of sidesByContour) {
+      const [side] = sides;
+      if (sides.size !== 1 || (contour?.singleSided ?? null) === side) {
+        continue;
+      }
+      contoursBySide.set(side, [...(contoursBySide.get(side) ?? []), { contourId }]);
+    }
+    const settings = applicationSettingsController.model;
+    for (const [side, contours] of contoursBySide) {
+      await setPanelContourSingleSided(
+        this.sceneController,
+        contours,
+        side,
+        this._undo("set-single-sided"),
+        {
+          keepForm: settings.skeletonSideModeKeepsForm === true,
+          keepEdits: settings.skeletonSideModeKeepsEdits === true,
+          presetWrite: true,
+        }
+      );
+    }
   }
 
   // A new preset's name: the word, then one more than the presets this case

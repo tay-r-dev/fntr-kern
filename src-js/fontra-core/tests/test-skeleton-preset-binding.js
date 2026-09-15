@@ -51,22 +51,51 @@ describe("skeleton preset binding", () => {
   it("is stale only when the preset states a different width", () => {
     const point = normalizeSkeletonPoint({ x: 0, y: 0 });
     applySkeletonWidthPreset(point, 40, { width: 60 });
-    expect(isSkeletonPointPresetStale(point, "width", { width: 60 }, 40)).to.equal(
+    const contour = { defaultWidth: 40, singleSided: null };
+    expect(isSkeletonPointPresetStale(point, "width", { width: 60 }, contour)).to.equal(
       false
     );
-    expect(isSkeletonPointPresetStale(point, "width", { width: 70 }, 40)).to.equal(
+    expect(isSkeletonPointPresetStale(point, "width", { width: 70 }, contour)).to.equal(
       true
     );
+  });
+
+  it("is stale when the preset states a different projection side", () => {
+    const point = normalizeSkeletonPoint({ x: 0, y: 0 });
+    applySkeletonWidthPreset(point, 40, { width: 60 });
+    const both = { defaultWidth: 40, singleSided: null };
+    const left = { defaultWidth: 40, singleSided: "left" };
+    expect(
+      isSkeletonPointPresetStale(point, "width", { width: 60, side: "both" }, both)
+    ).to.equal(false);
+    expect(
+      isSkeletonPointPresetStale(point, "width", { width: 60, side: "left" }, both)
+    ).to.equal(true);
+    expect(
+      isSkeletonPointPresetStale(point, "width", { width: 60, side: "left" }, left)
+    ).to.equal(false);
+  });
+
+  it("lifts a width bond when the contour's projection side changes", () => {
+    const before = skeletonWithPoint({ preset: { width: "Stem" } });
+    const after = structuredClone(before);
+    after.contours[0].singleSided = "right";
+    liftChangedPresetBindings(before, after);
+    expect(getSkeletonPointPreset(after.contours[0].points[0], "width")).to.equal(null);
   });
 
   it("is stale only when the terminal preset states a different shape", () => {
     const point = normalizeSkeletonPoint({ x: 0, y: 0 });
     applyTerminalPreset(point, "serif", SERIF_PRESETS[0]);
     expect(
-      isSkeletonPointPresetStale(point, "terminal", SERIF_PRESETS[0], 40)
+      isSkeletonPointPresetStale(point, "terminal", SERIF_PRESETS[0], {
+        defaultWidth: 40,
+      })
     ).to.equal(false);
     expect(
-      isSkeletonPointPresetStale(point, "terminal", SERIF_PRESETS[1], 40)
+      isSkeletonPointPresetStale(point, "terminal", SERIF_PRESETS[1], {
+        defaultWidth: 40,
+      })
     ).to.equal(true);
     const square = normalizeSkeletonPoint({ x: 0, y: 0 });
     applyTerminalPreset(square, "square", { capAngle: 10, capDistance: 5 });
@@ -75,7 +104,7 @@ describe("skeleton preset binding", () => {
         square,
         "terminal",
         { capAngle: 10, capDistance: 5 },
-        40
+        { defaultWidth: 40 }
       )
     ).to.equal(false);
     expect(
@@ -83,7 +112,7 @@ describe("skeleton preset binding", () => {
         square,
         "terminal",
         { capAngle: 10, capDistance: 6 },
-        40
+        { defaultWidth: 40 }
       )
     ).to.equal(true);
   });
