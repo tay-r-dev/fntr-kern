@@ -38,4 +38,26 @@ A line/rectangle broad-phase can avoid curve-root calculations for segments the 
 
 The allocations occur on first access for that controller/geometry, not on every unchanged hover. Geometry invalidation can require rebuilding, but this candidate alone does not justify an additional cache. Retain lazy loading while improving R01/R02.
 
+## Canvas scheduling and layout
+
+Primary source: [canvas-controller.js](../../src-js/fontra-core/src/canvas-controller.js); helper [utils.ts](../../src-js/fontra-core/src/utils.ts). The scheduling/lifecycle mechanisms are inherited; the rectangle-based positioning has fork changes.
+
+### R04 — Prioritize: redraw coalescing is timer-based rather than frame-based
+
+**Evidence:** the constructor assigns `requestUpdate = consolidateCalls(() => this.draw())` at `canvas-controller.js:53`; `utils.ts:44–59` implements consolidation with `setTimeout(..., 0)`. Wheel events call it, while `draw:172–185` clears and redraws the whole scene.
+
+Calls pending behind one timer are combined, but events in separate tasks can schedule several full draws before the next browser paint. Use one pending animation-frame request for ordinary visual invalidation, retaining an explicit immediate draw only where necessary. Static code establishes the scheduling mismatch, not a measured number of wasted frames.
+
+### R05 — Moderate: one view-box query makes five DOM rectangle reads
+
+**Evidence:** `getViewBox:353–373` reads width and height through getters, reads `canvasRect`, then calls `localPoint` twice, each reading the rectangle again. Snapping scene construction and visualization layers request the view box.
+
+Read one rectangle and derive both corners using the same origin/magnification snapshot. This also avoids internally inconsistent readings if layout changes. Five reads do not imply five forced reflows: the browser can reuse clean layout. The confirmed issue is redundant querying on an interactive path, with forced-layout cost conditional on preceding DOM writes.
+
+### R06 — Conditional lifecycle issue: a canvas controller has no disposal path
+
+**Evidence:** `constructor:21–26` keeps its ResizeObserver only in a local variable; `_setupScrollBlocker:58–70` installs an anonymous document wheel listener closing over the controller. No teardown method retains and releases both resources.
+
+If controllers are created and discarded within a live document, the global listener retains the old controller and wheel/timer work multiplies. The inspected editor normally owns its controller for the page lifetime, so this is not a demonstrated leak during ordinary drawing. Add explicit disposal if supporting in-page controller replacement; do not label existing page-lifetime ownership a leak.
+
 <!-- review checkpoint -->
