@@ -1324,11 +1324,16 @@ export default class SkeletonParametersPanel {
   // same points stay selected, so an edit made after picking can still be
   // written back with Update; the one whose values the selection states; none.
   _followSelectionPreset(control, items, bondName, matches) {
-    const key = this._widthPoints()
-      .map((entry) => `${entry.contourId}/${entry.pointId}`)
-      .join(",");
-    const sameSelection = control._selectionKey === key;
-    control._selectionKey = key;
+    // The same selection is any selection that still shares a point with the
+    // last one. A canvas drag reselects the rib or a handle of the point it
+    // grabbed, so an exact key would read that as a new selection and drop the
+    // pick. An empty selection, or one of other points, is a new one.
+    const keys = new Set(
+      this._widthPoints().map((entry) => `${entry.contourId}/${entry.pointId}`)
+    );
+    const previous = control._selectionKeys ?? new Set();
+    const sameSelection = [...keys].some((key) => previous.has(key));
+    control._selectionKeys = keys;
     const byBond = bondName ? items.find((item) => item.name === bondName) : null;
     const kept = sameSelection
       ? items.find((item) => item.value === control.lastPicked)
@@ -1399,12 +1404,23 @@ export default class SkeletonParametersPanel {
     const control =
       kind === "width" ? this.widthPresetControl : this.terminalPresetControl;
     const picked = this._pickedPresetName(kind, control.lastPicked);
+    const active = this._presetByName(kind, picked);
+    // The arrows answer one question: does the selection differ from its
+    // preset? A bound point is measured against the preset it is bound to,
+    // any other point against the preset the dropdown shows.
+    const differs = bond.points.some((entry) => {
+      const preset =
+        this._presetByName(kind, getSkeletonPointPreset(entry.point, kind)) ?? active;
+      return (
+        !!preset && isSkeletonPointPresetStale(entry.point, kind, preset, entry.contour)
+      );
+    });
     return {
       locked: bond.mixed ? "mixed" : !!bond.name && bond.name === picked,
       lockEnabled:
         !this.fontController.readOnly && !!bond.points.length && (!!picked || bond.any),
-      stale: bond.stale,
-      refreshEnabled: !this.fontController.readOnly && bond.any,
+      stale: differs,
+      refreshEnabled: !this.fontController.readOnly && differs,
     };
   }
 
@@ -1443,12 +1459,31 @@ export default class SkeletonParametersPanel {
   }
 
   // Refresh: every selected bound point takes its own preset's values again.
+  // The arrows: the selection goes back to its preset. Where the selection has
+  // one preset (every point bound to it, or none bound), that preset is applied
+  // the way picking it applies it, which also brings back an edit made since.
+  // Where bonds disagree, each bound point takes its own preset.
   async _refreshPresetBonds(kind) {
     const points = this._widthPoints();
     if (!points.length) {
       return;
     }
+    const bond = this._presetBondSummary(kind);
+    const control =
+      kind === "width" ? this.widthPresetControl : this.terminalPresetControl;
     const type = this._terminalPresetType;
+    if (!bond.mixed) {
+      const preset = this._presetByName(
+        kind,
+        bond.name ?? this._pickedPresetName(kind, control.lastPicked)
+      );
+      if (preset) {
+        await (kind === "width"
+          ? this._applyWidthPreset(preset)
+          : this._applyTerminalPreset(type, preset));
+      }
+      return;
+    }
     await this._runOwnEdit(async () => {
       if (kind === "width") {
         await this._refreshBoundProjectionSides(points);

@@ -713,7 +713,7 @@ export const strings = {
   "sidebar.skeleton-parameters.width-preset.add": "Add",
   "sidebar.skeleton-parameters.width-preset.none": "No presets for this case",
   "sidebar.skeleton-parameters.width-preset.lock": "Bind the selection to this preset",
-  "sidebar.skeleton-parameters.width-preset.refresh": "Refresh from the preset",
+  "sidebar.skeleton-parameters.width-preset.refresh": "Back to the preset",
   "sidebar.skeleton-parameters.width-preset.update": "Update",
   "sidebar.skeleton-parameters.width-preset.update-confirm": "Press again",
   "sidebar.skeleton-parameters.group.lock": "Lock",
