@@ -30,7 +30,6 @@ import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-fi
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39's origin pick
 import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 41
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 43's G3
-import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 42
 import { Form } from "@fontra/web-components/ui-form.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import { SELECTION_ROW_GROUP_STYLES } from "./selection-row-group-styles.js";
@@ -910,81 +909,45 @@ export default class TransformationPanel {
     // below no longer has a position-bound sibling ahead of it.
     formContents.push({ type: "divider" });
 
-    // Ticket 43: Run keeps its label, moved to the right end of the header.
-    formContents.push({
-      type: "header",
-      label: translate("sidebar.selection-transformation.harmonize"),
-      auxiliaryElement: html.button({ onclick: () => this.doHarmonize() }, [
-        translate("sidebar.selection-transformation.harmonize.apply"),
-      ]),
-    });
-
-    // Ticket 43: G3 becomes a labeled toggle. Built as a raw auxiliaryElement
-    // row -- like the segmented control above -- rather than through the
-    // Form's checkbox field type, since a plain checked/change pair is all it
-    // needs and this way it can trigger the same rebuild the checkbox's
-    // special case in onFieldChange used to (greying the segmented control
-    // is a rebuild-only change).
+    // The Harmonize header carries everything: the G3 toggle, Run, and an
+    // overflow holding the movement (preserve, recompute, move on-curve) and
+    // the two options. One press draws one answer, so each pick is written to
+    // the settings at once and there is no mid-gesture state to read back.
     this.harmonizeG3Toggle = html.createDomElement("labeled-toggle", {
       label: translate("sidebar.selection-transformation.harmonize.g3"),
       checked: !!applicationSettingsController.model.harmonizeG3,
     });
     this.harmonizeG3Toggle.addEventListener("change", () => {
       applicationSettingsController.model.harmonizeG3 = this.harmonizeG3Toggle.checked;
-      this.update();
+      this._refreshHarmonizeOverflow();
     });
+    this.harmonizeOverflow = html.createDomElement("overflow-button", {
+      "data-tooltip": translate("sidebar.selection-transformation.harmonize.method"),
+      "data-tooltipposition": "left",
+    });
+    this.harmonizeOverflow.addEventListener("change", (event) => {
+      const item = event.detail.item;
+      const settings = applicationSettingsController.model;
+      if (item.group === "method") {
+        settings.harmonizeMethod = item.value;
+      } else {
+        settings[item.value] = item.checked;
+      }
+    });
+    this._refreshHarmonizeOverflow();
     formContents.push({
-      type: "universal-row",
-      field1: { type: "auxiliaryElement", auxiliaryElement: this.harmonizeG3Toggle },
-      field2: {},
-      field3: {},
-    });
-
-    // Ticket 42: a segmented control -- preserve, recompute, move on-curve --
-    // in place of the three-position slider. One press draws one answer, so
-    // there is no mid-gesture state to preserve and no separate name-element
-    // row is needed; the lit segment already says which position is active.
-    this.harmonizeMethodControl = html.createDomElement("segmented-control", {
-      options: [1, 2, 3].map((method) => ({
-        value: method,
-        label: translate(
-          `sidebar.selection-transformation.harmonize.method.${method}.short`
-        ),
-      })),
-      value: applicationSettingsController.model.harmonizeG3
-        ? 2
-        : applicationSettingsController.model.harmonizeMethod,
-      // G3 has one construction, so there is nothing for the control to say.
-      disabled: !!applicationSettingsController.model.harmonizeG3,
-    });
-    this.harmonizeMethodControl.addEventListener("change", (event) => {
-      applicationSettingsController.model.harmonizeMethod = event.detail.value;
-    });
-    formContents.push({
-      type: "universal-row",
-      field1: {
-        type: "text",
-        value: translate("sidebar.selection-transformation.harmonize.method"),
-      },
-      field2: {
-        type: "auxiliaryElement",
-        auxiliaryElement: this.harmonizeMethodControl,
-      },
-      field3: {},
-    });
-
-    formContents.push({
-      type: "checkbox",
-      key: "harmonizeEqualize",
-      label: translate("sidebar.selection-transformation.harmonize.equalize"),
-      value: applicationSettingsController.model.harmonizeEqualize,
-    });
-
-    formContents.push({
-      type: "checkbox",
-      key: "harmonizeOtherSources",
-      label: translate("sidebar.selection-transformation.harmonize.other-sources"),
-      value: applicationSettingsController.model.harmonizeOtherSources,
+      type: "header",
+      label: translate("sidebar.selection-transformation.harmonize"),
+      auxiliaryElement: html.div(
+        { style: "display: flex; align-items: center; gap: 0.4em;" },
+        [
+          this.harmonizeG3Toggle,
+          html.button({ onclick: () => this.doHarmonize() }, [
+            translate("sidebar.selection-transformation.harmonize.apply"),
+          ]),
+          this.harmonizeOverflow,
+        ]
+      ),
     });
 
     formContents.push({
@@ -1019,10 +982,6 @@ export default class TransformationPanel {
 
       this.transformParameters[fieldItem.key] = value;
 
-      if (["harmonizeEqualize", "harmonizeOtherSources"].includes(fieldItem.key)) {
-        applicationSettingsController.model[fieldItem.key] = value;
-      }
-
       if (fieldItem.key === "originXButton" || fieldItem.key === "originYButton") {
         this.transformParameters[fieldItem.key.replace("Button", "")] = value;
 
@@ -1042,11 +1001,9 @@ export default class TransformationPanel {
     const settings = applicationSettingsController.model;
     const options = {
       useG3: !!settings.harmonizeG3,
-      // Read off the slider itself, not off the stored setting. The stored one
-      // is written from a value stream that a click can close early, and a
-      // command that does something other than what the panel shows is worse
-      // than one that does nothing.
-      method: this.harmonizeMethodOnScreen(),
+      // The overflow writes a pick to the setting the moment it is made, so
+      // the stored method is the one the list shows.
+      method: settings.harmonizeMethod,
       equalizeHandles: !!settings.harmonizeEqualize,
       applyToOtherSources: settings.harmonizeOtherSources,
     };
@@ -1057,15 +1014,29 @@ export default class TransformationPanel {
     );
   }
 
-  // The position the segmented control is actually showing. Falls back to
-  // the stored setting where the panel has not been built yet, which is how
-  // a keyboard shortcut reaches this before the panel is ever opened.
-  harmonizeMethodOnScreen() {
-    const shown = this.harmonizeMethodControl?.value;
-    if (shown >= 1 && shown <= 3) {
-      return shown;
-    }
-    return applicationSettingsController.model.harmonizeMethod;
+  // The movement as one choice of three, then the two options as checks. G3
+  // has one construction, so the movement greys while it is on.
+  _refreshHarmonizeOverflow() {
+    const settings = applicationSettingsController.model;
+    this.harmonizeOverflow.items = [
+      ...[1, 2, 3].map((method) => ({
+        value: method,
+        group: "method",
+        label: translate(`sidebar.selection-transformation.harmonize.method.${method}`),
+        checked: settings.harmonizeMethod === method,
+        disabled: !!settings.harmonizeG3,
+      })),
+      { divider: true },
+      ...["harmonizeEqualize", "harmonizeOtherSources"].map((key) => ({
+        value: key,
+        label: translate(
+          `sidebar.selection-transformation.harmonize.${
+            key === "harmonizeEqualize" ? "equalize" : "other-sources"
+          }`
+        ),
+        checked: !!settings[key],
+      })),
+    ];
   }
 
   setHarmonizeReport(text, detail = "") {
