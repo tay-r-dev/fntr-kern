@@ -1,5 +1,6 @@
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import "@fontra/web-components/icon-button.js";
 import "@fontra/web-components/multi-select-dropdown.js";
 
 // A section header's preset control: a dropdown, Add and Update. Generation
@@ -34,46 +35,61 @@ export class PresetHeaderControl {
       this._disarmUpdate();
       onPick(value);
     });
-    this.addButton = html.button(
-      {
-        onclick: () => {
-          this._disarmUpdate();
-          onAdd();
-        },
-      },
-      [translate("sidebar.skeleton-parameters.width-preset.add")]
+    // Add and Update are the design's plus and arrow-up icons, ahead of the
+    // dropdown. An armed Update shows lit, and its tooltip asks for the second
+    // press.
+    const iconButton = (src, tooltipKey, onclick) => {
+      const button = html.createDomElement("icon-button", {
+        "src": src,
+        "data-tooltip": translate(tooltipKey),
+        "data-tooltipposition": "top",
+        "style": "width: 1.1em; height: 1.1em; padding: 0.15em;",
+      });
+      button.onclick = onclick;
+      return button;
+    };
+    this.addButton = iconButton(
+      "/images/preset-add.svg",
+      "sidebar.skeleton-parameters.width-preset.add",
+      () => {
+        this._disarmUpdate();
+        onAdd();
+      }
     );
-    this.updateButton = html.button(
-      {
-        onclick: () => {
-          if (this.lastPicked == null) {
-            return;
-          }
-          if (this._confirmUpdate && !this._updateArmed) {
-            this._updateArmed = true;
-            this.updateButton.textContent = translate(
-              "sidebar.skeleton-parameters.width-preset.update-confirm"
-            );
-            return;
-          }
-          this._disarmUpdate();
-          onUpdate(this.lastPicked);
-        },
-      },
-      [translate("sidebar.skeleton-parameters.width-preset.update")]
+    this.updateButton = iconButton(
+      "/images/preset-update.svg",
+      "sidebar.skeleton-parameters.width-preset.update",
+      () => {
+        if (this.lastPicked == null) {
+          return;
+        }
+        if (this._confirmUpdate && !this._updateArmed) {
+          this._updateArmed = true;
+          this.updateButton.on = true;
+          this.updateButton.setAttribute(
+            "data-tooltip",
+            translate("sidebar.skeleton-parameters.width-preset.update-confirm")
+          );
+          return;
+        }
+        this._disarmUpdate();
+        onUpdate(this.lastPicked);
+      }
     );
     this.element = html.div(
       {
-        style: "display: flex; gap: 0.35rem; align-items: center; font-weight: normal;",
+        style: "display: flex; gap: 0.2rem; align-items: center; font-weight: normal;",
       },
-      [this.dropdown, this.addButton, this.updateButton]
+      [this.addButton, this.updateButton, this.dropdown]
     );
   }
 
   _disarmUpdate() {
     this._updateArmed = false;
-    this.updateButton.textContent = translate(
-      "sidebar.skeleton-parameters.width-preset.update"
+    this.updateButton.on = false;
+    this.updateButton.setAttribute(
+      "data-tooltip",
+      translate("sidebar.skeleton-parameters.width-preset.update")
     );
   }
 
