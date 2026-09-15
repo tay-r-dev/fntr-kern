@@ -30,6 +30,7 @@ import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 45
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 46
 import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 49
 import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 48
+import "@fontra/web-components/overflow-popover.js"; // for the Rib card
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 44
 import { Form } from "@fontra/web-components/ui-form.js";
 import { PresetHeaderControl } from "./preset-header-control.js";
@@ -622,17 +623,97 @@ export default class SkeletonParametersPanel {
       this._refreshProjectionOverflow();
     });
     this._refreshProjectionOverflow();
-    // The Rib group's overflow: the three locks, Force angle (the rib angle
-    // lock: Free, Vertical, Horizontal) with the mode a forced rib keeps, and
-    // Detach. Force angle and the mode are each one choice; the rest are checks.
-    // Link is not here: the width fields carry their own chain.
-    this.ribOverflow = html.createDomElement("overflow-button", {
+    // The Rib group's overflow, a card as in the design: Rib angle (the rib
+    // angle lock: Free, Vertical, Horizontal) with Keep the footprint, the
+    // forced rib's mode, under it; then Lock with the three lock kinds and Link
+    // with Tied ribs and Detach. The controls are built once; each update sets
+    // their state from the selection.
+    this.ribAngleControl = html.createDomElement("segmented-control", {
+      options: [
+        ["auto", "free"],
+        ["vertical", "vertical"],
+        ["horizontal", "horizontal"],
+      ].map(([value, labelKey]) => ({
+        value,
+        label: translate(`sidebar.skeleton-parameters.force-angle.${labelKey}`),
+      })),
+    });
+    this.ribAngleControl.addEventListener("change", (event) =>
+      this._runOwnEdit(() => this._onWidthChange("ribanglelock", event.detail.value))
+    );
+    this.ribFootprintCheck = html.input({ type: "checkbox" });
+    this.ribFootprintCheck.addEventListener("change", () =>
+      this._runOwnEdit(() =>
+        this._onWidthChange(
+          "ribanglelockmode",
+          this.ribFootprintCheck.checked ? "rib" : "stroke"
+        )
+      )
+    );
+    this.ribLockButtons = Object.fromEntries(
+      SKELETON_LOCK_KINDS.map((kind) => [
+        kind,
+        toggleButton(`/images/lock-${kind}.svg`, `locked.${kind}`, (value) =>
+          this._onRibChange(`locked-${kind}`, value)
+        ),
+      ])
+    );
+    this.ribCardTiedButton = toggleButton(
+      "/tabler-icons/link-plus.svg",
+      "tied",
+      (value) => this._onWidthChange("tied", value)
+    );
+    this.ribDetachButton = toggleButton("/images/rib-detach.svg", "detached", (value) =>
+      this._onRibChange("detached", value)
+    );
+    const cardTitle = (labelKey) =>
+      html.span({}, [translate(`sidebar.skeleton-parameters.${labelKey}`)]);
+    const cardColumn = (children) =>
+      html.div(
+        { style: "display: flex; flex-direction: column; gap: 0.25em;" },
+        children
+      );
+    this.ribOverflow = html.createDomElement("overflow-popover", {
       "data-tooltip": translate("sidebar.skeleton-parameters.rib-options"),
       "data-tooltipposition": "top",
     });
-    this.ribOverflow.addEventListener("change", (event) =>
-      this._onRibOverflowPick(event.detail.item)
+    this.ribOverflow.content = html.div(
+      {
+        class: "selection-row-group-icons",
+        style: "display: flex; flex-direction: column; align-items: start; gap: 0.9em;",
+      },
+      [
+        cardColumn([cardTitle("rib-angle"), this.ribAngleControl]),
+        html.label({ style: "display: flex; gap: 0.5em; align-items: center;" }, [
+          this.ribFootprintCheck,
+          translate("sidebar.skeleton-parameters.rib-angle-lock-mode.rib"),
+        ]),
+        html.div({ style: "display: flex; gap: 1em;" }, [
+          cardColumn([
+            cardTitle("group.lock"),
+            html.div(
+              { style: "display: flex; gap: 0.15em;" },
+              Object.values(this.ribLockButtons)
+            ),
+          ]),
+          cardColumn([
+            cardTitle("group.link"),
+            html.div({ style: "display: flex; gap: 0.15em;" }, [
+              this.ribCardTiedButton,
+              this.ribDetachButton,
+            ]),
+          ]),
+        ]),
+      ]
     );
+    for (const button of [
+      ...Object.values(this.ribLockButtons),
+      this.ribCardTiedButton,
+      this.ribDetachButton,
+    ]) {
+      button.style.width = "1.8em";
+      button.style.height = "1.8em";
+    }
     // Ticket 49: the Generation header's preset control. A preset is a total
     // width and a projection side. Add stores the selection's total and
     // projection as a new preset for the glyph's case; Update writes them over
@@ -1680,7 +1761,7 @@ export default class SkeletonParametersPanel {
     });
 
     setToggle(this.tiedButton, summary.tied, !summary.tied.canTie);
-    this._refreshRibOverflow(widthPoints, ribs, ribSummary);
+    this._refreshRibOverflow(widthPoints, ribs, ribSummary, summary.tied);
     formContents.push({
       type: "single-icon",
       element: this.ribRow,
@@ -1688,71 +1769,32 @@ export default class SkeletonParametersPanel {
     });
   }
 
-  // One check per lock kind, Force angle and the forced rib's mode as two
-  // choices, and Detach. A mixed value checks nothing.
-  _refreshRibOverflow(widthPoints, ribs, ribSummary) {
-    const checkedTrue = (reduced) => !reduced.mixed && reduced.value === true;
+  // The Rib card's state. A mixed value lights nothing: no angle segment, an
+  // indeterminate check, a dashed toggle.
+  _refreshRibOverflow(widthPoints, ribs, ribSummary, tied) {
+    const setToggle = (button, reduced, disabled) => {
+      button.mixed = !disabled && reduced.mixed;
+      button.on = !disabled && !reduced.mixed && reduced.value === true;
+      button.disabled = disabled;
+    };
     const ribAngleLock = summarizeSkeletonRibAngleLockSelection(widthPoints);
-    const angle = ribAngleLock.mixed ? undefined : (ribAngleLock.value ?? "auto");
+    this.ribAngleControl.value = ribAngleLock.mixed
+      ? undefined
+      : (ribAngleLock.value ?? "auto");
+    this.ribAngleControl.disabled = !ribAngleLock.canEdit;
+    // Greyed while the angle is Free, because the mode decides nothing then.
     const lockMode = ribAngleLock.mode;
-    this.ribOverflow.items = [
-      ...SKELETON_LOCK_KINDS.map((kind) => ({
-        value: `lock:${kind}`,
-        label: translate(`sidebar.skeleton-parameters.locked.${kind}`),
-        checked: checkedTrue(ribSummary.locked[kind]),
-        disabled: !ribs.length,
-      })),
-      { divider: true },
-      ...[
-        ["auto", "free"],
-        ["vertical", "vertical"],
-        ["horizontal", "horizontal"],
-      ].map(([value, labelKey]) => ({
-        value: `angle:${value}`,
-        group: "angle",
-        label: `${translate("sidebar.skeleton-parameters.force-angle")}: ${translate(
-          `sidebar.skeleton-parameters.force-angle.${labelKey}`
-        )}`,
-        checked: angle === value,
-        disabled: !ribAngleLock.canEdit,
-      })),
-      // Greyed while Force angle is Free, because the mode decides nothing then.
-      ...["stroke", "rib"].map((value) => ({
-        value: `mode:${value}`,
-        group: "mode",
-        label: translate(`sidebar.skeleton-parameters.rib-angle-lock-mode.${value}`),
-        checked: !lockMode.mixed && (lockMode.value ?? "stroke") === value,
-        disabled: !lockMode.canEdit,
-      })),
-      { divider: true },
-      // Detach does not move the handle; it changes how the handle's stored
-      // offset is measured, so it is offered whatever is locked.
-      {
-        value: "detach",
-        label: translate("sidebar.skeleton-parameters.detached"),
-        checked: checkedTrue(ribSummary.detached),
-        disabled: !ribs.length,
-      },
-    ];
-    this.ribOverflow.disabled = !ribs.length && !ribAngleLock.canEdit;
-  }
-
-  _onRibOverflowPick(item) {
-    if (!item) {
-      return;
+    this.ribFootprintCheck.checked = !lockMode.mixed && lockMode.value === "rib";
+    this.ribFootprintCheck.indeterminate = lockMode.mixed;
+    this.ribFootprintCheck.disabled = !lockMode.canEdit;
+    for (const kind of SKELETON_LOCK_KINDS) {
+      setToggle(this.ribLockButtons[kind], ribSummary.locked[kind], !ribs.length);
     }
-    const [kind, value] = item.value.split(":");
-    this._runOwnEdit(async () => {
-      if (kind === "lock") {
-        await this._onRibChange(`locked-${value}`, item.checked);
-      } else if (kind === "angle") {
-        await this._onWidthChange("ribanglelock", value);
-      } else if (kind === "mode") {
-        await this._onWidthChange("ribanglelockmode", value);
-      } else if (kind === "detach") {
-        await this._onRibChange("detached", item.checked);
-      }
-    });
+    setToggle(this.ribCardTiedButton, tied, !tied.canTie);
+    // Detach does not move the handle; it changes how the handle's stored
+    // offset is measured, so it is offered whatever is locked.
+    setToggle(this.ribDetachButton, ribSummary.detached, !ribs.length);
+    this.ribOverflow.disabled = !ribs.length && !ribAngleLock.canEdit;
   }
 
   // Ticket 50: the Terminal section. It is offered only where every selected

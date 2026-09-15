@@ -724,6 +724,7 @@ export const strings = {
   "sidebar.skeleton-parameters.group.reset": "Reset",
   "sidebar.skeleton-parameters.group.rib": "Rib",
   "sidebar.skeleton-parameters.rib-options": "Rib options",
+  "sidebar.skeleton-parameters.rib-angle": "Rib angle",
   "sidebar.skeleton-parameters.reset-handle": "Reset handle",
   "sidebar.skeleton-parameters.reset-slide": "Reset slide",
   "sidebar.skeleton-parameters.reset-all": "Reset all",
