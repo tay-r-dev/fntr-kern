@@ -29,6 +29,8 @@ import { VarPackedPath } from "@fontra/core/var-path.js";
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 38
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39's origin pick
 import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 41
+import "@fontra/web-components/overflow-popover.js"; // for the Harmonize card
+import "@fontra/web-components/segmented-control.js"; // for the Harmonize movement
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 43's G3
 import { Form } from "@fontra/web-components/ui-form.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
@@ -44,6 +46,12 @@ import {
 // own sidebar panel (see ticket 05: merge into one "Selection" tab).
 export default class TransformationPanel {
   static stylesForm = `
+  /* The label column is as wide as the widest label and no wider. */
+  .ui-form {
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 0.75em;
+  }
+
   .ui-form-label {
     overflow-x: unset;
     display: grid;
@@ -86,19 +94,23 @@ export default class TransformationPanel {
     right: 0;
   }
 
-  .ui-form-label:has(.origin-radio-buttons) {
-    height: auto;
+  /* The Origin row: its label, then the grid spanning two lines, with X and
+     Y on the first line beside it and pick and clear under them. */
+  .ui-form-value:has(.origin-buttons) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.3em 0.5em;
   }
 
-  .ui-form-value:has(.origin-buttons) {
-    display: flex;
-    flex-wrap: wrap;
-    align-content: center;
-    column-gap: 0.3em;
+  .ui-form-value:has(.origin-buttons) > .origin-radio-buttons {
+    grid-column: 1;
+    grid-row: 1 / span 2;
   }
 
   .origin-buttons {
-    flex-basis: 100%;
+    grid-column: 2 / span 2;
+    grid-row: 2;
     display: flex;
     gap: 0.3em;
   }
@@ -491,15 +503,20 @@ export default class TransformationPanel {
     });
     clearButton.onclick = () => this._clearOrigin();
 
-    // One row: the grid, the typed X and Y, then pick over clear.
+    // One row: the Origin label, the grid, the typed X and Y, then pick and
+    // clear under them.
     formContents.push({
       type: "universal-row",
-      field1: { auxiliaryElement: radioButtonOrigin },
+      field1: {
+        type: "text",
+        value: translate("sidebar.selection-transformation.origin"),
+      },
       field2: {
         type: "edit-number",
         key: "originXButton",
         value: this.transformParameters.originXButton,
         allowEmptyField: true,
+        auxiliaryElement: radioButtonOrigin,
       },
       field3: {
         type: "edit-number",
@@ -921,19 +938,50 @@ export default class TransformationPanel {
       applicationSettingsController.model.harmonizeG3 = this.harmonizeG3Toggle.checked;
       this._refreshHarmonizeOverflow();
     });
-    this.harmonizeOverflow = html.createDomElement("overflow-button", {
+    // The overflow is a card, as the Rib one: Movement as a segmented control,
+    // then the two options as checks.
+    const settings = applicationSettingsController.model;
+    this.harmonizeMethodControl = html.createDomElement("segmented-control", {
+      options: [1, 2, 3].map((method) => ({
+        value: method,
+        label: translate(
+          `sidebar.selection-transformation.harmonize.method.${method}.short`
+        ),
+      })),
+    });
+    this.harmonizeMethodControl.addEventListener(
+      "change",
+      (event) => (settings.harmonizeMethod = event.detail.value)
+    );
+    this.harmonizeChecks = {};
+    const optionCheck = (key, labelKey) => {
+      const check = html.input({ type: "checkbox" });
+      check.addEventListener("change", () => (settings[key] = check.checked));
+      this.harmonizeChecks[key] = check;
+      return html.label({ style: "display: flex; gap: 0.5em; align-items: center;" }, [
+        check,
+        translate(`sidebar.selection-transformation.harmonize.${labelKey}`),
+      ]);
+    };
+    this.harmonizeOverflow = html.createDomElement("overflow-popover", {
       "data-tooltip": translate("sidebar.selection-transformation.harmonize.method"),
       "data-tooltipposition": "left",
     });
-    this.harmonizeOverflow.addEventListener("change", (event) => {
-      const item = event.detail.item;
-      const settings = applicationSettingsController.model;
-      if (item.group === "method") {
-        settings.harmonizeMethod = item.value;
-      } else {
-        settings[item.value] = item.checked;
-      }
-    });
+    this.harmonizeOverflow.content = html.div(
+      {
+        style: "display: flex; flex-direction: column; align-items: start; gap: 0.6em;",
+      },
+      [
+        html.div({ style: "display: flex; flex-direction: column; gap: 0.25em;" }, [
+          html.span({}, [
+            translate("sidebar.selection-transformation.harmonize.method"),
+          ]),
+          this.harmonizeMethodControl,
+        ]),
+        optionCheck("harmonizeEqualize", "equalize"),
+        optionCheck("harmonizeOtherSources", "other-sources"),
+      ]
+    );
     this._refreshHarmonizeOverflow();
     formContents.push({
       type: "header",
@@ -1014,29 +1062,15 @@ export default class TransformationPanel {
     );
   }
 
-  // The movement as one choice of three, then the two options as checks. G3
-  // has one construction, so the movement greys while it is on.
+  // The card's state from the settings. G3 has one construction, so the
+  // movement greys while it is on.
   _refreshHarmonizeOverflow() {
     const settings = applicationSettingsController.model;
-    this.harmonizeOverflow.items = [
-      ...[1, 2, 3].map((method) => ({
-        value: method,
-        group: "method",
-        label: translate(`sidebar.selection-transformation.harmonize.method.${method}`),
-        checked: settings.harmonizeMethod === method,
-        disabled: !!settings.harmonizeG3,
-      })),
-      { divider: true },
-      ...["harmonizeEqualize", "harmonizeOtherSources"].map((key) => ({
-        value: key,
-        label: translate(
-          `sidebar.selection-transformation.harmonize.${
-            key === "harmonizeEqualize" ? "equalize" : "other-sources"
-          }`
-        ),
-        checked: !!settings[key],
-      })),
-    ];
+    this.harmonizeMethodControl.value = settings.harmonizeMethod;
+    this.harmonizeMethodControl.disabled = !!settings.harmonizeG3;
+    for (const [key, check] of Object.entries(this.harmonizeChecks)) {
+      check.checked = !!settings[key];
+    }
   }
 
   setHarmonizeReport(text, detail = "") {

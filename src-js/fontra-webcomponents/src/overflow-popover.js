@@ -56,35 +56,11 @@ export class OverflowPopover extends UnlitElement {
 
   constructor() {
     super();
-    this._content = null;
     this._disabled = false;
-  }
-
-  get content() {
-    return this._content;
-  }
-
-  set content(element) {
-    this._content = element;
-    this.requestUpdate();
-  }
-
-  get disabled() {
-    return this._disabled;
-  }
-
-  set disabled(value) {
-    this._disabled = !!value;
-    if (this._button) {
-      this._button.disabled = this._disabled;
-    }
-    if (this._disabled) {
-      this._card?.hidePopover?.();
-    }
-  }
-
-  render() {
-    this._card = html.div({ class: "card", popover: "auto" }, [this._content || ""]);
+    // Built once. A render runs on every connect and on every update, and two
+    // of them can overlap; handing back the same two nodes each time means an
+    // overlap moves them rather than adding a second button and card.
+    this._card = html.div({ class: "card", popover: "auto" }, []);
     // Placed under the button's right edge, and kept on screen.
     this._card.addEventListener("beforetoggle", (event) => {
       if (event.newState !== "open") {
@@ -98,7 +74,6 @@ export class OverflowPopover extends UnlitElement {
       "button",
       {
         type: "button",
-        disabled: this._disabled,
         // A press while open closes it: the popover's own light dismiss runs
         // first on pointerdown, so the click would reopen it without this.
         onpointerdown: () => (this._wasOpen = this._card.matches(":popover-open")),
@@ -110,6 +85,25 @@ export class OverflowPopover extends UnlitElement {
       },
       [html.createDomElement("inline-svg", { src: "/tabler-icons/dots-vertical.svg" })]
     );
+  }
+
+  set content(element) {
+    this._card.replaceChildren(element);
+  }
+
+  get disabled() {
+    return this._disabled;
+  }
+
+  set disabled(value) {
+    this._disabled = !!value;
+    this._button.disabled = this._disabled;
+    if (this._disabled && this._card.matches(":popover-open")) {
+      this._card.hidePopover();
+    }
+  }
+
+  render() {
     return [this._button, this._card];
   }
 }

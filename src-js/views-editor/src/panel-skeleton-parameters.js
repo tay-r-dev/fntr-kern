@@ -658,14 +658,6 @@ export default class SkeletonParametersPanel {
         ),
       ])
     );
-    this.ribCardTiedButton = toggleButton(
-      "/tabler-icons/link-plus.svg",
-      "tied",
-      (value) => this._onWidthChange("tied", value)
-    );
-    this.ribDetachButton = toggleButton("/images/rib-detach.svg", "detached", (value) =>
-      this._onRibChange("detached", value)
-    );
     const cardTitle = (labelKey) =>
       html.span({}, [translate(`sidebar.skeleton-parameters.${labelKey}`)]);
     const cardColumn = (children) =>
@@ -688,29 +680,16 @@ export default class SkeletonParametersPanel {
           this.ribFootprintCheck,
           translate("sidebar.skeleton-parameters.rib-angle-lock-mode.rib"),
         ]),
-        html.div({ style: "display: flex; gap: 1em;" }, [
-          cardColumn([
-            cardTitle("group.lock"),
-            html.div(
-              { style: "display: flex; gap: 0.15em;" },
-              Object.values(this.ribLockButtons)
-            ),
-          ]),
-          cardColumn([
-            cardTitle("group.link"),
-            html.div({ style: "display: flex; gap: 0.15em;" }, [
-              this.ribCardTiedButton,
-              this.ribDetachButton,
-            ]),
-          ]),
+        cardColumn([
+          cardTitle("group.lock"),
+          html.div(
+            { style: "display: flex; gap: 0.15em;" },
+            Object.values(this.ribLockButtons)
+          ),
         ]),
       ]
     );
-    for (const button of [
-      ...Object.values(this.ribLockButtons),
-      this.ribCardTiedButton,
-      this.ribDetachButton,
-    ]) {
+    for (const button of Object.values(this.ribLockButtons)) {
       button.style.width = "1.8em";
       button.style.height = "1.8em";
     }
@@ -853,29 +832,25 @@ export default class SkeletonParametersPanel {
     this.serifChains = {};
     // The serif rows follow the Transform rows: the name in a label column,
     // the fields after it. The group title is bold, as in the design.
+    // A group is one grid, so its label column is as wide as its widest label.
+    // A row adds its two cells to that grid rather than making its own.
     const labeledRow = (labelKey, children) =>
-      html.div(
-        {
-          style:
-            "display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: 0.35rem; align-items: center;",
-        },
-        [
-          html.span(
-            {
-              style: "overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
-            },
-            [translate(`sidebar.skeleton-parameters.${labelKey}`)]
-          ),
-          fieldRow(children),
-        ]
-      );
+      html.div({ style: "display: contents;" }, [
+        html.span({ style: "white-space: nowrap;" }, [
+          translate(`sidebar.skeleton-parameters.${labelKey}`),
+        ]),
+        fieldRow(children),
+      ]);
     const groupTitle = (labelKey) =>
-      html.span({ style: "font-weight: bold;" }, [
+      html.span({ style: "font-weight: bold; grid-column: 1 / -1;" }, [
         translate(`sidebar.skeleton-parameters.${labelKey}`),
       ]);
     const groupBlock = (children) =>
       html.div(
-        { style: "display: flex; flex-direction: column; gap: 0.35rem;" },
+        {
+          style:
+            "display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.35rem 0.75em; align-items: center;",
+        },
         children
       );
     this.serifGroupBlocks = SERIF_FIELD_GROUPS.map(([groupKey, fields]) =>
@@ -930,31 +905,14 @@ export default class SkeletonParametersPanel {
       labeledRow("serif-underside-cup-tension", [this.serifCupFields.cuptension]),
     ]);
 
-    // The serif Angle group. The serif axis is independent of the rib angle
-    // lock: the lock sets the rib the cap is built on, this sets which way the
-    // wings run, and both apply at once. Free, Vertical and Horizontal sit on the
-    // control, and Tilt sits openly under it (decided 2026-09-14; the absolute
-    // angle is gone from the panel). Free is the tilt mode: a tilt of zero is the
-    // plain perpendicular, so Free with Tilt 0 draws what it always drew.
-    this.serifAxisControl = html.createDomElement("segmented-control", {
-      options: [
-        ["tilt", "free"],
-        ["vertical", "vertical"],
-        ["horizontal", "horizontal"],
-      ].map(([value, labelKey]) => ({
-        value,
-        label: translate(`sidebar.skeleton-parameters.force-angle.${labelKey}`),
-      })),
-    });
-    this.serifAxisControl.addEventListener("change", (event) =>
-      this._runOwnEdit(() => this._onSerifChange("axismode", event.detail.value))
-    );
-    this.serifAxisRow = html.div(
-      { style: "display: flex; align-items: center; gap: 1em;" },
-      [groupTitle("serif-group-angle"), this.serifAxisControl]
-    );
+    // The serif Angle group: Tilt alone. The axis direction is not offered
+    // here, because the point's rib angle already sets it. Tilt is live only
+    // while the axis is free.
     this.serifAxisTiltField = this._makeSerifTiltField();
-    this.serifAxisTiltRow = labeledRow("serif-axis-tilt", [this.serifAxisTiltField]);
+    this.serifAxisRow = groupBlock([
+      groupTitle("serif-group-angle"),
+      labeledRow("serif-axis-tilt", [this.serifAxisTiltField]),
+    ]);
     // Projection and Reset first, then the Rib group under them.
     this.generationIconRow = html.div({ class: "selection-row-group" }, [
       ...iconGroup("group.projection", [
@@ -1761,7 +1719,7 @@ export default class SkeletonParametersPanel {
     });
 
     setToggle(this.tiedButton, summary.tied, !summary.tied.canTie);
-    this._refreshRibOverflow(widthPoints, ribs, ribSummary, summary.tied);
+    this._refreshRibOverflow(widthPoints, ribs, ribSummary);
     formContents.push({
       type: "single-icon",
       element: this.ribRow,
@@ -1771,7 +1729,7 @@ export default class SkeletonParametersPanel {
 
   // The Rib card's state. A mixed value lights nothing: no angle segment, an
   // indeterminate check, a dashed toggle.
-  _refreshRibOverflow(widthPoints, ribs, ribSummary, tied) {
+  _refreshRibOverflow(widthPoints, ribs, ribSummary) {
     const setToggle = (button, reduced, disabled) => {
       button.mixed = !disabled && reduced.mixed;
       button.on = !disabled && !reduced.mixed && reduced.value === true;
@@ -1790,10 +1748,6 @@ export default class SkeletonParametersPanel {
     for (const kind of SKELETON_LOCK_KINDS) {
       setToggle(this.ribLockButtons[kind], ribSummary.locked[kind], !ribs.length);
     }
-    setToggle(this.ribCardTiedButton, tied, !tied.canTie);
-    // Detach does not move the handle; it changes how the handle's stored
-    // offset is measured, so it is offered whatever is locked.
-    setToggle(this.ribDetachButton, ribSummary.detached, !ribs.length);
     this.ribOverflow.disabled = !ribs.length && !ribAngleLock.canEdit;
   }
 
@@ -2167,17 +2121,6 @@ export default class SkeletonParametersPanel {
       ? null
       : (serif.axisMode.value ?? "perpendicular");
     const free = axisMode === "perpendicular" || axisMode === "tilt";
-    this.serifAxisControl.value = free
-      ? "tilt"
-      : axisMode === "vertical" || axisMode === "horizontal"
-        ? axisMode
-        : undefined;
-    this.serifAxisControl.disabled = !canEdit;
-    formContents.push({
-      type: "single-icon",
-      element: this.serifAxisRow,
-      layoutKey: "serifAxisRow",
-    });
     // Tilt is always shown and live only in Free. Its range is 40 either way,
     // which is the lab's own and is also where the terminal stops moving by
     // rotation alone: past about 38 degrees the wing runs so far along the stem
@@ -2196,8 +2139,8 @@ export default class SkeletonParametersPanel {
     );
     formContents.push({
       type: "single-icon",
-      element: this.serifAxisTiltRow,
-      layoutKey: "serifAxisTiltRow",
+      element: this.serifAxisRow,
+      layoutKey: "serifAxisRow",
     });
     // Ticket 58: the Cup group, three single fields, because the cup belongs to
     // the terminal rather than to a half: a cup on each half would meet at a

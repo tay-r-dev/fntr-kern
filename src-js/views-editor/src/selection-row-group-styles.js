@@ -3,16 +3,18 @@
 // 47 uses it for Generation's Lock, Link and Reset. One copy, appended to each
 // form that draws such a row.
 export const SELECTION_ROW_GROUP_STYLES = `
+  /* Each label stands above its buttons: the row flows by column, two cells
+     per column, so a label and the buttons after it share one column. */
   .selection-row-group {
-    display: flex;
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: auto auto;
+    justify-content: start;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 0.5em 1em;
+    gap: 0.25em 1.5em;
   }
 
   .selection-row-group-label {
-    font-size: 0.85em;
-    opacity: 0.7;
     white-space: nowrap;
   }
 
