@@ -1949,6 +1949,29 @@ export default class SkeletonParametersPanel {
     this._applyFormContents(formContents);
     this.infoForm.onFieldChange = (fieldItem, value, valueStream) =>
       this._onFieldChange(fieldItem, value, valueStream);
+    this._scrollToSkeletonOnNewSelection(
+      widthPoints.length || insertions.length || ribTargets.length
+    );
+  }
+
+  // A new skeleton selection scrolls the Selection tab to its end, so the
+  // skeleton parameters show under the transform fields on a short screen.
+  // Only a change of selection scrolls; an edit leaves the scroll alone.
+  _scrollToSkeletonOnNewSelection(hasSkeleton) {
+    const key = [...(this.sceneController.selection || [])].sort().join(",");
+    if (key === this._lastScrolledSelection) {
+      return;
+    }
+    this._lastScrolledSelection = key;
+    if (!hasSkeleton) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      const area = this.infoForm.closest(".panel-section--scrollable");
+      if (area) {
+        area.scrollTop = area.scrollHeight;
+      }
+    });
   }
 
   // Handing the form a new set of field descriptions rebuilds every input from
