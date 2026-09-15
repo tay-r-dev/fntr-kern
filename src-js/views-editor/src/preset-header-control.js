@@ -32,6 +32,9 @@ export class PresetHeaderControl {
       label: translate("sidebar.skeleton-parameters.width-preset"),
     });
     this.dropdown.style.setProperty("--multi-select-dropdown-height", TILE);
+    // One fixed width for every preset dropdown, so a longer name does not move
+    // the buttons beside it; a name that does not fit ends in an ellipsis.
+    this.dropdown.style.setProperty("--multi-select-dropdown-width", "10em");
     this.dropdown.singleChoice = true;
     this.dropdown.addEventListener("change", (event) => {
       const [value] = [].concat(event.detail.checked);

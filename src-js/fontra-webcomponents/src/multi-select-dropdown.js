@@ -49,16 +49,30 @@ export class MultiSelectDropdown extends UnlitElement {
       font-size: inherit;
       box-sizing: border-box;
       height: var(--multi-select-dropdown-height, auto);
+      width: var(--multi-select-dropdown-width, auto);
+      max-width: 100%;
+      display: inline-flex;
+      align-items: center;
     }
 
     button:hover {
       background-color: var(--multi-select-dropdown-hover-color);
     }
 
+    /* A label longer than the button ends in an ellipsis; the triangle stays. */
+    .label {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: left;
+    }
+
     .triangle {
+      flex: 0 0 auto;
       margin-left: 0.4em;
       font-size: 0.7em;
-      vertical-align: middle;
     }
 
     /* Ticket 48: the icon mode, which is how the overflow button draws. */
@@ -130,6 +144,7 @@ export class MultiSelectDropdown extends UnlitElement {
     this._label = value || "";
     if (this._labelSpan) {
       this._labelSpan.textContent = this._label;
+      this._labelSpan.title = this._label;
     }
   }
 
@@ -158,7 +173,7 @@ export class MultiSelectDropdown extends UnlitElement {
   }
 
   render() {
-    this._labelSpan = html.span({}, [this._label]);
+    this._labelSpan = html.span({ class: "label", title: this._label }, [this._label]);
     this._button = html.createDomElement(
       "button",
       {
