@@ -1462,6 +1462,10 @@ export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = nul
         normalized[field] = point[field];
       }
     }
+    const preset = normalizePointPreset(point?.preset);
+    if (preset) {
+      normalized.preset = preset;
+    }
   }
 
   return normalized;
@@ -3142,6 +3146,98 @@ export function applyTerminalPreset(point, type, preset) {
     values[field] = Number.isFinite(value) ? value : 0;
   }
   setSkeletonCapParameters(point, values);
+}
+
+// ---- Preset bonds ----------------------------------------------------------
+//
+// A point can be bound to a preset by name, once for its width and once for
+// its terminal. A bond is a statement that the point's values ARE that preset:
+// a hand edit that changes those values lifts it, and a preset that has since
+// changed makes the bond stale. Nothing updates a bound point on its own; the
+// designer refreshes it. A bond naming a preset that no longer exists reads as
+// no bond.
+export const SKELETON_PRESET_KINDS = Object.freeze(["width", "terminal"]);
+
+function normalizePointPreset(preset) {
+  const normalized = {};
+  for (const kind of SKELETON_PRESET_KINDS) {
+    if (typeof preset?.[kind] === "string" && preset[kind]) {
+      normalized[kind] = preset[kind];
+    }
+  }
+  return Object.keys(normalized).length ? normalized : null;
+}
+
+export function getSkeletonPointPreset(point, kind) {
+  return normalizePointPreset(point?.preset)?.[kind] ?? null;
+}
+
+export function setSkeletonPointPreset(point, kind, name) {
+  const preset = { ...(point.preset || {}), [kind]: name || null };
+  const normalized = normalizePointPreset(preset);
+  if (normalized) {
+    point.preset = normalized;
+  } else {
+    delete point.preset;
+  }
+}
+
+// The values a bond of one kind covers, as one comparable string: the total
+// width for a width bond, the kind and its shape for a terminal bond.
+function skeletonPointPresetSignature(point, kind, defaultWidth) {
+  if (kind === "width") {
+    return String(getSkeletonPointWidth(point, defaultWidth));
+  }
+  const type = point.capStyle ?? null;
+  if (type === "serif") {
+    return `serif:${JSON.stringify(captureSerifPreset(point))}`;
+  }
+  const fields = getTerminalPresetFields(type) || [];
+  return `${type}:${JSON.stringify(fields.map((field) => point[field] ?? null))}`;
+}
+
+// Whether applying `preset` would change what the point's bond covers.
+export function isSkeletonPointPresetStale(point, kind, preset, defaultWidth) {
+  const applied = structuredClone(point);
+  if (kind === "width") {
+    applySkeletonWidthPreset(applied, defaultWidth, preset);
+  } else {
+    applyTerminalPreset(applied, point.capStyle, preset);
+  }
+  return (
+    skeletonPointPresetSignature(applied, kind, defaultWidth) !==
+    skeletonPointPresetSignature(point, kind, defaultWidth)
+  );
+}
+
+// Lifts, in `after`, every bond whose covered values differ from `before`.
+// Points are matched by contour and point id; a point new in `after` keeps
+// whatever bond it carries.
+export function liftChangedPresetBindings(before, after) {
+  for (const contour of after?.contours || []) {
+    const beforeContour = getSkeletonContour(before, contour.id);
+    if (!beforeContour) {
+      continue;
+    }
+    for (const point of contour.points) {
+      if (point.type || !point.preset) {
+        continue;
+      }
+      const beforePoint = beforeContour.points.find((p) => p.id === point.id);
+      if (!beforePoint) {
+        continue;
+      }
+      for (const kind of SKELETON_PRESET_KINDS) {
+        if (
+          getSkeletonPointPreset(point, kind) &&
+          skeletonPointPresetSignature(point, kind, contour.defaultWidth) !==
+            skeletonPointPresetSignature(beforePoint, kind, beforeContour.defaultWidth)
+        ) {
+          setSkeletonPointPreset(point, kind, null);
+        }
+      }
+    }
+  }
 }
 
 export function setSkeletonCornerParameters(point, values, { round = null } = {}) {
