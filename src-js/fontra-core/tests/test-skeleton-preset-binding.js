@@ -4,6 +4,8 @@ import {
   applySkeletonWidthPreset,
   applyTerminalPreset,
   getSkeletonPointPreset,
+  getSkeletonPointWidth,
+  isSkeletonSideLocked,
   isSkeletonPointPresetStale,
   liftChangedPresetBindings,
   normalizeSkeletonData,
@@ -122,7 +124,8 @@ describe("skeleton preset binding", () => {
       preset: { width: "Stem", terminal: "Egyptian" },
     });
     const after = structuredClone(before);
-    setSkeletonPointTotalWidth(after.contours[0].points[0], 40, 90);
+    // Written past the writers, which refuse a bound width.
+    after.contours[0].points[0].width = { left: 45, right: 45, linked: true };
     liftChangedPresetBindings(before, after);
     const point = after.contours[0].points[0];
     expect(getSkeletonPointPreset(point, "width")).to.equal(null);
@@ -137,6 +140,18 @@ describe("skeleton preset binding", () => {
     expect(getSkeletonPointPreset(after.contours[0].points[0], "terminal")).to.equal(
       null
     );
+  });
+
+  it("holds a bound width as a width lock on both sides", () => {
+    const point = normalizeSkeletonPoint({ x: 0, y: 0 });
+    setSkeletonPointTotalWidth(point, 40, 60);
+    setSkeletonPointPreset(point, "width", "Stem");
+    expect(isSkeletonSideLocked(point, "left", "width")).to.equal(true);
+    expect(isSkeletonSideLocked(point, "right", "width")).to.equal(true);
+    setSkeletonPointTotalWidth(point, 40, 90);
+    expect(getSkeletonPointWidth(point, 40)).to.equal(60);
+    setSkeletonPointPreset(point, "width", null);
+    expect(isSkeletonSideLocked(point, "left", "width")).to.equal(false);
   });
 
   it("keeps every bond when nothing it covers changed", () => {

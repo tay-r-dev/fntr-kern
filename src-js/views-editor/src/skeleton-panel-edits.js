@@ -200,9 +200,13 @@ export async function refreshPanelPointPresets(
     sceneController,
     pointAddresses,
     (point, _address, context) => {
-      const preset = resolvePreset(getSkeletonPointPreset(point, kind));
+      const name = getSkeletonPointPreset(point, kind);
+      const preset = resolvePreset(name);
       if (preset) {
+        // The bond steps aside for the preset's own write, as above.
+        setSkeletonPointPreset(point, kind, null);
         applyPreset(point, preset, context);
+        setSkeletonPointPreset(point, kind, name);
       }
     },
     undoLabel,
@@ -289,10 +293,13 @@ export async function setPanelPointWidthPreset(
     sceneController,
     pointAddresses,
     (point, _address, { defaultWidth }) => {
+      // A bound width refuses writes, so the bond steps aside for the preset's
+      // own write. A bound point then follows the preset it was given.
+      const bound = getSkeletonPointPreset(point, "width");
+      setSkeletonPointPreset(point, "width", null);
       applySkeletonWidthPreset(point, defaultWidth, preset);
-      // A bound point follows the preset it was given.
-      if (getSkeletonPointPreset(point, "width") && preset.name) {
-        setSkeletonPointPreset(point, "width", preset.name);
+      if (bound) {
+        setSkeletonPointPreset(point, "width", preset.name || bound);
       }
     },
     undoLabel,

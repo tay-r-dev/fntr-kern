@@ -18,6 +18,7 @@ import {
   getSkeletonData,
   getSkeletonGlyphCase,
   getSkeletonPointPreset,
+  getTerminalPresetFields,
   getTerminalPresetSourceKey,
   isSkeletonPointPresetStale,
   applySkeletonWidthPreset,
@@ -1287,24 +1288,29 @@ export default class SkeletonParametersPanel {
     const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
     const list = this._widthPresetList();
     const bond = this._presetBondSummary("width");
-    // The dropdown follows the selection's bond, so a bound point shows the
-    // preset it is bound to rather than the one picked last.
-    if (bond.name) {
-      this.widthPresetControl.lastPicked = list.findIndex(
-        (preset) => preset.case === glyphCase && preset.name === bond.name
+    // A bound width is held, and the width fields show it held.
+    this._widthBound = bond.any;
+    const items = list
+      .map((preset, index) => ({ preset, index }))
+      .filter(({ preset }) => preset?.case === glyphCase)
+      .map(({ preset, index }) => ({
+        value: index,
+        label: `${preset.name || ""} · ${preset.width}${
+          preset.side === "both" ? "" : ` ${preset.side === "left" ? "L" : "R"}`
+        }`,
+        name: preset.name || "",
+      }));
+    const captured = this._selectionWidthPreset();
+    this._followSelectionPreset(this.widthPresetControl, items, bond.name, (value) => {
+      const preset = list[value];
+      return (
+        !!captured &&
+        Number(preset.width) === Number(captured.width) &&
+        (preset.side ?? "both") === captured.side
       );
-    }
+    });
     this.widthPresetControl.refresh({
-      items: list
-        .map((preset, index) => ({ preset, index }))
-        .filter(({ preset }) => preset?.case === glyphCase)
-        .map(({ preset, index }) => ({
-          value: index,
-          label: `${preset.name || ""} · ${preset.width}${
-            preset.side === "both" ? "" : ` ${preset.side === "left" ? "L" : "R"}`
-          }`,
-          name: preset.name || "",
-        })),
+      items,
       canCapture: this._canCaptureWidthPreset(),
       showPicked: true,
       bond: this._presetBondState("width", bond),
@@ -1312,6 +1318,24 @@ export default class SkeletonParametersPanel {
   }
 
   // ---- Preset bonds ------------------------------------------------------------
+
+  // The preset a header dropdown shows follows the selection. In order: the
+  // preset every selected point is bound to; the one picked last, while the
+  // same points stay selected, so an edit made after picking can still be
+  // written back with Update; the one whose values the selection states; none.
+  _followSelectionPreset(control, items, bondName, matches) {
+    const key = this._widthPoints()
+      .map((entry) => `${entry.contourId}/${entry.pointId}`)
+      .join(",");
+    const sameSelection = control._selectionKey === key;
+    control._selectionKey = key;
+    const byBond = bondName ? items.find((item) => item.name === bondName) : null;
+    const kept = sameSelection
+      ? items.find((item) => item.value === control.lastPicked)
+      : null;
+    const byMatch = items.find((item) => matches(item.value));
+    control.lastPicked = (byBond ?? kept ?? byMatch)?.value ?? null;
+  }
 
   // The preset of one kind a bond names, for the glyph's case, or null where
   // none exists by that name any more. A terminal bond reads the kind the
@@ -1541,6 +1565,7 @@ export default class SkeletonParametersPanel {
         ? SERIF_PRESETS.map((preset, index) => ({
             value: `builtin:${index}`,
             label: preset.name,
+            name: preset.name,
           }))
         : [];
     return [
@@ -1548,7 +1573,11 @@ export default class SkeletonParametersPanel {
       ...this._terminalPresetList(type)
         .map((preset, index) => ({ preset, index }))
         .filter(({ preset }) => preset?.case === glyphCase)
-        .map(({ preset, index }) => ({ value: index, label: preset.name || "" })),
+        .map(({ preset, index }) => ({
+          value: index,
+          label: preset.name || "",
+          name: preset.name || "",
+        })),
     ];
   }
 
@@ -1574,17 +1603,25 @@ export default class SkeletonParametersPanel {
     const captured = this.fontController.readOnly
       ? null
       : this._selectionTerminalPreset(type);
-    // The dropdown follows the selection's bond, as the width one does.
+    // The dropdown follows the selection, as the width one does.
     const bond = this._presetBondSummary("terminal");
-    if (bond.name) {
-      const items = this._terminalPresetItems(type);
-      const match = items.find(
-        (item) => this._terminalPresetByValue(type, item.value)?.name === bond.name
-      );
-      if (match) {
-        this.terminalPresetControl.lastPicked = match.value;
+    const shapeOf = (preset) =>
+      type === "serif"
+        ? JSON.stringify(applySerifPreset(preset))
+        : JSON.stringify(
+            (getTerminalPresetFields(type) || []).map((field) =>
+              Number(preset?.[field])
+            )
+          );
+    this._followSelectionPreset(
+      this.terminalPresetControl,
+      this._terminalPresetItems(type),
+      bond.name,
+      (value) => {
+        const preset = this._terminalPresetByValue(type, value);
+        return !!preset && !!captured && shapeOf(preset) === shapeOf(captured);
       }
-    }
+    );
     if (type !== "serif") {
       this.terminalPresetControl.refresh({
         items: this._terminalPresetItems(type),
@@ -1600,7 +1637,6 @@ export default class SkeletonParametersPanel {
     const picked = this.terminalPresetControl.lastPicked;
     const preset =
       typeof picked === "number" ? this._terminalPresetByValue(type, picked) : null;
-    const shapeOf = (serifPreset) => JSON.stringify(applySerifPreset(serifPreset));
     this.terminalPresetControl.refresh({
       items: this._terminalPresetItems(type),
       canCapture: captured !== null,
@@ -1965,6 +2001,7 @@ export default class SkeletonParametersPanel {
   _buildCapSection(formContents, widthPoints) {
     const cap = summarizeSkeletonCapSelection(widthPoints);
     const capStyle = summarizeSkeletonCapStyleSelection(widthPoints);
+    this._terminalBound = false;
     if (!capStyle.canEdit) {
       return;
     }
@@ -1979,6 +2016,8 @@ export default class SkeletonParametersPanel {
       this._terminalPresetType = presetType;
       this.terminalPresetControl.lastPicked = null;
     }
+    // A terminal bound to a preset is held, so its section shows greyed.
+    this._terminalBound = this._presetBondSummary("terminal").any;
     if (presetType) {
       this._refreshTerminalPresetControl(presetType);
     }
@@ -1998,6 +2037,7 @@ export default class SkeletonParametersPanel {
     });
     // A mixed selection lights no segment and shows no section.
     this.terminalKindControl.value = styleValue ?? undefined;
+    this.terminalKindControl.disabled = !!this._terminalBound;
     formContents.push({
       type: "single-icon",
       element: this.terminalKindRow,
@@ -2092,7 +2132,7 @@ export default class SkeletonParametersPanel {
         key: "cap:ballside",
         label: translate("sidebar.skeleton-parameters.cap-ball-side"),
         value: cap.capBallSide.mixed ? "" : (cap.capBallSide.value ?? "auto"),
-        disabled: !capStyle.canEdit,
+        disabled: !capStyle.canEdit || !!this._terminalBound,
         options: [
           ...(cap.capBallSide.mixed
             ? [{ value: "", label: "mixed", disabled: true }]
@@ -2112,7 +2152,11 @@ export default class SkeletonParametersPanel {
         ],
       });
     } else if (styleValue === "serif") {
-      this._buildSerifSection(formContents, widthPoints, capStyle.canEdit);
+      this._buildSerifSection(
+        formContents,
+        widthPoints,
+        capStyle.canEdit && !this._terminalBound
+      );
     }
   }
 
@@ -2405,12 +2449,10 @@ export default class SkeletonParametersPanel {
   // ---- Field description helpers -------------------------------------------
 
   _refreshWidthField(name, summary, options = {}) {
-    this._refreshCompactField(
-      this.widthFields[name],
-      `width:${name}`,
-      summary,
-      options
-    );
+    this._refreshCompactField(this.widthFields[name], `width:${name}`, summary, {
+      ...options,
+      disabled: !!options.disabled || !!this._widthBound,
+    });
   }
 
   // Push one summary into a compact field. A field under the hand is left
@@ -2422,7 +2464,10 @@ export default class SkeletonParametersPanel {
     summary,
     { disabled = false, blank = false, minValue, maxValue, round = false } = {}
   ) {
-    field.disabled = disabled;
+    // A terminal bound to a preset is held: every terminal field shows greyed.
+    field.disabled =
+      disabled ||
+      (!!this._terminalBound && (key.startsWith("cap:") || key.startsWith("serif:")));
     field.minValue = summary.mixed ? undefined : minValue;
     field.maxValue = summary.mixed ? undefined : maxValue;
     if (this._scrubbingFields.has(key)) {

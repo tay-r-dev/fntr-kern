@@ -3510,6 +3510,12 @@ export function resetSkeletonRibSlide(point, side) {
 export function isSkeletonSideLocked(point, side, kind) {
   assertSkeletonRibSide(side);
   assertSkeletonLockKind(kind);
+  // A width bound to a preset is held the way a width lock holds it, on both
+  // sides, so every width writer and every width drag refuses it. A preset
+  // write lifts the bond around its own write.
+  if (kind === "width" && getSkeletonPointPreset(point, "width")) {
+    return true;
+  }
   return normalizeLocked(point?.locked)[side][kind];
 }
 
