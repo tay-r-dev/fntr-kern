@@ -49,9 +49,15 @@ export class CompactScrubField extends UnlitElement {
       border-radius: 0.25em;
       padding: 0.2em 0.5em;
       color: var(--compact-scrub-field-text-color);
+      /* The outline shows only while the value is being typed. */
+      border-color: transparent;
       cursor: ew-resize;
       user-select: none;
       touch-action: none;
+    }
+
+    .box:focus-within {
+      border-color: var(--compact-scrub-field-border-color);
     }
 
     .box.disabled {
