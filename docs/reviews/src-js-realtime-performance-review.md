@@ -104,4 +104,50 @@ Make diagnostic output opt-in or separate it from the interactive result if prof
 
 Its arrays and slice are small, bounded allocations. Scalar best-candidate tracking is possible, but this is not a likely major performance problem and should not be redesigned as an approximate solver merely because nested loops appear in the scan.
 
+## Snap candidate selection and projection
+
+Primary source: [snapping.js](../../src-js/fontra-core/src/snapping.js). SnappingSession.resolve/resolveSet call these routines during pointer interaction. Defaults include maxCandidates = 200 and perSideCount = 1.
+
+### R13 — Prioritize: the collection sort recomputes curve projections in its comparator
+
+**Evidence:** `collectCandidates:816–824` compares distanceToCandidate whenever weights tie. For curves that calls `projectOntoCurve:104–148`, performing a 50-sample coarse sweep and 20 refinements. The 200-candidate cap is applied only after sorting.
+
+For C equal-weight candidates, O(C log C) comparisons can each invoke full projection twice. Decorate each candidate with its weight and distance once per query, then sort those scalar keys and preserve original order on ties. A bounded top-K selection can follow if needed. The candidate cap does not bound preprocessing before it.
+
+### R14 — Moderate: each refinement evaluates the same cubic twice per point
+
+**Evidence:** `projectOntoCurve:132–139` calls cubicAt(points, a) separately for x and y and does the same for b. Across 20 refinements that is 80 evaluations where 40 suffice.
+
+Store each evaluated point once. Squared distance can also compare candidates without square roots, provided tolerance semantics remain unchanged. This is an exact algebraic simplification of the existing search, not a change to its bracket or convergence policy.
+
+### R15 — Moderate: nearest-per-side sorts whole partitions to keep one item
+
+**Evidence:** `nearestPerSide:677–703` builds contested, above and below arrays, sorts both sides, then slices each to perSideCount, whose default is 1. It is called for both axes of each point kind.
+
+Use a single minimum per side for the default, or a bounded top-K container for configurable K. Carry alwaysKeep sources separately and preserve input-order tie breaking. This reduces O(P log P) ordering to O(P) in the common case while preserving the exemption for sources on the dragged contour.
+
+### R16 — Moderate: disabled and zero-weight kinds are processed too late
+
+**Evidence:** `collectCandidates:732–812` constructs metric/guide/point/segment/curve candidates before candidateFilter applies the enabled/only-kind rules. Zero-weight kinds can survive into sorting; `candidatePull:365–369` computes their distance before multiplying by zero.
+
+Apply the existing kind rule before construction where possible and short-circuit exactly zero weight before distance evaluation. Preserve held-candidate behavior and explicit only-mode semantics. Benefits are largest when curvature or diagonals are disabled or own-generated weight is zero. Removing merely weak, nonzero kinds would change behavior and is not recommended.
+
+### R17 — Moderate, bounded: scored candidate deduplication is quadratic
+
+**Evidence:** `resolveSnap:468–483` scans scored with some/sameCandidate for each qualifying candidate. Up to 200 collected candidates plus a held entry can reach the resolver.
+
+This is O(C²) identity comparison per point, though the configured cap limits it. Prefer stable geometry/source identities plus a carefully defined equivalent-line key. Do not replace epsilon-based equivalence with naive rounded keys without checking boundary semantics. Optimize expensive projection first; this bounded scalar work is a second-tier target.
+
+### R18 — Prioritize for large selections: every selected anchor runs a full resolver
+
+**Evidence:** `resolveSnapForPoints:609–660` chooses one nearest anchor only when pointerWeight >= 1. At the default 0.5 it calls resolveSnap for every point, each doing candidate scoring, deduplication and sorting. Candidate collection is shared but solving is not.
+
+For P anchors, the bounded candidate work is multiplied by P; curve projection amplifies the cost. Reuse query-independent candidate geometry and prune anchors only with a conservative upper bound on discounted pull, retaining the current winner and near-indicator semantics. Simply resolving the clicked point would change the default interaction. This issue remains after fixing collection sorting and candidate deduplication.
+
+### R19 — Moderate: curve snapping repeats projection after resolving its winner
+
+**Evidence:** `resolveSnap:572–581` projects the winner. `roundSnapped:835–845` projects that result again to recover t/tangent, then projects the rounded trial a third time.
+
+Carry the winning projection's t and tangent through the result. The final projection of the rounded trial is still needed to keep the emitted point on the curve; the intermediate re-search is avoidable. Reuse must be scoped to the same candidate and query, not an approximate cache across moving cursor positions.
+
 <!-- review checkpoint -->
