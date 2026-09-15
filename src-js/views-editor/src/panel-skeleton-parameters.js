@@ -21,6 +21,8 @@ import {
   getTerminalPresetFields,
   getTerminalPresetSourceKey,
   isSkeletonPointPresetStale,
+  setSkeletonPointTotalWidth,
+  DEFAULT_SKELETON_WIDTH,
   applySkeletonWidthPreset,
   applyTerminalPreset,
   normalizeTerminalPreset,
@@ -77,6 +79,7 @@ import {
   setPanelTerminalPreset,
   setPanelPointPresetBond,
   refreshPanelPointPresets,
+  resetPanelPointPresets,
 } from "./skeleton-panel-edits.js";
 import {
   collectRibEditTargets,
@@ -715,6 +718,7 @@ export default class SkeletonParametersPanel {
       onAdd: () => this._addWidthPreset(),
       onLock: () => this._togglePresetBond("width"),
       onRefresh: () => this._refreshPresetBonds("width"),
+      onReset: () => this._resetToDefaults("width"),
     });
     // Tickets 56 and 60: the Terminal header's preset control, the same control
     // for the kind the selection shows -- Square, Rounded, Ball or Serif. Flat
@@ -734,6 +738,7 @@ export default class SkeletonParametersPanel {
       onUpdate: (index) => this._updateTerminalPreset(this._terminalPresetType, index),
       onLock: () => this._togglePresetBond("terminal"),
       onRefresh: () => this._refreshPresetBonds("terminal"),
+      onReset: () => this._resetToDefaults("terminal"),
     });
     // Ticket 50: the terminal kind, five across, writing the cap style. Picking
     // a kind changes which section the panel shows, so the rebuild waits for
@@ -1430,6 +1435,7 @@ export default class SkeletonParametersPanel {
         !this.fontController.readOnly && !!bond.points.length && (!!picked || bond.any),
       stale: differs,
       refreshEnabled: !this.fontController.readOnly && differs,
+      resetEnabled: !this.fontController.readOnly && !!bond.points.length,
     };
   }
 
@@ -1468,6 +1474,37 @@ export default class SkeletonParametersPanel {
   }
 
   // Refresh: every selected bound point takes its own preset's values again.
+  // Reset to default, from the dropdown's right-click. A width goes back to its
+  // contour's default width; a terminal to its kind's defaults, Egyptian for a
+  // serif. Bonds of that kind lift.
+  async _resetToDefaults(kind) {
+    const points = this._widthPoints();
+    if (!points.length) {
+      return;
+    }
+    const type = this._terminalPresetType;
+    await this._runOwnEdit(() =>
+      resetPanelPointPresets(
+        this.sceneController,
+        points,
+        kind,
+        (point, { defaultWidth }) =>
+          kind === "width"
+            ? setSkeletonPointTotalWidth(
+                point,
+                defaultWidth,
+                defaultWidth ?? DEFAULT_SKELETON_WIDTH
+              )
+            : applyTerminalPreset(
+                point,
+                type,
+                type === "serif" ? SERIF_PRESETS[0] : TERMINAL_FIELD_FALLBACKS
+              ),
+        this._undo("reset-preset")
+      )
+    );
+  }
+
   // The arrows: the selection goes back to its preset. Where the selection has
   // one preset (every point bound to it, or none bound), that preset is applied
   // the way picking it applies it, which also brings back an edit made since.

@@ -1,6 +1,7 @@
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import "@fontra/web-components/icon-button.js";
+import { showMenu } from "@fontra/web-components/menu-panel.js";
 import "@fontra/web-components/multi-select-dropdown.js";
 
 // A section header's preset control: Add, Update, Lock, Refresh and a dropdown.
@@ -24,7 +25,7 @@ import "@fontra/web-components/multi-select-dropdown.js";
 const TILE = "1.8em";
 
 export class PresetHeaderControl {
-  constructor({ onPick, onAdd, onUpdate, onLock, onRefresh }) {
+  constructor({ onPick, onAdd, onUpdate, onLock, onRefresh, onReset }) {
     this.lastPicked = null;
     this._updateArmed = false;
     this._confirmUpdate = false;
@@ -47,6 +48,27 @@ export class PresetHeaderControl {
       this._disarmUpdate();
       onPick(value);
     });
+    // Right-click offers Reset to default: the selection goes back to the
+    // kind's own defaults and the dropdown shows no preset.
+    if (onReset) {
+      this.dropdown.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        showMenu(
+          [
+            {
+              title: translate("sidebar.skeleton-parameters.width-preset.reset"),
+              enabled: () => !this._resetDisabled,
+              callback: () => {
+                this.lastPicked = null;
+                this._disarmUpdate();
+                onReset();
+              },
+            },
+          ],
+          { x: event.clientX, y: event.clientY }
+        );
+      });
+    }
     // Square tiles, the same size as the tiles in a Generation tray. The glyph
     // is inset, so it sits centred.
     const iconButton = (src, tooltipKey, onclick) => {
@@ -169,6 +191,7 @@ export class PresetHeaderControl {
         ? (picked.name ?? picked.label)
         : translate("sidebar.skeleton-parameters.width-preset");
     this.addButton.disabled = !canCapture;
+    this._resetDisabled = !bond?.resetEnabled;
     if (this.lockButton) {
       this.lockButton.on = bond?.locked === true;
       this.lockButton.mixed = bond?.locked === "mixed";

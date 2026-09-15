@@ -188,6 +188,27 @@ export async function setPanelPointPresetBond(
 // Brings every selected bound point back to its own preset. `resolvePreset`
 // finds a preset by name; a bond whose preset is gone is left alone.
 // `applyPreset(point, preset, { defaultWidth })` writes the values.
+// Puts every selected point back to its kind's defaults and lifts the bond of
+// that kind first, since a bound width refuses writes. `applyDefault(point,
+// context)` writes the defaults.
+export async function resetPanelPointPresets(
+  sceneController,
+  pointAddresses,
+  kind,
+  applyDefault,
+  undoLabel
+) {
+  return editSelectedSkeletonPoints(
+    sceneController,
+    pointAddresses,
+    (point, _address, context) => {
+      setSkeletonPointPreset(point, kind, null);
+      applyDefault(point, context);
+    },
+    undoLabel
+  );
+}
+
 export async function refreshPanelPointPresets(
   sceneController,
   pointAddresses,
