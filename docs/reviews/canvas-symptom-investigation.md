@@ -141,3 +141,29 @@ Corrective direction: record both positive and negative classifications, track p
 - Incoming backend changes can reload state without local input (`view-controller.js:122–149`). Initial inspection of `src/fontra/backends/filewatcher.py` shows change-driven callbacks and self-write filtering, and `src/fontra/core/fonthandler.py:114–149` waits for a write event and drains pending writes. Their `while`/watch loops are not by themselves evidence of busy allocation. Repeated filesystem notifications remain a possible external producer, not a confirmed notification storm.
 
 The next decisive fact is **which process grows**: browser renderer/tab, browser GPU process, or Fontra/Python backend. These lead to different ownership investigations. Total system RAM consumption alone does not locate the leak. No profiling, reproduction, or tests were performed for this follow-up.
+
+## Fork-inclusive browser idle-memory follow-up
+
+The user subsequently confirmed **browser RAM growth without input**, and requested that fork code remain in scope despite the historical pre-fork symptom. Accordingly, the following checks examine fork-specific producers and ownership as possible additional causes or amplifiers. They do not presume the historical and current incidents have the same cause. No tests or application changes were made.
+
+### F1. Debug readout: permanent producer and missing teardown, not demonstrated continuous retention
+
+Expanded the I2 read-through to `_setupSnappingDebugControls`, `_startSnappingDebugReadout` and `_formatSnappingReadout` in `panel-designspace-navigation.js:1731–1868`. The animation callback always schedules its successor, even when the panel is hidden. When visible, it allocates formatted lines, sorted entries and a joined string, then replaces `textContent`. No historical array of those strings or nodes is retained by this code. One callback chain is pending per setup, not one additional permanent chain per frame.
+
+There is a real lifecycle weakness: no frame handle is saved for cancellation; the closure retains the panel/editor and DOM references. The same setup ignores the unsubscribe returned by `subscribeSnapParameters` (`snapping.js:303–307`), allowing the module-level listener Set to retain the panel too. However, the normal startup path constructs one DesignspaceNavigationPanel (`editor.js:1256`) and invokes its setup from its initialization promise (`panel-designspace-navigation.js:467–469`). Merely hiding/reopening the panel has not been shown to construct more instances or start more chains. Thus accumulating detached panels is conditional on reconstruction, not established as the explanation for growth while an unchanged page sits idle.
+
+Corrective direction: schedule only while visible, skip identical text, cancel on disposal, and retain/call the subscription cleanup. These address unnecessary background allocation and lifecycle retention without claiming they account for 32 GB.
+
+### F2. Gizmo and snapping animations: normal transitions terminate
+
+`tunni-gizmos.js:282–420` has one pending reveal timer and one pending animation frame per reveal instance. Replacing a pending hover clears its timer. Fading old alpha/hot entries to zero removes them from `_tweens`; completed active entries hold only small numeric transition state and keys. `_animate` reschedules only while a tween remains in progress. `edit-tools-pointer.js:164–170` shares one reveal on the scene model rather than creating a new one per hover or pointer tool. This does not support an autonomous geometry-history leak.
+
+`visualization-layer-snapping.js:17–34,174–240` holds module-level state for one indicator and permits one pending frame. The draw requests another frame only while the 180 ms transition is incomplete. Stable indicator state stops the chain. State is global to the module, so distinct scene controllers drawing different states could interfere, but multiple such active scenes in the inspected editor startup were not established. Do not label this a proven infinite animation loop.
+
+### F3. Settings oscillation can drive expensive fork redraws after input stops
+
+The already-documented S1/S2 feedback deserves consideration as an **idle producer**, not only a switch defect. `editor.js:197–200` immediately handles every visualization-setting change by invalidating the layer configuration and requesting a canvas redraw. Coarse-grid changes also request redraw through `scene-controller.js:612–615`. Therefore continuing settings oscillation can keep the canvas allocating/drawing geometry without further user input.
+
+This establishes a route from settings churn to repeated overlay allocations. It does **not** establish monotonically retained geometry: the inspected SpeedPunk and skeleton drawing paths create temporary geometry without appending it to a permanent collection. It also does not directly call `updateShaperInfo`; the connection to M1 cannot simply be assumed. Timer/event backlog, GC/native allocation behavior and actual settings activity would need evidence to connect this producer to the RAM incident.
+
+The debug parameter subscriber (`panel-designspace-navigation.js:1826–1829`) synchronizes controls and persists a fresh settings object; it does not call `setSnapParameter` again. The inspected setup therefore does not establish a synchronous self-recursive notification loop. The shared asynchronous storage transport remains the separate risk described in S1.
