@@ -78,3 +78,39 @@ This could appear unprovoked when background requests encounter a backend/networ
 | `FontController.undoStacks` | Retained size follows completed edits and change payload size | RAM grows without edits |
 
 These are code-derived discriminator suggestions, not measurements performed. A heap retaining-path snapshot and browser process-memory breakdown are still needed to attribute a particular all-RAM event. No unconditional autonomous allocation loop has been established by this review.
+
+## Zoom stalls after a pause
+
+### Z1. The overlay workload is real, but does not by itself explain the cold/warm timing
+
+The wheel path is `canvas-controller.js:193–224` → `_doPinchMagnify:288–307` → `editor.js:1437–1440` → `VisualizationLayers.scaleFactor:33–36`. It changes the transform, invalidates layer parameters, schedules a canvas draw, and dispatches a view-box notification. Layer rebuilding happens on subsequent draw (`visualization-layers.js:54–85`). It happens on **every magnification change**, not just the first one after a pause.
+
+SpeedPunk (`visualization-layer-definitions.js:1968–2032`) recomputes sample quads and creates/fills Path2D objects each draw. The existing fork audit's V1/V4 already covers its parameter-scaling and repeated-work defects; these are supporting evidence here, not new duplicate findings. They make allocation/collection and drawing cost credible contributors, particularly with complex glyphs. However, no warm sample cache or seconds-based expiry exists in this draw path. Geometry work should recur during continuous zoom too.
+
+Measurements need to be distinguished by layer. The two-selected-point distance/angle overlay (`distance-angle.js:545–605`) handles one pair. The all-handle labels (`drawPointLabels:1188–1393`, invoked by `visualization-layer-definitions.js:2556`) traverse contours and then scan decomposed segments again for each off-curve point to determine whether it belongs to a cubic. That membership phase can approach O(points × segments), with fresh decomposed data and label drawing on each repaint. This is a much stronger measurement-specific workload suspect than the single distance badge. It still has no time-based cache explaining several seconds of warm behavior.
+
+For a future fix, determine cubic membership once per path revision and separate geometry-derived values from zoom-dependent label placement. Cache SpeedPunk geometry using explicit path/settings validity, as already recommended in the fork audit. These would reduce per-frame work; they should not be presented as proven cures for the pause-triggered stall.
+
+### Z2. Deferred view-state serialization is a separate main-thread contributor
+
+`editor.js:215–224,354–357,3958–3973` schedules persistent view-state updates after 200 ms without a superseding update. View box is part of that state. `utils.ts:625–626,646–673` performs JSON serialization, synchronous zlib compression and base64 encoding before comparing/writing the URL fragment. This work is postponed during continuous interaction and runs after a pause. Its cost depends on the entire serialized view state, including text and selection, not just four view-box coordinates.
+
+This is a plausible explanation for a delayed hitch around gesture boundaries, especially with large editor text/state. **Its actual timeout is 200 ms; it is not a demonstrated multi-second cooldown, and it is not called synchronously at the start of each zoom.** It can delay a subsequent gesture only if the work or resulting browser work overlaps it. There is no timing measurement here. Corrective direction: keep serialization outside the interaction-critical task and avoid recompressing unrelated large state for every view-box update, while preserving shareable URL behavior.
+
+### Z3. Checks that narrow the explanation
+
+- `representation-cache.js` stores representations on their owners until explicit invalidation; it has no idle expiry. An assertion that geometry is deliberately evicted after a few seconds is unsupported in the inspected implementation.
+- `scene-model.js:95–150` updates scene layout for text, shaping, selection and glyph/location changes; its principal layout listeners do not include viewBox. `scene-controller.js:311–345` guards view-box reflection using sender identity and actual rectangle comparison. Ordinary zoom does not directly request a new shaper through these paths.
+- The document wheel-target guard (`canvas-controller.js:59–74`) resets after 100 ms. It can reject scrolling started outside the canvas, but it is not a costly geometry operation or a seconds-long timeout.
+- Tunni reveal uses a hover delay and bounded-duration animation (`tunni-gizmos.js:255–420`); it can request extra redraws during reveal, but the inspected timer does not expire a geometry cache.
+- The existing real-time review R04/R05 describes timer-based draw scheduling and repeated DOM geometry reads. Those can amplify main-thread stalls. They do not independently establish the observed cold/warm cycle.
+
+**Conclusion:** overlays are credible cost amplifiers; the specific after-pause root cause remains unconfirmed. The shortest useful future trace would cover the end of one zoom, the idle gap, and the next first wheel event. Distinguish time in `computeSpeedPunkSamples` / `drawPointLabels`, synchronous URL compression, layout/style work, garbage collection, and canvas/browser rendering. JS code inspection alone cannot attribute browser-native cache behavior or prove a GC pause. No profiling or tests were run.
+
+## Priority and investigation coverage
+
+1. **RAM:** investigate M1 first because its retained graph includes whole shapers/font resources and per-call trace state. M2 and M3 are independently actionable inherited cleanup defects; neither is proof of the reported all-RAM event.
+2. **Switches:** S1 is the strongest explanation shared by both controls if multiple same-origin editor documents are open. S2 adds a concrete one-tab stale-event race for Gizmo mode, but does not alone explain endless alternating state.
+3. **Zoom:** distinguish overlay CPU time from the post-gesture serialization task and collection/rendering costs before choosing a fix. No cold-cache expiry was found.
+
+Read-throughs covered the observable dispatch/storage implementation, both current widget implementations and panel bindings, gizmo coupling/reveal, canvas wheel/draw logic, visualization orchestration and the relevant SpeedPunk/measurement functions, view-box and URL persistence listeners, representation and LRU caches, font instance eviction/invalidation/undo/request ownership, RemoteObject request settlement, HBShaper construction/shaping/message integration, ShaperController replacement callers, and the installed HarfBuzz 1.4.0 callback/finalization implementations. The inherited files `observable-object.ts`, `font-controller.js`, `remote.js`, `shaper.js`, and `shaper-controller.js` are unchanged between the comparison upstream and reviewed fork snapshot. This is a directed investigation, not an exhaustive proof of all application or browser memory ownership.
