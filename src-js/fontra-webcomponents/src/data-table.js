@@ -163,12 +163,31 @@ const DATA_TABLE_STYLES = `
     overflow-y: auto;
   }
 
+  /* A 10px strip under the rows, with a short bar in its middle, so there is
+     something to see and to take hold of. */
   :where(.data-table-grip) {
-    height: 4px;
-    margin-top: -2px;
+    height: 10px;
     cursor: row-resize;
     position: relative;
     z-index: 1;
+    touch-action: none;
+  }
+
+  :where(.data-table-grip)::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 3px;
+    width: 2.5em;
+    height: 4px;
+    margin-left: -1.25em;
+    border-radius: 2px;
+    background: currentColor;
+    opacity: 0.25;
+  }
+
+  :where(.data-table-grip:hover)::after {
+    opacity: 0.6;
   }
 
   :root.data-table-resizing {
@@ -809,6 +828,8 @@ export class DataTable extends HTMLElement {
     const initialHeight = this._scroll.getBoundingClientRect().height;
     const initialY = event.clientY;
     let height;
+    // No text selection and no native drag starts under the press.
+    event.preventDefault();
     grip.setPointerCapture(event.pointerId);
     document.documentElement.classList.add("data-table-resizing");
     const onMove = (moveEvent) => {
