@@ -1,3 +1,4 @@
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
@@ -54,11 +55,15 @@ import { editSkeleton } from "./skeleton-editing.js";
 import {
   nudgePanelContourDefaultWidthStream,
   setPanelContourDefaultWidth,
+  setPanelContourSingleSided,
+  setPanelPointWidthPreset,
+  setPanelTerminalPreset,
 } from "./skeleton-panel-edits.js";
 import {
   captureSelectionTerminalPreset,
   captureSelectionWidthPreset,
   collectSkeletonPanelSelection,
+  collectWidthEditPoints,
   summarizeSkeletonContourSelection,
 } from "./skeleton-panel-model.js";
 
@@ -114,6 +119,27 @@ const SKELETON_SETTINGS_STYLES = `
 
   .skeleton-presets-table .preset-width {
     width: 4.5em;
+  }
+
+  /* Apply reads as a word in the row, not as a boxed button. */
+  .preset-apply {
+    border: none;
+    background: none;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    opacity: 0.6;
+  }
+
+  .preset-apply:hover:not(:disabled) {
+    opacity: 1;
+    text-decoration: underline;
+  }
+
+  .preset-apply:disabled {
+    cursor: default;
+    opacity: 0.25;
   }
 
   .preset-origin {
@@ -189,6 +215,7 @@ export default class SkeletonSettingsPanel extends Panel {
     this.widthPresetTable.tableClassName = "skeleton-presets-table";
     this.widthPresetTable.columns = [
       { label: translate("sidebar.skeleton-settings.column.name") },
+      { label: "" },
       { label: translate("sidebar.skeleton-settings.column.width"), align: "right" },
       { label: translate("sidebar.skeleton-settings.column.side") },
       { label: "" },
@@ -233,6 +260,7 @@ export default class SkeletonSettingsPanel extends Panel {
     this.terminalPresetTable.columns = [
       { label: translate("sidebar.skeleton-settings.column.type") },
       { label: translate("sidebar.skeleton-settings.column.name") },
+      { label: "" },
       { label: "" },
     ];
     this._terminalPresetFilter = { master: null, case: null, type: null };
@@ -709,6 +737,9 @@ export default class SkeletonSettingsPanel extends Panel {
             this._presetOrigin(source, sourceId, preset),
           ]),
           tableCell(
+            this._presetApplyButton(readOnly, () => this._applyWidthPreset(preset))
+          ),
+          tableCell(
             editableCell({
               type: "number",
               value: Number(preset.width) || 0,
@@ -736,6 +767,69 @@ export default class SkeletonSettingsPanel extends Panel {
           ]),
         ]),
       { rowId: (item) => item.rowId }
+    );
+  }
+
+  // Apply writes the row's preset to the selected skeleton points, as picking
+  // it in the Selection tab does. With nothing selected it does nothing.
+  _presetApplyButton(readOnly, onClick) {
+    return html.button(
+      {
+        class: "preset-apply",
+        disabled: readOnly,
+        onclick: (event) => {
+          event.stopPropagation();
+          onClick();
+        },
+      },
+      [translate("sidebar.skeleton-settings.apply")]
+    );
+  }
+
+  async _applyWidthPreset(preset) {
+    const panelSelection = this._currentSkeletonPanelSelection();
+    const points = panelSelection ? collectWidthEditPoints(panelSelection) : [];
+    if (!points.length) {
+      return;
+    }
+    const contours = panelSelection.contours || [];
+    const target =
+      preset.side === "left" || preset.side === "right" ? preset.side : null;
+    const current = summarizeSkeletonContourSelection(contours).singleSided;
+    if (contours.length && (current.mixed || (current.value ?? null) !== target)) {
+      const settings = applicationSettingsController.model;
+      await setPanelContourSingleSided(
+        this.sceneController,
+        contours,
+        target,
+        translate("sidebar.skeleton-parameters.undo.set-single-sided"),
+        {
+          keepForm: settings.skeletonSideModeKeepsForm === true,
+          keepEdits: settings.skeletonSideModeKeepsEdits === true,
+          presetWrite: true,
+        }
+      );
+    }
+    await setPanelPointWidthPreset(
+      this.sceneController,
+      points,
+      { name: preset.name, width: Number(preset.width), side: preset.side },
+      translate("sidebar.skeleton-parameters.undo.set-total-width")
+    );
+  }
+
+  async _applyTerminalPreset(type, preset) {
+    const panelSelection = this._currentSkeletonPanelSelection();
+    const points = panelSelection ? collectWidthEditPoints(panelSelection) : [];
+    if (!points.length) {
+      return;
+    }
+    await setPanelTerminalPreset(
+      this.sceneController,
+      points,
+      type,
+      preset,
+      translate("sidebar.skeleton-parameters.undo.set-cap")
     );
   }
 
@@ -1156,6 +1250,11 @@ export default class SkeletonSettingsPanel extends Panel {
             }),
             this._presetOrigin(source, sourceId, preset),
           ]),
+          tableCell(
+            this._presetApplyButton(readOnly, () =>
+              this._applyTerminalPreset(type, preset)
+            )
+          ),
           actionsCell([
             // Ticket 74: the pencil opens the preset's fields in a dialog.
             rowAction({

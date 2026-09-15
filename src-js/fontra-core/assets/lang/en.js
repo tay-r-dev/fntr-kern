@@ -634,6 +634,7 @@ export const strings = {
   "sidebar.skeleton-settings.case.uppercase": "Uppercase",
   "sidebar.skeleton-settings.case.lowercase": "Lowercase",
   "sidebar.skeleton-settings.new-preset": "New preset",
+  "sidebar.skeleton-settings.apply": "Apply",
   "sidebar.skeleton-settings.edit": "Edit preset",
   "sidebar.skeleton-settings.edit-preset": "Edit “%0”",
   "sidebar.skeleton-parameters.cap-ball-ease-curvature": "Ease curvature",
