@@ -26,6 +26,7 @@ import {
 } from "@fontra/core/utils.ts";
 import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
+import "@fontra/web-components/chain-link.js"; // for the Scale chain
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 38
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39's origin pick
 import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 41
@@ -82,6 +83,7 @@ export default class TransformationPanel {
   .scale-y-with-overflow {
     display: flex;
     align-items: center;
+    gap: 0.35rem;
   }
 
   .scale-y-with-overflow > compact-scrub-field {
@@ -185,7 +187,9 @@ export default class TransformationPanel {
 
     this.transformParameters = {
       scaleX: 100,
-      scaleY: undefined,
+      scaleY: 100,
+      // A closed chain scales Y by X. The link stays through selection changes.
+      scaleLinked: true,
       rotation: 0,
       moveX: 0,
       moveY: 0,
@@ -261,7 +265,7 @@ export default class TransformationPanel {
     moveY: { neutral: 0, field: "moveYField" },
     rotation: { neutral: 0, field: "rotateField" },
     scaleX: { neutral: 100, field: "scaleXField" },
-    scaleY: { neutral: undefined, field: "scaleYField" },
+    scaleY: { neutral: 100, field: "scaleYField" },
     skewX: { neutral: 0, field: "skewXField" },
     skewY: { neutral: 0, field: "skewYField" },
   };
@@ -563,6 +567,8 @@ export default class TransformationPanel {
     this.moveYField = moveYField;
     formContents.push(moveRow);
 
+    const scaleYFor = (x) =>
+      this.transformParameters.scaleLinked ? x : this.transformParameters.scaleY;
     const {
       row: scaleRow,
       fieldX: scaleXField,
@@ -573,30 +579,47 @@ export default class TransformationPanel {
       tooltip: translate("sidebar.selection-transformation.scale"),
       valueX: this.transformParameters.scaleX,
       valueY: this.transformParameters.scaleY,
-      onChangeX: (value) => (this.transformParameters.scaleX = value),
+      onChangeX: (value) => {
+        this.transformParameters.scaleX = value;
+        if (this.transformParameters.scaleLinked) {
+          this.transformParameters.scaleY = value;
+          this.scaleYField.value = value;
+        }
+      },
       onChangeY: (value) => (this.transformParameters.scaleY = value),
       onApply: () =>
         this.transformSelection(
           () =>
             new Transform().scale(
               this.transformParameters.scaleX / 100,
-              (this.transformParameters.scaleY
-                ? this.transformParameters.scaleY
-                : this.transformParameters.scaleX) / 100
+              scaleYFor(this.transformParameters.scaleX) / 100
             ),
           "scale"
         ),
       makeTransformationForX: (x) => () =>
-        new Transform().scale(
-          x / 100,
-          (this.transformParameters.scaleY ? this.transformParameters.scaleY : x) / 100
-        ),
+        new Transform().scale(x / 100, scaleYFor(x) / 100),
       makeTransformationForY: (y) => () =>
         new Transform().scale(this.transformParameters.scaleX / 100, y / 100),
       undoLabel: "scale",
     });
     this.scaleXField = scaleXField;
     this.scaleYField = scaleYField;
+    scaleYField.disabled = this.transformParameters.scaleLinked;
+    // The chain between X and Y, as on the skeleton width. Closed, Y follows X
+    // and is greyed.
+    const scaleChain = html.createDomElement("chain-link", {
+      tooltip: translate("sidebar.skeleton-parameters.linked"),
+    });
+    scaleChain.linked = this.transformParameters.scaleLinked;
+    scaleChain.addEventListener("change", (event) => {
+      const linked = event.detail.linked;
+      this.transformParameters.scaleLinked = linked;
+      if (linked) {
+        this.transformParameters.scaleY = this.transformParameters.scaleX;
+        scaleYField.value = this.transformParameters.scaleX;
+      }
+      scaleYField.disabled = linked;
+    });
     // Ticket 41: Smart scale, the tension-aware scale held on X, keeps its two
     // app-wide settings in an overflow at the row's end. Preserve aspect ratio
     // lets tension points slide along their straights; off, the scale only
@@ -618,6 +641,7 @@ export default class TransformationPanel {
     scaleRow.field3 = {
       type: "auxiliaryElement",
       auxiliaryElement: html.div({ class: "scale-y-with-overflow" }, [
+        scaleChain,
         scaleYField,
         this.scaleOverflow,
       ]),
