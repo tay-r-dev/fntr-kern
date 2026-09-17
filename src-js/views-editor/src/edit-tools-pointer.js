@@ -79,7 +79,9 @@ import {
 } from "./snapping-interactions.js";
 import {
   SKELETON_TENSION_AWARE_BEHAVIOR_NAME,
+  SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME,
   TENSION_AWARE_BEHAVIOR_NAME,
+  POWER_TENSION_AWARE_BEHAVIOR_NAME,
   TENSION_AWARE_SCALE_BEHAVIOR_NAME,
   createTensionAwareTargetEntries,
   createTensionAwareTransformEntries,
@@ -785,7 +787,7 @@ export class PointerTool extends BaseTool {
         independentRibMode: this.independentRibMode,
       });
       const getSelectionBehaviorName = (event) =>
-        getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds) ||
+        getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds, event) ||
         getSkeletonModifierBehaviorName(event, getRealtimeModifiers(), targetKinds) ||
         getBaseExpandBehaviorName(
           getRealtimeModifiers(),
@@ -825,7 +827,7 @@ export class PointerTool extends BaseTool {
         editingLayers[editLayerName] || Object.values(editingLayers)[0]
       );
       const makeSkeletonTargetEntries = (layerGlyph, name) => {
-        if (name === TENSION_AWARE_BEHAVIOR_NAME) {
+        if (name === TENSION_AWARE_BEHAVIOR_NAME || name === POWER_TENSION_AWARE_BEHAVIOR_NAME) {
           return createTensionAwareTargetEntries(
             layerGlyph,
             sceneController.selection,
@@ -834,14 +836,20 @@ export class PointerTool extends BaseTool {
               isGeneratedContour: (contourIndex) =>
                 this.sceneModel.isGeneratedPathContour(contourIndex),
               scalingEditBehavior: this.scalingEditBehavior,
+              clickedPointIndex: sceneController.sceneModel.initialClickedPointIndex,
             }
           );
         }
-        if (name === SKELETON_TENSION_AWARE_BEHAVIOR_NAME) {
+        if (
+          name === SKELETON_TENSION_AWARE_BEHAVIOR_NAME ||
+          name === SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME
+        ) {
           const entry = makeSkeletonTensionAwareTargetEntry(
             layerGlyph,
             sceneController.selection,
-            referenceSkeletonData
+            referenceSkeletonData,
+            name,
+            sceneController.sceneModel.initialClickedSkeletonPointKey
           );
           return entry ? [entry] : [];
         }
