@@ -13,34 +13,110 @@ import { EditBehaviorFactory } from "./edit-behavior.js";
 
 export const TENSION_AWARE_BEHAVIOR_NAME = "tension-aware";
 export const SKELETON_TENSION_AWARE_BEHAVIOR_NAME = "skeleton-tension-aware";
+export const POWER_TENSION_AWARE_BEHAVIOR_NAME = "power-tension-aware";
+export const SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME = "skeleton-power-tension-aware";
 
 /**
  * X drives the correction on whatever geometry the selection holds: ordinary
  * path points take it directly, skeleton points take it on their centerline.
  * A rib selection is the width edit and keeps its own drag.
  *
- * Shift adds nothing. X already states an axis, which is the stronger of the
- * two constraints, and 0/45/90 has no diagonal left to offer under it.
+ * Shift selects the power variant: eligible smooth points between the dragged
+ * point and an anchor are scaled along the locked axis.
  * @param {Object} modifiers - Realtime modifier state from the pointer tool
  * @param {Set} targetKinds - Selection kinds present, from getSelectionTargetKinds
  * @returns {string|null} The behavior name, or null
  */
-export function getTensionAwareBehaviorName(modifiers, targetKinds) {
+export function getTensionAwareBehaviorName(modifiers, targetKinds, event = null) {
   if (!modifiers?.tensionAwareMode) return null;
   // A rib drag is the width edit: it states a distance across the stroke, and
   // there is no tension along it for the correction to hold. X stays out.
   if (targetKinds?.has("skeletonRib")) return null;
   // The centerline is a path, so it takes the same correction - but only
   // through the skeleton write path, which the ordinary entry cannot reach.
-  if (targetKinds?.has("skeletonPoint")) return SKELETON_TENSION_AWARE_BEHAVIOR_NAME;
-  return TENSION_AWARE_BEHAVIOR_NAME;
+  if (targetKinds?.has("skeletonPoint")) {
+    return event?.shiftKey
+      ? SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME
+      : SKELETON_TENSION_AWARE_BEHAVIOR_NAME;
+  }
+  return event?.shiftKey
+    ? POWER_TENSION_AWARE_BEHAVIOR_NAME
+    : TENSION_AWARE_BEHAVIOR_NAME;
 }
 
 // The ordinary behavior name behind ours. The correction runs on top of what
 // the ordinary rules produce, so the rules have to run somewhere.
 const BASE_BEHAVIOR_NAMES = {
   [TENSION_AWARE_BEHAVIOR_NAME]: "default",
+  [POWER_TENSION_AWARE_BEHAVIOR_NAME]: "default",
 };
+
+function axisForDelta(delta) {
+  return Math.abs(delta.x) >= Math.abs(delta.y) ? "x" : "y";
+}
+
+function isEligiblePowerPoint(points, index, axis) {
+  const point = points[index];
+  if (!point || point.type || !point.smooth) return false;
+  const controls = [];
+  for (let i = index - 1; i >= 0 && controls.length < 1; i--) {
+    if (points[i].type) controls.push(points[i]);
+    else break;
+  }
+  for (let i = index + 1; i < points.length && controls.length < 2; i++) {
+    if (points[i].type) controls.push(points[i]);
+    else break;
+  }
+  if (!controls.length) return false;
+  return controls.every((control) => {
+    const dx = control.x - point.x;
+    const dy = control.y - point.y;
+    return Math.hypot(dx, dy) > 1e-9 &&
+      (axis === "x" ? Math.abs(dy) < 1e-9 : Math.abs(dx) < 1e-9);
+  });
+}
+
+// Scale the eligible smooth points between the clicked point and the first
+// non-eligible point in each drag direction. The clicked point itself remains
+// under the ordinary X rules; this pass supplies the FontLab-style power
+// propagation to the eligible run on either side.
+export function applyPowerAxisScale(before, after, closed, clickedIndex, delta) {
+  if (!Number.isInteger(clickedIndex) || !before[clickedIndex]) return;
+  const axis = axisForDelta(delta);
+  const amount = delta[axis];
+  if (!amount) return;
+  const ordered = before
+    .map((point, index) => ({ point, index }))
+    .filter(({ point }) => !point.type)
+    .sort((a, b) => a.point[axis] - b.point[axis]);
+  const clicked = ordered.find(({ index }) => index === clickedIndex);
+  if (!clicked) return;
+  const pivot = clicked.point[axis];
+  for (const direction of [-1, 1]) {
+    const run = [];
+    let anchor = null;
+    for (const item of ordered) {
+      const distance = (item.point[axis] - pivot) * direction;
+      if (distance <= 1e-9) continue;
+      if (!isEligiblePowerPoint(before, item.index, axis)) {
+        anchor = item;
+        break;
+      }
+      run.push(item);
+    }
+    if (!anchor || !run.length) continue;
+    const span = anchor.point[axis] - pivot;
+    if (Math.abs(span) < 1e-9) continue;
+    // The anchor stays fixed while the pivot follows the drag. This naturally
+    // expands the run on the side the pivot moves away from and compresses the
+    // run on the side it moves toward.
+    const factor = (span - amount) / span;
+    for (const { index } of run) {
+      const point = before[index];
+      after[index] = { ...after[index], [axis]: Math.round(pivot + (point[axis] - pivot) * factor) };
+    }
+  }
+}
 
 /**
  * One target entry for the whole path. It reproduces the ordinary edit on a
@@ -53,7 +129,7 @@ export function createTensionAwareTargetEntries(
   layerGlyph,
   selection,
   behaviorName,
-  { isGeneratedContour = null, scalingEditBehavior = false } = {}
+  { isGeneratedContour = null, scalingEditBehavior = false, clickedPointIndex = null } = {}
 ) {
   const { point: pointSelection } = parseSelection(selection || new Set());
   if (!pointSelection?.length || !layerGlyph?.path) return [];
@@ -121,6 +197,19 @@ export function createTensionAwareTargetEntries(
             applyTensionAwareEdit(before.points, after.points, after.isClosed, {
               slide: false,
             });
+            if (behaviorName === POWER_TENSION_AWARE_BEHAVIOR_NAME) {
+              const start = moved.path.getAbsolutePointIndex(contourIndex, 0);
+              applyPowerAxisScale(
+                before.points,
+                after.points,
+                after.isClosed,
+                clickedPointIndex == null ? null : clickedPointIndex - start,
+                delta
+              );
+              applyTensionAwareEdit(before.points, after.points, after.isClosed, {
+                slide: false,
+              });
+            }
             const startIndex = moved.path.getAbsolutePointIndex(contourIndex, 0);
             for (let i = 0; i < after.points.length; i++) {
               const point = after.points[i];
