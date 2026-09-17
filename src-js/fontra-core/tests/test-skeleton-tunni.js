@@ -970,12 +970,63 @@ describe("the curvature gizmo at a bulb terminal", () => {
     );
   }
 
-  // The neck is one cubic from the ball's last apex to the landing, and its two
-  // tangents can run nearly parallel, so no single tension describes it. It
-  // carries no gizmo and no address of its own.
-  it("offers the neck no gizmo", () => {
-    expect(neckSegments({ capBallEasing: 0.5 })).to.have.length(0);
+  it("gives the neck a segment of its own once easing is on", () => {
+    const necks = neckSegments({ capBallEasing: 0.5 });
+    expect(necks).to.have.length(1);
+    for (const entry of necks[0].provenance) {
+      expect(entry.skeletonPointId).to.equal(4);
+    }
+    expect(necks[0].provenance[1].capCurvatureField).to.equal("capBallEaseCurvature");
+    expect(necks[0].provenance[2].capCurvatureField).to.equal("capBallEaseCurvature");
+  });
+
+  it("offers the neck no on-curve gizmo", () => {
+    expect(neckSegments({ capBallEasing: 0.5 })[0].onCurveMovable).to.deep.equal([
+      false,
+      false,
+    ]);
+  });
+
+  it("makes no neck point directly editable", () => {
+    const layer = makeBulbGlyph({ capBallEasing: 0.5 });
+    const skeletonData = getSkeletonData(layer);
+    const neck = buildGeneratedTunniSegments(skeletonData, layer.path).find((segment) =>
+      segment.provenance.some((entry) => entry?.capCurvatureField)
+    );
+    for (let index = 0; index < 3; index++) {
+      const target = resolveEditableGeneratedTarget(
+        skeletonData,
+        layer.path,
+        neck.parentPointIndices[index]
+      );
+      expect(target, `neck point ${index}`).to.equal(null);
+    }
+  });
+
+  it("gives the neck no segment when easing is off", () => {
     expect(neckSegments({ capBallEasing: 0 })).to.have.length(0);
+  });
+
+  it("addresses a neck drag to the cap field, not to a side's pin", () => {
+    const neck = neckSegments({ capBallEasing: 0.5 })[0];
+    const edit = calculateGeneratedCurvatureEdits({
+      segmentPoints: neck.points,
+      provenance: neck.provenance,
+      delta: { x: 4, y: 4 },
+    });
+    expect(edit.capCurvatureField).to.equal("capBallEaseCurvature");
+    expect(edit.skeletonPointId).to.equal(4);
+    expect(edit.collapse).to.deep.equal([]);
+    expect(edit.tension).to.be.a("number");
+  });
+
+  it("reports the neck's curvature as pinned once the cap field is set", () => {
+    const layer = makeBulbGlyph({ capBallEasing: 0.5, capBallEaseCurvature: 0.4 });
+    const skeletonData = getSkeletonData(layer);
+    const neck = buildGeneratedTunniSegments(skeletonData, layer.path).find((segment) =>
+      segment.provenance.some((entry) => entry?.capCurvatureField)
+    );
+    expect(getGeneratedSegmentCurvature(skeletonData, neck).pinned).to.equal(true);
   });
 
   // The trim rewrites this segment's two handles from a bezier split. Without

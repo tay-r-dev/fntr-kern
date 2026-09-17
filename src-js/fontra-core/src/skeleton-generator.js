@@ -73,26 +73,25 @@ const DEFAULT_CAP_BALL_EASING = 0;
 // handles on the tangent intersection. The gizmo writes it per point; this is
 // what an unset bulb draws.
 export const DEFAULT_CAP_BALL_EASE_CURVATURE = 0.55;
-// An extreme within one unit of arc of the landing is that point already, and
-// is not emitted twice: two on-curves a unit apart carry handles the grid
-// cannot draw.
-const DROP_CAP_APEX_ARC_MARGIN = 1;
-// The outer wall slides onto the ball's first apex where that apex lies within
-// this much sweep (radians) of the tangency. Further round, the wall keeps its
-// own tangency point and the apex is a point of its own: a wall piece asked to
-// absorb a quarter of the ball would draw neither the wall nor the ball.
-// ponytail: a point appears where an apex crosses this angle as the stroke
-// turns.
-const DROP_CAP_SLIDE_ANGLE = (30 * Math.PI) / 180;
-// The easing at which the neck's landing handle has turned fully onto the wall.
-// Below it the handle turns from the ball's own tangent toward the wall, so
-// easing leaves zero without a pop.
-const NECK_BLEND_EASING = 0.25;
-// How much of the landing's slide the fillet into the wall takes as handle.
-const NECK_FILLET = 0.55;
+// Fallback neck handle length as a fraction of the neck chord, used only where
+// the two tangents give no intersection to measure against.
+const NECK_HANDLE_FRACTION = 0.45;
+// How far (radians of ball sweep) the neck may back the ball attachment off.
+const MAX_NECK_ARC_BACKOFF = 0.6;
+// How far back along the outer wall the ease-in point sits from where the ball
+// meets it, as a fraction of the ball's LATERAL radius, which is the size the
+// designer set. Not the along-stroke radius: that one is what the cut search
+// arrives at, and on a stroke whose wall has turned it comes back small, so the
+// ease-in landed a few units from the ball's own first point and the two drew
+// the flat spot this construction exists to remove.
+const DROP_CAP_EASE_IN_RATIO = 0.5;
+// The most of that run the ease-in may take.
+const DROP_CAP_EASE_IN_MAX_RUN = 0.9;
 // The shortest cut the ball may sit on. A round cap keeps a unit for the same
 // reason: the ball reads its own frame off the piece the cut leaves behind.
 const MIN_BALL_TRIM = 1;
+// The circular handle ratio, used for the ease-in from the wall into the ball.
+const KAPPA = 0.5522847498;
 // Divisor floor for the terminal pin. It keeps the arithmetic finite where the
 // outer edge has turned square to the outward tangent. It is not a limit on the
 // answer, because the search never asks for a radius the shape did not request.
@@ -2936,6 +2935,8 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           skeletonContour.capBallShape ??
           DEFAULT_CAP_BALL_SHAPE,
         capBallEasing: firstOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
+        capBallEaseCurvature:
+          firstOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -3134,6 +3135,8 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           skeletonContour.capBallShape ??
           DEFAULT_CAP_BALL_SHAPE,
         capBallEasing: lastOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
+        capBallEaseCurvature:
+          lastOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -5485,6 +5488,40 @@ function clampCapBallEasing(value) {
   return Math.min(Math.max(value, 0), 1);
 }
 
+// Clamped on output only, like every other curvature the gizmo writes: a stored
+// value the geometry cannot honor today comes back intact once it can.
+function clampCapBallEaseCurvature(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_CAP_BALL_EASE_CURVATURE;
+  }
+  return Math.min(Math.max(value, 0), 1);
+}
+
+// The neck's own provenance. A neck is cap geometry with no skeleton segment
+// behind it, so its curvature cannot live in `segmentCurvature`; it names the
+// cap-owning point and the field instead. `side` is the inner generated side, so
+// the segment walk sees one consistent side across all four points and needs no
+// second rule to accept it.
+function neckProvenance(sourcePoint, side, role) {
+  if (!sourcePoint?._sourcePointId) {
+    return null;
+  }
+  return {
+    skeletonPointId: sourcePoint._sourcePointId,
+    side,
+    role,
+    capCurvatureField: "capBallEaseCurvature",
+  };
+}
+
+function withNeckProvenance(point, sourcePoint, side, role) {
+  const provenance = neckProvenance(sourcePoint, side, role);
+  if (point && provenance) {
+    point._provenance = provenance;
+  }
+  return point;
+}
+
 // Which side the ball swells toward. Explicit capBallSide wins; otherwise the
 // convex (outer) side of the terminal segment's bend. For a CCW-turning
 // terminal the convex side is the left generated edge.
@@ -5574,39 +5611,28 @@ function makeDropCapBall(center, ex, ey, a, b) {
 }
 
 // The ball's own parameters at its extremes along the glyph's x and y axes.
-// x(θ) = cx + (ex.x·a)cosθ + (ey.x·b)sinθ is extreme where its derivative is
-// zero, at atan2(ey.x·b, ex.x·a) and half a turn on; y the same with the y
+// x(theta) = cx + (ex.x*a)cos + (ey.x*b)sin is extreme where its derivative is
+// zero, at atan2(ey.x*b, ex.x*a) and half a turn on; y the same with the y
 // components. These are where a designer puts on-curves by hand, so they are
-// where the ball's on-curves go. Returned in (thetaStart, thetaEnd), sorted,
-// and without any extreme that sits within the margin of either end.
-function dropCapApexAngles(ball, thetaStart, thetaEnd, startMargin, endMargin) {
+// where the ball's on-curves go. All four are returned, normalized into one turn
+// from `thetaStart` and sorted, so the caller takes a fixed number of them
+// rather than however many a sweep happens to contain — which is what made the
+// point count step as the stroke turned or the ball grew.
+function dropCapApexAngles(ball, thetaStart) {
   const twoPi = Math.PI * 2;
   const angles = [];
   for (const axis of ["x", "y"]) {
     const base = Math.atan2(ball.ey[axis] * ball.b, ball.ex[axis] * ball.a);
     for (const theta of [base, base + Math.PI]) {
       let t = theta;
-      while (t <= thetaStart) t += twoPi;
-      while (t > thetaEnd) t -= twoPi;
-      if (t > thetaStart + startMargin && t < thetaEnd - endMargin) {
-        angles.push(t);
-      }
+      while (t < thetaStart) t += twoPi;
+      while (t >= thetaStart + twoPi) t -= twoPi;
+      angles.push(t);
     }
   }
   return angles.sort((one, other) => one - other);
 }
 
-// Emit cubic kappa arcs along the ball from thetaStart counter-clockwise
-// through each angle in `stops` to thetaEnd (in the ball's own parameter
-// space, ascending). Returns points AFTER the starting on-curve (which the
-// caller already has as the tangency point); the final point is the on-curve
-// at thetaEnd.
-//
-// The stops are the ball's glyph-axis extremes, so a piece runs from one apex
-// to the next. On a round ball on an axis-aligned stroke every piece is a
-// quarter turn. A rotated or stretched ball spaces its extremes unevenly, and
-// a piece can run up to about 120 degrees, where the kappa cubic still sits
-// within a third of a percent of the true arc.
 // The two kappa handles of one arc piece from `a` to `b`, in device space.
 // Unit-space tangents are (-sin, cos); the handles are the kappa offsets.
 function dropCapArcHandles(ball, a, b) {
@@ -5621,18 +5647,29 @@ function dropCapArcHandles(ball, a, b) {
   };
 }
 
+// Emit cubic kappa arcs along the ball from thetaStart counter-clockwise
+// through each angle in `stops` to thetaEnd (in the ball's own parameter
+// space, ascending). Returns points AFTER the starting on-curve, which the
+// caller already has; the final point is the on-curve at thetaEnd.
+//
+// The stops are the ball's glyph-axis extremes, so a piece runs from one
+// extreme to the next. On a round ball on an axis-aligned stroke every piece is
+// a quarter turn. A rotated or stretched ball spaces its extremes unevenly, and
+// a piece can run up to about 120 degrees, where the kappa cubic still sits
+// within a third of a percent of the true arc.
 function emitDropCapArc(ball, thetaStart, thetaEnd, stops = []) {
   const points = [];
   let a = thetaStart;
   for (const b of [...stops, thetaEnd]) {
-    if (!(b - a > 1e-6)) {
-      continue;
-    }
-    const handles = dropCapArcHandles(ball, a, b);
+    // A piece with no sweep still emits its three points, collapsed on their
+    // own end. Skipping it instead took an on-curve off the ball the moment an
+    // extreme met the sweep's end, which is a point count that steps as the
+    // stroke turns. Points collapse, they do not disappear.
+    const handles = dropCapArcHandles(ball, a, Math.max(b, a));
     points.push(dropCapHandle(handles.start));
     points.push(dropCapHandle(handles.end));
-    points.push(dropCapOnCurve(ball.at(b)));
-    a = b;
+    points.push(dropCapOnCurve(ball.at(Math.max(b, a))));
+    a = Math.max(b, a);
   }
   return points;
 }
@@ -6217,55 +6254,6 @@ function solveDropCapBallOnTerminal({
   };
 }
 
-// Slide a trimmed outer side's terminal piece off the tangency and onto the
-// ball's first apex. The piece keeps its far end and its handle there, ends on
-// the apex, and its apex handle runs along `direction` for its old length plus
-// `absorbed`, the arc handle of the sweep it now covers. A line piece becomes a
-// cubic with its handles on the chord thirds, which is the same line, so a
-// straight wall and a curved one take the apex the same way.
-function slideWallOntoApex(
-  sidePoints,
-  position,
-  { apex, direction, absorbed, provenance }
-) {
-  const points = [...sidePoints];
-  const fromEnd = position === "end";
-  const tangencyIndex = fromEnd ? points.length - 1 : 0;
-  const step = fromEnd ? -1 : 1;
-  const wallHandleIndex = tangencyIndex + step;
-  const isCubic = !!points[wallHandleIndex]?.type;
-  const farIndex = tangencyIndex + step * (isCubic ? 3 : 1);
-  const far = points[farIndex];
-  if (!far) {
-    return sidePoints;
-  }
-  const tangency = points[tangencyIndex];
-  const endPoint = { ...apex, smooth: true, skipColinear: true };
-  if (provenance) endPoint._provenance = { ...provenance };
-  let wallHandle;
-  let farHandle;
-  if (isCubic) {
-    wallHandle = points[wallHandleIndex];
-    farHandle = points[farIndex - step];
-  } else {
-    const third = vector.mulVectorScalar(vector.subVectors(tangency, far), 1 / 3);
-    farHandle = dropCapHandle(vector.addVectors(far, third));
-    wallHandle = dropCapHandle(vector.subVectors(tangency, third));
-  }
-  const length = vector.distance(wallHandle, tangency) + absorbed;
-  const apexHandle = {
-    ...wallHandle,
-    x: Math.round(apex.x + direction.x * length),
-    y: Math.round(apex.y + direction.y * length),
-  };
-  const piece = fromEnd
-    ? [far, farHandle, apexHandle, endPoint]
-    : [endPoint, apexHandle, farHandle, far];
-  return fromEnd
-    ? [...points.slice(0, farIndex), ...piece]
-    : [...piece, ...points.slice(farIndex + 1)];
-}
-
 // Build a drop cap.
 //
 // The outer edge is trimmed back by the ball's along-stroke radius and flows
@@ -6285,6 +6273,7 @@ function buildDropCap({
   capBallRatio,
   capBallShape,
   capBallEasing,
+  capBallEaseCurvature,
 }) {
   const forward = vector.normalizeVector(outwardTangent);
   if (!endpoint || !(capWidth > 0.001) || !isUsableDirection(forward)) {
@@ -6324,12 +6313,8 @@ function buildDropCap({
   const { split, tangency, ball } = solved;
   const ex = ball.ex;
   // The tangency is a genuine smooth junction; keep the colinearity post-pass
-  // from rotating the ball's first handle away from it. It lands on the grid
-  // like every other emitted on-curve; the ball was solved from the exact cut
-  // and the half unit this moves it is the same half unit every point takes.
+  // from rotating the ball's first handle away from it.
   tangency.skipColinear = true;
-  tangency.x = Math.round(tangency.x);
-  tangency.y = Math.round(tangency.y);
   let trimmedOuterSide = trimSideForRoundCapEmission(
     split.sidePoints,
     position,
@@ -6337,6 +6322,7 @@ function buildDropCap({
   );
 
   const easing = clampCapBallEasing(capBallEasing);
+  const easeCurvature = clampCapBallEaseCurvature(capBallEaseCurvature);
 
   // Where the ball meets the inner edge (the arc ends there). When the ball is
   // too small to reach the inner edge, bridge to the inner terminal instead.
@@ -6394,108 +6380,200 @@ function buildDropCap({
   while (thetaInner > thetaOuter + twoPi) {
     thetaInner -= twoPi;
   }
-  // The ball's on-curves are its glyph-axis extremes between the tangency and
-  // the landing, which is where a designer puts them by hand. The neck, where
-  // there is one, leaves from the last of them.
-  const apexes = dropCapApexAngles(
-    ball,
-    thetaOuter,
-    thetaInner,
-    0,
-    DROP_CAP_APEX_ARC_MARGIN / Math.max(ball.a, ball.b)
+  const sweep = thetaInner - thetaOuter;
+
+  // For a soft neck, back the ball attachment off along the arc as well (not
+  // just the inner trim back along the edge). Ending the arc before the corner
+  // means the fillet cuts across it and eases in from above the edge, instead
+  // of continuing the arc's tangent and overshooting below it into a dip. The
+  // absolute cap keeps a very soft neck from eating the ball itself: past it
+  // the extra tension only reaches further back along the edge.
+  const backoff =
+    mode === "soft" ? easing * Math.min(0.35 * sweep, MAX_NECK_ARC_BACKOFF) : 0;
+  const thetaArcEnd = thetaInner - backoff;
+
+  // The ball's on-curves are its extremes in the glyph's own axes, which is
+  // where a designer puts them by hand. The arc starts where the ball meets the
+  // wall and turns at the three extremes that follow, so the same three are
+  // drawn at every lean. On an axis-aligned stroke the meeting IS an extreme,
+  // and it is drawn once. One the sweep does not reach is held at the sweep's
+  // end, where it collapses onto the point already there — points collapse,
+  // they do not disappear, and that is what keeps one bulb comparable with
+  // another.
+  const thetaArcStart = thetaOuter;
+  const apexes = dropCapApexAngles(ball, thetaArcStart).filter(
+    (theta) => theta > thetaArcStart + 1e-9 && theta < thetaArcEnd - 1e-9
   );
 
-  // The tangency is not a point of its own where an apex lies near it. The
-  // outer wall slides onto that apex: its last piece ends there, leaving along
-  // the wall as it did and arriving along the ball, and its handle grows by the
-  // arc it absorbed. On an axis-aligned stroke the tangency is the apex and
-  // nothing moves; on a leaning one the wall and the ball blend across the few
-  // degrees between them, which is what a hand draws. Two on-curves a few units
-  // apart, the tangency and the apex, drew a flat spot the grid could not
-  // round.
-  let thetaArcStart = thetaOuter;
-  let arcStart = tangency;
-  if (apexes.length && apexes[0] - thetaOuter <= DROP_CAP_SLIDE_ANGLE) {
-    thetaArcStart = apexes.shift();
-    arcStart = dropCapOnCurve(ball.at(thetaArcStart));
-    const arcHandle = dropCapArcHandles(ball, thetaOuter, thetaArcStart).end;
-    const absorbed = vector.distance(arcHandle, arcStart);
-    trimmedOuterSide = slideWallOntoApex(trimmedOuterSide, position, {
-      apex: arcStart,
-      // The wall's handle at the apex runs back along the ball, against the
-      // sweep into it.
-      direction: vector.mulVectorScalar(ball.tangentAt(thetaArcStart), -1),
-      absorbed,
-      provenance: tangency._provenance,
-    });
+  // The ease-in point. The outer wall is cut again, back from where the ball
+  // meets it by a share of the ball's own along-stroke radius, and one cubic
+  // runs from that cut into the arc's first point: it leaves along the wall and
+  // arrives along the ball. So the wall does not run into the ball at a
+  // curvature step, the cut slides back as the ball grows, and it is always its
+  // own point — the arc's first point never stands on top of it.
+  const arcStart = dropCapOnCurve(ball.at(thetaArcStart));
+  const easeInDistance = Math.min(
+    ball.b * DROP_CAP_EASE_IN_RATIO,
+    getTerminalSegmentLength(trimmedOuterSide, position) * DROP_CAP_EASE_IN_MAX_RUN
+  );
+  const cutAt = (distance) =>
+    splitTerminalSideForRoundCap(
+      trimmedOuterSide,
+      position,
+      distance,
+      { endpointTangent: forward, capTangent: forward },
+      { minimumTrim: 0 }
+    );
+  const easeInSplit = cutAt(easeInDistance);
+  let easeIn = [];
+  if (easeInSplit?.insertedPoint) {
+    const easeInPoint = easeInSplit.insertedPoint;
+    easeInPoint.skipColinear = true;
+    easeInPoint.x = Math.round(easeInPoint.x);
+    easeInPoint.y = Math.round(easeInPoint.y);
+    trimmedOuterSide = trimSideForRoundCapEmission(
+      easeInSplit.sidePoints,
+      position,
+      easeInSplit.referenceEndpointIndex
+    );
+    const wallOut = easeInSplit.tangentToEndpoint;
+    const ballIn = vector.mulVectorScalar(ball.tangentAt(thetaArcStart), -1);
+    const lengths = computeTunniHandleLengths(
+      easeInPoint,
+      wallOut,
+      arcStart,
+      ballIn,
+      KAPPA
+    );
+    const chord = vector.distance(easeInPoint, arcStart);
+    const clampEase = (value) =>
+      Math.min(Math.max(Number.isFinite(value) ? value : chord / 3, 0), chord);
+    easeIn = [
+      dropCapHandle({
+        x: easeInPoint.x + wallOut.x * clampEase(lengths.startLen),
+        y: easeInPoint.y + wallOut.y * clampEase(lengths.startLen),
+      }),
+      dropCapHandle({
+        x: arcStart.x + ballIn.x * clampEase(lengths.endLen),
+        y: arcStart.y + ballIn.y * clampEase(lengths.endLen),
+      }),
+    ];
   }
-  const thetaNeckStart = apexes.length ? apexes[apexes.length - 1] : thetaArcStart;
+
+  const arc = [
+    ...easeIn,
+    arcStart,
+    ...emitDropCapArc(ball, thetaArcStart, thetaArcEnd, apexes),
+  ];
 
   // Points strictly between the outer tangency and the inner terminal, in the
   // outer -> inner traversal direction.
   let capForwardToInner;
-  if (mode === "corner") {
-    // Hard corner: the arc runs through the apexes to the crossing. The trimmed
-    // inner side already provides the crossing on-curve, so the arc's own is
-    // dropped to avoid duplicating it.
-    capForwardToInner = emitDropCapArc(ball, thetaArcStart, thetaInner, apexes).slice(
-      0,
-      -1
+  if (mode === "soft") {
+    // Concave neck: the arc ends at the backed-off ball attachment (smooth);
+    // one cubic eases from there into the pulled-back inner trim — tangent to
+    // the ball at the ball end (continuing the sweep) and along the stroke edge
+    // at the inner end.
+    const ballAttach = ball.at(thetaArcEnd);
+    const sweepTangent = ball.tangentAt(thetaArcEnd);
+    const innerTangent = orientDirectionToward(
+      easedCross.crossingTangent ?? ex,
+      vector.subVectors(ballAttach, innerTrim)
     );
-  } else {
-    // The neck: one cubic from the last apex to the landing, and no point of
-    // its own. It keeps the ball's arc where it can: its first handle is the
-    // arc's own kappa handle for the piece that would have run from the apex
-    // to the crossing, so the ball's underside is drawn rather than dropped.
-    // Its landing handle starts as that arc's end handle and turns onto the
-    // wall as easing rises, growing by a fillet's share of the slide, so easing
-    // leaves zero without a pop and lands on the wall smoothly once it is on.
-    // A ball too small to reach the inner edge lands on the inner terminal,
-    // with its handle running into the stroke so the neck never reaches past
-    // the terminal plane; the terminal stays the corner it is.
-    //
-    // ponytail: a single tension cannot describe this neck, because its two
-    // tangents run nearly parallel on a stroke the ball sits beside, so the
-    // curvature gizmo is not offered here and capBallEaseCurvature is unread.
-    const arc = emitDropCapArc(
-      ball,
-      thetaArcStart,
-      thetaNeckStart,
-      apexes.slice(0, -1)
+    const chord = vector.distance(ballAttach, innerTrim);
+    const neckLengths = computeTunniHandleLengths(
+      ballAttach,
+      sweepTangent,
+      innerTrim,
+      innerTangent,
+      easeCurvature
     );
-    const neckStart = arc.length ? arc[arc.length - 1] : arcStart;
-    const crossing = ball.at(thetaInner);
-    const handles = dropCapArcHandles(ball, thetaNeckStart, thetaInner);
-    const landing =
-      mode === "soft"
-        ? innerTrim
-        : position === "start"
-          ? getFirstOnCurvePoint(innerSideArr)
-          : getLastOnCurvePoint(innerSideArr);
-    const wall = orientDirectionToward(
-      (mode === "soft"
-        ? easedCross.crossingTangent
-        : getSideTerminalTangent(innerSideArr, position)) ?? ex,
-      mode === "soft"
-        ? vector.subVectors(crossing, landing)
-        : { x: -forward.x, y: -forward.y }
-    );
-    const arcEnd = vector.subVectors(handles.end, crossing);
-    const arcLength = Math.hypot(arcEnd.x, arcEnd.y);
-    const blend = mode === "soft" ? Math.min(easing / NECK_BLEND_EASING, 1) : 1;
-    const direction = vector.normalizeVector({
-      x: (1 - blend) * (arcLength ? arcEnd.x / arcLength : wall.x) + blend * wall.x,
-      y: (1 - blend) * (arcLength ? arcEnd.y / arcLength : wall.y) + blend * wall.y,
-    });
-    const length = arcLength + blend * NECK_FILLET * vector.distance(landing, crossing);
+    const clampNeckLen = (value) =>
+      Math.min(
+        Math.max(Number.isFinite(value) ? value : NECK_HANDLE_FRACTION * chord, 0),
+        chord
+      );
     capForwardToInner = [
       ...arc,
-      dropCapHandle(handles.start),
-      dropCapHandle({
-        x: landing.x + direction.x * length,
-        y: landing.y + direction.y * length,
-      }),
+      withNeckProvenance(
+        dropCapHandle({
+          x: ballAttach.x + sweepTangent.x * clampNeckLen(neckLengths.startLen),
+          y: ballAttach.y + sweepTangent.y * clampNeckLen(neckLengths.startLen),
+        }),
+        endpoint,
+        innerSideName,
+        "out"
+      ),
+      withNeckProvenance(
+        dropCapHandle({
+          x: innerTrim.x + innerTangent.x * clampNeckLen(neckLengths.endLen),
+          y: innerTrim.y + innerTangent.y * clampNeckLen(neckLengths.endLen),
+        }),
+        endpoint,
+        innerSideName,
+        "in"
+      ),
     ];
+    // The arc's last on-curve is the neck's own start. It needs an address for
+    // the segment walk to see the neck at all; the walk takes a segment only
+    // when all four of its points carry one.
+    withNeckProvenance(arc[arc.length - 1], endpoint, innerSideName, "onCurve");
+  } else if (mode === "bridge") {
+    // Small ball: connect the last arc on-curve to the inner terminal with a
+    // short concave neck cubic, scaled by tension.
+    const neckPoint = ball.at(thetaInner);
+    const innerTerminal =
+      position === "start"
+        ? getFirstOnCurvePoint(innerSideArr)
+        : getLastOnCurvePoint(innerSideArr);
+    const chord = vector.distance(neckPoint, innerTerminal);
+    const ballTangent = orientDirectionToward(
+      ball.tangentAt(thetaInner),
+      vector.subVectors(innerTerminal, neckPoint)
+    );
+    const innerTangent = orientDirectionToward(
+      getSideTerminalTangent(innerSideArr, position) ?? ex,
+      vector.subVectors(neckPoint, innerTerminal)
+    );
+    const neckLengths = computeTunniHandleLengths(
+      neckPoint,
+      ballTangent,
+      innerTerminal,
+      innerTangent,
+      easeCurvature
+    );
+    const clampNeckLen = (value) =>
+      Math.min(Math.max(Number.isFinite(value) ? value : 0.4 * chord, 0), 0.6 * chord);
+    capForwardToInner = [
+      ...arc,
+      withNeckProvenance(
+        dropCapHandle({
+          x: neckPoint.x + ballTangent.x * clampNeckLen(neckLengths.startLen),
+          y: neckPoint.y + ballTangent.y * clampNeckLen(neckLengths.startLen),
+        }),
+        endpoint,
+        innerSideName,
+        "out"
+      ),
+      withNeckProvenance(
+        dropCapHandle({
+          x: innerTerminal.x + innerTangent.x * clampNeckLen(neckLengths.endLen),
+          y: innerTerminal.y + innerTangent.y * clampNeckLen(neckLengths.endLen),
+        }),
+        endpoint,
+        innerSideName,
+        "in"
+      ),
+    ];
+    withNeckProvenance(arc[arc.length - 1], endpoint, innerSideName, "onCurve");
+  } else {
+    // Hard corner: the trimmed inner side already provides the crossing
+    // on-curve, and the arc's own lands on the same spot. Both are emitted. A
+    // ball that stops reaching the inner edge turns this corner into a neck,
+    // and dropping one here made the outline lose a point at that crossover —
+    // a count that steps while the size is dragged. Points collapse, they do
+    // not disappear.
+    capForwardToInner = arc;
   }
 
   const fromSide = position === "end" ? "left" : "right";

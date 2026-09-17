@@ -1707,35 +1707,41 @@ fraction of the run from the plain ball crossing back to the next on-curve now,
 with one run serving both the geometry and the panel's top of range.
 
 **The arc was cut into four equal pieces whatever the sweep**, so a default
-bulb carried five on-curves on the ball at about −32, 26, 85 and 143 degrees,
-none on an apex, and the neck left from a point backed off the last of them.
-Reported 2026-09-17 as one point too many. The on-curves are the ball's
-glyph-axis extremes now and the backoff is gone. Default horizontal bulb: top,
-tip, bottom, landing — four. The fixed count that the four pieces existed for is
-traded away knowingly: the extremes inside the sweep change as the stroke
-turns. The other price is measured: on a curved terminal at ratio 3 and full
-shape the forward tip is no longer an on-curve and the arc through it stands
-1.05 units past the terminal plane, against 0.5 before. The bound in the test
-is 1.5 now.
+bulb carried five on-curves on the ball at about -32, 26, 85 and 143 degrees,
+none of them on an extreme. Reported 2026-09-17 as one point too many. The
+on-curves are the ball's glyph-axis extremes now, and the count is fixed at
+three of the four.
 
-- **The neck could not start at the last apex under a single tension.** On the
-  `underscore` of skeletron.fontra the ball sits beside a near-vertical stroke,
-  so the last apex's tangent and the wall run parallel and the two tangent
-  lines meet hundreds of units away. Read off that meeting the handles ran the
-  whole chord and the neck folded over itself; clamped at six tenths of the
-  chord it drew a straight drop and the ball's underside was gone. The neck
-  takes the arc's own kappa handle at the apex and a landing handle that turns
-  from the arc's end onto the wall over the first quarter of the easing range,
-  and the neck's curvature gizmo went with it. `capBallEaseCurvature` is still
-  in the model, the panel fallbacks and the drag code, and reads nothing.
-- **The tangency beside an apex drew a flat spot.** On the same glyph the
-  tangency landed three units from the right apex, with one-unit handles the
-  grid could not round. The wall slides onto an apex within 30 degrees of its
-  tangency now, absorbing the arc between into its own last piece.
-- **Sliding onto the first apex in the list slid onto the tip.** On a
-  horizontal stroke the top apex is the tangency and was dropped as
-  coincident, so the tip came first and the wall ran to it. The gate is the
-  angle from the tangency, not the list order.
+- **Three rounds went into merging the tangency away, and the answer was to
+  keep it.** On a horizontal stroke the ball's own meeting with the wall IS its
+  top extreme, so the two were coincident and every fix tried to drop one:
+  merging the extreme into the tangency, which left the arc starting at an
+  arbitrary angle; sliding the wall's last piece onto the extreme and deleting
+  the tangency; then gating that slide on an angle, which put both on the
+  outline once the lean passed the gate. **A point two constructions both want
+  is not a duplicate to delete: it is one point too few.** The wall is cut a
+  second time, half a ball radius back, so the ease-in point is always its own
+  and each construction keeps its point.
+- **A count held by a gate is not held.** Every version above kept the count at
+  one lean and stepped at another: at 30 degrees for the angle gate, at 45 for
+  the window, at 2.02 of ball ratio and at the ease/corner crossover. A sweep
+  over lean, size, shape and easing found each one; no single configuration
+  showed any of them. The count is fixed by construction now — three extremes
+  taken from the four, an ease-in point that cannot collapse, and a corner that
+  emits the same points a neck does — and the same sweeps report zero steps.
+- **A zero-length arc piece was skipped, and the skip was the step.** An extreme
+  held at the sweep's end emitted nothing, so the ball lost an on-curve exactly
+  where the extreme met the end. It emits its three points collapsed on their
+  own end now. Points collapse, they do not disappear.
+- **The neck was rebuilt and did not need to be.** Reading the ease-in as "the
+  neck starts at the last extreme" took the neck's own backed-off point away,
+  and on the `underscore` of skeletron.fontra — where the ball sits beside a
+  near-vertical stroke and the two neck tangents run nearly parallel — no single
+  tension described the result: the handles ran the whole chord and the neck
+  folded, or were clamped and drew a straight drop with the ball's underside
+  gone. Reverted whole. The neck, its backoff, its own on-curve and its
+  curvature gizmo are as they were. **The report said easing, and easing was not
+  the part that changed.**
 
 - The curvature gizmo was absent from the whole terminal region, because the
   segment walk takes a segment only when all four points carry addresses and the
