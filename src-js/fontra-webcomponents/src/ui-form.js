@@ -363,7 +363,7 @@ export class Form extends SimpleElement {
         valueStream.put(change);
         this._dispatchEvent("doChange", { key: fieldItem.key, value: change });
       };
-      const scrub = new EdgeScrub(labelElement, applyDelta);
+      const scrub = new EdgeScrub(labelElement);
 
       const onMove = (moveEvent) => {
         if (!valueStream) {

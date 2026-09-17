@@ -445,7 +445,7 @@ export class CompactScrubField extends UnlitElement {
       travel = clamped - startValue;
       this._commit(roundScrubValue(clamped, this._boundsFieldItem));
     };
-    const scrub = new EdgeScrub(this._box, applyDelta);
+    const scrub = new EdgeScrub(this._box);
 
     const onMove = (moveEvent) => {
       if (!dragging) {
